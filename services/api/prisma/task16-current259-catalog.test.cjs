@@ -3,6 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const api=require('./task16-current259-catalog.cjs');
 const {PAYMENT261_RUNTIME_PROFILE,PAYMENT261_LEDGER_SHA256}=require('./task16-current259-profile.cjs');
+const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const hash=x=>crypto.createHash('sha256').update(x).digest('hex');
 const root=path.resolve(__dirname,'../../..');
 const currentMigrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
@@ -227,7 +228,7 @@ test('versioned reader bytes are checked in an independent copied source closure
  try{
   const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-current259-access.json'),'utf8'));
   const files=[...manifest.files.map(x=>x.path),'services/api/prisma/task16-current259-catalog.cjs',
-   'services/api/prisma/task16-current259-access.json','services/api/prisma/schema.prisma',...migrations.map(x=>x.path)];
+   'services/api/prisma/task16-current259-access.json','services/api/prisma/task16-current261-competition-profile.cjs','services/api/prisma/schema.prisma',...migrations.map(x=>x.path)];
   for(const relative of files){const to=path.join(temporary,relative);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(root,relative),to);}
   const isolated=require(path.join(temporary,'services/api/prisma/task16-current259-catalog.cjs'));
   assert.equal(isolated.loadCurrent259CatalogMaterial(source).nativeAdmission,false);
@@ -283,7 +284,7 @@ test('application manifest binding is the fixed qualified registered file bytes'
  assert.equal(material.registeredManifestSha256,manifest.files[1].sha256);
 });
 
-test('voucher catalog keeps the exact C0 binding and guards through B7 staged and independent committed read',()=>{
+for(const payment261 of [false,true])test('voucher catalog keeps the exact C0 binding and guards through B7 staged and independent committed read ('+payment261+')',()=>{
  const manifest=require('./task16-current259-voucher-acl.requirements.json');
  const extra=structuredClone(plan);
  const tables=new Map(extra.runtime.tables.map(row=>[row.table,row]));
@@ -296,10 +297,13 @@ test('voucher catalog keeps the exact C0 binding and guards through B7 staged an
  }
  extra.runtime.tables=[...tables.values()];
  extra.runtime.functions.push(...manifest.routineSources.map(row=>row.signature));
- const id={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'};
- const base={...request,identity:id};
+ const id={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1',
+  ...(payment261?{paymentProfile:PAYMENT261_VOUCHER_RUNTIME_PROFILE}:{})};
+ const voucherSource=payment261?{...source,migrations:currentMigrations}:source;
+ const base={...request,source:voucherSource,identity:id};
  function row(phase){
   const r=observed(phase,extra);
+  r.ledger=api.loadCurrent259CatalogMaterial(voucherSource).ledger;
   r.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;
   r.voucherBindingSha256='7'.repeat(64);
   return r;
@@ -311,7 +315,7 @@ test('voucher catalog keeps the exact C0 binding and guards through B7 staged an
  const before=parse(row('before'),'before');
  const staged=parse(row('staged'),'staged',before);
  assert.equal(parse(row('committed'),'committed',staged).raw.voucherBindingSha256,'7'.repeat(64));
- const installer=api.renderCurrent259B7Install({source,identity:id,nonce:request.nonce,before});
+ const installer=api.renderCurrent259B7Install({source:voucherSource,identity:id,nonce:request.nonce,before});
  const ownerRead=api.renderCurrent259CatalogRead({...base,phase:'committed',installXid:'1000'});
  const bindingLock=installer.indexOf('jg_contract_direct_pending_binding_v1 IN SHARE MODE NOWAIT;');
  assert.ok(bindingLock>=0&&bindingLock<installer.indexOf('DO $current259_before$'));
@@ -319,6 +323,12 @@ test('voucher catalog keeps the exact C0 binding and guards through B7 staged an
  assert.match(ownerRead,/p\.proargnames IS NOT DISTINCT FROM/u);
  assert.match(ownerRead,/fileCallerOids/u);
  assert.match(ownerRead,/voucherBindingSha256/u);
+ if(payment261){
+  assert.match(ownerRead,/jg_guard_contract_bank_event_company_transfer\(\)/u);
+  assert.throws(()=>api.renderCurrent259CatalogRead({...base,identity:{...id,paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE}}));
+  assert.throws(()=>api.renderCurrent259CatalogRead({...base,identity:{...id,paymentProfile:PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}}));
+  const {voucherProfile,...withoutVoucher}=id;assert.throws(()=>api.renderCurrent259CatalogRead({...base,identity:withoutVoucher}));
+ }
  assert.doesNotMatch(ownerRead,/IN SHARE MODE NOWAIT|CREATE TRIGGER/u);
  assert.throws(()=>api.renderCurrent259CatalogRead({...base,identity:{...id,voucherProfile:'arbitrary'}}),/TASK16_CURRENT259_CATALOG/u);
  assert.throws(()=>api.renderCurrent259CatalogRead({...base,identity:{...identity,voucherProfile:id.voucherProfile}}),/TASK16_CURRENT259_CATALOG/u);
@@ -328,4 +338,24 @@ test('voucher catalog keeps the exact C0 binding and guards through B7 staged an
  assert.throws(()=>parse({...row('committed'),capabilities:row('committed').capabilities.slice(1)},'committed',staged),/TASK16_CURRENT259_CATALOG/u);
  const routines=row('committed').functions;
  assert.throws(()=>parse({...row('committed'),functions:routines.slice(1)},'committed',staged),/TASK16_CURRENT259_CATALOG/u);
+});
+
+test('261 two-lane catalog binds exact ledger and runtime limit through independent B7 confirmation',()=>{
+ const source261={...source,migrations:currentMigrations};
+ const identity261={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE};
+ const r={...request,source:source261,identity:identity261};
+ const material=api.loadCurrent259CatalogMaterial(source261);
+ const parse=(phase,limit,prior)=>{const row=observed(phase);row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=limit;
+  return api.parseCurrent259CatalogRead(JSON.stringify({...row,ledger:material.ledger}),{...r,phase,...(phase==='committed'?{installXid:'1000'}:{})},prior);};
+ assert.throws(()=>parse('before',1),/TASK16_CURRENT259_CATALOG/u);
+ const before=parse('before',2);
+ const staged=parse('staged',2,before);
+ assert.equal(parse('committed',2,staged).nativeAdmission,false);
+ const sql=api.renderCurrent259B7Install({source:source261,identity:identity261,nonce:request.nonce,before});
+ assert.match(sql,/TASK16_PAYMENT261_COMPETITION_RUNTIME_V1/u);
+ assert.match(sql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
+ for(const invalid of [{...r,source},{...r,identity:{...identity,paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE}},
+  {...r,identity:{...identity261,paymentProfile:PAYMENT261_RUNTIME_PROFILE}},
+  {...r,identity:{...identity261,voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}}])
+  assert.throws(()=>api.renderCurrent259CatalogRead(invalid),/TASK16_CURRENT259_CATALOG/u);
 });

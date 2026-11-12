@@ -3,8 +3,12 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const {PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
+const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,
+ PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
+const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
 const noop=()=>{};noop.test=noop;
-const catalog=new Function('require','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-catalog.test.cjs'),'utf8')+'\nreturn {source,identity,request,observed,api,plan};')(name=>name==='node:test'?noop:require(name),__dirname);
+const catalog=new Function('require','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-catalog.test.cjs'),'utf8')+'\nreturn {source,identity,request,observed,api,plan,currentMigrations};')(name=>name==='node:test'?noop:require(name),__dirname);
 const {source,identity,request,observed}=catalog;
 const clone=x=>JSON.parse(JSON.stringify(x));
 function fixture(options={}){
@@ -12,8 +16,16 @@ function fixture(options={}){
  let plan=catalog.plan;
  if(options.voucher)plan=require('./task16-current259-voucher-acl.cjs').voucherAccessPlan(plan);
  const proofRow=observed('committed',plan),staged=observed('staged',plan),parser=catalog.api.parseCurrent259CatalogRead;
- const initial=observed('before',plan),requested=options.competition?{...request,identity:{...request.identity,
-  runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})}}:request;
+ const initial=observed('before',plan);
+ const paymentProfile=options.payment261===true?PAYMENT261_RUNTIME_PROFILE:options.payment261;
+ const requested={...request,source:paymentProfile?{...source,migrations:catalog.currentMigrations}:source,
+  identity:{...request.identity,...(paymentProfile?{paymentProfile}:{}),
+   ...(options.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),
+   ...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})}};
+ if(paymentProfile){
+  const ledger=catalog.api.loadCurrent259CatalogMaterial(requested.source).ledger;
+  for(const row of [initial,staged,proofRow])row.ledger=ledger;
+ }
  if(options.voucher)for(const row of [initial,staged,proofRow])row.voucherBindingSha256='7'.repeat(64);
  if(options.competition)for(const row of [initial,staged,proofRow])row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;
  const before=parser(JSON.stringify(initial),requested);
@@ -24,7 +36,7 @@ function fixture(options={}){
  const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();options.onContinuity?.();};
  const check=()=>assert.equal(resourceClosed,0,'resource closed');
  const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId,...(options.recovery?{ordinary:{oid:'208'}}:{})};
- const relay=options.relay??Boolean(options.competition||options.recovery);
+ const relay=options.relay??Boolean(options.payment261||options.competition||options.recovery);
  const relayId='12345678-1234-4234-8234-123456789012',topology=options.topology??
   (options.voucher?'UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS':options.competition?'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS':options.recovery?'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS':
    'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS');
@@ -132,8 +144,132 @@ test('three scoped clients retain exact same-handle identities and expire after 
   await session.verifyFull();return 'completed';
  }),'completed');
  assert.equal(f.clients.length,3);assert.deepEqual(f.clients.map(x=>x.disconnects),[1,1,1]);
+ assert.ok(f.clients.every(client=>!new URL(client.input.datasources.db.url).searchParams.has('max_idle_connection_lifetime')));
  assert.throws(()=>session.checkLight());assert.throws(()=>f.api.claimCurrent259LiveSessions(proof,f.handle));
  assert.equal(f.resourceClosed(),0);
+});
+
+test('ordinary payment261 retains the same three backends across re-verification with unchanged limits',async()=>{
+ const observedNonces=[];
+ const f=fixture({payment261:true,onIdentity(row,index){if(index===0)observedNonces.push(row.nonce);}});
+ await f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
+  const identity=session.identity;
+  await session.verifyFull();
+  assert.equal(session.identity,identity);
+  assert.deepEqual(identity.map(row=>row.pid),[101,102,103]);
+ });
+ assert.equal(new Set(observedNonces).size,3);
+ assert.equal(f.clients.length,3);
+ for(const client of f.clients){
+  const parameters=new URL(client.input.datasources.db.url).searchParams;
+  assert.equal(parameters.get('max_idle_connection_lifetime'),'0');
+  assert.equal(parameters.get('connection_limit'),'1');
+  assert.equal(parameters.get('connect_timeout'),'5');
+  assert.equal(parameters.get('pool_timeout'),'5');
+  assert.equal(client.disconnects,1);
+ }
+ assert.equal(f.resourceClosed(),0);
+});
+
+for(const [scenario,paymentProfile] of [
+ ['competition',PAYMENT261_COMPETITION_RUNTIME_PROFILE],
+ ['competition-voucher',PAYMENT261_VOUCHER_RUNTIME_PROFILE],
+ ['attribution-gap',PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE],
+])test('preserves the exact owned backend and pins idle lifetime for 261 '+scenario,async()=>{
+ const competition=scenario!=='attribution-gap',voucher=scenario==='competition-voucher';
+ const topology=paymentLoopbackForScenario(scenario).topology;
+ const f=fixture({payment261:paymentProfile,competition,voucher,topology});
+ const inspect=async proofs=>{
+  const sessions=proofs.map(proof=>f.api.claimCurrent259LiveSessions(proof,f.handle));
+  for(const [index,session] of sessions.entries()){
+   const identity=session.identity;
+   await session.verifyFull();
+   assert.equal(session.identity,identity);
+   assert.deepEqual(identity.map(row=>row.pid),[101,index===0?102:104,103]);
+  }
+ };
+ if(competition)await f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,inspect);
+ else await f.api.withCurrent259LiveSessions(f.completion,f.handle,proof=>inspect([proof]));
+ assert.equal(f.clients.length,competition?4:3);
+ for(const client of f.clients){
+  const parameters=new URL(client.input.datasources.db.url).searchParams;
+  assert.equal(parameters.get('max_idle_connection_lifetime'),'0');
+  assert.equal(parameters.get('connection_limit'),'1');
+  assert.equal(parameters.get('connect_timeout'),'5');
+  assert.equal(parameters.get('pool_timeout'),'5');
+  assert.equal(client.disconnects,1);
+ }
+ assert.equal(f.resourceClosed(),0);
+});
+
+test('historical competition, voucher and attribution-gap keep their original pool parameters',async()=>{
+ for(const scenario of ['competition','competition-voucher','attribution-gap']){
+  const competition=scenario!=='attribution-gap',voucher=scenario==='competition-voucher';
+  const f=fixture({relay:true,competition,voucher,topology:paymentLoopbackForScenario(scenario).topology});
+  const inspect=proofs=>proofs.forEach(proof=>f.api.claimCurrent259LiveSessions(proof,f.handle));
+  if(competition)await f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,inspect);
+  else await f.api.withCurrent259LiveSessions(f.completion,f.handle,proof=>inspect([proof]));
+  assert.ok(f.clients.every(client=>!new URL(client.input.datasources.db.url).searchParams.has('max_idle_connection_lifetime')));
+ }
+});
+
+test('a foreign or mismatched payment profile fails at catalog qualification before live construction',()=>{
+ for(const options of [
+  {payment261:'TASK16_PAYMENT261_UNKNOWN_RUNTIME_V1'},
+  {payment261:PAYMENT261_COMPETITION_RUNTIME_PROFILE},
+  {payment261:PAYMENT261_VOUCHER_RUNTIME_PROFILE,competition:true},
+  {payment261:PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE,competition:true},
+ ]){
+  assert.throws(()=>fixture(options),/TASK16_CURRENT259_CATALOG/u);
+ }
+});
+
+test('261 competition rejects a replacement backend on the second runtime lane',async()=>{
+ let rightReads=0;
+ const f=fixture({payment261:PAYMENT261_COMPETITION_RUNTIME_PROFILE,competition:true,onIdentity(row,index){
+  if(index===3&&++rightReads===2)row.pid++;
+ }});
+ await assert.rejects(f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,async proofs=>{
+  const sessions=proofs.map(proof=>f.api.claimCurrent259LiveSessions(proof,f.handle));
+  await sessions[1].verifyFull();
+ }),/FAILED_CLOSED/u);
+ assert.equal(rightReads,2);
+ assert.equal(f.resourceClosed(),1);
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1,1]);
+});
+
+test('payment261 still rejects a changed backend or nonce before issuing another identity proof',async()=>{
+ for(const change of [row=>{row.pid++;},row=>{row.nonce='0'.repeat(64);}]) {
+  let ownerReads=0;
+  const f=fixture({payment261:true,onIdentity(row,index){if(index===0&&++ownerReads===2)change(row);}});
+  await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+   const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
+   await session.verifyFull();
+  }),/FAILED_CLOSED/u);
+  assert.equal(ownerReads,2);
+  assert.equal(f.resourceClosed(),1);
+  assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1]);
+ }
+});
+
+test('payment261 self-check reports the first fixed role after a failed physical connection and never retries',async()=>{
+ const error=Object.assign(new Error('private database URL'),{code:'P1001'});
+ let ownerReads=0;
+ const f=fixture({payment261:true,onIdentity(_row,index){if(index===0&&++ownerReads===2)throw error;}});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
+  try{await session.verifyFull();}catch(cause){throw f.api.captureCurrent259ApplicationFailure(
+   new Error('private application context'),cause,'LIVE_VERIFY_BEFORE',5);}
+ }),failure=>{
+  const detail=f.api.describeCurrent259ApplicationFailure(failure);
+  assert.deepEqual(detail.live,{checkpoint:'IDENTITY_SELF',prismaCode:'P1001',sqlState:null,clientKind:'owner',outcome:'REJECTED'});
+  assert.doesNotMatch(JSON.stringify(detail),/private|URL/u);
+  return true;
+ });
+ assert.equal(ownerReads,2);
+ assert.equal(f.resourceClosed(),1);
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1]);
 });
 
 test('application-stage live re-verification retains the exact nested checkpoint through resource closure',async()=>{

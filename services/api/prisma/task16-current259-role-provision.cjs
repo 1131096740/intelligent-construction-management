@@ -10,7 +10,8 @@ const {claimCurrent259TechnicalSupply}=require('./local-staged-current259-profil
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 
 const OWNER='jg_task01_owner';
-const {isExactCurrentArchiveProfile,isExactCurrentPaymentProfile,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
+const {isExactCurrentArchiveProfile,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
+const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const ROLE_SPECS=Object.freeze([
  ['jg_c259_outside_executor_login',true],['jg_c259_outside_executor_owner',false],
  ['jg_c259_outside_issuer_login',true],['jg_c259_outside_issuer_owner',false],
@@ -242,6 +243,27 @@ async function provisionCurrent259Payment261Roles(technicalCompletion,handle,per
  need(typeof claim==='function'&&claim(permit,handle,technicalCompletion)===true,'HANDLE');
  return provision(technicalCompletion,handle,false,PAYMENT261_RUNTIME_PROFILE);
 }
+async function provisionCurrent259Payment261CompetitionRoles(technicalCompletion,handle,permit){
+ need(arguments.length===3,'HANDLE');
+ const issuer=require('./task16-current259-payment-run-authorization.cjs');
+ const claim=Object.getOwnPropertyDescriptor(issuer,'claimCurrent259Payment261CompetitionRolePermit')?.value;
+ need(typeof claim==='function'&&claim(permit,handle,technicalCompletion)===true,'HANDLE');
+ return provision(technicalCompletion,handle,true,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+}
+async function provisionCurrent259Payment261VoucherRoles(technicalCompletion,handle,permit){
+ need(arguments.length===3,'HANDLE');
+ const issuer=require('./task16-current259-payment-run-authorization.cjs');
+ const claim=Object.getOwnPropertyDescriptor(issuer,'claimCurrent259Payment261VoucherRolePermit')?.value;
+ need(typeof claim==='function'&&claim(permit,handle,technicalCompletion)===true,'HANDLE');
+ return provision(technicalCompletion,handle,true,PAYMENT261_VOUCHER_RUNTIME_PROFILE);
+}
+async function provisionCurrent259Payment261AttributionGapRoles(technicalCompletion,handle,permit){
+ need(arguments.length===3,'HANDLE');
+ const issuer=require('./task16-current259-payment-run-authorization.cjs');
+ const claim=Object.getOwnPropertyDescriptor(issuer,'claimCurrent259Payment261AttributionGapRolePermit')?.value;
+ need(typeof claim==='function'&&claim(permit,handle,technicalCompletion)===true,'HANDLE');
+ return provision(technicalCompletion,handle,false,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE);
+}
 async function provision(technicalCompletion,handle,competition,paymentProfile){
  const supply=claimCurrent259TechnicalSupply(technicalCompletion,handle);
  let phase='BEFORE';
@@ -254,8 +276,8 @@ async function provision(technicalCompletion,handle,competition,paymentProfile){
   need(completion.status==='CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION'&&completion.database===view.resource.databaseName&&identity.database===completion.database&&/^jg_task01_[a-f0-9]{32}$/u.test(identity.database)&&identity.actor===OWNER&&identity.sessionActor===OWNER&&identity.ownerOid==='10'&&identity.actorOid==='10'&&oid(identity.databaseOid)&&oid(identity.namespaceOid)&&typeof identity.systemIdentifier==='string'&&/^[1-9][0-9]{0,19}$/u.test(identity.systemIdentifier)&&identity.tls===true&&identity.clientAddress==='127.0.0.1'&&identity.serverAddress==='127.0.0.1'&&identity.serverPort===5432,'HANDLE');
   need(/^jg_fixture_app_[a-f0-9]{24}$/u.test(app.name)&&oid(app.oid)&&app.oid!=='10'&&sha(app.nonce),'HANDLE');
   const {profile}=source;
-  const qualified=competition||paymentProfile!==undefined?isExactCurrentPaymentProfile(profile,paymentProfile):isExactCurrentArchiveProfile(profile);
-  need(qualified&&
+  const qualified=competition||paymentProfile!==undefined?isExactCurrentPaymentRuntimeSource(profile,paymentProfile):isExactCurrentArchiveProfile(profile);
+  need(qualified&&isCurrentPaymentRuntimeMode(paymentProfile,competition)&&
    profile.candidateSha===source.candidateSha&&profile.sealSha256===source.sourceSealSha256,'HANDLE');
   const scope={identity,app,ledger:profile.ledger,competition};
   const run=async(sql,label)=>{check();const value=await view.resource.execOwnerSql(sql,`current259-roles-${label}`);check();return observed(value?.stdout);};
@@ -285,4 +307,5 @@ function claimCurrent259ProvisionedRoles(result,handle){
  return Object.freeze({source:proof.source,completion:result,check:proof.check,checkContinuity:proof.checkContinuity,
   ...(proof.competition?{competition:true}:{}),...(proof.paymentProfile?{paymentProfile:proof.paymentProfile}:{})});
 }
-module.exports=Object.freeze({provisionCurrent259Roles,provisionCurrent259CompetitionRoles,provisionCurrent259Payment261Roles,claimCurrent259ProvisionedRoles});
+module.exports=Object.freeze({provisionCurrent259Roles,provisionCurrent259CompetitionRoles,provisionCurrent259Payment261Roles,provisionCurrent259Payment261CompetitionRoles,provisionCurrent259Payment261VoucherRoles,
+ provisionCurrent259Payment261AttributionGapRoles,claimCurrent259ProvisionedRoles});

@@ -208,3 +208,68 @@ test('ordinary payment261 binds its distinct plan and installation sidecar witho
  assert.throws(()=>f.business.verifyCurrent261PaymentBusinessPlan(sidecar.file.path,sidecar.file.sha256));
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
+
+test('261 competition plan binds the exact ledger, sidecar, original pair and 5s budget',t=>{
+ const f=fixture(t,{payment261:true}),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ assert.throws(()=>f.business.prepareCurrent261PaymentCompetitionPlan({...options,scenario:'competition'}));
+ assert.throws(()=>f.business.prepareCurrent261PaymentCompetitionPlan({...options,runtimeConnectionLimit:3}));
+ const saved=f.business.prepareCurrent261PaymentCompetitionPlan(options);
+ assert.equal(saved.status,'PAYMENT261_COMPETITION_PLAN_PREPARED_NO_RESOURCES');
+ const {plan}=f.business.verifyCurrent261PaymentCompetitionPlan(saved.file,saved.sha256);
+ assert.equal(plan.purpose,'current261-payment-owned-two-actor-competition');
+ assert.equal(plan.scope.paymentProfile,'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1');
+ assert.equal(plan.scope.migrations,261);
+ assert.equal(plan.scope.archiveActivation,false);
+ assert.equal(plan.scope.supplementaryVoucher,false);
+ assert.equal(plan.scope.databaseTransport,'PAYMENT_COMPETITION_LOOPBACK_TLS_V1');
+ assert.deepEqual(plan.scope.competition,{runtimeSessions:2,runtimePoolSize:1,httpTimeoutMs:5000,automaticRetry:false});
+ assert.equal(plan.scope.seedPostCount,4);
+ assert.equal(plan.scope.registrationPostCount,2);
+ assert.equal(plan.case.caseId,'registered.two-actor.payment-competition');
+ const sidecar=f.api.readCurrent261PaymentInstallPlan(plan.installation.path,plan.installation.sha256);
+ assert.equal(sidecar.plan.scope.businessWrites,false);
+ for(const verify of [f.business.verifyCurrent259PaymentCompetitionPlan,f.business.verifyCurrent261PaymentBusinessPlan,
+  f.business.verifyCurrent259PaymentVoucherPlan,f.business.verifyCurrent259PaymentAttributionGapPlan])
+  assert.throws(()=>verify(saved.file,saved.sha256));
+ assert.throws(()=>f.business.verifyCurrent261PaymentCompetitionPlan(sidecar.file.path,sidecar.file.sha256));
+ const row=JSON.parse(fs.readFileSync(saved.file));
+ row.scope.paymentProfile='TASK16_PAYMENT261_RUNTIME_V1';
+ const changed=JSON.stringify(row);
+ fs.writeFileSync(saved.file,changed);
+ const digest=require('node:crypto').createHash('sha256').update(changed).digest('hex');
+ assert.throws(()=>f.business.verifyCurrent261PaymentCompetitionPlan(saved.file,digest));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+test('261 voucher and attribution gap preserve their original requests and distinct sidecar authority',t=>{
+ const f=fixture(t,{payment261:true}),options={runRoot:f.runRoot,daemonId:f.daemonId,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ const voucher=f.business.prepareCurrent261PaymentVoucherPlan({...options,output:f.output+'.voucher'});
+ const gap=f.business.prepareCurrent261PaymentAttributionGapPlan({...options,output:f.output+'.gap'});
+ assert.equal(voucher.status,'PAYMENT261_VOUCHER_PLAN_PREPARED_NO_RESOURCES');
+ assert.equal(gap.status,'PAYMENT261_ATTRIBUTION_GAP_PLAN_PREPARED_NO_RESOURCES');
+ const verifiedVoucher=f.business.verifyCurrent261PaymentVoucherPlan(voucher.file,voucher.sha256).plan;
+ const verifiedGap=f.business.verifyCurrent261PaymentAttributionGapPlan(gap.file,gap.sha256).plan;
+ assert.equal(verifiedVoucher.scope.paymentProfile,'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1');
+ assert.equal(verifiedGap.scope.paymentProfile,'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1');
+ assert.deepEqual(verifiedVoucher.scope.competition,{runtimeSessions:2,runtimePoolSize:1,httpTimeoutMs:5000,automaticRetry:false});
+ assert.equal(verifiedVoucher.scope.voucher.uploadPostCount,1);
+ assert.equal(verifiedVoucher.scope.voucher.attachPostCount,1);
+ assert.equal(verifiedGap.scope.registrationPostCount,1);
+ assert.deepEqual(verifiedGap.scope.attributionGap,{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false});
+ for(const plan of [verifiedVoucher,verifiedGap]){
+  assert.equal(plan.scope.migrations,261);
+  const sidecar=f.api.verifyCurrent261PaymentInstallPlan(plan.installation.path,plan.installation.sha256);
+  assert.equal(sidecar.plan.scope.businessWrites,false);
+ }
+ for(const [sealed,verifiers] of [[voucher,[f.business.verifyCurrent261PaymentAttributionGapPlan,f.business.verifyCurrent259PaymentVoucherPlan]],
+  [gap,[f.business.verifyCurrent261PaymentVoucherPlan,f.business.verifyCurrent259PaymentAttributionGapPlan]]]){
+  for(const verify of [...verifiers,f.business.verifyCurrent261PaymentCompetitionPlan,f.business.verifyCurrent261PaymentBusinessPlan])
+   assert.throws(()=>verify(sealed.file,sealed.sha256));
+ }
+ const altered=JSON.parse(fs.readFileSync(voucher.file));
+ altered.voucherMaterials[0].sha256='f'.repeat(64);
+ const bytes=JSON.stringify(altered);fs.writeFileSync(voucher.file,bytes);
+ const digest=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ assert.throws(()=>f.business.verifyCurrent261PaymentVoucherPlan(voucher.file,digest));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});

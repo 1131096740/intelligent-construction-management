@@ -13,6 +13,8 @@ const { renderCurrent259CatalogRead, parseCurrent259CatalogRead, current259Schem
 const { registeredObjectWitnessSql, schema205RegistrySql } = require('./task16-registered-object-witness.cjs');
 const { schema205ScopeSql } = require('./task16-schema205-scope.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
+const { PAYMENT261_RUNTIME_PROFILE } = require('./task16-current259-profile.cjs');
+const { isCurrentPaymentRuntimeMode, isCurrentPaymentVoucherMode } = require('./task16-current261-competition-profile.cjs');
 
 const { paymentLoopbackForScenario, isCurrent259PaymentLoopbackTopology } = require('./task16-current259-payment-loopback.cjs');
 const { captureCurrent259DisconnectFailure, carryCurrent259DisconnectFailure } = require('./task16-current259-disconnect-failure.cjs');
@@ -64,14 +66,14 @@ function captureCurrent259ApplicationFailure(target, source, phase, elapsedMs) {
   }
   return target;
 }
-function liveFailure(error, checkpoint) {
+function liveFailure(error, checkpoint, clientKind) {
   const data = (value, key) => value && typeof value === 'object' && !types.isProxy(value)
     ? Object.getOwnPropertyDescriptor(value, key)?.value : undefined;
   const code = data(error, 'code');
   const prismaCode = [data(error, 'errorCode'), code].find(value => prismaCodes.has(value)) ?? null;
   const sqlState = [prismaCode === 'P2010' ? data(data(error, 'meta'), 'code') : undefined, code]
     .find(value => sqlStates.has(value)) ?? null;
-  return Object.freeze({ checkpoint, prismaCode, sqlState });
+  return Object.freeze({ checkpoint, prismaCode, sqlState, ...(KINDS.includes(clientKind) ? {clientKind} : {}) });
 }
 const stamp = expression => `pg_catalog.to_char(${expression} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 const fail = suffix => Object.assign(new Error(CODE + '_' + suffix), { code: CODE + '_' + suffix });
@@ -134,8 +136,12 @@ async function withCurrent259DisconnectLiveSessions(b7Completion,handle,permit,c
 }
 async function withLiveSessions(b7Completion, handle, consume, competition, recovery=false) {
   const lease = claimCurrent259B7Installation(b7Completion, handle);
+  const paymentProfile=lease.request.identity.paymentProfile;
+  const payment261=paymentProfile===PAYMENT261_RUNTIME_PROFILE;
   const voucher=lease.request.identity.voucherProfile==='CURRENT259_PAYMENT_VOUCHER_V1';
   need((lease.request.identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')===competition&&(!voucher||competition),'HANDLE');
+  const retainIdleConnections=paymentProfile!==undefined&&
+    isCurrentPaymentRuntimeMode(paymentProfile,competition)&&isCurrentPaymentVoucherMode(paymentProfile,voucher);
   const view = claimCurrent259TechnicalResource(handle);
   need(!used.has(handle), 'REUSED'); used.add(handle);
   const clients = [], resource = view.resource, loader = view.loader, Class = loader.Class;
@@ -146,9 +152,10 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   let methods, initial, businessToken, faultUsed = false;
   let replacementRow, retiredRuntime, disconnectOutcome, directoryBefore, replacementUsed=false, recoveryComplete=false;
   let disconnectStage='LIVE_ADMISSION', disconnectFailure;
-  let checkpoint = 'LIVE_PREPARE', firstLiveFailure, firstApplicationError;
+  let checkpoint = 'LIVE_PREPARE', selfClientKind, firstLiveFailure, firstApplicationError;
+  const failureDetail=error=>liveFailure(error,checkpoint,payment261&&checkpoint==='IDENTITY_SELF'?selfClientKind:undefined);
   function rememberLiveFailure(error) {
-    if (!competition && !recovery) firstLiveFailure ??= liveFailure(error, checkpoint);
+    if (!competition && !recovery) firstLiveFailure ??= failureDetail(error);
   }
   function rememberDisconnectFailure(error,stage=disconnectStage) {
     if(recovery)disconnectFailure??=captureCurrent259DisconnectFailure(error,stage);
@@ -304,7 +311,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
       rememberLiveFailure(result.error);
       if(failureStage&&result.failed)rememberDisconnectFailure(result.error,failureStage);
       const failure = fail(result.timeout ? 'UNSETTLED' : 'OPERATION');
-      liveFailures.set(failure, Object.freeze({...liveFailure(result.error, checkpoint),
+      liveFailures.set(failure, Object.freeze({...failureDetail(result.error),
         outcome: result.timeout ? 'TIMED_OUT' : 'REJECTED'}));
       throw failure;
     }
@@ -354,8 +361,10 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     const rows = [];
     for (const index of indices) {
       const entry = clients[index];
+      selfClientKind=entry.kind;
       rows.push(await settled(() => entry.methods.$queryRawUnsafe.call(entry.client, current259ClientIdentitySql, nonce)));
     }
+    selfClientKind=undefined;
     return rows;
   }
   async function independentlyObserve(rows, nonce, retirement=false) {
@@ -429,7 +438,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     } catch(error) {
       rememberLiveFailure(error);
       rememberDisconnectFailure(error);
-      const detail = liveFailures.get(error) ?? liveFailure(error, checkpoint);
+      const detail = liveFailures.get(error) ?? failureDetail(error);
       broken = true; active = false; await closeResource();
       const failure=fail('VERIFICATION');
       liveFailures.set(failure, detail);
@@ -441,11 +450,16 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     const password = credentials[kind];
     need(typeof password === 'string' && /^[a-f0-9]{96}$/u.test(password));
     const url = new URL(`postgresql://jg_task01_${kind}:${password}@127.0.0.1:${resource.port}/${resource.databaseName}`);
-    for (const [key, val] of Object.entries({ schema: 'public', connection_limit: '1', sslmode: 'require', sslaccept: 'strict', sslcert: resource.caPath, application_name:applicationName(kind,clients.length), connect_timeout: '5', pool_timeout: '5' })) url.searchParams.set(key, val);
+    const parameters = { schema: 'public', connection_limit: '1', sslmode: 'require', sslaccept: 'strict', sslcert: resource.caPath,
+      application_name: applicationName(kind,clients.length), connect_timeout: '5', pool_timeout: '5' };
+    // These owned proof clients must retain their original PostgreSQL
+    // backend while the sealed source is checked between identity reads.
+    if(retainIdleConnections)parameters.max_idle_connection_lifetime='0';
+    for (const [key, val] of Object.entries(parameters)) url.searchParams.set(key, val);
     let client;
     try { client = new Class({ datasources: { db: { url: url.toString() } }, log: [] }); }
     catch { cleanup = 'UNKNOWN'; throw fail('CONSTRUCTOR_UNKNOWN'); }
-    const entry = { client, registered: false, methods: {}, disconnectAttempted: false }; clients.push(entry);
+    const entry = { client, kind, registered: false, methods: {}, disconnectAttempted: false }; clients.push(entry);
     try {
       need(client && (typeof client === 'object' || typeof client === 'function') && clients.filter(row => row.client === client).length === 1);
       for (const name of METHOD_NAMES) { entry.methods[name] = client[name]; need(typeof entry.methods[name] === 'function'); }

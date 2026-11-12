@@ -4,7 +4,8 @@ const path=require('node:path'),{createHash}=require('node:crypto');
 const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
 const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
-const {qualifyCurrent259Source,isExactCurrentPaymentProfile,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
+const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
 const MANIFEST_SHA='3dc89bfaab1c3b14cce5773392a406bc8f4590766b4bd31935348b40acb50144';
@@ -66,7 +67,7 @@ function loadCurrent259CatalogMaterial(source){
 }
 function materialForRequest(r){
  const m=material(r.source);
- need(isExactCurrentPaymentProfile(m.p,r.identity.paymentProfile));
+ need(isExactCurrentPaymentRuntimeSource(m.p,r.identity.paymentProfile));
  if(r.identity.voucherProfile){
   const {current259VoucherAcl,voucherAccessPlan}=require('./task16-current259-voucher-acl.cjs');
   m.voucher=current259VoucherAcl();
@@ -80,7 +81,8 @@ function request(input){
  need(equal(Object.keys(id).sort(),['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',...(competition?['runtimeProfile']:[]),...(voucher?['voucherProfile']:[]),...(payment261?['paymentProfile']:[])].sort())&&
   (!competition||id.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')&&
   (!voucher||(competition&&id.voucherProfile==='CURRENT259_PAYMENT_VOUCHER_V1'))&&
-  (!payment261||(!competition&&id.paymentProfile===PAYMENT261_RUNTIME_PROFILE)));
+  (!payment261||(id.paymentProfile!==undefined&&isCurrentPaymentRuntimeMode(id.paymentProfile,competition)&&
+   isCurrentPaymentVoucherMode(id.paymentProfile,voucher))));
  need(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(id.runId)&&id.database==='jg_task01_'+id.runId.replaceAll('-','')&&
   ['databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid'].every(k=>oid(id[k]))&&
   new Set([id.ownerOid,id.runtimeOid,id.observerOid]).size===3&&wide(id.systemIdentifier)&&

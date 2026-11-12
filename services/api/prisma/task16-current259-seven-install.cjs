@@ -10,7 +10,8 @@ const {isDeepStrictEqual:equal,types}=require('node:util');
 const {claimCurrent259ProvisionedRoles}=require('./task16-current259-role-provision.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial,current259Schema205WitnessSql,current259AclRowsSql}=require('./task16-current259-catalog.cjs');
-const {isExactCurrentArchiveProfile,isExactCurrentPaymentProfile}=require('./task16-current259-profile.cjs');
+const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
+const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
 const {renderCurrent259SevenPreimage,parseCurrent259SevenPreimage,describeCurrent259SevenPreimageFailure}=require('./task16-current259-seven-preimage.cjs');
 const {functionProofSql}=require('./task16-registered-access-check.cjs');
 const {registeredObjectWitnessSql,schema205RegistrySql,schema205RegistryValid,schema205EnforceConfigSql,SCHEMA205_DEPARSE_LOCAL}=require('./task16-registered-object-witness.cjs');
@@ -132,7 +133,7 @@ function currentRewriteBodies(ledger,changedRoutines){
 }
 function material(witness,archive,paymentProfile){
  const profile=witness.profile;
- const qualified=archive?paymentProfile===undefined&&isExactCurrentArchiveProfile(profile):isExactCurrentPaymentProfile(profile,paymentProfile);
+ const qualified=archive?paymentProfile===undefined&&isExactCurrentArchiveProfile(profile):isExactCurrentPaymentRuntimeSource(profile,paymentProfile);
  need(qualified&&
   profile.candidateSha===witness.candidateSha&&profile.sealSha256===witness.sourceSealSha256);
  const catalog=loadCurrent259CatalogMaterial({candidateSha:witness.candidateSha,sealSha256:witness.sourceSealSha256,schemaSha256:profile.schemaSha256,
@@ -158,7 +159,7 @@ function material(witness,archive,paymentProfile){
 function inputOf(lease,view,archive=false){
  const {completion:roleCompletion,source,paymentProfile}=lease;
  const competition=lease.competition===true;
- need(roleCompletion.paymentProfile===paymentProfile&&(!competition||paymentProfile===undefined));
+ need(roleCompletion.paymentProfile===paymentProfile&&isCurrentPaymentRuntimeMode(paymentProfile,competition));
  need(roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===source.candidateSha&&equal(source,view.source));
  need(hex(roleCompletion.sourceSha,40)&&roleCompletion.runId===view.runId&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(roleCompletion.runId));
  const id=roleCompletion.databaseIdentity;
@@ -614,7 +615,7 @@ function claimCurrent259VoucherSevenInstallation(completion,handle){
 function claimSevenInstallation(completion,handle,voucher){
  need(completion&&!types.isProxy(completion)&&installed.has(completion),'HANDLE');
  const receipt=installed.get(completion);
- need(receipt.handle===handle&&(!voucher||receipt.competition),'HANDLE');
+ need(receipt.handle===handle&&(!voucher||receipt.competition)&&isCurrentPaymentVoucherMode(receipt.paymentProfile,voucher),'HANDLE');
  installed.delete(completion);receipt.check();
  const {check,checkContinuity,source,roleCompletion,competition,paymentProfile}=receipt;
  return Object.freeze({completion,check,checkContinuity,source,roleCompletion,...(competition?{competition:true}:{}),

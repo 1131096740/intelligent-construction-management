@@ -5,7 +5,7 @@ const {readFileSync} = require('node:fs');
 const path = require('node:path');
 const {types} = require('node:util');
 const {loadCurrent259CatalogMaterial,renderCurrent259CatalogRead} = require('./task16-current259-catalog.cjs');
-const {isExactCurrentPaymentProfile} = require('./task16-current259-profile.cjs');
+const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode} = require('./task16-current261-competition-profile.cjs');
 const {renderCurrent259DatabasePrivileges} = require('./task16-current259-database-privileges.cjs');
 const {identityBody,versionGuardBody,referenceGuardBody,functionProofSql,referenceAbsentSql} = require('./task16-registered-access-check.cjs');
 
@@ -234,7 +234,7 @@ function renderRuntimeAcl(witness,provisioned,nonce,competition,voucher){
  provisioned=snapshot(provisioned);witness=snapshot(witness);
  need(typeof nonce==='string'&&/^[a-f0-9]{64}$/u.test(nonce));
  const profile=witness.profile,paymentProfile=provisioned.paymentProfile;
- need((!competition||paymentProfile===undefined)&&isExactCurrentPaymentProfile(profile,paymentProfile)&&profile.candidateSha===witness.candidateSha&&
+ need(isCurrentPaymentVoucherMode(paymentProfile,Boolean(voucher))&&isCurrentPaymentRuntimeMode(paymentProfile,competition)&&isExactCurrentPaymentRuntimeSource(profile,paymentProfile)&&profile.candidateSha===witness.candidateSha&&
   profile.sealSha256===witness.sourceSealSha256);
  const source={candidateSha:witness.candidateSha,sealSha256:witness.sourceSealSha256,schemaSha256:profile.schemaSha256,
   migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))};

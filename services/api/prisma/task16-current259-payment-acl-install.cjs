@@ -1,4 +1,5 @@
 'use strict';
+const {isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
 const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 
 const { randomBytes } = require('node:crypto');
@@ -137,7 +138,8 @@ async function installPaymentAcl(sevenCompletion, handle, voucher) {
       roleCompletion.databaseIdentity.database === view.resource.databaseName);
     const nonce = randomBytes(32).toString('hex');
     const competition = lease.competition === true;
-    need(roleCompletion.paymentProfile === paymentProfile && (!competition || paymentProfile === undefined) &&
+    need(roleCompletion.paymentProfile === paymentProfile && isCurrentPaymentRuntimeMode(paymentProfile,competition) &&
+      isCurrentPaymentVoucherMode(paymentProfile,voucher) &&
       (!voucher || competition && typeof lease.voucherPreimageSql === 'string' && lease.voucherPreimageSql.length > 0));
     const request = catalogRequest(source, roleCompletion, nonce, competition, voucher, paymentProfile);
     const ordinaryRuntime = competition ? renderCurrent259CompetitionRuntimeAcl : renderCurrent259RuntimeAcl;

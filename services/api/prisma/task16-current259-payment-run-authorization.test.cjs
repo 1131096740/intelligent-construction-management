@@ -2,6 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{createHash}=require('node:crypto');
 const file=path.join(__dirname,'task16-current259-payment-run-authorization.cjs'),ROOT=path.resolve(__dirname,'../../..');
 const noop=()=>{};
+const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 function planFixture(t,options){
  const p=path.join(ROOT,'scripts/prepare-task16-current259-payment-install.test.cjs'),module={exports:{}},rq=Module.createRequire(p);
  new Function('require','module','__dirname',fs.readFileSync(p,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),module,path.dirname(p));
@@ -16,15 +17,16 @@ function fixture(t,options={}){
  let manifest,signal,finish;
  const done=new Promise(resolve=>{finish=resolve;});
  const source=s.loader.witness().source;
+ const paymentProfile=options.voucher261?PAYMENT261_VOUCHER_RUNTIME_PROFILE:options.attributionGap261?PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE:options.competition261?PAYMENT261_COMPETITION_RUNTIME_PROFILE:options.payment261?'TASK16_PAYMENT261_RUNTIME_V1':undefined;
  const identity={database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16384',namespaceOid:'2200',ownerOid:'10',systemIdentifier:'123456789'};
  const technical=Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:'01234567-89ab-cdef-0123-456789abcdef',containerId:'7'.repeat(64),database:identity.database,databaseIdentity:identity});
  const names=['jg_c259_outside_executor_login','jg_c259_outside_executor_owner','jg_c259_outside_issuer_login','jg_c259_outside_issuer_owner','jg_c259_upward_issuer_login','jg_c259_upward_issuer_owner','jg_c259_upward_runtime_login','jg_task01_observer','jg_task01_runtime'];
  const roles=Object.freeze({...technical,status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',roles:names.map((name,i)=>({name,oid:String(200+i)})),commitXid:'1000',
-  ...(options.payment261?{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}:{})});
+  ...(paymentProfile?{paymentProfile}:{})});
  const seven=Object.freeze({sourceSha:source.candidateSha,runId:technical.runId,installXid:'1100'});
  const acl=Object.freeze({status:'CURRENT259_PAYMENT_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:technical.runId,installXid:'1200'});
  const scopeIdentity={runId:technical.runId,...identity,runtimeOid:'208',observerOid:'207',...(options.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{}),
-  ...(options.payment261?{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}:{})};
+  ...(paymentProfile?{paymentProfile}:{})};
  const module={exports:{},filename:file};const cache={[file]:module};
  const check=()=>{assert.ok(!signal?.aborted);options.onCheck?.();};
  const view={source,runId:technical.runId,resource:{containerId:technical.containerId,databaseName:identity.database,getReceipt(){return JSON.parse(JSON.stringify(manifest));}},check,checkLifetime:check,verifyFull:check};
@@ -45,6 +47,12 @@ function fixture(t,options={}){
    assert.equal(h,handle);assert.equal(provided,signal);return {async migrate(){state.calls.push('technical259');if(Object.hasOwn(options,'technicalFailure'))throw options.technicalFailure;await options.onTechnical?.(state);return technical;}};
   }},
   './task16-current259-role-provision.cjs':{async provisionCurrent259Roles(value,h){state.calls.push('roles9');assert.equal(value,technical);assert.equal(h,handle);return roles;},
+   async provisionCurrent259Payment261AttributionGapRoles(value,h,permit){
+    state.calls.push('payment261-gap-roles');assert.equal(value,technical);assert.equal(h,handle);
+    if(options.gapRoleClaim)module.exports[options.gapRoleClaim](permit,h,value);
+    assert.equal(module.exports.claimCurrent259Payment261AttributionGapRolePermit(permit,h,value),true);
+    return roles;
+   },
    async provisionCurrent259Payment261Roles(value,h,permit){
     state.calls.push('payment261-roles');assert.equal(value,technical);assert.equal(h,handle);
     const claim=module.exports.claimCurrent259Payment261RolePermit;
@@ -204,6 +212,7 @@ function fixture(t,options={}){
    }
    if(Object.hasOwn(options,'caseFailure'))throw options.caseFailure;
    if(options.attributionGap){
+    assert.equal(lease.scope.paymentProfile,options.attributionGap261?paymentProfile:undefined);
     assert.equal(permit.kind,'CURRENT259_PRIVATE_ATTRIBUTION_GAP_CASE');
     assert.deepEqual(lease.scope.attributionGap,{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false});
    }
@@ -217,9 +226,13 @@ function fixture(t,options={}){
  if(options.competition){
   const pair=Object.freeze([Object.freeze({}),Object.freeze({})]);
   const applications=Object.freeze(pair.map(()=>Object.freeze({runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}})));
-  ports['./task16-current259-role-provision.cjs'].provisionCurrent259CompetitionRoles=async(value,h,permit)=>{
+  const roleProvision=options.voucher261?'provisionCurrent259Payment261VoucherRoles':options.competition261?'provisionCurrent259Payment261CompetitionRoles':'provisionCurrent259CompetitionRoles';
+  const roleClaim=options.voucher261?'claimCurrent259Payment261VoucherRolePermit':options.competition261?'claimCurrent259Payment261CompetitionRolePermit':'claimCurrent259CompetitionRolePermit';
+  ports['./task16-current259-role-provision.cjs'][roleProvision]=async(value,h,permit)=>{
    state.calls.push('roles9-cap2');assert.equal(value,technical);assert.equal(h,handle);
-   assert.equal(module.exports.claimCurrent259CompetitionRolePermit(permit,h,value),true);return roles;
+   if(options.competitionRoleClaim)module.exports[options.competitionRoleClaim](permit,h,value);
+   assert.equal(module.exports[roleClaim](permit,h,value),true);
+   return options.competitionWrongRoleResult?{...roles,paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}:roles;
   };
   ports['./task16-current259-live-sessions.cjs'].withCurrent259CompetitionLiveSessions=async(b7,h,permit,consume)=>{
    assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live-two');
@@ -235,6 +248,7 @@ function fixture(t,options={}){
    state.calls.push('competition');assert.equal(apps,applications);assert.equal(h,handle);
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,apps,h);lease.check();
    assert.equal(lease.scope.scenario,options.voucher?'competition-voucher':'competition');
+   assert.equal(lease.scope.paymentProfile,paymentProfile);
    if(options.voucher){
     assert.equal(permit.kind,'CURRENT259_PRIVATE_VOUCHER_CASE');
     assert.equal(lease.scope.voucherStorageRoot,'/private/tmp/model-resource/application-private-voucher');
@@ -301,7 +315,8 @@ function fixture(t,options={}){
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const launcherOptions=options.launchOption?[options.launchOption]:options.payment261?
+ const launcherOptions=options.launchOption?[options.launchOption]:options.voucher261?[options.default?'--voucher261':'--voucher261-once']:
+  options.attributionGap261?[options.default?'--attribution-gap261':'--attribution-gap261-once']:options.competition261?[options.default?'--competition261':'--competition261-once']:options.payment261?
   [options.business?(options.default?'--business261':'--business261-once'):(options.default?'--install261':'--install261-once')]:undefined;
  const proc={argv:['node',file,...(launcherOptions??(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once'])),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
@@ -315,7 +330,7 @@ test('default verifies a fixed payment install plan without consuming an attempt
  const f=fixture(t,{default:true}),result=await f.done;
  assert.equal(result.status,'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit','claimCurrent259Payment261RolePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259Payment261CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit','claimCurrent259Payment261RolePermit','claimCurrent259Payment261VoucherRolePermit','claimCurrent259Payment261AttributionGapRolePermit']);
 });
 test('fresh once follows technical259→roles→seven→ACL→B7 under one handle and immutable attempt',async t=>{
  const f=fixture(t),result=await f.done;
@@ -329,7 +344,7 @@ test('fresh once follows technical259→roles→seven→ACL→B7 under one handl
 
 test('an imported module exposes claim only and cannot mint from JSON or a native flag',t=>{
  const f=fixture(t,{imported:true});
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit','claimCurrent259Payment261RolePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259Payment261CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit','claimCurrent259Payment261RolePermit','claimCurrent259Payment261VoucherRolePermit','claimCurrent259Payment261AttributionGapRolePermit']);
  assert.throws(()=>f.api.claimCurrent259B7WritePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionRolePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionLivePermit({native:true},f.handle,f.acl));
@@ -446,6 +461,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  write('services/api/prisma/task16-current259-payment-run-authorization.cjs',fs.readFileSync(file,'utf8'));
  write('services/api/prisma/task16-current259-payment-loopback.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-loopback.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-profile.cjs'),'utf8'));
+ write('services/api/prisma/task16-current261-competition-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current261-competition-profile.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-disconnect-failure.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-disconnect-failure.cjs'),'utf8'));
  for(const [name,keys]of [
   ['task16-current259-b7-install',['installCurrent259B7']],
@@ -476,11 +492,13 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
 function competitionFixture(t,options={}){
  const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
  new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
- const s=holder.exports.fixture(t),plan=s.business[options.voucher?'prepareCurrent259PaymentVoucherPlan':'prepareCurrent259PaymentCompetitionPlan']({
+ const payment261=options.competition261||options.voucher261;
+ const s=holder.exports.fixture(t,{payment261}),plan=s.business[options.voucher261?'prepareCurrent261PaymentVoucherPlan':options.competition261?'prepareCurrent261PaymentCompetitionPlan':options.voucher?'prepareCurrent259PaymentVoucherPlan':'prepareCurrent259PaymentCompetitionPlan']({
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
- const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
- return fixture(t,{...options,competition:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+ const read=payment261?s.api.readCurrent261PaymentInstallPlan:s.api.readCurrent259PaymentInstallPlan;
+ const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ return fixture(t,{...options,payment261,voucher:options.voucher261||options.voucher,competition:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
 test('competition consumes one fixed plan and reaches only the two-lane case, closing both apps before pools',async t=>{
  const f=competitionFixture(t),result=await f.done;
@@ -676,11 +694,14 @@ test('disconnect does not certify its recovered case if the original relay clean
 function attributionGapFixture(t,options={}){
  const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
  new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
- const s=holder.exports.fixture(t),plan=s.business.prepareCurrent259PaymentAttributionGapPlan({
+ const s=holder.exports.fixture(t,{payment261:options.attributionGap261});
+ const prepare=options.attributionGap261?s.business.prepareCurrent261PaymentAttributionGapPlan:s.business.prepareCurrent259PaymentAttributionGapPlan;
+ const plan=prepare({
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
- const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
- return fixture(t,{business:true,attributionGap:true,scenario:'attribution-gap',...options,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+ const read=options.attributionGap261?s.api.readCurrent261PaymentInstallPlan:s.api.readCurrent259PaymentInstallPlan;
+ const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ return fixture(t,{payment261:options.attributionGap261,business:true,attributionGap:true,scenario:'attribution-gap',...options,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
 test('main publishes the ordinary live checkpoint with the original failure code and cleanup outcome',async t=>{
  const liveDetail=Object.freeze({checkpoint:'CATALOG',prismaCode:null,sqlState:'42501'});
@@ -871,4 +892,106 @@ test('ordinary payment261 rejects an archive profile substituted in the exact B7
  assert.equal(f.state.consumed,null);
  assert.deepEqual(f.state.calls,['start','technical259','payment261-roles','seven','acl','b7']);
  assert.equal(f.state.closes,1);
+});
+
+test('261 competition verification and one-shot use only their exact two-lane authority',async t=>{
+ const verified=competitionFixture(t,{competition261:true,default:true});
+ assert.equal((await verified.done).status,'PAYMENT261_COMPETITION_PLAN_VERIFIED_NO_RESOURCES');
+ assert.equal(verified.state.exit,0);
+ assert.deepEqual(verified.state.calls,[]);assert.deepEqual(fs.readdirSync(verified.s.runRoot),[]);
+ const run=competitionFixture(t,{competition261:true});
+ const outcome=await run.done;
+ assert.equal(outcome.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(outcome));
+ assert.deepEqual(run.state.calls,['start-competition','technical259','roles9-cap2','seven','acl','b7','live-two','env','app-two','competition','app-two-close','env-close','pools-two-close']);
+ const receipt=JSON.parse(fs.readFileSync(path.join(run.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.scope.paymentProfile,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+ assert.equal(receipt.stages[0].stage,'technical261');
+ assert.equal(receipt.b7Binding.identity.paymentProfile,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+ assert.equal(receipt.business.competitionObserved,true);assert.equal(receipt.financialAcceptance,false);
+});
+
+test('261 competition rejects 259, ordinary and voucher entrypoint cross-use before attempt',async t=>{
+ for(const launchOption of ['--competition-once','--business261-once','--voucher-once']){
+  const f=competitionFixture(t,{competition261:true,launchOption});
+  assert.equal((await f.done).status,'STOPPED');
+  assert.equal(f.state.exit,1);
+  assert.deepEqual(f.state.calls,[]);assert.deepEqual(fs.readdirSync(f.s.runRoot),[]);
+ }
+ const historical=competitionFixture(t,{launchOption:'--competition261-once'});
+ assert.equal((await historical.done).status,'STOPPED');
+ assert.equal(historical.state.exit,1);
+ assert.deepEqual(historical.state.calls,[]);assert.deepEqual(fs.readdirSync(historical.s.runRoot),[]);
+});
+
+test('261 competition cannot spend an ordinary or historical role permit or use its result',async t=>{
+ for(const options of [{competitionRoleClaim:'claimCurrent259Payment261RolePermit'},
+  {competitionRoleClaim:'claimCurrent259CompetitionRolePermit'},{competitionWrongRoleResult:true}]){
+  const f=competitionFixture(t,{competition261:true,...options});
+  assert.equal((await f.done).status,'STOPPED');
+  assert.deepEqual(f.state.calls,['start-competition','technical259','roles9-cap2']);
+ }
+});
+
+test('261 competition rejects ordinary B7 profile and leaves business unstarted',async t=>{
+ const f=competitionFixture(t,{competition261:true,beforeConsume({binding}){
+  binding.identity={...binding.identity,paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'};
+ }});
+ assert.equal((await f.done).status,'STOPPED');
+ assert.deepEqual(f.state.calls,['start-competition','technical259','roles9-cap2','seven','acl','b7']);
+});
+
+test('261 voucher uses only its owned directory and exact competition, voucher ACL and B7 authority',async t=>{
+ const offline=competitionFixture(t,{voucher261:true,default:true});
+ assert.equal((await offline.done).status,'PAYMENT261_VOUCHER_PLAN_VERIFIED_NO_RESOURCES');
+ assert.equal(offline.state.exit,0);
+ assert.deepEqual(fs.readdirSync(offline.s.runRoot),[]);
+ const run=competitionFixture(t,{voucher261:true});
+ const result=await run.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.deepEqual(run.state.calls,['start-competition-voucher','technical259','roles9-cap2','seven','voucher-acl','b7','live-two','env','app-two','competition','app-two-close','env-close','pools-two-close']);
+ const receipt=JSON.parse(fs.readFileSync(path.join(run.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.scope.paymentProfile,PAYMENT261_VOUCHER_RUNTIME_PROFILE);
+ assert.equal(receipt.b7Binding.identity.paymentProfile,PAYMENT261_VOUCHER_RUNTIME_PROFILE);
+ assert.equal(receipt.b7Binding.identity.voucherProfile,'CURRENT259_PAYMENT_VOUCHER_V1');
+ assert.equal(receipt.business.voucherVerified,true);
+ assert.equal(receipt.financialAcceptance,false);
+});
+
+test('261 attribution gap uses only its one-lane authority and one original 409 proof',async t=>{
+ const offline=attributionGapFixture(t,{attributionGap261:true,default:true});
+ assert.equal((await offline.done).status,'PAYMENT261_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES');
+ assert.equal(offline.state.exit,0);
+ assert.deepEqual(fs.readdirSync(offline.s.runRoot),[]);
+ const run=attributionGapFixture(t,{attributionGap261:true});
+ const result=await run.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.deepEqual(run.state.calls,['start-attribution-gap','technical259','payment261-gap-roles','seven','acl','b7','live','env','app','case','app-close','env-close','pools-close']);
+ const receipt=JSON.parse(fs.readFileSync(path.join(run.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.scope.paymentProfile,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE);
+ assert.equal(receipt.b7Binding.identity.paymentProfile,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE);
+ assert.equal(receipt.business.attributionGapEvidence.registrationStatus,409);
+ assert.equal(receipt.business.attributionGapEvidence.originalResultUnconfirmed,true);
+ assert.equal(receipt.financialAcceptance,false);
+});
+
+test('261 voucher and attribution gap reject other launch, role and B7 authority',async t=>{
+ for(const [make,mode,wrong] of [[competitionFixture,{voucher261:true},['--voucher-once','--competition261-once','--business261-once','--attribution-gap261-once']],
+  [attributionGapFixture,{attributionGap261:true},['--attribution-gap-once','--business261-once','--voucher261-once','--competition261-once']]]){
+  for(const launchOption of wrong){
+   const run=make(t,{...mode,launchOption});assert.equal((await run.done).status,'STOPPED');
+   assert.deepEqual(run.state.calls,[]);assert.deepEqual(fs.readdirSync(run.s.runRoot),[]);
+  }
+ }
+ const wrongVoucherRole=competitionFixture(t,{voucher261:true,competitionRoleClaim:'claimCurrent259Payment261CompetitionRolePermit'});
+ assert.equal((await wrongVoucherRole.done).status,'STOPPED');
+ assert.deepEqual(wrongVoucherRole.state.calls,['start-competition-voucher','technical259','roles9-cap2']);
+ const wrongGapRole=attributionGapFixture(t,{attributionGap261:true,gapRoleClaim:'claimCurrent259Payment261RolePermit'});
+ assert.equal((await wrongGapRole.done).status,'STOPPED');
+ assert.deepEqual(wrongGapRole.state.calls,['start-attribution-gap','technical259','payment261-gap-roles']);
+ for(const [make,mode,foreign] of [[competitionFixture,{voucher261:true},PAYMENT261_COMPETITION_RUNTIME_PROFILE],
+  [attributionGapFixture,{attributionGap261:true},'TASK16_PAYMENT261_RUNTIME_V1']]){
+  const run=make(t,{...mode,beforeConsume({binding}){binding.identity={...binding.identity,paymentProfile:foreign};}});
+  assert.equal((await run.done).status,'STOPPED');assert.equal(run.state.consumed,null);
+  assert.equal(run.state.calls.at(-1),'b7');
+ }
 });

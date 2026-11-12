@@ -164,3 +164,49 @@ test('voucher runtime takes the original shared locks and installs only the addi
  assert.doesNotMatch(competition.witnessSql,/CURRENT259_PAYMENT_VOUCHER_V1|voucherBindingSha256/u);
  assert.throws(()=>renderCurrent259VoucherRuntimeAcl(source,receipt(),nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
 });
+
+test('261 competition ACL keeps the historical grant set and rejects ordinary, legacy and voucher pairings',()=>{
+ const {PAYMENT261_COMPETITION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
+  path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
+ }));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
+ const paired={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}]};
+ const provisioned={...paired,paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE};
+ const acl=renderCurrent259CompetitionRuntimeAcl(witness,provisioned,nonce);
+ const legacy=renderCurrent259CompetitionRuntimeAcl(source,paired,nonce);
+ const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);
+ assert.deepEqual(grants(acl.sql),grants(legacy.sql));
+ assert.match(acl.witnessSql,/TASK16_PAYMENT261_COMPETITION_RUNTIME_V1/u);
+ assert.match(acl.witnessSql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
+ assert.throws(()=>renderCurrent259RuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(source,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(witness,{...provisioned,roles:[{...runtime,limit:1},{...observer,limit:1}]},nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+});
+
+test('261 voucher and attribution gap retain exactly their historical grants, source guards and lane limits',()=>{
+ const {PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
+  path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
+ }));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
+ const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);
+ const single=receipt(),paired={...single,roles:[{...runtime,limit:2},{...observer,limit:1}]};
+ const gap={...single,paymentProfile:PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE};
+ const voucher={...paired,paymentProfile:PAYMENT261_VOUCHER_RUNTIME_PROFILE};
+ const gap261=renderCurrent259RuntimeAcl(witness,gap,nonce),voucher261=renderCurrent259VoucherRuntimeAcl(witness,voucher,nonce);
+ const historicalVoucher=renderCurrent259VoucherRuntimeAcl(source,paired,nonce);
+ assert.deepEqual(grants(gap261.sql),grants(renderCurrent259RuntimeAcl(source,single,nonce).sql));
+ assert.deepEqual(grants(voucher261.sql),grants(historicalVoucher.sql));
+ assert.equal(voucher261.lockSql,historicalVoucher.lockSql);
+ assert.match(voucher261.witnessSql,/voucherBindingSha256/u);
+ assert.doesNotMatch(gap261.witnessSql,/voucherBindingSha256/u);
+ for(const acl of [gap261,voucher261])assert.match(acl.witnessSql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
+ assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,gap,nonce));
+ assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(witness,voucher,nonce));
+ assert.throws(()=>renderCurrent259RuntimeAcl(witness,{...voucher,roles:single.roles},nonce));
+ assert.throws(()=>renderCurrent259RuntimeAcl(witness,{...gap,roles:paired.roles},nonce));
+ assert.throws(()=>renderCurrent259VoucherRuntimeAcl(source,voucher,nonce));
+ assert.throws(()=>renderCurrent259RuntimeAcl(source,gap,nonce));
+});
