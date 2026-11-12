@@ -1,28 +1,31 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
-import { createTemplateTestServer } from "./template-management.test-support";
-import { confirmedBodyLayout, saveBody } from "./task10-body.test-support";
+import { createReviewedMaterialFixture, saveBody } from "./task10-body.test-support";
 import { createTask09Draft, saveTask09Draft } from "./task09-draft-template.test-support";
 
 const hash = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 
 describe("task10 frozen table-layout version through public worker result", () => {
+  let fixture: Awaited<ReturnType<typeof createReviewedMaterialFixture>>;
+  let draft: Awaited<ReturnType<typeof createTask09Draft>>;
+  beforeAll(async () => { fixture = await createReviewedMaterialFixture(); });
+  beforeEach(async () => {
+    const { server, layout } = fixture;
+    draft = await createTask09Draft(server);
+    expect((await saveTask09Draft(server, draft, "material_purchase", layout.id)).status).toBe(200);
+    expect((await saveBody(draft, undefined, "当前单甲方", [{ clientRowKey: "worker-gross-row", sortOrder: 0, itemName: "版本核对材料", unit: "吨", quantity: "1", unitPrice: "1.5340", taxRatePercent: "0", customData: {} }])).status).toBe(200);
+  });
+  afterAll(async () => { await fixture?.close(); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
   it.each([
     { name: "missing protected table-layout partner", corruption: "missingValue" },
     { name: "unsupported body layout partner", corruption: "unsupportedBody" }
   ] as const)("refuses $name before Word reads and uploads", async vector => {
-    const server = await createTemplateTestServer({ draftWorkbench: true });
+    const { server, source, layout } = fixture;
     const originalManifest = process.env.CONTRACT_DOCX4J_RUNTIME_MANIFEST;
     try {
-      const source = await readFile(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
-      expect(hash(source)).toBe("44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd");
-      const layout = await confirmedBodyLayout(server, source, "materials");
-      const draft = await createTask09Draft(server);
-      expect((await saveTask09Draft(server, draft, "material_purchase", layout.id)).status).toBe(200);
-      expect((await saveBody(draft, undefined, "当前单甲方", [{ clientRowKey: "worker-gross-row", sortOrder: 0, itemName: "版本核对材料", unit: "吨", quantity: "1", unitPrice: "1.5340", taxRatePercent: "0", customData: {} }])).status).toBe(200);
       const workbench = await fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json());
       const queued = await fetch(`${draft.base}/preview-generation`, { method: "POST", headers: draft.headers, body: JSON.stringify({ sourceRevision: workbench.version.draftRevision }) });
       expect(queued.status === 201 ? "OK" : await queued.text()).toBe("OK");
@@ -83,7 +86,7 @@ describe("task10 frozen table-layout version through public worker result", () =
     } finally {
       if (originalManifest === undefined) delete process.env.CONTRACT_DOCX4J_RUNTIME_MANIFEST;
       else process.env.CONTRACT_DOCX4J_RUNTIME_MANIFEST = originalManifest;
-      await server.app.close();
+      await server.store.prisma.contractGeneratedDocument.deleteMany({ where: { contractVersionId: draft.version.id, status: "queued" } });
     }
   });
 });

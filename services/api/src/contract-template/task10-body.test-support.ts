@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { prepareLayoutSourceMapping, readLayoutSourcePositions } from "./layout-field-mapping";
 import { createTemplateTestServer, syntheticWordSource } from "./template-management.test-support";
 import { createTask09Draft } from "./task09-draft-template.test-support";
@@ -6,6 +8,24 @@ import { createTask09Draft } from "./task09-draft-template.test-support";
 export type Server = Awaited<ReturnType<typeof createTemplateTestServer>>;
 export type Draft = Awaited<ReturnType<typeof createTask09Draft>>;
 export type Body = { sourceSha256: string; documentContentRevision: number; blocks: Array<{ id: string; kind: string; text: string; editable: boolean }> };
+
+/** Share the immutable reviewed layout within one suite; each case owns its draft. */
+export async function createReviewedMaterialFixture() {
+  const server = await createTemplateTestServer({ draftWorkbench: true });
+  const close = async () => {
+    try { await server.processor.onApplicationShutdown(); }
+    finally { await server.app.close(); }
+  };
+  try {
+    const source = await readFile(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
+    expect(createHash("sha256").update(source).digest("hex")).toBe("44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd");
+    const layout = await confirmedBodyLayout(server, source, "materials");
+    return { server, source, layout, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
 
 export async function saveBody(draft: Draft, documentBody: unknown, partyA = "当前单甲方", billRows: Array<Record<string, unknown>> = [], bodyAction?: unknown, layoutId?: string, partyBVersionId?: string, defaultTaxRateOverride?: string | null) {
   const current = await fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json()) as { version: { draftRevision: number; draftData: Record<string, unknown>; layoutTemplateVersionId: string }; bills: Array<{ billKey: string; revision: number }> };
