@@ -253,38 +253,46 @@ describe("task10 complete contract body through authenticated public draft HTTP"
     expect(results[0].positions!.map(({ text, part, paragraphIndex }) => ({ text, part, paragraphIndex }))).toEqual(results[1].positions!.map(({ text, part, paragraphIndex }) => ({ text, part, paragraphIndex })));
   });
 
-  it("reads actual Word table structure and title formatting instead of flattening the contract into plain paragraphs", async () => {
-    const source = readFileSync(join(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
-    const layout = await confirmedBodyLayout(server, source, "materials");
-    const draft = await createTask09Draft(server);
-    const currentResponse = await fetch(`${draft.base}/workbench`, { headers: draft.headers });
-    expect(currentResponse.status).toBe(200);
-    const current = await currentResponse.json() as {
-      version: { draftRevision: number }; bills: Array<{ billKey: string; revision: number }>
-    };
-    const saved = await fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({
-      idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision, changedSections: ["draft", "parties", "bills"],
-      draft: { numericProtocolVersion: 2, draftData: { contractName: "上游新建当前合同名称",
-        contractBasics: { businessType: "material_purchase", relationship: "upward", amountBasis: "tax_inclusive", invoiceStatus: "pending" }
-      }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layout.id,
-      taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: "0", source: "contract_document" } },
-      parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: "当前单甲方" } }, { roleKey: "party_b", displayOrder: 0, snapshot: { name: "当前单乙方" } }],
-      bills: current.bills.map((bill, index) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2,
-        rows: index ? [] : [{ clientRowKey: "table-row", sortOrder: 0, itemName: "正文清单钢材", unit: "吨", quantity: "2", unitPrice: "3.2500", taxRatePercent: "0", customData: {} }] })),
-      paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
-    }) });
-    expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
-    const response = await fetch(`${draft.base}/document-body`, { headers: draft.headers });
-    expect(response.status === 200 ? "OK" : await response.text()).toBe("OK");
-    const body = await response.json() as {
-      flow: Array<{ kind: string; columns?: number[]; rows?: Array<{ cells: Array<{ paragraphIds: string[] }> }> }>;
-      blocks: Array<{ id: string; text: string; format: { fontFamily: string; fontSizePt: number; align: string } }>;
-    };
-    expect(body.flow.filter(block => block.kind === "table")).toHaveLength(2);
-    const table = body.flow.find(block => block.kind === "table")!;
-    expect(table.columns).toEqual([510, 1276, 1106, 680, 765, 1446, 510, 2211]);
-    expect(table.rows![0].cells.map(cell => cell.paragraphIds.map(id => body.blocks.find(block => block.id === id)!.text).join("\n"))).toEqual(["序号", "货物名称", "规格型号", "计量单位", "数量", "含税单价", "税率(%)", "价税合计"]);
-    expect(table.rows![1].cells.map(cell => cell.paragraphIds.map(id => body.blocks.find(block => block.id === id)!.text).join("\n"))).toContain("正文清单钢材");
-    expect(body.blocks.find(block => block.text === "上游新建当前合同名称")!.format).toMatchObject({ fontFamily: "方正小标宋简体", fontSizePt: 22, align: "center" });
+  describe("reviewed Word table source", () => {
+    let layout: Awaited<ReturnType<typeof confirmedBodyLayout>>;
+    let draft: Awaited<ReturnType<typeof createTask09Draft>>;
+
+    beforeAll(async () => {
+      const source = readFileSync(join(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
+      layout = await confirmedBodyLayout(server, source, "materials");
+      draft = await createTask09Draft(server);
+    }, 30_000);
+
+    it("reads actual Word table structure and title formatting instead of flattening the contract into plain paragraphs", async () => {
+      const currentResponse = await fetch(`${draft.base}/workbench`, { headers: draft.headers });
+      expect(currentResponse.status).toBe(200);
+      const current = await currentResponse.json() as {
+        version: { draftRevision: number }; bills: Array<{ billKey: string; revision: number }>
+      };
+      const saved = await fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({
+        idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision, changedSections: ["draft", "parties", "bills"],
+        draft: { numericProtocolVersion: 2, draftData: { contractName: "上游新建当前合同名称",
+          contractBasics: { businessType: "material_purchase", relationship: "upward", amountBasis: "tax_inclusive", invoiceStatus: "pending" }
+        }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layout.id,
+        taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: "0", source: "contract_document" } },
+        parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: "当前单甲方" } }, { roleKey: "party_b", displayOrder: 0, snapshot: { name: "当前单乙方" } }],
+        bills: current.bills.map((bill, index) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2,
+          rows: index ? [] : [{ clientRowKey: "table-row", sortOrder: 0, itemName: "正文清单钢材", unit: "吨", quantity: "2", unitPrice: "3.2500", taxRatePercent: "0", customData: {} }] })),
+        paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
+      }) });
+      expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
+      const response = await fetch(`${draft.base}/document-body`, { headers: draft.headers });
+      expect(response.status === 200 ? "OK" : await response.text()).toBe("OK");
+      const body = await response.json() as {
+        flow: Array<{ kind: string; columns?: number[]; rows?: Array<{ cells: Array<{ paragraphIds: string[] }> }> }>;
+        blocks: Array<{ id: string; text: string; format: { fontFamily: string; fontSizePt: number; align: string } }>;
+      };
+      expect(body.flow.filter(block => block.kind === "table")).toHaveLength(2);
+      const table = body.flow.find(block => block.kind === "table")!;
+      expect(table.columns).toEqual([510, 1276, 1106, 680, 765, 1446, 510, 2211]);
+      expect(table.rows![0].cells.map(cell => cell.paragraphIds.map(id => body.blocks.find(block => block.id === id)!.text).join("\n"))).toEqual(["序号", "货物名称", "规格型号", "计量单位", "数量", "含税单价", "税率(%)", "价税合计"]);
+      expect(table.rows![1].cells.map(cell => cell.paragraphIds.map(id => body.blocks.find(block => block.id === id)!.text).join("\n"))).toContain("正文清单钢材");
+      expect(body.blocks.find(block => block.text === "上游新建当前合同名称")!.format).toMatchObject({ fontFamily: "方正小标宋简体", fontSizePt: 22, align: "center" });
+    });
   });
 });
