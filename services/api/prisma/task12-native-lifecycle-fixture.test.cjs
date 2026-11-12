@@ -150,3 +150,16 @@ test('psql diagnostics project only a known SQLSTATE and bounded static stdin li
  for(const text of ['psql:<stdin>:401: ERROR:  42601\n','psql:<stdin>:4: ERROR:  ZZ999\n','psql:<stdin>:4: ERROR:  private password\n','ERROR: 42601 SELECT private'])
   assert.equal(projectNativeLifecyclePsqlFailure(text,100),undefined);
 });
+
+test('the migration-only lifecycle grants exclude only the two post-migration registered-payment relations',()=>{
+ const fs=require('node:fs');const migrationRoot=path.join(__dirname,'migrations');
+ const migrations=fs.readdirSync(migrationRoot).filter(name=>fs.existsSync(path.join(migrationRoot,name,'migration.sql'))).map(name=>fs.readFileSync(path.join(migrationRoot,name,'migration.sql'),'utf8')).join('\n');
+ const sql=renderNativeLifecycleFixture(scope,secrets);
+ for(const table of ['RegisteredPaymentFunding','RegisteredPaymentVoucher']){
+  assert.doesNotMatch(migrations,new RegExp('CREATE TABLE(?: IF NOT EXISTS)? (?:public\\.)?"'+table+'"','u'));
+  assert.doesNotMatch(sql,new RegExp('ON public\\."'+table+'"','u'));
+  assert.match(fs.readFileSync(path.join(__dirname,'prepared/task16/registered-funding.sql'),'utf8'),new RegExp('CREATE TABLE public\\."'+table+'"','u'));
+ }
+ const requirements=require('./task16-current259-ordinary-archive-acl.requirements.json');
+ for(const table of Object.keys(requirements.tables).filter(table=>!['RegisteredPaymentFunding','RegisteredPaymentVoucher'].includes(table)))assert.match(sql,new RegExp('ON public\\."'+table+'"','u'),table);
+});
