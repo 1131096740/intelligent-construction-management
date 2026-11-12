@@ -262,7 +262,7 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(quality, /pnpm typecheck/u);
   assert.match(quality, /pnpm lint/u);
   assert.match(tests, /target:\s*\[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
-  assert.match(tests, /pnpm --filter @jiangkong\/api test --runInBand --shard="\$shard\/4"/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/api run test --runInBand --shard="\$shard\/4"/u);
   assert.match(tests, /pnpm --filter @jiangkong\/web-admin test/u);
   assert.match(tests, /pnpm --filter @jiangkong\/shared-domain test/u);
   assert.match(build, /pnpm --filter @jiangkong\/web-admin build/u);
