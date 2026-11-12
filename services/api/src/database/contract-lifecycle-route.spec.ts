@@ -1269,9 +1269,10 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             formalCode: string;
             status: string;
           };
-          expect({ status: submitted.status, body: submittedBody }).toMatchObject({
-            status: 201
-          });
+          expect(submitted.ok ? { status: submitted.status } : {
+            status: submitted.status,
+            problem: submittedBody
+          }).toEqual({ status: 201 });
           expect(submittedBody).toMatchObject({
             approvalInstanceId: expect.any(String),
             contractVersionId: submittedVersionId,
