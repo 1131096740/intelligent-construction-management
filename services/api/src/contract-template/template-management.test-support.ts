@@ -209,7 +209,18 @@ export class TemplateSyntheticStore {
         return fixtureClone(row);
       },
       deleteMany: async ({ where }: { where?: Row } = {}) => { const selected = find(where); this.rows[name] = this.rows[name].filter(row => !selected.includes(row)); return { count: selected.length }; },
-      createMany: async ({ data }: { data: Row[] }) => { for (const row of data) this.rows[name].push({ id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...(name === "contractBill" ? { revision: 1, taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n, sourceExcelFileId: null } : {}), ...row }); return { count: data.length }; },
+      createMany: async ({ data }: { data: Row[] }) => {
+        for (const value of data) {
+          const row = {
+            id: randomUUID(), createdAt: new Date(), updatedAt: new Date(),
+            ...(name === "contractBill" ? { revision: 1, taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n, sourceExcelFileId: null } : {}),
+            ...value
+          };
+          if (name === "contractBillRow") this.apply(row, value, name);
+          this.rows[name].push(row);
+        }
+        return { count: data.length };
+      },
       count: async ({ where }: { where?: Row } = {}) => find(where).length
     };
   }
@@ -392,6 +403,7 @@ export class TemplateSyntheticStore {
     contractBusinessScenario: this.table("contractBusinessScenario"),
     contract: this.table("contract"), contractPartySnapshot: this.table("contractPartySnapshot"), contractBill: this.table("contractBill"), contractBillRow: this.table("contractBillRow"),
     contractSettlementProcess: this.table("contractSettlementProcess"),
+    contractBillRowLineage: this.table("contractBillRowLineage"),
     contractBillRowTransition: this.table("contractBillRowTransition"),
     settlementImport: this.table("settlementImport"),
     contractEndedApplicationPurgeReceipt: this.table("contractEndedApplicationPurgeReceipt"),
