@@ -46,7 +46,11 @@ function context(input){
  const ledger=v.migrations.map((r,i)=>{keys(r,['name','sha256']);need(/^\d{14}_[a-z0-9_]+$/u.test(r.name)&&digest(r.sha256)&&(!i||v.migrations[i-1].name<r.name));return {...r,finished:true,rolledBack:false};});
  need(hash(JSON.stringify(ledger))===FULL&&equal(v.plan.migrations,v.migrations.slice(0,205)));
  for(const r of v.migrations)need(hash(fs.readFileSync(path.join(__dirname,'migrations',r.name,'migration.sql')))===r.sha256);
- return Object.freeze({...v,ledger:Object.freeze(ledger)});
+ const ci=Object.hasOwn(v.plan,'ciFixture');
+ const ciRecovery=ci&&technicalProfiles.ciDynamicRecoveryMigration(v.plan.ciFixture,v.plan.database);
+ const rollback=ci?ledger.find(row=>row.name===ciRecovery):ledger[114];
+ need(!ciRecovery||rollback);
+ return Object.freeze({...v,ledger:Object.freeze(ledger),rollback,requireSingleRollback:Boolean(ciRecovery)});
 }
 function targets(stage){
  need(WINDOWS.includes(stage));return stage===213?matrix.post213Targets:
@@ -133,9 +137,16 @@ function validateRow(input,c,stage,phase,prior){
  for(const key of ['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'])need(id[key]===c.plan[key]);
  need(id.actor===(technicalProfiles.planProfile(c.plan)?.owner??'jiangkong')&&id.sessionActor===id.actor&&id.version>=160000&&id.version<170000&&Number.isInteger(id.version)&&id.encoding==='UTF8'&&id.replication==='origin'&&id.readOnly===(phase!=='staged')&&Number.isInteger(id.backendPid)&&id.backendPid>0&&id.backendPid<=2147483647&&typeof id.backendStart==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(id.backendStart)&&Number.isFinite(Date.parse(id.backendStart))&&new Date(Date.parse(id.backendStart)).toISOString().slice(0,19)===id.backendStart.slice(0,19));
  reason='LEDGER';
- need(Array.isArray(row.ledger));const completed=[];
- for(const item of row.ledger){keys(item,['name','sha256','finished','rolledBack']);if(item.finished===true&&item.rolledBack===false)completed.push(item);else need(item.name===c.ledger[114].name&&item.sha256===c.ledger[114].sha256&&item.finished===false&&item.rolledBack===true);}
- need(equal(completed,c.ledger.slice(0,stage)));
+ need(Array.isArray(row.ledger));const completed=[];let rollbackCount=0;
+ for(const item of row.ledger){
+  keys(item,['name','sha256','finished','rolledBack']);
+  if(item.finished===true&&item.rolledBack===false)completed.push(item);
+  else{
+   need(c.rollback&&item.name===c.rollback.name&&item.sha256===c.rollback.sha256&&item.finished===false&&item.rolledBack===true);
+   rollbackCount++;
+  }
+ }
+ need(equal(completed,c.ledger.slice(0,stage))&&(!c.requireSingleRollback||rollbackCount===1));
  reason='PENDING';
  const p=row.pending;keys(p,['appOid','fileCallerOids','databaseOid','namespaceOid','ownerOid','relationOid','sha256']);
  need(p.appOid===c.setup.appOid&&equal(p.fileCallerOids,c.setup.fileCallerOids.map(String))&&p.databaseOid===c.plan.databaseOid&&p.namespaceOid===c.plan.namespaceOid&&p.ownerOid===c.plan.actorOid&&oid(p.relationOid)&&digest(p.sha256));

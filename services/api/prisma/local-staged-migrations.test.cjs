@@ -58,24 +58,27 @@ async function canonicalRows() {
     .update(await fs.readFile(path.join(dir, name, "migration.sql"))).digest("hex") })));
 }
 
-async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = false, named = false) {
-  const database = named ? "jg_task01_0123456789abcdef0123456789abcdef" : "jiangkong_project_financing_quota_concurrency";
+async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = false, named = false, ciRecovery) {
+  const database = ciRecovery?.database ?? (named ? "jg_task01_0123456789abcdef0123456789abcdef" : "jiangkong_project_financing_quota_concurrency");
   const container = { id: "a".repeat(64), name: named ? "jg-task01-01234567-89ab-cdef-0123-456789abcdef" : "jiangkong-pfq-concurrency-fixture", runId: "01234567-89ab-cdef-0123-456789abcdef" };
   const actor = { oid: "10", name: named ? "jg_task01_owner" : "jiangkong", superuser: true, createRole: false, createDb: true, replication: true, bypassRls: true, memberships: [] };
   const observedContainer = () => ({ ...container, running: true, publishedHost: "127.0.0.1", publishedPort: "55432" });
   const rows = await canonicalRows();
   const calls = [];
-  const databaseNames = [database, "jiangkong_project_financing_quota_pre115_clean",
+  const databaseNames = ciRecovery ? [database] : [database, "jiangkong_project_financing_quota_pre115_clean",
     "jiangkong_project_financing_quota_pre115_duplicate", "jiangkong_project_financing_quota_pre115_cross_business",
     "jiangkong_project_financing_quota_pre115_replacement_child", "jiangkong_project_financing_quota_pre115_replacement_parent",
     "jiangkong_project_financing_quota_pre116_legacy"];
+  const recoveryIndex = ciRecovery ? rows.findIndex(row => row.name === ciRecovery.migration) : -1;
+  if (ciRecovery) assert.ok(recoveryIndex >= 0);
   const databaseStates = new Map();
   const deploymentRequests = [];
   let currentDatabase = database;
   let nextDeploymentError;
   function currentState() {
     if (!databaseStates.has(currentDatabase)) databaseStates.set(currentDatabase, {
-      applied: 0, oid: String(16384 + databaseStates.size), failed: false, rolledBack: false
+      applied: ciRecovery ? recoveryIndex : 0, oid: String(16384 + databaseStates.size),
+      failed: false, rolledBack: Boolean(ciRecovery)
     });
     return databaseStates.get(currentDatabase);
   }
@@ -86,9 +89,10 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
     actorOid: "10", ownerOid: "10", actor: actor.name, sessionActor: actor.name,
     systemIdentifier: "1234567890123456789", version: 160015, encoding: "UTF8", replication: "origin",
     roles, ledger: [...rows.slice(0, currentState().applied).map(row => ({ ...row, finished: true, rolledBack: false })),
-      ...(currentState().rolledBack ? [{ ...rows[114], finished: false, rolledBack: true }] : [])]
+      ...(currentState().rolledBack ? [{ ...rows[ciRecovery ? recoveryIndex : 114], finished: false, rolledBack: true }] : [])]
       .sort((left, right) => left.name.localeCompare(right.name)) });
   const ports = { container, databaseNames, temporaryRoot,
+    ...(ciRecovery ? { ciFixture: ciRecovery.profile } : {}),
     inspectContainer: async () => observedContainer(),
     executeSqlStdin: async request => ports.executeSql(request),
     executeSql: async ({ database: targetDatabase, phase, sql }) => {
@@ -452,6 +456,49 @@ test("independent205 caller proof rejects an unexplained route before cleanup or
     assert.deepEqual(harness.calls.filter(x => x.startsWith("deploy-")), ["deploy-203", "deploy-205"]);
     assert.equal(harness.calls.includes("qualification-cleanup"), false);
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+const expenseRecovery = ["execution", "finance"].map(kind => ({
+  profile: `DYNAMIC_PROJECT_EXPENSE_${kind.toUpperCase()}_V1`,
+  database: `jiangkong_project_expense_${kind}_retained_audit_missing`,
+  migration: `202607281${kind === "execution" ? "4" : "5"}0000_project_expense_${kind}_idempotency`
+}));
+
+for (const recovery of expenseRecovery) test(`tail preserves scoped CI recovery ledger for ${recovery.profile}`, async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "local-tail259-ci-recovery-"));
+  try {
+    const harness = await fakeFixture(dir, undefined, [], false, false, recovery);
+    await harness.fixture.migrate({ databaseUrl: `postgresql://jiangkong:local@127.0.0.1:55432/${recovery.database}` });
+    assert.deepEqual(harness.calls.filter(phase => phase.startsWith("tail")),
+      [213, 215, 218, 221].flatMap(stage => [`tail${stage}-before`, `tail${stage}-supply`, `tail${stage}-readback`]));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+for (const [name, alter] of [
+  ["missing rollback", (rows, rolledBack) => rows.splice(rows.indexOf(rolledBack), 1)],
+  ["duplicate rollback", (rows, rolledBack) => rows.push({ ...rolledBack })],
+  ["changed checksum", (rows, rolledBack) => { rolledBack.sha256 = "0".repeat(64); }],
+  ["another profile's rollback", (rows, rolledBack) => {
+    const finance = rows.find(row => row.name === expenseRecovery[1].migration && row.finished);
+    Object.assign(rolledBack, finance, { finished: false, rolledBack: true });
+  }]
+]) test(`tail rejects CI recovery with ${name} before supply`, async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "local-tail259-ci-recovery-reject-"));
+  try {
+    const recovery = expenseRecovery[0];
+    const harness = await fakeFixture(dir, (phase, row) => {
+      if (phase === "tail213-before") alter(row.ledger, row.ledger.find(entry => entry.rolledBack));
+      return row;
+    }, [], false, false, recovery);
+    await assert.rejects(harness.fixture.migrate({
+      databaseUrl: `postgresql://jiangkong:local@127.0.0.1:55432/${recovery.database}`
+    }), error => {
+      assert.deepEqual(require("./local-staged-tail-qualification.cjs").localTailFailureDiagnostic(error),
+        { stage: "TAIL213_BEFORE", kind: "NODE_PROOF", reason: "BEFORE_VALIDATE_LEDGER" });
+      return true;
+    });
+    assert.equal(harness.calls.includes("tail213-supply"), false);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 
 test("full259 deployment stops at every mandatory technical supply window before its consumer", async () => {
