@@ -1435,6 +1435,24 @@ test("contract settlement V2 runner isolates seed files per run and cleans only 
   const fixture = new Module(filename, module);
   fixture.filename = filename;
   fixture.paths = Module._nodeModulePaths(__dirname);
+  const requireFromFixture = fixture.require.bind(fixture);
+  fixture.require = name => {
+    if (name !== "./local-staged-ci-dynamic.cjs") return requireFromFixture(name);
+    return {
+      CI_DYNAMIC_MIGRATION_LABEL: "jg.local-ci-dynamic-migration",
+      createCiDynamicMigrationFixture({ ciFixture, container, databaseNames }) {
+        assert.equal(ciFixture, "DYNAMIC_CONTRACT_SETTLEMENT_V2");
+        assert.equal(container.id, "1".repeat(64));
+        assert.match(container.name, /^jiangkong-contract-settlement-v2-/u);
+        assert.match(container.runId, /^[0-9a-f-]{36}$/u);
+        assert.deepEqual(databaseNames, ["jiangkong_contract_bill_batch_test"]);
+        return { async migrate({ databaseUrl, runtimeEnv }) {
+          assert.equal(runtimeEnv.DATABASE_URL, databaseUrl);
+          assert.match(databaseUrl, /@127\.0\.0\.1:1234\//u);
+        } };
+      }
+    };
+  };
   fixture._compile(readFileSync(filename, "utf8").replace(/^#!.*\n/u, "") + `
 module.exports.captureSeedStorage = async () => {
   const environments = [];
@@ -1442,6 +1460,7 @@ module.exports.captureSeedStorage = async () => {
   waitForPostgres = async () => {};
   run = async (_bin, args, options = {}) => {
     if (args.includes("context")) return "unix:///fixture";
+    if (args[0] === "run") return "1".repeat(64);
     if (options.env?.DATABASE_URL) environments.push({ args, env: options.env, cwd: options.cwd });
     if (args.some(arg => arg.endsWith("seed.cjs"))) {
       const { mkdir, writeFile } = require("node:fs/promises");
