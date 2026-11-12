@@ -51,7 +51,7 @@ function compact(text: string) {
 
 async function readBounded(response: Response, limit: number) {
   const reader = response.body?.getReader();
-  if (!reader) throw new Error("BODY");
+  requireStage(reader, "BODY");
   const chunks: Uint8Array[] = [];
   let length = 0;
   try {
@@ -59,7 +59,7 @@ async function readBounded(response: Response, limit: number) {
       const result = await reader.read();
       if (result.done) break;
       length += result.value.byteLength;
-      if (length > limit) throw new Error("BODY");
+      requireStage(length <= limit, "BODY");
       chunks.push(result.value);
     }
     return Buffer.concat(chunks, length);
@@ -98,7 +98,7 @@ function matchFields(paragraphs: readonly string[], expected: readonly string[],
 function wordParagraphs(bytes: Buffer) {
   const { blocks } = extractContractDocx(bytes);
   const zip = new PizZip(bytes);
-  const parser = new DOMParser({ onError: () => { throw new Error("XML"); } });
+  const parser = new DOMParser({ onError: () => requireStage(false, "XML") });
   const types = zip.file("[Content_Types].xml")?.asText();
   const relations = zip.file("_rels/.rels")?.asText();
   requireStage(types && relations && !/<!DOCTYPE|<!ENTITY/iu.test(types + relations), "DOCX");
