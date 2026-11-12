@@ -482,40 +482,79 @@ test("综合部可从项目维护停用并恢复空项目，手机也能办理",
 });
 
 
-test("合同岗位新办与历史接管选择三类关系并进入同一项目专属办理", async ({ page }) => {
+test("合同岗位新办与历史接管选择三类关系并进入同一项目专属办理", async ({ page, request }) => {
   const session = JSON.parse(process.env.POL113_CONTRACT_SESSION!);
   const projectId = process.env.POL113_PROJECT_ID!;
+  const api = process.env.POL113_API_URL!;
+  const headers = { authorization: `Bearer ${session.tokens.accessToken}`, "x-contract-numeric-protocol": "2" };
   await page.addInitScript(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
-  for (const mode of ["new", "takeover"]) {
-    for (const [relationship, label, heading] of [
-      ["outside", "表外（施工企业签约）", "表外"],
-      ["upward", "对上（施工企业—我方）", "对上"]
-    ]) {
-      await page.goto(mode === "new" ? `/合同工作台/新建?projectId=${projectId}` : "/历史合同接管");
-      if (mode === "takeover") await page.locator(".project-picker select").selectOption(projectId);
-      const choice = page.locator(".contract-entry-choice");
-      await expect(choice).toBeVisible();
-      await expect(choice.getByText("表内（我方签约）", { exact: true })).toBeVisible();
-      await choice.getByText(label, { exact: true }).click();
-      if (mode === "takeover") {
-        await expect(page.getByRole("button", { name: "导入预检", exact: true })).toHaveCount(0);
-        await expect(page.locator(".operation-section-nav")).toHaveCount(0);
-      }
-      await expect(page.getByRole("button", { name: "创建草稿", exact: true })).toHaveCount(0);
-      await choice.getByRole("button", { name: mode === "new" ? "登记所选类别合同" : "办理所选类别历史接管", exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`contractHandling=${relationship}`));
-      await expect(page).toHaveURL(new RegExp(`projectId=${projectId}`));
-      await expect(page.locator(".t-drawer:visible").getByText(`${heading}${mode === "takeover" ? "合同历史接管" : "业务办理"}`, { exact: true })).toBeVisible();
+
+  for (const [relationship, label] of [
+    ["inside", "表内合同（我方公司与下游）"],
+    ["outside", "表外合同（施工企业与下游）"],
+    ["upward", "对上合同（我方公司与施工企业）"]
+  ]) {
+    await page.goto(`/合同工作台/新建?projectId=${projectId}`);
+    await expect(page.getByRole("heading", { name: "新建合同", exact: true })).toBeVisible();
+    await page.getByPlaceholder("选择业务类型", { exact: true }).click();
+    await page.locator(".t-select__dropdown:visible").getByText("其他", { exact: true }).click();
+    await page.getByPlaceholder("可先留空，生成前选择", { exact: true }).click();
+    await page.locator(".t-select__dropdown:visible").getByText(label, { exact: true }).click();
+    const signed = page.getByRole("radio", { name: "已签合同资料", exact: true });
+    if (relationship === "inside") {
+      await expect(signed).toHaveCount(0);
+    } else {
+      await expect(signed).toBeVisible();
+      await expect(page.getByRole("radio", { name: "起草新合同", exact: true })).toBeChecked();
     }
+    const creating = page.waitForResponse(response => new URL(response.url()).pathname === "/api/contracts" && response.request().method() === "POST");
+    await page.getByRole("button", { name: "创建草稿", exact: true }).click();
+    const created = await creating;
+    expect(created.status()).toBe(201);
+    const { version } = await created.json();
+    await expect(page.getByText("待补充（未提交草稿）", { exact: true })).toBeVisible();
+    const saved = await request.get(`${api}/contract-drafts/${version.id}/workbench`, { headers });
+    expect(saved.status()).toBe(200);
+    expect(await saved.json()).toMatchObject({
+      contract: { projectId, code: null },
+      version: { status: "draft", draftData: { contractBasics: { relationship, businessType: "other" } } }
+    });
   }
-  await page.goto(`/合同工作台/新建?projectId=${projectId}`);
-  await expect(page.locator(".contract-entry-choice")).toBeVisible();
+
+  await page.goto("/历史合同接管");
+  await page.locator(".project-picker select").selectOption(projectId);
+  const choice = page.locator(".contract-entry-choice");
+  await expect(choice.getByText("表内（我方签约）", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "导入预检", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "查看项目施工企业与参与公司", exact: true })).toHaveCount(0);
-  await expect(page.locator(".contract-entry-choice")).toContainText("董事长或公司级综合部主管办理");
+  await expect(choice).toContainText("董事长或公司级综合部主管办理");
+  await page.getByRole("button", { name: "新增接管合同", exact: true }).click();
+  await expect(page.getByRole("button", { name: "保存接管草稿", exact: true }).first()).toBeVisible();
+
+  for (const [relationship, label, heading] of [
+    ["outside", "表外（施工企业签约）", "表外"],
+    ["upward", "对上（施工企业—我方）", "对上"]
+  ]) {
+    await page.goto("/历史合同接管");
+    await page.locator(".project-picker select").selectOption(projectId);
+    await choice.getByText(label, { exact: true }).click();
+    await expect(page.getByRole("button", { name: "导入预检", exact: true })).toHaveCount(0);
+    await expect(page.locator(".operation-section-nav")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "创建草稿", exact: true })).toHaveCount(0);
+    await choice.getByRole("button", { name: "办理所选类别历史接管", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`contractHandling=${relationship}`));
+    await expect(page).toHaveURL(new RegExp(`projectId=${projectId}`));
+    await expect(page).toHaveURL(/entryMode=takeover/);
+    await expect(page.locator(".t-drawer:visible").getByText(`${heading}合同历史接管`, { exact: true })).toBeVisible();
+  }
+
   await page.goto("/合同工作台/新建?projectId=unavailable-project");
   await expect(page.getByText("指定项目已停用或无权办理，请重新选择项目", { exact: true })).toBeVisible();
-  await page.locator(".contract-entry-choice").getByText("表外（施工企业签约）", { exact: true }).click();
-  await expect(page.getByRole("button", { name: "登记所选类别合同", exact: true })).toBeDisabled();
+  await page.getByPlaceholder("选择业务类型", { exact: true }).click();
+  await page.locator(".t-select__dropdown:visible").getByText("其他", { exact: true }).click();
+  await page.getByPlaceholder("可先留空，生成前选择", { exact: true }).click();
+  await page.locator(".t-select__dropdown:visible").getByText("表外合同（施工企业与下游）", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "创建草稿", exact: true })).toBeDisabled();
 });
