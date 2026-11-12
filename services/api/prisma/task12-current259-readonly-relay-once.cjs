@@ -16,7 +16,10 @@ function claimReadonlyRelayResource(permit,options){
   starts.delete(permit);
   return true;
 }
-module.exports=Object.freeze({claimReadonlyRelayResource});
+const identityApi=Object.freeze({claimReadonlyRelayResource,assertIdentityFreshMain});
+function assertIdentityFreshMain(){return FRESH&&require.main===module&&module.exports===identityApi;}
+module.exports=identityApi;
+if(FRESH)require('./task12-current259-identity-authority.cjs').captureIdentityMain(module);
 const prefix='CURRENT259_READONLY_RELAY_PROBE_V2_';
 const identitySql=`
 SELECT current_user::text AS "role", session_user::text AS "sessionRole", current_database() AS "database",

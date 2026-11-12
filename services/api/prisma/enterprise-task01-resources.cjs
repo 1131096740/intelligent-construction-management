@@ -12,6 +12,18 @@ const { types } = require("node:util");
 const TECHNICAL_LIFETIME = Symbol("current259 technical lifetime");
 const FIRST_ROLLBACK_LIFETIME = Symbol("current259 first-rollback lifetime");
 const FIRST_Q2_LIFETIME = Symbol("current259 first-Q2 lifetime");
+function requireFixedIdentityMain() {
+  const main=require.main;
+  const allowed=['task12-current259-readonly-relay-once.cjs','task12-current259-generated-draft-once.cjs','task12-current259-first-q2-once.cjs'];
+  const file=main&&!types.isProxy(main)&&Object.getOwnPropertyDescriptor(main,'filename')?.value;
+  const exported=main&&Object.getOwnPropertyDescriptor(main,'exports')?.value;
+  const claim=exported&&!types.isProxy(exported)&&Object.getOwnPropertyDescriptor(exported,'assertIdentityFreshMain')?.value;
+  if(!allowed.some(name=>file===path.join(__dirname,name))||Object.getOwnPropertyDescriptor(require.cache,file)?.value!==main||
+    process.argv[1]!==file||process.execArgv.length!==0||process._preload_modules?.length||
+    !Object.isFrozen(exported)||typeof claim!=='function'||types.isProxy(claim)||claim()!==true)
+    throw new Error('CURRENT259_IDENTITY_AUTHORITY');
+}
+
 const READONLY_RELAY_LIFETIME = Symbol("current259 readonly-relay lifetime");
 const readonlyRelayPorts = new WeakMap();
 function claimReadonlyRelayBackendVerifier(permit, coordinates) {
@@ -1141,10 +1153,12 @@ async function startCurrent259FirstQ2LoopbackPostgres(options) {
   return startCurrent259FixedPostgres(options, FIRST_Q2_LIFETIME);
 }
 async function startCurrent259ReadonlyRelayPostgres(options, permit) {
+  requireFixedIdentityMain();
   requireThat(arguments.length === 2 && options && !types.isProxy(options) &&
     Object.getPrototypeOf(options) === Object.prototype, "TASK01_RESOURCE_INPUT_INVALID");
-  const { claimReadonlyRelayResource } = require("./task12-current259-readonly-relay-once.cjs");
-  requireThat(claimReadonlyRelayResource(permit, options), "TASK01_RESOURCE_INPUT_INVALID");
+  const authority=require("./task12-current259-identity-authority.cjs");
+  requireThat(authority.claimIdentityMain("claimReadonlyRelayResource",permit,options), "TASK01_RESOURCE_INPUT_INVALID");
+  authority.captureIdentityPhysical(module);
   return startCurrent259FixedPostgres(options, READONLY_RELAY_LIFETIME);
 }
 async function startCurrent259NormalPaymentPostgres(options) {

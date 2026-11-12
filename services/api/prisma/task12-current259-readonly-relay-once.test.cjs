@@ -58,6 +58,7 @@ function model(t,{once=true,used=false,drift,invalidPlan=false,closeKinds=['CLOS
     }
   }
   const ports={
+    './task12-current259-identity-authority.cjs':{captureIdentityMain(){}},
     '../../../scripts/prepare-task12-current259-generated-draft.cjs':{verifyCurrent259ReadonlyRelayPlan(file,digest){
       assert.equal(file,path.join(root,'RELAY-READONLY-PLAN.json'));assert.equal(digest,planSha);
       if(invalidPlan)throw new Error('private input');

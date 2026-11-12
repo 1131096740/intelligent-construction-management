@@ -24,8 +24,8 @@ function load(t, handler, readonlyVerifier) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const holder = { exports: {} }, calls = [], permit = Object.freeze({});
   let permitUsed = false;
-  const original = request => request === './enterprise-task01-resources.cjs' && readonlyVerifier ? {
-    claimReadonlyRelayBackendVerifier(value, coordinates) {
+  const original = request => request === './task12-current259-identity-authority.cjs' && readonlyVerifier ? {
+    claimIdentityBackendVerifier(value, coordinates) {
       if (value !== permit || permitUsed) return undefined;
       assert.deepEqual(coordinates, { containerId: CONTAINER, dockerConfig, signal: controller.signal });
       permitUsed = true;
@@ -42,7 +42,15 @@ function load(t, handler, readonlyVerifier) {
     calls.push(argv);
     return handler(argv.at(-1));
   } } : require(request);
-  new Function('require', 'module', SOURCE)(original, holder);
+  if(readonlyVerifier){
+    const file=path.join(__dirname,'task12-current259-readonly-relay-once.cjs');
+    const main={filename:file,exports:Object.freeze({assertIdentityFreshMain:()=>true})};
+    original.main=main;original.cache={[file]:main};
+  }
+  const modelProcess=readonlyVerifier?Object.defineProperties(Object.create(process),{
+    argv:{value:['node',original.main.filename]},execArgv:{value:[]},_preload_modules:{value:[]},
+  }):process;
+  new Function('require','module','__dirname','process',SOURCE)(original,holder,__dirname,modelProcess);
   const controller = new AbortController();
   const start = options => holder.exports.startCurrent259LoopbackForward(options ?? { containerId: CONTAINER, dockerConfig, signal: controller.signal });
   const startReadonly = (token = permit) => holder.exports.startCurrent259LoopbackForward(

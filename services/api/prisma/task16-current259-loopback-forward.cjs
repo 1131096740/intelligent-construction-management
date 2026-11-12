@@ -11,6 +11,18 @@ const { types } = require('node:util');
 const { decodeRelaySysreadExit } = require('./task16-current259-relay-sysread.cjs');
 const { readQualifiedTask16File } = require('./task16-runtime-inputs.cjs');
 
+function requireFixedIdentityMain() {
+  const main=require.main;
+  const allowed=['task12-current259-readonly-relay-once.cjs','task12-current259-generated-draft-once.cjs','task12-current259-first-q2-once.cjs'];
+  const file=main&&!types.isProxy(main)&&Object.getOwnPropertyDescriptor(main,'filename')?.value;
+  const exported=main&&Object.getOwnPropertyDescriptor(main,'exports')?.value;
+  const claim=exported&&!types.isProxy(exported)&&Object.getOwnPropertyDescriptor(exported,'assertIdentityFreshMain')?.value;
+  if(!allowed.some(name=>file===path.join(__dirname,name))||Object.getOwnPropertyDescriptor(require.cache,file)?.value!==main||
+    process.argv[1]!==file||process.execArgv.length!==0||process._preload_modules?.length||
+    !Object.isFrozen(exported)||typeof claim!=='function'||types.isProxy(claim)||claim()!==true)
+    throw new Error('CURRENT259_IDENTITY_AUTHORITY');
+}
+
 const DOCKER = '/Applications/Docker.app/Contents/Resources/bin/docker';
 const ENDPOINT = 'unix:///Users/leoyang/.docker/run/docker.sock';
 const HOST = '127.0.0.1';
@@ -202,8 +214,9 @@ async function receive(stdout, socket, halfClosed, peer) {
 async function startCurrent259LoopbackForward(options, readonlyPermit) {
   need(arguments.length === 1 || arguments.length === 2, 'INPUT');
   const { containerId, dockerConfig, signal } = inputs(options);
+  if(arguments.length===2)requireFixedIdentityMain();
   const verifyBackendGone = arguments.length === 2 ?
-    require('./enterprise-task01-resources.cjs').claimReadonlyRelayBackendVerifier(readonlyPermit, { containerId, dockerConfig, signal }) : undefined;
+    require('./task12-current259-identity-authority.cjs').claimIdentityBackendVerifier(readonlyPermit, { containerId, dockerConfig, signal }) : undefined;
   need(arguments.length === 1 || typeof verifyBackendGone === 'function', 'INPUT');
   need(!aborted.call(signal), 'ABORTED');
   const configIdentity = checkConfig(dockerConfig);
