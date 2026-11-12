@@ -14,7 +14,7 @@ type Detail = {
 };
 type Reply<T> = { status: number; body: T };
 export interface PreparedParallelPgHttp {
-  /** Must create and submit via public HTTP, using separate fresh applications per case. */
+  /** Seed a fresh historical draft per case and submit it through public HTTP. */
   createSubmittedApplication(label: string): Promise<string>;
   detail(id: string, session: Session): Promise<Reply<Detail>>;
   review(id: string, session: Session, input: Coordinates & { decision: "approve" | "reject"; comment?: string }): Promise<Reply<unknown>>;

@@ -2,19 +2,20 @@
 import assert = require("node:assert/strict");
 type Actor = "applicant" | "director" | "manager";
 type Coordinates = {expectedVersionId: string; expectedApprovalInstanceId: string; expectedNodeIndex: number};
-type Detail = {procurement: {status: string}; currentVersion: {id: string; draftRevision: number}; lines: Array<{quantity: string | null; unit: string | null; estimatedAmount: string | null}>; reviewApprovalContext: Coordinates; payments: unknown[]; receipt: {available: boolean; currentRevisionNo: number | null}; purchaseTask: {pending: boolean; canHandle: boolean; requiresReceipt: boolean}};
+type Detail = {procurement: {status: string}; currentVersion: {id: string; draftRevision: number; requestProtocolVersion: number}; lines: Array<{quantity: string | null; unit: string | null; estimatedAmount: string | null}>; reviewApprovalContext: Coordinates; payments: unknown[]; receipt: {available: boolean; currentRevisionNo: number | null}; purchaseTask: {pending: boolean; canHandle: boolean; requiresReceipt: boolean}};
 export interface PreparedSpotRequestV2Http {
   projectId: string;
   request(actor: Actor, path: string, method?: string, body?: unknown): Promise<{status: number; body: unknown}>;
 }
 export async function runPreparedSpotRequestV2HttpCases(http: PreparedSpotRequestV2Http) {
   const call = async (actor: Actor, path: string, method = "GET", body?: unknown, status = 200) => {
-    const result = await http.request(actor, path, method, body); assert.equal(result.status, status); return result.body;
+    const result = await http.request(actor, path, method, body); assert.equal(result.status, status, `${actor} ${method} ${path}`); return result.body;
   };
   const create = async () => (await call("applicant", "/spot-procurements", "POST", {projectId: http.projectId, lines: [{materialName: "帆布"}]}, 201) as {procurementId: string}).procurementId;
   const read = async (id: string, actor: Actor = "applicant") => await call(actor, `/spot-procurements/${id}`) as Detail;
   const first = await create();
   const initial = await read(first);
+  assert.equal(initial.currentVersion.requestProtocolVersion, 2);
   assert.equal(initial.lines[0]!.quantity, null); assert.equal(initial.lines[0]!.unit, null);
   const initialCoordinates = {expectedVersionId: initial.currentVersion.id, expectedDraftRevision: initial.currentVersion.draftRevision};
   const values = {lines: [{materialName: "扎丝", quantity: "1.2345", estimatedUnitPrice: "1.2345"}, {materialName: "铲子"}]};

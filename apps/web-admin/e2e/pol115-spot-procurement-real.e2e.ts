@@ -138,7 +138,7 @@ async function openRefundPayment(page: Page, paymentId: string) {
   expect(response.status()).toBe(200);
 }
 
-test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, context }, testInfo) => {
+test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, context, request }, testInfo) => {
   const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
   const director = JSON.parse(process.env.POL115_SPOT_DIRECTOR_SESSION!) as Session;
   const manager = JSON.parse(process.env.POL115_SPOT_MANAGER_SESSION!) as Session;
@@ -147,7 +147,7 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
   await useSession(page, applicant);
   await gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台");
   await page.getByRole("button", { name: "新建采购申请", exact: true }).click();
-  const createDialog = page.locator(".t-dialog").filter({ hasText: "新建零星/小额材料采购申请表" });
+  const createDialog = page.locator(".t-dialog").filter({ hasText: "新建零星材料采购申请" });
   await createDialog.getByPlaceholder("请选择项目").click();
   const projectName = `零采${testInfo.project.name}隔离项目`;
   const projectOption = page
@@ -186,37 +186,58 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
     .click();
   await expect(arrivalDateInput).toHaveValue(arrivalDate);
   await createDialog.getByPlaceholder("说明现场为什么需要本次零星采购").fill(`浏览器旧版原因-${label}`);
+  const grid = createDialog.getByTestId("spot-request-grid").locator("revo-grid");
+  const created = page.waitForResponse((response) => response.url().endsWith("/spot-procurements") && response.request().method() === "POST");
   if (testInfo.project.name === "desktop") {
-    const grid = createDialog.locator("revo-grid");
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
       origin: "http://127.0.0.1:4215"
     });
     await page.evaluate(async () => {
-      await navigator.clipboard.writeText("砂子\t中砂\t吨\t2.50\t现场使用\n水泥\tP.O 42.5\t袋\t0.01\t补充用料");
+      await navigator.clipboard.writeText("砂子\t中砂\t吨\t2.50\t\t\t现场使用\n水泥\tP.O 42.5\t袋\t0.01\t\t\t补充用料");
     });
-    await grid.locator('[data-rgrow="0"][data-rgcol="0"]').click();
+    await grid.locator('revogr-data[col-type="colPinStart"] [data-rgrow="0"][data-rgcol="1"]').click();
     await page.keyboard.press("ControlOrMeta+V");
-    for (const [column, value] of ["水泥", "P.O 42.5", "袋", "0.01", "补充用料"].entries()) {
-      await expect(grid.locator(`[data-rgrow="1"][data-rgcol="${column}"]`)).toHaveText(value);
-    }
+    await expect(grid.getByRole("gridcell", { name: "水泥", exact: true })).toBeVisible();
   } else {
-    const cards = createDialog.locator(".procurement-line-editor__cards");
-    const first = cards.locator("article").first();
-    await first.getByText("材料名称", { exact: true }).locator("..").locator("input").fill("砂子");
-    await first.getByText("单位", { exact: true }).locator("..").locator("input").fill("吨");
-    await first.getByText("数量（最多 2 位小数）", { exact: true }).locator("..").locator("input").fill("2.50");
-    await createDialog.getByRole("button", { name: "添加材料", exact: true }).click();
-    const second = cards.locator("article").nth(1);
-    await second.getByText("材料名称", { exact: true }).locator("..").locator("input").fill("水泥");
-    await second.getByText("单位", { exact: true }).locator("..").locator("input").fill("袋");
-    await second.getByText("数量（最多 2 位小数）", { exact: true }).locator("..").locator("input").fill("0.01");
+    await createDialog.getByRole("button", { name: "新增材料", exact: true }).click();
+    for (const [index, material, unit, quantity] of [[0, "砂子", "吨", "2.50"], [1, "水泥", "袋", "0.01"]] as const) {
+      // Optional fields first so autosave cannot interrupt an incomplete row.
+      for (const [prop, column, value] of [["unit", 1, unit], ["quantity", 2, quantity]] as const) {
+        await grid.evaluate((element, key) => {
+          return (element as HTMLElement & { scrollToColumnProp(column: string): Promise<void> }).scrollToColumnProp(key);
+        }, prop);
+        const cell = grid.locator(`revogr-data[col-type="rgCol"] [data-rgrow="${index}"][data-rgcol="${column}"]`);
+        await cell.dblclick();
+        const editor = grid.locator("revogr-edit input");
+        await editor.fill(value);
+        await editor.press("Enter");
+        await expect(cell).toHaveText(value);
+      }
+      await grid.locator(`revogr-data[col-type="colPinStart"] [data-rgrow="${index}"][data-rgcol="1"]`).dblclick();
+      const editor = grid.locator("revogr-edit input");
+      await editor.fill(material);
+      await editor.press("Enter");
+      await expect(grid.getByRole("gridcell", { name: material, exact: true })).toBeVisible();
+    }
   }
-  const created = page.waitForResponse((response) => response.url().endsWith("/spot-procurements") && response.request().method() === "POST");
   await createDialog.getByRole("button", { name: "保存草稿", exact: true }).click();
   const createdResponse = await created;
   expect(createdResponse.status(), await createdResponse.text()).toBe(201);
   const id = ((await createdResponse.json()) as { procurementId: string }).procurementId;
   await page.waitForURL((url) => decodeURIComponent(url.pathname) === `/零星采购/${id}`);
+  async function readDraft() {
+    const response = await request.get(`${process.env.POL115_API_URL}/spot-procurements/${id}`, {
+      headers: { authorization: `Bearer ${applicant.tokens.accessToken}` }
+    });
+    expect(response.status()).toBe(200);
+    return response.json();
+  }
+  const originalDraft = await readDraft();
+  expect(originalDraft.currentVersion).toMatchObject({ requestProtocolVersion: 2, draftRevision: expect.any(Number) });
+  expect(originalDraft.lines).toMatchObject([
+    { materialName: "砂子", unit: "吨", quantity: "2.5" },
+    { materialName: "水泥", unit: "袋", quantity: "0.01" }
+  ]);
   const panelByHeading = (name: string) => page.locator("section.detail-panel").filter({
     has: page.getByRole("heading", { name, exact: true })
   });
@@ -228,7 +249,11 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
   await page.locator(".t-tabs").getByText("审批与动作", { exact: true }).click();
   const initialSubmission = page.waitForResponse((response) => response.url().endsWith(`/spot-procurements/${id}/submission`) && response.request().method() === "POST");
   await processPanel.getByRole("button", { name: "提交采购审批", exact: true }).click();
-  expect((await initialSubmission).status()).toBe(201);
+  const submittedResponse = await initialSubmission;
+  expect(submittedResponse.status()).toBe(201);
+  expect(submittedResponse.request().postDataJSON()).toMatchObject({
+    expectedVersionId: originalDraft.currentVersion.id, expectedDraftRevision: originalDraft.currentVersion.draftRevision
+  });
   await expect(page.getByText("零星材料采购申请已提交审批。", { exact: true })).toBeVisible();
 
   await useSession(page, director);
@@ -260,25 +285,36 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
   await expect(versionTwo.getByText(`浏览器新版原因-${label}`, { exact: true })).toBeVisible();
   await expect(versionOne.getByText(`浏览器旧版原因-${label}`, { exact: true })).toBeVisible();
   await page.locator(".t-tabs").getByText("审批与动作", { exact: true }).click();
+  const revisedDraft = await readDraft();
+  expect(revisedDraft.currentVersion.id).not.toBe(originalDraft.currentVersion.id);
   const resubmission = page.waitForResponse((response) => response.url().endsWith(`/spot-procurements/${id}/submission`) && response.request().method() === "POST");
   await processPanel.getByRole("button", { name: "提交采购审批", exact: true }).click();
-  expect((await resubmission).status()).toBe(201);
+  const resubmittedResponse = await resubmission;
+  expect(resubmittedResponse.status()).toBe(201);
+  const resubmitted = resubmittedResponse.request().postDataJSON() as { expectedVersionId: string; expectedDraftRevision: number };
+  expect(resubmitted).toMatchObject({
+    expectedVersionId: revisedDraft.currentVersion.id, expectedDraftRevision: revisedDraft.currentVersion.draftRevision
+  });
   await expect(page.getByText("零星材料采购申请已提交审批。", { exact: true })).toBeVisible();
 
-  for (const [session, node] of [[director, "物资部主管审批"], [manager, "项目经理审批"]] as const) {
+  for (const [session, nodeIndex] of [[director, 0], [manager, 1]] as const) {
     await useSession(page, session);
     await page.locator(".t-tabs").getByText("审批与动作", { exact: true }).click();
-    await expect(page.locator(".business-detail-header__facts").getByText(node, { exact: true })).toBeVisible();
+    await expect(page.locator(".business-detail-header__facts").getByText("并联审批", { exact: true })).toBeVisible();
     await processPanel.getByRole("button", { name: "审批通过", exact: true }).click();
     const dialog = page.locator(".t-dialog").filter({ hasText: "确认通过采购审批" });
     const approved = page.waitForResponse((response) => response.url().endsWith(`/spot-procurements/${id}/approval`) && response.request().method() === "POST");
     await dialog.getByRole("button", { name: "确认通过", exact: true }).click();
-    expect((await approved).status()).toBe(201);
+    const response = await approved;
+    expect(response.status()).toBe(201);
+    expect(response.request().postDataJSON()).toMatchObject({ expectedVersionId: resubmitted.expectedVersionId, expectedNodeIndex: nodeIndex });
     await expect(page.getByText("采购审批已通过。", { exact: true })).toBeVisible();
     await expect(dialog).toBeHidden();
   }
 
   await expect(page.locator(".business-detail-header").getByText("采购已批，办理中", { exact: true })).toBeVisible();
+  const approvedDetail = await readDraft();
+  expect(approvedDetail).toMatchObject({ purchaseTask: { pending: true, requiresReceipt: false }, payments: [], receipt: { available: false } });
   await page.locator(".t-tabs").getByText("采购申请", { exact: true }).click();
   await expect(overviewPanel.locator(".detail-grid").getByText(`浏览器新版原因-${label}`, { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText(id);

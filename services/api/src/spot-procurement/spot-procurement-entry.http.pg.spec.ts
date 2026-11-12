@@ -4,6 +4,7 @@ import { SpotProcurementApprovalNotificationService } from "./spot-procurement-a
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { runPreparedParallelPgHttpCases, runPreparedParallelNotificationClaimPgCase, type PreparedParallelPgHttp } from "../database/spot-procurement-parallel.http.pg.prepared";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
+import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -124,7 +125,8 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     }
     for (const { role, user } of users) {
       const position = await prisma.position.upsert({ where: { key: role }, create: { key: role, name: role }, update: {} });
-      await prisma.userPosition.createMany({ data: Object.values(projectIds).map((projectId) => ({ userId: user.id, positionId: position.id, projectId })) });
+      const assignmentProjects = role === "material_director" ? [null] : Object.values(projectIds);
+      await prisma.userPosition.createMany({ data: assignmentProjects.map((projectId) => ({ userId: user.id, positionId: position.id, projectId })) });
       if (role === "comprehensive_director") await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId: null } });
       const response = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: user.phone, password }) });
       expect(response.status).toBe(201);
@@ -136,7 +138,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     }
     const secondDirectorUser = await prisma.user.create({data: {name: "并联物资主管乙", phone: `pol115-spot-director-second-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false}});
     const materialPosition = await prisma.position.findUniqueOrThrow({where: {key: "material_director"}});
-    await prisma.userPosition.createMany({data: Object.values(projectIds).map(projectId => ({userId: secondDirectorUser.id, positionId: materialPosition.id, projectId}))});
+    await prisma.userPosition.create({data: {userId: secondDirectorUser.id, positionId: materialPosition.id, projectId: null}});
     const secondLogin = await fetch(`${baseUrl}/auth/login`, {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({phone: secondDirectorUser.phone, password})});
     expect(secondLogin.status).toBe(201);
     secondDirector = await secondLogin.json() as Session;
@@ -204,28 +206,34 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     return JSON.stringify(redact(value));
   }
 
-  async function createDraft(projectId: string, label: string) {
-    const definitions = expectHttpStatus(
-      `零采定义-${label}`,
-      await json(`/spot-procurements/projects/${projectId}/application-definitions`, applicant),
-      200
-    ).body as unknown as { application: { version: number }; line: { version: number } };
-    const upload = new FormData();
-    upload.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成报价-${label}.png`);
-    upload.append("idempotencyKey", randomUUID());
-    const uploaded = await fetch(`${baseUrl}/spot-procurements/projects/${projectId}/draft-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${applicant.tokens.accessToken}` }, body: upload });
-    const uploadText = await uploaded.text();
-    if (uploaded.status !== 201) throw new Error(`零采附件上传失败：${uploaded.status} ${uploadText}`);
-    const file = JSON.parse(uploadText) as { id: string };
-    const created = await json("/spot-procurements", applicant, "POST", {
-      projectId, applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-01",
-      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
-      reason: `旧版采购原因-${label}`, lines: [{ materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "10", note: "合成验收" }],
-      attachments: [{ fileId: file.id, category: "merchant_quote" }]
+  async function seedHistoricalDraft(projectId: string, label: string) {
+    // Public creation now always opens a protocol 2 request. Insert only the
+    // historical draft facts; submission, approval and downstream actions stay public.
+    const applicantId = (applicant.user as { id: string }).id;
+    const file = await uploadFile(
+      `/spot-procurements/projects/${projectId}/draft-file-uploads`, applicant, `合成报价-${label}.png`
+    );
+    expect(file).toMatchObject({ status: 201, id: expect.any(String) });
+    return app.get(PrismaService).$transaction(async (tx) => {
+      const procurement = await tx.spotProcurement.create({ data: {
+        projectId, code: `HISTORICAL-SPOT-${randomUUID()}`, applicantUserId: applicantId, handlerUserId: applicantId, status: "draft"
+      } });
+      const version = await tx.spotProcurementVersion.create({ data: {
+        procurementId: procurement.id, versionNo: 1, requestProtocolVersion: 1, status: "draft",
+        reason: `旧版采购原因-${label}`, requestedArrivalAt: new Date("2026-10-01T00:00:00.000Z"),
+        applicationDepartmentSnapshot: "工程部", applicationNameSnapshot: "现场申请人",
+        purchaserNameSnapshot: "零采申请人", purchaserDepartmentNameSnapshot: "工程部",
+        handlerUserId: applicantId, createdByUserId: applicantId
+      } });
+      await tx.spotProcurementLine.create({ data: {
+        versionId: version.id, sortOrder: 1, materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "10", note: "合成验收"
+      } });
+      await tx.spotProcurementAttachment.create({ data: {
+        versionId: version.id, fileId: file.id, category: "merchant_quote", uploadedByUserId: applicantId
+      } });
+      await tx.spotProcurement.update({ where: { id: procurement.id }, data: { currentVersionId: version.id } });
+      return procurement.id;
     });
-    expectHttpStatus(`零采草稿创建-${label}`, created, 201);
-    expect(created.body!.procurementId).toEqual(expect.any(String));
-    return created.body!.procurementId;
   }
 
   function immutableDraftFacts(detail: Detail) {
@@ -275,7 +283,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
   }
 
   async function prepareAwaitingRefund(projectId: string, label: string) {
-    const id = await createDraft(projectId, `refund-${label}`);
+    const id = await seedHistoricalDraft(projectId, `refund-${label}`);
     expectHttpStatus(`${label}申请提交`, await json(`/spot-procurements/${id}/submission`, applicant, "POST", {}), 201);
     for (const reviewer of [director, manager]) {
       const view = expectHttpStatus(`${label}申请审批坐标`, await json(`/spot-procurements/${id}`, reviewer), 200).body as Detail;
@@ -324,9 +332,9 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
       `/spot-procurements/projects/${projectIds.api}/application-definitions`,
       sessions.get("finance_staff")!
     )).status).toBe(403);
-    const id = await createDraft(projectIds.api, "api");
+    const id = await seedHistoricalDraft(projectIds.api, "api");
     const initial = (await json(`/spot-procurements/${id}`, applicant)).body!;
-    expect(initial).toMatchObject({ currentVersion: { versionNo: 1, status: "draft", reason: "旧版采购原因-api" }, attachments: [{ fileName: "合成报价-api.png" }] });
+    expect(initial).toMatchObject({ currentVersion: { versionNo: 1, requestProtocolVersion: 1, status: "draft", reason: "旧版采购原因-api" }, attachments: [{ fileName: "合成报价-api.png" }] });
     const initialFacts = immutableDraftFacts(initial);
     expect((await json(`/spot-procurements/${id}/submission`, applicant, "POST", {})).status).toBe(201);
     const firstDirectorView = (await json(`/spot-procurements/${id}`, director)).body!;
@@ -343,17 +351,17 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(rejectionInvariant((await json(`/spot-procurements/${id}`, applicant)).body!)).toEqual(rejectionInvariant(beforeWrongManager));
     expect((await json(`/spot-procurements/${id}/approval`, director, "POST", { decision: "return_to_applicant", comment: "请补充现场用途", ...firstCoordinates })).status).toBe(201);
     const returned = await json(`/spot-procurements/${id}`, applicant);
-    expect(returned.body).toMatchObject({ procurement: { status: "draft" }, currentVersion: { versionNo: 2, status: "draft" }, versions: [{ versionNo: 2 }, { versionNo: 1, reason: "旧版采购原因-api" }] });
+    expect(returned.body).toMatchObject({ procurement: { status: "draft" }, currentVersion: { versionNo: 2, requestProtocolVersion: 1, status: "draft" }, versions: [{ versionNo: 2 }, { versionNo: 1, reason: "旧版采购原因-api" }] });
     expect(immutableDraftFacts(returned.body!)).toEqual(initialFacts);
     const frozenV1AfterReturn = returned.body!.versions.find((version) => version.versionNo === 1)!;
     expect(returned.body!.entrySnapshots).toEqual(frozenV1);
 
-    const definitions = (await json(
-      `/spot-procurements/projects/${projectIds.api}/application-definitions`,
-      applicant
-    )).body as unknown as { application: { version: number }; line: { version: number } };
+    const entryDefinitionVersions = {
+      application: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition("spot_procurement.application").version,
+      line: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition("spot_procurement.application_line").version
+    };
     const baseRevision = {
-      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
+      entryDefinitionVersions,
       applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-02", reason: "新版补充后采购原因",
       attachments: returned.body!.attachments.map((attachment) => ({ fileId: attachment.fileId, category: "merchant_quote" }))
     };
@@ -387,7 +395,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(firstUpload).toMatchObject({ status: 201, body: { id: expect.any(String) } });
     expect(replayUpload).toEqual(firstUpload);
     expect((await json(`/spot-procurements/${id}/draft`, applicant, "PATCH", {
-      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
+      entryDefinitionVersions,
       applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-02", reason: "新版补充后采购原因",
       lines: [
         { materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "0.01", note: "已补充" },
@@ -443,7 +451,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
   }, 60_000);
 
   (enabled ? it : it.skip)("公开链从实付与少货收货到财务登记退款", async () => {
-    const id = await createDraft(projectIds.api, "refund");
+    const id = await seedHistoricalDraft(projectIds.api, "refund");
     expectHttpStatus("采购提交", await json(`/spot-procurements/${id}/submission`, applicant, "POST", {}), 201);
     expectHttpStatus("物资审批", await reviewCurrent(id, director, "approve", "物资确认"), 201);
     expectHttpStatus("项目审批", await reviewCurrent(id, manager, "approve", "项目确认"), 201);
@@ -575,7 +583,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     const actor = {applicant, materialsA: director, materialsB: secondDirector, manager};
     return {
       async createSubmittedApplication(label) {
-        const id = await createDraft(projectIds.api, label);
+        const id = await seedHistoricalDraft(projectIds.api, label);
         expectHttpStatus(`${label}提交`, await json(`/spot-procurements/${id}/submission`, applicant, "POST", {}), 201);
         return id;
       },
@@ -656,7 +664,9 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     const positions = await db.position.findMany({where: {key: {in: ["material_director", "project_manager"]}}});
     const assignmentIds: string[] = [];
     try {
-      for (const position of positions) assignmentIds.push((await db.userPosition.create({data: {userId, positionId: position.id, projectId: projectIds.api}})).id);
+      for (const position of positions) assignmentIds.push((await db.userPosition.create({
+        data: {userId, positionId: position.id, projectId: position.key === "material_director" ? null : projectIds.api}
+      })).id);
       const signature = new FormData();
       signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], {type:"image/png"}), "合成本人签名.png");
       expect((await fetch(`${baseUrl}/me/signature/canvas`, {method:"POST",headers:{authorization:`Bearer ${applicant.tokens.accessToken}`},body:signature})).status).toBe(201);
