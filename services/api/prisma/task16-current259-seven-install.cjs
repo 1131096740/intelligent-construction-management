@@ -9,7 +9,7 @@ const {isDeepStrictEqual:equal,types}=require('node:util');
 // profile rejects any earlier resource load in the same process.
 const {claimCurrent259ProvisionedRoles}=require('./task16-current259-role-provision.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
-const {loadCurrent259CatalogMaterial,current259Schema205WitnessSql}=require('./task16-current259-catalog.cjs');
+const {loadCurrent259CatalogMaterial,current259Schema205WitnessSql,current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {renderCurrent259SevenPreimage,parseCurrent259SevenPreimage,describeCurrent259SevenPreimageFailure}=require('./task16-current259-seven-preimage.cjs');
 const {functionProofSql}=require('./task16-registered-access-check.cjs');
 const {registeredObjectWitnessSql,schema205RegistrySql,schema205RegistryValid,schema205EnforceConfigSql,SCHEMA205_DEPARSE_LOCAL}=require('./task16-registered-object-witness.cjs');
@@ -479,20 +479,29 @@ function archiveSevenMaterial(lease,view,nonce){
    const prior=readResult(result,input,0,nonce);
    need(!prior.fileRoles.includes(executor.oid)&&!prior.registry.publicRoutine.acl.some(row=>row[1]===executor.oid),'ARCHIVE_EXECUTOR');
    const oldRegistry=prior.registry.publicRoutine;
-   const collisionRoutines=[
+   const archiveAclRoutines=[
     'public.jg_has_exclusive_file_business_binding(pg_catalog.text)',
     'public.jg_enforce_exclusive_file_business_binding()',
-   ].map(signature=>`pg_catalog.to_regprocedure(${quote(signature)})`).join(',');
+    'public.jg_contract_direct_pending_input_v1(pg_catalog.text)',
+   ].map(signature=>`pg_catalog.to_regprocedure(${quote(signature)})`);
+   const routineFilter=`p.oid IN (${archiveAclRoutines.join(',')})`;
+   const executorAcl=`a.grantee=${executor.oid}::oid`;
+   const ownerExecute="a.grantor=p.proowner AND a.privilege_type='EXECUTE' AND NOT a.is_grantable";
+   const exactExecutorAcl=`(SELECT count(*)=${archiveAclRoutines.length} FROM pg_catalog.pg_proc p
+    WHERE ${routineFilter} AND p.proowner=10
+     AND (SELECT count(*)=1 AND bool_and(${ownerExecute})
+      FROM ${current259AclRowsSql('p.proacl')} a WHERE ${executorAcl}) IS TRUE)`;
    const witness=current259Schema205WitnessSql(),acl="coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))";
    need(witness.split(acl).length===2,'ARCHIVE_WITNESS');
-   // The archive stage proved all 24 grants. Both collision routines in this
-   // witness need the original ACL projection for the historical digest.
-   const historicCollisionAcl=`CASE WHEN p.oid IN (${collisionRoutines}) THEN ARRAY(
-    SELECT u.entry FROM pg_catalog.unnest(p.proacl) u(entry)
+   // The historical witness overlaps two collision grants and the direct
+   // pending-input grant. Project those exact rows out of the digest only.
+   const historicArchiveAcl=`CASE WHEN ${routineFilter} THEN (
+    SELECT pg_catalog.array_agg(u.entry ORDER BY u.ord)
+    FROM pg_catalog.unnest(p.proacl) WITH ORDINALITY u(entry,ord)
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(ARRAY[u.entry]) a
-     WHERE a.grantor=p.proowner AND a.grantee=${executor.oid}::oid AND a.privilege_type='EXECUTE' AND NOT a.is_grantable))
+     WHERE ${executorAcl} AND ${ownerExecute}))
     ELSE ${acl} END`;
-   const historicWitness=witness.replace(acl,()=>historicCollisionAcl);
+   const historicWitness=witness.replace(acl,()=>historicArchiveAcl);
    const overlay=[...oldRegistry.acl,['10',executor.oid,'EXECUTE',false]].sort((a,b)=>Number(a[0])-Number(b[0])||Number(a[1])-Number(b[1])||a[2].localeCompare(b[2])||Number(a[3])-Number(b[3]));
    const expectedMiddle={...prior.registry,publicRoutine:{...oldRegistry,acl:overlay}};
    const midGuard=`CREATE TEMP TABLE jg_current259_seven_archive_registry ON COMMIT DROP AS SELECT ${schema205RegistrySql()} AS registry;
@@ -501,9 +510,13 @@ DECLARE observed jsonb;
 BEGIN
  SELECT registry INTO STRICT observed FROM pg_temp.jg_current259_seven_archive_registry;
  IF jsonb_set(observed,'{publicRoutine,rawAcl}',${json(oldRegistry.rawAcl)}) IS DISTINCT FROM ${json(expectedMiddle)}
-  OR ${stableSql(input,json(prior.registry),historicWitness,true)} IS DISTINCT FROM ${quote(prior.catalogSha256)}
-  OR ${fileRolesSql(input)} IS DISTINCT FROM ${json(prior.fileRoles)}
- THEN RAISE EXCEPTION '${CODE}_ARCHIVE_PREIMAGE_DRIFT'; END IF;
+ THEN RAISE EXCEPTION '${CODE}_ARCHIVE_PREIMAGE_DRIFT REGISTRY';
+ ELSIF ${fileRolesSql(input)} IS DISTINCT FROM ${json(prior.fileRoles)}
+ THEN RAISE EXCEPTION '${CODE}_ARCHIVE_PREIMAGE_DRIFT FILE_ROLES';
+ ELSIF ${exactExecutorAcl} IS DISTINCT FROM true
+   OR ${stableSql(input,json(prior.registry),historicWitness,true)} IS DISTINCT FROM ${quote(prior.catalogSha256)}
+ THEN RAISE EXCEPTION '${CODE}_ARCHIVE_PREIMAGE_DRIFT DIGEST';
+ END IF;
 END $current259_seven_archive_mid$;`;
    return Object.freeze({
     backendPid:prior.backendPid,backendStart:prior.backendStart,
