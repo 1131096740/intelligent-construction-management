@@ -1309,7 +1309,7 @@ test("default and list modes stay read-only even with no executable PATH", () =>
   }
 });
 
-async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture", failPreparation = false) {
+async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture", failPreparation = false, shard) {
   // Exercise the real executeGate/finally filesystem lifecycle. Infrastructure
   // callbacks are substituted; this fixture does not execute a business/PG gate.
   const Module = require('node:module');
@@ -1317,14 +1317,17 @@ async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture"
   fixtureModule.filename = runnerPath;
   fixtureModule.paths = Module._nodeModulePaths(path.dirname(runnerPath));
   const hook = `
-module.exports.artifactLifecycleFixture = async (shouldFail, groupId, failPreparation) => {
+module.exports.artifactLifecycleFixture = async (shouldFail, groupId, failPreparation, shard) => {
   let preparations = 0;
   let childEnvironment;
+  let childArgs;
+  let receipt;
   let directory;
   assertExecutionArguments = () => {};
   assertSafeExecutionEnvironment = () => {};
-  selectCoveredGroups = () => [{ id: groupId, pendingTests: 1, runner: {} }];
-  selectedCoverage = () => ({ coveredFiles: 1, coveredTests: 1 });
+  const group = shard ? loadManifest().coveredGroups.find(entry => entry.id === groupId) : { id: groupId, pendingTests: 1, runner: {} };
+  selectCoveredGroups = () => [group];
+  if (!shard) selectedCoverage = () => ({ coveredFiles: 1, coveredTests: 1 });
   createProbeEnvironment = () => ({});
   assertRepositoryState = async () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   resolveLocalDocker = async () => ({ endpoint: 'unix:///fixture', imageId: 'fixture-only' });
@@ -1334,8 +1337,9 @@ module.exports.artifactLifecycleFixture = async (shouldFail, groupId, failPrepar
     preparations += 1;
     if (failPreparation) throw new Error('controlled preflight failure');
   };
-  resolveGroupCommand = () => ({ command: 'fixture', args: [] });
+  if (!shard) resolveGroupCommand = () => ({ command: 'fixture', args: [] });
   runCommand = async (_command, _args, options) => {
+    childArgs = _args;
     childEnvironment = options.env;
     await require('node:fs/promises').mkdir(path.join(directory, 'browser-failure'));
     await require('node:fs/promises').writeFile(path.join(directory, 'browser-failure', 'trace.zip'), 'synthetic-private-trace');
@@ -1343,13 +1347,14 @@ module.exports.artifactLifecycleFixture = async (shouldFail, groupId, failPrepar
   };
   let failure;
   try {
-    await executeGate({ manifest: { id: 'filesystem-lifecycle-fixture', executionPolicy: { confirmation: 'fixture' },
-      migrationBaseline: { containerImage: 'fixture', expectedDirectoryCount: 0 }, inventory: { remainingTests: 0, remainingFiles: 0 } }, options: {} });
+    receipt = await executeGate({ manifest: { id: 'filesystem-lifecycle-fixture', executionPolicy: { confirmation: 'fixture' },
+      migrationBaseline: { containerImage: 'fixture', expectedDirectoryCount: 0 }, inventory: { remainingTests: 0, remainingFiles: 0 } },
+      options: shard ? { groups: [groupId], pol113Pol115Shard: shard } : {} });
   } catch (error) { failure = error; }
-  return { directory, failure, preparations, childEnvironment };
+  return { directory, failure, preparations, childEnvironment, childArgs, receipt };
 };`;
   fixtureModule._compile("const process = { ...require('node:process'), stdout: { write: () => true }, stderr: { write: () => true } };\n" + readFileSync(runnerPath, 'utf8').replace(/^#!.*\n/u, '') + hook, runnerPath);
-  return fixtureModule.exports.artifactLifecycleFixture(shouldFail, groupId, failPreparation);
+  return fixtureModule.exports.artifactLifecycleFixture(shouldFail, groupId, failPreparation, shard);
 }
 
 test('failed dynamic gate preserves its private browser trace instead of deleting evidence', async () => {
@@ -1389,9 +1394,24 @@ test("POL113-POL115 preparation is issued only after the selected gate preflight
   assert.equal(inherited.POL113_POL115_PREPARED_SHA, undefined);
 });
 
+test("POL113-POL115 exact gate emits a distinct shard receipt only after that shard returns", async () => {
+  for (const [shard, files, tests] of [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 150]]) {
+    const result = await artifactLifecycleFixture(false, "pol113_pol115_business_entries", false, shard);
+    assert.equal(result.failure, undefined);
+    assert.equal(result.receipt.candidateSha, "a".repeat(40));
+    assert.equal(result.receipt.status, "passed");
+    assert.equal(result.receipt.coveredFiles, files);
+    assert.equal(result.receipt.coveredTests, tests);
+    assert.equal(result.receipt.groups[0].shard, shard);
+    assert.deepEqual(result.childArgs.slice(1), ["--shard", shard]);
+    assert.ok(path.basename(result.directory).startsWith("jiangkong-database-dynamic-gate-" + shard + "-"));
+  }
+});
+
 test("POL113-POL115 runners preserve all five test batches with and without prepared sources", async () => {
   const { createRequire } = require("node:module");
   const { runInNewContext } = require("node:vm");
+  const { BATCH_FILES } = require("./pol113-pol115-shards.cjs");
   const containerId = "a".repeat(64);
   const sha = "b".repeat(40);
   const profiles = [
@@ -1410,8 +1430,12 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
       ["src/settlement/settlement-template-workbench.http.pg.spec.ts"]
     ]]
   ];
-  for (const prepared of [false, true]) {
-    for (const [name, batches] of profiles) {
+  assert.deepEqual(profiles.map(([, batches]) => batches), [
+    [BATCH_FILES.pol113], [BATCH_FILES.pol115], [BATCH_FILES.pol114, BATCH_FILES.spot, BATCH_FILES.workbench]
+  ]);
+  for (const [prepared, shard] of [[false], [true], [true, "pol113_pol114"], [true, "pol115_workbench"],
+    [false, "pol113_pol114"], [true, "unknown"]]) {
+    for (const [name, defaultBatches] of shard ? profiles.slice(2) : profiles) {
       const filename = path.join(__dirname, name);
       const load = createRequire(filename);
       const env = {
@@ -1421,10 +1445,13 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
         ...(prepared ? { POL113_POL115_PREPARED_SHA: sha } : {})
       };
       const calls = [], staged = [];
+      const order = [];
       const module = { exports: {} };
       const injected = {
         "node:child_process": { spawnSync(bin, args, options) {
           calls.push({ bin, args: [...args], env: options.env, timeout: options.timeout });
+          const leaf = profiles.slice(0, 2).find(([runner]) => args[0] === path.join(__dirname, runner));
+          if (leaf) order.push(leaf[0]);
           return { status: 0, stderr: "", stdout: args.includes("run") ? containerId : args.includes("port") ? "127.0.0.1:54321" : "" };
         } },
         "node:fs": { mkdtempSync: () => "/fixture", rmSync() {} },
@@ -1432,17 +1459,25 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
         "./local-staged-ci-dynamic.cjs": {
           CI_DYNAMIC_MIGRATION_LABEL: "synthetic",
           createCiDynamicMigrationFixture(options) {
-            return { async migrate() { staged.push(...options.databaseNames); } };
+            return { async migrate() { staged.push(...options.databaseNames); order.push(...options.databaseNames); } };
           }
         }
       };
       const source = readFileSync(filename, "utf8").replace("main().catch", "module.exports = main().catch");
       runInNewContext(source, {
         module, __dirname, console: { log() {} },
-        process: { ...process, env, argv: [process.execPath, filename], stdout: { write() {} }, stderr: { write() {} } },
+        process: { ...process, env, argv: [process.execPath, filename, ...(shard ? ["--shard", shard] : [])],
+          stdout: { write() {} }, stderr: { write() {} } },
         require: id => injected[id] ?? load(id)
       }, { filename });
       await module.exports;
+      if (shard && (!prepared || shard === "unknown")) {
+        assert.equal(calls.length, 0);
+        assert.equal(staged.length, 0);
+        continue;
+      }
+      const batches = shard === "pol113_pol114" ? defaultBatches.slice(0, 1) :
+        shard === "pol115_workbench" ? defaultBatches.slice(1) : defaultBatches;
       const testCalls = calls.filter(({ bin }) => bin === "pnpm");
       const prefix = prepared ? ["exec", "jest"] : ["test", "--"];
       assert.deepEqual(testCalls.map(call => call.args), batches.map(specs =>
@@ -1452,8 +1487,51 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
       const subRunners = calls.filter(({ args }) => profiles.slice(0, 2).some(([runner]) => args[0] === path.join(__dirname, runner)));
       for (const call of subRunners) assert.equal(call.env.POL113_POL115_PREPARED_SHA, prepared ? sha : undefined);
       if (name === profiles[0][0]) assert.equal(testCalls[0].timeout, 180_000);
+      if (name === profiles[2][0]) {
+        const [pol113, pol115] = profiles.map(([runner]) => runner);
+        assert.deepEqual(order, shard === "pol113_pol114" ? [pol113, "jiangkong_pol114"] :
+          shard === "pol115_workbench" ? [pol115, "jiangkong_pol115_spot_entry_test", "template_workbench"] :
+            [pol113, pol115, "jiangkong_pol114", "jiangkong_pol115_spot_entry_test", "template_workbench"]);
+      }
     }
   }
+});
+
+test("POL113-POL115 shard coverage partitions exactly 181 original cases without changing the aggregate", () => {
+  const { POL113_POL115_GROUP, SHARDS, projectPol113Pol115Shard } = require("./pol113-pol115-shards.cjs");
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(group => group.id === POL113_POL115_GROUP);
+  const listing = (...args) => {
+    const result = spawnSync(process.execPath, [runnerPath, "--list", ...args], { encoding: "utf8", env: { PATH: "" } });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const aggregate = listing("--group", group.id);
+  assert.equal(aggregate.shard, undefined);
+  assert.equal(aggregate.coveredTests, 181);
+  const shardNames = Object.keys(SHARDS);
+  const shards = shardNames.map(shard => listing("--group", group.id, "--pol113-pol115-shard", shard));
+  assert.deepEqual(shards.map(receipt => [receipt.shard, receipt.coveredFiles, receipt.coveredTests]),
+    [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 150]]);
+  const allFiles = shards.flatMap(shard => shard.coveredGroups[0].testFiles);
+  assert.equal(new Set(allFiles).size, 10);
+  assert.deepEqual(allFiles.sort(), [...aggregate.coveredGroups[0].testFiles].sort());
+  for (const shard of shardNames) assert.deepEqual(resolveGroupCommand(projectPol113Pol115Shard(group, shard)).args,
+    [path.join(__dirname, "run-pol113-pol115-entry-local.cjs"), "--shard", shard]);
+  assert.deepEqual(resolveGroupCommand(group).args, [path.join(__dirname, "run-pol113-pol115-entry-local.cjs")]);
+  for (const args of [
+    [],
+    ["--automatic-only"],
+    ["--group", "contract_settlement_v2"],
+    ["--group", group.id, "--group", "contract_settlement_v2"]
+  ]) assert.throws(() => parseArguments([...args, "--pol113-pol115-shard", shardNames[0]]), /POL113-POL115 数据库组/u);
+  for (const bad of ["", "unknown", "constructor"]) {
+    assert.throws(() => parseArguments(["--group", group.id, "--pol113-pol115-shard", bad]), /子分片无效|缺少值/u);
+  }
+  assert.throws(() => parseArguments(["--group", group.id, "--pol113-pol115-shard", shardNames[0],
+    "--pol113-pol115-shard", shardNames[1]]), /不能重复/u);
+  assert.throws(() => projectPol113Pol115Shard({ ...group, testFiles: group.testFiles.slice(1) }, shardNames[0]),
+    /原登记测试一次/u);
 });
 
 test("POL113-POL115 rejects an incomplete or stale prepared-source SHA", () => {

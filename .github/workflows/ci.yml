@@ -196,7 +196,7 @@ jobs:
         run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.upload-draft.config.ts
 
   postgresql16-dynamic-gates:
-    name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
+    name: PostgreSQL 16 dynamic gate (${{ matrix.shard && format('{0}/{1}', matrix.group, matrix.shard) || matrix.group }})
     runs-on: ${{ matrix.group == 'pol113_pol115_business_entries' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
     timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
@@ -221,11 +221,15 @@ jobs:
           - operating_projection_pol108_facts
           - operating_projection_pol108_impacts
           - project_close_profit_pol109
-          - pol113_pol115_business_entries
           - remaining_dynamic_postgresql16
           - employee_onboarding
           - general_procurement
           - contract_finance_acceptance
+        include:
+          - group: pol113_pol115_business_entries
+            shard: pol113_pol114
+          - group: pol113_pol115_business_entries
+            shard: pol115_workbench
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -330,13 +334,18 @@ jobs:
       - name: Run exact-SHA PostgreSQL dynamic gate shard
         env:
           DYNAMIC_GROUP: ${{ matrix.group }}
+          DYNAMIC_SHARD: ${{ matrix.shard }}
         run: |
           candidate_sha="$(git rev-parse HEAD)"
+          shard_args=()
+          if [ -n "$DYNAMIC_SHARD" ]; then
+            shard_args=(--pol113-pol115-shard "$DYNAMIC_SHARD")
+          fi
           node services/api/prisma/run-database-dynamic-gate-local.cjs \
             --execute \
             --group "$DYNAMIC_GROUP" \
             --candidate-sha "$candidate_sha" \
-            --confirm LOCAL_PG16_DYNAMIC_GATE
+            --confirm LOCAL_PG16_DYNAMIC_GATE "${shard_args[@]}"
 
       - name: Verify personnel feedback and recovery on desktop and mobile
         if: ${{ matrix.group == 'employee_onboarding' }}

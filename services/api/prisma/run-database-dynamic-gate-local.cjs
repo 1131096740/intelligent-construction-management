@@ -18,6 +18,9 @@ const {
   deriveMigrationBaseline
 } = require("./migration-baseline.cjs");
 const { resolveCorepackHome } = require("./money-bigint-runner-runtime.cjs");
+const {
+  POL113_POL115_GROUP, pol113Pol115Batches, assertPol113Pol115Coverage, projectPol113Pol115Shard
+} = require("./pol113-pol115-shards.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const manifestPath = path.join(
@@ -261,6 +264,7 @@ function validateManifest(manifest) {
     if (groupTests !== group.pendingTests) {
       fail(`coveredGroups.${group.id} pendingTests 与文件小计不一致`);
     }
+    if (group.id === POL113_POL115_GROUP) assertPol113Pol115Coverage(group);
     validateRunner(group.runner, group.id, rootPackage, apiPackage);
     coveredTests += group.pendingTests;
   }
@@ -356,6 +360,12 @@ function parseArguments(argv) {
       const group = argv[++index];
       if (!group) fail("--group 缺少数据库组名称");
       options.groups.push(group);
+    } else if (argument === "--pol113-pol115-shard") {
+      if (options.pol113Pol115Shard !== undefined) fail("--pol113-pol115-shard 不能重复");
+      const shard = argv[++index];
+      if (!shard) fail("--pol113-pol115-shard 缺少值");
+      pol113Pol115Batches(shard);
+      options.pol113Pol115Shard = shard;
     } else if (TASK01_FLAGS.includes(argument)) {
       if (Object.hasOwn(task01, argument)) fail(`任务01独立参数重复：${argument}`);
       task01[argument] = argv[++index];
@@ -367,6 +377,7 @@ function parseArguments(argv) {
   if (modes.size > 1) fail("--list、--validate-manifest 与 --execute 只能选择一个");
   options.mode = [...modes][0] ?? "preview";
   assertAutomaticSelection(options, Object.keys(task01).length > 0);
+  assertPol113Pol115Selection(options);
   if (Object.keys(task01).length) {
     if (options.mode !== "execute" || !options.groups.includes(TASK01_GROUP)) {
       fail("任务01独立参数只能用于显式单独执行任务01组");
@@ -400,11 +411,23 @@ function assertAutomaticSelection(options, hasTask01Inputs = Boolean(options.tas
 }
 
 function groupsForInvocation(manifest, options) {
+  assertPol113Pol115Selection(options);
+  if (options.pol113Pol115Shard !== undefined) {
+    const [group] = selectCoveredGroups(manifest, options.groups);
+    return [projectPol113Pol115Shard(group, options.pol113Pol115Shard)];
+  }
   if (!options.automaticOnly) return selectCoveredGroups(manifest, options.groups);
   assertAutomaticSelection(options);
   const automatic = manifest.coveredGroups.filter(group => ciExecutionFor(group) === "automatic");
   if (automatic.length === 0) fail("--automatic-only 未找到自动执行组");
   return automatic;
+}
+
+function assertPol113Pol115Selection(options) {
+  if (options.pol113Pol115Shard !== undefined &&
+    (options.automaticOnly || options.groups.length !== 1 || options.groups[0] !== POL113_POL115_GROUP)) {
+    fail("--pol113-pol115-shard 仅用于单独选择 POL113-POL115 数据库组");
+  }
 }
 
 function automaticScopeEvidence(manifest, options) {
@@ -651,6 +674,12 @@ function resolveGroupCommand(group, options = {}) {
       "--shard", pol108Shards[group.id]
     ] };
   }
+  if (group.id === POL113_POL115_GROUP && group.pol113Pol115Shard !== undefined) {
+    return { command: process.execPath, args: [
+      resolveRepositoryPath(group.runner.path, `${group.id}.runner.path`),
+      "--shard", group.pol113Pol115Shard
+    ] };
+  }
   if (group.runner.kind === "workspaceScript") {
     return { command: pnpm, args: [group.runner.script] };
   }
@@ -698,7 +727,8 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       coveredTests: 1, fullDynamicGate: false, executionInventory: executionInventory(coveredGroups), ciExecution: "manual-only" };
   }
   const temporaryRoot = await mkdtemp(
-    path.join(tmpdir(), "jiangkong-database-dynamic-gate-")
+    path.join(tmpdir(), "jiangkong-database-dynamic-gate-" +
+      (options.pol113Pol115Shard === undefined ? "" : options.pol113Pol115Shard + "-"))
   );
   const startedAt = new Date();
   const groupReceipts = [];
@@ -732,7 +762,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       const groupStartedAt = Date.now();
       const resolved = resolveGroupCommand(group);
       const groupEnvironment = { ...childEnvironment };
-      if (group.id === "pol113_pol115_business_entries") {
+      if (group.id === POL113_POL115_GROUP) {
         // The preflight above generated this checkout's client and built the API.
         groupEnvironment.POL113_POL115_PREPARED_SHA = candidateSha;
       }
@@ -743,7 +773,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
         );
       }
       process.stdout.write(
-        `[database-dynamic-gate] start ${group.id} (${group.pendingTests} pending tests)\n`
+        `[database-dynamic-gate] start ${group.id}${group.pol113Pol115Shard ? "/" + group.pol113Pol115Shard : ""} (${group.pendingTests} pending tests)\n`
       );
       await runCommand(resolved.command, resolved.args, {
         env: groupEnvironment,
@@ -751,6 +781,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       });
       groupReceipts.push({
         id: group.id,
+        ...(group.pol113Pol115Shard ? { shard: group.pol113Pol115Shard } : {}),
         pendingTests: group.pendingTests,
         durationMs: Date.now() - groupStartedAt,
         status: "passed"
@@ -802,6 +833,7 @@ function preview(manifest, validation, options) {
     schemaVersion: 1,
     gate: manifest.id,
     mode: options.mode,
+    ...(options.pol113Pol115Shard ? { shard: options.pol113Pol115Shard } : {}),
     executed: false,
     executionInventory: executionInventory(coveredGroups),
     ...automaticScopeEvidence(manifest, options),

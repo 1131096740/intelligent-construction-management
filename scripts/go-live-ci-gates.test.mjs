@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import pol113Pol115Shards from "../services/api/prisma/pol113-pol115-shards.cjs";
 import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -289,8 +290,14 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,
-    ciGroups.map((group) => group.id)
+    ciGroups.filter(group => group.id !== pol113Pol115Shards.POL113_POL115_GROUP).map((group) => group.id)
   );
+  const matrixShards = [...dynamic.matchAll(/^ {10}- group: ([a-z0-9_]+)\n {12}shard: ([a-z0-9_]+)$/gmu)]
+    .map(([, group, shard]) => [group, shard]);
+  assert.deepEqual(matrixShards, Object.keys(pol113Pol115Shards.SHARDS)
+    .map(shard => [pol113Pol115Shards.POL113_POL115_GROUP, shard]));
+  assert.match(dynamic, /name: PostgreSQL 16 dynamic gate \(\$\{\{ matrix\.shard && format\('\{0\}\/\{1\}', matrix\.group, matrix\.shard\) \|\| matrix\.group \}\}\)/u);
+  assert.match(dynamic, /DYNAMIC_SHARD: \$\{\{ matrix\.shard \}\}[\s\S]*?shard_args=\(--pol113-pol115-shard "\$DYNAMIC_SHARD"\)[\s\S]*?--confirm LOCAL_PG16_DYNAMIC_GATE "\$\{shard_args\[@\]\}"/u);
   assert.match(dynamic, /fail-fast: false/u);
   assert.match(dynamic, /--group "\$DYNAMIC_GROUP"/u);
   assert.match(dynamic, /--candidate-sha "\$candidate_sha"/u);

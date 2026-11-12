@@ -9,6 +9,7 @@ const path = require("node:path");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
 const { pol113Pol115JestArgs } = require("./pol113-pol115-jest-command.cjs");
+const { BATCH_FILES, pol113Pol115Batches } = require("./pol113-pol115-shards.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const pnpm = process.env.PNPM_BIN?.trim() || "pnpm";
@@ -115,44 +116,53 @@ async function runDedicatedDatabase({ id, database, flags, spec }) {
 
 async function main() {
   if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
+  const args = process.argv.slice(2);
+  if (args.length !== 0 && (args.length !== 2 || args[0] !== "--shard" ||
+    process.env.POL113_POL115_PREPARED_SHA === undefined)) {
+    throw new Error("POL113-POL115 子分片必须由已准备的动态门启动");
+  }
+  const selected = pol113Pol115Batches(args[1]);
   localDockerEndpoint();
 
-  command(process.execPath, [path.join(__dirname, "run-pol113-http-local.cjs")], {
-    ...process.env,
-    PNPM_BIN: pnpm,
-    RUN_POL113_PROJECT_BROWSER: "1"
-  });
-  command(process.execPath, [path.join(__dirname, "run-pol115-entry-local.cjs")], {
-    ...process.env,
-    PNPM_BIN: pnpm,
-    RUN_POL115_BROWSER: "1"
-  });
-  await runDedicatedDatabase({
-    id: "pol114-entry",
-    database: "jiangkong_pol114",
-    flags: {
-      RUN_POL114_HTTP_PG16: "1",
-      RUN_POL114_BROWSER: "1",
-      RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16: "1",
-      RUN_POL114_PAYMENT_HTTP_PG16: "1"
-    },
-    spec: "src/database/contract-business-entry-http.spec.ts"
-  });
-  await runDedicatedDatabase({
-    id: "pol115-spot-entry",
-    database: "jiangkong_pol115_spot_entry_test",
-    flags: {
-      RUN_POL115_SPOT_ENTRY_PG16: "1",
+  const batches = {
+    pol113: () => command(process.execPath, [path.join(__dirname, "run-pol113-http-local.cjs")], {
+      ...process.env,
+      PNPM_BIN: pnpm,
+      RUN_POL113_PROJECT_BROWSER: "1"
+    }),
+    pol115: () => command(process.execPath, [path.join(__dirname, "run-pol115-entry-local.cjs")], {
+      ...process.env,
+      PNPM_BIN: pnpm,
       RUN_POL115_BROWSER: "1"
-    },
-    spec: "src/spot-procurement/spot-procurement-entry.http.pg.spec.ts"
-  });
-  await runDedicatedDatabase({
-    id: "settlement-template-workbench",
-    database: "template_workbench",
-    flags: { RUN_TEMPLATE_WORKBENCH_PG16: "1" },
-    spec: "src/settlement/settlement-template-workbench.http.pg.spec.ts"
-  });
+    }),
+    pol114: () => runDedicatedDatabase({
+      id: "pol114-entry",
+      database: "jiangkong_pol114",
+      flags: {
+        RUN_POL114_HTTP_PG16: "1",
+        RUN_POL114_BROWSER: "1",
+        RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16: "1",
+        RUN_POL114_PAYMENT_HTTP_PG16: "1"
+      },
+      spec: BATCH_FILES.pol114[0]
+    }),
+    spot: () => runDedicatedDatabase({
+      id: "pol115-spot-entry",
+      database: "jiangkong_pol115_spot_entry_test",
+      flags: {
+        RUN_POL115_SPOT_ENTRY_PG16: "1",
+        RUN_POL115_BROWSER: "1"
+      },
+      spec: BATCH_FILES.spot[0]
+    }),
+    workbench: () => runDedicatedDatabase({
+      id: "settlement-template-workbench",
+      database: "template_workbench",
+      flags: { RUN_TEMPLATE_WORKBENCH_PG16: "1" },
+      spec: BATCH_FILES.workbench[0]
+    })
+  };
+  for (const name of selected) await batches[name]();
 }
 
 main().catch(error => {
