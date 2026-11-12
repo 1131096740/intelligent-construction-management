@@ -87,9 +87,13 @@ jobs:
           bash scripts/ops/go-live-safety-self-test.sh
 
   unit-test-gates:
-    name: Unit test gates
+    name: Unit test gates (${{ matrix.target }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api-1, api-2, api-3, api-4, web, shared-domain]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -118,13 +122,23 @@ jobs:
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @jiangkong/api exec prisma generate
-
-      - name: Test
+      - name: Test API shard
+        if: startsWith(matrix.target, 'api-')
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm test
+          API_TEST_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shard="${API_TEST_TARGET#api-}"
+          pnpm --filter @jiangkong/api test --runInBand --shard="$shard/4"
+
+      - name: Test Web
+        if: matrix.target == 'web'
+        run: pnpm --filter @jiangkong/web-admin test
+
+      - name: Test shared domain
+        if: matrix.target == 'shared-domain'
+        run: pnpm --filter @jiangkong/shared-domain test
 
   build-manifest-gates:
     name: Build and manifest gates
