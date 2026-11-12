@@ -1,7 +1,8 @@
 'use strict';
-const { readFileSync } = require('node:fs');
-const { join } = require('node:path');
-const { createHash } = require('node:crypto');
+const {describeMigration261GeneratedLifecycleOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
+const {describeMigration261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl.cjs');
+const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
+const {generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
 const DATABASE = 'jiangkong_contract_draft_aggregate_test';
 const TERMINAL = '20261111140000_contract_direct_upward_retention_acl_source_v3';
 const DOCUMENT_ROLES = Object.freeze({ template: 'jg_c259_doc_template', worker: 'jg_c259_doc_worker', queue: 'jg_c259_doc_queue' });
@@ -11,41 +12,29 @@ const fail = suffix => { throw new Error('TASK12_NATIVE_FIXTURE_' + suffix); };
 function validateNativeLifecycleScope(scope) {
   if (!scope || scope.database !== DATABASE || !/^jg_fixture_app_[a-f0-9]{24}$/u.test(scope.appName) ||
     !/^[1-9][0-9]{1,9}$/u.test(scope.appOid) || scope.appOid === '10' || scope.migrationCount !== 261 || scope.terminal !== TERMINAL) fail('SCOPE');
+  qualifyCurrent261GeneratedLifecycleSource(scope.source);
 }
-function manifest(name, expected) {
-  const bytes = readFileSync(join(__dirname, name));
-  if (createHash('sha256').update(bytes).digest('hex') !== expected) fail('MANIFEST');
-  return JSON.parse(bytes);
+function lifecycleMaterial(scope){
+ validateNativeLifecycleScope(scope);
+ const ordinary=describeMigration261GeneratedLifecycleOrdinaryAcl(scope.source);
+ const documents=describeMigration261GeneratedLifecycleDocumentAcl(scope.source);
+ if(ordinary.effectivePlanSha256!==documents.effectivePlanSha256||ordinary.installation!==documents.installation)fail('PLAN');
+ return {ordinary,documents};
 }
-// Only the extra columns reached by the original V2 inside lifecycle. The fixed
-// source requirements continue to supply ordinary file/auth read closures.
-const writes = {
-  BusinessDailySequence: { insert: ['prefix','businessDate','nextSequence','updatedAt'], update: ['nextSequence','updatedAt'] },
-  User: { update: ['signatureFileId'] },
-  ApprovalInstance: { insert: ['id','businessType','businessId','flowType','applicantUserId','status','currentNodeIndex','frozenNodes','createdAt','updatedAt'], update: ['frozenNodes','currentNodeIndex','status','updatedAt'] },
-  ApprovalActionLog: { insert: ['id','approvalInstanceId','action','actorUserId','representedUserId','approvedRoleKey','comment','metadata','signatureFileIdSnapshot','signatureSha256Snapshot','signatureVersionIdSnapshot','createdAt'], update: ['signatureFileIdSnapshot','signatureSha256Snapshot','signatureVersionIdSnapshot'] },
-  HandwrittenSignatureVersion: { insert: ['id','userId','source','fileId','contentSha256','createdAt'] },
-  ContractDraftSubmissionRequest: { insert: ['idempotencyKey','contractVersionId','expectedRevision','applicantUserId','requestSha256','approvalInstanceId','formalCode','responseSnapshot','createdAt'] },
-  ContractSealTask: { insert: ['id','contractVersionId','approvalInstanceId','handlerUserId','status','approvedByUserId','approvedAt','createdAt','updatedAt'], update: ['status','completedByUserId','completedAt','updatedAt'] },
-  ContractVersion: { update: ['status','firstSubmittedAt','readinessSnapshot','taxFactStatus','taxFactsFrozenAt','effectiveAt','updatedAt','signingSubjectType','companyEntityIdSnapshot','companyEntityVersionId','companyEntityNameSnapshot','companyEntityCreditCodeSnapshot'] },
-  ContractArchiveFile: { insert: ['id','contractVersionId','fileId','archiveProtocolVersion','archiveSource','uploadedByUserId','confirmedByUserId','confirmedAt','status','approvalInstanceId','sealTaskId','idempotencyKey','requestSha256','sourceRevision','documentContentRevision','documentContentFingerprint','authoritySnapshot','responseSnapshot','createdAt'] },
-  ContractArchiveEvidenceFile: { insert: ['id','archiveFileId','contractVersionId','fileId','displayOrder','mimeType','sizeBytes','contentSha256'] },
-  Contract: { update: ['code','updatedAt'] },
-  PaymentTermsVersion: { update: ['status','updatedAt'] }
-};
-function grant(role, table, operation, columns) {
-  if (!columns.length) return '';
-  return `GRANT ${operation.toUpperCase()} (${columns.map(ident).join(',')}) ON public.${ident(table)} TO ${ident(role)};`;
+function nativeLifecyclePlanBinding(scope){
+ const {ordinary,documents}=lifecycleMaterial(scope);
+ return Object.freeze({sourceSha:scope.source.candidateSha,ordinaryPurpose:ordinary.purpose,
+  ordinaryRequirementsSha256:ordinary.requirementsSha256,documentPurpose:documents.purpose,documentProfileSha256:documents.profileSha256,installation:documents.installation,effectivePlanSha256:documents.effectivePlanSha256});
 }
 function renderNativeLifecycleFixture(scope, secrets) {
-  validateNativeLifecycleScope(scope);
-  for (const key of ['application', ...Object.keys(DOCUMENT_ROLES)]) if (!/^[a-f0-9]{64}$/u.test(secrets[key])) fail('SECRET');
-  const ordinary = manifest('task16-current259-ordinary-archive-acl.requirements.json', '195a30acc5923f5b09a3c1bbafc2601cd7909628d815f6d63f62805e26e14759');
-  const documents = manifest('task12-current259-document-acl.json', 'd2dfd0f356152bb7acb41074b9aa39004907dc24c2359b0f2f9dffd8b49b3038');
-  const sql = ['BEGIN ISOLATION LEVEL SERIALIZABLE;', `DO $scope$ BEGIN
+ const {ordinary,documents}=lifecycleMaterial(scope);
+ const collision=generatedLifecycleCollisionSql(documents.collision);
+ for (const key of ['application', ...Object.keys(DOCUMENT_ROLES)]) if (!/^[a-f0-9]{64}$/u.test(secrets[key])) fail('SECRET');
+ const sql = ['BEGIN ISOLATION LEVEL SERIALIZABLE;', `DO $scope$ BEGIN
     IF current_database()<>${quote(scope.database)} OR current_user<>'jiangkong' OR session_user<>current_user
       OR current_setting('server_version_num')::integer NOT BETWEEN 160000 AND 169999
       OR (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)<>261
+      OR (SELECT jsonb_agg(jsonb_build_object('name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL) ORDER BY migration_name COLLATE "C",started_at,id) FROM public._prisma_migrations) IS DISTINCT FROM ${quote(JSON.stringify(scope.source.profile.ledger))}::jsonb
       OR NOT EXISTS(SELECT 1 FROM public._prisma_migrations WHERE migration_name=${quote(scope.terminal)} AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
       OR NOT EXISTS(SELECT 1 FROM pg_roles r WHERE r.oid=${scope.appOid}::oid AND r.rolname=${quote(scope.appName)}
         AND NOT (r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
@@ -55,36 +44,29 @@ function renderNativeLifecycleFixture(scope, secrets) {
       THEN RAISE EXCEPTION 'TASK12_NATIVE_FIXTURE_ROLE_EXISTS'; END IF;
   END $scope$;`,
   `ALTER ROLE ${ident(scope.appName)} LOGIN PASSWORD ${quote(secrets.application)} CONNECTION LIMIT 6;`];
-  // These exact two relations belong to the optional Task16 seven-fragment
-  // install, not the immutable 261 migration ledger. This native lifecycle
-  // neither installs nor exercises registered payments. Keep the source
-  // manifest unchanged and retain every other original grant.
-  const postMigrationPaymentTables = new Set(['RegisteredPaymentFunding','RegisteredPaymentVoucher']);
-  for (const [table, [select, insert, update, remove]] of Object.entries(ordinary.tables)) {
-    if (postMigrationPaymentTables.has(table)) continue;
-    for (const [op, columns] of Object.entries({ select, insert, update })) sql.push(grant(scope.appName, table, op, columns));
-    if (remove) sql.push(`GRANT DELETE ON public.${ident(table)} TO ${ident(scope.appName)};`);
-  }
-  for (const [table, operations] of Object.entries(writes)) for (const [op, columns] of Object.entries(operations)) sql.push(grant(scope.appName, table, op, columns));
-  // Prisma returns scalar records on these new writes. The exact local schema
-  // supplies only these fixed tables' scalar columns, never unrelated relations.
-  for (const table of Object.keys(writes)) sql.push(`DO $read$ DECLARE columns text; BEGIN
-    SELECT string_agg(quote_ident(attname),',' ORDER BY attnum) INTO columns FROM pg_attribute
-      WHERE attrelid=${quote('public.' + ident(table))}::regclass AND attnum>0 AND NOT attisdropped;
-    EXECUTE 'GRANT SELECT ('||columns||') ON public.${ident(table)} TO ${ident(scope.appName)}'; END $read$;`);
-  sql.push(`GRANT EXECUTE ON FUNCTION public.jg_has_exclusive_file_business_binding(text) TO ${ident(scope.appName)};`);
-  for (const [slot, role] of Object.entries(DOCUMENT_ROLES)) {
-    sql.push(`CREATE ROLE ${ident(role)} LOGIN PASSWORD ${quote(secrets[slot])} CONNECTION LIMIT 2 NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;`,
-      `GRANT CONNECT ON DATABASE ${ident(scope.database)} TO ${ident(role)};`, `GRANT USAGE ON SCHEMA public TO ${ident(role)};`);
-    for (const [table, operations] of Object.entries(documents.roles[role])) for (const [op, columns] of Object.entries(operations)) sql.push(grant(role, table, op, columns));
-    // All three original doc paths can insert references guarded by the existing
-    // company correction trigger. Supply only that invoker's real read columns.
-    sql.push(grant(role, 'ContractTakeoverCorrection', 'select', ['attachmentFileId','correctionType']));
-  }
-  sql.push('COMMIT;');
-  return sql.filter(Boolean).join('\n');
+ const grant=(role,row)=>row.column===null?`GRANT ${row.privilege} ON public.${ident(row.relation)} TO ${ident(role)};`:
+  `GRANT ${row.privilege} (${ident(row.column)}) ON public.${ident(row.relation)} TO ${ident(role)};`;
+ // Optional Task16 seven-fragment relations are absent from this migration-only
+ // case. No fixture-only columns or functions are added to either real plan.
+ for(const row of ordinary.rows){
+  const statement=grant(scope.appName,row);
+  if(row.privilege==='UPDATE'&&ordinary.conditionalRowLockColumns[row.relation]===row.column){
+   sql.push(`DO $row_lock$ BEGIN IF NOT pg_catalog.has_any_column_privilege(${quote(scope.appName)},${quote('public.'+ident(row.relation))}::regclass,'UPDATE') THEN ${statement} END IF; END $row_lock$;`);
+  }else sql.push(statement);
+ }
+ for(const [slot,role]of Object.entries(DOCUMENT_ROLES))sql.push(
+  `CREATE ROLE ${ident(role)} LOGIN PASSWORD ${quote(secrets[slot])} CONNECTION LIMIT 2 NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;`,
+  `GRANT CONNECT ON DATABASE ${ident(scope.database)} TO ${ident(role)};`,`GRANT USAGE ON SCHEMA public TO ${ident(role)};`);
+ sql.push(`DO $collision_preimage$ BEGIN IF NOT (${collision.metadata}) OR NOT (${collision.installation}) OR NOT (${collision.acl(false)}) THEN RAISE EXCEPTION 'TASK12_NATIVE_FIXTURE_COLLISION_PREIMAGE'; END IF; END $collision_preimage$;`);
+ for(const row of documents.rows)sql.push(grant(row.role,row));
+ sql.push(...collision.grants,`DO $collision_postimage$ BEGIN IF NOT (${collision.metadata}) OR NOT (${collision.installation}) OR NOT (${collision.acl(true)}) THEN RAISE EXCEPTION 'TASK12_NATIVE_FIXTURE_COLLISION_POSTIMAGE'; END IF; END $collision_postimage$;`);
+ sql.push(`DO $retained$ BEGIN IF ${ordinary.requiredExistingFunctions.map(signature=>`NOT pg_catalog.has_function_privilege(${quote(scope.appName)},${quote(signature)}::regprocedure,'EXECUTE')`).concat(
+  Object.entries(ordinary.retainedRowLocks).map(([table,column])=>`NOT pg_catalog.has_column_privilege(${quote(scope.appName)},${quote('public.'+ident(table))}::regclass,${quote(column)},'UPDATE')`)).join(' OR ')}
+  THEN RAISE EXCEPTION 'TASK12_NATIVE_FIXTURE_RETAINED_PRIVILEGE'; END IF; END $retained$;`,'COMMIT;');
+ return sql.join('\n');
 }
-module.exports = { DATABASE, TERMINAL, DOCUMENT_ROLES, validateNativeLifecycleScope, renderNativeLifecycleFixture };
+
+module.exports = { DATABASE, TERMINAL, DOCUMENT_ROLES, validateNativeLifecycleScope, renderNativeLifecycleFixture, nativeLifecyclePlanBinding };
 
 const { types } = require('node:util');
 const NATIVE_STAGES = new Set(['INPUT','IDENTITY','SEED','NEST_INIT','LOGIN','SIGNATURES','TEMPLATE','DRAFT','GENERATE','SUBMIT','WITHDRAW','REJECT','APPROVE','SEAL','UPLOAD','AUDIT_FAULT_INSTALL','AUDIT_FAULT_ARCHIVE','AUDIT_FAULT_ROLLBACK_VERIFY','AUDIT_FAULT_CLEANUP','ARCHIVE','DOWNLOAD','VERIFY','CLEANUP']);
@@ -127,7 +109,7 @@ async function withNativeLifecycleCleanup(operation, cleanups, evidence) {
 }
 Object.assign(module.exports,{createNativeLifecycleDiagnostics,withNativeLifecycleCleanup});
 
-const RUNNER_STAGES=new Set(['INPUT','SOURCE','RUNTIME','DOCKER_ENDPOINT','IMAGE','PRETEST','BUILD','DIRECTORY','CONTAINER_START','PG_READY','PORT','MIGRATION_FIXTURE','MIGRATION_APPLY','ORIGINAL_APP_READ','ROLE_PROVISION','PACKET','NATIVE_SUITE','CLEANUP_CONTAINER','CLEANUP_DIRECTORY']);
+const RUNNER_STAGES=new Set(['INPUT','SOURCE','RUNTIME','DOCKER_ENDPOINT','IMAGE','PRETEST','BUILD','BUILD_SOURCE','DIRECTORY','CONTAINER_START','PG_READY','PORT','MIGRATION_FIXTURE','MIGRATION_APPLY','ORIGINAL_APP_READ','ROLE_PROVISION','PACKET','NATIVE_SUITE','CLEANUP_CONTAINER','CLEANUP_DIRECTORY']);
 const RUNNER_CODES=new Set(['ARGUMENTS','ENVIRONMENT','SOURCE','DOCKER','CONTAINER','LOOPBACK','APP_CHANGED','APP_MISSING','CONTAINER_CLEANUP','DIRECTORY_CLEANUP','COMMAND'].map(code=>'TASK12_NATIVE_GATE_'+code));
 for(const code of ['INPUT','SOURCE','LEDGER','DATABASE_IDENTITY','PREFIX_CACHE','STOPPED','CONTAINER_IDENTITY','CONTAINER_PORT','TAIL_STDIN_PORT','READBACK','CI_RECOVERY','CURRENT259_FRESH_FULL_ONLY','PARTIAL_QUALIFICATION','PARTIAL_TAIL_QUALIFICATION','RECOVERY_CONTEXT','RECOVERY_NOT_RESOLVED','ROLE_PROVENANCE','SCHEMA','SOURCE_204_205','SOURCE_PREFIX','STAGE203','STAGE205','TAIL_PREFIX','TARGET','CONTROL','STAGE205_FRAMING','TAIL_QUALIFICATION','TAIL_READBACK','CLEANUP','COMPLETION'])RUNNER_CODES.add('LOCAL_MIGRATION_'+code);
 RUNNER_CODES.add('LOCAL_CI_DYNAMIC_MIGRATION_RESOURCE');

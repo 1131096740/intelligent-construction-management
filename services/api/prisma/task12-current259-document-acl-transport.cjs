@@ -1,7 +1,8 @@
 'use strict';
-const {claimCurrent259GeneratedDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
+const {claimCurrent259GeneratedDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
-const {beginCurrent259GeneratedDocumentAcl}=require('./task12-current259-document-acl.cjs');
+const {beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl.cjs');
+const {registeredGeneratedLifecycleCollisionMaterial,generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 
@@ -52,10 +53,10 @@ function qualify(rolesLease,view){
  need(Array.isArray(roles)&&roles.length===names.length&&roles.every((role,i)=>
   role.name===names[i]&&oid(role.oid)&&role.oid!=='10'&&role.xmin===xmin)&&
   new Set(roles.map(role=>role.oid)).size===names.length,'HANDLE');
- return {completion,ordinaryAcl,roles,identity,predecessors,ledger:source.profile.ledger};
+ return {completion,ordinaryAcl,roles,identity,predecessors,ledger:source.profile.ledger,source};
 }
 
-function lineage(input){
+function lineage(input,lifecycle){
  const {ordinaryAcl,roles,identity,predecessors,ledger}=input;
  const {archiveCompletion,completion,catalogSql,protectedSql}=ordinaryAcl;
  const roleOids=roles.map(role=>quote(role.oid)+'::oid').join(',');
@@ -65,13 +66,17 @@ function lineage(input){
  const normalizedAcl=`(SELECT coalesce(jsonb_agg(jsonb_build_array(g.grantor,g.grantee,g.privilege_type,g.is_grantable)
   ORDER BY g.grantor,g.grantee,g.privilege_type COLLATE "C",g.is_grantable),'[]'::jsonb)
   FROM ${current259AclRowsSql('a.attacl')} g WHERE g.grantee NOT IN (${roleOids}))`;
- const normalizedCatalog=catalogSql.replace('a.attacl::text',()=>normalizedAcl);
+ const collision=lifecycle?generatedLifecycleCollisionSql(registeredGeneratedLifecycleCollisionMaterial(input.source)):undefined;
+ const columnsCatalog=catalogSql.replace('a.attacl::text',()=>normalizedAcl);
+ const normalizedCatalog=collision?collision.normalize(columnsCatalog):columnsCatalog;
+ const normalizedProtected=collision?collision.normalize(protectedSql):undefined;
  const bindingDigest=digest(`jsonb_build_array(${bindings.map(name=>`(SELECT to_jsonb(b) FROM public.${name} b)`).join(',')})`);
  const pendingDigest=digest('(SELECT to_jsonb(b) FROM public.jg_contract_direct_pending_binding_v1 b WHERE b."protocolVersion"=1)');
  const namespace="to_regnamespace('public')::oid";
  const bindingRows=[...priorBindings,...bindings].map(name=>`(SELECT jsonb_agg(jsonb_build_array(b.xmin::text,to_jsonb(b))
    ORDER BY to_jsonb(b)::text COLLATE "C",b.xmin::text COLLATE "C") FROM public.${name} b)`).join(',');
  const continuity=digest(`jsonb_build_array(${normalizedCatalog},
+  ${normalizedProtected?normalizedProtected+',':''}
   ${bindingRows},
   (SELECT jsonb_agg(to_jsonb(t) ORDER BY t.oid) FROM pg_type t WHERE t.typnamespace=${namespace}),
   (SELECT jsonb_agg(to_jsonb(i) ORDER BY i.indexrelid) FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid WHERE c.relnamespace=${namespace}),
@@ -155,10 +160,22 @@ function reason(error){
 }
 
 async function installCurrent259GeneratedDocumentAcl(roleCompletion,handle){
- need(arguments.length===2&&handle&&typeof handle==='object'&&!types.isProxy(handle)&&!used.has(handle),'HANDLE');
+ need(arguments.length===2,'HANDLE');return install(roleCompletion,handle,false);
+}
+async function installCurrent261GeneratedLifecycleDocumentAcl(roleCompletion,handle){
+ need(arguments.length===2,'HANDLE');return install(roleCompletion,handle,true);
+}
+async function install(roleCompletion,handle,lifecycle){
+ need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&!used.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(resource.topology===topology&&typeof exec==='function','HANDLE');
- const rolesLease=claimCurrent259GeneratedDocumentRoles(roleCompletion,handle);
+ const rolesLease=(lifecycle?claimCurrent261GeneratedLifecycleDocumentRoles:claimCurrent259GeneratedDocumentRoles)(roleCompletion,handle);
+ if(lifecycle){
+  const plan=registeredGeneratedLifecycleCollisionMaterial(rolesLease.source);
+  need(rolesLease.ordinaryAcl.generatedLifecycle===true&&roleCompletion.effectivePlanSha256===plan.sha256&&
+   roleCompletion.installation===plan.installation&&rolesLease.ordinaryAclCompletion.effectivePlanSha256===plan.sha256&&
+   rolesLease.ordinaryAclCompletion.installation===plan.installation,'HANDLE');
+ }
  const input=qualify(rolesLease,view);
  need(roleCompletion===input.completion,'HANDLE');
  used.add(handle);
@@ -170,7 +187,7 @@ async function installCurrent259GeneratedDocumentAcl(roleCompletion,handle){
  let phase='BEFORE',writing=false;
  try{
   check();
-  const renderer=beginCurrent259GeneratedDocumentAcl(),proof=lineage(input);
+  const renderer=lifecycle?beginCurrent261GeneratedLifecycleDocumentAcl(rolesLease.source):beginCurrent259GeneratedDocumentAcl(),proof=lineage(input,lifecycle);
   const run=async(next,sql,expected)=>{
    phase=next;check();
    const fixed=guarded(sql,next,proof,expected);
@@ -190,8 +207,9 @@ async function installCurrent259GeneratedDocumentAcl(roleCompletion,handle){
   check();
   const result=Object.freeze({status:'CURRENT259_DOCUMENT_ACL_COMMITTED_NOT_ADMISSION',sourceSha:roleCompletion.sourceSha,
    runId:view.runId,containerId:resource.containerId,roleInstallXid:roleCompletion.installXid,installXid:committed.installXid,
-   profileSha256:matched.profileSha256,executionAllowed:false,nativeAdmission:false});
-  installed.set(result,{handle,check,rolesLease,continuitySha256:committed.continuitySha256,continuitySql:proof.continuity});
+   profileSha256:matched.profileSha256,
+   ...(lifecycle?{effectivePlanSha256:matched.effectivePlanSha256,installation:matched.installation}:{}),executionAllowed:false,nativeAdmission:false});
+  installed.set(result,{handle,check,lifecycle,rolesLease,continuitySha256:committed.continuitySha256,continuitySql:proof.continuity});
   return result;
  }catch(cause){
   const error=Object.assign(fault(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED'),{phase});
@@ -212,10 +230,14 @@ function claimCurrent259GeneratedDocumentSaveAcl(result,handle){
 }
 function claim(result,handle,save){
  const receipt=installed.get(result);
- need(receipt?.handle===handle&&receipt&&(receipt.rolesLease.ordinaryAcl.generatedDocument===true)===save,'HANDLE');
+ need(receipt?.handle===handle&&receipt&&(save==='lifecycle'?receipt.lifecycle===true:
+  receipt.lifecycle!==true&&(receipt.rolesLease.ordinaryAcl.generatedDocument===true)===save),'HANDLE');
  installed.delete(result);receipt.check();
  const {ordinaryAcl,roles,source}=receipt.rolesLease;
  return Object.freeze({completion:result,ordinaryAcl,roles,source,check:receipt.check,
   continuitySha256:receipt.continuitySha256,continuitySql:receipt.continuitySql});
 }
-module.exports=Object.freeze({installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});
+function claimCurrent261GeneratedLifecycleDocumentAcl(result,handle){
+ need(arguments.length===2,'HANDLE');return claim(result,handle,'lifecycle');
+}
+module.exports=Object.freeze({installCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261GeneratedLifecycleDocumentAcl,installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});

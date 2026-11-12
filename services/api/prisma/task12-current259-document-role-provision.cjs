@@ -1,9 +1,11 @@
 'use strict';
 // Import the original ordinary ACL producer before claiming its owned resource.
-const {claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
+const {claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {randomBytes}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
+const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
+const {registeredGeneratedLifecycleCollisionMaterial}=require('./task12-current261-generated-lifecycle-collision.cjs');
 const CODE='CURRENT259_DOCUMENT_ROLE_PROVISION';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
 const phases=Object.freeze(['current259-document-roles-before','current259-document-roles-write','current259-document-roles-committed']);
@@ -37,7 +39,13 @@ function scope(acl,view,document){
  const {completion,roleCompletion,archiveCompletion,source}=acl;
  const resource=view.resource,profile=source.profile;
  const identity=Object.fromEntries(identityKeys.map(key=>[key,roleCompletion.databaseIdentity[key]]));
- need((document?acl.generatedDocument===true&&completion.purpose==='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1'
+ if(document==='lifecycle'){
+  qualifyCurrent261GeneratedLifecycleSource(source);
+  const plan=registeredGeneratedLifecycleCollisionMaterial(source);
+  need(completion.effectivePlanSha256===plan.sha256&&completion.installation===plan.installation,'HANDLE');
+ }
+ need((document==='lifecycle'?acl.generatedLifecycle===true&&completion.purpose==='CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1'
+  :document?acl.generatedDocument===true&&completion.purpose==='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1'
   :acl.generatedDraft===true)&&completion.status==='CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION'&&
   completion.executionAllowed===false&&completion.nativeAdmission===false&&resource.topology===top&&
   completion.sourceSha===source.candidateSha&&equal(source,view.source)&&hex(completion.sourceSha,40)&&
@@ -165,11 +173,14 @@ async function provisionCurrent259GeneratedDocumentSaveRoles(ordinaryAclCompleti
  need(arguments.length===2,'HANDLE');
  return provision(ordinaryAclCompletion,handle,true);
 }
+async function provisionCurrent261GeneratedLifecycleDocumentRoles(ordinaryAclCompletion,handle){
+ need(arguments.length===2,'HANDLE');return provision(ordinaryAclCompletion,handle,'lifecycle');
+}
 async function provision(ordinaryAclCompletion,handle,document){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&!attempted.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle);
  need(view.resource.topology===top,'HANDLE');
- const claim=document?claimCurrent259GeneratedDocumentOrdinaryAcl:claimCurrent259OrdinaryArchiveAcl;
+ const claim=document==='lifecycle'?claimCurrent261GeneratedLifecycleOrdinaryAcl:document?claimCurrent259GeneratedDocumentOrdinaryAcl:claimCurrent259OrdinaryArchiveAcl;
  const acl=claim(ordinaryAclCompletion,handle);
  const input=scope(acl,view,document),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(acl.completion===ordinaryAclCompletion&&typeof exec==='function','HANDLE');
@@ -197,8 +208,9 @@ async function provision(ordinaryAclCompletion,handle,document){
    committed.installXid===staged.installXid&&equal(committed.roles,staged.roles),'COMMITTED');
   check();
   const result=Object.freeze({status:'CURRENT259_DOCUMENT_ROLES_COMMITTED_NOT_ADMISSION',sourceSha:ordinaryAclCompletion.sourceSha,
-   runId:view.runId,containerId:resource.containerId,installXid:committed.installXid,roleCount:names.length,executionAllowed:false,nativeAdmission:false});
-  issued.set(result,{handle,check,ordinaryAcl:acl,roles:Object.freeze(committed.roles.map(Object.freeze))});
+   runId:view.runId,containerId:resource.containerId,installXid:committed.installXid,
+   ...(document==='lifecycle'?{effectivePlanSha256:ordinaryAclCompletion.effectivePlanSha256,installation:ordinaryAclCompletion.installation}:{}),roleCount:names.length,executionAllowed:false,nativeAdmission:false});
+  issued.set(result,{handle,check,lifecycle:document==='lifecycle',ordinaryAcl:acl,roles:Object.freeze(committed.roles.map(Object.freeze))});
   return result;
  }catch{
   const error=fault(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
@@ -208,11 +220,17 @@ async function provision(ordinaryAclCompletion,handle,document){
  }
 }
 function claimCurrent259GeneratedDocumentRoles(result,handle){
+ need(arguments.length===2,'HANDLE');return claim(result,handle,false);
+}
+function claimCurrent261GeneratedLifecycleDocumentRoles(result,handle){
+ need(arguments.length===2,'HANDLE');return claim(result,handle,true);
+}
+function claim(result,handle,lifecycle){
  const receipt=issued.get(result);
- need(arguments.length===2&&receipt?.handle===handle,'HANDLE');
+ need(receipt?.handle===handle&&receipt.lifecycle===lifecycle,'HANDLE');
  issued.delete(result);receipt.check();
  return Object.freeze({completion:result,ordinaryAclCompletion:receipt.ordinaryAcl.completion,
   ordinaryAcl:receipt.ordinaryAcl,source:receipt.ordinaryAcl.source,roles:receipt.roles,check:receipt.check});
 }
-module.exports=Object.freeze({provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
+module.exports=Object.freeze({provisionCurrent261GeneratedLifecycleDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
  claimCurrent259GeneratedDocumentRoles});

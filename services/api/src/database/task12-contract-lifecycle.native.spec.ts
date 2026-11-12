@@ -35,7 +35,7 @@ import { apiJsonReplacer } from "../api-json-replacer";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Payload = Record<string, any>;
 type Packet = { candidateSha: string; directory: string; runtime: string; runtimeSha: string;
-  scope: { database: string; appName: string; appOid: string }; ownerUrl: string;
+  scope: { database: string; appName: string; appOid: string; source: { candidateSha: string } }; lifecyclePlan: Record<string, string>; ownerUrl: string;
   urls: Record<"application" | "template" | "worker" | "queue", string> };
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const root = resolve(__dirname, "../../../..");
@@ -49,11 +49,14 @@ if (!file.isFile() || file.isSymbolicLink() || file.uid !== process.getuid?.() |
 const packet = JSON.parse(readFileSync(packetFile, "utf8")) as Packet;
 // The qualified runtime is a CommonJS control-plane module.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { createNativeLifecycleDiagnostics, withNativeLifecycleCleanup } = require("../../prisma/task12-native-lifecycle-fixture.cjs");
+const { createNativeLifecycleDiagnostics, withNativeLifecycleCleanup, nativeLifecyclePlanBinding } = require("../../prisma/task12-native-lifecycle-fixture.cjs");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { verifyCurrent259GeneratedDocumentRuntime, withCurrent259GeneratedDocumentRuntime } = require("../../prisma/task12-current259-generated-document-runtime.cjs");
 
 it("runs native V2 submission, withdrawal, rejection, five approvals, seal, rollback and two-file private archive on the staged limited roles", async () => {
+  expect(packet.scope.source.candidateSha).toBe(packet.candidateSha);
+  expect(packet.lifecyclePlan).toEqual(nativeLifecyclePlanBinding(packet.scope));
+  expect(packet.lifecyclePlan.installation).toBe("ARCHIVE261_MIGRATIONS_ONLY");
   expect(packet.scope.database).toBe("jiangkong_contract_draft_aggregate_test");
   expect(new URL(packet.urls.application).username).toBe(packet.scope.appName);
   expect(process.env.DATABASE_URL).toBe(packet.urls.application);

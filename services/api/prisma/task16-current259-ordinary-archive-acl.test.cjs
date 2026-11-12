@@ -31,7 +31,7 @@ const phases = ['current259-ordinary-acl-before','current259-ordinary-acl-write'
 
 function fixture(options={}) {
   const handle = Object.freeze({}), completion = Object.freeze({...scope,...options.completion});
-  const source = Object.freeze({candidateSha: completion.sourceSha, tree:'b'.repeat(40), sourceSealSha256:'3'.repeat(64)});
+  const source = Object.freeze(options.source??{candidateSha: completion.sourceSha, tree:'b'.repeat(40), sourceSealSha256:'3'.repeat(64)});
   const roleCompletion = Object.freeze({ordinary});
   const calls = [];
   let claimed=false, closes=0;
@@ -280,4 +280,60 @@ test('the document ACL does not change a payment topology or consume legacy gene
  const issued=await prior.api.installCurrent259GeneratedDraftOrdinaryAcl(prior.completion,prior.handle);
  assert.throws(()=>prior.api.claimCurrent259GeneratedDocumentOrdinaryAcl(issued,prior.handle),/HANDLE/u);
  assert.equal(prior.api.claimCurrent259OrdinaryArchiveAcl(issued,prior.handle).generatedDraft,true);
+});
+
+test('explicit generated lifecycle 261 material reuses document reads and supplies the proven ordinary normal path',()=>{
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const prisma=__dirname,migrations=fs.readdirSync(path.join(prisma,'migrations')).filter(name=>fs.existsSync(path.join(prisma,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(prisma,'migrations',name,'migration.sql')))}));
+ const schemaSha256=hash(fs.readFileSync(path.join(prisma,'schema.prisma')));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256,migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const api=require(file),material=api.describeCurrent261GeneratedLifecycleOrdinaryAcl(source);
+ const has=(relation,column,privilege)=>material.rows.some(row=>row.relation===relation&&row.column===column&&row.privilege===privilege);
+ for(const table of ['AuditLog','RefreshToken','FileObject','Contract','ContractVersion','ContractBill','ContractDraftSaveRequest','ContractPartySnapshot','PaymentTermsVersion','ContractArchiveEvidenceFile'])assert.ok(has(table,'createdAt','INSERT'),table);
+ for(const column of ['revision','taxInclusiveAmountCents','taxExclusiveAmountCents','taxAmountCents'])assert.ok(has('ContractBill',column,'INSERT'),column);
+ assert.ok(has('Contract','source','INSERT'));
+ assert.ok(has('ContractBillRow','contractBillId','SELECT'));
+ assert.ok(has('ContractBillRow','updatedAt','UPDATE'));
+ assert.ok(has('ContractVersion','documentContentFingerprint','UPDATE'));
+ assert.ok(has('ApprovalInstance','id','INSERT'));
+ assert.ok(has('ContractArchiveEvidenceFile','createdAt','SELECT'));
+ assert.equal(has('BusinessDailySequence','createdAt','INSERT'),false);
+ assert.equal(has('ContractDraftAttachment','createdAt','INSERT'),false);
+ assert.equal(has('FileObject','id','UPDATE'),false);
+ assert.equal(material.executionAllowed,false);
+ assert.equal(Object.isFrozen(material.rows),true);
+ assert.throws(()=>api.describeCurrent261GeneratedLifecycleOrdinaryAcl({...source,profile:{...profile,ledger:profile.ledger.slice(0,259)}}));
+});
+
+test('lifecycle installation uses the genuine archive lease and keeps its proof out of old ordinary claim modes',async()=>{
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const f=fixture({source,observe(row,n){if(n===0)row.changes=[{relation:'AuditLog',column:'createdAt',relationOid:'17002',attnum:9,privileges:['INSERT'],rawAcl:null,acl:[]}];}});
+ const result=await f.api.installCurrent261GeneratedLifecycleOrdinaryAcl(f.completion,f.handle);
+ assert.equal(result.purpose,'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1');
+ assert.match(f.calls[1].sql,/GRANT INSERT \("createdAt"\) ON TABLE public\."AuditLog" TO "jg_fixture_app_abcdefabcdefabcdefabcdef"/u);
+ assert.throws(()=>f.api.claimCurrent259OrdinaryArchiveAcl(result,f.handle),/HANDLE/u);
+ assert.throws(()=>f.api.claimCurrent259GeneratedDocumentOrdinaryAcl(result,f.handle),/HANDLE/u);
+ assert.equal(f.api.claimCurrent261GeneratedLifecycleOrdinaryAcl(result,f.handle).generatedLifecycle,true);
+ for(const options of [{}, {source:{...source,profile:{...profile,ledger:profile.ledger.slice(0,259)}}},
+  {source,completion:{ordinary:{name:'jg_task01_runtime',oid:'16392',login:true}}}]){
+  const invalid=fixture(options);await assert.rejects(invalid.api.installCurrent261GeneratedLifecycleOrdinaryAcl(invalid.completion,invalid.handle));
+  assert.equal(invalid.calls.length,0);assert.equal(invalid.closes(),1);
+ }
+});
+
+test('lifecycle invoker correction predicates require both hidden predicate columns and preserve CASE-raised existing reads',()=>{
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const prisma=__dirname,migrations=fs.readdirSync(path.join(prisma,'migrations')).filter(name=>fs.existsSync(path.join(prisma,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(prisma,'migrations',name,'migration.sql')))}));
+ const schemaSha256=hash(fs.readFileSync(path.join(prisma,'schema.prisma')));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256,migrations});
+ const f={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+
+ const api=require('./task16-current259-ordinary-archive-acl.cjs');
+ const m=api.describeCurrent261GeneratedLifecycleOrdinaryAcl(f);
+ for(const column of ['attachmentFileId','correctionType','schemaVersion'])assert.ok(m.rows.some(r=>r.relation==='ContractTakeoverCorrection'&&r.column===column&&r.privilege==='SELECT'));
+ for(const [relation,column]of [['PaymentExecution','voucherFileId'],['ProjectExpenseExecution','voucherFileId'],['ProjectFinancingQuota','attachmentFileId']])assert.ok(m.rows.some(r=>r.relation===relation&&r.column===column&&r.privilege==='SELECT'));
 });

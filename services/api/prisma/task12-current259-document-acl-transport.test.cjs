@@ -8,13 +8,19 @@ function fixture(options={}){
  const handle=Object.freeze({}),runId='a0000000-0000-4000-8000-000000000001',containerId='b'.repeat(64);
  const database='jg_task01_'+runId.replaceAll('-','');
  const identity={database,databaseOid:'16391',namespaceOid:'2200',systemIdentifier:'7200000000000000001'};
- const source={candidateSha:'a'.repeat(40),profile:{profile:'TASK16_CURRENT259_SOURCE_V1',ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24',ledger:Array.from({length:259},(_,n)=>({name:String(n).padStart(4,'0')+'_source',sha256:'e'.repeat(64),finished:true,rolledBack:false}))}};
- const completion=Object.freeze({status:'CURRENT259_DOCUMENT_ROLES_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
+ const source=options.source??{candidateSha:'a'.repeat(40),profile:{profile:'TASK16_CURRENT259_SOURCE_V1',ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24',ledger:Array.from({length:259},(_,n)=>({name:String(n).padStart(4,'0')+'_source',sha256:'e'.repeat(64),finished:true,rolledBack:false}))}};
+ const plan=options.lifecycle&&source.tree?require('./task12-current261-generated-lifecycle-collision.cjs').registeredGeneratedLifecycleCollisionMaterial(source):undefined;
+ const planFields=plan?{effectivePlanSha256:plan.sha256,installation:plan.installation,...options.planPatch}:{};
+ const completion=Object.freeze({...planFields,status:'CURRENT259_DOCUMENT_ROLES_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
   runId,containerId,installXid:'900',roleCount:3,executionAllowed:false,nativeAdmission:false});
- const ordinaryAclCompletion=Object.freeze({installXid:'890',archiveInstallXid:'880',catalogSha256:'c'.repeat(64),protectedSha256:'d'.repeat(64)});
- const ordinaryAcl={...(options.save?{generatedDocument:true}:{}),completion:ordinaryAclCompletion,catalogSql:"(SELECT pg_catalog.repeat('c',64) FROM (SELECT a.attacl::text AS old_acl FROM pg_catalog.pg_attribute a LIMIT 1) w)",
+ const ordinaryAclCompletion=Object.freeze({...planFields,installXid:'890',archiveInstallXid:'880',catalogSha256:'c'.repeat(64),protectedSha256:'d'.repeat(64)});
+ const ordinaryAcl={...(options.lifecycle?{generatedLifecycle:true}:{}),...(options.save?{generatedDocument:true}:{}),completion:ordinaryAclCompletion,catalogSql:"(SELECT pg_catalog.repeat('c',64) FROM (SELECT a.attacl::text AS old_acl FROM pg_catalog.pg_attribute a LIMIT 1) w)",
   protectedSql:"pg_catalog.repeat('d',64)",roleCompletion:{databaseIdentity:identity},
   archiveCompletion:{bindingSha256:'f'.repeat(64),pendingSha256:'0'.repeat(64),installXid:'880'}};
+ if(options.lifecycle){
+  ordinaryAcl.catalogSql="(SELECT pg_catalog.to_jsonb(p),a.attacl::text FROM pg_catalog.pg_proc p CROSS JOIN pg_catalog.pg_attribute a LIMIT 1)";
+  ordinaryAcl.protectedSql="(SELECT pg_catalog.to_jsonb(p) FROM pg_catalog.pg_proc p LIMIT 1)";
+ }
  if(options.witness){
   ordinaryAcl.catalogSql=options.witness.catalogSql;
   ordinaryAcl.protectedSql=options.witness.protectedSql;
@@ -39,6 +45,9 @@ function fixture(options={}){
  const imports={
   './task12-current259-document-role-provision.cjs':{claimCurrent259GeneratedDocumentRoles(r,h){
    assert.equal(r,completion);assert.equal(h,handle);assert.equal(claims++,0);
+   return Object.freeze({completion,ordinaryAclCompletion,ordinaryAcl,source,roles,check(){}});
+  },claimCurrent261GeneratedLifecycleDocumentRoles(r,h){
+   assert.equal(options.lifecycle,true);assert.equal(r,completion);assert.equal(h,handle);assert.equal(claims++,0);
    return Object.freeze({completion,ordinaryAclCompletion,ordinaryAcl,source,roles,check(){}});
   }},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},
@@ -105,4 +114,31 @@ test('a mismatched login purpose cannot consume either document ACL receipt',asy
   assert.equal(proof.ordinaryAcl.generatedDocument,save?true:undefined);
   assert.throws(()=>(save?next:old)(result,f.handle),/HANDLE/u);
  }
+});
+
+test('lifecycle transport consumes only its branded 261 role lease and carries the same document plan',async()=>{
+ const {createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const expected=require('./task12-current259-document-acl.cjs').describeCurrent261GeneratedLifecycleDocumentAcl(source);
+ const f=fixture({source,lifecycle:true});
+ const result=await f.api.installCurrent261GeneratedLifecycleDocumentAcl(f.completion,f.handle);
+ assert.equal(result.profileSha256,expected.profileSha256);
+ assert.equal(result.effectivePlanSha256,expected.effectivePlanSha256);
+ const forged=fixture({source,lifecycle:true,planPatch:{effectivePlanSha256:'0'.repeat(64)}});
+ await assert.rejects(forged.api.installCurrent261GeneratedLifecycleDocumentAcl(forged.completion,forged.handle));
+ assert.equal(forged.calls.length,0);
+ assert.ok(f.calls[0].sql.includes('p.proacl IS NOT NULL'));
+ assert.ok(f.calls[1].sql.includes('WITH ORDINALITY prior(item,ordinality)'));
+ assert.ok(f.calls[2].sql.includes('WITH ORDINALITY prior(item,ordinality)'));
+ assert.equal((f.calls[1].sql.match(/^GRANT EXECUTE ON FUNCTION /gmu)??[]).length,48);
+ assert.equal((f.calls[2].sql.match(/^GRANT EXECUTE/gmu)??[]).length,0);
+ assert.match(f.calls[1].sql,/GRANT INSERT \([^\n]*"createdAt"[^\n]*\) ON TABLE public\."AuditLog" TO "jg_c259_doc_worker"/u);
+ assert.throws(()=>f.api.claimCurrent259GeneratedDocumentAcl(result,f.handle),/HANDLE/u);
+ assert.equal(f.api.claimCurrent261GeneratedLifecycleDocumentAcl(result,f.handle).ordinaryAcl.generatedLifecycle,true);
+ const wrong=fixture({lifecycle:true});
+ await assert.rejects(wrong.api.installCurrent261GeneratedLifecycleDocumentAcl(wrong.completion,wrong.handle));
+ assert.equal(wrong.calls.length,0);
 });

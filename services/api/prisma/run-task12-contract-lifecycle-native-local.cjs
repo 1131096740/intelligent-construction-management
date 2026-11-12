@@ -4,10 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture, withNativeLifecycleCleanup, createNativeLifecycleRunnerFailureRecorder, projectNativeLifecyclePsqlFailure } = require('./task12-native-lifecycle-fixture.cjs');
+const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture, withNativeLifecycleCleanup, createNativeLifecycleRunnerFailureRecorder, projectNativeLifecyclePsqlFailure, nativeLifecyclePlanBinding } = require('./task12-native-lifecycle-fixture.cjs');
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require('./local-staged-ci-dynamic.cjs');
 const { createCommandRuntime } = require('./money-bigint-runner-runtime.cjs');
 const { verifyCurrent259GeneratedDocumentRuntime } = require('./task12-current259-generated-document-runtime.cjs');
+const {observeCurrent259Build,claimCurrent259Build}=require('./task16-current259-build.cjs');
 const root = path.resolve(__dirname, '../../..');
 const pnpm = process.env.PNPM_BIN || 'pnpm';
 function command(bin, args, options = {}) {
@@ -67,6 +68,9 @@ async function run(args,enter,capture) {
   command(pnpm, ['--filter','@jiangkong/api','run','pretest'], { env, stdio: 'inherit' });
   enter('BUILD');
   command(pnpm, ['--filter','@jiangkong/api','build'], { env, stdio: 'inherit' });
+  enter('BUILD_SOURCE');
+  const build=claimCurrent259Build(observeCurrent259Build()),source=build.source;
+  if(source.candidateSha!==input.sha)throw new Error('TASK12_NATIVE_GATE_SOURCE');
   const runId = randomUUID(), name = nativeLifecycleContainerName(runId);
   enter('DIRECTORY');
   const directory = fs.realpathSync(fs.mkdtempSync('/private/tmp/jg-task12-native-'));
@@ -107,21 +111,24 @@ async function run(args,enter,capture) {
     const psql = sql => docker(['exec','--interactive',container,'psql','-X','-A','-t','-q','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','jiangkong','-d',DATABASE,'-f','-'], { input: sql,psqlLineCount:sql.split('\n').length });
     enter('ORIGINAL_APP_READ');
     const applicationRole = psql(`SELECT rolname FROM pg_roles WHERE oid=${applicationOid}::oid;`);
-    const scope = { database: DATABASE, appName: applicationRole, appOid: applicationOid, migrationCount: 261, terminal: TERMINAL };
+    const scope = { source, database: DATABASE, appName: applicationRole, appOid: applicationOid, migrationCount: 261, terminal: TERMINAL };
     const secrets = Object.fromEntries(['application',...Object.keys(DOCUMENT_ROLES)].map(slot => [slot,randomBytes(32).toString('hex')]));
     enter('ROLE_PROVISION');
+    build.check();
     psql(renderNativeLifecycleFixture(scope, secrets));
     const urls = Object.fromEntries(Object.entries({ application: applicationRole, ...DOCUMENT_ROLES }).map(([slot, role]) =>
       [slot,`postgresql://${role}:${secrets[slot]}@127.0.0.1:${port}/${DATABASE}?connection_limit=1`]));
     enter('PACKET');
     const packet = path.join(directory, 'test-input.json');
     const files = path.join(directory, 'files');fs.mkdirSync(files, { mode: 0o700 });
-    fs.writeFileSync(packet, JSON.stringify({ version: 1, candidateSha: input.sha, scope, ownerUrl, urls, directory, runtime: input.runtime, runtimeSha: input.runtimeSha }), { mode: 0o600, flag: 'wx' });
+    fs.writeFileSync(packet, JSON.stringify({ version: 1, candidateSha: input.sha, scope, lifecyclePlan:nativeLifecyclePlanBinding(scope), ownerUrl, urls, directory, runtime: input.runtime, runtimeSha: input.runtimeSha }), { mode: 0o600, flag: 'wx' });
     enter('NATIVE_SUITE');
+    build.check();
     command(pnpm, ['--filter','@jiangkong/api','exec','jest','--runInBand','--testRegex','task12-contract-lifecycle\\.native\\.spec\\.ts$','--runTestsByPath','src/database/task12-contract-lifecycle.native.spec.ts','--testPathIgnorePatterns',
       ...require('../jest.config.cjs').testPathIgnorePatterns.filter(pattern=>pattern!=='/database/task12-contract-lifecycle\\.native\\.spec\\.ts$')],
       { env: { ...env, DATABASE_URL: urls.application, FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: files,
         FILE_DOWNLOAD_SECRET: randomBytes(32).toString('hex'), TASK12_NATIVE_LIFECYCLE_INPUT: packet }, stdio: 'inherit', timeout: 900_000 });
+    build.check();
     return { status: 'TASK12_NATIVE_LIFECYCLE_PG_HTTP_PASSED', candidateSha: input.sha, migrationCount: 261 };
   }, [
     ['CONTAINER_REMOVE', () => {

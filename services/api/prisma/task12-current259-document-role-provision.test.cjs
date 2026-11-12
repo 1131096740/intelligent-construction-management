@@ -6,14 +6,16 @@ const names=['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue'];
 function fixture(options={}){
  const handle=Object.freeze({}),runId='a0000000-0000-4000-8000-000000000001';
  const identity={database:'jg_task01_'+runId.replaceAll('-',''),databaseOid:'16391',namespaceOid:'2200',systemIdentifier:'7200000000000000001'};
- const source={candidateSha:'a'.repeat(40),profile:{profile:'TASK16_CURRENT259_SOURCE_V1',
+ const source=options.source??{candidateSha:'a'.repeat(40),profile:{profile:'TASK16_CURRENT259_SOURCE_V1',
   ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',
   prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24',
   ledger:Array.from({length:259},(_,n)=>({name:String(n).padStart(4,'0')+'_source',sha256:'e'.repeat(64),finished:true,rolledBack:false}))}};
  const containerId='b'.repeat(64);
- const completion=Object.freeze({status:'CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
+ const plan=options.lifecycle&&source.tree?require('./task12-current261-generated-lifecycle-collision.cjs').registeredGeneratedLifecycleCollisionMaterial(source):undefined;
+ const planFields=plan?{effectivePlanSha256:plan.sha256,installation:plan.installation,...options.planPatch}:{};
+ const completion=Object.freeze({...planFields,status:'CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
   runId,containerId,installXid:'901',archiveInstallXid:'900',catalogSha256:'c'.repeat(64),protectedSha256:'d'.repeat(64),
-  ...(options.document?{purpose:'CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1'}:{}),executionAllowed:false,nativeAdmission:false});
+  ...(options.lifecycle?{purpose:'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1'}:options.document?{purpose:'CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1'}:{}),executionAllowed:false,nativeAdmission:false});
  const roleCompletion={databaseIdentity:identity,ordinary:{oid:'16392'},roles:[{oid:'16393'}]};
  const archiveCompletion={status:'CURRENT259_ARCHIVE_AUTHORITIES_INSTALLED',registeredFileSource:true,bindingSha256:'f'.repeat(64),pendingSha256:'0'.repeat(64),installXid:'900'};
  let closed=0,claimed=false;
@@ -41,6 +43,9 @@ function fixture(options={}){
    assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
    return {source,completion,archiveCompletion,roleCompletion,generatedDocument:true,
     catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){}};
+  },claimCurrent261GeneratedLifecycleOrdinaryAcl(r,h){
+   assert.equal(options.lifecycle,true);assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
+   return {source,completion,archiveCompletion,roleCompletion,generatedLifecycle:true,catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){}};
   }},
   './task16-current259-owned-resource.cjs':{
    claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},
@@ -109,4 +114,24 @@ test('the fixed document save path consumes only the separate ordinary save proo
  const old=fixture();
  await assert.rejects(old.api.provisionCurrent259GeneratedDocumentSaveRoles(old.completion,old.handle),/HANDLE/u);
  assert.equal(old.calls.length,0);
+});
+
+test('explicit lifecycle role provision requires its genuine 261 ordinary predecessor and cannot enter legacy claims',async()=>{
+ const {createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const f=fixture({source,lifecycle:true});
+ const result=await f.api.provisionCurrent261GeneratedLifecycleDocumentRoles(f.completion,f.handle);
+ assert.equal(f.calls.length,3);
+ assert.equal(result.effectivePlanSha256,f.completion.effectivePlanSha256);
+ const foreign=fixture({source,lifecycle:true,planPatch:{effectivePlanSha256:'0'.repeat(64)}});
+ await assert.rejects(foreign.api.provisionCurrent261GeneratedLifecycleDocumentRoles(foreign.completion,foreign.handle));
+ assert.equal(foreign.calls.length,0);
+ assert.throws(()=>f.api.claimCurrent259GeneratedDocumentRoles(result,f.handle),/HANDLE/u);
+ assert.equal(f.api.claimCurrent261GeneratedLifecycleDocumentRoles(result,f.handle).ordinaryAcl.generatedLifecycle,true);
+ const wrong=fixture({lifecycle:true});
+ await assert.rejects(wrong.api.provisionCurrent261GeneratedLifecycleDocumentRoles(wrong.completion,wrong.handle));
+ assert.equal(wrong.calls.length,0);
 });

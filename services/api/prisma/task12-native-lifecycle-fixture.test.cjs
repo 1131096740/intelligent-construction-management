@@ -4,7 +4,12 @@ const { test } = require('node:test');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { renderNativeLifecycleFixture, validateNativeLifecycleScope } = require('./task12-native-lifecycle-fixture.cjs');
-const scope = { database: 'jiangkong_contract_draft_aggregate_test', appName: 'jg_fixture_app_' + 'a'.repeat(24),
+const {createHash}=require('node:crypto');
+const fs=require('node:fs');
+const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql'))).digest('hex')}));
+const qualifiedProfile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'schema.prisma'))).digest('hex'),migrations});
+const source=Object.freeze({candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile:qualifiedProfile});
+const scope = { source, database: 'jiangkong_contract_draft_aggregate_test', appName: 'jg_fixture_app_' + 'a'.repeat(24),
   appOid: '20000', migrationCount: 261, terminal: '20261111140000_contract_direct_upward_retention_acl_source_v3' };
 const secrets = Object.fromEntries(['application','template','worker','queue'].map(name => [name, 'b'.repeat(64)]));
 
@@ -14,7 +19,7 @@ test('native lifecycle grants retain the original staged app and three separate 
   assert.match(sql, /ALTER ROLE "jg_fixture_app_aaaaaaaaaaaaaaaaaaaaaaaa" LOGIN PASSWORD/u);
   for (const role of ['template','worker','queue']) assert.match(sql, new RegExp('CREATE ROLE "jg_c259_doc_' + role + '" LOGIN'));
   assert.match(sql, /GRANT INSERT \([^;]+\) ON public\."ContractArchiveEvidenceFile" TO "jg_fixture_app_/u);
-  assert.match(sql, /GRANT EXECUTE ON FUNCTION public.jg_has_exclusive_file_business_binding\(text\)/u);
+  assert.match(sql, /has_function_privilege[^\n]+jg_has_exclusive_file_business_binding\(text\)/u);
   assert.doesNotMatch(sql, /TO PUBLIC|GRANT ALL|GRANT [^;]* TO jiangkong|ALTER TABLE|DISABLE TRIGGER|SET ROLE|row_security=off/iu);
 });
 
@@ -182,7 +187,8 @@ test('runner recovers only its exact daemon-owned container after a lost create 
   const entry={exports:{}};
   const load=key=>key==='node:fs'?localFs:key==='node:child_process'?{spawnSync:daemon}:
    key==='node:crypto'?{...require(key),randomUUID:()=>runId}:
-   key==='./task12-current259-generated-document-runtime.cjs'?{verifyCurrent259GeneratedDocumentRuntime(){}}:require(key);
+   key==='./task12-current259-generated-document-runtime.cjs'?{verifyCurrent259GeneratedDocumentRuntime(){}}:
+   key==='./task16-current259-build.cjs'?{observeCurrent259Build(){return {executionAllowed:false};},claimCurrent259Build(){return {source:{candidateSha:sha},check(){}};}}:require(key);
   const invoke=vm.runInNewContext('(function(require,module,__dirname,__filename){'+fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,'')+'\n})', {process:{env:{NODE_ENV:'test',DOCKER_HOST:'unix:///model-only'},stderr:{write(value){diagnostics.push(value);}}}});
   invoke(load,entry,__dirname,file);
   await assert.rejects(entry.exports.main(['--candidate-sha',sha,'--runtime-input','/private/tmp/model-runtime','--runtime-sha256','c'.repeat(64),'--confirm','LOCAL_TASK12_NATIVE_LIFECYCLE']),error=>error.message==='TASK12_NATIVE_GATE_COMMAND');
@@ -205,4 +211,25 @@ test('the migration-only lifecycle grants exclude only the two post-migration re
  }
  const requirements=require('./task16-current259-ordinary-archive-acl.requirements.json');
  for(const table of Object.keys(requirements.tables).filter(table=>!['RegisteredPaymentFunding','RegisteredPaymentVoucher'].includes(table)))assert.match(sql,new RegExp('ON public\\."'+table+'"','u'),table);
+});
+
+
+test('native fixed-case grants are exactly the authenticated lifecycle producer projections, not private fixture overrides',()=>{
+ const ordinary=require('./task16-current259-ordinary-archive-acl.cjs').describeMigration261GeneratedLifecycleOrdinaryAcl(source);
+ const document=require('./task12-current259-document-acl.cjs').describeMigration261GeneratedLifecycleDocumentAcl(source);
+ const sql=renderNativeLifecycleFixture(scope,secrets),expected=[];
+ for(const row of ordinary.rows)expected.push([scope.appName,row.relation,row.column,row.privilege].join('/'));
+ for(const row of document.rows)expected.push([row.role,row.relation,row.column,row.privilege].join('/'));
+ const actual=[];
+ for(const m of sql.matchAll(/GRANT (SELECT|INSERT|UPDATE) \(([^)]+)\) ON (?:TABLE )?public\."([^"]+)" TO "([^"]+)";/gu))for(const col of m[2].matchAll(/"([^"]+)"/gu))actual.push([m[4],m[3],col[1],m[1]].join('/'));
+ for(const m of sql.matchAll(/GRANT (DELETE) ON (?:TABLE )?public\."([^"]+)" TO "([^"]+)";/gu))actual.push([m[3],m[2],null,m[1]].join('/'));
+ assert.deepEqual(actual.sort(),expected.sort());
+ assert.doesNotMatch(sql,/EXECUTE 'GRANT SELECT|GRANT ALL|GRANT UPDATE \("id"\) ON public\."FileObject"/u);
+ assert.match(sql,/has_function_privilege/u);
+ assert.equal((sql.match(/^GRANT EXECUTE ON FUNCTION /gmu)??[]).length,46);
+ assert.ok(!sql.match(/GRANT EXECUTE[^\n]+jg_c259_doc_queue/u));
+ assert.ok(sql.includes('actual EXCEPT ALL SELECT * FROM expected'));
+ assert.ok(!sql.includes('GRANT SELECT ("fileId") ON public."RegisteredPaymentVoucher"'));
+ assert.throws(()=>renderNativeLifecycleFixture({...scope,source:{...source,profile:{...qualifiedProfile,ledger:qualifiedProfile.ledger.slice(0,259)}}},secrets));
+ assert.throws(()=>renderNativeLifecycleFixture({...scope,source:undefined},secrets));
 });

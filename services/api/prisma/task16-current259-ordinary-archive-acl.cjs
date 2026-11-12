@@ -9,6 +9,7 @@ const { claimCurrent259ArchiveInstallation } = require('./task16-current259-arch
 const { claimCurrent259TechnicalResource, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 const { current259AclRowsSql, current259SignedNumberAclSql } = require('./task16-current259-catalog.cjs');
 
+const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
 const CODE = 'CURRENT259_ORDINARY_ARCHIVE_ACL';
 const phases = ['current259-ordinary-acl-before','current259-ordinary-acl-write','current259-ordinary-acl-committed'];
 const proofStatus = 'CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION';
@@ -123,6 +124,77 @@ const documentProfile=Object.freeze({keys:documentKeys,rows:documentRows,
  lockRelations:[...new Set([...generatedProfile.lockRelations,...Object.keys(documentReads)])].sort(),
  sha256:sha(JSON.stringify([documentPurpose,generatedProfile.sha256,documentReads,documentWrites,documentRowLocks]))});
 
+
+const lifecyclePurpose='CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1';
+const lifecycleWrites = {
+  BusinessDailySequence: { insert: ['prefix','businessDate','nextSequence','updatedAt'], update: ['nextSequence','updatedAt'] },
+  User: { update: ['signatureFileId'] },
+  ApprovalInstance: { insert: ['id','businessType','businessId','flowType','applicantUserId','status','currentNodeIndex','frozenNodes','createdAt','updatedAt'], update: ['frozenNodes','currentNodeIndex','status','updatedAt'] },
+  ApprovalActionLog: { insert: ['id','approvalInstanceId','action','actorUserId','representedUserId','approvedRoleKey','comment','metadata','signatureFileIdSnapshot','signatureSha256Snapshot','signatureVersionIdSnapshot','createdAt'], update: ['signatureFileIdSnapshot','signatureSha256Snapshot','signatureVersionIdSnapshot'] },
+  HandwrittenSignatureVersion: { insert: ['id','userId','source','fileId','contentSha256','createdAt'] },
+  ContractDraftSubmissionRequest: { insert: ['idempotencyKey','contractVersionId','expectedRevision','applicantUserId','requestSha256','approvalInstanceId','formalCode','responseSnapshot','createdAt'] },
+  ContractSealTask: { insert: ['id','contractVersionId','approvalInstanceId','handlerUserId','status','approvedByUserId','approvedAt','createdAt','updatedAt'], update: ['status','completedByUserId','completedAt','updatedAt'] },
+  ContractVersion: { update: ['status','firstSubmittedAt','readinessSnapshot','taxFactStatus','taxFactsFrozenAt','effectiveAt','updatedAt','signingSubjectType','companyEntityIdSnapshot','companyEntityVersionId','companyEntityNameSnapshot','companyEntityCreditCodeSnapshot'] },
+  ContractArchiveFile: { insert: ['id','contractVersionId','fileId','archiveProtocolVersion','archiveSource','uploadedByUserId','confirmedByUserId','confirmedAt','status','approvalInstanceId','sealTaskId','idempotencyKey','requestSha256','sourceRevision','documentContentRevision','documentContentFingerprint','authoritySnapshot','responseSnapshot','createdAt'] },
+  ContractArchiveEvidenceFile: { insert: ['id','archiveFileId','contractVersionId','fileId','displayOrder','mimeType','sizeBytes','contentSha256'] },
+  Contract: { update: ['code','updatedAt'] },
+  PaymentTermsVersion: { update: ['status','updatedAt'] }
+};
+// Actual single-create and createMany defaults of the fixed 605 engine. The
+// raw numbering INSERT and the fixed empty attachment branch add no clocks.
+const lifecycleInsertDefaults={
+ AuditLog:['createdAt'],RefreshToken:['createdAt'],FileObject:['createdAt'],Contract:['source','createdAt'],
+ ContractVersion:['cumulativeIncreaseCents','cumulativeDecreaseCents','draftRevision','documentContentRevision','taxFactRevision','createdAt'],
+ ContractBill:['revision','taxInclusiveAmountCents','taxExclusiveAmountCents','taxAmountCents','createdAt'],
+ ContractDraftSaveRequest:['createdAt'],ContractPartySnapshot:['createdAt'],PaymentTermsVersion:['createdAt'],
+ ContractArchiveEvidenceFile:['createdAt']
+};
+const lifecycleScalarReturns=['ApprovalInstance','ApprovalActionLog','HandwrittenSignatureVersion',
+ 'ContractDraftSubmissionRequest','ContractSealTask','ContractArchiveFile','ContractArchiveEvidenceFile'];
+const lifecycleFunctions=['public.jg_has_exclusive_file_business_binding(text)'];
+const documentMode=profile=>profile===documentProfile||profile.lifecycle===true;
+const rowLockFallbacks=profile=>profile.lifecycle?profile.rowLockFallbacks:documentRowLocks;
+const {registeredGeneratedLifecycleCollisionMaterial,migrationGeneratedLifecycleCollisionMaterial}=require('./task12-current261-generated-lifecycle-collision.cjs');
+function lifecycleProfile(source){
+ source=qualifyCurrent261GeneratedLifecycleSource(source);
+ const schema=readFileSync(join(__dirname,'schema.prisma'),'utf8');need(sha(schema)===source.profile.schemaSha256,'SOURCE');
+ const nextKeys=new Map([...documentKeys].map(([key,ops])=>[key,[...ops]]));
+ const add=(relation,column,privilege)=>{
+  const key=column===null?relation:relation+'.'+column,prior=nextKeys.get(key)??[];
+  if(!prior.includes(privilege))nextKeys.set(key,[...prior,privilege].sort());
+ };
+ for(const [table,operations]of Object.entries(lifecycleWrites))for(const [op,columns]of Object.entries(operations))for(const column of columns)add(table,column,op.toUpperCase());
+ for(const [table,columns]of Object.entries(lifecycleInsertDefaults))for(const column of columns)add(table,column,'INSERT');
+ for(const table of lifecycleScalarReturns){
+  const model=schema.match(new RegExp('^model '+table+' \\{([\\s\\S]*?)^\\}','m'));need(model,'SOURCE');
+  const columns=[...model[1].matchAll(/^\s+(\w+)\s+(?:String|Int|BigInt|Float|Decimal|Boolean|DateTime|Json|Bytes)(?:\?|\[\])?(?:\s|$)/gmu)].map(row=>row[1]);
+  need(columns.length>0,'SOURCE');for(const column of columns)add(table,column,'SELECT');
+ }
+ add('BusinessDailySequence','nextSequence','SELECT');
+ for(const column of ['correctionType','schemaVersion'])add('ContractTakeoverCorrection',column,'SELECT');
+ const rows=[...nextKeys].flatMap(([key,privileges])=>{const [relation,column=null]=key.split('.');return privileges.map(privilege=>({relation,column,privilege}));});
+ const fallbackLocks=Object.fromEntries(Object.entries(documentRowLocks).filter(([table,column])=>!lifecycleWrites[table]?.update?.includes(column)));
+ const collision=registeredGeneratedLifecycleCollisionMaterial(source);
+ const plan={keys:nextKeys,rows,lifecycle:true,effectivePlanSha256:collision.sha256,installation:collision.installation,rowLockFallbacks:fallbackLocks,
+  lockRelations:[...new Set([...documentProfile.lockRelations,...rows.map(row=>row.relation)])].sort(),
+  sha256:sha(JSON.stringify([lifecyclePurpose,documentProfile.sha256,source.profile.schemaSha256,rows,fallbackLocks,lifecycleFunctions,collision.sha256]))};
+ return plan;
+}
+function describeCurrent261GeneratedLifecycleOrdinaryAcl(source){return describeLifecycleOrdinary(lifecycleProfile(source));}
+function describeMigration261GeneratedLifecycleOrdinaryAcl(source){
+ const profile=lifecycleProfile(source);
+ const rows=profile.rows.filter(row=>!['RegisteredPaymentFunding','RegisteredPaymentVoucher'].includes(row.relation));
+ const collision=migrationGeneratedLifecycleCollisionMaterial(source);
+ return describeLifecycleOrdinary({...profile,rows,effectivePlanSha256:collision.sha256,installation:collision.installation,sha256:sha(JSON.stringify(['ARCHIVE261_MIGRATIONS_ONLY',profile.sha256,rows]))});
+}
+function describeLifecycleOrdinary(profile){
+ return Object.freeze({purpose:lifecyclePurpose,requirementsSha256:profile.sha256,
+  frozenRequirementsSha256:requirementsSha256,effectivePlanSha256:profile.effectivePlanSha256,installation:profile.installation,rows:Object.freeze(profile.rows.map(row=>Object.freeze({...row}))),
+  requiredExistingFunctions:Object.freeze([...lifecycleFunctions]),
+  conditionalRowLockColumns:Object.freeze({BusinessParty:manifest.businessPartyRowLockFallback,...profile.rowLockFallbacks}),
+  retainedRowLocks:Object.freeze({...manifest.retainRowLocks}),executionAllowed:false,nativeAdmission:false});
+}
+
 const protectedRowsSql=`pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(
  ${protectedBindings.map(name=>`(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(b.xmin::text,pg_catalog.to_jsonb(b))
    ORDER BY pg_catalog.to_jsonb(b)::text COLLATE "C",b.xmin::text COLLATE "C") FROM public.${name} b)`).join(', ')},
@@ -156,8 +228,8 @@ function rawEntries(acl) {
 
 function targets(ordinary,profile){
  const app=ownerRoleSql(ordinary);
- const document=profile===documentProfile;
- const requiredLocks=document?Object.entries(documentRowLocks).map(([relation,column])=>
+ const document=documentMode(profile);
+ const requiredLocks=document?Object.entries(rowLockFallbacks(profile)).map(([relation,column])=>
   `AND (NOT (req.relation=${quote(relation)} AND req."column"=${quote(column)} AND req.privilege='UPDATE')
    OR NOT pg_catalog.has_any_column_privilege(${app},${quote('public.'+identifier(relation))}::regclass,'UPDATE'))`).join('\n '):'';
  return `WITH requested AS (
@@ -209,9 +281,10 @@ function limits(ordinary,profile) {
     (a.attname NOT IN ('contentSha256','executionId','fileId') AND pg_catalog.has_column_privilege(${app},a.attrelid,a.attnum,'SELECT'))))
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid='public."FileObject"'::regclass AND a.attnum>0 AND NOT a.attisdropped
    AND a.attname<>'createdAt' AND pg_catalog.has_column_privilege(${app},a.attrelid,a.attnum,'UPDATE'))
- ${lockFields}${profile!==ordinaryProfile?`
+ ${lockFields}${profile.lifecycle?lifecycleFunctions.map(signature=>`
+ OR pg_catalog.has_function_privilege(${app},${quote(signature)}::regprocedure,'EXECUTE') IS DISTINCT FROM true`).join(''):''}${profile!==ordinaryProfile?`
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relnamespace=pg_catalog.to_regnamespace('public')
-  AND c.relname IN (${literalList([...new Set([...Object.keys(generatedDraftReads),...(profile===documentProfile?Object.keys(documentReads):[])])])}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
+  AND c.relname IN (${literalList([...new Set([...Object.keys(generatedDraftReads),...(documentMode(profile)?Object.keys(documentReads):[])])])}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
  THEN RAISE EXCEPTION '${CODE}_PRIVILEGE_BOUNDARY'; END IF;`;
 }
 
@@ -374,6 +447,10 @@ async function installCurrent259GeneratedDocumentOrdinaryAcl(archiveCompletion,h
  return install(archiveCompletion,handle,documentProfile);
 }
 
+async function installCurrent261GeneratedLifecycleOrdinaryAcl(archiveCompletion,handle){
+ need(arguments.length===2,'HANDLE');return install(archiveCompletion,handle,null);
+}
+
 async function install(archiveCompletion,handle,profile){
  need(handle && typeof handle==='object' && !types.isProxy(handle) && !used.has(handle),'HANDLE');
  const lease=claimCurrent259ArchiveInstallation(archiveCompletion,handle);
@@ -386,7 +463,8 @@ async function install(archiveCompletion,handle,profile){
     Object.getOwnPropertyDescriptor(resource,'execOwnerSql')?.value===exec,'CONTINUITY');};
   check();
   const ordinary=candidateShape(archiveCompletion,view,lease);
-  if(profile===documentProfile)need(resource.topology==='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS','HANDLE');
+  if(profile===null)profile=lifecycleProfile(lease.source);
+  if(documentMode(profile))need(resource.topology==='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS','HANDLE');
   const run=async(next,before,staged)=>{
    phase=next;check();
    const challenge=randomBytes(32).toString('hex');
@@ -408,7 +486,8 @@ async function install(archiveCompletion,handle,profile){
   const completion=Object.freeze({status:proofStatus,sourceSha:archiveCompletion.sourceSha,runId:archiveCompletion.runId,
     containerId:archiveCompletion.containerId,installXid:committed.installXid,archiveInstallXid:archiveCompletion.installXid,
     catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256:profile.sha256,
-    ...(profile===documentProfile?{purpose:documentPurpose}:{}),executionAllowed:false,nativeAdmission:false});
+    ...(profile.lifecycle?{effectivePlanSha256:profile.effectivePlanSha256,installation:profile.installation}:{}),
+    ...(documentMode(profile)?{purpose:profile.lifecycle?lifecyclePurpose:documentPurpose}:{}),executionAllowed:false,nativeAdmission:false});
   proofs.set(completion,{handle,check,profile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
     catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql,
     protectedSql:protectSeven(normalizedSevenCatalog(lease.ordinaryAclWitness(phases[2]).sevenCatalogSql,before.changes))});
@@ -431,12 +510,17 @@ function claimCurrent259GeneratedDocumentOrdinaryAcl(completion,handle){
 function claim(completion,handle,document){
  need(completion && !types.isProxy(completion) && proofs.has(completion),'HANDLE');
  const receipt=proofs.get(completion);
- need(receipt.handle===handle && (receipt.profile===documentProfile)===document,'HANDLE');
+ need(receipt.handle===handle && (document==='lifecycle'?receipt.profile.lifecycle===true:
+  receipt.profile.lifecycle!==true&&(receipt.profile===documentProfile)===document),'HANDLE');
  proofs.delete(completion);receipt.check();
  const {check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql}=receipt;
  return Object.freeze({completion,check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql,
-  ...(receipt.profile===generatedProfile?{generatedDraft:true}:{}),...(document?{generatedDocument:true}:{})});
+  ...(receipt.profile===generatedProfile?{generatedDraft:true}:{}),...(document==='lifecycle'?{generatedLifecycle:true}:document?{generatedDocument:true}:{})});
 }
 
-module.exports=Object.freeze({installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
+function claimCurrent261GeneratedLifecycleOrdinaryAcl(completion,handle){
+ need(arguments.length===2,'HANDLE');return claim(completion,handle,'lifecycle');
+}
+
+module.exports=Object.freeze({describeCurrent261GeneratedLifecycleOrdinaryAcl,describeMigration261GeneratedLifecycleOrdinaryAcl,installCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
  installCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl});

@@ -3,6 +3,7 @@ const {readFileSync}=require('node:fs');
 const {createHash,randomBytes}=require('node:crypto');
 const path=require('node:path');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
+const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const roles=['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue'];
@@ -27,11 +28,29 @@ const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 const distinct=(left,right)=>left.backendPid!==right.backendPid&&left.backendStart!==right.backendStart;
 const stable=row=>[row.databaseOid,row.namespaceOid,row.systemIdentifier,row.coordinatesSha256,row.roleOids,row.roleXmins];
 
-function profile(){
+const {registeredGeneratedLifecycleCollisionMaterial,migrationGeneratedLifecycleCollisionMaterial,generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
+function profile(source,migration=false){
  const bytes=readFileSync(manifestFile);
  need(sha(bytes)===manifestSha,'SOURCE');
  const data=JSON.parse(bytes);
  need(data.version===1&&same(Object.keys(data.roles),roles),'SOURCE');
+ if(source!==undefined){
+  qualifyCurrent261GeneratedLifecycleSource(source);
+  const defaults={jg_c259_doc_template:{ContractLayoutTemplate:['createdAt'],ContractLayoutTemplateVersion:['draftRevision','createdAt'],ContractLayoutPreviewJob:['createdAt'],AuditLog:['createdAt']},
+   jg_c259_doc_worker:{AuditLog:['createdAt'],FileObject:['createdAt']},
+   jg_c259_doc_queue:{ContractGeneratedDocument:['createdAt'],AuditLog:['createdAt']}};
+  const collision=(migration?migrationGeneratedLifecycleCollisionMaterial:registeredGeneratedLifecycleCollisionMaterial)(source);
+  for(const role of roles){
+   for(const [table,columns]of Object.entries(defaults[role])){
+    const insert=data.roles[role][table]?.insert;need(insert?.length&&columns.every(column=>!insert.includes(column)),'SOURCE');
+    data.roles[role][table].insert=[...insert,...columns].sort();
+   }
+   if(collision.callers.includes(role))for(const [table,column]of collision.columns){
+    const ops=data.roles[role][table]??={};const columns=ops.select??=[];
+    if(!columns.includes(column))columns.push(column);columns.sort();
+   }
+  }
+ }
  const groups=[],rows=[];
  for(const [role,tables] of Object.entries(data.roles))for(const [relation,operations] of Object.entries(tables)){
   need(safeName.test(relation),'SOURCE');
@@ -43,9 +62,11 @@ function profile(){
    for(const column of columns)rows.push({role,relation,column,privilege});
   }
  }
- return {groups,rows,tables:[...new Set(rows.map(row=>row.relation))].sort()};
+ const collision=source===undefined?undefined:(migration?migrationGeneratedLifecycleCollisionMaterial:registeredGeneratedLifecycleCollisionMaterial)(source);
+ return {collision,functions:collision?.functions??[],groups,rows,tables:[...new Set(rows.map(row=>row.relation))].sort(),sha256:source===undefined?manifestSha:sha(JSON.stringify(['CURRENT261_GENERATED_LIFECYCLE_DOCUMENT_ACL_V1',manifestSha,rows,collision]))};
 }
 function catalog(material){
+ const collision=material.collision?generatedLifecycleCollisionSql(material.collision):undefined;
  const roleRows=`(SELECT r.oid,r.xmin AS role_xmin,r.rolname,r.rolcanlogin,r.rolsuper,r.rolinherit,r.rolcreatedb,
   r.rolcreaterole,r.rolreplication,r.rolbypassrls,r.rolpassword IS NULL AS no_password,r.rolvaliduntil,r.rolconnlimit
   FROM pg_authid r WHERE r.rolname::text IN (${list(roles)}))`;
@@ -82,7 +103,7 @@ function catalog(material){
    FROM ${current259AclRowsSql('a.attacl')} acl WHERE NOT EXISTS(SELECT FROM ${roleRows} r WHERE r.oid=acl.grantee)),
   c.relacl) ORDER BY c.oid,a.attnum)::text,'UTF8')),'hex')
   FROM pg_class c JOIN pg_attribute a ON a.attrelid=c.oid WHERE ${attr} AND c.relname IN (${list(material.tables)}))`;
- return {rolesSql,publicNs,dbOid,roleHealth,fixedObjects,effective,acl,coordinates};
+ return {rolesSql,publicNs,dbOid,roleHealth,fixedObjects:collision?`(${fixedObjects}) AND (${collision.metadata}) AND (${collision.installation})`:fixedObjects,effective,acl:post=>collision?`(${acl(post)}) AND (${collision.acl(post)})`:acl(post),coordinates};
 }
 
 function render(material,c,phase,challenge,before,staged){
@@ -107,6 +128,7 @@ END $doc_acl_${tag}$;`;
  const statements=stagedPhase?[
   `LOCK TABLE ${material.tables.map(table=>'public.'+identifier(table)).join(', ')} IN SHARE ROW EXCLUSIVE MODE NOWAIT;`,guard('preimage',false),
   ...material.groups.map(row=>`GRANT ${row.privilege} (${row.columns.map(identifier).join(', ')}) ON TABLE public.${identifier(row.relation)} TO ${identifier(row.role)};`),
+  ...(material.collision?generatedLifecycleCollisionSql(material.collision).grants:[]),
   guard('postimage',true)
  ]:[guard(phase,committed)];
  return [stagedPhase?write:readOnly,setup,...statements,
@@ -138,8 +160,21 @@ function once(accept){
 
 /** Fixed SQL material only. No live role issuance, transport or application authority. */
 function beginCurrent259GeneratedDocumentAcl(){
- need(arguments.length===0,'ARGUMENTS');
- const material=profile(),c=catalog(material),challenge=nonce();
+ need(arguments.length===0,'ARGUMENTS');return begin(profile());
+}
+function describeCurrent261GeneratedLifecycleDocumentAcl(source){return describe(profile(source));}
+function describeMigration261GeneratedLifecycleDocumentAcl(source){return describe(profile(source,true));}
+function describe(material){
+ return Object.freeze({purpose:'CURRENT261_GENERATED_LIFECYCLE_DOCUMENT_ACL_V1',profileSha256:material.sha256,
+  installation:material.collision.installation,effectivePlanSha256:material.collision.sha256,functions:material.functions,collision:material.collision,
+  frozenManifestSha256:manifestSha,groups:Object.freeze(material.groups.map(row=>Object.freeze({...row,columns:Object.freeze([...row.columns])}))),
+  rows:Object.freeze(material.rows.map(row=>Object.freeze({...row}))),executionAllowed:false,nativeAdmission:false});
+}
+function beginCurrent261GeneratedLifecycleDocumentAcl(source){
+ need(arguments.length===1&&source!==undefined,'ARGUMENTS');return begin(profile(source));
+}
+function begin(material){
+ const c=catalog(material),challenge=nonce();
  return Object.freeze({beforeSql:render(material,c,'before',challenge),acceptBefore:once(text=>{
   const before=observation(text,'before',challenge),challengeWrite=nonce();
   return Object.freeze({sql:render(material,c,'staged',challengeWrite,before),acceptStaged:once(stagedText=>{
@@ -150,10 +185,11 @@ function beginCurrent259GeneratedDocumentAcl(){
     const committed=observation(committedText,'committed',challengeReadback);
     need(same(stable(staged),stable(committed))&&distinct(before,committed)&&distinct(staged,committed)&&
      committed.installXid===staged.installXid,'COMMITTED');
-    return Object.freeze({status:'CURRENT259_DOCUMENT_ACL_SOURCE_PROJECTION_MATCHED',profileSha256:manifestSha,
+    return Object.freeze({status:'CURRENT259_DOCUMENT_ACL_SOURCE_PROJECTION_MATCHED',profileSha256:material.sha256,
+     ...(material.collision?{effectivePlanSha256:material.collision.sha256,installation:material.collision.installation}:{}),
      nativeAdmission:false,executionAllowed:false});
    })});
   })});
  })});
 }
-module.exports=Object.freeze({beginCurrent259GeneratedDocumentAcl});
+module.exports=Object.freeze({beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261GeneratedLifecycleDocumentAcl,describeMigration261GeneratedLifecycleDocumentAcl});
