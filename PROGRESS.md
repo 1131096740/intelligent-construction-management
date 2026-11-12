@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-12）
 
+- [~] 本轮重新核对 GitHub 为 14/45 已关闭，前沿仅 #394/#398；草稿 #428 的准确 `89d50322` 在 CI [43226819627](https://github.com/1131096740/intelligent-construction-management/actions/runs/43226819627) 的 32 项检查全部通过。新隔离集成分支已保留后继 `33741e44` 及两轴审查，并快进到 `acc6b999`：修复 native 容器创建响应丢失后跳过清理，精确核本轮名称/标签/ID，未知归属拒删，已知 ID 仍须证不存在。准确 337 的独立 486 脚本、134 API、类型/lint，以及准确 acc 的独立 15 native 无资源测试通过。真实 #394/#398 验收仍待单独授权；旧单次入口不重跑，以上 CI 不外推到新提交。[本轮收据](docs/progress/2026-11-12-382-resume-integration.md)。
+
 - [~] #398 A16 断连恢复源码已快进本地至 `a388cf6f`。独审按 PG16 实际长度复现替代连接名 64 字节被截断，修后固定 57 字节并保完整等值。准确 `040c77dc` 的119定向、1082标准、147 API、45付款模型、类型/lint/构建及两SDK纯加载通过；a388仅并入516d回执文档，14源码逐字相同，合后5项窄过。真实故障、HTTP5秒与查账仍待验。516d 第三库故障确认发生在205控制查询端口、早于 Node 账本解析，旧诊断只覆盖首库，后继窄修历史恢复端口脱敏首错。 [A16独审](/private/tmp/jg-398-a16-native-merge.d5X5vNpL/REVIEW-040C.md) · [合并回执](/private/tmp/jg-398-a16-native-merge.d5X5vNpL/HANDOFF-A388.md) · [205复盘](/private/tmp/jg-382-pfq205-recovery-audit.sphh7Nde/HANDOFF.md)
 
 - [~] 准确 `516d3a4f` 已按新明确授权执行 PFQ259 封存命令一次，终态退出1。空库与无冲突 M115 历史库均实际应用259条，越过此前213供应首错；第三库历史重复记录恢复在应用205前缀后首次异常 `LOCAL_MIGRATION_SQL_STAGE205_READBACK`，底层SQLSTATE/原因未保留。脚本清理及按准确容器名的独立空0查询完成。失败目录为空，原运行日志与准确摘要保留。其余库与原13项并发未运行，许可已消耗，未重试/修复/执行后继门。未执行其他组、真实COS、GitHub写入、部署或生产。 [停止回执](/private/tmp/jg-382-pfq259-functional-516d.71lv6dhk/STOP-RECEIPT.md) · [清理核对](/private/tmp/jg-382-pfq259-functional-516d.71lv6dhk/CLEANUP-CHECK.json)
