@@ -725,12 +725,13 @@ describe("project financing quota PostgreSQL runner", () => {
       const fakeSource = readFileSync(join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8")
         .replace('if (tool === "pnpm") {', failurePort + '\nif (tool === "pnpm") {')
         .replace('else if (args[0] === "logs") stdout = state.serverLog;', 'else if (args[0] === "logs") stderr = state.serverLog;');
-      if (setup) installContainerInspectFixture(fixture, bin, fakeSource);
-      else for (const name of ["docker", "pnpm"]) writeFileSync(join(bin, name), "#!" + process.execPath + "\n" + fakeSource, { mode: 0o700 });
+      installContainerInspectFixture(fixture, bin, fakeSource);
+      // The replacement child follows four complete simulated database journeys.
+      const childBudgetMs = setup ? 30_000 : 15_000;
       const evidencePath = join(artifacts, "project_financing_quota-evidence.json");
       const run = spawnSync(process.execPath, [join(prismaRoot, "run-project-financing-quota-concurrency-local.cjs")], {
         env: { PATH: bin, HOME: fixture, TMPDIR: artifacts, NODE_ENV: "test", PNPM_BIN: join(bin, "pnpm"),
-          PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH: evidencePath }, encoding: "utf8", timeout: 15_000
+          PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH: evidencePath }, encoding: "utf8", timeout: childBudgetMs
       });
       expect({ status: run.status, error: run.error }).toEqual({ status: 1, error: undefined });
       expect(run.stderr).toContain(setup ? "LOCAL_MIGRATION_SQL_QUALIFICATION_SETUP" : "LOCAL_MIGRATION_SQL_STAGE205_READBACK");
