@@ -23,6 +23,10 @@ function renderEmployeeOnboardingFileGuardGrant() {
   return renderFixtureFileGuardGrant("onboarding_runtime", "onboarding", "HandwrittenSignatureVersion", "fileId");
 }
 
+function renderGeneralProcurementFileGuardGrant() {
+  return renderFixtureFileGuardGrant("general_procurement_runtime", "general_procurement", "HandwrittenSignatureVersion", "fileId");
+}
+
 function renderFixtureFileGuardGrant(role, database, table, column) {
   return `DO $contract_finance_file_guard$
 DECLARE
@@ -110,4 +114,9 @@ function prepareContractBankRuntime({ name, db, password, target, env = process.
  runDocker(['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d',db,'-f','/tmp/backup-role.sql']);
  return target.replace('://jiangkong:', '://contract_runtime:');
 }
-module.exports = { prepareContractBankRuntime, renderContractFinanceFileGuardGrant, renderEmployeeOnboardingFileGuardGrant };
+module.exports = {
+  prepareContractBankRuntime,
+  renderContractFinanceFileGuardGrant,
+  renderEmployeeOnboardingFileGuardGrant,
+  renderGeneralProcurementFileGuardGrant
+};

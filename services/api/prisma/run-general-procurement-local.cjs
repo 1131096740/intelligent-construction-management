@@ -7,6 +7,7 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+const { renderGeneralProcurementFileGuardGrant } = require("./contract-bank-runtime-fixture.cjs");
 const storageRoot = mkdtempSync(path.join(tmpdir(), "general-procurement-files-"));
 
 const root = path.resolve(__dirname, "../../..");
@@ -67,6 +68,7 @@ async function verify() {
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${runtime};
     REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM ${runtime};
     REVOKE INSERT, UPDATE, DELETE ON TABLE public."OperatingFact" FROM ${runtime};
+    ${renderGeneralProcurementFileGuardGrant()}
   `], process.env, true);
   docker(["cp", path.join(__dirname, "general-procurement-runtime-grants.sql"), `${containerId}:/tmp/procurement-grants.sql`], process.env, true);
   docker(["exec", "--env", `OPERATING_LEDGER_RUNTIME_ROLE=${runtime}`, containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "general_procurement", "--file=/tmp/procurement-grants.sql"], process.env, true);
