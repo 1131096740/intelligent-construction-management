@@ -41,7 +41,7 @@ async function bounded(operation,reason){
 }
 
 async function probe(view,check,report,read,progress){
-  const {resource,loader}=view;
+  const {resource,loader,beginPrismaRelayDrain}=view;
   const {caPath,serverCertHashes,databaseName,port}=resource;
   const readCa=expectedIdentity=>read(caPath,{maxBytes:1024*1024,expectedIdentity,code:'CURRENT259_CONTRACT_LOGIN_CA'});
   const ca=readCa();
@@ -58,7 +58,7 @@ async function probe(view,check,report,read,progress){
   let previous;
   for(let index=0;index<2;index++){
     const enter=step=>report.enter('TLS_POSITIVE_'+step,index);
-    let client,disconnect,firstFault;
+    let client,disconnect,waitForRelay,firstFault;
     try{
       enter('CONSTRUCT');
       full();
@@ -72,6 +72,10 @@ async function probe(view,check,report,read,progress){
       };
       enter('CONNECT');
       clientCheck();
+      need(typeof beginPrismaRelayDrain==='function'&&view.beginPrismaRelayDrain===beginPrismaRelayDrain,'METHOD');
+      const drain=beginPrismaRelayDrain.call(view);
+      need(typeof drain==='function','METHOD');
+      waitForRelay=drain;
       await bounded(()=>connect.call(client),'CONNECT_TIMEOUT');
       enter('CONTINUITY');
       clientCheck();
@@ -101,6 +105,7 @@ async function probe(view,check,report,read,progress){
       enter('DISCONNECT');
       try{await bounded(()=>disconnect.call(client),'DISCONNECT_UNKNOWN');}
       catch(cause){
+        waitForRelay=undefined;
         progress.clientCleanupUnknown=true;
         if(!firstFault){
           report.capture(cause,'DISCONNECT_UNKNOWN');
@@ -108,7 +113,19 @@ async function probe(view,check,report,read,progress){
         }
       }
     }
+    if(waitForRelay){
+      enter('DRAIN');
+      // Wait for the captured peer's framed FIN and worker exit before deep continuity.
+      try{await waitForRelay();}
+      catch(cause){
+        if(!firstFault){
+          report.capture(cause,localReasons.get(cause));
+          firstFault={cause};
+        }
+      }
+    }
     if(firstFault)throw firstFault.cause;
+    enter('CONTINUITY');
     try{full();}catch(cause){report.capture(cause,localReasons.get(cause));throw cause;}
     progress.positiveClients++;
   }

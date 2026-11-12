@@ -22,12 +22,12 @@ function model(t,{once=true,used=false,drift,invalidPlan=false}={}){
     execArgv:[],env:{},getuid:()=>process.getuid(),once(){},removeListener(){},
     stdout:{write(data){out.push(JSON.parse(data));}}};
   if(used)fs.writeFileSync(attemptFile,'prior',{mode:0o600});
-  let clients=0,reads=0,checks=0,lastClosed=false;
+  let clients=0,reads=0,checks=0,lastClosed=false,window,drained=0;
   class Client{
     constructor(config){
       this.index=clients++;
       calls.push('construct'+this.index);
-      if(this.index===1)assert.ok(lastClosed&&checks>0);
+      if(this.index===1)assert.ok(lastClosed&&checks>0&&drained===1);
       const url=new URL(config.datasources.db.url);
       assert.equal(url.protocol,'postgresql:');assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'43126');
       assert.equal(url.username,'jg_task01_owner');assert.equal(url.pathname,'/'+databaseName);
@@ -36,7 +36,8 @@ function model(t,{once=true,used=false,drift,invalidPlan=false}={}){
     }
     async $connect(){
       calls.push('connect'+this.index);
-      if(drift==='frame')throw Object.assign(new Error('private bytes'),{
+      if(window){assert.equal(window.index,this.index);window.connected=true;}
+      if(drift==='frame'||drift==='frame-and-drain')throw Object.assign(new Error('private bytes'),{
         code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',
         relayFrameStage:'STDOUT_EOF_WITHOUT_FIN'});
     }
@@ -51,6 +52,7 @@ function model(t,{once=true,used=false,drift,invalidPlan=false}={}){
         pid,start:'2026-11-12 11:00:00+00',challenge}];
     }
     async $disconnect(){calls.push('disconnect'+this.index);lastClosed=true;checks=0;
+      if(window){assert.equal(window.index,this.index);window.disconnected=true;}
       if(drift==='disconnect')throw new Error('private disconnect');
     }
   }
@@ -86,7 +88,26 @@ function model(t,{once=true,used=false,drift,invalidPlan=false}={}){
         assert.equal(actual,handle);
         return {runId,resource:{caPath,serverCertHashes:{caSha256:'ca'},databaseName,port:43126,containerId,relayId},
           loader:{Class:Client},
-          credentials:()=>({owner:'private-secret'}),verifyFull(){checks++;}};
+          credentials:()=>({owner:'private-secret'}),
+          beginPrismaRelayDrain(){
+            assert.equal(window,undefined);
+            const current={index:clients-1,connected:false,disconnected:false};
+            calls.push('begin-drain'+current.index);
+            if(drift==='drain-shape')return undefined;
+            window=current;
+            return async ()=>{
+              assert.equal(window,current);assert.ok(current.connected&&current.disconnected);
+              calls.push('drain-start'+current.index);
+              await new Promise(resolve=>setImmediate(resolve));
+              if(drift==='drain'||drift==='frame-and-drain'||drift==='drain-second'&&current.index===1)throw Object.assign(new Error('private relay state'),{
+                code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'});
+              window=undefined;drained++;calls.push('drain-done'+current.index);
+            };
+          },
+          verifyFull(){
+            assert.ok(!window?.disconnected,'disconnected relay worker must drain before deep continuity');
+            checks++;
+          }};
       }
     }
   };
@@ -106,28 +127,49 @@ test('the exact owner runs two sequential strict TLS clients and records verifie
   const f=model(t),r=await f.result();
   assert.equal(r.status,'CURRENT259_RELAY_DIAGNOSTIC_COMPLETE');
   assert.equal(r.cleanup,'VERIFIED');assert.equal(r.positiveClients,2);assert.equal(r.identityReads,4);
-  assert.deepEqual(f.calls,['open','construct0','connect0','read0','read0','disconnect0','construct1','connect1','read1','read1','disconnect1','close']);
+  assert.deepEqual(f.calls,['open','construct0','begin-drain0','connect0','read0','read0','disconnect0','drain-start0','drain-done0',
+    'construct1','begin-drain1','connect1','read1','read1','disconnect1','drain-start1','drain-done1','close']);
   assert.deepEqual(JSON.parse(fs.readFileSync(f.receiptFile)),r);
   assert.doesNotMatch(JSON.stringify(r),/private|127\.0\.0\.1/u);
 });
 for(const [options,phase,opened] of [
   [{used:true},'ATTEMPT',false],[{invalidPlan:true},'PREFLIGHT',false],[{drift:'marker'},'RESOURCE',false],
-  [{drift:'frame'},'TLS',true],[{drift:'rotate'},'TLS',true],[{drift:'migrated'},'TLS',true],
-  [{drift:'disconnect'},'TLS',true],[{drift:'cleanup'},'CLEANUP',true],[{drift:'cleanup-scope'},'CLEANUP',true],
+  [{drift:'frame'},'TLS',true],[{drift:'frame-and-drain'},'TLS',true],[{drift:'rotate'},'TLS',true],[{drift:'migrated'},'TLS',true],
+  [{drift:'disconnect'},'TLS',true],[{drift:'drain'},'TLS',true],[{drift:'drain-shape'},'TLS',true],[{drift:'cleanup'},'CLEANUP',true],[{drift:'cleanup-scope'},'CLEANUP',true],
 ]){
   test('relay stops on '+JSON.stringify(options),async t=>{
     const f=model(t,options),r=await f.result();
     assert.equal(r.status,'CURRENT259_RELAY_DIAGNOSTIC_STOPPED');assert.equal(r.phase,phase);
     assert.equal(f.calls.includes('open'),opened);assert.equal(f.calls.includes('close'),opened);
     if(phase!=='CLEANUP')assert.equal(f.calls.includes('construct1'),false);
-    if(options.drift==='frame'){
+    if(options.drift==='frame'||options.drift==='frame-and-drain'){
       assert.equal(r.failure.stage,'TLS_POSITIVE_CONNECT');
       assert.equal(r.failure.relayFrameStage,'STDOUT_EOF_WITHOUT_FIN');
+      assert.equal(f.calls.includes('drain-start0'),true);
     }
     if(phase==='CLEANUP')assert.equal(r.cleanup,'UNKNOWN');
-    if(options.drift==='disconnect')assert.equal(r.clientCleanup,'UNKNOWN');
+    if(options.drift==='disconnect'){
+      assert.equal(r.clientCleanup,'UNKNOWN');assert.equal(f.calls.includes('drain-start0'),false);
+    }
+    if(options.drift==='drain'){
+      assert.equal(r.cleanup,'VERIFIED');assert.equal(r.identityReads,2);assert.equal(r.positiveClients,0);
+      assert.deepEqual(r.failure,{stage:'TLS_POSITIVE_DRAIN',operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',
+        relayCode:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT',roleIndex:0});
+    }
+    if(options.drift==='drain-shape'){
+      assert.equal(f.calls.includes('connect0'),false);assert.ok(f.calls.includes('disconnect0'));
+      assert.deepEqual(r.failure,{stage:'TLS_POSITIVE_CONNECT',reason:'METHOD',roleIndex:0});
+    }
     if(options.used)assert.equal(fs.readFileSync(f.attemptFile,'utf8'),'prior');
     assert.equal(f.fakeProcess.exitCode,1);
     assert.doesNotMatch(JSON.stringify(r),/private/u);
   });
 }
+
+test('a second peer drain failure preserves four readbacks without certifying that peer',async t=>{
+  const f=model(t,{drift:'drain-second'}),r=await f.result();
+  assert.equal(r.status,'CURRENT259_RELAY_DIAGNOSTIC_STOPPED');
+  assert.equal(r.positiveClients,1);assert.equal(r.identityReads,4);assert.equal(r.cleanup,'VERIFIED');
+  assert.equal(r.failure.stage,'TLS_POSITIVE_DRAIN');assert.equal(r.failure.roleIndex,1);
+  assert.equal(f.calls.at(-1),'close');
+});
