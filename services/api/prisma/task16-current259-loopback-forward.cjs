@@ -11,6 +11,7 @@ const { types } = require('node:util');
 const { decodeRelaySysreadExit } = require('./task16-current259-relay-sysread.cjs');
 const { readQualifiedTask16File } = require('./task16-runtime-inputs.cjs');
 
+
 function requireFixedIdentityMain() {
   const main=require.main;
   const allowed=['task12-current259-readonly-relay-once.cjs','task12-current259-generated-draft-once.cjs','task12-current259-first-q2-once.cjs'];
@@ -218,13 +219,15 @@ async function startCurrent259LoopbackForward(options, readonlyPermit) {
   const verifyBackendGone = arguments.length === 2 ?
     require('./task12-current259-identity-authority.cjs').claimIdentityBackendVerifier(readonlyPermit, { containerId, dockerConfig, signal }) : undefined;
   need(arguments.length === 1 || typeof verifyBackendGone === 'function', 'INPUT');
+  const identityProfile=verifyBackendGone&&Object.getOwnPropertyDescriptor(verifyBackendGone,'identityProfile')?.value;
+  need(identityProfile===undefined||require('./task12-current259-identity261-profile.cjs').isIdentity261(identityProfile),'INPUT');
   need(!aborted.call(signal), 'ABORTED');
   const configIdentity = checkConfig(dockerConfig);
   const argv = ['--host', ENDPOINT, 'exec', '--interactive', '--user', 'postgres', containerId,
     '/usr/bin/env', '-i', '/usr/bin/perl', '-T', '-e', PUMP];
   const env = { PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C', TZ: 'UTC', DOCKER_CONFIG: dockerConfig };
   const workers = new Set();
-  let firstFailure, closing, active = false, prismaWindow, notifyStopped, readonlyStarted = false;
+  let firstFailure, closing, active = false, prismaWindow, notifyStopped, readonlyStarted = false, identityQualification, identityFinished = false;
   const stopped = new Promise(resolve => { notifyStopped = resolve; });
   const fail = (suffix, relayCloseState, relayFrameStage, waitForNaturalExit = false) => {
     if (!firstFailure) {
@@ -407,12 +410,16 @@ async function startCurrent259LoopbackForward(options, readonlyPermit) {
     return window;
   }
   function beginPrismaDrain() {
-    need(arguments.length === 0 && !verifyBackendGone, 'INPUT');
+    need(arguments.length === 0 && (!verifyBackendGone||identityProfile&&!identityQualification), 'INPUT');
     const window = openDrain(false);
     return async function () { need(arguments.length === 0, 'DEPLOY_DRAIN_ACTIVE'); return waitDrain(window); };
   }
   function beginReadonlyRelayProbe() {
-    need(arguments.length === 0 && verifyBackendGone && workers.size === 0, 'INPUT');
+    need(arguments.length === 0 && verifyBackendGone && !identityProfile && workers.size === 0, 'INPUT');
+    return readonlyWindow();
+  }
+  function readonlyWindow() {
+    need(workers.size===0,'INPUT');
     readonlyStarted = true;
     const window = openDrain(true);
     return Object.freeze({
@@ -425,6 +432,37 @@ async function startCurrent259LoopbackForward(options, readonlyPermit) {
       finish() {
         need(arguments.length === 0 && window.identity, 'INPUT');
         return waitDrain(window);
+      },
+    });
+  }
+  function beginIdentityQualification(roles) {
+    need(arguments.length===1&&identityProfile&&!identityQualification&&!identityFinished&&
+      require('./task12-current259-identity261-profile.cjs').identityRoles(roles)&&workers.size===0,'INPUT');
+    const qualification={roles:roles.slice(),index:0,evidence:[],active:true};
+    identityQualification=qualification;
+    return Object.freeze({
+      begin(index,role){
+        need(arguments.length===2&&identityQualification===qualification&&qualification.active&&
+          index===qualification.index&&role===qualification.roles[index]&&index<5,'INPUT');
+        const lease=readonlyWindow();
+        return Object.freeze({
+          markDisconnect(pid,start){need(arguments.length===2,'INPUT');lease.markDisconnect(pid,start);},
+          async finish(){
+            need(arguments.length===0&&identityQualification===qualification&&qualification.active,'INPUT');
+            const closeKind=await lease.finish();
+            qualification.evidence.push(Object.freeze({name:role,identityVerified:true,closeKind,
+              ...(closeKind==='CLOSED_BY_RESET'?{backendGone:true}:{})}));
+            qualification.index++;
+            return closeKind;
+          },
+        });
+      },
+      finish(){
+        need(arguments.length===0&&identityQualification===qualification&&qualification.active&&
+          qualification.index===5&&qualification.evidence.length===5&&!prismaWindow&&workers.size===0,'INPUT');
+        qualification.active=false;identityQualification=undefined;identityFinished=true;readonlyStarted=false;
+        check();
+        return Object.freeze(qualification.evidence.slice());
       },
     });
   }
@@ -491,7 +529,7 @@ async function startCurrent259LoopbackForward(options, readonlyPermit) {
     active = true;
     onEvent.call(signal, 'abort', onAbort, { once: true });
     return Object.freeze({ port: address.port, check, close, beginPrismaDrain,
-      ...(verifyBackendGone ? { beginReadonlyRelayProbe } : {}) });
+      ...(identityProfile ? {beginIdentityQualification}:verifyBackendGone ? { beginReadonlyRelayProbe } : {}) });
   } catch (error) {
     try { await close(); } catch { throw fault('CLEANUP'); }
     throw error;

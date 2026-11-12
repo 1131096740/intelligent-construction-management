@@ -393,7 +393,13 @@ function verifyCa(cas) {
 async function readLiveClient(context, client, query, role, endpoint, check) {
   const inspect=async()=>{
     const challenge=randomBytes(32).toString('hex');
-    const rows=await bounded(()=>query.call(client,hostSql,challenge),'QUERY_TIMEOUT',context);
+    const sql=context.identityQualification?hostSql.replace(' s.ssl AS tls,',
+      " current_setting('transaction_read_only') = 'on' AS readonly,s.ssl AS tls,"):hostSql;
+    let rows=await bounded(()=>query.call(client,sql,challenge),'QUERY_TIMEOUT',context);
+    if(context.identityQualification){
+      need(Array.isArray(rows)&&rows.length===1&&rows[0].readonly===true,'TLS_IDENTITY');
+      const {readonly,...row}=rows[0];rows=[row];
+    }
     check();
     return clientIdentity(rows,challenge,context.scope,role,endpoint);
   };
@@ -406,7 +412,7 @@ async function readLiveClient(context, client, query, role, endpoint, check) {
     equal(observed.session,session),'TLS_LIVE');
   const { challenge:next,...nextIdentity }=await inspect();
   const { challenge:previous,...firstIdentity }=first;
-  need(equal(nextIdentity,firstIdentity),'TLS_SESSION_CHANGED');
+  need(equal(nextIdentity,firstIdentity)&&(!context.identityQualification||next!==previous),'TLS_SESSION_CHANGED');
   return Object.freeze({name:role.name,oid:role.oid,pid:first.pid,start:first.start});
 }
 
@@ -438,10 +444,11 @@ async function verifyTls(context) {
       sslaccept:'strict',sslcert:cas[kind==='ca'?1:0].file,application_name:'jg_394_contract_tls',connect_timeout:'5',pool_timeout:'5'})) {
       url.searchParams.set(key,value);
     }
+    if(kind==='positive'&&context.identityQualification)url.searchParams.set('options','-c default_transaction_read_only=on');
     let client;
     try { client=new Class({datasources:{db:{url:url.toString()}},log:[]}); }
     catch { context.cleanup='UNKNOWN'; throw fail('CONSTRUCT_UNKNOWN'); }
-    let disconnect, primary, result, connectionError, hasPrimary=false;
+    let disconnect, primary, result, connectionError, hasPrimary=false,identityWindow;
     try {
       disconnect=client.$disconnect;
       const clientMethods=Object.fromEntries(CLIENT_METHODS.map(key=>[key,key==='$disconnect'?disconnect:client[key]]));
@@ -453,6 +460,8 @@ async function verifyTls(context) {
       enter('CONNECT');
       clientCheck();
       const drain=kind!=='positive'?beginNegativeDrain?.():undefined;
+      if(kind==='positive'&&context.identityQualification)
+        identityWindow=context.identityLease.begin(index,role.name);
       let rejected=false;
       try { await bounded(()=>clientMethods.$connect.call(client),'CONNECT_TIMEOUT',context); }
       catch (error) {
@@ -479,6 +488,7 @@ async function verifyTls(context) {
         enter('IDENTITY');
         result=await readLiveClient(context,client,clientMethods.$queryRawUnsafe,role,endpoint,clientCheck);
         need(accepted.every(item=>distinct(item,result)),'TLS_SESSION_CHANGED');
+        if(identityWindow)identityWindow.markDisconnect(result.pid,result.start);
       }
     } catch(error) {
       primary=error; hasPrimary=true;
@@ -497,6 +507,11 @@ async function verifyTls(context) {
       }
     }
     if (hasPrimary) throw primary;
+    if(identityWindow){
+      enter('DRAIN');
+      const closeKind=await identityWindow.finish();
+      need(closeKind==='REAL_FIN'||closeKind==='CLOSED_BY_RESET','TLS_IDENTITY');
+    }
     full();
     if (result) accepted.push(Object.freeze(result));
   }
@@ -511,7 +526,9 @@ async function verifyTls(context) {
   const rejected = await methods.verifyCurrent259ContractPlaintextRejection.call(resource);
   full();
   need(rejected===true,'TLS_PLAINTEXT_HBA');
+  if(context.identityQualification)context.identityLease=context.beginIdentityQualification();
   for (let index=0; index<scope.targets.length; index++) await probe(index,'positive');
+  if(context.identityQualification)context.identityClosures=context.identityLease.finish();
   return Object.freeze(accepted);
 }
 
@@ -695,17 +712,32 @@ async function withCurrent259FirstQ2SeededLogin(completion, handle, fixture, use
 
 async function withCurrent259GeneratedDraftAdmission(completion,handle,caseId) {
   need(arguments.length===3 && typeof caseId==='string' && relayIdShape.test(caseId),'HANDLE');
+  return generatedAdmission(completion,handle,caseId);
+}
+async function withCurrent261GeneratedDraftIdentityAdmission(completion,handle,caseId,permit) {
+  need(arguments.length===4&&typeof caseId==='string'&&relayIdShape.test(caseId)&&permit,'HANDLE');
+  return generatedAdmission(completion,handle,caseId,{permit,profile:'TASK12_DRAFT261_TLS_IDENTITY_V2',caseId});
+}
+async function withCurrent261UpwardIdentitySeededLogin(completion,handle,fixture,caseId,permit,use) {
+  need(arguments.length===6&&permit&&typeof use==='function'&&!types.isProxy(use)&&isCurrent259FirstQ2Fixture(fixture)&&fixture.relationship===undefined&&
+    relayIdShape.test(caseId)&&fixture.seed.Project.code==='Q2-'+caseId,'HANDLE');
+  return contractLogin(completion,handle,async proof=>{
+    const result=await use(proof);
+    return Object.freeze({...result,identityQualification:proof.identityQualification});
+  },fixture,undefined,{permit,profile:'TASK12_UPWARD_Q2_TLS_IDENTITY_V2',caseId});
+}
+async function generatedAdmission(completion,handle,caseId,qualification) {
   return contractLogin(completion,handle,async proof=>{
     const record=PROOFS.get(proof);
     need(record?.handle===handle&&record.generated,'HANDLE');
     PROOFS.delete(proof);record.check();
     const result=await record.openApplication(undefined,record.generated);
     need(result?.status==='CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED'&&result.nativeAdmission===false,'APP_IMPORT');
-    return result;
-  },undefined,caseId);
+    return qualification?Object.freeze({...result,identityQualification:proof.identityQualification}):result;
+  },undefined,caseId,qualification);
 }
 
-async function contractLogin(completion, handle, use, fixture, generatedCaseId) {
+async function contractLogin(completion, handle, use, fixture, generatedCaseId, identityQualification) {
   need(typeof use==='function' && !types.isProxy(use) &&
     completion && !types.isProxy(completion) && Object.isFrozen(completion) && handle && !types.isProxy(handle),'HANDLE');
   checkAclImport();
@@ -742,6 +774,9 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     };
     check();
     need(Boolean(generatedCaseId)===(prior.generatedDraft===true),'ACL_PROFILE');
+    if(identityQualification)need(prior.source.profile?.ledgerSha256===require('./task16-current259-profile.cjs').PAYMENT261_LEDGER_SHA256&&
+      (generatedCaseId?identityQualification.profile==='TASK12_DRAFT261_TLS_IDENTITY_V2':
+        identityQualification.profile==='TASK12_UPWARD_Q2_TLS_IDENTITY_V2'&&fixture&&fixture.relationship===undefined),'ACL_PROFILE');
     const scope=scopeOf(prior,view,completion);
     const runSql=async(sql,label,continuity=check)=>{
       continuity();
@@ -814,15 +849,22 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     diagnostic?.enter('HBA_COMMITTED');
     need(distinct(committed,await verifyCommitted('hba-committed')),'COMMITTED');
     phase='TLS';
-    const beginRelayDrain=generatedCaseId?own(view,'beginPrismaRelayDrain'):undefined;
-    if(generatedCaseId)need(typeof beginRelayDrain==='function','METHOD');
+    const upwardQ2=relay&&isCurrent259FirstQ2Fixture(fixture)&&fixture.relationship===undefined;
+    const useNegativeDrain=Boolean(generatedCaseId)||upwardQ2;
+    const beginRelayDrain=useNegativeDrain?own(view,'beginPrismaRelayDrain'):undefined;
+    if(useNegativeDrain)need(typeof beginRelayDrain==='function','METHOD');
     const beginNegativeDrain=beginRelayDrain?()=>{
       need(own(view,'beginPrismaRelayDrain')===beginRelayDrain,'METHOD');
       const drain=beginRelayDrain.call(view);
       need(typeof drain==='function','METHOD');
       return drain;
     }:undefined;
-    context={check,checkLifetime,run,runSql,resource,Class,methods,scope,secrets,diagnostic,beginNegativeDrain,cleanup:'DISCONNECTED'};
+    context={check,checkLifetime,run,runSql,resource,Class,methods,scope,secrets,diagnostic,beginNegativeDrain,
+      ...(identityQualification?{identityQualification,beginIdentityQualification:()=>{
+        const begin=own(view,'beginIdentityQualification');
+        need(typeof begin==='function','METHOD');
+        return begin.call(view,identityQualification.permit,scope.targets.map(role=>role.name));
+      }}:{}),cleanup:'DISCONNECTED'};
     const sessions=await verifyTls(context);
     diagnostic?.enter('TLS_COMMITTED');
     const last=await verifyCommitted('tls-committed');
@@ -834,6 +876,7 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
       hba:{beforeSha256:hba.beforeSha256,afterSha256:hba.afterSha256,rules:hba.rules},
       roles:scope.targets.map((role,index)=>({name:role.name,oid:role.oid,limit:index===0?4:1})),
       probes:{verified:5,negative:3,cleanup:'DISCONNECTED'},executionAllowed:false,nativeAdmission:false,
+      ...(identityQualification?{identityQualification:{profile:identityQualification.profile,clients:context.identityClosures}}:{}),
     });
     // A downstream source stage can extend this private record with a fixed
     // credential bridge. No untrusted callback receives its contents.
@@ -883,4 +926,4 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     verifiers?.fill(null);
   }
 }
-module.exports=Object.freeze({CURRENT259_FIRST_Q2_TRANSPORT,withCurrent259ContractLogin,withCurrent259FirstQ2SeededLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,withCurrent259FirstQ2NativeApplication,withCurrent259GeneratedDraftAdmission,takeCurrent259FirstQ2Bridge});
+module.exports=Object.freeze({CURRENT259_FIRST_Q2_TRANSPORT,withCurrent259ContractLogin,withCurrent259FirstQ2SeededLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,withCurrent259FirstQ2NativeApplication,withCurrent259GeneratedDraftAdmission,withCurrent261GeneratedDraftIdentityAdmission,withCurrent261UpwardIdentitySeededLogin,takeCurrent259FirstQ2Bridge});

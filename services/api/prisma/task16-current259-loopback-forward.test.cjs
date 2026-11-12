@@ -50,7 +50,7 @@ function load(t, handler, readonlyVerifier) {
   const modelProcess=readonlyVerifier?Object.defineProperties(Object.create(process),{
     argv:{value:['node',original.main.filename]},execArgv:{value:[]},_preload_modules:{value:[]},
   }):process;
-  new Function('require','module','__dirname','process',SOURCE)(original,holder,__dirname,modelProcess);
+  new Function('require', 'module', '__dirname', 'process', SOURCE)(original, holder, __dirname,modelProcess);
   const controller = new AbortController();
   const start = options => holder.exports.startCurrent259LoopbackForward(options ?? { containerId: CONTAINER, dockerConfig, signal: controller.signal });
   const startReadonly = (token = permit) => holder.exports.startCurrent259LoopbackForward(
@@ -767,4 +767,50 @@ test('readonly owner deadline fails closed and a late owner reply cannot resume 
  late(true);
  assert.throws(()=>relay.beginReadonlyRelayProbe());
  assert.equal(fixture.calls.length,1);
+});
+
+test('identity261 qualification is one ordered five-role phase and then irrevocably returns to strict framing',{timeout:5000},async t=>{
+ const roles=['jg_fixture_app_'+'c'.repeat(24),'jg_c259_outside_issuer_login','jg_c259_outside_executor_login',
+  'jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
+ const children=Array.from({length:6},()=>fakeWorker());
+ let ownerReads=0;
+ const verify=async(identity,deadline)=>{
+  ownerReads++;assert.equal(identity.pid,500+ownerReads);assert.ok(deadline>Date.now());return true;
+ };
+ Object.defineProperty(verify,'identityProfile',{value:'TASK12_DRAFT261_TLS_IDENTITY_V2'});
+ const fixture=load(t,()=>children[fixture.calls.length-1],verify);
+ const relay=await fixture.startReadonly();
+ t.after(()=>relay.close());
+ assert.equal(relay.beginReadonlyRelayProbe,undefined);
+ await relay.beginPrismaDrain()();
+ assert.throws(()=>relay.beginIdentityQualification([...roles].reverse()),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ const phase=relay.beginIdentityQualification(roles);
+ assert.throws(()=>phase.finish(),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ assert.throws(()=>relay.beginPrismaDrain(),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ for(let index=0;index<5;index++){
+  assert.throws(()=>phase.begin(index,roles[(index+1)%5]),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+  const lease=phase.begin(index,roles[index]);
+  const child=children[index],client=await connect(relay.port);
+  t.after(()=>client.destroy());client.resume();
+  const acknowledged=once(child.stdin,'data');client.write(reply);await acknowledged;
+  lease.markDisconnect(501+index,qualifiedStart);
+  const result=lease.finish();
+  await closeReadonlyWorker(child,client,70);
+  assert.equal(await result,'CLOSED_BY_RESET');
+  await assert.rejects(lease.finish());
+ }
+ const proof=phase.finish();
+ assert.equal(proof.length,5);assert.equal(ownerReads,5);
+ assert.deepEqual(proof.map(row=>row.name),roles);
+ assert.ok(proof.every(row=>row.identityVerified&&row.closeKind==='CLOSED_BY_RESET'&&row.backendGone));
+ assert.throws(()=>phase.finish(),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ assert.throws(()=>phase.begin(0,roles[0]),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ assert.throws(()=>relay.beginIdentityQualification(roles),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ const strict=relay.beginPrismaDrain();
+ const client=await connect(relay.port);t.after(()=>client.destroy());client.resume();
+ const child=children[5],ack=once(child.stdin,'data');client.write(reply);await ack;
+ const failed=assert.rejects(strict(),{code:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+ await closeReadonlyWorker(child,client,70);
+ await failed;
+ assert.equal(ownerReads,5);
 });

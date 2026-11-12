@@ -36,6 +36,7 @@ function planModel(t,root){
     build:{sdk:'synthetic'},host:{node:'synthetic'},engineCommit:'synthetic'
   };}};
   const ports={
+    './task12-current259-identity-authority.cjs':{captureIdentityMain(){}},
     '../services/api/prisma/task16-current259-profile.cjs':require('./task16-current259-profile.cjs'),
     '../services/api/prisma/task12-current259-contract-login.cjs':{CURRENT259_FIRST_Q2_TRANSPORT:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS'},
     '../services/api/prisma/task16-current259-build.cjs':{observeCurrent259Build:()=>material},
@@ -118,18 +119,19 @@ test('document plans pin the separate runtime and cannot be accepted by the orig
   assert.throws(()=>api.verifyCurrent259GeneratedDocumentPlan(prepared.file,prepared.sha256));
 });
 
-function runModel(t,{once=true,used=false,failure,wrongResult=false}={}){
+function runModel(t,{once=true,used=false,failure,wrongResult=false,identity=false}={}){
   const {root,run}=localPacket(t),calls=[],output=[];
   const attemptFile=path.join(run,'attempt.json'),receiptFile=path.join(run,'receipt.json');
   if(used)fs.writeFileSync(attemptFile,'existing-attempt',{mode:0o600});
-  const plan={source:{candidateSha:'a'.repeat(40)},case:{id,businessDate:new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date())},
+  const plan={...(identity?{scope:{identityProfile:'TASK12_DRAFT261_TLS_IDENTITY_V2'}}:{}),source:{candidateSha:'a'.repeat(40)},case:{id,businessDate:new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date())},
     resource:{daemonId:'synthetic-daemon'},run:{root:run,attemptFile,receiptFile,resourceDir:path.join(run,'resource')}};
   const digest='c'.repeat(64),module={exports:{}},handle=Object.freeze({}),buildHandle=Object.freeze({});
-  const fakeProcess={argv:['node',entry,'--plan',path.join(root,'PLAN.json'),'--expected-plan-sha256',digest,...(once?['--once']:[])],
+  const fakeProcess={argv:['node',entry,'--plan',path.join(root,'PLAN.json'),'--expected-plan-sha256',digest,...(identity?['--identity261-v2']:[]),...(once?['--once']:[])],
     execArgv:[],env:{},once(){},removeListener(){},stdout:{write(value){output.push(JSON.parse(value));}}};
   const migrationFailure=Object.assign(new Error('secret'),{cause:{code:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT'}});
   const next=(key,prior,expected)=>{assert.equal(prior,expected);calls.push(key);return Object.freeze({key});};
   const ports={
+    './task12-current259-identity-authority.cjs':{captureIdentityMain(){}},
     '../../../scripts/prepare-task12-current259-generated-draft.cjs':{verifyCurrent259GeneratedDraftPlan(file,sha){
       assert.equal(file,path.join(root,'PLAN.json'));assert.equal(sha,digest);
       return {plan,sha256:digest,buildHandle,check(){}};
@@ -212,6 +214,33 @@ function runModel(t,{once=true,used=false,failure,wrongResult=false}={}){
           contractId:id.replace(/^1/u,'2'),versionId:id.replace(/^1/u,'3')},seed:{seedRows:21,operating:false,seedXid:'901'}};
     }},
   };
+  if(identity){
+    const plans=ports['../../../scripts/prepare-task12-current259-generated-draft.cjs'];
+    plans.verifyCurrent261DraftIdentityPlan=plans.verifyCurrent259GeneratedDraftPlan;
+    plans.verifyCurrent259GeneratedDraftPlan=()=>{throw new Error('old verifier cannot read new plan');};
+    const physical=ports['./task16-current259-owned-resource.cjs'];
+    physical.withCurrent259Identity261Resource=async(build,options,signal,permit,use)=>{
+      const scope={...options,sourceSha:plan.source.candidateSha,signal};
+      assert.equal(module.exports.claimIdentity261Resource({...permit},scope),undefined);
+      assert.equal(module.exports.claimIdentity261Resource(permit,{...scope,sourceSha:'b'.repeat(40)}),undefined);
+      assert.equal(module.exports.claimIdentity261Resource(permit,scope).profile,plan.scope.identityProfile);
+      assert.equal(module.exports.claimIdentity261Resource(permit,scope),undefined);
+      return physical.withCurrent259FirstQ2LoopbackResource(build,options,signal,use);
+    };
+    const logins=ports['./task12-current259-contract-login.cjs'];
+    logins.withCurrent261GeneratedDraftIdentityAdmission=async(acl,h,caseId,permit)=>{
+      const scope={profile:plan.scope.identityProfile,caseId,sourceSha:plan.source.candidateSha};
+      assert.equal(module.exports.claimIdentity261Stage({...permit},h,scope),false);
+      assert.equal(module.exports.claimIdentity261Stage(permit,{},scope),false);
+      assert.equal(module.exports.claimIdentity261Stage(permit,h,scope),true);
+      assert.equal(module.exports.claimIdentity261Stage(permit,h,scope),false);
+      const result=await logins.withCurrent259GeneratedDraftAdmission(acl,h,caseId);
+      const names=['jg_fixture_app_'+'c'.repeat(24),'jg_c259_outside_issuer_login','jg_c259_outside_executor_login',
+        'jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
+      return {...result,identityQualification:{profile:plan.scope.identityProfile,
+        clients:names.map(name=>({name,identityVerified:true,closeKind:'CLOSED_BY_RESET',backendGone:true}))}};
+    };
+  }
   const load=name=>ports[name]??require(name);
   load.cache={[entry]:module};load.main=module;
   new Function('require','module','process','__filename',source)(load,module,fakeProcess,entry);
@@ -331,4 +360,30 @@ test('readonly relay v2 is independently sealed and cannot reinterpret historica
  fs.writeFileSync(next.file,bytes);
  assert.throws(()=>api.verifyCurrent259ReadonlyRelayPlan(next.file,hash(bytes)),/SCOPE/u);
  assert.deepEqual(fs.readdirSync(oldRun),[]);assert.deepEqual(fs.readdirSync(newRun),[]);
+});
+
+test('identity261 draft has a separate exact261 plan and does not grant document or old draft qualification',t=>{
+ const {root}=localPacket(t),api=planModel(t,root);
+ fs.mkdirSync(path.join(root,'draft-identity261-run'),{mode:0o700});
+ const options={packetRoot:root,daemonId:'model-identity-daemon',caseId:id,businessDate:'2026-11-12'};
+ const saved=api.prepareCurrent261DraftIdentityPlan(options);
+ const checked=api.verifyCurrent261DraftIdentityPlan(saved.file,saved.sha256);
+ assert.equal(checked.plan.scope.identityProfile,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ assert.equal(checked.plan.scope.migrations,261);
+ assert.equal(checked.plan.scope.requests,5);
+ assert.throws(()=>api.verifyCurrent259GeneratedDraftPlan(saved.file,saved.sha256),/INPUT/u);
+ assert.throws(()=>api.verifyCurrent259GeneratedDocumentPlan(saved.file,saved.sha256),/INPUT/u);
+ const old=api.prepareCurrent259GeneratedDraftPlan(options);
+ assert.throws(()=>api.verifyCurrent261DraftIdentityPlan(old.file,old.sha256),/INPUT/u);
+ const row=JSON.parse(fs.readFileSync(saved.file));row.scope.identityProfile='TASK12_UPWARD_Q2_TLS_IDENTITY_V2';
+ const bytes=Buffer.from(JSON.stringify(row));fs.writeFileSync(saved.file,bytes);
+ assert.throws(()=>api.verifyCurrent261DraftIdentityPlan(saved.file,hash(bytes)),/SCOPE/u);
+});
+
+test('identity261 draft keeps the original full request path behind distinct resource and role-stage permits',async t=>{
+ const f=runModel(t,{identity:true});
+ const row=await f.result();
+ assert.equal(row.status,'CURRENT261_GENERATED_DRAFT_IDENTITY_V2_PROTOCOL_COMPLETE');
+ assert.equal(row.identityQualification.clients.length,5);
+ assert.deepEqual(f.calls,['resource','migrate','roles','archive','generated-acl','draft','cleanup']);
 });

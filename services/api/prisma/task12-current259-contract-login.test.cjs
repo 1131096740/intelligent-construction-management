@@ -17,8 +17,10 @@ const NAT='UNVERIFIED_HOST_PUBLISHED_TLS';
 const LOGIN_NAMES=['jg_c259_outside_issuer_login','jg_c259_outside_executor_login','jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
 const apiSource=fs.readFileSync(path.join(__dirname,'task12-current259-contract-login.cjs'),'utf8');
 
-function fixture(preloaded = false,transport=NAT) {
-  const source=Object.freeze({candidateSha:'a'.repeat(40)}),handle=Object.freeze({}),control={},calls=[];
+function fixture(preloaded = false,transport=NAT,identityProfile) {
+  const source=Object.freeze({candidateSha:'a'.repeat(40),...(identityProfile?{profile:{
+    ledgerSha256:require('./task16-current259-profile.cjs').PAYMENT261_LEDGER_SHA256}}:{})}),
+    handle=Object.freeze({}),control={identityProfile},calls=[];
   const runId='12345678-1234-4234-8234-123456789012',containerId=blob('a'),networkId=blob('b');
   const database='jg_task01_'+runId.replaceAll('-','');
   const identity={database,databaseOid:'200',namespaceOid:'2200',ownerOid:'10',actorOid:'10',
@@ -178,7 +180,7 @@ function fixture(preloaded = false,transport=NAT) {
       clientRow={database,databaseOid:identity.databaseOid,role:this.role.name,sessionRole:this.role.name,oid:this.role.oid,
         ...this.backend,tls:true,clientAddress:loopback&&control.drift!=='relay-client'?'127.0.0.1':'172.29.0.1',clientPort:35343,serverAddress:loopback?'127.0.0.1':'172.29.0.2',serverPort:5432,challenge};
       if(control.drift==='endpoint')clientRow.serverAddress='127.0.0.1';
-      return [clientRow];
+      return [sql.includes('transaction_read_only')?{...clientRow,readonly:control.readonlyDrift!==true}:clientRow];
     }
   }
   const keys=['DATABASE_URL','DIRECT_ARCHIVE_ISSUER_DATABASE_URL','DIRECT_ARCHIVE_RUNTIME_DATABASE_URL',
@@ -222,6 +224,31 @@ function fixture(preloaded = false,transport=NAT) {
       if(control.pendingNegative)throw Object.assign(new Error('modeled peer did not drain before source checks'),
         {code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT'});
     },
+    beginIdentityQualification(permit,names){
+      assert.equal(permit,control.stagePermit);
+      assert.equal(control.identityStarts??0,0);control.identityStarts=1;
+      assert.deepEqual(names,targets.map(role=>role.name));
+      assert.equal(calls.filter(v=>v==='tls-live').length,0);
+      let index=0,leaseActive=false,finished=false;const evidence=[];
+      return {
+        begin(i,name){
+          assert.ok(!finished&&!leaseActive);assert.equal(i,index);assert.equal(name,names[index]);leaseActive=true;
+          return {
+            markDisconnect(pid,start){assert.equal(pid,clientRow.pid);assert.equal(start,clientRow.start);},
+            async finish(){
+              assert.equal(activeClients,0);
+              if(control.identityDrift)throw Object.assign(new Error('private bytes'),{code:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+              evidence.push({name,identityVerified:true,closeKind:'CLOSED_BY_RESET',backendGone:true});
+              leaseActive=false;index++;return 'CLOSED_BY_RESET';
+            },
+          };
+        },
+        finish(){
+          assert.equal(index,5);assert.ok(!leaseActive&&!finished);
+          finished=true;control.identityFinished=true;return evidence;
+        },
+      };
+    },
     beginPrismaRelayDrain(){
       control.trace?.push('begin-drain');let used=false;
       return async()=>{
@@ -252,6 +279,8 @@ function fixture(preloaded = false,transport=NAT) {
       finally{assert.ok(keys.every(key=>Object.getOwnPropertyDescriptor(process.env,key)===undefined));}
       const clients=[providers[0],providers[1].issuer,providers[1].executor,providers[2].issuer,providers[2].executor];
       assert.deepEqual(clients.map(client=>client.role.oid),targets.map(role=>role.oid));
+      assert.ok(clients.every(client=>client.url.searchParams.get('options')===null));
+      if(control.identityStarts)assert.equal(control.identityFinished,true);
       assert.ok(clients.every(client=>client.url.searchParams.get('sslcert')===resource.caPath && client.url.searchParams.get('sslmode')==='require'));
       assert.equal(await bridge.verifyProviders(),5);
       for(const client of clients)await client.$disconnect();
@@ -628,4 +657,45 @@ for(const [mode,stage,reason] of [
   assert.equal(model.calls.filter(value=>value==='construct').length,1);
   assert.equal(model.calls.filter(value=>value==='disconnect').length,1);
   assert.equal(model.control.closed,1);
+});
+
+test('draft identity261 consumes only five ordered readonly identities and retires that stage before the original app',async()=>{
+ const caseId='22345678-1234-4234-8234-123456789012';
+ const f=fixture(false,Q2_RELAY,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ f.control.generated=true;f.control.applicationModel=true;f.control.stagePermit=Object.freeze({});
+ const result=await f.api.withCurrent261GeneratedDraftIdentityAdmission(f.completion,f.handle,caseId,f.control.stagePermit);
+ assert.equal(result.identityQualification.profile,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ assert.equal(result.identityQualification.clients.length,5);
+ assert.ok(result.identityQualification.clients.every(r=>r.closeKind==='CLOSED_BY_RESET'&&r.backendGone));
+ assert.equal(f.control.identityFinished,true);
+ assert.equal(f.calls.at(-1),'application-closed');
+});
+for(const option of ['readonlyDrift','identityDrift'])test('draft identity261 refuses '+option+' before application',async()=>{
+ const f=fixture(false,Q2_RELAY,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ f.control.generated=true;f.control.applicationModel=true;f.control.stagePermit=Object.freeze({});f.control[option]=true;
+ await assert.rejects(f.api.withCurrent261GeneratedDraftIdentityAdmission(f.completion,f.handle,
+   '22345678-1234-4234-8234-123456789012',f.control.stagePermit));
+ assert.equal(f.control.identityFinished,undefined);
+ assert.equal(f.calls.includes('application-closed'),false);
+ assert.equal(f.control.closed,1);
+});
+
+test('identity261 wrappers reject outside fixtures and unqualified historical ledgers before seeding',async()=>{
+ const {buildCurrent259FirstOutsideDirectFixture}=require('./task12-current259-q2-fixture.cjs');
+ const caseId='22345678-1234-4234-8234-123456789012';
+ const outside=buildCurrent259FirstOutsideDirectFixture(caseId,'2026-11-12');
+ const f=fixture(false,Q2_RELAY,'TASK12_UPWARD_Q2_TLS_IDENTITY_V2');
+ await assert.rejects(f.api.withCurrent261UpwardIdentitySeededLogin(f.completion,f.handle,outside,caseId,{},()=>assert.fail('outside must remain strict')),/HANDLE/u);
+ assert.deepEqual(f.calls,[]);
+ const historical=fixture(false,Q2_RELAY);
+ historical.control.generated=true;
+ await assert.rejects(historical.api.withCurrent261GeneratedDraftIdentityAdmission(historical.completion,historical.handle,caseId,{}),error=>error.code==='CURRENT259_CONTRACT_LOGIN_BEFORE'&&error.stageFailure==='ACL_PROFILE');
+ assert.equal(historical.calls.includes('seed-write'),false);
+});
+test('an identity-capable resource never upgrades an unversioned generated entry implicitly',async()=>{
+ const f=fixture(false,Q2_RELAY,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ f.control.generated=true;f.control.applicationModel=true;
+ const result=await f.api.withCurrent259GeneratedDraftAdmission(f.completion,f.handle,'22345678-1234-4234-8234-123456789012');
+ assert.equal(result.identityQualification,undefined);
+ assert.equal(f.control.identityStarts,undefined);
 });

@@ -7,6 +7,25 @@ const {createHash}=require('node:crypto');
 const {types}=require('node:util');
 const {verifyCurrent259OutsideOperatingReceipt}=require('./task12-current259-outside-operating-proof.cjs');
 
+
+const identityResources=new WeakMap(),identityStages=new WeakMap();
+function claimIdentity261Resource(permit,options){
+ const row=identityResources.get(permit);
+ if(!row||!row.active()||row.phase()!=='RESOURCE'||
+   row.plan.scope.identityProfile!=='TASK12_UPWARD_Q2_TLS_IDENTITY_V2'||
+   row.plan.source.candidateSha!==own(options,'sourceSha')||row.plan.run.resourceDir!==own(options,'artifactsDir')||
+   row.plan.resource.daemonId!==own(options,'daemonId')||row.signal!==own(options,'signal'))return undefined;
+ identityResources.delete(permit);
+ row.check();
+ return Object.freeze({profile:'TASK12_UPWARD_Q2_TLS_IDENTITY_V2',caseId:row.plan.case.id});
+}
+function claimIdentity261Stage(permit,handle,scope){
+ const row=identityStages.get(permit);
+ if(!row||!row.active()||row.phase()!=='SEEDED_LOGIN'||
+   row.handle!==handle||row.plan.scope.identityProfile!==own(scope,'profile')||
+   row.plan.case.id!==own(scope,'caseId')||row.plan.source.candidateSha!==own(scope,'sourceSha'))return false;
+ identityStages.delete(permit);row.check();return true;
+}
 const cosPermits=new WeakMap(),appPermits=new WeakMap();
 let current,entered=false;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -40,8 +59,10 @@ function claimCurrent259FirstQ2ApplicationPermit(permit,proof,handle,fixture){
   need(grant.proof===proof&&grant.handle===handle&&grant.fixture===fixture,'AUTHORITY');
   return Object.freeze({fixture,cosPlan:grant.state.plan.cos,cos:grant.state.cos,check:grant.state.check,signal:grant.state.controller.signal});
 }
-const api=Object.freeze({claimCurrent259FirstQ2CosPermit,claimCurrent259FirstQ2ApplicationPermit});
+const api=Object.freeze({claimCurrent259FirstQ2CosPermit,claimCurrent259FirstQ2ApplicationPermit,claimIdentity261Resource,claimIdentity261Stage,assertIdentityFreshMain});
+function assertIdentityFreshMain(){return FRESH&&require.main===module&&module.exports===api;}
 module.exports=api;
+if(FRESH&&process.argv.includes('--identity261-v2'))require('./task12-current259-identity-authority.cjs').captureIdentityMain(module);
 
 function directorySync(dir){
   const fd=fs.openSync(dir,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
@@ -53,9 +74,11 @@ function writeExclusive(file,bytes,onOpen){
   directorySync(path.dirname(file));
 }
 function parseArgs(args){
+  const identity=args[4]==='--identity261-v2';
+  if(identity)args=[...args.slice(0,4),...args.slice(5)];
   need((args.length===4||args.length===5&&args[4]==='--once')&&args[0]==='--plan'&&
     args[2]==='--expected-plan-sha256'&&/^[a-f0-9]{64}$/u.test(args[3]),'ARGS');
-  return {file:args[1],digest:args[3],once:args.length===5};
+  return {file:args[1],digest:args[3],once:args.length===5,identity};
 }
 function checkHostEnv(){
   need(!Object.keys(process.env).some(key=>/^(?:NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED|SSL_CERT_FILE|SSL_CERT_DIR|SSLKEYLOGFILE|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|http_proxy|https_proxy|all_proxy|COS_.*)$/u.test(key)),'HOST_ENV');
@@ -159,9 +182,9 @@ async function main(){
     preflight='ARGS';
     const args=parseArgs(process.argv.slice(2));
     preflight='PLAN_IMPORT';
-    const {verifyCurrent259FirstQ2Plan}=require('../../../scripts/prepare-task12-current259-first-q2.cjs');
+    const plans=require('../../../scripts/prepare-task12-current259-first-q2.cjs');
     preflight='PLAN_VERIFY';
-    checked=verifyCurrent259FirstQ2Plan(args.file,args.digest);
+    checked=(args.identity?plans.verifyCurrent261UpwardIdentityPlan:plans.verifyCurrent259FirstQ2Plan)(args.file,args.digest);
     const outside=checked.plan.case.relationship==='outside', outsideOperating=outside&&checked.plan.case.operating;
     const scenario=outsideOperating?'CURRENT259_FIRST_OUTSIDE_OPERATING':outside?'CURRENT259_FIRST_OUTSIDE_DIRECT':'CURRENT259_FIRST_Q2';
     if(args.once){
@@ -172,12 +195,15 @@ async function main(){
     preflight='DEPENDENCIES';
     const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
     const {openCurrent259FirstQ2Cos}=require('./task12-current259-first-q2-cos-native.cjs');
-    const {withCurrent259FirstQ2LoopbackResource}=require('./task16-current259-owned-resource.cjs');
+    const resources=require('./task16-current259-owned-resource.cjs');
+    const withCurrent259FirstQ2LoopbackResource=resources.withCurrent259FirstQ2LoopbackResource;
+    const withIdentityResource=args.identity?resources.withCurrent259Identity261Resource:undefined;
     const {createCurrent259TechnicalMigration}=require('./local-staged-current259-profile.cjs');
     const {provisionCurrent259Roles}=require('./task16-current259-role-provision.cjs');
     const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource}=require('./task16-current259-archive-install.cjs');
     const {installCurrent259OrdinaryArchiveAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
-    const {withCurrent259FirstQ2SeededLogin,withCurrent259FirstQ2NativeApplication}=require('./task12-current259-contract-login.cjs');
+    const logins=require('./task12-current259-contract-login.cjs');
+    const {withCurrent259FirstQ2SeededLogin,withCurrent259FirstQ2NativeApplication}=logins;
     const {buildCurrent259FirstQ2Fixture,buildCurrent259FirstOutsideDirectFixture,buildCurrent259FirstOutsideOperatingFixture}=require('./task12-current259-q2-fixture.cjs');
     need([openCurrent259FirstQ2Cos,withCurrent259FirstQ2LoopbackResource,withCurrent259FirstQ2NativeApplication].every(fn=>typeof fn==='function'),'INCOMPLETE');
     const buildFixture=outsideOperating?buildCurrent259FirstOutsideOperatingFixture
@@ -211,8 +237,13 @@ async function main(){
     try{state.cos=await openCurrent259FirstQ2Cos(permit);}finally{cosPermits.delete(permit);}
     state.checkFull();
     state.phase='RESOURCE';state.resourceEntered=true;
-    const receipt=await withCurrent259FirstQ2LoopbackResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},
-      controller.signal,async handle=>{
+    const identityRow={plan,signal:controller.signal,active:()=>state.active&&current===state,
+      phase:()=>state.phase,check:state.checkFull};
+    const resourcePermit=args.identity?Object.freeze({}):undefined;
+    if(resourcePermit)identityResources.set(resourcePermit,identityRow);
+    const receipt=await (args.identity?withIdentityResource:withCurrent259FirstQ2LoopbackResource)(checked.buildHandle,
+      {artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,
+      ...(args.identity?[resourcePermit]:[]),async handle=>{
         const stage=async(name,use)=>{state.phase=name;state.checkFull();const value=await use();state.checkFull();return value;};
         const technical=await stage('MIGRATE',()=>createCurrent259TechnicalMigration(handle,controller.signal).migrate());
         const roles=await stage('ROLES',()=>provisionCurrent259Roles(technical,handle));
@@ -223,14 +254,20 @@ async function main(){
         need(fixture.uploadPrefix===plan.cos.prefix&&fixture.relationship===(outside?'outside':undefined)&&
           fixture.outsideOperating===(outsideOperating?true:undefined),'SCOPE');
         state.receiptFixture=Object.freeze({actorId:fixture.seed.User.id,fileId:fixture.original.fileId,idempotencyKey:fixture.archiveIdempotencyKey});
-        return stage('SEEDED_LOGIN',()=>withCurrent259FirstQ2SeededLogin(acl,handle,fixture,async proof=>{
+        return stage('SEEDED_LOGIN',async()=>{
+          const identityPermit=args.identity?Object.freeze({}):undefined;
+          if(identityPermit)identityStages.set(identityPermit,{...identityRow,handle});
+          const login=args.identity?logins.withCurrent261UpwardIdentitySeededLogin:withCurrent259FirstQ2SeededLogin;
+          try{return await login(acl,handle,fixture,...(args.identity?[plan.case.id,identityPermit]:[]),async proof=>{
           state.phase='APPLICATION';
           state.checkFull();state.cos.check();
           const appPermit=Object.freeze({});
           appPermits.set(appPermit,{state,handle,proof,fixture});
           try{return await withCurrent259FirstQ2NativeApplication(proof,handle,appPermit);}finally{appPermits.delete(appPermit);}
-        }));
+        });}finally{if(identityPermit)identityStages.delete(identityPermit);}
+        });
       });
+    if(resourcePermit)identityResources.delete(resourcePermit);
     cleanup='CLOSED';
     state.phase='COMPLETE';
     const proofSha256=own(receipt,'proofSha256');
@@ -239,7 +276,9 @@ async function main(){
       isSha256(proofSha256),'RESULT');
     const projected=validateReceiptEvidence(receipt,plan.case.operating,state.receiptFixture,outside);
     state.checkFull();
-    return writeReceipt(state,scenario+'_ACCEPTANCE_COMPLETE',cleanup,{proofSha256,...projected});
+    return writeReceipt(state,args.identity?'CURRENT261_FIRST_Q2_IDENTITY_V2_ACCEPTANCE_COMPLETE':scenario+'_ACCEPTANCE_COMPLETE',
+      cleanup,{proofSha256,...projected,...(args.identity?{identityQualification:require('./task12-current259-identity261-profile.cjs')
+        .validateIdentityResult(receipt,'TASK12_UPWARD_Q2_TLS_IDENTITY_V2')}:{})});
   }catch(cause){
     primary=cause;
     process.exitCode=1;

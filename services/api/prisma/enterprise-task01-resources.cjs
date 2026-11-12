@@ -12,6 +12,7 @@ const { types } = require("node:util");
 const TECHNICAL_LIFETIME = Symbol("current259 technical lifetime");
 const FIRST_ROLLBACK_LIFETIME = Symbol("current259 first-rollback lifetime");
 const FIRST_Q2_LIFETIME = Symbol("current259 first-Q2 lifetime");
+
 function requireFixedIdentityMain() {
   const main=require.main;
   const allowed=['task12-current259-readonly-relay-once.cjs','task12-current259-generated-draft-once.cjs','task12-current259-first-q2-once.cjs'];
@@ -25,6 +26,7 @@ function requireFixedIdentityMain() {
 }
 
 const READONLY_RELAY_LIFETIME = Symbol("current259 readonly-relay lifetime");
+const IDENTITY261_LIFETIME = Symbol("current261 identity qualification lifetime");
 const readonlyRelayPorts = new WeakMap();
 function claimReadonlyRelayBackendVerifier(permit, coordinates) {
   const entry = readonlyRelayPorts.get(permit);
@@ -294,13 +296,14 @@ function literalDirectory(target, allowMissing = false) {
   }
 }
 
-async function prepareTask01Postgres(options = {}, lifetime) {
+async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
   const scenario = loopbackScenarios.get(lifetime);
   const paymentLoopback = scenario !== undefined;
   const paymentTransport = paymentLoopback ? require("./task16-current259-payment-loopback.cjs").paymentLoopbackForScenario(scenario) : undefined;
   requireThat(!paymentLoopback || paymentTransport, "TASK01_RESOURCE_INPUT_INVALID");
   const readonlyRelay = lifetime === READONLY_RELAY_LIFETIME;
-  const firstQ2 = lifetime === FIRST_Q2_LIFETIME || readonlyRelay;
+  const identityRelay = lifetime === IDENTITY261_LIFETIME;
+  const firstQ2 = lifetime === FIRST_Q2_LIFETIME || readonlyRelay || identityRelay;
   const loopback = paymentLoopback || firstQ2;
   const topology = paymentTransport?.topology ?? (firstQ2 ? FIRST_Q2_TOPOLOGY : "UNVERIFIED_HOST_PUBLISHED_TLS");
   const technical = loopback || lifetime === TECHNICAL_LIFETIME;
@@ -763,7 +766,7 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     return { stdout: result.stdout.toString("utf8") };
   }
   async function verifyReadonlyBackendGone(identity, deadline) {
-    requireThat(readonlyRelay && Number.isSafeInteger(deadline) && deadline > Date.now() && deadline <= Date.now() + 5000 &&
+    requireThat((readonlyRelay || identityRelay) && Number.isSafeInteger(deadline) && deadline > Date.now() && deadline <= Date.now() + 5000 &&
       Number.isInteger(identity.pid) && identity.pid > 0 && identity.pid <= 2147483647 &&
       typeof identity.start === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(identity.start),
       "TASK01_RESOURCE_INPUT_INVALID");
@@ -1071,7 +1074,8 @@ ROLLBACK;`;
       try {
         const { startCurrent259LoopbackForward } = require("./task16-current259-loopback-forward.cjs");
         const relayInput = { containerId, dockerConfig, signal };
-        if (readonlyRelay) {
+        if (readonlyRelay || identityRelay) {
+          if(identityRelay)Object.defineProperty(verifyReadonlyBackendGone,"identityProfile",{value:identityScope.profile});
           const permit = Object.freeze({});
           readonlyRelayPorts.set(permit, { ...relayInput, verify: verifyReadonlyBackendGone });
           try { relay = await startCurrent259LoopbackForward(relayInput, permit); }
@@ -1103,6 +1107,13 @@ ROLLBACK;`;
     receipt.phase = "ready-for-driver"; receipt.status = "started-awaiting-driver-verification"; persist();
     return { containerId, networkId, port, databaseName,
       ...(loopback ? { relayId: receipt.relay.id, checkRelay, beginPrismaRelayDrain } : {}),
+      ...(identityRelay ? { beginIdentityQualification(permit, handle, roles) {
+        requireThat(arguments.length===3 && !closePromise &&
+          require("./task12-current259-identity261-profile.cjs").identityRoles(roles) &&
+          require("./task12-current259-identity-authority.cjs").claimIdentityMain(
+            "claimIdentity261Stage",permit,handle,{...identityScope,sourceSha})===true,"TASK01_RESOURCE_INPUT_INVALID");
+        return relay.beginIdentityQualification(roles);
+      } } : {}),
       ...(readonlyRelay ? { beginReadonlyRelayProbe() {
         requireThat(arguments.length === 0 && !closePromise, "TASK01_RESOURCE_CLOSED");
         return relay.beginReadonlyRelayProbe();
@@ -1127,14 +1138,14 @@ async function startTask01Postgres(options) {
     throw fault("TASK01_RESOURCE_INPUT_OR_PREPARATION_FAILED");
   }
 }
-async function startCurrent259FixedPostgres(options, lifetime) {
+async function startCurrent259FixedPostgres(options, lifetime, identityScope) {
   // This second named route never accepts a caller-selected deadline or cap.
   requireThat(options && !types.isProxy(options) && Object.getPrototypeOf(options)===Object.prototype,"TASK01_RESOURCE_INPUT_INVALID");
   const descriptors=Object.getOwnPropertyDescriptors(options);
   const keys=["runId","sourceSha","artifactsDir","endpoint","daemonId","imageId","tools","ownerPassword","signal"];
   requireThat(Reflect.ownKeys(descriptors).every(key=>typeof key==="string"&&keys.includes(key)&&Object.hasOwn(descriptors[key],"value")),"TASK01_RESOURCE_INPUT_INVALID");
   const supplied=Object.fromEntries(Object.entries(descriptors).map(([key,value])=>[key,value.value]));
-  try { return await prepareTask01Postgres({...supplied,deadlineMs:3600000},lifetime); }
+  try { return await prepareTask01Postgres({...supplied,deadlineMs:3600000},lifetime,identityScope); }
   catch(error) {
     if(typeof error.code==="string"&&error.code.startsWith("TASK01_RESOURCE_"))throw error;
     throw fault("TASK01_RESOURCE_INPUT_OR_PREPARATION_FAILED");
@@ -1161,6 +1172,16 @@ async function startCurrent259ReadonlyRelayPostgres(options, permit) {
   authority.captureIdentityPhysical(module);
   return startCurrent259FixedPostgres(options, READONLY_RELAY_LIFETIME);
 }
+async function startCurrent259Identity261Postgres(options, permit) {
+  requireFixedIdentityMain();
+  requireThat(arguments.length===2,"TASK01_RESOURCE_INPUT_INVALID");
+  const authority=require("./task12-current259-identity-authority.cjs");
+  const scope=authority.claimIdentityMain("claimIdentity261Resource",permit,options);
+  requireThat(scope && require("./task12-current259-identity261-profile.cjs").isIdentity261(scope.profile),
+    "TASK01_RESOURCE_INPUT_INVALID");
+  require("./task12-current259-identity-authority.cjs").captureIdentityPhysical(module);
+  return startCurrent259FixedPostgres(options,IDENTITY261_LIFETIME,scope);
+}
 async function startCurrent259NormalPaymentPostgres(options) {
   requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
   return startCurrent259FixedPostgres(options, NORMAL_LIFETIME);
@@ -1186,4 +1207,4 @@ async function startCurrent259AttributionGapPostgres(options) {
   return startCurrent259FixedPostgres(options, ATTRIBUTION_GAP_LIFETIME);
 }
 module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, startCurrent259FirstRollbackPostgres,
-  startCurrent259FirstQ2LoopbackPostgres, startCurrent259ReadonlyRelayPostgres, claimReadonlyRelayBackendVerifier, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint, projectCurrent259ArchiveWriteFailure };
+  startCurrent259FirstQ2LoopbackPostgres, startCurrent259ReadonlyRelayPostgres, startCurrent259Identity261Postgres, claimReadonlyRelayBackendVerifier, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint, projectCurrent259ArchiveWriteFailure };

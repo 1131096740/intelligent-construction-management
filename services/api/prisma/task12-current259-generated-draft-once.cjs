@@ -7,6 +7,29 @@ const {createHash}=require('node:crypto');
 const {types}=require('node:util');
 const {projectGeneratedDraftHttpFailure,projectGeneratedDraftAdmissionFailure}=require('./task12-current259-generated-draft-diagnostic.cjs');
 
+
+const identityResources=new WeakMap(),identityStages=new WeakMap();
+function claimIdentity261Resource(permit,options){
+ const row=identityResources.get(permit);
+ if(!row||!row.active()||row.phase()!=='RESOURCE'||
+   row.plan.scope.identityProfile!=='TASK12_DRAFT261_TLS_IDENTITY_V2'||
+   row.plan.source.candidateSha!==own(options,'sourceSha')||row.plan.run.resourceDir!==own(options,'artifactsDir')||
+   row.plan.resource.daemonId!==own(options,'daemonId')||row.signal!==own(options,'signal'))return undefined;
+ identityResources.delete(permit);
+ row.check();
+ return Object.freeze({profile:'TASK12_DRAFT261_TLS_IDENTITY_V2',caseId:row.plan.case.id});
+}
+function claimIdentity261Stage(permit,handle,scope){
+ const row=identityStages.get(permit);
+ if(!row||!row.active()||row.phase()!=='GENERATED_DRAFT_ADMISSION'||
+   row.handle!==handle||row.plan.scope.identityProfile!==own(scope,'profile')||
+   row.plan.case.id!==own(scope,'caseId')||row.plan.source.candidateSha!==own(scope,'sourceSha'))return false;
+ identityStages.delete(permit);row.check();return true;
+}
+const identityApi=Object.freeze({claimIdentity261Resource,claimIdentity261Stage,assertIdentityFreshMain});
+function assertIdentityFreshMain(){return FRESH&&require.main===module&&module.exports===identityApi;}
+module.exports=identityApi;
+if(FRESH&&process.argv.includes('--identity261-v2'))require('./task12-current259-identity-authority.cjs').captureIdentityMain(module);
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const error=phase=>Object.assign(new Error('CURRENT259_GENERATED_DRAFT_ONCE_'+phase),{code:'CURRENT259_GENERATED_DRAFT_ONCE_'+phase});
 const need=(ok,phase)=>{if(!ok)throw error(phase);};
@@ -22,9 +45,11 @@ function writeExclusive(file,bytes,onOpen){
   directorySync(path.dirname(file));
 }
 function parseArgs(args){
+  const identity=args[4]==='--identity261-v2';
+  if(identity)args=[...args.slice(0,4),...args.slice(5)];
   need((args.length===4||args.length===5&&args[4]==='--once')&&args[0]==='--plan'&&
     args[2]==='--expected-plan-sha256'&&/^[a-f0-9]{64}$/u.test(args[3]),'ARGS');
-  return {file:args[1],digest:args[3],once:args.length===5};
+  return {file:args[1],digest:args[3],once:args.length===5,identity};
 }
 function checkHostEnv(){
   need(!Object.keys(process.env).some(key=>/^(?:NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED|SSL_CERT_FILE|SSL_CERT_DIR|SSLKEYLOGFILE|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|http_proxy|https_proxy|all_proxy|COS_.*)$/u.test(key)),'HOST_ENV');
@@ -94,20 +119,23 @@ async function main(){
   try{
     need(FRESH,'FRESH');
     const args=parseArgs(process.argv.slice(2));
-    const {verifyCurrent259GeneratedDraftPlan}=require('../../../scripts/prepare-task12-current259-generated-draft.cjs');
-    checked=verifyCurrent259GeneratedDraftPlan(args.file,args.digest);
+    const plans=require('../../../scripts/prepare-task12-current259-generated-draft.cjs');
+    checked=(args.identity?plans.verifyCurrent261DraftIdentityPlan:plans.verifyCurrent259GeneratedDraftPlan)(args.file,args.digest);
     if(!args.once)return {status:'CURRENT259_GENERATED_DRAFT_HOLD',planSha256:args.digest};
     checkHostEnv();
     const plan=checked.plan;
     need(businessDay()===plan.case.businessDate,'TIME');
     checked.check();
     const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
-    const {withCurrent259FirstQ2LoopbackResource}=require('./task16-current259-owned-resource.cjs');
+    const resources=require('./task16-current259-owned-resource.cjs');
+    const withCurrent259FirstQ2LoopbackResource=resources.withCurrent259FirstQ2LoopbackResource;
+    const withIdentityResource=args.identity?resources.withCurrent259Identity261Resource:undefined;
     const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
     const {provisionCurrent259Roles}=require('./task16-current259-role-provision.cjs');
     const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource}=require('./task16-current259-archive-install.cjs');
     const {installCurrent259GeneratedDraftOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
-    const {withCurrent259GeneratedDraftAdmission}=require('./task12-current259-contract-login.cjs');
+    const logins=require('./task12-current259-contract-login.cjs');
+    const withCurrent259GeneratedDraftAdmission=logins.withCurrent259GeneratedDraftAdmission;
     need([withCurrent259FirstQ2LoopbackResource,createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure,provisionCurrent259Roles,
       installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent259GeneratedDraftOrdinaryAcl,
       withCurrent259GeneratedDraftAdmission].every(fn=>typeof fn==='function'),'DEPENDENCIES');
@@ -159,17 +187,30 @@ async function main(){
       check();return result;
     };
     phase='RESOURCE';check();resourceEntered=true;
-    const result=await withCurrent259FirstQ2LoopbackResource(checked.buildHandle,
-      {artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
+    const identityRow={plan,signal:controller.signal,active:()=>!controller.signal.aborted,phase:()=>phase,check};
+    const resourcePermit=args.identity?Object.freeze({}):undefined;
+    if(resourcePermit)identityResources.set(resourcePermit,identityRow);
+    const result=await (args.identity?withIdentityResource:withCurrent259FirstQ2LoopbackResource)(checked.buildHandle,
+      {artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,
+      ...(args.identity?[resourcePermit]:[]),async handle=>{
         scopeEntered=true;
         const technical=await stage('MIGRATE',()=>createCurrent259TechnicalMigration(handle,controller.signal).migrate());
         const roles=await stage('ROLES',()=>provisionCurrent259Roles(technical,handle));
         const archive=await stage('ARCHIVE',()=>installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(roles,handle));
         const acl=await stage('GENERATED_DRAFT_ACL',()=>installCurrent259GeneratedDraftOrdinaryAcl(archive,handle));
-        return stage('GENERATED_DRAFT_ADMISSION',()=>withCurrent259GeneratedDraftAdmission(acl,handle,plan.case.id));
+        return stage('GENERATED_DRAFT_ADMISSION',async()=>{
+          if(!args.identity)return withCurrent259GeneratedDraftAdmission(acl,handle,plan.case.id);
+          const permit=Object.freeze({});
+          identityStages.set(permit,{...identityRow,handle});
+          try{return await logins.withCurrent261GeneratedDraftIdentityAdmission(acl,handle,plan.case.id,permit);}
+          finally{identityStages.delete(permit);}
+        });
       });
+    if(resourcePermit)identityResources.delete(resourcePermit);
     cleanup='CLOSED';phase='COMPLETE';check();
-    return writeReceipt('CURRENT259_GENERATED_DRAFT_PROTOCOL_COMPLETE',evidence(result));
+    return writeReceipt(args.identity?'CURRENT261_GENERATED_DRAFT_IDENTITY_V2_PROTOCOL_COMPLETE':'CURRENT259_GENERATED_DRAFT_PROTOCOL_COMPLETE',
+      {...evidence(result),...(args.identity?{identityQualification:require('./task12-current259-identity261-profile.cjs')
+        .validateIdentityResult(result,'TASK12_DRAFT261_TLS_IDENTITY_V2')}:{})});
   }catch(cause){
     process.exitCode=1;
     if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
