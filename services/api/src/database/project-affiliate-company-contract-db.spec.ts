@@ -34,6 +34,9 @@ import { resolve } from "node:path";
 import { ProjectAffiliateCompanyContractService } from "../project/project-affiliate-company-contract.service";
 
 const TEST_DATABASE = "jiangkong_project_affiliate_company_contract_test";
+const { renderContractFinanceFileGuardGrant } = require("../../prisma/contract-bank-runtime-fixture.cjs") as {
+  renderContractFinanceFileGuardGrant: (role: string) => string;
+};
 const LIVE_TEST_ENABLED =
   process.env.RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS === "1";
 
@@ -112,15 +115,21 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       // while the deployed role retains main's existing grants for legacy fund commands.
       await tx.$executeRawUnsafe(`REVOKE ALL ON FUNCTION public."authorizeOperatingLedgerWrite"(TEXT,TEXT) FROM ${role}`);
       await tx.$executeRawUnsafe(`REVOKE ALL ON FUNCTION public.issue_contract_bank_holder(TEXT,TEXT,TEXT,TEXT,TEXT) FROM ${role}`);
+      await tx.$executeRawUnsafe(renderContractFinanceFileGuardGrant(role));
     });
     const url = new URL(databaseUrl!); url.username = role; url.password = password;
     financeRuntime = new PrismaClient({datasources: {db: {url: url.toString()}}});
-    const [privileges] = await financeRuntime.$queryRaw<Array<{internal: boolean; legacy: boolean; entry: boolean; secret: boolean}>>`
+    const [privileges] = await financeRuntime.$queryRaw<Array<{
+      internal: boolean; legacy: boolean; entry: boolean; secret: boolean;
+      fileGuard: boolean; fileGuardGrantable: boolean;
+    }>>`
       SELECT has_function_privilege(current_user, 'public."authorizeOperatingLedgerWrite"(text,text)', 'EXECUTE') AS internal,
       has_function_privilege(current_user, 'public.issue_contract_bank_holder(text,text,text,text,text)', 'EXECUTE') AS legacy,
       has_function_privilege(current_user, 'public.issue_contract_bank_holder(text,text,text,text,text,text)', 'EXECUTE') AS entry,
-      has_table_privilege(current_user, 'public."OperatingLedgerWriteSecret"', 'SELECT') AS secret`;
-    expect(privileges).toEqual({internal: false, legacy: false, entry: true, secret: false});
+      has_table_privilege(current_user, 'public."OperatingLedgerWriteSecret"', 'SELECT') AS secret,
+      has_function_privilege(current_user, 'public.jg_has_exclusive_file_business_binding(text)', 'EXECUTE') AS "fileGuard",
+      has_function_privilege(current_user, 'public.jg_has_exclusive_file_business_binding(text)', 'EXECUTE WITH GRANT OPTION') AS "fileGuardGrantable"`;
+    expect(privileges).toEqual({internal: false, legacy: false, entry: true, secret: false, fileGuard: true, fileGuardGrantable: false});
   });
 
   it("公司互转真实PG：独立领导OR终审、两侧流水、在途、借款归还、自有资金与项目权限", async()=>{
