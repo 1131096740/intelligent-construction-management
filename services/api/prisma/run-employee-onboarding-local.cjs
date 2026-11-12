@@ -7,6 +7,7 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+const { renderEmployeeOnboardingFileGuardGrant } = require("./contract-bank-runtime-fixture.cjs");
 const storageRoot = mkdtempSync(path.join(tmpdir(), "approval-v6-onboarding-files-"));
 
 const root = path.resolve(__dirname, "../../..");
@@ -84,6 +85,7 @@ async function verify() {
     GRANT UPDATE ("id"), REFERENCES ("userId") ON TABLE public."EmploymentPeriod" TO ${runtime};
     GRANT UPDATE ("reason"), REFERENCES ("userId") ON TABLE public."PersonnelChange" TO ${runtime};
     GRANT SELECT, USAGE ON SEQUENCE public."PersonnelChange_sequence_seq" TO ${runtime};
+    ${renderEmployeeOnboardingFileGuardGrant()}
   `], process.env, true);
   const before = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "onboarding", "-Atc",
     `SELECT has_table_privilege('${runtime}', 'public."AuthRateLimit"', 'DELETE');`], process.env, true);

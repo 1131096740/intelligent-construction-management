@@ -4,7 +4,7 @@ const path = require("node:path");
 const { collision_routines: collisionRoutines } = require("./local-staged-migration-qualification.json");
 
 // Staged qualification retains EXECUTE for existing callers and removes it
-// from PUBLIC. These finance test identities are created after that stage.
+// from PUBLIC. These test identities are created after that stage.
 const fileGuardCalls = Object.freeze([
   ...Object.keys(collisionRoutines).filter(signature =>
     /^public\.jg_(?:has_exclusive_file_business_binding\(pg_catalog\.text\)|file_business_(?:collision_columns|binding_columns(?:_before_[a-z0-9_]+)?)\(\))$/u.test(signature)
@@ -16,6 +16,14 @@ function renderContractFinanceFileGuardGrant(role) {
   if (typeof role !== "string" || !/^(?:contract_runtime|finance_runtime_[a-f0-9]{32})$/u.test(role)) {
     throw new Error("Contract finance file guard requires a fixture runtime identity");
   }
+  return renderFixtureFileGuardGrant(role, "jiangkong_project_affiliate_company_contract_test", "ApprovalActionLog", "signatureFileIdSnapshot");
+}
+
+function renderEmployeeOnboardingFileGuardGrant() {
+  return renderFixtureFileGuardGrant("onboarding_runtime", "onboarding", "HandwrittenSignatureVersion", "fileId");
+}
+
+function renderFixtureFileGuardGrant(role, database, table, column) {
   return `DO $contract_finance_file_guard$
 DECLARE
   fixture_role CONSTANT name := '${role}';
@@ -24,7 +32,7 @@ DECLARE
   signature text;
   routine_oid oid;
 BEGIN
-  IF current_database() <> 'jiangkong_project_affiliate_company_contract_test'
+  IF current_database() <> '${database}'
     OR current_user <> 'jiangkong' OR session_user <> current_user
     OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_database WHERE datname=current_database() AND datdba=owner_oid) THEN
     RAISE EXCEPTION 'Contract finance file guard requires the owned fixture database';
@@ -35,7 +43,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE member=fixture_oid OR roleid=fixture_oid)
     OR NOT pg_catalog.has_schema_privilege(fixture_oid,'public','USAGE')
     OR pg_catalog.has_schema_privilege(fixture_oid,'public','CREATE')
-    OR NOT pg_catalog.has_column_privilege(fixture_oid,'public."ApprovalActionLog"','signatureFileIdSnapshot','INSERT') THEN
+    OR NOT pg_catalog.has_column_privilege(fixture_oid,'public."${table}"','${column}','INSERT') THEN
     RAISE EXCEPTION 'Contract finance file guard requires the restricted signature writer';
   END IF;
   FOREACH signature IN ARRAY ARRAY[${fileGuardCalls.map(signature => `'${signature}'`).join(", ")}] LOOP
@@ -102,4 +110,4 @@ function prepareContractBankRuntime({ name, db, password, target, env = process.
  runDocker(['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d',db,'-f','/tmp/backup-role.sql']);
  return target.replace('://jiangkong:', '://contract_runtime:');
 }
-module.exports = { prepareContractBankRuntime, renderContractFinanceFileGuardGrant };
+module.exports = { prepareContractBankRuntime, renderContractFinanceFileGuardGrant, renderEmployeeOnboardingFileGuardGrant };
