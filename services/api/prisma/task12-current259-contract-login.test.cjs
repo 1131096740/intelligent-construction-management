@@ -180,7 +180,10 @@ function fixture(preloaded = false,transport=NAT,identityProfile) {
       clientRow={database,databaseOid:identity.databaseOid,role:this.role.name,sessionRole:this.role.name,oid:this.role.oid,
         ...this.backend,tls:true,clientAddress:loopback&&control.drift!=='relay-client'?'127.0.0.1':'172.29.0.1',clientPort:35343,serverAddress:loopback?'127.0.0.1':'172.29.0.2',serverPort:5432,challenge};
       if(control.drift==='endpoint')clientRow.serverAddress='127.0.0.1';
-      return [sql.includes('transaction_read_only')?{...clientRow,readonly:control.readonlyDrift!==true}:clientRow];
+      const app=this.url.searchParams.get('application_name')==='jg_394_contract_app';
+      const readonly=!app&&control.readonlyDrift!==true;
+      (control.identityObservations??=[]).push({app,readonlyExpectation:sql.includes('transaction_read_only'),readonly});
+      return [sql.includes('transaction_read_only')?{...clientRow,readonly}:clientRow];
     }
   }
   const keys=['DATABASE_URL','DIRECT_ARCHIVE_ISSUER_DATABASE_URL','DIRECT_ARCHIVE_RUNTIME_DATABASE_URL',
@@ -669,6 +672,8 @@ test('draft identity261 consumes only five ordered readonly identities and retir
  assert.ok(result.identityQualification.clients.every(r=>r.closeKind==='CLOSED_BY_RESET'&&r.backendGone));
  assert.equal(f.control.identityFinished,true);
  assert.equal(f.calls.at(-1),'application-closed');
+ assert.equal(f.control.identityObservations.filter(row=>!row.app&&row.readonlyExpectation&&row.readonly).length,10);
+ assert.equal(f.control.identityObservations.filter(row=>row.app&&!row.readonlyExpectation&&!row.readonly).length,10);
 });
 for(const option of ['readonlyDrift','identityDrift'])test('draft identity261 refuses '+option+' before application',async()=>{
  const f=fixture(false,Q2_RELAY,'TASK12_DRAFT261_TLS_IDENTITY_V2');
@@ -698,4 +703,13 @@ test('an identity-capable resource never upgrades an unversioned generated entry
  const result=await f.api.withCurrent259GeneratedDraftAdmission(f.completion,f.handle,'22345678-1234-4234-8234-123456789012');
  assert.equal(result.identityQualification,undefined);
  assert.equal(f.control.identityStarts,undefined);
+});
+
+test('ordinary provider identity keeps the fixed trusted TLS_IDENTITY code in its first diagnostic',()=>{
+ const {createGeneratedDraftAdmissionDiagnostic}=require('./task12-current259-generated-draft-diagnostic.cjs');
+ const proof=createGeneratedDraftAdmissionDiagnostic();proof.enter('APP_PROVIDER_IDENTITY',0);
+ const first=proof.capture(Object.assign(new Error('private raw coordinate'),{code:'CURRENT259_CONTRACT_LOGIN_TLS_IDENTITY'}));
+ assert.deepEqual(first,{stage:'APP_PROVIDER_IDENTITY',roleIndex:0,operationCode:'CURRENT259_CONTRACT_LOGIN_TLS_IDENTITY'});
+ assert.equal(proof.capture({code:'P2010'},'TLS_IDENTITY'),first);
+ assert.doesNotMatch(JSON.stringify(first),/private|coordinate/u);
 });

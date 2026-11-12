@@ -390,13 +390,13 @@ function verifyCa(cas) {
   }
 }
 
-async function readLiveClient(context, client, query, role, endpoint, check) {
+async function readLiveClient(context, client, query, role, endpoint, check, readonlyIdentity = false) {
   const inspect=async()=>{
     const challenge=randomBytes(32).toString('hex');
-    const sql=context.identityQualification?hostSql.replace(' s.ssl AS tls,',
+    const sql=readonlyIdentity?hostSql.replace(' s.ssl AS tls,',
       " current_setting('transaction_read_only') = 'on' AS readonly,s.ssl AS tls,"):hostSql;
     let rows=await bounded(()=>query.call(client,sql,challenge),'QUERY_TIMEOUT',context);
-    if(context.identityQualification){
+    if(readonlyIdentity){
       need(Array.isArray(rows)&&rows.length===1&&rows[0].readonly===true,'TLS_IDENTITY');
       const {readonly,...row}=rows[0];rows=[row];
     }
@@ -412,7 +412,7 @@ async function readLiveClient(context, client, query, role, endpoint, check) {
     equal(observed.session,session),'TLS_LIVE');
   const { challenge:next,...nextIdentity }=await inspect();
   const { challenge:previous,...firstIdentity }=first;
-  need(equal(nextIdentity,firstIdentity)&&(!context.identityQualification||next!==previous),'TLS_SESSION_CHANGED');
+  need(equal(nextIdentity,firstIdentity)&&(!readonlyIdentity||next!==previous),'TLS_SESSION_CHANGED');
   return Object.freeze({name:role.name,oid:role.oid,pid:first.pid,start:first.start});
 }
 
@@ -486,7 +486,7 @@ async function verifyTls(context) {
       } else {
         need(!rejected,'TLS_CONNECT');
         enter('IDENTITY');
-        result=await readLiveClient(context,client,clientMethods.$queryRawUnsafe,role,endpoint,clientCheck);
+        result=await readLiveClient(context,client,clientMethods.$queryRawUnsafe,role,endpoint,clientCheck,Boolean(identityWindow));
         need(accepted.every(item=>distinct(item,result)),'TLS_SESSION_CHANGED');
         if(identityWindow)identityWindow.markDisconnect(result.pid,result.start);
       }
