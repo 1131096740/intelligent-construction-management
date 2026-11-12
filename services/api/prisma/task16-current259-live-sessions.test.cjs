@@ -342,6 +342,19 @@ test('owner live readback cannot accept three self-consistent forged SDK observa
  assert.deepEqual(f.clients.map(row=>row.disconnects),[1,1,1]);
 });
 
+test('method drift while awaiting the independent owner read blocks the catalog and proof',async()=>{
+ let f;
+ f=fixture({onOwner(){f.clients[1].$queryRawUnsafe=async()=>[];}});
+ let proofs=0;
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,()=>{proofs++;}),error=>{
+  assert.deepEqual(f.api.describeCurrent259LiveFailure(error),{checkpoint:'IDENTITY_INDEPENDENT',prismaCode:null,sqlState:null});
+  return true;
+ });
+ assert.equal(proofs,0);assert.equal(f.resourceClosed(),1);
+ assert.equal(f.calls.some(([,phase])=>phase==='current259-live-catalog'),false);
+ assert.deepEqual(f.clients.map(row=>row.disconnects),[1,1,1]);
+});
+
 test('changed B7 catalog never issues a live completion',async()=>{
  const f=fixture({onCatalog(value){value.reader.oid='4000';}});
  let proofs=0;

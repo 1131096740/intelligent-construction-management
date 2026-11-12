@@ -3,6 +3,7 @@
 // This sole fresh-main entry owns installation and the in-memory B7 permission.
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH')&&Object.keys(require.cache).every(file=>file===__filename);
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
+const {performance}=require('node:perf_hooks');
 const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
 const permissions=new WeakMap(),businessPermissions=new WeakMap(),attributionGapPermissions=new WeakMap(),voucherBusinessPermissions=new WeakMap(),businessContinuities=new WeakMap();
 const competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap(),voucherAclPermissions=new WeakMap();
@@ -43,7 +44,7 @@ function fixed(value,keys){
  need(value&&!types.isProxy(value)&&Object.getPrototypeOf(value)===Object.prototype&&Reflect.ownKeys(value).length===keys.length);
  return Object.fromEntries(keys.map(key=>{const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'));return [key,d.value];}));
 }
-function revoke(state){if(state){state.active=false;state.controller.abort();}}
+function revoke(state){if(state){state.active=false;state.abort('CONTINUITY_REVOKED');}}
 function claimCurrent259B7WritePermit(permit,handle,acl){
  const entry=permit&&!types.isProxy(permit)&&permissions.get(permit);
  try{
@@ -280,6 +281,25 @@ async function run(args){
  const requestedOnce=Array.isArray(args)&&['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once'].includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
  let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
+ const startedAt=performance.now(),stageTimings=[];
+ let stageStartedAt=startedAt,resourceStartedAt,resourceAbort,failureObservedAt;
+ function recordStage(now){
+  stageTimings.push({stage,elapsedMs:Math.round(now-stageStartedAt)});
+  stageStartedAt=now;
+ }
+ function enterStage(next){recordStage(performance.now());stage=next;}
+ function abort(origin){
+  if(!controller||controller.signal.aborted)return;
+  resourceAbort={origin,stage,elapsedMs:Math.round(performance.now()-resourceStartedAt)};
+  controller.abort();
+ }
+ const onSigint=()=>abort('SIGNAL_SIGINT'),onSigterm=()=>abort('SIGNAL_SIGTERM');
+ function recordTiming(row){
+  if(row.timing)return;
+  const now=performance.now();recordStage(failureObservedAt??now);
+  row.timing={elapsedMs:Math.round(now-startedAt),stages:stageTimings.slice(),
+   ...(resourceAbort?{resourceAbort}:{}),...(failureObservedAt===undefined?{}:{finalizationMs:Math.round(now-failureObservedAt)})};
+ }
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
   const names=request.pfq?['readCurrent259PfqCompositionPlan','verifyCurrent259PfqCompositionPlan']:request.voucher?['readCurrent259PaymentVoucherPlan','verifyCurrent259PaymentVoucherPlan']:request.competition?['readCurrent259PaymentCompetitionPlan','verifyCurrent259PaymentCompetitionPlan']:
@@ -332,18 +352,18 @@ async function run(args){
    }:{})
   }):undefined;
   const runPfq=request.pfq?original('./task16-current259-pfq-concurrency.cjs',['runCurrent259PfqConcurrency']).runCurrent259PfqConcurrency:undefined;
-  const abort=()=>controller?.abort();
   try{
    need(!fs.existsSync(plan.run.receiptFile)&&!fs.existsSync(plan.run.receiptFile+'.pending'),'RECEIPT_EXISTS');
    checked=verifyPlan(request.file,request.sha256);
    need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();receipt.sourceMaterialVerified=true;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
-   controller=new AbortController();endAt=Date.now()+plan.limits.resourceMs;process.once('SIGINT',abort);process.once('SIGTERM',abort);timer=setTimeout(abort,plan.limits.resourceMs);
-   stage='resourceStartup';started=true;
+   controller=new AbortController();resourceStartedAt=performance.now();endAt=Date.now()+plan.limits.resourceMs;
+   process.once('SIGINT',onSigint);process.once('SIGTERM',onSigterm);timer=setTimeout(()=>abort('RESOURCE_DEADLINE'),plan.limits.resourceMs);
+   enterStage('resourceStartup');started=true;
    await withResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt(),false,loopback?.topology);
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
-    state={active:true,controller,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,competition:request.competition,voucher:request.voucher,disconnect};
+    state={active:true,controller,abort,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,competition:request.competition,voucher:request.voucher,disconnect};
     currentRun=state;
     let resolveAbort;
     const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
@@ -367,17 +387,17 @@ async function run(args){
     const completed=(name,result)=>{state.check();need(result&&result.sourceSha===source.candidateSha&&result.runId===view.runId,'STAGE_RESULT');
      receipt.stages.push(Object.freeze({stage:name,status:'RETURNED_NOT_ADMISSION',...(result.installXid?{installXid:result.installXid}:{}),...(result.commitXid?{commitXid:result.commitXid}:{})}));};
     try{
-     state.check();stage='technical259';
+     state.check();enterStage('technical259');
      const technical=await settled(createCurrent259TechnicalMigration(handle,controller.signal).migrate());completed(stage,technical);
-     stage='roles9';let roles;
+     enterStage('roles9');let roles;
      if(request.competition){
       state.technical=technical;
       const rolePermit=Object.freeze({kind:'CURRENT259_PRIVATE_COMPETITION_ROLES'});competitionRolePermissions.set(rolePermit,state);
       try{roles=await settled(provisionCompetition(technical,handle,rolePermit));}finally{competitionRolePermissions.delete(rolePermit);}
      }else roles=await settled(provisionCurrent259Roles(technical,handle));
      completed(stage,roles);
-     stage='sevenFragments';const seven=await settled(installCurrent259SevenFragments(roles,handle));completed(stage,seven);
-     stage='paymentAcl';let acl;
+     enterStage('sevenFragments');const seven=await settled(installCurrent259SevenFragments(roles,handle));completed(stage,seven);
+     enterStage('paymentAcl');let acl;
      if(request.voucher){
       state.seven=seven;
       const voucherPermit=Object.freeze({kind:'CURRENT259_PRIVATE_VOUCHER_ACL'});
@@ -397,17 +417,17 @@ async function run(args){
       ...(request.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})});
      state.catalogSource={candidateSha:source.candidateSha,sealSha256:source.sourceSealSha256,schemaSha256:source.profile.schemaSha256,migrations:source.profile.ledger.map(row=>({path:'services/api/prisma/migrations/'+row.name+'/migration.sql',sha256:row.sha256}))};
      state.acl=acl;const permit=Object.freeze({kind:'CURRENT259_PRIVATE_B7_WRITE'});permissions.set(permit,state);
-     stage='b7';const b7=await settled(installCurrent259B7(acl,handle,permit));completed(stage,b7);
+     enterStage('b7');const b7=await settled(installCurrent259B7(acl,handle,permit));completed(stage,b7);
      need(state.claimed&&state.writeUsed&&state.binding&&b7.status==='CURRENT259_B7_COMMITTED_NOT_ADMISSION'&&
       b7.bodySha256===plan.material.installation.readerBodySha256&&b7.planSha256===request.sha256&&
       b7.installSqlSha256===state.binding.installSqlSha256,'B7_RESULT');
      receipt.b7Binding=state.binding;receipt.b7={installXid:b7.installXid,readerOid:b7.readerOid,bodySha256:b7.bodySha256};
      if(request.pfq){
-      stage='pfqConcurrency';state.check();
+      enterStage('pfqConcurrency');state.check();
       const result=await runPfq(b7,handle,controller.signal,state.check);
       state.check();
       need(equal(result,{suite:'project-financing-quota-concurrency',businessCases:13,connectionCases:1}),'PFQ_RESULT');
-      receipt.pfq=Object.freeze(result);stage='ownedCleanup';
+      receipt.pfq=Object.freeze(result);enterStage('ownedCleanup');
      }
      if(request.business){
       const {withCurrent259LiveSessions,withCurrent259ApplicationEnvironment,withCurrent259OwnedApplication,runCurrent259PaymentCase}=businessFlow;
@@ -425,11 +445,11 @@ async function run(args){
       }
       const normalApplication=request.competition?withCompetitionApplications:withCurrent259OwnedApplication;
       const runCase=request.competition?runCompetition:runCurrent259PaymentCase;
-      stage='liveSessions';state.check();
+      enterStage('liveSessions');state.check();
       await settled(withLive(b7,handle,async (initialLiveProof,replaceRuntime)=>{
-       state.check();stage='applicationEnvironment';
+       state.check();enterStage('applicationEnvironment');
        return withCurrent259ApplicationEnvironment(handle,async environment=>{
-        state.check();environment.check();stage='ownedApplication';
+        state.check();environment.check();enterStage('ownedApplication');
         const runApplication=(liveProof,disconnectPhase,disconnectAttempt,disconnectRollback,oldOrigin)=>{
          const withApplication=disconnectPhase==='attempt'?withDisconnectOriginalApplication:normalApplication;
          return withApplication(liveProof,handle,controller.signal,async application=>{
@@ -459,7 +479,7 @@ async function run(args){
          const casePermissions=request.attributionGap?attributionGapPermissions:request.voucher?voucherBusinessPermissions:businessPermissions;
          const businessPermit=Object.freeze({kind:request.attributionGap?'CURRENT259_PRIVATE_ATTRIBUTION_GAP_CASE':request.voucher?'CURRENT259_PRIVATE_VOUCHER_CASE':'CURRENT259_PRIVATE_PAYMENT_CASE'});
          casePermissions.set(businessPermit,business);
-         stage='seedAndSelectedCase';
+         enterStage('seedAndSelectedCase');
          receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'ISSUED_NOT_YET_CONSUMED',outcome:'UNKNOWN_DO_NOT_RETRY'};
          try{
           const result=await runCase(application,handle,businessPermit);
@@ -467,7 +487,7 @@ async function run(args){
           if(disconnectPhase==='attempt'){
            need(business.claimed&&result&&typeof result==='object'&&Reflect.ownKeys(result).length===0,'BUSINESS_RESULT');
            receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'ORIGINAL_FAILED_AWAITING_ROLLBACK'};
-           stage='closeOriginalApplication';
+           enterStage('closeOriginalApplication');
            return result;
           }
           need(business.claimed&&result.caseId===plan.case.caseId&&result.passed===true,'BUSINESS_RESULT');
@@ -502,18 +522,18 @@ async function run(args){
         if(!disconnect)return runApplication(initialLiveProof);
         need(typeof replaceRuntime==='function','DISCONNECT_SCOPE');
         const original=await runApplication(initialLiveProof,'attempt');
-        state.check();environment.check();stage='retireOriginalRuntimeAndConfirmRollback';
+        state.check();environment.check();enterStage('retireOriginalRuntimeAndConfirmRollback');
         return replaceRuntime(original.closeProof,original.value,(replacement,rollback,oldOrigin)=>{
-         state.check();environment.check();stage='replacementApplication';
+         state.check();environment.check();enterStage('replacementApplication');
          return runApplication(replacement,'recovery',original.value,rollback,oldOrigin);
         });
        });
       }));
-      state.check();stage='ownedCleanup';
+      state.check();enterStage('ownedCleanup');
      }
     }catch(error){
      if(!hasFirst){
-      hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
+      failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
       const technicalFailure=stage==='technical259'?describeCurrent259TechnicalFailure(error):undefined;
       if(technicalFailure)receipt.technicalFailure=technicalFailure;
       const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
@@ -530,19 +550,19 @@ async function run(args){
     }finally{state.active=false;currentRun=undefined;EventTarget.prototype.removeEventListener.call(controller.signal,'abort',onAbort);}
    });
    checked.check();importsCheck();
-  }catch(error){if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;}}
-  finally{if(state)state.active=false;currentRun=undefined;if(timer)clearTimeout(timer);process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);}
-  try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
+  }catch(error){if(!hasFirst){failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;}}
+  finally{if(state)state.active=false;currentRun=undefined;if(timer)clearTimeout(timer);process.removeListener('SIGINT',onSigint);process.removeListener('SIGTERM',onSigterm);}
+  try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(!hasFirst){failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
   if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.pfq||receipt.pfq)&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.pfq?'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED':request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
   else{receipt.status='STOPPED';receipt.failureCode??='PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
-  publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;
+  recordTiming(receipt);publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;
   return {status:receipt.status,candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,resourceCreationRequested:started,
    failureCode:receipt.failureCode,receiptFile:plan.run.receiptFile,receiptSha256,executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
  }catch(error){
   if(marker&&plan&&!published&&!publicationStarted){
    const stopped=receipt??{schemaVersion:1,purpose:plan.purpose,planSha256:request.sha256,expectedCandidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true,scope:plan.scope,limits:plan.limits,stages:[],executionAllowed:false,nativeAdmission:false,financialAcceptance:false,liveSessionAdmission:false};
    stopped.status='STOPPED';stopped.failureCode??=safeCode(hasFirst?first:error);stopped.failureStage??=stage;stopped.resource??={status:'unconfirmed',cleanup:{status:'UNKNOWN'}};
-   try{publicationStarted=true;publish(plan,stopped);published=true;}catch{/* Preserve the consumed marker and UNKNOWN durable receipt. */}
+   try{recordTiming(stopped);publicationStarted=true;publish(plan,stopped);published=true;}catch{/* Preserve the consumed marker and UNKNOWN durable receipt. */}
   }
   return {status:'STOPPED',failureCode:safeCode(hasFirst?first:error),onceAttemptConsumed:requestedOnce,resourceCreationRequested:started,receiptOutcome:published?'WRITTEN':'UNKNOWN',executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
  }

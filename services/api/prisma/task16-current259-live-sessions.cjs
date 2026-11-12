@@ -144,7 +144,8 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     if(businessToken)return checkContinuity(businessToken);
     need(active && !broken, 'CLOSED');
     try {
-      lease.check(); view.check();
+      lease.check();
+      // The branded claim checks this same resource before returning the view.
       need(claimCurrent259TechnicalResource(handle) === view && view.loader === loader && loader.Class === Class &&
         lease.completion === b7Completion && equal(view.source, lease.source) &&
         b7Completion.installXid === committedRequest.installXid &&

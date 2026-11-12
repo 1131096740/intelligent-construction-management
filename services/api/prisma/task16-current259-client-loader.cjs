@@ -102,7 +102,12 @@ function loadCurrent259Client(handle){
   for(const child of mod.children)visit(child,visited);
  }
  const roots=[require.cache[material.generatedIndex],require.cache[material.clientEntry],require.cache[material.engine.path],...records.map(r=>r.module)];
- for(const mod of roots)visit(mod,new Set());
+ function visitRoots(){
+  // Share the traversal only within one synchronous witness pass.
+  const visited=new Set();
+  for(const mod of roots)visit(mod,visited);
+ }
+ visitRoots();
  // Preserve the existing exact Nest composition and all six global guards.
   need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype,"TASK16_APP_PRISMA_CLASS");
   reflection={get:Reflect.getMetadata,define:Reflect.defineMetadata};need(typeof reflection.get==='function'&&typeof reflection.define==='function',"TASK16_APP_REFLECTION_CHANGED");
@@ -134,7 +139,7 @@ function loadCurrent259Client(handle){
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
-   material.checkLight();for(const mod of roots)visit(mod,new Set());
+   material.checkLight();visitRoots();
    for(const row of files.values())need(require.cache[row.path]===row.module&&row.module.exports===row.exports,'CURRENT259_LOADER_MODULE');
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2'&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine,'CURRENT259_LOADER_CLASS');
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'TASK16_APP_REFLECTION_CHANGED');

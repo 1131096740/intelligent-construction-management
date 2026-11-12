@@ -293,7 +293,9 @@ function fixture(t,options={}){
  const proc={argv:['node',file,...(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
- new Function('require','module','__dirname','__filename','process',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc);
+ const launcherTimer=options.captureDeadline?((fn,ms)=>{assert.equal(ms,3600000);state.expireDeadline=fn;return Object.freeze({});}):setTimeout;
+ const clearLauncherTimer=options.captureDeadline?noop:clearTimeout;
+ new Function('require','module','__dirname','__filename','process','setTimeout','clearTimeout',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc,launcherTimer,clearLauncherTimer);
  return {api:module.exports,done,state,s,saved,handle,acl};
 }
 test('default verifies a fixed payment install plan without consuming an attempt or resource',async t=>{
@@ -361,6 +363,9 @@ for(const invalid of [
 ]) test('copied permit, wrong handle/ACL and repeated claim invalidate the only issuer',async t=>{
  const f=fixture(t,{beforeConsume:invalid}),result=await f.done;
  assert.equal(result.status,'STOPPED');assert.equal(f.state.consumed,null);assert.equal(f.state.closes,1);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.equal(receipt.timing.resourceAbort.origin,'CONTINUITY_REVOKED');
+ assert.equal(receipt.timing.resourceAbort.stage,'b7');
 });
 
 test('abort during technical259 permanently stops role installation and later writes',async t=>{
@@ -378,6 +383,22 @@ test('abort releases an unsettled fixed technical stage and no later stage can r
  assert.equal(result.stillPending,undefined);assert.equal(result.status,'STOPPED');
  assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_ABORTED_UNSETTLED');
  assert.deepEqual(f.state.calls,['start','technical259']);assert.equal(f.state.closes,1);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.equal(receipt.timing.resourceAbort.origin,'SIGNAL_SIGTERM');
+ assert.equal(receipt.timing.resourceAbort.stage,'technical259');
+});
+
+test('receipt identifies the resource deadline at the first cancelled stage without running a later stage',async t=>{
+ const f=fixture(t,{captureDeadline:true,onTechnical(state){state.expireDeadline();state.signals.SIGTERM();}});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_ABORTED_UNSETTLED');
+ assert.deepEqual(f.state.calls,['start','technical259']);
+ const {stages,elapsedMs,resourceAbort}=receipt.timing;
+ assert.deepEqual(stages.map(row=>row.stage),['preflight','resourceStartup','technical259']);
+ assert.ok(stages.every(row=>Number.isSafeInteger(row.elapsedMs)&&row.elapsedMs>=0));
+ assert.equal(resourceAbort.origin,'RESOURCE_DEADLINE');assert.equal(resourceAbort.stage,'technical259');
+ assert.ok(Number.isSafeInteger(resourceAbort.elapsedMs)&&resourceAbort.elapsedMs>=0&&resourceAbort.elapsedMs<=elapsedMs);
+ assert.equal(f.state.closes,1);
 });
 
 test('first stage failure survives simultaneous cleanup UNKNOWN and no private text is persisted',async t=>{
