@@ -40,7 +40,8 @@ import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-de
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding,
-  nonReceiptBusinessFileBindingIds
+  nonReceiptBusinessFileBindingIds,
+  registeredPaymentVoucherInstalled
 } from "./file-business-binding";
 import { hasExactLegacyCleanupKey, lockContractReviewCleanupCohort, reviewReferenceCatalog } from "./contract-review-file-retention";
 import { contractReviewTicketAccess, type ContractReviewFileAccess } from "./contract-review-file-access";
@@ -1571,6 +1572,9 @@ export class FileService {
   }
 
   private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string): Promise<boolean> {
+    const registeredVoucher = await registeredPaymentVoucherInstalled(tx)
+      ? Prisma.sql`UNION ALL SELECT 1 FROM public."RegisteredPaymentVoucher" WHERE "fileId" = ${fileId}`
+      : Prisma.empty;
     const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
       SELECT EXISTS (
         SELECT 1 FROM "User" WHERE "signatureFileId" = ${fileId}
@@ -1598,7 +1602,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "SettlementTemplatePreviewJob" WHERE "previewXlsxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectOwnerContract" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "PaymentExecution" WHERE "voucherFileId" = ${fileId}
-        UNION ALL SELECT 1 FROM "RegisteredPaymentVoucher" WHERE "fileId" = ${fileId}
+        ${registeredVoucher}
         UNION ALL SELECT 1 FROM "SpotProcurementAttachment" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SpotProcurementPayment" WHERE "supportingAttachmentFileId" = ${fileId} OR "merchantPaymentProofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SpotProcurementPaymentExecution" WHERE "voucherFileId" = ${fileId}
@@ -2142,14 +2146,15 @@ export class FileService {
     delegatorUserId?: string,
     purpose?: "ticket"
   ): Promise<GlobalInvoiceFileAccessContext | ContractReviewFileAccess | undefined> {
-    const registeredVoucher = await tx.$queryRaw<Array<{executionId:string;verifiedExecutionId:string|null;paymentRequestId:string|null;contentSha256:string}>>(Prisma.sql`
+    const registeredVoucher = await registeredPaymentVoucherInstalled(tx)
+      ? await tx.$queryRaw<Array<{executionId:string;verifiedExecutionId:string|null;paymentRequestId:string|null;contentSha256:string}>>(Prisma.sql`
       /* registered_payment_voucher_download */
       SELECT voucher."executionId", funding."executionId" AS "verifiedExecutionId", execution."paymentRequestId", voucher."contentSha256"
-      FROM "RegisteredPaymentVoucher" voucher
-      LEFT JOIN "RegisteredPaymentFunding" funding ON funding."executionId" = voucher."executionId"
-      LEFT JOIN "PaymentExecution" execution ON execution."id" = voucher."executionId"
+      FROM public."RegisteredPaymentVoucher" voucher
+      LEFT JOIN public."RegisteredPaymentFunding" funding ON funding."executionId" = voucher."executionId"
+      LEFT JOIN public."PaymentExecution" execution ON execution."id" = voucher."executionId"
       WHERE voucher."fileId" = ${file.id}
-    `);
+    `) : [];
     if (registeredVoucher.length) {
       const actor = await tx.user.findUnique({where:{id:actorUserId},select:{isActive:true}});
       if (actor?.isActive !== true) throw new ForbiddenException("当前账号已停用或不存在，不能读取付款凭证");

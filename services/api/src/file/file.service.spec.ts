@@ -52,14 +52,11 @@ function configureCosStorage() {
   process.env.COS_REGION = "ap-guangzhou";
 }
 
-/** Legacy file fixtures contain no RegisteredPaymentVoucher records. Supply
- * only that additional persistence read; keep old-domain SQL on its original
- * adapter so its query assertions, order and failures remain observable. */
+/** Legacy file fixtures do not have the supplemental payment installation. */
 const adaptedLegacyFileTransactions = new WeakSet<object>();
 
 function legacyFileTransaction<T extends object>(transaction: T): T {
   if (adaptedLegacyFileTransactions.has(transaction)) return transaction;
-  const registeredVoucherSql = '/* registered_payment_voucher_download */ SELECT voucher."executionId", funding."executionId" AS "verifiedExecutionId", execution."paymentRequestId", voucher."contentSha256" FROM "RegisteredPaymentVoucher" voucher LEFT JOIN "RegisteredPaymentFunding" funding ON funding."executionId" = voucher."executionId" LEFT JOIN "PaymentExecution" execution ON execution."id" = voucher."executionId" WHERE voucher."fileId" = ?';
   const proxy = new Proxy(transaction, {
     get(target, property, receiver) {
       if (property === "contractArchiveEvidenceFile" && Reflect.get(target, property, target) == null) {
@@ -106,11 +103,11 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
             input.values.some(value => typeof value !== "string" || !value)) throw new Error("Unsupported legacy cleanup key lookup");
           return [{ exact: true }];
         }
-        if (sql?.includes("registered_payment_voucher_download")) {
-          if (sql !== registeredVoucherSql || args.length !== 0 || !Array.isArray(input?.values) || input.values.length !== 1 || typeof input.values[0] !== "string" || !input.values[0].trim()) {
-            throw new Error("Unsupported registered-voucher fixture query or file binding");
+        if (sql?.includes("registered_payment_voucher_catalog")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length) {
+            throw new Error("Unexpected registered voucher catalog inputs");
           }
-          return [];
+          return [{ state: "absent" }];
         }
         const original = Reflect.get(target, property, target);
         if (typeof original !== "function") throw new Error("Legacy file fixture has no adapter for this SQL query");
@@ -457,7 +454,7 @@ describe("FileService", () => {
     );
 
     await expect(service.assertCanAttachUnlinkedFile(
-      tx as never,
+      legacyFileTransaction(tx) as never,
       "fresh-file",
       "contract-user"
     )).resolves.toMatchObject({ id: "fresh-file" });
@@ -485,7 +482,7 @@ describe("FileService", () => {
     );
 
     await expect(service.assertCanAttachUnlinkedFile(
-      tx as never,
+      legacyFileTransaction(tx) as never,
       "bound-file",
       "contract-user"
     )).rejects.toThrow("该文件已用于其他业务，请重新上传专用的更正依据附件");
@@ -513,7 +510,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanUseHistoricalTakeoverFile(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "takeover-voucher-1",
         "finance-user",
         false
@@ -542,7 +539,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanUseHistoricalTakeoverFile(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "existing-takeover-voucher",
         "finance-user",
         true
@@ -573,7 +570,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanUseHistoricalTakeoverFile(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "cross-bound-file",
         "finance-user",
         false
@@ -5024,7 +5021,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertFileHasNoBusinessBinding(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "unbound-file"
       )
     ).resolves.toEqual({
@@ -5076,7 +5073,7 @@ describe("FileService", () => {
 
       await expect(
         service.assertFileHasNoBusinessBinding(
-          tx as never,
+          legacyFileTransaction(tx) as never,
           "bound-file"
         )
       ).rejects.toThrow(
@@ -5115,7 +5112,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanBindContractDraftAttachments(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "contract-version-1",
         ["draft-attachment-1"],
         "owner-1"
@@ -5167,7 +5164,7 @@ describe("FileService", () => {
 
       await expect(
         service.assertCanBindContractDraftAttachments(
-          tx as never,
+          legacyFileTransaction(tx) as never,
           "contract-version-1",
           ["draft-attachment-1"],
           "owner-1"
@@ -5194,7 +5191,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.assertFileHasNoBusinessBinding(tx as never, "missing-file")
+      service.assertFileHasNoBusinessBinding(legacyFileTransaction(tx) as never, "missing-file")
     ).rejects.toThrow("文件不存在或已被移除");
     expect(tx.spotProcurementReceiptPhoto.findFirst).not.toHaveBeenCalled();
   });
@@ -5214,6 +5211,7 @@ describe("FileService", () => {
             storageStatus: "active"
           }
         ])
+        .mockResolvedValueOnce([{ state: "absent" }])
         .mockResolvedValueOnce([]),
       spotProcurementReceiptPhoto: {
         findFirst: jest.fn().mockResolvedValue(null)

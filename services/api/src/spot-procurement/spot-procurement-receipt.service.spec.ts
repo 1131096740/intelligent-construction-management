@@ -442,6 +442,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       if (text.includes("pg_advisory_xact_lock")) {
         return [{ pg_advisory_xact_lock: null }];
       }
+      if (text.includes("registered_payment_voucher_catalog")) return [{ state: "absent" }];
       if (
         text.includes("receipt_non_receipt_file_binding")
       ) {

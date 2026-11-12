@@ -21,8 +21,8 @@ describe("necessary-expense reserve evidence file access", () => {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null)
     };
-    const rawLookup = jest.fn(async (query: Prisma.Sql): Promise<{ projectId: string }[]> => {
-      if (query.text.includes("/* registered_payment_voucher_download */")) return [];
+    const rawLookup = jest.fn(async (query: Prisma.Sql): Promise<Array<{ projectId: string } | { state: string }>> => {
+      if (query.text.includes("/* registered_payment_voucher_catalog */")) return [{ state: "absent" }];
       throw new Error("Unexpected private-file lookup");
     });
     const tx = new Proxy(
@@ -130,7 +130,7 @@ describe("necessary-expense reserve evidence file access", () => {
     const { service, tx } = createService("employee");
     Reflect.deleteProperty(tx, "projectNecessaryExpenseReserveEntry");
     tx.$queryRaw.mockImplementation(async (query: Prisma.Sql) => {
-      if (query.text.includes("/* registered_payment_voucher_download */")) return [];
+      if (query.text.includes("/* registered_payment_voucher_catalog */")) return [{ state: "absent" }];
       if (query.text.includes('FROM "ProjectNecessaryExpenseReserveEntry"') && query.values[0] === "reserve-evidence-1") {
         return [{ projectId: "project-1" }];
       }
@@ -142,7 +142,7 @@ describe("necessary-expense reserve evidence file access", () => {
       downloadReason: "查看必要费用准备依据"
     })).rejects.toThrow("当前账号无权下载该必要费用准备依据");
     expect(tx.$queryRaw.mock.calls.map(([query]) => query.text)).toEqual([
-      expect.stringContaining("/* registered_payment_voucher_download */"),
+      expect.stringContaining("/* registered_payment_voucher_catalog */"),
       expect.stringContaining('FROM "ProjectNecessaryExpenseReserveEntry"')
     ]);
   });

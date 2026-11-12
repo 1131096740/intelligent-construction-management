@@ -701,7 +701,7 @@ export class TemplateSyntheticStore {
         if (!query.values.length || query.values.some(value => typeof value !== "string") || new Set(query.values).size !== query.values.length) throw new Error("合成单位锁参数不正确");
         return this.table("businessParty").findMany({ where: { id: { in: query.values } }, orderBy: { id: "asc" } });
       }
-      if (createHash("sha256").update(text.replace(/\(VALUES \(\?\)(?:,\(\?\))*\)/u, "(VALUES (?))")).digest("hex") === "2248404c8be27ea01a053b8e69e3a8bed94ae3003aa8e99021a2ab6c81f33e67") {
+      if (createHash("sha256").update(text.replace(/\(VALUES \(\?\)(?:,\(\?\))*\)/u, "(VALUES (?))")).digest("hex") === "e7790890300fd3cf5aea96a7d0f7772e942b4b4e60084c2856a4697dcacb2a0f") {
         if (!this.transactionBindingLockHeld || !query.values.length || query.values.length > 20 || query.values.some(value => typeof value !== "string")) throw new Error("合成排他绑定查询参数不符");
         return query.values.filter(id => NON_RECEIPT_FILE_BINDINGS.some(binding => binding.table !== "ContractDraftAttachment" && (this.rows[binding.table[0].toLowerCase()+binding.table.slice(1)] ?? []).some(row => binding.columns.some(column => row[column] === id))) || (this.rows.fileObject ?? []).some(row => (row.id === id && row.supersedesFileObjectId != null) || row.supersedesFileObjectId === id)).map(fileId => ({ fileId }));
       }
@@ -888,12 +888,16 @@ export class TemplateSyntheticStore {
           return position && roles.includes(String(position.key)) && users.some(u => u.id === row.userId && u.isActive === true) && (text !== applicantSql || row.userId === query.values[0]) ? [{ userId: row.userId, roleKey: position.key }] : [];
         });
       }
+      if (text.startsWith("/* registered_payment_voucher_catalog */")) {
+        if (query.values.length || (this.rows.registeredPaymentVoucher ?? []).length) throw new Error("合成实付凭证目录未登记当前关系");
+        return [{ state: "absent" }];
+      }
       // Fixed FileService referenced-file projection. All declared adjacent
       // binding relations begin empty in this synthetic store; actual stored
       // references and replacement links are evaluated, never guessed unbound.
-      if ((createHash("sha256").update(text).digest("hex") === "9427575dbfd2ca374c101826fd58fd43e37d969006524631a0b86a91b4e1b057" || createHash("sha256").update(text).digest("hex") === "f04aada9280804a5407c3c1135cd1a308cff45e3fae74fd4a44297bb836d2124")) {
+      if (createHash("sha256").update(text).digest("hex") === "d5b16e3a5f1b898c6514727442b7b8b02ff1f4d3e351f67db1cf33a6affa1b20") {
         const id = query.values[0];
-        if (typeof id !== "string" || query.values.length !== (text.includes(`"slotKey" = 'direct_signed_originals_v1'`) ? 76 : 75) || !query.values.every(value => value === id)) throw new Error("合成文件引用参数不符");
+        if (typeof id !== "string" || query.values.length !== 75 || !query.values.every(value => value === id)) throw new Error("合成文件引用参数不符");
         const bound = NON_RECEIPT_FILE_BINDINGS.filter(binding => binding.table !== "ContractDraftAttachment").some(binding => (this.rows[binding.table[0].toLowerCase() + binding.table.slice(1)] ?? []).some(row => binding.columns.some(column => row[column] === id)));
         const replacement = (this.rows.fileObject ?? []).some(row => row.supersedesFileObjectId === id || row.id === id && row.supersedesFileObjectId != null);
         const directRetained = text.includes(`"slotKey" = 'direct_signed_originals_v1'`) && (this.rows.contractDraftAttachment ?? []).some(row => row.fileId === id && row.slotKey === "direct_signed_originals_v1");
@@ -932,13 +936,6 @@ export class TemplateSyntheticStore {
       if (['SELECT "id" FROM "Project" WHERE "id" = ? FOR UPDATE',
         'SELECT "id" FROM public."Project" WHERE "id" = ? FOR UPDATE'].includes(text)) return this.prisma.project.findMany({ where: { id } });
       if (text === 'SELECT "id", "isActive" FROM "Project" WHERE "id" = ? FOR UPDATE') { const project = await this.prisma.project.findUnique({ where: { id } }); return project ? [project] : []; }
-      // Current FileService first checks the registered-payment voucher join.
-      // These contract-only fixtures create no voucher relation; a future
-      // nonempty relation is deliberately not modeled as permission-free.
-      if (createHash("sha256").update(text).digest("hex") === "a3ffde9e356083472920cfdbfe8d370880c9725a212caf612b0dc2e8ffb428e2") {
-        if (query.values.length !== 1 || (this.rows.registeredPaymentVoucher ?? []).length !== 0) throw new Error("合成实付凭证读取投影未登记当前关系");
-        return [];
-      }
       // FileService's real referenced-predecessor cleanup path. Model only the
       // exact lock and positive generated-document reference facts of this fake;
       // orphan/unmodeled references remain refused, never guessed false.

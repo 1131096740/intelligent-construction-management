@@ -110,6 +110,7 @@ export function createRegisteredPaymentSyntheticDb() {
       const marker=await rows.registeredContractHistoryRevision.findFirst({where:{contractId:args[0]}});
       return [{revision:marker?.revision??null}];
     }
+    if (sql.includes("registered_payment_voucher_catalog")) return [{ state: "installed" }];
     if (sql.includes("registered_payment_voucher_download")) {
       const voucher=await rows.registeredPaymentVoucher.findFirst({where:{fileId:args[0]}});
       if(!voucher)return [];
@@ -122,7 +123,7 @@ export function createRegisteredPaymentSyntheticDb() {
       for (const binding of NON_RECEIPT_FILE_BINDINGS) {
         const model=binding.table[0].toLowerCase()+binding.table.slice(1);
         for (const row of await rows[model].findMany({where:{}})) for(const column of binding.columns) {
-          const selected = new RegExp(`SELECT\\s+x\\."${column}"\\s+AS\\s+"fileId"\\s+FROM\\s+"${binding.table}"\\s+x`).test(sql);
+          const selected = new RegExp(`SELECT\\s+x\\."${column}"\\s+AS\\s+"fileId"\\s+FROM\\s+(?:public\\.)?"${binding.table}"\\s+x`).test(sql);
           if(selected && ids.has(String(row[column]))) bound.add(String(row[column]));
         }
       }
