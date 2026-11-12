@@ -135,7 +135,8 @@ async function run(args,enter,capture) {
         const row = observed.split(' ');
         if (row.length !== 3 || !/^[a-f0-9]{64}$/u.test(row[0]) || row[1] !== name || row[2] !== runId ||
           (container && container !== row[0])) throw new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
-        docker(['rm','--force','--volumes',row[0]]);
+        const containerId = row[0];
+        docker(['rm','--force','--volumes',containerId]);
         if (list()) throw new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
       }
       // A missing name is insufficient if the returned container ID survives
