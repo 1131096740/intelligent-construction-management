@@ -171,6 +171,15 @@ function runModel(t,{once=true,used=false,failure,wrongResult=false}={}){
         generatedHttpFailure:Object.freeze({step:'WORKBENCH',httpStatus:500,raw:'secret'})});
       if(failure==='forged-http')throw Object.assign(new Error('secret'),{code:'CURRENT259_CONTRACT_LOGIN_CONSUMER',
         generatedHttpFailure:Object.freeze({step:'WORKBENCH',httpStatus:599})});
+      if(failure==='admission')throw Object.assign(new Error('private DSN'),{code:'CURRENT259_CONTRACT_LOGIN_TLS',
+        clientCleanup:'UNKNOWN',admissionFailure:{stage:'TLS_WRONG_CA_DISCONNECT',reason:'DISCONNECT_UNKNOWN',
+          operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT',
+          roleIndex:0,raw:'private certificate'}});
+      if(failure==='forged-admission')throw Object.assign(new Error('private SQL'),{
+        admissionFailure:{stage:'private role address',reason:'private connection'}});
+      if(failure==='certificate-observation')throw Object.assign(new Error('private certificate details'),{
+        code:'CURRENT259_CONTRACT_LOGIN_TLS',admissionFailure:{stage:'TLS_CERTIFICATE',
+          operationCode:'TASK01_RESOURCE_CERTIFICATE_NOT_OBSERVED',raw:'private certificate details'}});
       return {status:'CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED',verifiedClients:5,httpSteps:5,storageAcceptance:wrongResult,
         executionAllowed:false,nativeAdmission:false,draft:{status:'DRAFT_ADMISSION_PROTOCOL_MATCHED',leaseRevision:1,projectId:id,
           contractId:id.replace(/^1/u,'2'),versionId:id.replace(/^1/u,'3')},seed:{seedRows:21,operating:false,seedXid:'901'}};
@@ -249,4 +258,19 @@ test('the receipt retains source-qualified migration detail and only fixed ACL a
   assert.deepEqual(http.httpFailure,{step:'WORKBENCH',httpStatus:500});
   const badHttp=await runModel(t,{failure:'forged-http'}).result();
   assert.deepEqual(badHttp.httpFailure,{step:'WORKBENCH'});
+});
+
+test('the draft receipt retains only fixed admission coordinates across owned cleanup',async t=>{
+  const stopped=await runModel(t,{failure:'admission'}).result();
+  assert.equal(stopped.phase,'GENERATED_DRAFT_ADMISSION');
+  assert.equal(stopped.cleanup,'UNKNOWN');
+  assert.deepEqual(stopped.admissionFailure,{stage:'TLS_WRONG_CA_DISCONNECT',reason:'DISCONNECT_UNKNOWN',
+    operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT',roleIndex:0});
+  assert.doesNotMatch(JSON.stringify(stopped),/private DSN|private certificate/u);
+  const rejected=await runModel(t,{failure:'forged-admission'}).result();
+  assert.equal(rejected.admissionFailure,undefined);
+  assert.doesNotMatch(JSON.stringify(rejected),/private role|private SQL/u);
+  const certificate=await runModel(t,{failure:'certificate-observation'}).result();
+  assert.deepEqual(certificate.admissionFailure,{stage:'TLS_CERTIFICATE',operationCode:'TASK01_RESOURCE_CERTIFICATE_NOT_OBSERVED'});
+  assert.doesNotMatch(JSON.stringify(certificate),/private certificate details/u);
 });

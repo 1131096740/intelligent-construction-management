@@ -5,7 +5,7 @@ const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArg
 const fs=require('node:fs'),path=require('node:path');
 const {createHash}=require('node:crypto');
 const {types}=require('node:util');
-const {projectGeneratedDraftHttpFailure}=require('./task12-current259-generated-draft-diagnostic.cjs');
+const {projectGeneratedDraftHttpFailure,projectGeneratedDraftAdmissionFailure}=require('./task12-current259-generated-draft-diagnostic.cjs');
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const error=phase=>Object.assign(new Error('CURRENT259_GENERATED_DRAFT_ONCE_'+phase),{code:'CURRENT259_GENERATED_DRAFT_ONCE_'+phase});
@@ -90,7 +90,7 @@ function evidence(result){
 async function main(){
   let checked,attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
   const controller=new AbortController(),signal=()=>controller.abort();
-  let writeReceipt,technicalFailure,httpFailure,failureStage,sevenFailure,archiveWriteFailure;
+  let writeReceipt,technicalFailure,httpFailure,admissionFailure,failureStage,sevenFailure,archiveWriteFailure;
   try{
     need(FRESH,'FRESH');
     const args=parseArgs(process.argv.slice(2));
@@ -137,8 +137,11 @@ async function main(){
       try{result=await work();}
       catch(error){
         if(name==='MIGRATE')technicalFailure=describeCurrent259TechnicalFailure(error);
-        if(name==='GENERATED_DRAFT_ADMISSION'&&own(error,'code')==='CURRENT259_CONTRACT_LOGIN_CONSUMER')
-          httpFailure=projectGeneratedDraftHttpFailure(own(error,'generatedHttpFailure'));
+        if(name==='GENERATED_DRAFT_ADMISSION'){
+          admissionFailure=projectGeneratedDraftAdmissionFailure(own(error,'admissionFailure'));
+          if(own(error,'code')==='CURRENT259_CONTRACT_LOGIN_CONSUMER')
+            httpFailure=projectGeneratedDraftHttpFailure(own(error,'generatedHttpFailure'));
+        }
         failureStage=stageFailure(error,name);
         if(failureStage==='archive-registered-write'){
           const {projectCurrent259ArchiveWriteFailure}=require('./enterprise-task01-resources.cjs');
@@ -171,7 +174,7 @@ async function main(){
     process.exitCode=1;
     if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
     const reason=safeReason(cause),proof={...(reason?{reason}:{}),...(technicalFailure?{technicalFailure}:{}),
-      ...(httpFailure?{httpFailure}:{}),...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{}),
+      ...(httpFailure?{httpFailure}:{}),...(admissionFailure?{admissionFailure}:{}),...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{}),
       ...(archiveWriteFailure?{archiveWriteFailure}:{})};
     if(writeReceipt){
       try{return writeReceipt('CURRENT259_GENERATED_DRAFT_STOPPED',proof);}

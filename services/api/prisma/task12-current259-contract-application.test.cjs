@@ -289,3 +289,27 @@ test('generated HTTP failure retains only the fixed step and allowed status afte
     assert.deepEqual(model.events.slice(-3),['generated-failed','app-close','readback']);
   }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
 });
+
+test('generated Nest init keeps its fixed first stage through a later unknown cleanup',async()=>{
+  const model=assemblyFixture(false,'capability-error');
+  const {createGeneratedDraftAdmissionDiagnostic}=require('./task12-current259-generated-draft-diagnostic.cjs');
+  model.bridge.diagnostic=createGeneratedDraftAdmissionDiagnostic();
+  const keys=['NODE_ENV','SMS_ENABLED','APPROVAL_SMS_ENABLED','FILE_STORAGE_DRIVER','FILE_STORAGE_ROOT',
+    'JWT_ACCESS_SECRET','JWT_REFRESH_SECRET','FILE_DOWNLOAD_SECRET'];
+  const prior=keys.map(key=>Object.getOwnPropertyDescriptor(process.env,key));
+  model.app.init=async()=>{throw Object.assign(new Error('private startup detail'),{code:'CURRENT259_FRAMEWORK_CHANGED'});};
+  model.app.close=async()=>{model.events.push('close-rejected');throw new Error('private cleanup detail');};
+  try{
+    await assert.rejects(model.run(model.bridge),{
+      code:'CURRENT259_FIRST_Q2_APP_INIT',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'
+    });
+    assert.deepEqual(model.bridge.diagnostic.capture(new Error('outer cause')),{
+      stage:'APP_INIT',operationCode:'CURRENT259_FRAMEWORK_CHANGED'
+    });
+    assert.equal(model.events.filter(event=>event==='close-rejected').length,1);
+    assert.ok(!model.events.includes('listen'));
+  }finally{
+    keys.forEach((key,index)=>{if(prior[index])Object.defineProperty(process.env,key,prior[index]);else delete process.env[key];});
+    fs.rmSync(model.parent,{recursive:true,force:true});
+  }
+});
