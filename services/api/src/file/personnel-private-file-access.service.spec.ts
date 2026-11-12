@@ -12,7 +12,11 @@ function fixture(kind:"settlement"|"payment",role:string,participant=false, ownP
   settlement:{...empty,findUnique:async()=>({id:"settlement",projectId:"project-1",preparedByUserId:"other"})},
   paymentExecution:{...empty,findFirst:async()=>kind==="payment"?{paymentRequestId:"payment"}:null},
   paymentRequest:{...empty,findUnique:async()=>({id:"payment",projectId:"project-1"})},
-  $queryRaw:async(query:{strings:readonly string[]})=>query.strings.join("").includes('FROM "ApprovalInstance" instance')&&participant?[{id:"participant"}]:[]
+  $queryRaw:async(query:{strings:readonly string[]})=>{
+   const text=query.strings.join("");
+   if(text.includes("/* registered_payment_voucher_catalog */")) return [{state:"absent"}];
+   return text.includes('FROM "ApprovalInstance" instance')&&participant?[{id:"participant"}]:[];
+  }
  };
  const db=new Proxy(delegates,{get:(target,key)=>target[String(key)]??empty});
  const service=new FileService(db as never,new AuditService(db as never),{} as never);
