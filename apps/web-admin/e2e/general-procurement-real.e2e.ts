@@ -1,18 +1,27 @@
 import { expect, test, type Page } from "@playwright/test";
 const sessions = JSON.parse(process.env.GP_SESSIONS!);
+const historicalDrafts: Record<string, string> = JSON.parse(process.env.GP_HISTORICAL_DRAFTS!);
 async function login(page: Page, role: string) {
   const session = sessions[role];
   await page.evaluate((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), { user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken });
   await page.reload();
 }
-test("员工填元金额，按顺序审批归档后由综合部请款", async ({ page, request }, testInfo) => {
+test("新申请保留元估价和重复保存身份，历史申请按顺序审批归档并请款", async ({ page, request }, testInfo) => {
   await page.goto("/login");
   await login(page, "employee");
   await page.goto("/综合采购申请");
   await page.getByRole("button", { name: "新建综合采购申请", exact: true }).click();
-  const form = page.getByRole("region", { name: "综合采购申请单条业务表单" });
-  await form.locator('[data-field="requestedAmountYuan"] input').fill("123.45");
-  await form.locator('[data-field="reason"] textarea').fill(`浏览器${testInfo.project.name}采购办公用品`);
+  const form = page.locator(".t-drawer").filter({ hasText: "新建综合采购申请" });
+  const amount = form.getByPlaceholder("整单独立预计金额（元，最多四位小数），未定可留空");
+  await amount.fill("123.45");
+  await form.getByPlaceholder("用途或补充说明，未定可留空").fill(`浏览器${testInfo.project.name}采购办公用品`);
+  const lineName = `办公用品-${testInfo.project.name}`;
+  const nameCell = form.locator('revo-grid [data-rgrow="0"][data-rgcol="0"]').first();
+  await nameCell.dblclick();
+  const editor = form.locator("revogr-edit input");
+  await editor.fill(lineName);
+  await editor.press("Enter");
+  await expect(nameCell).toContainText(lineName);
   let originalRequest: unknown;
   let originalId = "";
   await page.route("**/general-procurements", async (route) => {
@@ -24,21 +33,34 @@ test("员工填元金额，按顺序审批归档后由综合部请款", async ({
     await route.abort("failed");
     await page.unroute("**/general-procurements");
   });
-  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
-  await expect(page.getByRole("button", { name: "核对保存结果", exact: true })).toBeEnabled();
-  await expect(form.locator('[data-field="requestedAmountYuan"] input')).not.toBeEditable();
-  await page.reload();
-  await page.getByRole("button", { name: "新建综合采购申请", exact: true }).click();
-  await expect(form.locator('[data-field="requestedAmountYuan"] input')).toHaveValue("123.45");
-  await expect(form.locator('[data-field="requestedAmountYuan"] input')).not.toBeEditable();
+  await form.getByRole("button", { name: "保存草稿", exact: true }).click();
+  const reconcile = form.getByRole("button", { name: "核对并保存同一次草稿", exact: true });
+  await expect(reconcile).toBeEnabled();
+  await expect(amount).toHaveValue("123.45");
+  await expect(amount).not.toBeEditable();
   const created = page.waitForResponse((response) => response.url().endsWith("/general-procurements") && response.request().method() === "POST");
-  await page.getByRole("button", { name: "核对保存结果", exact: true }).click();
+  await reconcile.click();
   const createdResponse = await created;
   expect(createdResponse.status(), await createdResponse.text()).toBe(201);
-  expect(createdResponse.request().postDataJSON().requestedAmountCents).toBe("12345");
-  const { id } = await createdResponse.json();
-  expect(id).toBe(originalId);
+  expect(createdResponse.request().postDataJSON()).toMatchObject({
+    requestProtocolVersion: 2, estimatedAmount: "123.45", requestedAmountCents: null,
+    lines: [expect.objectContaining({ name: lineName })]
+  });
+  const { id: currentId } = await createdResponse.json();
+  expect(currentId).toBe(originalId);
   expect(createdResponse.request().postDataJSON()).toEqual(originalRequest);
+  await expect(page).toHaveURL(new RegExp(encodeURIComponent(currentId)));
+  await page.reload();
+  await expect(page.getByText("123.4500 元", { exact: true }).first()).toBeVisible();
+
+  const id = historicalDrafts[testInfo.project.name];
+  expect(id).toMatch(/^[a-f0-9-]{36}$/u);
+  await page.goto(`/综合采购申请/${id}`);
+  const historical = await request.get(`${process.env.GP_API_URL}/general-procurements/${id}`, {
+    headers: { authorization: `Bearer ${sessions.employee.tokens.accessToken}` }
+  });
+  expect(historical.status()).toBe(200);
+  expect(await historical.json()).toMatchObject({ status: "draft", requestedAmountCents: "12345" });
   await expect(page.getByText("123.45 元", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "提交审批", exact: true }).click();
   const submitDialog = page.locator(".t-dialog").filter({ hasText: "提交采购申请" });
