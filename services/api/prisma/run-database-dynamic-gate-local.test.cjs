@@ -1420,6 +1420,23 @@ test("outer gate delegates preparation only to the remaining runner that always 
   assert.equal((await artifactLifecycleFixture(false, "remaining_dynamic_postgresql16")).preparations, 0);
 });
 
+test("retained receipt fixtures copy only the history preceding the receipt migration", async () => {
+  const { mkdtemp, readdir, rm } = require("node:fs/promises");
+  const { preparePre160MigrationRoot } = require("./run-project-expense-receipt-concurrency-local.cjs");
+  const workspace = await mkdtemp(path.join(require("node:os").tmpdir(), "receipt-prefix-"));
+  const terminal = "20260728160000_project_expense_receipt_confirmation";
+  try {
+    const schema = await preparePre160MigrationRoot(workspace);
+    const copied = (await readdir(path.join(path.dirname(schema), "migrations"))).sort();
+    const current = (await readdir(path.join(__dirname, "migrations"))).sort();
+    const expected = current.filter(name => /^\d{14}_/u.test(name) && name < terminal);
+    assert.equal(expected.length, 112);
+    assert.deepEqual(copied, [...expected, "migration_lock.toml"].sort());
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("contract finance remaining subgroup creates its own ledger write credential", () => {
   const group = remainingGroups.find(({ id }) => id === "affiliate_company_contract");
   assert.ok(group);

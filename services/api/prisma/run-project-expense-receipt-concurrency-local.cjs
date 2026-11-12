@@ -200,7 +200,7 @@ async function preparePre160MigrationRoot(temporaryRoot) {
     withFileTypes: true
   });
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === LATEST_MIGRATION) continue;
+    if (!entry.isDirectory() || entry.name >= LATEST_MIGRATION) continue;
     await cp(
       path.join(migrationsRoot, entry.name),
       path.join(migrations, entry.name),
@@ -700,6 +700,7 @@ module.exports = {
   assertDedicatedLocalDatabase,
   assertLocalDockerEndpoint,
   createReceiptConcurrencyCleanup,
+  preparePre160MigrationRoot,
   verifyRetainedMigration,
   main
 };
