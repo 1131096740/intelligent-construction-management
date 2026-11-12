@@ -7,6 +7,7 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
+const { pol113Pol115JestArgs } = require("./pol113-pol115-jest-command.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const password = randomUUID();
@@ -25,6 +26,7 @@ function command(bin, args, env = process.env, quiet = false, timeout = 180_000)
 }
 
 if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
+const jestArgs = pol113Pol115JestArgs(["src/database/base-entry-http-postgres.spec.ts"], process.env);
 if (process.env.DOCKER_HOST && !process.env.DOCKER_HOST.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], process.env, true);
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
@@ -61,7 +63,7 @@ async function main() {
     await migration.migrate({ databaseUrl: env.DATABASE_URL, runtimeEnv: env });
     // The existing browser case allows 210s; its parent must also cover pretest and the other HTTP cases.
     const testTimeout = env.RUN_POL113_PROJECT_BROWSER === "1" ? 300_000 : 180_000;
-    command(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/base-entry-http-postgres.spec.ts"], env, false, testTimeout);
+    command(pnpm, jestArgs, env, false, testTimeout);
   } finally {
     try {
       if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {

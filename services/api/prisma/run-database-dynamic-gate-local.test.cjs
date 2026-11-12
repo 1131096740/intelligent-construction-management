@@ -1309,7 +1309,7 @@ test("default and list modes stay read-only even with no executable PATH", () =>
   }
 });
 
-async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture") {
+async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture", failPreparation = false) {
   // Exercise the real executeGate/finally filesystem lifecycle. Infrastructure
   // callbacks are substituted; this fixture does not execute a business/PG gate.
   const Module = require('node:module');
@@ -1317,8 +1317,9 @@ async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture"
   fixtureModule.filename = runnerPath;
   fixtureModule.paths = Module._nodeModulePaths(path.dirname(runnerPath));
   const hook = `
-module.exports.artifactLifecycleFixture = async (shouldFail, groupId) => {
+module.exports.artifactLifecycleFixture = async (shouldFail, groupId, failPreparation) => {
   let preparations = 0;
+  let childEnvironment;
   let directory;
   assertExecutionArguments = () => {};
   assertSafeExecutionEnvironment = () => {};
@@ -1328,9 +1329,14 @@ module.exports.artifactLifecycleFixture = async (shouldFail, groupId) => {
   assertRepositoryState = async () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   resolveLocalDocker = async () => ({ endpoint: 'unix:///fixture', imageId: 'fixture-only' });
   createChildEnvironment = (_source, temporaryRoot) => { directory = temporaryRoot; return { TMPDIR: temporaryRoot }; };
-  runPreflight = async () => { preparations += 1; };
+  runPreflight = async env => {
+    if (env.POL113_POL115_PREPARED_SHA !== undefined) throw new Error('prepared before preflight');
+    preparations += 1;
+    if (failPreparation) throw new Error('controlled preflight failure');
+  };
   resolveGroupCommand = () => ({ command: 'fixture', args: [] });
-  runCommand = async () => {
+  runCommand = async (_command, _args, options) => {
+    childEnvironment = options.env;
     await require('node:fs/promises').mkdir(path.join(directory, 'browser-failure'));
     await require('node:fs/promises').writeFile(path.join(directory, 'browser-failure', 'trace.zip'), 'synthetic-private-trace');
     if (shouldFail) throw new Error('controlled browser failure');
@@ -1340,10 +1346,10 @@ module.exports.artifactLifecycleFixture = async (shouldFail, groupId) => {
     await executeGate({ manifest: { id: 'filesystem-lifecycle-fixture', executionPolicy: { confirmation: 'fixture' },
       migrationBaseline: { containerImage: 'fixture', expectedDirectoryCount: 0 }, inventory: { remainingTests: 0, remainingFiles: 0 } }, options: {} });
   } catch (error) { failure = error; }
-  return { directory, failure, preparations };
+  return { directory, failure, preparations, childEnvironment };
 };`;
   fixtureModule._compile("const process = { ...require('node:process'), stdout: { write: () => true }, stderr: { write: () => true } };\n" + readFileSync(runnerPath, 'utf8').replace(/^#!.*\n/u, '') + hook, runnerPath);
-  return fixtureModule.exports.artifactLifecycleFixture(shouldFail, groupId);
+  return fixtureModule.exports.artifactLifecycleFixture(shouldFail, groupId, failPreparation);
 }
 
 test('failed dynamic gate preserves its private browser trace instead of deleting evidence', async () => {
@@ -1363,6 +1369,104 @@ test('successful dynamic gate still removes its own temporary directory', async 
     assert.equal(result.failure, undefined);
     await assert.rejects(stat(result.directory), { code: 'ENOENT' });
   } finally { await rm(result.directory, { recursive: true, force: true }); }
+});
+
+test("POL113-POL115 preparation is issued only after the selected gate preflight succeeds", async () => {
+  const group = "pol113_pol115_business_entries";
+  const passed = await artifactLifecycleFixture(false, group);
+  assert.equal(passed.preparations, 1);
+  assert.equal(passed.childEnvironment.POL113_POL115_PREPARED_SHA, "a".repeat(40));
+  const unrelated = await artifactLifecycleFixture(false);
+  assert.equal(unrelated.childEnvironment.POL113_POL115_PREPARED_SHA, undefined);
+  const failed = await artifactLifecycleFixture(false, group, true);
+  try {
+    assert.match(failed.failure.message, /controlled preflight failure/u);
+    assert.equal(failed.childEnvironment, undefined);
+  } finally {
+    await require("node:fs/promises").rm(failed.directory, { recursive: true, force: true });
+  }
+  const inherited = createChildEnvironment({ POL113_POL115_PREPARED_SHA: "a".repeat(40) }, "/tmp/fixture", "unix:///fixture");
+  assert.equal(inherited.POL113_POL115_PREPARED_SHA, undefined);
+});
+
+test("POL113-POL115 runners preserve all five test batches with and without prepared sources", async () => {
+  const { createRequire } = require("node:module");
+  const { runInNewContext } = require("node:vm");
+  const containerId = "a".repeat(64);
+  const sha = "b".repeat(40);
+  const profiles = [
+    ["run-pol113-http-local.cjs", [["src/database/base-entry-http-postgres.spec.ts"]]],
+    ["run-pol115-entry-local.cjs", [[
+      "src/operating-takeover/operating-takeover-entry.http.pg.spec.ts",
+      "src/database/approval-v6-independent-http-postgres.spec.ts",
+      "src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+      "src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+      "src/database/draft-hard-deletion.pg.spec.ts",
+      "src/database/draft-deletion-numbering.pg.spec.ts"
+    ]]],
+    ["run-pol113-pol115-entry-local.cjs", [
+      ["src/database/contract-business-entry-http.spec.ts"],
+      ["src/spot-procurement/spot-procurement-entry.http.pg.spec.ts"],
+      ["src/settlement/settlement-template-workbench.http.pg.spec.ts"]
+    ]]
+  ];
+  for (const prepared of [false, true]) {
+    for (const [name, batches] of profiles) {
+      const filename = path.join(__dirname, name);
+      const load = createRequire(filename);
+      const env = {
+        DOCKER_HOST: "unix:///fixture",
+        LOCAL_PG16_DYNAMIC_GATE: "LOCAL_PG16_DYNAMIC_GATE",
+        DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: sha,
+        ...(prepared ? { POL113_POL115_PREPARED_SHA: sha } : {})
+      };
+      const calls = [], staged = [];
+      const module = { exports: {} };
+      const injected = {
+        "node:child_process": { spawnSync(bin, args, options) {
+          calls.push({ bin, args: [...args], env: options.env, timeout: options.timeout });
+          return { status: 0, stderr: "", stdout: args.includes("run") ? containerId : args.includes("port") ? "127.0.0.1:54321" : "" };
+        } },
+        "node:fs": { mkdtempSync: () => "/fixture", rmSync() {} },
+        "./money-bigint-runner-runtime.cjs": { createCommandRuntime: () => ({ command() { throw new Error("unexpected real migration command"); } }) },
+        "./local-staged-ci-dynamic.cjs": {
+          CI_DYNAMIC_MIGRATION_LABEL: "synthetic",
+          createCiDynamicMigrationFixture(options) {
+            return { async migrate() { staged.push(...options.databaseNames); } };
+          }
+        }
+      };
+      const source = readFileSync(filename, "utf8").replace("main().catch", "module.exports = main().catch");
+      runInNewContext(source, {
+        module, __dirname, console: { log() {} },
+        process: { ...process, env, argv: [process.execPath, filename], stdout: { write() {} }, stderr: { write() {} } },
+        require: id => injected[id] ?? load(id)
+      }, { filename });
+      await module.exports;
+      const testCalls = calls.filter(({ bin }) => bin === "pnpm");
+      const prefix = prepared ? ["exec", "jest"] : ["test", "--"];
+      assert.deepEqual(testCalls.map(call => call.args), batches.map(specs =>
+        ["--filter", "@jiangkong/api", ...prefix, "--runInBand", ...specs]
+      ));
+      assert.equal(staged.length, batches.length);
+      const subRunners = calls.filter(({ args }) => profiles.slice(0, 2).some(([runner]) => args[0] === path.join(__dirname, runner)));
+      for (const call of subRunners) assert.equal(call.env.POL113_POL115_PREPARED_SHA, prepared ? sha : undefined);
+      if (name === profiles[0][0]) assert.equal(testCalls[0].timeout, 180_000);
+    }
+  }
+});
+
+test("POL113-POL115 rejects an incomplete or stale prepared-source SHA", () => {
+  const { pol113Pol115JestArgs } = require("./pol113-pol115-jest-command.cjs");
+  const sha = "a".repeat(40);
+  const env = { LOCAL_PG16_DYNAMIC_GATE: "LOCAL_PG16_DYNAMIC_GATE", DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: sha };
+  for (const invalid of [
+    { ...env, POL113_POL115_PREPARED_SHA: "b".repeat(40) },
+    { ...env, POL113_POL115_PREPARED_SHA: "a" },
+    { ...env, LOCAL_PG16_DYNAMIC_GATE: undefined, POL113_POL115_PREPARED_SHA: sha }
+  ]) {
+    assert.throws(() => pol113Pol115JestArgs([], invalid), /动态门候选版本不一致/u);
+  }
 });
 
 

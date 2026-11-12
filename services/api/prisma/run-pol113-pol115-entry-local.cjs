@@ -8,10 +8,12 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
+const { pol113Pol115JestArgs } = require("./pol113-pol115-jest-command.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const pnpm = process.env.PNPM_BIN?.trim() || "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
+const jestPrefix = pol113Pol115JestArgs([], process.env);
 
 function command(bin, args, env = process.env, capture = false) {
   const result = spawnSync(bin, args, {
@@ -97,7 +99,7 @@ async function runDedicatedDatabase({ id, database, flags, spec }) {
         { env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, forwardOutput: true })
     });
     await migration.migrate({ databaseUrl: env.DATABASE_URL, runtimeEnv: env });
-    command(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", spec], env);
+    command(pnpm, [...jestPrefix, spec], env);
   } finally {
     if (started) {
       spawnSync(docker, ["--host", endpoint, "rm", "--force", "--volumes", name], {

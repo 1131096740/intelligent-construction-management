@@ -732,6 +732,10 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       const groupStartedAt = Date.now();
       const resolved = resolveGroupCommand(group);
       const groupEnvironment = { ...childEnvironment };
+      if (group.id === "pol113_pol115_business_entries") {
+        // The preflight above generated this checkout's client and built the API.
+        groupEnvironment.POL113_POL115_PREPARED_SHA = candidateSha;
+      }
       if (group.runner.evidenceEnv) {
         groupEnvironment[group.runner.evidenceEnv] = path.join(
           temporaryRoot,
