@@ -102,13 +102,11 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     } };
   }
 
-  async function participatingCompany() {
-    if (participatingCompanyId) return participatingCompanyId;
+  async function seedCompanyEntity(name: string) {
     const prisma = app.get(PrismaService);
     const suffix = randomUUID().replaceAll("-", "");
-    // Shared synthetic selection fixture; company mutations have separate public HTTP coverage.
     const company = await prisma.companyEntity.create({ data: {
-      name: "参与主体合成验收公司",
+      name,
       unifiedSocialCreditCode: `POL113${suffix.slice(0, 12)}`,
       dataStatus: "complete", currentVersionNo: 1, isActive: true
     } });
@@ -117,6 +115,12 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       unifiedSocialCreditCode: company.unifiedSocialCreditCode,
       isActive: true, action: "test_master", actorUserId: userId
     } });
+    return company;
+  }
+
+  async function participatingCompany() {
+    if (participatingCompanyId) return participatingCompanyId;
+    const company = await seedCompanyEntity("参与主体合成验收公司");
     const contract = await actor("contract_staff");
     const activeCompanies = await request("/company-entities", "GET", undefined, contract);
     expect(activeCompanies.status).toBe(200);
@@ -557,7 +561,12 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const created = await request("/projects", "POST", { code: `LIFE-${randomUUID()}`, name: "空项目停用验收" }, master);
     expect(created.status).toBe(201);
     const id = created.body.id;
-    for (const denied of [await actor("general_manager"), await actor("super_admin"), await actor("comprehensive_director", id)]) {
+    const generalManager = await actor("general_manager");
+    expect((await request(`/projects/${id}/status`, "POST", { isActive: false }, generalManager)).status).toBe(403);
+    const management = await request("/projects/management", "GET", undefined, generalManager);
+    expect(management.status).toBe(200);
+    expect(management.body).toContainEqual(expect.objectContaining({ id, isActive: true }));
+    for (const denied of [await actor("super_admin"), await actor("comprehensive_director", id)]) {
       expect((await request(`/projects/${id}/status`, "POST", { isActive: false }, denied)).status).toBe(403);
       expect((await request("/projects/management", "GET", undefined, denied)).status).toBe(403);
     }
@@ -637,15 +646,38 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: projectId } })).isActive).toBe(order !== "project-stop-first");
   });
 
-  it("已有项目或付款引用的公司不能停用，保持历史业务可办理", async () => {
+  it("有合同引用的公司可停用，阻止新选用并保留历史引用", async () => {
     const chairman = await actor("chairman");
-    const companyEntityId = await participatingCompany();
+    const { id: companyEntityId, name: companyEntityName } = await seedCompanyEntity("有历史合同的主体");
     const prisma = app.get(PrismaService);
     const project = await request("/projects", "POST", { code: `COREF-${randomUUID()}`, name: "主体引用验收" }, chairman);
-    await prisma.contract.create({ data: { projectId: project.body.id, name: "尾款办理合同", counterparty: "合成单位", companyEntityId } });
+    expect(project.status).toBe(201);
+    const contract = await prisma.contract.create({ data: {
+      projectId: project.body.id, name: "尾款办理合同", counterparty: "合成单位", companyEntityId, companyEntityName
+    } });
+    const historyPath = `/company-entities/${companyEntityId}/history`;
+    const before = await request(historyPath, "GET", undefined, chairman);
+    expect(before.status).toBe(200);
+    expect(before.body.versions).toEqual([expect.objectContaining({ versionNo: 1, isActive: true })]);
+    const selectableBefore = await request("/company-entities", "GET", undefined, chairman);
+    expect(selectableBefore.status).toBe(200);
+    expect(selectableBefore.body).toContainEqual(expect.objectContaining({ id: companyEntityId }));
+
     const result = await request(`/company-entities/${companyEntityId}/status`, "POST", { isActive: false }, chairman);
-    expect(result.status).toBe(409);
-    expect(await prisma.companyEntity.findUnique({ where: { id: companyEntityId } })).toMatchObject({ isActive: true });
+    expect(result.status).toBe(201);
+    expect(result.body).toMatchObject({ entity: { id: companyEntityId, isActive: false, currentVersionNo: 2 }, unchanged: false });
+    const selectable = await request("/company-entities", "GET", undefined, chairman);
+    expect(selectable.status).toBe(200);
+    expect(selectable.body).not.toContainEqual(expect.objectContaining({ id: companyEntityId }));
+    const after = await request(historyPath, "GET", undefined, chairman);
+    expect(after.status).toBe(200);
+    expect(after.body.versions).toEqual([
+      expect.objectContaining({ versionNo: 2, isActive: false, action: "disable" }),
+      ...before.body.versions
+    ]);
+    expect(await prisma.contract.findUnique({ where: { id: contract.id } })).toEqual(contract);
+    expect(await prisma.auditLog.findFirst({ where: { businessId: companyEntityId, action: "company_entity.disable" } }))
+      .toMatchObject({ metadata: { versionNo: 2, actorRoleKey: "chairman", hasExistingBusinessReferences: true } });
   });
 
   it("公司主体仅两类全局岗位可新增修改启停，旧版本和停用档案仍可回读", async () => {
