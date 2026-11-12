@@ -1604,7 +1604,7 @@ export class ContractReadService {
       for (let index = availableActions.length - 1; index >= 0; index -= 1) if (legacySigningKeys.has(availableActions[index].key)) availableActions.splice(index, 1);
       if (v2Lifecycle?.status === "ready" && v2Lifecycle.state !== "archived") {
         const currentAction = v2Lifecycle.state === "pending_seal" ? v2Lifecycle.sealAction : v2Lifecycle.archiveAction;
-        availableActions.unshift(detailAction({ key: currentAction.key, label: v2Lifecycle.state === "pending_seal" ? "确认已盖章" : "归档双方签章原件", kind: "primary", roleKeys, skipRoleCheck: true, enabled: false, disabledReason: currentAction.reason ?? "新版合同办理入口尚未开放", requiresFile: v2Lifecycle.state === "pending_archive" }));
+        availableActions.unshift(detailAction({ key: currentAction.key, label: v2Lifecycle.state === "pending_seal" ? "确认已盖章" : "归档双方签章原件", kind: "primary", roleKeys, skipRoleCheck: true, enabled: currentAction.enabled && v2Lifecycle.webWriteReleased, disabledReason: currentAction.reason ?? "当前合同办理资料或权限已变化", requiresFile: v2Lifecycle.state === "pending_archive" }));
       }
     }
 

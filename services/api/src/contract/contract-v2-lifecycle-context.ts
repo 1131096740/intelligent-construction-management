@@ -92,12 +92,17 @@ export async function readContractV2LifecycleContext(
   const identity = object(snapshot.signingIdentity), company = object(identity?.company);
   if (identity?.relationship !== "inside" || company?.id !== version.companyEntityVersionId || company?.companyEntityId !== version.companyEntityIdSnapshot) return unavailable("当前签约主体与审批冻结来源不一致");
   if (typeof snapshot.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(snapshot.sourceSha256)) return unavailable("当前审批文书原文校验来源不完整");
-  const counterparty = await tx.contractPartySnapshot.findFirst({ where: { contractVersionId: version.id, roleKey: "party_b" }, orderBy: { displayOrder: "asc" } });
-  if (!counterparty?.businessPartyVersionId) return unavailable("当单相对方的后续归档尚未开放，请保留原合同资料");
-  const frozenParties = Array.isArray(snapshot.parties) ? snapshot.parties.map(object) : [];
-  if (counterparty.contractVersionId !== version.id || !frozenParties.some(party => party?.id === counterparty.id && party?.roleKey === "party_b" && party?.displayOrder === counterparty.displayOrder && party?.businessPartyVersionId === counterparty.businessPartyVersionId)) return unavailable("当前相对方身份与本轮冻结来源不一致");
-  const partyVersion = await tx.businessPartyVersion.findUnique({ where: { id: counterparty.businessPartyVersionId }, select: { id: true } });
-  if (!partyVersion || partyVersion.id !== counterparty.businessPartyVersionId) return unavailable("受控相对方版本来源尚未完整确认");
+  const counterparties = await tx.contractPartySnapshot.findMany({ where: { contractVersionId: version.id, roleKey: "party_b" }, orderBy: { displayOrder: "asc" } });
+  const frozenParties = Array.isArray(snapshot.parties) ? snapshot.parties.map(object).filter(party => party?.roleKey === "party_b") : [];
+  if (!counterparties.length || counterparties.length !== frozenParties.length) return unavailable("当前相对方身份与本轮冻结来源不一致");
+  for (const counterparty of counterparties) {
+    const frozen = frozenParties.find(party => party?.id === counterparty.id && party?.displayOrder === counterparty.displayOrder);
+    if (!frozen || counterparty.contractVersionId !== version.id || frozen.businessPartyVersionId !== counterparty.businessPartyVersionId || !object(counterparty.snapshot) || !isDeepStrictEqual(frozen.snapshot, counterparty.snapshot)) return unavailable("当前相对方身份与本轮冻结来源不一致");
+    if (counterparty.businessPartyVersionId) {
+      const partyVersion = await tx.businessPartyVersion.findUnique({ where: { id: counterparty.businessPartyVersionId }, select: { id: true } });
+      if (!partyVersion || partyVersion.id !== counterparty.businessPartyVersionId) return unavailable("受控相对方版本来源尚未完整确认");
+    }
+  }
   const generatedId = snapshot.generatedDocumentId;
   if (typeof generatedId !== "string" || !generatedId) return unavailable("当前审批文书来源未完整确认");
   const generated = await tx.contractGeneratedDocument.findUnique({ where: { id: generatedId } });
@@ -136,10 +141,10 @@ export async function readContractV2LifecycleContext(
       canArchive = false; archiveReason = "签约公司在当前归档日期的项目参与资格已变化";
     }
   }
-  return { protocolVersion: 2, contractVersionId: version.id, status: "ready", source: "generated_approval", scope: "inside_original", webWriteReleased: false, actorUserId,
+  return { protocolVersion: 2, contractVersionId: version.id, status: "ready", source: "generated_approval", scope: "inside_original", webWriteReleased: state !== "archived", actorUserId,
     approvalInstanceId: round.id, sealTaskId: task.id, documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint,
-    state, sealAction: action("confirm_seal_v2", canSeal, state === "pending_seal" ? "仅当前有效综合主管可确认已盖章" : "当前不处于待盖章确认阶段"),
-    archiveAction: action("archive_signed_v2", canArchive, archiveReason),
+    state, sealAction: action("confirm_seal_v2", canSeal, state === "pending_seal" ? "仅当前有效综合主管可确认已盖章" : "当前不处于待盖章确认阶段", true),
+    archiveAction: action("archive_signed_v2", canArchive, archiveReason, true),
     sealOutcome: { status: task.status === "completed" ? "completed" : "pending", completedAt: task.completedAt?.toISOString() ?? null, completedByUserId: task.completedByUserId },
     approvalSource: { status: "references_ready" }, signedFilePolicy: { mimeType: "application/pdf", minCount: 1, maxCount: 20, ordered: true } };
 }

@@ -1,5 +1,6 @@
 import { assertUpwardDirectArchivePersistentProof } from "./contract-upward-direct-archive-proof";
 import { economicExcludedAt, economicExcludedYuanAt } from "../contract-ledger/contract-economic-coverage";
+import { isDeepStrictEqual } from "node:util";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { chinaDateOnly, normalizeBusinessAmount, businessAmountFromLegacyCents } from "@jiangkong/shared-domain";
@@ -71,7 +72,7 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       tx.contractTakeover.findFirst({ where: { contractVersionId: version.id, activatedAt: { not: null } } }),
       readOperatingLedgerEffectiveDate(tx, projectId),
       readAffiliateSnapshot(tx, { projectId, occurredAt: version.effectiveAt, assignmentId: version.affiliateAssignmentId, businessPartyVersionId: version.affiliateBusinessPartyVersionId }),
-      tx.contractPartySnapshot.findFirst({ where: { contractVersionId: version.id, roleKey: "party_b" }, select: { businessPartyVersionId: true }, orderBy: { displayOrder: "asc" } })
+      tx.contractPartySnapshot.findFirst({ where: { contractVersionId: version.id, roleKey: "party_b" }, select: { id: true, contractVersionId: true, roleKey: true, displayOrder: true, snapshot: true, businessPartyVersionId: true }, orderBy: { displayOrder: "asc" } })
     ]);
     const confirmedByUserId = archive?.confirmedByUserId ?? formalFile?.confirmedByUserId ?? takeover?.activatedByUserId;
     if (!confirmedByUserId) throw new BadRequestException("生效合同缺少归档或接管确认依据");
@@ -84,14 +85,14 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       const subjects = requiredJsonRecord(basis.subjects!, "签约主体");
       const parties = subjects.parties;
       if (authority.projectId !== projectId || authority.contractVersionId !== version.id || locator.sourceVersion !== version.versionNo) throw new BadRequestException("新归档经营来源的项目或版本不一致");
-      if (!Array.isArray(parties) || !version.companyEntityIdSnapshot || !counterparty?.businessPartyVersionId) throw new BadRequestException("新归档经营来源的受控签约主体不完整");
-      const frozenParty = parties.filter(party => party && typeof party === "object" && !Array.isArray(party) && party.roleKey === "party_b" && party.businessPartyVersionId === counterparty.businessPartyVersionId);
-      if (frozenParty.length !== 1 || version.signingSubjectType !== "our_company") throw new BadRequestException("新归档签约主体不一致");
+      if (!version.companyEntityIdSnapshot || !counterparty || version.signingSubjectType !== "our_company") throw new BadRequestException("新归档经营来源的签约主体不完整");
+      const identity = insideArchiveCounterparty(parties, counterparty, version.id);
       return { projectId, sourceType: this.sourceType, sourceBusinessId: version.id, sourceBusinessCode: contract.code ?? contract.temporaryCode ?? contract.name,
         sourceVersion: version.versionNo, status: "confirmed", sourceSnapshot: sourceJson({
           contractId: contract.id, contractVersionId: version.id, contractRelationship: relationship, signingSubjectType: version.signingSubjectType,
           companyEntityVersionId: version.companyEntityVersionId, companyEntityIdSnapshot: version.companyEntityIdSnapshot, companyEntityNameSnapshot: version.companyEntityNameSnapshot,
           counterpartyVersionId: counterparty.businessPartyVersionId, counterpartyName: contract.counterparty,
+          ...(counterparty.businessPartyVersionId ? {} : { counterpartySubjectId: identity.subjectId, counterpartySnapshotId: counterparty.id }),
           archiveProtocolVersion: 2, archiveAuthorityId: archive.id, archiveAuthoritySha256: archive.authoritySha256, sourceBasisSha256: authority.sourceBasisSha256, sourceBasis: basis,
           amountNature: money.amountState === "unknown" ? "uncapped" : "fixed", numericProtocolVersion: 2, amountYuan: money.amountYuan, amountState: money.amountState, sourceAmountStatus: version.amountLimitType,
           currentAmount: { protocolVersion: 2, amountState: money.amountState, amountYuan: money.amountYuan, sourceAmountStatus: version.amountLimitType }, priorAmount: null,
@@ -176,8 +177,19 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       : { kind: "participating_company" as const, id: requiredJsonText(source, source.archiveProtocolVersion === 2 ? "companyEntityIdSnapshot" : "companyEntityVersionId", "合同签约主体") };
     const frozenOutside = source.archiveProtocolVersion === 2 && source.contractRelationship === "outside"
       && source.signingSubjectType === "affiliate" && typeof source.archiveAuthorityId === "string";
+    let insideSubjectId: string | undefined;
+    if (source.archiveProtocolVersion === 2 && source.contractRelationship === "inside" && (source.counterpartyVersionId === null || source.counterpartySnapshotId !== undefined)) {
+      const basis = requiredJsonRecord(source.sourceBasis!, "归档独立依据"), subjects = requiredJsonRecord(basis.subjects!, "签约主体");
+      const locator = requiredJsonRecord(basis.sourceLocator!, "归档来源");
+      if (locator.contractVersionId !== snapshot.sourceBusinessId || locator.contractId !== source.contractId) throw new BadRequestException("新归档相对方来源与合同不一致");
+      const parties = Array.isArray(subjects.parties) ? subjects.parties : [];
+      const rows = parties.filter(party => party && typeof party === "object" && !Array.isArray(party) && party.id === source.counterpartySnapshotId);
+      if (rows.length !== 1) throw new BadRequestException("新归档相对方冻结来源不一致");
+      insideSubjectId = insideArchiveCounterparty(parties, rows[0], snapshot.sourceBusinessId).subjectId;
+      if (source.counterpartySubjectId !== insideSubjectId || source.counterpartyVersionId !== rows[0].businessPartyVersionId) throw new BadRequestException("新归档相对方自然身份不一致");
+    }
     const creditor = { kind: "downstream_counterparty" as const,
-      id: requiredJsonText(source, frozenOutside ? "counterpartySubjectId" : "counterpartyVersionId", "合同相对方") };
+      id: insideSubjectId ?? requiredJsonText(source, frozenOutside ? "counterpartySubjectId" : "counterpartyVersionId", "合同相对方") };
     return { entryKind: "original", input: {
       projectId: snapshot.projectId, sourceType: snapshot.sourceType, sourceBusinessId: snapshot.sourceBusinessId,
       sourceBusinessCode: snapshot.sourceBusinessCode, sourceVersion: snapshot.sourceVersion,
@@ -201,4 +213,17 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       }]
     } };
   }
+}
+
+/** Reuse the existing per-contract identity; do not invent a global party version. */
+function insideArchiveCounterparty(parties: unknown, row: unknown, versionId: string) {
+  const fail = (): never => { throw new BadRequestException("新归档相对方冻结来源不一致"); };
+  if (!row || typeof row !== "object" || Array.isArray(row) || !Array.isArray(parties)) return fail();
+  const current = row as Record<string, unknown>;
+  if (typeof current.id !== "string" || !current.id || current.contractVersionId !== versionId || current.roleKey !== "party_b" || (!Number.isInteger(current.displayOrder) || Number(current.displayOrder) < 0) ||
+    !current.snapshot || typeof current.snapshot !== "object" || Array.isArray(current.snapshot) ||
+    current.businessPartyVersionId !== null && (typeof current.businessPartyVersionId !== "string" || !current.businessPartyVersionId)) return fail();
+  const frozen = parties.filter(party => party && typeof party === "object" && !Array.isArray(party) && party.id === current.id);
+  if (frozen.length !== 1 || !["id", "contractVersionId", "roleKey", "displayOrder", "businessPartyVersionId", "snapshot"].every(key => isDeepStrictEqual(frozen[0][key], current[key]))) return fail();
+  return { subjectId: current.businessPartyVersionId ?? `contract_party_snapshot:${current.id}` };
 }
