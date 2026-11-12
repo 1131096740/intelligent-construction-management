@@ -83,6 +83,10 @@ test(`the real runner preserves samples and original error when ${failure} fails
     if (name === "./money-bigint-runner-runtime.cjs") return {
       createCommandRuntime: () => ({ command }), createRunnerCleanup: () => async () => {}, runInterruption: async () => {}
     };
+    if (name === "./local-staged-ci-dynamic.cjs") return {
+      CI_DYNAMIC_MIGRATION_LABEL: "jg.local-ci-dynamic-migration",
+      createCiDynamicMigrationFixture: () => ({ migrate: async () => {} })
+    };
     if (name === "./pol108-observability.cjs") return {
       ...actualObservation, collectEnvironment: async () => ({}),
       collectContainerResources: async () => ({}), observeDatabase: async () => {
