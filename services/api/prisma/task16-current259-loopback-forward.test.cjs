@@ -16,14 +16,22 @@ const fixedArgs = ['--host', 'unix:///Users/leoyang/.docker/run/docker.sock', 'e
 const payload = Buffer.from(Array.from({ length: 72051 }, (_, i) => (i * 53) & 255));
 const reply = Buffer.from([0, 255, 1, 0, 0, 0, 0, 97, 98, 99]);
 
-function load(t, handler) {
+function load(t, handler, readonlyVerifier) {
   const root = fs.mkdtempSync('/private/tmp/jg-loopback-model-');
   const dockerConfig = path.join(root, 'tls-private', 'docker-config');
   fs.mkdirSync(dockerConfig, { mode: 0o700, recursive: true });
   fs.writeFileSync(path.join(dockerConfig, 'config.json'), '{"auths":{}}\n', { mode: 0o600 });
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const holder = { exports: {} }, calls = [];
-  const original = request => request === 'node:child_process' ? { spawn(file, argv, options) {
+  const holder = { exports: {} }, calls = [], permit = Object.freeze({});
+  let permitUsed = false;
+  const original = request => request === './task12-current259-identity-authority.cjs' && readonlyVerifier ? {
+    claimIdentityBackendVerifier(value, coordinates) {
+      if (value !== permit || permitUsed) return undefined;
+      assert.deepEqual(coordinates, { containerId: CONTAINER, dockerConfig, signal: controller.signal });
+      permitUsed = true;
+      return readonlyVerifier;
+    },
+  } : request === 'node:child_process' ? { spawn(file, argv, options) {
     assert.equal(file, '/Applications/Docker.app/Contents/Resources/bin/docker');
     assert.deepEqual(argv.slice(0, -1), fixedArgs);
     assert.deepEqual(options, {
@@ -34,10 +42,20 @@ function load(t, handler) {
     calls.push(argv);
     return handler(argv.at(-1));
   } } : require(request);
-  new Function('require', 'module', SOURCE)(original, holder);
+  if(readonlyVerifier){
+    const file=path.join(__dirname,'task12-current259-readonly-relay-once.cjs');
+    const main={filename:file,exports:Object.freeze({assertIdentityFreshMain:()=>true})};
+    original.main=main;original.cache={[file]:main};
+  }
+  const modelProcess=readonlyVerifier?Object.defineProperties(Object.create(process),{
+    argv:{value:['node',original.main.filename]},execArgv:{value:[]},_preload_modules:{value:[]},
+  }):process;
+  new Function('require', 'module', '__dirname', 'process', SOURCE)(original, holder, __dirname,modelProcess);
   const controller = new AbortController();
   const start = options => holder.exports.startCurrent259LoopbackForward(options ?? { containerId: CONTAINER, dockerConfig, signal: controller.signal });
-  return { start, dockerConfig, controller, calls };
+  const startReadonly = (token = permit) => holder.exports.startCurrent259LoopbackForward(
+    { containerId: CONTAINER, dockerConfig, signal: controller.signal }, token);
+  return { start, startReadonly, dockerConfig, controller, calls };
 }
 
 async function listener(t, accept) {
@@ -130,9 +148,43 @@ test('malformed frames fail closed and the first fault survives later abort', { 
   await finished;
   client.destroy();
   fixture.controller.abort();
-  assert.throws(() => relay.check(), { code: 'CURRENT259_LOOPBACK_FORWARD_FRAME' });
+  assert.throws(() => relay.check(), { code: 'CURRENT259_LOOPBACK_FORWARD_FRAME', relayFrameStage: 'OVERSIZED_LENGTH' });
   await relay.close();
 });
+
+for (const [stage, output] of [
+  ['TRAILING_AFTER_FIN', child => child.stdout.write(Buffer.alloc(5))],
+  ['DATA_AFTER_FIN', async (child, client) => {
+    const ended = once(client, 'end');
+    child.stdout.write(Buffer.alloc(4));
+    await ended;
+    child.stdout.write(Buffer.from([1]));
+  }],
+  ['STDOUT_EOF_WITHOUT_FIN', child => child.stdout.end()],
+]) {
+  test('relay retains the first fixed frame guard ' + stage, { timeout: 5000 }, async t => {
+    const child = fakeWorker();
+    let accepted;
+    const ready = new Promise(resolve => { accepted = resolve; });
+    const fixture = load(t, () => { accepted(); return child; });
+    const relay = await fixture.start(), wait = relay.beginPrismaDrain();
+    t.after(() => relay.close());
+    const client = await connect(relay.port);
+    t.after(() => client.destroy());
+    client.resume();
+    await ready;
+    const failed = assert.rejects(wait(), error => {
+      assert.equal(error.code, 'CURRENT259_LOOPBACK_FORWARD_FRAME');
+      assert.equal(error.relayFrameStage, stage);
+      assert.equal(Object.isFrozen(error.relayCloseState), true);
+      assert.equal(error.relayCloseState.stdoutRawEnd, stage === 'STDOUT_EOF_WITHOUT_FIN');
+      assert.equal(error.relayCloseState.pgFin, stage === 'DATA_AFTER_FIN');
+      return true;
+    });
+    await output(child, client);
+    await failed;
+  });
+}
 
 test('connection cap closes the listener and never spawns a ninth worker', { timeout: 5000 }, async t => {
   let notify, started = 0;
@@ -527,4 +579,238 @@ test('a Prisma wait preserves the original malformed frame failure', { timeout: 
   const outcome = assert.rejects(wait(), { code: 'CURRENT259_LOOPBACK_FORWARD_FRAME' });
   child.stdout.write(bad);
   await outcome;await relay.close();
+});
+
+for (const exitCode of [0, 47, 70, 71, 72, 73, 74, 75, 76, 255]) {
+  test('missing FIN quarantines immediately and preserves only the natural allowed exit ' + exitCode, { timeout: 5000 }, async t => {
+    const child = fakeWorker();
+    const kill = child.kill;
+    let kills = 0;
+    child.kill = (...args) => { kills++; return kill(...args); };
+    const fixture = load(t, () => child);
+    const relay = await fixture.start();
+    t.after(() => relay.close());
+    const drain = relay.beginPrismaDrain();
+    const client = await connect(relay.port);
+    t.after(() => client.destroy());
+    const hostFinished = once(child.stdin, 'finish');
+    client.end(reply);
+    await hostFinished;
+    await new Promise(resolve => setImmediate(resolve));
+    child.stdout.end();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(kills, 0);
+    let first;
+    assert.throws(() => relay.check(), error => {
+      first = error;
+      return error.code === 'CURRENT259_LOOPBACK_FORWARD_FRAME' &&
+        error.relayFrameStage === 'STDOUT_EOF_WITHOUT_FIN' && error.relayChildExitCode === undefined;
+    });
+    assert.throws(() => relay.beginPrismaDrain(), error => error === first);
+    child.stderr.write('private relay message');
+    const another = net.createConnection({ host: '127.0.0.1', port: relay.port });
+    const rejected = once(another, 'close');
+    another.resume();
+    await rejected;
+    assert.equal(fixture.calls.length, 1);
+    assert.equal(kills, 0);
+    const failed = assert.rejects(drain(), error => {
+      assert.equal(error, first);
+      const sysread = exitCode >= 70 && exitCode <= 75;
+      assert.equal(error.relayChildExitCode, sysread ? 47 : exitCode === 76 || exitCode === 255 ? undefined : exitCode);
+      assert.equal(error.relaySysreadExit, sysread ? exitCode : undefined);
+      assert.equal(error.relayCloseState.cliExited, false);
+      assert.equal(error.relayCloseState.pgFin, false);
+      assert.doesNotMatch(String(error) + JSON.stringify(error), /private/u);
+      return true;
+    });
+    child.emit('exit', exitCode, null);
+    child.stderr.end();
+    child.emit('close', exitCode, null);
+    await failed;
+    await relay.close();
+    assert.equal(kills, 0);
+  });
+}
+
+test('a missing FIN with no natural status retains the original FRAME through the fixed half-close deadline', { timeout: 7500 }, async t => {
+  const child = fakeWorker();
+  const fixture = load(t, () => child);
+  const relay = await fixture.start();
+  t.after(() => relay.close());
+  const drain = relay.beginPrismaDrain();
+  const client = await connect(relay.port);
+  t.after(() => client.destroy());
+  const hostFinished = once(child.stdin, 'finish');
+  client.end(reply);
+  await hostFinished;
+  await new Promise(resolve => setImmediate(resolve));
+  child.stdout.end();
+  await new Promise(resolve => setImmediate(resolve));
+  let first;
+  assert.throws(() => relay.check(), error => {
+    first = error;
+    return error.code === 'CURRENT259_LOOPBACK_FORWARD_FRAME';
+  });
+  await assert.rejects(drain(), error => {
+    assert.equal(error, first);
+    assert.equal(error.relayFrameStage, 'STDOUT_EOF_WITHOUT_FIN');
+    assert.equal(error.relayChildExitCode, undefined);
+    return true;
+  });
+  await relay.close();
+});
+
+const qualifiedStart = '2026-11-12T09:00:00.000001Z';
+async function enterReadonlyWorker(relay, child) {
+  const window = relay.beginReadonlyRelayProbe();
+  const client = await connect(relay.port);
+  const acknowledged = once(child.stdin, 'data');
+  client.write(reply);
+  await acknowledged;
+  client.resume();
+  return {window,client};
+}
+async function closeReadonlyWorker(child, client, code, bytes=Buffer.alloc(0)) {
+  const hostFinished = once(child.stdin, 'finish');
+  client.end();
+  await hostFinished;
+  await new Promise(resolve => setImmediate(resolve));
+  child.stdout.end(bytes);
+  await new Promise(resolve => setImmediate(resolve));
+  child.emit('exit', code, null);
+  child.stderr.end();
+  child.emit('close', code, null);
+}
+test('readonly reset pauses before owner proof and permits the next single probe only after proof', {timeout: 5000}, async t => {
+  const children = [fakeWorker(),fakeWorker()], ownerCalls = [];
+  let permitProof, seenOwner;
+  const waiting = new Promise(resolve => { seenOwner = resolve; });
+  const fixture = load(t, () => children[fixture.calls.length-1], async (identity,deadline) => {
+    ownerCalls.push(identity);
+    assert.ok(deadline>Date.now()&&deadline<=Date.now()+5000);
+    if(ownerCalls.length===1)return new Promise(resolve => { permitProof=resolve; seenOwner(); });
+    return true;
+  });
+  await assert.rejects(fixture.startReadonly({}), {code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+  const relay = await fixture.startReadonly();
+  t.after(() => relay.close());
+  await assert.rejects(fixture.startReadonly(), {code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+  assert.throws(() => relay.beginPrismaDrain(), {code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+  const first = await enterReadonlyWorker(relay,children[0]);
+  t.after(() => first.client.destroy());
+  first.window.markDisconnect(501,qualifiedStart);
+  assert.throws(() => first.window.markDisconnect(501,qualifiedStart), {code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+  const drain=first.window.finish();
+  await closeReadonlyWorker(children[0],first.client,70);
+  await waiting;
+  assert.throws(() => relay.check(), {code:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_ACTIVE'});
+  assert.throws(() => relay.beginReadonlyRelayProbe(), {code:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_ACTIVE'});
+  const stranger = net.createConnection({host:'127.0.0.1',port:relay.port});
+  const refused=once(stranger,'close');
+  stranger.resume();await refused;
+  assert.equal(fixture.calls.length,1);
+  permitProof(true);
+  assert.equal(await drain,'CLOSED_BY_RESET');
+  relay.check();
+  assert.throws(() => first.window.markDisconnect(502,qualifiedStart), {code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+  await assert.rejects(first.window.finish(), {code:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_ACTIVE'});
+  const second = await enterReadonlyWorker(relay,children[1]);
+  t.after(() => second.client.destroy());
+  second.window.markDisconnect(502,qualifiedStart);
+  const secondResult=second.window.finish();
+  await closeReadonlyWorker(children[1],second.client,0,Buffer.alloc(4));
+  assert.equal(await secondResult,'REAL_FIN');
+  assert.deepEqual(ownerCalls,[{pid:501,start:qualifiedStart}]);
+  assert.equal(fixture.calls.length,2);
+  await relay.close();
+});
+
+for(const [mode,exit,bytes] of [
+  ['owner-still-live',70,Buffer.alloc(0)],
+  ['stdin-reset',73,Buffer.alloc(0)],
+  ['unclassified-reset',72,Buffer.alloc(0)],
+  ['truncated-frame',70,Buffer.from([0,0,0,3,42])],
+]){
+  test('readonly closes without resuming for '+mode,{timeout:5000},async t=>{
+    const child=fakeWorker();
+    let owners=0;
+    const fixture=load(t,()=>child,async()=>{owners++;return false;});
+    const relay=await fixture.startReadonly();
+    t.after(()=>relay.close());
+    const probe=await enterReadonlyWorker(relay,child);
+    t.after(()=>probe.client.destroy());
+    probe.window.markDisconnect(501,qualifiedStart);
+    const failed=assert.rejects(probe.window.finish());
+    await closeReadonlyWorker(child,probe.client,exit,bytes);
+    await failed;
+    assert.equal(owners,mode==='owner-still-live'?1:0);
+    assert.throws(()=>relay.beginReadonlyRelayProbe());
+    assert.equal(fixture.calls.length,1);
+  });
+}
+
+test('readonly owner deadline fails closed and a late owner reply cannot resume it', {timeout:7500}, async t=>{
+ const child=fakeWorker();
+ let ownerStarted,late;
+ const checking=new Promise(resolve=>{ownerStarted=resolve;});
+ const fixture=load(t,()=>child,()=>new Promise(resolve=>{late=resolve;ownerStarted();}));
+ const relay=await fixture.startReadonly();
+ t.after(()=>relay.close());
+ const probe=await enterReadonlyWorker(relay,child);
+ t.after(()=>probe.client.destroy());
+ probe.window.markDisconnect(501,qualifiedStart);
+ const failed=assert.rejects(probe.window.finish(),{code:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'});
+ await closeReadonlyWorker(child,probe.client,70);
+ await checking;
+ await failed;
+ late(true);
+ assert.throws(()=>relay.beginReadonlyRelayProbe());
+ assert.equal(fixture.calls.length,1);
+});
+
+test('identity261 qualification is one ordered five-role phase and then irrevocably returns to strict framing',{timeout:5000},async t=>{
+ const roles=['jg_fixture_app_'+'c'.repeat(24),'jg_c259_outside_issuer_login','jg_c259_outside_executor_login',
+  'jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
+ const children=Array.from({length:6},()=>fakeWorker());
+ let ownerReads=0;
+ const verify=async(identity,deadline)=>{
+  ownerReads++;assert.equal(identity.pid,500+ownerReads);assert.ok(deadline>Date.now());return true;
+ };
+ Object.defineProperty(verify,'identityProfile',{value:'TASK12_DRAFT261_TLS_IDENTITY_V2'});
+ const fixture=load(t,()=>children[fixture.calls.length-1],verify);
+ const relay=await fixture.startReadonly();
+ t.after(()=>relay.close());
+ assert.equal(relay.beginReadonlyRelayProbe,undefined);
+ await relay.beginPrismaDrain()();
+ assert.throws(()=>relay.beginIdentityQualification([...roles].reverse()),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ const phase=relay.beginIdentityQualification(roles);
+ assert.throws(()=>phase.finish(),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ assert.throws(()=>relay.beginPrismaDrain(),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ for(let index=0;index<5;index++){
+  assert.throws(()=>phase.begin(index,roles[(index+1)%5]),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+  const lease=phase.begin(index,roles[index]);
+  const child=children[index],client=await connect(relay.port);
+  t.after(()=>client.destroy());client.resume();
+  const acknowledged=once(child.stdin,'data');client.write(reply);await acknowledged;
+  lease.markDisconnect(501+index,qualifiedStart);
+  const result=lease.finish();
+  await closeReadonlyWorker(child,client,70);
+  assert.equal(await result,'CLOSED_BY_RESET');
+  await assert.rejects(lease.finish());
+ }
+ const proof=phase.finish();
+ assert.equal(proof.length,5);assert.equal(ownerReads,5);
+ assert.deepEqual(proof.map(row=>row.name),roles);
+ assert.ok(proof.every(row=>row.identityVerified&&row.closeKind==='CLOSED_BY_RESET'&&row.backendGone));
+ assert.throws(()=>phase.finish(),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ assert.throws(()=>phase.begin(0,roles[0]),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ assert.throws(()=>relay.beginIdentityQualification(roles),{code:'CURRENT259_LOOPBACK_FORWARD_INPUT'});
+ const strict=relay.beginPrismaDrain();
+ const client=await connect(relay.port);t.after(()=>client.destroy());client.resume();
+ const child=children[5],ack=once(child.stdin,'data');client.write(reply);await ack;
+ const failed=assert.rejects(strict(),{code:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+ await closeReadonlyWorker(child,client,70);
+ await failed;
+ assert.equal(ownerReads,5);
 });

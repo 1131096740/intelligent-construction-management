@@ -17,8 +17,10 @@ const NAT='UNVERIFIED_HOST_PUBLISHED_TLS';
 const LOGIN_NAMES=['jg_c259_outside_issuer_login','jg_c259_outside_executor_login','jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
 const apiSource=fs.readFileSync(path.join(__dirname,'task12-current259-contract-login.cjs'),'utf8');
 
-function fixture(preloaded = false,transport=NAT) {
-  const source=Object.freeze({candidateSha:'a'.repeat(40)}),handle=Object.freeze({}),control={},calls=[];
+function fixture(preloaded = false,transport=NAT,identityProfile) {
+  const source=Object.freeze({candidateSha:'a'.repeat(40),...(identityProfile?{profile:{
+    ledgerSha256:require('./task16-current259-profile.cjs').PAYMENT261_LEDGER_SHA256}}:{})}),
+    handle=Object.freeze({}),control={identityProfile},calls=[];
   const runId='12345678-1234-4234-8234-123456789012',containerId=blob('a'),networkId=blob('b');
   const database='jg_task01_'+runId.replaceAll('-','');
   const identity={database,databaseOid:'200',namespaceOid:'2200',ownerOid:'10',actorOid:'10',
@@ -153,13 +155,24 @@ function fixture(preloaded = false,transport=NAT) {
       if(this.url.searchParams.get('sslcert')===resource.wrongCaPath)code='P1011';
       else if(this.url.searchParams.get('sslmode')==='disable')code='P1010';
       else if(stored!==Buffer.from(verifier,'base64').toString('hex'))code='P1000';
-      if(code && control.drift!=='negative')throw Object.assign(new Error(code==='P1011'?
-        control.certificateError??'Error opening a TLS connection: The certificate was not trusted':
-        'connection denied'),{errorCode:code});
+      if(code && control.drift!=='negative'){
+        control.lastNegative=code;
+        if(control.requireDrain)control.pendingNegative=true;
+        control.trace?.push('reject:'+code);
+        throw Object.assign(new Error(code==='P1011'?
+          control.certificateError??'Error opening a TLS connection: The certificate was not trusted':
+          'connection denied'),{errorCode:code});
+      }
       this.backend=next();
+      if(control.failPositiveContinuity)control.failNextQualification=true;
       assert.equal(prefix,'SCRAM-SHA-256');
     }
-    async $disconnect(){assert.ok(activeClients-->0);calls.push('disconnect');if(control.drift==='disconnect')throw new Error('sensitive');}
+    async $disconnect(){
+      assert.ok(activeClients-->0);calls.push('disconnect');
+      control.trace?.push('disconnect:'+control.lastNegative);
+      control.lastNegative=undefined;control.pendingNegative=false;
+      if(control.drift==='disconnect')throw new Error('sensitive');
+    }
     async $queryRawUnsafe(sql,challenge) {
       if(control.pending==='QUERY')return new Promise(()=>{});
       assert.match(sql,/pg_stat_ssl/u);
@@ -167,7 +180,7 @@ function fixture(preloaded = false,transport=NAT) {
       clientRow={database,databaseOid:identity.databaseOid,role:this.role.name,sessionRole:this.role.name,oid:this.role.oid,
         ...this.backend,tls:true,clientAddress:loopback&&control.drift!=='relay-client'?'127.0.0.1':'172.29.0.1',clientPort:35343,serverAddress:loopback?'127.0.0.1':'172.29.0.2',serverPort:5432,challenge};
       if(control.drift==='endpoint')clientRow.serverAddress='127.0.0.1';
-      return [clientRow];
+      return [sql.includes('transaction_read_only')?{...clientRow,readonly:control.readonlyDrift!==true}:clientRow];
     }
   }
   const keys=['DATABASE_URL','DIRECT_ARCHIVE_ISSUER_DATABASE_URL','DIRECT_ARCHIVE_RUNTIME_DATABASE_URL',
@@ -199,7 +212,53 @@ function fixture(preloaded = false,transport=NAT) {
       return Object.freeze(exports);
     },
     loadContractApplicationModules(){assert.ok(control.applicationModel);return appModules;},createContractTestingModule(){}},
-    verifyFull:()=>assert.equal(control.closed,undefined)};
+    verifyFull(){
+      assert.equal(control.closed,undefined);
+      if(control.failNextQualification){
+        control.failNextQualification=false;
+        throw Object.assign(new Error('private relay bytes'),{
+          code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',
+          relayFrameStage:'STDOUT_EOF_WITHOUT_FIN'});
+      }
+      if(control.lastNegative)control.trace?.push('qualify:'+control.lastNegative);
+      if(control.pendingNegative)throw Object.assign(new Error('modeled peer did not drain before source checks'),
+        {code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT'});
+    },
+    beginIdentityQualification(permit,names){
+      assert.equal(permit,control.stagePermit);
+      assert.equal(control.identityStarts??0,0);control.identityStarts=1;
+      assert.deepEqual(names,targets.map(role=>role.name));
+      assert.equal(calls.filter(v=>v==='tls-live').length,0);
+      let index=0,leaseActive=false,finished=false;const evidence=[];
+      return {
+        begin(i,name){
+          assert.ok(!finished&&!leaseActive);assert.equal(i,index);assert.equal(name,names[index]);leaseActive=true;
+          return {
+            markDisconnect(pid,start){assert.equal(pid,clientRow.pid);assert.equal(start,clientRow.start);},
+            async finish(){
+              assert.equal(activeClients,0);
+              if(control.identityDrift)throw Object.assign(new Error('private bytes'),{code:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+              evidence.push({name,identityVerified:true,closeKind:'CLOSED_BY_RESET',backendGone:true});
+              leaseActive=false;index++;return 'CLOSED_BY_RESET';
+            },
+          };
+        },
+        finish(){
+          assert.equal(index,5);assert.ok(!leaseActive&&!finished);
+          finished=true;control.identityFinished=true;return evidence;
+        },
+      };
+    },
+    beginPrismaRelayDrain(){
+      control.trace?.push('begin-drain');let used=false;
+      return async()=>{
+        assert.equal(used,false);used=true;
+        assert.ok(control.lastNegative);
+        control.trace?.push('drain:'+control.lastNegative);
+        if(control.drainError)throw control.drainError;
+        control.pendingNegative=false;
+      };
+    }};
   const module={exports:{}};
   const ports={
     './task16-current259-ordinary-archive-acl.cjs':{claimCurrent259OrdinaryArchiveAcl(candidate,actual){
@@ -220,6 +279,8 @@ function fixture(preloaded = false,transport=NAT) {
       finally{assert.ok(keys.every(key=>Object.getOwnPropertyDescriptor(process.env,key)===undefined));}
       const clients=[providers[0],providers[1].issuer,providers[1].executor,providers[2].issuer,providers[2].executor];
       assert.deepEqual(clients.map(client=>client.role.oid),targets.map(role=>role.oid));
+      assert.ok(clients.every(client=>client.url.searchParams.get('options')===null));
+      if(control.identityStarts)assert.equal(control.identityFinished,true);
       assert.ok(clients.every(client=>client.url.searchParams.get('sslcert')===resource.caPath && client.url.searchParams.get('sslmode')==='require'));
       assert.equal(await bridge.verifyProviders(),5);
       for(const client of clients)await client.$disconnect();
@@ -507,4 +568,134 @@ test('generated login preserves the fixed HTTP step independently of app cleanup
     return true;
   });
   assert.equal(model.control.closed,1);
+});
+
+for(const [mode,expected] of [
+  ['connect-timeout',{stage:'TLS_WRONG_CA_CONNECT',reason:'CONNECT_TIMEOUT',roleIndex:0}],
+  ['wrong-marker',{stage:'TLS_WRONG_CA_CONNECT',reason:'TLS_NEGATIVE',operationCode:'P1011',roleIndex:0}],
+  ['disconnect',{stage:'TLS_WRONG_CA_DISCONNECT',reason:'DISCONNECT_UNKNOWN',roleIndex:0}],
+])test('generated admission keeps the first TLS checkpoint through unknown cleanup for '+mode,async()=>{
+  const model=fixture(false,Q2_RELAY);
+  model.control.generated=true;model.control.drift='disconnect';
+  if(mode==='connect-timeout')model.control.pending='CONNECT';
+  if(mode==='wrong-marker')model.control.certificateError='private certificate file name';
+  await assert.rejects(model.api.withCurrent259GeneratedDraftAdmission(model.completion,model.handle,
+    '22345678-1234-4234-8234-123456789012'),error=>{
+    assert.equal(error.code,'CURRENT259_CONTRACT_LOGIN_TLS');
+    assert.equal(error.clientCleanup,'UNKNOWN');
+    assert.deepEqual(error.admissionFailure,expected);
+    assert.doesNotMatch(JSON.stringify(error),/private certificate|sensitive/u);
+    return true;
+  });
+  assert.equal(model.calls.filter(value=>value==='construct').length,1);
+  assert.equal(model.calls.filter(value=>value==='disconnect').length,1);
+  assert.equal(model.control.closed,1);
+});
+
+test('generated draft drains only the three expected peer rejections before the original full check',async()=>{
+  const model=fixture(false,Q2_RELAY);
+  model.control.applicationModel=true;model.control.generated=true;model.control.trace=[];model.control.requireDrain=true;
+  const result=await model.api.withCurrent259GeneratedDraftAdmission(model.completion,model.handle,
+    '22345678-1234-4234-8234-123456789012');
+  assert.equal(result.status,'CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED');
+  const trace=model.control.trace;
+  assert.equal(trace.filter(value=>value==='begin-drain').length,3);
+  for(const code of ['P1011','P1000','P1010']){
+    const rejected=trace.indexOf('reject:'+code);
+    assert.equal(trace[rejected-1],'begin-drain');
+    assert.deepEqual(trace.slice(rejected,rejected+4),['reject:'+code,'drain:'+code,'qualify:'+code,'disconnect:'+code]);
+  }
+});
+
+test('a relay fault after a positive connection returns reports its continuity stage',async()=>{
+  const model=fixture(false,Q2_RELAY);
+  model.control.generated=true;model.control.failPositiveContinuity=true;
+  await assert.rejects(model.api.withCurrent259GeneratedDraftAdmission(model.completion,model.handle,
+    '22345678-1234-4234-8234-123456789012'),error=>{
+    assert.deepEqual(error.admissionFailure,{stage:'TLS_POSITIVE_CONTINUITY',
+      operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',
+      relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',roleIndex:0});
+    assert.doesNotMatch(JSON.stringify(error),/private relay bytes/u);
+    return true;
+  });
+  assert.equal(model.calls.filter(value=>value==='disconnect').length,4);
+  assert.equal(model.control.closed,1);
+});
+
+test('the original non-draft Q2 login never opens a generated-draft drain window',async()=>{
+  const model=fixture(false,Q2_RELAY);
+  model.control.trace=[];
+  const outcome=await model.api.withCurrent259ContractLogin(model.completion,model.handle,()=> 'verified');
+  assert.equal(outcome,'verified');
+  assert.equal(model.control.trace.filter(value=>value==='begin-drain').length,0);
+  assert.deepEqual(model.control.trace.filter(value=>value.startsWith('reject:')),['reject:P1011','reject:P1000','reject:P1010']);
+});
+
+for(const [mode,stage,reason] of [
+  ['wrong-marker','TLS_WRONG_CA_CONNECT','TLS_NEGATIVE'],
+  ['unexpected-acceptance','TLS_WRONG_CA_CONNECT','TLS_NEGATIVE'],
+  ['cancelled-connect','TLS_WRONG_CA_CONNECT','CONNECT_TIMEOUT'],
+  ['drain-failed','TLS_WRONG_CA_DRAIN',undefined],
+])test('generated draft fails closed before another peer for '+mode,async()=>{
+  const model=fixture(false,Q2_RELAY);
+  model.control.generated=true;model.control.trace=[];
+  if(mode==='wrong-marker')model.control.certificateError='foreign certificate message';
+  if(mode==='unexpected-acceptance')model.control.drift='negative';
+  if(mode==='cancelled-connect')model.control.pending='CONNECT';
+  if(mode==='drain-failed')model.control.drainError=Object.assign(new Error('private relay details'),
+    {code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT'});
+  await assert.rejects(model.api.withCurrent259GeneratedDraftAdmission(model.completion,model.handle,
+    '22345678-1234-4234-8234-123456789012'),error=>{
+    assert.equal(error.admissionFailure.stage,stage);
+    assert.equal(error.admissionFailure.reason,reason);
+    if(mode==='drain-failed')assert.equal(error.admissionFailure.relayCode,'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT');
+    assert.doesNotMatch(JSON.stringify(error),/private relay|foreign certificate/u);
+    return true;
+  });
+  assert.equal(model.control.trace.filter(value=>value==='begin-drain').length,1);
+  assert.equal(model.control.trace.filter(value=>value.startsWith('drain:')).length,mode==='drain-failed'?1:0);
+  assert.equal(model.calls.filter(value=>value==='construct').length,1);
+  assert.equal(model.calls.filter(value=>value==='disconnect').length,1);
+  assert.equal(model.control.closed,1);
+});
+
+test('draft identity261 consumes only five ordered readonly identities and retires that stage before the original app',async()=>{
+ const caseId='22345678-1234-4234-8234-123456789012';
+ const f=fixture(false,Q2_RELAY,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ f.control.generated=true;f.control.applicationModel=true;f.control.stagePermit=Object.freeze({});
+ const result=await f.api.withCurrent261GeneratedDraftIdentityAdmission(f.completion,f.handle,caseId,f.control.stagePermit);
+ assert.equal(result.identityQualification.profile,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ assert.equal(result.identityQualification.clients.length,5);
+ assert.ok(result.identityQualification.clients.every(r=>r.closeKind==='CLOSED_BY_RESET'&&r.backendGone));
+ assert.equal(f.control.identityFinished,true);
+ assert.equal(f.calls.at(-1),'application-closed');
+});
+for(const option of ['readonlyDrift','identityDrift'])test('draft identity261 refuses '+option+' before application',async()=>{
+ const f=fixture(false,Q2_RELAY,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ f.control.generated=true;f.control.applicationModel=true;f.control.stagePermit=Object.freeze({});f.control[option]=true;
+ await assert.rejects(f.api.withCurrent261GeneratedDraftIdentityAdmission(f.completion,f.handle,
+   '22345678-1234-4234-8234-123456789012',f.control.stagePermit));
+ assert.equal(f.control.identityFinished,undefined);
+ assert.equal(f.calls.includes('application-closed'),false);
+ assert.equal(f.control.closed,1);
+});
+
+test('identity261 wrappers reject outside fixtures and unqualified historical ledgers before seeding',async()=>{
+ const {buildCurrent259FirstOutsideDirectFixture}=require('./task12-current259-q2-fixture.cjs');
+ const caseId='22345678-1234-4234-8234-123456789012';
+ const outside=buildCurrent259FirstOutsideDirectFixture(caseId,'2026-11-12');
+ const f=fixture(false,Q2_RELAY,'TASK12_UPWARD_Q2_TLS_IDENTITY_V2');
+ await assert.rejects(f.api.withCurrent261UpwardIdentitySeededLogin(f.completion,f.handle,outside,caseId,{},()=>assert.fail('outside must remain strict')),/HANDLE/u);
+ assert.deepEqual(f.calls,[]);
+ const historical=fixture(false,Q2_RELAY);
+ historical.control.generated=true;
+ await assert.rejects(historical.api.withCurrent261GeneratedDraftIdentityAdmission(historical.completion,historical.handle,caseId,{}),error=>error.code==='CURRENT259_CONTRACT_LOGIN_BEFORE'&&error.stageFailure==='ACL_PROFILE');
+ assert.equal(historical.calls.includes('seed-write'),false);
+});
+test('an identity-capable resource never upgrades an unversioned generated entry implicitly',async()=>{
+ const f=fixture(false,Q2_RELAY,'TASK12_DRAFT261_TLS_IDENTITY_V2');
+ f.control.generated=true;f.control.applicationModel=true;
+ const result=await f.api.withCurrent259GeneratedDraftAdmission(f.completion,f.handle,'22345678-1234-4234-8234-123456789012');
+ assert.equal(result.identityQualification,undefined);
+ assert.equal(f.control.identityStarts,undefined);
 });

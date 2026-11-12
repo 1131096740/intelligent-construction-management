@@ -3,7 +3,7 @@ const { createHash, createHmac, pbkdf2Sync, randomBytes } = require('node:crypto
 const { isIP } = require('node:net');
 const fs = require('node:fs');
 const { isDeepStrictEqual: equal, types } = require('node:util');
-const {projectGeneratedDraftHttpFailure}=require('./task12-current259-generated-draft-diagnostic.cjs');
+const {projectGeneratedDraftHttpFailure,createGeneratedDraftAdmissionDiagnostic}=require('./task12-current259-generated-draft-diagnostic.cjs');
 const { readQualifiedTask16File: readFile } = require('./task16-runtime-inputs.cjs');
 const { isCurrent259FirstQ2Fixture } = require('./task12-current259-q2-fixture.cjs');
 const { createCurrent259FirstQ2Seed, createCurrent259GeneratedDraftSeed, createCurrent259FirstQ2UploadReadback, createCurrent259FirstQ2ArchiveReadback } = require('./task12-current259-q2-seed.cjs');
@@ -362,6 +362,11 @@ function engineError(error) {
       message.toLowerCase().includes('certificate was not trusted'),
   };
 }
+function expectedTlsRejection(kind,error) {
+  const observed=engineError(error);
+  const expected={password:'P1000',ca:'P1011',plaintext:'P1010'}[kind];
+  return observed.code===expected&&(kind!=='ca'||observed.certificateMarker);
+}
 async function bounded(operation, phase, context) {
   let timer;
   try {
@@ -388,7 +393,13 @@ function verifyCa(cas) {
 async function readLiveClient(context, client, query, role, endpoint, check) {
   const inspect=async()=>{
     const challenge=randomBytes(32).toString('hex');
-    const rows=await bounded(()=>query.call(client,hostSql,challenge),'QUERY_TIMEOUT',context);
+    const sql=context.identityQualification?hostSql.replace(' s.ssl AS tls,',
+      " current_setting('transaction_read_only') = 'on' AS readonly,s.ssl AS tls,"):hostSql;
+    let rows=await bounded(()=>query.call(client,sql,challenge),'QUERY_TIMEOUT',context);
+    if(context.identityQualification){
+      need(Array.isArray(rows)&&rows.length===1&&rows[0].readonly===true,'TLS_IDENTITY');
+      const {readonly,...row}=rows[0];rows=[row];
+    }
     check();
     return clientIdentity(rows,challenge,context.scope,role,endpoint);
   };
@@ -401,17 +412,20 @@ async function readLiveClient(context, client, query, role, endpoint, check) {
     equal(observed.session,session),'TLS_LIVE');
   const { challenge:next,...nextIdentity }=await inspect();
   const { challenge:previous,...firstIdentity }=first;
-  need(equal(nextIdentity,firstIdentity),'TLS_SESSION_CHANGED');
+  need(equal(nextIdentity,firstIdentity)&&(!context.identityQualification||next!==previous),'TLS_SESSION_CHANGED');
   return Object.freeze({name:role.name,oid:role.oid,pid:first.pid,start:first.start});
 }
 
 async function verifyTls(context) {
-  const { check, run, resource, Class, methods, scope, secrets }=context;
+  const { check, run, resource, Class, methods, scope, secrets, diagnostic, beginNegativeDrain }=context;
+  diagnostic?.enter('TLS_CA_FILES');
   const cas=getCa(resource);
   const full=()=>{ check(); verifyCa(cas); context.checkTransport?.(); };
+  diagnostic?.enter('TLS_ENDPOINT');
   const endpoint=await methods.inspectConnectionEndpoint.call(resource);
   full();
   context.checkTransport=qualifyEndpoint(endpoint,resource,methods.getReceipt);
+  diagnostic?.enter('TLS_CERTIFICATE');
   const certificate=await methods.observePresentedCertificate.call(resource,'correct');
   full();
   need(certificate.mode==='correct' && certificate.derSha256===resource.serverCertHashes.correctCertificateDerSha256,'CERTIFICATE');
@@ -419,6 +433,9 @@ async function verifyTls(context) {
   context.endpoint=endpoint;
   const accepted=[];
   async function probe(index, kind) {
+    const probeName={ca:'WRONG_CA',password:'WRONG_PASSWORD',plaintext:'PLAINTEXT',positive:'POSITIVE'}[kind];
+    const enter=step=>diagnostic?.enter('TLS_'+probeName+'_'+step,index);
+    enter('CONSTRUCT');
     full();
     const role=scope.targets[index];
     const secret=kind==='password'?randomBytes(48).toString('hex'):secrets[index];
@@ -427,10 +444,11 @@ async function verifyTls(context) {
       sslaccept:'strict',sslcert:cas[kind==='ca'?1:0].file,application_name:'jg_394_contract_tls',connect_timeout:'5',pool_timeout:'5'})) {
       url.searchParams.set(key,value);
     }
+    if(kind==='positive'&&context.identityQualification)url.searchParams.set('options','-c default_transaction_read_only=on');
     let client;
     try { client=new Class({datasources:{db:{url:url.toString()}},log:[]}); }
     catch { context.cleanup='UNKNOWN'; throw fail('CONSTRUCT_UNKNOWN'); }
-    let disconnect, primary, result, hasPrimary=false;
+    let disconnect, primary, result, connectionError, hasPrimary=false,identityWindow;
     try {
       disconnect=client.$disconnect;
       const clientMethods=Object.fromEntries(CLIENT_METHODS.map(key=>[key,key==='$disconnect'?disconnect:client[key]]));
@@ -439,46 +457,78 @@ async function verifyTls(context) {
         full();
         need(CLIENT_METHODS.every(key=>client[key]===clientMethods[key]),'CLIENT_CHANGED');
       };
+      enter('CONNECT');
       clientCheck();
-      let connectionError, rejected=false;
+      const drain=kind!=='positive'?beginNegativeDrain?.():undefined;
+      if(kind==='positive'&&context.identityQualification)
+        identityWindow=context.identityLease.begin(index,role.name);
+      let rejected=false;
       try { await bounded(()=>clientMethods.$connect.call(client),'CONNECT_TIMEOUT',context); }
       catch (error) {
         if (ownFaults.has(error)) throw error;
         connectionError=error; rejected=true;
       }
+      let expectedNegative;
+      if(drain&&rejected){
+        expectedNegative=expectedTlsRejection(kind,connectionError);
+        if(expectedNegative){
+          // Give the exact rejected peer's relay worker time to consume its FIN
+          // before the synchronous source and ownership checks run again.
+          enter('DRAIN');
+          await drain();
+          enter('CONTINUITY');
+        }
+      }
+      if(kind==='positive'&&!rejected)enter('CONTINUITY');
       clientCheck();
       if (kind!=='positive') {
-        const observed=engineError(connectionError);
-        const expected={password:'P1000',ca:'P1011',plaintext:'P1010'}[kind];
-        need(rejected && observed.code===expected &&
-          (kind!=='ca' || observed.certificateMarker),'TLS_NEGATIVE');
+        need(rejected&&(expectedNegative??expectedTlsRejection(kind,connectionError)),'TLS_NEGATIVE');
       } else {
         need(!rejected,'TLS_CONNECT');
+        enter('IDENTITY');
         result=await readLiveClient(context,client,clientMethods.$queryRawUnsafe,role,endpoint,clientCheck);
         need(accepted.every(item=>distinct(item,result)),'TLS_SESSION_CHANGED');
+        if(identityWindow)identityWindow.markDisconnect(result.pid,result.start);
       }
-    } catch(error) { primary=error; hasPrimary=true; }
+    } catch(error) {
+      primary=error; hasPrimary=true;
+      const reason=ownFaults.get(error);
+      diagnostic?.capture(error,reason,reason==='TLS_NEGATIVE'||reason==='TLS_CONNECT'?connectionError??error:error);
+    }
+    enter('DISCONNECT');
     try {
       need(typeof disconnect==='function','DISCONNECT_UNKNOWN');
       await bounded(()=>disconnect.call(client),'DISCONNECT_UNKNOWN',context);
-    } catch {
+    } catch(error) {
       context.cleanup='UNKNOWN';
-      if (!hasPrimary) { primary=fail('DISCONNECT_UNKNOWN'); hasPrimary=true; }
+      if (!hasPrimary) {
+        primary=fail('DISCONNECT_UNKNOWN'); hasPrimary=true;
+        diagnostic?.capture(primary,'DISCONNECT_UNKNOWN',error);
+      }
     }
     if (hasPrimary) throw primary;
+    if(identityWindow){
+      enter('DRAIN');
+      const closeKind=await identityWindow.finish();
+      need(closeKind==='REAL_FIN'||closeKind==='CLOSED_BY_RESET','TLS_IDENTITY');
+    }
     full();
     if (result) accepted.push(Object.freeze(result));
   }
   await probe(0,'ca');
   await probe(0,'password');
+  diagnostic?.enter('TLS_PLAINTEXT_WINDOW');
   full();
   await methods.beginCurrent259ContractPlaintextProbe.call(resource);
   full();
   await probe(0,'plaintext');
+  diagnostic?.enter('TLS_PLAINTEXT_EVIDENCE');
   const rejected = await methods.verifyCurrent259ContractPlaintextRejection.call(resource);
   full();
   need(rejected===true,'TLS_PLAINTEXT_HBA');
+  if(context.identityQualification)context.identityLease=context.beginIdentityQualification();
   for (let index=0; index<scope.targets.length; index++) await probe(index,'positive');
+  if(context.identityQualification)context.identityClosures=context.identityLease.finish();
   return Object.freeze(accepted);
 }
 
@@ -507,6 +557,8 @@ function captureHttpFiles(cache) {
 }
 
 function openContractApplication(context, loader, originalSessions, verifyCommitted, native, generated) {
+  const {diagnostic}=context;
+  diagnostic?.enter('APP_IMPORT');
   context.check();verifyCa(context.cas);
   const assemblyPath=require.resolve('./task12-current259-contract-application.cjs');
   const cache=require.cache;
@@ -528,6 +580,7 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
       own(loader,'loadContractApplicationModules')===load && own(loader,'createContractTestingModule')===create,'APP_IMPORT');
   };
   check();
+  diagnostic?.enter('APP_MODULES');
   const loaded=load.call(loader);
   const tokens=['PrismaService','ContractDirectArchiveRuntime','ContractUpwardDirectArchiveRuntime'];
   const [PrismaService, Outside, Upward]=tokens.map(key=>own(loaded,key));
@@ -574,6 +627,7 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
   }):undefined;
   const bridge=Object.freeze({
     check, loaded, caPath:context.cas[0].file,...(nativeBridge?{native:nativeBridge}:{}),
+    ...(diagnostic?{diagnostic}:{}),
     ...(generated?{generated:Object.freeze({check,...httpContinuity,projectId:generated.fixture.project.id,seed:generated.seed,
       openDraft(send){check();return generated.openDraft(generated.fixture,generated.password,send);},
     })}:{}),
@@ -618,12 +672,14 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
       check();need(providers && clients.length===5,'APP_CLIENTS');
       const observed=[];
       for(const [index,client] of clients.entries()){
+        diagnostic?.enter('APP_PROVIDER_CONNECT',index);
         const methods=operations[index];
         const clientCheck=()=>{
           check();need(CLIENT_METHODS.every(key=>typeof methods[key]==='function' && methods[key]===client[key]),'APP_CLIENTS');
           need([providers[0],providers[1].issuer,providers[1].executor,providers[2].issuer,providers[2].executor].every((value,i)=>value===clients[i]),'APP_CLIENTS');
         };
         clientCheck();await bounded(()=>methods.$connect.call(client),'CONNECT_TIMEOUT',context);clientCheck();
+        diagnostic?.enter('APP_PROVIDER_IDENTITY',index);
         const session=await readLiveClient(context,client,methods.$queryRawUnsafe,context.scope.targets[index],context.endpoint,clientCheck);
         need([...originalSessions,...observed].every(item=>distinct(item,session)),'TLS_SESSION_CHANGED');
         observed.push(session);
@@ -656,17 +712,32 @@ async function withCurrent259FirstQ2SeededLogin(completion, handle, fixture, use
 
 async function withCurrent259GeneratedDraftAdmission(completion,handle,caseId) {
   need(arguments.length===3 && typeof caseId==='string' && relayIdShape.test(caseId),'HANDLE');
+  return generatedAdmission(completion,handle,caseId);
+}
+async function withCurrent261GeneratedDraftIdentityAdmission(completion,handle,caseId,permit) {
+  need(arguments.length===4&&typeof caseId==='string'&&relayIdShape.test(caseId)&&permit,'HANDLE');
+  return generatedAdmission(completion,handle,caseId,{permit,profile:'TASK12_DRAFT261_TLS_IDENTITY_V2',caseId});
+}
+async function withCurrent261UpwardIdentitySeededLogin(completion,handle,fixture,caseId,permit,use) {
+  need(arguments.length===6&&permit&&typeof use==='function'&&!types.isProxy(use)&&isCurrent259FirstQ2Fixture(fixture)&&fixture.relationship===undefined&&
+    relayIdShape.test(caseId)&&fixture.seed.Project.code==='Q2-'+caseId,'HANDLE');
+  return contractLogin(completion,handle,async proof=>{
+    const result=await use(proof);
+    return Object.freeze({...result,identityQualification:proof.identityQualification});
+  },fixture,undefined,{permit,profile:'TASK12_UPWARD_Q2_TLS_IDENTITY_V2',caseId});
+}
+async function generatedAdmission(completion,handle,caseId,qualification) {
   return contractLogin(completion,handle,async proof=>{
     const record=PROOFS.get(proof);
     need(record?.handle===handle&&record.generated,'HANDLE');
     PROOFS.delete(proof);record.check();
     const result=await record.openApplication(undefined,record.generated);
     need(result?.status==='CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED'&&result.nativeAdmission===false,'APP_IMPORT');
-    return result;
-  },undefined,caseId);
+    return qualification?Object.freeze({...result,identityQualification:proof.identityQualification}):result;
+  },undefined,caseId,qualification);
 }
 
-async function contractLogin(completion, handle, use, fixture, generatedCaseId) {
+async function contractLogin(completion, handle, use, fixture, generatedCaseId, identityQualification) {
   need(typeof use==='function' && !types.isProxy(use) &&
     completion && !types.isProxy(completion) && Object.isFrozen(completion) && handle && !types.isProxy(handle),'HANDLE');
   checkAclImport();
@@ -676,6 +747,7 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
   let phase='BEFORE', proof, active=true, context, secrets, verifiers, roleCommit='NOT_ATTEMPTED';
   let application, applicationFailure, seedCommit='NOT_ATTEMPTED';
   let generated;
+  const diagnostic=generatedCaseId?createGeneratedDraftAdmissionDiagnostic():undefined;
   try {
     const view=claimCurrent259TechnicalResource(handle);
     need(!USED.has(handle),'HANDLE');
@@ -702,6 +774,9 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     };
     check();
     need(Boolean(generatedCaseId)===(prior.generatedDraft===true),'ACL_PROFILE');
+    if(identityQualification)need(prior.source.profile?.ledgerSha256===require('./task16-current259-profile.cjs').PAYMENT261_LEDGER_SHA256&&
+      (generatedCaseId?identityQualification.profile==='TASK12_DRAFT261_TLS_IDENTITY_V2':
+        identityQualification.profile==='TASK12_UPWARD_Q2_TLS_IDENTITY_V2'&&fixture&&fixture.relationship===undefined),'ACL_PROFILE');
     const scope=scopeOf(prior,view,completion);
     const runSql=async(sql,label,continuity=check)=>{
       continuity();
@@ -714,6 +789,7 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     checkBefore(before,scope);
     if(fixture||generatedCaseId){
       phase='SEED_BEFORE';
+      diagnostic?.enter('SEED_FIXTURE');
       let seed;
       if(generatedCaseId){
         const entries=own(loader,'loadGeneratedContractDraftAdmission').call(loader);
@@ -724,17 +800,21 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
         generated={fixture:input,password,openDraft:own(entries,'openTask12GeneratedApprovalDraft')};
         seed=createCurrent259GeneratedDraftSeed(input,scope.identity,passwordHash);
       }else seed=createCurrent259FirstQ2Seed(fixture,scope.identity);
+      diagnostic?.enter('SEED_BEFORE');
       seed.verifyBefore(await runSql(seed.beforeSql(),'seed-before'));
       phase='SEED_WRITE';
+      diagnostic?.enter('SEED_WRITE');
       const sql=seed.writeSql();
       seedCommit='UNKNOWN';
       seed.verifyWritten(await runSql(sql,'seed-write'));
       phase='SEED_COMMITTED';
+      diagnostic?.enter('SEED_COMMITTED');
       const seeded=seed.finish(await runSql(seed.committedSql(),'seed-committed'));
       seedCommit='COMMITTED';
       need(![scope.role.commitXid,scope.archive.installXid,completion.installXid].includes(seeded.seedXid),'SEED_COMMITTED');
       if(generated)generated.seed=seeded;
       phase='SEED_CONTINUITY';
+      diagnostic?.enter('SEED_CONTINUITY');
       const after=await run(readerSql(scope),'before');
       checkBefore(after,scope);
       need(distinct(before.backend,after.backend) && equal(before.state,after.state),'SEED_CONTINUITY');
@@ -744,6 +824,7 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     need(new Set(secrets).size===5,'SECRETS');
     verifiers=secrets.map(makeVerifier);
     phase='ROLE_COMMIT_UNCONFIRMED';
+    diagnostic?.enter('ROLE_WRITE');
     roleCommit='UNKNOWN';
     const written=await run(writerSql(scope,before,verifiers),'write');
     checkWritten(written,before,scope,verifiers);
@@ -753,9 +834,11 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
       need([before,written].every(old=>distinct(row.backend,old.backend)) && equal(state,written.state),'COMMITTED');
       return row.backend;
     };
+    diagnostic?.enter('ROLE_COMMITTED');
     const committed=await verifyCommitted('committed');
     roleCommit='COMMITTED';
     phase='HBA';
+    diagnostic?.enter('HBA_APPLY');
     const hba=await methods.applyCurrent259ContractHbaV1.call(resource);
     check();
     const hbaReceipt=methods.getReceipt.call(resource);
@@ -763,10 +846,27 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     need(hba && sha(hba.beforeSha256) && sha(hba.afterSha256) && hba.beforeSha256!==hba.afterSha256 &&
       hba.rules===(relay?14:22) && hbaReceipt.configuration.hbaSha256===hba.beforeSha256 &&
       (!relay || equal(hbaReceipt.contractHba,hba)),'HBA');
+    diagnostic?.enter('HBA_COMMITTED');
     need(distinct(committed,await verifyCommitted('hba-committed')),'COMMITTED');
     phase='TLS';
-    context={check,checkLifetime,run,runSql,resource,Class,methods,scope,secrets,cleanup:'DISCONNECTED'};
+    const upwardQ2=relay&&isCurrent259FirstQ2Fixture(fixture)&&fixture.relationship===undefined;
+    const useNegativeDrain=Boolean(generatedCaseId)||upwardQ2;
+    const beginRelayDrain=useNegativeDrain?own(view,'beginPrismaRelayDrain'):undefined;
+    if(useNegativeDrain)need(typeof beginRelayDrain==='function','METHOD');
+    const beginNegativeDrain=beginRelayDrain?()=>{
+      need(own(view,'beginPrismaRelayDrain')===beginRelayDrain,'METHOD');
+      const drain=beginRelayDrain.call(view);
+      need(typeof drain==='function','METHOD');
+      return drain;
+    }:undefined;
+    context={check,checkLifetime,run,runSql,resource,Class,methods,scope,secrets,diagnostic,beginNegativeDrain,
+      ...(identityQualification?{identityQualification,beginIdentityQualification:()=>{
+        const begin=own(view,'beginIdentityQualification');
+        need(typeof begin==='function','METHOD');
+        return begin.call(view,identityQualification.permit,scope.targets.map(role=>role.name));
+      }}:{}),cleanup:'DISCONNECTED'};
     const sessions=await verifyTls(context);
+    diagnostic?.enter('TLS_COMMITTED');
     const last=await verifyCommitted('tls-committed');
     need(distinct(committed,last) && sessions.every(row=>distinct(row,last)),'COMMITTED');
     check();
@@ -776,6 +876,7 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
       hba:{beforeSha256:hba.beforeSha256,afterSha256:hba.afterSha256,rules:hba.rules},
       roles:scope.targets.map((role,index)=>({name:role.name,oid:role.oid,limit:index===0?4:1})),
       probes:{verified:5,negative:3,cleanup:'DISCONNECTED'},executionAllowed:false,nativeAdmission:false,
+      ...(identityQualification?{identityQualification:{profile:identityQualification.profile,clients:context.identityClosures}}:{}),
     });
     // A downstream source stage can extend this private record with a fixed
     // credential bridge. No untrusted callback receives its contents.
@@ -785,12 +886,14 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
       return application;
     }});
     phase='CONSUMER';
+    diagnostic?.enter('CONSUMER');
     let result,consumerFailure,consumerFailed=false;
     try{result=await use(proof);}catch(error){consumerFailed=true;consumerFailure=error;}
     if(application){
       try{await application;}catch(error){if(!consumerFailed)throw error;}
     }
     if(consumerFailed)throw consumerFailure;
+    diagnostic?.enter('FINAL_CONTINUITY');
     check();
     return result;
   } catch(primary) {
@@ -800,6 +903,8 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     if(fixture||generatedCaseId)Object.defineProperty(error,'seedCommit',{value:seedCommit,enumerable:true});
     const reason=ownFaults.get(primary);
     if(reason)Object.defineProperty(error,'stageFailure',{value:reason,enumerable:true});
+    const admissionFailure=diagnostic?.capture(primary,reason);
+    if(admissionFailure)Object.defineProperty(error,'admissionFailure',{value:admissionFailure,enumerable:true});
     if(applicationFailure && !types.isProxy(applicationFailure)){
       if(generatedCaseId&&Object.getOwnPropertyDescriptor(applicationFailure,'code')?.value==='CURRENT259_FIRST_Q2_APP_GENERATED_HTTP'){
         const detail=projectGeneratedDraftHttpFailure(Object.getOwnPropertyDescriptor(applicationFailure,'generatedHttpFailure')?.value);
@@ -821,4 +926,4 @@ async function contractLogin(completion, handle, use, fixture, generatedCaseId) 
     verifiers?.fill(null);
   }
 }
-module.exports=Object.freeze({CURRENT259_FIRST_Q2_TRANSPORT,withCurrent259ContractLogin,withCurrent259FirstQ2SeededLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,withCurrent259FirstQ2NativeApplication,withCurrent259GeneratedDraftAdmission,takeCurrent259FirstQ2Bridge});
+module.exports=Object.freeze({CURRENT259_FIRST_Q2_TRANSPORT,withCurrent259ContractLogin,withCurrent259FirstQ2SeededLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,withCurrent259FirstQ2NativeApplication,withCurrent259GeneratedDraftAdmission,withCurrent261GeneratedDraftIdentityAdmission,withCurrent261UpwardIdentitySeededLogin,takeCurrent259FirstQ2Bridge});

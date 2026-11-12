@@ -9,7 +9,7 @@ const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runt
 const parent=path.join(__dirname,'prepare-task12-current259-first-q2.cjs');
 const digest=value=>createHash('sha256').update(value).digest('hex');
 
-function model(t) {
+function model(t,identity261=false) {
   const packetRoot=fs.mkdtempSync('/private/tmp/jg-394-q2-plan-model-');
   t.after(()=>fs.rmSync(packetRoot,{recursive:true,force:true}));
   for(const name of ['run','cos'])fs.mkdirSync(path.join(packetRoot,name),{mode:0o700});
@@ -17,7 +17,7 @@ function model(t) {
   slots.forEach((slot,i)=>fs.writeFileSync(path.join(packetRoot,'cos',slot),'synthetic unreadable to verifier '+i,{mode:0o600}));
   const handle=Object.freeze({});
   const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),
-    profile:{ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'e'.repeat(64),schemaSha256:'f'.repeat(64)}};
+    profile:{ledgerSha256:identity261?require('../services/api/prisma/task16-current259-profile.cjs').PAYMENT261_LEDGER_SHA256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'e'.repeat(64),schemaSha256:'f'.repeat(64)}};
   let full=0;
   const loader={verifyFull(){full++;},witness(){return {source,host:'darwin-arm64',engineCommit:'model-engine',build:{trees:['model']}};}};
   const slotsRead=[];
@@ -149,4 +149,22 @@ test('the fixed operating outside plan requires its own scope, input and upload 
   fs.writeFileSync(sealed.file,bytes);
   assert.throws(()=>f.api.verifyCurrent259FirstQ2Plan(sealed.file,digest(bytes)),/PLAN_INPUT/u);
   assert.deepEqual(f.slotsRead,[]);
+});
+
+test('identity261 upward has a separate exact261 plan and cannot upgrade outside or old plans',t=>{
+ const f=model(t,true);
+ fs.mkdirSync(path.join(f.packetRoot,'upward-identity261-run'),{mode:0o700});
+ const saved=f.api.prepareCurrent261UpwardIdentityPlan(f.options);
+ const checked=f.api.verifyCurrent261UpwardIdentityPlan(saved.file,saved.sha256);
+ assert.equal(checked.plan.scope.identityProfile,'TASK12_UPWARD_Q2_TLS_IDENTITY_V2');
+ assert.equal(checked.plan.scope.migrations,261);
+ assert.equal(checked.plan.case.relationship,undefined);
+ assert.equal(checked.plan.scope.requests,9);
+ assert.throws(()=>f.api.verifyCurrent259FirstQ2Plan(saved.file,saved.sha256),/INPUT/u);
+ const old=f.api.prepareCurrent259FirstQ2Plan(f.options);
+ assert.throws(()=>f.api.verifyCurrent261UpwardIdentityPlan(old.file,old.sha256),/INPUT/u);
+ assert.deepEqual(f.slotsRead,[]);
+ const stale=model(t);
+ fs.mkdirSync(path.join(stale.packetRoot,'upward-identity261-run'),{mode:0o700});
+ assert.throws(()=>stale.api.prepareCurrent261UpwardIdentityPlan(stale.options),/SCOPE/u);
 });

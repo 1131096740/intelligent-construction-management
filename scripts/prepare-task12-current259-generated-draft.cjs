@@ -28,6 +28,24 @@ const DOCUMENT=Object.freeze({
     migrations:259,production:false,resourceMs:3600000,cos:false,worker:true,approval:false
   })
 });
+const RELAY=Object.freeze({
+  purpose:'CURRENT259_RELAY_DIAGNOSTIC_LOCAL',
+  entry:'services/api/prisma/task12-current259-relay-diagnostic-once.cjs',
+  planName:'RELAY-PLAN.json',
+  scope:Object.freeze({isolatedContainers:1,migrations:0,seedWrites:0,roleChanges:0,positiveClients:2,identityReads:4,
+    requests:0,production:false,resourceMs:3600000,operationMs:15000,connectSeconds:5,poolSeconds:5,cos:false})
+});
+const READONLY_RELAY=Object.freeze({
+  purpose:'CURRENT259_READONLY_RELAY_PROBE_V2_LOCAL',
+  entry:'services/api/prisma/task12-current259-readonly-relay-once.cjs',
+  planName:'RELAY-READONLY-PLAN.json',
+  scope:Object.freeze({isolatedContainers:1,migrations:0,seedWrites:0,roleChanges:0,identityClients:2,identityReads:4,
+    closeKinds:Object.freeze(['REAL_FIN','CLOSED_BY_RESET']),requests:0,production:false,resourceMs:3600000,
+    operationMs:15000,connectSeconds:5,poolSeconds:5,cos:false})
+});
+const DRAFT_IDENTITY261=Object.freeze({purpose:'CURRENT261_GENERATED_DRAFT_IDENTITY_V2_LOCAL',
+  entry:ENTRY,planName:'DRAFT-IDENTITY261-PLAN.json',scope:Object.freeze({...SCOPE,
+    identityProfile:'TASK12_DRAFT261_TLS_IDENTITY_V2'})});
 const DRAFT=Object.freeze({purpose:PURPOSE,entry:ENTRY,planName:'PLAN.json',scope:SCOPE});
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const hex=(value,length)=>typeof value==='string'&&value.length===length&&/^[a-f0-9]+$/u.test(value);
@@ -82,17 +100,23 @@ function archiveScope(scope,source){
   return {...scope,migrations,stages:[`technical${migrations}`,...scope.stages.slice(1)]};
 }
 function planFor(options,source,protocol,runtime){
-  const {packetRoot,daemonId,caseId,businessDate}=fixed(options,['packetRoot','daemonId','caseId','businessDate']);
-  need(typeof daemonId==='string'&&/^[A-Za-z0-9:-]{16,128}$/u.test(daemonId)&&typeof caseId==='string'&&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(caseId)&&
-    typeof businessDate==='string'&&/^\d{4}-\d{2}-\d{2}$/u.test(businessDate)&&!businessDate.startsWith('0000'));
-  const day=new Date(businessDate+'T00:00:00.000Z');
-  need(Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===businessDate);
-  const root=path.join(packetRoot,'run');
+  const relay=protocol===RELAY||protocol===READONLY_RELAY;
+  const {packetRoot,daemonId,caseId,businessDate}=fixed(options,['packetRoot','daemonId',...(relay?[]:['caseId','businessDate'])]);
+  if(protocol===DRAFT_IDENTITY261)need(source.ledgerSha256===require('../services/api/prisma/task16-current259-profile.cjs').PAYMENT261_LEDGER_SHA256,'SCOPE');
+  need(typeof daemonId==='string'&&/^[A-Za-z0-9:-]{16,128}$/u.test(daemonId));
+  if(!relay){
+    need(typeof caseId==='string'&&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(caseId)&&
+      typeof businessDate==='string'&&/^\d{4}-\d{2}-\d{2}$/u.test(businessDate)&&!businessDate.startsWith('0000'));
+    const day=new Date(businessDate+'T00:00:00.000Z');
+    need(Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===businessDate);
+  }
+  const root=path.join(packetRoot,protocol===DRAFT_IDENTITY261?'draft-identity261-run':protocol===READONLY_RELAY?'relay-readonly-run':relay?'relay-run':'run');
   return {version:1,purpose:protocol.purpose,entry:protocol.entry,source,packet:{root:packetRoot,identity:directory(packetRoot,'DIRECTORY')},
-    resource:{...RESOURCE,daemonId},case:{id:caseId,businessDate,relationship:'inside',contractTypeKey:'material_purchase',operating:false},
+    resource:{...RESOURCE,daemonId},
+    ...(!relay?{case:{id:caseId,businessDate,relationship:'inside',contractTypeKey:'material_purchase',operating:false}}:{}),
     run:{root,identity:directory(root,'DIRECTORY'),resourceDir:path.join(root,'resource'),
-      attemptFile:path.join(root,'attempt.json'),receiptFile:path.join(root,'receipt.json')},scope:archiveScope(protocol.scope,source),
+      attemptFile:path.join(root,'attempt.json'),receiptFile:path.join(root,'receipt.json')},scope:relay?protocol.scope:archiveScope(protocol.scope,source),
     ...(runtime?{runtime}:{})};
 }
 function writeNew(file,bytes){
@@ -127,6 +151,23 @@ function prepareCurrent259GeneratedDocumentPlan(options){
   return preparePlan(common,DOCUMENT,documentRuntime(runtime,common.packetRoot).coordinates);
 }
 
+function prepareCurrent259RelayDiagnosticPlan(options){
+  need(arguments.length===1);
+  return preparePlan(options,RELAY);
+}
+
+function prepareCurrent261DraftIdentityPlan(options){
+  need(arguments.length===1);return preparePlan(options,DRAFT_IDENTITY261);
+}
+function verifyCurrent261DraftIdentityPlan(file,digest){
+  need(arguments.length===2);return verifyPlan(file,digest,DRAFT_IDENTITY261);
+}
+
+function prepareCurrent259ReadonlyRelayPlan(options){
+  need(arguments.length===1);
+  return preparePlan(options,READONLY_RELAY);
+}
+
 function preparePlan(options,protocol,runtime){
   const captured=material(),plan=planFor(options,captured.source,protocol,runtime);
   need(fs.readdirSync(plan.run.root).length===0,'RUN_ALREADY_USED');
@@ -145,18 +186,30 @@ function verifyCurrent259GeneratedDocumentPlan(file,digest){
   return verifyPlan(file,digest,DOCUMENT);
 }
 
+function verifyCurrent259RelayDiagnosticPlan(file,digest){
+  need(arguments.length===2);
+  return verifyPlan(file,digest,RELAY);
+}
+
+function verifyCurrent259ReadonlyRelayPlan(file,digest){
+  need(arguments.length===2);
+  return verifyPlan(file,digest,READONLY_RELAY);
+}
+
 function verifyPlan(file,digest,protocol){
   need(hex(digest,64)&&typeof file==='string'&&path.basename(file)===protocol.planName);
   directory(path.dirname(file),'DIRECTORY');
   const data=read(file,{privateFile:true,maxBytes:512*1024,collect:true,code:'CURRENT259_GENERATED_DRAFT_PLAN_FILE'});
   need(data.sha256===digest,'DIGEST');
   let raw;try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data.bytes));}catch{throw fault('JSON');}
-  const document=protocol===DOCUMENT;
-  const fields=fixed(raw,['version','purpose','entry','source','packet','resource','case','run','scope',...(document?['runtime']:[])],'SCOPE');
+  const document=protocol===DOCUMENT,relay=protocol===RELAY||protocol===READONLY_RELAY;
+  const fields=fixed(raw,['version','purpose','entry','source','packet','resource',...(relay?[]:['case']),'run','scope',
+    ...(document?['runtime']:[])],'SCOPE');
   need(fields.version===1&&fields.purpose===protocol.purpose&&fields.entry===protocol.entry,'SCOPE');
   const runtime=document?documentRuntime(fields.runtime,path.dirname(file)):undefined;
   const captured=material();
-  const options={packetRoot:path.dirname(file),daemonId:fields.resource?.daemonId,caseId:fields.case?.id,businessDate:fields.case?.businessDate};
+  const options={packetRoot:path.dirname(file),daemonId:fields.resource?.daemonId,
+    ...(!relay?{caseId:fields.case?.id,businessDate:fields.case?.businessDate}:{})};
   const expected=planFor(options,captured.source,protocol,runtime?.coordinates);
   need(equal(expected,fields),'SCOPE');
   let failed=false;
@@ -180,31 +233,40 @@ function verifyPlan(file,digest,protocol){
     ...(runtime?{runtime:runtime.verified}:{})});
 }
 module.exports=Object.freeze({prepareCurrent259GeneratedDraftPlan,verifyCurrent259GeneratedDraftPlan,
-  prepareCurrent259GeneratedDocumentPlan,verifyCurrent259GeneratedDocumentPlan});
+  prepareCurrent259GeneratedDocumentPlan,verifyCurrent259GeneratedDocumentPlan,
+  prepareCurrent259RelayDiagnosticPlan,verifyCurrent259RelayDiagnosticPlan,
+  prepareCurrent259ReadonlyRelayPlan,verifyCurrent259ReadonlyRelayPlan,prepareCurrent261DraftIdentityPlan,verifyCurrent261DraftIdentityPlan});
 
 if(require.main===module){
   try{
     const args=process.argv.slice(2);
     let result;
     const document=args[0]==='--prepare-document'||args[0]==='--verify-document';
-    const protocol=document?DOCUMENT:DRAFT;
-    if(args.length===3&&['--prepare','--prepare-document'].includes(args[0])&&args[1]==='--public-input'){
+    const relay=['--prepare-relay','--verify-relay'].includes(args[0]);
+    const readonlyRelay=['--prepare-readonly-relay','--verify-readonly-relay'].includes(args[0]);
+    const draftIdentity=args[0]==='--prepare-draft-identity261'||args[0]==='--verify-draft-identity261';
+    const protocol=draftIdentity?DRAFT_IDENTITY261:readonlyRelay?READONLY_RELAY:relay?RELAY:document?DOCUMENT:DRAFT;
+    if(args.length===3&&['--prepare','--prepare-document','--prepare-relay','--prepare-readonly-relay','--prepare-draft-identity261'].includes(args[0])&&args[1]==='--public-input'){
       const file=args[2];
-      need(path.basename(file)===(document?'GENERATED-DOCUMENT-PUBLIC-INPUT.json':'GENERATED-DRAFT-PUBLIC-INPUT.json'));
+      need(path.basename(file)===(draftIdentity?'DRAFT-IDENTITY261-PUBLIC-INPUT.json':readonlyRelay?'RELAY-READONLY-PUBLIC-INPUT.json':relay?'RELAY-PUBLIC-INPUT.json':document?'GENERATED-DOCUMENT-PUBLIC-INPUT.json':'GENERATED-DRAFT-PUBLIC-INPUT.json'));
       directory(path.dirname(file),'DIRECTORY');
       const input=read(file,{privateFile:true,maxBytes:16384,collect:true,code:'CURRENT259_GENERATED_DRAFT_PLAN_INPUT'});
       const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(input.bytes));
       need(value?.packetRoot===path.dirname(file));
-      result=(document?prepareCurrent259GeneratedDocumentPlan:prepareCurrent259GeneratedDraftPlan)(value);
+      result=(draftIdentity?prepareCurrent261DraftIdentityPlan:readonlyRelay?prepareCurrent259ReadonlyRelayPlan:relay?prepareCurrent259RelayDiagnosticPlan:document?prepareCurrent259GeneratedDocumentPlan:prepareCurrent259GeneratedDraftPlan)(value);
     }else{
-      need(args.length===5&&['--verify','--verify-document'].includes(args[0])&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256');
+      need(args.length===5&&['--verify','--verify-document','--verify-relay','--verify-readonly-relay','--verify-draft-identity261'].includes(args[0])&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256');
       const checked=verifyPlan(args[2],args[4],protocol);
       result={status:`${protocol.purpose.slice(0,-6)}_PLAN_VERIFIED_HOLD`,planSha256:checked.sha256,candidateSha:checked.plan.source.candidateSha};
     }
     process.stdout.write(JSON.stringify(result)+'\n');
   }catch{
     const document=['--prepare-document','--verify-document'].includes(process.argv[2]);
-    process.stdout.write(JSON.stringify({status:document?'CURRENT259_GENERATED_DOCUMENT_PLAN_REJECTED_HOLD':'CURRENT259_GENERATED_DRAFT_PLAN_REJECTED_HOLD'})+'\n');
+    const relay=['--prepare-relay','--verify-relay'].includes(process.argv[2]);
+    const readonlyRelay=['--prepare-readonly-relay','--verify-readonly-relay'].includes(process.argv[2]);
+    const draftIdentity=['--prepare-draft-identity261','--verify-draft-identity261'].includes(process.argv[2]);
+    process.stdout.write(JSON.stringify({status:draftIdentity?'CURRENT261_GENERATED_DRAFT_IDENTITY_V2_PLAN_REJECTED_HOLD':readonlyRelay?'CURRENT259_READONLY_RELAY_PROBE_V2_PLAN_REJECTED_HOLD':relay?'CURRENT259_RELAY_DIAGNOSTIC_PLAN_REJECTED_HOLD':
+      document?'CURRENT259_GENERATED_DOCUMENT_PLAN_REJECTED_HOLD':'CURRENT259_GENERATED_DRAFT_PLAN_REJECTED_HOLD'})+'\n');
     process.exitCode=1;
   }
 }

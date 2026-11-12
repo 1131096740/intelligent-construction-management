@@ -105,6 +105,8 @@ async function runCurrent259FirstQ2Application(bridge) {
   let closeModule,closeApplication,nativeResult,generatedResult,generatedHttpFailure;
   let providersAttempted=false,compileAttempted=false,pending=false;
   let failure,cleanupUnknown=false,stage='PREPARE';
+  const diagnostic=bridge.generated?bridge.diagnostic:undefined;
+  diagnostic?.enter('APP_PREPARE');
   const check=()=>{bridge.check();environment.check();};
   const bounded=async operation=>{
     let timer;
@@ -122,6 +124,7 @@ async function runCurrent259FirstQ2Application(bridge) {
     const tokens=['PrismaService','ContractDirectArchiveRuntime','ContractUpwardDirectArchiveRuntime'].map(key=>data(loaded,key));
     need(tokens.every(token=>typeof token==='function') && new Set(tokens).size===3,'PROVIDERS');
     stage='CONSTRUCT';
+    diagnostic?.enter('APP_CONSTRUCT');
     providersAttempted=true;
     const providers=bridge.constructProviders();
     check();
@@ -137,17 +140,20 @@ async function runCurrent259FirstQ2Application(bridge) {
       need(tokens.every((token,index)=>get.call(target,token)===providers[index]),'PROVIDERS');
     };
     stage='COMPILE';
+    diagnostic?.enter('APP_COMPILE');
     compileAttempted=true;
     testing=await bounded(()=>method(builder,'compile').call(builder));
     need(isCurrent259OwnedModule(testing),'MODULE');
     closeModule=method(testing,'close');
     check();verifyProviderIdentity(testing);
     stage='CREATE';
+    diagnostic?.enter('APP_CREATE');
     try{application=createCurrent259OwnedApplication(testing);}
     catch(error){orphan=takeCurrent259CreationFailure(error);throw error;}
     owned=current259OwnedApplicationView(application);
     closeApplication=method(owned,'close');
     check();verifyProviderIdentity(owned);
+    diagnostic?.enter('APP_SECURITY');
     data(loaded,'configureApiSecurity')(owned);check();
     data(loaded,'configureProjectionExportJson')(owned);check();
     const adapter=method(owned,'getHttpAdapter').call(owned);
@@ -156,14 +162,18 @@ async function runCurrent259FirstQ2Application(bridge) {
     method(owned,'enableCors').call(owned,{origin:[],credentials:false});
     method(owned,'useGlobalPipes').call(owned,data(loaded,'createApiValidationPipe')());
     stage='INIT';
+    diagnostic?.enter('APP_INIT');
     check();await bounded(()=>method(owned,'init').call(owned));check();
     verifyProviderIdentity(testing);verifyProviderIdentity(owned);
     stage='TLS';
+    diagnostic?.enter('APP_PROVIDER_TLS');
     need(await bridge.verifyProviders()===5,'PROVIDERS');check();
     verifyProviderIdentity(owned);
     stage='LISTEN';
+    diagnostic?.enter('APP_LISTEN');
     server=method(owned,'getHttpServer').call(owned);
     await bounded(()=>data(loaded,'listenApi')(owned,0,'127.0.0.1'));check();
+    diagnostic?.enter('APP_ADDRESS');
     const address=method(server,'address').call(server);
     need(server.listening===true && data(address,'address')==='127.0.0.1' && data(address,'family')==='IPv4' &&
       Number.isInteger(data(address,'port')) && data(address,'port')>1024 && data(address,'port')<=65535,'ADDRESS');
@@ -188,6 +198,7 @@ async function runCurrent259FirstQ2Application(bridge) {
     }
     if(bridge.generated){
       stage='GENERATED_HTTP';
+      diagnostic?.enter('APP_GENERATED_HTTP');
       need(!bridge.native,'GENERATED_HTTP');
       const {runCurrent259GeneratedDraftHttp}=require('./task12-current259-generated-draft-http.cjs');
       const qualified=Object.freeze({...bridge.generated,check});
@@ -208,9 +219,11 @@ async function runCurrent259FirstQ2Application(bridge) {
       check();verifyProviderIdentity(owned);
     }
   }catch(error){
+    diagnostic?.capture(error,ownFaults.get(error));
     failure=fault(ownFaults.get(error)??stage);
     if(generatedHttpFailure)Object.defineProperty(failure,'generatedHttpFailure',{value:generatedHttpFailure,enumerable:true});
   }
+  diagnostic?.enter('APP_CLOSE');
   try{
     if(closeApplication)await bounded(()=>closeApplication.call(owned));
     else if(orphan)await bounded(()=>orphan.close());
@@ -218,11 +231,15 @@ async function runCurrent259FirstQ2Application(bridge) {
     else if(providersAttempted && !compileAttempted)await bridge.disconnectUnowned();
     else if(compileAttempted)cleanupUnknown=true;
     if(server)need(server.listening===false,'CLOSE');
-    if(providersAttempted && !pending && !cleanupUnknown)await bridge.verifyClosed();
-  }catch{cleanupUnknown=true;}
+    if(providersAttempted && !pending && !cleanupUnknown){
+      diagnostic?.enter('APP_CLOSE_READBACK');
+      await bridge.verifyClosed();
+    }
+  }catch(error){diagnostic?.capture(error,ownFaults.get(error));cleanupUnknown=true;}
   finally{
     if(environment && !cleanupUnknown && !pending){
-      try{environment.restore();}catch{cleanupUnknown=true;}
+      diagnostic?.enter('APP_ENV_RESTORE');
+      try{environment.restore();}catch(error){diagnostic?.capture(error,ownFaults.get(error));cleanupUnknown=true;}
     }
     // An unresolved operation may still own the process environment.
     if(!cleanupUnknown && !pending)busy=false;

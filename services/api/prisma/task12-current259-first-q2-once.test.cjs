@@ -6,7 +6,7 @@ const {createHash}=require('node:crypto');
 const entry=path.join(__dirname,'task12-current259-first-q2-once.cjs');
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 
-function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInput=false,forgeKey=false,forgeGeneration=false,forgeFixedBytes=false,outside=false,operating=false,wrongScenario=false,persistedDrift=false,wrongLedgerXmin=false,failureKind,preflight}={}){
+function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInput=false,forgeKey=false,forgeGeneration=false,forgeFixedBytes=false,outside=false,operating=false,wrongScenario=false,persistedDrift=false,wrongLedgerXmin=false,failureKind,preflight,identity=false}={}){
   const root=fs.mkdtempSync('/private/tmp/jg-394-once-model-');
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const runRoot=path.join(root,'run');fs.mkdirSync(runRoot,{mode:0o700});
@@ -26,7 +26,7 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
     slots[file]=bytes;
     cos[purpose]={file,sha256:drift&&index===0?'f'.repeat(64):digest(bytes),identity:{mode:0o600}};
   }
-  const plan={purpose:outside&&operating?'CURRENT259_FIRST_OUTSIDE_OPERATING_PRIVATE_COS'
+  const plan={...(identity?{scope:{identityProfile:'TASK12_UPWARD_Q2_TLS_IDENTITY_V2'}}:{}),purpose:outside&&operating?'CURRENT259_FIRST_OUTSIDE_OPERATING_PRIVATE_COS'
       :outside?'CURRENT259_FIRST_OUTSIDE_DIRECT_PRIVATE_COS':'CURRENT259_FIRST_Q2_PRIVATE_COS',source:{candidateSha:'a'.repeat(40)},
     case:{id:caseId,businessDate:today,operating,...(outside?{relationship:'outside'}:{})},cos,resource:{daemonId:'model-daemon-12345',transport:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS'},
     run:{root:runRoot,attemptFile,receiptFile,resourceDir:path.join(runRoot,'resource')}};
@@ -62,12 +62,13 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
   if(alterEvidence)evidence.downloadSha256='d'.repeat(64);
   const appReceipt=Object.freeze({evidence,evidenceSha256,status:outside&&!wrongScenario?(operating?'CURRENT259_FIRST_OUTSIDE_OPERATING_HTTP_AND_NEST_CLOSED'
     :'CURRENT259_FIRST_OUTSIDE_DIRECT_HTTP_AND_NEST_CLOSED'):'CURRENT259_FIRST_Q2_HTTP_AND_NEST_CLOSED',httpSteps:9,verifiedClients:5,storageAcceptance:true,proofSha256:'b'.repeat(64)});
-  const proc={argv:['node',entry,'--plan',path.join(root,'PLAN.json'),'--expected-plan-sha256',sha256,...(once?['--once']:[])],
+  const proc={argv:['node',entry,'--plan',path.join(root,'PLAN.json'),'--expected-plan-sha256',sha256,...(identity?['--identity261-v2']:[]),...(once?['--once']:[])],
     execArgv:preflight==='FRESH'?['--synthetic']:[],env:preflight==='HOST_ENV'?{HTTPS_PROXY:'sensitive-synthetic-value'}:{},getuid:process.getuid,stdout:{write:value=>calls.push(JSON.parse(value))},once(){},removeListener(){}};
   if(preflight==='ARGS')proc.argv[4]='--synthetic-path-token';
   const holder={exports:{}};
   const permitUse={},checks=[];
   const ports={
+    './task12-current259-identity-authority.cjs':{captureIdentityMain(){}},
     '../../../scripts/prepare-task12-current259-first-q2.cjs':{verifyCurrent259FirstQ2Plan(){
       if(preflight==='PLAN_VERIFY')throw Object.assign(new Error('sensitive-synthetic-value'),{code:'CURRENT259_FIRST_Q2_PLAN_MATERIAL'});
       return {plan,sha256,buildHandle:{},check(){if(preflight==='PLAN_RECHECK')throw new Error('sensitive-synthetic-value');checks.push('full');},
@@ -116,6 +117,33 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
       return appReceipt;
     }}
   };
+  if(identity){
+    const plans=ports['../../../scripts/prepare-task12-current259-first-q2.cjs'];
+    plans.verifyCurrent261UpwardIdentityPlan=plans.verifyCurrent259FirstQ2Plan;
+    plans.verifyCurrent259FirstQ2Plan=()=>{throw new Error('old verifier cannot read new plan');};
+    const physical=ports['./task16-current259-owned-resource.cjs'];
+    physical.withCurrent259Identity261Resource=async(build,requested,signal,permit,use)=>{
+      const scope={...requested,sourceSha:plan.source.candidateSha,signal};
+      assert.equal(holder.exports.claimIdentity261Resource({...permit},scope),undefined);
+      assert.equal(holder.exports.claimIdentity261Resource(permit,{...scope,daemonId:'wrong-daemon'}),undefined);
+      assert.equal(holder.exports.claimIdentity261Resource(permit,scope).profile,plan.scope.identityProfile);
+      assert.equal(holder.exports.claimIdentity261Resource(permit,scope),undefined);
+      return physical.withCurrent259FirstQ2LoopbackResource(build,requested,signal,use);
+    };
+    const logins=ports['./task12-current259-contract-login.cjs'];
+    logins.withCurrent261UpwardIdentitySeededLogin=async(acl,h,f,caseId,permit,use)=>{
+      const scope={profile:plan.scope.identityProfile,caseId,sourceSha:plan.source.candidateSha};
+      assert.equal(holder.exports.claimIdentity261Stage({...permit},h,scope),false);
+      assert.equal(holder.exports.claimIdentity261Stage(permit,{},scope),false);
+      assert.equal(holder.exports.claimIdentity261Stage(permit,h,scope),true);
+      assert.equal(holder.exports.claimIdentity261Stage(permit,h,scope),false);
+      const result=await logins.withCurrent259FirstQ2SeededLogin(acl,h,f,use);
+      const names=['jg_fixture_app_'+'c'.repeat(24),'jg_c259_outside_issuer_login','jg_c259_outside_executor_login',
+        'jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
+      return {...result,identityQualification:{profile:plan.scope.identityProfile,
+        clients:names.map(name=>({name,identityVerified:true,closeKind:'CLOSED_BY_RESET',backendGone:true}))}};
+    };
+  }
   const rq=name=>{
     if(preflight==='PLAN_IMPORT'&&name==='../../../scripts/prepare-task12-current259-first-q2.cjs')throw new Error('sensitive-synthetic-value');
     if(preflight==='DEPENDENCIES'&&name==='./task12-current259-first-q2-cos-native.cjs')throw new Error('sensitive-synthetic-value');
@@ -279,4 +307,12 @@ test('the operating once publishes a bounded ledger proof only after matching ar
   const stopped=JSON.parse(fs.readFileSync(drift.receiptFile,'utf8'));
   assert.equal(stopped.status,'CURRENT259_FIRST_Q2_STOPPED');
   assert.equal(stopped.evidence,undefined);
+});
+
+test('identity261 upward preserves every original COS, stage and public request assertion with distinct stage permits',async t=>{
+ const f=model(t,{identity:true});await settled(f);
+ const receipt=JSON.parse(fs.readFileSync(f.receiptFile,'utf8'));
+ assert.equal(receipt.status,'CURRENT261_FIRST_Q2_IDENTITY_V2_ACCEPTANCE_COMPLETE');
+ assert.equal(receipt.identityQualification.clients.length,5);
+ assert.deepEqual(f.calls.filter(value=>typeof value==='string'),['material','material','cos','resource','migrate','roles','archive','acl','seeded','app','cleanup']);
 });

@@ -25,6 +25,9 @@ const OUTSIDE_SCOPE=Object.freeze({...SCOPE,stages:Object.freeze([...SCOPE.stage
 const OUTSIDE_OPERATING_SCOPE=Object.freeze({...SCOPE,stages:Object.freeze([...SCOPE.stages.slice(0,-2),'firstOutsideOperatingHttp','ownedCleanup'])});
 const PROFILES=Object.freeze({
   upward:Object.freeze({purpose:PURPOSE,scope:SCOPE,uploadPrefix:current259FirstQ2UploadPrefix,status:'CURRENT259_FIRST_Q2'}),
+  'upward-identity261':Object.freeze({purpose:'CURRENT261_FIRST_Q2_IDENTITY_V2_PRIVATE_COS',
+    scope:Object.freeze({...SCOPE,identityProfile:'TASK12_UPWARD_Q2_TLS_IDENTITY_V2'}),
+    uploadPrefix:current259FirstQ2UploadPrefix,status:'CURRENT261_FIRST_Q2_IDENTITY_V2'}),
   outside:Object.freeze({purpose:OUTSIDE_PURPOSE,scope:OUTSIDE_SCOPE,uploadPrefix:current259FirstOutsideDirectUploadPrefix,status:'CURRENT259_FIRST_OUTSIDE_DIRECT'}),
   'outside-operating':Object.freeze({purpose:OUTSIDE_OPERATING_PURPOSE,scope:OUTSIDE_OPERATING_SCOPE,
     uploadPrefix:current259FirstOutsideOperatingUploadPrefix,status:'CURRENT259_FIRST_OUTSIDE_OPERATING'}),
@@ -91,7 +94,8 @@ function archiveScope(scope,source){
   return {...scope,migrations,stages:[`technical${migrations}`,...scope.stages.slice(1)]};
 }
 function planFor(options,source,scenario){
-  const profile=PROFILES[scenario],outside=scenario!=='upward';
+  const profile=PROFILES[scenario],outside=scenario!=='upward'&&scenario!=='upward-identity261';
+  if(scenario==='upward-identity261')need(source.ledgerSha256===require('../services/api/prisma/task16-current259-profile.cjs').PAYMENT261_LEDGER_SHA256,'SCOPE');
   const {packetRoot,daemonId,caseId,businessDate,operating,cos}=fixed(options,['packetRoot','daemonId','caseId','businessDate','operating','cos']);
   need(typeof daemonId==='string'&&/^[A-Za-z0-9:-]{16,128}$/u.test(daemonId)&&typeof operating==='boolean'&&
     typeof businessDate==='string'&&/^\d{4}-\d{2}-\d{2}$/u.test(businessDate)&&!businessDate.startsWith('0000'),'INPUT');
@@ -107,7 +111,7 @@ function planFor(options,source,scenario){
     Number.isFinite(Date.parse(storage.expiresAt))&&new Date(storage.expiresAt).toISOString()===storage.expiresAt&&
     hex(storage.canarySha256,64)&&Number.isInteger(storage.canaryBytes)&&storage.canaryBytes>0&&storage.canaryBytes<=16384&&
     hex(storage.applicationSha256,64)&&hex(storage.observerSha256,64)&&storage.applicationSha256!==storage.observerSha256);
-  const identity=directory(packetRoot,'DIRECTORY'),root=path.join(packetRoot,'run'),inputs=path.join(packetRoot,'cos');
+  const identity=directory(packetRoot,'DIRECTORY'),root=path.join(packetRoot,scenario==='upward-identity261'?'upward-identity261-run':'run'),inputs=path.join(packetRoot,'cos');
   const runIdentity=directory(root,'DIRECTORY'),inputsIdentity=directory(inputs,'MATERIAL');
   const application=materialSlot(inputs,'application-sts.json',storage.applicationSha256);
   const observer=materialSlot(inputs,'observer-sts.json',storage.observerSha256);
@@ -133,7 +137,7 @@ function prepare(options,scenario){
   fixed(options,['packetRoot','daemonId','caseId','businessDate','operating','cos']);
   const captured=material(),plan=planFor(options,captured.source,scenario);
   need(fs.readdirSync(plan.run.root).length===0,'RUN_ALREADY_USED');
-  const file=path.join(plan.packet.root,'PLAN.json'),bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');
+  const file=path.join(plan.packet.root,scenario==='upward-identity261'?'UPWARD-IDENTITY261-PLAN.json':'PLAN.json'),bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');
   writeNew(file,bytes);
   return Object.freeze({status:PROFILES[scenario].status+'_PLAN_PREPARED_HOLD',file,sha256:hash(bytes),candidateSha:plan.source.candidateSha});
 }
@@ -149,15 +153,24 @@ function prepareCurrent259FirstOutsideOperatingPlan(options){
   need(arguments.length===1);
   return prepare(options,'outside-operating');
 }
+function prepareCurrent261UpwardIdentityPlan(options){
+  need(arguments.length===1);return prepare(options,'upward-identity261');
+}
 function verifyCurrent259FirstQ2Plan(file,digest){
-  need(arguments.length===2&&hex(digest,64)&&typeof file==='string'&&path.basename(file)==='PLAN.json');
+  need(arguments.length===2);return verifyPlan(file,digest,false);
+}
+function verifyCurrent261UpwardIdentityPlan(file,digest){
+  need(arguments.length===2);return verifyPlan(file,digest,true);
+}
+function verifyPlan(file,digest,identity){
+  need(hex(digest,64)&&typeof file==='string'&&path.basename(file)===(identity?'UPWARD-IDENTITY261-PLAN.json':'PLAN.json'));
   directory(path.dirname(file),'DIRECTORY');
   const data=read(file,{privateFile:true,maxBytes:512*1024,collect:true,code:'CURRENT259_FIRST_Q2_PLAN_FILE'});
   need(data.sha256===digest,'DIGEST');
   let raw;try{raw=JSON.parse(data.bytes.toString('utf8'));}catch{throw fault('JSON');}
   const fields=fixed(raw,['version','purpose','entry','source','packet','resource','case','cos','run','scope'],'SCOPE');
   const scenario=Object.keys(PROFILES).find(key=>PROFILES[key].purpose===fields.purpose);
-  need(fields.version===1&&scenario&&fields.entry===ENTRY,'SCOPE');
+  need(fields.version===1&&scenario&&fields.entry===ENTRY&&(scenario==='upward-identity261')===identity,'SCOPE');
   const c=fields.cos,k=fields.case;
   need(c&&k&&fields.resource&&c.canary&&c.application&&c.observer,'SCOPE');
   const captured=material();
@@ -182,7 +195,7 @@ function verifyCurrent259FirstQ2Plan(file,digest){
   }
   return Object.freeze({plan:freeze(expected),sha256:digest,buildHandle:captured.handle,loader:captured.loader,check,checkContinuity});
 }
-module.exports=Object.freeze({prepareCurrent259FirstQ2Plan,prepareCurrent259FirstOutsideDirectPlan,prepareCurrent259FirstOutsideOperatingPlan,verifyCurrent259FirstQ2Plan});
+module.exports=Object.freeze({prepareCurrent259FirstQ2Plan,prepareCurrent259FirstOutsideDirectPlan,prepareCurrent259FirstOutsideOperatingPlan,verifyCurrent259FirstQ2Plan,prepareCurrent261UpwardIdentityPlan,verifyCurrent261UpwardIdentityPlan});
 
 if(require.main===module){
   try{
@@ -191,7 +204,7 @@ if(require.main===module){
     if(args.length===3&&args[0]==='--prepare'&&args[1]==='--public-input'){
       const publicFile=args[2];
       const filename=path.basename(publicFile);
-      const preparers={'Q2-PUBLIC-INPUT.json':prepareCurrent259FirstQ2Plan,
+      const preparers={'Q2-PUBLIC-INPUT.json':prepareCurrent259FirstQ2Plan,'UPWARD-IDENTITY261-PUBLIC-INPUT.json':prepareCurrent261UpwardIdentityPlan,
         'OUTSIDE-DIRECT-PUBLIC-INPUT.json':prepareCurrent259FirstOutsideDirectPlan,
         'OUTSIDE-DIRECT-OPERATING-PUBLIC-INPUT.json':prepareCurrent259FirstOutsideOperatingPlan};
       need(Object.hasOwn(preparers,filename));
@@ -201,8 +214,8 @@ if(require.main===module){
       need(value?.packetRoot===path.dirname(publicFile));
       result=preparers[filename](value);
     }else{
-      need(args.length===5&&args[0]==='--verify'&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256');
-      const checked=verifyCurrent259FirstQ2Plan(args[2],args[4]);
+      need(args.length===5&&['--verify','--verify-identity261'].includes(args[0])&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256');
+      const checked=(args[0]==='--verify-identity261'?verifyCurrent261UpwardIdentityPlan:verifyCurrent259FirstQ2Plan)(args[2],args[4]);
       const profile=Object.values(PROFILES).find(value=>value.purpose===checked.plan.purpose);
       result={status:profile.status+'_PLAN_VERIFIED_HOLD',planSha256:checked.sha256,candidateSha:checked.plan.source.candidateSha};
     }

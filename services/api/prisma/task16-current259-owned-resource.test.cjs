@@ -11,7 +11,7 @@ test('plain resource proof cannot create or claim an owned259 resource',async()=
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const sourceFile=path.join(__dirname,'task16-current259-owned-resource.cjs');
 function fixture(){
- const build=Object.freeze({}),continuityToken=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
+ const build=Object.freeze({}),continuityToken=Object.freeze({}),readonlyPermit=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:{ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24'}};
  const issuer=(token,handle)=>{assert.equal(token,continuityToken);assert.equal(handle,state.continuityHandle);};
  const loader=Object.freeze({check(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');},checkContinuity(token,handle){issuer(token,handle);state.metadataChecks=(state.metadataChecks??0)+1;if(!state.alive)throw new Error('STALE_METADATA');},verifyFull(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');if(state.fullInvalid)throw new Error('STALE_FULL_MATERIAL');},witness(){return {source,build:{trees:Array.from({length:5},(_,i)=>({root:String(i),digest:'d'.repeat(64)}))}};}});
@@ -57,6 +57,12 @@ function fixture(){
     };
     return resource;
    },
+   async startCurrent259ReadonlyRelayPostgres(options,permit){
+    assert.equal(permit,readonlyPermit);
+    resource.beginReadonlyRelayProbe=()=>Object.freeze({markDisconnect(){},finish(){}});
+    resource.applyCurrent259DocumentHbaV1=async()=>{};
+    return relayStart('readonly-start',q2Topology)(options);
+   },
    startCurrent259NormalPaymentPostgres:relayStart('normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'),
    startCurrent259AttributionGapPostgres:relayStart('gap-start','UNVERIFIED_PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS'),
    startCurrent259VoucherPostgres:relayStart('voucher-start','UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS'),
@@ -67,7 +73,7 @@ function fixture(){
  function privateRequire(name){if(Object.hasOwn(fixed,name)){const filename=privateRequire.resolve(name);entries[filename]||={exports:fixed[name],loaded:true};return entries[filename].exports;}if(name==='node:fs')return mockFs;if(name==='node:crypto')return mockCrypto;return require(name);}
  privateRequire.resolve=name=>path.join(__dirname,name);privateRequire.cache=entries;
  const instance={exports:{}};new Function('require','module','__dirname',fs.readFileSync(sourceFile,'utf8'))(privateRequire,instance,__dirname);
- return {api:instance.exports,build,continuityToken,calls,state,receipt,resource,loader,plan:{artifactsDir:'/private/tmp/model/run',daemonId:'synthetic-daemon-12345'}};
+ return {api:instance.exports,build,continuityToken,readonlyPermit,calls,state,receipt,resource,loader,plan:{artifactsDir:'/private/tmp/model/run',daemonId:'synthetic-daemon-12345'}};
 }
 test('a completed actual-shaped start owns one resource and the original loader only within its callback',async()=>{
  const f=fixture();let retained,view;
@@ -393,3 +399,26 @@ for(const [name,call,topology] of [
   assert.equal(f.state.closeCount,1);
  });
 }
+
+test('readonly resource exposes only original owner login and the separate probe capability',async()=>{
+ const f=fixture();
+ const signal=new AbortController().signal;
+ await f.api.withCurrent259ReadonlyRelayResource(f.build,f.plan,signal,f.readonlyPermit,async handle=>{
+  const view=f.api.claimCurrent259TechnicalResource(handle);
+  assert.deepEqual(Object.keys(view.credentials()),['owner']);
+  assert.equal(typeof view.beginReadonlyRelayProbe,'function');
+  assert.throws(()=>view.beginReadonlyRelayProbe({}),/CURRENT259_RESOURCE_DESCRIPTOR/u);
+  assert.equal(typeof view.beginReadonlyRelayProbe().finish,'function');
+  for(const name of ['checkContinuity','activateBusinessContinuity','beginPrismaRelayDrain'])assert.equal(view[name],undefined);
+  for(const name of ['execOwnerSql','applyCurrent259DocumentHbaV1','setServerCertificate','getReceiptContinuity'])
+   assert.equal(view.resource[name],undefined);
+ });
+ assert.equal(f.state.closeCount,1);
+ const historical=fixture();
+ await historical.api.withCurrent259FirstQ2LoopbackResource(historical.build,historical.plan,signal,async handle=>{
+  const view=historical.api.claimCurrent259TechnicalResource(handle);
+  assert.equal(view.beginReadonlyRelayProbe,undefined);
+  assert.equal(typeof view.resource.execOwnerSql,'function');
+  assert.equal(typeof view.beginPrismaRelayDrain,'function');
+ });
+});
