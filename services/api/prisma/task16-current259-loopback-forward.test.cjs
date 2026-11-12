@@ -130,9 +130,43 @@ test('malformed frames fail closed and the first fault survives later abort', { 
   await finished;
   client.destroy();
   fixture.controller.abort();
-  assert.throws(() => relay.check(), { code: 'CURRENT259_LOOPBACK_FORWARD_FRAME' });
+  assert.throws(() => relay.check(), { code: 'CURRENT259_LOOPBACK_FORWARD_FRAME', relayFrameStage: 'OVERSIZED_LENGTH' });
   await relay.close();
 });
+
+for (const [stage, output] of [
+  ['TRAILING_AFTER_FIN', child => child.stdout.write(Buffer.alloc(5))],
+  ['DATA_AFTER_FIN', async (child, client) => {
+    const ended = once(client, 'end');
+    child.stdout.write(Buffer.alloc(4));
+    await ended;
+    child.stdout.write(Buffer.from([1]));
+  }],
+  ['STDOUT_EOF_WITHOUT_FIN', child => child.stdout.end()],
+]) {
+  test('relay retains the first fixed frame guard ' + stage, { timeout: 5000 }, async t => {
+    const child = fakeWorker();
+    let accepted;
+    const ready = new Promise(resolve => { accepted = resolve; });
+    const fixture = load(t, () => { accepted(); return child; });
+    const relay = await fixture.start(), wait = relay.beginPrismaDrain();
+    t.after(() => relay.close());
+    const client = await connect(relay.port);
+    t.after(() => client.destroy());
+    client.resume();
+    await ready;
+    const failed = assert.rejects(wait(), error => {
+      assert.equal(error.code, 'CURRENT259_LOOPBACK_FORWARD_FRAME');
+      assert.equal(error.relayFrameStage, stage);
+      assert.equal(Object.isFrozen(error.relayCloseState), true);
+      assert.equal(error.relayCloseState.stdoutRawEnd, stage === 'STDOUT_EOF_WITHOUT_FIN');
+      assert.equal(error.relayCloseState.pgFin, stage === 'DATA_AFTER_FIN');
+      return true;
+    });
+    await output(child, client);
+    await failed;
+  });
+}
 
 test('connection cap closes the listener and never spawns a ninth worker', { timeout: 5000 }, async t => {
   let notify, started = 0;

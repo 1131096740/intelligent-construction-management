@@ -220,6 +220,7 @@ const fault = code => Object.assign(new Error(code), { code });
 const COMMAND_KINDS = new Set(["timeout", "aborted", "output-limit", "spawn-error", "signal-exit", "nonzero-exit"]);
 const CURSOR_STAGES = new Set(["CURSOR_DAEMON", "CURSOR_OWNERSHIP", "CURSOR_LOG_READ"]);
 const RELAY_CODE = /^CURRENT259_LOOPBACK_FORWARD_(?:ABORTED|CONFIG|LIMIT|CHILD|STREAM|FRAME|HALF_CLOSE_TIMEOUT|DEPLOY_DRAIN_TIMEOUT|DEPLOY_DRAIN_ACTIVE|LISTEN|CLOSED|CLEANUP)$/u;
+const RELAY_FRAME_STAGES = new Set(["DATA_AFTER_FIN", "OVERSIZED_LENGTH", "TRAILING_AFTER_FIN", "STDOUT_EOF_WITHOUT_FIN"]);
 const RELAY_CLOSE_FIELDS = ["hostFin", "stdinEnded", "pgFin", "stdoutEnded", "cliClosed",
   "stdoutRawEnd", "receiveSettled", "cliExited", "peerSocketDestroyed", "peerEndReturned"];
 function ownErrorField(error, key) {
@@ -435,8 +436,12 @@ async function prepareTask01Postgres(options = {}, lifetime) {
   function relayFailure(error) {
     const failure = fault("TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED"), code = ownErrorField(error, "code");
     if (typeof code === "string" && RELAY_CODE.test(code)) Object.defineProperty(failure, "relayCode", { value: code });
-    if (code === "CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT" || code === "CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT")
-      copyRelayCloseState(failure, error);
+    if (code === "CURRENT259_LOOPBACK_FORWARD_FRAME") {
+      const stage = ownErrorField(error, "relayFrameStage");
+      if (RELAY_FRAME_STAGES.has(stage)) Object.defineProperty(failure, "relayFrameStage", { value: stage });
+    }
+    if (code === "CURRENT259_LOOPBACK_FORWARD_FRAME" || code === "CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT" ||
+      code === "CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT") copyRelayCloseState(failure, error);
     return failure;
   }
   function checkRelay() {

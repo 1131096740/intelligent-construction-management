@@ -392,6 +392,25 @@ test('the owned resource copies only fixed half-close milestones from a relay ti
  await resource.close();
 });
 
+test('the owned resource projects fixed frame details without copying raw output',async()=>{
+ const f=rollbackResourceModel('healthy'),resource=await f.start();
+ const flags={hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,stdoutRawEnd:true,
+  receiveSettled:false,cliExited:false,peerSocketDestroyed:false,peerEndReturned:false};
+ for(const stage of ['STDOUT_EOF_WITHOUT_FIN','private stdout']){
+  f.failRelay(Object.assign(new Error('private trace'),{code:'CURRENT259_LOOPBACK_FORWARD_FRAME',
+   relayFrameStage:stage,relayCloseState:{...flags,raw:'private bytes'}}));
+  assert.throws(()=>resource.checkRelay(),error=>{
+   assert.equal(error.code,'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED');
+   assert.equal(error.relayCode,'CURRENT259_LOOPBACK_FORWARD_FRAME');
+   assert.equal(error.relayFrameStage,stage==='STDOUT_EOF_WITHOUT_FIN'?stage:undefined);
+   assert.deepEqual(error.relayCloseState,flags);
+   assert.doesNotMatch(String(error)+JSON.stringify(error.relayCloseState),/private/u);
+   return true;
+  });
+ }
+ await resource.close();
+});
+
 test('the first-rollback resource opens a Prisma relay wait and maps its fixed failure',async()=>{
  const f=rollbackResourceModel('healthy'),resource=await f.start();
  assert.throws(()=>resource.beginPrismaRelayDrain('other-deploy'),/TASK01_RESOURCE_CLOSED/u);

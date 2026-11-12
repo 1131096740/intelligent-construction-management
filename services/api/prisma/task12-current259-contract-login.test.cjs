@@ -162,6 +162,7 @@ function fixture(preloaded = false,transport=NAT) {
           'connection denied'),{errorCode:code});
       }
       this.backend=next();
+      if(control.failPositiveContinuity)control.failNextQualification=true;
       assert.equal(prefix,'SCRAM-SHA-256');
     }
     async $disconnect(){
@@ -211,6 +212,12 @@ function fixture(preloaded = false,transport=NAT) {
     loadContractApplicationModules(){assert.ok(control.applicationModel);return appModules;},createContractTestingModule(){}},
     verifyFull(){
       assert.equal(control.closed,undefined);
+      if(control.failNextQualification){
+        control.failNextQualification=false;
+        throw Object.assign(new Error('private relay bytes'),{
+          code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',
+          relayFrameStage:'STDOUT_EOF_WITHOUT_FIN'});
+      }
       if(control.lastNegative)control.trace?.push('qualify:'+control.lastNegative);
       if(control.pendingNegative)throw Object.assign(new Error('modeled peer did not drain before source checks'),
         {code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT'});
@@ -569,6 +576,21 @@ test('generated draft drains only the three expected peer rejections before the 
     assert.equal(trace[rejected-1],'begin-drain');
     assert.deepEqual(trace.slice(rejected,rejected+4),['reject:'+code,'drain:'+code,'qualify:'+code,'disconnect:'+code]);
   }
+});
+
+test('a relay fault after a positive connection returns reports its continuity stage',async()=>{
+  const model=fixture(false,Q2_RELAY);
+  model.control.generated=true;model.control.failPositiveContinuity=true;
+  await assert.rejects(model.api.withCurrent259GeneratedDraftAdmission(model.completion,model.handle,
+    '22345678-1234-4234-8234-123456789012'),error=>{
+    assert.deepEqual(error.admissionFailure,{stage:'TLS_POSITIVE_CONTINUITY',
+      operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',
+      relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',roleIndex:0});
+    assert.doesNotMatch(JSON.stringify(error),/private relay bytes/u);
+    return true;
+  });
+  assert.equal(model.calls.filter(value=>value==='disconnect').length,4);
+  assert.equal(model.control.closed,1);
 });
 
 test('the original non-draft Q2 login never opens a generated-draft drain window',async()=>{

@@ -5,7 +5,7 @@ const steps=Object.freeze(['LOGIN','CAPABILITY','CREATE','LEASE','WORKBENCH']);
 const statuses=new Set([200,201,400,401,403,404,405,409,413,415,422,429,500,502,503,504]);
 const admissionStages=new Set(['LOGIN_BEFORE','SEED_FIXTURE','SEED_BEFORE','SEED_WRITE','SEED_COMMITTED','SEED_CONTINUITY',
   'ROLE_WRITE','ROLE_COMMITTED','HBA_APPLY','HBA_COMMITTED','TLS_CA_FILES','TLS_ENDPOINT','TLS_CERTIFICATE',
-  'TLS_PLAINTEXT_WINDOW','TLS_PLAINTEXT_EVIDENCE','TLS_COMMITTED','CONSUMER','FINAL_CONTINUITY',
+  'TLS_PLAINTEXT_WINDOW','TLS_PLAINTEXT_EVIDENCE','TLS_POSITIVE_CONTINUITY','TLS_COMMITTED','CONSUMER','FINAL_CONTINUITY',
   'APP_IMPORT','APP_MODULES','APP_PREPARE','APP_CONSTRUCT','APP_COMPILE','APP_CREATE','APP_SECURITY','APP_INIT',
   'APP_PROVIDER_TLS','APP_PROVIDER_CONNECT','APP_PROVIDER_IDENTITY','APP_LISTEN','APP_ADDRESS','APP_GENERATED_HTTP',
   'APP_CLOSE','APP_CLOSE_READBACK','APP_ENV_RESTORE',
@@ -31,6 +31,9 @@ const relayCodes=new Set(['CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURR
   'CURRENT259_LOOPBACK_FORWARD_CHILD','CURRENT259_LOOPBACK_FORWARD_STREAM','CURRENT259_LOOPBACK_FORWARD_FRAME',
   'CURRENT259_LOOPBACK_FORWARD_CLOSED','CURRENT259_LOOPBACK_FORWARD_CONFIG','CURRENT259_LOOPBACK_FORWARD_LIMIT',
   'CURRENT259_LOOPBACK_FORWARD_ABORTED']);
+const relayFrameStages=new Set(['DATA_AFTER_FIN','OVERSIZED_LENGTH','TRAILING_AFTER_FIN','STDOUT_EOF_WITHOUT_FIN']);
+const relayCloseFields=['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited',
+  'peerSocketDestroyed','peerEndReturned'];
 const own=(value,key)=>value&&typeof value==='object'&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
 
 function projectGeneratedDraftHttpFailure(value){
@@ -45,9 +48,15 @@ function projectGeneratedDraftAdmissionFailure(value){
   const stage=own(value,'stage'),reason=own(value,'reason'),operationCode=own(value,'operationCode');
   const relayCode=own(value,'relayCode'),roleIndex=own(value,'roleIndex');
   if(!admissionStages.has(stage))return undefined;
+  const isFrame=relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME';
+  const frameStage=isFrame?own(value,'relayFrameStage'):undefined;
+  const sourceState=isFrame?own(value,'relayCloseState'):undefined;
+  const state=sourceState&&Object.fromEntries(relayCloseFields.map(key=>[key,own(sourceState,key)]));
   return Object.freeze({stage,...(admissionReasons.has(reason)?{reason}:{}),
     ...(operationCodes.has(operationCode)?{operationCode}:{}),
     ...(relayCodes.has(relayCode)?{relayCode}:{}),
+    ...(relayFrameStages.has(frameStage)?{relayFrameStage:frameStage}:{}),
+    ...(state&&Object.values(state).every(value=>typeof value==='boolean')?{relayCloseState:Object.freeze(state)}:{}),
     ...(Number.isInteger(roleIndex)&&roleIndex>=0&&roleIndex<5?{roleIndex}:{})});
 }
 
@@ -59,7 +68,9 @@ function createGeneratedDraftAdmissionDiagnostic(){
       const primary=own(error,'errorCode')??own(error,'code');
       return first??=projectGeneratedDraftAdmissionFailure({stage,reason,roleIndex,
         operationCode:operationCodes.has(primary)?primary:own(operationError,'errorCode')??own(operationError,'code'),
-        relayCode:own(error,'relayCode')??own(operationError,'relayCode')});
+        relayCode:own(error,'relayCode')??own(operationError,'relayCode'),
+        relayFrameStage:own(error,'relayFrameStage')??own(operationError,'relayFrameStage'),
+        relayCloseState:own(error,'relayCloseState')??own(operationError,'relayCloseState')});
     },
   });
 }

@@ -175,6 +175,13 @@ function runModel(t,{once=true,used=false,failure,wrongResult=false}={}){
         clientCleanup:'UNKNOWN',admissionFailure:{stage:'TLS_WRONG_CA_DISCONNECT',reason:'DISCONNECT_UNKNOWN',
           operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT',
           roleIndex:0,raw:'private certificate'}});
+      if(failure==='frame'||failure==='forged-frame')throw Object.assign(new Error('private bytes'),{
+        admissionFailure:{stage:'TLS_POSITIVE_CONTINUITY',operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',
+          relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',roleIndex:1,
+          relayFrameStage:failure==='frame'?'STDOUT_EOF_WITHOUT_FIN':'private marker',
+          relayCloseState:{hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,
+            stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,
+            peerEndReturned:failure==='frame'?false:'private detail',raw:'private stdout'}}});
       if(failure==='forged-admission')throw Object.assign(new Error('private SQL'),{
         admissionFailure:{stage:'private role address',reason:'private connection'}});
       if(failure==='certificate-observation')throw Object.assign(new Error('private certificate details'),{
@@ -267,6 +274,16 @@ test('the draft receipt retains only fixed admission coordinates across owned cl
   assert.deepEqual(stopped.admissionFailure,{stage:'TLS_WRONG_CA_DISCONNECT',reason:'DISCONNECT_UNKNOWN',
     operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT',roleIndex:0});
   assert.doesNotMatch(JSON.stringify(stopped),/private DSN|private certificate/u);
+  const frame=await runModel(t,{failure:'frame'}).result();
+  const frameBase={stage:'TLS_POSITIVE_CONTINUITY',operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',
+    relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',roleIndex:1};
+  assert.deepEqual(frame.admissionFailure,{...frameBase,relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',
+    relayCloseState:{hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,
+      stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,peerEndReturned:false}});
+  assert.doesNotMatch(JSON.stringify(frame),/private/u);
+  const forgedFrame=await runModel(t,{failure:'forged-frame'}).result();
+  assert.deepEqual(forgedFrame.admissionFailure,frameBase);
+  assert.doesNotMatch(JSON.stringify(forgedFrame),/private/u);
   const rejected=await runModel(t,{failure:'forged-admission'}).result();
   assert.equal(rejected.admissionFailure,undefined);
   assert.doesNotMatch(JSON.stringify(rejected),/private role|private SQL/u);

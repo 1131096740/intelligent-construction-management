@@ -26,6 +26,9 @@ const offEvent = EventTarget.prototype.removeEventListener;
 const code = suffix => 'CURRENT259_LOOPBACK_FORWARD_' + suffix;
 const fault = suffix => Object.assign(new Error(code(suffix)), { code: code(suffix) });
 const need = (ok, suffix) => { if (!ok) throw fault(suffix); };
+const needFrame = (ok, relayFrameStage) => {
+  if (!ok) throw Object.assign(fault('FRAME'), { relayFrameStage });
+};
 
 // A zero-length frame means a write-side EOF. Both directions use ordered
 // frames inside Docker stdio so neither TCP FIN depends on CLI stream closure.
@@ -156,16 +159,16 @@ async function send(socket, stdin, halfClosed, peer) {
 async function receive(stdout, socket, halfClosed, peer) {
   let pending = Buffer.alloc(0), length = null, fin = false;
   for await (const chunk of stdout) {
-    need(!fin, 'FRAME');
+    needFrame(!fin, 'DATA_AFTER_FIN');
     pending = pending.length ? Buffer.concat([pending, chunk]) : chunk;
     while (pending.length) {
       if (length === null) {
         if (pending.length < 4) break;
         length = pending.readUInt32BE();
         pending = pending.subarray(4);
-        need(length <= FRAME, 'FRAME');
+        needFrame(length <= FRAME, 'OVERSIZED_LENGTH');
         if (!length) {
-          need(!pending.length, 'FRAME');
+          needFrame(!pending.length, 'TRAILING_AFTER_FIN');
           fin = true;
           halfClosed();
           if (!peer.retired()) {
@@ -181,7 +184,7 @@ async function receive(stdout, socket, halfClosed, peer) {
       length = null;
     }
   }
-  need(fin, 'FRAME');
+  needFrame(fin, 'STDOUT_EOF_WITHOUT_FIN');
 }
 
 async function startCurrent259LoopbackForward(options) {
@@ -195,10 +198,11 @@ async function startCurrent259LoopbackForward(options) {
   const workers = new Set();
   let firstFailure, closing, active = false, prismaWindow, notifyStopped;
   const stopped = new Promise(resolve => { notifyStopped = resolve; });
-  const fail = (suffix, relayCloseState) => {
+  const fail = (suffix, relayCloseState, relayFrameStage) => {
     if (!firstFailure) {
       firstFailure = fault(suffix);
       if (relayCloseState) Object.defineProperty(firstFailure, 'relayCloseState', { value: Object.freeze({ ...relayCloseState }) });
+      if (relayFrameStage) Object.defineProperty(firstFailure, 'relayFrameStage', { value: relayFrameStage });
     }
     void close().catch(() => {});
   };
@@ -272,7 +276,10 @@ async function startCurrent259LoopbackForward(options) {
     const window = prismaWindow?.accepting ? prismaWindow : undefined;
     window?.workers.add(worker);
     worker.done = Promise.all([fromHost, fromPg, worker.closed]).catch(error => {
-      if (!closing) fail(error?.code === code('FRAME') ? 'FRAME' : 'STREAM');
+      if (!closing) {
+        if (error?.code === code('FRAME')) fail('FRAME', closeSnapshot(), error.relayFrameStage);
+        else fail('STREAM');
+      }
     }).finally(() => {
       clearTimeout(halfCloseTimer);
       socket.destroy();

@@ -470,6 +470,7 @@ async function verifyTls(context) {
           enter('CONTINUITY');
         }
       }
+      if(kind==='positive'&&!rejected)enter('CONTINUITY');
       clientCheck();
       if (kind!=='positive') {
         need(rejected&&(expectedNegative??expectedTlsRejection(kind,connectionError)),'TLS_NEGATIVE');
