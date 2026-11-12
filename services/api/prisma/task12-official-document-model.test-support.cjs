@@ -130,7 +130,9 @@ function model(options={}) {
   }}:require(name);};
   function assertView(view){if(view!==moduleView)throw Object.assign(new Error('model opaque module view required'),{code:'CURRENT261_OFFICIAL_MODULE_VIEW'});}
   const modelProcess={...process,execPath:nodePath,version:'v20.20.2',platform:'darwin',arch:'arm64',execArgv:[],_preload_modules:[],env:{},getuid:()=>process.getuid(),getgid:()=>process.getgid()};
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'task12-official-document-profile.cjs'),'utf8'),{require:fakeRequire,module,exports:module.exports,__dirname,process:modelProcess,Buffer,Object,Promise,JSON},{filename:'official-profile-model.cjs'});
+  const filename=path.join(__dirname,'task12-official-document-profile.cjs');
+  fakeRequire.cache={[filename]:module};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'task12-official-document-profile.cjs'),'utf8'),{require:fakeRequire,module,exports:module.exports,__dirname,__filename:filename,process:modelProcess,Buffer,Object,Promise,JSON},{filename:'official-profile-model.cjs'});
   function publish(){
     const api=module.exports,input=packet(),proof=api.inspectOfficialDocumentQualification(input.name,input.sha256),controls=api.toolControlWitness();
     const base={version:1,pageCount:2,pages:['隔离工具资格材料合同 壹佰壹拾叁元整 资格样张材料','买方 虚构甲方公司 卖方 虚构乙方公司'],a4Portrait:true,outOfPageGlyphs:0,unembeddedFonts:0,badGlyphs:0,substitutionFonts:0,paintedChineseGlyphs:100,bodyAnchor:{matches:1,lineSpacings:[25],fontSizes:[14],fontFamilies:['fangsonggb2312']},failures:[]};
@@ -154,6 +156,6 @@ function model(options={}) {
     const name='/private/tmp/qualification/runtime.json',bytes=JSON.stringify(runtimeInput);put(name,bytes,undefined,0o100600);
     return {name,sha256:sha(bytes),runRoot,runtimeInput,machine,physical,registry};
   }
-  return {api:module.exports,packet,files,publish,moduleView,leaseState,loaded};
+  return {api:module.exports,packet,files,publish,moduleView,leaseState,loaded,moduleCache:fakeRequire.cache};
 }
 module.exports={model};

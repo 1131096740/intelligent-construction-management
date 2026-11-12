@@ -31,6 +31,11 @@ const frozen = value => {
   if (value && typeof value === 'object') { Object.values(value).forEach(frozen); Object.freeze(value); }
   return value;
 };
+let canonicalBroken=false;
+function canonicalProfile(){
+  if(require.cache?.[__filename]!==module||module.exports!==published)canonicalBroken=true;
+  need(!canonicalBroken,'MODULES');
+}
 function capture(file, expected, part, max = 512 * 1024 * 1024) {
   need(typeof file === 'string' && path.isAbsolute(file) && path.normalize(file) === file && !/[\u0000-\u001f]/u.test(file), part);
   const stat = fs.lstatSync(file);
@@ -232,7 +237,7 @@ function fontToolsTree(root, all) {
 /** Read-only candidate inspection. This proof is qualification-only, never a
  * current259/native/application runtime proof. The external digest is required. */
 function inspectOfficialDocumentQualification(file,expectedSha256) {
-  need(arguments.length===2,'INPUT');return inspectMaterials(file,expectedSha256);
+  need(arguments.length===2,'INPUT');canonicalProfile();return inspectMaterials(file,expectedSha256);
 }
 function inspectMaterials(file, expectedSha256, activation) {
   const started=performance.now();
@@ -319,8 +324,8 @@ function inspectMaterials(file, expectedSha256, activation) {
       source,hostBoundary:hostBoundary(),candidateLockSha256:LOCK_SHA,buildSha256:plan.build.sha256,materialSha256,
       ...(activation?{machineReceiptSha256:activation.machineSha256,physicalReviewSha256:activation.physicalSha256}:{}),nativeAdmission:false,executionAllowed:false});
     inspected.set(proof,{plan:frozen(plan),source,kind:proof.kind,lock:frozen(lock),all,runRoot,started,
-      check: () => { activation?.lease?.check();sourceFiles.forEach(item=>continuity(item));all.forEach(item=>continuity(item)); continuity(runRoot); },
-      checkMaterials: () => { activation?.lease?.verifyFull();sourceFiles.forEach(item=>continuity(item,true));all.forEach(item=>continuity(item,true)); continuity(runRoot);activation?.lease?.verifyFull(); }, proof });
+      check: () => { canonicalProfile();activation?.lease?.check();sourceFiles.forEach(item=>continuity(item));all.forEach(item=>continuity(item)); continuity(runRoot); },
+      checkMaterials: () => { canonicalProfile();activation?.lease?.verifyFull();sourceFiles.forEach(item=>continuity(item,true));all.forEach(item=>continuity(item,true)); continuity(runRoot);activation?.lease?.verifyFull(); }, proof });
     return proof;
   } catch (cause) {
     if (cause?.code?.startsWith('TASK12_OFFICIAL_DOCUMENT_')) throw cause;
@@ -334,6 +339,7 @@ async function withOfficialDocumentQualification(proof,use) {
   need(arguments.length===2,'SCOPE');return enterScope(proof,undefined,use,'QUALIFICATION_ONLY');
 }
 async function enterScope(proof,runRoot,use,kind) {
+  canonicalProfile();
   const captured=inspected.get(proof);
   need(captured&&captured.kind===kind&&typeof use==='function'&&!context.current()&&(runRoot===undefined||runRoot===captured.runRoot.path),'SCOPE');
   inspected.delete(proof);
@@ -459,6 +465,7 @@ function inspectPublishedRuntime(file,expectedSha256,moduleView,publicationOnly)
     exactSource(runtimeInput.source);
     let lease;
     if(!publicationOnly){
+      canonicalProfile();
       lease=require('./task16-current259-client-loader.cjs').claimCurrent261OfficialDocumentModules(moduleView);
       need(lease.root===SOURCE_ROOT&&lease.source.candidateSha===runtimeInput.source.head&&lease.source.tree===runtimeInput.source.tree,'MODULES');
       lease.verifyFull();
@@ -505,4 +512,6 @@ function prepareOfficialTask12DocumentRuntimeInput(outputPath,runRoot){
 
 function currentOfficialDocumentScope() { return context.current(); }
 
-module.exports = Object.freeze({ PROFILE, LOCK_NAME, LOCK_SHA, currentOfficialDocumentScope, withOfficialDocumentQualification, inspectOfficialDocumentQualification, observeOfficialTask12DocumentPublication, verifyOfficialTask12DocumentRuntime, withOfficialTask12DocumentRuntime, prepareOfficialTask12DocumentRuntimeInput, sourceWitness, buildWitness, buildToolWitness, toolControlWitness, hostBoundary });
+const published = Object.freeze({ PROFILE, LOCK_NAME, LOCK_SHA, currentOfficialDocumentScope, withOfficialDocumentQualification, inspectOfficialDocumentQualification, observeOfficialTask12DocumentPublication, verifyOfficialTask12DocumentRuntime, withOfficialTask12DocumentRuntime, prepareOfficialTask12DocumentRuntimeInput, sourceWitness, buildWitness, buildToolWitness, toolControlWitness, hostBoundary });
+
+module.exports=published;
