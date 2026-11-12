@@ -2,6 +2,7 @@
 // Keep the fixed technical producer import order. This prepares process-local
 // test settings and storage only; it issues no application or database admission.
 require('./task16-current259-application-factory.cjs');
+const {captureCurrent259ApplicationFailure}=require('./task16-current259-live-sessions.cjs');
 const {claimCurrent259TechnicalResource}=require('./task16-current259-owned-resource.cjs');
 const fs=require('node:fs'),path=require('node:path');
 const {randomBytes}=require('node:crypto');
@@ -28,7 +29,7 @@ async function withCurrent259ApplicationEnvironment(handle,consume){
  const check=()=>{
   need(active&&!broken,'CLOSED');
   try{
-   view.check();need(claimCurrent259TechnicalResource(handle)===view,'CONTINUITY');
+   need(claimCurrent259TechnicalResource(handle)===view,'CONTINUITY');
    need(process.env===originalEnvironment&&KEYS.every(k=>process.env[k]===env[k])&&!forbiddenEnvironment(process.env),'CONTINUITY');
    need(matches(parent,parentIdentity)&&matches(directory,directoryIdentity),'CONTINUITY');
   }catch{active=false;broken=true;throw fault('CONTINUITY');}
@@ -76,7 +77,8 @@ async function withCurrent259ApplicationEnvironment(handle,consume){
  }
  if(envOutcome==='UNKNOWN'||storageOutcome==='UNKNOWN'){
   const error=Object.assign(fault('CLEANUP_UNKNOWN'),{environmentRestoration:envOutcome,storageCleanup:storageOutcome});
-  if(hasPrimary)Object.defineProperty(error,'cause',{value:first,enumerable:false});throw error;
+  if(hasPrimary)Object.defineProperty(error,'cause',{value:first,enumerable:false});
+  throw captureCurrent259ApplicationFailure(error,first);
  }
  if(hasPrimary)throw first;
  return value;

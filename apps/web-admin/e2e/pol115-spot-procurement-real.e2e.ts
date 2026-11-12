@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 
 import { gotoWithSingleWebKitInternalErrorRetry as gotoWithRetry } from "./support/playwright-navigation";
@@ -200,6 +200,25 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
     await expect(grid.getByRole("gridcell", { name: "水泥", exact: true })).toBeVisible();
   } else {
     await createDialog.getByRole("button", { name: "新增材料", exact: true }).click();
+    async function enterCell(cell: Locator, row: number, prop: string, value: string) {
+      await cell.dblclick();
+      const overlay = grid.locator("revogr-edit");
+      // Enter advances to the next row. WebKit can keep that overlay mounted
+      // until RevoGrid applies the subsequent pointer selection.
+      await expect.poll(() => overlay.evaluateAll(elements => {
+        const target = (elements.length === 1 ? elements[0] : undefined) as (HTMLElement & {
+          editCell?: { y: number; prop: string };
+        }) | undefined;
+        return target?.editCell ? [target.editCell.y, target.editCell.prop] : null;
+      })).toEqual([row, prop]);
+      const editor = overlay.locator("input");
+      await expect(editor).toBeFocused();
+      await expect(editor).toHaveValue("");
+      await page.keyboard.insertText(value);
+      await expect(editor).toHaveValue(value);
+      await page.keyboard.press("Enter");
+      await expect(cell).toHaveText(value);
+    }
     for (const [index, material, unit, quantity] of [[0, "砂子", "吨", "2.50"], [1, "水泥", "袋", "0.01"]] as const) {
       // Optional fields first so autosave cannot interrupt an incomplete row.
       for (const [prop, column, value] of [["unit", 1, unit], ["quantity", 2, quantity]] as const) {
@@ -207,16 +226,10 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
           return (element as HTMLElement & { scrollToColumnProp(column: string): Promise<void> }).scrollToColumnProp(key);
         }, prop);
         const cell = grid.locator(`revogr-data[col-type="rgCol"] [data-rgrow="${index}"][data-rgcol="${column}"]`);
-        await cell.dblclick();
-        const editor = grid.locator("revogr-edit input");
-        await editor.fill(value);
-        await editor.press("Enter");
-        await expect(cell).toHaveText(value);
+        await enterCell(cell, index, prop, value);
       }
-      await grid.locator(`revogr-data[col-type="colPinStart"] [data-rgrow="${index}"][data-rgcol="1"]`).dblclick();
-      const editor = grid.locator("revogr-edit input");
-      await editor.fill(material);
-      await editor.press("Enter");
+      const materialCell = grid.locator(`revogr-data[col-type="colPinStart"] [data-rgrow="${index}"][data-rgcol="1"]`);
+      await enterCell(materialCell, index, "materialName", material);
       await expect(grid.getByRole("gridcell", { name: material, exact: true })).toBeVisible();
     }
   }

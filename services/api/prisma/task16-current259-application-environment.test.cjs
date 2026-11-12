@@ -9,11 +9,23 @@ function fixture(){
  const holder={exports:{}};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-application-environment.cjs'),'utf8'))(name=>{
   if(name==='./task16-current259-application-factory.cjs')return {};
-  if(name==='./task16-current259-owned-resource.cjs')return {claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;}};
+  if(name==='./task16-current259-owned-resource.cjs')return {claimCurrent259TechnicalResource(h){assert.equal(h,handle);view.check();return view;}};
   return require(name);
  },holder);
  return {api:holder.exports,handle,root,resource,view};
 }
+test('environment guard performs one fresh qualification on each original resource claim',async()=>{
+ const restore=cleanEnvironment();let f;
+ try{
+  f=fixture();
+  let checks=0;
+  f.view.check=()=>{checks++;};
+  await f.api.withCurrent259ApplicationEnvironment(f.handle,async scope=>{
+   const before=checks;scope.check();assert.equal(checks,before+1);
+   await Promise.resolve();scope.check();assert.equal(checks,before+2);
+  });
+ }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
+});
 function cleanEnvironment(){const prior={...process.env};for(const key of Object.keys(process.env))if(KEYS.includes(key)||/^(?:SMS_|APPROVAL_SMS_|COS_|TENCENT|WX_|WECHAT_|PRISMA_)/u.test(key)||['DATABASE_URL','NODE_OPTIONS','NODE_PATH','HOST','PORT','WEB_ORIGIN','SKIP_DATABASE_CONNECT'].includes(key))delete process.env[key];return ()=>{for(const key of Object.keys(process.env))if(!Object.hasOwn(prior,key))delete process.env[key];Object.assign(process.env,prior);};}
 test('scoped environment uses private owned storage and restores every original setting',async()=>{
  const restore=cleanEnvironment();let f,guard,directory;
@@ -90,10 +102,15 @@ test('owned storage removal never follows a descendant symlink outside its root'
 test('unknown application shutdown retains its environment and storage for the unresolved application',async()=>{
  const restore=cleanEnvironment();let f,directory;
  const applicationFailure=Object.assign(new Error('TASK16_APP_CLOSE_UNKNOWN'),{code:'TASK16_APP_CLOSE_UNKNOWN',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+ const {captureCurrent259ApplicationFailure,describeCurrent259ApplicationFailure}=require('./task16-current259-live-sessions.cjs');
+ captureCurrent259ApplicationFailure(applicationFailure,applicationFailure,'NEST_INIT',25);
  try{
   f=fixture();await assert.rejects(f.api.withCurrent259ApplicationEnvironment(f.handle,scope=>{
    directory=scope.storageRoot;throw applicationFailure;
-  }),error=>error.code==='CURRENT259_APP_ENV_CLEANUP_UNKNOWN'&&error.environmentRestoration==='UNKNOWN'&&error.storageCleanup==='UNKNOWN'&&error.cause===applicationFailure);
+  }),error=>{
+   assert.deepEqual(describeCurrent259ApplicationFailure(error),{phase:'NEST_INIT',code:'TASK16_APP_CLOSE_UNKNOWN',elapsedMs:25});
+   return error.code==='CURRENT259_APP_ENV_CLEANUP_UNKNOWN'&&error.environmentRestoration==='UNKNOWN'&&error.storageCleanup==='UNKNOWN'&&error.cause===applicationFailure;
+  });
   assert.equal(process.env.FILE_STORAGE_ROOT,directory);assert.equal(fs.existsSync(directory),true);
  }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
 });

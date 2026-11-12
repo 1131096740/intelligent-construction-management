@@ -27,6 +27,17 @@ const CODE = 'CURRENT259_LIVE_SESSIONS';
 const KINDS = ['owner', 'runtime', 'observer'];
 const METHOD_NAMES = ['$disconnect', '$connect', '$queryRawUnsafe', '$transaction'];
 const liveFailures = new WeakMap();
+const applicationFailures = new WeakMap();
+const applicationPhases = new Set(['OWNED_PROOF','LIVE_VERIFY_BEFORE','APPLICATION_BOUNDARY','APPLICATION_ENVIRONMENT',
+  'MODULE_EXPORTS','NEST_BUILDER','IMPACT_READER','NEST_COMPILE','NEST_MODULE_PROVIDERS','NEST_CREATE',
+  'NEST_APP_PROVIDERS','NEST_SECURITY','NEST_INIT','LOOPBACK_LISTEN','LOOPBACK_ADDRESS','LIVE_VERIFY_AFTER',
+  'OWNED_PROVIDER_PROOF','OWNED_CALLBACK','OWNED_CLEANUP']);
+const applicationCodes = new Set(['TASK16_APP_ABORTED','TASK16_APP_ADDRESS','TASK16_APP_BOUNDARY','TASK16_APP_CLOSE_UNKNOWN',
+  'TASK16_APP_DATA_DESCRIPTOR','TASK16_APP_ENVIRONMENT_CHANGED','TASK16_APP_ENVIRONMENT_REQUIRED','TASK16_APP_FAILED_CLOSED',
+  'TASK16_APP_HANDLE','TASK16_APP_IMPACT_READER_PROOF','TASK16_APP_METHOD_CHANGED','TASK16_APP_METHOD_DESCRIPTOR','TASK16_APP_MODULE_EXPORTS',
+  'TASK16_APP_PRIOR_CHANGED','TASK16_APP_PRIOR_CLIENTS','TASK16_APP_RUNTIME_PROVIDER','TASK16_APP_STORAGE_CHANGED','TASK16_APP_STORAGE_REQUIRED',
+  'TASK16_CLIENT_IMPACT_READER_TRANSACTION','CURRENT259_LIVE_SESSIONS_VERIFICATION','CURRENT259_LIVE_SESSIONS_HANDLE',
+  'CURRENT259_FRAMEWORK_CREATION_FAILED','CURRENT259_FRAMEWORK_CHANGED','CURRENT259_LOADER_CHANGED','EACCES','EADDRINUSE']);
 const prismaCodes = new Set(['P1000', 'P1001', 'P1002', 'P1003', 'P1008', 'P1010', 'P1011', 'P1017', 'P2010', 'P2024']);
 const sqlStates = new Set(['08000', '08001', '08003', '08004', '08006', '08P01', '0A000', '22023', '25006',
   '28000', '28P01', '3D000', '42501', '42601', '42702', '42703', '42725', '42804', '42883', '42P01',
@@ -34,6 +45,24 @@ const sqlStates = new Set(['08000', '08001', '08003', '08004', '08006', '08P01',
 
 function describeCurrent259LiveFailure(error) {
   return liveFailures.get(error);
+}
+function describeCurrent259ApplicationFailure(error) {
+  return applicationFailures.get(error);
+}
+function captureCurrent259ApplicationFailure(target, source, phase, elapsedMs) {
+  if (!target || typeof target !== 'object' || types.isProxy(target)) return target;
+  if (applicationFailures.has(target)) return target;
+  const prior = applicationFailures.get(source);
+  if (prior) applicationFailures.set(target, prior);
+  else if (applicationPhases.has(phase) && Number.isFinite(elapsedMs)) {
+    const raw = source && typeof source === 'object' && !types.isProxy(source)
+      ? Object.getOwnPropertyDescriptor(source, 'code')?.value : undefined;
+    const live = liveFailures.get(source);
+    applicationFailures.set(target, Object.freeze({phase, code: applicationCodes.has(raw) ? raw : null,
+      elapsedMs: Math.min(3600000, Math.max(0, Math.round(elapsedMs))),
+      ...(live ? {live} : {})}));
+  }
+  return target;
 }
 function liveFailure(error, checkpoint) {
   const data = (value, key) => value && typeof value === 'object' && !types.isProxy(value)
@@ -117,7 +146,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   let methods, initial, businessToken, faultUsed = false;
   let replacementRow, retiredRuntime, disconnectOutcome, directoryBefore, replacementUsed=false, recoveryComplete=false;
   let disconnectStage='LIVE_ADMISSION', disconnectFailure;
-  let checkpoint = 'LIVE_PREPARE', firstLiveFailure;
+  let checkpoint = 'LIVE_PREPARE', firstLiveFailure, firstApplicationError;
   function rememberLiveFailure(error) {
     if (!competition && !recovery) firstLiveFailure ??= liveFailure(error, checkpoint);
   }
@@ -274,7 +303,10 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
       broken = true; active = false;
       rememberLiveFailure(result.error);
       if(failureStage&&result.failed)rememberDisconnectFailure(result.error,failureStage);
-      throw fail(result.timeout ? 'UNSETTLED' : 'OPERATION');
+      const failure = fail(result.timeout ? 'UNSETTLED' : 'OPERATION');
+      liveFailures.set(failure, Object.freeze({...liveFailure(result.error, checkpoint),
+        outcome: result.timeout ? 'TIMED_OUT' : 'REJECTED'}));
+      throw failure;
     }
     if (!disconnect) checkLight();
     return result.value;
@@ -397,8 +429,10 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     } catch(error) {
       rememberLiveFailure(error);
       rememberDisconnectFailure(error);
+      const detail = liveFailures.get(error) ?? liveFailure(error, checkpoint);
       broken = true; active = false; await closeResource();
       const failure=fail('VERIFICATION');
+      liveFailures.set(failure, detail);
       throw disconnectFailure?carryCurrent259DisconnectFailure(failure,disconnectFailure):failure;
     } finally { checking = false; }
   }
@@ -569,6 +603,7 @@ ROLLBACK;`;
     need(!recovery||recoveryComplete,'REPLACEMENT_REQUIRED');
     await verify();
   } catch(error) {
+    if (applicationFailures.has(error)) firstApplicationError = error;
     rememberLiveFailure(error);
     rememberDisconnectFailure(error);
     hasPrimary = true; broken = true; active = false;
@@ -584,9 +619,11 @@ ROLLBACK;`;
   if (hasPrimary) {
     const error=Object.assign(fail('FAILED_CLOSED'), { clientCleanupOutcome: cleanup, resourceCleanupOutcome: resourceCleanup });
     if (firstLiveFailure) liveFailures.set(error, firstLiveFailure);
+    captureCurrent259ApplicationFailure(error, firstApplicationError);
     throw disconnectFailure?carryCurrent259DisconnectFailure(error,disconnectFailure):error;
   }
   return value;
 }
 
-module.exports = Object.freeze({ describeCurrent259LiveFailure, withCurrent259LiveSessions,withCurrent259CompetitionLiveSessions,withCurrent259DisconnectLiveSessions,claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,isCurrent259PaymentLoopbackImpactSession,verifyCurrent259ImpactFileBoundary });
+module.exports = Object.freeze({ describeCurrent259LiveFailure, describeCurrent259ApplicationFailure, captureCurrent259ApplicationFailure,
+  withCurrent259LiveSessions,withCurrent259CompetitionLiveSessions,withCurrent259DisconnectLiveSessions,claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,isCurrent259PaymentLoopbackImpactSession,verifyCurrent259ImpactFileBoundary });

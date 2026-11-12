@@ -183,6 +183,7 @@ function fixture(t,options={}){
   const liveProof=Object.freeze({}),application=Object.freeze({runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
   ports['./task16-current259-live-sessions.cjs']={
    describeCurrent259LiveFailure(error){return error===options.liveFailure?options.liveDetail:undefined;},
+   describeCurrent259ApplicationFailure(error){return error===options.applicationFailure?options.applicationDetail:undefined;},
    async withCurrent259LiveSessions(b7,h,consume){
     assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live');
     try{if(Object.hasOwn(options,'liveFailure'))throw options.liveFailure;return await consume(liveProof);}
@@ -190,7 +191,7 @@ function fixture(t,options={}){
    }
   };
   ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check,...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
-  ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume){assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{return await consume(application);}finally{state.calls.push('app-close');}}};
+  ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume){assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{if(Object.hasOwn(options,'applicationFailure'))throw options.applicationFailure;return await consume(application);}finally{state.calls.push('app-close');}}};
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,app,h);lease.check();
@@ -695,6 +696,21 @@ test('main publishes the ordinary live checkpoint with the original failure code
  assert.equal(receipt.disconnectFailure,undefined);
  assert.doesNotMatch(text,/private connection URL|SECRET_SQL_PASSWORD/u);
  assert.deepEqual(f.state.calls,['start-attribution-gap','technical259','roles9','seven','acl','b7','live','pools-close']);
+});
+
+test('main publishes only the genuine fixed application diagnostic before any seed or selected case',async t=>{
+ const applicationDetail=Object.freeze({phase:'LIVE_VERIFY_AFTER',code:'CURRENT259_LIVE_SESSIONS_VERIFICATION',elapsedMs:37,
+  live:Object.freeze({checkpoint:'CATALOG',prismaCode:null,sqlState:null,outcome:'TIMED_OUT'})});
+ const applicationFailure=Object.assign(new Error('private connection URL'),{code:'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED',
+  applicationFailure:{phase:'NEST_INIT',secret:'private SQL'}});
+ const f=attributionGapFixture(t,{applicationFailure,applicationDetail}),result=await f.done;
+ const bytes=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(bytes);
+ assert.equal(result.status,'STOPPED');
+ assert.equal(receipt.failureStage,'ownedApplication');
+ assert.deepEqual(receipt.applicationFailure,applicationDetail);
+ assert.equal(receipt.business,undefined);
+ assert.equal(f.state.calls.includes('case'),false);
+ assert.doesNotMatch(bytes,/private connection URL|private SQL|NEST_INIT/u);
 });
 
 test('the fixed attribution-gap publisher verifies without opening resources or an attempt',async t=>{

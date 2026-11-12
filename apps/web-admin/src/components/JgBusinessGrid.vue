@@ -77,10 +77,19 @@ const emit = defineEmits<{
 // render. Keep the live native input value until this edit is committed.
 class DraftTextEditor extends TextEditor {
   private inputValue: string | undefined;
+  private inputCellKey: string | undefined;
   override render(h: Parameters<TextEditor["render"]>[0]) {
+    const cell = this.editCell;
+    // RevoGrid can reuse the editor while the overlay moves to another cell.
+    // A new input also clears native text when both cell values are blank.
+    const cellKey = cell && JSON.stringify([cell.type, cell.x, cell.y, cell.prop, cell.model?.clientRowKey]);
+    if (cellKey !== this.inputCellKey) {
+      this.inputCellKey = cellKey;
+      this.inputValue = undefined;
+    }
     return h("input", {
-      type: "text", enterKeyHint: "enter",
-      value: this.inputValue ?? this.editCell?.val ?? "",
+      key: cellKey, type: "text", enterKeyHint: "enter",
+      value: this.inputValue ?? cell?.val ?? "",
       ref: (input: HTMLInputElement) => { this.editInput = input; },
       onInput: (event: Event) => { this.inputValue = (event.target as HTMLInputElement).value; },
       onKeyDown: (event: KeyboardEvent) => this.onKeyDown(event)

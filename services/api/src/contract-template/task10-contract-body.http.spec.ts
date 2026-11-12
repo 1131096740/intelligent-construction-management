@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import PizZip from "pizzip";
 import { createTemplateTestServer, syntheticWordSource } from "./template-management.test-support";
 import { createTask09Draft, saveTask09Draft } from "./task09-draft-template.test-support";
@@ -256,6 +257,7 @@ describe("task10 complete contract body through authenticated public draft HTTP"
   describe("reviewed Word table source", () => {
     let layout: Awaited<ReturnType<typeof confirmedBodyLayout>>;
     let draft: Awaited<ReturnType<typeof createTask09Draft>>;
+    let saveMs: number;
 
     beforeAll(async () => {
       const source = readFileSync(join(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
@@ -263,7 +265,8 @@ describe("task10 complete contract body through authenticated public draft HTTP"
       draft = await createTask09Draft(server);
     }, 30_000);
 
-    it("reads actual Word table structure and title formatting instead of flattening the contract into plain paragraphs", async () => {
+    beforeEach(async () => {
+      const started = performance.now();
       const currentResponse = await fetch(`${draft.base}/workbench`, { headers: draft.headers });
       expect(currentResponse.status).toBe(200);
       const current = await currentResponse.json() as {
@@ -281,6 +284,11 @@ describe("task10 complete contract body through authenticated public draft HTTP"
         paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
       }) });
       expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
+      saveMs = Math.round(performance.now() - started);
+    });
+
+    it("reads actual Word table structure and title formatting instead of flattening the contract into plain paragraphs", async () => {
+      const started = performance.now();
       const response = await fetch(`${draft.base}/document-body`, { headers: draft.headers });
       expect(response.status === 200 ? "OK" : await response.text()).toBe("OK");
       const body = await response.json() as {
@@ -293,6 +301,7 @@ describe("task10 complete contract body through authenticated public draft HTTP"
       expect(table.rows![0].cells.map(cell => cell.paragraphIds.map(id => body.blocks.find(block => block.id === id)!.text).join("\n"))).toEqual(["序号", "货物名称", "规格型号", "计量单位", "数量", "含税单价", "税率(%)", "价税合计"]);
       expect(table.rows![1].cells.map(cell => cell.paragraphIds.map(id => body.blocks.find(block => block.id === id)!.text).join("\n"))).toContain("正文清单钢材");
       expect(body.blocks.find(block => block.text === "上游新建当前合同名称")!.format).toMatchObject({ fontFamily: "方正小标宋简体", fontSizePt: 22, align: "center" });
+      console.info("Word 表格公开 HTTP 耗时", JSON.stringify({ saveMs, bodyReadMs: Math.round(performance.now() - started) }));
     });
   });
 });

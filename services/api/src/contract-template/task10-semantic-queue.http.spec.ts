@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { PDFDocument } from "pdf-lib";
 import { createReviewedMaterialFixture, saveBody } from "./task10-body.test-support";
 import { createTask09Draft, saveTask09Draft } from "./task09-draft-template.test-support";
@@ -11,6 +12,10 @@ const currentLockSha = "6c7d6a82ea477f30f41bd5e1ccc9eab0dee4ed05d9901fee911e5d9a
 describe("task10 frozen semantic version through public generation reuse", () => {
   let fixture: Awaited<ReturnType<typeof createReviewedMaterialFixture>>;
   let draft: Awaited<ReturnType<typeof createTask09Draft>>;
+  let legacy: Awaited<ReturnType<typeof prepareLegacy>>;
+  let generation: { generationId: string; status: string; documentContentRevision: number };
+  let legacyPreparationMs: number;
+  let initialQueueMs: number;
   beforeAll(async () => {
     fixture = await createReviewedMaterialFixture();
     const { server, layout } = fixture;
@@ -20,7 +25,7 @@ describe("task10 frozen semantic version through public generation reuse", () =>
   }, 10_000);
   afterAll(async () => { await fixture?.close(); });
 
-  it("does not alias a new money-semantic job to the same-content legacy completed job", async () => {
+  async function prepareLegacy() {
     const { server, source, layout } = fixture;
     const currentResponse = await fetch(`${draft.base}/workbench`, { headers: draft.headers });
     expect(currentResponse.status).toBe(200);
@@ -69,13 +74,32 @@ describe("task10 frozen semantic version through public generation reuse", () =>
     };
     expect(await downloadHashes()).toEqual(oldFiles.map(file => file.sha256));
     const queue = () => fetch(`${draft.base}/preview-generation`, { method: "POST", headers: draft.headers, body: JSON.stringify({ sourceRevision: current.version.draftRevision }) });
+    return { current, legacyKey, oldSnapshot, oldFiles, old, downloadHashes, queue };
+  }
+
+  beforeEach(async () => {
+    const started = performance.now();
+    legacy = await prepareLegacy();
+    legacyPreparationMs = Math.round(performance.now() - started);
+  });
+
+  beforeEach(async () => {
+    const { current, old, oldFiles, queue } = legacy;
+    const started = performance.now();
     const response = await queue();
     expect(response.status === 201 ? "OK" : await response.text()).toBe("OK");
-    const generation = await response.json();
+    generation = await response.json();
     console.info("同修订公开队列复用结果", JSON.stringify({ reusedLegacy: generation.generationId === old.id, status: generation.status, documentContentRevision: generation.documentContentRevision,
       historicalFileHashes: oldFiles.map(file => file.sha256) }));
     expect(generation.generationId).not.toBe(old.id);
     expect(generation).toMatchObject({ status: "queued", documentContentRevision: current.version.documentContentRevision, documentContentFingerprint: current.version.documentContentFingerprint });
+    initialQueueMs = Math.round(performance.now() - started);
+  });
+
+  it("does not alias a new money-semantic job to the same-content legacy completed job", async () => {
+    const { server } = fixture;
+    const { legacyKey, oldSnapshot, oldFiles, old, downloadHashes, queue } = legacy;
+    const started = performance.now();
     const again = await queue();
     expect(again.status).toBe(201);
     expect((await again.json()).generationId).toBe(generation.generationId);
@@ -92,5 +116,8 @@ describe("task10 frozen semantic version through public generation reuse", () =>
     expect(fresh.inputSnapshot).toMatchObject({ bodyDocument: { renderSemanticVersion: "contract-money-v1", runtimeLockSha256: currentLockSha },
       renderInput: { values: { "contract.renderSemanticVersion": "contract-money-v1" } } });
     expect(fresh.idempotencyKey).not.toBe(legacyKey);
+    console.info("同修订公开队列及历史回读耗时", JSON.stringify({
+      legacyPreparationMs, initialQueueMs, replayAndReadbackMs: Math.round(performance.now() - started)
+    }));
   });
 });

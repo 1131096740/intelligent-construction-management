@@ -2,11 +2,12 @@
 // Versioned259 factory. Same seven real application exports and lifecycle.
 // A connected transport is not admission; private session ownership is separate.
 const fs=require('node:fs'),path=require('node:path');
+const {performance}=require('node:perf_hooks');
 const abortPrototype=AbortSignal.prototype,readAborted=Object.getOwnPropertyDescriptor(abortPrototype,'aborted').get;
 const addAbortListener=EventTarget.prototype.addEventListener,removeAbortListener=EventTarget.prototype.removeEventListener;
 const {types}=require('node:util');
 const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
-const {claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair}=require('./task16-current259-live-sessions.cjs');
+const {claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,captureCurrent259ApplicationFailure}=require('./task16-current259-live-sessions.cjs');
 const {describeCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
 const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
@@ -26,7 +27,19 @@ const fault=code=>Object.assign(new Error(code),{code});
 const need=(ok,code)=>{if(!ok)throw fault(code);};
 function own(object,key){need(object&&!types.isProxy(object),'TASK16_APP_DATA_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(object??{},key);need(d&&Object.hasOwn(d,'value'),'TASK16_APP_DATA_DESCRIPTOR');return d.value;}
 function method(object,key){if(types.isProxy(object)){const known=current259OwnedApplicationMethod(object,key);need(known,'TASK16_APP_METHOD_DESCRIPTOR');return known;}let next=object;for(let i=0;next&&i<32;i++,next=Object.getPrototypeOf(next)){need(!types.isProxy(next),'TASK16_APP_METHOD_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(next,key);if(d){need(Object.hasOwn(d,'value')&&typeof d.value==='function','TASK16_APP_METHOD_DESCRIPTOR');return d.value;}}throw fault('TASK16_APP_METHOD_DESCRIPTOR');}
+function applicationCheckpoint(initial,report){
+ let phase=initial,started=performance.now();
+ return {
+  enter(next){phase=next;started=performance.now();report?.(next);},
+  capture(target,source=target){return captureCurrent259ApplicationFailure(target,source,phase,performance.now()-started);}
+ };
+}
 async function createCurrent259Application(context,boundary,continuity){
+ return createApplication(context,boundary,continuity);
+}
+async function createApplication(context,boundary,continuity,reportPhase,ownedAdmission){
+ const checkpoint=applicationCheckpoint('APPLICATION_BOUNDARY',reportPhase);
+ checkpoint.enter('APPLICATION_BOUNDARY');
  let moduleHandle,appHandle,moduleMethods,appMethods,attempted=false,closing,released=false;
  const registered=[];
  const register=(value,kind)=>{need(value!==null&&(typeof value==='object'||typeof value==='function'),'TASK16_APP_HANDLE');const entry={value,kind,close:undefined};registered.push(entry);entry.close=method(value,'close');return entry;};
@@ -43,6 +56,7 @@ async function createCurrent259Application(context,boundary,continuity){
   need(own(clients,'status')==='CLIENTS_CONNECTED_AND_IDENTITY_MATCHED'&&runtime!==null&&typeof runtime==='object'&&/^[a-f0-9]{40}$/u.test(sourceSha)&&/^[a-f0-9]{64}$/u.test(seal)&&/^[a-f0-9]{64}$/u.test(manifest)&&own(binding,'sourceSha')===sourceSha&&own(binding,'sourceSealSha256')===seal&&own(binding,'registeredManifestSha256')===manifest,'TASK16_APP_PRIOR_CLIENTS');
   const readerAdmission=claimCurrent259Application(context);
   let impactReader,impactToken,impactExports;
+  checkpoint.enter('APPLICATION_ENVIRONMENT');
   const required={NODE_ENV:'test',SMS_ENABLED:'false',APPROVAL_SMS_ENABLED:'false',FILE_STORAGE_DRIVER:'local'};
   for(const[key,value]of Object.entries(required))need(process.env[key]===value,'TASK16_APP_ENVIRONMENT_REQUIRED');
   for(const key of ['JWT_ACCESS_SECRET','JWT_REFRESH_SECRET','FILE_DOWNLOAD_SECRET'])need(typeof process.env[key]==='string'&&/^[a-f0-9]{64,192}$/u.test(process.env[key]),'TASK16_APP_ENVIRONMENT_REQUIRED');
@@ -59,13 +73,17 @@ async function createCurrent259Application(context,boundary,continuity){
    for(const [handle,methods]of [[moduleHandle,moduleMethods],[appHandle,appMethods]])if(handle&&methods)for(const[key,value]of Object.entries(methods))need(method(handle,key)===value,'TASK16_APP_METHOD_CHANGED');
    if(readerAdmission)need(!released&&!closing&&peekCurrent259Application(context)===readerAdmission&&
     (!impactExports||own(impactExports,'Task16ImpactReaderToken')===impactToken),'TASK16_APP_IMPACT_READER_PROOF');
-   if(continuity)continuity.checkLight();
+   // The owned admission already invokes the same continuity check through peek.
+   if(continuity&&(!ownedAdmission||readerAdmission!==ownedAdmission))continuity.checkLight();
   };
+  checkpoint.enter('MODULE_EXPORTS');
   check();const exports=await loadModules(REQUEST);check();const names=['Task16RegisteredApplicationModule','PrismaService','configureApiSecurity','configureProjectionExportJson','apiJsonReplacer','createApiValidationPipe','listenApi'],loaded=Object.fromEntries(names.map(name=>[name,own(exports,name)]));need(Object.values(loaded).every(value=>typeof value==='function'),'TASK16_APP_MODULE_EXPORTS');
+  checkpoint.enter('NEST_BUILDER');
   const builder=createTestingModule({imports:[loaded.Task16RegisteredApplicationModule]});
   const overrideProvider=method(builder,'overrideProvider');
   const override=overrideProvider.call(builder,loaded.PrismaService);method(override,'useValue').call(override,runtime);
   if(readerAdmission){
+   checkpoint.enter('IMPACT_READER');
    impactToken=own(exports,'Task16ImpactReaderToken');
    need(typeof impactToken==='symbol','TASK16_APP_IMPACT_READER_PROOF');
    impactExports=exports;
@@ -76,10 +94,22 @@ async function createCurrent259Application(context,boundary,continuity){
    need(methods.get.call(handle,loaded.PrismaService)===runtime,'TASK16_APP_RUNTIME_PROVIDER');
    if(impactReader)need(methods.get.call(handle,impactToken)===impactReader,'TASK16_APP_IMPACT_READER_PROOF');
   };
-  check();const compile=method(builder,'compile');attempted=true;moduleHandle=await compile.call(builder);const moduleEntry=register(moduleHandle,'module');moduleMethods={close:moduleEntry.close,get:method(moduleHandle,'get'),createNestApplication:method(moduleHandle,'createNestApplication')};check();verifyProviders(moduleHandle,moduleMethods);
-  appHandle=isCurrent259OwnedModule(moduleHandle)?createOwnedNestApplication(moduleHandle):moduleMethods.createNestApplication.call(moduleHandle);const appEntry=register(appHandle,'app');appMethods={close:appEntry.close,...Object.fromEntries(['get','getHttpAdapter','enableCors','useGlobalPipes','init','getHttpServer'].map(key=>[key,method(appHandle,key)]))};check();verifyProviders(appHandle,appMethods);
-  const helperTarget=current259OwnedApplicationView(appHandle)??appHandle;loaded.configureApiSecurity(helperTarget);check();loaded.configureProjectionExportJson(helperTarget);check();const adapter=appMethods.getHttpAdapter.call(appHandle),express=method(adapter,'getInstance').call(adapter);method(express,'set').call(express,'json replacer',loaded.apiJsonReplacer);appMethods.enableCors.call(appHandle,{origin:[],credentials:false});appMethods.useGlobalPipes.call(appHandle,loaded.createApiValidationPipe());check();await appMethods.init.call(appHandle);check();verifyProviders(moduleHandle,moduleMethods);verifyProviders(appHandle,appMethods);
-  await loaded.listenApi(helperTarget,0,'127.0.0.1');check();const server=appMethods.getHttpServer.call(appHandle),address=method(server,'address').call(server);need(address,'TASK16_APP_ADDRESS');const host=own(address,'address'),family=own(address,'family'),port=own(address,'port'),listening=server.listening;need(listening===true&&host==='127.0.0.1'&&family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535,'TASK16_APP_ADDRESS');
+  checkpoint.enter('NEST_COMPILE');
+  check();const compile=method(builder,'compile');attempted=true;moduleHandle=await compile.call(builder);
+  checkpoint.enter('NEST_MODULE_PROVIDERS');
+  const moduleEntry=register(moduleHandle,'module');moduleMethods={close:moduleEntry.close,get:method(moduleHandle,'get'),createNestApplication:method(moduleHandle,'createNestApplication')};check();verifyProviders(moduleHandle,moduleMethods);
+  checkpoint.enter('NEST_CREATE');
+  appHandle=isCurrent259OwnedModule(moduleHandle)?createOwnedNestApplication(moduleHandle):moduleMethods.createNestApplication.call(moduleHandle);
+  checkpoint.enter('NEST_APP_PROVIDERS');
+  const appEntry=register(appHandle,'app');appMethods={close:appEntry.close,...Object.fromEntries(['get','getHttpAdapter','enableCors','useGlobalPipes','init','getHttpServer'].map(key=>[key,method(appHandle,key)]))};check();verifyProviders(appHandle,appMethods);
+  checkpoint.enter('NEST_SECURITY');
+  const helperTarget=current259OwnedApplicationView(appHandle)??appHandle;loaded.configureApiSecurity(helperTarget);check();loaded.configureProjectionExportJson(helperTarget);check();const adapter=appMethods.getHttpAdapter.call(appHandle),express=method(adapter,'getInstance').call(adapter);method(express,'set').call(express,'json replacer',loaded.apiJsonReplacer);appMethods.enableCors.call(appHandle,{origin:[],credentials:false});appMethods.useGlobalPipes.call(appHandle,loaded.createApiValidationPipe());
+  checkpoint.enter('NEST_INIT');
+  check();await appMethods.init.call(appHandle);check();verifyProviders(moduleHandle,moduleMethods);verifyProviders(appHandle,appMethods);
+  checkpoint.enter('LOOPBACK_LISTEN');
+  await loaded.listenApi(helperTarget,0,'127.0.0.1');check();
+  checkpoint.enter('LOOPBACK_ADDRESS');
+  const server=appMethods.getHttpServer.call(appHandle),address=method(server,'address').call(server);need(address,'TASK16_APP_ADDRESS');const host=own(address,'address'),family=own(address,'family'),port=own(address,'port'),listening=server.listening;need(listening===true&&host==='127.0.0.1'&&family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535,'TASK16_APP_ADDRESS');
   verifyProviders(moduleHandle,moduleMethods);verifyProviders(appHandle,appMethods);check();
   const addressMethod=method(server,'address');
   const inspectServer=()=>{
@@ -103,7 +133,20 @@ async function createCurrent259Application(context,boundary,continuity){
    });
   }
   return result;
- }catch(error){const orphan=takeCurrent259CreationFailure(error);if(orphan)registered.push({value:orphan.value,kind:'app',close:orphan.close});let unknown=false;try{await close();}catch{unknown=true;}let code='TASK16_APP_FAILED_CLOSED';try{const descriptor=error&&Object.getOwnPropertyDescriptor(error,'code');if(descriptor&&Object.hasOwn(descriptor,'value')&&CODES.has(descriptor.value))code=descriptor.value;}catch{/* Untrusted exception descriptors are never projected. */}throw Object.assign(new Error(code),{code,appStartupOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED',appCleanupOutcome:unknown?'UNKNOWN_DO_NOT_CONTINUE':registered.length?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED'});}
+ }catch(error){
+  const marker=checkpoint.capture({},error);
+  const orphan=takeCurrent259CreationFailure(error);
+  if(orphan)registered.push({value:orphan.value,kind:'app',close:orphan.close});
+  let unknown=false;try{await close();}catch{unknown=true;}
+  let code='TASK16_APP_FAILED_CLOSED';
+  if(error&&!types.isProxy(error)){
+   const descriptor=Object.getOwnPropertyDescriptor(error,'code');
+   if(descriptor&&Object.hasOwn(descriptor,'value')&&CODES.has(descriptor.value))code=descriptor.value;
+  }
+  const failure=Object.assign(fault(code),{appStartupOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED',
+   appCleanupOutcome:unknown?'UNKNOWN_DO_NOT_CONTINUE':registered.length?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED'});
+  throw captureCurrent259ApplicationFailure(failure,marker);
+ }
 }
 
 const admissions=new WeakMap(),claims=new WeakSet(),opens=new WeakSet();
@@ -182,8 +225,9 @@ function bindSimulatedCurrent259Application(context,session){
  * Consumes a live session capability inside its original resource scope. The
  * environment and private local storage must already satisfy the real factory.
  */
-async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pair,retirement){
+async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pair,retirement,reportPhase){
  const code='TASK16_APP_IMPACT_READER_PROOF';
+ const checkpoint=applicationCheckpoint('OWNED_PROOF',reportPhase);
  need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
@@ -241,7 +285,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    try{
     need(active&&!broken&&!aborted.call(signal),code);
     if(businessToken){businessIssuer(businessToken,handle);need(typeof checkSessionContinuity==='function'&&own(session,'checkContinuity')===checkSessionContinuity&&own(session,'activateBusinessContinuity')===activateSession,code);checkSessionContinuity.call(session,businessToken);view.checkLifetime();}
-    else{checkSession.call(session);view.check();}
+    else checkSession.call(session);
     need((businessToken?claimCurrent259TechnicalResourceContinuity(handle,businessToken):claimCurrent259TechnicalResource(handle))===view&&view.loader===loader&&own(loader,'Class')===Class&&
      own(loader,'loadApplicationModules')===load&&own(loader,'createTestingModule')===create&&
      own(session,'source')===source&&own(session,'checkLight')===checkSession&&
@@ -257,15 +301,19 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    check();need(claims.has(admission)&&!opens.has(admission)&&typeof checkApplication==='function',code);opens.add(admission);
    return createCurrent259ImpactRuntime(session,()=>{check();checkApplication();});
   }});
+  checkpoint.enter('LIVE_VERIFY_BEFORE');
   check();await verifySession.call(session);check();
   admissions.set(clients,admission);
   const boundary=Object.freeze({
    loadModules(request){check();const result=load.call(loader,request);check();return result;},
    createTestingModule(metadata){check();const result=create.call(loader,metadata);check();return result;}
   });
-  app=await createCurrent259Application(context,boundary,{checkLight:check,onClose:revoke,...(retirement?{retirement:true}:{})});
+  app=await createApplication(context,boundary,{checkLight:check,onClose:revoke,...(retirement?{retirement:true}:{})},reportPhase,admission);
+  checkpoint.enter('OWNED_PROVIDER_PROOF');
   appInspect=own(app,'inspect');appClose=own(app,'close');
+  checkpoint.enter('LIVE_VERIFY_AFTER');
   check();await verifySession.call(session);check();
+  checkpoint.enter('OWNED_PROVIDER_PROOF');
   const inspected=appInspect.call(app);
   need(inspected.runtime===original.runtime,code);
   const application=Object.freeze({status:'CURRENT259_OWNED_APPLICATION_SOURCE_AND_PROVIDER_MATCHED',origin:inspected.origin,
@@ -298,6 +346,8 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
   }:undefined;
   return Object.freeze({application,close,terminate,cleanupUnknown:cleanupIsUnknown,confirmHttpClosed});
  }catch(error){
+  const marker=checkpoint.capture({},error);
+  checkpoint.capture(error);
   pair?.rememberFailure(error);
   revoke();let cleanupUnknown=false;
   try{await close();}catch{cleanupUnknown=true;}
@@ -309,8 +359,8 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    if(descriptor&&Object.hasOwn(descriptor,'value')&&CODES.has(descriptor.value))failure=descriptor.value;
    if(state&&Object.hasOwn(state,'value')&&['NOT_ATTEMPTED','UNKNOWN_DO_NOT_RETRY'].includes(state.value))startup=state.value;
   }
-  throw Object.assign(fault(failure),{appStartupOutcome:app?'UNKNOWN_DO_NOT_RETRY':startup,
-   appCleanupOutcome:cleanupUnknown?'UNKNOWN_DO_NOT_CONTINUE':app?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED'});
+  throw captureCurrent259ApplicationFailure(Object.assign(fault(failure),{appStartupOutcome:app?'UNKNOWN_DO_NOT_RETRY':startup,
+   appCleanupOutcome:cleanupUnknown?'UNKNOWN_DO_NOT_CONTINUE':app?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED'}),marker);
  }
 }
 async function withCurrent259OwnedApplication(proof,handle,signal,consume){
@@ -360,11 +410,12 @@ async function withCurrent259OwnedApplicationPair(proofs,handle,signal,consume){
  },pair),pair);
 }
 async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=false){
+ const checkpoint=applicationCheckpoint('OWNED_PROOF');
  need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
  need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
- let owned,control,value,first,closedOrigin,hasPrimary=false,cleanupUnknown=false,abortObserved=false,creationSettled=false;
+ let owned,control,value,first,firstMarker,closedOrigin,hasPrimary=false,cleanupUnknown=false,abortObserved=false,creationSettled=false;
  let resolveAbort,closingOutcome,closeSettled=false;
  const outcome=promise=>Promise.resolve(promise).then(value=>({value}),error=>({failed:true,error}));
  const beginClose=()=>{
@@ -388,7 +439,7 @@ async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=
   if(aborted.call(signal))onAbort();
   const creating=outcome(createCurrent259OwnedApplication(proof,handle,signal,scope=>{
    control=scope;if(abortObserved){scope.revoke();void scope.terminate();}
-  },pair,retirement)).then(async result=>{
+ },pair,retirement,checkpoint.enter)).then(async result=>{
    creationSettled=true;
    // The race retains handlers for late resolution or rejection. Late startup
    // can only be cleaned up and never becomes the callback's application.
@@ -402,16 +453,18 @@ async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=
   if(created.aborted)throw fault('TASK16_APP_ABORTED');
   if(created.failed)throw created.error;
   owned=created.value;
+  checkpoint.enter('OWNED_CALLBACK');
   const completed=await Promise.race([outcome(Promise.resolve().then(()=>consume(owned.application))),cancellation]);
   if(completed.aborted)throw fault('TASK16_APP_ABORTED');
   if(completed.failed)throw completed.error;
   value=completed.value;
   owned.application.inspect();
- }catch(error){first=error;hasPrimary=true;pair?.rememberFailure(error);}
+ }catch(error){first=error;hasPrimary=true;firstMarker=checkpoint.capture({},first);checkpoint.capture(first);pair?.rememberFailure(error);}
  finally{
   try{
    if(control){
     if(pair&&hasPrimary)void control.terminate();
+    if(!hasPrimary)checkpoint.enter('OWNED_CLEANUP');
     const closing=beginClose();
     const closed=closeSettled?await closing:await Promise.race([closing,cancellation]);
     if(closed.aborted){
@@ -432,7 +485,7 @@ async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=
   }finally{removeAbortListener.call(signal,'abort',onAbort);}
  }
  if(hasPrimary){
-  if(pair)first=pair.failure();
+  if(pair){const pairFailure=pair.failure();if(pairFailure!==first)firstMarker=undefined;first=pairFailure;}
   let code='TASK16_APP_FAILED_CLOSED',startup=owned||control?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED';
   let cleanup=owned?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED';
   if(first&&!types.isProxy(first)){
@@ -444,6 +497,7 @@ async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=
   if(cleanupUnknown)cleanup='UNKNOWN_DO_NOT_CONTINUE';
   const failure=Object.assign(fault(code),{appStartupOutcome:startup,appCleanupOutcome:cleanup});
   const detail=describeCurrent259DisconnectFailure(first);
+  checkpoint.capture(failure,firstMarker??first);
   throw detail?carryCurrent259DisconnectFailure(failure,detail):failure;
  }
  if(retirement){

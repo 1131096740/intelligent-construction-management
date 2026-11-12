@@ -136,6 +136,28 @@ test('three scoped clients retain exact same-handle identities and expire after 
  assert.equal(f.resourceClosed(),0);
 });
 
+test('application-stage live re-verification retains the exact nested checkpoint through resource closure',async()=>{
+ const primary=Object.assign(new Error('private connection URL'),{code:'P2010',meta:{code:'42501',message:'private statement'}});
+ let reads=0;
+ const f=fixture({onCatalog(){if(++reads===2)throw primary;}});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
+  try{await session.verifyFull();assert.fail('unexpected re-verification');}
+  catch(error){throw f.api.captureCurrent259ApplicationFailure(new Error('outer application error'),error,'LIVE_VERIFY_BEFORE',7);}
+ }),error=>{
+  assert.equal(error.code,'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED');
+  assert.deepEqual(f.api.describeCurrent259ApplicationFailure(error),{
+   phase:'LIVE_VERIFY_BEFORE',code:'CURRENT259_LIVE_SESSIONS_VERIFICATION',elapsedMs:7,
+   live:{checkpoint:'CATALOG',prismaCode:'P2010',sqlState:'42501',outcome:'REJECTED'},
+  });
+  assert.equal(f.api.describeCurrent259ApplicationFailure({applicationFailure:{phase:'NEST_INIT'}}),undefined);
+  assert.doesNotMatch(JSON.stringify({error,detail:f.api.describeCurrent259ApplicationFailure(error)}),/private|outer application error/u);
+  return true;
+ });
+ assert.equal(f.resourceClosed(),1);
+ assert.equal(reads,2);
+});
+
 test('an ordinary live admission retains only the first bounded Prisma failure across cleanup',async()=>{
  const primary=Object.assign(new Error('private SQL, connection URL and path'),{code:'P2010',meta:{code:'42501',message:'private SQL'}});
  const f=fixture({onIdentity(_row,index){if(index===1)throw primary;},onDisconnect(){throw new Error('private cleanup');}});

@@ -3,7 +3,8 @@ import {
   cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync,
   statSync, writeFileSync
 } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { fork, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ const runnerPath = join(
   "prisma/run-project-financing-quota-concurrency-local.cjs"
 );
 
-function installContainerInspectFixture(fixture: string, bin: string, fakeSource: string) {
+function installContainerInspectFixture(fixture: string, bin: string, fakeSource: string, portClient?: string) {
   const model = join(fixture, "model");
   mkdirSync(model);
   // The runner checks the same immutable synthetic container before each SQL call.
@@ -38,8 +39,12 @@ function installContainerInspectFixture(fixture: string, bin: string, fakeSource
       'state.events.push(event);',
       'fs.writeFileSync(statePath'
     ].join("\n"));
+  if (portClient) {
+    writeFileSync(join(model, "command.cjs"), journaledSource);
+    writeFileSync(join(model, "socket-path"), join(model, "port.sock") + "\n");
+  }
   for (const executable of [join(model, "docker"), join(bin, "pnpm")]) {
-    writeFileSync(executable, "#!" + process.execPath + "\n" + journaledSource, { mode: 0o700 });
+    writeFileSync(executable, portClient ?? "#!" + process.execPath + "\n" + journaledSource, { mode: 0o700 });
   }
   writeFileSync(join(bin, "docker"), [
     "#!/bin/sh",
@@ -56,6 +61,47 @@ function installContainerInspectFixture(fixture: string, bin: string, fakeSource
     'exec "$fixture/model/docker" "$@"',
     ""
   ].join("\n"), { mode: 0o700 });
+}
+
+async function installMasked115CommandServer(fixture: string, bin: string, fakeSource: string) {
+  // Keep the original CLI's subprocess, stdin, stdout, stderr and exit paths.
+  // Only the synthetic port's Node startup is shared across those processes.
+  const portClient = [
+    "#!/bin/sh",
+    'fixture="${0%/*}/.."',
+    'request="$fixture/request-$$"',
+    'reply="$fixture/reply-$$"',
+    'printf \'%s\\000\' "${0##*/}" "${DATABASE_URL-}" "$$" "$#" "$@" > "$request" || exit 125',
+    'previous=; last=',
+    'for argument do previous="$last"; last="$argument"; done',
+    'if [ "$previous" = -f ] && [ "$last" = - ]; then /bin/cat >> "$request" || exit 125; fi',
+    'IFS= read -r socket < "$fixture/model/socket-path" || exit 125',
+    '/usr/bin/curl --fail --silent --show-error --unix-socket "$socket" --data-binary "@$request" http://localhost/command || exit 125',
+    '{ IFS= read -r status && IFS= read -r errors; } < "$reply.status" || exit 125',
+    'if [ "$errors" != 0 ]; then /bin/cat "$reply.stderr" >&2 || exit 125; fi',
+    'exit "$status"',
+    ""
+  ].join("\n");
+  installContainerInspectFixture(fixture, bin, fakeSource, portClient);
+  const port = fork(join(process.cwd(), "prisma/testdata/pfq-masked-115-command-server.cjs"), [fixture], {
+    execArgv: [], stdio: ["ignore", "ignore", "inherit", "ipc"]
+  });
+  const stopped = new Promise<void>(resolve => { port.once("close", () => resolve()); });
+  const stop = async () => {
+    if (port.exitCode === null && port.signalCode === null) port.kill();
+    await stopped;
+  };
+  try {
+    const [message] = await Promise.race([
+      once(port, "message", { signal: AbortSignal.timeout(5_000) }),
+      stopped.then(() => { throw new Error("synthetic PFQ command server stopped before readiness"); })
+    ]);
+    if (message !== "ready") throw new Error("synthetic PFQ command server did not report readiness");
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  return stop;
 }
 
 describe("project financing quota PostgreSQL runner", () => {
@@ -859,8 +905,9 @@ describe("project financing quota PostgreSQL runner", () => {
     } finally { rmSync(fixture, { recursive: true, force: true }); }
   });
 
-  it.each([true, false])("preserves the original CLI masked115 evidence and resolve boundary when expected evidence is retained=%s", (retainExpectedReason) => {
+  it.each([true, false])("preserves the original CLI masked115 evidence and resolve boundary when expected evidence is retained=%s", async (retainExpectedReason) => {
     const fixture = mkdtempSync(join(tmpdir(), "pfq-masked115-cli-"));
+    let closePort: (() => Promise<void>) | undefined;
     try {
       const prismaRoot = join(fixture, "services/api/prisma");
       const dist = join(fixture, "services/api/dist/database");
@@ -887,7 +934,7 @@ describe("project financing quota PostgreSQL runner", () => {
         roles: [{ oid: "10", name: "jiangkong", superuser: true, createRole: false, createDb: true,
           replication: true, bypassRls: true, memberships: [] }] }));
       const fakeSource = readFileSync(join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8");
-      installContainerInspectFixture(fixture, bin, fakeSource);
+      closePort = await installMasked115CommandServer(fixture, bin, fakeSource);
       const run = spawnSync(process.execPath, [join(prismaRoot, "run-project-financing-quota-concurrency-local.cjs")], {
         env: { PATH: bin, HOME: fixture, TMPDIR: artifacts, NODE_ENV: "test", PNPM_BIN: join(bin, "pnpm") },
         encoding: "utf8", timeout: 30_000
@@ -931,7 +978,10 @@ describe("project financing quota PostgreSQL runner", () => {
       }
       expect(state.events.filter(event => event.action === "business-tests")).toHaveLength(1);
       expect(state.events.at(-1)?.args.slice(0, 3)).toEqual(["rm", "--force", "--volumes"]);
-    } finally { rmSync(fixture, { recursive: true, force: true }); }
+    } finally {
+      try { await closePort?.(); }
+      finally { rmSync(fixture, { recursive: true, force: true }); }
+    }
   }, 30_000);
 
   it("pins the exact local database, migration count, terminal migration and checksum", () => {

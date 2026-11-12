@@ -7,6 +7,7 @@ const holder={exports:{}};
 const runtimeModel=new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-impact-runtime.test.cjs'),'utf8')+'\nreturn module.exports;')(
  name=>name==='node:test'?{test:noop}:name==='./run-task16-registered-pg-local.cjs'?{}:require(name),holder,__dirname);
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
+const {captureCurrent259ApplicationFailure,describeCurrent259ApplicationFailure}=require('./task16-current259-live-sessions.cjs');
 function fixture(t,options={}){
  const model=runtimeModel.fixture(),session=model.session,calls=[],proof=Object.freeze({}),handle=Object.freeze({});
  const directory=fs.mkdtempSync('/private/tmp/jg-259-owned-app-model-');fs.chmodSync(directory,0o700);
@@ -17,7 +18,7 @@ function fixture(t,options={}){
  const prior=Object.fromEntries(Object.keys(environment).map(key=>[key,process.env[key]]));
  for(const [key,value]of Object.entries(environment))process.env[key]=value;
  t.after(()=>{for(const [key,value]of Object.entries(prior))if(value===undefined)delete process.env[key];else process.env[key]=value;});
- let claimed=false,sessionActive=true,resourceActive=true,resourceCloses=0,reader;
+ let claimed=false,sessionActive=true,resourceActive=true,resourceCloses=0,resourceClaims=0,resourceChecks=0,reader;
  if(options.retirement)session.disconnectOriginal=true;
  session.checkLight=()=>{assert.ok(sessionActive&&resourceActive);};
  session.close=async()=>{calls.push('sessions-close');sessionActive=false;};
@@ -26,7 +27,7 @@ function fixture(t,options={}){
  const secondProof=Object.freeze({}),pair=Object.freeze([proof,secondProof]);
  const bundle={Task16RegisteredApplicationModule:class {},PrismaService:class {},
   configureApiSecurity(){calls.push('security');},configureProjectionExportJson(){calls.push('projection');},apiJsonReplacer(){},
-  createApiValidationPipe(){return 'validation';},async listenApi(_app,port,host){calls.push('listen');assert.equal(port,0);assert.equal(host,'127.0.0.1');},
+  createApiValidationPipe(){return 'validation';},async listenApi(_app,port,host){calls.push('listen');assert.equal(port,0);assert.equal(host,'127.0.0.1');await options.onListen?.();},
   Task16ImpactReaderToken:token};
  function framework(lane,entries){
   const server={listening:true,address(){return this.listening?{address:'127.0.0.1',family:'IPv4',port:52124+lane}:null;}};
@@ -56,15 +57,15 @@ function fixture(t,options={}){
   options.onLoad?.(request);return bundle;
  },createTestingModule(metadata){calls.push('builder');assert.deepEqual(metadata,{imports:[bundle.Task16RegisteredApplicationModule]});return (built++===0?firstApp:secondApp).builder;}};
  const view={loader,source:{candidateSha:session.source.candidateSha,sourceSealSha256:session.source.sealSha256},resource:{caPath:path.join(directory,'tls-private/ca.crt')},
-  check(){assert.ok(resourceActive);},checkLifetime(){assert.ok(resourceActive);},verifyFull(){assert.ok(resourceActive);}};
+  check(){resourceChecks++;assert.ok(resourceActive);},checkLifetime(){assert.ok(resourceActive);},verifyFull(){assert.ok(resourceActive);}};
  const imports={
-  './task16-current259-live-sessions.cjs':{assertCurrent259CompetitionLivePair(value,provided){return !!options.competitionModule&&value===pair&&provided===handle;},claimCurrent259LiveSessions(value,provided){
+  './task16-current259-live-sessions.cjs':{captureCurrent259ApplicationFailure,assertCurrent259CompetitionLivePair(value,provided){return !!options.competitionModule&&value===pair&&provided===handle;},claimCurrent259LiveSessions(value,provided){
    if((options.competitionModule||options.retirement)&&provided===handle&&value===secondProof&&claimed)return otherSession;
    if(value!==proof||provided!==handle||claimed)throw new Error('CURRENT259_LIVE_SESSIONS_HANDLE');
    claimed=true;return session;
   }},
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer(token,h){assert.equal(typeof options.businessGuard,'function');options.businessGuard(token,h);}},
-  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(provided,token){assert.equal(provided,handle);options.businessGuard(token,provided);view.check();return view;},claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
+  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(provided,token){assert.equal(provided,handle);options.businessGuard(token,provided);view.check();return view;},claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);resourceClaims++;view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
   './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return false;},createCurrent259OwnedApplication(){throw new Error('wrong bridge');},takeCurrent259CreationFailure(){}},
   './run-task16-registered-pg-local.cjs':{ownsActiveTask16SimulationContext(){return false;}},
   './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value){const material=loadCurrent259CatalogMaterial(value);return options.material?options.material(material):material;}}
@@ -77,9 +78,47 @@ function fixture(t,options={}){
  localRequire.cache=options.paymentModule?{...require.cache,[paymentFile]:{exports:options.paymentModule}}:require.cache;
  new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(localRequire,module,__dirname);
  return {...model,api:module.exports,proof,handle,session,view,loader,calls,environment,directory,resourceCloses:()=>resourceCloses,
+  resourceQualification:()=>({claims:resourceClaims,checks:resourceChecks}),
   reader:()=>reader,providers,token,claimed:()=>claimed,pair,secondProof,otherSession,serverReads,providerReads,apps:[firstApp,secondApp],bundle};
 }
 
+for(const [phase,hook,occurrence,code] of [
+ ['LIVE_VERIFY_BEFORE','onFull',1,'CURRENT259_LIVE_SESSIONS_VERIFICATION'],
+ ['LIVE_VERIFY_AFTER','onFull',2,'CURRENT259_LIVE_SESSIONS_VERIFICATION'],
+ ['NEST_COMPILE','onCompile',1,'UNAPPROVED_CODE'],
+ ['NEST_INIT','onInit',1,'UNAPPROVED_CODE'],
+ ['LOOPBACK_LISTEN','onListen',1,'EADDRINUSE'],
+])test('first fixed application checkpoint survives cleanup for '+phase,async t=>{
+ let calls=0;
+ const primary=Object.assign(new Error('private URL SQL path'),{code});
+ const f=fixture(t,{[hook](){if(++calls===occurrence)throw primary;},
+  onClose(){throw new Error('private close failure');}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>assert.fail('no business callback')),error=>{
+  const detail=describeCurrent259ApplicationFailure(error);
+  assert.equal(detail.phase,phase);
+  assert.equal(detail.code,code==='UNAPPROVED_CODE'?null:code);
+  assert.ok(Number.isInteger(detail.elapsedMs)&&detail.elapsedMs>=0);
+  assert.ok(Object.isFrozen(detail));
+  assert.doesNotMatch(JSON.stringify({detail,error}),/private URL|private close|UNAPPROVED_CODE/u);
+  return true;
+ });
+ assert.equal(f.resourceCloses(),1);
+});
+
+test('application checkpoints do not read foreign exception code getters or copy diagnostic properties',async t=>{
+ let traps=0;
+ const foreign={applicationFailure:{phase:'NEST_INIT',message:'private marker'}};
+ Object.defineProperty(foreign,'code',{get(){traps++;throw Error('private getter');}});
+ const f=fixture(t,{onListen(){throw foreign;}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>assert.fail('no business callback')),error=>{
+  const detail=describeCurrent259ApplicationFailure(error);
+  assert.equal(detail.phase,'LOOPBACK_LISTEN');
+  assert.equal(detail.code,null);
+  assert.doesNotMatch(JSON.stringify(detail),/private|NEST_INIT/u);
+  return true;
+ });
+ assert.equal(traps,0);
+});
 
 test('genuine live proof binds the original loader, runtime and B7 provider and automatically closes HTTP',async t=>{
  const f=fixture(t);let observed;
@@ -101,6 +140,36 @@ test('genuine live proof binds the original loader, runtime and B7 provider and 
  assert.equal(f.resourceCloses(),0);
 });
 
+test('application inspection runs a fresh owner check for each claim without repeating it in the same call',async t=>{
+ const f=fixture(t);
+ await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  const before=f.resourceQualification();
+  app.inspect();
+  const first=f.resourceQualification();
+  assert.ok(first.claims>before.claims);
+  assert.equal(first.checks-before.checks,first.claims-before.claims);
+  await Promise.resolve();
+  app.inspect();
+  const second=f.resourceQualification();
+  assert.equal(second.claims-first.claims,first.claims-before.claims);
+  assert.equal(second.checks-first.checks,second.claims-first.claims);
+ });
+});
+
+for(const [name,drift] of [
+ ['resource qualification',f=>{f.view.check=()=>{throw Error('fixed modeled resource drift');};}],
+ ['source seal',f=>{f.view.source={...f.view.source,sourceSealSha256:'f'.repeat(64)};}],
+ ['role proof',f=>{f.session.identity=structuredClone(f.session.identity);}],
+])test('first check after asynchronous Nest init rejects '+name+' drift before listen',async t=>{
+ let f;
+ f=fixture(t,{async onInit(){await Promise.resolve();drift(f);}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>assert.fail('no callback')),
+  error=>describeCurrent259ApplicationFailure(error)?.phase==='NEST_INIT');
+ assert.equal(f.calls.includes('listen'),false);
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+ assert.equal(f.resourceCloses(),1);
+});
+
 test('plain proof, native flags and copied data cannot acquire application authority',async t=>{
  const f=fixture(t);
  for(const value of [{},{native:true},{...f.proof},{sourceBinding:{sourceSha:f.session.source.candidateSha}}]){
@@ -108,6 +177,21 @@ test('plain proof, native flags and copied data cannot acquire application autho
  }
  assert.equal(f.claimed(),false);assert.deepEqual(f.calls,[]);assert.equal(f.resourceCloses(),0);
  assert.equal(f.api.createCurrent259OwnedApplication,undefined);
+});
+
+test('public application creation rejects a caller continuity without a registered reader admission',async t=>{
+ const f=fixture(t);
+ const source=f.session.source,{registeredManifestSha256}=loadCurrent259CatalogMaterial(source);
+ const clients={status:'CLIENTS_CONNECTED_AND_IDENTITY_MATCHED',runtime:f.session.runtime,
+  sourceBinding:{sourceSha:source.candidateSha,sourceSealSha256:source.sealSha256,registeredManifestSha256}};
+ const context={clients,source,registeredAccess:{manifestSha256:registeredManifestSha256}};
+ const boundary={loadModules(){assert.fail('unqualified module load');},createTestingModule(){assert.fail('unqualified compilation');}};
+ let closed=0;
+ await assert.rejects(f.api.createCurrent259Application(context,boundary,{
+  checkLight(){assert.fail('unqualified caller continuity');},onClose(){closed++;},
+ }),/TASK16_APP_IMPACT_READER_PROOF/u);
+ assert.equal(closed,1);
+ assert.deepEqual(f.calls,[]);
 });
 
 test('the same handle is required and live proof is consumed only once',async t=>{

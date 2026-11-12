@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 const sessions = JSON.parse(process.env.GP_SESSIONS!);
 const historicalDrafts: Record<string, string> = JSON.parse(process.env.GP_HISTORICAL_DRAFTS!);
 async function login(page: Page, role: string) {
@@ -71,18 +71,32 @@ test("新申请保留元估价和重复保存身份，历史申请按顺序审�
   expect(submittedResponse.status(), await submittedResponse.text()).toBe(201);
   await expect(page.getByText("当前办理：综合部主管", { exact: true })).toBeVisible();
   for (const role of ["director", "manager", "chairman"]) {
-    await login(page, role);
-    await page.getByRole("button", { name: "审批", exact: true }).click();
-    const review = page.locator(".t-dialog").filter({ hasText: "审批综合采购申请" });
-    await expect(review).toBeVisible();
-    await expect(review).toHaveCSS("opacity", "1");
-    await expect(review).toHaveCSS("transform", "none");
-    const [reviewedResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().endsWith(`/general-procurements/${id}/review`) && response.request().method() === "POST", { timeout: 5000 }),
-      review.getByRole("button", { name: "批准", exact: true }).click(),
-    ]);
-    expect(reviewedResponse.status(), await reviewedResponse.text()).toBe(201);
-    await expect(page.getByRole("button", { name: "批准", exact: true })).toBeHidden();
+    await test.step(`审批 ${role}`, async () => {
+      await login(page, role);
+      await page.getByRole("button", { name: "审批", exact: true }).click();
+      const review = page.locator(".t-dialog").filter({ hasText: "审批综合采购申请" });
+      await expect(review).toBeVisible();
+      // TDesign marks the opening transition on the dialog context, outside the panel.
+      const reviewContext = review.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' t-dialog__ctx ')][1]");
+      await expect(reviewContext).toHaveCount(1);
+      await expect(reviewContext).not.toHaveClass(/t-dialog-zoom__vue-enter-(?:from|active|to)/);
+      const approve = review.getByRole("button", { name: "批准", exact: true });
+      const isReview = (request: Request) => request.method() === "POST" && new URL(request.url()).pathname === `/api/general-procurements/${id}/review`;
+      let reviewPosts = 0;
+      const countReview = (request: Request) => { if (isReview(request)) reviewPosts += 1; };
+      page.on("request", countReview);
+      try {
+        const [reviewedResponse] = await Promise.all([
+          page.waitForResponse(response => isReview(response.request()), { timeout: 5000 }),
+          approve.click(),
+        ]);
+        expect(reviewedResponse.status(), await reviewedResponse.text()).toBe(201);
+        await expect(review).toBeHidden();
+        expect(reviewPosts).toBe(1);
+      } finally {
+        page.off("request", countReview);
+      }
+    });
   }
   await login(page, "director");
   await page.getByRole("button", { name: "综合部归档", exact: true }).click();
