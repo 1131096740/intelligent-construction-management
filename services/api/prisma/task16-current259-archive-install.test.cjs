@@ -140,6 +140,40 @@ test('the qualified archive and registered-file chain preserves both before cont
   assert.throws(()=>f.claimCurrent259ArchiveInstallation(result,f.handle));
 });
 
+test('both archive writers bind the three frozen outside native routines before the upward splice', async () => {
+  const migration = readFileSync(join(__dirname,
+    'migrations/20261111092000_contract_direct_outside_operating_executor_v2/migration.sql'), 'utf8');
+  const { createHash } = require('node:crypto');
+  const bindings = [
+    ['observe', 'public.jg_observe_direct_outside_issuer_tls_v2()', 'jg_c259_outside_issuer_login', 'jg_c259_outside_issuer_owner'],
+    ['issue', 'public.jg_issue_direct_outside_operating_v2(uuid,text,text,text,text,integer,text,text,jsonb)',
+      'jg_c259_outside_issuer_owner', 'jg_c259_outside_issuer_login'],
+    ['execute', 'public.jg_execute_direct_outside_operating_v2(uuid,uuid,text,text,text,text,integer,text,text,jsonb)',
+      'jg_c259_outside_executor_owner', 'jg_c259_outside_executor_login'],
+  ];
+  for (const registered of [false, true]) {
+    const f = model();
+    const install = registered ? f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource : f.installCurrent259ArchiveAuthorities;
+    await install(f.provisionResult, f.handle);
+    const writer = f.calls.find(call => call.phase.endsWith('-write')).sql;
+    const after = f.calls.find(call => call.phase.endsWith('-committed')).sql;
+    const wiring = writer.match(/<<archive_outside_native>>([\s\S]+?)END archive_outside_native;/u);
+    assert.ok(wiring);
+    const position = writer.indexOf(wiring[0]);
+    assert.ok(writer.indexOf('PERFORM public.jg_install_direct_outside_operating_basis_bridge_v2') < position);
+    assert.ok(position < writer.indexOf('upward := public.jg_install_contract_direct_upward_v2'));
+    for (const [body, signature, owner, caller] of bindings) {
+      const definition = migration.split('$'+body+'$');
+      assert.equal(definition.length, 3);
+      const digest = createHash('sha256').update(definition[1]).digest('hex');
+      assert.ok(wiring[1].includes([signature, digest, owner, caller].map(value => "'" + value + "'").join(',')));
+    }
+    assert.match(wiring[1], /OUTSIDE_NATIVE_PREIMAGE[\s\S]+ALTER FUNCTION[\s\S]+GRANT EXECUTE ON FUNCTION[\s\S]+OUTSIDE_NATIVE_POSTIMAGE/u);
+    assert.match(wiring[1], /to_jsonb\(p\)-ARRAY\['proowner','proacl'\][\s\S]+IS NOT DISTINCT FROM prior_metadata/u);
+    assert.doesNotMatch(after, /<<archive_outside_native>>/u);
+  }
+});
+
 test('the combined writer rejects an executor already present in the original seven-file closure',async()=>{
  const f=model((row,phase)=>{
   if(phase==='current259-seven-before')row.fileRoles.push('17002');

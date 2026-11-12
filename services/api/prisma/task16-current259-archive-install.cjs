@@ -307,9 +307,63 @@ const outsideCalls = input => [
     `PERFORM public.${OUTSIDE}(${OUTSIDE_ROLES.map(role => `${literal(role)}::name`).join(',')});`,
     ...INSTALLERS.slice(1, -1).map(([name]) => `PERFORM public.${name}();`),
   ].join('\n ');
+// The frozen operating entrypoint migration creates these routines owner-private.
+const OUTSIDE_NATIVE = [
+  ['public.jg_observe_direct_outside_issuer_tls_v2()', '466bcd9369352a335a66c0eb8022a725075c4439b73912a5eaffe9240cf736b7',
+    'issuer_login', 'issuer_owner', 'sql', 'bool', false, 'search_path=pg_catalog, pg_temp'],
+  ['public.jg_issue_direct_outside_operating_v2(uuid,text,text,text,text,integer,text,text,jsonb)',
+    'a08085cfb362d55e39326b696536c66ca6d665da18e6848697a25c2f8c0e8783',
+    'issuer_owner', 'issuer_login', 'plpgsql', 'uuid', true, 'search_path=pg_catalog, pg_temp'],
+  ['public.jg_execute_direct_outside_operating_v2(uuid,uuid,text,text,text,text,integer,text,text,jsonb)',
+    'f8e43c113bcbce2327a7730e6102f0b95c20d47e1bc59f2af757f8770010acb4',
+    'executor_owner', 'executor_login', 'plpgsql', 'text', true, 'search_path=pg_catalog, public, pg_temp'],
+];
+
+function outsideNativeWiring(input) {
+  const specs = OUTSIDE_NATIVE.map(([signature, body, owner, caller, language, result, strict, config]) => {
+    const ownerRole = input.roles.find(role => role.name === `jg_c259_outside_${owner}`);
+    const callerRole = input.roles.find(role => role.name === `jg_c259_outside_${caller}`);
+    return `(${[signature, body, ownerRole.name, callerRole.name, language, 'pg_catalog.'+result].map(literal).join(',')},
+      ${strict},${literal(config)},${literal(ownerRole.oid)}::oid,${literal(callerRole.oid)}::oid)`;
+  }).join(',\n    ');
+  return `<<archive_outside_native>>
+ DECLARE expected record; routine oid; prior_metadata jsonb;
+ BEGIN
+  FOR expected IN SELECT * FROM (VALUES
+    ${specs}
+   ) recipe(signature,body,owner_name,caller_name,language,result,is_strict,config,owner_oid,caller_oid) LOOP
+   routine := pg_catalog.to_regprocedure(expected.signature);
+   SELECT pg_catalog.to_jsonb(p)-ARRAY['proowner','proacl'] INTO prior_metadata
+   FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid=p.prolang
+   WHERE p.oid=routine AND p.proowner=${literal(input.ownerOid)}::oid AND p.pronamespace=${literal(input.namespaceOid)}::oid
+    AND p.prokind='f' AND p.prosecdef AND p.provolatile='v' AND p.proparallel='u'
+    AND NOT (p.proretset OR p.proleakproof) AND p.proisstrict=expected.is_strict
+    AND p.pronargdefaults=0 AND p.provariadic=0 AND p.prosupport=0 AND l.lanname=expected.language
+    AND p.prorettype=pg_catalog.to_regtype(expected.result) AND p.proconfig=ARRAY[expected.config]
+    AND ${digestSql('p.prosrc')}=expected.body
+    AND (SELECT count(*)=1 AND bool_and(a.grantee=p.proowner AND a.grantor=p.proowner
+       AND a.privilege_type='EXECUTE' AND NOT a.is_grantable) FROM pg_catalog.aclexplode(p.proacl) a);
+   IF NOT FOUND THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_OUTSIDE_NATIVE_PREIMAGE'; END IF;
+
+   EXECUTE pg_catalog.format('ALTER FUNCTION %s OWNER TO %I',expected.signature,expected.owner_name);
+   EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION %s TO %I',expected.signature,expected.caller_name);
+
+   IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=routine AND p.proowner=expected.owner_oid
+     AND pg_catalog.to_jsonb(p)-ARRAY['proowner','proacl'] IS NOT DISTINCT FROM prior_metadata
+     AND (SELECT count(*)=2 AND count(*) FILTER(WHERE a.grantee=expected.owner_oid)=1
+       AND count(*) FILTER(WHERE a.grantee=expected.caller_oid)=1
+       AND bool_and(a.grantor=expected.owner_oid AND a.privilege_type='EXECUTE' AND NOT a.is_grantable)
+       FROM pg_catalog.aclexplode(p.proacl) a)) THEN
+    RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_OUTSIDE_NATIVE_POSTIMAGE';
+   END IF;
+  END LOOP;
+ END archive_outside_native;`;
+}
+
 function upwardCall(input) {
   const upwardRuntime = input.roles.find(role => role.name === UPWARD_ROLES[2]);
   return [
+    outsideNativeWiring(input),
     'install_nonce := pg_catalog.gen_random_uuid();',
     `upward := public.${UPWARD}(${UPWARD_ROLES.map(role => `${literal(role)}::text`).join(',')},install_nonce);`,
     `IF upward IS DISTINCT FROM pg_catalog.jsonb_build_object('protocolVersion',2,'sourceClosureSha256',${closureSql},
