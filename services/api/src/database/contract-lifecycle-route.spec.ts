@@ -980,6 +980,13 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               clauseSnapshot: []
             }
           });
+          await audit.record(prisma, {
+            actorUserId: ownerId,
+            action: "contract.draft.create",
+            businessType: "contract",
+            businessId: contractId,
+            metadata: { projectId }
+          });
           await prisma.contractPartySnapshot.create({
             data: {
               contractVersionId: versionId,
