@@ -3,6 +3,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { listMigrationDirectories } = require("./migration-baseline.cjs");
 const {
   GROUPS,
   createRuntimeEnvironment
@@ -67,8 +68,7 @@ module.exports.runTerminalUpgrade = async (rejectPredecessor) => {
       migration: { async migrate({schemaPath}) {
         const {readdir} = require("node:fs/promises");
         const entries = await readdir(path.join(path.dirname(schemaPath), "migrations"), {withFileTypes:true});
-        assertFixture(!entries.some(entry => entry.name === TERMINAL_MIGRATION));
-        calls.push(["qualified", entries.filter(entry => entry.isDirectory()).length]);
+        calls.push(["qualified", entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort()]);
         if (rejectPredecessor) throw new Error("controlled predecessor rejection");
       }}
     });
@@ -77,12 +77,12 @@ module.exports.runTerminalUpgrade = async (rejectPredecessor) => {
   } finally {
     await rm(directory, {recursive:true,force:true});
   }
-  function assertFixture(condition) { if (!condition) throw new Error("terminal fixture contains successor"); }
   return calls;
 };
 `, filename);
+  const predecessor = listMigrationDirectories().slice(0, -1);
   assert.deepEqual(await fixture.exports.runTerminalUpgrade(false), [
-    ["qualified", 258], ["migrate", "deploy"], ["migrate", "status"]
+    ["qualified", predecessor], ["migrate", "deploy"], ["migrate", "status"]
   ]);
-  assert.deepEqual(await fixture.exports.runTerminalUpgrade(true), [["qualified", 258]]);
+  assert.deepEqual(await fixture.exports.runTerminalUpgrade(true), [["qualified", predecessor]]);
 });
