@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import PizZip from "pizzip";
@@ -257,8 +257,22 @@ describe("task10 complete contract body through authenticated public draft HTTP"
     const source = readFileSync(join(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
     const layout = await confirmedBodyLayout(server, source, "materials");
     const draft = await createTask09Draft(server);
-    expect((await saveTask09Draft(server, draft, "material_purchase", layout.id)).status).toBe(200);
-    const saved = await saveBody(draft, undefined, "当前单甲方", [{ clientRowKey: "table-row", sortOrder: 0, itemName: "正文清单钢材", unit: "吨", quantity: "2", unitPrice: "3.2500", taxRatePercent: "0", customData: {} }]);
+    const currentResponse = await fetch(`${draft.base}/workbench`, { headers: draft.headers });
+    expect(currentResponse.status).toBe(200);
+    const current = await currentResponse.json() as {
+      version: { draftRevision: number }; bills: Array<{ billKey: string; revision: number }>
+    };
+    const saved = await fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({
+      idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision, changedSections: ["draft", "parties", "bills"],
+      draft: { numericProtocolVersion: 2, draftData: { contractName: "上游新建当前合同名称",
+        contractBasics: { businessType: "material_purchase", relationship: "upward", amountBasis: "tax_inclusive", invoiceStatus: "pending" }
+      }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layout.id,
+      taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: "0", source: "contract_document" } },
+      parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: "当前单甲方" } }, { roleKey: "party_b", displayOrder: 0, snapshot: { name: "当前单乙方" } }],
+      bills: current.bills.map((bill, index) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2,
+        rows: index ? [] : [{ clientRowKey: "table-row", sortOrder: 0, itemName: "正文清单钢材", unit: "吨", quantity: "2", unitPrice: "3.2500", taxRatePercent: "0", customData: {} }] })),
+      paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
+    }) });
     expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
     const response = await fetch(`${draft.base}/document-body`, { headers: draft.headers });
     expect(response.status === 200 ? "OK" : await response.text()).toBe("OK");

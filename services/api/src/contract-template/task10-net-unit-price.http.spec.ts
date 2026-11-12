@@ -1,10 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { ContractBodyFlow } from "../contract-document/contract-body-document";
-import { createTemplateTestServer } from "./template-management.test-support";
-import { confirmedBodyLayout, type Body, type Server } from "./task10-body.test-support";
-import { createTask09Draft, saveTask09Draft } from "./task09-draft-template.test-support";
+import { createReviewedMaterialFixture, type Body } from "./task10-body.test-support";
+import { createTask09Draft } from "./task09-draft-template.test-support";
 
 // Expected literals were calculated independently with Decimal precision100 and
 // four-place HALF_UP. No rendering or bill product helper computes expectations.
@@ -16,25 +13,22 @@ const vectors = [
 ];
 
 describe("task10 authoritative net unit prices in explicit gross Word columns", () => {
-  let server: Server;
-  let layout: { id: string; sha256: string };
-  beforeAll(async () => {
-    server = await createTemplateTestServer({ draftWorkbench: true });
-    const source = await readFile(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
-    expect(createHash("sha256").update(source).digest("hex")).toBe("44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd");
-    layout = await confirmedBodyLayout(server, source, "materials");
-  });
-  afterAll(async () => { await server?.app.close(); });
+  let fixture: Awaited<ReturnType<typeof createReviewedMaterialFixture>>;
+  beforeAll(async () => { fixture = await createReviewedMaterialFixture(); });
+  afterAll(async () => { await fixture?.close(); });
 
   it.each(vectors)("$name through public persistence and body read", async vector => {
+    const { server, layout } = fixture;
     const draft = await createTask09Draft(server);
-    expect((await saveTask09Draft(server, draft, "material_purchase", layout.id)).status).toBe(200);
-    const current = await fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json()) as {
+    const currentResponse = await fetch(`${draft.base}/workbench`, { headers: draft.headers });
+    expect(currentResponse.status).toBe(200);
+    const current = await currentResponse.json() as {
       version: { draftRevision: number; draftData: Record<string, unknown> }; bills: Array<{ billKey: string; revision: number }>
     };
     const saved = await fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({
       idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision, changedSections: ["draft", "bills"],
       draft: { numericProtocolVersion: 2, draftData: { ...current.version.draftData,
+        contractName: "上游新建当前合同名称",
         contractBasics: { businessType: "material_purchase", relationship: "upward", amountBasis: "tax_exclusive", invoiceStatus: "pending" }
       }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layout.id,
       taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: vector.rate, source: "contract_document" } },
