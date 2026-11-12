@@ -6,7 +6,7 @@ const file=path.join(__dirname,'prepare-task16-current259-payment-install.cjs');
 function fixture(t){
  const base=fs.mkdtempSync('/private/tmp/jg-259-payment-plan-model-'),runRoot=path.join(base,'run');fs.mkdirSync(runRoot,{mode:0o700});
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
- const state={captures:0,loads:0,stale:false,fullCalls:0,lightCalls:0};
+ const state={captures:0,loads:0,stale:false,fullCalls:0,lightCalls:0,linkedTool:false};
  const migrations=fs.readdirSync(path.join(__dirname,'../services/api/prisma/migrations')).sort().filter(name=>/^\d{14}_/u.test(name)).map(name=>{
   const relative='services/api/prisma/migrations/'+name+'/migration.sql';
   return {path:relative,sha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'..',relative))).digest('hex')};
@@ -19,6 +19,9 @@ function fixture(t){
  const loader={check(){state.lightCalls++;assert.equal(state.stale,false,'source drift');},verifyFull(){state.fullCalls++;assert.equal(state.stale,false,'source drift');},witness(){return witness;}};
  const toolHashes={'/Applications/Docker.app/Contents/Resources/bin/docker':'6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40','/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl':'103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c'};
  const ports={
+  'node:fs':{...fs,realpathSync(name){
+   return Object.hasOwn(toolHashes,name)?(state.linkedTool?name+'.different':name):fs.realpathSync(name);
+  }},
   '../services/api/prisma/task16-current259-payment-run-authorization.cjs':{},
   '../services/api/prisma/task16-current259-build.cjs':{observeCurrent259Build(){state.captures++;return handle;}},
   '../services/api/prisma/task16-current259-client-loader.cjs':{loadCurrent259Client(value){assert.equal(value,handle);state.loads++;return loader;}},
@@ -29,6 +32,13 @@ function fixture(t){
  return {api:holder.exports,state,handle,loader,base,runRoot,output:path.join(base,'PLAN.json'),daemonId:'synthetic-payment-daemon-12345',rawSource};
 }
 module.exports={fixture};
+test('offline payment model preserves the fixed realpath check for native tools',t=>{
+ const f=fixture(t);
+ f.state.linkedTool=true;
+ assert.throws(()=>f.api.prepareCurrent259PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output}),
+  /PAYMENT_INSTALL_PLAN_TOOL/u);
+ assert.equal(fs.existsSync(f.output),false);
+});
 test('offline payment plan binds technical259, nine roles, seven originals and B7 while run remains empty',t=>{
  const f=fixture(t),result=f.api.prepareCurrent259PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output});
  const verified=f.api.verifyCurrent259PaymentInstallPlan(f.output,result.sha256);
