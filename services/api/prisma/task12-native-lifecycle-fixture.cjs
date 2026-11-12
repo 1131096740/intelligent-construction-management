@@ -55,7 +55,13 @@ function renderNativeLifecycleFixture(scope, secrets) {
       THEN RAISE EXCEPTION 'TASK12_NATIVE_FIXTURE_ROLE_EXISTS'; END IF;
   END $scope$;`,
   `ALTER ROLE ${ident(scope.appName)} LOGIN PASSWORD ${quote(secrets.application)} CONNECTION LIMIT 6;`];
+  // These exact two relations belong to the optional Task16 seven-fragment
+  // install, not the immutable 261 migration ledger. This native lifecycle
+  // neither installs nor exercises registered payments. Keep the source
+  // manifest unchanged and retain every other original grant.
+  const postMigrationPaymentTables = new Set(['RegisteredPaymentFunding','RegisteredPaymentVoucher']);
   for (const [table, [select, insert, update, remove]] of Object.entries(ordinary.tables)) {
+    if (postMigrationPaymentTables.has(table)) continue;
     for (const [op, columns] of Object.entries({ select, insert, update })) sql.push(grant(scope.appName, table, op, columns));
     if (remove) sql.push(`GRANT DELETE ON public.${ident(table)} TO ${ident(scope.appName)};`);
   }
