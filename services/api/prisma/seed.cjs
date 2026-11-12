@@ -321,6 +321,28 @@ async function assertSeedProjectCashAvailable(tx, amountCents) {
   }
 }
 
+async function ensureSeedPaymentVoucher(tx) {
+  const expected = {
+    ...seed.voucherFile,
+    uploadedByUserId: seed.users.cashier.id,
+    contentSha256: null,
+    storageStatus: "active",
+    purgeReceiptId: null,
+    supersedesFileObjectId: null
+  };
+  const existing = await tx.fileObject.findUnique({
+    where: { id: expected.id },
+    select: Object.fromEntries(Object.keys(expected).map((key) => [key, true]))
+  });
+  if (existing) {
+    assertExactSeedFacts("PaymentExecution voucher", existing, expected);
+    return;
+  }
+  // A native upsert attempts INSERT before conflict handling and trips the
+  // retained storage-key guard even when the seeded voucher is unchanged.
+  await tx.fileObject.create({ data: expected });
+}
+
 async function seedPaymentExecutionClosedLoop() {
   const amountCents = BigInt(seed.paymentExecution.amountCents);
   const expectedExecution = {
@@ -398,19 +420,7 @@ async function seedPaymentExecutionClosedLoop() {
   };
 
   await prisma.$transaction(async (tx) => {
-    const voucher = await tx.fileObject.findUnique({
-      where: { id: seed.voucherFile.id },
-      select: {
-        id: true,
-        uploadedByUserId: true,
-        storageStatus: true
-      }
-    });
-    assertExactSeedFacts("PaymentExecution voucher", voucher, {
-      id: seed.voucherFile.id,
-      uploadedByUserId: seed.users.cashier.id,
-      storageStatus: "active"
-    });
+    await ensureSeedPaymentVoucher(tx);
 
     const paymentExecutionSelect = {
       id: true,
@@ -1113,29 +1123,6 @@ async function main() {
       paidAmountCents: seed.paymentRequest.paidAmountCents,
       paymentSubjectType: seed.paymentExecution.paymentSubjectType,
       dueDate: seed.paymentRequest.dueDate
-    }
-  });
-
-  await prisma.fileObject.upsert({
-    where: { id: seed.voucherFile.id },
-    update: {
-      bucket: seed.voucherFile.bucket,
-      objectKey: seed.voucherFile.objectKey,
-      originalName: seed.voucherFile.originalName,
-      mimeType: seed.voucherFile.mimeType,
-      sizeBytes: seed.voucherFile.sizeBytes,
-      uploadedByUserId: seed.users.cashier.id,
-      storageStatus: "active"
-    },
-    create: {
-      id: seed.voucherFile.id,
-      bucket: seed.voucherFile.bucket,
-      objectKey: seed.voucherFile.objectKey,
-      originalName: seed.voucherFile.originalName,
-      mimeType: seed.voucherFile.mimeType,
-      sizeBytes: seed.voucherFile.sizeBytes,
-      uploadedByUserId: seed.users.cashier.id,
-      storageStatus: "active"
     }
   });
 
