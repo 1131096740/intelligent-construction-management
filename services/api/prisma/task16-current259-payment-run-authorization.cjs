@@ -48,12 +48,17 @@ const caseFailureCodes=new Set(['PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY','PAYME
  'PG_RESOURCE_IDENTITY','PG_RESOURCE_DATABASE_VERSION','PG_RESOURCE_ROLE_PID_BINDING','PG_RESOURCE_OBSERVER_READ_ONLY',
  'PG_RESOURCE_RUNTIME_PRIVILEGES','PG_RESOURCE_OBSERVER_PRIVILEGES','PG_RESOURCE_PREPARED_FUNCTIONS',
  'PG_RESOURCE_PREPARED_PROJECTION_TRIGGERS','PG_FIXTURE_REAL_HTTP_LOGIN','PG_FIXTURE_REAL_HTTP_OPENING',
- 'PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED','TIMEOUT']);
+ 'PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED','TIMEOUT','CURRENT259_PAYMENT_CASE_FAILED_CLOSED',
+ 'CURRENT259_BUSINESS_CONTINUITY','CURRENT259_LIVE_SESSIONS_FAILED_CLOSED','CURRENT259_OWNED_METHOD','CURRENT259_LOADER_HOOKS','CURRENT259_BUILD_ENVIRONMENT','TASK16_APP_RUNTIME_PROVIDER','TASK16_APP_IMPACT_READER_PROOF','TASK16_APP_ADDRESS','TASK16_APP_PRIOR_CHANGED','TASK16_APP_METHOD_CHANGED','TASK16_APP_ENVIRONMENT_CHANGED','TASK16_APP_STORAGE_CHANGED','PAYMENT_INSTALL_ONCE_IMPORT_CHANGED',
+ 'PG_RESOURCE_HTTP_ROUTE','PG_RESOURCE_HTTP_BUDGET','PG_RESOURCE_HTTP_TARGET_ORIGIN','PG_RESOURCE_SEED_HTTP_ROUTE','PG_RESOURCE_HTTP_TRANSPORT','PG_RESOURCE_HTTP_RESPONSE','PG_RESOURCE_HTTP_RESPONSE_ORIGIN',
+ 'HTTP_CONNECTION_REFUSED','HTTP_CONNECTION_RESET','HTTP_CONNECT_TIMEOUT','HTTP_RESPONSE_TIMEOUT','HTTP_SOCKET_CLOSED','HTTP_ABORTED']);
+const seedHttpPhases=new Set(['BEFORE_CHECK','TARGET','FETCH','AFTER_CHECK','RESPONSE_RETURNED']);
 const seedHttpStatuses=new Set([200,201,400,401,403,404,409,422,429,500,503]);
-function recordCaseFailure(entry,stage,code,httpStatus){
+function recordCaseFailure(entry,stage,code,httpStatus,httpPhase){
  if(entry?.recordCaseFailure&&caseFailureStages.has(stage))entry.caseFailure??=Object.freeze({stage,
   ...(caseFailureCodes.has(code)?{code}:{}),
-  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING')&&seedHttpStatuses.has(httpStatus)?{httpStatus}:{})});
+  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING')&&seedHttpStatuses.has(httpStatus)?{httpStatus}:{}),
+  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING')&&seedHttpPhases.has(httpPhase)?{httpPhase}:{})});
 }
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
@@ -182,7 +187,7 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
   entry.claimed=true;const token=Object.freeze({kind:'CURRENT259_PRIVATE_BUSINESS_CONTINUITY'});entry.continuityToken=token;businessContinuities.set(token,entry);entry.check();
   return Object.freeze({scope:entry.scope,continuityToken:token,check:entry.check,verifyFull:entry.verifyFull,
    ...(entry.seedProfile?{seedProfile:entry.seedProfile}:{}),
-   ...(entry.recordCaseFailure?{recordCaseFailure(stage,code,httpStatus){recordCaseFailure(entry,stage,code,httpStatus);}}:{}),
+   ...(entry.recordCaseFailure?{recordCaseFailure(stage,code,httpStatus,httpPhase){recordCaseFailure(entry,stage,code,httpStatus,httpPhase);}}:{}),
    ...(gap?{recordAttributionGapFailure(stage){
     const code=attributionGapFailureCodes.get(stage);
     if(code&&entry===currentRun?.business&&entry.active&&entry.claimed)entry.attributionGapFailure??=Object.freeze({stage,code});

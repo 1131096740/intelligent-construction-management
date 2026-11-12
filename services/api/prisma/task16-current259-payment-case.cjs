@@ -25,7 +25,7 @@ const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
- let attempted=false,permission,disconnectStage,attributionGapStage,caseStage='PERMIT_CLAIM';
+ let attempted=false,permission,disconnectStage,attributionGapStage,httpPhase,httpRoute,caseStage='PERMIT_CLAIM';
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
   caseStage='CONTINUITY_ACTIVATION';
@@ -92,13 +92,28 @@ async function executeCurrent259PaymentCase(lease,permit){
   const plan=prior?.plan??snapshot(methods.buildRegisteredPgFixturePlan(runId,scope.paidAt,scope.openingDate));check();
   const execution=Object.freeze({proof,owner:original.owner,runtime:original.runtime,observer:original.observer,
    password:prior?.password??randomBytes(32).toString('hex'),httpTimeoutMs:5000});
-  const transport=async(target,init)=>{check();const url=new URL(target);need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);const response=await originalFetch(target,init);check();return response;};
+  const transport=async(target,init)=>{
+   httpRoute=undefined;httpPhase='BEFORE_CHECK';check();
+   httpPhase='TARGET';
+   const url=new URL(target);httpRoute=url.pathname;
+   need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);
+   httpPhase='FETCH';
+   const response=await originalFetch(target,init);
+   httpPhase='AFTER_CHECK';check();
+   httpPhase='RESPONSE_RETURNED';
+   return response;
+  };
   attempted=true;
   const seed=attributionGap?methods.seedRegisteredPgAttributionGapFixture:methods.seedRegisteredPgFixture;
   caseStage='SEED_FIXTURE';
   const prepared=prior?.fixture??await seed(execution,plan,Object.freeze({checkLight:check,fetch:transport,
    ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
-   ...(permission.recordCaseFailure?{recordSeedFailure:permission.recordCaseFailure}:{})}));check();
+   ...(permission.recordCaseFailure?{recordSeedFailure(stage,code,httpStatus){
+    const currentHttp=httpPhase==='BEFORE_CHECK'||httpPhase==='TARGET'||
+     stage==='SEED_LOGIN'&&httpRoute==='/auth/login'||stage==='SEED_OPENING'&&httpRoute==='/fund-accounts/openings';
+    if(httpPhase&&currentHttp)permission.recordCaseFailure(stage,code,httpStatus,httpPhase);
+    else permission.recordCaseFailure(...arguments);
+   }}:{})}));check();
   const frozen=snapshot(prepared);need(equal(frozen.plan,plan)&&typeof frozen.accessToken==='string');
   caseStage='POST_SEED_AUTHORITY';
   await permission.verifyFull();

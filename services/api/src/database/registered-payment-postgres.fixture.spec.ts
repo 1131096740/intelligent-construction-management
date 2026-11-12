@@ -69,6 +69,38 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it.each(["CURRENT259_BUILD_CHANGED", "CURRENT259_BUSINESS_CONTINUITY"])("retains a message-only continuity rejection %s at the real seed login boundary", async guardCode => {
+    const f = fixture();
+    Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });
+    const recordSeedFailure = jest.fn();
+    const fetch = jest.fn().mockRejectedValue(new Error(guardCode));
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_LOGIN", guardCode, undefined);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["ECONNREFUSED", "HTTP_CONNECTION_REFUSED"],
+    ["ECONNRESET", "HTTP_CONNECTION_RESET"],
+    ["UND_ERR_CONNECT_TIMEOUT", "HTTP_CONNECT_TIMEOUT"],
+    ["private-code", undefined]
+  ])("projects only an allowlisted nested native fetch cause %s", async (causeCode, expected) => {
+    const f = fixture();
+    Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });
+    const recordSeedFailure = jest.fn();
+    const failure = Object.assign(new TypeError("private request payload"), {
+      cause: Object.assign(new Error("private address"), { code: causeCode })
+    });
+    const fetch = jest.fn().mockRejectedValue(failure);
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_LOGIN", expected, undefined);
+    expect(JSON.stringify(recordSeedFailure.mock.calls)).not.toMatch(/private/);
+  });
+
   it("preserves the fixed HTTP failure code and status without forwarding the body", async () => {
     const f = fixture();
     Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });

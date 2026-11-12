@@ -339,3 +339,21 @@ for(const [substage,subcode] of [['SEED_IDENTITY','PG_RESOURCE_RUNTIME_PRIVILEGE
   assert.ok(f.calls.includes('app-close'));
  });
 }
+
+for(const seedStage of ['SEED_LOGIN','SEED_OPENING'])test('seed '+seedStage+' binds its native fetch failure to the matching HTTP route',async t=>{
+ const seen=[],f=caseFixture(t,{recordCaseFailure:(...detail)=>seen.push(detail)});
+ const m=paymentModel(f,{async onSeed(continuity){
+  try{
+   const target=new URL('/auth/login',m.captured().execution.proof.application.origin);
+   await continuity.fetch(target,{method:'POST',signal:AbortSignal.abort()});
+  }catch(error){
+   continuity.recordSeedFailure(seedStage,'HTTP_ABORTED');
+   throw error;
+  }
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  await f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}));
+ }));
+ assert.deepEqual(seen[0],seedStage==='SEED_LOGIN'?['SEED_LOGIN','HTTP_ABORTED',undefined,'FETCH']:['SEED_OPENING','HTTP_ABORTED']);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+});
