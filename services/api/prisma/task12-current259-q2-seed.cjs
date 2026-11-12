@@ -185,10 +185,23 @@ function createCurrent259FirstQ2Seed(fixture,identity) {
 
 function createCurrent259GeneratedDraftSeed(fixture,identity,passwordHash) {
   need(arguments.length===3 && Object.isFrozen(fixture) && fixture.users.length===8 && fixture.members.length===2 &&
-    fixture.globalRoles.length===5 && typeof passwordHash==='string' && /^\$2[aby]\$10\$[.\/A-Za-z0-9]{53}$/u.test(passwordHash),'INPUT');
+    fixture.globalRoles.length===5 && typeof passwordHash==='string' && /^\$2[aby]\$10\$[./A-Za-z0-9]{53}$/u.test(passwordHash),'INPUT');
+  return generatedDraftSeed(fixture,identity,new Map([[fixture.handler.id,passwordHash]]));
+}
+
+function createCurrent259GeneratedDocumentSeed(fixture,identity,handlerHash,directorHash) {
+  need(arguments.length===4 && Object.isFrozen(fixture) && fixture.users.length===8 && fixture.members.length===2 &&
+    fixture.globalRoles.length===5 && [handlerHash,directorHash].every(hash=>typeof hash==='string'&&/^\$2[aby]\$10\$[./A-Za-z0-9]{53}$/u.test(hash)) &&
+    handlerHash!==directorHash,'INPUT');
+  const directors=fixture.globalRoles.filter(row=>row.roleKey==='contract_director');
+  need(directors.length===1&&directors[0].userId!==fixture.handler.id&&fixture.users.filter(row=>row.id===directors[0].userId).length===1,'INPUT');
+  return generatedDraftSeed(fixture,identity,new Map([[fixture.handler.id,handlerHash],[directors[0].userId,directorHash]]));
+}
+
+function generatedDraftSeed(fixture,identity,passwords) {
   const owner=qualifyIdentity(identity);
   const groups={
-    User:fixture.users.map(row=>({...row,passwordHash:row.id===fixture.handler.id?passwordHash:null})),
+    User:fixture.users.map(row=>({...row,passwordHash:passwords.get(row.id)??null})),
     Project:[fixture.project],
     ProjectMember:fixture.members,
   };
@@ -415,4 +428,4 @@ function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
   }});
 }
 
-module.exports=Object.freeze({createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});
+module.exports=Object.freeze({createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259GeneratedDocumentSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});

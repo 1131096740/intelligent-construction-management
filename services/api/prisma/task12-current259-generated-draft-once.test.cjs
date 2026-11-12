@@ -39,6 +39,11 @@ function planModel(t,root){
     '../services/api/prisma/task12-current259-contract-login.cjs':{CURRENT259_FIRST_Q2_TRANSPORT:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS'},
     '../services/api/prisma/task16-current259-build.cjs':{observeCurrent259Build:()=>material},
     '../services/api/prisma/task16-current259-client-loader.cjs':{loadCurrent259Client(handle){assert.equal(handle,material);return loader;}},
+    '../services/api/prisma/task12-current259-generated-document-runtime.cjs':{verifyCurrent259GeneratedDocumentRuntime(file,digest){
+      const bytes=fs.readFileSync(file);
+      assert.equal(digest,hash(bytes));
+      return Object.freeze({inputSha256:digest});
+    }},
     '../services/api/prisma/task16-runtime-inputs.cjs':{readQualifiedTask16File(file,options){
       assert.ok(file.startsWith(root+'/'));
       const bytes=fs.readFileSync(file),identity={ino:fs.lstatSync(file).ino};
@@ -65,6 +70,29 @@ test('the plan seals exact draft-only scope and rejects added credentials and wr
   const bytes=Buffer.from(JSON.stringify(bad));fs.writeFileSync(prepared.file,bytes);
   assert.throws(verified.check,/CHANGED/u);
   assert.throws(()=>api.verifyCurrent259GeneratedDraftPlan(prepared.file,hash(bytes)),/SCOPE/u);
+});
+
+test('document plans pin the separate runtime and cannot be accepted by the original draft entry',t=>{
+  const {root,run}=localPacket(t),api=planModel(t,root);
+  const options={packetRoot:root,daemonId:'generated-model-daemon',caseId:id,businessDate:'2026-11-12'};
+  const file=path.join(root,'runtime-input.json'),bytes=Buffer.from('{}');
+  fs.writeFileSync(file,bytes,{mode:0o600});
+  const runtime={file,sha256:hash(bytes)};
+  assert.throws(()=>api.prepareCurrent259GeneratedDraftPlan({...options,runtime}),/INPUT/u);
+  assert.throws(()=>api.prepareCurrent259GeneratedDocumentPlan({...options,runtime:{...runtime,command:[]}}),/RUNTIME/u);
+  const prepared=api.prepareCurrent259GeneratedDocumentPlan({...options,runtime});
+  assert.equal(prepared.status,'CURRENT259_GENERATED_DOCUMENT_PLAN_PREPARED_HOLD');
+  const verified=api.verifyCurrent259GeneratedDocumentPlan(prepared.file,prepared.sha256);
+  assert.deepEqual(verified.plan.runtime,runtime);
+  assert.equal(verified.runtime.inputSha256,runtime.sha256);
+  assert.equal(verified.plan.scope.worker,true);
+  assert.equal(verified.plan.scope.cos,false);
+  assert.deepEqual(fs.readdirSync(run),[]);
+  assert.throws(()=>api.verifyCurrent259GeneratedDraftPlan(prepared.file,prepared.sha256),/INPUT/u);
+  const draft=api.prepareCurrent259GeneratedDraftPlan(options);
+  assert.throws(()=>api.verifyCurrent259GeneratedDocumentPlan(draft.file,draft.sha256),/INPUT/u);
+  fs.writeFileSync(file,'[]');
+  assert.throws(()=>api.verifyCurrent259GeneratedDocumentPlan(prepared.file,prepared.sha256));
 });
 
 function runModel(t,{once=true,used=false,failure,wrongResult=false}={}){

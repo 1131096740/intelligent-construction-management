@@ -7,14 +7,16 @@ const {claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveA
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {withCurrent259ApplicationEnvironment}=require('./task16-current259-application-environment.cjs');
+const {createCurrent259GeneratedDocumentSeed}=require('./task12-current259-q2-seed.cjs');
 const {readQualifiedTask16File}=require('./task16-runtime-inputs.cjs');
 
 const CODE='CURRENT259_DOCUMENT_LOGIN';
 const savePurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
 const ordinaryLimit=2;
+const caseCoordinate=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
-const consumed=new WeakSet(),active=new WeakMap();
+const consumed=new WeakSet(),active=new WeakMap(),nestBridges=new WeakSet();
 const fixedReasons=new WeakMap();
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
@@ -244,7 +246,18 @@ function withCurrent259GeneratedDocumentSaveRoleServices(aclResult,handle,use){
  if(arguments.length!==3)return Promise.reject(fault('HANDLE'));
  return runLogin(aclResult,handle,use,true,true);
 }
-async function runLogin(aclResult,handle,use,withRoles,save=false){
+function withCurrent259GeneratedDocumentSaveApplication(aclResult,handle,use){
+ if(arguments.length!==3)return Promise.reject(fault('HANDLE'));
+ return runLogin(aclResult,handle,use,true,true,true);
+}
+function withCurrent259GeneratedDocumentPublicApplication(aclResult,handle,caseId,use){
+ if(arguments.length!==4||typeof caseId!=='string'||!caseCoordinate.test(caseId))return Promise.reject(fault('HANDLE'));
+ return runLogin(aclResult,handle,use,true,true,true,caseId);
+}
+function takeCurrent259GeneratedDocumentApplicationBridge(bridge){
+ need(arguments.length===1&&nestBridges.delete(bridge),'HANDLE');
+}
+async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&
   typeof use==='function'&&!types.isProxy(use)&&!consumed.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle),resource=view.resource,exec=own(resource,'execOwnerSql');
@@ -293,7 +306,7 @@ async function runLogin(aclResult,handle,use,withRoles,save=false){
    ...(input.ordinary?{purpose:savePurpose,ordinaryName:input.ordinary.name}:{}),
    roleXmins:Object.freeze(committed.roles.map(role=>role[2])),executionAllowed:false,nativeAdmission:false});
   active.set(proof,{handle,check});
-  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use):use(proof));
+  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId):use(proof));
   check();return result;
  }catch(cause){
   const error=Object.assign(fault(phase==='BEFORE'?'PRESTATE_REJECTED':phase==='CONSUME'?'CONSUME_FAILED':'COMMIT_UNCONFIRMED'),{phase});
@@ -303,6 +316,8 @@ async function runLogin(aclResult,handle,use,withRoles,save=false){
   const reason=fixedReasons.get(recognized);
   if(reason)Object.defineProperty(error,'reason',{value:reason,enumerable:true});
   if(withRoles){
+   const exerciseCode=own(recognized,'exerciseCode');
+   if(exerciseCode)Object.defineProperty(error,'exerciseCode',{value:exerciseCode,enumerable:true});
    if(own(recognized,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')
     Object.defineProperty(error,'appCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});
    for(const key of ['environmentRestoration','storageCleanup'])if(own(cause,key)==='UNKNOWN')
@@ -334,7 +349,7 @@ const backend=(pid,start)=>Number.isInteger(pid)&&pid>0&&pid<=2147483647&&typeof
 const port=value=>Number.isInteger(value)&&value>0&&value<=65535;
 const project=(row,keys)=>Object.fromEntries(keys.map(key=>[key,own(row,key)]));
 
-async function runDocumentRoles(handle,view,proof,identity,secrets,use){
+async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId){
  const {resource,loader}=view;
  const save=proof.purpose===savePurpose;
  const loginNames=save?[...names,proof.ordinaryName]:names;
@@ -386,7 +401,8 @@ async function runDocumentRoles(handle,view,proof,identity,secrets,use){
    need(read.sha256===ca.sha256&&read.identity.uid===ca.identity.uid,'ROLE_CA');
   };
   verify();
-  const modules=load.call(loader),services=own(modules,'withTask12PreownedDocumentRoleServices');
+  const modules=load.call(loader),serviceEntry=nest?'withTask12NestDocumentRoleServices':'withTask12PreownedDocumentRoleServices';
+  const services=own(modules,serviceEntry);
   need(typeof services==='function','ROLE_ENTRY');verify();
   const clients=[],live=[];
   let unknown=false,first,failed=false,value;
@@ -397,7 +413,7 @@ async function runDocumentRoles(handle,view,proof,identity,secrets,use){
    })]);}finally{clearTimeout(timer);}
   };
   const verifyClient=entry=>{
-   verify();need(own(modules,'withTask12PreownedDocumentRoleServices')===services&&
+   verify();need(own(modules,serviceEntry)===services&&
     clientKeys.every(key=>typeof entry.methods[key]==='function'&&entry.client[key]===entry.methods[key]),'ROLE_CLIENT');
   };
   const observe=async(entry,index)=>{
@@ -414,7 +430,13 @@ async function runDocumentRoles(handle,view,proof,identity,secrets,use){
     backend(session.pid,session.start)&&session.ssl===true,'ROLE_IDENTITY');
    return session;
   };
-  const ownerCheck=async()=>{
+  const ownerCheck=async ordinaryAfter=>{
+   const ordinaryOid=proof.roleOids[names.length];
+   const ids=proof.roleOids.map(oid=>quote(oid)+'::oid').join(',');
+   const appIsolation=ordinaryAfter?`
+ AND current_setting('listen_addresses')='127.0.0.1'
+ AND NOT EXISTS(SELECT FROM pg_stat_activity other WHERE other.backend_type='client backend'
+  AND other.datname=current_database() AND other.pid<>pg_backend_pid() AND other.usesysid NOT IN (${ids}))`:'';
    const challenge=randomBytes(32).toString('hex');
    const sql=`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL search_path TO pg_catalog, pg_temp;
@@ -424,19 +446,33 @@ SELECT jsonb_build_object('challenge','${challenge}','pid',pg_backend_pid(),'sta
  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5432
  AND EXISTS(SELECT FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
  AND (SELECT system_identifier::text FROM pg_control_system())=${quote(identity.systemIdentifier)}
- AND pg_xact_status(${quote(proof.installXid)}::xid8)='committed',
+ AND pg_xact_status(${quote(proof.installXid)}::xid8)='committed'${appIsolation},
  'sessions',(SELECT jsonb_agg(jsonb_build_object('oid',a.usesysid::text,'pid',a.pid,'start',${stamp},'ssl',s.ssl,
   'clientAddress',host(a.client_addr),'clientPort',a.client_port,'role',a.usename,'databaseOid',a.datid::text,'database',a.datname) ORDER BY a.usesysid)
   FROM pg_stat_activity a JOIN pg_stat_ssl s ON s.pid=a.pid JOIN pg_authid r ON r.oid=a.usesysid
-  WHERE a.backend_type='client backend' AND a.usesysid IN (${proof.roleOids.map(oid=>quote(oid)+'::oid').join(',')})
+  WHERE a.backend_type='client backend' AND a.usesysid IN (${ids})
    AND r.xmin::text=${quote(proof.roleXmins[0])} AND r.rolconnlimit=${save?
     `CASE WHEN r.oid=${quote(proof.roleOids[names.length])}::oid THEN ${ordinaryLimit} ELSE 1 END`:'1'} AND r.rolcanlogin));
 ROLLBACK;`;
    verify();const output=await original.execOwnerSql.call(resource,sql,'current259-document-pools-live');verify();
    const text=own(output,'stdout');let row;
    try{if(typeof text==='string'&&Buffer.byteLength(text)<=8192)row=JSON.parse(text);}catch{throw fault('ROLE_OWNER_READ');}
-   need(row?.challenge===challenge&&row.scope===true&&backend(row.pid,row.start)&&
-    live.every(session=>independent(row,session))&&equal(row.sessions,[...live].sort((a,b)=>Number(a.oid)-Number(b.oid))),'ROLE_OWNER_READ');
+   need(row?.challenge===challenge&&row.scope===true&&backend(row.pid,row.start)&&Array.isArray(row.sessions),'ROLE_OWNER_READ');
+   if(!ordinaryAfter){
+    need(live.every(session=>independent(row,session))&&equal(row.sessions,[...live].sort((a,b)=>Number(a.oid)-Number(b.oid))),'ROLE_OWNER_READ');
+    return;
+   }
+   const ordinaryRows=row.sessions.filter(session=>session?.oid===ordinaryOid);
+   const documentRows=row.sessions.filter(session=>session?.oid!==ordinaryOid);
+   const originals=live.slice(0,names.length).sort((a,b)=>Number(a.oid)-Number(b.oid));
+   const firstOrdinary=live[names.length];
+   need(equal(documentRows,originals)&&ordinaryRows.length>=1&&ordinaryRows.length<=ordinaryLimit&&
+    ordinaryRows.some(session=>equal(session,firstOrdinary))&&ordinaryRows.some(session=>equal(session,ordinaryAfter))&&
+    ordinaryRows.every(session=>equal(Object.keys(session).sort(),[...sessionKeys].sort())&&session.role===proof.ordinaryName&&
+     session.database===identity.database&&session.databaseOid===identity.databaseOid&&session.ssl===true&&
+     session.clientAddress==='127.0.0.1'&&port(session.clientPort)&&backend(session.pid,session.start))&&
+    row.sessions.every((session,index)=>independent(row,session)&&row.sessions.slice(0,index).every(prior=>
+     independent(prior,session)&&prior.clientPort!==session.clientPort)),'ROLE_OWNER_READ');
   };
   const waitDrain=beginDrain.call(view);
   need(typeof waitDrain==='function','ROLE_DRAIN');
@@ -467,8 +503,33 @@ ROLLBACK;`;
    const expected=Object.freeze({database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,
     storageRoot:environment.storageRoot,roleOids:Object.freeze(Object.fromEntries(slots.map((slot,i)=>[slot,proof.roleOids[i]])))});
    const connections=Object.freeze(Object.fromEntries(slots.map((slot,i)=>[slot,clients[i].client])));
+   let publicDraft;
+   if(caseId){
+    const build=own(modules,'buildTask12GeneratedApprovalFixture'),hash=own(modules,'hashTask12GeneratedAdmissionPassword');
+    const openDraft=own(modules,'openTask12GeneratedApprovalDraft');
+    need([build,hash,openDraft].every(fn=>typeof fn==='function'),'ROLE_ENTRY');
+    try{
+     const fixture=build(caseId),passwords=Object.freeze({handler:randomBytes(32).toString('hex'),director:randomBytes(32).toString('hex')});
+     need(passwords.handler!==passwords.director,'ROLE_SEED');
+     const [handlerHash,directorHash]=await Promise.all([hash(passwords.handler),hash(passwords.director)]);
+     verify();
+     const seed=createCurrent259GeneratedDocumentSeed(fixture,identity,handlerHash,directorHash);
+     const runSeed=async(sql,label)=>{
+      verify();
+      const result=await original.execOwnerSql.call(resource,sql,'current259-document-seed-'+label);
+      verify();return result?.stdout;
+     };
+     seed.verifyBefore(await runSeed(seed.beforeSql(),'before'));
+     seed.verifyWritten(await runSeed(seed.writeSql(),'write'));
+     const observed=seed.finish(await runSeed(seed.committedSql(),'committed'));
+     need(observed.seedXid!==proof.installXid&&observed.seedXid!==proof.aclInstallXid,'ROLE_SEED');
+          const entries=Object.freeze(Object.fromEntries(['publishTask12GeneratedMaterialTemplate','saveTask12GeneratedDocumentDraft',
+      'runTask12GeneratedDocument','readTask12GeneratedDocumentOutputs'].map(key=>[key,own(modules,key)])));
+     publicDraft=Object.freeze({fixture,passwords,openDraft,entries});
+    }catch{throw fault('ROLE_SEED');}
+   }
    let used=false;
-   value=await services(connections,expected,async operations=>{
+   value=await services(connections,expected,async (operations,providers)=>{
     verify();need(!used,'ROLE_ENTRY');used=true;
     let available=true;
     const exposed=Object.freeze(Object.fromEntries(slots.map(slot=>{
@@ -484,17 +545,84 @@ ROLLBACK;`;
      }));
      return [slot,Object.freeze(group)];
     })));
-    try{const result=await use(exposed);verify();return result;}
-    finally{available=false;}
+    try{
+     const exercise=async http=>{
+      if(!publicDraft){const result=await use(exposed);verify();return result;}
+      need(http,'ROLE_ENTRY');
+      const {beginCurrent259GeneratedDocumentOwnerReadback,readCurrent259GeneratedDocumentOwnerReadback}=
+       require('./task12-current259-document-owner-readback.cjs');
+      let readback,readbackStarted=false,ownerPending,ownerFailed=false,downloadResult;
+      const ownerOperation=operation=>{
+       need(available&&!ownerPending&&!ownerFailed,'ROLE_ENTRY');verify();
+       const pending=Promise.resolve().then(operation);
+       ownerPending=pending;
+       pending.then(()=>{ownerPending=undefined;},()=>{ownerPending=undefined;ownerFailed=true;});
+       return pending;
+      };
+      const beginOwnerReadback=function(){
+       need(arguments.length===0&&!readbackStarted,'ROLE_ENTRY');readbackStarted=true;
+       return ownerOperation(async()=>{
+        readback=await beginCurrent259GeneratedDocumentOwnerReadback(handle,proof);
+        verify();return readback;
+       });
+      };
+      const readOwnerResult=function(ownerScope,publicResult){
+       need(arguments.length===2&&readback&&ownerScope===readback&&downloadResult&&publicResult===downloadResult,'ROLE_ENTRY');
+       return ownerOperation(async()=>{
+        readback=downloadResult=undefined;
+        const result=await readCurrent259GeneratedDocumentOwnerReadback(ownerScope,publicResult);
+        verify();return result;
+       });
+      };
+      const output=own(http,'readDocumentOutputs');
+      need(typeof output==='function','ROLE_ENTRY');
+      const scopedHttp=Object.freeze({...http,async readDocumentOutputs(coordinates,ownerScope,fields,readPdfDrawnText){
+       need(arguments.length===4&&available&&readback&&ownerScope===readback&&!ownerPending&&!downloadResult,'ROLE_ENTRY');
+       downloadResult=await output(coordinates,ownerScope,fields,readPdfDrawnText);
+       verify();return downloadResult;
+      }});
+      try{
+       const result=await use(Object.freeze({http:scopedHttp,beginOwnerReadback,readOwnerResult}));
+       need(!ownerPending&&!ownerFailed,'ROLE_ENTRY');verify();return result;
+      }finally{
+       if(ownerPending)await Promise.allSettled([ownerPending]);
+      }
+     };
+     if(!nest)return await exercise();
+     const bridge=Object.freeze({check:verify,loader,loaded:modules,proof,ordinary:clients[names.length].client,providers,
+      queue:exposed.queue.queueDraftPreview,exercise,...(publicDraft?{publicDraft}:{})});
+     const {runCurrent259GeneratedDocumentApplication,fixedExerciseCode}=require('./task12-current259-document-application.cjs');
+     nestBridges.add(bridge);
+     try{return await runCurrent259GeneratedDocumentApplication(bridge);}
+     catch(error){
+      const code=own(error,'code');
+      const stage=typeof code==='string'&&/^CURRENT259_GENERATED_DOCUMENT_APP_(HANDLE|DESCRIPTOR|PROVIDERS|MODULE|COMPILE|CREATE|INIT|LISTEN|HTTP|USE|CLOSE|TIMEOUT)$/u.exec(code)?.[1];
+      const safe=fault(stage?'ROLE_APP_'+stage:'ROLE_APP');
+      const exerciseCode=publicDraft&&stage==='HTTP'&&fixedExerciseCode(own(error,'exerciseCode'));
+      if(exerciseCode)Object.defineProperty(safe,'exerciseCode',{value:exerciseCode});
+      if(own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(safe,'appCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE'});
+      throw safe;
+     }finally{nestBridges.delete(bridge);}
+    }finally{available=false;}
    });
    need(used,'ROLE_ENTRY');
-   for(const [index,entry] of clients.entries())need(equal(await observe(entry,index),live[index]),'ROLE_IDENTITY');
-   await ownerCheck();
+   let ordinaryAfter;
+   for(const [index,entry] of clients.entries()){
+    const current=await observe(entry,index);
+    if(nest&&index===names.length)ordinaryAfter=current;
+    else need(equal(current,live[index]),'ROLE_IDENTITY');
+   }
+   await ownerCheck(ordinaryAfter);
   }catch(error){failed=true;first=error;unknown=unknown||own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE';}
   const closed=await Promise.allSettled(clients.map(entry=>bounded(()=>entry.methods.$disconnect.call(entry.client),'ROLE_CLOSE_TIMEOUT')));
   if(closed.some(result=>result.status==='rejected'))unknown=true;
   try{await waitDrain();}catch{unknown=true;}
-  if(unknown)throw Object.assign(fault(fixedReasons.get(first)??'ROLE_CLEANUP_UNKNOWN'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+  if(unknown){
+   const cleanup=Object.assign(fault(fixedReasons.get(first)??'ROLE_CLEANUP_UNKNOWN'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+   const exerciseCode=fixedReasons.has(first)&&own(first,'exerciseCode');
+   if(exerciseCode)Object.defineProperty(cleanup,'exerciseCode',{value:exerciseCode});
+   throw cleanup;
+  }
   if(failed)throw first;
   verify();return value;
  });
@@ -506,4 +634,5 @@ function assertCurrent259GeneratedDocumentLoginScope(proof,handle){
  scope.check();
 }
 
-module.exports=Object.freeze({withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,assertCurrent259GeneratedDocumentLoginScope});
+module.exports=Object.freeze({withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
+ withCurrent259GeneratedDocumentPublicApplication,takeCurrent259GeneratedDocumentApplicationBridge,assertCurrent259GeneratedDocumentLoginScope});

@@ -131,7 +131,8 @@ function proofSql(plan,legacy,baseline,ledger){
    allArgumentTypes:null,argumentModes:null,defaultArgumentCount:0,variadicType:null,kind:'f',leakproof:false,support:null}};
  const proofs=[...legacy.functionProofs,lineageProof].filter(row=>signatures.has(row.signature.toLowerCase()));
  need(proofs.length===plan.runtime.functions.length-2);
- return functionProofSql({functionProofs:proofs});
+ return proofs.map(row=>[plan.runtime.functions.findIndex(signature=>signature.toLowerCase()===row.signature.toLowerCase()),
+  functionProofSql({functionProofs:[row]})]);
 }
 function beforeSql(identity,material,legacy,direct){
  const triggerNames=[VERSION,...legacy.lockOnlyGuards.map(row=>row.trigger)].map(literal).join(',');
@@ -181,27 +182,35 @@ function postSql(query,identity,expect,dbExpected,proof,ledger,relationOwners,re
  const functionPairs=expect.functions.map(([role,,signature])=>[role,signature]);
  const roleTests=[['jg_task01_observer',identity.observerOid,true],['jg_task01_runtime',identity.runtimeOid,false]].map(([name,id,readOnlyDefault])=>
   `EXISTS(SELECT 1 FROM jsonb_array_elements(report->'roles') r WHERE r @> ${json({oid:id,name,superuser:false,inherit:false,canLogin:true,createRole:false,createDb:false,replication:false,bypassRls:false,connectionLimit:name==='jg_task01_runtime'&&identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES'?2:1,memberships:0,createSchema:false,usageSchema:true,connectDatabase:true,createDatabaseSchema:false,temporary:false,otherDatabases:[],readOnlyDefault})})`).join(' AND ');
+ const checks=[
+  ['IDENTITY',`report->'identity' @> ${json({database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,ownerOid:identity.ownerOid,systemIdentifier:identity.systemIdentifier,currentRole:OWNER,sessionRole:OWNER,tls:true,replication:'origin',readOnly})}`],
+  ['ROLE_ARRAY',`jsonb_typeof(report->'roles')='array'`],
+  ['ROLES',`jsonb_array_length(report->'roles')=3 AND (${roleTests})`],
+  ['LEDGER',`report->'ledger' = ${json(ledger)}`],
+  ['GUARDS',`report->'guardsVerified' = 'true'::jsonb`],
+  ['READER',`report->'reader' = 'null'::jsonb`],
+  ['CAPABILITIES',`report->'capabilities' = ${json(expect.columns)}`],
+  ['FUNCTIONS',`(SELECT jsonb_agg(jsonb_build_array(f->>0,f->>1) ORDER BY (f->>0) COLLATE "C",(f->>1) COLLATE "C") FROM jsonb_array_elements(report->'functions') f
+       WHERE f->>2 IS NOT NULL AND f->3='true' AND f->4='false') = ${json(functionPairs)}`],
+  ['RELATIONS',`NOT EXISTS(SELECT 1 FROM jsonb_array_elements(report->'relations') r
+      WHERE r->>'oid' IS NULL OR r->>'kind' IS DISTINCT FROM 'r' OR r->'rls' IS DISTINCT FROM 'false'::jsonb OR r->'forceRls' IS DISTINCT FROM 'false'::jsonb
+       OR r->>'owner' IS DISTINCT FROM coalesce(${json(relationOwners)}->>(r->>'table'),'${OWNER}'))`],
+  ['DATABASE_ACL',`(SELECT jsonb_agg(jsonb_build_object('oid',d.oid::text,'name',d.datname,'owner',d.datdba::text,'acl',
+       (SELECT jsonb_agg(jsonb_build_array(a.grantor::text,a.grantee::text,a.privilege_type,a.is_grantable)
+        ORDER BY a.grantor,a.grantee,a.privilege_type COLLATE "C") FROM aclexplode(coalesce(d.datacl,acldefault('d',d.datdba))) a)) ORDER BY d.datname COLLATE "C") FROM pg_database d) = ${json(dbExpected)}`],
+  ...proof.map(([index,sql])=>['FUNCTION_PROOF_'+index,sql]),
+  ['HELPERS',helperAclSql(identity)],
+  ['DIRECT_ACL',exactDirectSql(expect.direct,identity,true)],
+  ['GRANT_OPTION',`NOT EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN (VALUES (${identity.runtimeOid}::oid),(${identity.observerOid}::oid)) r(oid)
+    WHERE p.pronamespace=${identity.namespaceOid}::oid AND has_function_privilege(r.oid,p.oid,'EXECUTE WITH GRANT OPTION'))`]
+ ];
+ const phase=readOnly?'READBACK':'WRITER';
  return `DO $current259_runtime_acl_after$
 DECLARE report jsonb;
 BEGIN
  SELECT result INTO STRICT report FROM (${query}) witness;
- IF report->'identity' IS NULL OR NOT (report->'identity' @> ${json({database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,ownerOid:identity.ownerOid,systemIdentifier:identity.systemIdentifier,currentRole:OWNER,sessionRole:OWNER,tls:true,replication:'origin',readOnly})})
-  OR jsonb_typeof(report->'roles') IS DISTINCT FROM 'array' OR jsonb_array_length(report->'roles')<>3 OR NOT (${roleTests})
-  OR report->'ledger' IS DISTINCT FROM ${json(ledger)}
-  OR report->'guardsVerified' IS DISTINCT FROM 'true'::jsonb OR report->'reader' IS DISTINCT FROM 'null'::jsonb
-  OR report->'capabilities' IS DISTINCT FROM ${json(expect.columns)}
-  OR (SELECT jsonb_agg(jsonb_build_array(f->>0,f->>1) ORDER BY (f->>0) COLLATE "C",(f->>1) COLLATE "C") FROM jsonb_array_elements(report->'functions') f
-       WHERE f->>2 IS NOT NULL AND f->3='true' AND f->4='false') IS DISTINCT FROM ${json(functionPairs)}
-  OR EXISTS(SELECT 1 FROM jsonb_array_elements(report->'relations') r
-      WHERE r->>'oid' IS NULL OR r->>'kind' IS DISTINCT FROM 'r' OR r->'rls' IS DISTINCT FROM 'false'::jsonb OR r->'forceRls' IS DISTINCT FROM 'false'::jsonb
-       OR r->>'owner' IS DISTINCT FROM coalesce(${json(relationOwners)}->>(r->>'table'),'${OWNER}'))
-  OR (SELECT jsonb_agg(jsonb_build_object('oid',d.oid::text,'name',d.datname,'owner',d.datdba::text,'acl',
-       (SELECT jsonb_agg(jsonb_build_array(a.grantor::text,a.grantee::text,a.privilege_type,a.is_grantable)
-        ORDER BY a.grantor,a.grantee,a.privilege_type COLLATE "C") FROM aclexplode(coalesce(d.datacl,acldefault('d',d.datdba))) a)) ORDER BY d.datname COLLATE "C") FROM pg_database d) IS DISTINCT FROM ${json(dbExpected)}
-  OR NOT (${proof}) OR NOT (${helperAclSql(identity)}) OR NOT ${exactDirectSql(expect.direct,identity,true)}
-  OR EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN (VALUES (${identity.runtimeOid}::oid),(${identity.observerOid}::oid)) r(oid)
-    WHERE p.pronamespace=${identity.namespaceOid}::oid AND has_function_privilege(r.oid,p.oid,'EXECUTE WITH GRANT OPTION')) THEN
-   RAISE EXCEPTION '${CODE}_POSTIMAGE';
+ ${checks.map(([name,sql],index)=>`${index===0?'IF':'ELSIF'} (${sql}) IS NOT TRUE THEN
+   RAISE EXCEPTION '${CODE}_POSTIMAGE' USING DETAIL = '${CODE}_${phase}_${name}';`).join('\n ')}
  END IF;
 END $current259_runtime_acl_after$;`;
 }

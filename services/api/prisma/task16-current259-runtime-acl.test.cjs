@@ -69,6 +69,19 @@ test('transaction includes exact directory read checks and does not accept a rep
  assert.doesNotMatch(result.sql,/REVOKE USAGE|GRANT USAGE[^\n]+jg_fixture_app/u);
 });
 
+test('failed ACL postimages identify the first fixed predicate in either transaction',()=>{
+ const rendered=renderCurrent259RuntimeAcl(source,receipt(),nonce);
+ const fixed=['IDENTITY','ROLE_ARRAY','ROLES','LEDGER','GUARDS','READER','CAPABILITIES','FUNCTIONS','RELATIONS','DATABASE_ACL'];
+ for(const [sql,phase] of [[rendered.sql,'WRITER'],[rendered.readbackSql,'READBACK']]){
+  const detail=new RegExp(`RAISE EXCEPTION 'TASK16_CURRENT259_RUNTIME_ACL_POSTIMAGE' USING DETAIL = 'TASK16_CURRENT259_RUNTIME_ACL_${phase}_([A-Z0-9_]+)';`,'gu');
+  const labels=[...sql.matchAll(detail)].map(match=>match[1]);
+  assert.deepEqual(labels.slice(0,fixed.length),fixed);
+  assert.deepEqual(labels.slice(-3),['HELPERS','DIRECT_ACL','GRANT_OPTION']);
+  assert.equal(new Set(labels).size,labels.length);
+  assert.ok(labels.includes('FUNCTION_PROOF_0'));
+ }
+});
+
 test('checks the migration-pinned lineage routine with its full catalog metadata in both ACL proofs',()=>{
  const {functionProofs:[lineage]}=require('./task16-baseline-access.json');
  const migration=readFileSync(path.join(__dirname,'migrations/20260828080000_pol13b_payer_authority_and_relation_guards/migration.sql'),'utf8');

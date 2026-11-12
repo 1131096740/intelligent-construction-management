@@ -12,6 +12,7 @@ const POLL_MS = 1000;
 const DOCUMENT_TIMEOUT_MS = 130_000;
 const templates = new WeakSet<object>();
 const publishedLayouts = new WeakSet<object>();
+const generatedCoordinates = new WeakMap<object, string>();
 
 function requireStage(value: unknown, stage: string): asserts value {
   const code = "TASK12_GENERATED_DOCUMENT_" + stage;
@@ -63,6 +64,11 @@ export function bindTask12PublishedMaterialTemplate(
   return evidence;
 }
 
+/** Keep document save on the actual published material template. */
+export function isTask12PublishedMaterialTemplate(value: unknown): value is ReturnType<typeof bindTask12PublishedMaterialTemplate> {
+  return typeof value === "object" && value !== null && publishedLayouts.has(value);
+}
+
 export interface GeneratedDocumentRequest {
   method: "GET" | "POST";
   path: string;
@@ -85,6 +91,13 @@ interface Input {
   documentContentFingerprint: string;
   lease: { token: string; leaseRevision: number; expiresAt: string };
 }
+
+/** Internal lineage used by the fixed dual-format readback. */
+export function task12GeneratedDocumentLayoutId(coordinates: ReturnTypeOfGeneratedDocument) {
+  return generatedCoordinates.get(coordinates);
+}
+
+type ReturnTypeOfGeneratedDocument = Awaited<ReturnType<typeof runTask12GeneratedDocument>>;
 
 /** Public workbench coordinates only. An owned caller must still verify physical file bytes and scope. */
 export async function runTask12GeneratedDocument(input: Input, port: Port) {
@@ -148,8 +161,10 @@ export async function runTask12GeneratedDocument(input: Input, port: Port) {
       const { docxFileId, pdfFileId } = currentDocument;
       requireStage(current.latestDraftPreviewDocumentId === generationId &&
         isId(docxFileId) && isId(pdfFileId) && docxFileId !== pdfFileId, "DOCUMENT");
-      return Object.freeze({ status: "DRAFT_WORD_PDF_COORDINATES_MATCHED", generationId, versionId, docxFileId, pdfFileId,
+      const coordinates = Object.freeze({ status: "DRAFT_WORD_PDF_COORDINATES_MATCHED" as const, generationId, versionId, docxFileId, pdfFileId,
         sourceRevision, documentContentRevision, documentContentFingerprint });
+      generatedCoordinates.set(coordinates, template.layoutId);
+      return coordinates;
     }
     requireStage((currentDocument.status === "queued" || currentDocument.status === "processing") &&
       currentDocument.docxFileId === null && currentDocument.pdfFileId === null, "DOCUMENT");

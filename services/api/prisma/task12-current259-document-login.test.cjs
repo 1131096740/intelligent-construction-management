@@ -18,6 +18,8 @@ function fixture(change, priorSql, pool, save=false){
   roleCompletion:{ordinary,commitXid:'898',status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:source.candidateSha,
    runId,containerId,executionAllowed:false,nativeAdmission:false,databaseIdentity:{
   database,databaseOid:'17010',namespaceOid:'2200',systemIdentifier:'7200000000000000001'}}};
+ const identityForSeed=Object.assign(ordinaryAcl.roleCompletion.databaseIdentity,{ownerOid:'10',actorOid:'10',actor:'jg_task01_owner',
+  sessionActor:'jg_task01_owner',tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:5432});
  const targets=save?[...roles,ordinary]:roles;
  const continuitySql=priorSql??`(SELECT jsonb_build_array(
  (SELECT n.nspacl::text FROM pg_namespace n WHERE n.nspname='public'),
@@ -30,6 +32,7 @@ function fixture(change, priorSql, pool, save=false){
  const resource={topology:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS',databaseName:database,containerId,async execOwnerSql(sql,phase){
   const n=calls.push({sql,phase})-1;
   if(phase==='current259-document-pools-live')return pool.owner(sql);
+  if(phase.startsWith('current259-document-seed-'))return pool.seed(sql,phase,n,identityForSeed);
   if(n===1)verifiers=[...sql.matchAll(/PASSWORD '(SCRAM-SHA-256\$[^']+)'/gu)].map(m=>m[1]);
   const row={nonce:sql.match(/'nonce','([0-9a-f]{64})'/u)[1],stable,pid:401+n,
    start:`2026-11-12T00:00:00.00000${n+1}Z`,xid:n?'903':null,status:n===2?'committed':null,
@@ -107,9 +110,25 @@ test('a protected catalog change or callback failure cannot release a successful
  assert.equal(f.calls.length,3);assert.equal(f.closed(),1);
 });
 
+const publicCase='c0000000-0000-4000-8000-000000000001';
+const seedUsers=Object.freeze(Array.from({length:8},(_,index)=>Object.freeze({
+ id:'d0000000-0000-4000-8000-00000000000'+index,phone:'1990000000'+index,name:'隔离用户'+index,
+ isActive:true,mustChangePassword:false,sessionVersion:0
+})));
+const seedProject='f0000000-0000-4000-8000-000000000001';
+const publicFixture=Object.freeze({users:seedUsers,handler:seedUsers[0],
+ project:{id:seedProject,code:'DOC-ONLY',name:'隔离表内材料合同项目',isActive:true,operatingLedgerEffectiveDate:null},
+ members:[0,3].map(index=>({id:'a0000000-0000-4000-8000-00000000000'+index,projectId:seedProject,userId:seedUsers[index].id,
+  positionKey:index===0?'contract_staff':'project_manager'})),
+ globalRoles:['material_director','contract_director','finance_director','general_manager','comprehensive_director'].map((roleKey,index)=>({
+  id:'b0000000-0000-4000-8000-00000000000'+index,userId:seedUsers[index+1].id,roleKey,
+  positionId:'c0000000-0000-4000-8000-00000000000'+index,positionName:roleKey
+ }))
+});
 function poolFixture(mode='success',save=false,priorSql){
  const trace=[],urls=[],clients=[],ownerSql=[];
  const state={queries:0};
+ const second=session=>({...session,pid:702,start:'2026-11-12T00:00:00.000070Z',clientPort:37002});
  const pool={
   setup({resource,view,handle,roles,identity,source,imports}){
    const relay={id:'00000000-0000-4000-8000-000000000002',containerId:resource.containerId,host:'127.0.0.1',port:43211};
@@ -152,18 +171,59 @@ function poolFixture(mode='success',save=false,priorSql){
    view.beginPrismaRelayDrain=function(){
     trace.push('drain-open');return async()=>{trace.push('drain-closed');if(mode==='drain-failure')throw Error('private relay evidence');};
    };
-   view.loader={
-    loadGeneratedContractDocumentModules(){trace.push('load');
-     return {async withTask12PreownedDocumentRoleServices(connections,expected,use){
-      assert.deepEqual(Object.values(connections),clients.slice(0,3));
-      assert.deepEqual(expected,{database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,
-       storageRoot:'/private/tmp/model/storage',roleOids:{template:'17000',worker:'17001',queue:'17002'}});
-      trace.push('role-services');
-      const make=kind=>async()=>{trace.push(kind);return kind;};
-      return use({template:{publishVersion:make('publish'),sourcePositions:make('positions')},
-       worker:{processNext:make('worker')},queue:{queueDraftPreview:make('queue')}});
-     }};
-    },
+   const participants=Object.freeze({storage:{},template:{},worker:{}});
+   async function roleServices(connections,expected,use){
+    assert.deepEqual(Object.values(connections),clients.slice(0,3));
+    assert.deepEqual(expected,{database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,
+     storageRoot:'/private/tmp/model/storage',roleOids:{template:'17000',worker:'17001',queue:'17002'}});
+    trace.push('role-services');
+    const make=kind=>async()=>{trace.push(kind);return kind;};
+    return use({template:{publishVersion:make('publish'),sourcePositions:make('positions')},
+     worker:{processNext:make('worker')},queue:{queueDraftPreview:make('queue')}},participants);
+   }
+   imports['./task12-current259-document-application.cjs']={fixedExerciseCode(value){
+    return value==='CURRENT259_GENERATED_DOCUMENT_EXERCISE_SAVE'?value:undefined;
+   },async runCurrent259GeneratedDocumentApplication(bridge){
+    f.api.takeCurrent259GeneratedDocumentApplicationBridge(bridge);
+    assert.throws(()=>f.api.takeCurrent259GeneratedDocumentApplicationBridge(bridge),/HANDLE/u);
+    assert.equal(bridge.ordinary,clients[3]);assert.equal(bridge.providers,participants);
+    bridge.check();trace.push('nest-open');
+    const http=Object.freeze({openDraft(){},readDraftWorkbench(){},saveDraft(){},async readDocumentOutputs(){return Object.freeze({fixed:'public'});}});
+    if(mode.startsWith('public-')){
+     assert.equal(bridge.publicDraft.fixture,publicFixture);
+     assert.match(bridge.publicDraft.passwords.handler,/^[a-f0-9]{64}$/u);
+     assert.match(bridge.publicDraft.passwords.director,/^[a-f0-9]{64}$/u);
+     assert.notEqual(bridge.publicDraft.passwords.handler,bridge.publicDraft.passwords.director);
+    }
+    const value=await (mode.startsWith('public-')?bridge.exercise(http):bridge.exercise());
+    trace.push('nest-close','worker-drain');
+    if(mode==='public-fixed-error')throw Object.assign(Error('private details'),{code:'CURRENT259_GENERATED_DOCUMENT_APP_HTTP',
+     exerciseCode:'CURRENT259_GENERATED_DOCUMENT_EXERCISE_SAVE',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+    if(mode==='nest-close')throw Object.assign(Error('private details'),{code:'CURRENT259_GENERATED_DOCUMENT_APP_CLOSE',
+     appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+    return value;
+   }};
+   const ownerScope=Object.freeze({});
+  imports['./task12-current259-document-owner-readback.cjs']={
+   async beginCurrent259GeneratedDocumentOwnerReadback(h,proof){
+    assert.equal(h,handle);f.api.assertCurrent259GeneratedDocumentLoginScope(proof,handle);
+    trace.push('owner-readback-begin');return ownerScope;
+   },
+   async readCurrent259GeneratedDocumentOwnerReadback(key,result){
+    assert.equal(key,ownerScope);assert.deepEqual(result,{fixed:'public'});
+    trace.push('owner-readback-end');return Object.freeze({status:'MODEL_READBACK'});
+   }
+  };
+  view.loader={
+    loadGeneratedContractDocumentModules(){trace.push('load');return {
+     withTask12PreownedDocumentRoleServices:roleServices,withTask12NestDocumentRoleServices:roleServices,
+     buildTask12GeneratedApprovalFixture(caseId){assert.equal(caseId,publicCase);return publicFixture;},
+     async hashTask12GeneratedAdmissionPassword(password){
+      assert.match(password,/^[a-f0-9]{64}$/u);
+      return '$2b$10$'+sha(password).slice(0,53);
+     },
+     openTask12GeneratedApprovalDraft(){}
+    };},
     PrismaService:class {
      constructor(options){
       const index=clients.length,url=new URL(options.datasources.db.url),role=roles[index];
@@ -178,7 +238,8 @@ function poolFixture(mode='success',save=false,priorSql){
       this.$connect=async()=>{trace.push('connect-'+index);if((mode==='connect-failure'&&index===1)||(mode==='ordinary-connect'&&index===3))throw Error(url.href);};
       this.$queryRawUnsafe=async(sql,challenge)=>{
        state.clientSql=sql;state.queries++;
-       return [{...this.session,challenge,sessionRole:role.name,serverAddress:'127.0.0.1',serverPort:5432,
+       const observed=mode==='nest-second'&&index===3&&state.queries>4?second(this.session):this.session;
+       return [{...observed,challenge,sessionRole:role.name,serverAddress:'127.0.0.1',serverPort:5432,
         ...(mode==='post-session'&&state.queries>3?{pid:701}:{})}];
       };
       this.$disconnect=async()=>{trace.push('disconnect-'+index);if(mode==='close-failure'&&index===1)throw Error(url.href);};
@@ -186,11 +247,29 @@ function poolFixture(mode='success',save=false,priorSql){
     }
    };
   },
+  seed(sql,label,n,identity){
+   const phase=label.split('-').at(-1),writer=phase==='write';
+   trace.push('seed-'+phase);
+   return {stdout:JSON.stringify({phase,nonce:sql.match(/'nonce','([0-9a-f]{64})'/u)[1],identity,
+    backend:{pid:721+n,start:'2026-11-12T00:00:00.00072'+n+'Z'},readOnly:!writer,
+    isolation:writer?'serializable':'repeatable read',writeXid:writer?'974':null,
+    commitStatus:phase==='committed'?'committed':null,matches:!(phase==='committed'&&mode==='public-seed-drift')})};
+  },
   owner(sql){
    ownerSql.push(sql);trace.push('owner');
    const challenge=sql.match(/'challenge','([0-9a-f]{64})'/u)[1];
    const sessions=clients.map(client=>client.session);
    if(mode==='owner-drift')sessions[0]={...sessions[0],clientPort:38000};
+   if(ownerSql.length===2&&save&&mode.startsWith('nest-')&&mode!=='nest-close'){
+    const extra=second(sessions[3]);
+    if(mode==='nest-extra-role')extra.oid='17098';
+    if(mode==='nest-extra-tls')extra.ssl=false;
+    if(mode==='nest-extra-port')extra.clientPort=0;
+    if(mode==='nest-extra-address')extra.clientAddress='172.16.0.2';
+    if(mode==='nest-anchor-lost')sessions.pop();
+    sessions.push(extra);
+    if(mode==='nest-extra-count')sessions.push({...extra,pid:703,start:'2026-11-12T00:00:00.000071Z',clientPort:37003});
+   }
    return {stdout:JSON.stringify({challenge,pid:900,start:'2026-11-12T00:00:00.000019Z',scope:true,sessions})};
   }
  };
@@ -303,4 +382,91 @@ test('save purpose rejects wrong ordinary initial and committed attributes, old 
  const f=fixture(undefined,undefined,undefined,true);
  await assert.rejects(f.api.withCurrent259GeneratedDocumentLogin(f.completion,f.handle,()=>assert.fail()),/HANDLE/u);
  assert.equal(f.calls.length,0);
+});
+
+test('the fixed Nest bridge keeps the original ordinary client private and closes before the four pools',async()=>{
+ for(const mode of ['success','nest-close']){
+  const f=poolFixture(mode,true);
+  const result=f.api.withCurrent259GeneratedDocumentSaveApplication(f.completion,f.handle,async operations=>{
+   assert.deepEqual(Object.keys(operations),['template','worker','queue']);
+   assert.equal(operations.ordinary,undefined);
+   assert.equal(await operations.queue.queueDraftPreview(),'queue');
+   return false;
+  });
+  if(mode==='success')assert.equal(await result,false);
+  else await assert.rejects(result,error=>error.reason==='ROLE_APP_CLOSE'&&
+   error.appCleanupOutcome==='UNKNOWN_DO_NOT_CONTINUE'&&!JSON.stringify(error).includes('private details'));
+  const drain=f.trace.indexOf('worker-drain');
+  assert.ok(drain>f.trace.indexOf('nest-open')&&drain<f.trace.indexOf('disconnect-0'));
+  assert.equal(f.trace.filter(item=>item.startsWith('disconnect-')).length,4);
+  assert.equal(f.trace.at(-1),'drain-closed');
+ }
+});
+
+test('only the Nest save scope admits a second independently verified ordinary session with its first still present',async()=>{
+ const f=poolFixture('nest-second',true);
+ assert.equal(await f.api.withCurrent259GeneratedDocumentSaveApplication(f.completion,f.handle,async()=>44),44);
+ assert.equal(f.ownerSql.length,2);
+ assert.match(f.ownerSql[1],/current_setting\('listen_addresses'\)='127\.0\.0\.1'/u);
+ const legacy=poolFixture('nest-second',true);
+ await assert.rejects(legacy.api.withCurrent259GeneratedDocumentSaveRoleServices(legacy.completion,legacy.handle,async()=>44),
+  error=>error.reason==='ROLE_IDENTITY'||error.reason==='ROLE_OWNER_READ');
+});
+
+test('Nest ordinary postimage rejects lost anchor, extra role, overlimit or non-TLS/non-loopback session',async()=>{
+ for(const mode of ['nest-anchor-lost','nest-extra-role','nest-extra-count','nest-extra-tls','nest-extra-port','nest-extra-address']){
+  const f=poolFixture(mode,true);
+  await assert.rejects(f.api.withCurrent259GeneratedDocumentSaveApplication(f.completion,f.handle,async()=>44),
+   error=>error.reason==='ROLE_OWNER_READ');
+  assert.equal(f.closed(),1);assert.equal(f.trace.filter(item=>item.startsWith('disconnect-')).length,4);
+ }
+});
+
+test('the public application owner-seeds only two actor credentials and checks the commit before Nest',async()=>{
+ const f=poolFixture('public-success',true);
+ let late;
+ assert.equal(await f.api.withCurrent259GeneratedDocumentPublicApplication(f.completion,f.handle,publicCase,async scope=>{
+  late=scope;
+  assert.deepEqual(Object.keys(scope),['http','beginOwnerReadback','readOwnerResult']);
+  for(const key of ['template','worker','queue','actors','ordinary','proof'])assert.equal(scope[key],undefined);
+  const key=await scope.beginOwnerReadback();
+  assert.throws(()=>scope.beginOwnerReadback(),/ROLE_ENTRY/u);
+  await assert.rejects(scope.http.readDocumentOutputs({}, {}, {}, ()=>{}),/ROLE_ENTRY/u);
+  const read=await scope.http.readDocumentOutputs({},key,{},()=>{});
+  assert.throws(()=>scope.readOwnerResult(key,{...read}),/ROLE_ENTRY/u);
+  assert.deepEqual(await scope.readOwnerResult(key,read),{status:'MODEL_READBACK'});
+  assert.throws(()=>scope.readOwnerResult(key,read),/ROLE_ENTRY/u);
+  return false;
+ }),false);
+ assert.throws(()=>late.beginOwnerReadback(),/ROLE_ENTRY/u);
+ assert.ok(f.trace.indexOf('seed-committed')<f.trace.indexOf('nest-open'));
+ const seed=f.calls.find(row=>row.phase==='current259-document-seed-write').sql;
+ const users=seed.match(/^INSERT INTO public\."User".*$/gmu);
+ assert.equal(users.length,8);
+ assert.deepEqual(users.filter(line=>line.includes('$2b$10$')).map(line=>seedUsers.find(row=>line.includes(row.id)).id),
+  [seedUsers[0].id,seedUsers[2].id]);
+ assert.doesNotMatch(seed,/^INSERT INTO public\."Contract"/mu);
+});
+
+test('wrong fixed case or failed independent seed readback never opens Nest',async()=>{
+ const invalid=poolFixture('public-success',true);
+ await assert.rejects(invalid.api.withCurrent259GeneratedDocumentPublicApplication(invalid.completion,invalid.handle,'bad',()=>assert.fail()),/HANDLE/u);
+ assert.deepEqual(invalid.calls,[]);
+ const f=poolFixture('public-seed-drift',true);
+ await assert.rejects(f.api.withCurrent259GeneratedDocumentPublicApplication(f.completion,f.handle,publicCase,()=>assert.fail()),
+  error=>error.reason==='ROLE_SEED');
+ assert.ok(!f.trace.includes('nest-open'));
+ assert.equal(f.trace.filter(item=>item.startsWith('disconnect-')).length,4);
+ assert.equal(f.closed(),1);
+});
+
+test('only the fixed public exercise error crosses the login wrappers while cleanup remains UNKNOWN',async()=>{
+ const f=poolFixture('public-fixed-error',true);
+ await assert.rejects(f.api.withCurrent259GeneratedDocumentPublicApplication(f.completion,f.handle,publicCase,async()=>true),error=>{
+  assert.equal(error.reason,'ROLE_APP_HTTP');
+  assert.equal(error.exerciseCode,'CURRENT259_GENERATED_DOCUMENT_EXERCISE_SAVE');
+  assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+  assert.doesNotMatch(JSON.stringify(error),/private details/u);
+  return true;
+ });
 });

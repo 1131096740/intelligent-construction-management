@@ -242,6 +242,8 @@ function loadCurrent259Client(handle){
    const documentValues={};
    for(const [relative,names]of [
     ['database/task12-generated-document-application.module.js',['Task12GeneratedDocumentApplicationModule']],
+    ['database/task12-generated-approval-admission.js',['buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft']],
+    ['auth/jwt-token.service.js',['JwtTokenService']],
     ['contract/contract.module.js',['ContractModule']],
     ['contract-template/contract-template.module.js',['ContractTemplateModule']],
     ['contract-template/contract-template.controller.js',['ContractTemplateController']],
@@ -250,22 +252,36 @@ function loadCurrent259Client(handle){
     ['contract-template/layout-template.service.js',['LayoutTemplateService']],
     ['contract-document/contract-document-worker.module.js',['ContractDocumentWorkerModule']],
     ['contract-document/contract-document.processor.js',['ContractDocumentProcessor']],
+    ['contract-document/contract-document.module.js',['ContractDocumentModule']],
+    ['contract-document/contract-document.service.js',['ContractDocumentService']],
+    ['contract-workbench/contract-workbench.module.js',['ContractWorkbenchModule']],
+    ['contract-workbench/contract-draft.controller.js',['ContractDraftController']],
+    ['file/file.service.js',['FileService','PrivateFileStorage']],
+    ['contract/contract-version-file-read-authority.js',['CONTRACT_VERSION_FILE_READ_AUTHORITY']],
     ['database/task12-generated-document-seam.js',['verifyTask12MaterialTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument']],
-    ['database/task12-generated-document-role-services.js',['withTask12PreownedDocumentRoleServices']],
+    ['database/task12-generated-document-draft-save.js',['saveTask12GeneratedDocumentDraft']],
+    ['database/task12-generated-material-template.js',['publishTask12GeneratedMaterialTemplate']],
+    ['database/task12-generated-document-readback.js',['readTask12GeneratedDocumentOutputs','claimTask12GeneratedDocumentOwnerReadback']],
+    ['database/task12-generated-document-role-services.js',['withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices']],
    ]){
     const file=path.join(dist,relative),exports=guardedRequire(file),mod=require.cache[file];
     need(mod?.loaded===true&&mod.exports===exports,code);
     roots.push(mod);
     for(const key of names){
      const descriptor=Object.getOwnPropertyDescriptor(exports,key),value=own(exports,key);
-     need(typeof value==='function',code);
+     need(typeof value===(key==='CONTRACT_VERSION_FILE_READ_AUTHORITY'?'symbol':'function'),code);
      records.push({module:mod,key,value,descriptor});
      documentValues[key]=value;
     }
    }
    const {Task12GeneratedDocumentApplicationModule:rootClass,ContractModule,ContractTemplateModule,
     ContractTemplateController,ContractTemplateService,ContractScenarioService,LayoutTemplateService,
-    ContractDocumentWorkerModule,ContractDocumentProcessor}=documentValues;
+    ContractDocumentWorkerModule,ContractDocumentProcessor,ContractDocumentModule,ContractDocumentService,
+    ContractWorkbenchModule,ContractDraftController,FileService,PrivateFileStorage}=documentValues;
+   const tokens=Object.freeze([values.PrismaService,PrivateFileStorage,LayoutTemplateService,ContractDocumentProcessor]);
+   const originalQueue=dataMethod(ContractDocumentService.prototype,'queueDraftPreview');
+   const originalVerifyJwt=dataMethod(documentValues.JwtTokenService.prototype,'verifyAccessToken');
+   const originalFileAccess=dataMethod(FileService.prototype,'assertCanDownloadFile');
    const hooks=['onApplicationBootstrap','onModuleDestroy','onApplicationShutdown','processNext']
     .map(key=>[key,dataMethod(ContractDocumentProcessor.prototype,key)]);
    const rootImports=[imports[0],ContractModule,ContractTemplateModule,ContractDocumentWorkerModule];
@@ -276,15 +292,30 @@ function loadCurrent259Client(handle){
     const actual=metadata(key,Class);
     return Array.isArray(actual)&&actual.length===expected.length&&expected.every((value,index)=>value===actual[index]);
    };
-   const exports=Object.freeze(Object.fromEntries([
-    'verifyTask12MaterialTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument','withTask12PreownedDocumentRoleServices'
-   ].map(key=>[key,documentValues[key]])));
-   document=Object.freeze({exports,checkMetadata(){
+   const exports=Object.freeze({...Object.fromEntries([
+    'verifyTask12MaterialTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument',
+    'saveTask12GeneratedDocumentDraft',
+    'publishTask12GeneratedMaterialTemplate','readTask12GeneratedDocumentOutputs','claimTask12GeneratedDocumentOwnerReadback',
+    'withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices',
+    'PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService',
+    'ContractDraftController','FileService','CONTRACT_VERSION_FILE_READ_AUTHORITY','JwtTokenService',
+    'buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft'
+   ].map(key=>[key,documentValues[key]])),...Object.fromEntries([
+    'PrismaService','configureApiSecurity','configureProjectionExportJson','apiJsonReplacer','createApiValidationPipe','listenApi'
+   ].map(key=>[key,values[key]]))});
+   document=Object.freeze({root:rootClass,tokens,exports,checkMetadata(){
     const rootProviders=metadata('providers',rootClass);
     need(exact('imports',rootClass,rootImports)&&exact('imports',ContractDocumentWorkerModule,workerImports)&&
      exact('providers',ContractDocumentWorkerModule,[ContractDocumentProcessor])&&
      exact('imports',ContractTemplateModule,templateImports)&&exact('providers',ContractTemplateModule,templateProviders)&&
      exact('exports',ContractTemplateModule,templateProviders)&&exact('controllers',ContractTemplateModule,[ContractTemplateController])&&
+     metadata('providers',ContractDocumentModule)?.filter(provider=>provider===ContractDocumentService).length===1&&
+     metadata('controllers',ContractWorkbenchModule)?.filter(controller=>controller===ContractDraftController).length===1&&
+     metadata('providers',imports[3])?.filter(provider=>provider===FileService).length===1&&
+     metadata('providers',imports[3])?.filter(provider=>provider===PrivateFileStorage).length===1&&
+     dataMethod(ContractDocumentService.prototype,'queueDraftPreview')===originalQueue&&
+     dataMethod(documentValues.JwtTokenService.prototype,'verifyAccessToken')===originalVerifyJwt&&
+     dataMethod(FileService.prototype,'assertCanDownloadFile')===originalFileAccess&&
      Array.isArray(rootProviders)&&rootProviders.length===1&&own(rootProviders[0],'provide')==='APP_FILTER'&&
      own(rootProviders[0],'useClass')===filter&&
      hooks.every(([key,value])=>dataMethod(ContractDocumentProcessor.prototype,key)===value)&&
@@ -297,6 +328,10 @@ function loadCurrent259Client(handle){
  function createContractTestingModule(){
   need(arguments.length===0&&contract,'CURRENT259_CONTRACT_FIXED_ENTRIES');
   return createOwnedTestingModule({imports:[contract.root]},contract);
+ }
+ function createDocumentTestingModule(){
+  need(arguments.length===0&&document,'CURRENT259_GENERATED_DOCUMENT_FIXED_ENTRY');
+  return createOwnedTestingModule({imports:[document.root]},document);
  }
  function createTestingModule(metadata){
   need(!document,'CURRENT259_GENERATED_DOCUMENT_FIXED_ENTRY');
@@ -376,7 +411,7 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,
+ check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,createDocumentTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;

@@ -194,6 +194,9 @@ test('registered archive switches the two exact bodies only inside its proven wr
  assert.ok(binding>=0&&binding<writerMiddle.indexOf(factArchiveMiddle));
  assert.match(writerMiddle,/jsonb_set\(to_jsonb\(p\),'\{prosrc\}',to_jsonb\(/u);
  assert.ok(writerMiddle.indexOf(factArchiveMiddle)<writerMiddle.indexOf('CURRENT259_SEVEN_INSTALL_ARCHIVE_PREIMAGE_DRIFT'));
+ const archiveMid=writerMiddle.split('DO $current259_seven_archive_mid$')[1].split('END $current259_seven_archive_mid$;')[0];
+ assert.match(archiveMid,/CASE WHEN p\.oid IN \(pg_catalog\.to_regprocedure\('public\.jg_has_exclusive_file_business_binding\(pg_catalog\.text\)'\),pg_catalog\.to_regprocedure\('public\.jg_enforce_exclusive_file_business_binding\(\)'\)\) THEN ARRAY\(/u);
+ assert.match(archiveMid,/a\.grantor=p\.proowner AND a\.grantee=220::oid AND a\.privilege_type='EXECUTE' AND NOT a\.is_grantable/u);
 });
 
 test('does not render owner SQL when either exact migration source changes',async()=>{

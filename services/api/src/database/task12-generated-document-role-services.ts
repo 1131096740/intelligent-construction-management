@@ -102,18 +102,29 @@ interface DocumentOperations {
 export function withTask12DocumentRoleServices<T>(
   connections: Connections, expected: Expected, use: (operations: DocumentOperations) => Promise<T>
 ): Promise<T> {
-  return runRoleServices(connections, expected, use, true);
+  return runRoleServices(connections, expected, operations => use(operations), true);
 }
 
 /** The fixed native issuer keeps disconnect and relay-drain ownership. */
 export function withTask12PreownedDocumentRoleServices<T>(
   connections: Connections, expected: Expected, use: (operations: DocumentOperations) => Promise<T>
 ): Promise<T> {
+  return runRoleServices(connections, expected, operations => use(operations), false);
+}
+
+type DocumentNestProviders = Readonly<{ storage: PrivateFileStorage; template: LayoutTemplateService; worker: ContractDocumentProcessor }>;
+
+/** Invoked only by the fixed native scope, which owns the Nest and pool lifecycles. */
+export function withTask12NestDocumentRoleServices<T>(
+  connections: Connections, expected: Expected,
+  use: (operations: DocumentOperations, providers: DocumentNestProviders) => Promise<T>
+): Promise<T> {
   return runRoleServices(connections, expected, use, false);
 }
 
 async function runRoleServices<T>(
-  connections: Connections, expected: Expected, use: (operations: DocumentOperations) => Promise<T>,
+  connections: Connections, expected: Expected,
+  use: (operations: DocumentOperations, providers: DocumentNestProviders) => Promise<T>,
   disconnectInScope: boolean
 ): Promise<T> {
   requireScope(connections && typeof connections === "object" && !types.isProxy(connections) &&
@@ -198,7 +209,7 @@ async function runRoleServices<T>(
       worker: Object.freeze({ processNext: () => operate(() => processor.processNext()) }),
       queue: Object.freeze({ queueDraftPreview: (...args: Parameters<ContractDocumentService["queueDraftPreview"]>) =>
         operate(() => queue.queueDraftPreview(...args)) })
-    }));
+    }), Object.freeze({ storage, template, worker: processor }));
   } catch (error) {
     failed = true;
     failure = error;

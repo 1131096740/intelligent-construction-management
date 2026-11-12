@@ -479,16 +479,20 @@ function archiveSevenMaterial(lease,view,nonce){
    const prior=readResult(result,input,0,nonce);
    need(!prior.fileRoles.includes(executor.oid)&&!prior.registry.publicRoutine.acl.some(row=>row[1]===executor.oid),'ARCHIVE_EXECUTOR');
    const oldRegistry=prior.registry.publicRoutine;
-   const enforcer="pg_catalog.to_regprocedure('public.jg_enforce_exclusive_file_business_binding()')";
+   const collisionRoutines=[
+    'public.jg_has_exclusive_file_business_binding(pg_catalog.text)',
+    'public.jg_enforce_exclusive_file_business_binding()',
+   ].map(signature=>`pg_catalog.to_regprocedure(${quote(signature)})`).join(',');
    const witness=current259Schema205WitnessSql(),acl="coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))";
    need(witness.split(acl).length===2,'ARCHIVE_WITNESS');
-   // The archive stage has already proved the exact 24-grant overlay. Remove
-   // its one enforcer grant from the witness projection only, never the catalog.
-   const historicEnforcerAcl=`CASE WHEN p.oid=${enforcer} THEN ARRAY(
+   // The archive stage proved all 24 grants. Both collision routines in this
+   // witness need the original ACL projection for the historical digest.
+   const historicCollisionAcl=`CASE WHEN p.oid IN (${collisionRoutines}) THEN ARRAY(
     SELECT u.entry FROM pg_catalog.unnest(p.proacl) u(entry)
-    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(ARRAY[u.entry]) a WHERE a.grantee=${executor.oid}::oid))
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(ARRAY[u.entry]) a
+     WHERE a.grantor=p.proowner AND a.grantee=${executor.oid}::oid AND a.privilege_type='EXECUTE' AND NOT a.is_grantable))
     ELSE ${acl} END`;
-   const historicWitness=witness.replace(acl,()=>historicEnforcerAcl);
+   const historicWitness=witness.replace(acl,()=>historicCollisionAcl);
    const overlay=[...oldRegistry.acl,['10',executor.oid,'EXECUTE',false]].sort((a,b)=>Number(a[0])-Number(b[0])||Number(a[1])-Number(b[1])||a[2].localeCompare(b[2])||Number(a[3])-Number(b[3]));
    const expectedMiddle={...prior.registry,publicRoutine:{...oldRegistry,acl:overlay}};
    const midGuard=`CREATE TEMP TABLE jg_current259_seven_archive_registry ON COMMIT DROP AS SELECT ${schema205RegistrySql()} AS registry;
