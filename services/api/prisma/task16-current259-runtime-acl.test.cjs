@@ -73,8 +73,8 @@ test('failed ACL postimages identify the first fixed predicate in either transac
  const rendered=renderCurrent259RuntimeAcl(source,receipt(),nonce);
  const fixed=['IDENTITY','ROLE_ARRAY','ROLES','LEDGER','GUARDS','READER','CAPABILITIES','FUNCTIONS','RELATIONS','DATABASE_ACL'];
  for(const [sql,phase] of [[rendered.sql,'WRITER'],[rendered.readbackSql,'READBACK']]){
-  const detail=new RegExp(`RAISE EXCEPTION 'TASK16_CURRENT259_RUNTIME_ACL_POSTIMAGE' USING DETAIL = 'TASK16_CURRENT259_RUNTIME_ACL_${phase}_([A-Z0-9_]+)';`,'gu');
-  const labels=[...sql.matchAll(detail)].map(match=>match[1]);
+  const message=new RegExp(`RAISE EXCEPTION 'TASK16_CURRENT259_RUNTIME_ACL_POSTIMAGE: ${phase}_([A-Z0-9_]+)';`,'gu');
+  const labels=[...sql.matchAll(message)].map(match=>match[1]);
   assert.deepEqual(labels.slice(0,fixed.length),fixed);
   assert.deepEqual(labels.slice(-3),['HELPERS','DIRECT_ACL','GRANT_OPTION']);
   assert.equal(new Set(labels).size,labels.length);

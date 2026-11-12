@@ -210,7 +210,7 @@ DECLARE report jsonb;
 BEGIN
  SELECT result INTO STRICT report FROM (${query}) witness;
  ${checks.map(([name,sql],index)=>`${index===0?'IF':'ELSIF'} (${sql}) IS NOT TRUE THEN
-   RAISE EXCEPTION '${CODE}_POSTIMAGE' USING DETAIL = '${CODE}_${phase}_${name}';`).join('\n ')}
+   RAISE EXCEPTION '${CODE}_POSTIMAGE: ${phase}_${name}';`).join('\n ')}
  END IF;
 END $current259_runtime_acl_after$;`;
 }
