@@ -58,6 +58,14 @@ function loadRunner(file: string, mode: "start-failure" | "cleanup-failure" | "s
       if (name === "./money-bigint-runner-runtime.cjs") return {
         ...runtime, createCommandRuntime: () => ({ command, stopAll })
       };
+      if (name === "./local-staged-ci-dynamic.cjs" && file === "run-contract-settlement-v2-local.cjs") {
+        return {
+          CI_DYNAMIC_MIGRATION_LABEL: "jg.local-ci-dynamic-migration",
+          createCiDynamicMigrationFixture: (options: { deploy: (request: unknown) => Promise<unknown> }) => ({
+            migrate: (request: unknown) => options.deploy(request)
+          })
+        };
+      }
       if (name === "node:net") return fakeNet;
       if (name === "node:fs/promises") return {
         mkdtemp: async () => "/fixture/temporary-root", rm: removeRoot

@@ -304,7 +304,8 @@ function createLocalMigrationFixture(input) {
       need(expected[203].sha256 === "296c6e2f502bc782bd83ab59190505e27b80623d1da1a3b6dddb72c414eb686f" &&
         expected[204].sha256 === "2ca118b29e8e75745a1ac7d6f8de3fbfa70fa5774b3d95c48c6119caff8b316a",
       "SOURCE_204_205");
-      const rolledBack = ["20260802010000_project_financing_quota_request_idempotency"];
+      const ciRecovery = ci && technicalProfiles.ciDynamicRecoveryMigration(options.ciFixture, database);
+      const rolledBack = ci ? (ciRecovery ? [ciRecovery] : []) : ["20260802010000_project_financing_quota_request_idempotency"];
       const before = await read(database, "preflight", controls.inspectSql());
       const bound = identity(before, database, owner);
       const prior = states.get(database);
@@ -312,6 +313,7 @@ function createLocalMigrationFixture(input) {
       else states.set(database, { identity: bound });
       checkRoles(before);
       const count = checkLedger(before.ledger, target, rolledBack);
+      if (ciRecovery) need(before.ledger.filter(row => row.name === ciRecovery && row.rolledBack === true).length === 1, "CI_RECOVERY");
       if (technical) need(count === 0 && target.length === 259 && request.expectedFailure === undefined, "CURRENT259_FRESH_FULL_ONLY");
       if (recovery) {
         need(count === 114 && before.ledger.filter(row => row.name === expected[114].name &&

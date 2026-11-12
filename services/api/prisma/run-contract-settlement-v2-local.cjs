@@ -6,6 +6,7 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { randomUUID } = require("node:crypto");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
@@ -63,6 +64,7 @@ async function main() {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-contract-settlement-v2-"));
   const port = await freePort();
   const password = randomUUID();
+  const fixtureRunId = randomUUID();
   const containerName = `jiangkong-contract-settlement-v2-${Date.now()}-${process.pid}`;
   const databaseUrl = `postgresql://jiangkong:${password}@127.0.0.1:${port}/${databaseName}`;
   const runtimeEnv = {
@@ -114,13 +116,25 @@ async function main() {
     if (!endpoint) throw new Error("无法确认本机 Docker endpoint");
     dockerEnv = { PATH: runtimeEnv.PATH, HOME: runtimeEnv.HOME, DOCKER_HOST: endpoint };
     containerRunAttempted = true;
-    await run(docker, ["run", "--pull=never", "--detach", "--rm", "--name", containerName,
+    const created = await run(docker, ["run", "--pull=never", "--detach", "--rm", "--name", containerName,
+      "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD", "--env", `POSTGRES_DB=${databaseName}`,
       "--publish", `127.0.0.1:${port}:5432`, "postgres:16"], {
       env: { ...dockerEnv, POSTGRES_PASSWORD: password }
     });
     await waitForPostgres(containerName, dockerEnv);
-    await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], { env: runtimeEnv, forwardOutput: true });
+    const migrationFixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_CONTRACT_SETTLEMENT_V2",
+      container: { id: created.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [databaseName], temporaryRoot,
+      dockerCommand: (args, options) => commandRuntime.command(docker, args, { ...options, env: dockerEnv }),
+      deploy: ({ databaseUrl, runtimeEnv, schemaPath }) => {
+        const args = ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"];
+        if (schemaPath) args.push("--schema", schemaPath);
+        return commandRuntime.command(pnpm, args, { env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, forwardOutput: true });
+      }
+    });
+    await migrationFixture.migrate({ databaseUrl, runtimeEnv });
     await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"], { env: runtimeEnv, forwardOutput: true });
     await run(pnpm, ["--filter", "@jiangkong/api", "build"], { env: runtimeEnv });
     await run(process.execPath, [path.join(__dirname, "seed.cjs")], { cwd: temporaryRoot, env: runtimeEnv });

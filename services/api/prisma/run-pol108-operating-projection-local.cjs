@@ -11,6 +11,7 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 
 const { runSelectedShards, assertTestResults } = require("./pol108-shards.cjs");
 
@@ -122,6 +123,7 @@ async function runShard(shard) {
   const containerName = `jiangkong-pol108-${suffix}`;
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-pol108-"));
   const password = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl = `postgresql://jiangkong:${password}@127.0.0.1:${port}/${DATABASE_NAME}`;
   const writeSecret = randomUUID();
   const runtimeEnvironment = {
@@ -166,8 +168,9 @@ async function runShard(shard) {
   let stopSampling;
   try {
     console.log(`[pol108-observation] ${JSON.stringify({ phase: "environment", ...await collectEnvironment(), postgresImageId: dockerEvidence.imageId })}`);
-    await command(docker, [
+    const created = await command(docker, [
       "run", "--detach", "--rm", "--pull=never", "--name", containerName,
+      "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD",
       "--env", `POSTGRES_DB=${DATABASE_NAME}`,
       "--publish", `127.0.0.1:${port}:5432`, IMAGE, "-c", "track_functions=all", "-c", "track_io_timing=on"
@@ -179,13 +182,23 @@ async function runShard(shard) {
     const setupStarted = Date.now();
     await waitForPostgres(containerName);
     const schemaPath = path.join(root, "services/api/prisma/schema.prisma");
-    for (let pass = 0; pass < 2; pass += 1) {
-      await command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
-        env: runtimeEnvironment,
+    const deploy = ({ databaseUrl, runtimeEnv, schemaPath }) =>
+      command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
+        env: { ...runtimeEnv, DATABASE_URL: databaseUrl },
         forwardOutput: true,
         timeoutMs: 15 * 60 * 1000
       });
-    }
+    const fixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_POL108_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME],
+      temporaryRoot,
+      dockerCommand: (args, options) => command(docker, args, options),
+      deploy
+    });
+    const migration = { databaseUrl: runtimeEnvironment.DATABASE_URL, runtimeEnv: runtimeEnvironment, schemaPath };
+    await fixture.migrate(migration);
+    await deploy(migration);
     await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], {
       cwd: temporaryRoot,
       env: runtimeEnvironment,

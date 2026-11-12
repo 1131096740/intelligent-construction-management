@@ -3,7 +3,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
-const {isCiDynamicDatabase,projectTechnicalSql}=require('./local-staged-technical-profile-policy.cjs');
+const {isCiDynamicDatabase,projectTechnicalSql,ciDynamicRecoveryMigration}=require('./local-staged-technical-profile-policy.cjs');
 const source=fs.readFileSync(path.join(__dirname,'local-staged-tail-post213.sql'),'utf8');
 const legacy='jiangkong_project_financing_quota_main';
 const ciFixture='DYNAMIC_PAYMENT_EXECUTION_V1';
@@ -21,6 +21,18 @@ test('allows only the fixed CI payment primary and valid retained databases',()=
   assert.throws(()=>projectTechnicalSql({ciFixture,database},source,'post213'));
  }
  assert.equal(projectTechnicalSql({database:legacy},source,'post213').sql,source);
+});
+
+test('only the two explicit expense recovery databases recognize their own historical rollback',()=>{
+ const execution='DYNAMIC_PROJECT_EXPENSE_EXECUTION_V1';
+ const finance='DYNAMIC_PROJECT_EXPENSE_FINANCE_V1';
+ const executionRecovery='jiangkong_project_expense_execution_retained_audit_missing';
+ const financeRecovery='jiangkong_project_expense_finance_retained_audit_missing';
+ assert.equal(ciDynamicRecoveryMigration(execution,executionRecovery),'20260728140000_project_expense_execution_idempotency');
+ assert.equal(ciDynamicRecoveryMigration(finance,financeRecovery),'20260728150000_project_expense_finance_idempotency');
+ assert.equal(ciDynamicRecoveryMigration(execution,financeRecovery),undefined);
+ assert.equal(ciDynamicRecoveryMigration(finance,'jiangkong_project_expense_finance_retained_valid'),undefined);
+ assert.equal(isCiDynamicDatabase(finance,executionRecovery),false);
 });
 
 test('the CI adapter only observes and executes inside the captured container and database',async()=>{

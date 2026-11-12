@@ -5,11 +5,14 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
+const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const storageRoot = mkdtempSync(path.join(tmpdir(), "approval-v6-onboarding-files-"));
 
 const root = path.resolve(__dirname, "../../..");
 const password = randomUUID();
-const name = `jiangkong-onboarding-http-${randomUUID()}`;
+const fixtureRunId = randomUUID();
+const name = `jiangkong-onboarding-http-${fixtureRunId}`;
 let containerId;
 
 function command(bin, args, env = process.env, quiet = false, timeout = 180_000) {
@@ -26,8 +29,9 @@ const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspe
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const docker = (args, env = process.env, quiet = false) => command("docker", ["--host", endpoint, ...args], env, quiet);
 
-try {
+async function verify() {
   containerId = docker(["run", "--detach", "--rm", "--pull=never", "--name", name,
+    "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
     "--env", "POSTGRES_PASSWORD", "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_DB=onboarding",
     "--publish", "127.0.0.1::5432", "postgres:16"], { ...process.env, POSTGRES_PASSWORD: password }, true);
   if (!/^[a-f0-9]{64}$/.test(containerId)) throw new Error("一次性容器标识无效");
@@ -40,7 +44,20 @@ try {
     DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/onboarding` };
   console.log(`EMPLOYEE_ONBOARDING 一次性容器：${name}`);
   docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "onboarding", "-Atc", "SHOW server_version;"]);
-  command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
+  const { command: stagedCommand } = createCommandRuntime({ defaultCwd: root });
+  const migration = createCiDynamicMigrationFixture({
+    ciFixture: "DYNAMIC_EMPLOYEE_ONBOARDING_V1",
+    container: { id: containerId, name, runId: fixtureRunId },
+    databaseNames: ["onboarding"],
+    temporaryRoot: mkdtempSync(path.join(storageRoot, "staged-migrations-")),
+    dockerCommand: (args, options) => stagedCommand("docker", ["--host", endpoint, ...args], { ...options, env: process.env }),
+    deploy({ databaseUrl, runtimeEnv, schemaPath }) {
+      const args = ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"];
+      if (schemaPath) args.push("--schema", schemaPath);
+      return { stdout: command("pnpm", args, { ...runtimeEnv, DATABASE_URL: databaseUrl }) };
+    }
+  });
+  await migration.migrate({ databaseUrl: env.DATABASE_URL, runtimeEnv: env });
   const runtime = "onboarding_runtime";
   docker(["exec", containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "onboarding", "-c", `
     CREATE ROLE ${runtime} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '${password}';
@@ -247,10 +264,15 @@ try {
   console.log("EMPLOYEE_ONBOARDING 人员历史宽ACL收紧、非owner读写正反例、备份只读及重跑幂等通过");
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/onboarding`;
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts", "src/database/personnel-lifecycle-http-postgres.spec.ts", "src/database/employee-role-consistency-http-postgres.spec.ts", "src/database/employee-phone-reuse-postgres.spec.ts", "src/database/personnel-roster-read-http-postgres.spec.ts"], env);
-} finally {
+}
+
+verify().finally(() => {
   rmSync(storageRoot, { recursive: true, force: true });
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
     docker(["rm", "--force", "--volumes", containerId], process.env, true);
     console.log(`EMPLOYEE_ONBOARDING 已清理自身容器：${name}`);
   }
-}
+}).catch((error) => {
+  console.error(error.message.replaceAll(password, "[redacted]"));
+  process.exitCode = 1;
+});

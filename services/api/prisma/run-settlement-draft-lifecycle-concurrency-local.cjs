@@ -11,6 +11,7 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const DATABASE_NAME =
@@ -157,6 +158,7 @@ async function main() {
     path.join(tmpdir(), "jiangkong-settlement-lifecycle-")
   );
   const databasePassword = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl =
     `postgresql://jiangkong:${databasePassword}` +
     `@127.0.0.1:${databasePort}/${DATABASE_NAME}`;
@@ -212,7 +214,7 @@ async function main() {
     ]);
     assertLocalDockerEndpoint(dockerEndpoint.stdout);
     await dockerCommand(["info"]);
-    await dockerCommand(
+    const created = await dockerCommand(
       [
         "run",
         "--pull=never",
@@ -220,6 +222,8 @@ async function main() {
         "--rm",
         "--name",
         containerName,
+        "--label",
+        CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
         "--env",
         "POSTGRES_USER=jiangkong",
         "--env",
@@ -241,11 +245,17 @@ async function main() {
         `（${DATABASE_NAME}，仅 127.0.0.1）`
     );
 
-    await command(
-      pnpm,
-      ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"],
-      { env: runtimeEnv, forwardOutput: true, timeoutMs: 15 * 60 * 1000 }
-    );
+    const migrationFixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_SETTLEMENT_DRAFT_LIFECYCLE_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME], temporaryRoot, dockerCommand,
+      deploy: ({ databaseUrl, runtimeEnv, schemaPath }) => {
+        const args = ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"];
+        if (schemaPath) args.push("--schema", schemaPath);
+        return command(pnpm, args, { env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, forwardOutput: true, timeoutMs: 15 * 60 * 1000 });
+      }
+    });
+    await migrationFixture.migrate({ databaseUrl, runtimeEnv });
     await command(
       pnpm,
       ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],
