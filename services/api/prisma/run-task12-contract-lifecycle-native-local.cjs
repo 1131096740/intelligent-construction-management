@@ -4,16 +4,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture, withNativeLifecycleCleanup, createNativeLifecycleRunnerFailureRecorder } = require('./task12-native-lifecycle-fixture.cjs');
+const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture, withNativeLifecycleCleanup, createNativeLifecycleRunnerFailureRecorder, projectNativeLifecyclePsqlFailure } = require('./task12-native-lifecycle-fixture.cjs');
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require('./local-staged-ci-dynamic.cjs');
 const { createCommandRuntime } = require('./money-bigint-runner-runtime.cjs');
 const { verifyCurrent259GeneratedDocumentRuntime } = require('./task12-current259-generated-document-runtime.cjs');
 const root = path.resolve(__dirname, '../../..');
 const pnpm = process.env.PNPM_BIN || 'pnpm';
 function command(bin, args, options = {}) {
+  const {psqlLineCount,...spawnOptions}=options;
   const result = spawnSync(bin, args, { cwd: root, env: process.env, encoding: 'utf8', timeout: 180_000,
-    maxBuffer: 32 * 1024 * 1024, ...options });
-  if (result.error || result.status !== 0) throw new Error('TASK12_NATIVE_GATE_COMMAND');
+    maxBuffer: 32 * 1024 * 1024, ...spawnOptions });
+  if (result.error || result.status !== 0) {
+    const failure=new Error('TASK12_NATIVE_GATE_COMMAND');
+    const projected=projectNativeLifecyclePsqlFailure(result.stderr,psqlLineCount);
+    if(projected)Object.defineProperty(failure,'nativePsql',{value:projected});
+    throw failure;
+  }
   return result.stdout?.trim() || '';
 }
 function nativeLifecycleContainerName(runId) { return 'jiangkong-task12-native-' + runId; }
@@ -98,7 +104,7 @@ async function run(args,enter,capture) {
     enter('MIGRATION_APPLY');
     await fixture.migrate({ databaseUrl: ownerUrl, runtimeEnv: env });
     if (!applicationOid || !/^[1-9][0-9]{1,9}$/u.test(applicationOid)) throw new Error('TASK12_NATIVE_GATE_APP_MISSING');
-    const psql = sql => docker(['exec','--interactive',container,'psql','-X','-A','-t','-q','-v','ON_ERROR_STOP=1','-U','jiangkong','-d',DATABASE,'-f','-'], { input: sql });
+    const psql = sql => docker(['exec','--interactive',container,'psql','-X','-A','-t','-q','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','jiangkong','-d',DATABASE,'-f','-'], { input: sql,psqlLineCount:sql.split('\n').length });
     enter('ORIGINAL_APP_READ');
     const applicationRole = psql(`SELECT rolname FROM pg_roles WHERE oid=${applicationOid}::oid;`);
     const scope = { database: DATABASE, appName: applicationRole, appOid: applicationOid, migrationCount: 261, terminal: TERMINAL };

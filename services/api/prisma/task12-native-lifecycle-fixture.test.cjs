@@ -143,3 +143,10 @@ test('runner diagnostics preserve the original migration stage through both late
  ],{primary:evidence.capture,cleanup(_step,error){evidence.capture(error);}}),error=>error===primary);
  assert.deepEqual(evidence.describe(primary),{stage:'MIGRATION_FIXTURE',code:'LOCAL_MIGRATION_INPUT'});
 });
+
+test('psql diagnostics project only a known SQLSTATE and bounded static stdin line',()=>{
+ const {projectNativeLifecyclePsqlFailure}=require('./task12-native-lifecycle-fixture.cjs');
+ assert.deepEqual(projectNativeLifecyclePsqlFailure('psql:<stdin>:41: ERROR:  42601\n',100),{sqlState:'42601',sqlLine:41});
+ for(const text of ['psql:<stdin>:401: ERROR:  42601\n','psql:<stdin>:4: ERROR:  ZZ999\n','psql:<stdin>:4: ERROR:  private password\n','ERROR: 42601 SELECT private'])
+  assert.equal(projectNativeLifecyclePsqlFailure(text,100),undefined);
+});

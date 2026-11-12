@@ -85,7 +85,7 @@ const NATIVE_STAGES = new Set(['INPUT','IDENTITY','SEED','NEST_INIT','LOGIN','SI
 const NATIVE_ROLES = new Set(['owner','application','template','worker','queue']);
 const CLEANUP_ROLES=Object.freeze({CONTAINER_REMOVE:'CONTROL',DIRECTORY_REMOVE:'CONTROL',PROCESSOR_CLOSE:'worker',APP_CLOSE:'application',APPLICATION_DISCONNECT:'application',TEMPLATE_DISCONNECT:'template',WORKER_DISCONNECT:'worker',QUEUE_DISCONNECT:'queue',OWNER_DISCONNECT:'owner',AUDIT_TRIGGER_DROP:'owner',AUDIT_FUNCTION_DROP:'owner'});
 const CLEANUP_STEPS = new Set(['CONTAINER_REMOVE','DIRECTORY_REMOVE','PROCESSOR_CLOSE','APP_CLOSE','APPLICATION_DISCONNECT','TEMPLATE_DISCONNECT','WORKER_DISCONNECT','QUEUE_DISCONNECT','OWNER_DISCONNECT','AUDIT_TRIGGER_DROP','AUDIT_FUNCTION_DROP']);
-const SQLSTATES = new Set(['42501','23514','23505','23503','23502','42P01','42703','42702','42883','42725','P0001','P0002','25P02','40001','40P01','57014','08003','08006','53300','53200','57P01','57P03']);
+const SQLSTATES = new Set(['42501','23514','23505','23503','23502','42P01','42703','42702','42883','42725','P0001','P0002','25P02','40001','40P01','57014','08003','08006','53300','53200','57P01','57P03','42601','42704','42710','42P07','42P02','22023','22003','22P02','22012','3F000','2BP01','28000','28P01','3D000','25006','0A000','0P000']);
 function nativeData(value,key) {
   if (!value || (typeof value !== 'object' && typeof value !== 'function') || types.isProxy(value)) return undefined;
   const slot=Object.getOwnPropertyDescriptor(value,key);return slot&&Object.hasOwn(slot,'value')?slot.value:undefined;
@@ -134,6 +134,8 @@ for(const stage of [213,215,218,221])for(const phase of ['BEFORE','SUPPLY','READ
 function describeNativeLifecycleRunnerFailure(error,stage) {
   const message=nativeData(error,'message');
   const projection={stage:RUNNER_STAGES.has(stage)?stage:'INPUT',code:RUNNER_CODES.has(message)?message:'TASK12_NATIVE_GATE_REJECTED'};
+  const psql=nativeData(error,'nativePsql'),sqlState=nativeData(psql,'sqlState'),sqlLine=nativeData(psql,'sqlLine');
+  if(SQLSTATES.has(sqlState)&&Number.isInteger(sqlLine)&&sqlLine>0&&sqlLine<=100000){projection.sqlState=sqlState;projection.sqlLine=sqlLine;}
   const detail=require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error);
   if(detail&&/^TAIL(?:213|215|218|221)_(?:BEFORE|SUPPLY|READBACK)$/u.test(detail.stage)&&['RESOURCE_PORT','NODE_PROOF'].includes(detail.kind)&&
     typeof detail.reason==='string'&&/^[A-Z0-9_]{1,96}$/u.test(detail.reason))projection.migration=detail;
@@ -150,3 +152,11 @@ function createNativeLifecycleRunnerFailureRecorder() {
   });
 }
 module.exports.createNativeLifecycleRunnerFailureRecorder=createNativeLifecycleRunnerFailureRecorder;
+
+function projectNativeLifecyclePsqlFailure(stderr,maxLine) {
+  if(typeof stderr!=='string'||stderr.length>1024*1024||!Number.isInteger(maxLine)||maxLine<1||maxLine>100000)return undefined;
+  for(const row of stderr.matchAll(/^psql:<stdin>:(\d{1,6}): (?:ERROR|FATAL):\s+([0-9A-Z]{5})\s*$/gmu)) {
+    const line=Number(row[1]);if(SQLSTATES.has(row[2])&&line>0&&line<=maxLine)return Object.freeze({sqlState:row[2],sqlLine:line});
+  }
+}
+module.exports.projectNativeLifecyclePsqlFailure=projectNativeLifecyclePsqlFailure;
