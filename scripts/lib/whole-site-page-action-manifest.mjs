@@ -18985,7 +18985,8 @@ function contractApprovalCaptureSource(spec, captured, current, owner, returnObj
       !approvalFields(constructed, {
         routeContractId: review ? "routeId" : "currentRouteContractId",
         contractId: "capability.id", contractVersionId: "capability.contractVersionId",
-        ...approvalKnownCoordinateMap(CONTRACT_APPROVAL_COORDINATES, "coordinates")
+        ...approvalKnownCoordinateMap(CONTRACT_APPROVAL_COORDINATES, "coordinates"),
+        ...(review ? { expectedParallelApprovalEpoch: "coordinates.expectedParallelApprovalEpoch" } : {})
       })) return false;
   const dialogBody = dialog.definition.body.body;
   const routeVariable = review ? "routeId" : "currentRouteContractId";
@@ -19122,7 +19123,8 @@ function contractApprovalPageEvidence(spec, candidate, context) {
         ${CONTRACT_APPROVAL_COORDINATES.map(field => `current.${field} === context.${field}`).join(" && ")});
     `)) return false;
 
-  const fields = ["routeContractId", "contractId", "contractVersionId", ...CONTRACT_APPROVAL_COORDINATES];
+  const fields = ["routeContractId", "contractId", "contractVersionId", ...CONTRACT_APPROVAL_COORDINATES,
+    ...(spec.decision ? ["expectedParallelApprovalEpoch"] : [])];
   const result = captured.definition.body.body.at(-1);
   const returnObject = spec.decision
     ? result?.type === "ReturnStatement" && result.argument
@@ -19135,7 +19137,13 @@ function contractApprovalPageEvidence(spec, candidate, context) {
   if (spec.decision) {
     if (!approvalStatement(fresh, "const freshDialog = currentContractReviewDialogContext(decision);") ||
         !approvalExpression(guard.test, `!dialog || !freshDialog || dialog.decision !== decision ||
-          ${fields.slice(1).map(field => `dialog.${field} !== freshDialog.${field}`).join(" || ")} ||
+          dialog.contractId !== freshDialog.contractId || dialog.contractVersionId !== freshDialog.contractVersionId ||
+          (dialog.expectedParallelApprovalEpoch === undefined
+            ? dialog.expectedContractUpdatedAt !== freshDialog.expectedContractUpdatedAt ||
+              dialog.expectedApprovalUpdatedAt !== freshDialog.expectedApprovalUpdatedAt
+            : dialog.expectedParallelApprovalEpoch !== freshDialog.expectedParallelApprovalEpoch) ||
+          dialog.expectedApprovalInstanceId !== freshDialog.expectedApprovalInstanceId ||
+          dialog.expectedNodeIndex !== freshDialog.expectedNodeIndex ||
           !sameContractReviewOwnerRisk(dialog.ownerContractRisk, freshDialog.ownerContractRisk) ||
           archiveActionBusy.value || contractReviewResultUnknown`) ||
         !approvalBoundCall(captured.definition, "currentContractReviewDialogContext", symbols)) return false;
@@ -19175,6 +19183,7 @@ function contractApprovalFrozenCoordinates(normalizer, comparator, review, symbo
   const directProperties = freeze.properties.filter(property => property.type === "Property");
   if (new Set(directProperties.map(propertyKey)).size !== directProperties.length) return false;
   const expectedSpreads = review ? [
+    "...(input.expectedParallelApprovalEpoch !== undefined ? { expectedParallelApprovalEpoch: input.expectedParallelApprovalEpoch } : {})",
     "...(comment ? { comment } : {})",
     "...(selfReviewReason ? { selfReviewReason } : {})",
     "...(confirmationPassword ? { confirmationPassword } : {})"
@@ -19187,8 +19196,18 @@ function contractApprovalFrozenCoordinates(normalizer, comparator, review, symbo
     if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") hasWrite = true;
   });
   if (hasWrite) return false;
+  if (review) {
+    const gates = normalizer.definition.body.body.filter(node => node.type === "IfStatement");
+    if (gates.length !== 1 || gates[0].alternate ||
+        !approvalStatements(gates[0].consequent, 'throw new Error("合同审批上下文无效，请重新读取当前合同后再操作");')) return false;
+    const disjuncts = node => node.type === "LogicalExpression" && node.operator === "||"
+      ? [...disjuncts(node.left), ...disjuncts(node.right)] : [node];
+    if (disjuncts(gates[0].test).filter(node => approvalExpression(node,
+      'input.expectedParallelApprovalEpoch !== undefined && (typeof input.expectedParallelApprovalEpoch !== "string" || !/^[a-f0-9]{64}$/u.test(input.expectedParallelApprovalEpoch))')).length !== 1) return false;
+  }
   const fields = [...(review ? [] : ["action"]), "ownerScope", ...comparisonFields,
-    ...(review ? ["decision", "comment", "requiresSelfReviewConfirmation", "selfReviewReason", "confirmationPassword", "ownerContractRiskConfirmed"] : [])];
+    ...(review ? ["expectedParallelApprovalEpoch", "decision", "comment", "requiresSelfReviewConfirmation",
+      "selfReviewReason", "confirmationPassword", "ownerContractRiskConfirmed"] : [])];
   return approvalStatements(comparator.definition.body, `
     return ${fields.map(field => `expected.${field} === actual.${field}`).join(" && ")}
       ${review ? "&& sameContractApprovalOwnerRisk(expected.ownerContractRisk, actual.ownerContractRisk)" : ""};
@@ -19217,10 +19236,18 @@ function contractApprovalFreshEvidence(prepare, assertion, review, mode, symbols
     approvalStatements(assertion.definition.body, `
       const ${available} = preflight.availableActions.filter((action) => action.key === "${capability}" && action.enabled);
       const coordinates = preflight.${coordinateMember};
+      ${review ? `const matchesReviewCoordinates = coordinates &&
+        (context.expectedParallelApprovalEpoch === undefined
+          ? coordinates.expectedContractUpdatedAt === context.expectedContractUpdatedAt &&
+            coordinates.expectedApprovalUpdatedAt === context.expectedApprovalUpdatedAt
+          : coordinates.expectedParallelApprovalEpoch === context.expectedParallelApprovalEpoch);` : ""}
       if (preflight.id !== context.contractId || preflight.contractVersionId !== context.contractVersionId ||
-          preflight.lifecycleUpdatedAt !== context.expectedContractUpdatedAt || ${available}.length !== 1 ||
-          ${review ? '(enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !== context.requiresSelfReviewConfirmation ||' : ""}
-          ${CONTRACT_APPROVAL_COORDINATES.map((field, index) =>
+          preflight.lifecycleUpdatedAt !== ${review ? "coordinates?.expectedContractUpdatedAt" : "context.expectedContractUpdatedAt"} ||
+          ${available}.length !== 1 ||
+          ${review ? `(enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !== context.requiresSelfReviewConfirmation ||
+            !coordinates || !matchesReviewCoordinates ||
+            coordinates.expectedApprovalInstanceId !== context.expectedApprovalInstanceId ||
+            coordinates.expectedNodeIndex !== context.expectedNodeIndex` : CONTRACT_APPROVAL_COORDINATES.map((field, index) =>
             `coordinates${index === 0 ? "?" : ""}.${field} !== context.${field}`).join(" || ")}
           ${review ? "|| !sameContractApprovalOwnerRisk(context.ownerContractRisk, preflight.ownerContractRisk ?? null)" : ""}) {
         throw new Error("${review ? "合同审批资格、风险或审批坐标已变化，请重新读取当前合同" : "合同审批撤回资格或审批坐标已变化，请重新读取当前合同"}");
@@ -19286,7 +19313,9 @@ function contractApprovalCommandEvidence(command, review, mode, symbols) {
       ownerContractRiskConfirmed: true, expectedOwnerContractRisk: context.ownerContractRisk
     } : {}),
   `;
-  return approvalStatement(payload.definition.body.body.at(-1), `return { ${review ? reviewFields : ""} ${coords} };`) &&
+  const epoch = review ? `, ...(context.expectedParallelApprovalEpoch !== undefined
+    ? { expectedParallelApprovalEpoch: context.expectedParallelApprovalEpoch } : {})` : "";
+  return approvalStatement(payload.definition.body.body.at(-1), `return { ${review ? reviewFields : ""} ${coords}${epoch} };`) &&
     [`normalizeContractApproval${mode}Action`, `sameContractApproval${mode}Context`, payloadName, "postJson"]
       .every(name => approvalBoundCall(command.definition, name, symbols));
 }
