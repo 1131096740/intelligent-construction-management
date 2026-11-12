@@ -166,7 +166,7 @@ function runServicePostgresSpec(databaseUrl) {
 
 async function main() {
   const suffix = `${Date.now()}-${process.pid}-${randomUUID().slice(0, 8)}`;
-  const containerName = `jgzg-fund-execution-v7-${suffix}`;
+  const containerName = `jiangkong-fund-execution-v7-${suffix}`;
   const password = randomUUID(), runId = randomUUID();
   let containerId;
   try {

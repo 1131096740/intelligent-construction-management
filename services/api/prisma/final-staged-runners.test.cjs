@@ -65,6 +65,12 @@ test("v7 qualifies the bound positive migration and keeps the PG16 core check an
   assert.ok(allocation.args.includes(label + "=" + stage.container.runId));
   assert.ok(allocation.args.includes(stage.container.name));
   assert.equal(stage.container.id, primary);
+  const { createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+  const boundInput = { ...stage, container: { ...stage.container }, databaseNames: [...stage.databaseNames] };
+  assert.equal(typeof createCiDynamicMigrationFixture(boundInput).migrate, "function");
+  assert.throws(() => createCiDynamicMigrationFixture({
+    ...boundInput, container: { ...boundInput.container, name: "jgzg-fund-execution-v7-fixture" }
+  }), /LOCAL_MIGRATION_INPUT/u);
   assert.ok(!allocation.args.some(arg => arg.startsWith("POSTGRES_PASSWORD=")));
   const deployments = model.commands.filter(call => call.args.includes("deploy"));
   assert.equal(deployments.length, 2);

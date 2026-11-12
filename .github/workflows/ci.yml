@@ -130,7 +130,7 @@ jobs:
         run: |
           set -euo pipefail
           shard="${API_TEST_TARGET#api-}"
-          pnpm --filter @jiangkong/api test --runInBand --shard="$shard/4"
+          pnpm --filter @jiangkong/api run test --runInBand --shard="$shard/4"
 
       - name: Test Web
         if: matrix.target == 'web'
