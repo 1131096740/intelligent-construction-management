@@ -51,6 +51,8 @@ type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTI
 export interface RegisteredPgSeedContinuity {
   checkLight: () => void;
   fetch: typeof fetch;
+  /** Trusted owned transport consumes native JSON before synchronous qualification resumes. */
+  requestJson?: (target: URL, init: RequestInit, timeoutMs: number) => Promise<{ response: Response; body: unknown }>;
   seedProfile?: Payment261SeedProfile;
   recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number) => void;
   /** Source-owned case request checker; never a caller route list. */
@@ -105,11 +107,61 @@ function requireCondition(condition: unknown, code: string): asserts condition {
     throw error;
   }
 }
+const seedGuardCodes = new Set([
+  "PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY",
+  "PAYMENT_INSTALL_ONCE_BUSINESS_CONTINUITY",
+  "PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED",
+  "PAYMENT_BUSINESS_PLAN_FILE",
+  "PAYMENT_INSTALL_PLAN_FILE",
+  "CURRENT259_RESOURCE_CLOSED",
+  "CURRENT259_LOADER_CHANGED",
+  "CURRENT259_BUILD_CHANGED",
+  "CURRENT259_LIVE_SESSIONS_VERIFICATION",
+  "CURRENT259_LIVE_SESSIONS_CONTINUITY",
+  "TASK16_APP_HANDLE",
+  "TASK16_APP_FAILED_CLOSED",
+  "TASK16_CURRENT259_CATALOG",
+  "CURRENT259_PAYMENT_CASE_FAILED_CLOSED",
+  "CURRENT261_SEED_JSON_FAILED_CLOSED",
+  "CURRENT259_BUSINESS_CONTINUITY",
+  "CURRENT259_LIVE_SESSIONS_FAILED_CLOSED",
+  "CURRENT259_OWNED_METHOD",
+  "CURRENT259_LOADER_HOOKS",
+  "CURRENT259_BUILD_ENVIRONMENT",
+  "TASK16_APP_RUNTIME_PROVIDER",
+  "TASK16_APP_IMPACT_READER_PROOF",
+  "TASK16_APP_ADDRESS",
+  "TASK16_APP_PRIOR_CHANGED",
+  "TASK16_APP_METHOD_CHANGED",
+  "TASK16_APP_ENVIRONMENT_CHANGED",
+  "TASK16_APP_STORAGE_CHANGED",
+  "PAYMENT_INSTALL_ONCE_IMPORT_CHANGED"
+]);
+const seedNetworkCodes = new Map([
+  ["ECONNREFUSED", "HTTP_CONNECTION_REFUSED"], ["ECONNRESET", "HTTP_CONNECTION_RESET"],
+  ["ETIMEDOUT", "HTTP_CONNECT_TIMEOUT"], ["UND_ERR_CONNECT_TIMEOUT", "HTTP_CONNECT_TIMEOUT"],
+  ["UND_ERR_HEADERS_TIMEOUT", "HTTP_RESPONSE_TIMEOUT"], ["UND_ERR_BODY_TIMEOUT", "HTTP_RESPONSE_TIMEOUT"],
+  ["UND_ERR_SOCKET", "HTTP_SOCKET_CLOSED"], ["ABORT_ERR", "HTTP_ABORTED"]
+]);
 function seedFailureCode(error: unknown) {
   if (!error || typeof error !== "object" || types.isProxy(error)) return undefined;
   const code = Object.getOwnPropertyDescriptor(error, "code")?.value;
-  return fixedConditions.get(error as Error) ?? (typeof code === "string" && /^P[0-9]{4}$/.test(code) ? code :
-    error instanceof DOMException && error.name === "TimeoutError" ? "TIMEOUT" : undefined);
+  const message = Object.getOwnPropertyDescriptor(error, "message")?.value;
+  const fixed = fixedConditions.get(error as Error);
+  if (fixed) return fixed;
+  if (typeof code === "string" && (/^P[0-9]{4}$/.test(code) || seedGuardCodes.has(code))) return code;
+  if (typeof message === "string" && seedGuardCodes.has(message)) return message;
+  if (error instanceof DOMException) {
+    if (error.name === "TimeoutError") return "TIMEOUT";
+    if (error.name === "AbortError") return "HTTP_ABORTED";
+  }
+  let current: unknown = error;
+  for (let depth = 0; depth < 3 && current && typeof current === "object" && !types.isProxy(current); depth++) {
+    const network = Object.getOwnPropertyDescriptor(current, "code")?.value;
+    if (typeof network === "string" && seedNetworkCodes.has(network)) return seedNetworkCodes.get(network);
+    current = Object.getOwnPropertyDescriptor(current, "cause")?.value;
+  }
+  return undefined;
 }
 
 export function describeRegisteredPgPreparation() {
@@ -251,19 +303,30 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
   const transport = continuity ? continuity.fetch : fetch;
   requireCondition(typeof transport === "function", "PG_RESOURCE_HTTP_TRANSPORT");
   light();
-  const response = await checked(() => transport(target, {
-    method, redirect: "error", signal: AbortSignal.timeout(context.httpTimeoutMs),
+  const init: RequestInit = {
+    method, redirect: "error",
     headers: { "content-type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
-  }));
+  };
+  const requestJson = continuity?.requestJson;
+  requireCondition(requestJson === undefined || typeof requestJson === "function", "PG_RESOURCE_HTTP_TRANSPORT");
+  let response: Response;
+  let parsedBody: unknown;
+  if (requestJson) {
+    const result = await checked(() => requestJson(target, init, context.httpTimeoutMs));
+    response = result.response;
+    parsedBody = result.body;
+  } else {
+    response = await checked(() => transport(target, { ...init, signal: AbortSignal.timeout(context.httpTimeoutMs) }));
+  }
   const status = response.status, json = response.json;
-  requireCondition(typeof json === "function", "PG_RESOURCE_HTTP_RESPONSE");
+  requireCondition(typeof json === "function" && (!requestJson || response.bodyUsed === true), "PG_RESOURCE_HTTP_RESPONSE");
   if (continuity) {
     const responseUrl = response.url, redirected = response.redirected;
     requireCondition(responseUrl === target.href && redirected === false, "PG_RESOURCE_HTTP_RESPONSE_ORIGIN");
   }
   light();
-  return { status, body: await checked(() => json.call(response)) as unknown };
+  return { status, body: requestJson ? parsedBody : await checked(() => json.call(response)) as unknown };
 }
 
 /** Executes nothing unless explicitly called with already connected resources.

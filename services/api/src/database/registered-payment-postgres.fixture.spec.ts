@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
 import * as registeredCases from "./registered-payment-postgres.cases";
 import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
@@ -67,6 +67,72 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     expect(recordSeedFailure).toHaveBeenCalledWith("SEED_OWNER_TRANSACTION", "P2028", undefined);
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("consumes owned JSON once and verifies original response origin %s", async sameOrigin => {
+    const f = fixture();
+    const response = new Response(JSON.stringify({ tokens: { accessToken: "synthetic-token" } }), { status: 201 });
+    Object.defineProperty(response, "url", { value: sameOrigin ? new URL("/auth/login", f.proof.application.origin).href : "http://127.0.0.1:15434/auth/login" });
+    const json = jest.spyOn(response, "json");
+    const requestJson = jest.fn(async (target: URL, init: RequestInit, timeoutMs: number) => {
+      expect(target.href).toBe(new URL("/auth/login", f.proof.application.origin).href);
+      expect(init.signal).toBeUndefined();
+      expect(timeoutMs).toBe(1000);
+      const body: unknown = await response.json();
+      return { response, body };
+    });
+    const fetch = jest.fn().mockRejectedValue(new Error("legacy fetch path must not run"));
+    const continuity = { checkLight() {}, fetch, requestJson };
+    const result = registeredPgHttp(f.context, "/auth/login", "POST", { phone: "19900000000" }, undefined, continuity);
+    if (sameOrigin) await expect(result).resolves.toEqual({ status: 201, body: { tokens: { accessToken: "synthetic-token" } } });
+    else await expect(result).rejects.toThrow("PG_RESOURCE_HTTP_RESPONSE_ORIGIN");
+    expect(requestJson).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledTimes(1);
+    expect(response.bodyUsed).toBe(true);
+  });
+
+  it("rejects an owned JSON result whose original response body was never consumed", async () => {
+    const f = fixture();
+    const response = new Response(JSON.stringify({ tokens: { accessToken: "synthetic-token" } }), { status: 201 });
+    Object.defineProperty(response, "url", { value: new URL("/auth/login", f.proof.application.origin).href });
+    const continuity = { checkLight() {}, fetch: jest.fn(), requestJson: async () => ({ response, body: {} }) };
+    await expect(registeredPgHttp(f.context, "/auth/login", "POST", {}, undefined, continuity))
+      .rejects.toThrow("PG_RESOURCE_HTTP_RESPONSE");
+    expect(response.bodyUsed).toBe(false);
+    expect(continuity.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["CURRENT259_BUILD_CHANGED", "CURRENT259_BUSINESS_CONTINUITY"])("retains a message-only continuity rejection %s at the real seed login boundary", async guardCode => {
+    const f = fixture();
+    Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });
+    const recordSeedFailure = jest.fn();
+    const fetch = jest.fn().mockRejectedValue(new Error(guardCode));
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_LOGIN", guardCode, undefined);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["ECONNREFUSED", "HTTP_CONNECTION_REFUSED"],
+    ["ECONNRESET", "HTTP_CONNECTION_RESET"],
+    ["UND_ERR_CONNECT_TIMEOUT", "HTTP_CONNECT_TIMEOUT"],
+    ["private-code", undefined]
+  ])("projects only an allowlisted nested native fetch cause %s", async (causeCode, expected) => {
+    const f = fixture();
+    Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });
+    const recordSeedFailure = jest.fn();
+    const failure = Object.assign(new TypeError("private request payload"), {
+      cause: Object.assign(new Error("private address"), { code: causeCode })
+    });
+    const fetch = jest.fn().mockRejectedValue(failure);
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_LOGIN", expected, undefined);
+    expect(JSON.stringify(recordSeedFailure.mock.calls)).not.toMatch(/private/);
   });
 
   it("preserves the fixed HTTP failure code and status without forwarding the body", async () => {
@@ -258,8 +324,14 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
   it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
-      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias"])(
-    "verifies the %s case through only the approved observer columns", async scenario => {
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
+      "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
+      "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
+      "competition-owned-json", "competition-follow-up-owned-json", "competition-follow-up-director-wins-owned-json",
+      "competition-follow-up-wrong-payer-owned-json", "competition-follow-up-double-debit-owned-json", "competition-follow-up-ineligible-owned-json"])(
+    "verifies the %s case through only the approved observer columns", async scenarioName => {
+    const ownedJson = scenarioName.endsWith("-owned-json");
+    const scenario = ownedJson ? scenarioName.slice(0, -"-owned-json".length) : scenarioName;
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
@@ -443,7 +515,13 @@ describe("registered PG original case: explicit observer projection protocol (no
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
-      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn() };
+      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn(),
+        ...(ownedJson ? { async requestJson(target: URL, init: RequestInit, timeoutMs: number) {
+          const response = await globalThis.fetch(target, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+          const body: unknown = await response.json();
+          return { response, body };
+        } } : {})
+      };
       if (disconnect) {
         const fault = async (submit: () => Promise<void>) => {
           await submit();
@@ -544,7 +622,7 @@ describe("registered PG original case: explicit observer projection protocol (no
         expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST", ...(resultRead ? ["GET"] : [])]);
         return;
       }
-      const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared)
+      const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared, ownedJson ? continuity : undefined)
         : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
       if (scenario === "upstream-failure" || scenario === "absent-db-fact") {
         await expect(run).rejects.toThrow(scenario === "upstream-failure" ? "PG_CASE_RESPONSE_LOSS_BOUNDARY" : "PG_CASE_COMMITTED_GRAPH_COUNTS");

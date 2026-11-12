@@ -49,6 +49,9 @@ function model(options={}){
    events.push('fixture');assert.deepEqual(planned,plan);assert.equal(a.owner,b.owner);assert.equal(a.observer,b.observer);
    assert.notEqual(a.runtime,b.runtime);assert.notEqual(a.password,b.password);
    assert.equal(laneA.seedProfile,options.seedProfile);assert.equal(laneB.seedProfile,options.seedProfile);
+   const explicit261=['TASK16_PAYMENT261_COMPETITION_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_RUNTIME_V1'].includes(options.seedProfile);
+   assert.equal(typeof laneA.requestJson,explicit261?'function':'undefined');
+   assert.equal(typeof laneB.requestJson,explicit261?'function':'undefined');
    for(const route of ['/auth/login','/fund-accounts/openings','/fund-accounts/openings'])laneA.assertHttpRequest(route,'POST');
    laneB.assertHttpRequest('/auth/login','POST');
    return {plan,accessToken:'one',contender:{requestKey:keyB,accessToken:'two',...(options.voucher?{actorId:keyB}:{})}};
@@ -56,6 +59,9 @@ function model(options={}){
   async runRegisteredTwoActorPaymentCompetition(a,b,prepared,control){
    const route='/payment-executions/'+paymentId+'/registrations';
    events.push('case');
+   const explicit261=['TASK16_PAYMENT261_COMPETITION_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_RUNTIME_V1'].includes(options.seedProfile);
+   assert.equal(typeof control.lanes[0].requestJson,explicit261?'function':'undefined');
+   assert.equal(typeof control.lanes[1].requestJson,explicit261?'function':'undefined');
    const submit=index=>()=>{
     events.push('post-'+index);
     control.lanes[index].assertHttpRequest(route,'POST');
@@ -78,7 +84,10 @@ function model(options={}){
     const body={idempotencyKey:prepared.followUpRequestKey,amountCents:options.wrongFollowUpAmount?'2000':'1000',scopeKey:`company:${plan.ids.companyA}`,expectedRegistrationId:keyB,paidAt:plan.paidAt,sourceAllocations:[{sourceBatchId:'source-a',amountCents:'1000'}],confirmationPassword:(lane===0?a:b).password};
     for(let i=0;i<(options.followUpExtraPost?3:2);i++){
      control.lanes[lane].assertHttpRequest(`/payment-executions/${paymentId}/registrations`,'POST');
-     await control.lanes[lane].fetch(new URL(`/payment-executions/${paymentId}/registrations`,applicationPair[lane].origin),{method:'POST',body:JSON.stringify(body)});
+     if(options.changedFollowUpReplay&&i===1)body.openingEvidence='changed synthetic replay';
+     const target=new URL(`/payment-executions/${paymentId}/registrations`,applicationPair[lane].origin),init={method:'POST',body:JSON.stringify(body)};
+     if(control.lanes[lane].requestJson)await control.lanes[lane].requestJson(target,init,5000);
+     else await control.lanes[lane].fetch(target,init);
     }
     return {...race,caseId:scope.caseId,fullyPaid:true,secondExecutionId:'40404040-1234-4bcd-8f12-0123456789ab'};
    });
@@ -165,6 +174,10 @@ function model(options={}){
   './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(s){assert.equal(s,source);return {sevenFragments:[]};}},
   './task16-current259-payment-run-authorization.cjs':{claimCurrent259PaymentBusinessPermit(p,apps,h){assert.equal(p,permit);assert.equal(h,handle);assert.equal(apps,applicationPair);return {scope,continuityToken:token,seedProfile:options.seedProfile,check(){},verifyFull(){events.push('plan-full');},
    ...(options.voucher?{recordVoucherFailure(stage){failures.push(stage);}}:{})};}},
+  './task16-current261-seed-json.cjs':{async requestCurrent261SeedJson(target,init,timeoutMs){
+   assert.equal(timeoutMs,5000);events.push('owned-json');
+   const response=await fixtureFetch(target,{...init,signal:AbortSignal.timeout(timeoutMs)});return {response,body:{}};
+  }},
   './task16-current259-application-factory.cjs':{isCurrent259PaymentLease(lease){return !options.forged&&leases.includes(lease);}}
  };
  new Function('require','module','process','globalThis',fs.readFileSync(path.join(__dirname,'task16-current259-payment-competition.cjs'),'utf8'))(
@@ -260,4 +273,18 @@ for(const mode of ['wrongFollowUpLane','wrongFollowUpAmount','followUpExtraPost'
  const f=model({followUp:true,[mode]:true});
  await assert.rejects(f.run(),{code:'CURRENT259_PAYMENT_COMPETITION_FAILED_CLOSED'});
  assert.equal(f.events.includes('done-0'),false);
+});
+
+for(const directorWins of [false,true])test('explicit261 follow-up JSON keeps loser body and two POST count '+directorWins,async()=>{
+ const f=model({followUp:true,directorWins,seedProfile:'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1'});
+ assert.equal((await f.run()).fullyPaid,true);
+ assert.equal(f.events.filter(v=>v==='follow-up-request').length,2);
+ assert.equal(f.events.filter(v=>v==='owned-json').length,2);
+});
+for(const mode of ['wrongFollowUpLane','wrongFollowUpAmount','followUpExtraPost','changedFollowUpReplay'])test('explicit261 follow-up JSON cannot bypass '+mode,async()=>{
+ const f=model({followUp:true,seedProfile:'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1',[mode]:true});
+ await assert.rejects(f.run(),{code:'CURRENT259_PAYMENT_COMPETITION_FAILED_CLOSED'});
+ assert.equal(f.events.includes('done-0'),false);
+ assert.ok(f.events.filter(v=>v==='owned-json').length<=2);
+ if(mode==='changedFollowUpReplay')assert.equal(f.events.filter(v=>v==='owned-json').length,1);
 });

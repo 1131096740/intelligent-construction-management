@@ -26,9 +26,11 @@ function caseFixture(t,options={}){
   const record=permissions.get(permit);permissions.delete(permit);
   assert.ok(record&&record.application===application&&record.handle===handle,'untrusted business token');
   const continuityToken=Object.freeze({});continuities.add(continuityToken);
-  return {scope:record.scope,continuityToken,verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();},
+  return {scope:record.scope,continuityToken,
+   ...((options.ordinarySeedProfile??options.initialSeedProfile)!==undefined?{paymentProfile:options.ordinarySeedProfile??options.initialSeedProfile}:{}),verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();},
    ...(record.scope.scenario==='attribution-gap'?{recordAttributionGapFailure:stage=>f.calls.push(['gap-first-failure',stage])}:{}),
    ...(options.recordCaseFailure?{recordCaseFailure:options.recordCaseFailure}:{}),
+   ...(options.ordinarySeedProfile?{seedProfile:options.ordinarySeedProfile}:{}),
    ...(options.initialSeedProfile&&record.scope.disconnectPhase==='attempt'?{seedProfile:options.initialSeedProfile}:{})};
  }};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-payment-case.cjs'),'utf8'))(
@@ -160,11 +162,11 @@ test('full checks occur at the three quiet boundaries and never inside original 
  assert.deepEqual(f.calls.filter(x=>['activate-continuity','finish-continuity'].includes(x)),['activate-continuity','finish-continuity']);
 });
 
-for(const mode of ['complete','complete-261','foreign-key','post-first','swapped-relay','resolved-key'])
- test('A16 replacement uses the original seed, relay and key: '+mode,async t=>{
- const initialSeedProfile=mode==='complete-261'?'TASK16_PAYMENT261_RUNTIME_V1':undefined;
+for(const [mode,explicit261] of ['complete','complete-261','foreign-key','post-first','swapped-relay','resolved-key'].flatMap(mode=>mode==='complete-261'?[[mode,true]]:[[mode,false],[mode,true]]))
+ test('A16 replacement uses the original seed, relay and key: '+mode+' '+(explicit261?'261':'259'),async t=>{
+ const initialSeedProfile=explicit261?'TASK16_PAYMENT261_RUNTIME_V1':undefined;
  const f=caseFixture(t,{retirement:true,initialSeedProfile,replacementRelayDrift:mode==='swapped-relay'}),
-  m=paymentModel(f,{onSeed(continuity){assert.equal(continuity.seedProfile,initialSeedProfile);}});
+  m=paymentModel(f,{onSeed(continuity){assert.equal(continuity.seedProfile,initialSeedProfile);assert.equal(typeof continuity.requestJson,initialSeedProfile?'function':'undefined');}});
  const rollback=Object.freeze({}),attempt=Object.freeze({}),trace=[],signal=new AbortController().signal;
  const options='/payment-executions/'+m.plan.ids.payment+'/registration-options';
  const post='/payment-executions/'+m.plan.ids.payment+'/registrations';
@@ -182,6 +184,7 @@ for(const mode of ['complete','complete-261','foreign-key','post-first','swapped
  for(const key of ['activateBusinessContinuity','deactivateBusinessContinuity','checkContinuity'])f.otherSession[key]=f.session[key];
  m.modules.runRegisteredNullCrossCompanyDisconnectAttempt=async(execution,prepared,continuity,disconnect)=>{
   assert.equal(execution,m.captured().execution);assert.equal(prepared.accessToken,'private-model-token');
+  assert.equal(typeof continuity.requestJson,initialSeedProfile?'function':'undefined');
   continuity.assertHttpRequest(options,'GET');
   const outcome=await disconnect(async()=>{continuity.assertHttpRequest(post,'POST');trace.push('original-post');});
   assert.equal(outcome.state,'commit-disconnected');
@@ -193,6 +196,7 @@ for(const mode of ['complete','complete-261','foreign-key','post-first','swapped
   assert.equal(execution.runtime,f.otherSession.runtime);
   assert.equal(execution.password,m.captured().execution.password);
   assert.equal(execution.httpTimeoutMs,5000);
+  assert.equal(typeof continuity.requestJson,initialSeedProfile?'function':'undefined');
   if(mode==='post-first')continuity.assertHttpRequest(post,'POST');
   continuity.assertHttpRequest(mode==='foreign-key'?'/payment-executions/results/foreign':result,'GET');
   if(mode==='resolved-key')throw Object.assign(new Error('PG_CASE_DISCONNECT_KEY_ALREADY_RESOLVED'),{requestBody:'private key model'});
@@ -339,3 +343,62 @@ for(const [substage,subcode] of [['SEED_IDENTITY','PG_RESOURCE_RUNTIME_PRIVILEGE
   assert.ok(f.calls.includes('app-close'));
  });
 }
+
+for(const seedStage of ['SEED_LOGIN','SEED_OPENING'])test('seed '+seedStage+' binds its native fetch failure to the matching HTTP route',async t=>{
+ const seen=[],f=caseFixture(t,{recordCaseFailure:(...detail)=>seen.push(detail)});
+ const m=paymentModel(f,{async onSeed(continuity){
+  try{
+   const target=new URL('/auth/login',m.captured().execution.proof.application.origin);
+   await continuity.fetch(target,{method:'POST',signal:AbortSignal.abort()});
+  }catch(error){
+   continuity.recordSeedFailure(seedStage,'HTTP_ABORTED');
+   throw error;
+  }
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  await f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}));
+ }));
+ assert.deepEqual(seen[0],seedStage==='SEED_LOGIN'?['SEED_LOGIN','HTTP_ABORTED',undefined,'FETCH']:['SEED_OPENING','HTTP_ABORTED']);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+});
+
+for(const profile of [undefined,'TASK16_PAYMENT259_RUNTIME_V1','TASK16_PAYMENT261_RUNTIME_V1']){
+ test('owned seed JSON capability requires the explicit ordinary261 profile '+profile,async t=>{
+  const f=caseFixture(t,{ordinarySeedProfile:profile});
+  const m=paymentModel(f,{onSeed(continuity){
+   assert.equal(typeof continuity.requestJson,profile==='TASK16_PAYMENT261_RUNTIME_V1'?'function':'undefined');
+  }});
+  await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})));
+  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
+ });
+}
+
+test('owned seed JSON capability rejects a larger network budget before native fetch',async t=>{
+ const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ const m=paymentModel(f,{async onSeed(continuity){
+  try{await continuity.requestJson(new URL('/auth/login',m.captured().execution.proof.application.origin),{method:'POST'},5001);}
+  catch(error){continuity.recordSeedFailure('SEED_LOGIN',error.message);throw error;}
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0],['SEED_LOGIN','CURRENT259_PAYMENT_CASE_FAILED_CLOSED',undefined,'TARGET']);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+});
+
+for(const scenario of ['normal','response-loss'])test('only explicit261 selected '+scenario+' receives JSON capability',async t=>{
+ const f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1'});
+ const m=paymentModel(f,{onCase(continuity){assert.equal(typeof continuity.requestJson,'function');}});
+ await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario,paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})));
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
+});
+
+for(const [name,code] of [['TimeoutError','TIMEOUT'],['AbortError','HTTP_ABORTED']])test('selected JSON preserves only fixed native '+name+' classification',async t=>{
+ const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ const m=paymentModel(f,{onCase(){throw new DOMException('private native response details',name);}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen,[['SELECTED_CASE',code]]);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
+});
