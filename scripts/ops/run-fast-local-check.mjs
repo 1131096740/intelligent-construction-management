@@ -431,6 +431,7 @@ if (scopeByPath.every((scope) => scope !== null)) {
       ...scopes
     ].join(" + ")}`
   );
+  runTimed("business:language", pnpmBin, ["check:business-language"]);
   const hasApi = scopes.has("api");
   const hasWeb = scopes.has("web");
   if (scopes.has("shared-domain")) {
