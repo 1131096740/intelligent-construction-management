@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { Prisma } from "@prisma/client";
 import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
@@ -668,4 +669,25 @@ it("forwards only the private fixed guard projection before any fixture database
     { guardPhase: "RESOURCE_LIFETIME", originCode: "CURRENT259_RESOURCE_CLOSED" });
   expect(f.calls).toHaveLength(0);
   expect(JSON.stringify(recordSeedFailure.mock.calls)).not.toMatch(/private|body URL token|SQL/);
+});
+
+
+describe("source assertion diagnostic consumer closure", () => {
+  const { isPaymentFailureCode } = createRequire(__filename)("../../prisma/task16-current259-payment-diagnostics.cjs") as { isPaymentFailureCode: (code: unknown) => boolean };
+  it.each([["sourceSealSha256", "invalid", "PG_RESOURCE_SOURCE_SEAL"], ["transport", "invalid", "PG_RESOURCE_TRANSPORT"]] as const)(
+    "preserves normal role proof rejection %s through the fixed consumer", async (field, value, code) => {
+      const f = fixture(); f.proof[field] = value;
+      const error = await assertRegisteredPgConnectedRoles(f.context).catch((error: unknown) => error);
+      expect(Object.getOwnPropertyDescriptor(error, "code")).toEqual({ value: code, enumerable: false, configurable: false, writable: false });
+      expect(isPaymentFailureCode((error as { code: unknown }).code)).toBe(true);
+      expect(f.calls).toHaveLength(0);
+    });
+  it("retains the normal seed input assertion before any owner transaction", async () => {
+    const f = fixture(); f.context.password = "short"; const seen: Array<{ stage: string; code: string | undefined }> = [];
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch: jest.fn(),
+      recordSeedFailure(stage, code) { seen.push({ stage, code }); } })).rejects.toHaveProperty("code", "TASK16_FIXTURE_FAILED_CLOSED");
+    expect(seen).toEqual([{ stage: "SEED_PREPARE", code: "PG_FIXTURE_INPUT" }]);
+    expect(isPaymentFailureCode(seen[0]!.code)).toBe(true);
+  });
 });
