@@ -14,6 +14,7 @@ function fixture(t,options={}){
  const prepare=options.payment261?s.api.prepareCurrent261PaymentInstallPlan:options.pfqPlan?s.api.prepareCurrent259PfqCompositionPlan:s.api.prepareCurrent259PaymentInstallPlan;
  const saved=options.saved??prepare({runRoot:s.runRoot,daemonId:s.daemonId,output:s.output});
  const state={calls:[],output:'',closes:0,signals:{},consumed:null},handle=Object.freeze({});
+ if(options.progress){state.progressRoot=path.join(s.base,'progress');fs.mkdirSync(state.progressRoot,{mode:0o700});options.progressSetup?.(state.progressRoot);}
  let manifest,signal,finish;
  const done=new Promise(resolve=>{finish=resolve;});
  const source=s.loader.witness().source;
@@ -124,7 +125,7 @@ function fixture(t,options={}){
      fs.writeFileSync(path.join(plan.artifactsDir,'resource-manifest.json'),JSON.stringify(manifest),{mode:0o600});
      if(options.cleanupFailure)throw Object.assign(new Error('SECRET_SQL_PASSWORD'),{code:'CURRENT259_RESOURCE_CLEANUP_UNKNOWN'});
     };
-    try{return await consume(handle);}finally{finishResource();}
+    try{return await consume(handle);}finally{try{if(options.afterConsumeFailure)throw options.afterConsumeFailure;}finally{finishResource();}}
    }},
   '../../../scripts/prepare-task16-current259-payment-install.cjs':s.api
  };
@@ -223,7 +224,7 @@ function fixture(t,options={}){
     assert.equal(permit.kind,'CURRENT259_PRIVATE_ATTRIBUTION_GAP_CASE');
     assert.deepEqual(lease.scope.attributionGap,{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false});
    }
-   lease.check();return {caseId:lease.scope.caseId,passed:true,...(options.scenario==='cancel-commit'
+   lease.check();options.afterCaseResult?.();return {caseId:lease.scope.caseId,passed:true,...(options.scenario==='cancel-commit'
     ?{rollbackObserved:true,...(options.omitOriginalResult?{}:{originalResultUnconfirmed:true}),
       ...(options.omitRollbackEvidence?{}:{rollbackEvidence:{fault:'commit-cancelled',observedXid32:'9101',originalRequestKeySha256:'a'.repeat(64)}})}:options.attributionGap?{attributionGapEvidence:{registrationStatus:409,projectAmountCents:'500',gapAmountCents:'300',originalRequestKeySha256:'e'.repeat(64),
       originalResultUnconfirmed:true,...options.gapEvidenceOverride},...(options.gapExecution?{executionId:'forged'}:{})}:{executionId:'public-execution',rootId:'public-root'})};
@@ -330,7 +331,7 @@ function fixture(t,options={}){
  const launcherOptions=options.launchOption?[options.launchOption]:options.followUp261?[options.default?'--competition-follow-up261':'--competition-follow-up261-once']:options.voucher261?[options.default?'--voucher261':'--voucher261-once']:
   options.attributionGap261?[options.default?'--attribution-gap261':'--attribution-gap261-once']:options.competition261?[options.default?'--competition261':'--competition261-once']:options.payment261?
   [options.business?(options.default?'--business261':'--business261-once'):(options.default?'--install261':'--install261-once')]:undefined;
- const proc={argv:['node',file,...(launcherOptions??(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once'])),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
+ const proc={argv:['node',file,...(launcherOptions??(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once'])),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256,...(options.progress?['--progress-root',state.progressRoot]:[])],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
  const launcherTimer=options.captureDeadline?((fn,ms)=>{assert.equal(ms,3600000);state.expireDeadline=fn;return Object.freeze({});}):setTimeout;
@@ -1142,4 +1143,114 @@ for(const kind of ['unknown','getters','proxy'])test('receipt diagnostics refuse
  await f.done;const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
  assert.deepEqual(receipt.paymentCaseFailure,{stage:'SEED_LOGIN',code:'TASK16_APP_IMPACT_READER_PROOF',httpStatus:503,httpPhase:'AFTER_CHECK'});
  assert.equal(traps,0);assert.doesNotMatch(text,/private|credential|SQL URL/u);
+});
+
+for(const [name,extra,code] of [
+ ['postcheck',{afterConsumeFailure:Object.assign(new Error('private postcheck'),{code:'CURRENT259_BUILD_CHANGED'})},'CURRENT259_BUILD_CHANGED'],
+ ['cleanup',{cleanupFailure:true},'CURRENT259_RESOURCE_CLEANUP_UNKNOWN']
+])test('business primary survives '+name+' failure with a separate safe secondary',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{...extra,onBusiness({lease}){
+  lease.recordCaseFailure('SELECTED_CASE','P2028',undefined,'BODY');
+ },caseFailure:Object.assign(new Error('private business SQL URL'),{code:'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT'})});
+ const result=await f.done, text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT');
+ assert.equal(receipt.failureStage,'seedAndSelectedCase');
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'P2028',httpPhase:'BODY'});
+ assert.deepEqual(receipt.secondaryFailures,[{boundary:'RESOURCE_SCOPE',stage:'seedAndSelectedCase',code}]);
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
+ assert.equal(receipt.business.permission,'CONSUMED_ONCE');
+ assert.equal(receipt.resource.cleanup.status,name==='cleanup'?'UNKNOWN':'completed');
+ assert.doesNotMatch(text,/private|SQL URL/u);
+});
+test('a returned case followed by qualification failure remains unknown without replay',async t=>{
+ let returned=false;
+ const f=ordinaryBusinessFailureFixture(t,{afterCaseResult(){returned=true;},onCheck(){
+  if(returned)throw Object.assign(new Error('private qualification'),{code:'CURRENT259_BUILD_CHANGED'});
+ }});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.status,'STOPPED');assert.equal(result.failureCode,'CURRENT259_BUILD_CHANGED');
+ assert.equal(f.state.calls.filter(x=>x==='case').length,1);
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
+ assert.equal(receipt.business.permission,'CONSUMED_ONCE');
+ assert.equal(receipt.failureStage,'seedAndSelectedCase');
+});
+
+test('optional progress directory exposes a bound safe stage while the current phase is still running',async t=>{
+ let release,entered;
+ const blocked=new Promise(resolve=>{release=resolve;}),starting=new Promise(resolve=>{entered=resolve;});
+ const f=fixture(t,{progress:true,async onTechnical(){entered();await blocked;}});
+ t.after(async()=>{release();await f.done;});
+ await Promise.race([starting,f.done.then(result=>assert.fail('phase not reached: '+result.failureCode))]);
+ const names=fs.readdirSync(f.state.progressRoot).sort(),rows=names.map(name=>JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')));
+ assert.deepEqual(rows.map(row=>row.phase),['preflight','resourceStartup','technical259']);
+ assert.ok(!fs.existsSync(path.join(f.s.runRoot,'receipt.json')));
+ for(const [index,row] of rows.entries()){
+  assert.equal(row.sequence,index+1);assert.equal(row.expectedCandidateSha,'a'.repeat(40));assert.equal(row.planSha256,f.saved.sha256);
+  assert.equal(row.event,'PHASE');assert.equal(row.executionAllowed,false);assert.equal(row.financialAcceptance,false);
+  assert.ok(Number.isSafeInteger(row.elapsedMs)&&row.elapsedMs>=0);
+ }
+ assert.equal(rows.at(-1).resource.containerId,'7'.repeat(64));
+ assert.equal(rows.at(-1).resource.runId,'01234567-89ab-cdef-0123-456789abcdef');
+ assert.equal(rows.at(-1).checks.planVerification.count,1);
+ assert.ok(rows.at(-1).checks.planCheck.count>=1);
+ assert.ok(rows.at(-1).checks.resourceCheck.count>=1);
+ release();assert.equal((await f.done).status,'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED');
+ const all=fs.readdirSync(f.state.progressRoot).sort().map(name=>JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')));
+ assert.equal(all.at(-1).event,'FINALIZATION');assert.equal(all.at(-1).receiptPublished,false);
+ assert.equal(all.at(-1).cleanup.status,'completed');
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.deepEqual(all.at(-1).checks,receipt.timing.checks);
+ assert.equal(f.state.output.trim().split('\n').length,1);
+});
+test('progress never adopts or overwrites an occupied evidence directory',async t=>{
+ const f=fixture(t,{progress:true,progressSetup(root){fs.writeFileSync(path.join(root,'existing.json'),'untouched');}});
+ const result=await f.done;
+ assert.equal(result.status,'STOPPED');assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_PROGRESS_ROOT');
+ assert.deepEqual(f.state.calls,[]);assert.equal(fs.readFileSync(path.join(f.state.progressRoot,'existing.json'),'utf8'),'untouched');
+});
+test('progress publication failure remains secondary to the business primary and does not retry',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,onBusiness({lease}){
+  lease.recordCaseFailure('SELECTED_CASE','P2028',undefined,'BODY');
+  fs.chmodSync(f.state.progressRoot,0o500);
+ },caseFailure:Object.assign(new Error('private primary'),{code:'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT'})});
+ let result;try{result=await f.done;}finally{fs.chmodSync(f.state.progressRoot,0o700);}
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT');
+ assert.ok(receipt.secondaryFailures.some(row=>row.boundary==='PROGRESS_PUBLICATION'&&row.code==='PAYMENT_INSTALL_ONCE_PROGRESS_WRITE'));
+ assert.equal(f.state.calls.filter(x=>x==='case').length,1);assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
+ assert.doesNotMatch(JSON.stringify(receipt),/private primary/u);
+});
+
+test('progress evidence refuses a symlink directory and leaves its target untouched',async t=>{
+ const f=fixture(t,{progress:true,progressSetup(root){fs.renameSync(root,root+'-target');fs.symlinkSync(root+'-target',root);}});
+ const result=await f.done;
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_PROGRESS_ROOT');assert.deepEqual(f.state.calls,[]);
+ assert.deepEqual(fs.readdirSync(f.state.progressRoot+'-target'),[]);
+});
+test('progress evidence does not overwrite a conflicting next phase file',async t=>{
+ const f=fixture(t,{progress:true,onTechnical(state){
+  fs.writeFileSync(path.join(state.progressRoot,'004-roles9.json'),'existing private evidence',{mode:0o600});
+ }});
+ const result=await f.done;
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_PROGRESS_WRITE');
+ assert.deepEqual(f.state.calls,['start','technical259']);assert.equal(f.state.closes,1);
+ assert.equal(fs.readFileSync(path.join(f.state.progressRoot,'004-roles9.json'),'utf8'),'existing private evidence');
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.resource.cleanup.status,'completed');assert.doesNotMatch(JSON.stringify(receipt),/existing private evidence/u);
+});
+test('verification-only CLI cannot write progress or consume a marker',async t=>{
+ const f=fixture(t,{progress:true,default:true}),result=await f.done;
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_ARGUMENTS');assert.deepEqual(f.state.calls,[]);
+ assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);assert.deepEqual(fs.readdirSync(f.state.progressRoot),[]);
+});
+
+test('secondary diagnostics do not accept arbitrary known-family suffixes or private detail',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,
+  afterConsumeFailure:Object.assign(new Error('private URL SQL'),{code:'CURRENT259_RESOURCE_PRIVATE_SQL_PASSWORD'}),
+  caseFailure:Object.assign(new Error('private primary'),{code:'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT'})});
+ await f.done;
+ const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.deepEqual(receipt.secondaryFailures,[{boundary:'RESOURCE_SCOPE',stage:'seedAndSelectedCase',code:'PAYMENT_INSTALL_ONCE_FAILED_CLOSED'}]);
+ const progress=fs.readdirSync(f.state.progressRoot).map(name=>fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')).join('');
+ assert.doesNotMatch(text+progress,/PRIVATE_SQL_PASSWORD|private URL SQL|private primary/u);
 });
