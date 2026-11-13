@@ -4,10 +4,10 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；远端Draft PR428候选`6f22b3c430683991901d2b52345f6f860f9d5d3c`，准确CI43495417313自然终态30成功/2失败：综合采购默认Jest约2GB堆溢出及Release汇总。Quality、API四分片及POL113等通过。当前本地另有已审selected-case诊断片3ed2e326；尚无其准确CI。旧失败和用户根混合改动保留。
-- 任务16：9d6e517f/plan7197bbf2独占normal真实exit1/2115.34秒，完成应用启动后在SELECTED_CASE失败，原底层首因不可恢复、业务UNKNOWN_DO_NOT_RETRY。原控制器清理完成，root同daemon独核准确容器/网络、PID/relay缺席，初始mounts[]；旧场景未重发。新3ed2e326仅修复既有固定错误码传递，93+193项相关回归、包门和两轴独审通过，不等于业务根因已修。调查未发现合法快速真实PG同case入口，不新造私有admission；待工具片合成后用新候选、原完整入口获取真实闭集首因。
-- 任务12：原86a DACL WRITE结果UNKNOWN及清理独核保留。真实窄组件已否定两项ACL归一假设；DACL封闭诊断、HTTP首因与资源helper固定pin均已审集成，篡改负控保持。准确6f工具资格132.575秒、15/15/30页及root独立全60PNG/第二PDF解析复核通过。metadata-only f717b22e仅在另一冻结树启用，新life98967/PID86370、case dab2336e由原代理持续监控，尚无业务通过结论；本集成registry仍PENDING，不跨移资格。完整类型矩阵、异常链及真实云写仍有缺口。
-- 开发工具：已证POL108/POL113/综合采购同类默认Jest编译驻留问题。工具线正收口共同配置：运行期逐文件转译与独立完整tsc分离，保留全部类型覆盖、预算、超时、权限和业务断言，最终准确CI仍待。前期提速落地包、旧CI/临时材料丢失和恢复记录见主回执，不以局部门或历史成功代替当前通过。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地合审源码`7eab8ff180e47e8527c48ca7c0895700e308f2a9`已快进集成，两轴独审均0项。共用base runtime转译/独立完整tsc隔离及全producer固定码闭包已审，五文件与作者blob一致；作者门分列，组合未新跑，新准确CI待。远端仍6f22b3c4，准确CI43495417313自然终态30成功/2失败（综合采购默认Jest约2GB堆溢出及Release）；旧失败和用户根混合改动保留。
+- 任务16：原9d6e517f/plan7197bbf2 normal真实exit1/2115.34秒，应用启动后SELECTED_CASE失败，底层首因不可恢复、业务UNKNOWN_DO_NOT_RETRY。原控制器清理完成且root独核准确资源/PID/relay缺席、初始mounts[]，未重发旧场景。已审诊断与固定码闭包只改善首因观察，不等于业务根因已修；待稳定新head构建后，从原完整入口准备新normal一次捕获固定码，暂无新PG通过。
+- 任务12：f717b22e本轮真实life exit1/1252.174秒，停于DOCUMENT_ACL/WRITE：TASK01_RESOURCE_COMMAND_FAILED、P0001、TRANSPORT_POSTIMAGE、CURRENT259_DOCUMENT_ACL_TRANSPORT_POSTIMAGE；未进入RUNTIME/APPLICATION。business与controller cleanup UNKNOWN保留；resource另报completed，root已独核同daemon准确d30容器/网络、两个PID/relay缺席、mounts[]。任务12正用新窄PG定位signed witness批准列delta，不猜修、不重跑旧case。本集成registry仍PENDING，旧6f样张工具资格不跨移；完整业务、类型矩阵、异常链及真实云写仍有缺口。
+- 开发工具：共同配置保留全部类型输入、预算、超时、权限、业务断言与封闭错误投影；运行期逐文件转译不承担语义类型检查，完整独立tsc仍执行。旧CI、默认Jest驻留测量、失去的临时材料和恢复事实见主回执，不以局部门或历史成功代替当前完整门禁。
 
 ## 授权、证据和下一步
 
