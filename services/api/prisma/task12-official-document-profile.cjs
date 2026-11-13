@@ -9,11 +9,10 @@ const { execFileSync,execFile } = require('node:child_process');
 const { validateOfficialQualificationRegistration } = require('./task12-official-document-registry.cjs');
 const { createOfficialDocumentChildBudget, attachPostcheck } = require('./task12-official-document-child.cjs');
 const { createDocumentContextAuthority } = require('./task12-document-context.cjs');
-const PROFILE = 'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1';
-const LOCK_NAME = 'runtime-lock-material-body25-v4-temurin17-official-v1.json';
+const {PROFILE,officialDocumentProfile}=require('./task12-official-document-profiles.cjs');
+const {lockName:LOCK_NAME,lockSha256:LOCK_SHA}=officialDocumentProfile(PROFILE);
 const NODE = '/Users/leoyang/.nvm/versions/node/v20.20.2/bin/node';
 const PNPM_ROOT = '/Users/leoyang/.local/lib/node_modules/pnpm';
-const LOCK_SHA = 'cfdb0f202e91294db06aa8643be7955be6760a37b97d90c6baf9c261c76f0c45';
 const context = createDocumentContextAuthority();
 const inspected = new WeakMap();
 const error = (part,cause) => Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_' + part), { code: 'TASK12_OFFICIAL_DOCUMENT_' + part, ...(cause===undefined?{}:{cause}) });
@@ -75,13 +74,13 @@ const CONTROL_FILES=Object.freeze([
  'scripts/qualify-task12-official-document-runtime.cjs',
  'services/api/prisma/task12-current259-generated-document-runtime.cjs',
  ...['task16-current259-client-loader.cjs','task16-current259-build.cjs','task16-current259-business-continuity.cjs'].map(name=>'services/api/prisma/'+name),
- ...['task12-document-context.cjs','task12-official-document-child.cjs','task12-official-document-registry.cjs',
+ ...['task12-document-context.cjs','task12-official-document-child.cjs','task12-official-document-profiles.cjs','task12-official-document-registry.cjs',
   'task12-official-document-fidelity.cjs','task12-official-document-profile.cjs','task12-official-qualification-actions.cjs'].map(name=>'services/api/prisma/'+name),
  'services/api/src/contract-document/contract-body-pdf-converter.ts','services/api/src/contract-document/libreoffice-converter.ts',
  'services/api/src/contract-document/task12-official-qualification-sample.ts',
  'services/api/test-support/task12-official-document-fidelity.py','services/api/test-support/task12-read-drawn-pdf.py',
  'services/api/assets/templates/material-purchase-real-v1.docx',
- ...['runtime-lock.json','runtime-lock-material-body25-v4.json',LOCK_NAME].map(name=>'services/api/assets/document-converter/'+name),REGISTRY_PATH
+ ...['runtime-lock.json','runtime-lock-material-body25-v4.json',LOCK_NAME,'runtime-lock-material-body25-v4-temurin17-official-v2.json'].map(name=>'services/api/assets/document-converter/'+name),REGISTRY_PATH
 ]);
 function sourceSnapshot() {
   need(git(['status','--porcelain','--untracked-files=all'])==='','SOURCE');
@@ -217,7 +216,7 @@ function buildToolWitness(all = []) {
 function credentialPath(name) {
   return ['.env','.npmrc','.netrc','.pypirc','id_rsa','id_ed25519'].includes(name) || name.startsWith('.env.') || /\.(?:key|p12|pfx)$/u.test(name);
 }
-function fontToolsTree(root, all) {
+function fontToolsTree(root, all, descriptor) {
   need(typeof root === 'string' && path.isAbsolute(root) && fs.realpathSync(root) === root,'FONTTOOLS');
   const rows = [];
   const walk = current => {
@@ -231,7 +230,7 @@ function fontToolsTree(root, all) {
         rows.push([path.relative(root,file),'file',item.sha256,stat.mode & 0o7777]); }
     }
   };
-  walk(root); need(rows.length === 676 && sha(JSON.stringify(rows)) === '263ec27ba75f927b8e65c12f6697a7edb5ae930a34244ddda367119a5c0d7b1f','FONTTOOLS');
+  walk(root); need(rows.length === descriptor.fontToolsFiles && sha(JSON.stringify(rows)) === descriptor.fontToolsSha256,'FONTTOOLS');
 }
 
 /** Read-only candidate inspection. This proof is qualification-only, never a
@@ -247,7 +246,9 @@ function inspectMaterials(file, expectedSha256, activation) {
     const input = capture(file,expectedSha256,'INPUT',128 * 1024);
     need((input.identity.mode & 0o077) === 0, 'INPUT');
     const plan = JSON.parse(input.bytes.toString('utf8'));
-    need(keys(plan,['version','profile','source','build','archive','runtime','document','runRoot']) && plan.version === 1 && plan.profile === PROFILE, 'INPUT');
+    const descriptor=officialDocumentProfile(plan?.profile);
+    need(keys(plan,['version','profile','source','build','archive','runtime','document','runRoot']) && plan.version === 1 && descriptor, 'INPUT');
+    need(!activation||activation.registry.profile===descriptor.profile,'REGISTRY');
     const sourceFiles=[];
     const source = exactSource(activation?activation.runtimeInput.source:plan.source,sourceFiles);
     need(keys(plan.build,['path','sha256']) && hash(plan.build.sha256),'BUILD');
@@ -258,14 +259,14 @@ function inspectMaterials(file, expectedSha256, activation) {
     const toolFiles=[]; need(JSON.stringify(build.toolchain)===JSON.stringify(buildToolWitness(toolFiles)),'BUILD');
     const compiled = buildWitness();
     need(JSON.stringify(compiled) === JSON.stringify(build.files),'BUILD');
-    const lockFile = capture(path.join(SOURCE_ROOT,'services/api/assets/document-converter',LOCK_NAME),LOCK_SHA,'LOCK',128 * 1024);
+    const lockFile = capture(path.join(SOURCE_ROOT,'services/api/assets/document-converter',descriptor.lockName),descriptor.lockSha256,'LOCK',128 * 1024);
     const lock = JSON.parse(lockFile.bytes.toString('utf8'));
-    need(lock.qualification.status === 'PENDING_NOT_RUNTIME_AUTHORITY' && lock.qualification.profile === PROFILE && lock.qualification.archiveSha256 === ARCHIVE_SHA, 'LOCK');
+    need(lock.qualification.status === 'PENDING_NOT_RUNTIME_AUTHORITY' && lock.qualification.profile === descriptor.profile && lock.qualification.archiveSha256 === ARCHIVE_SHA, 'LOCK');
     const all = [input,lockFile,buildFile,...toolFiles,...compiled.map(buildCapture)];
     const archive = capture(plan.archive,ARCHIVE_SHA,'ARCHIVE'); need(archive.identity.size === 185617580,'ARCHIVE'); all.push(metadata(archive));
     const runtime = plan.runtime;
     need(keys(runtime,['libreOffice','python','body25']) && keys(runtime.libreOffice,['wrapper','native']) && keys(runtime.python,['executable','package','fontToolsPackage']) && keys(runtime.body25,['jdkHome','jars','classes','fonts']), 'INPUT');
-    for (const [name,expected] of [['wrapper','81c7db1c6dbcdd606d95abef337b4529aeda6a4fa1cf23a5a567f9c5655c8b66'],['native','0602181a6c26c8e46aa166db18412cef1b31b6d95eb9d7033ffc4cc0ce2e66f2']]) {
+    for (const [name,expected] of [['wrapper','81c7db1c6dbcdd606d95abef337b4529aeda6a4fa1cf23a5a567f9c5655c8b66'],['native',descriptor.nativeSha256]]) {
       const item = capture(runtime.libreOffice[name],expected,'LIBREOFFICE',64 * 1024 * 1024);
       need((item.identity.mode & 0o111) !== 0,'LIBREOFFICE'); all.push(metadata(item));
     }
@@ -278,7 +279,7 @@ function inspectMaterials(file, expectedSha256, activation) {
     const names = ['__init__.py','__main__.py','_apply_pages.py','_build.py','_extra.so','_mupdf.so','_wxcolors.py','extra.py','libmupdf.dylib','libmupdfcpp.so','mupdf.py','pymupdf.py','table.py','utils.py'];
     const pythonFiles = names.map(name => { const item = capture(path.join(runtime.python.package,name),undefined,'PYTHON',64 * 1024 * 1024); all.push(metadata(item)); return [name,item.sha256]; });
     need(sha(JSON.stringify(pythonFiles)) === '1a72fa8292254ce92d0030b1adcddd1bbceeacaaf602c84e9a8afebe23566f39','PYTHON');
-    fontToolsTree(runtime.python.fontToolsPackage,all);
+    fontToolsTree(runtime.python.fontToolsPackage,all,descriptor);
     const inspector=capture(path.join(SOURCE_ROOT,'services/api/test-support/task12-official-document-fidelity.py'),undefined,'INSPECTOR',128 * 1024);
     all.push(metadata(inspector),metadata(capture(path.join(SOURCE_ROOT,'services/api/test-support/task12-read-drawn-pdf.py'),undefined,'INSPECTOR',128*1024)));
     jdkTree(runtime.body25.jdkHome,all);
@@ -319,11 +320,11 @@ function inspectMaterials(file, expectedSha256, activation) {
         qualifiedPlan:plan,qualifiedPlanSha256:expectedSha256,buildSha256:plan.build.sha256,materialSha256,currentHost:JSON.parse(JSON.stringify(hostBoundary()))});
       all.push(...activation.files);
     }
-    if(activation?.publicationOnly)return frozen({status:'PUBLICATION_OBSERVED_NOT_RUNTIME_AUTHORITY',profile:PROFILE,source,inputSha256:activation.input.sha256,buildSha256:plan.build.sha256,materialSha256,nativeAdmission:false,executionAllowed:false});
-    const proof=frozen({profile:PROFILE,kind:activation?'OFFICIAL_TOOL_RUNTIME':'QUALIFICATION_ONLY',inputSha256:activation?activation.input.sha256:expectedSha256,
-      source,hostBoundary:hostBoundary(),candidateLockSha256:LOCK_SHA,buildSha256:plan.build.sha256,materialSha256,
+    if(activation?.publicationOnly)return frozen({status:'PUBLICATION_OBSERVED_NOT_RUNTIME_AUTHORITY',profile:descriptor.profile,source,inputSha256:activation.input.sha256,buildSha256:plan.build.sha256,materialSha256,nativeAdmission:false,executionAllowed:false});
+    const proof=frozen({profile:descriptor.profile,kind:activation?'OFFICIAL_TOOL_RUNTIME':'QUALIFICATION_ONLY',inputSha256:activation?activation.input.sha256:expectedSha256,
+      source,hostBoundary:hostBoundary(),candidateLockSha256:descriptor.lockSha256,buildSha256:plan.build.sha256,materialSha256,
       ...(activation?{machineReceiptSha256:activation.machineSha256,physicalReviewSha256:activation.physicalSha256}:{}),nativeAdmission:false,executionAllowed:false});
-    inspected.set(proof,{plan:frozen(plan),source,kind:proof.kind,lock:frozen(lock),all,runRoot,started,
+    inspected.set(proof,{plan:frozen(plan),source,kind:proof.kind,descriptor,lock:frozen(lock),all,runRoot,started,
       check: () => { canonicalProfile();activation?.lease?.check();sourceFiles.forEach(item=>continuity(item));all.forEach(item=>continuity(item)); continuity(runRoot); },
       checkMaterials: () => { canonicalProfile();activation?.lease?.verifyFull();sourceFiles.forEach(item=>continuity(item,true));all.forEach(item=>continuity(item,true)); continuity(runRoot);activation?.lease?.verifyFull(); }, proof });
     return proof;
@@ -415,7 +416,7 @@ async function enterScope(proof,runRoot,use,kind) {
     const pages=JSON.parse(output);need(Array.isArray(pages)&&pages.length>0&&pages.length<=100&&pages.every(page=>typeof page==='string')&&pages.join('').length<=500000,'READER');
     return pages;
   };
-  state.scope = frozen({ profile:PROFILE, kind, evidence:proof,readPdfDrawnText,lockName:LOCK_NAME, lockSha256:LOCK_SHA,
+  state.scope = frozen({ profile:captured.descriptor.profile, kind, evidence:proof,readPdfDrawnText,lockName:captured.descriptor.lockName, lockSha256:captured.descriptor.lockSha256,
     source:proof.source, materialSha256:proof.materialSha256,checkMaterials,remainingTotalMilliseconds,
     pythonExecutable:captured.plan.runtime.python.executable,pythonSite:locations['python-site'],pythonPackage:captured.plan.runtime.python.package,
     fontToolsPackage:captured.plan.runtime.python.fontToolsPackage,inspectionFonts:captured.lock.fonts.map(item=>({name:item.name,path:path.join(locations.fonts,item.name+'.ttf'),sha256:item.sha256})),
@@ -448,7 +449,7 @@ function privateJson(file,expected,part,max=128*1024) {
 function registryMaterial(){
   try{
     const file=capture(path.join(SOURCE_ROOT,REGISTRY_PATH),undefined,'REGISTRY',128*1024),registry=JSON.parse(file.bytes.toString('utf8'));
-    need(keys(registry,['version','profile','qualification'])&&registry.version===1&&registry.profile===PROFILE,'REGISTRY');
+    need(keys(registry,['version','profile','qualification'])&&registry.version===1&&officialDocumentProfile(registry.profile),'REGISTRY');
     if(registry.qualification===null)throw error('QUALIFICATION_PENDING');
     need(keys(registry.qualification,['machineReceipt','physicalReview']),'REGISTRY');
     return {registry,file:metadata(file)};
@@ -461,7 +462,7 @@ function inspectPublishedRuntime(file,expectedSha256,moduleView,publicationOnly)
   try {
     need(hash(expectedSha256),'INPUT');
     const input=privateJson(file,expectedSha256,'INPUT'),runtimeInput=input.data;
-    need(keys(runtimeInput,['version','profile','purpose','source','qualificationRegistrySha256','qualificationPlanSha256','runRoot'])&&runtimeInput.version===1&&runtimeInput.profile===PROFILE&&runtimeInput.purpose==='TASK12_GENERATED_LIFECYCLE_LOCAL_ONLY_V1'&&runtimeInput.qualificationRegistrySha256===registration.file.sha256,'REGISTRY');
+    need(keys(runtimeInput,['version','profile','purpose','source','qualificationRegistrySha256','qualificationPlanSha256','runRoot'])&&runtimeInput.version===1&&runtimeInput.profile===registration.registry.profile&&runtimeInput.purpose==='TASK12_GENERATED_LIFECYCLE_LOCAL_ONLY_V1'&&runtimeInput.qualificationRegistrySha256===registration.file.sha256,'REGISTRY');
     exactSource(runtimeInput.source);
     let lease;
     if(!publicationOnly){
@@ -473,7 +474,7 @@ function inspectPublishedRuntime(file,expectedSha256,moduleView,publicationOnly)
     const registered=registration.registry.qualification;
     need(keys(registered.machineReceipt,['path','sha256'])&&keys(registered.physicalReview,['path','sha256'])&&hash(registered.machineReceipt.sha256)&&hash(registered.physicalReview.sha256),'REGISTRY');
     const machine=privateJson(registered.machineReceipt.path,registered.machineReceipt.sha256,'REGISTRY',2*1024*1024),physical=privateJson(registered.physicalReview.path,registered.physicalReview.sha256,'REGISTRY');
-    need(machine.data.profile===PROFILE&&machine.data.status==='MACHINE_QUALIFICATION_PASSED_PHYSICAL_REVIEW_PENDING'&&keys(machine.data.plan,['path','sha256'])&&machine.data.plan.sha256===runtimeInput.qualificationPlanSha256&&hash(machine.data.plan.sha256),'REGISTRY');
+    need(machine.data.profile===registration.registry.profile&&machine.data.status==='MACHINE_QUALIFICATION_PASSED_PHYSICAL_REVIEW_PENDING'&&keys(machine.data.plan,['path','sha256'])&&machine.data.plan.sha256===runtimeInput.qualificationPlanSha256&&hash(machine.data.plan.sha256),'REGISTRY');
     const files=[input.item,registration.file,machine.item,physical.item],reports={};
     need(keys(machine.data.actions,['java','office','normalized']),'REGISTRY');
     for(const name of ['java','office','normalized']) {
@@ -502,12 +503,12 @@ function prepareOfficialTask12DocumentRuntimeInput(outputPath,runRoot){
   need(arguments.length===2&&typeof outputPath==='string'&&path.isAbsolute(outputPath)&&path.normalize(outputPath)===outputPath,'INPUT');
   privateDirectory(path.dirname(outputPath));privateDirectory(runRoot);
   const machine=privateJson(registration.registry.qualification.machineReceipt.path,registration.registry.qualification.machineReceipt.sha256,'REGISTRY',2*1024*1024);
-  need(machine.data.profile===PROFILE&&keys(machine.data.plan,['path','sha256'])&&hash(machine.data.plan.sha256),'REGISTRY');
-  const input={version:1,profile:PROFILE,purpose:'TASK12_GENERATED_LIFECYCLE_LOCAL_ONLY_V1',source:sourceWitness(),
+  need(machine.data.profile===registration.registry.profile&&keys(machine.data.plan,['path','sha256'])&&hash(machine.data.plan.sha256),'REGISTRY');
+  const input={version:1,profile:registration.registry.profile,purpose:'TASK12_GENERATED_LIFECYCLE_LOCAL_ONLY_V1',source:sourceWitness(),
     qualificationRegistrySha256:registration.file.sha256,qualificationPlanSha256:machine.data.plan.sha256,runRoot};
   const bytes=Buffer.from(JSON.stringify(input,null,2)+'\n');fs.writeFileSync(outputPath,bytes,{mode:0o600,flag:'wx'});
   observeOfficialTask12DocumentPublication(outputPath,sha(bytes));
-  return Object.freeze({status:'SOURCE_ONLY_RUNTIME_INPUT_PREPARED_NOT_EXECUTED',path:outputPath,sha256:sha(bytes),source:input.source,profile:PROFILE,executionAllowed:false,nativeAdmission:false});
+  return Object.freeze({status:'SOURCE_ONLY_RUNTIME_INPUT_PREPARED_NOT_EXECUTED',path:outputPath,sha256:sha(bytes),source:input.source,profile:input.profile,executionAllowed:false,nativeAdmission:false});
 }
 
 function currentOfficialDocumentScope() { return context.current(); }

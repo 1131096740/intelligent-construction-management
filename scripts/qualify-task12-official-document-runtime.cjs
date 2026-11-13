@@ -12,9 +12,10 @@ const { pathToFileURL } = require('node:url');
 const exec=promisify(execFile);
 const { createOfficialDocumentChildBudget,attachPostcheck } = require('../services/api/prisma/task12-official-document-child.cjs');
 const { runOfficialQualificationActions } = require('../services/api/prisma/task12-official-qualification-actions.cjs');
+const {officialDocumentProfile}=require('../services/api/prisma/task12-official-document-profiles.cjs');
 const { validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity } = require('../services/api/prisma/task12-official-document-fidelity.cjs');
 const {
-  PROFILE, LOCK_SHA, sourceWitness, buildWitness, buildToolWitness, toolControlWitness, inspectOfficialDocumentQualification, withOfficialDocumentQualification, hostBoundary
+  PROFILE, sourceWitness, buildWitness, buildToolWitness, toolControlWitness, inspectOfficialDocumentQualification, withOfficialDocumentQualification, hostBoundary
 } = require('../services/api/prisma/task12-official-document-profile.cjs');
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const need = value => { if (!value) throw new Error('TASK12_OFFICIAL_QUALIFICATION_ARGUMENTS'); };
@@ -73,7 +74,7 @@ function build(outputPath) {
 function prepare(requestPath, expected, outputPath) {
   privateOutputParent(outputPath);
   const request = read(requestPath,expected);
-  need(sameKeys(request,['build','archive','runtime','runRoot'])&&typeof request.runRoot==='string'&&!outputPath.startsWith(request.runRoot+path.sep));
+  need((sameKeys(request,['build','archive','runtime','runRoot'])||sameKeys(request,['profile','build','archive','runtime','runRoot']))&&(!Object.hasOwn(request,'profile')||typeof request.profile==='string')&&officialDocumentProfile(request.profile??PROFILE)&&typeof request.runRoot==='string'&&!outputPath.startsWith(request.runRoot+path.sep));
   const source=sourceWitness(),buildRecord=read(request.build.path,request.build.sha256,32*1024*1024);
   need(JSON.stringify(buildRecord.source)===JSON.stringify(source)&&JSON.stringify(buildRecord.files)===JSON.stringify(buildWitness())&&
     JSON.stringify(buildRecord.toolchain)===JSON.stringify(buildToolWitness()));
@@ -115,7 +116,7 @@ async function inspectPdf(scope,plan,label,pdfPath,docxPath,docxSha256) {
   const started=performance.now(),budget=createOfficialDocumentChildBudget(scope,25000,started);
   const root=fs.mkdtempSync(path.join(plan.runRoot,label+'-physical-'));fs.chmodSync(root,0o700);
   const pdfSha256=sha(fs.readFileSync(pdfPath));
-  const request={version:1,profile:PROFILE,pythonSite:scope.pythonSite,pdfPath,pdfSha256,docxPath,docxSha256,
+  const request={version:1,profile:plan.profile,pythonSite:scope.pythonSite,pdfPath,pdfSha256,docxPath,docxSha256,
     outputDirectory:root,fonts:scope.inspectionFonts};
   const file=path.join(root,'REQUEST.json'),bytes=Buffer.from(JSON.stringify(request,null,2)+'\n');fixedWrite(file,bytes);
   const result=await budget.run(timeout=>exec(scope.pythonExecutable,['-I','-S','-B',scope.inspectorPath,file,sha(bytes)],{
@@ -133,15 +134,15 @@ async function rejectionBoundaries(converter,scope,bytes,lineBoxScope) {
   const typographyVersion='reviewed-material-primary-secondary-body25-v4';
   await reject(()=>converter.assertContractBodyPdfRuntimeLock('0'.repeat(64),typographyVersion),'合同正文转换运行环境未就绪，请联系管理员');
   const options={typographyVersion,lineBoxScope};
-  await reject(()=>converter.convertContractBodyDocxToPdf(Buffer.from('not a DOCX'),LOCK_SHA,options),'合同正文文件无法安全转换，请核对文件内容');
+  await reject(()=>converter.convertContractBodyDocxToPdf(Buffer.from('not a DOCX'),scope.lockSha256,options),'合同正文文件无法安全转换，请核对文件内容');
   const PizZip=require('../services/api/node_modules/pizzip');
   const external=new PizZip(bytes),relations='word/_rels/document.xml.rels';
   const relationXml=external.file(relations).asText();
   external.file(relations,relationXml.replace('</Relationships>','<Relationship Id="qualification-external" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://qualification.invalid/" TargetMode="External"/></Relationships>'));
-  await reject(()=>converter.convertContractBodyDocxToPdf(external.generate({type:'nodebuffer'}),LOCK_SHA,options),'合同正文文件无法安全转换，请核对文件内容');
+  await reject(()=>converter.convertContractBodyDocxToPdf(external.generate({type:'nodebuffer'}),scope.lockSha256,options),'合同正文文件无法安全转换，请核对文件内容');
   const active=new PizZip(bytes),document=active.file('word/document.xml').asText();
   active.file('word/document.xml',document.replace('</w:body>','<w:p><w:fldSimple w:instr="HYPERLINK https://qualification.invalid/"><w:r><w:t>blocked</w:t></w:r></w:fldSimple></w:p></w:body>'));
-  await reject(()=>converter.convertContractBodyDocxToPdf(active.generate({type:'nodebuffer'}),LOCK_SHA,options),'合同正文文件无法安全转换，请核对文件内容');
+  await reject(()=>converter.convertContractBodyDocxToPdf(active.generate({type:'nodebuffer'}),scope.lockSha256,options),'合同正文文件无法安全转换，请核对文件内容');
   return {foreignSnapshotRejected:true,malformedDocxRejected:true,externalRelationshipRejected:true,activeFieldRejected:true,noNegativeConverterScratchCreated:true};
 }
 async function once(planPath,expected) {
@@ -166,7 +167,7 @@ async function once(planPath,expected) {
       return runOfficialQualificationActions({
         negative:()=>stage('01-NEGATIVE',()=>rejectionBoundaries(converter,scope,bytes,lineBoxScope)),
         java:()=>stage('02-JAVA',async()=>{
-          const typographyVersion='reviewed-material-primary-secondary-body25-v4',fingerprint=await converter.contractBodyPdfRuntimeLockFingerprint(typographyVersion);need(fingerprint===LOCK_SHA);
+          const typographyVersion='reviewed-material-primary-secondary-body25-v4',fingerprint=await converter.contractBodyPdfRuntimeLockFingerprint(typographyVersion);need(fingerprint===scope.lockSha256);
           const output=await converter.convertContractBodyDocxToPdf(bytes,fingerprint,{typographyVersion,lineBoxScope});
           need(output.provenance.conversionCalls===1&&output.provenance.boundaryDenials===3);return {...savePdf('java',output.pdf),provenance:output.provenance};
         }),
@@ -202,8 +203,8 @@ async function once(planPath,expected) {
     });
     const controls=toolControlWitness();need(JSON.stringify(controls.source)===JSON.stringify(proof.source));
     const action=(pdf,physical)=>({pdfPath:pdf.path,pdfSha256:pdf.sha256,physicalPath:physical.path,physicalSha256:physical.sha256,pageCount:physical.report.pageCount,verdict:physical.verdict});
-    const receipt={version:1,status:result.status,profile:PROFILE,runtimeAuthority:false,plan:{path:planPath,sha256:expected},source:proof.source,hostBoundary:hostBoundary(),
-      toolControls:{sha256:controls.sha256,files:controls.files},candidateLockSha256:LOCK_SHA,buildSha256:proof.buildSha256,materialSha256:proof.materialSha256,
+    const receipt={version:1,status:result.status,profile:plan.profile,runtimeAuthority:false,plan:{path:planPath,sha256:expected},source:proof.source,hostBoundary:hostBoundary(),
+      toolControls:{sha256:controls.sha256,files:controls.files},candidateLockSha256:proof.candidateLockSha256,buildSha256:proof.buildSha256,materialSha256:proof.materialSha256,
       boundaries:result.negative,actions:{java:action(result.java,result.javaPhysical),office:action(result.office,result.officePhysical),normalized:action(result.normalized,result.normalizedPhysical)},
       physicalReview:{status:'PENDING',exactPageCountsReviewed:false,signatureAndPaginationReviewed:false},elapsedMs:performance.now()-started};
     need(receipt.elapsedMs<=315000);owned();fixedWrite(path.join(plan.runRoot,'MACHINE-RECEIPT.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;

@@ -204,3 +204,26 @@ test('restoring cache identity after an observed replacement does not revive aut
   model.moduleCache[file]=original;assert.throws(scope.checkMaterials,{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
  }),{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
 });
+
+
+test('explicit V2 qualification keeps native and full-tree pins closed per profile',async()=>{
+ const profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2';
+ const model=require('./task12-official-document-model.test-support.cjs').model({profile});
+ const input=model.packet(),proof=model.api.inspectOfficialDocumentQualification(input.name,input.sha256);
+ assert.equal(proof.profile,profile);assert.equal(proof.candidateLockSha256,'0a2dc0cd644f3a2cbc090daa3377005cf542bdf58c368f97e50417d70930c58f');
+ await model.api.withOfficialDocumentQualification(proof,scope=>{assert.equal(scope.lockName,'runtime-lock-material-body25-v4-temurin17-official-v2.json');assert.equal(scope.profile,profile);});
+ const native='/private/tmp/runtime/dependencies/native/libreoffice-headless/libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice';
+ model.files.get(native).bytes=Buffer.from('different installed executable');
+ const changed=model.packet();assert.throws(()=>model.api.inspectOfficialDocumentQualification(changed.name,changed.sha256),{code:'TASK12_OFFICIAL_DOCUMENT_LIBREOFFICE'});
+});
+
+
+test('V2 reviewed publication stays opaque and rebinds only its exact profile',async()=>{
+ const profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2';
+ const model=require('./task12-official-document-model.test-support.cjs').model({profile});
+ const input=model.publish(),observed=model.api.observeOfficialTask12DocumentPublication(input.name,input.sha256);
+ assert.equal(observed.profile,profile);assert.equal(observed.executionAllowed,false);
+ assert.throws(()=>model.api.verifyOfficialTask12DocumentRuntime(input.name,input.sha256,{...model.moduleView}));
+ const proof=model.api.verifyOfficialTask12DocumentRuntime(input.name,input.sha256,model.moduleView);
+ await model.api.withOfficialTask12DocumentRuntime(proof,input.runRoot,scope=>{assert.equal(scope.profile,profile);assert.equal(scope.lockSha256,'0a2dc0cd644f3a2cbc090daa3377005cf542bdf58c368f97e50417d70930c58f');});
+});

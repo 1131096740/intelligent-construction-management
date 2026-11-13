@@ -7,6 +7,7 @@ const need=(ok,part)=>{if(!ok){const code=CODE+'_'+part;throw Object.assign(new 
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const hex=(v,n)=>typeof v==='string'&&new RegExp('^[a-f0-9]{'+n+'}$','u').test(v);
 const ENTRY='services/api/prisma/task12-current261-local-lifecycle-once.cjs',NAME='LIFECYCLE-PLAN.json';
+const {officialDocumentProfile}=require('../services/api/prisma/task12-official-document-profiles.cjs');
 const RESOURCE=Object.freeze({transport:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS',endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',imageId:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d'});
 const fixed=(value,keys)=>{
  need(value&&typeof value==='object'&&!types.isProxy(value)&&Object.getPrototypeOf(value)===Object.prototype,'INPUT');
@@ -23,8 +24,9 @@ function officialRuntime(runtime){
  }
  // This result deliberately carries no admission. The formal issuer runs only
  // after the fresh SDK loader has captured the same build's actual modules.
- api.observeOfficialTask12DocumentPublication(runtime.file,runtime.sha256);
- return {coordinates:runtime,api};
+ const publication=api.observeOfficialTask12DocumentPublication(runtime.file,runtime.sha256);
+ need(officialDocumentProfile(publication?.profile),'RUNTIME');
+ return {coordinates:runtime,api,profile:publication.profile};
 }
 const freeze=v=>{if(v&&typeof v==='object'){Object.values(v).forEach(freeze);Object.freeze(v);}return v;};
 function directory(file){
@@ -33,14 +35,14 @@ function directory(file){
  const s=fs.lstatSync(file);need(s.isDirectory()&&s.uid===process.getuid()&&(s.mode&0o077)===0&&fs.realpathSync(file)===file,'DIRECTORY');
  return Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,s[k]]));
 }
-function capture(){
+function capture(runtimeProfile){
  // Preserve the original loader/resource producer import order.
  require('../services/api/prisma/task12-current259-contract-login.cjs');
  const {observeCurrent259Build}=require('../services/api/prisma/task16-current259-build.cjs');
  const {loadCurrent259Client}=require('../services/api/prisma/task16-current259-client-loader.cjs');
  const handle=observeCurrent259Build(),loader=loadCurrent259Client(handle),w=loader.witness();
  const {describeCurrent261LocalLifecycle}=require('../services/api/prisma/task12-current261-local-lifecycle-scope.cjs');
- const scope=describeCurrent261LocalLifecycle(w.source);
+ const scope=describeCurrent261LocalLifecycle(w.source,runtimeProfile);
  const source=freeze(JSON.parse(JSON.stringify({candidateSha:w.source.candidateSha,tree:w.source.tree,sourceSealSha256:w.source.sourceSealSha256,
   profile:w.source.profile,build:w.build,host:w.host,engineCommit:w.engineCommit})));
  const moduleView=loader.loadCurrent261LocalLifecycleDocumentModules();
@@ -49,12 +51,12 @@ function capture(){
 function formalRuntime(observed,captured){
  const proof=observed.api.verifyOfficialTask12DocumentRuntime(observed.coordinates.file,observed.coordinates.sha256,captured.moduleView);
  captured.loader.verifyFull();
- need(proof&&proof.kind==='OFFICIAL_TOOL_RUNTIME'&&proof.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'&&proof.inputSha256===observed.coordinates.sha256&&proof.source?.head===captured.source.candidateSha&&proof.source?.tree===captured.source.tree&&hex(proof.source?.sha256,64)&&Number.isSafeInteger(proof.source?.files)&&proof.source.files>0&&['candidateLockSha256','buildSha256','materialSha256','machineReceiptSha256','physicalReviewSha256'].every(k=>hex(proof[k],64)),'RUNTIME_SOURCE');
+ need(proof&&proof.kind==='OFFICIAL_TOOL_RUNTIME'&&proof.profile===observed.profile&&proof.inputSha256===observed.coordinates.sha256&&proof.source?.head===captured.source.candidateSha&&proof.source?.tree===captured.source.tree&&hex(proof.source?.sha256,64)&&Number.isSafeInteger(proof.source?.files)&&proof.source.files>0&&['candidateLockSha256','buildSha256','materialSha256','machineReceiptSha256','physicalReviewSha256'].every(k=>hex(proof[k],64)),'RUNTIME_SOURCE');
  const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
  const input=read(observed.coordinates.file,{privateFile:true,maxBytes:512*1024,collect:true,code:CODE+'_RUNTIME_FILE'});
  need(input.sha256===observed.coordinates.sha256,'RUNTIME');
  let packet;try{packet=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(input.bytes));}catch{need(false,'RUNTIME');}
- need(packet.purpose==='TASK12_GENERATED_LIFECYCLE_LOCAL_ONLY_V1'&&equal(packet.source,proof.source)&&typeof packet.runRoot==='string','RUNTIME');
+ need(packet.profile===proof.profile&&packet.purpose==='TASK12_GENERATED_LIFECYCLE_LOCAL_ONLY_V1'&&equal(packet.source,proof.source)&&typeof packet.runRoot==='string','RUNTIME');
  return {coordinates:observed.coordinates,proof,input,runRoot:packet.runRoot};
 }
 function planFor(input,verified,captured){
@@ -80,7 +82,7 @@ function writeNew(file,bytes){
 }
 function prepareCurrent261LocalLifecyclePlan(options){
  need(arguments.length===1,'INPUT');const {runtime,...input}=fixed(options,['packetRoot','daemonId','caseId','businessDate','runtime']);
- const observed=officialRuntime(runtime),captured=capture(),verified=formalRuntime(observed,captured);
+ const observed=officialRuntime(runtime),captured=capture(observed.profile),verified=formalRuntime(observed,captured);
  const plan=planFor(input,verified,captured);need(fs.readdirSync(plan.run.root).length===0&&fs.readdirSync(plan.runtime.runRoot).length===0,'USED');
  const file=path.join(plan.packet.root,NAME),bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');writeNew(file,bytes);
  return Object.freeze({status:'CURRENT261_LOCAL_LIFECYCLE_PLAN_PREPARED_HOLD',file,sha256:hash(bytes),candidateSha:plan.source.candidateSha});
@@ -91,8 +93,8 @@ function verifyCurrent261LocalLifecyclePlan(file,digest){
  directory(path.dirname(file));const data=read(file,{privateFile:true,maxBytes:512*1024,collect:true,code:CODE+'_FILE'});need(data.sha256===digest,'DIGEST');
  let raw;try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data.bytes));}catch{need(false,'JSON');}
  const fields=fixed(raw,['version','purpose','entry','source','scope','packet','resource','case','runtime','run']);
- const runtime=fixed(fields.runtime,['file','sha256','profile','identity','runRoot','runIdentity','sourceWitness','buildSha256','materialSha256','candidateLockSha256','machineReceiptSha256','physicalReviewSha256']);need(runtime.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1','RUNTIME');
- const observed=officialRuntime({file:runtime.file,sha256:runtime.sha256}),captured=capture(),verified=formalRuntime(observed,captured);
+ const runtime=fixed(fields.runtime,['file','sha256','profile','identity','runRoot','runIdentity','sourceWitness','buildSha256','materialSha256','candidateLockSha256','machineReceiptSha256','physicalReviewSha256']);need(officialDocumentProfile(runtime.profile),'RUNTIME');
+ const observed=officialRuntime({file:runtime.file,sha256:runtime.sha256}),captured=capture(observed.profile),verified=formalRuntime(observed,captured);
  const input={packetRoot:path.dirname(file),daemonId:fields.resource?.daemonId,caseId:fields.case?.id,businessDate:fields.case?.businessDate};
  const expected=planFor(input,verified,captured);need(equal(expected,fields),'SCOPE');
  need(fs.readdirSync(expected.runtime.runRoot).length===0,'USED');
