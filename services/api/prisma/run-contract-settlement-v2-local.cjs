@@ -157,6 +157,8 @@ async function main() {
 if (require.main === module) {
   main().catch((error) => {
     process.stderr.write(`合同清单与结算 V2 本地隔离验证失败：${error instanceof Error ? error.message : String(error)}\n`);
+    const portFailure = error && Object.getOwnPropertyDescriptor(error, "localMigrationPortFailure")?.value;
+    if (portFailure) process.stderr.write(`[local-migration-port] ${JSON.stringify(portFailure)}\n`);
     process.exitCode = 1;
   });
 }

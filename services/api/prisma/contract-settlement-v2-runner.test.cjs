@@ -44,8 +44,47 @@ else{process.stderr.write("unexpected external command\n");process.exitCode=52;}
     });
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, /LOCAL_MIGRATION_SQL_PREFLIGHT/u);
+    assert.match(result.stderr, /\{"phase":"preflight","exitCode":51,"signal":null\}/u);
+    assert.doesNotMatch(result.stderr, /controlled stop before database execution/u);
     const observed = JSON.parse(fs.readFileSync(statePath, "utf8"));
     assert.deepEqual(observed.preflight, { ready: true, pidProbes: 2, tcp: true });
     assert.equal(observed.cleanup, true);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+
+test("command failure provides closed exit metadata for safe migration diagnostics", async () => {
+  const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
+  const runtime = createCommandRuntime();
+  await assert.rejects(runtime.command(process.execPath, ["-e", "process.stderr.write('private fixture output');process.exit(51)"]), (error) => {
+    assert.equal(error.exitCode, 51);
+    assert.equal(error.signal, null);
+    return true;
+  });
+});
+
+
+test("preflight diagnostics never copy unsafe fields or invoke error accessors", async () => {
+  const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
+  let getterReads = 0;
+  const accessor = new Error("private fixture text");
+  Object.defineProperty(accessor, "exitCode", { get() { getterReads++; throw new Error("must not read"); } });
+  const proxy = new Proxy(new Error("private fixture text"), {
+    getOwnPropertyDescriptor() { getterReads++; throw new Error("must not inspect proxy"); }
+  });
+  for (const cause of [Object.assign(new Error("private fixture text"), { exitCode: "secret-code", signal: "secret-signal" }), accessor, proxy]) {
+    const container = { id: "a".repeat(64), name: "jiangkong-preflight-diagnostic", runId: "01234567-89ab-cdef-0123-456789abcdef" };
+    const fixture = createLocalMigrationFixture({
+      container, databaseNames: ["jiangkong_project_financing_quota_concurrency"],
+      inspectContainer: async () => ({ ...container, running: true, publishedHost: "127.0.0.1", publishedPort: "55432" }),
+      executeSql: async () => { throw cause; },
+      deploy: async () => { throw new Error("must not deploy"); }
+    });
+    await assert.rejects(fixture.migrate({ databaseUrl: "postgresql://jiangkong:local@127.0.0.1:55432/jiangkong_project_financing_quota_concurrency" }), (error) => {
+      assert.equal(error.message, "LOCAL_MIGRATION_SQL_PREFLIGHT");
+      assert.equal(error.localMigrationPortFailure, undefined);
+      return true;
+    });
+  }
+  assert.equal(getterReads, 0);
 });

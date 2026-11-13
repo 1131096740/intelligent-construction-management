@@ -209,8 +209,19 @@ function createLocalMigrationFixture(input) {
       need(typeof execute === "function" && !types.isProxy(execute), "TAIL_STDIN_PORT");
       result = snapshot(await execute({ database, phase, sql }));
     }
-    catch {
+    catch (error) {
       const failure = new Error("LOCAL_MIGRATION_SQL_" + phase.toUpperCase().replaceAll("-", "_"));
+      if (phase === "preflight" && error && typeof error === "object" && !types.isProxy(error)) {
+        const exit = Object.getOwnPropertyDescriptor(error, "exitCode")?.value;
+        const signal = Object.getOwnPropertyDescriptor(error, "signal")?.value;
+        const safeExit = Number.isInteger(exit) && exit > 0 && exit <= 255 ? exit : null;
+        const safeSignal = ["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT", "SIGSEGV"].includes(signal) ? signal : null;
+        if (safeExit !== null || safeSignal !== null) {
+          Object.defineProperty(failure, "localMigrationPortFailure", {
+            value: Object.freeze({ phase: "preflight", exitCode: safeExit, signal: safeSignal })
+          });
+        }
+      }
       if (/^tail(213|215|218|221)-(before|supply|readback)$/u.test(phase)) failure.localMigrationFailureKind = "RESOURCE_PORT";
       throw failure;
     }
