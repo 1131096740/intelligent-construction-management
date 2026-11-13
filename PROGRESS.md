@@ -4,9 +4,9 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地已集成精确voucher归一源码`f29662cc803a055e459abe88566c86260b8f564f`，两轴独审均0项，三blob与作者及67403a46真实组件一致。最近已验3bf6581c的CI43515405485自然32/32成功，仅绑定3bf；新候选准确CI待。Draft PR428保持开放，旧失败、未知及用户根混合改动保留。
-- 任务16：d605 normal失败UNKNOWN及独立清理证据保留；新3bf6581c/plan dddd1580 normal已从原完整入口启动，原actor31883/PID52949/wrapper52945持续监控，现处technical261。root已独核新独占资源，源码/依赖/构建冻结，暂无business结论；不触及现场，也不把诊断模型当真实付款通过。
-- 任务12：原afa8 life失败UNKNOWN、原receipt和root独立清理缺席证据保持。exact四分支、12类反例及10种scalar形状的真实组件已定位差异；新精确document-only renderer只投影批准voucher SELECT项，原prior表达式、完整postimage及continuity保持，不改task16/shared/helper/manifest。13项公开、133项相关回归及type/lint通过，native/完整life尚未验；registry仍PENDING，旧资格不跨移。下一步准确新资格及原完整life验证，完整类型矩阵、异常链及真实云写仍有缺口。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确已推源码/文书候选`97880812edd66daae9261f8930fc287b66af7807`的CI43518772587自然32/32成功；前一3bf准确CI也32/32。精确voucher归一三blob与作者及真PG组件一致、两轴均0。本地seed诊断源码`54746d7774d92e2e00c0552dbb19c07d8113a058`已两轴独审0项并集成，六blob与作者一致，新准确CI待；Draft PR428保持开放，旧失败、未知及用户根混合改动保留。
+- 任务16：新3bf/plan dddd1580 normal真实exit1/2117.178秒，在SEED_OPENING报HTTP_CONNECTION_RESET/FETCH，业务UNKNOWN_DO_NOT_RETRY，尚未达selected。原106条轮询首条28.626秒、后继最大20.070秒，原句柄持续到真终态。原controller清理完成且root独核准确资源/PID/relay缺席，原receipt SHA256 `00e78e04edb58d4b4b2bcbf50de7eba3f5b4eb35af9e1b46760eabb602a2b643`。此处与旧SELECTED_CASE不同，不能据此称旧根因已修；新547仅补固定seedGate与可信HTTP上下文传递，216项CJS/100项fixture及包门通过；原5秒预算、守卫、SQL和策略不变，没有新PG通过。6秒同步stall未复现原reset，不称已修好，后续先以窄诊断取证。旧d605/9d6等未知保留，不重发旧键。
+- 任务12：978新工具资格真实0/158.561秒，root正式毫秒Z回执（摘要0e4326前缀）、独立重hash493产物/60PNG与第二PDF解析15/15/30页通过，仅限定样张。首个ad9 PREPARE因root回执时间格式被拒、6.065秒停且未PG，单变量原validator反例确认后另出正确毫秒Z格式，旧材料保留。新metadata-only `5a56e62ba0cf0a252477bf1888c87abf61ab45c9`仅登记路径变化、其余3937blob及controls同978；新prepare43.164/verify36.167秒通过，完整life原actor16560/PID69098/wrapper68208自22:47:25Z持续20秒轮询，root已独核新76f059独占资源，尚无DACL或业务结果。原afa8/f717业务及清理UNKNOWN各按原回执保留。完整合同链、类型矩阵和异常链仍未通过；集成registry仍PENDING，不把own登记用于发布。
 - 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门按准确源码证据承接，merger未重复测试；CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
 
 ## 授权、证据和下一步
