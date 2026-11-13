@@ -522,3 +522,18 @@ for(const mode of ['proxy','lookalike','unknown-gate'])test('selected diagnostic
  assert.deepEqual(seen[0]?.[4],mode==='unknown-gate'?{caseGate:'CASE_GATE_PROTOCOL',errorKind:'ERROR'}:{caseGate:'COMPILED_CASE',errorKind:mode==='proxy'?'UNINSPECTED':'NON_NATIVE_THROWN'});
  assert.equal(reads,0);assert.doesNotMatch(JSON.stringify(seen),/private payload|private getter|PRIVATE_SUFFIX/);
 });
+
+
+test('seed opening boundary merges its fixed context with the original post-response guard',async t=>{
+ const http=require('node:http'),seen=[];let f;
+ const server=http.createServer((_request,response)=>{response.writeHead(201,{'content-type':'application/json','connection':'close'});response.end('{}');f.view.check=()=>{throw Object.assign(new Error('private guard payload'),{code:'CURRENT259_RESOURCE_CLOSED'});};});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ f.apps[0].server.address=()=>({address:'127.0.0.1',family:'IPv4',port:server.address().port});
+ const m=paymentModel(f,{async onSeed(c){try{await c.requestJson(new URL('/fund-accounts/openings',m.captured().execution.proof.application.origin),{method:'POST',headers:{connection:'close'}},5000);}
+ catch(error){c.recordSeedFailure('SEED_OPENING',error.code,undefined,{seedGate:'OPENING_A_REQUEST',errorKind:'ERROR'});throw error;}}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0],['SEED_OPENING','TASK16_APP_FAILED_CLOSED',201,'AFTER_CHECK',{guardPhase:'RESOURCE_VIEW_SOURCE_METHODS',originCode:'CURRENT259_RESOURCE_CLOSED',seedGate:'OPENING_A_REQUEST',errorKind:'ERROR'}]);
+ assert.doesNotMatch(JSON.stringify(seen),/private guard payload/);
+});

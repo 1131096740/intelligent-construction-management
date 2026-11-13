@@ -1377,10 +1377,23 @@ for(const secondary of ['postcheck','cleanup'])test('selected error category and
 });
 test('selected gate and error category projection refuses unknown text and getters',async t=>{
  for(const getter of [false,true]){
-  let reads=0;const diagnostic=getter?Object.defineProperties({},Object.fromEntries(['caseGate','errorKind'].map(key=>[key,{get(){reads++;throw Error('private getter');}}]))):{caseGate:'private path',errorKind:'private exception'};
+  let reads=0;const diagnostic=getter?Object.defineProperties({},Object.fromEntries(['caseGate','errorKind','seedGate'].map(key=>[key,{get(){reads++;throw Error('private getter');}}]))):{caseGate:'private path',errorKind:'private exception',seedGate:'OPENING_A_REQUEST_PRIVATE_SUFFIX'};
   const f=ordinaryBusinessFailureFixture(t,{caseFailure:new Error('private cause'),onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE',undefined,undefined,undefined,diagnostic);}});
   await f.done;const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
   assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE'});assert.equal(reads,0);
-  assert.doesNotMatch(JSON.stringify(receipt),/private path|private exception|private getter/);
+  assert.doesNotMatch(JSON.stringify(receipt),/private path|private exception|private getter|PRIVATE_SUFFIX/);
  }
+});
+
+
+for(const secondary of ['postcheck','cleanup'])test('seed opening gate and network cause survive '+secondary+' without replay',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,caseFailure:new TypeError('private seed payload'),
+  ...(secondary==='cleanup'?{cleanupFailure:true}:{afterConsumeFailure:Object.assign(new Error('private postcheck'),{code:'CURRENT259_BUILD_CHANGED'})}),
+  onBusiness({lease}){lease.recordCaseFailure('SEED_OPENING','HTTP_CONNECTION_RESET',undefined,'FETCH',{seedGate:'OPENING_B_REQUEST',errorKind:'TYPE_ERROR'});}});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SEED_OPENING',code:'HTTP_CONNECTION_RESET',httpPhase:'FETCH',seedGate:'OPENING_B_REQUEST',errorKind:'TYPE_ERROR'});
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.ok(receipt.secondaryFailures.length>=1);
+ const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1);assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8')).paymentCaseFailure,receipt.paymentCaseFailure);
+ assert.doesNotMatch(JSON.stringify(receipt),/private seed payload|private postcheck/);
 });

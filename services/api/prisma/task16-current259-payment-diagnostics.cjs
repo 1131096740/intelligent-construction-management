@@ -55,6 +55,7 @@ const caseGates=new Set(['COMPILED_CASE','PREPARED_CONTINUITY','PREPARED_SNAPSHO
 const nativeKinds=new Map([[Error.prototype,'ERROR'],[TypeError.prototype,'TYPE_ERROR'],[RangeError.prototype,'RANGE_ERROR'],
  [ReferenceError.prototype,'REFERENCE_ERROR'],[SyntaxError.prototype,'SYNTAX_ERROR'],[URIError.prototype,'URI_ERROR'],
  [EvalError.prototype,'EVAL_ERROR'],[AggregateError.prototype,'AGGREGATE_ERROR']]);
+const seedGates=new Set(['OPENING_A_REQUEST','OPENING_A_ASSERTION','OPENING_B_REQUEST','OPENING_B_ASSERTION']);
 const errorKinds=new Set([...nativeKinds.values(),'OTHER_NATIVE_ERROR','NON_NATIVE_THROWN','UNINSPECTED']);
 const isPaymentCaseGate=gate=>typeof gate==='string'&&caseGates.has(gate);
 function paymentErrorKind(error){
@@ -69,10 +70,11 @@ function own(value,key){
 }
 const isPaymentFailureCode=code=>typeof code==='string'&&caseFailureCodes.has(code);
 function filterPaymentDiagnostic(value){
- const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode'),caseGate=own(value,'caseGate'),errorKind=own(value,'errorKind');
+ const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode'),caseGate=own(value,'caseGate'),errorKind=own(value,'errorKind'),seedGate=own(value,'seedGate');
  return Object.freeze({...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
   ...(isPaymentFailureCode(originCode)?{originCode}:{}),...(isPaymentCaseGate(caseGate)?{caseGate}:{}),
-  ...(typeof errorKind==='string'&&errorKinds.has(errorKind)?{errorKind}:{})});
+  ...(typeof errorKind==='string'&&errorKinds.has(errorKind)?{errorKind}:{}),
+  ...(typeof seedGate==='string'&&seedGates.has(seedGate)?{seedGate}:{})});
 }
 function describePaymentDiagnostic(error){
  return error&&typeof error==='object'&&!types.isProxy(error)?remembered.get(error):undefined;

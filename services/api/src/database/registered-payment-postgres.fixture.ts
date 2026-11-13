@@ -5,7 +5,7 @@ import { types } from "node:util";
 import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
 // A pure, source-owned diagnostic projection; importing it opens no clients.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { describePaymentDiagnostic }: { describePaymentDiagnostic(error: unknown): Readonly<{ guardPhase?: string; originCode?: string }> | undefined } = require("../../prisma/task16-current259-payment-diagnostics.cjs");
+const { describePaymentDiagnostic, paymentErrorKind }: { describePaymentDiagnostic(error: unknown): Readonly<{ guardPhase?: string; originCode?: string }> | undefined; paymentErrorKind(error: unknown): string } = require("../../prisma/task16-current259-payment-diagnostics.cjs");
 
 
 /** Prepared source only. Importing this module constructs no client, reads no
@@ -50,6 +50,7 @@ export interface RegisteredPgExecutionContext {
 
 /** Production-only continuity supplied by the source-bound executor. Tests
  * continue to enter through the original public run and owned fetch boundary. */
+type SeedOpeningGate = "OPENING_A_REQUEST" | "OPENING_A_ASSERTION" | "OPENING_B_REQUEST" | "OPENING_B_ASSERTION";
 type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTION" | "SEED_LOGIN" | "SEED_OPENING";
 export type RegisteredPgCaseGate = "CONNECTED_ROLES" | "OBSERVER_BEFORE" | "BEFORE_STATE" | "OPTIONS_REQUEST" | "OPTIONS_ASSERTION" |
   "REGISTRATION_REQUEST" | "OBSERVER_AFTER" | "COMMITTED_ASSERTION" | "RESULT_REQUEST" | "RESULT_ASSERTION" |
@@ -61,7 +62,7 @@ export interface RegisteredPgSeedContinuity {
   /** Trusted owned transport consumes native JSON before synchronous qualification resumes. */
   requestJson?: (target: URL, init: RequestInit, timeoutMs: number) => Promise<{ response: Response; body: unknown }>;
   seedProfile?: Payment261SeedProfile;
-  recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number, diagnostic?: Readonly<{ guardPhase?: string; originCode?: string }>) => void;
+  recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number, diagnostic?: Readonly<{ guardPhase?: string; originCode?: string; seedGate?: SeedOpeningGate; errorKind?: string }>) => void;
   /** Source-owned case request checker; never a caller route list. */
   assertHttpRequest?: (route: string, method: "GET" | "POST") => void;
   assertHttpBody?: (route: string, method: "GET" | "POST", body: unknown) => void;
@@ -373,6 +374,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
   let ownerAttempted = false;
   let failureStage: SeedFailureStage = "SEED_PREPARE";
   let httpStatus: number | undefined;
+  let seedGate: SeedOpeningGate | undefined;
   try {
     light();
     // Snapshot caller input before any await. This fixture never refreshes an
@@ -494,6 +496,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     const registrations: Array<{ id: string; sources: Array<{ id: string }> }> = [];
     failureStage = "SEED_OPENING";
     for (const companyId of [ids.companyA, ids.companyB]) {
+      seedGate = companyId === ids.companyA ? "OPENING_A_REQUEST" : "OPENING_B_REQUEST";
       httpStatus = undefined;
       const gapCompany = otherProjectId !== undefined && companyId === ids.companyB;
       const response = await checked(() => registeredPgHttp(context, "/fund-accounts/openings", "POST", {
@@ -503,6 +506,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
         sources: [{ amountYuan: gapCompany ? "5" : "100", sourceStatus: "known", sourceName: "合成已知项目资金", projectStatus: "project", projectId: ids.project },
           ...(gapCompany ? [{ amountYuan: "3", sourceStatus: "known", sourceName: "合成其他项目资金", projectStatus: "project", projectId: otherProjectId }] : [])]
       }, accessToken, continuity));
+      seedGate = companyId === ids.companyA ? "OPENING_A_ASSERTION" : "OPENING_B_ASSERTION";
       httpStatus = response.status;
       const registration = response.body as { id?: unknown; sources?: Array<{ id: string; projectId?: string }> };
       requireCondition(response.status === 201 && typeof registration.id === "string" &&
@@ -516,6 +520,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     if (otherProjectId) return { ...prepared, attributionGap: { otherProjectId, otherSourceId: registrations[1]!.sources[1]!.id } };
     if (!contender || !second) return prepared;
     failureStage = "SEED_LOGIN";
+    seedGate = undefined;
     httpStatus = undefined;
     const loginB = await checked(() => registeredPgHttp(contender.context, "/auth/login", "POST",
       { phone: second.phone, password: contender.context.password }, undefined, contender.continuity));
@@ -526,7 +531,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
       ...(followUp ? {companyASourceId: registrations[0]!.sources[0]!.id, followUpRequestKey: randomUUID()} : {}) };
   } catch (error) {
     try {
-      const diagnostic = describePaymentDiagnostic(error);
+      const diagnostic = seedGate ? { ...describePaymentDiagnostic(error), seedGate, errorKind: paymentErrorKind(error) } : describePaymentDiagnostic(error);
       if (diagnostic) continuity?.recordSeedFailure?.(failureStage, seedFailureCode(error), httpStatus, diagnostic);
       else continuity?.recordSeedFailure?.(failureStage, seedFailureCode(error), httpStatus);
     }

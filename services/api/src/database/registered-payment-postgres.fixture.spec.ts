@@ -695,3 +695,34 @@ describe("source assertion diagnostic consumer closure", () => {
     expect(isPaymentFailureCode(seen[0]!.code)).toBe(true);
   });
 });
+
+
+describe("seed opening fixed failure boundary", () => {
+  it.each([[0, false], [1, false], [0, true], [1, true]] as const)("keeps opening index %s and assertion boundary %s", async (failedOpening, assertion) => {
+    const f = fixture(), recordSeedFailure = jest.fn();
+    Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });
+    let opening = 0;
+    const failure = Object.assign(new TypeError("private endpoint and payload"), { cause: Object.assign(new Error("private address"), { code: "ECONNRESET" }) });
+    const fetch = jest.fn(async (target: Parameters<typeof globalThis.fetch>[0]) => {
+      const url = new URL(String(target));
+      let status = 201, body: unknown = { tokens: { accessToken: "synthetic-token" } };
+      if (url.pathname === "/fund-accounts/openings") {
+        const current = opening++;
+        if (current === failedOpening && !assertion) throw failure;
+        status = current === failedOpening && assertion ? 403 : 201;
+        body = { id: "synthetic-opening", sources: [{ id: "synthetic-source" }] };
+      }
+      const response = new Response(JSON.stringify(body), { status });
+      Object.defineProperty(response, "url", { value: url.href });
+      return response;
+    });
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-10", "2026-11-09");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    const seedGate = failedOpening === 0 ? (assertion ? "OPENING_A_ASSERTION" : "OPENING_A_REQUEST") : (assertion ? "OPENING_B_ASSERTION" : "OPENING_B_REQUEST");
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_OPENING", assertion ? "PG_FIXTURE_REAL_HTTP_OPENING" : "HTTP_CONNECTION_RESET", assertion ? 403 : undefined,
+      { seedGate, errorKind: assertion ? "ERROR" : "TYPE_ERROR" });
+    expect(JSON.stringify(recordSeedFailure.mock.calls)).not.toMatch(/private|synthetic-token|endpoint|payload/);
+    expect(opening).toBe(failedOpening + 1);
+  });
+});

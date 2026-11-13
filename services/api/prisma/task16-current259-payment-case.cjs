@@ -137,7 +137,7 @@ async function executeCurrent259PaymentCase(lease,permit){
    ...(permission.recordCaseFailure?{recordSeedFailure(stage,code,httpStatus,diagnostic){
     const currentHttp=httpPhase==='BEFORE_CHECK'||httpPhase==='TARGET'||
      stage==='SEED_LOGIN'&&httpRoute==='/auth/login'||stage==='SEED_OPENING'&&httpRoute==='/fund-accounts/openings';
-    const detail=httpDiagnostic??filterPaymentDiagnostic(diagnostic),hasDetail=detail&&Object.keys(detail).length>0;
+    const detail=filterPaymentDiagnostic({...filterPaymentDiagnostic(diagnostic),...httpDiagnostic}),hasDetail=Object.keys(detail).length>0;
     // A returned transport observation can belong to the preceding opening
     // when the next checked() fails before requestJson starts. Only an active
     // boundary may supply its observation; otherwise trust no prior request.
