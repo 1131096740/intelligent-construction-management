@@ -35,6 +35,17 @@ function jobBlock(workflow, jobName) {
   return workflow.slice(start, end);
 }
 
+test("quality typecheck has a bounded compiler-only heap while preserving complete commands", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const quality = jobBlock(workflow, "quality-gates");
+  const step = /      - name: Typecheck\n([\s\S]*?)(?=\n      - name:)/u.exec(quality)?.[1];
+  assert.ok(step);
+  assert.match(step, /        env:\n          NODE_OPTIONS: --max-old-space-size=3072\n/u);
+  const commands = step.split("        run: |\n")[1].trim().split("\n").map(line => line.trim());
+  assert.deepEqual(commands, ["pnpm typecheck", "pnpm --filter @jiangkong/web-admin typecheck:e2e"]);
+  assert.doesNotMatch(jobBlock(workflow, "postgresql16-dynamic-gates"), /max-old-space-size=3072/u);
+});
+
 test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on success and drift", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const step = /      - name: Prefetch POL-275 reviewed-base frozen dependencies\n        if: (.+)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(workflow);
