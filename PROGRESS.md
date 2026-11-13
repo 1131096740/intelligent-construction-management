@@ -4,9 +4,10 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确已推源码/文书候选`97880812edd66daae9261f8930fc287b66af7807`的CI43518772587自然32/32成功；前一3bf准确CI也32/32。精确voucher归一三blob与作者及真PG组件一致、两轴均0。本地seed诊断源码`54746d7774d92e2e00c0552dbb19c07d8113a058`已两轴独审0项并集成，六blob与作者一致，新准确CI待；Draft PR428保持开放，旧失败、未知及用户根混合改动保留。
-- 任务16：新3bf/plan dddd1580 normal真实exit1/2117.178秒，在SEED_OPENING报HTTP_CONNECTION_RESET/FETCH，业务UNKNOWN_DO_NOT_RETRY，尚未达selected。原106条轮询首条28.626秒、后继最大20.070秒，原句柄持续到真终态。原controller清理完成且root独核准确资源/PID/relay缺席，原receipt SHA256 `00e78e04edb58d4b4b2bcbf50de7eba3f5b4eb35af9e1b46760eabb602a2b643`。此处与旧SELECTED_CASE不同，不能据此称旧根因已修；新547仅补固定seedGate与可信HTTP上下文传递，216项CJS/100项fixture及包门通过；原5秒预算、守卫、SQL和策略不变，没有新PG通过。6秒同步stall未复现原reset，不称已修好，后续先以窄诊断取证。旧d605/9d6等未知保留，不重发旧键。
-- 任务12：978新工具资格真实0/158.561秒，root正式毫秒Z回执（摘要0e4326前缀）、独立重hash493产物/60PNG与第二PDF解析15/15/30页通过，仅限定样张。首个ad9 PREPARE因root回执时间格式被拒、6.065秒停且未PG，单变量原validator反例确认后另出正确毫秒Z格式，旧材料保留。新metadata-only `5a56e62ba0cf0a252477bf1888c87abf61ab45c9`仅登记路径变化、其余3937blob及controls同978；新prepare43.164/verify36.167秒通过，完整life原actor16560/PID69098/wrapper68208自22:47:25Z持续20秒轮询，root已独核新76f059独占资源，尚无DACL或业务结果。原afa8/f717业务及清理UNKNOWN各按原回执保留。完整合同链、类型矩阵和异常链仍未通过；集成registry仍PENDING，不把own登记用于发布。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确6f972e13的CI43524797051已自然32/32成功，仅绑定该SHA。本地CONSUME诊断源码`d733969e6610e24eb8a090fa3993ea82dfb28a2b`已两轴独审0项并集成，两blob与作者一致，新候选准确CI待。Draft PR428保持；旧失败、未知和用户根混合改动保留。
+- 任务16：新6f972e13/plan b3e71152 normal由原actor56025/PID86564/wrapper86560自23:24:18Z持续监控，现处technical261；root已独核新3c8a专属资源，冻结现场不改。首条监控约33秒超过30秒限制的记录原样保留，后续20秒持续轮询，暂无business结论。旧3bf实测SEED_OPENING/HTTP_CONNECTION_RESET/FETCH UNKNOWN、原receipt00e78e04及独立清理缺席证据保留；不换键重发，不把6秒stall未复现当作已修复。
+- 任务12：原metadata-only5a56 life真实exit1/1567.794秒，越过串行DACL/RUNTIME后停于APPLICATION/CONSUME、LOGIN_CONSUME_FAILED；业务和原controller清理UNKNOWN、full394=false。原receipt SHA256 `cb3a2cc22e0e358be48f15eea93196e0fbe1b5660c085f52c1b3ec63c9a5a9e6`与root76f059准确资源/PID/relay缺席独核保留。新d733仅在精确CONSUME上下文内有界读取6层own cause、投影25个已有资源码，49项相关/TDD10/type/lint通过；原safeReason/helper/pin、global/first/secondary/UNKNOWN不变，无HBA或权限修复，也无新PG/life结论。978工具158.561秒及正式Z回执0e4326仅限定样张，ad9格式失败保留；集成registry仍PENDING。下一步窄定位真实内因，完整合同链、类型矩阵和异常链仍未通过。
+
 - 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门按准确源码证据承接，merger未重复测试；CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
 
 ## 授权、证据和下一步
