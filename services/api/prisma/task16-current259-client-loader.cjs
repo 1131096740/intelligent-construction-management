@@ -98,6 +98,14 @@ function loadCurrent259Client(handle){
  for(const [name,entry]of [['TestingModule','@nestjs/testing/testing-module'],['NestContainer','@nestjs/core/injector/container'],['NestApplication','@nestjs/core/nest-application'],['ExpressAdapter','@nestjs/platform-express/adapters/express-adapter']]){
   const file=fs.realpathSync(requireAt.resolve(entry)),exports=guardedRequire(file);framework[name]=own(exports,name);need(typeof framework[name]==='function','CURRENT259_FRAMEWORK_CLASS');records.push({module:require.cache[file],key:name,value:framework[name]});
  }
+ // The first legitimate JSON body lazily loads these canonical UTF-8 codec
+ // children. Observe them before the immutable business graph is sealed.
+ const adapterRequire=Module.createRequire(requireAt.resolve('@nestjs/platform-express/adapters/express-adapter'));
+ const parserRequire=Module.createRequire(adapterRequire.resolve('body-parser'));
+ const codecFile=fs.realpathSync(parserRequire.resolve('iconv-lite')),codec=guardedRequire(codecFile);
+ const decoder=own(codec,'getDecoder');need(typeof decoder==='function','CURRENT259_LOADER_EXPORT');
+ guardedOperation(()=>decoder.call(codec,'utf-8'));
+ records.push({module:require.cache[codecFile],key:'getDecoder',value:decoder,descriptor:Object.getOwnPropertyDescriptor(codec,'getDecoder')});
  const nativeProxy=globalThis.Proxy;
  const originalCreate=dataMethod(framework.TestingModule.prototype,'createNestApplication'),originalAdapterProxy=dataMethod(framework.TestingModule.prototype,'createAdapterProxy');
  const originalClose=dataMethod(framework.NestApplication.prototype,'close');
