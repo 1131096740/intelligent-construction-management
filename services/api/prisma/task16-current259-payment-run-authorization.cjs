@@ -42,6 +42,11 @@ const caseFailureStages=new Set(['APPLICATION_LEASE','PERMIT_CLAIM','CONTINUITY_
  'SEED_LOGIN','SEED_OPENING','POST_SEED_AUTHORITY','POST_SEED_LIVE','SELECTED_CASE','FINAL']);
 const {isPaymentFailureCode,filterPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
 const caseFailureCodes=Object.freeze({has:isPaymentFailureCode});
+const secondaryFailureCodes=new Set(['CURRENT259_RESOURCE_CLEANUP_UNKNOWN','PAYMENT_INSTALL_ONCE_RESOURCE_CHANGED',
+ 'PAYMENT_INSTALL_ONCE_RESOURCE_IDENTITY','PAYMENT_INSTALL_ONCE_MANIFEST','PAYMENT_INSTALL_ONCE_PROGRESS_ROOT',
+ 'PAYMENT_INSTALL_ONCE_PROGRESS_WRITE','PAYMENT_INSTALL_ONCE_ABORTED_UNSETTLED','PAYMENT_INSTALL_ONCE_CLOSED',
+ 'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT','PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED']);
+const diagnosticCode=code=>isPaymentFailureCode(code)||secondaryFailureCodes.has(code)?code:'PAYMENT_INSTALL_ONCE_FAILED_CLOSED';
 const seedHttpPhases=new Set(['BEFORE_CHECK','TARGET','FETCH','BODY','AFTER_CHECK','RESPONSE_RETURNED']);
 const seedHttpStatuses=new Set([200,201,400,401,403,404,409,422,429,500,503]);
 function recordCaseFailure(entry,stage,code,httpStatus,httpPhase,diagnostic){
@@ -160,7 +165,7 @@ function assertCurrent259PaymentBusinessContinuity(token,handle,expectedScenario
   importsCheck();state.checkedInputs();entry.lifetime.call(state.view);
   const now=read(state.plan.run.attemptFile,{privateFile:true,maxBytes:4096,collect:true,expectedIdentity:state.attempt.identity,code:'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED'});
   need(now.sha256===state.attempt.sha256,'BUSINESS_CONTINUITY');return true;
- }catch(error){if(entry)entry.active=false;revoke(state);throw error;}
+ }catch(error){if(entry)entry.active=false;state?.captureFailure(error);revoke(state);throw error;}
 }
 function claimCurrent259PaymentBusinessPermit(permit,application,handle){
  const original=permit&&!types.isProxy(permit)&&businessPermissions.get(permit);
@@ -319,6 +324,8 @@ function finalResource(plan,created,started,firstError,topology){
 }
 function parse(args){
  need(Array.isArray(args)&&args.every(value=>typeof value==='string'),'ARGUMENTS');
+ let progressRoot;
+ if(args.at(-2)==='--progress-root'){progressRoot=args.at(-1);args=args.slice(0,-2);}
  const voucher261=args[0]==='--voucher261'||args[0]==='--voucher261-once';
  const voucher=voucher261||args[0]==='--voucher'||args[0]==='--voucher-once';
  const followUp261=args[0]==='--competition-follow-up261'||args[0]==='--competition-follow-up261-once';
@@ -331,20 +338,68 @@ function parse(args){
  const payment261=business261||competition261||voucher261||attributionGap261||args[0]==='--install261'||args[0]==='--install261-once';
  const business=business261||competition||attributionGap||args[0]==='--business'||args[0]==='--business-once';
  const once=ONCE_OPTIONS.includes(args[0]),rest=once||business||pfq||payment261?args.slice(1):args;
+ need(progressRoot===undefined||once,'ARGUMENTS');
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,business,payment261,followUp261,competition261,competition,attributionGap,attributionGap261,voucher,voucher261,pfq,file:rest[1],sha256:rest[3]};
+ return {once,business,payment261,followUp261,competition261,competition,attributionGap,attributionGap261,voucher,voucher261,pfq,file:rest[1],sha256:rest[3],progressRoot};
 }
 async function run(args){
  const requestedOnce=Array.isArray(args)&&ONCE_OPTIONS.includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
+ let disconnect=false;
  let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
  const startedAt=performance.now(),stageTimings=[];
+ const checkTimings=Object.fromEntries(['planVerification','planCheck','resourceCheck','inputCheck'].map(name=>[name,{count:0,elapsedMs:0}]));
+ const checkSnapshot=()=>Object.fromEntries(Object.entries(checkTimings).map(([name,row])=>[name,{count:row.count,elapsedMs:Math.round(row.elapsedMs)}]));
+ function measured(name,call){const before=performance.now();checkTimings[name].count++;try{return call();}finally{checkTimings[name].elapsedMs+=performance.now()-before;}}
+ let progressIdentity,progressSequence=0,progressFailed=false;
+ const progressPhases=new Set(['preflight','resourceStartup','technical259','technical261','roles9','sevenFragments','paymentAcl','b7',
+  'pfqConcurrency','liveSessions','applicationEnvironment','ownedApplication','replacementApplication','seedAndSelectedCase',
+  'closeOriginalApplication','retireOriginalRuntimeAndConfirmRollback','ownedCleanup']);
+ function progressDirectory(){
+  const root=request.progressRoot,sourceRoot=path.resolve(__dirname,'../../..');
+  need(typeof root==='string'&&path.isAbsolute(root)&&path.normalize(root)===root&&fs.realpathSync(root)===root&&
+   root!==sourceRoot&&!root.startsWith(sourceRoot+path.sep)&&root!==plan.run.root&&!root.startsWith(plan.run.root+path.sep),'PROGRESS_ROOT');
+  let cursor=path.parse(root).root;for(const part of root.slice(cursor.length).split(path.sep)){cursor=path.join(cursor,part);need(!fs.lstatSync(cursor).isSymbolicLink(),'PROGRESS_ROOT');}
+  const st=fs.lstatSync(root);need(st.isDirectory()&&st.uid===process.getuid()&&(st.mode&0o777)===0o700,'PROGRESS_ROOT');
+  const identity=Object.fromEntries(['dev','ino','uid','gid','mode'].map(key=>[key,st[key]]));
+  need(!progressIdentity||equal(identity,progressIdentity),'PROGRESS_ROOT');return identity;
+ }
+ function recordProgress(event){
+  if(!progressIdentity||progressFailed)return;
+  let fd,dir;
+  try{
+   progressDirectory();need(progressSequence<64&&progressPhases.has(stage),'PROGRESS_WRITE');
+   const sequence=progressSequence+1,root=request.progressRoot;
+   const target=path.join(root,String(sequence).padStart(3,'0')+'-'+(event==='PHASE'?stage:'finalization')+'.json');
+   const now=performance.now(),row={schemaVersion:1,event,sequence,expectedCandidateSha:plan.material.source.candidateSha,
+    planSha256:request.sha256,phase:stage,elapsedMs:Math.round(now-startedAt),phaseElapsedMs:Math.round(now-stageStartedAt),
+    stages:stageTimings.slice(),checks:checkSnapshot(),businessOutcome:receipt.business?.outcome??'NOT_ENTERED',
+    resource:created?Object.fromEntries(['runId','sourceSha','daemonId','endpoint','imageId','containerId','networkId','databaseName','port'].map(key=>[key,created[key]])):null,
+    cleanup:receipt.resource?.cleanup??{status:'PENDING'},
+    ...(receipt.failureCode?{failureCode:diagnosticCode(receipt.failureCode),failureStage:receipt.failureStage}:{}),
+    ...(receipt.secondaryFailures?{secondaryFailures:receipt.secondaryFailures.slice()}:{}),
+    receiptPublished:false,executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
+   fd=fs.openSync(target,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
+   progressDirectory();const st=fs.fstatSync(fd);need(st.isFile()&&st.uid===process.getuid()&&st.nlink===1&&(st.mode&0o777)===0o600,'PROGRESS_WRITE');
+   const bytes=Buffer.from(JSON.stringify(row,null,2)+'\n');need(bytes.length<=65536,'PROGRESS_WRITE');
+   fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);
+   dir=fs.openSync(root,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);fs.fsyncSync(dir);progressSequence=sequence;
+  }catch{progressFailed=true;throw fault('PROGRESS_WRITE');}
+  finally{if(fd!==undefined)fs.closeSync(fd);if(dir!==undefined)fs.closeSync(dir);}
+ }
+ function initializeProgress(){
+  if(request.progressRoot===undefined)return;
+  try{progressIdentity=progressDirectory();need(fs.readdirSync(request.progressRoot).length===0,'PROGRESS_ROOT');}
+  catch{progressIdentity=undefined;throw fault('PROGRESS_ROOT');}
+  recordProgress('PHASE');
+ }
+
  let stageStartedAt=startedAt,resourceStartedAt,resourceAbort,failureObservedAt;
  function recordStage(now){
   stageTimings.push({stage,elapsedMs:Math.round(now-stageStartedAt)});
   stageStartedAt=now;
  }
- function enterStage(next){recordStage(performance.now());stage=next;}
+ function enterStage(next){recordStage(performance.now());stage=next;recordProgress('PHASE');}
  function abort(origin){
   if(!controller||controller.signal.aborted)return;
   resourceAbort={origin,stage,elapsedMs:Math.round(performance.now()-resourceStartedAt)};
@@ -354,8 +409,37 @@ async function run(args){
  function recordTiming(row){
   if(row.timing)return;
   const now=performance.now();recordStage(failureObservedAt??now);
-  row.timing={elapsedMs:Math.round(now-startedAt),stages:stageTimings.slice(),
+  row.timing={elapsedMs:Math.round(now-startedAt),stages:stageTimings.slice(),checks:checkSnapshot(),
    ...(resourceAbort?{resourceAbort}:{}),...(failureObservedAt===undefined?{}:{finalizationMs:Math.round(now-failureObservedAt)})};
+ }
+ function rememberFirst(error){
+  if(hasFirst)return;
+  failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
+  const technicalFailure=stage==='technical259'||stage==='technical261'?describeCurrent259TechnicalFailure(error):undefined;
+  if(technicalFailure)receipt.technicalFailure=technicalFailure;
+  const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
+  if(sevenFailure)receipt.sevenFailure=sevenFailure;
+  const liveFailure=stage==='liveSessions'&&!request.competition&&!disconnect?businessFlow?.describeCurrent259LiveFailure(error):undefined;
+  if(liveFailure)receipt.liveFailure=liveFailure;
+  if(stage==='ownedApplication'||stage==='replacementApplication'){
+   const applicationFailure=businessFlow?.describeCurrent259ApplicationFailure(error);
+   if(applicationFailure)receipt.applicationFailure=applicationFailure;
+  }
+  const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
+  if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
+  // The case records this before application and live-session cleanup can mask the error.
+  if(stage==='seedAndSelectedCase'&&state.business?.recordCaseFailure){
+   if(state.business.claimed&&receipt.business?.permission==='ISSUED_NOT_YET_CONSUMED')receipt.business.permission='CONSUMED_ONCE';
+   if(state.business.caseFailure)receipt.paymentCaseFailure=state.business.caseFailure;
+  }
+  if(request.attributionGap&&state?.business?.attributionGapFailure)receipt.attributionGapFailure=state.business.attributionGapFailure;
+  if(request.voucher&&state?.business?.voucherFailure)receipt.voucherFailure=state.business.voucherFailure;
+ }
+ const secondarySeen=new Set();
+ function rememberSecondary(error,boundary){
+  if(!receipt||!hasFirst||error===first||secondarySeen.has(error)||secondarySeen.size>=8)return;
+  secondarySeen.add(error);
+  (receipt.secondaryFailures??=[]).push({boundary,stage,code:diagnosticCode(data(error,'code'))});
  }
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
@@ -397,11 +481,12 @@ async function run(args){
   receipt={schemaVersion:1,purpose:plan.purpose,expectedCandidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,
    status:'STOPPED',scope:plan.scope,limits:plan.limits,stages:[],sourceMaterialVerified:false,
    executionAllowed:false,nativeAdmission:false,financialAcceptance:false,liveSessionAdmission:false};
+  initializeProgress();
   // Capture the fixed business closure before the first installation await,
   // never adopt a cache/export replacement after B7 has already been written.
   if(request.business)original('./task16-current259-business-continuity.cjs',['captureCurrent259BusinessIssuer']).captureCurrent259BusinessIssuer();
   const withResource=loopback?paymentResources[loopbackScenario]:withCurrent259TechnicalResource;
-  const disconnect=request.business&&plan.case.scenario==='disconnect-commit-recovery';
+  disconnect=request.business&&plan.case.scenario==='disconnect-commit-recovery';
   if(request.business&&(plan.case.scenario==='cancel-commit'||disconnect))original('./task16-current259-a16-fault.cjs',['createCurrent259A16FaultPlan']);
   const installVoucherAcl=request.voucher?original('./task16-current259-payment-acl-install.cjs',['installCurrent259VoucherPaymentAcl']).installCurrent259VoucherPaymentAcl:undefined;
   const payment261Provision=request.attributionGap261?'provisionCurrent259Payment261AttributionGapRoles':'provisionCurrent259Payment261Roles';
@@ -431,7 +516,7 @@ async function run(args){
   const runPfq=request.pfq?original('./task16-current259-pfq-concurrency.cjs',['runCurrent259PfqConcurrency']).runCurrent259PfqConcurrency:undefined;
   try{
    need(!fs.existsSync(plan.run.receiptFile)&&!fs.existsSync(plan.run.receiptFile+'.pending'),'RECEIPT_EXISTS');
-   checked=verifyPlan(request.file,request.sha256);
+   checked=measured('planVerification',()=>verifyPlan(request.file,request.sha256));
    need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();
    if(request.payment261)checkPayment261Source(checked.loader.witness().source);
    receipt.sourceMaterialVerified=true;
@@ -446,7 +531,7 @@ async function run(args){
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt(),false,loopback?.topology);
     checkPayment261Source(source);
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
-    state={active:true,controller,abort,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,payment261:request.payment261,paymentProfile,effectiveAccessBinding,competition:request.competition,voucher:request.voucher,attributionGap:request.attributionGap,disconnect};
+    state={active:true,controller,abort,captureFailure:rememberFirst,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:()=>measured('inputCheck',()=>checked.checkInputs()),endAt,planSha256:request.sha256,claimed:false,writeUsed:false,payment261:request.payment261,paymentProfile,effectiveAccessBinding,competition:request.competition,voucher:request.voucher,attributionGap:request.attributionGap,disconnect};
     currentRun=state;
     let resolveAbort;
     const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
@@ -461,11 +546,11 @@ async function run(args){
     };
     state.check=()=>{
      try{
-      need(state.active&&!controller.signal.aborted,'CLOSED');importsCheck();checked.check();view.check();
+      need(state.active&&!controller.signal.aborted,'CLOSED');importsCheck();measured('planCheck',()=>checked.check());measured('resourceCheck',()=>view.check());
       const now=read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,collect:true,expectedIdentity:attempt.identity,code:'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED'});
       need(now.sha256===attempt.sha256&&claimCurrent259TechnicalResource(handle)===view&&view.source===source&&
        source.candidateSha===plan.material.source.candidateSha&&source.sourceSealSha256===plan.material.source.sourceSealSha256,'SCOPE_CHANGED');
-     }catch(error){revoke(state);throw error;}
+     }catch(error){rememberFirst(error);revoke(state);throw error;}
     };
     const completed=(name,result)=>{state.check();need(result&&result.sourceSha===source.candidateSha&&result.runId===view.runId,'STAGE_RESULT');
      receipt.stages.push(Object.freeze({stage:name,status:'RETURNED_NOT_ADMISSION',...(result.installXid?{installXid:result.installXid}:{}),...(result.commitXid?{commitXid:result.commitXid}:{})}));};
@@ -633,38 +718,19 @@ async function run(args){
       state.check();enterStage('ownedCleanup');
      }
     }catch(error){
-     if(!hasFirst){
-      failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
-      const technicalFailure=stage==='technical259'||stage==='technical261'?describeCurrent259TechnicalFailure(error):undefined;
-      if(technicalFailure)receipt.technicalFailure=technicalFailure;
-      const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
-      if(sevenFailure)receipt.sevenFailure=sevenFailure;
-      const liveFailure=stage==='liveSessions'&&!request.competition&&!disconnect?businessFlow?.describeCurrent259LiveFailure(error):undefined;
-      if(liveFailure)receipt.liveFailure=liveFailure;
-      if(stage==='ownedApplication'||stage==='replacementApplication'){
-       const applicationFailure=businessFlow?.describeCurrent259ApplicationFailure(error);
-       if(applicationFailure)receipt.applicationFailure=applicationFailure;
-      }
-      const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
-      if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
-      // The case records this before application and live-session cleanup can mask the error.
-      if(stage==='seedAndSelectedCase'&&state.business?.recordCaseFailure){
-       if(state.business.claimed&&receipt.business?.permission==='ISSUED_NOT_YET_CONSUMED')receipt.business.permission='CONSUMED_ONCE';
-       if(state.business.caseFailure)receipt.paymentCaseFailure=state.business.caseFailure;
-      }
-      if(request.attributionGap&&state?.business?.attributionGapFailure)receipt.attributionGapFailure=state.business.attributionGapFailure;
-      if(request.voucher&&state?.business?.voucherFailure)receipt.voucherFailure=state.business.voucherFailure;
-     }
+     rememberFirst(error);
      throw error;
     }finally{state.active=false;currentRun=undefined;EventTarget.prototype.removeEventListener.call(controller.signal,'abort',onAbort);}
    });
    checked.check();importsCheck();
-  }catch(error){if(!hasFirst){failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;}}
+  }catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_SCOPE');else rememberFirst(error);}
   finally{if(state)state.active=false;currentRun=undefined;if(timer)clearTimeout(timer);process.removeListener('SIGINT',onSigint);process.removeListener('SIGTERM',onSigterm);}
-  try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(!hasFirst){failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
+  try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_FINALIZATION');if(!hasFirst){failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
   if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.pfq||receipt.pfq)&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.pfq?'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED':request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
   else{receipt.status='STOPPED';receipt.failureCode??='PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
-  recordTiming(receipt);publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;
+  recordTiming(receipt);
+  try{recordProgress('FINALIZATION');}catch(error){if(hasFirst)rememberSecondary(error,'PROGRESS_PUBLICATION');else rememberFirst(error);receipt.status='STOPPED';}
+  publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;
   return {status:receipt.status,candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,resourceCreationRequested:started,
    failureCode:receipt.failureCode,receiptFile:plan.run.receiptFile,receiptSha256,executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
  }catch(error){
