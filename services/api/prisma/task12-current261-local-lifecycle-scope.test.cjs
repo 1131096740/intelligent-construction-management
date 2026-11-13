@@ -20,3 +20,10 @@ test('explicit local lifecycle scope binds the real registered plan and reports 
  assert.ok(Object.isFrozen(plan));
  assert.throws(()=>api.describeCurrent261LocalLifecycle({...s,profile:{...s.profile,ledger:s.profile.ledger.slice(0,259)}}));
 });
+
+
+test('local lifecycle scope selects only either exact official tool profile',()=>{
+ const api=require('./task12-current261-local-lifecycle-scope.cjs'),s=source(),profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2';
+ const plan=api.describeCurrent261LocalLifecycle(s,profile);assert.equal(plan.runtimeProfile,profile);assert.equal(plan.resourceMs,3600000);assert.equal(plan.httpRequests,600);
+ assert.throws(()=>api.describeCurrent261LocalLifecycle(s,'arbitrary-runtime'),/SCOPE/u);
+});

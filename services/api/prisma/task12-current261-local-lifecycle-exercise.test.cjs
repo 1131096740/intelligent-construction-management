@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-function model(failure,cleanupFailure){
- const calls=[],fixture={approval:{users:Array.from({length:8},(_,i)=>({id:'user'+i}))}},scope={kind:'OFFICIAL_TOOL_RUNTIME',profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',source:{head:'a'.repeat(40)},readPdfDrawnText:async()=>[]},tokens=[{},{},{}],summary={},window={};
+function model(failure,cleanupFailure,profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'){
+ const calls=[],fixture={approval:{users:Array.from({length:8},(_,i)=>({id:'user'+i}))}},scope={kind:'OFFICIAL_TOOL_RUNTIME',profile,source:{head:'a'.repeat(40)},readPdfDrawnText:async()=>[]},tokens=[{},{},{}],summary={},window={};
  const modules={isTask12LocalLifecycleFixture:v=>v===fixture,currentOfficialDocumentScope:()=>scope,readTask12LocalLifecycleSourceDocx:()=>Buffer.from('model-docx'),createTask12LocalLifecycleOriginals:async()=>[Buffer.from('one'),Buffer.from('two')],
   async runTask12LocalLifecycleCase(input){calls.push('http-originals');assert.equal(input.fixture,fixture);assert.equal(input.passwords.length,8);if(failure!==undefined)throw failure;return tokens[0];},
   async expectTask12LocalLifecycleAuditRollback(token){assert.equal(token,tokens[0]);calls.push('http-rollback');return tokens[1];},async finishTask12LocalLifecycleCase(token){assert.equal(token,tokens[1]);calls.push('http-complete');return summary;},
@@ -31,4 +31,10 @@ test('a caller cannot issue an exercise outcome with a fake HTTP or source reade
 test('a non-object first failure is retained as the cleanup wrapper cause',async()=>{
  const f=model(null,Error('CLEANUP_UNKNOWN'));
  await assert.rejects(f.run(),error=>error.cause===null&&error.ownerCleanupOutcome==='UNKNOWN_DO_NOT_CONTINUE');
+});
+
+
+test('life exercise accepts the second fixed official context but no unknown profile',async()=>{
+ const f=model(undefined,undefined,'TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2');await f.run();assert.ok(f.calls.includes('owner-complete'));
+ const unknown=model(undefined,undefined,'arbitrary-runtime');await assert.rejects(unknown.run(),/RUNTIME/u);assert.deepEqual(unknown.calls,[]);
 });

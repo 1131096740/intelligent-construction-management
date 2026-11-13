@@ -287,7 +287,7 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
  let official;
  if(lifecycle){
   const modules=view.loader.loadCurrent261LocalLifecycleDocumentModules();official=modules.currentOfficialDocumentScope();
-  need(official?.kind==='OFFICIAL_TOOL_RUNTIME'&&official.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'&&official.source?.head===view.source.candidateSha,'ROLE_RUNTIME');
+  need(official?.kind==='OFFICIAL_TOOL_RUNTIME'&&require('./task12-official-document-profiles.cjs').officialDocumentProfile(official.profile)&&official.source?.head===view.source.candidateSha,'ROLE_RUNTIME');
  }
  consumed.add(handle);
  const check=()=>{

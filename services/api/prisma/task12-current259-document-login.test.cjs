@@ -6,7 +6,7 @@ const savePurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
 const ordinaryName='jg_fixture_app_0123456789abcdef01234567';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 
-function fixture(change, priorSql, pool, save=false,lifecycle=false){
+function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'){
  const handle={},source={candidateSha:'a'.repeat(40)},runId='a0000000-0000-4000-8000-000000000001';
  if(lifecycle){
   const fs=require('node:fs'),path=require('node:path');
@@ -53,7 +53,7 @@ function fixture(change, priorSql, pool, save=false,lifecycle=false){
   assert.equal(r,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;
   return {completion,ordinaryAcl,roles,source,continuitySql,continuitySha256,check(){}};
  };
- const lifeRuntime=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',source:{head:source.candidateSha}});
+ const lifeRuntime=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:runtimeProfile,source:{head:source.candidateSha}});
  const view={resource,source,runId,check(){},...(lifecycle?{loader:{loadCurrent261LocalLifecycleDocumentModules(){return{currentOfficialDocumentScope(){return lifeRuntime;}};}}}:{})},imports={
   './task12-current259-document-acl-transport.cjs':{
    claimCurrent259GeneratedDocumentAcl(r,h){assert.equal(save,false,'HANDLE');return claim(r,h);},
@@ -504,4 +504,10 @@ test('life requires its actual official context before any login SQL, not a prev
  const f=fixture(undefined,undefined,{setup({view}){view.loader={loadCurrent261LocalLifecycleDocumentModules(){return{currentOfficialDocumentScope(){return undefined;}};}};}},true,true);
  await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail()));
  assert.equal(f.calls.length,0);
+});
+
+
+test('life V2 context reaches the same guarded role path before any business work',async()=>{
+ const f=fixture(()=>{throw new Error('MODEL_STOP_V2_FIRST_OWNER_SQL');},undefined,undefined,true,true,'TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2');
+ await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail()),{message:'CURRENT259_DOCUMENT_LOGIN_PRESTATE_REJECTED'});assert.equal(f.calls.length,1);
 });

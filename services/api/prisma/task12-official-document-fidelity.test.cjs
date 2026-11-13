@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {validateOfficialDocumentFidelity}=require('./task12-official-document-fidelity.cjs');
-const good=()=>({version:1,pdfSha256:'a'.repeat(64),pageCount:2,pages:['隔离工具资格材料合同 壹佰壹拾叁元整 资格样张材料','买方 虚构甲方公司 卖方 虚构乙方公司'],a4Portrait:true,outOfPageGlyphs:0,unembeddedFonts:0,badGlyphs:0,substitutionFonts:0,paintedChineseGlyphs:100,bodyAnchor:{matches:1,lineSpacings:[25,25],fontSizes:[14],fontFamilies:['fangsonggb2312']},failures:[]});
+const good=()=>({version:1,pdfSha256:'a'.repeat(64),pageCount:2,pages:['隔离工具资格材料合同 壹佰壹拾叁元整 资格样张材料 第1页 / 共2页','买方 虚构甲方公司 卖方 虚构乙方公司 第2页 / 共2页'],a4Portrait:true,outOfPageGlyphs:0,unembeddedFonts:0,badGlyphs:0,substitutionFonts:0,paintedChineseGlyphs:100,bodyAnchor:{matches:1,lineSpacings:[25,25],fontSizes:[14],fontFamilies:['fangsonggb2312']},failures:[]});
 test('independent physical metrics retain the manual page/signature review hold',()=>{
  const result=validateOfficialDocumentFidelity(good(),'a'.repeat(64));
  assert.equal(result.status,'MACHINE_FIDELITY_PASSED_PHYSICAL_REVIEW_PENDING');assert.equal(result.runtimeAuthority,false);
@@ -32,4 +32,23 @@ test('office transport does not claim body25 layout and normalized merge must pr
  const merged={...good(),pdfSha256:'c'.repeat(64),pageCount:4,pages:[...good().pages,...office.pages]};
  assert.equal(validateOfficialMergedFidelity(merged,good(),office,'c'.repeat(64)).pageCount,4);
  merged.pages[2]='dropped page';assert.throws(()=>validateOfficialMergedFidelity(merged,good(),office,'c'.repeat(64)));
+});
+
+test('real footer regression rejects blank, repeated and wrong-total page numbers',()=>{
+ for(const replace of [text=>text.replace('第1页 / 共2页','第 页 / 共 页'),text=>text.replace('共2页','共1页')]){
+  const report=good();report.pages[0]=replace(report.pages[0]);
+  assert.throws(()=>validateOfficialDocumentFidelity(report,report.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
+ }
+ const repeated=good();repeated.pages[1]=repeated.pages[1].replace('第2页','第1页');
+ assert.throws(()=>validateOfficialDocumentFidelity(repeated,repeated.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
+});
+
+test('each page has exactly one correct page label and rejects coexisting duplicates or conflicts',()=>{
+ const {validateOfficialOfficeFidelity}=require('./task12-official-document-fidelity.cjs');
+ for(const extra of [' 第1页 / 共2页',' 第2页 / 共99页',' 第 页 / 共 页',' 第01页 / 共2页',' 第一页 / 共两页']){
+  const report=good();report.pages[0]+=extra;
+  for(const validate of [validateOfficialDocumentFidelity,validateOfficialOfficeFidelity]){
+   assert.throws(()=>validate(report,report.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
+  }
+ }
 });

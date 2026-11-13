@@ -5,6 +5,8 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
+// Capture only canonical host definitions; qualification/PENDING still controls issuance.
+const officialRuntime = require('./task12-official-document-profile.cjs');
 
 const PURPOSE = 'CURRENT259_GENERATED_DOCUMENT_RUNTIME_V1';
 const CODE = 'CURRENT259_GENERATED_DOCUMENT_RUNTIME';
@@ -268,19 +270,19 @@ async function withCurrent259GeneratedDocumentRuntime(evidence, runRoot, use) {
 // and a reviewed source-bound activation have completed.
 function verifyOfficialTask12DocumentRuntime(file,expectedSha256,moduleView) {
   if(arguments.length!==3)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_INPUT'),{code:'TASK12_OFFICIAL_DOCUMENT_INPUT'});
-  return require('./task12-official-document-profile.cjs').verifyOfficialTask12DocumentRuntime(file,expectedSha256,moduleView);
+  return officialRuntime.verifyOfficialTask12DocumentRuntime(file,expectedSha256,moduleView);
 }
 function observeOfficialTask12DocumentPublication(file,expectedSha256) {
   if(arguments.length!==2)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_INPUT'),{code:'TASK12_OFFICIAL_DOCUMENT_INPUT'});
-  return require('./task12-official-document-profile.cjs').observeOfficialTask12DocumentPublication(file,expectedSha256);
+  return officialRuntime.observeOfficialTask12DocumentPublication(file,expectedSha256);
 }
 async function withOfficialTask12DocumentRuntime(proof,runRoot,use) {
   if(arguments.length!==3)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_SCOPE'),{code:'TASK12_OFFICIAL_DOCUMENT_SCOPE'});
-  return require('./task12-official-document-profile.cjs').withOfficialTask12DocumentRuntime(proof,runRoot,use);
+  return officialRuntime.withOfficialTask12DocumentRuntime(proof,runRoot,use);
 }
 function prepareOfficialTask12DocumentRuntimeInput(outputPath,runRoot) {
   if(arguments.length!==2)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_INPUT'),{code:'TASK12_OFFICIAL_DOCUMENT_INPUT'});
-  return require('./task12-official-document-profile.cjs').prepareOfficialTask12DocumentRuntimeInput(outputPath,runRoot);
+  return officialRuntime.prepareOfficialTask12DocumentRuntimeInput(outputPath,runRoot);
 }
 module.exports = Object.freeze({ verifyCurrent259GeneratedDocumentRuntime, withCurrent259GeneratedDocumentRuntime,
   observeOfficialTask12DocumentPublication, verifyOfficialTask12DocumentRuntime, withOfficialTask12DocumentRuntime,prepareOfficialTask12DocumentRuntimeInput });
