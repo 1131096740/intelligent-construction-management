@@ -1,6 +1,25 @@
+## #382 安全诊断与生命周期源码合成（2026-11-13）
+
+- [~] 安全诊断后继准确`2b1b1d402e7217c161416ab0e409e6ef160f25b8`经两轴独审均0可操作发现，原604状态串用P2已闭，merger仅FF本地integration并保root四份MD。准确后继API build/typecheck/lint及完整本地编排1813通过/0失败/1既有skip；守卫、67错误码、权限、预算与冻结SQL保持。真实88a首因仍UNKNOWN，许可不复用。当前将本地SOURCE文档一并提交到原Draft并运行新准确SHA CI，不继承旧CI；尚无新实际验收、main合并、部署或生产变更。[诊断源码回执](docs/progress/2026-11-13-382-safe-payment-diagnostics-source.md)。
+
+## #382 源码恢复与生命周期SOURCE本地合入（历史快照，2026-11-13）
+
+- [~] #398安全诊断候选`60449741`已完成作者本地编排1811通过/0失败/1既有skip及API门，但独立复审发现新增P2：同route第二次请求前失败可能误记上一响应状态。候选未合入，正按public seam补RED→GREEN最小修复，仍保原guard/预算/权限；实际88a首因仍未知，不据诊断测试声称已修真实业务故障。
+- [~] 用户已明确“授权源码诊断、修复与验证”，解除88a首错后的源码停线，仅恢复限定诊断/最小修复、本地验证与常规CI；原88a/3e747单次已消费，仍不重跑，不包含新迁移、实付、native、Java/LO资格或COS执行许可。旧冻结/启动条目保留为历史快照，本段更新当前SOURCE状态。[88a停止及清理独证](docs/progress/2026-11-13-382-normal88-stop.md)。
+- [~] 准确 `9db5db76361dfca159a2d6dea207184faf5d632c`（65ca基线、59路径）经两位无源码参与者独立Spec/Standards复核均0可操作发现，merger已仅快进原本地integration并保两份主控MD。作者304 CJS/114 API及18批2129 SQL/37 DO纯解析、独立13项模型分列，不代表实际SDK或业务通过；registry仍PENDING、600 cap不覆盖保守628包络、后两PDF未语义parse，完整15格/COS/browser未验。本次未push或运行9db准确SHA CI，待诊断源与文档一并收口；不继承65ca/88a CI，#394/#398仍OPEN、14/45不变。[本地SOURCE集成与余项](docs/progress/2026-11-13-382-local-lifecycle-source-integration.md)。
+
+## #382 新88a单次隔离实付停止回执（2026-11-13）
+
+- [~] 上述授权命令同session96160已退出1，STOPPED，许可已消耗、不重跑。停在SEED_LOGIN / TASK16_APP_IMPACT_READER_PROOF / AFTER_CHECK；未保留HTTP状态/底层cause，不能沿用旧ac721的42501归因。业务结果UNKNOWN_DO_NOT_RETRY，native/financial/live/执行准入均false；实付及核账未通过。约57分46秒，非依据运行耗时猜根因。controller清理完成，固定独立观察器一次实际执行确认本轮准确容器/网络不存在、记录卷0；receipt SHA b2322165…238b2。首错后只读归因/证据整理，9db源码/600cap/628提案及后继门继续冻结。[准确停止与独立清理](/private/tmp/jg-398-normal88-single-user-authorization-20261113.md)。
+
+## #382 新88a单次隔离实付授权已启动（历史启动快照，2026-11-13）
+
+- [~] 用户明确回复“授权新88a方案单次隔离验收”。主控fresh核准确88a的CI43274524003为32项全成功、封存源码clean、3e747bce计划原摘要及空run、helper verify261通过后，已执行原env-i命令一次（session96160）。许可按本次启动处理，不重跑；终态与同轮独立清理另记，目前不据启动认定业务通过。所有并行源码、测试、资格、review和merge冻结。旧ac721许可与停止记录保持独立。[本次授权和前置](/private/tmp/jg-398-normal88-single-user-authorization-20261113.md)。
+- [~] #394本地合成源码9db5db76已完成作者机械门并封存，尚待两位未参与源码的独立复审、600/628新scope请求上限选择及组合真实资格；不纳入本次88a执行，不提前合入或外推65caCI。#394/#398仍OPEN、14/45不变。
+
 ## #382 合同生命周期权限源码集成（2026-11-13）
 
-- [~] `e0889860` 已经规范/规格两轴独审零发现，由 merger 快进集成。14 个源码/测试路径，显式261生命周期模式贯通真实普通应用、三文书角色及 native 同计划；原权限清单、SQL、Schema、付款normal9和运行时锁保持。独立最终源绑定21、API安全45、类型/lint及7批SQL纯解析通过；宽模型与构建的提交归属详见回执。尚未取得新常规CI或实际native结论，#394/#398继续OPEN、14/45不变。[合同权限源码回执](docs/progress/2026-11-13-382-contract-lifecycle-acl-source.md)。
+- [~] `e0889860` 已经规范/规格两轴独审零发现，由 merger 快进集成。14 个源码/测试路径，显式261生命周期模式贯通真实普通应用、三文书角色及 native 同计划；原权限清单、SQL、Schema、付款normal9和运行时锁保持。独立最终源绑定21、API安全45、类型/lint及7批SQL纯解析通过；宽模型与构建的提交归属详见回执。准确文档候选 `65ca5e79` 的 [CI43290702545](https://github.com/1131096740/intelligent-construction-management/actions/runs/43290702545) 已32项全部成功；无新实际native结论，不覆盖工具/consumer后继WIP，#394/#398继续OPEN、14/45不变。[合同权限源码回执](docs/progress/2026-11-13-382-contract-lifecycle-acl-source.md)。
 - [~] 合同旧JDK树不完整；新官方归档摘要匹配但树摘要不匹配旧锁，原恢复已停。六件缺失class已在新目录一次编译并逐字匹配；新独立工具profile仍为未提交WIP、未完成转换资格，未合入本候选，不解除native阻断。
 
 ## #382 normal261 源码集成候选（2026-11-13）

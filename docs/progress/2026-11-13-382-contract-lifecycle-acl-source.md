@@ -19,8 +19,16 @@
 
 外部详细证据：`/private/tmp/jg-394-life-evidence-20261113/RECEIPT.md`及candidate-manifest.json；`/private/tmp/jg-394-final-spec-e0889860-review.md`；`/private/tmp/jg-394-standards-review-e088-20261113.md`；`/private/tmp/jg-394-merger-e088-receipt-20261113.md`。
 
+后继CI状态（优先于上文推送前安排）：准确文档候选 `65ca5e791bd24d4ed13b5eb5b784dfd9df1d0385` 已推送原Draft #428，其 [CI43290702545](https://github.com/1131096740/intelligent-construction-management/actions/runs/43290702545) 为completed/success，32项作业全部成功，0失败/取消/跳过。[#394状态](https://github.com/1131096740/intelligent-construction-management/issues/394#issuecomment-6834210107)与[#382状态](https://github.com/1131096740/intelligent-construction-management/issues/382#issuecomment-6834210815)已同步。准确收据 `/private/tmp/jg-382-ci-65ca-43290702545-RECEIPT.md`；不把此CI转给未提交工具或life consumer，也不替代实际业务验收。
+
 ## 尚未完成
 
 旧preview once保持旧模式，其独立默认权限缺口未被静默扩大；新真实生命周期生产链尚无受控once的实际准入证据。native固定表内材料案不覆盖全部五类型×三关系、真实私有版本化COS、浏览器及并发终态，#394不能据此关闭。新独立工具profile尚为未提交WIP，旧JDK锁阻断仍保留。
 
 normal261准确88a的32项CI与其封存计划独立保留；该计划仅源码准备/验证，仍待新的单次授权，旧ac721许可已消耗。此次合同源码集成不改变该封存来源或把其证据转移到新头。#382仍14/45阶段关闭，前沿#394/#398；无main合并、部署、生产或新的手动SQL/native/Java转换/LO/COS操作。
+
+## 2026-11-13 后继SOURCE状态（优先于以上历史待办）
+
+用户已回复“授权源码诊断、修复与验证”；仅源码停线解除，88a/3e747单次仍已消费并停止，未授权重跑或新资源门。[88a准确停止回执](2026-11-13-382-normal88-stop.md)保留unknown业务与同轮清理证据，不能沿用ac721的42501归因。
+
+上述“工具未提交WIP/life待集成”是65ca时点快照。工具246b、HTTP作者e569后继与独立life consumer现已合成准确9db，经新两轴独审零发现及merger仅快进本地integration；尚未推送或获得9db准确CI。PENDING、真实SDK/工具资格、600对628保守包络不足、后两PDF未语义parse和完整15格/COS/browser缺口保持。[后继源码集成与验证归属](2026-11-13-382-local-lifecycle-source-integration.md)。旧权限源码与CI历史完整保留，不将其结果转授新头。
