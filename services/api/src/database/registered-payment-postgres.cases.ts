@@ -22,7 +22,7 @@ export function registeredPaymentPostgresCases() {
 }
 
 function check(condition: unknown, code: string): asserts condition {
-  if (!condition) throw new Error(code);
+  if (!condition) throw Object.defineProperty(new Error(code), "code", { value: code });
 }
 
 async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false) {

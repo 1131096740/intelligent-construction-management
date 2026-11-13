@@ -1303,3 +1303,30 @@ test('application checkpoint rejects foreign phase detail without persisting it'
  const text=fs.readdirSync(f.state.progressRoot).map(name=>fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')).join('');
  assert.doesNotMatch(text,/private SQL password/);assert.equal(f.state.calls.includes('case'),false);assert.equal(f.state.closes,1);
 });
+
+
+for(const secondary of ['post-check','cleanup'])test('selected fixed assertion code survives '+secondary+' failure without reading a private message',async t=>{
+ const primary=Object.defineProperty(new Error('private SQL token'), 'code', {value:'PG_CASE_BEFORE_STATE'});
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,caseFailure:primary,
+  onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE',primary.code);},
+  ...(secondary==='cleanup'?{cleanupFailure:true}:{afterConsumeFailure:Object.assign(new Error('private post-check'),{code:'CURRENT259_BUILD_CHANGED'})})});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'PG_CASE_BEFORE_STATE'});
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.equal(f.state.calls.filter(x=>x==='case').length,1);
+ assert.ok(receipt.secondaryFailures.length>0);assert.doesNotMatch(JSON.stringify(receipt),/private SQL token|private post-check/);
+});
+
+
+test('selected failure projection ignores foreign message getters and undeclared case codes',async t=>{
+ for(const code of [undefined,'PG_CASE_UNDECLARED_PRIVATE_SQL']){
+  let reads=0;const primary=Object.create(null);
+  Object.defineProperty(primary,'message',{get(){reads++;throw Error('private message getter');}});
+  if(code)Object.defineProperty(primary,'code',{value:code});
+  const f=ordinaryBusinessFailureFixture(t,{caseFailure:primary,onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE',code);}});
+  const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+  assert.equal(result.status,'STOPPED');assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE'});
+  assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.equal(reads,0);
+  assert.doesNotMatch(JSON.stringify(receipt),/PG_CASE_UNDECLARED_PRIVATE_SQL|private message getter/);
+ }
+});

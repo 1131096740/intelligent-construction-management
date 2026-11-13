@@ -106,7 +106,7 @@ export interface PreparedRegisteredPgCompetitionFollowUp extends PreparedRegiste
 const fixedConditions = new WeakMap<Error, string>();
 function requireCondition(condition: unknown, code: string): asserts condition {
   if (!condition) {
-    const error = new Error(code);
+    const error = Object.defineProperty(new Error(code), "code", { value: code });
     fixedConditions.set(error, code);
     throw error;
   }

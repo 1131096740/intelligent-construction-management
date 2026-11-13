@@ -290,6 +290,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
   it("rejects an observer whose session permits writes", async () => {
     const f = fixture(); f.sessions[2]!.readOnly = "off";
     await expect(assertRegisteredPgConnectedRoles(f.context)).rejects.toThrow("PG_RESOURCE_OBSERVER_READ_ONLY");
+    await expect(assertRegisteredPgConnectedRoles(f.context)).rejects.toHaveProperty("code", "PG_RESOURCE_OBSERVER_READ_ONLY");
   });
 
   it("rejects an observer with effective write capability even if its current session is read-only", async () => {
@@ -626,6 +627,8 @@ describe("registered PG original case: explicit observer projection protocol (no
         : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
       if (scenario === "upstream-failure" || scenario === "absent-db-fact") {
         await expect(run).rejects.toThrow(scenario === "upstream-failure" ? "PG_CASE_RESPONSE_LOSS_BOUNDARY" : "PG_CASE_COMMITTED_GRAPH_COUNTS");
+        const error = await run.catch((error: unknown) => error);
+        expect(Object.getOwnPropertyDescriptor(error, "code")).toEqual({ value: scenario === "upstream-failure" ? "PG_CASE_RESPONSE_LOSS_BOUNDARY" : "PG_CASE_COMMITTED_GRAPH_COUNTS", enumerable: false, configurable: false, writable: false });
         expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST"]);
       } else {
         await expect(run).resolves.toMatchObject({ caseId: scenario === "normal" ? "registered.null-cross-company.commit"
