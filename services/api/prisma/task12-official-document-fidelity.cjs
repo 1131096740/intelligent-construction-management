@@ -13,7 +13,10 @@ function physical(report,expectedPdfSha256){
  return text;
 }
 function pagination(report){
- need(report.pages.every((page,index)=>compact(page).includes('第'+(index+1)+'页/共'+report.pageCount+'页')));
+ need(report.pages.every((page,index)=>{
+  const labels=compact(page).match(/第[^第页]*页\/共[^第页]*页/gu)??[];
+  return labels.length===1&&labels[0]==='第'+(index+1)+'页/共'+report.pageCount+'页';
+ }));
 }
 function validateOfficialDocumentFidelity(report,expectedPdfSha256){
  physical(report,expectedPdfSha256);pagination(report);

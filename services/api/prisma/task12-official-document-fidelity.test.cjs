@@ -42,3 +42,13 @@ test('real footer regression rejects blank, repeated and wrong-total page number
  const repeated=good();repeated.pages[1]=repeated.pages[1].replace('第2页','第1页');
  assert.throws(()=>validateOfficialDocumentFidelity(repeated,repeated.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
 });
+
+test('each page has exactly one correct page label and rejects coexisting duplicates or conflicts',()=>{
+ const {validateOfficialOfficeFidelity}=require('./task12-official-document-fidelity.cjs');
+ for(const extra of [' 第1页 / 共2页',' 第2页 / 共99页',' 第 页 / 共 页',' 第01页 / 共2页',' 第一页 / 共两页']){
+  const report=good();report.pages[0]+=extra;
+  for(const validate of [validateOfficialDocumentFidelity,validateOfficialOfficeFidelity]){
+   assert.throws(()=>validate(report,report.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
+  }
+ }
+});
