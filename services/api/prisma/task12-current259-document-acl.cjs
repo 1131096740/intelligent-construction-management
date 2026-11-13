@@ -2,6 +2,7 @@
 const {readFileSync}=require('node:fs');
 const {createHash,randomBytes}=require('node:crypto');
 const path=require('node:path');
+const {types}=require('node:util');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
 
@@ -170,6 +171,38 @@ function describe(material){
   frozenManifestSha256:manifestSha,groups:Object.freeze(material.groups.map(row=>Object.freeze({...row,columns:Object.freeze([...row.columns])}))),
   rows:Object.freeze(material.rows.map(row=>Object.freeze({...row}))),executionAllowed:false,nativeAdmission:false});
 }
+/** Fixed source SQL only. This projection cannot issue a role/session brand.
+ * The renderer still requires its complete exact ACL postimage before the
+ * transport continuity check may compare this approved signed-column delta. */
+function renderCurrent261DocumentAclContinuity(source,identities){
+ const own=(v,k)=>v&&!types.isProxy(v)?Object.getOwnPropertyDescriptor(v,k)?.value:undefined;
+ need(arguments.length===2&&Array.isArray(identities)&&!types.isProxy(identities)&&identities.length===roles.length&&
+  identities.every((r,i)=>own(r,'name')===roles[i]&&number(own(r,'oid'),0xffffffffn)&&own(r,'oid')!=='10')&&
+  new Set(identities.map(r=>own(r,'oid'))).size===roles.length,'SOURCE');
+ const material=profile(source);
+ const approved=material.rows.filter(r=>r.relation==='ContractVersion'&&r.column==='originalSignedNumber');
+ need(approved.length===2&&approved.every(r=>r.privilege==='SELECT')&&
+  same(approved.map(r=>r.role).sort(),['jg_c259_doc_queue','jg_c259_doc_worker']),'SOURCE');
+ const grantees=approved.map(r=>own(identities[roles.indexOf(r.role)],'oid')).sort((a,b)=>Number(a)-Number(b));
+ const prefix="(pg_catalog.to_jsonb(a)-'attacl')||pg_catalog.jsonb_build_object('retainedAcl',";
+ const suffix=") ORDER BY a.attrelid,a.attnum) FROM pg_catalog.pg_attribute a";
+ const normalizeProtectedSql=sql=>{
+  need(typeof sql==='string'&&sql.split(prefix).length===2&&sql.split(suffix).length===2,'SOURCE');
+  const begin=sql.indexOf(prefix)+prefix.length,end=sql.indexOf(suffix,begin);
+  need(end>begin,'SOURCE');const original=sql.slice(begin,end);
+  // Work on the existing decoded retained-ACL JSON, so NULL and empty ACL
+  // arrays keep their original witness meaning. Preserve every other row,
+  // field, grantee, grantor, privilege, grant option and array order.
+  const projected=`CASE WHEN a.attrelid=pg_catalog.to_regclass('public."ContractVersion"') AND a.attname::text='originalSignedNumber' THEN
+   (SELECT coalesce(pg_catalog.jsonb_agg(acl_item ORDER BY acl_order),'[]'::jsonb)
+    FROM pg_catalog.jsonb_array_elements(${original}) WITH ORDINALITY approved_acl(acl_item,acl_order)
+    WHERE NOT (acl_item->>0='10' AND acl_item->>1 IN (${grantees.map(quote).join(',')})
+     AND acl_item->>2='SELECT' AND acl_item->3='false'::jsonb)) ELSE ${original} END`;
+  return sql.slice(0,begin)+projected+sql.slice(end);
+ };
+ return Object.freeze({profileSha256:material.sha256,normalizeProtectedSql,exactPostimageSql:catalog(material).acl(true),
+  executionAllowed:false,nativeAdmission:false});
+}
 function beginCurrent261GeneratedLifecycleDocumentAcl(source){
  need(arguments.length===1&&source!==undefined,'ARGUMENTS');return begin(profile(source));
 }
@@ -192,4 +225,4 @@ function begin(material){
   })});
  })});
 }
-module.exports=Object.freeze({beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261GeneratedLifecycleDocumentAcl,describeMigration261GeneratedLifecycleDocumentAcl});
+module.exports=Object.freeze({beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261GeneratedLifecycleDocumentAcl,describeMigration261GeneratedLifecycleDocumentAcl,renderCurrent261DocumentAclContinuity});

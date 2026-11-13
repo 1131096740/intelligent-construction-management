@@ -1,7 +1,7 @@
 'use strict';
 const {claimCurrent259GeneratedDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
-const {beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl.cjs');
+const {beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,renderCurrent261DocumentAclContinuity}=require('./task12-current259-document-acl.cjs');
 const {registeredGeneratedLifecycleCollisionMaterial,generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {projectCurrent261DocumentAclWriteFailure}=require('./enterprise-task01-resources.cjs');
@@ -70,7 +70,11 @@ function lineage(input,lifecycle){
  const collision=lifecycle?generatedLifecycleCollisionSql(registeredGeneratedLifecycleCollisionMaterial(input.source)):undefined;
  const columnsCatalog=catalogSql.replace('a.attacl::text',()=>normalizedAcl);
  const normalizedCatalog=collision?collision.normalize(columnsCatalog):columnsCatalog;
- const normalizedProtected=collision?collision.normalize(protectedSql):undefined;
+ // Preserve the original protected witness except the manifest-approved,
+ // owner-granted plain SELECT pairs on the signed-number column. The
+ // renderer still checks its full exact ACL postimage before this guard.
+ const normalizedProtected=collision?renderCurrent261DocumentAclContinuity(input.source,roles)
+  .normalizeProtectedSql(collision.normalize(protectedSql)):undefined;
  const bindingDigest=digest(`jsonb_build_array(${bindings.map(name=>`(SELECT to_jsonb(b) FROM public.${name} b)`).join(',')})`);
  const pendingDigest=digest('(SELECT to_jsonb(b) FROM public.jg_contract_direct_pending_binding_v1 b WHERE b."protocolVersion"=1)');
  const namespace="to_regnamespace('public')::oid";

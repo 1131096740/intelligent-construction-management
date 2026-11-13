@@ -19,7 +19,7 @@ function fixture(options={}){
   archiveCompletion:{bindingSha256:'f'.repeat(64),pendingSha256:'0'.repeat(64),installXid:'880'}};
  if(options.lifecycle){
   ordinaryAcl.catalogSql="(SELECT pg_catalog.to_jsonb(p),a.attacl::text FROM pg_catalog.pg_proc p CROSS JOIN pg_catalog.pg_attribute a LIMIT 1)";
-  ordinaryAcl.protectedSql="(SELECT pg_catalog.to_jsonb(p) FROM pg_catalog.pg_proc p LIMIT 1)";
+  ordinaryAcl.protectedSql=require('./task16-current259-catalog.cjs').current259Schema205WitnessSql();
  }
  if(options.witness){
   ordinaryAcl.catalogSql=options.witness.catalogSql;
@@ -132,6 +132,9 @@ test('lifecycle transport consumes only its branded 261 role lease and carries t
  await assert.rejects(forged.api.installCurrent261GeneratedLifecycleDocumentAcl(forged.completion,forged.handle));
  assert.equal(forged.calls.length,0);
  assert.ok(f.calls[0].sql.includes('p.proacl IS NOT NULL'));
+ assert.ok(f.calls[1].sql.includes("acl_item->>2='SELECT' AND acl_item->3='false'::jsonb"));
+ assert.ok(f.calls[1].sql.includes("acl_item->>1 IN ('17001','17002')"));
+ assert.ok(f.calls[1].sql.includes("a.attname::text='originalSignedNumber'"));
  assert.ok(f.calls[1].sql.includes('WITH ORDINALITY prior(item,ordinality)'));
  assert.ok(f.calls[2].sql.includes('WITH ORDINALITY prior(item,ordinality)'));
  assert.equal((f.calls[1].sql.match(/^GRANT EXECUTE ON FUNCTION /gmu)??[]).length,48);
