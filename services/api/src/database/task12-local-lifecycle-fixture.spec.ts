@@ -37,7 +37,7 @@ test("life seed renders only exact master data, gives all eight actors distinct 
 
 it("creates only the two declared local PDF originals for its own private fixture", async () => {
   const fixture = buildTask12LocalLifecycleFixture("12345678-1234-4234-8234-123456789012");
-  await expect(createTask12LocalLifecycleOriginals({ ...fixture })).rejects.toThrow(/FIXTURE/u);
+  await expect(createTask12LocalLifecycleOriginals({ ...fixture })).rejects.toThrow("本地验收数据来源无效");
   const originals: readonly Buffer[] = await createTask12LocalLifecycleOriginals(fixture);
   expect(originals).toHaveLength(2);
   expect(originals.every(bytes => Buffer.isBuffer(bytes) && bytes.subarray(0, 5).toString() === "%PDF-" && bytes.length < 512 * 1024)).toBe(true);

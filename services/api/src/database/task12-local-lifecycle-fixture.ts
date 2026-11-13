@@ -38,7 +38,7 @@ export function isTask12LocalLifecycleFixture(value: unknown): value is ReturnTy
 
 /** Local-only test evidence, never an assertion that real parties signed. */
 export async function createTask12LocalLifecycleOriginals(fixture: ReturnType<typeof buildTask12LocalLifecycleFixture>) {
-  if (!isTask12LocalLifecycleFixture(fixture)) throw new Error("TASK12_LOCAL_LIFECYCLE_FIXTURE");
+  if (!isTask12LocalLifecycleFixture(fixture)) throw new Error("本地验收数据来源无效");
   const originals: Buffer[] = [];
   for (const marker of ["Both parties signed original one", "Both parties signed original two"]) {
     const pdf = await PDFDocument.create();
