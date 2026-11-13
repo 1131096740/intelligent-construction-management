@@ -19,7 +19,8 @@ function fixture(options={}){
   archiveCompletion:{bindingSha256:'f'.repeat(64),pendingSha256:'0'.repeat(64),installXid:'880'}};
  if(options.lifecycle){
   ordinaryAcl.catalogSql="(SELECT pg_catalog.to_jsonb(p),a.attacl::text FROM pg_catalog.pg_proc p CROSS JOIN pg_catalog.pg_attribute a LIMIT 1)";
-  ordinaryAcl.protectedSql=require('./task16-current259-catalog.cjs').current259Schema205WitnessSql();
+  ordinaryAcl.protectedSql=`jsonb_build_array(${require('./task16-current259-catalog.cjs').current259Schema205WitnessSql()},
+   (SELECT jsonb_agg(jsonb_build_array(a.attnum,a.attacl) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=to_regclass('public."RegisteredPaymentVoucher"') AND a.attnum>0 AND NOT a.attisdropped))`;
  }
  if(options.witness){
   ordinaryAcl.catalogSql=options.witness.catalogSql;

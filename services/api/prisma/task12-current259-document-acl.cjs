@@ -184,6 +184,10 @@ function renderCurrent261DocumentAclContinuity(source,identities){
  need(approved.length===2&&approved.every(r=>r.privilege==='SELECT')&&
   same(approved.map(r=>r.role).sort(),['jg_c259_doc_queue','jg_c259_doc_worker']),'SOURCE');
  const grantees=approved.map(r=>own(identities[roles.indexOf(r.role)],'oid')).sort((a,b)=>Number(a)-Number(b));
+ const voucher=material.rows.filter(r=>r.relation==='RegisteredPaymentVoucher'&&r.column==='fileId');
+ need(voucher.length===2&&voucher.every(r=>r.privilege==='SELECT')&&
+  same(voucher.map(r=>r.role).sort(),['jg_c259_doc_template','jg_c259_doc_worker']),'SOURCE');
+ const voucherGrantees=voucher.map(r=>own(identities[roles.indexOf(r.role)],'oid')).sort((a,b)=>Number(a)-Number(b));
  const prefix="(pg_catalog.to_jsonb(a)-'attacl')||pg_catalog.jsonb_build_object('retainedAcl',";
  const suffix=") ORDER BY a.attrelid,a.attnum) FROM pg_catalog.pg_attribute a";
  const normalizeProtectedSql=sql=>{
@@ -198,7 +202,21 @@ function renderCurrent261DocumentAclContinuity(source,identities){
     FROM pg_catalog.jsonb_array_elements(${original}) WITH ORDINALITY approved_acl(acl_item,acl_order)
     WHERE NOT (acl_item->>0='10' AND acl_item->>1 IN (${grantees.map(quote).join(',')})
      AND acl_item->>2='SELECT' AND acl_item->3='false'::jsonb)) ELSE ${original} END`;
-  return sql.slice(0,begin)+projected+sql.slice(end);
+  const signed=sql.slice(0,begin)+projected+sql.slice(end);
+  const voucherPrefix='jsonb_build_array(a.attnum,',voucherSuffix=') ORDER BY a.attnum) FROM pg_attribute a';
+  need(signed.split(voucherPrefix).length===2&&signed.split(voucherSuffix).length===2,'SOURCE');
+  const start=signed.indexOf(voucherPrefix)+voucherPrefix.length,finish=signed.indexOf(voucherSuffix,start);
+  need(finish>start,'SOURCE');const prior=signed.slice(start,finish);
+  // Keep the ordinary installer's prior-ACL CASE intact. NULL and empty
+  // arrays retain their distinct meanings; only an entire, single plain
+  // SELECT item from owner10 to the manifest callers may disappear.
+  const voucherProjected=`CASE WHEN a.attrelid=pg_catalog.to_regclass('public."RegisteredPaymentVoucher"') AND a.attname::text='fileId' THEN
+   CASE WHEN (${prior}) IS NULL THEN NULL::aclitem[] ELSE
+    ARRAY(SELECT item FROM pg_catalog.unnest((${prior})) WITH ORDINALITY voucher_prior(item,ordinality)
+     WHERE NOT (SELECT count(*)=1 AND bool_and(acl.grantor=10 AND acl.grantee IN (${voucherGrantees.map(x=>quote(x)+'::oid').join(',')})
+      AND acl.privilege_type='SELECT' AND NOT acl.is_grantable) FROM pg_catalog.aclexplode(ARRAY[item]) acl)
+     ORDER BY ordinality)::aclitem[] END ELSE ${prior} END`;
+  return signed.slice(0,start)+voucherProjected+signed.slice(finish);
  };
  return Object.freeze({profileSha256:material.sha256,normalizeProtectedSql,exactPostimageSql:catalog(material).acl(true),
   executionAllowed:false,nativeAdmission:false});
