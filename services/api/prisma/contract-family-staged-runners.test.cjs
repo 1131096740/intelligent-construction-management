@@ -34,6 +34,10 @@ function fixture(runnerName, fail) {
     calls.push({ binary, args, options });
     if (args[0] === "context") return { stdout: "unix:///fixture/socket", stderr: "" };
     if (args[0] === "run") return { stdout: containerId + "\n", stderr: "" };
+    if (runnerName === "contract-settlement-v2" && binary === (process.platform === "win32" ? "docker.exe" : "docker") &&
+      args.length === 4 && args[0] === "exec" && args[2] === "cat" && args[3] === "/proc/1/comm") {
+      return { stdout: "postgres\n", stderr: "" };
+    }
     return { stdout: "", stderr: "" };
   };
   const cleanup = [];

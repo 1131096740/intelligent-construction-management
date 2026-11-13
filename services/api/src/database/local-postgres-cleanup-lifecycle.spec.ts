@@ -26,6 +26,10 @@ function loadRunner(file: string, mode: "start-failure" | "cleanup-failure" | "s
       stdout: mode === "preflight-failure" ? "tcp://remote.invalid:2376" : "unix:///fixture/docker.sock",
       stderr: ""
     };
+    if (file === "run-contract-settlement-v2-local.cjs" && _command === (process.platform === "win32" ? "docker.exe" : "docker") &&
+      args.length === 4 && args[0] === "exec" && args[2] === "cat" && args[3] === "/proc/1/comm") {
+      return { stdout: "postgres\n", stderr: "" };
+    }
     if (args[0] === "exec" && args.includes("psql")) {
       const baseline = localRequire("../../prisma/migration-baseline.cjs")
         .loadCanonicalMigrationBaseline({ migrationsRoot: join(process.cwd(), "prisma/migrations") });
