@@ -15,7 +15,7 @@ function registered(){
   verdict:{status:name==='java'?'MACHINE_FIDELITY_PASSED_PHYSICAL_REVIEW_PENDING':name==='office'?'OFFICE_TRANSPORT_PASSED_PHYSICAL_REVIEW_PENDING':'NORMALIZE_MERGE_PASSED_PHYSICAL_REVIEW_PENDING',pdfSha256:r.pdfSha256,pageCount:r.pageCount,runtimeAuthority:false,...(name==='java'?{exactPaginationReviewed:false}:name==='office'?{body25LayoutQualified:false}:{})}}]));
  const machine={version:1,status:'MACHINE_QUALIFICATION_PASSED_PHYSICAL_REVIEW_PENDING',profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',runtimeAuthority:false,plan:{path:'/private/tmp/qualification.json',sha256:'8'.repeat(64)},source,hostBoundary:{platform:'darwin',arch:'arm64',release:'fixed-release',version:'fixed-version'},toolControls:{sha256:'f'.repeat(64),files:1000},candidateLockSha256:'cfdb0f202e91294db06aa8643be7955be6760a37b97d90c6baf9c261c76f0c45',buildSha256:'d'.repeat(64),materialSha256:'e'.repeat(64),boundaries:{foreignSnapshotRejected:true,malformedDocxRejected:true,externalRelationshipRejected:true,activeFieldRejected:true,noNegativeConverterScratchCreated:true},actions,physicalReview:{status:'PENDING',exactPageCountsReviewed:false,signatureAndPaginationReviewed:false},elapsedMs:10000};
  const physical={version:1,profile:machine.profile,status:'INDEPENDENT_PHYSICAL_REVIEW_PASSED',machineReceiptSha256:'a'.repeat(64),source,toolControlsSha256:'f'.repeat(64),pdfs:Object.fromEntries(Object.entries(reports).map(([n,r])=>[n,{sha256:r.pdfSha256,pageCount:r.pageCount}])),exactPageCountsReviewed:true,signatureAndPaginationReviewed:true,reviewer:'independent-model',reviewedAt:'2026-11-13T00:00:00Z'};
- return {registry:{version:1,profile:machine.profile,qualification:{machineReceipt:{path:'/private/tmp/machine.json',sha256:'a'.repeat(64)},physicalReview:{path:'/private/tmp/review.json',sha256:'b'.repeat(64)}}},machine,physical,machineSha256:'a'.repeat(64),physicalSha256:'b'.repeat(64),qualifiedPlan:{source},qualifiedPlanSha256:'8'.repeat(64),currentSource,currentHost:machine.hostBoundary,currentControls:{sha256:'f'.repeat(64),files:1000,source:currentSource},buildSha256:'d'.repeat(64),materialSha256:'e'.repeat(64),registrySha256:'9'.repeat(64),runtimeInput:{source:currentSource,qualificationRegistrySha256:'9'.repeat(64),qualificationPlanSha256:'8'.repeat(64)},reports};
+ return {registry:{version:1,profile:machine.profile,qualification:{machineReceipt:{path:'/private/tmp/machine.json',sha256:'a'.repeat(64)},physicalReview:{path:'/private/tmp/review.json',sha256:'b'.repeat(64)}}},machine,physical,machineSha256:'a'.repeat(64),physicalSha256:'b'.repeat(64),qualifiedPlan:{source,profile:machine.profile},qualifiedPlanSha256:'8'.repeat(64),currentSource,currentHost:machine.hostBoundary,currentControls:{sha256:'f'.repeat(64),files:1000,source:currentSource},buildSha256:'d'.repeat(64),materialSha256:'e'.repeat(64),registrySha256:'9'.repeat(64),runtimeInput:{profile:machine.profile,source:currentSource,qualificationRegistrySha256:'9'.repeat(64),qualificationPlanSha256:'8'.repeat(64)},reports};
 }
 test('reviewed immutable tool material can be rebound to a new complete source witness without issuing authority from JSON',()=>{
  const value=validateOfficialQualificationRegistration(registered());
@@ -41,4 +41,15 @@ test('registration rejects old source, changed controls/material/build, false re
   value=>{value.reports.java.bodyAnchor.lineSpacings=[26.05];}
  ];
  for(const change of changes){const value=structuredClone(registered());change(value);assert.throws(()=>validateOfficialQualificationRegistration(value));}
+});
+
+
+test('fixed V2 registration remains source-bound and rejects mixed-profile evidence',()=>{
+ const input=registered(),profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2';
+ for(const item of [input.registry,input.machine,input.physical,input.qualifiedPlan,input.runtimeInput])item.profile=profile;
+ input.machine.candidateLockSha256='0a2dc0cd644f3a2cbc090daa3377005cf542bdf58c368f97e50417d70930c58f';
+ assert.equal(validateOfficialQualificationRegistration(input).runtimeAuthority,false);
+ for(const change of [v=>{v.machine.profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1';},v=>{v.physical.profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1';},v=>{v.machine.candidateLockSha256='cfdb0f202e91294db06aa8643be7955be6760a37b97d90c6baf9c261c76f0c45';},v=>{v.registry.profile='TASK12_ARBITRARY_PROFILE';},v=>{v.qualifiedPlan.profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1';},v=>{v.runtimeInput.profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1';}]){
+  const value=structuredClone(input);change(value);assert.throws(()=>validateOfficialQualificationRegistration(value),{code:'TASK12_OFFICIAL_DOCUMENT_REGISTRY'});
+ }
 });

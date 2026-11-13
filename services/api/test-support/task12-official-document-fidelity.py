@@ -16,7 +16,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 ANCHOR = "2.本合同的数量为暂估，以实际交货并经验收合格的数量为准，当合同执行数量不能达到合同签订量时，以合同执行数量结算，卖方自愿承担合同签订量未发生部分的风险。"
-PROFILE = "TASK12_OFFICIAL_TEMURIN17_0_17_10_V1"
+PROFILES = frozenset(("TASK12_OFFICIAL_TEMURIN17_0_17_10_V1", "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2"))
 MAX_PDF = 100_000_000
 MAX_GLYPHS = 500_000
 
@@ -196,7 +196,7 @@ def main():
         raise ValueError("ARGUMENTS")
     request_data = regular(sys.argv[1], sys.argv[2], 128 * 1024)
     request = json.loads(request_data)
-    if set(request) != {"version", "profile", "pythonSite", "pdfPath", "pdfSha256", "docxPath", "docxSha256", "outputDirectory", "fonts"} or request["version"] != 1 or request["profile"] != PROFILE:
+    if set(request) != {"version", "profile", "pythonSite", "pdfPath", "pdfSha256", "docxPath", "docxSha256", "outputDirectory", "fonts"} or request["version"] != 1 or request["profile"] not in PROFILES:
         raise ValueError("PROFILE")
     site = Path(request["pythonSite"])
     if site.resolve() != site or not site.is_relative_to(Path("/private/tmp")):

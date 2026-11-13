@@ -16,17 +16,18 @@ function model(options={}) {
     if (expected) aliases.set(sha(value),expected);
   };
   const hash = bytes => aliases.get(sha(bytes)) ?? sha(bytes);
-  const lock=JSON.parse(fs.readFileSync(path.join(SOURCE,'services/api/assets/document-converter/runtime-lock-material-body25-v4-temurin17-official-v1.json')));
-  const lockPath=path.join(SOURCE,'services/api/assets/document-converter/runtime-lock-material-body25-v4-temurin17-official-v1.json');
+  const descriptor=require('./task12-official-document-profiles.cjs').officialDocumentProfile(options.profile??'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1');
+  const lockPath=path.join(SOURCE,'services/api/assets/document-converter',descriptor.lockName);
+  const lock=JSON.parse(fs.readFileSync(lockPath));
   put(lockPath,fs.readFileSync(lockPath));
   put(path.join(SOURCE,'fixture.js'),'fixed source');
   const registryPath='services/api/prisma/task12-official-document-qualification-registry.json';
   const tracked=['fixture.js','scripts/qualify-task12-official-document-runtime.cjs','services/api/prisma/task12-current259-generated-document-runtime.cjs',
    ...['task16-current259-client-loader.cjs','task16-current259-build.cjs','task16-current259-business-continuity.cjs'].map(name=>'services/api/prisma/'+name),
-   ...['task12-document-context.cjs','task12-official-document-child.cjs','task12-official-document-registry.cjs','task12-official-document-fidelity.cjs','task12-official-document-profile.cjs','task12-official-qualification-actions.cjs'].map(name=>'services/api/prisma/'+name),
+   ...['task12-document-context.cjs','task12-official-document-child.cjs','task12-official-document-profiles.cjs','task12-official-document-registry.cjs','task12-official-document-fidelity.cjs','task12-official-document-profile.cjs','task12-official-qualification-actions.cjs'].map(name=>'services/api/prisma/'+name),
    'services/api/src/contract-document/contract-body-pdf-converter.ts','services/api/src/contract-document/libreoffice-converter.ts','services/api/src/contract-document/task12-official-qualification-sample.ts',
    'services/api/test-support/task12-official-document-fidelity.py','services/api/test-support/task12-read-drawn-pdf.py','services/api/assets/templates/material-purchase-real-v1.docx',
-   ...['runtime-lock.json','runtime-lock-material-body25-v4.json','runtime-lock-material-body25-v4-temurin17-official-v1.json'].map(name=>'services/api/assets/document-converter/'+name),registryPath].sort();
+   ...['runtime-lock.json','runtime-lock-material-body25-v4.json','runtime-lock-material-body25-v4-temurin17-official-v1.json','runtime-lock-material-body25-v4-temurin17-official-v2.json'].map(name=>'services/api/assets/document-converter/'+name),registryPath].sort();
   for(const name of tracked)if(!files.has(path.join(SOURCE,name)))put(path.join(SOURCE,name),'fixed source '+name);
   put(path.join(SOURCE,registryPath),JSON.stringify({version:1,profile:lock.qualification.profile,qualification:null}));
   const source={head:'a'.repeat(40),tree:'b'.repeat(40),sha256:'0'.repeat(64),files:tracked.length};
@@ -43,14 +44,14 @@ function model(options={}) {
   put('/private/tmp/qualification/build.json',JSON.stringify(build),undefined,0o100600);
   const runtime={libreOffice:{wrapper:'/private/tmp/runtime/dependencies/bin/override/soffice',native:'/private/tmp/runtime/dependencies/native/libreoffice-headless/libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice'},python:{executable:'/private/tmp/python-runtime/bin/python3.11',package:'/private/tmp/pymupdf',fontToolsPackage:'/private/tmp/fontTools'},body25:{jdkHome:'/private/tmp/jdk',jars:[],classes:[],fonts:[]}};
   put(runtime.libreOffice.wrapper,'wrapper','81c7db1c6dbcdd606d95abef337b4529aeda6a4fa1cf23a5a567f9c5655c8b66',0o100755);
-  put(runtime.libreOffice.native,'native','0602181a6c26c8e46aa166db18412cef1b31b6d95eb9d7033ffc4cc0ce2e66f2',0o100755);
+  put(runtime.libreOffice.native,'native',descriptor.nativeSha256,0o100755);
   put(runtime.python.executable,'python','7e470bc0e4889177f9acb5f62208fae2825aba9ccd6a67b7c3378f522aa8f148',0o100755);
   const pyNames=['__init__.py','__main__.py','_apply_pages.py','_build.py','_extra.so','_mupdf.so','_wxcolors.py','extra.py','libmupdf.dylib','libmupdfcpp.so','mupdf.py','pymupdf.py','table.py','utils.py'];
   for (const name of pyNames) put(path.join(runtime.python.package,name),name);
   aliases.set(sha(JSON.stringify(pyNames.map(name=>[name,sha(name)]))),'1a72fa8292254ce92d0030b1adcddd1bbceeacaaf602c84e9a8afebe23566f39');
   const fontTools=[];
-  for(let index=0;index<676;index++) { const name=String(index).padStart(3,'0')+'.py';put('/private/tmp/fontTools/'+name,name);fontTools.push([name,'file',sha(name),0o644]); }
-  aliases.set(sha(JSON.stringify(fontTools)),'263ec27ba75f927b8e65c12f6697a7edb5ae930a34244ddda367119a5c0d7b1f');
+  for(let index=0;index<descriptor.fontToolsFiles;index++) { const name=String(index).padStart(3,'0')+'.py';put('/private/tmp/fontTools/'+name,name);fontTools.push([name,'file',sha(name),0o644]); }
+  aliases.set(sha(JSON.stringify(fontTools)),descriptor.fontToolsSha256);
   put(path.join(SOURCE,'services/api/test-support/task12-official-document-fidelity.py'),'fixed inspector');
   const tree=[];
   for(let index=0;index<456;index++) {const name=String(index).padStart(3,'0');put('/private/tmp/jdk/'+name,name);tree.push([name,'file',sha(name),0o644]);}
