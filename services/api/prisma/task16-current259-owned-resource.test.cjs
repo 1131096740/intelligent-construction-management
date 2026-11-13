@@ -15,6 +15,7 @@ test('document ACL diagnostic projection carries only its closed SQLSTATE and fi
  assert.deepEqual(project({sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE',message:'PRIVATE_SQL',sql:'PRIVATE_SQL'}),
   {sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE'});
  assert.deepEqual(project({sqlState:'42501',section:'PRIVATE_RELATION',guard:'PRIVATE_PASSWORD'}),{sqlState:'42501'});
+ assert.deepEqual(project({sqlState:'P0002',section:'ACL_READBACK',message:'PRIVATE_NO_ROWS'}),{sqlState:'P0002',section:'ACL_READBACK'});
  assert.equal(project({sqlState:'SECRET'}),undefined);
  assert.equal(project(new Proxy({sqlState:'P0001'},{})),undefined);
  let read=false;assert.equal(project({get sqlState(){read=true;return 'P0001';}}),undefined);assert.equal(read,false);

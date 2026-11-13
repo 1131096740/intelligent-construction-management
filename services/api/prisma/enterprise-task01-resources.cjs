@@ -160,7 +160,7 @@ function archiveWriteDiagnostic(stderr, sql) {
   return projectCurrent259ArchiveWriteFailure({ sqlState: "P0002", section, routine, sourceLine: Number(sourceLine) });
 }
 const DOCUMENT_ACL_WRITE_PHASE = "current259-document-acl-write";
-const DOCUMENT_ACL_SQLSTATES = new Set([...SEVEN_PRESTATE_SQLSTATES, "40001", "40P01", "23505", "23514", "25P02"]);
+const DOCUMENT_ACL_SQLSTATES = new Set([...SEVEN_PRESTATE_SQLSTATES, "P0002", "40001", "40P01", "23505", "23514", "25P02"]);
 const DOCUMENT_ACL_SECTIONS = new Map([
   ["LOCK TABLE ", "OWNED_SCOPE_LOCK"],
   ["DO $document_acl_transport_preimage$", "TRANSPORT_PREIMAGE"],
