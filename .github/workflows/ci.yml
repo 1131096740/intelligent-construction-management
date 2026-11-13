@@ -72,6 +72,8 @@ jobs:
         run: pnpm audit --prod --audit-level high
 
       - name: Typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=3072
         run: |
           pnpm typecheck
           pnpm --filter @jiangkong/web-admin typecheck:e2e
@@ -130,7 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           shard="${API_TEST_TARGET#api-}"
-          pnpm --filter @jiangkong/api run test --runInBand --shard="$shard/4"
+          pnpm --filter @jiangkong/api run test --runInBand --config jest.runtime.config.cjs --shard="$shard/4"
 
       - name: Test Web
         if: matrix.target == 'web'

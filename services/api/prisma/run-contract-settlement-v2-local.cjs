@@ -42,6 +42,8 @@ function freePort() {
 async function waitForPostgres(containerName, dockerEnv) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
+      const init = await run(docker, ["exec", containerName, "cat", "/proc/1/comm"], { env: dockerEnv });
+      if (init.trim() !== "postgres") throw new Error("PostgreSQL 尚未接管 PID 1");
       await run(docker, ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", databaseName], { env: dockerEnv });
       return;
     } catch {
@@ -155,6 +157,8 @@ async function main() {
 if (require.main === module) {
   main().catch((error) => {
     process.stderr.write(`合同清单与结算 V2 本地隔离验证失败：${error instanceof Error ? error.message : String(error)}\n`);
+    const portFailure = error && Object.getOwnPropertyDescriptor(error, "localMigrationPortFailure")?.value;
+    if (portFailure) process.stderr.write(`[local-migration-port] ${JSON.stringify(portFailure)}\n`);
     process.exitCode = 1;
   });
 }

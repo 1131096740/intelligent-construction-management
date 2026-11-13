@@ -241,6 +241,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
  need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
+ checkpoint.enter('OWNED_PROOF');
  const session=claimCurrent259LiveSessions(proof,handle);
  need(!retirement||own(session,'disconnectOriginal')===true,'TASK16_APP_HANDLE');
  let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,httpClosing,shutdown,shutdownUnknown=false,businessToken;
@@ -383,9 +384,10 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    appCleanupOutcome:cleanupUnknown?'UNKNOWN_DO_NOT_CONTINUE':app?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED'}),marker);
  }
 }
-async function withCurrent259OwnedApplication(proof,handle,signal,consume){
- need(arguments.length===4&&typeof consume==='function','TASK16_APP_BOUNDARY');
- return withOwnedApplication(proof,handle,signal,consume);
+async function withCurrent259OwnedApplication(proof,handle,signal,consume,reportPhase){
+ need((arguments.length===4||arguments.length===5)&&typeof consume==='function'&&
+  (reportPhase===undefined||typeof reportPhase==='function'&&!types.isProxy(reportPhase)),'TASK16_APP_BOUNDARY');
+ return withOwnedApplication(proof,handle,signal,consume,undefined,false,reportPhase);
 }
 async function withCurrent259OwnedDisconnectApplication(proof,handle,signal,consume){
  need(arguments.length===4&&typeof consume==='function','TASK16_APP_BOUNDARY');
@@ -429,8 +431,8 @@ async function withCurrent259OwnedApplicationPair(proofs,handle,signal,consume){
   return consume(applications);
  },pair),pair);
 }
-async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=false){
- const checkpoint=applicationCheckpoint('OWNED_PROOF');
+async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=false,reportPhase){
+ const checkpoint=applicationCheckpoint('OWNED_PROOF',reportPhase);
  need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
@@ -484,7 +486,10 @@ async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=
   try{
    if(control){
     if(pair&&hasPrimary)void control.terminate();
-    if(!hasPrimary)checkpoint.enter('OWNED_CLEANUP');
+    if(!hasPrimary){
+     try{checkpoint.enter('OWNED_CLEANUP');}
+     catch(error){first=error;hasPrimary=true;firstMarker=checkpoint.capture({},error);}
+    }
     const closing=beginClose();
     const closed=closeSettled?await closing:await Promise.race([closing,cancellation]);
     if(closed.aborted){

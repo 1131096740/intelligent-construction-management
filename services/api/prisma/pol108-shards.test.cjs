@@ -51,3 +51,12 @@ test('default runner creates a separate execution for every shard and stops on f
   assert.equal(calls, 1);
   await assert.rejects(runSelectedShards(['--shard', 'facts'], async () => 0));
 });
+
+
+test('POL-108 transpiles in isolation while preserving the base discovery and runtime settings', () => {
+  const base = require('../jest.config.cjs');
+  const config = require('../jest.runtime.config.cjs');
+  assert.deepEqual(config.transform['^.+\\.ts$'], ['ts-jest', { tsconfig: { isolatedModules: true } }]);
+  assert.deepEqual({ ...config, transform: base.transform }, base);
+  assert.equal(base.transform['^.+\\.ts$'], 'ts-jest');
+});

@@ -364,15 +364,24 @@ async function run(args){
   const identity=Object.fromEntries(['dev','ino','uid','gid','mode'].map(key=>[key,st[key]]));
   need(!progressIdentity||equal(identity,progressIdentity),'PROGRESS_ROOT');return identity;
  }
- function recordProgress(event){
+ const applicationPhases=new Set(['OWNED_PROOF','APPLICATION_BOUNDARY','APPLICATION_ENVIRONMENT','MODULE_EXPORTS','NEST_BUILDER',
+  'IMPACT_READER','NEST_COMPILE','NEST_MODULE_PROVIDERS','NEST_CREATE','NEST_APP_PROVIDERS','NEST_SECURITY','NEST_INIT',
+  'LOOPBACK_LISTEN','LOOPBACK_ADDRESS','LIVE_VERIFY_BEFORE','LIVE_VERIFY_AFTER','OWNED_PROVIDER_PROOF','OWNED_CALLBACK','OWNED_CLEANUP']);
+ function recordApplicationCheckpoint(phase){
+  try{
+   need(applicationPhases.has(phase)&&(stage==='ownedApplication'||stage==='replacementApplication'||stage==='seedAndSelectedCase'),'PROGRESS_WRITE');
+   recordProgress('APPLICATION_CHECKPOINT',phase);
+  }catch(error){rememberFirst(error);throw error;}
+ }
+ function recordProgress(event,applicationPhase){
   if(!progressIdentity||progressFailed)return;
   let fd,dir;
   try{
    progressDirectory();need(progressSequence<64&&progressPhases.has(stage),'PROGRESS_WRITE');
    const sequence=progressSequence+1,root=request.progressRoot;
-   const target=path.join(root,String(sequence).padStart(3,'0')+'-'+(event==='PHASE'?stage:'finalization')+'.json');
+   const target=path.join(root,String(sequence).padStart(3,'0')+'-'+(event==='PHASE'?stage:event==='APPLICATION_CHECKPOINT'?'application-'+applicationPhase:'finalization')+'.json');
    const now=performance.now(),row={schemaVersion:1,event,sequence,expectedCandidateSha:plan.material.source.candidateSha,
-    planSha256:request.sha256,phase:stage,elapsedMs:Math.round(now-startedAt),phaseElapsedMs:Math.round(now-stageStartedAt),
+    planSha256:request.sha256,phase:stage,...(applicationPhase?{applicationPhase}:{}),elapsedMs:Math.round(now-startedAt),phaseElapsedMs:Math.round(now-stageStartedAt),
     stages:stageTimings.slice(),checks:checkSnapshot(),businessOutcome:receipt.business?.outcome??'NOT_ENTERED',
     resource:created?Object.fromEntries(['runId','sourceSha','daemonId','endpoint','imageId','containerId','networkId','databaseName','port'].map(key=>[key,created[key]])):null,
     cleanup:receipt.resource?.cleanup??{status:'PENDING'},
@@ -624,7 +633,8 @@ async function run(args){
        state.disconnectB7=b7;disconnectLivePermissions.set(livePermit,state);
        withLive=(completion,h,consume)=>withDisconnectLiveSessions(completion,h,livePermit,consume);
       }
-      const normalApplication=request.competition?withCompetitionApplications:withCurrent259OwnedApplication;
+      const normalApplication=request.competition?withCompetitionApplications:(proof,h,sig,consume)=>
+       withCurrent259OwnedApplication(proof,h,sig,consume,recordApplicationCheckpoint);
       const runCase=request.competition?runCompetition:runCurrent259PaymentCase;
       enterStage('liveSessions');state.check();
       await settled(withLive(b7,handle,async (initialLiveProof,replaceRuntime)=>{

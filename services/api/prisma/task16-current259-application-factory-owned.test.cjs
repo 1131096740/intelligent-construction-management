@@ -544,3 +544,24 @@ for(const kind of ['unknown-code','getter','proxy'])test('owned guard never eval
  assert.equal(stopped.code,'TASK16_APP_FAILED_CLOSED');assert.equal(traps,0);
  assert.doesNotMatch(JSON.stringify(stopped),/private|secret|SQL URL token/u);
 });
+
+
+test('optional diagnostic observer sees owned startup checkpoint before a pending compile returns',async t=>{
+ let release,entered;const pending=new Promise(resolve=>{release=resolve;}),ready=new Promise(resolve=>{entered=resolve;});
+ const phases=[],f=fixture(t,{async onCompile(){entered();await pending;}});
+ const running=f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=> 'done',phase=>phases.push(phase));
+ t.after(async()=>{release();await running.catch(()=>{});});
+ await Promise.race([ready,running.then(()=>assert.fail('compile not reached'),error=>{throw error;})]);
+ assert.equal(phases.at(-1),'NEST_COMPILE');assert.equal(phases[0],'OWNED_PROOF');assert.ok(phases.includes('LIVE_VERIFY_BEFORE'));
+ assert.ok(phases.every(value=>typeof value==='string'&&!value.includes('private')));
+ release();assert.equal(await running,'done');
+});
+
+
+test('diagnostic publication failure at owned cleanup still closes the application and backing resources',async t=>{
+ const f=fixture(t);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=> 'done',phase=>{
+  if(phase==='OWNED_CLEANUP')throw Object.assign(new Error('PROGRESS_WRITE'),{code:'PROGRESS_WRITE'});
+ }));
+ assert.ok(f.calls.includes('app-close'));assert.equal(f.resourceCloses(),1);
+});
