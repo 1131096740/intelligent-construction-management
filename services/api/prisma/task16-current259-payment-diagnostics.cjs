@@ -49,6 +49,19 @@ const caseFailureCodes=new Set(['PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY','PAYME
 const phases=new Set(['ADMISSION_LOOKUP','APPLICATION_STATE','PROFILE_BINDING','SESSION_CONTINUITY','RESOURCE_LIFETIME',
  'RESOURCE_VIEW_SOURCE_METHODS','APP_METHOD_IDENTITY','APP_INSPECTION','LIVE_SESSION_LIGHT','LIVE_SESSION_CONTINUITY']);
 const remembered=new WeakMap();
+const caseGates=new Set(['COMPILED_CASE','PREPARED_CONTINUITY','PREPARED_SNAPSHOT','COMPILED_EXPORTS','HTTP_REQUEST_AUTHORITY','CASE_GATE_PROTOCOL',
+ 'CONNECTED_ROLES','OBSERVER_BEFORE','BEFORE_STATE','OPTIONS_REQUEST','OPTIONS_ASSERTION','REGISTRATION_REQUEST',
+ 'OBSERVER_AFTER','COMMITTED_ASSERTION','RESULT_REQUEST','RESULT_ASSERTION','REPLAY_REQUEST','OBSERVER_REPLAY','REPLAY_ASSERTION']);
+const nativeKinds=new Map([[Error.prototype,'ERROR'],[TypeError.prototype,'TYPE_ERROR'],[RangeError.prototype,'RANGE_ERROR'],
+ [ReferenceError.prototype,'REFERENCE_ERROR'],[SyntaxError.prototype,'SYNTAX_ERROR'],[URIError.prototype,'URI_ERROR'],
+ [EvalError.prototype,'EVAL_ERROR'],[AggregateError.prototype,'AGGREGATE_ERROR']]);
+const errorKinds=new Set([...nativeKinds.values(),'OTHER_NATIVE_ERROR','NON_NATIVE_THROWN','UNINSPECTED']);
+const isPaymentCaseGate=gate=>typeof gate==='string'&&caseGates.has(gate);
+function paymentErrorKind(error){
+ if(error&&typeof error==='object'&&types.isProxy(error))return 'UNINSPECTED';
+ if(!types.isNativeError(error))return 'NON_NATIVE_THROWN';
+ return nativeKinds.get(Object.getPrototypeOf(error))??'OTHER_NATIVE_ERROR';
+}
 function own(value,key){
  if(!value||typeof value!=='object'||types.isProxy(value))return undefined;
  const descriptor=Object.getOwnPropertyDescriptor(value,key);
@@ -56,9 +69,10 @@ function own(value,key){
 }
 const isPaymentFailureCode=code=>typeof code==='string'&&caseFailureCodes.has(code);
 function filterPaymentDiagnostic(value){
- const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode');
+ const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode'),caseGate=own(value,'caseGate'),errorKind=own(value,'errorKind');
  return Object.freeze({...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
-  ...(isPaymentFailureCode(originCode)?{originCode}:{})});
+  ...(isPaymentFailureCode(originCode)?{originCode}:{}),...(isPaymentCaseGate(caseGate)?{caseGate}:{}),
+  ...(typeof errorKind==='string'&&errorKinds.has(errorKind)?{errorKind}:{})});
 }
 function describePaymentDiagnostic(error){
  return error&&typeof error==='object'&&!types.isProxy(error)?remembered.get(error):undefined;
@@ -70,4 +84,4 @@ function carryPaymentDiagnostic(target,source,guardPhase){
  if(Object.keys(detail).length)remembered.set(target,detail);
  return target;
 }
-module.exports=Object.freeze({isPaymentFailureCode,filterPaymentDiagnostic,describePaymentDiagnostic,carryPaymentDiagnostic});
+module.exports=Object.freeze({isPaymentFailureCode,isPaymentCaseGate,paymentErrorKind,filterPaymentDiagnostic,describePaymentDiagnostic,carryPaymentDiagnostic});

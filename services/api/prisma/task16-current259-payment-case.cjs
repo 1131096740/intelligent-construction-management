@@ -8,7 +8,7 @@ const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs')
 const {isCurrentPaymentRuntimeMode}=require('./task16-current261-competition-profile.cjs');
 const {requestCurrent261SeedJson}=require('./task16-current261-seed-json.cjs');
 const authorization=require('./task16-current259-payment-run-authorization.cjs');
-const {describePaymentDiagnostic,filterPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
+const {describePaymentDiagnostic,filterPaymentDiagnostic,isPaymentCaseGate,paymentErrorKind}=require('./task16-current259-payment-diagnostics.cjs');
 const {paymentLoopbackForScenario,isCurrent259PaymentLoopbackTopology}=require('./task16-current259-payment-loopback.cjs');
 const {captureCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
 const fetchDescriptor=Object.getOwnPropertyDescriptor(globalThis,'fetch');
@@ -28,7 +28,9 @@ const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
- let attempted=false,permission,disconnectStage,attributionGapStage,httpPhase,httpRoute,observedHttpStatus,httpDiagnostic,caseStage='PERMIT_CLAIM';
+ let attempted=false,permission,disconnectStage,attributionGapStage,httpPhase,httpRoute,observedHttpStatus,httpDiagnostic,caseGate,caseStage='PERMIT_CLAIM';
+ // Synchronous local gates restore only after success; failure keeps its origin.
+ const atGate=(gate,operation)=>{const prior=caseGate;caseGate=gate;const result=operation();caseGate=prior;return result;};
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
   caseStage='CONTINUITY_ACTIVATION';
@@ -153,7 +155,12 @@ async function executeCurrent259PaymentCase(lease,permit){
   await original.verifyFull.call(session);check();
   httpPhase=undefined;httpRoute=undefined;
   caseStage='SELECTED_CASE';
-  const checkPrepared=()=>{check();need(equal(snapshot(prepared),frozen)&&names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k]));};
+  caseGate='COMPILED_CASE';
+  const checkPrepared=()=>{
+   atGate('PREPARED_CONTINUITY',check);
+   atGate('PREPARED_SNAPSHOT',()=>need(equal(snapshot(prepared),frozen)));
+   atGate('COMPILED_EXPORTS',()=>need(names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k])));
+  };
   let armed=false,barrierUsed=false,faultSettled=false,postCount=0,resultReads=0,rollbackEvidence;
   const gapRoutes=attributionGap?[
    ['GET',`/fund-accounts/company:${plan.ids.companyB}`],
@@ -179,7 +186,7 @@ async function executeCurrent259PaymentCase(lease,permit){
    }else need(body===undefined);
    gapBodiesChecked++;
   };
-  const assertHttpRequest=(route,method)=>{
+  const assertHttpRequest=(route,method)=>atGate('HTTP_REQUEST_AUTHORITY',()=>{
    checkPrepared();const ids=plan.ids;
    if(attributionGap){
     need(gapRouteIndex===gapBodiesChecked&&equal(gapRoutes[gapRouteIndex],[method,route]));
@@ -205,8 +212,9 @@ async function executeCurrent259PaymentCase(lease,permit){
    }
    need(method==='POST'&&route===`/payment-executions/${ids.payment}/registrations`||method==='GET'&&
     [ `/payment-executions/${ids.payment}/registration-options`,`/payment-executions/results/${ids.requestKey}`].includes(route));
-  };
+  });
   const continuity=Object.freeze({checkLight:checkPrepared,fetch:transport,assertHttpRequest,
+   markCaseGate(gate){atGate('CASE_GATE_PROTOCOL',()=>need(isPaymentCaseGate(gate)));caseGate=gate;},
    ...(permission.paymentProfile!==undefined&&isCurrentPaymentRuntimeMode(permission.paymentProfile,false)?{requestJson}:{}),
    ...(attributionGap?{assertHttpBody,markAttributionGapStage(stage){attributionGapStage=stage;}}:{})});
   const caseId=attributionGap?'registered.project-attribution-gap':'registered.null-cross-company.'+(scope.scenario==='normal'?'commit':scope.scenario);
@@ -271,7 +279,7 @@ async function executeCurrent259PaymentCase(lease,permit){
     code=name==='TimeoutError'?'TIMEOUT':name==='AbortError'?'HTTP_ABORTED':undefined;
    }catch{/* A diagnostic projection never replaces the original failure. */}
   }
-  const diagnostic=describePaymentDiagnostic(error);
+  const diagnostic=caseStage==='SELECTED_CASE'?filterPaymentDiagnostic({...describePaymentDiagnostic(error),caseGate,errorKind:paymentErrorKind(error)}):describePaymentDiagnostic(error);
   if(caseStage==='SELECTED_CASE'&&httpPhase){
    if(diagnostic)permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase,diagnostic);
    else permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase);
