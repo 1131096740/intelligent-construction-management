@@ -154,6 +154,51 @@ test("fast check includes Git type changes and escalates a release script", asyn
   }
 });
 
+for (const changedPath of [
+  "apps/web-admin/src/pages/contracts/ContractDetail.vue",
+  "services/api/src/contract/contract.service.ts"
+]) {
+  test(`fast check runs business language before package checks for ${changedPath}`, async () => {
+    const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-fast-check-test-"));
+    try {
+      const fakeGit = await writeFakeGit(testRoot, { tracked: [changedPath] });
+      const { fakePnpm, pnpmLog } = await writeFakePnpm(testRoot);
+      const result = runFastCheck({ fakeGit, fakePnpm });
+
+      assert.equal(result.status, 0, result.stderr);
+      const calls = (await readFile(pnpmLog, "utf8")).trim().split("\n");
+      assert.equal(calls[0], "check:business-language");
+      assert.equal(calls.filter((call) => call === "check:business-language").length, 1);
+    } finally {
+      await rm(testRoot, { recursive: true, force: true });
+    }
+  });
+}
+
+test("fast check stops on business language failure before expensive package checks", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-fast-check-test-"));
+  try {
+    const fakeGit = await writeFakeGit(testRoot, {
+      tracked: ["apps/web-admin/src/pages/contracts/ContractDetail.vue"]
+    });
+    const { fakePnpm, pnpmLog } = await writeFakePnpm(testRoot, {
+      failPattern: "check:business-language"
+    });
+    const result = runFastCheck({ fakeGit, fakePnpm });
+
+    assert.equal(result.status, 1);
+    assert.equal((await readFile(pnpmLog, "utf8")).trim(), "check:business-language");
+    assert.match(result.stderr, /business:language failed/u);
+    const reportLine = result.stdout.split("\n").find((line) => line.startsWith("[check:fast] report: "));
+    const report = JSON.parse(reportLine.slice("[check:fast] report: ".length));
+    assert.equal(report.exitCode, 1);
+    assert.equal(typeof report.timings["business:language"], "number");
+    assert.equal(report.commands.length, 1);
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
 test("fast check runs Web type, lint, UI, and related-test checks", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-fast-check-test-"));
   try {
