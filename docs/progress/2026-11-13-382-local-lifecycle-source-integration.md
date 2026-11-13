@@ -39,3 +39,11 @@ merger：`/private/tmp/jg-394-merger-9db5db76-20261113/RECEIPT.json`，状态 `F
 - 主控待源码诊断修复与文档收口后统一提交、推送原Draft并运行新准确SHA常规CI。本地源码集成不授权重跑88a或新的手动迁移/实付/native/Java/LO/COS门。#394/#398保持OPEN，14/45不变；无main合并、部署或生产变更。
 
 作者历史dependency隔离事件和修正仍保留在RECEIPT末段，不能由当前私有copy/SDK生成及封存连续性核验倒推过去没有缓存写入。本文件不擦除旧命令或失败记录。
+
+## 1c准确CI停止与最小中文错误提示修复
+
+上述9db后继与安全诊断2b合成文档候选`1c4b80d4532bcb34818b32477be7f84e87286cbb`，已推原Draft。[准确CI43368605137](https://github.com/1131096740/intelligent-construction-management/actions/runs/43368605137)自然结束为failure：32项中30成功、2失败。Quality job131698817932的`check:business-errors`在新增fixture.ts:41拒绝英文Error（sha256:afbb38dd10c7）；Release job131703824386仅在QUALITY_RESULT=failure时汇总拒绝。未重跑原run，不将其余30成功写成候选全绿；日志和完整快照 `/private/tmp/jg-382-ci-1c4b80d4-20261113/`。
+
+最小SOURCE后继`4acc0f807eee24653174025c12648824e3ade6c8`、tree`d481b25feca643ddd494bfe8ed81a9fdd54fdea8`仅两路径各一行：错误提示改“本地验收数据来源无效”，既有公开clone拒绝断言匹配该中文。WeakSet品牌判断、PDF构造、checker/原允许清单、权限、请求、预算和SQL不变。作者在准确1c公开CLI复现同hash RED，公开负控先RED，再最小修正GREEN；CLI扫描843生产TS、原86允许处保持，fixture3/3、checker自测、API typecheck/lint/build通过。作者回执 `/private/tmp/jg-394-business-error-ci-fix-20261113/RECEIPT.md`及CANDIDATE.json，结果是源码门，不是实际资格。
+
+独立Standards `/private/tmp/jg-394-standards-4acc0f80-20261113/REVIEW.md`硬规范/判断smell/额外正确性均0；Spec `/private/tmp/jg-394-spec-review-4acc0f80-20261113.md`为0可操作发现。merger仅FF准确1c→4acc，2路径physical/index/blob一致、353受保护文件及root未提交账本保持；`/private/tmp/jg-394-merger-4acc0f80-20261113/RECEIPT.json`。待本次文档提交后对新准确候选重跑常规CI，不继承1c部分成功。新normal261仅前置私有构建/FS核验，正式plan/sidecar尚未发行，无新manual once许可；旧88停止与实际unknown结论不变。

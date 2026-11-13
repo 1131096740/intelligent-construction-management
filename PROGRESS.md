@@ -1,5 +1,7 @@
 ## #382 安全诊断与生命周期源码合成（2026-11-13）
 
+- [~] 文档候选`1c4b80d4532bcb34818b32477be7f84e87286cbb`已推原Draft；准确CI43368605137自然终态failure，32作业为30成功/2失败。Quality在`check:business-errors`拒绝新增隔离fixture第41行英文Error；Release仅因QUALITY_RESULT=failure汇总拒绝，无第二独立产品首因，不重跑该run。最小后继`4acc0f807eee24653174025c12648824e3ade6c8`仅改中文错误提示及既有clone负控两行，公开checker与负控均有效RED→GREEN、3/3及API类型/lint/build和checker自测通过；两独立轴0发现、merger仅FF本地并保本账。checker/allowlist/品牌/权限/预算不改，待文档提交后新准确CI。新normal计划仍未prepare/verify、无新手动许可或资源执行。[后继质量门修复](docs/progress/2026-11-13-382-local-lifecycle-source-integration.md)。
+
 - [~] 安全诊断后继准确`2b1b1d402e7217c161416ab0e409e6ef160f25b8`经两轴独审均0可操作发现，原604状态串用P2已闭，merger仅FF本地integration并保root四份MD。准确后继API build/typecheck/lint及完整本地编排1813通过/0失败/1既有skip；守卫、67错误码、权限、预算与冻结SQL保持。真实88a首因仍UNKNOWN，许可不复用。当前将本地SOURCE文档一并提交到原Draft并运行新准确SHA CI，不继承旧CI；尚无新实际验收、main合并、部署或生产变更。[诊断源码回执](docs/progress/2026-11-13-382-safe-payment-diagnostics-source.md)。
 
 ## #382 源码恢复与生命周期SOURCE本地合入（历史快照，2026-11-13）
