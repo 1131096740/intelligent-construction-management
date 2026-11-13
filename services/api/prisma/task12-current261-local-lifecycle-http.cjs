@@ -1,7 +1,30 @@
 'use strict';
 const {request}=require('node:http'),{randomBytes,createHash}=require('node:crypto'),{setTimeout:delay}=require('node:timers/promises'),{types,isDeepStrictEqual:equal}=require('node:util');
 const id=x=>typeof x==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(x);
-const issued=new WeakMap();
+const issued=new WeakMap(),failures=new WeakMap();
+// Diagnostics are observations only; these entries confer no runtime authority.
+function describeCurrent261LocalLifecycleHttpFailure(cause){
+ for(let n=0;n<8&&cause&&typeof cause==='object'&&!types.isProxy(cause);n++,cause=own(cause,'cause')){
+  const detail=failures.get(cause);if(detail)return detail;
+ }
+}
+const remember=(cause,detail)=>{if(cause&&typeof cause==='object'&&!types.isProxy(cause)&&!failures.has(cause))failures.set(cause,Object.freeze({...detail}));};
+const routeTemplate=path=>{
+ const fixed=['/auth/login','/me/signature/canvas','/files','/contract-layout-templates','/contracts'];
+ if(fixed.includes(path))return path;
+ const uuid='[a-f0-9-]{36}',patterns=[
+  ['^/contracts/'+uuid+'\\?versionId='+uuid+'$','/contracts/:contractId?versionId=:versionId'],
+  ['^/contract-drafts/'+uuid+'$','/contract-drafts/:versionId'],
+  ['^/contract-drafts/'+uuid+'/(edit-lease|edit-lease/heartbeat|workbench|document-body|preview-generation|submission)$','/contract-drafts/:versionId/'],
+  ['^/contract-layout-template-versions/'+uuid+'/(source-positions|source-mapping|inspection|preview-generation|source-mapping-confirmation|submission|publication)$','/contract-layout-template-versions/:versionId/'],
+  ['^/contracts/'+uuid+'/(approval|approval-withdrawal|seal-confirmation|signed-archive)$','/contracts/:versionId/'],
+  ['^/contracts/'+uuid+'/archive-requests/'+uuid+'$','/contracts/:versionId/archive-requests/:requestId'],
+  ['^/files/'+uuid+'/download-ticket$','/files/:fileId/download-ticket'],
+  ['^/files/'+uuid+'/download\\?[^#\\r\\n]*$','/files/:fileId/download']
+ ];
+ for(const [pattern,template]of patterns){const match=new RegExp(pattern,'u').exec(path);if(match)return template+(match[1]??'');}
+ return 'UNKNOWN';
+};
 function assertCurrent261LocalLifecycleHttp(bridge){need(arguments.length===1&&bridge&&!types.isProxy(bridge)&&issued.has(bridge));issued.get(bridge)();}
 const cap=512*1024,uploadCap=8*1024*1024,docxCap=25*1024*1024,pdfCap=100000000;
 const docxMime='application/vnd.openxmlformats-officedocument.wordprocessingml.document',pdfMime='application/pdf';
@@ -9,11 +32,12 @@ const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const error=()=>Object.assign(Error('CURRENT261_LOCAL_LIFECYCLE_HTTP'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'});
 const need=ok=>{if(!ok)throw error();};
 const own=(v,k)=>v&&!types.isProxy(v)?Object.getOwnPropertyDescriptor(v,k)?.value:undefined;
-function exchange(port,method,path,headers,wire,binary){
+function exchange(port,method,path,headers,wire,binary,observe){
  const signal=AbortSignal.timeout(15000);
  return new Promise((resolve,reject)=>{
   const fail=()=>reject(error());
   const outgoing=request({hostname:'127.0.0.1',port,method,path,headers:{Host:'127.0.0.1:'+port,'Accept-Encoding':'identity',connection:'close',...headers,...(wire?{'Content-Length':wire.length}:{})},agent:false,maxHeaderSize:16384,signal},reply=>{
+   if(Number.isInteger(reply.statusCode)&&reply.statusCode>=100&&reply.statusCode<=599)observe(reply.statusCode);
    reply.once('error',fail);reply.once('aborted',fail);reply.once('close',()=>{if(!reply.complete)fail();});
    if(reply.socket?.remoteAddress!=='127.0.0.1'||reply.socket.remotePort!==port||reply.statusCode<200||reply.statusCode>=600||reply.statusCode>=300&&reply.statusCode<400||
     Object.hasOwn(reply.headers,'location')||Object.hasOwn(reply.headers,'content-range')||(reply.headers['content-encoding']&&reply.headers['content-encoding']!=='identity')){fail();reply.destroy();return;}
@@ -35,11 +59,23 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
   seed.users.every(u=>id(u.id)&&typeof u.phone==='string'&&typeof passwords[u.id]==='string'&&/^[a-f0-9]{64}$/u.test(passwords[u.id]))&&new Set(Object.values(passwords)).size===8&&
   sourceDocx instanceof Uint8Array&&Array.isArray(originals)&&originals.length===2&&originals.every(b=>b instanceof Uint8Array));
  const address=server.address,port=address.call(server)?.port;
- let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease;
+ let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false;
  const tokens=new Map(),active=new Map(),files=new Map(),tickets=new Map(),signatures=new Set();
- const check=()=>{verify();const a=address.call(server);need(available&&!failed&&server.address===address&&server.listening===true&&a?.address==='127.0.0.1'&&a.family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535&&a.port===port);};
+ const continuity=()=>{verify();const a=address.call(server);need(available&&server.address===address&&server.listening===true&&a?.address==='127.0.0.1'&&a.family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535&&a.port===port);};
+ const check=()=>{continuity();need(!failed);};
  const actorCheck=actor=>{check();need(Number.isInteger(actor)&&actor>=0&&actor<8);};
- const wire=async(method,path,headers,body,binary=false)=>{check();need(++requests<=600);const result=await exchange(port,method,path,headers,body,binary);check();return result;};
+ const wire=async(method,path,headers,body,binary=false)=>{
+  const observation={method,routeTemplate:routeTemplate(path),phase:'BEFORE_CHECK',httpStatus:null,businessOutcome:'UNKNOWN'};
+  lastObservation=undefined;
+  try{
+   check();need(++requests<=600);observation.phase='EXCHANGE';
+   const result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});
+   observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME'});return result;
+  }catch(cause){
+   if(observation.phase==='EXCHANGE')try{continuity();}catch{observation.secondaryPhase='AFTER_CHECK';}
+   remember(cause,observation);throw cause;
+  }
+ };
  const registerFile=(fileId,mimeType,expected)=>{need(id(fileId));const prior=files.get(fileId);if(prior){need(prior.mimeType===mimeType&&(!expected||prior.sizeBytes===expected.sizeBytes&&prior.sha256===expected.sha256));}else files.set(fileId,{mimeType,...expected});};
  const roleKeys=actor=>[...seed.members.filter(r=>r.userId===seed.users[actor].id).map(r=>r.positionKey),...seed.globalRoles.filter(r=>r.userId===seed.users[actor].id).map(r=>r.roleKey)].sort();
  const globalKeys=actor=>seed.globalRoles.filter(r=>r.userId===seed.users[actor].id).map(r=>r.roleKey).sort();
@@ -71,10 +107,12 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
   return !!ticket&&files.has(ticket[1])&&method==='POST'&&(actor===0||actor===7);
  };
  async function send(actor,message){
+  lastObservation=undefined;
   actorCheck(actor);need(message&&typeof message==='object'&&!types.isProxy(message));
   const descriptors=Object.getOwnPropertyDescriptors(message);need(Reflect.ownKeys(descriptors).every(k=>['method','path','json','form','headers'].includes(k)&&Object.hasOwn(descriptors[k],'value')));
   const {method,path,json,form,headers}=message;need(['GET','POST','PUT','PATCH'].includes(method)&&route(actor,method,path)&&!(json!==undefined&&form!==undefined));
   const parallel=method==='POST'&&path==='/contracts/'+versionId+'/approval'&&actor>=1&&actor<=5;
+  if(active.size===0)parallelObserved=parallel;
   need(!active.has(actor)&&(active.size===0||parallel&&[...active.values()].every(x=>x.parallel)&&active.size<5));
   const h={'content-type':'application/json','x-contract-numeric-protocol':'2',...(tokens.has(actor)?{authorization:'Bearer '+tokens.get(actor)}:{})};
   if(headers!==undefined){need(headers&&typeof headers==='object'&&!types.isProxy(headers));for(const [k,d]of Object.entries(Object.getOwnPropertyDescriptors(headers))){need(Object.hasOwn(d,'value')&&(k==='x-contract-numeric-protocol'&&d.value==='2'||k==='x-contract-draft-lease'&&typeof lease==='string'&&d.value===lease));h[k]=d.value;}}
@@ -110,9 +148,10 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
     need(mimeType===known.mimeType&&Number.isSafeInteger(sizeBytes)&&sizeBytes>0&&sizeBytes<=(mimeType===pdfMime?pdfCap:docxCap)&&(!known.sizeBytes||known.sizeBytes===sizeBytes));
     tickets.set(url,Object.freeze({fileId:target,mimeType,sizeBytes,...(known.sha256?{sha256:known.sha256}:{})}));}
    return result;
-  }catch(cause){failed=true;throw cause;}finally{active.delete(actor);drained();}
+  }catch(cause){if(lastObservation&&!parallelObserved)remember(cause,lastObservation);failed=true;throw cause;}finally{active.delete(actor);drained();}
  }
  const bridge=Object.freeze({check,send,now(){check();return Date.now();},async wait(ms){check();need(ms===1000);await delay(ms);check();},async download(actor,path){
+  lastObservation=undefined;
   actorCheck(actor);need(actor===0&&typeof path==='string'&&active.size===0);
   let ticket=tickets.get(path);if(!ticket)for(const [url,entry]of tickets){const candidate=new URL(url,'http://127.0.0.1:'+port);candidate.searchParams.set('expiresAt','2000-01-01T00:00:00.000Z');if(candidate.pathname+candidate.search===path){ticket=entry;break;}}need(ticket);
   let drained;const pending={parallel:false,done:new Promise(resolve=>{drained=resolve;})};active.set('download',pending);
@@ -120,6 +159,12 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
  }});
  issued.set(bridge,check);
  try{const result=await consume(bridge);check();need(active.size===0);return result;}
+ catch(cause){
+  if(lastObservation&&!parallelObserved&&!describeCurrent261LocalLifecycleHttpFailure(cause)){
+   const detail={...lastObservation};try{continuity();}catch{detail.secondaryPhase='AFTER_CHECK';}remember(cause,detail);
+  }
+  throw cause;
+ }
  finally{available=false;issued.delete(bridge);await Promise.allSettled([...active.values()].map(item=>item.done));tokens.clear();tickets.clear();}
 }
-module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp});
+module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp,describeCurrent261LocalLifecycleHttpFailure});

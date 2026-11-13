@@ -6,10 +6,10 @@ function model(mode){
  const fixture={approval:{users,handler:users[0],project:{id:id(20)},members:[{userId:users[0].id,positionKey:'contract_staff'},{userId:users[3].id,positionKey:'project_manager'}],globalRoles:[[1,'material_director'],[2,'contract_director'],[4,'finance_director'],[5,'general_manager'],[6,'comprehensive_director']].map(([actor,roleKey])=>({userId:users[actor].id,roleKey}))}};
  const config=Object.freeze({fixture,passwords,sourceDocx:Buffer.from('model-docx'),originals:[Buffer.from('%PDF-original1'),Buffer.from('%PDF-original2')]}),calls=[];
  const server={listening:true,address(){return{address:'127.0.0.1',family:'IPv4',port:24080};}};let live=true,claimed=false;
- const imports={'./task12-current259-document-application.cjs':{takeCurrent261LocalLifecycleHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;}},'node:http':{request(options,consume){const outgoing=new EventEmitter();outgoing.end=wire=>{calls.push({options,wire});queueMicrotask(()=>{const response=new EventEmitter();response.complete=true;response.socket={remoteAddress:mode==='foreign-peer'?'127.0.0.2':'127.0.0.1',remotePort:24080};response.headers=mode==='redirect'?{location:'https://invalid.example'}:{};response.statusCode=201;response.destroy=()=>{};const actor=options.path==='/auth/login'?users.findIndex(u=>u.phone===JSON.parse(wire).phone):0,roles=[...fixture.approval.members.filter(r=>r.userId===users[actor].id).map(r=>r.positionKey),...fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)];let body=options.path==='/auth/login'?{user:{id:users[actor].id,phone:users[actor].phone,mustChangePassword:false,roleKeys:roles,globalRoleKeys:fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)},tokens:{accessToken:actor?'model'+actor+'.access.token':'model.access.token'}}:{contract:{id:id(21)},version:{id:id(22)}};if(options.path.endsWith('/workbench')){body={documents:[{docxFileId:id(50),pdfFileId:id(51)}]};response.statusCode=200;}
+ const imports={'./task12-current259-document-application.cjs':{takeCurrent261LocalLifecycleHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;}},'node:http':{request(options,consume){const outgoing=new EventEmitter();outgoing.end=wire=>{calls.push({options,wire});queueMicrotask(()=>{if(mode==='transport-and-postcheck'){live=false;outgoing.emit('error',Error('PRIVATE_TRANSPORT'));return;}const response=new EventEmitter();response.complete=true;response.socket={remoteAddress:mode==='foreign-peer'?'127.0.0.2':'127.0.0.1',remotePort:24080};response.headers=mode==='redirect'?{location:'https://invalid.example'}:{};response.statusCode=201;response.destroy=()=>{};const actor=options.path==='/auth/login'?users.findIndex(u=>u.phone===JSON.parse(wire).phone):0,roles=[...fixture.approval.members.filter(r=>r.userId===users[actor].id).map(r=>r.positionKey),...fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)];let body=options.path==='/auth/login'?{user:{id:users[actor].id,phone:users[actor].phone,mustChangePassword:false,roleKeys:roles,globalRoleKeys:fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)},tokens:{accessToken:actor?'model'+actor+'.access.token':'model.access.token'}}:{contract:{id:id(21)},version:{id:id(22)}};if(options.path.endsWith('/workbench')){body={documents:[{docxFileId:id(50),pdfFileId:id(51)}]};response.statusCode=200;}
  if(options.path.endsWith('/download-ticket'))body={downloadUrl:'/files/'+id(51)+'/download?token=model',mimeType:'application/pdf',sizeBytes:1024*1024};
  const binary=options.path.includes('/download?');let bytes=Buffer.from(JSON.stringify(body));if(binary){bytes=Buffer.alloc(1024*1024,65);Buffer.from('%PDF-').copy(bytes);response.statusCode=200;response.headers={'content-type':mode==='wrong-mime'?'text/html':'application/pdf','content-length':String(mode==='wrong-size'?bytes.length+1:bytes.length)};}
- consume(response);response.emit('data',bytes.subarray(0,100));response.emit('data',bytes.subarray(100));response.emit('end');});};return outgoing;}}};
+ consume(response);response.emit('data',bytes.subarray(0,100));response.emit('data',bytes.subarray(100));response.emit('end');if(mode==='returned-and-postcheck')live=false;});};return outgoing;}}};
  const holder={exports:{}};new Function('require','module',fs.readFileSync(path.join(__dirname,'task12-current261-local-lifecycle-http.cjs'),'utf8'))(name=>imports[name]??require(name),holder);
  return{api:holder.exports,config,server,calls,close(){live=false;},verify(){assert.equal(live,true);},verifyToken(token){const actor=Number(token.match(/^model(\d*)\./u)[1]||0);return{sub:users[actor].id,phone:users[actor].phone,type:'access',ver:0};}};
 }
@@ -62,4 +62,42 @@ test('the fixed total HTTP request cap stops before sending another request and 
   for(let i=2;i<600;i++)await b.send(0,{method:'GET',path:'/contract-drafts/'+id(22)+'/workbench'});
   await assert.rejects(b.send(0,{method:'GET',path:'/contract-drafts/'+id(22)+'/workbench'}),/LIFECYCLE_HTTP/u);
  }),/LIFECYCLE_HTTP/u);assert.equal(f.calls.length,600);
+});
+
+for(const [mode,phase,httpStatus,secondaryPhase]of [
+ ['transport-and-postcheck','EXCHANGE',null,'AFTER_CHECK'],
+ ['returned-and-postcheck','AFTER_CHECK',201,undefined]
+])test('life diagnostics preserve '+mode+' without asserting business success',async()=>{
+ const f=model(mode);let first;
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,b=>b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}})),cause=>{first=cause;return true;});
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);
+ assert.deepEqual(detail,{method:'POST',routeTemplate:'/auth/login',phase,httpStatus,businessOutcome:'UNKNOWN',...(secondaryPhase?{secondaryPhase}:{})});
+ assert.equal(f.api.describeCurrent261LocalLifecycleHttpFailure({code:'CURRENT261_LOCAL_LIFECYCLE_HTTP',httpStatus:201,routeTemplate:'/auth/login'}),undefined);
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|199000|password|token|10000000/u);
+});
+
+test('a consume failure keeps its identity and records only the preceding response observation',async()=>{
+ const f=model(),business=Object.assign(Error('PRIVATE_BUSINESS'),{code:'CURRENT261_LOCAL_LIFECYCLE_OWNER_OUTPUT'});
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
+  f.close();throw business;
+ }),cause=>cause===business);
+ assert.deepEqual(f.api.describeCurrent261LocalLifecycleHttpFailure(business),{method:'POST',routeTemplate:'/auth/login',phase:'CONSUME',httpStatus:201,businessOutcome:'UNKNOWN',secondaryPhase:'AFTER_CHECK'});
+});
+
+test('diagnostics redact dynamic route coordinates and do not borrow a prior response after a failed precheck',async()=>{
+ const f=model(),business=Error('PRIVATE_AFTER_RESPONSE');
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase',amountLimitType:'capped'}});
+  await b.send(0,{method:'GET',path:'/contracts/'+id(21)+'?versionId='+id(22)});throw business;
+ }),cause=>cause===business);
+ assert.equal(f.api.describeCurrent261LocalLifecycleHttpFailure(business).routeTemplate,'/contracts/:contractId?versionId=:versionId');
+ assert.doesNotMatch(JSON.stringify(f.api.describeCurrent261LocalLifecycleHttpFailure(business)),/10000000|PRIVATE/u);
+ const g=model();let current;
+ await assert.rejects(g.api.withCurrent261LocalLifecycleHttp(g.config,g.server,g.verify,g.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:g.config.fixture.approval.users[0].phone,password:g.config.passwords[id(1)]}});
+  g.close();try{await b.send(0,{method:'POST',path:'/contracts',json:{}});}catch(cause){current=cause;throw cause;}
+ }));
+ assert.equal(g.api.describeCurrent261LocalLifecycleHttpFailure(current),undefined);
 });

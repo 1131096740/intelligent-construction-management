@@ -32,6 +32,7 @@ function checkHostEnv(){
 
 const reasonCodes=new Set([
  'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING','TASK12_OFFICIAL_DOCUMENT_SOURCE','TASK12_OFFICIAL_DOCUMENT_SCOPE','TASK12_OFFICIAL_DOCUMENT_DEADLINE','TASK12_OFFICIAL_DOCUMENT_READER',
+ 'CURRENT261_LOCAL_LIFECYCLE_HTTP','CURRENT259_LOADER_CHANGED',
  'CURRENT261_LOCAL_LIFECYCLE_OWNER_OUTPUT','CURRENT261_LOCAL_LIFECYCLE_OWNER_FACTS','CURRENT261_LOCAL_LIFECYCLE_OWNER_FAULT_UNKNOWN',
  'TASK01_RESOURCE_START_FAILED','CURRENT259_RESOURCE_CLEANUP_UNKNOWN','CURRENT259_BUILD_SOURCE_NOT_CLEAN',
  'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','LOCAL_MIGRATION_SQL_STAGE203_READBACK',
@@ -98,7 +99,7 @@ function safeCleanup(cause,scopeEntered){
 
 async function main(){
  let attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
- let writeReceipt,technicalFailure,failureStage,sevenFailure;
+ let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure;
  const controller=new AbortController(),abort=()=>controller.abort();
  try{
   need(FRESH,'FRESH');
@@ -123,10 +124,11 @@ async function main(){
   const {withOfficialTask12DocumentRuntime}=require('./task12-current259-generated-document-runtime.cjs');
   const {withCurrent261LocalLifecyclePublicApplication}=require('./task12-current259-document-login.cjs');
   const {projectCurrent261LocalLifecycleOutcome}=require('./task12-current261-local-lifecycle-exercise.cjs');
+  const {describeCurrent261LocalLifecycleHttpFailure}=require('./task12-current261-local-lifecycle-http.cjs');
   need([read,withCurrent259FirstQ2LoopbackResource,createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure,provisionCurrent259Roles,
    installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent261GeneratedLifecycleOrdinaryAcl,
    provisionCurrent261GeneratedLifecycleDocumentRoles,installCurrent261GeneratedLifecycleDocumentAcl,withOfficialTask12DocumentRuntime,
-   withCurrent261LocalLifecyclePublicApplication,projectCurrent261LocalLifecycleOutcome]
+   withCurrent261LocalLifecyclePublicApplication,projectCurrent261LocalLifecycleOutcome,describeCurrent261LocalLifecycleHttpFailure]
    .every(fn=>typeof fn==='function'),'DEPENDENCIES');
 
   process.once('SIGINT',abort);process.once('SIGTERM',abort);
@@ -151,10 +153,11 @@ async function main(){
   };
 
   const stage=async(name,work)=>{
-   phase=name;check();
+   phase=name;
    let value;
-   try{value=await work();}
+   try{check();value=await work();check();}
    catch(cause){
+    if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause)};
     if(name===phase){
      failureStage=safeStage(cause,name);
      try{
@@ -168,7 +171,7 @@ async function main(){
     }
     throw cause;
    }
-   check();return value;
+   return value;
   };
 
   phase='RESOURCE';check();resourceEntered=true;
@@ -209,7 +212,11 @@ async function main(){
  }catch(cause){
   process.exitCode=1;
   if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
-  const reason=safeReason(cause),proof={...(reason?{reason}:{}),...(technicalFailure?{technicalFailure}:{}),
+  const primary=firstFailure?.cause??cause,reason=safeReason(primary);
+  const proof={...(reason?{reason}:{}),...(firstFailure?{failurePhase:firstFailure.phase}:{}),
+   ...(firstFailure?.httpFailure?{httpFailure:firstFailure.httpFailure}:{}),
+   ...(firstFailure&&cause!==primary?{secondaryReason:safeReason(cause)??'UNCLASSIFIED',secondaryPhase:'UNWIND'}:{}),
+   ...(scopeEntered?{businessOutcome:'UNKNOWN'}:{}),...(technicalFailure?{technicalFailure}:{}),
    ...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};
   let receiptWriteFailed=reason==='CURRENT261_LOCAL_LIFECYCLE_ONCE_RECEIPT';
   if(attempted&&writeReceipt&&!receiptWriteFailed){
