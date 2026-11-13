@@ -57,19 +57,25 @@ const loginReasons=new Set([
  ...['HANDLE','DESCRIPTOR','PROVIDERS','MODULE','COMPILE','CREATE','INIT','LISTEN','HTTP','USE','CLOSE','TIMEOUT'].map(stage=>'ROLE_APP_'+stage)
 ]);
 
-// Closed diagnostic values from the original HBA producer. They do not
-// grant execution and are recognized only below the login CONSUME wrapper.
-const documentHbaReasons=new Set([
+// Closed diagnostic values from the existing resource callgraph. They do
+// not identify an HBA cause or grant execution; only login CONSUME may emit them.
+const documentConsumeResourceReasons=new Set([
  'TASK01_RESOURCE_DOCUMENT_HBA_SCOPE','TASK01_RESOURCE_DOCUMENT_HBA_PREIMAGE',
  'TASK01_RESOURCE_DOCUMENT_HBA_READBACK','TASK01_RESOURCE_DOCUMENT_HBA_FILE',
- 'TASK01_RESOURCE_DOCUMENT_HBA_RELOAD','TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT'
+ 'TASK01_RESOURCE_DOCUMENT_HBA_RELOAD','TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT',
+ 'TASK01_RESOURCE_ABORTED_OR_TIMEOUT','TASK01_RESOURCE_COMMAND_TIMEOUT','TASK01_RESOURCE_ABORTED',
+ 'TASK01_RESOURCE_OUTPUT_LIMIT','TASK01_RESOURCE_COMMAND_FAILED','TASK01_RESOURCE_DAEMON_CHANGED',
+ 'TASK01_RESOURCE_NETWORK_CHANGED','TASK01_RESOURCE_NETWORK_OTHER_OWNER','TASK01_RESOURCE_CONTAINER_CHANGED',
+ 'TASK01_RESOURCE_LIMITS_CHANGED','TASK01_RESOURCE_MOUNTS_CHANGED','TASK01_RESOURCE_PORT_CHANGED',
+ 'TASK01_RESOURCE_UNEXPECTED_IMAGE_VOLUME','TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED','TASK01_RESOURCE_SQL_INPUT_INVALID',
+ 'TASK01_RESOURCE_CLOSED','TASK01_RESOURCE_RECEIPT_PATH_CHANGED','TASK01_RESOURCE_METADATA_INVALID','TASK01_RESOURCE_OPERATION_FAILED'
 ]);
 function safeDocumentLoginFailure(cause){
  const seen=new WeakSet();let documentConsume=false;
  for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause)&&!seen.has(cause);i++,cause=own(cause,'cause')){
   seen.add(cause);const code=own(cause,'code');
   if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&own(cause,'phase')==='CONSUME')documentConsume=true;
-  if(documentConsume&&documentHbaReasons.has(code))return Object.freeze({phase:'CONSUME',resourceCode:code});
+  if(documentConsume&&documentConsumeResourceReasons.has(code))return Object.freeze({phase:'CONSUME',resourceCode:code});
  }
  return undefined;
 }
