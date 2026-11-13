@@ -42,6 +42,8 @@ function freePort() {
 async function waitForPostgres(containerName, dockerEnv) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
+      const init = await run(docker, ["exec", containerName, "cat", "/proc/1/comm"], { env: dockerEnv });
+      if (init.trim() !== "postgres") throw new Error("PostgreSQL 尚未接管 PID 1");
       await run(docker, ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", databaseName], { env: dockerEnv });
       return;
     } catch {
