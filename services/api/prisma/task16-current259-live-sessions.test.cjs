@@ -801,3 +801,15 @@ for(const options of [
   ()=>assert.fail('wrong voucher qualification issued a session')),/FAILED_CLOSED/u);
  assert.equal(f.resourceClosed(),1);
 });
+
+test('live continuity wrapping retains the known original code without private exception text',async()=>{
+ let drift=false,stopped;
+ const f=fixture({onRead(){if(drift)throw Object.assign(new Error('private credential SQL URL'),{code:'CURRENT259_BUILD_CHANGED'});}});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);drift=true;
+  try{session.checkLight();}catch(error){stopped=error;throw error;}
+ }));
+ const detail=require('./task16-current259-payment-diagnostics.cjs').describePaymentDiagnostic(stopped);
+ assert.deepEqual(detail,{guardPhase:'LIVE_SESSION_LIGHT',originCode:'CURRENT259_BUILD_CHANGED'});
+ assert.equal(f.resourceClosed(),1);assert.doesNotMatch(JSON.stringify(detail),/private|credential|SQL URL/u);
+});

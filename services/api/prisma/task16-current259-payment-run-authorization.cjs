@@ -40,25 +40,15 @@ const voucherFailureCodes=new Map([
 const caseFailureStages=new Set(['APPLICATION_LEASE','PERMIT_CLAIM','CONTINUITY_ACTIVATION','CASE_SETUP',
  'PRE_SEED_AUTHORITY','PRE_SEED_LIVE','SEED_FIXTURE','SEED_IDENTITY','SEED_PREPARE','SEED_OWNER_TRANSACTION',
  'SEED_LOGIN','SEED_OPENING','POST_SEED_AUTHORITY','POST_SEED_LIVE','SELECTED_CASE','FINAL']);
-const caseFailureCodes=new Set(['PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY','PAYMENT_INSTALL_ONCE_BUSINESS_CONTINUITY',
- 'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED','PAYMENT_BUSINESS_PLAN_FILE','PAYMENT_INSTALL_PLAN_FILE',
- 'CURRENT259_RESOURCE_CLOSED','CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','CURRENT259_LIVE_SESSIONS_VERIFICATION',
- 'CURRENT259_LIVE_SESSIONS_CONTINUITY','TASK16_APP_HANDLE','TASK16_APP_FAILED_CLOSED','TASK16_CURRENT259_CATALOG',
- 'TASK16_FIXTURE_FAILED_CLOSED','P1001','P1002','P1008','P1010','P1011','P1017','P2002','P2003','P2010','P2024','P2025','P2028','P2034',
- 'PG_RESOURCE_IDENTITY','PG_RESOURCE_DATABASE_VERSION','PG_RESOURCE_ROLE_PID_BINDING','PG_RESOURCE_OBSERVER_READ_ONLY',
- 'PG_RESOURCE_RUNTIME_PRIVILEGES','PG_RESOURCE_OBSERVER_PRIVILEGES','PG_RESOURCE_PREPARED_FUNCTIONS',
- 'PG_RESOURCE_PREPARED_PROJECTION_TRIGGERS','PG_FIXTURE_REAL_HTTP_LOGIN','PG_FIXTURE_REAL_HTTP_OPENING',
- 'PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED','TIMEOUT','CURRENT259_PAYMENT_CASE_FAILED_CLOSED','CURRENT261_SEED_JSON_FAILED_CLOSED',
- 'CURRENT259_BUSINESS_CONTINUITY','CURRENT259_LIVE_SESSIONS_FAILED_CLOSED','CURRENT259_OWNED_METHOD','CURRENT259_LOADER_HOOKS','CURRENT259_BUILD_ENVIRONMENT','TASK16_APP_RUNTIME_PROVIDER','TASK16_APP_IMPACT_READER_PROOF','TASK16_APP_ADDRESS','TASK16_APP_PRIOR_CHANGED','TASK16_APP_METHOD_CHANGED','TASK16_APP_ENVIRONMENT_CHANGED','TASK16_APP_STORAGE_CHANGED','PAYMENT_INSTALL_ONCE_IMPORT_CHANGED',
- 'PG_RESOURCE_HTTP_ROUTE','PG_RESOURCE_HTTP_BUDGET','PG_RESOURCE_HTTP_TARGET_ORIGIN','PG_RESOURCE_SEED_HTTP_ROUTE','PG_RESOURCE_HTTP_TRANSPORT','PG_RESOURCE_HTTP_RESPONSE','PG_RESOURCE_HTTP_RESPONSE_ORIGIN',
- 'HTTP_CONNECTION_REFUSED','HTTP_CONNECTION_RESET','HTTP_CONNECT_TIMEOUT','HTTP_RESPONSE_TIMEOUT','HTTP_SOCKET_CLOSED','HTTP_ABORTED']);
+const {isPaymentFailureCode,filterPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
+const caseFailureCodes=Object.freeze({has:isPaymentFailureCode});
 const seedHttpPhases=new Set(['BEFORE_CHECK','TARGET','FETCH','BODY','AFTER_CHECK','RESPONSE_RETURNED']);
 const seedHttpStatuses=new Set([200,201,400,401,403,404,409,422,429,500,503]);
-function recordCaseFailure(entry,stage,code,httpStatus,httpPhase){
+function recordCaseFailure(entry,stage,code,httpStatus,httpPhase,diagnostic){
  if(entry?.recordCaseFailure&&caseFailureStages.has(stage))entry.caseFailure??=Object.freeze({stage,
   ...(caseFailureCodes.has(code)?{code}:{}),
   ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING')&&seedHttpStatuses.has(httpStatus)?{httpStatus}:{}),
-  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING'||stage==='SELECTED_CASE')&&seedHttpPhases.has(httpPhase)?{httpPhase}:{})});
+  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING'||stage==='SELECTED_CASE')&&seedHttpPhases.has(httpPhase)?{httpPhase}:{}),...filterPaymentDiagnostic(diagnostic)});
 }
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
@@ -190,7 +180,7 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
    ...(entry.paymentProfile!==undefined?{paymentProfile:entry.paymentProfile}:{}),
    ...(entry.effectiveAccessBinding?{effectiveAccessBinding:entry.effectiveAccessBinding}:{}),
    ...(entry.seedProfile?{seedProfile:entry.seedProfile}:{}),
-   ...(entry.recordCaseFailure?{recordCaseFailure(stage,code,httpStatus,httpPhase){recordCaseFailure(entry,stage,code,httpStatus,httpPhase);}}:{}),
+   ...(entry.recordCaseFailure?{recordCaseFailure(stage,code,httpStatus,httpPhase,diagnostic){recordCaseFailure(entry,stage,code,httpStatus,httpPhase,diagnostic);}}:{}),
    ...(gap?{recordAttributionGapFailure(stage){
     const code=attributionGapFailureCodes.get(stage);
     if(code&&entry===currentRun?.business&&entry.active&&entry.claimed)entry.attributionGapFailure??=Object.freeze({stage,code});
@@ -212,6 +202,8 @@ function original(relative,names){
  const slots=Object.fromEntries(names.map(key=>{const d=Object.getOwnPropertyDescriptor(exports,key);need(d&&Object.hasOwn(d,'value')&&typeof d.value==='function','IMPORT');return [key,d];}));
  records.push({file,exports,loaded,slots});return exports;
 }
+const diagnosticExports=original('./task16-current259-payment-diagnostics.cjs',['isPaymentFailureCode','filterPaymentDiagnostic','describePaymentDiagnostic','carryPaymentDiagnostic']);
+need(diagnosticExports.isPaymentFailureCode===isPaymentFailureCode&&diagnosticExports.filterPaymentDiagnostic===filterPaymentDiagnostic,'IMPORT');
 const {installCurrent259B7}=original('./task16-current259-b7-install.cjs',['installCurrent259B7']);
 const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=original('./local-staged-current259-profile.cjs',
  ['createCurrent259TechnicalMigration','describeCurrent259TechnicalFailure']);

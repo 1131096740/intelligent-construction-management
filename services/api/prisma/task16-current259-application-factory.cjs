@@ -15,6 +15,7 @@ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {createCurrent259ImpactRuntime}=require('./task16-current259-impact-runtime.cjs');
 const {current259OwnedApplicationMethod,current259OwnedApplicationView,inspectCurrent259OwnedPaymentProviders,
  isCurrent259OwnedModule,createCurrent259OwnedApplication:createOwnedNestApplication,takeCurrent259CreationFailure}=require('./task16-current259-client-loader.cjs');
+const {carryPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
 const REQUEST=Object.freeze([
  ['application','database/task16-registered-application.module.js'],['database','database/prisma.service.js'],
  ['security','api-security.js'],['projection','operating-projection/projection-export-json.js'],
@@ -193,7 +194,7 @@ const {ownsActiveTask16SimulationContext}=require('./run-task16-registered-pg-lo
 function peekCurrent259Application(context){
  const clients=context&&Object.getOwnPropertyDescriptor(context,'clients')?.value;
  const admission=clients&&admissions.get(clients);
- if(!admission||admission.context!==context)throw fault('TASK16_APP_IMPACT_READER_PROOF');
+ if(!admission||admission.context!==context)throw carryPaymentDiagnostic(fault('TASK16_APP_IMPACT_READER_PROOF'),undefined,'ADMISSION_LOOKUP');
  admission.check();return admission;
 }
 function claimCurrent259Application(context){
@@ -294,19 +295,24 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
   const binding=Object.freeze({sourceSha:profile.candidateSha,sourceSealSha256:profile.sealSha256,registeredManifestSha256:registered.manifestSha256,
    ...(effectiveAccessBinding?{effectiveAccessBinding}: {})});
   const check=()=>{
+   let guardPhase='APPLICATION_STATE';
    try{
     need(active&&!broken&&!aborted.call(signal),code);
+    guardPhase='PROFILE_BINDING';
     need(Object.getOwnPropertyDescriptor(session,'paymentProfile')?.value===paymentProfile&&equal(Object.getOwnPropertyDescriptor(session,'effectiveAccessBinding')?.value,effectiveAccessBinding),code);
-    if(businessToken){businessIssuer(businessToken,handle);need(typeof checkSessionContinuity==='function'&&own(session,'checkContinuity')===checkSessionContinuity&&own(session,'activateBusinessContinuity')===activateSession,code);checkSessionContinuity.call(session,businessToken);view.checkLifetime();}
+    guardPhase='SESSION_CONTINUITY';
+    if(businessToken){businessIssuer(businessToken,handle);need(typeof checkSessionContinuity==='function'&&own(session,'checkContinuity')===checkSessionContinuity&&own(session,'activateBusinessContinuity')===activateSession,code);checkSessionContinuity.call(session,businessToken);guardPhase='RESOURCE_LIFETIME';view.checkLifetime();}
     else checkSession.call(session);
+    guardPhase='RESOURCE_VIEW_SOURCE_METHODS';
     need((businessToken?claimCurrent259TechnicalResourceContinuity(handle,businessToken):claimCurrent259TechnicalResource(handle))===view&&view.loader===loader&&own(loader,'Class')===Class&&
      own(loader,'loadApplicationModules')===load&&own(loader,'createTestingModule')===create&&
      own(session,'source')===source&&own(session,'checkLight')===checkSession&&
      JSON.stringify(qualifyCurrent259Source(source))===sourceSnapshot&&
      view.source.candidateSha===profile.candidateSha&&view.source.sourceSealSha256===profile.sealSha256&&
      fields.every(key=>own(session,key)===original[key]),code);
+    guardPhase='APP_METHOD_IDENTITY';
     if(app)need(own(app,'inspect')===appInspect&&own(app,'close')===appClose,code);
-   }catch{broken=true;revoke();if(app)void close().catch(()=>{});throw fault(code);}
+   }catch(error){const failure=carryPaymentDiagnostic(fault(code),error,guardPhase);broken=true;revoke();if(app)void close().catch(()=>{});throw failure;}
   };
   clients=Object.freeze({status:'CLIENTS_CONNECTED_AND_IDENTITY_MATCHED',...original,sourceBinding:binding,checkLight:check});
   context=Object.freeze({clients,source,registeredAccess:registered,options:Object.freeze({artifactsDir:path.dirname(path.dirname(view.resource.caPath))}),signal});
@@ -333,7 +339,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    runtime:original.runtime,sourceBinding:binding,environmentPreparationImplemented:false,financialAcceptance:false,
    inspect(){
     try{check();return appInspect.call(app);}
-    catch{broken=true;revoke();void close().catch(()=>{});throw fault('TASK16_APP_FAILED_CLOSED');}
+    catch(error){const failure=carryPaymentDiagnostic(fault('TASK16_APP_FAILED_CLOSED'),error,'APP_INSPECTION');broken=true;revoke();void close().catch(()=>{});throw failure;}
    }});
   const boundedInspection=pair||retirement||Object.getOwnPropertyDescriptor(session,'disconnectReplacement')?.value===true;
   const inspectScoped=boundedInspection?competitionInspections.get(app):undefined;

@@ -14,7 +14,7 @@ async function requestCurrent261SeedJson(target,init,timeoutMs,onBody){
  const deadline=performance.now()+timeoutMs;
  const signal=AbortSignal.timeout(timeoutMs);
  const response=await nativeFetch(target,{...init,signal});
- if(onBody)onBody();
+ if(onBody)onBody(response.status);
  const body=await response.json();
  signal.throwIfAborted();
  if(performance.now()>deadline)throw new DOMException('Network response deadline exceeded','TimeoutError');

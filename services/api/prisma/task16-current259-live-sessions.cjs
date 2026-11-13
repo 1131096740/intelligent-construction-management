@@ -1,6 +1,7 @@
 'use strict';
 const {assertCurrent259BusinessIssuer:businessIssuer,assertCurrent259CommitCancellationIssuer,assertCurrent259CommitDisconnectIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
 const { randomBytes } = require('node:crypto');
+const {carryPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
 const { performance } = require('node:perf_hooks');
 const { setTimeout: delay } = require('node:timers/promises');
 const { createCurrent259A16FaultPlan } = require('./task16-current259-a16-fault.cjs');
@@ -199,10 +200,11 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
         need(entry.registered, 'CLIENT_REGISTRATION_UNKNOWN');
         need(METHOD_NAMES.every(key => entry.client[key] === entry.methods[key]), 'METHOD_CHANGED');
       }
-    } catch {
+    } catch (error) {
+      const failure=carryPaymentDiagnostic(fail('CONTINUITY'),error,'LIVE_SESSION_LIGHT');
       broken = true; active = false;
       void closeResource();
-      throw fail('CONTINUITY');
+      throw failure;
     }
   }
   function checkContinuity(token) {
@@ -225,10 +227,11 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
         need(entry.registered, 'CLIENT_REGISTRATION_UNKNOWN');
         need(METHOD_NAMES.every(key => entry.client[key] === entry.methods[key]), 'METHOD_CHANGED');
       }
-    } catch {
+    } catch (error) {
+      const failure=carryPaymentDiagnostic(fail('CONTINUITY'),error,'LIVE_SESSION_CONTINUITY');
       broken = true; active = false;
       void closeResource();
-      throw fail('CONTINUITY');
+      throw failure;
     }
   }
   function activateBusinessContinuity(token,lane){

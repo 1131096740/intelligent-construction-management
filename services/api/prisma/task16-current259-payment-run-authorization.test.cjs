@@ -471,6 +471,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  const entry=path.join(base,'services/api/prisma/task16-current259-payment-run-authorization.cjs');
  const write=(relative,content)=>{const target=path.join(base,relative);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,content,{mode:0o600});};
  write('services/api/prisma/task16-current259-payment-run-authorization.cjs',fs.readFileSync(file,'utf8'));
+ write('services/api/prisma/task16-current259-payment-diagnostics.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-diagnostics.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-payment-loopback.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-loopback.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-profile.cjs'),'utf8'));
  write('services/api/prisma/task16-current261-competition-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current261-competition-profile.cjs'),'utf8'));
@@ -1117,4 +1118,28 @@ for(const mode of ['missing','hash','profile','count'])test('normal261 issuer re
  const f=ordinaryBusinessFailureFixture(t,{applicationBinding(binding){return mode==='missing'?undefined:{...binding,...(mode==='hash'?{accessPlanSha256:'0'.repeat(64)}:mode==='profile'?{paymentProfile:'TASK12_ARCHIVE261_SOURCE_V1'}:{insertAdditionCount:8})};}}),result=await f.done;
  assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_APPLICATION',JSON.stringify(result));
  assert.equal(f.state.calls.includes('case'),false);
+});
+
+test('normal receipt latches the first approved guard diagnostic without arbitrary error data',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{onBusiness({lease}){
+  lease.recordCaseFailure('SEED_LOGIN','TASK16_APP_IMPACT_READER_PROOF',503,'AFTER_CHECK',
+   {guardPhase:'RESOURCE_VIEW_SOURCE_METHODS',originCode:'CURRENT259_RESOURCE_CLOSED',message:'private SQL URL token'});
+  lease.recordCaseFailure('SEED_LOGIN','P2028',500,'FETCH',{guardPhase:'APP_METHOD_IDENTITY',originCode:'P2028'});
+ },caseFailure:new Error('private first failure')});
+ await f.done;const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SEED_LOGIN',code:'TASK16_APP_IMPACT_READER_PROOF',httpStatus:503,httpPhase:'AFTER_CHECK',guardPhase:'RESOURCE_VIEW_SOURCE_METHODS',originCode:'CURRENT259_RESOURCE_CLOSED'});
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.doesNotMatch(text,/private|SQL URL token/u);
+});
+
+for(const kind of ['unknown','getters','proxy'])test('receipt diagnostics refuse '+kind+' data without evaluating private values',async t=>{
+ let traps=0;
+ const diagnostic=kind==='unknown'?{guardPhase:'private phase',originCode:'private credential SQL URL',stack:'private stack',body:'private body'}:
+  kind==='proxy'?new Proxy({},{get(){traps++;throw Error('private proxy');},getOwnPropertyDescriptor(){traps++;throw Error('private proxy');}}):
+  Object.defineProperties({},{guardPhase:{get(){traps++;throw Error('private phase getter');}},originCode:{get(){traps++;throw Error('private code getter');}}});
+ const f=ordinaryBusinessFailureFixture(t,{onBusiness({lease}){
+  lease.recordCaseFailure('SEED_LOGIN','TASK16_APP_IMPACT_READER_PROOF',503,'AFTER_CHECK',diagnostic);
+ },caseFailure:new Error('private outer')});
+ await f.done;const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SEED_LOGIN',code:'TASK16_APP_IMPACT_READER_PROOF',httpStatus:503,httpPhase:'AFTER_CHECK'});
+ assert.equal(traps,0);assert.doesNotMatch(text,/private|credential|SQL URL/u);
 });

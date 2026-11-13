@@ -8,6 +8,7 @@ const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs')
 const {isCurrentPaymentRuntimeMode}=require('./task16-current261-competition-profile.cjs');
 const {requestCurrent261SeedJson}=require('./task16-current261-seed-json.cjs');
 const authorization=require('./task16-current259-payment-run-authorization.cjs');
+const {describePaymentDiagnostic,filterPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
 const {paymentLoopbackForScenario,isCurrent259PaymentLoopbackTopology}=require('./task16-current259-payment-loopback.cjs');
 const {captureCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
 const fetchDescriptor=Object.getOwnPropertyDescriptor(globalThis,'fetch');
@@ -27,7 +28,7 @@ const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
- let attempted=false,permission,disconnectStage,attributionGapStage,httpPhase,httpRoute,caseStage='PERMIT_CLAIM';
+ let attempted=false,permission,disconnectStage,attributionGapStage,httpPhase,httpRoute,observedHttpStatus,httpDiagnostic,caseStage='PERMIT_CLAIM';
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
   caseStage='CONTINUITY_ACTIVATION';
@@ -98,27 +99,32 @@ async function executeCurrent259PaymentCase(lease,permit){
   const execution=Object.freeze({proof,owner:original.owner,runtime:original.runtime,observer:original.observer,
    password:prior?.password??randomBytes(32).toString('hex'),httpTimeoutMs:5000});
   const checkHttpTarget=target=>{
-   httpRoute=undefined;httpPhase='BEFORE_CHECK';check();
+   httpRoute=undefined;observedHttpStatus=undefined;httpDiagnostic=undefined;httpPhase='BEFORE_CHECK';check();
    httpPhase='TARGET';
    const url=new URL(target);httpRoute=url.pathname;
    need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);
   };
   const transport=async(target,init)=>{
-   checkHttpTarget(target);
-   httpPhase='FETCH';
-   const response=await originalFetch(target,init);
-   httpPhase='AFTER_CHECK';check();
-   httpPhase='RESPONSE_RETURNED';
-   return response;
+   try{
+    checkHttpTarget(target);
+    httpPhase='FETCH';
+    const response=await originalFetch(target,init);
+    observedHttpStatus=response.status;
+    httpPhase='AFTER_CHECK';check();
+    httpPhase='RESPONSE_RETURNED';
+    return response;
+   }catch(error){httpDiagnostic??=describePaymentDiagnostic(error);throw error;}
   };
   const requestJson=async(target,init,timeoutMs)=>{
-   checkHttpTarget(target);
-   need(timeoutMs===5000&&timeoutMs===execution.httpTimeoutMs&&!Object.hasOwn(init,'signal'));
-   httpPhase='FETCH';
-   const result=await requestCurrent261SeedJson(target,init,timeoutMs,()=>{httpPhase='BODY';});
-   httpPhase='AFTER_CHECK';check();
-   httpPhase='RESPONSE_RETURNED';
-   return result;
+   try{
+    checkHttpTarget(target);
+    need(timeoutMs===5000&&timeoutMs===execution.httpTimeoutMs&&!Object.hasOwn(init,'signal'));
+    httpPhase='FETCH';
+    const result=await requestCurrent261SeedJson(target,init,timeoutMs,status=>{httpPhase='BODY';observedHttpStatus=status;});
+    httpPhase='AFTER_CHECK';check();
+    httpPhase='RESPONSE_RETURNED';
+    return result;
+   }catch(error){httpDiagnostic??=describePaymentDiagnostic(error);throw error;}
   };
   attempted=true;
   const seed=attributionGap?methods.seedRegisteredPgAttributionGapFixture:methods.seedRegisteredPgFixture;
@@ -126,10 +132,15 @@ async function executeCurrent259PaymentCase(lease,permit){
   const prepared=prior?.fixture??await seed(execution,plan,Object.freeze({checkLight:check,fetch:transport,
    ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
    ...(permission.seedProfile!==undefined&&isCurrentPaymentRuntimeMode(permission.seedProfile,false)?{requestJson}:{}),
-   ...(permission.recordCaseFailure?{recordSeedFailure(stage,code,httpStatus){
+   ...(permission.recordCaseFailure?{recordSeedFailure(stage,code,httpStatus,diagnostic){
     const currentHttp=httpPhase==='BEFORE_CHECK'||httpPhase==='TARGET'||
      stage==='SEED_LOGIN'&&httpRoute==='/auth/login'||stage==='SEED_OPENING'&&httpRoute==='/fund-accounts/openings';
-    if(httpPhase&&currentHttp)permission.recordCaseFailure(stage,code,httpStatus,httpPhase);
+    const detail=httpDiagnostic??filterPaymentDiagnostic(diagnostic),hasDetail=detail&&Object.keys(detail).length>0;
+    if(httpPhase&&currentHttp){
+     const status=observedHttpStatus??httpStatus;
+     if(hasDetail)permission.recordCaseFailure(stage,code,status,httpPhase,detail);
+     else permission.recordCaseFailure(stage,code,status,httpPhase);
+    }else if(hasDetail)permission.recordCaseFailure(stage,code,httpStatus,undefined,detail);
     else permission.recordCaseFailure(...arguments);
    }}:{})}));check();
   const frozen=snapshot(prepared);need(equal(frozen.plan,plan)&&typeof frozen.accessToken==='string');
@@ -257,7 +268,11 @@ async function executeCurrent259PaymentCase(lease,permit){
     code=name==='TimeoutError'?'TIMEOUT':name==='AbortError'?'HTTP_ABORTED':undefined;
    }catch{/* A diagnostic projection never replaces the original failure. */}
   }
-  if(caseStage==='SELECTED_CASE'&&httpPhase)permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase);
+  const diagnostic=describePaymentDiagnostic(error);
+  if(caseStage==='SELECTED_CASE'&&httpPhase){
+   if(diagnostic)permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase,diagnostic);
+   else permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase);
+  }else if(diagnostic)permission?.recordCaseFailure?.(caseStage,code,undefined,undefined,diagnostic);
   else permission?.recordCaseFailure?.(caseStage,code);
   if(attributionGapStage)permission?.recordAttributionGapFailure?.(attributionGapStage);
   const detail=disconnectStage?captureCurrent259DisconnectFailure(error,disconnectStage):undefined;

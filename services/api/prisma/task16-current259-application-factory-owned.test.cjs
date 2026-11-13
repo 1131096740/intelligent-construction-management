@@ -517,3 +517,30 @@ test('normal261 application revokes a changed live binding at continuity boundar
   assert.throws(()=>app.inspect());
  }));
 });
+
+test('owned guard retains only its fixed phase and original known code before revocation',async t=>{
+ const f=fixture(t);let stopped;
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  f.view.check=()=>{throw Object.assign(new Error('private URL SQL token'),{code:'CURRENT259_RESOURCE_CLOSED'});};
+  try{app.inspect();}catch(error){stopped=error;throw error;}
+ }));
+ assert.equal(stopped?.code,'TASK16_APP_FAILED_CLOSED');
+ const diagnostic=require('./task16-current259-payment-diagnostics.cjs').describePaymentDiagnostic(stopped);
+ assert.deepEqual(diagnostic,{guardPhase:'RESOURCE_VIEW_SOURCE_METHODS',originCode:'CURRENT259_RESOURCE_CLOSED'});
+ assert.doesNotMatch(JSON.stringify(diagnostic),/private|URL|SQL|token/u);
+ assert.equal(f.resourceCloses(),1);
+});
+
+for(const kind of ['unknown-code','getter','proxy'])test('owned guard never evaluates or publishes '+kind+' exception data',async t=>{
+ let traps=0,stopped;
+ const raw=kind==='unknown-code'?Object.assign(new Error('private SQL URL token'),{code:'private-secret-code'}):kind==='getter'?
+  Object.defineProperty(new Error('private message'),'code',{get(){traps++;throw Error('private getter');}}):
+  new Proxy({},{get(){traps++;throw Error('private proxy');},getOwnPropertyDescriptor(){traps++;throw Error('private proxy');}});
+ const f=fixture(t);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  f.view.check=()=>{throw raw;};try{app.inspect();}catch(error){stopped=error;throw error;}
+ }));
+ assert.deepEqual(require('./task16-current259-payment-diagnostics.cjs').describePaymentDiagnostic(stopped),{guardPhase:'RESOURCE_VIEW_SOURCE_METHODS'});
+ assert.equal(stopped.code,'TASK16_APP_FAILED_CLOSED');assert.equal(traps,0);
+ assert.doesNotMatch(JSON.stringify(stopped),/private|secret|SQL URL token/u);
+});

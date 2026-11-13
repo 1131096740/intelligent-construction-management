@@ -651,3 +651,18 @@ describe("registered fixture synthetic construction enterprise plan", () => {
     for (const value of Object.values(plan.ids)) expect(value).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
   });
 });
+
+it("forwards only the private fixed guard projection before any fixture database operation", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const diagnostics = require("../../prisma/task16-current259-payment-diagnostics.cjs");
+  const primary = diagnostics.carryPaymentDiagnostic(Object.assign(new Error("private body URL token"), { code: "TASK16_APP_IMPACT_READER_PROOF" }),
+    Object.assign(new Error("private SQL"), { code: "CURRENT259_RESOURCE_CLOSED" }), "RESOURCE_LIFETIME");
+  const f = fixture(), recordSeedFailure = jest.fn();
+  const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-10", "2026-11-09");
+  await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() { throw primary; }, fetch: jest.fn(), recordSeedFailure }))
+    .rejects.toThrow("TASK16_FIXTURE_FAILED_CLOSED");
+  expect(recordSeedFailure).toHaveBeenCalledWith("SEED_PREPARE", "TASK16_APP_IMPACT_READER_PROOF", undefined,
+    { guardPhase: "RESOURCE_LIFETIME", originCode: "CURRENT259_RESOURCE_CLOSED" });
+  expect(f.calls).toHaveLength(0);
+  expect(JSON.stringify(recordSeedFailure.mock.calls)).not.toMatch(/private|body URL token|SQL/);
+});

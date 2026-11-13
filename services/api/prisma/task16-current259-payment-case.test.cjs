@@ -413,3 +413,42 @@ for(const mode of ['missing','hash','profile','count'])test('normal261 case reje
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
  assert.deepEqual(m.counts(),{builds:0,seeds:0,consumers:0});
 });
+
+test('seed post-response guard failure keeps the obtained HTTP status and fixed original guard diagnostic',async t=>{
+ const http=require('node:http'),seen=[];
+ let f;
+ const server=http.createServer((_request,response)=>{
+  response.writeHead(503,{'content-type':'application/json','connection':'close'});response.end('{"privateBody":"never retain"}');
+  f.view.check=()=>{throw Object.assign(new Error('private URL SQL token'),{code:'CURRENT259_RESOURCE_CLOSED'});};
+ });
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const port=server.address().port;
+ f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ f.apps[0].server.address=()=>({address:'127.0.0.1',family:'IPv4',port});
+ const m=paymentModel(f,{async onSeed(continuity){
+  try{await continuity.requestJson(new URL('/auth/login',m.captured().execution.proof.application.origin),{method:'POST',headers:{connection:'close'}},5000);}
+  catch(error){continuity.recordSeedFailure('SEED_LOGIN',error.code);throw error;}
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0],['SEED_LOGIN','TASK16_APP_FAILED_CLOSED',503,'AFTER_CHECK',
+  {guardPhase:'RESOURCE_VIEW_SOURCE_METHODS',originCode:'CURRENT259_RESOURCE_CLOSED'}]);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});assert.doesNotMatch(JSON.stringify(seen),/private|never retain|URL SQL token/u);
+});
+
+test('seed malformed JSON retains the already obtained status at BODY without retaining the response body',async t=>{
+ const http=require('node:http'),seen=[];
+ const server=http.createServer((_request,response)=>{response.writeHead(500,{'content-type':'application/json','connection':'close'});response.end('private invalid SQL body URL token');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)}),port=server.address().port;
+ f.apps[0].server.address=()=>({address:'127.0.0.1',family:'IPv4',port});
+ const m=paymentModel(f,{async onSeed(continuity){
+  try{await continuity.requestJson(new URL('/auth/login',m.captured().execution.proof.application.origin),{method:'POST',headers:{connection:'close'}},5000);}
+  catch(error){continuity.recordSeedFailure('SEED_LOGIN',error.code);throw error;}
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0],['SEED_LOGIN',undefined,500,'BODY']);assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+ assert.doesNotMatch(JSON.stringify(seen),/private|SQL body|URL token/u);
+});

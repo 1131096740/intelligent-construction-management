@@ -1,0 +1,40 @@
+'use strict';
+// Fixed diagnostic data only. These projections never confer run authority.
+const {types}=require('node:util');
+const caseFailureCodes=new Set(['PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY','PAYMENT_INSTALL_ONCE_BUSINESS_CONTINUITY',
+ 'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED','PAYMENT_BUSINESS_PLAN_FILE','PAYMENT_INSTALL_PLAN_FILE',
+ 'CURRENT259_RESOURCE_CLOSED','CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','CURRENT259_LIVE_SESSIONS_VERIFICATION',
+ 'CURRENT259_LIVE_SESSIONS_CONTINUITY','TASK16_APP_HANDLE','TASK16_APP_FAILED_CLOSED','TASK16_CURRENT259_CATALOG',
+ 'TASK16_FIXTURE_FAILED_CLOSED','P1001','P1002','P1008','P1010','P1011','P1017','P2002','P2003','P2010','P2024','P2025','P2028','P2034',
+ 'PG_RESOURCE_IDENTITY','PG_RESOURCE_DATABASE_VERSION','PG_RESOURCE_ROLE_PID_BINDING','PG_RESOURCE_OBSERVER_READ_ONLY',
+ 'PG_RESOURCE_RUNTIME_PRIVILEGES','PG_RESOURCE_OBSERVER_PRIVILEGES','PG_RESOURCE_PREPARED_FUNCTIONS',
+ 'PG_RESOURCE_PREPARED_PROJECTION_TRIGGERS','PG_FIXTURE_REAL_HTTP_LOGIN','PG_FIXTURE_REAL_HTTP_OPENING',
+ 'PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED','TIMEOUT','CURRENT259_PAYMENT_CASE_FAILED_CLOSED','CURRENT261_SEED_JSON_FAILED_CLOSED',
+ 'CURRENT259_BUSINESS_CONTINUITY','CURRENT259_LIVE_SESSIONS_FAILED_CLOSED','CURRENT259_OWNED_METHOD','CURRENT259_LOADER_HOOKS','CURRENT259_BUILD_ENVIRONMENT','TASK16_APP_RUNTIME_PROVIDER','TASK16_APP_IMPACT_READER_PROOF','TASK16_APP_ADDRESS','TASK16_APP_PRIOR_CHANGED','TASK16_APP_METHOD_CHANGED','TASK16_APP_ENVIRONMENT_CHANGED','TASK16_APP_STORAGE_CHANGED','PAYMENT_INSTALL_ONCE_IMPORT_CHANGED',
+ 'PG_RESOURCE_HTTP_ROUTE','PG_RESOURCE_HTTP_BUDGET','PG_RESOURCE_HTTP_TARGET_ORIGIN','PG_RESOURCE_SEED_HTTP_ROUTE','PG_RESOURCE_HTTP_TRANSPORT','PG_RESOURCE_HTTP_RESPONSE','PG_RESOURCE_HTTP_RESPONSE_ORIGIN',
+ 'HTTP_CONNECTION_REFUSED','HTTP_CONNECTION_RESET','HTTP_CONNECT_TIMEOUT','HTTP_RESPONSE_TIMEOUT','HTTP_SOCKET_CLOSED','HTTP_ABORTED']);
+const phases=new Set(['ADMISSION_LOOKUP','APPLICATION_STATE','PROFILE_BINDING','SESSION_CONTINUITY','RESOURCE_LIFETIME',
+ 'RESOURCE_VIEW_SOURCE_METHODS','APP_METHOD_IDENTITY','APP_INSPECTION','LIVE_SESSION_LIGHT','LIVE_SESSION_CONTINUITY']);
+const remembered=new WeakMap();
+function own(value,key){
+ if(!value||typeof value!=='object'||types.isProxy(value))return undefined;
+ const descriptor=Object.getOwnPropertyDescriptor(value,key);
+ return descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:undefined;
+}
+const isPaymentFailureCode=code=>typeof code==='string'&&caseFailureCodes.has(code);
+function filterPaymentDiagnostic(value){
+ const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode');
+ return Object.freeze({...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
+  ...(isPaymentFailureCode(originCode)?{originCode}:{})});
+}
+function describePaymentDiagnostic(error){
+ return error&&typeof error==='object'&&!types.isProxy(error)?remembered.get(error):undefined;
+}
+function carryPaymentDiagnostic(target,source,guardPhase){
+ if(!target||typeof target!=='object'||types.isProxy(target)||remembered.has(target))return target;
+ const prior=describePaymentDiagnostic(source),originCode=own(source,'code');
+ const detail=filterPaymentDiagnostic(prior??{guardPhase,...(isPaymentFailureCode(originCode)?{originCode}:{})});
+ if(Object.keys(detail).length)remembered.set(target,detail);
+ return target;
+}
+module.exports=Object.freeze({isPaymentFailureCode,filterPaymentDiagnostic,describePaymentDiagnostic,carryPaymentDiagnostic});

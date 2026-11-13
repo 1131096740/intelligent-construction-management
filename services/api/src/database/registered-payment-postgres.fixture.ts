@@ -3,6 +3,10 @@ import type { Payment261SeedProfile } from "./registered-payment-postgres.seed26
 import { randomUUID } from "node:crypto";
 import { types } from "node:util";
 import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
+// A pure, source-owned diagnostic projection; importing it opens no clients.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { describePaymentDiagnostic }: { describePaymentDiagnostic(error: unknown): Readonly<{ guardPhase?: string; originCode?: string }> | undefined } = require("../../prisma/task16-current259-payment-diagnostics.cjs");
+
 
 /** Prepared source only. Importing this module constructs no client, reads no
  * environment and opens no connection. Only a separately authorized executor
@@ -54,7 +58,7 @@ export interface RegisteredPgSeedContinuity {
   /** Trusted owned transport consumes native JSON before synchronous qualification resumes. */
   requestJson?: (target: URL, init: RequestInit, timeoutMs: number) => Promise<{ response: Response; body: unknown }>;
   seedProfile?: Payment261SeedProfile;
-  recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number) => void;
+  recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number, diagnostic?: Readonly<{ guardPhase?: string; originCode?: string }>) => void;
   /** Source-owned case request checker; never a caller route list. */
   assertHttpRequest?: (route: string, method: "GET" | "POST") => void;
   assertHttpBody?: (route: string, method: "GET" | "POST", body: unknown) => void;
@@ -516,7 +520,11 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     return { ...prepared, contender: { actorId: second.actorId, requestKey: second.requestKey, accessToken: tokenB },
       ...(followUp ? {companyASourceId: registrations[0]!.sources[0]!.id, followUpRequestKey: randomUUID()} : {}) };
   } catch (error) {
-    try { continuity?.recordSeedFailure?.(failureStage, seedFailureCode(error), httpStatus); }
+    try {
+      const diagnostic = describePaymentDiagnostic(error);
+      if (diagnostic) continuity?.recordSeedFailure?.(failureStage, seedFailureCode(error), httpStatus, diagnostic);
+      else continuity?.recordSeedFailure?.(failureStage, seedFailureCode(error), httpStatus);
+    }
     catch { /* Preserve the first fixture failure. */ }
     // A rejected/unknown owner transaction or later HTTP write is never proof
     // of rollback. Do not retain raw SDK/HTTP errors, credentials or causes.
