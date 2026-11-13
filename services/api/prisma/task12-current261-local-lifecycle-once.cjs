@@ -120,7 +120,7 @@ async function main(){
   const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource}=require('./task16-current259-archive-install.cjs');
   const {installCurrent261GeneratedLifecycleOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
   const {provisionCurrent261GeneratedLifecycleDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
-  const {installCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl-transport.cjs');
+  const {installCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261DocumentAclFailure}=require('./task12-current259-document-acl-transport.cjs');
   const {withOfficialTask12DocumentRuntime}=require('./task12-current259-generated-document-runtime.cjs');
   const {withCurrent261LocalLifecyclePublicApplication}=require('./task12-current259-document-login.cjs');
   const {projectCurrent261LocalLifecycleOutcome}=require('./task12-current261-local-lifecycle-exercise.cjs');
@@ -128,7 +128,7 @@ async function main(){
   need([read,withCurrent259FirstQ2LoopbackResource,createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure,provisionCurrent259Roles,
    installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent261GeneratedLifecycleOrdinaryAcl,
    provisionCurrent261GeneratedLifecycleDocumentRoles,installCurrent261GeneratedLifecycleDocumentAcl,withOfficialTask12DocumentRuntime,
-   withCurrent261LocalLifecyclePublicApplication,projectCurrent261LocalLifecycleOutcome,describeCurrent261LocalLifecycleHttpFailure]
+   withCurrent261LocalLifecyclePublicApplication,projectCurrent261LocalLifecycleOutcome,describeCurrent261LocalLifecycleHttpFailure,describeCurrent261DocumentAclFailure]
    .every(fn=>typeof fn==='function'),'DEPENDENCIES');
 
   process.once('SIGINT',abort);process.once('SIGTERM',abort);
@@ -157,7 +157,8 @@ async function main(){
    let value;
    try{check();value=await work();check();}
    catch(cause){
-    if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause)};
+    if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause),
+     documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined};
     if(name===phase){
      failureStage=safeStage(cause,name);
      try{
@@ -215,6 +216,7 @@ async function main(){
   const primary=firstFailure?.cause??cause,reason=safeReason(primary);
   const proof={...(reason?{reason}:{}),...(firstFailure?{failurePhase:firstFailure.phase}:{}),
    ...(firstFailure?.httpFailure?{httpFailure:firstFailure.httpFailure}:{}),
+   ...(firstFailure?.documentAclFailure?{documentAclFailure:firstFailure.documentAclFailure}:{}),
    ...(firstFailure&&cause!==primary?{secondaryReason:safeReason(cause)??'UNCLASSIFIED',secondaryPhase:'UNWIND'}:{}),
    ...(scopeEntered?{businessOutcome:'UNKNOWN'}:{}),...(technicalFailure?{technicalFailure}:{}),
    ...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};

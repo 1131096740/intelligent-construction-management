@@ -4,6 +4,7 @@ const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('.
 const {beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl.cjs');
 const {registeredGeneratedLifecycleCollisionMaterial,generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
+const {projectCurrent261DocumentAclWriteFailure}=require('./enterprise-task01-resources.cjs');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 
 const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
@@ -158,6 +159,13 @@ function reason(error){
  const safe=code.startsWith(CODE+'_')?code.slice(CODE.length+1):code;
  return safeReasons.has(safe)?safe:undefined;
 }
+function describeCurrent261DocumentAclFailure(error){
+ const code=own(error,'code'),phase=own(error,'phase'),fixedReason=own(error,'reason');
+ if(![CODE+'_PRESTATE_REJECTED',CODE+'_COMMIT_UNCONFIRMED'].includes(code)||!Object.hasOwn(phases,phase))return undefined;
+ const detail=phase==='WRITE'&&fixedReason==='TASK01_RESOURCE_COMMAND_FAILED'
+  ?projectCurrent261DocumentAclWriteFailure(own(error,'documentAclWriteFailure')):undefined;
+ return Object.freeze({phase,...(safeReasons.has(fixedReason)?{reason:fixedReason}:{}),...(detail??{})});
+}
 
 async function installCurrent259GeneratedDocumentAcl(roleCompletion,handle){
  need(arguments.length===2,'HANDLE');return install(roleCompletion,handle,false);
@@ -215,6 +223,10 @@ async function install(roleCompletion,handle,lifecycle){
   const error=Object.assign(fault(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED'),{phase});
   const fixedReason=reason(cause);
   if(fixedReason)Object.defineProperty(error,'reason',{value:fixedReason,enumerable:true});
+  if(phase==='WRITE'&&fixedReason==='TASK01_RESOURCE_COMMAND_FAILED'){
+   const detail=projectCurrent261DocumentAclWriteFailure(own(cause,'documentAclWriteFailure'));
+   if(detail)Object.defineProperty(error,'documentAclWriteFailure',{value:detail,enumerable:true});
+  }
   try{await closeCurrent259OwnedResource(handle);}
   catch{Object.defineProperty(error,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});}
   throw error;
@@ -240,4 +252,4 @@ function claim(result,handle,save){
 function claimCurrent261GeneratedLifecycleDocumentAcl(result,handle){
  need(arguments.length===2,'HANDLE');return claim(result,handle,'lifecycle');
 }
-module.exports=Object.freeze({installCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261GeneratedLifecycleDocumentAcl,installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});
+module.exports=Object.freeze({describeCurrent261DocumentAclFailure,installCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261GeneratedLifecycleDocumentAcl,installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});

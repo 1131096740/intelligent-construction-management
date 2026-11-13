@@ -159,6 +159,42 @@ function archiveWriteDiagnostic(stderr, sql) {
   }
   return projectCurrent259ArchiveWriteFailure({ sqlState: "P0002", section, routine, sourceLine: Number(sourceLine) });
 }
+const DOCUMENT_ACL_WRITE_PHASE = "current259-document-acl-write";
+const DOCUMENT_ACL_SQLSTATES = new Set([...SEVEN_PRESTATE_SQLSTATES, "40001", "40P01", "23505", "23514", "25P02"]);
+const DOCUMENT_ACL_SECTIONS = new Map([
+  ["LOCK TABLE ", "OWNED_SCOPE_LOCK"],
+  ["DO $document_acl_transport_preimage$", "TRANSPORT_PREIMAGE"],
+  ["DO $doc_acl_preimage$", "ACL_PREIMAGE"],
+  ["GRANT ", "COLUMN_GRANT"],
+  ["GRANT EXECUTE ON FUNCTION ", "ROUTINE_GRANT"],
+  ["DO $doc_acl_postimage$", "ACL_POSTIMAGE"],
+  ["DO $document_acl_transport_postimage$", "TRANSPORT_POSTIMAGE"],
+  ["SELECT jsonb_build_object('continuitySha256'", "CONTINUITY_READBACK"],
+  ["SELECT jsonb_build_object('challenge'", "ACL_READBACK"],
+  ["COMMIT;", "COMMIT"]
+]);
+const DOCUMENT_ACL_GUARDS = new Set(["CURRENT259_DOCUMENT_ACL_TRANSPORT_PREIMAGE", "CURRENT259_DOCUMENT_ACL_TRANSPORT_POSTIMAGE",
+  "CURRENT259_DOCUMENT_ACL_PREIMAGE", "CURRENT259_DOCUMENT_ACL_POSTIMAGE"]);
+function projectCurrent261DocumentAclWriteFailure(value) {
+  const sqlState = ownErrorField(value, "sqlState");
+  if (!DOCUMENT_ACL_SQLSTATES.has(sqlState)) return undefined;
+  const section = ownErrorField(value, "section"), guard = ownErrorField(value, "guard");
+  return Object.freeze({ sqlState,
+    ...([...DOCUMENT_ACL_SECTIONS.values()].includes(section) ? { section } : {}),
+    ...(DOCUMENT_ACL_GUARDS.has(guard) ? { guard } : {}) });
+}
+function documentAclWriteDiagnostic(stderr, sql) {
+  const output = stderr.toString("utf8").split("\n");
+  const line = output.find(value => /^psql:<stdin>:[1-9][0-9]*: ERROR:/u.test(value));
+  const match = typeof line === "string" && /^psql:<stdin>:([1-9][0-9]{0,7}): ERROR: +([0-9A-Z]{5}): +([^\r]*)\r?$/u.exec(line);
+  if (!match) return undefined;
+  let section;
+  const lines = sql.split("\n"), stop = Number(match[1]);
+  if (stop <= lines.length) for (const inputLine of lines.slice(0, stop)) {
+    for (const [marker, fixedSection] of DOCUMENT_ACL_SECTIONS) if (inputLine.startsWith(marker)) section = fixedSection;
+  }
+  return projectCurrent261DocumentAclWriteFailure({ sqlState: match[2], section, guard: match[3] });
+}
 function hbaRules(database, roles, loopback = false) {
   return [
     ["local", "all", OWNER, null, "peer", ["map=jg_task01_init"]],
@@ -609,6 +645,10 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
           const detail = projectCurrent259ArchiveWriteFailure(ownErrorField(error, "archiveWriteFailure"));
           if (detail) Object.defineProperty(failure, "archiveWriteFailure", { value: detail });
         }
+        if (operation === execOwnerSql && technical && !paymentLoopback && args[1] === DOCUMENT_ACL_WRITE_PHASE) {
+          const detail = projectCurrent261DocumentAclWriteFailure(ownErrorField(error, "documentAclWriteFailure"));
+          if (detail) Object.defineProperty(failure, "documentAclWriteFailure", { value: detail });
+        }
         throw failure;
       }
     };
@@ -748,7 +788,8 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
     await inspectOwned(false, deadline);
     const sevenPrestate = technical && phase === SEVEN_PRESTATE_PHASE;
     const archiveWrite = technical && !paymentLoopback && phase === ARCHIVE_WRITE_PHASE;
-    const collectFixedFailure = sevenPrestate || archiveWrite;
+    const documentAclWrite = technical && !paymentLoopback && phase === DOCUMENT_ACL_WRITE_PHASE;
+    const collectFixedFailure = sevenPrestate || archiveWrite || documentAclWrite;
     const args = ["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1",
       ...(collectFixedFailure ? ["--set", "VERBOSITY=verbose"] : []), "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"];
     const control = { input: sql, timeoutMs: 120000, ...(deadline === undefined ? {} : { deadline }), ...(collectFixedFailure ? { allowFailure: true } : {}) };
@@ -758,8 +799,8 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
       const failure = fault("TASK01_RESOURCE_COMMAND_FAILED");
       failure.commandKind = result.code === null ? "signal-exit" : "nonzero-exit";
       if (collectFixedFailure && result.code === 3) {
-        const detail = archiveWrite ? archiveWriteDiagnostic(result.stderr, sql) : sevenPrestateDiagnostic(result.stderr, sql);
-        if (detail) Object.defineProperty(failure, archiveWrite ? "archiveWriteFailure" : "sevenOwnerFailure", { value: detail });
+        const detail = documentAclWrite ? documentAclWriteDiagnostic(result.stderr, sql) : archiveWrite ? archiveWriteDiagnostic(result.stderr, sql) : sevenPrestateDiagnostic(result.stderr, sql);
+        if (detail) Object.defineProperty(failure, documentAclWrite ? "documentAclWriteFailure" : archiveWrite ? "archiveWriteFailure" : "sevenOwnerFailure", { value: detail });
       }
       throw failure;
     }
@@ -1212,4 +1253,4 @@ async function startCurrent259AttributionGapPostgres(options) {
   return startCurrent259FixedPostgres(options, ATTRIBUTION_GAP_LIFETIME);
 }
 module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, startCurrent259FirstRollbackPostgres,
-  startCurrent259FirstQ2LoopbackPostgres, startCurrent259ReadonlyRelayPostgres, startCurrent259Identity261Postgres, claimReadonlyRelayBackendVerifier, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint, projectCurrent259ArchiveWriteFailure };
+  startCurrent259FirstQ2LoopbackPostgres, startCurrent259ReadonlyRelayPostgres, startCurrent259Identity261Postgres, claimReadonlyRelayBackendVerifier, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint, projectCurrent259ArchiveWriteFailure, projectCurrent261DocumentAclWriteFailure };

@@ -20,7 +20,7 @@ function model(t,{once=true,failure,cleanupFailure=false,used=false,date=today()
   './task16-current259-archive-install.cjs':{installCurrent259ArchiveAuthoritiesWithRegisteredFileSource:(p,h)=>{assert.equal(h,handle);return step('archive',p,'roles');}},
   './task16-current259-ordinary-archive-acl.cjs':{installCurrent261GeneratedLifecycleOrdinaryAcl:(p,h)=>{assert.equal(h,handle);return step('ordinary',p,'archive');}},
   './task12-current259-document-role-provision.cjs':{provisionCurrent261GeneratedLifecycleDocumentRoles:(p,h)=>{assert.equal(h,handle);return step('document-roles',p,'ordinary');}},
-  './task12-current259-document-acl-transport.cjs':{installCurrent261GeneratedLifecycleDocumentAcl:(p,h)=>{assert.equal(h,handle);return step('document-acl',p,'document-roles');}},
+  './task12-current259-document-acl-transport.cjs':{describeCurrent261DocumentAclFailure:require('./task12-current259-document-acl-transport.cjs').describeCurrent261DocumentAclFailure,installCurrent261GeneratedLifecycleDocumentAcl:(p,h)=>{assert.equal(h,handle);const value=step('document-acl',p,'document-roles');if(failure==='dacl-diagnostic')throw fault('CURRENT259_DOCUMENT_ACL_TRANSPORT_COMMIT_UNCONFIRMED',{phase:'WRITE',reason:'TASK01_RESOURCE_COMMAND_FAILED',documentAclWriteFailure:{sqlState:'42501',section:'COLUMN_GRANT',message:'PRIVATE_DO_NOT_PRINT'}});return value;}},
   './task12-current259-generated-document-runtime.cjs':{async withOfficialTask12DocumentRuntime(proof,root,use){assert.equal(proof,runtime);assert.equal(root,toolRun);calls.push('runtime');try{return await use({});}finally{calls.push('runtime-close');}}},
   './task12-current259-document-login.cjs':{async withCurrent261LocalLifecyclePublicApplication(p,h,caseId,signal,use){assert.equal(p,'document-acl');assert.equal(h,handle);assert.equal(caseId,id);assert.equal(signal.aborted,false);calls.push('application');try{if(failure==='business')throw fault('CURRENT259_GENERATED_DOCUMENT_EXERCISE_RESULT');if(failure==='owner-cleanup')throw fault('CURRENT261_LOCAL_LIFECYCLE_OWNER_OUTPUT',{ownerCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});return await use(outcome);}finally{calls.push('application-close');}}},
   './task12-current261-local-lifecycle-exercise.cjs':{projectCurrent261LocalLifecycleOutcome(value){assert.equal(value,outcome);assert.equal(calls.at(-1),'application-close');calls.push('project');return{status:'LOCAL_ONLY_MATCHED',storage:'LOCAL_ONLY',cosAccepted:false,full394Accepted:false};}}
@@ -53,4 +53,12 @@ test('life business failure remains primary when resource cleanup replaces the t
  assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');
  assert.equal(r.cleanup,'UNKNOWN');assert.equal(r.businessOutcome,'UNKNOWN');assert.equal(r.outcome,undefined);
  assert.doesNotMatch(JSON.stringify(r),/PRIVATE_DO_NOT_PRINT/u);
+});
+
+test('DACL fixed SQLSTATE remains the primary stage detail when outer cleanup fails',async t=>{
+ const f=model(t,{failure:'dacl-diagnostic',cleanupFailure:true}),r=await f.result();
+ assert.equal(r.reason,'CURRENT259_DOCUMENT_ACL_TRANSPORT_COMMIT_UNCONFIRMED');
+ assert.deepEqual(r.documentAclFailure,{phase:'WRITE',reason:'TASK01_RESOURCE_COMMAND_FAILED',sqlState:'42501',section:'COLUMN_GRANT'});
+ assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.businessOutcome,'UNKNOWN');assert.equal(r.cleanup,'UNKNOWN');
+ assert.equal(f.calls.includes('application'),false);assert.doesNotMatch(JSON.stringify(r),/PRIVATE_DO_NOT_PRINT/u);
 });

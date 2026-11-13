@@ -10,6 +10,15 @@ test('plain resource proof cannot create or claim an owned259 resource',async()=
 // exports have no injected start, IO, constructor, credential or proof argument.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const sourceFile=path.join(__dirname,'task16-current259-owned-resource.cjs');
+test('document ACL diagnostic projection carries only its closed SQLSTATE and fixed labels, never authority',()=>{
+ const {projectCurrent261DocumentAclWriteFailure:project}=require('./enterprise-task01-resources.cjs');
+ assert.deepEqual(project({sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE',message:'PRIVATE_SQL',sql:'PRIVATE_SQL'}),
+  {sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE'});
+ assert.deepEqual(project({sqlState:'42501',section:'PRIVATE_RELATION',guard:'PRIVATE_PASSWORD'}),{sqlState:'42501'});
+ assert.equal(project({sqlState:'SECRET'}),undefined);
+ assert.equal(project(new Proxy({sqlState:'P0001'},{})),undefined);
+ let read=false;assert.equal(project({get sqlState(){read=true;return 'P0001';}}),undefined);assert.equal(read,false);
+});
 function fixture(){
  const build=Object.freeze({}),continuityToken=Object.freeze({}),readonlyPermit=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:{ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24'}};

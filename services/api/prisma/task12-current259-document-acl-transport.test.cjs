@@ -31,6 +31,7 @@ function fixture(options={}){
   async execOwnerSql(sql,phase){
    const n=phases.indexOf(phase);
    assert.ok(n>=0);calls.push({sql,phase});
+   if(options.failWrite&&n===1)throw Object.assign(Error('PRIVATE_SQL'),{code:'TASK01_RESOURCE_COMMAND_FAILED',documentAclWriteFailure:options.failWrite});
    if(options.failBefore&&n===0)throw Object.assign(Error('opaque model transport output'),{code:'TASK01_RESOURCE_COMMAND_FAILED'});
    const challenge=sql.match(/'challenge','([a-f0-9]{64})'/u)[1];
    const continuity={continuitySha256:'1'.repeat(64)};
@@ -141,4 +142,13 @@ test('lifecycle transport consumes only its branded 261 role lease and carries t
  const wrong=fixture({lifecycle:true});
  await assert.rejects(wrong.api.installCurrent261GeneratedLifecycleDocumentAcl(wrong.completion,wrong.handle));
  assert.equal(wrong.calls.length,0);
+});
+
+test('fixed DACL write detail survives a cleanup failure without claiming a commit',async()=>{
+ const f=fixture({cleanupUnknown:true,failWrite:{sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE',sql:'PRIVATE_SQL'}});
+ await assert.rejects(f.api.installCurrent259GeneratedDocumentAcl(f.completion,f.handle),cause=>{
+  assert.equal(cause.code,'CURRENT259_DOCUMENT_ACL_TRANSPORT_COMMIT_UNCONFIRMED');assert.equal(cause.resourceCleanup.status,'UNKNOWN');
+  assert.deepEqual(f.api.describeCurrent261DocumentAclFailure(cause),{phase:'WRITE',reason:'TASK01_RESOURCE_COMMAND_FAILED',sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE'});
+  assert.doesNotMatch(JSON.stringify(cause),/PRIVATE_SQL/u);return true;
+ });assert.equal(f.calls.length,2);
 });
