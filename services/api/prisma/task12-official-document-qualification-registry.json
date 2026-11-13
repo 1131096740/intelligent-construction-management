@@ -1,5 +1,14 @@
 {
   "version": 1,
-  "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_V1",
-  "qualification": null
+  "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2",
+  "qualification": {
+    "machineReceipt": {
+      "path": "/Users/leoyang/.codex/visualizations/2026/11/12/01a1d054-b95b-70f2-9b4f-c9cbeffe79e7/recovery-20261114/task394/qualification-80657464-final/run/MACHINE-RECEIPT.json",
+      "sha256": "093cc638a31820250489dfe02f42b282e39be338c7543192012edcd22ab9d054"
+    },
+    "physicalReview": {
+      "path": "/Users/leoyang/.codex/visualizations/2026/11/12/01a1d054-b95b-70f2-9b4f-c9cbeffe79e7/recovery-20261114/task394/ROOT-FORMAL-PHYSICAL-806.json",
+      "sha256": "74227066d39897004af11e6f63277db4fcecbdcb328712714f04dc5cac8c1f57"
+    }
+  }
 }
