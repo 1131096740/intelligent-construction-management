@@ -4,10 +4,10 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地已集成七文件诊断源码`9ef87c063a805fb8dca202e5d44da4318a4db0cb`，两轴独审均0项，七blob与作者一致。最近已验远端4cfc0d4a的CI43509433522真实32/32成功，仅绑定4cfc；新候选准确CI待。Draft PR428保持开放；旧失败、未知及用户根混合改动保留。
-- 任务16：d605 normal真实exit1/2059.16秒，业务UNKNOWN，原首因不可恢复；原receipt及root独立清理缺席证据已保存。新bridge片已用公开模型RED→GREEN闭合诊断缺口，补既有编译桥接子门和封闭native错误分类；只改善可观察性，未证明原业务根因已修、没有新normal或PG通过，待新准确候选验证。
-- 任务12：afa8 life真实exit1/1237.296秒，DOCUMENT_ACL/P0001/TRANSPORT_POSTIMAGE失败，原receipt SHA256为`6b34ceb8727f88eaeda693cd10ef68955f27089b9d66ea92ca9c50d06e77bc66`；业务与controller清理原结论保留，root已新独核准确资源缺席。rawVoucher窄组件已复现，但真实ordinary分支仍未知，正以exact whole组件核分支，不猜修。4cfc准确文书资格122.587秒及root formal cffcef4e前缀仅证明限定工具/样张；本集成registry仍PENDING，不跨移旧资格。完整业务、类型矩阵、异常链及真实云写仍有缺口。
-- 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门依其准确候选证据承接，merger未重复测试；新CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地已集成精确voucher归一源码`f29662cc803a055e459abe88566c86260b8f564f`，两轴独审均0项，三blob与作者及67403a46真实组件一致。最近已验3bf6581c的CI43515405485自然32/32成功，仅绑定3bf；新候选准确CI待。Draft PR428保持开放，旧失败、未知及用户根混合改动保留。
+- 任务16：d605 normal失败UNKNOWN及独立清理证据保留；新3bf6581c/plan dddd1580 normal已从原完整入口启动，原actor31883/PID52949/wrapper52945持续监控，现处technical261。root已独核新独占资源，源码/依赖/构建冻结，暂无business结论；不触及现场，也不把诊断模型当真实付款通过。
+- 任务12：原afa8 life失败UNKNOWN、原receipt和root独立清理缺席证据保持。exact四分支、12类反例及10种scalar形状的真实组件已定位差异；新精确document-only renderer只投影批准voucher SELECT项，原prior表达式、完整postimage及continuity保持，不改task16/shared/helper/manifest。13项公开、133项相关回归及type/lint通过，native/完整life尚未验；registry仍PENDING，旧资格不跨移。下一步准确新资格及原完整life验证，完整类型矩阵、异常链及真实云写仍有缺口。
+- 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门按准确源码证据承接，merger未重复测试；CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
 
 ## 授权、证据和下一步
 
