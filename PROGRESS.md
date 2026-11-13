@@ -4,10 +4,10 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；远端Draft PR428准确候选`d605eb7513f4b84241488886e77944499b9a0155`（合审源码7eab后仅状态文书），CI43502706658已自然终态32/32成功。共用base runtime转译、独立完整tsc及固定码闭包均保原守卫和类型覆盖，两轴独审0项；新CI验证完整合成候选。该32/32仅绑定d605；本地新精确signed修复0b300262尚无其准确CI或业务通过，后继代码变动须重验受影响门。6f/819/729/976旧失败、未知与用户根混合改动均保留。
-- 任务16：原9d6e517f/plan7197bbf2 normal真实exit1/2115.34秒，应用启动后SELECTED_CASE失败，底层首因不可恢复、业务UNKNOWN_DO_NOT_RETRY。原控制器清理完成且root独核准确资源/PID/relay缺席、初始mounts[]，未重发旧场景。已审诊断与固定码闭包只改善首因观察，不等于业务根因已修；待稳定新head构建后，从原完整入口准备新normal一次捕获固定码，暂无新PG通过。
-- 任务12：原f717b22e真实life exit1/1252.174秒，DOCUMENT_ACL/WRITE的P0001/TRANSPORT_POSTIMAGE失败、business与controller cleanup UNKNOWN保留；resource另报completed且root已独核准确资源/PID/relay缺席。精确signed witness修复`0b3002627cea194a8a0e3106986f7d0295613c37`已两轴独审0项并集成，只投影原批准的两个SELECT tuple，完整exact ACL postimage和其余continuity保持。13项公开/133项相关回归、包门及11.498秒真实PG六矩阵正负控通过，组件不代替完整life；helper/pin未改、registry仍PENDING，旧资格未移。下一步新准确资格、独立物理重绑后从原完整life验证；完整业务、类型矩阵、异常链及真实云写仍有缺口。
-- 开发工具：共同配置保留全部类型输入、预算、超时、权限、业务断言与封闭错误投影；运行期逐文件转译不承担语义类型检查，完整独立tsc仍执行。旧CI、默认Jest驻留测量、失去的临时材料和恢复事实见主回执，不以局部门或历史成功代替当前完整门禁。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地已集成七文件诊断源码`9ef87c063a805fb8dca202e5d44da4318a4db0cb`，两轴独审均0项，七blob与作者一致。最近已验远端4cfc0d4a的CI43509433522真实32/32成功，仅绑定4cfc；新候选准确CI待。Draft PR428保持开放；旧失败、未知及用户根混合改动保留。
+- 任务16：d605 normal真实exit1/2059.16秒，业务UNKNOWN，原首因不可恢复；原receipt及root独立清理缺席证据已保存。新bridge片已用公开模型RED→GREEN闭合诊断缺口，补既有编译桥接子门和封闭native错误分类；只改善可观察性，未证明原业务根因已修、没有新normal或PG通过，待新准确候选验证。
+- 任务12：afa8 life真实exit1/1237.296秒，DOCUMENT_ACL/P0001/TRANSPORT_POSTIMAGE失败，原receipt SHA256为`6b34ceb8727f88eaeda693cd10ef68955f27089b9d66ea92ca9c50d06e77bc66`；业务与controller清理原结论保留，root已新独核准确资源缺席。rawVoucher窄组件已复现，但真实ordinary分支仍未知，正以exact whole组件核分支，不猜修。4cfc准确文书资格122.587秒及root formal cffcef4e前缀仅证明限定工具/样张；本集成registry仍PENDING，不跨移旧资格。完整业务、类型矩阵、异常链及真实云写仍有缺口。
+- 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门依其准确候选证据承接，merger未重复测试；新CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
 
 ## 授权、证据和下一步
 
