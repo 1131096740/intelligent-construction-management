@@ -6,6 +6,7 @@ import collections
 import hashlib
 import io
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -26,6 +27,33 @@ def digest(data):
 
 def normalized(text):
     return re.sub(r"[\s_+\-]", "", re.sub(r"^[A-Z]{6}\+", "", text)).lower()
+
+
+class FontProgramDiagnostics(logging.Handler):
+    """Preserve only the pinned library's known metadata warnings as data.
+    Every unknown warning, error, overflow or other stderr remains a failure.
+    """
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.rows = []
+        self.count = 0
+    def emit(self, record):
+        message = record.getMessage()
+        timestamp = record.name == "fontTools.ttLib.tables._h_e_a_d" and message in {
+            "'created' timestamp seems very low; regarding as unix timestamp",
+            "'modified' timestamp seems very low; regarding as unix timestamp"}
+        glyf = re.fullmatch(r"too much 'glyf' table data: expected ([0-9]+), received ([0-9]+) bytes", message)
+        padding = record.name == "fontTools.ttLib.tables._g_l_y_f" and glyf and 0 < int(glyf[1]) < int(glyf[2]) <= 64 * 1024 * 1024 and int(glyf[2]) - int(glyf[1]) == 12
+        if record.levelno != logging.WARNING or not (timestamp or padding) or self.count >= 512:
+            raise ValueError("FONT_DIAGNOSTIC")
+        self.count += 1
+        for row in self.rows:
+            if row["logger"] == record.name and row["message"] == message:
+                row["count"] += 1
+                return
+        if len(self.rows) >= 32:
+            raise ValueError("FONT_DIAGNOSTIC")
+        self.rows.append({"logger": record.name, "level": "WARNING", "message": message, "count": 1})
 
 
 def font_program(data):
@@ -100,6 +128,57 @@ def drawn_glyph_matches(program, gid, codepoint, original):
     return bool(actual) and actual == glyph_outline(original, source_name)
 
 
+def drawn_texttrace(page):
+    """Use MuPDF's actual draw font buffer, never a family-name candidate."""
+    import pymupdf
+    mupdf = pymupdf.mupdf
+    class Device(pymupdf.JM_new_texttrace_device):
+        failure = None
+        def bind(self, text, operation, args):
+            if self.failure:
+                return
+            hashes = []
+            raw = text.head
+            while raw:
+                font = mupdf.FzTextSpan(raw).font()
+                buffer = font.m_internal.buffer
+                if not buffer or not 0 < buffer.len <= 64 * 1024 * 1024:
+                    self.failure = "DRAW_FONT_BUFFER"
+                    return
+                # This low-level copy leaves the retained draw buffer unchanged.
+                data = mupdf.ll_fz_buffer_extract_copy(buffer)
+                if len(data) != buffer.len:
+                    self.failure = "DRAW_FONT_BUFFER"
+                    return
+                hashes.append(digest(data))
+                raw = raw.next
+            before = len(self.out)
+            operation(self, *args)
+            if len(self.out) - before != len(hashes):
+                raise ValueError("DRAW_FONT_SPAN")
+            for span, sha256 in zip(self.out[before:], hashes):
+                span["fontProgramSha256"] = sha256
+        def ignore_text(self, ctx, text, ctm):
+            self.bind(text, lambda dev, txt, matrix: pymupdf.jm_lineart_ignore_text(dev, txt, matrix), (text, ctm))
+        def fill_text(self, ctx, text, ctm, colorspace, color, alpha, params):
+            self.bind(text, pymupdf.jm_lineart_fill_text, (ctx, text, ctm, colorspace, color, alpha, params))
+        def stroke_text(self, ctx, text, stroke, ctm, colorspace, color, alpha, params):
+            self.bind(text, pymupdf.jm_lineart_stroke_text, (ctx, text, stroke, ctm, colorspace, color, alpha, params))
+    if page.rotation != 0:
+        raise ValueError("DRAW_ROTATION")
+    spans = []
+    device = Device(spans)
+    rectangle = mupdf.fz_bound_page(page.this)
+    device.ptm = mupdf.FzMatrix(1, 0, 0, -1, 0, rectangle.y1)
+    try:
+        mupdf.fz_run_page(page.this, device, mupdf.FzMatrix(), mupdf.FzCookie())
+    finally:
+        mupdf.fz_close_device(device)
+    if device.failure:
+        raise ValueError(device.failure)
+    return spans
+
+
 def regular(name, expected, limit):
     path = Path(name)
     before = path.lstat()
@@ -128,6 +207,10 @@ def main():
     from fontTools.ttLib import TTFont
     if pymupdf.VersionBind != "1.26.7" or Path(pymupdf.__file__) != site / "pymupdf" / "__init__.py" or fontTools.__version__ != "4.60.1" or Path(fontTools.__file__) != site / "fontTools" / "__init__.py":
         raise ValueError("PACKAGE")
+    diagnostics = FontProgramDiagnostics()
+    font_logger = logging.getLogger("fontTools")
+    font_logger.addHandler(diagnostics)
+    font_logger.propagate = False
     pymupdf.TOOLS.mupdf_display_errors(False)
     pymupdf.TOOLS.mupdf_display_warnings(False)
     pymupdf.TOOLS.set_subset_fontnames(True)
@@ -173,6 +256,7 @@ def main():
               "paintedChineseGlyphs": 0, "bodyAnchor": {"matches": 0, "lineSpacings": [], "fontSizes": [], "fontFamilies": []}, "failures": []}
     ordered = []
     outline_cache = {}
+    font_cache = {}
     def outline(font, name):
         key = (id(font), name)
         if key not in outline_cache:
@@ -193,12 +277,15 @@ def main():
                 if not data:
                     report["unembeddedFonts"] += 1
                     continue
-                program = font_program(data)
-                trace_names = program["names"] | {normalized(resource[3]), normalized(pdf.extract_font(resource[0])[0])}
-                for name in trace_names:
-                    embedded.setdefault(name, []).append(program)
+                key = digest(data)
+                if key not in font_cache:
+                    font_cache[key] = font_program(data)
+                program = font_cache[key]
+                if key in embedded and embedded[key]["order"] != program["order"]:
+                    raise ValueError("DRAW_FONT_PROGRAM")
+                embedded[key] = program
             drawn = collections.defaultdict(list)
-            for span in page.get_texttrace():
+            for span in drawn_texttrace(page):
                 color = span.get("color", (0,))
                 if span["type"] not in (0, 1) or not 0 < span["opacity"] <= 1 or color and all(channel >= .98 for channel in color):
                     continue
@@ -210,15 +297,14 @@ def main():
                         report["badGlyphs"] += 1
                         continue
                     is_chinese = 0x3400 <= codepoint <= 0x9fff
-                    fonts = embedded.get(normalized(span["font"]), [])
+                    program = embedded.get(span.get("fontProgramSha256"))
                     families = set()
                     if is_chinese or chr(codepoint).isascii() and chr(codepoint).isalnum():
                         if is_chinese:
                             report["paintedChineseGlyphs"] += 1
-                        if len(fonts) != 1 or not 0 < glyph < len(fonts[0]["order"]):
+                        if program is None or not 0 < glyph < len(program["order"]):
                             report["badGlyphs"] += 1
                         else:
-                            program = fonts[0]
                             families = program["names"]
                             allowed_faces_for_glyph = allowed_cjk if is_chinese else allowed_ascii
                             if not families or not families <= allowed_faces_for_glyph:
@@ -270,6 +356,7 @@ def main():
         # Embedded name tables may list full and PostScript names for one face.
         # Require the fixed body face, not a union of every approved CJK family.
         anchor["fontFamilies"] = sorted({"fangsonggb2312" if "fangsonggb2312" in value["families"] else "/".join(value["families"]) for value in cjk})
+    report["fontProgramWarnings"] = diagnostics.rows
     print(json.dumps(report, ensure_ascii=False))
 
 

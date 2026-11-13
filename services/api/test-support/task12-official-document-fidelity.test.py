@@ -29,6 +29,72 @@ def font(scale=1, changed=False, shift=0):
 
 
 class GlyphPolicy(unittest.TestCase):
+    def test_drawn_program_binding_keeps_same_family_subsets_distinct(self):
+        import io
+        import hashlib
+        import pymupdf
+        def program(changed):
+            b = FontBuilder(1000, isTTF=True)
+            b.setupGlyphOrder([".notdef", "shape"])
+            b.setupCharacterMap({ord("X"): "shape"})
+            pen = TTGlyphPen(None)
+            pen.moveTo((100, 100)); pen.lineTo((450 if changed else 400, 100)); pen.lineTo((200, 600)); pen.closePath()
+            b.setupGlyf({".notdef": TTGlyphPen(None).glyph(), "shape": pen.glyph()})
+            b.setupHorizontalMetrics({".notdef": (1000, 0), "shape": (1000, 100)})
+            b.setupHorizontalHeader(ascent=800, descent=-200)
+            b.setupNameTable({"familyName": "SameFamily", "styleName": "Regular", "uniqueFontIdentifier": "SameFamily", "fullName": "SameFamily", "psName": "SameFamily"})
+            b.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+            b.setupPost(); b.setupMaxp()
+            out = io.BytesIO(); b.font.save(out); return out.getvalue()
+        left, right = program(False), program(True)
+        self.assertNotEqual(left, right)
+        with pymupdf.open() as doc:
+            page = doc.new_page()
+            page.insert_font(fontname="left", fontbuffer=left)
+            page.insert_font(fontname="right", fontbuffer=right)
+            page.insert_text((40, 50), "X", fontname="left")
+            page.insert_text((40, 80), "X", fontname="right")
+            spans = fidelity.drawn_texttrace(page)
+            self.assertEqual([s["fontProgramSha256"] for s in spans], [hashlib.sha256(left).hexdigest(), hashlib.sha256(right).hexdigest()])
+            self.assertEqual([s["font"] for s in spans], ["SameFamily", "SameFamily"])
+
+    def test_missing_draw_font_program_is_rejected(self):
+        import pymupdf
+        with pymupdf.open() as doc:
+            page = doc.new_page()
+            glyph, face, content = [doc.get_new_xref() for _ in range(3)]
+            doc.update_object(glyph, "<<>>")
+            doc.update_stream(glyph, b"1000 0 0 0 1000 1000 d1 0 0 500 500 re f")
+            doc.update_object(face, "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 1000 1000] /FontMatrix [.001 0 0 .001 0 0] /CharProcs << /X %d 0 R >> /Encoding << /Type /Encoding /Differences [88 /X] >> /FirstChar 88 /LastChar 88 /Widths [1000] /Resources <<>> >>" % glyph)
+            doc.xref_set_key(page.xref, "Resources", "<< /Font << /F1 %d 0 R >> >>" % face)
+            doc.update_object(content, "<<>>")
+            doc.update_stream(content, b"BT /F1 12 Tf 40 700 Td (X) Tj ET")
+            page.set_contents(content)
+            with self.assertRaisesRegex(ValueError, "DRAW_FONT_BUFFER"):
+                fidelity.drawn_texttrace(page)
+
+    def test_only_exact_bounded_font_metadata_warnings_are_reported(self):
+        import logging
+        diagnostics = fidelity.FontProgramDiagnostics()
+        name = "fontTools.ttLib.tables._h_e_a_d"
+        def message(text, level=logging.WARNING, logger=name):
+            diagnostics.handle(logging.LogRecord(logger, level, __file__, 1, text, (), None))
+        message("'created' timestamp seems very low; regarding as unix timestamp")
+        message("'created' timestamp seems very low; regarding as unix timestamp")
+        self.assertEqual(diagnostics.rows[0]["count"], 2)
+        message("too much 'glyf' table data: expected 100, received 112 bytes", logger="fontTools.ttLib.tables._g_l_y_f")
+        for text, level, logger in [("unknown warning", logging.WARNING, name),
+                                   ("'created' timestamp seems very low; regarding as unix timestamp", logging.ERROR, name),
+                                   ("'created' timestamp seems very low; regarding as unix timestamp suffix", logging.WARNING, name),
+                                   ("'created' timestamp seems very low; regarding as unix timestamp", logging.WARNING, "other"),
+                                   ("too much 'glyf' table data: expected 100, received 113 bytes", logging.WARNING, "fontTools.ttLib.tables._g_l_y_f")]:
+            with self.assertRaisesRegex(ValueError, "FONT_DIAGNOSTIC"):
+                message(text, level, logger)
+        for _ in range(509):
+            message("'created' timestamp seems very low; regarding as unix timestamp")
+        with self.assertRaisesRegex(ValueError, "FONT_DIAGNOSTIC"):
+            message("'created' timestamp seems very low; regarding as unix timestamp")
+
     def test_literal_subset_name(self):
         self.assertEqual(fidelity.normalized("ABCDEF+FangSong_GB2312"), "fangsonggb2312")
         self.assertNotEqual(fidelity.normalized("OTHER-FAMILY"), "fangsonggb2312")

@@ -5,6 +5,7 @@ import PizZip from "pizzip";
 import { readLayoutSourcePositions } from "../contract-template/layout-field-mapping";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
+import { completeContractPageNumberFields } from "./layout-preview-docx";
 import type { ContractDocumentRenderInput } from "./contract-document.types";
 import { canonicalContractPlaceholder, CONTRACT_VALUE_PLACEHOLDER_ALIASES, isContractBillReadonlyRowPlaceholder } from "./contract-placeholder-registry";
 
@@ -1049,7 +1050,9 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   if (!styles && !hasTypographyVersion && !hasPageValue) applyStylelessBlankParagraphMarkFont(body, document);
   const flow = bodyFlow(body, ids);
   zip.file("word/document.xml", new XMLSerializer().serializeToString(document));
-  return { docx: zip.generate({ type: "nodebuffer" }), sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups, ...(lineBoxScope ? { lineBoxScope } : {}) };
+  const renderedDocx = zip.generate({ type: "nodebuffer" });
+  const docx = options.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION ? completeContractPageNumberFields(renderedDocx) : renderedDocx;
+  return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups, ...(lineBoxScope ? { lineBoxScope } : {}) };
 }
 
 /** New v2 final Word only: retain logical margins and add equivalent aliases.

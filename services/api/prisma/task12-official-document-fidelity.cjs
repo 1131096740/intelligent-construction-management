@@ -12,8 +12,11 @@ function physical(report,expectedPdfSha256){
  need(report.a4Portrait===true&&['outOfPageGlyphs','unembeddedFonts','badGlyphs','substitutionFonts'].every(key=>report[key]===0)&&Number.isInteger(report.paintedChineseGlyphs)&&report.paintedChineseGlyphs>0);
  return text;
 }
+function pagination(report){
+ need(report.pages.every((page,index)=>compact(page).includes('第'+(index+1)+'页/共'+report.pageCount+'页')));
+}
 function validateOfficialDocumentFidelity(report,expectedPdfSha256){
- physical(report,expectedPdfSha256);
+ physical(report,expectedPdfSha256);pagination(report);
  const anchor=report.bodyAnchor;
  need(anchor?.matches===1&&Array.isArray(anchor.lineSpacings)&&anchor.lineSpacings.length>0&&anchor.lineSpacings.every(value=>typeof value==='number'&&Number.isFinite(value)&&Math.abs(value-25)<=0.15));
  need(Array.isArray(anchor.fontSizes)&&anchor.fontSizes.length>0&&anchor.fontSizes.every(value=>typeof value==='number'&&Number.isFinite(value)&&Math.abs(value-14)<=0.1));
@@ -23,7 +26,7 @@ function validateOfficialDocumentFidelity(report,expectedPdfSha256){
  return Object.freeze({status:'MACHINE_FIDELITY_PASSED_PHYSICAL_REVIEW_PENDING',pdfSha256:expectedPdfSha256,pageCount:report.pageCount,runtimeAuthority:false,exactPaginationReviewed:false});
 }
 function validateOfficialOfficeFidelity(report,expectedPdfSha256){
- physical(report,expectedPdfSha256);
+ physical(report,expectedPdfSha256);pagination(report);
  need(report.pages.slice(-2).some(page=>['买方','卖方','虚构甲方公司','虚构乙方公司'].every(value=>compact(page).includes(value))));
  need(Array.isArray(report.failures)&&report.failures.length===0);
  return Object.freeze({status:'OFFICE_TRANSPORT_PASSED_PHYSICAL_REVIEW_PENDING',pdfSha256:expectedPdfSha256,pageCount:report.pageCount,body25LayoutQualified:false,runtimeAuthority:false});
