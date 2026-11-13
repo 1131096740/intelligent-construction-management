@@ -136,7 +136,10 @@ async function executeCurrent259PaymentCase(lease,permit){
     const currentHttp=httpPhase==='BEFORE_CHECK'||httpPhase==='TARGET'||
      stage==='SEED_LOGIN'&&httpRoute==='/auth/login'||stage==='SEED_OPENING'&&httpRoute==='/fund-accounts/openings';
     const detail=httpDiagnostic??filterPaymentDiagnostic(diagnostic),hasDetail=detail&&Object.keys(detail).length>0;
-    if(httpPhase&&currentHttp){
+    // A returned transport observation can belong to the preceding opening
+    // when the next checked() fails before requestJson starts. Only an active
+    // boundary may supply its observation; otherwise trust no prior request.
+    if(httpPhase&&httpPhase!=='RESPONSE_RETURNED'&&currentHttp){
      const status=observedHttpStatus??httpStatus;
      if(hasDetail)permission.recordCaseFailure(stage,code,status,httpPhase,detail);
      else permission.recordCaseFailure(stage,code,status,httpPhase);

@@ -452,3 +452,43 @@ test('seed malformed JSON retains the already obtained status at BODY without re
  assert.deepEqual(seen[0],['SEED_LOGIN',undefined,500,'BODY']);assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
  assert.doesNotMatch(JSON.stringify(seen),/private|SQL body|URL token/u);
 });
+
+test('a second same-route pre-transport guard failure cannot borrow the completed first opening status',async t=>{
+ const http=require('node:http'),seen=[];let requests=0;
+ const server=http.createServer((_request,response)=>{requests++;response.writeHead(201,{'content-type':'application/json','connection':'close'});response.end('{}');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)}),port=server.address().port;
+ f.apps[0].server.address=()=>({address:'127.0.0.1',family:'IPv4',port});
+ const m=paymentModel(f,{async onSeed(continuity){
+  const target=new URL('/fund-accounts/openings',m.captured().execution.proof.application.origin);
+  const checked=async operation=>{continuity.checkLight();const value=await operation();continuity.checkLight();return value;};
+  const first=await checked(()=>continuity.requestJson(target,{method:'POST',headers:{connection:'close'}},5000));
+  assert.equal(first.response.status,201);
+  f.view.check=()=>{throw Object.assign(new Error('private second-opening guard'),{code:'CURRENT259_RESOURCE_CLOSED'});};
+  try{await checked(()=>continuity.requestJson(target,{method:'POST',headers:{connection:'close'}},5000));}
+  catch(error){continuity.recordSeedFailure('SEED_OPENING',error.code,undefined,
+   require('./task16-current259-payment-diagnostics.cjs').describePaymentDiagnostic(error));throw error;}
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0],['SEED_OPENING','TASK16_APP_FAILED_CLOSED',undefined,undefined,
+  {guardPhase:'RESOURCE_VIEW_SOURCE_METHODS',originCode:'CURRENT259_RESOURCE_CLOSED'}]);
+ assert.equal(requests,1);assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+});
+
+test('completed transport still preserves the fixture explicit current status without reusing its observation',async t=>{
+ const http=require('node:http'),seen=[];
+ const server=http.createServer((_request,response)=>{response.writeHead(503,{'content-type':'application/json','connection':'close'});response.end('{}');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)}),port=server.address().port;
+ f.apps[0].server.address=()=>({address:'127.0.0.1',family:'IPv4',port});
+ const m=paymentModel(f,{async onSeed(continuity){
+  const current=await continuity.requestJson(new URL('/fund-accounts/openings',m.captured().execution.proof.application.origin),{method:'POST',headers:{connection:'close'}},5000);
+  continuity.recordSeedFailure('SEED_OPENING','PG_FIXTURE_REAL_HTTP_OPENING',current.response.status);
+  throw Object.assign(new Error('PG_FIXTURE_REAL_HTTP_OPENING'),{code:'PG_FIXTURE_REAL_HTTP_OPENING'});
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0],['SEED_OPENING','PG_FIXTURE_REAL_HTTP_OPENING',503]);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+});
