@@ -1,10 +1,21 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const startedAt = performance.now();
+const report = {
+  mode: "default", base: null, head: null,
+  coverage: {}, paths: [], commands: [], timings: {}
+};
+process.on("exit", (code) => {
+  report.exitCode = code;
+  report.timings.total = Math.round(performance.now() - startedAt);
+  writeSync(1, `[check:fast] report: ${JSON.stringify(report)}\n`);
+});
 
 const gitBin = process.env.GIT_BIN || "git";
 const pnpmBin = process.env.PNPM_BIN || "pnpm";
@@ -38,6 +49,8 @@ function runCapture(command, args) {
 }
 
 function runTimed(label, command, args) {
+  report.commands.push({ label, command, args });
+  console.log(`[check:fast] command: ${JSON.stringify({ label, command, args })}`);
   console.log(`[check:fast] ${label} started`);
   const startedAt = performance.now();
   const result = spawnSync(command, args, {
@@ -46,6 +59,7 @@ function runTimed(label, command, args) {
     stdio: "inherit"
   });
   const elapsedMs = Math.round(performance.now() - startedAt);
+  report.timings[label] = (report.timings[label] || 0) + elapsedMs;
   if (result.error || result.status !== 0) {
     console.error(`[check:fast] ${label} failed (${elapsedMs} ms)`);
     assertCommandPassed(command, args, result);
@@ -54,6 +68,8 @@ function runTimed(label, command, args) {
 }
 
 function runTimedCapture(label, command, args) {
+  report.commands.push({ label, command, args });
+  console.log(`[check:fast] command: ${JSON.stringify({ label, command, args })}`);
   console.log(`[check:fast] ${label} started`);
   const startedAt = performance.now();
   const result = spawnSync(command, args, {
@@ -63,6 +79,7 @@ function runTimedCapture(label, command, args) {
     maxBuffer: 16 * 1024 * 1024
   });
   const elapsedMs = Math.round(performance.now() - startedAt);
+  report.timings[label] = (report.timings[label] || 0) + elapsedMs;
   if (result.error || result.status !== 0) {
     console.error(`[check:fast] ${label} failed (${elapsedMs} ms)`);
     assertCommandPassed(command, args, result);
@@ -74,34 +91,45 @@ function runTimedCapture(label, command, args) {
 }
 
 function readPaths(output) {
-  if (!output) return [];
-  return output
-    .split("\n")
-    .filter(Boolean)
-    .map((path) => {
-      if (path.startsWith("/") || path === ".." || path.startsWith("../") || path.includes("/../")) {
-        fail(`Git 返回了不安全的路径: ${path}`);
-      }
-      return path;
-    });
+  return output.split("\0").filter(Boolean).map((path) => {
+    if (path.startsWith("/") || path === ".." || path.startsWith("../") || path.includes("/../")) {
+      fail(`Git 返回了不安全的路径: ${JSON.stringify(path)}`);
+    }
+    return path;
+  });
 }
 
-if (process.argv.length !== 2) {
-  fail("该命令不接受参数；请直接运行 pnpm check:fast");
+const args = process.argv.slice(2);
+const development = args.length === 2 && args[0] === "--dev-base";
+if (args.length && !development) fail("用法: pnpm check:fast [--dev-base <commit>]");
+const collectStartedAt = performance.now();
+let baseSha;
+if (development) {
+  // Full immutable commit IDs only: no flags, shell syntax or moving references.
+  if (!/^[0-9a-f]{40}$/u.test(args[1])) fail("开发基线必须是完整40位提交 SHA");
+  baseSha = runCapture(gitBin, ["rev-parse", "--verify", `${args[1]}^{commit}`]).trim();
+  runCapture(gitBin, ["merge-base", "--is-ancestor", baseSha, "HEAD"]);
+  report.mode = "development-delta";
+  console.log("[check:fast] delta only: 仅证明开发差量；不证明整分支、CI或发布，最终候选仍须完整门禁");
+} else {
+  baseSha = runCapture(gitBin, ["merge-base", "origin/main", "HEAD"]).trim();
 }
-
-const baseSha = runCapture(gitBin, ["merge-base", "origin/main", "HEAD"]).trim();
-if (!/^[0-9a-f]{40}$/u.test(baseSha)) {
-  fail("无法解析 origin/main 与 HEAD 的共同基线");
-}
-
-const tracked = readPaths(
-  runCapture(gitBin, ["diff", "--name-only", "--no-renames", baseSha, "--"])
-);
-const untracked = readPaths(
-  runCapture(gitBin, ["ls-files", "--others", "--exclude-standard"])
-);
-const changedPaths = [...new Set([...tracked, ...untracked])].sort();
+if (!/^[0-9a-f]{40}$/u.test(baseSha)) fail("无法解析比较基线");
+report.base = baseSha;
+report.head = runCapture(gitBin, ["rev-parse", "HEAD"]).trim();
+if (!/^[0-9a-f]{40}$/u.test(report.head)) fail("无法解析 HEAD");
+const pathDiff = (...args) => readPaths(runCapture(gitBin, [
+  "diff", "--name-only", "-z", "--no-renames", ...args, "--"
+]));
+report.coverage = {
+  committed: pathDiff(baseSha, "HEAD"),
+  staged: pathDiff("--cached", "HEAD"),
+  unstaged: pathDiff(),
+  untracked: readPaths(runCapture(gitBin, ["ls-files", "-z", "--others", "--exclude-standard"]))
+};
+const changedPaths = [...new Set(Object.values(report.coverage).flat())].sort();
+report.paths = changedPaths;
+report.timings.collect = Math.round(performance.now() - collectStartedAt);
 
 if (changedPaths.length === 0) {
   console.log("[check:fast] no changes（没有需要检查的变更）");
@@ -132,6 +160,10 @@ function isGovernanceManifest(path) {
 }
 
 function releaseSensitiveReason(path) {
+  if (development && path.startsWith("services/api/") &&
+      /(?:^|[/._-])(?:auth|authorization|permission|permissions|role|roles|acl|guard|guards)(?:[/._-]|$)/iu.test(path)) {
+    return "权限或身份边界，需要受影响完整检查及真实受限角色验证";
+  }
   if (isDependencyManifest(path)) return "依赖或工作区清单";
   if (path.startsWith("services/api/prisma/")) return "数据库 Schema、迁移或动态验证";
   if (isSharedProductionSource(path)) return "跨应用共享领域契约";
@@ -361,9 +393,12 @@ function runSharedChecks({ apiHandled, webHandled }) {
   }
 }
 
+const selectionStartedAt = performance.now();
 const releaseSensitivePaths = changedPaths
   .map((path) => ({ path, reason: releaseSensitiveReason(path) }))
   .filter(({ reason }) => reason !== null);
+
+report.timings.select = Math.round(performance.now() - selectionStartedAt);
 
 if (releaseSensitivePaths.length > 0) {
   console.error("[check:fast] 快速检查不能安全覆盖以下变更：");

@@ -186,7 +186,7 @@ function loadCurrent259Client(handle){
  }
  const expectedRequest=Object.freeze(['database/task16-registered-application.module.js','database/prisma.service.js','api-security.js','operating-projection/projection-export-json.js','api-json-replacer.js','validation/api-validation.js','api-listen.js'].map((p,i)=>Object.freeze({name:['application','database','security','projection','json','validation','listen'][i],path:'services/api/dist/'+p})));
  const loadApplicationModules=request=>{check();need(JSON.stringify(request)===JSON.stringify(expectedRequest),'TASK16_APP_FIXED_ENTRIES');return exportedValues;};
- function collect(){for(const mod of roots)visit(mod,new Set());check();}
+ function collect(){visitRoots();check();}
  function loadContractApplicationModules(){
   need(arguments.length===0&&!document,'CURRENT259_CONTRACT_FIXED_ENTRIES');check();
   if(contract)return contract.exports;
