@@ -1254,3 +1254,30 @@ test('secondary diagnostics do not accept arbitrary known-family suffixes or pri
  const progress=fs.readdirSync(f.state.progressRoot).map(name=>fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')).join('');
  assert.doesNotMatch(text+progress,/PRIVATE_SQL_PASSWORD|private URL SQL|private primary/u);
 });
+
+test('late HTTP context after the original continuity throw enriches its primary without replacing it',async t=>{
+ let failContinuity=false;
+ const original=Object.assign(new Error('private original continuity'),{code:'CURRENT259_LOADER_CHANGED'});
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,onCheck(){if(failContinuity)throw original;},onBusiness({lease}){
+  failContinuity=true;
+  let caught;try{lease.check();}catch(error){caught=error;}
+  assert.equal(caught,original);
+  lease.recordCaseFailure('SEED_LOGIN','TASK16_APP_IMPACT_READER_PROOF',201,'AFTER_CHECK',
+   {guardPhase:'LIVE_SESSION_CONTINUITY',originCode:'CURRENT259_LOADER_CHANGED'});
+  lease.recordCaseFailure('SELECTED_CASE','P2028',503,'FETCH',{guardPhase:'APP_METHOD_IDENTITY'});
+  throw caught;
+ }});
+ const result=await f.done,text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.equal(result.failureCode,'CURRENT259_LOADER_CHANGED');assert.equal(receipt.failureStage,'seedAndSelectedCase');
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SEED_LOGIN',code:'TASK16_APP_IMPACT_READER_PROOF',httpStatus:201,
+  httpPhase:'AFTER_CHECK',guardPhase:'LIVE_SESSION_CONTINUITY',originCode:'CURRENT259_LOADER_CHANGED'});
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.equal(receipt.business.permission,'CONSUMED_ONCE');
+ assert.equal(receipt.timing.resourceAbort.origin,'CONTINUITY_REVOKED');
+ assert.equal(receipt.timing.stages.at(-1).stage,'seedAndSelectedCase');
+ assert.ok(receipt.secondaryFailures.some(row=>row.code==='PAYMENT_INSTALL_ONCE_ABORTED_UNSETTLED'));
+ const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1);
+ const durable=JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8'));
+ assert.deepEqual(durable.paymentCaseFailure,receipt.paymentCaseFailure);
+ assert.equal(durable.failureCode,'CURRENT259_LOADER_CHANGED');
+ assert.doesNotMatch(text,/private original continuity/u);
+});

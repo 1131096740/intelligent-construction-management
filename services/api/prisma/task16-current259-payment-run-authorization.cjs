@@ -346,7 +346,7 @@ async function run(args){
  const requestedOnce=Array.isArray(args)&&ONCE_OPTIONS.includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
  let disconnect=false;
- let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
+ let hasFirst=false,first,firstBusiness,stage='preflight',state,controller,timer,businessFlow,endAt;
  const startedAt=performance.now(),stageTimings=[];
  const checkTimings=Object.fromEntries(['planVerification','planCheck','resourceCheck','inputCheck'].map(name=>[name,{count:0,elapsedMs:0}]));
  const checkSnapshot=()=>Object.fromEntries(Object.entries(checkTimings).map(([name,row])=>[name,{count:row.count,elapsedMs:Math.round(row.elapsedMs)}]));
@@ -378,6 +378,9 @@ async function run(args){
     cleanup:receipt.resource?.cleanup??{status:'PENDING'},
     ...(receipt.failureCode?{failureCode:diagnosticCode(receipt.failureCode),failureStage:receipt.failureStage}:{}),
     ...(receipt.secondaryFailures?{secondaryFailures:receipt.secondaryFailures.slice()}:{}),
+    ...(receipt.paymentCaseFailure?{paymentCaseFailure:receipt.paymentCaseFailure}:{}),
+    ...(receipt.attributionGapFailure?{attributionGapFailure:receipt.attributionGapFailure}:{}),
+    ...(receipt.voucherFailure?{voucherFailure:receipt.voucherFailure}:{}),
     receiptPublished:false,executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
    fd=fs.openSync(target,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
    progressDirectory();const st=fs.fstatSync(fd);need(st.isFile()&&st.uid===process.getuid()&&st.nlink===1&&(st.mode&0o777)===0o600,'PROGRESS_WRITE');
@@ -412,9 +415,19 @@ async function run(args){
   row.timing={elapsedMs:Math.round(now-startedAt),stages:stageTimings.slice(),checks:checkSnapshot(),
    ...(resourceAbort?{resourceAbort}:{}),...(failureObservedAt===undefined?{}:{finalizationMs:Math.round(now-failureObservedAt)})};
  }
+ function refreshBusinessFailureContext(){
+  // Only the original opaque business entry may enrich its already latched
+  // failure. Its fixed case context can arrive after the continuity throw.
+  if(receipt?.failureStage==='seedAndSelectedCase'&&firstBusiness?.recordCaseFailure){
+   if(firstBusiness.claimed&&receipt.business?.permission==='ISSUED_NOT_YET_CONSUMED')receipt.business.permission='CONSUMED_ONCE';
+   if(firstBusiness.caseFailure)receipt.paymentCaseFailure??=firstBusiness.caseFailure;
+  }
+  if(request?.attributionGap&&firstBusiness?.attributionGapFailure)receipt.attributionGapFailure??=firstBusiness.attributionGapFailure;
+  if(request?.voucher&&firstBusiness?.voucherFailure)receipt.voucherFailure??=firstBusiness.voucherFailure;
+ }
  function rememberFirst(error){
-  if(hasFirst)return;
-  failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
+  if(hasFirst){refreshBusinessFailureContext();return;}
+  failureObservedAt=performance.now();hasFirst=true;first=error;firstBusiness=state?.business;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
   const technicalFailure=stage==='technical259'||stage==='technical261'?describeCurrent259TechnicalFailure(error):undefined;
   if(technicalFailure)receipt.technicalFailure=technicalFailure;
   const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
@@ -427,13 +440,7 @@ async function run(args){
   }
   const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
   if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
-  // The case records this before application and live-session cleanup can mask the error.
-  if(stage==='seedAndSelectedCase'&&state.business?.recordCaseFailure){
-   if(state.business.claimed&&receipt.business?.permission==='ISSUED_NOT_YET_CONSUMED')receipt.business.permission='CONSUMED_ONCE';
-   if(state.business.caseFailure)receipt.paymentCaseFailure=state.business.caseFailure;
-  }
-  if(request.attributionGap&&state?.business?.attributionGapFailure)receipt.attributionGapFailure=state.business.attributionGapFailure;
-  if(request.voucher&&state?.business?.voucherFailure)receipt.voucherFailure=state.business.voucherFailure;
+  refreshBusinessFailureContext();
  }
  const secondarySeen=new Set();
  function rememberSecondary(error,boundary){
@@ -728,7 +735,7 @@ async function run(args){
   try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_FINALIZATION');if(!hasFirst){failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
   if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.pfq||receipt.pfq)&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.pfq?'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED':request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
   else{receipt.status='STOPPED';receipt.failureCode??='PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
-  recordTiming(receipt);
+  refreshBusinessFailureContext();recordTiming(receipt);
   try{recordProgress('FINALIZATION');}catch(error){if(hasFirst)rememberSecondary(error,'PROGRESS_PUBLICATION');else rememberFirst(error);receipt.status='STOPPED';}
   publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;
   return {status:receipt.status,candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,resourceCreationRequested:started,
