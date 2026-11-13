@@ -26,7 +26,8 @@ function command(bin, args, env = process.env, quiet = false, timeout = 180_000)
 }
 
 if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
-const jestArgs = pol113Pol115JestArgs(["src/database/base-entry-http-postgres.spec.ts"], process.env);
+const jestArgs = [...pol113Pol115JestArgs([], process.env),
+  "--config", "jest.runtime.config.cjs", "src/database/base-entry-http-postgres.spec.ts"];
 if (process.env.DOCKER_HOST && !process.env.DOCKER_HOST.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], process.env, true);
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
