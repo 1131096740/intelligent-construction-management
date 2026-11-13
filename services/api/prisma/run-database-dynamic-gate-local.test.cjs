@@ -1515,8 +1515,9 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
         shard === "pol115_workbench" ? defaultBatches.slice(1) : defaultBatches;
       const testCalls = calls.filter(({ bin }) => bin === "pnpm");
       const prefix = prepared ? ["exec", "jest"] : ["test", "--"];
+      const runtimeConfig = name === "run-pol113-http-local.cjs" ? ["--config", "jest.runtime.config.cjs"] : [];
       assert.deepEqual(testCalls.map(call => call.args), batches.map(specs =>
-        ["--filter", "@jiangkong/api", ...prefix, "--runInBand", ...specs]
+        ["--filter", "@jiangkong/api", ...prefix, "--runInBand", ...runtimeConfig, ...specs]
       ));
       assert.equal(staged.length, batches.length);
       const subRunners = calls.filter(({ args }) => profiles.slice(0, 2).some(([runner]) => args[0] === path.join(__dirname, runner)));
