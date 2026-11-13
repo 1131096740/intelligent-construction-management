@@ -4,10 +4,10 @@
 
 ## 当前候选与两条业务线
 
-- 集成恢复于持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`，当前已集成源码基点`e1a34125f07ff46add98fcb9a8e5ec05e09589d9`（含d661/c525、341d及晚到诊断详情修复），两轴源码复审均已闭合。各作者的局部检查、真实normal记录与341d工具机检均不外推后继候选的CI或业务验收。原`/private/tmp`工作树/运行材料已不可访问，Git对象仍在；新工作不覆盖用户根目录混合改动，也不清理未知资源。上次远端已验候选e900及CI记录属于历史，后继候选未据此取得CI或业务通过。
-- 任务16：原6701/b3e43e29隔离运行原packet已失、句柄/PID不可见。用户启动Docker后已核相同固定daemon身份，独立只读核旧exact容器/网络当前缺席（不等于原当轮清理独审；匿名卷无原ID未独立验证）。持久原工具日志现恢复终态exit1/约47分钟：已到seedAndSelectedCase的SEED_LOGIN，HTTP201后AFTER_CHECK报LIVE_SESSION_CONTINUITY/CURRENT259_LOADER_CHANGED。业务仍UNKNOWN_DO_NOT_RETRY；清理仅有当时controller completed报告，无独立资源核验。原键未恢复，停止原场景，不换键盲重发、不启动陌生资源。新源码d661已补首因/固定次因、有界持久阶段耗时及三类复合错误反例，278项相关回归通过；后继c525在真实SDK+空Nest首JSON组件中复现9个延迟加载模块，并以封存前固定UTF-8初始化令新增模块归零，替换方法仍拒绝。e1a后继已保留同轮晚到的首个HTTP/阶段详情，首次code/time不变，相关两轴问题已闭。尚未据此声称真实Auth或付款通过；后继新独占normal真实运行待执行，使用持久阶段记录。
-- 任务12：Git保留`8e2db4bcb618d95470db27b5623d3d60410f26ff`（字体实际程序绑定、警告分类、分页唯一性及运行时正式模块链接）。历史真实工具机检及SDK正向记录仅存聊天，原PDF/资格回执已丢失，不能当当前可复核资格；registry未启。现已用严格新V2 profile锁定当前官方签名本地工具（V1旧锁不改）；准确341d950c真实资格162秒通过，Java15页/Office15页/合并30页及原样PDF/报告/60PNG均已持久保存。341d固定样张的独立页数/签章/分页物理复核也已通过；当前合成候选runtime/registry及真实life尚未启用，不能继承341d机器资格，须准确重绑后进入提交→并批→盖章→归档→授权下载。完整类型矩阵、异常链和真实云写仍有缺口。
-- 开发工具：接收已获批[复盘落地包](/Users/leoyang/.codex/visualizations/2026/11/13/01a1d530-ca62-7df3-bfe6-c2a26f6b2d21/retro/落地包/APPLIED.md)。本地已集成两份fast文件；54项相关检查及真实语言检查只绑定工具候选bba5e10f，不继承新合成候选的CI。默认/开发基线对敏感范围仍退出2，不冒称完整快速门过。根TDD技能确认继承措辞已生效，新开发规程增量已在本树同步。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；远端Draft PR428候选`9762873c33513094c48f51bb7ad8fe5de9c30abf`，源码基点e1a34125已通过两轴源码复审。准确976的CI43474730628为26/32成功、6项失败：Quality/POL108堆内存、API两组超时、settlement V2迁移前置及汇总。后继工具修复尚在本地，未取得新CI结论。用户根混合改动保留，原临时树缺失的历史证据不重建为通过。
+- 任务16：旧6701运行在登录HTTP201后因loader延迟加载失败；固定UTF-8初始化的真实组件修复已通过窄验证，但未证明真实付款。新976运行在ownedApplication阶段后进程消失，无终态回执，退出原因尚未证实，业务保持UNKNOWN_DO_NOT_RETRY，未重启旧令牌。准确隔离库限定只读观察七张相关表当前均零、其他客户端零，仅证明当前快照。取证持久保存后已清理本轮独占容器/网络并独核缺席；这是独立恢复清理，不能补造原controller终态。下一步细分启动阶段与耗时，窄复现后再准备新场景。
+- 任务12：严格V2本地工具profile保留旧V1锁，准确80657464重新真实机检158.553秒并完成独立物理复核（Java15页、Office15页、合并30页，原PDF与60PNG已持久）。86a4740c仅变更受控registry元数据，真实life返回exit1/1212秒：DOCUMENT_ACL/WRITE，首因CURRENT259_DOCUMENT_ACL_TRANSPORT_COMMIT_UNCONFIRMED；businessOutcome与controller清理状态UNKNOWN。resource manifest另报closed；独核已确认准确容器/网络缺席、relay及原执行进程缺席，原controller UNKNOWN仍保留。尚未进入RUNTIME/APPLICATION或合同生命周期业务，下一步窄诊断文档权限提交。完整类型矩阵、异常链及真实云写仍有缺口。
+- 开发工具：已接收获批[复盘落地包](/Users/leoyang/.codex/visualizations/2026/11/13/01a1d530-ca62-7df3-bfe6-c2a26f6b2d21/retro/落地包/APPLIED.md)。fast两文件及持续开发规程已集成；窄检查不代替最终完整门禁。当前仅本地、GitHub开发和独占虚构测试，无main合并、部署或生产变更。
 
 ## 授权、证据和下一步
 
