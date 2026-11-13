@@ -10,7 +10,7 @@ async function exerciseCurrent261LocalLifecycle(key,http){
  const {fixture,passwords,signal}=config;
  need(modules.isTask12LocalLifecycleFixture(fixture)&&signal&&!signal.aborted,'HANDLE');
  const runtime=modules.currentOfficialDocumentScope();
- need(runtime?.kind==='OFFICIAL_TOOL_RUNTIME'&&runtime.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'&&runtime.source?.head===proof.sourceSha&&typeof runtime.readPdfDrawnText==='function','RUNTIME');
+ need(runtime?.kind==='OFFICIAL_TOOL_RUNTIME'&&require('./task12-official-document-profiles.cjs').officialDocumentProfile(runtime.profile)&&runtime.source?.head===proof.sourceSha&&typeof runtime.readPdfDrawnText==='function','RUNTIME');
  const verify=()=>{check();http.check();need(!signal.aborted&&modules.currentOfficialDocumentScope()===runtime,'RUNTIME');};
  let window,first,result,receipt,hasFirst=false;
  try{
