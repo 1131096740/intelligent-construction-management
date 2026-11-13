@@ -204,7 +204,7 @@ function fixture(t,options={}){
    }
   };
   ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check,...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
-  ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume){assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{if(Object.hasOwn(options,'applicationFailure'))throw options.applicationFailure;return await consume(application);}finally{state.calls.push('app-close');}}};
+  ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume,reportPhase){await options.onApplicationPhase?.(reportPhase);assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{if(Object.hasOwn(options,'applicationFailure'))throw options.applicationFailure;return await consume(application);}finally{state.calls.push('app-close');}}};
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
    if(options.beforeCaseFailure)throw options.beforeCaseFailure;
@@ -1280,4 +1280,26 @@ test('late HTTP context after the original continuity throw enriches its primary
  assert.deepEqual(durable.paymentCaseFailure,receipt.paymentCaseFailure);
  assert.equal(durable.failureCode,'CURRENT259_LOADER_CHANGED');
  assert.doesNotMatch(text,/private original continuity/u);
+});
+
+
+test('CLI persists a safe application checkpoint before the application has returned',async t=>{
+ let release,entered;const pending=new Promise(resolve=>{release=resolve;}),ready=new Promise(resolve=>{entered=resolve;});
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,async onApplicationPhase(report){
+  assert.equal(typeof report,'function');report('NEST_COMPILE');entered();await pending;
+ }});
+ t.after(async()=>{release();await f.done;});
+ await Promise.race([ready,f.done.then(result=>assert.fail('application not reached: '+result.failureCode))]);
+ const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1),row=JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8'));
+ assert.equal(row.event,'APPLICATION_CHECKPOINT');assert.equal(row.phase,'ownedApplication');assert.equal(row.applicationPhase,'NEST_COMPILE');
+ assert.equal(row.businessOutcome,'NOT_ENTERED');assert.equal(row.receiptPublished,false);assert.equal(row.nativeAdmission,false);
+ assert.ok(Number.isSafeInteger(row.elapsedMs));assert.ok(!fs.existsSync(path.join(f.s.runRoot,'receipt.json')));release();await f.done;
+});
+
+
+test('application checkpoint rejects foreign phase detail without persisting it',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,onApplicationPhase(report){report('private SQL password');}});
+ const result=await f.done;assert.equal(result.status,'STOPPED');assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_PROGRESS_WRITE');
+ const text=fs.readdirSync(f.state.progressRoot).map(name=>fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')).join('');
+ assert.doesNotMatch(text,/private SQL password/);assert.equal(f.state.calls.includes('case'),false);assert.equal(f.state.closes,1);
 });
