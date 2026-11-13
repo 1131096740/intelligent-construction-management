@@ -167,13 +167,16 @@ function createCommandRuntime(options = {}) {
             resolve({ stdout, stderr });
             return;
           }
-          reject(
-            new Error(
-              `${commandName} ${args.join(" ")} failed (${signal ?? code})\n${
-                stderr || stdout
-              }`
-            )
+          const failure = new Error(
+            `${commandName} ${args.join(" ")} failed (${signal ?? code})\n${
+              stderr || stdout
+            }`
           );
+          Object.defineProperties(failure, {
+            exitCode: { value: code },
+            signal: { value: signal }
+          });
+          reject(failure);
         });
       });
 
