@@ -9,6 +9,6 @@ module.exports = {
   testRegex: ".*(?:\\.spec|\\.e2e-spec)\\.ts$",
   testPathIgnorePatterns: ["/node_modules/", ...exactIgnorePatterns, ...documentIgnorePatterns, "/database/task12-contract-lifecycle\\.native\\.spec\\.ts$"],
   transform: {
-    "^.+\\.ts$": "ts-jest"
+    "^.+\\.ts$": ["ts-jest", { tsconfig: { isolatedModules: true } }]
   }
 };
