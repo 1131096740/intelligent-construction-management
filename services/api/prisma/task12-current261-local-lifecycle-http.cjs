@@ -32,6 +32,7 @@ const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const error=()=>Object.assign(Error('CURRENT261_LOCAL_LIFECYCLE_HTTP'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'});
 const need=ok=>{if(!ok)throw error();};
 const own=(v,k)=>v&&!types.isProxy(v)?Object.getOwnPropertyDescriptor(v,k)?.value:undefined;
+const secondary=(detail,cause)=>{detail.secondaryPhase='AFTER_CHECK';const code=own(cause,'code');detail.secondaryReason=['CURRENT259_LOADER_CHANGED','CURRENT261_LOCAL_LIFECYCLE_HTTP'].includes(code)?code:'UNCLASSIFIED';};
 function exchange(port,method,path,headers,wire,binary,observe){
  const signal=AbortSignal.timeout(15000);
  return new Promise((resolve,reject)=>{
@@ -72,7 +73,7 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
    const result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});
    observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME'});return result;
   }catch(cause){
-   if(observation.phase==='EXCHANGE')try{continuity();}catch{observation.secondaryPhase='AFTER_CHECK';}
+   if(observation.phase==='EXCHANGE')try{continuity();}catch(later){secondary(observation,later);}
    remember(cause,observation);throw cause;
   }
  };
@@ -161,7 +162,7 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
  try{const result=await consume(bridge);check();need(active.size===0);return result;}
  catch(cause){
   if(lastObservation&&!parallelObserved&&!describeCurrent261LocalLifecycleHttpFailure(cause)){
-   const detail={...lastObservation};try{continuity();}catch{detail.secondaryPhase='AFTER_CHECK';}remember(cause,detail);
+   const detail={...lastObservation};try{continuity();}catch(later){secondary(detail,later);}remember(cause,detail);
   }
   throw cause;
  }

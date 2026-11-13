@@ -11,7 +11,7 @@ function model(mode){
  const binary=options.path.includes('/download?');let bytes=Buffer.from(JSON.stringify(body));if(binary){bytes=Buffer.alloc(1024*1024,65);Buffer.from('%PDF-').copy(bytes);response.statusCode=200;response.headers={'content-type':mode==='wrong-mime'?'text/html':'application/pdf','content-length':String(mode==='wrong-size'?bytes.length+1:bytes.length)};}
  consume(response);response.emit('data',bytes.subarray(0,100));response.emit('data',bytes.subarray(100));response.emit('end');if(mode==='returned-and-postcheck')live=false;});};return outgoing;}}};
  const holder={exports:{}};new Function('require','module',fs.readFileSync(path.join(__dirname,'task12-current261-local-lifecycle-http.cjs'),'utf8'))(name=>imports[name]??require(name),holder);
- return{api:holder.exports,config,server,calls,close(){live=false;},verify(){assert.equal(live,true);},verifyToken(token){const actor=Number(token.match(/^model(\d*)\./u)[1]||0);return{sub:users[actor].id,phone:users[actor].phone,type:'access',ver:0};}};
+ return{api:holder.exports,config,server,calls,close(){live=false;},verify(){if(!live&&mode==='transport-and-postcheck')throw Object.assign(Error('PRIVATE_GUARD'),{code:'CURRENT259_LOADER_CHANGED'});assert.equal(live,true);},verifyToken(token){const actor=Number(token.match(/^model(\d*)\./u)[1]||0);return{sub:users[actor].id,phone:users[actor].phone,type:'access',ver:0};}};
 }
 test('life HTTP owns login tokens, pins its loopback server and revokes escaped operations',async()=>{
  const f=model();let escaped;
@@ -71,7 +71,7 @@ for(const [mode,phase,httpStatus,secondaryPhase]of [
  const f=model(mode);let first;
  await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,b=>b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}})),cause=>{first=cause;return true;});
  const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);
- assert.deepEqual(detail,{method:'POST',routeTemplate:'/auth/login',phase,httpStatus,businessOutcome:'UNKNOWN',...(secondaryPhase?{secondaryPhase}:{})});
+ assert.deepEqual(detail,{method:'POST',routeTemplate:'/auth/login',phase,httpStatus,businessOutcome:'UNKNOWN',...(secondaryPhase?{secondaryPhase,secondaryReason:'CURRENT259_LOADER_CHANGED'}:{})});
  assert.equal(f.api.describeCurrent261LocalLifecycleHttpFailure({code:'CURRENT261_LOCAL_LIFECYCLE_HTTP',httpStatus:201,routeTemplate:'/auth/login'}),undefined);
  assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|199000|password|token|10000000/u);
 });
@@ -82,7 +82,7 @@ test('a consume failure keeps its identity and records only the preceding respon
   await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
   f.close();throw business;
  }),cause=>cause===business);
- assert.deepEqual(f.api.describeCurrent261LocalLifecycleHttpFailure(business),{method:'POST',routeTemplate:'/auth/login',phase:'CONSUME',httpStatus:201,businessOutcome:'UNKNOWN',secondaryPhase:'AFTER_CHECK'});
+ assert.deepEqual(f.api.describeCurrent261LocalLifecycleHttpFailure(business),{method:'POST',routeTemplate:'/auth/login',phase:'CONSUME',httpStatus:201,businessOutcome:'UNKNOWN',secondaryPhase:'AFTER_CHECK',secondaryReason:'UNCLASSIFIED'});
 });
 
 test('diagnostics redact dynamic route coordinates and do not borrow a prior response after a failed precheck',async()=>{
