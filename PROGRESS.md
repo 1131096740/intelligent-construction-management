@@ -1,18 +1,18 @@
 # 建工智管当前状态
 
-更新：2026-11-14。#382保持193条规格、45项依赖任务全范围；本轮fresh GitHub核14项关闭，当前前沿#394（任务12）与#398（任务16），整体验收未完成。
+更新：2026-11-14。#382保持193条规格、45项依赖任务全范围；最近核14项关闭，前沿#394（任务12）与#398（任务16），整体验收未完成。
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；远端Draft PR428候选`6f22b3c430683991901d2b52345f6f860f9d5d3c`，准确CI43495417313仍运行，POL113已success，general_procurement新失败正在获取原日志，尚无完整CI通过结论。旧819的30/32失败、729/976失败保留；本地新selected-case诊断片已审集成，尚无其准确CI。用户根混合改动与旧材料缺失边界保持。
-- 任务16：旧6701运行在登录HTTP201后因loader延迟加载失败；固定UTF-8初始化的真实组件修复已通过窄验证，但未证明真实付款。新976运行在ownedApplication阶段后进程消失，无终态回执，退出原因尚未证实，业务保持UNKNOWN_DO_NOT_RETRY，未重启旧令牌。准确隔离库限定只读观察七张相关表当前均零、其他客户端零，仅证明当前快照。取证持久保存后已清理本轮独占容器/网络并独核缺席；这是独立恢复清理，不能补造原controller终态。准确本地检查点源码`d27bd8342dd5ada3460ce65bf387de3285b84ef9`已通过两轴独审并集成，新增固定应用启动细分阶段的有界持久观察；原退出原因及业务仍UNKNOWN。全新9d6e517f/plan7197bbf2独占normal已真实终态exit1/2115.34秒，越过应用启动后在SELECTED_CASE失败，目前仅有seedAndSelectedCase阶段信息、底层cause未保留，business仍UNKNOWN；不能据此认定付款或seed全过。原controller报告cleanup完成，root已在同daemon独核准确容器/网络缺席、mounts[]、PID/relay缺席；原现场与终态证据保留，旧976计划未复用。准确selected-case诊断片`3ed2e3261bfc8e4489f909df14619d74ca32766c`两轴独审0项并集成，仅给原Error增加own.code并投影44个既有固定码；first/global code、UNKNOWN、守卫与业务控制不变，原9d6首因仍不可恢复。下一步窄真实PG复现，不再无新信息盲跑35分钟完整链。
-- 任务12：严格V2本地工具profile保留旧V1锁，准确80657464重新真实机检158.553秒并完成独立物理复核（Java15页、Office15页、合并30页，原PDF与60PNG已持久）。86a4740c仅变更受控registry元数据，真实life返回exit1/1212秒：DOCUMENT_ACL/WRITE，首因CURRENT259_DOCUMENT_ACL_TRANSPORT_COMMIT_UNCONFIRMED；businessOutcome与controller清理状态UNKNOWN。resource manifest另报closed；独核已确认准确容器/网络缺席、relay及原执行进程缺席，原controller UNKNOWN仍保留。尚未进入RUNTIME/APPLICATION或合同生命周期业务，窄真实PG组件否定列ACL/函数ACL归一两假设，并验证封闭SQLSTATE出口，原首因仍未知；准确DACL/HTTP诊断源码`b3edd4652b5d85db562af24b855d4a963fd81281`已通过两轴独审0项并集成，registry仍PENDING且未挪用旧资格；准确固定pin修复`8b37883fab730824bd75d77e6a8cb4a5f3e74a12`已两轴独审0项并集成，源码指纹阻断闭合，原DACL首因仍UNKNOWN。准确6f22b3c4新工具资格132.575秒及root formal（摘要300ecc前缀）的限定样张独立复核已通过；metadata-only f717b22e在另一冻结树完成重绑，原actor已亲启新life98967/PID86370、新case dab2336e，目前运行中且无业务通过结论。本集成registry仍PENDING，两者不混同，不跨移资格；原DACL首因仍待新运行捕获，不猜修权限。完整类型矩阵、异常链及真实云写仍有缺口。
-- 开发工具：已接收获批[复盘落地包](/Users/leoyang/.codex/visualizations/2026/11/13/01a1d530-ca62-7df3-bfe6-c2a26f6b2d21/retro/落地包/APPLIED.md)。fast两文件及持续开发规程已集成；准确本地工具片`3a21d583d4e7c3fc72f0b12e691cb798a22044be`（tree `d14efc192c524bff191022e0bc258ec0044ce3ec`）两轴独审均0项，已快进集成：runtime逐文件转译、独立完整类型检查资源匹配、V2最终进程就绪与封闭退出诊断。远端6f22b3c4的准确CI43495417313仍运行，POL113已success、general_procurement新失败原日志正取证；旧8199574f的CI43490474714自然终态30成功/2失败（POL113 OOM及Release）保留，完整门禁尚未通过。准确本地POL113片`502adee57a7ef9ace57f7a9dc49940e2dfaa1cf5`已通过两轴独审0项并集成，仅复用已审runtime preset及更新原调度断言，后继准确CI仍待。相关全组合70通过/15失败中的task01 resources manifest旧pin是基点096已存在的集成漏项；现已通过8b37883f合法固定重封与91项相关回归闭合，两轴独审0项，helper/driver/validator字节保持、零hash/单字节篡改/canary继续拒绝，未豁免检查或转移旧资格；后继CI及新DACL实际仍待。准确729的CI43487267779终态29成功/3失败及后继夹具修复保留；原API超时和原preflight历史首因仍未证，不能从新通过反推；窄检查不代替最终完整门禁。当前仅本地、GitHub开发和独占虚构测试，无main合并、部署或生产变更。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；远端Draft PR428候选`6f22b3c430683991901d2b52345f6f860f9d5d3c`，准确CI43495417313自然终态30成功/2失败：综合采购默认Jest约2GB堆溢出及Release汇总。Quality、API四分片及POL113等通过。当前本地另有已审selected-case诊断片3ed2e326；尚无其准确CI。旧失败和用户根混合改动保留。
+- 任务16：9d6e517f/plan7197bbf2独占normal真实exit1/2115.34秒，完成应用启动后在SELECTED_CASE失败，原底层首因不可恢复、业务UNKNOWN_DO_NOT_RETRY。原控制器清理完成，root同daemon独核准确容器/网络、PID/relay缺席，初始mounts[]；旧场景未重发。新3ed2e326仅修复既有固定错误码传递，93+193项相关回归、包门和两轴独审通过，不等于业务根因已修。调查未发现合法快速真实PG同case入口，不新造私有admission；待工具片合成后用新候选、原完整入口获取真实闭集首因。
+- 任务12：原86a DACL WRITE结果UNKNOWN及清理独核保留。真实窄组件已否定两项ACL归一假设；DACL封闭诊断、HTTP首因与资源helper固定pin均已审集成，篡改负控保持。准确6f工具资格132.575秒、15/15/30页及root独立全60PNG/第二PDF解析复核通过。metadata-only f717b22e仅在另一冻结树启用，新life98967/PID86370、case dab2336e由原代理持续监控，尚无业务通过结论；本集成registry仍PENDING，不跨移资格。完整类型矩阵、异常链及真实云写仍有缺口。
+- 开发工具：已证POL108/POL113/综合采购同类默认Jest编译驻留问题。工具线正收口共同配置：运行期逐文件转译与独立完整tsc分离，保留全部类型覆盖、预算、超时、权限和业务断言，最终准确CI仍待。前期提速落地包、旧CI/临时材料丢失和恢复记录见主回执，不以局部门或历史成功代替当前通过。
 
 ## 授权、证据和下一步
 
-按[持续隔离开发规程](docs/agents/development-loop.md)继续，普通独占虚构测试失败可自行诊断修复复验。身份/归属不明、越界及清理失败停止受影响动作；业务未知按原键查证，不能查清则保留未知。生产、真实数据、真实云服务写入、新增费用及main发布仍按原边界单独确认；本轮未据此认定上线或生产变更。
+按[持续隔离开发规程](docs/agents/development-loop.md)继续，普通独占虚构测试失败可自行诊断修复复验。身份/归属不明、越界及清理失败停止受影响动作；业务未知按原键查证，查不清保留未知，不换键盲重发。生产、真实数据、真实云写、新增费用和main发布仍按原边界单独确认；本轮无main合并、部署或生产变更。
 
-新主回执与日志统一保存在[持久恢复目录](/Users/leoyang/.codex/visualizations/2026/11/12/01a1d054-b95b-70f2-9b4f-c9cbeffe79e7/recovery-20261114/)，临时目录只作运行现场。优先完成12/16真实短链，再扩展原整票验收，最终准确SHA完整门禁保留。旧回执链接保持历史，失去可达性不改写成另一候选通过。
+完整新旧事实、准确源码/命令/回执与独立核验统一保存在[持久恢复主回执](/Users/leoyang/.codex/visualizations/2026/11/12/01a1d054-b95b-70f2-9b4f-c9cbeffe79e7/recovery-20261114/RECEIPT.md)。优先完成12/16真实业务链，再扩展整票验收；最终准确SHA完整门禁保留，未知和未验项不计完成。
 
-规程前全文仍在[Git内历史快照](docs/progress/2026-11-13-progress-before-development-loop.md)，SHA256`08bae3e7b29a944266a5285b2a4026eb692fee2533116fe7651d978ced692990`；本次6701进度前像也保存在持久恢复目录。
+规程前全文仍在[Git内历史快照](docs/progress/2026-11-13-progress-before-development-loop.md)，SHA256`08bae3e7b29a944266a5285b2a4026eb692fee2533116fe7651d978ced692990`；各轮前像与失败记录均保留。
