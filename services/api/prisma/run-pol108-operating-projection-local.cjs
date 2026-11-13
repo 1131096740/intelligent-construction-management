@@ -213,7 +213,7 @@ async function runShard(shard) {
     const resultPath = path.join(temporaryRoot, "jest-results.json");
     await command(process.execPath, [
       jestCli,
-      "--config", path.join(root, "services/api/jest.pol108.config.cjs"),
+      "--config", path.join(root, "services/api/jest.runtime.config.cjs"),
       "--runInBand",
       "--runTestsByPath", ...shards.map(shard => shard.file),
       "--json", "--outputFile", resultPath

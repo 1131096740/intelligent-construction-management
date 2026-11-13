@@ -46,6 +46,17 @@ test("quality typecheck has a bounded compiler-only heap while preserving comple
   assert.doesNotMatch(jobBlock(workflow, "postgresql16-dynamic-gates"), /max-old-space-size=3072/u);
 });
 
+test("API runtime shards reuse isolated transpilation without changing heap, timeout or coverage", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const unit = jobBlock(workflow, "unit-test-gates");
+  const step = /      - name: Test API shard\n([\s\S]*?)(?=\n      - name:)/u.exec(unit)?.[1];
+  assert.ok(step);
+  assert.match(step, /NODE_OPTIONS: --max-old-space-size=4096/u);
+  assert.match(step, /pnpm --filter @jiangkong\/api run test --runInBand --config jest\.runtime\.config\.cjs --shard="\$shard\/4"/u);
+  assert.match(unit, /target: \[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
+  assert.doesNotMatch(step, /testTimeout|testNamePattern|passWithNoTests|testPathIgnore/u);
+});
+
 test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on success and drift", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const step = /      - name: Prefetch POL-275 reviewed-base frozen dependencies\n        if: (.+)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(workflow);
@@ -274,7 +285,7 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(quality, /pnpm typecheck/u);
   assert.match(quality, /pnpm lint/u);
   assert.match(tests, /target:\s*\[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
-  assert.match(tests, /pnpm --filter @jiangkong\/api run test --runInBand --shard="\$shard\/4"/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/api run test --runInBand --config jest\.runtime\.config\.cjs --shard="\$shard\/4"/u);
   assert.match(tests, /pnpm --filter @jiangkong\/web-admin test/u);
   assert.match(tests, /pnpm --filter @jiangkong\/shared-domain test/u);
   assert.match(build, /pnpm --filter @jiangkong\/web-admin build/u);

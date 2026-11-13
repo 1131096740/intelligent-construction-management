@@ -1,7 +1,7 @@
 const base = require("./jest.config.cjs");
 
-// Type checking runs in the independent quality gate. Do not retain its full
-// compiler program alongside the real PostgreSQL projection budget fixtures.
+// Type checking runs in the independent quality gate. Runtime tests retain
+// their assertions without keeping a second full compiler program resident.
 module.exports = {
   ...base,
   transform: {
