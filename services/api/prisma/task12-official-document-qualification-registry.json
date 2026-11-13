@@ -1,14 +1,5 @@
 {
   "version": 1,
-  "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2",
-  "qualification": {
-    "machineReceipt": {
-      "path": "/private/tmp/jg-394-v2-80657464-qualification-ykmepkle/run/MACHINE-RECEIPT.json",
-      "sha256": "093cc638a31820250489dfe02f42b282e39be338c7543192012edcd22ab9d054"
-    },
-    "physicalReview": {
-      "path": "/private/tmp/jg-394-v2-80657464-qualification-ykmepkle/ROOT-FORMAL-PHYSICAL-806.json",
-      "sha256": "74227066d39897004af11e6f63277db4fcecbdcb328712714f04dc5cac8c1f57"
-    }
-  }
+  "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_V1",
+  "qualification": null
 }
