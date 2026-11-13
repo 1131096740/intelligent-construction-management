@@ -128,12 +128,47 @@ test("task01 existing dispatcher forwards exactly the four fixed driver inputs",
 
 test("task01 registration binds reviewed source bodies and cannot substitute an arbitrary helper", () => {
   for (const mutate of [runner => { runner.sourceSha256 = "0".repeat(64); },
+    runner => { runner.resourceHelperSha256 = "0".repeat(64); },
     runner => { runner.resourceHelper = "arbitrary.cjs"; },
     runner => { runner.environment = { JG_TASK01_EXECUTION_APPROVED: "injected" }; }]) {
     const manifest = loadManifest();
     mutate(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").runner);
     assert.throws(() => validateManifest(manifest), /任务01固定执行源码哈希不匹配|任务01只允许固定operator/u);
   }
+});
+
+test("offline task01 validation rejects a one-byte helper comment change before runtime import", t => {
+  const fs = require("node:fs"), os = require("node:os");
+  const repository = path.resolve(__dirname, "../../..");
+  const copy = fs.mkdtempSync(path.join(os.tmpdir(), "jg-task01-fixed-pin-"));
+  t.after(() => fs.rmSync(copy, { recursive: true, force: true }));
+  const listing = spawnSync("git", ["ls-files", "-z"], { cwd: repository, encoding: "utf8", timeout: 10000 });
+  assert.equal(listing.status, 0);
+  for (const relative of listing.stdout.split("\0").filter(Boolean)) {
+    const destination = path.join(copy, relative);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.join(repository, relative), destination);
+  }
+  const cli = path.join(copy, "services/api/prisma/run-database-dynamic-gate-local.cjs");
+  const helper = path.join(copy, "services/api/prisma/enterprise-task01-resources.cjs");
+  const run = () => spawnSync(process.execPath, [cli, "--validate-manifest"], {
+    cwd: copy, encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }, timeout: 15000
+  });
+  const positive = run();
+  assert.equal(positive.status, 0, positive.stderr);
+  const original = fs.readFileSync(helper), changed = Buffer.from(original);
+  const offset = original.indexOf(Buffer.from("// Prepared task01")) + 3;
+  assert.ok(offset > 2); assert.equal(changed[offset], 80); changed[offset] = 112;
+  assert.equal([...original].filter((byte, index) => byte !== changed[index]).length, 1);
+  fs.writeFileSync(helper, changed);
+  const rejected = run();
+  assert.equal(rejected.status, 1); assert.match(rejected.stderr, /任务01固定执行源码哈希不匹配/u);
+  // A separate syntax-valid import canary must also lose to the checksum gate.
+  // The committed pin is never recomputed for either changed fixture body.
+  fs.writeFileSync(helper, Buffer.concat([original, Buffer.from("\nthrow new Error('TASK01_HELPER_MUST_NOT_EXECUTE');\n")]));
+  const canary = run();
+  assert.equal(canary.status, 1); assert.match(canary.stderr, /任务01固定执行源码哈希不匹配/u);
+  assert.doesNotMatch(canary.stdout + canary.stderr, /TASK01_HELPER_MUST_NOT_EXECUTE/u);
 });
 
 test("CI classification cannot move an old group out or make the manual operator automatic", () => {
