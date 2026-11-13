@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
 const entry=path.join(__dirname,'task12-current261-local-lifecycle-once.cjs'),id='12345678-1234-4234-8234-123456789012',digest='a'.repeat(64),runtimeDigest='b'.repeat(64);
 const sha=v=>createHash('sha256').update(v).digest('hex'),today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
-function model(t,{once=true,failure,cleanupFailure=false,used=false,date=today()}={}){
+function model(t,{once=true,failure,applicationFailure,cleanupFailure=false,used=false,date=today()}={}){
  const root=fs.mkdtempSync('/private/tmp/jg-life-once-model-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const run=path.join(root,'lifecycle-run'),toolRun=path.join(root,'tool-run');fs.mkdirSync(run,{mode:0o700});fs.mkdirSync(toolRun,{mode:0o700});
  const plan={source:{candidateSha:'c'.repeat(40)},case:{id,businessDate:date},resource:{daemonId:'model-daemon'},runtime:{sha256:runtimeDigest,runRoot:toolRun},run:{root:run,resourceDir:path.join(run,'resource'),attemptFile:path.join(run,'attempt.json'),receiptFile:path.join(run,'receipt.json')}};
@@ -22,7 +22,7 @@ function model(t,{once=true,failure,cleanupFailure=false,used=false,date=today()
   './task12-current259-document-role-provision.cjs':{provisionCurrent261GeneratedLifecycleDocumentRoles:(p,h)=>{assert.equal(h,handle);return step('document-roles',p,'ordinary');}},
   './task12-current259-document-acl-transport.cjs':{describeCurrent261DocumentAclFailure:require('./task12-current259-document-acl-transport.cjs').describeCurrent261DocumentAclFailure,installCurrent261GeneratedLifecycleDocumentAcl:(p,h)=>{assert.equal(h,handle);const value=step('document-acl',p,'document-roles');if(failure==='dacl-diagnostic')throw fault('CURRENT259_DOCUMENT_ACL_TRANSPORT_COMMIT_UNCONFIRMED',{phase:'WRITE',reason:'TASK01_RESOURCE_COMMAND_FAILED',documentAclWriteFailure:{sqlState:'42501',section:'COLUMN_GRANT',message:'PRIVATE_DO_NOT_PRINT'}});return value;}},
   './task12-current259-generated-document-runtime.cjs':{async withOfficialTask12DocumentRuntime(proof,root,use){assert.equal(proof,runtime);assert.equal(root,toolRun);calls.push('runtime');try{return await use({});}finally{calls.push('runtime-close');}}},
-  './task12-current259-document-login.cjs':{async withCurrent261LocalLifecyclePublicApplication(p,h,caseId,signal,use){assert.equal(p,'document-acl');assert.equal(h,handle);assert.equal(caseId,id);assert.equal(signal.aborted,false);calls.push('application');try{if(failure==='business')throw fault('CURRENT259_GENERATED_DOCUMENT_EXERCISE_RESULT');if(failure==='owner-cleanup')throw fault('CURRENT261_LOCAL_LIFECYCLE_OWNER_OUTPUT',{ownerCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});return await use(outcome);}finally{calls.push('application-close');}}},
+  './task12-current259-document-login.cjs':{async withCurrent261LocalLifecyclePublicApplication(p,h,caseId,signal,use){assert.equal(p,'document-acl');assert.equal(h,handle);assert.equal(caseId,id);assert.equal(signal.aborted,false);calls.push('application');try{if(applicationFailure)throw applicationFailure;if(failure==='business')throw fault('CURRENT259_GENERATED_DOCUMENT_EXERCISE_RESULT');if(failure==='owner-cleanup')throw fault('CURRENT261_LOCAL_LIFECYCLE_OWNER_OUTPUT',{ownerCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});return await use(outcome);}finally{calls.push('application-close');}}},
   './task12-current261-local-lifecycle-exercise.cjs':{projectCurrent261LocalLifecycleOutcome(value){assert.equal(value,outcome);assert.equal(calls.at(-1),'application-close');calls.push('project');return{status:'LOCAL_ONLY_MATCHED',storage:'LOCAL_ONLY',cosAccepted:false,full394Accepted:false};}}
  };
  const mod={exports:{}},load=name=>ports[name]??require(name);load.main=mod;load.cache={[entry]:mod};
@@ -61,4 +61,38 @@ test('DACL fixed SQLSTATE remains the primary stage detail when outer cleanup fa
  assert.deepEqual(r.documentAclFailure,{phase:'WRITE',reason:'TASK01_RESOURCE_COMMAND_FAILED',sqlState:'42501',section:'COLUMN_GRANT'});
  assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.businessOutcome,'UNKNOWN');assert.equal(r.cleanup,'UNKNOWN');
  assert.equal(f.calls.includes('application'),false);assert.doesNotMatch(JSON.stringify(r),/PRIVATE_DO_NOT_PRINT/u);
+});
+
+const hbaFailureCodes=['SCOPE','PREIMAGE','READBACK','FILE','RELOAD','PLAINTEXT'].map(part=>'TASK01_RESOURCE_DOCUMENT_HBA_'+part);
+function consumeFailure(cause,phase='CONSUME'){
+ const error=Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',phase});
+ if(cause!==undefined)Object.defineProperty(error,'cause',{value:cause});return error;
+}
+test('fixed HBA producer failures remain primary only inside the original consume context',async t=>{
+ for(const code of hbaFailureCodes){
+  const f=model(t,{applicationFailure:consumeFailure(Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code})),cleanupFailure:true});
+  const r=await f.result();assert.equal(r.reason,'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED');assert.deepEqual(r.documentLoginFailure,{phase:'CONSUME',resourceCode:code});assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.failureStage,'CONSUME');
+  assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.cleanup,'UNKNOWN');assert.equal(r.businessOutcome,'UNKNOWN');
+  assert.equal(r.outcome,undefined);assert.equal(f.calls.includes('project'),false);assert.doesNotMatch(JSON.stringify(r),/PRIVATE_DO_NOT_PRINT/u);
+ }
+});
+test('HBA-looking codes outside consume, prefixes, getters and proxies never become HBA diagnostics',async t=>{
+ let getterReads=0;const getter={};Object.defineProperty(getter,'code',{get(){getterReads++;throw Error('PRIVATE_DO_NOT_PRINT');}});
+ const causeGetter={code:'UNKNOWN'};Object.defineProperty(causeGetter,'cause',{get(){getterReads++;throw Error('PRIVATE_DO_NOT_PRINT');}});
+ const proxy=new Proxy({code:hbaFailureCodes[0]},{getOwnPropertyDescriptor(){throw Error('PRIVATE_DO_NOT_PRINT');}});
+ for(const inner of [{code:'TASK01_RESOURCE_DOCUMENT_HBA_PREFIX_UNKNOWN'},getter,causeGetter,proxy]){
+  const r=await model(t,{applicationFailure:consumeFailure(inner),cleanupFailure:true}).result();
+  assert.equal(r.reason,'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED');assert.equal(r.documentLoginFailure,undefined);assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');
+  assert.equal(r.cleanup,'UNKNOWN');assert.equal(r.businessOutcome,'UNKNOWN');assert.doesNotMatch(JSON.stringify(r),/PRIVATE_DO_NOT_PRINT/u);
+ }
+ for(const phase of ['WRITE',undefined]){
+  const e=consumeFailure({code:hbaFailureCodes[0]},phase);if(phase===undefined)delete e.phase;
+  const r=await model(t,{applicationFailure:e}).result();assert.equal(r.reason,'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED');assert.equal(r.documentLoginFailure,undefined);
+ }
+ const r=await model(t,{applicationFailure:{code:hbaFailureCodes[0]}}).result();assert.equal(r.reason,undefined);assert.equal(r.documentLoginFailure,undefined);
+ const cyclic=consumeFailure(undefined);Object.defineProperty(cyclic,'cause',{value:cyclic});
+ const cr=await model(t,{applicationFailure:cyclic}).result();assert.equal(cr.reason,'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED');assert.equal(cr.documentLoginFailure,undefined);
+ let deep={code:hbaFailureCodes[0]};for(let i=0;i<6;i++){const next={};Object.defineProperty(next,'cause',{value:deep});deep=next;}
+ const dr=await model(t,{applicationFailure:consumeFailure(deep)}).result();assert.equal(dr.reason,'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED');assert.equal(dr.documentLoginFailure,undefined);
+ assert.equal(getterReads,0);
 });

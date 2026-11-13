@@ -57,6 +57,22 @@ const loginReasons=new Set([
  ...['HANDLE','DESCRIPTOR','PROVIDERS','MODULE','COMPILE','CREATE','INIT','LISTEN','HTTP','USE','CLOSE','TIMEOUT'].map(stage=>'ROLE_APP_'+stage)
 ]);
 
+// Closed diagnostic values from the original HBA producer. They do not
+// grant execution and are recognized only below the login CONSUME wrapper.
+const documentHbaReasons=new Set([
+ 'TASK01_RESOURCE_DOCUMENT_HBA_SCOPE','TASK01_RESOURCE_DOCUMENT_HBA_PREIMAGE',
+ 'TASK01_RESOURCE_DOCUMENT_HBA_READBACK','TASK01_RESOURCE_DOCUMENT_HBA_FILE',
+ 'TASK01_RESOURCE_DOCUMENT_HBA_RELOAD','TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT'
+]);
+function safeDocumentLoginFailure(cause){
+ const seen=new WeakSet();let documentConsume=false;
+ for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause)&&!seen.has(cause);i++,cause=own(cause,'cause')){
+  seen.add(cause);const code=own(cause,'code');
+  if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&own(cause,'phase')==='CONSUME')documentConsume=true;
+  if(documentConsume&&documentHbaReasons.has(code))return Object.freeze({phase:'CONSUME',resourceCode:code});
+ }
+ return undefined;
+}
 function safeReason(cause){
  let found;
  for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause);i++,cause=own(cause,'cause')){
@@ -158,7 +174,8 @@ async function main(){
    try{check();value=await work();check();}
    catch(cause){
     if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause),
-     documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined};
+     documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined,
+     documentLoginFailure:name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined};
     if(name===phase){
      failureStage=safeStage(cause,name);
      try{
@@ -217,6 +234,7 @@ async function main(){
   const proof={...(reason?{reason}:{}),...(firstFailure?{failurePhase:firstFailure.phase}:{}),
    ...(firstFailure?.httpFailure?{httpFailure:firstFailure.httpFailure}:{}),
    ...(firstFailure?.documentAclFailure?{documentAclFailure:firstFailure.documentAclFailure}:{}),
+   ...(firstFailure?.documentLoginFailure?{documentLoginFailure:firstFailure.documentLoginFailure}:{}),
    ...(firstFailure&&cause!==primary?{secondaryReason:safeReason(cause)??'UNCLASSIFIED',secondaryPhase:'UNWIND'}:{}),
    ...(scopeEntered?{businessOutcome:'UNKNOWN'}:{}),...(technicalFailure?{technicalFailure}:{}),
    ...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};
