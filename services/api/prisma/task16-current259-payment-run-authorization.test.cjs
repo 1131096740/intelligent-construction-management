@@ -1330,3 +1330,36 @@ test('selected failure projection ignores foreign message getters and undeclared
   assert.doesNotMatch(JSON.stringify(receipt),/PG_CASE_UNDECLARED_PRIVATE_SQL|private message getter/);
  }
 });
+
+
+test('both fixed assertion producers are covered by the public diagnostic code contract',()=>{
+ const ts=require('typescript'),{isPaymentFailureCode}=require('./task16-current259-payment-diagnostics.cjs');
+ const missing=[],dynamic=[];
+ for(const [name,callee]of [['registered-payment-postgres.cases.ts','check'],['registered-payment-postgres.fixture.ts','requireCondition']]){
+  const source=ts.createSourceFile(name,fs.readFileSync(path.join(ROOT,'services/api/src/database',name),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+  let assertions=0;
+  function visit(node){
+   if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===callee){
+    assertions++;const code=node.arguments[1];
+    if(!code||!ts.isStringLiteralLike(code))dynamic.push(name+':'+source.getLineAndCharacterOfPosition(node.getStart()).line);
+    else if(!isPaymentFailureCode(code.text))missing.push(code.text);
+   }
+   ts.forEachChild(node,visit);
+  }
+  visit(source);assert.ok(assertions>0,'assertion producer must remain present');
+ }
+ assert.deepEqual(dynamic,[],'producer reason codes must remain static literals');
+ assert.deepEqual(missing.sort(),[],'all existing producer literals must survive consumer projection');
+ assert.equal(isPaymentFailureCode('PG_CASE_RESPONSE_LOST_AFTER_UPSTREAM_HEADERS'),false);
+ assert.equal(isPaymentFailureCode('PG_FIXTURE_PRIVATE_SQL_PASSWORD'),false);
+});
+
+for(const [stage,code]of [['SEED_PREPARE','PG_FIXTURE_INPUT'],['SEED_PREPARE','PG_FIXTURE_SEED_PROFILE'],['SELECTED_CASE','PG_RESOURCE_SOURCE_SEAL'],['SELECTED_CASE','PG_COMPETITION_BEFORE']])
+ test('CLI retains the source assertion literal '+code,async t=>{
+  const primary=Object.defineProperty(new Error('private source payload'),'code',{value:code});
+  const f=ordinaryBusinessFailureFixture(t,{caseFailure:primary,onBusiness({lease}){lease.recordCaseFailure(stage,code);}});
+  const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+  assert.equal(result.status,'STOPPED');assert.deepEqual(receipt.paymentCaseFailure,{stage,code});
+  assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
+  assert.doesNotMatch(JSON.stringify(receipt),/private source payload/);
+ });
