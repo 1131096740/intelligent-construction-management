@@ -517,7 +517,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
-      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn(),
+      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(),
         ...(ownedJson ? { async requestJson(target: URL, init: RequestInit, timeoutMs: number) {
           const response = await globalThis.fetch(target, { ...init, signal: AbortSignal.timeout(timeoutMs) });
           const body: unknown = await response.json();
@@ -641,6 +641,10 @@ describe("registered PG original case: explicit observer projection protocol (no
         expect(JSON.parse(String(original)).idempotencyKey).toBe(ids.requestKey);
         expect(replay).toBe(original);
       }
+      if (scenario === "normal" && ownedJson) expect(continuity.markCaseGate.mock.calls.map(([gate]) => gate)).toEqual([
+        "CONNECTED_ROLES", "OBSERVER_BEFORE", "BEFORE_STATE", "OPTIONS_REQUEST", "OPTIONS_ASSERTION", "REGISTRATION_REQUEST",
+        "OBSERVER_AFTER", "COMMITTED_ASSERTION", "REPLAY_REQUEST", "OBSERVER_REPLAY", "REPLAY_ASSERTION", "RESULT_REQUEST", "RESULT_ASSERTION"
+      ]);
       expect(ownerReads).toBe(0);
     } finally { fetch.mockRestore(); }
   });

@@ -84,16 +84,21 @@ async function prepareCrossCompanyCase(context: RegisteredPgExecutionContext, fi
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   light();
+  continuity?.markCaseGate?.("CONNECTED_ROLES");
   const identity = await checked(() => assertRegisteredPgConnectedRoles(context, continuity));
   const { plan } = fixture;
   const { ids } = plan;
+  continuity?.markCaseGate?.("OBSERVER_BEFORE");
   const before = await checked(() => observe(context, fixture, continuity, isolatedPaymentScope));
+  continuity?.markCaseGate?.("BEFORE_STATE");
   check(before.executions.length === 0 && before.roots.length === 0 && before.request.approvedAmountCents === 10000n && before.request.paidAmountCents === 0n && before.settlement.payableAmountCents === 10000n && before.settlement.paidAmountCents === 0n && before.balanceA === "100.0000" && before.balanceB === "100.0000", "PG_CASE_BEFORE_STATE");
   if (isolatedPaymentScope) {
     check([before.funding, before.allocations, before.events, before.audits, before.facts, before.impacts].every(rows => rows.length === 0),
       "PG_CASE_CANCEL_BEFORE_STATE");
   }
+  continuity?.markCaseGate?.("OPTIONS_REQUEST");
   const optionsResponse = await checked(() => registeredPgHttp(context, `/payment-executions/${ids.payment}/registration-options`, "GET", undefined, fixture.accessToken, continuity));
+  continuity?.markCaseGate?.("OPTIONS_ASSERTION");
   const options = optionsResponse.body as { expectedPaymentUpdatedAt?: unknown; remainingAmountCents?: unknown; accounts?: Array<{ scopeKey: string; eligible: boolean }> };
   check(optionsResponse.status === 200 && typeof options.expectedPaymentUpdatedAt === "string" && options.remainingAmountCents === "10000" && options.accounts?.some(account => account.scopeKey === `company:${ids.companyB}` && account.eligible), "PG_CASE_PUBLIC_OPTIONS");
   const command = {
@@ -275,7 +280,9 @@ async function assertRecordedOriginalResult(context: RegisteredPgExecutionContex
   continuity: RegisteredPgSeedContinuity | undefined, checked: CheckedOperation, executionId: string) {
   const { plan } = fixture;
   const { ids } = plan;
+  continuity?.markCaseGate?.("RESULT_REQUEST");
   const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`, "GET", undefined, fixture.accessToken, continuity));
+  continuity?.markCaseGate?.("RESULT_ASSERTION");
   const resultBody = result.body as { status?: unknown; execution?: { executionId?: unknown; amountCents?: unknown; paidAt?: unknown }; effects?: unknown[]; intercompany?: unknown[] };
   check(result.status === 200 && resultBody.status === "recorded" && resultBody.execution?.executionId === executionId && resultBody.execution?.amountCents === "4000" && resultBody.execution?.paidAt === plan.paidAt && resultBody.effects?.length === 0 && resultBody.intercompany?.length === 1, "PG_CASE_PUBLIC_ORIGINAL_RESULT");
 }
@@ -355,6 +362,7 @@ export async function runRegisteredProjectAttributionGap(context: RegisteredPgEx
 async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
   continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss") {
   const { checked, identity, submit } = await prepareCrossCompanyCase(context, fixture, continuity);
+  continuity?.markCaseGate?.("REGISTRATION_REQUEST");
   if (scenario === "response-loss") {
     check(continuity?.assertHttpRequest, "PG_CASE_RESPONSE_LOSS_REQUIRES_OWNED_TRANSPORT");
     const dropped = new Error("PG_CASE_RESPONSE_LOST_AFTER_UPSTREAM_HEADERS");
@@ -377,15 +385,20 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
     const response = await checked(() => submit());
     check(response.status === 201, "PG_CASE_REGISTRATION_HTTP_STATUS");
   }
+  continuity?.markCaseGate?.("OBSERVER_AFTER");
   const after = await checked(() => observe(context, fixture, continuity));
+  continuity?.markCaseGate?.("COMMITTED_ASSERTION");
   const { execution, root } = assertCommittedCrossCompany(context, fixture, after);
   const verifyOriginalResult = async () => {
     await assertRecordedOriginalResult(context, fixture, continuity, checked, execution.id);
   };
   if (scenario === "response-loss") await verifyOriginalResult();
+  continuity?.markCaseGate?.("REPLAY_REQUEST");
   const replay = await checked(() => submit());
   check(replay.status === 201, "PG_CASE_ORIGINAL_KEY_REPLAY_HTTP");
+  continuity?.markCaseGate?.("OBSERVER_REPLAY");
   const final = await checked(() => observe(context, fixture, continuity));
+  continuity?.markCaseGate?.("REPLAY_ASSERTION");
   check(final.executions.length === 1 && final.executions[0]?.id === execution.id && final.roots.length === 1 && final.roots[0]?.id === root.id && final.events.length === 1 && final.audits.length === 1 && final.allocations.length === 1 && final.request.paidAmountCents === 4000n && final.settlement.paidAmountCents === 4000n && final.balanceA === "100.0000" && final.balanceB === "60.0000", "PG_CASE_REPLAY_NO_SECOND_FINANCIAL_EFFECT");
   check(final.funding.length === 1 && final.funding[0]?.executionId === execution.id && final.funding[0]?.operatingLedgerEffectiveDateAtRegistration === null && final.funding[0]?.actualPayerId === fixture.plan.ids.companyB && final.funding[0]?.actualPayerKind === "participating_company" && final.facts.length === 0 && final.impacts.length === 0, "PG_CASE_REPLAY_CANONICAL_SCOPE");
   if (scenario === "commit") await verifyOriginalResult();

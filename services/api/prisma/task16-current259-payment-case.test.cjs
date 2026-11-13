@@ -401,7 +401,7 @@ for(const [name,code] of [['TimeoutError','TIMEOUT'],['AbortError','HTTP_ABORTED
  const m=paymentModel(f,{onCase(){throw new DOMException('private native response details',name);}});
  await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
- assert.deepEqual(seen,[['SELECTED_CASE',code]]);
+ assert.deepEqual(seen,[['SELECTED_CASE',code,undefined,undefined,{caseGate:'COMPILED_CASE',errorKind:'NON_NATIVE_THROWN'}]]);
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
 });
 
@@ -491,4 +491,34 @@ test('completed transport still preserves the fixture explicit current status wi
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
  assert.deepEqual(seen[0],['SEED_OPENING','PG_FIXTURE_REAL_HTTP_OPENING',503]);
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+});
+
+for(const [ErrorClass,errorKind] of [[TypeError,'TYPE_ERROR'],[RangeError,'RANGE_ERROR'],[Error,'ERROR'],[ReferenceError,'REFERENCE_ERROR'],[SyntaxError,'SYNTAX_ERROR'],[URIError,'URI_ERROR'],[EvalError,'EVAL_ERROR'],[AggregateError,'AGGREGATE_ERROR']])
+ test('selected case retains only fixed '+errorKind+' category and compiled observer gate',async t=>{
+  let traps=0;const error=ErrorClass===AggregateError?new AggregateError([],'private SQL and credential'):new ErrorClass('private SQL and credential');Reflect.deleteProperty(error,'stack');
+  for(const key of ['stack','message','name','code'])Object.defineProperty(error,key,{get(){traps++;throw Error('private getter');},configurable:true});
+  const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+  const m=paymentModel(f,{onCase(c){c.markCaseGate?.('OBSERVER_BEFORE');throw error;}});
+  await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+  assert.deepEqual(seen[0]?.[4],{caseGate:'OBSERVER_BEFORE',errorKind});assert.equal(traps,0);
+  assert.doesNotMatch(JSON.stringify(seen),/private SQL|credential|private getter/);
+ });
+
+test('selected CJS export guard exposes its fixed gate without weakening the original rejection',async t=>{
+ const seen=[],f=caseFixture(t,{recordCaseFailure:(...row)=>seen.push(row)});let m;
+ m=paymentModel(f,{onCase(c){m.modules.seedRegisteredPgFixture=async()=>{};c.checkLight();}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0]?.[4],{caseGate:'COMPILED_EXPORTS',errorKind:'ERROR'});
+});
+
+for(const mode of ['proxy','lookalike','unknown-gate'])test('selected diagnostic refuses untrusted '+mode+' inspection',async t=>{
+ let reads=0;const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ const error=mode==='proxy'?new Proxy(new TypeError('private payload'),{get(){reads++;throw Error('private getter');},getPrototypeOf(){reads++;throw Error('private prototype');}}):Object.create(TypeError.prototype);
+ const m=paymentModel(f,{onCase(c){if(mode==='unknown-gate')c.markCaseGate('OBSERVER_BEFORE_PRIVATE_SUFFIX');throw error;}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0]?.[4],mode==='unknown-gate'?{caseGate:'CASE_GATE_PROTOCOL',errorKind:'ERROR'}:{caseGate:'COMPILED_CASE',errorKind:mode==='proxy'?'UNINSPECTED':'NON_NATIVE_THROWN'});
+ assert.equal(reads,0);assert.doesNotMatch(JSON.stringify(seen),/private payload|private getter|PRIVATE_SUFFIX/);
 });

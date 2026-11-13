@@ -51,6 +51,9 @@ export interface RegisteredPgExecutionContext {
 /** Production-only continuity supplied by the source-bound executor. Tests
  * continue to enter through the original public run and owned fetch boundary. */
 type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTION" | "SEED_LOGIN" | "SEED_OPENING";
+export type RegisteredPgCaseGate = "CONNECTED_ROLES" | "OBSERVER_BEFORE" | "BEFORE_STATE" | "OPTIONS_REQUEST" | "OPTIONS_ASSERTION" |
+  "REGISTRATION_REQUEST" | "OBSERVER_AFTER" | "COMMITTED_ASSERTION" | "RESULT_REQUEST" | "RESULT_ASSERTION" |
+  "REPLAY_REQUEST" | "OBSERVER_REPLAY" | "REPLAY_ASSERTION";
 
 export interface RegisteredPgSeedContinuity {
   checkLight: () => void;
@@ -62,6 +65,8 @@ export interface RegisteredPgSeedContinuity {
   /** Source-owned case request checker; never a caller route list. */
   assertHttpRequest?: (route: string, method: "GET" | "POST") => void;
   assertHttpBody?: (route: string, method: "GET" | "POST", body: unknown) => void;
+  /** Fixed diagnostic boundary only; never an admission or request payload. */
+  markCaseGate?: (gate: RegisteredPgCaseGate) => void;
   markAttributionGapStage?: (stage: "OBSERVER_BEFORE" | "OWNER_BEFORE" | "BEFORE_STATE" | "PUBLIC_ACCOUNT" |
     "PUBLIC_OPTIONS" | "REGISTRATION" | "ORIGINAL_RESULT" | "OBSERVER_AFTER" | "OWNER_AFTER" |
     "FINANCIAL_COMPARISON") => void;

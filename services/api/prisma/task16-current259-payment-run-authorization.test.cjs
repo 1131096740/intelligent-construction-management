@@ -1363,3 +1363,24 @@ for(const [stage,code]of [['SEED_PREPARE','PG_FIXTURE_INPUT'],['SEED_PREPARE','P
   assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
   assert.doesNotMatch(JSON.stringify(receipt),/private source payload/);
  });
+
+for(const secondary of ['postcheck','cleanup'])test('selected error category and gate survive '+secondary+' as fixed first-cause context',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,caseFailure:new TypeError('private source payload'),
+  ...(secondary==='cleanup'?{cleanupFailure:true}:{afterConsumeFailure:Object.assign(new Error('private postcheck'),{code:'CURRENT259_BUILD_CHANGED'})}),
+  onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE',undefined,undefined,undefined,{caseGate:'OBSERVER_BEFORE',errorKind:'TYPE_ERROR'});}});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',caseGate:'OBSERVER_BEFORE',errorKind:'TYPE_ERROR'});
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.ok(receipt.secondaryFailures.length>=1);
+ const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1),row=JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8'));
+ assert.deepEqual(row.paymentCaseFailure,receipt.paymentCaseFailure);assert.doesNotMatch(JSON.stringify(receipt),/private source payload|private postcheck/);
+});
+test('selected gate and error category projection refuses unknown text and getters',async t=>{
+ for(const getter of [false,true]){
+  let reads=0;const diagnostic=getter?Object.defineProperties({},Object.fromEntries(['caseGate','errorKind'].map(key=>[key,{get(){reads++;throw Error('private getter');}}]))):{caseGate:'private path',errorKind:'private exception'};
+  const f=ordinaryBusinessFailureFixture(t,{caseFailure:new Error('private cause'),onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE',undefined,undefined,undefined,diagnostic);}});
+  await f.done;const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+  assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE'});assert.equal(reads,0);
+  assert.doesNotMatch(JSON.stringify(receipt),/private path|private exception|private getter/);
+ }
+});
