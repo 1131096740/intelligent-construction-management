@@ -20,8 +20,7 @@ const need=(ok,code)=>{if(!ok)throw fault(code);};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const inside=(root,file)=>file===root||file.startsWith(root+path.sep);
 const identity=stat=>Object.fromEntries(['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'].map(k=>[k,String(stat[k])]));
-function file(file){
- const before=fs.lstatSync(file,{bigint:true});need(before.isFile()&&!before.isSymbolicLink()&&before.size<=128n*1024n*1024n,'CURRENT259_BUILD_FILE');
+function file(file,before=fs.lstatSync(file,{bigint:true})){need(before.isFile()&&!before.isSymbolicLink()&&before.size<=128n*1024n*1024n,'CURRENT259_BUILD_FILE');
  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
  try{
   const opened=identity(fs.fstatSync(fd,{bigint:true}));need(JSON.stringify(opened)===JSON.stringify(identity(before)),'CURRENT259_BUILD_FILE');
@@ -67,7 +66,7 @@ function tree(relative){
    need(JSON.stringify(children)===JSON.stringify(fs.readdirSync(p).sort())&&JSON.stringify(identity(s))===JSON.stringify(identity(fs.lstatSync(p,{bigint:true}))),'CURRENT259_BUILD_TREE_CHANGED');
    entries.push({...row,kind:'dir'});
   }else{
-   const captured=file(p);total+=captured.bytes.length;need(total<=2*1024*1024*1024,'CURRENT259_BUILD_TREE_BUDGET');
+   const captured=file(p,s);total+=captured.bytes.length;need(total<=2*1024*1024*1024,'CURRENT259_BUILD_TREE_BUDGET');
    files.push(descriptor(captured));entries.push({...row,kind:'file',sha256:captured.sha256});
   }
  }
