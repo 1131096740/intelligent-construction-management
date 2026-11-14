@@ -28,7 +28,7 @@ const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
- let attempted=false,permission,disconnectStage,attributionGapStage,httpPhase,httpRoute,observedHttpStatus,httpDiagnostic,caseGate,observerDiagnostic,caseStage='PERMIT_CLAIM';
+ let attempted=false,permission,disconnectStage,attributionGapStage,httpPhase,httpRoute,observedHttpStatus,httpDiagnostic,caseGate,observerDiagnostic,serverDiagnostic,caseStage='PERMIT_CLAIM';
  // Synchronous local gates restore only after success; failure keeps its origin.
  const atGate=(gate,operation)=>{const prior=caseGate;caseGate=gate;const result=operation();caseGate=prior;return result;};
  try{
@@ -101,32 +101,41 @@ async function executeCurrent259PaymentCase(lease,permit){
   const execution=Object.freeze({proof,owner:original.owner,runtime:original.runtime,observer:original.observer,
    password:prior?.password??randomBytes(32).toString('hex'),httpTimeoutMs:5000});
   const checkHttpTarget=target=>{
-   httpRoute=undefined;observedHttpStatus=undefined;httpDiagnostic=undefined;httpPhase='BEFORE_CHECK';check();
+   httpRoute=undefined;observedHttpStatus=undefined;httpDiagnostic=undefined;serverDiagnostic=undefined;httpPhase='BEFORE_CHECK';check();
    httpPhase='TARGET';
    const url=new URL(target);httpRoute=url.pathname;
    need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);
   };
+  const armDiagnostic=init=>caseStage==='SELECTED_CASE'&&httpRoute===`/payment-executions/${plan.ids.payment}/registrations`&&init.method==='POST'
+   ?lease.armRegistrationDiagnostic(plan.ids.payment,plan.ids.requestKey):undefined;
+  const takeDiagnostic=ticket=>{if(ticket!==undefined)serverDiagnostic=lease.takeRegistrationDiagnostic(ticket);};
   const transport=async(target,init)=>{
+   let ticket,hasPrimary=false;
    try{
     checkHttpTarget(target);
+    ticket=armDiagnostic(init);
     httpPhase='FETCH';
     const response=await originalFetch(target,init);
     observedHttpStatus=response.status;
     httpPhase='AFTER_CHECK';check();
     httpPhase='RESPONSE_RETURNED';
     return response;
-   }catch(error){httpDiagnostic??=describePaymentDiagnostic(error);throw error;}
+   }catch(error){hasPrimary=true;httpDiagnostic??=describePaymentDiagnostic(error);throw error;}
+   finally{try{takeDiagnostic(ticket);}catch(error){if(!hasPrimary)throw error;}}
   };
   const requestJson=async(target,init,timeoutMs)=>{
+   let ticket,hasPrimary=false;
    try{
     checkHttpTarget(target);
     need(timeoutMs===5000&&timeoutMs===execution.httpTimeoutMs&&!Object.hasOwn(init,'signal'));
+    ticket=armDiagnostic(init);
     httpPhase='FETCH';
     const result=await requestCurrent261SeedJson(target,init,timeoutMs,status=>{httpPhase='BODY';observedHttpStatus=status;});
     httpPhase='AFTER_CHECK';check();
     httpPhase='RESPONSE_RETURNED';
     return result;
-   }catch(error){httpDiagnostic??=describePaymentDiagnostic(error);throw error;}
+   }catch(error){hasPrimary=true;httpDiagnostic??=describePaymentDiagnostic(error);throw error;}
+   finally{try{takeDiagnostic(ticket);}catch(error){if(!hasPrimary)throw error;}}
   };
   attempted=true;
   const seed=attributionGap?methods.seedRegisteredPgAttributionGapFixture:methods.seedRegisteredPgFixture;
@@ -280,7 +289,7 @@ async function executeCurrent259PaymentCase(lease,permit){
     code=name==='TimeoutError'?'TIMEOUT':name==='AbortError'?'HTTP_ABORTED':undefined;
    }catch{/* A diagnostic projection never replaces the original failure. */}
   }
-  const diagnostic=caseStage==='SELECTED_CASE'?filterPaymentDiagnostic({...observerDiagnostic,...describePaymentDiagnostic(error),caseGate,errorKind:paymentErrorKind(error)}):describePaymentDiagnostic(error);
+  const diagnostic=caseStage==='SELECTED_CASE'?filterPaymentDiagnostic({...observerDiagnostic,...serverDiagnostic,...describePaymentDiagnostic(error),caseGate,errorKind:paymentErrorKind(error)}):describePaymentDiagnostic(error);
   if(caseStage==='SELECTED_CASE'&&httpPhase){
    if(diagnostic)permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase,diagnostic);
    else permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase);

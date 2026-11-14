@@ -16,6 +16,7 @@ const {createCurrent259ImpactRuntime}=require('./task16-current259-impact-runtim
 const {current259OwnedApplicationMethod,current259OwnedApplicationView,inspectCurrent259OwnedPaymentProviders,
  isCurrent259OwnedModule,createCurrent259OwnedApplication:createOwnedNestApplication,takeCurrent259CreationFailure}=require('./task16-current259-client-loader.cjs');
 const {carryPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
+const registrationDiagnostics=new WeakMap();
 const REQUEST=Object.freeze([
  ['application','database/task16-registered-application.module.js'],['database','database/prisma.service.js'],
  ['security','api-security.js'],['projection','operating-projection/projection-export-json.js'],
@@ -92,9 +93,15 @@ async function createApplication(context,boundary,continuity,reportPhase,ownedAd
    impactReader=readerAdmission.open(check);
    const readerOverride=overrideProvider.call(builder,impactToken);method(readerOverride,'useValue').call(readerOverride,impactReader);
   }
+  let registrationFilter;
+  const diagnostic=readerAdmission?Object.freeze(Object.fromEntries(['Task16RegistrationErrorFilter','armTask16RegistrationError','takeTask16RegistrationError'].map(key=>[key,own(exports,key)]))):undefined;
+  if(diagnostic)need(Object.values(diagnostic).every(value=>typeof value==='function'),'TASK16_APP_RUNTIME_PROVIDER');
+  const diagnosticCatch=diagnostic?method(diagnostic.Task16RegistrationErrorFilter.prototype,'catch'):undefined;
   const verifyProviders=(handle,methods)=>{
    need(methods.get.call(handle,loaded.PrismaService)===runtime,'TASK16_APP_RUNTIME_PROVIDER');
    if(impactReader)need(methods.get.call(handle,impactToken)===impactReader,'TASK16_APP_IMPACT_READER_PROOF');
+   if(diagnostic){const actual=methods.get.call(handle,diagnostic.Task16RegistrationErrorFilter);
+    need(actual&&!types.isProxy(actual)&&Object.getPrototypeOf(actual)===diagnostic.Task16RegistrationErrorFilter.prototype&&method(actual,'catch')===diagnosticCatch&&(!registrationFilter||actual===registrationFilter),'TASK16_APP_RUNTIME_PROVIDER');registrationFilter=actual;}
   };
   checkpoint.enter('NEST_COMPILE');
   check();const compile=method(builder,'compile');attempted=true;moduleHandle=await compile.call(builder);
@@ -126,6 +133,7 @@ async function createApplication(context,boundary,continuity,reportPhase,ownedAd
     const proof=token===undefined?inspectCurrent259OwnedPaymentProviders(appHandle,moduleHandle,server):inspectCurrent259OwnedPaymentProviders(appHandle,moduleHandle,server,token,handle);
     need(proof&&proof.runtime===runtime&&proof.moduleRuntime===runtime,'TASK16_APP_RUNTIME_PROVIDER');
     need(proof.reader===impactReader&&proof.moduleReader===impactReader,'TASK16_APP_IMPACT_READER_PROOF');
+    need(proof.registrationFilter===registrationFilter&&proof.moduleRegistrationFilter===registrationFilter&&method(registrationFilter,'catch')===diagnosticCatch,'TASK16_APP_RUNTIME_PROVIDER');
     return inspectServer();
    }
    need(appMethods.getHttpServer.call(appHandle)===server,'TASK16_APP_ADDRESS');
@@ -134,6 +142,10 @@ async function createApplication(context,boundary,continuity,reportPhase,ownedAd
    return result;
   };
   const result={inspect,status:'CURRENT259_APPLICATION_PROTOCOL_RETURNED_NOT_NATIVE_PROOF',origin:`http://127.0.0.1:${port}/`,runtime,close,sourceBinding:{sourceSha,sourceSealSha256:seal,registeredManifestSha256:manifest},nativeProof:false,environmentPreparationImplemented:false,financialAcceptance:false};
+  if(diagnostic)registrationDiagnostics.set(result,Object.freeze({
+   arm(paymentId,key,token,handle){inspect(token,handle);return diagnostic.armTask16RegistrationError(registrationFilter,server,paymentId,key);},
+   take(ticket,token,handle){inspect(token,handle);return diagnostic.takeTask16RegistrationError(registrationFilter,server,ticket);}
+  }));
   if(readerAdmission&&continuity){
    competitionInspections.set(result,()=>{check();return inspectServer();});
    if(continuity.retirement)retirementInspections.set(result,()=>{
@@ -353,6 +365,8 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
     const inspected=businessToken&&inspectScoped?inspectScoped():businessToken?appInspect.call(app,businessToken,handle):appInspect.call(app);
     need(inspected.runtime===original.runtime&&inspected.origin===application.origin,code);
    },
+   armRegistrationDiagnostic(paymentId,key){businessIssuer(businessToken,handle);check();const diagnostic=registrationDiagnostics.get(app);need(diagnostic,code);return diagnostic.arm(paymentId,key,businessToken,handle);},
+   takeRegistrationDiagnostic(ticket){businessIssuer(businessToken,handle);check();const diagnostic=registrationDiagnostics.get(app);need(diagnostic,code);return diagnostic.take(ticket,businessToken,handle);},
    activateContinuity(token){businessIssuer(token,handle);need(!businessToken||businessToken===token,code);need(typeof activateSession==='function'&&own(session,'activateBusinessContinuity')===activateSession,code);activateSession.call(session,token);businessToken=token;check();},
    finishContinuity(token){businessIssuer(token,handle);need(businessToken===token&&typeof deactivateSession==='function'&&own(session,'deactivateBusinessContinuity')===deactivateSession,code);check();deactivateSession.call(session,token);businessToken=undefined;},
    resourceIdentity(){checkPaymentModule();if(businessToken){businessIssuer(businessToken,handle);view.checkLifetime();need(typeof getReceiptContinuity==='function'&&own(view.resource,'getReceiptContinuity')===getReceiptContinuity,code);return getReceiptContinuity.call(view.resource,businessToken);}check();need(typeof getReceipt==='function'&&own(view.resource,'getReceipt')===getReceipt,'TASK16_APP_HANDLE');return getReceipt.call(view.resource);},

@@ -30,11 +30,17 @@ function fixture(t,options={}){
  session.verifyFull=async()=>{session.checkLight();calls.push('sessions-full');await options.onFull?.();};
  const providers=new Map(),token=Symbol('actual registered impact'),serverReads=[0,0],providerReads=[0,0];
  const secondProof=Object.freeze({}),pair=Object.freeze([proof,secondProof]);
- const bundle={Task16RegisteredApplicationModule:class {},PrismaService:class {},
+ class ModelDiagnosticFilter { catch(){} }
+ const diagnosticTickets=new WeakSet();
+ const bundle={Task16RegistrationErrorFilter:ModelDiagnosticFilter,
+  armTask16RegistrationError(filter,server,paymentId,key){assert.ok(filter instanceof ModelDiagnosticFilter);assert.equal(typeof paymentId,'string');assert.equal(typeof key,'string');const ticket=Object.freeze({});diagnosticTickets.add(ticket);options.onDiagnosticArm?.({filter,server,paymentId,key});return ticket;},
+  takeTask16RegistrationError(filter,server,ticket){assert.ok(diagnosticTickets.delete(ticket));return options.onDiagnosticTake?.({filter,server,ticket});},
+  Task16RegisteredApplicationModule:class {},PrismaService:class {},
   configureApiSecurity(){calls.push('security');},configureProjectionExportJson(){calls.push('projection');},apiJsonReplacer(){},
   createApiValidationPipe(){return 'validation';},async listenApi(_app,port,host){calls.push('listen');assert.equal(port,0);assert.equal(host,'127.0.0.1');await options.onListen?.();},
   Task16ImpactReaderToken:token};
  function framework(lane,entries){
+  entries.set(ModelDiagnosticFilter,new ModelDiagnosticFilter());
   const server={listening:true,address(){return this.listening?{address:'127.0.0.1',family:'IPv4',port:52124+lane}:null;}};
   const app={async close(){calls.push('app-close');await options.onClose?.(lane);if(options.retirement&&!options.stillListening)server.listening=false;},get(key){providerReads[lane]++;return entries.get(key);},
    getHttpAdapter(){return {getInstance(){return {set(){calls.push('json');}};}};},
@@ -71,7 +77,7 @@ function fixture(t,options={}){
   }},
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer(token,h){assert.equal(typeof options.businessGuard,'function');options.businessGuard(token,h);}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(provided,token){assert.equal(provided,handle);options.businessGuard(token,provided);view.check();return view;},claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);resourceClaims++;view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
-  './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return !!options.ownedProviderModel;},createCurrent259OwnedApplication(module){return module.createNestApplication();},inspectCurrent259OwnedPaymentProviders(app,module,server,...authority){options.onProviderInspect?.(authority);return {runtime:app.get(bundle.PrismaService),moduleRuntime:module.get(bundle.PrismaService),reader:app.get(token),moduleReader:module.get(token)};},takeCurrent259CreationFailure(){}},
+  './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return !!options.ownedProviderModel;},createCurrent259OwnedApplication(module){return module.createNestApplication();},inspectCurrent259OwnedPaymentProviders(app,module,server,...authority){options.onProviderInspect?.(authority);return {runtime:app.get(bundle.PrismaService),moduleRuntime:module.get(bundle.PrismaService),reader:app.get(token),moduleReader:module.get(token),registrationFilter:app.get(ModelDiagnosticFilter),moduleRegistrationFilter:module.get(ModelDiagnosticFilter)};},takeCurrent259CreationFailure(){}},
   './run-task16-registered-pg-local.cjs':{ownsActiveTask16SimulationContext(){return false;}},
   './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value,paymentProfile){const material=loadCurrent259CatalogMaterial(value,paymentProfile);return options.material?options.material(material):material;}}
  };
@@ -574,4 +580,14 @@ test('normal owned provider inspection carries the active continuity authority w
  f.providers.set(f.bundle.PrismaService,{});assert.throws(()=>lease.check(),/TASK16_APP_RUNTIME_PROVIDER/u);return 'provider substitution stopped';}}});
  await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>f.api.consumeCurrent259PaymentApplication(app,f.handle,permit)),/TASK16_APP/u);
  assert.ok(scopedReads>0,'active normal inspection must carry its original token and handle');
+});
+
+for(const replacement of ['instance','method'])test('private diagnostic provider '+replacement+' substitution halts original owned application before business work',async t=>{
+ const f=fixture(t);let business=0;
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  if(replacement==='instance')f.providers.set(f.bundle.Task16RegistrationErrorFilter,new f.bundle.Task16RegistrationErrorFilter());
+  else f.bundle.Task16RegistrationErrorFilter.prototype.catch=function substituted(){};
+  app.inspect();business++;
+ }));
+ assert.equal(business,0);assert.equal(f.resourceCloses(),1);
 });

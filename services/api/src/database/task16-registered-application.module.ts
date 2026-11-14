@@ -14,7 +14,8 @@ import { REGISTERED_PAYMENT_IMPACT_READER } from "../payment/registered-payment-
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
 import { RegisteredPaymentNotificationService } from "../payment/registered-payment-notification.service";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
-import { ProjectOperatingConstraintFilter } from "../project/project-operating-constraint.filter";
+import { Task16RegistrationErrorFilter } from "./task16-registration-error-diagnostic";
+export { Task16RegistrationErrorFilter, armTask16RegistrationError, takeTask16RegistrationError } from "./task16-registration-error-diagnostic";
 import { DatabaseModule } from "./database.module";
 
 export const Task16ImpactReaderToken = REGISTERED_PAYMENT_IMPACT_READER;
@@ -32,7 +33,8 @@ function missingTask16ImpactReader(): never {
   controllers: [RegisteredPaymentExecutionController],
   providers: [PaymentAmountService, PaymentRequestService, RegisteredPaymentExecutionService,
     RegisteredPaymentNotificationService, ApprovalSmsService,
-    { provide: APP_FILTER, useClass: ProjectOperatingConstraintFilter },
+    Task16RegistrationErrorFilter,
+    { provide: APP_FILTER, useExisting: Task16RegistrationErrorFilter },
     { provide: Task16ImpactReaderToken, useValue: missingTask16ImpactReader }]
 })
 export class Task16RegisteredApplicationModule {}
