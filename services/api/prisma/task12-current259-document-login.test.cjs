@@ -163,6 +163,7 @@ function poolFixture(mode='success',save=false,priorSql){
      configuration:{hbaSha256:transition.beforeSha256},relay,documentHba:transition};}
    });
    imports['./task16-runtime-inputs.cjs']={readQualifiedTask16File(path,options){
+    if(mode==='guard-stall'&&options.expectedIdentity)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,12);
     assert.equal(path,file);if(options.expectedIdentity)assert.equal(options.expectedIdentity,stat);
     return {identity:stat,sha256:mode==='ca-drift'&&options.expectedIdentity?'f'.repeat(64):caSha};
    }};
@@ -178,7 +179,7 @@ function poolFixture(mode='success',save=false,priorSql){
     }
    }};
    view.beginPrismaRelayDrain=function(){
-    trace.push('drain-open');return async()=>{trace.push('drain-closed');if(mode==='drain-failure')throw Error('private relay evidence');};
+    trace.push('drain-open');return async()=>{trace.push('drain-closed');if(mode==='drain-failure'||mode==='relay-owner-drain')throw Error('private relay evidence');};
    };
    const participants=Object.freeze({storage:{},template:{},worker:{}});
    async function roleServices(connections,expected,use){
@@ -251,7 +252,7 @@ function poolFixture(mode='success',save=false,priorSql){
        return [{...observed,challenge,sessionRole:role.name,serverAddress:'127.0.0.1',serverPort:5432,
         ...(mode==='post-session'&&state.queries>3?{pid:701}:{})}];
       };
-      this.$disconnect=async()=>{trace.push('disconnect-'+index);if(mode==='close-failure'&&index===1)throw Error(url.href);};
+      this.$disconnect=async()=>{trace.push('disconnect-'+index);if((mode==='close-failure'||mode==='guard-stall')&&index===1)throw Error(url.href);};
      }
     }
    };
@@ -266,6 +267,7 @@ function poolFixture(mode='success',save=false,priorSql){
   },
   owner(sql){
    ownerSql.push(sql);trace.push('owner');
+   if(mode==='relay-owner-drain')throw Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'});
    const challenge=sql.match(/'challenge','([0-9a-f]{64})'/u)[1];
    const sessions=clients.map(client=>client.session);
    if(mode==='owner-drift')sessions[0]={...sessions[0],clientPort:38000};
@@ -510,4 +512,37 @@ test('life requires its actual official context before any login SQL, not a prev
 test('life V2 context reaches the same guarded role path before any business work',async()=>{
  const f=fixture(()=>{throw new Error('MODEL_STOP_V2_FIRST_OWNER_SQL');},undefined,undefined,true,true,'TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2');
  await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail()),{message:'CURRENT259_DOCUMENT_LOGIN_PRESTATE_REJECTED'});assert.equal(f.calls.length,1);
+});
+
+test('role failure exposes a closed stage and separates disconnect uncertainty from original failure',async()=>{
+ const f=poolFixture('close-failure');
+ await assert.rejects(f.api.withCurrent259GeneratedDocumentRoleServices(f.completion,f.handle,async()=>{}),error=>{
+  assert.equal(error.reason,'ROLE_CLEANUP_UNKNOWN');assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+  assert.equal(error.documentRoleFailure.subphase,'OWNER_AFTER');
+  assert.equal(error.documentRoleFailure.disconnectRejected,true);assert.equal(error.documentRoleFailure.drainRejected,false);
+  assert.equal(error.documentRoleFailure.boundedTimeout,false);
+  assert.equal(Number.isSafeInteger(error.documentRoleFailure.lastGuardMs),true);
+  assert.equal(Number.isSafeInteger(error.documentRoleFailure.maxGuardMs),true);
+  assert.equal(error.documentRoleFailure.maxGuardMs>=error.documentRoleFailure.lastGuardMs,true);
+  assert.doesNotMatch(JSON.stringify(error),/postgresql|private relay/u);return true;
+ });
+});
+
+test('raw relay first failure retains its consumer stage when drain also fails',async()=>{
+ const f=poolFixture('relay-owner-drain');
+ await assert.rejects(f.api.withCurrent259GeneratedDocumentRoleServices(f.completion,f.handle,async()=>assert.fail()),error=>{
+  assert.equal(error.reason,'ROLE_CLEANUP_UNKNOWN');assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+  assert.equal(error.documentRoleFailure.subphase,'OWNER_BEFORE');assert.equal(error.documentRoleFailure.drainRejected,true);
+  assert.equal(error.documentRoleFailure.disconnectRejected,false);assert.equal(error.documentRoleFailure.boundedTimeout,false);
+  assert.doesNotMatch(JSON.stringify(error),/PRIVATE_DO_NOT_PRINT|private relay/u);return true;
+ });
+});
+
+test('reported guard timing observes a real synchronous verification stall without changing cleanup outcome',async()=>{
+ const f=poolFixture('guard-stall');
+ await assert.rejects(f.api.withCurrent259GeneratedDocumentRoleServices(f.completion,f.handle,async()=>{}),error=>{
+  assert.equal(error.reason,'ROLE_CLEANUP_UNKNOWN');assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+  assert.equal(error.documentRoleFailure.subphase,'OWNER_AFTER');
+  assert.ok(error.documentRoleFailure.maxGuardMs>=10);assert.ok(error.documentRoleFailure.lastGuardMs>=10);return true;
+ });
 });

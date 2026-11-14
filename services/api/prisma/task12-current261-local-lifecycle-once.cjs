@@ -129,6 +129,23 @@ function safeDocumentLoginFailure(cause){
  }
  return undefined;
 }
+const documentRoleStages=new Set(['ENTRY','SEED_BEFORE','SEED_WRITE','SEED_COMMITTED','ORIGINALS',
+ 'ROLE_CONNECT','ROLE_OBSERVE','OWNER_BEFORE','APPLICATION','ROLE_POSTCHECK','OWNER_AFTER']);
+const documentRoleFields=['subphase','lastGuardMs','maxGuardMs','boundedTimeout','disconnectRejected','drainRejected'];
+function safeDocumentRoleFailure(cause){
+ const seen=new WeakSet();
+ for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause)&&!seen.has(cause);i++,cause=own(cause,'cause')){
+  seen.add(cause);
+  if(own(cause,'code')!=='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'||own(cause,'phase')!=='CONSUME')continue;
+  const detail=own(cause,'documentRoleFailure');
+  if(!detail||typeof detail!=='object'||types.isProxy(detail))continue;
+  const keys=Reflect.ownKeys(detail);if(keys.length!==documentRoleFields.length||!documentRoleFields.every(key=>keys.includes(key)))continue;
+  const result=Object.fromEntries(documentRoleFields.map(key=>[key,own(detail,key)]));
+  if(documentRoleStages.has(result.subphase)&&[result.lastGuardMs,result.maxGuardMs].every(ms=>Number.isSafeInteger(ms)&&ms>=0&&ms<=3600000)&&
+   result.maxGuardMs>=result.lastGuardMs&&[result.boundedTimeout,result.disconnectRejected,result.drainRejected].every(value=>typeof value==='boolean'))return Object.freeze(result);
+ }
+ return undefined;
+}
 function safeReason(cause){
  let found;
  for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause);i++,cause=own(cause,'cause')){
@@ -231,7 +248,8 @@ async function main(){
    catch(cause){
     if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause),
      documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined,
-     documentLoginFailure:name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined};
+     documentLoginFailure:name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined,
+     documentRoleFailure:name==='APPLICATION'?safeDocumentRoleFailure(cause):undefined};
     if(name===phase){
      failureStage=safeStage(cause,name);
      try{
@@ -291,6 +309,7 @@ async function main(){
    ...(firstFailure?.httpFailure?{httpFailure:firstFailure.httpFailure}:{}),
    ...(firstFailure?.documentAclFailure?{documentAclFailure:firstFailure.documentAclFailure}:{}),
    ...(firstFailure?.documentLoginFailure?{documentLoginFailure:firstFailure.documentLoginFailure}:{}),
+   ...(firstFailure?.documentRoleFailure?{documentRoleFailure:firstFailure.documentRoleFailure}:{}),
    ...(firstFailure&&cause!==primary?{secondaryReason:safeReason(cause)??'UNCLASSIFIED',secondaryPhase:'UNWIND'}:{}),
    ...(scopeEntered?{businessOutcome:'UNKNOWN'}:{}),...(technicalFailure?{technicalFailure}:{}),
    ...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};

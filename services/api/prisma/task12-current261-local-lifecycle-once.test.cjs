@@ -202,3 +202,22 @@ test('reserved sysread and close diagnostics reject malformed or mismatched meta
  }
  assert.equal(reads,0);
 });
+test('consumer phase diagnostics survive cleanup uncertainty with closed timing and disposition fields',async t=>{
+ const detail={subphase:'OWNER_BEFORE',lastGuardMs:6123,maxGuardMs:7000,boundedTimeout:false,disconnectRejected:false,drainRejected:true};
+ const e=Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',phase:'CONSUME',reason:'ROLE_CLEANUP_UNKNOWN',documentRoleFailure:detail});
+ const r=await model(t,{applicationFailure:e}).result();
+ assert.equal(r.reason,'CURRENT259_DOCUMENT_LOGIN_ROLE_CLEANUP_UNKNOWN');assert.equal(r.businessOutcome,'UNKNOWN');
+ assert.deepEqual(r.documentRoleFailure,detail);assert.doesNotMatch(JSON.stringify(r),/PRIVATE_DO_NOT_PRINT/u);
+});
+
+test('consumer diagnostics reject arbitrary stages, timing ranges, getters, and extra private values',async t=>{
+ const valid={subphase:'SEED_COMMITTED',lastGuardMs:5000,maxGuardMs:6000,boundedTimeout:false,disconnectRejected:false,drainRejected:true};
+ let reads=0;const getter={...valid};Object.defineProperty(getter,'lastGuardMs',{get(){reads++;throw Error('PRIVATE_DO_NOT_PRINT');}});
+ for(const detail of [{...valid,subphase:'PRIVATE_DO_NOT_PRINT'},{...valid,lastGuardMs:-1},{...valid,maxGuardMs:4999},{...valid,maxGuardMs:3600001},{...valid,lastGuardMs:1.2},{...valid,drainRejected:'true'},{...valid,secret:'PRIVATE_DO_NOT_PRINT'},getter,new Proxy(valid,{ownKeys(){throw Error('PRIVATE_DO_NOT_PRINT');}})]){
+  const e=Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',phase:'CONSUME',reason:'ROLE_CLEANUP_UNKNOWN',documentRoleFailure:detail});
+  const r=await model(t,{applicationFailure:e}).result();assert.equal(r.documentRoleFailure,undefined);assert.equal(r.businessOutcome,'UNKNOWN');assert.doesNotMatch(JSON.stringify(r),/PRIVATE_DO_NOT_PRINT/u);
+ }
+ assert.equal(reads,0);
+ const outside=Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',phase:'WRITE',documentRoleFailure:valid});
+ assert.equal((await model(t,{applicationFailure:outside}).result()).documentRoleFailure,undefined);
+});
