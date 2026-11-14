@@ -343,6 +343,8 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
   const reason=fixedReasons.get(recognized);
   if(reason)Object.defineProperty(error,'reason',{value:reason,enumerable:true});
   if(withRoles){
+   const roleFailure=own(recognized,'documentRoleFailure');
+   if(roleFailure)Object.defineProperty(error,'documentRoleFailure',{value:roleFailure,enumerable:true});
    const exerciseCode=own(recognized,'exerciseCode');
    if(exerciseCode)Object.defineProperty(error,'exerciseCode',{value:exerciseCode,enumerable:true});
    if(own(recognized,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')
@@ -422,13 +424,17 @@ async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,case
   ca.identity.uid===process.getuid(),'ROLE_CA');
 
  return withCurrent259ApplicationEnvironment(handle,async environment=>{
+  let roleStage='ENTRY',lastGuardMs=0,maxGuardMs=0,boundedTimeout=false;
   const verify=()=>{
+   const started=process.hrtime.bigint();
+   try{
    check();environment.check();verifyReceipt();
    need(diagnosticEnv.every(key=>!process.env[key])&&
     ['', 'off','error','warn','info'].includes(process.env.RUST_LOG??'')&&
     ['', '0'].includes(process.env.RUST_BACKTRACE??''),'ROLE_DIAGNOSTICS');
    const read=readQualifiedTask16File(caFile,{privateFile:false,maxBytes:1048576,expectedIdentity:ca.identity,code:CODE+'_ROLE_CA'});
    need(read.sha256===ca.sha256&&read.identity.uid===ca.identity.uid,'ROLE_CA');
+   }finally{lastGuardMs=Math.min(3600000,Math.max(0,Number((process.hrtime.bigint()-started)/1000000n)));maxGuardMs=Math.max(maxGuardMs,lastGuardMs);}
   };
   verify();
   const modules=load.call(loader),serviceEntry=nest?'withTask12NestDocumentRoleServices':'withTask12PreownedDocumentRoleServices';
@@ -439,7 +445,7 @@ async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,case
   const bounded=async(operation,stage)=>{
    let timer;
    try{return await Promise.race([Promise.resolve().then(operation),new Promise((_,reject)=>{
-    timer=setTimeout(()=>{unknown=true;reject(fault(stage));},15000);
+    timer=setTimeout(()=>{unknown=true;boundedTimeout=true;reject(fault(stage));},15000);
    })]);}finally{clearTimeout(timer);}
   };
   const verifyClient=entry=>{
@@ -517,16 +523,17 @@ ROLLBACK;`;
     const hashes=Object.fromEntries(await Promise.all(fixture.approval.users.map(async user=>[user.id,await hash(passwords[user.id])])));
     verify();
     const seed=createCurrent261LocalLifecycleSeed(fixture,identity,hashes);
-    const runSeed=async(sql,label)=>{verify();const result=await original.execOwnerSql.call(resource,sql,'current261-local-lifecycle-seed-'+label);verify();return result?.stdout;};
+    const runSeed=async(sql,label)=>{roleStage='SEED_'+label.toUpperCase();verify();const result=await original.execOwnerSql.call(resource,sql,'current261-local-lifecycle-seed-'+label);verify();return result?.stdout;};
     seed.verifyBefore(await runSeed(seed.beforeSql(),'before'));
     seed.verifyWritten(await runSeed(seed.writeSql(),'write'));
     const observed=seed.finish(await runSeed(seed.committedSql(),'committed'));
     need(observed.seedRows===26&&observed.seedXid!==proof.installXid&&observed.seedXid!==proof.aclInstallXid,'ROLE_SEED');
+    roleStage='ORIGINALS';
     const sourceDocx=modules.readTask12LocalLifecycleSourceDocx(),originals=await modules.createTask12LocalLifecycleOriginals(fixture);verify();
     publicLifecycle=Object.freeze({fixture,passwords,sourceDocx,originals,signal:lifecycleSignal});
    }
    for(const [index,name] of loginNames.entries()){
-    verify();
+    roleStage='ROLE_CONNECT';verify();
     const url=new URL(`postgresql://${name}:${secrets[index].toString('ascii')}@127.0.0.1:${endpoint.port}/${identity.database}`);
     const ordinary=save&&index===names.length;
     for(const [key,val] of Object.entries({schema:'public',connection_limit:ordinary?String(ordinaryLimit):'1',sslmode:'require',sslaccept:'strict',
@@ -544,10 +551,10 @@ ROLLBACK;`;
     verifyClient(entry);
     try{await bounded(()=>entry.methods.$connect.call(client),'ROLE_CONNECT_TIMEOUT');}
     catch(error){throw fixedReasons.has(error)?error:fault('ROLE_CONNECT');}
-    const session=await observe(entry,index);
+    roleStage='ROLE_OBSERVE';const session=await observe(entry,index);
     need(live.every(prior=>independent(prior,session)),'ROLE_IDENTITY');live.push(session);
    }
-   await ownerCheck();
+   roleStage='OWNER_BEFORE';await ownerCheck();
    const expected=Object.freeze({database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,
     storageRoot:environment.storageRoot,roleOids:Object.freeze(Object.fromEntries(slots.map((slot,i)=>[slot,proof.roleOids[i]])))});
    const connections=Object.freeze(Object.fromEntries(slots.map((slot,i)=>[slot,clients[i].client])));
@@ -577,6 +584,7 @@ ROLLBACK;`;
     }catch{throw fault('ROLE_SEED');}
    }
    let used=false;
+   roleStage='APPLICATION';
    value=await services(connections,expected,async (operations,providers)=>{
     verify();need(!used,'ROLE_ENTRY');used=true;
     let available=true;
@@ -662,18 +670,21 @@ ROLLBACK;`;
    });
    need(used,'ROLE_ENTRY');
    let ordinaryAfter;
+   roleStage='ROLE_POSTCHECK';
    for(const [index,entry] of clients.entries()){
     const current=await observe(entry,index);
     if(nest&&index===names.length)ordinaryAfter=current;
     else need(equal(current,live[index]),'ROLE_IDENTITY');
    }
-   await ownerCheck(ordinaryAfter);
+   roleStage='OWNER_AFTER';await ownerCheck(ordinaryAfter);
   }catch(error){failed=true;first=error;unknown=unknown||own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE';}
   const closed=await Promise.allSettled(clients.map(entry=>bounded(()=>entry.methods.$disconnect.call(entry.client),'ROLE_CLOSE_TIMEOUT')));
-  if(closed.some(result=>result.status==='rejected'))unknown=true;
-  try{await waitDrain();}catch{unknown=true;}
+  const disconnectRejected=closed.some(result=>result.status==='rejected');
+  if(disconnectRejected)unknown=true;
+  let drainRejected=false;try{await waitDrain();}catch{unknown=true;drainRejected=true;}
   if(unknown){
    const cleanup=Object.assign(fault(fixedReasons.get(first)??'ROLE_CLEANUP_UNKNOWN'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+   Object.defineProperty(cleanup,'documentRoleFailure',{value:Object.freeze({subphase:roleStage,lastGuardMs,maxGuardMs,boundedTimeout,disconnectRejected,drainRejected})});
    if(lifecycle&&first!==undefined)Object.defineProperty(cleanup,'cause',{value:first});
    const exerciseCode=fixedReasons.has(first)&&own(first,'exerciseCode');
    if(exerciseCode)Object.defineProperty(cleanup,'exerciseCode',{value:exerciseCode});
