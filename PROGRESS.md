@@ -4,11 +4,11 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地observer诊断源码`3d8379f831e2a20786b56f432033e94d6482b20b`已两轴最终独审0项并集成，七blob/mode与作者一致，生产源码与b8相同。最近鲜核cb8f7b11的CI43547754212仍运行（30项成功、无失败），待其自然终态后推新候选，避免取消任务12所需准确CI；旧d865准确32/32不跨继承。Draft PR428保持，45项/14关闭不变，旧失败、未知和用户根混合改动保留。
-- 任务16：SOURCE_DIAGNOSIS。新3d仅补observer固定phase、耗时/检查计数与封闭错误类观察，原15次Prisma调用、27次guard、5000ms、SQL/权限及首因/UNKNOWN守恒，不代表cause已修。原1c1类型、4f lint和b8冻结断言吞错问题均保留；最终外部断言以真移除freeze mutant6项RED、恢复108项GREEN闭环，最终type/lint通过，其余221CJS/81pin/build/qualified-load1按相同blob承接，merger未重复。原19fa业务UNKNOWN及04f1机制正负控/整体drain失败、独立清理边界保持；暂无新PG/normal。
-- 任务12：cb8f准确工具资格128.598秒与独立root formal29f仅证明限定样张；metadata-only e60540dc8c9b46592e9d26d27a6ac85cbb469b66在独立冻结树准备/校验完整life材料，尚未PG，等待cb8f准确CI及主控启动。该冻结源不随新398集成移动，不继承新head的CI或源码。原5c84 APPLICATION/CONSUME/SCOPE/PRIVATE_SCOPE/PLAINTEXT失败UNKNOWN、清理独核与历史回执保持；集成registry仍PENDING，完整合同链、类型矩阵及异常链仍未通过。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确已推送HEAD `29c36c9c7effb068492268eda412b47095f818dc`，tree `b87d35142f2df47c861b7c345cefb15cccf9a9ea`，CI43549263482已自然32/32成功，仅绑定该SHA。同预算plaintext worker join修复`a38ee0a9156488c14121b3e5ff3fdd45218b2229`已两轴独审0项并集成，三blob/mode同作者，新head准确CI待；原observer诊断保持；先等准确cb8f CI43547754212自然32/32后才推，未取消旧CI。PR428保持Draft，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
+- 任务16：新准确29c独立构建、normal prepare/verify及准确CI均通过，plan655f9a35c3aa220f2a6d40634bfd6acd9fd70b7540cfa43902148ab9637d0560于03:16:03Z亲启完整normal；原6570/g101:17持续10秒自动观察，root同daemon独核de4b3f14准确资源/源码/两进程/mounts[]。当前仍运行、尚无业务通过。新诊断仅固定phase/有界耗时/封闭错误类，原15次Prisma调用、27次guard、5000ms、SQL/权限和首因/UNKNOWN守恒，未证明cause已修。原类型/lint失败、冻结断言发现、旧19fa UNKNOWN及04f1机制正负控/整体drain失败与独核清理保持，相关原件见主回执。
+- 任务12：e605完整life原51374真实exit1/1597.833秒，CONSUME/SCOPE/PRIVATE_SCOPE/PLAINTEXT新增来源TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED，原business/controller UNKNOWN保持；receipt ad6cf5dd83d64d5a1cc4412f26537e00c11c71ae7e82e02b02b8837df5797674。原资源清理TIMEOUT后root只读确证cafb容器/网络残留；按已有自建资源清理授权封存独立恢复，fresh归属预核后仅容器/网络各rm一次、原15s/10s/总60s，0.702秒完成，03:35:42独核准确资源/进程/relay缺席，原cleanup_failed不改写、不续旧run。新无PG realPerl复现PG先FIN+6500ms同步停顿导致原HALF_CLOSE超时；同probe2000ms剩余预算严格join的4正常组合与missingFIN/CLIhung负控通过，未把机制当e605 exactinner原因。新a38在原probe剩余2000ms预算内严格join原public cohort，sender字节、relay5000ms、guard顺序次数、权限和SQL保持；254项CJS/APItype/lint及pin正负控通过，现已集成，未启新PG/life，不把机制当原真实内因修复。旧资格与失败保持；整票/15类型/联合browser未通过。
 
-- 开发工具：原完整类型覆盖、预算、超时、权限、业务断言与封闭错误控制均保持，helper pin仅固定标量bf254a7e→4fae074d。作者门按准确源码证据承接，merger未重复测试；canonical状态与完整旧历史见主回执，不以组件、局部门或历史成功代替当前业务验收。
+- 开发工具：原完整类型覆盖、预算、超时、权限、业务断言与封闭错误控制均保持，helper pin仅固定标量4fae074d→716979ad。作者门按准确源码证据承接，merger未重复测试；canonical状态与完整旧历史见主回执，不以组件、局部门或历史成功代替当前业务验收。
 
 ## 授权、证据和下一步
 
