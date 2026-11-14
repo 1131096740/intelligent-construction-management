@@ -49,7 +49,7 @@ function fixture(t,options={}){
  const otherSession={...session,runtime:options.competitionModule||options.retirement?runtimeModel.fixture().session.runtime:null,competitionLane:'b',
   ...(options.retirement?{disconnectOriginal:false,disconnectReplacement:true}:{})};
  const leases=new Set();
- if(options.competitionModule)for(const [lane,current]of [session,otherSession].entries()){
+ if(options.competitionModule||options.ownedProviderModel)for(const [lane,current]of [session,otherSession].entries()){
   current.competitionLane=lane===0?'a':'b';
   current.activateBusinessContinuity=value=>{options.businessGuard(value,handle);leases.add(lane);};
   current.deactivateBusinessContinuity=value=>{options.businessGuard(value,handle);leases.delete(lane);};
@@ -71,7 +71,7 @@ function fixture(t,options={}){
   }},
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer(token,h){assert.equal(typeof options.businessGuard,'function');options.businessGuard(token,h);}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(provided,token){assert.equal(provided,handle);options.businessGuard(token,provided);view.check();return view;},claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);resourceClaims++;view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
-  './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return false;},createCurrent259OwnedApplication(){throw new Error('wrong bridge');},takeCurrent259CreationFailure(){}},
+  './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return !!options.ownedProviderModel;},createCurrent259OwnedApplication(module){return module.createNestApplication();},inspectCurrent259OwnedPaymentProviders(app,module,server,...authority){options.onProviderInspect?.(authority);return {runtime:app.get(bundle.PrismaService),moduleRuntime:module.get(bundle.PrismaService),reader:app.get(token),moduleReader:module.get(token)};},takeCurrent259CreationFailure(){}},
   './run-task16-registered-pg-local.cjs':{ownsActiveTask16SimulationContext(){return false;}},
   './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value,paymentProfile){const material=loadCurrent259CatalogMaterial(value,paymentProfile);return options.material?options.material(material):material;}}
  };
@@ -564,4 +564,14 @@ test('diagnostic publication failure at owned cleanup still closes the applicati
   if(phase==='OWNED_CLEANUP')throw Object.assign(new Error('PROGRESS_WRITE'),{code:'PROGRESS_WRITE'});
  }));
  assert.ok(f.calls.includes('app-close'));assert.equal(f.resourceCloses(),1);
+});
+
+test('normal owned provider inspection carries the active continuity authority while still reading current providers',async t=>{
+ const scopeToken=Object.freeze({}),permit=Object.freeze({});let active=false,scopedReads=0,f;
+ f=fixture(t,{ownedProviderModel:true,businessGuard(token,h){assert.equal(token,scopeToken);assert.equal(h,f.handle);},
+ onProviderInspect(authority){if(active){assert.deepEqual(authority,[scopeToken,f.handle]);scopedReads++;}},
+ paymentModule:{executeCurrent259PaymentCase(lease,received){assert.equal(received,permit);lease.activateContinuity(scopeToken);active=true;lease.check();assert.ok(scopedReads>0);
+ f.providers.set(f.bundle.PrismaService,{});assert.throws(()=>lease.check(),/TASK16_APP_RUNTIME_PROVIDER/u);return 'provider substitution stopped';}}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>f.api.consumeCurrent259PaymentApplication(app,f.handle,permit)),/TASK16_APP/u);
+ assert.ok(scopedReads>0,'active normal inspection must carry its original token and handle');
 });

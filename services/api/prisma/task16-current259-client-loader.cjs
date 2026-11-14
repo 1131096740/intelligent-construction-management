@@ -19,8 +19,9 @@ const APP_METHODS=['close','get','getHttpAdapter','enableCors','useGlobalPipes',
 function dataMethod(value,key){let next=value;for(let i=0;next&&i<32;i++,next=Object.getPrototypeOf(next)){need(!types.isProxy(next),'CURRENT259_OWNED_METHOD');const d=Object.getOwnPropertyDescriptor(next,key);if(d){need(Object.hasOwn(d,'value')&&typeof d.value==='function','CURRENT259_OWNED_METHOD');return d.value;}}throw new Error('CURRENT259_OWNED_METHOD');}
 function current259OwnedApplicationMethod(value,key){return ownedApps.get(value)?.method(key);}
 function current259OwnedApplicationView(value){return ownedApps.get(value)?.view;}
-function inspectCurrent259OwnedPaymentProviders(value,testing,server){
- return ownedApps.get(value)?.inspectPaymentProviders(testing,server);
+function inspectCurrent259OwnedPaymentProviders(value,testing,server,token,handle){
+ need(arguments.length===3||arguments.length===5,'CURRENT259_FRAMEWORK_CHANGED');
+ return arguments.length===5?ownedApps.get(value)?.inspectPaymentProviders(testing,server,token,handle):ownedApps.get(value)?.inspectPaymentProviders(testing,server);
 }
 function isCurrent259OwnedModule(value){return ownedModules.has(value);}
 function createCurrent259OwnedApplication(value){const owner=ownedModules.get(value);need(owner,'CURRENT259_OWNED_MODULE');return owner.create();}
@@ -470,9 +471,10 @@ function loadCurrent259Client(handle){
        getAdapter.call(target)===adapter,'CURRENT259_FRAMEWORK_CHANGED');
       return fn;
      }
-     const record={inspectPaymentProviders(module,expectedServer){
-      need(!contractMode&&module===testing,'CURRENT259_FRAMEWORK_CHANGED');
-      check();
+     const record={inspectPaymentProviders(module,expectedServer,token,handle){
+      need(!contractMode&&module===testing&&(arguments.length===2||arguments.length===4),'CURRENT259_FRAMEWORK_CHANGED');
+      const verify=arguments.length===4?()=>verifyBusinessFiles(token,handle):check;
+      verify();
       // A single synchronous guarded operation reads the same server and four
       // providers. Each original method and the adapter are still checked.
       const result=guardedOperation(()=>{
@@ -487,9 +489,9 @@ function loadCurrent259Client(handle){
        const moduleRuntime=readModule(values.PrismaService),moduleReader=readModule(values.Task16ImpactReaderToken);
        return {runtime,reader,moduleRuntime,moduleReader};
       });
-      // check() visits the complete root graph, including any qualified load
-      // during the read. There is no second identical traversal in this pass.
-      check();
+      // Authenticated business reads recheck the graph and every current file FD.
+      // Explicit non-business inspection retains the full physical hash pass.
+      verify();
       return result;
      },method(key){
       if(!APP_METHODS.includes(key))return undefined;

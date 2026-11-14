@@ -87,3 +87,14 @@ test('a Proxy exports value is refused before descriptor or freeze traps',()=>{
  f.main.exports=new Proxy({}, {getOwnPropertyDescriptor(){traps++;return undefined;},isExtensible(){traps++;return true;}});
  assert.throws(()=>f.api.captureCurrent259BusinessIssuer());assert.equal(traps,0);
 });
+
+for(const mutation of ['same-inode-bytes','same-inode-restored-mtime','renamed-inode','symlink'])test('current FD continuity stops a '+mutation+' change between a light guard and the next public operation',t=>{
+ const dir=fs.mkdtempSync('/private/tmp/jg-259-meta-toc-');t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'module.js');fs.writeFileSync(file,'module.exports=1;\n',{mode:0o600});
+ const before=fs.lstatSync(file,{bigint:true}),times=fs.statSync(file),identity=Object.fromEntries(['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'].map(k=>[k,String(before[k])]));
+ assert.equal(checkCurrent259FileIdentity(file,identity),true);
+ if(mutation.startsWith('same-inode')){fs.writeFileSync(file,'module.exports=2;\n');assert.equal(fs.lstatSync(file,{bigint:true}).ino,before.ino);if(mutation.endsWith('mtime'))fs.utimesSync(file,times.atime,times.mtime);}
+ else{fs.renameSync(file,file+'.old');if(mutation==='symlink')fs.symlinkSync(file+'.old',file);else fs.copyFileSync(file+'.old',file);}
+ let effects=0;const nextPublicOperation=()=>{checkCurrent259FileIdentity(file,identity);effects++;};
+ assert.throws(nextPublicOperation,/CURRENT259_BUSINESS_CONTINUITY/u);assert.equal(effects,0);
+});

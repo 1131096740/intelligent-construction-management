@@ -120,10 +120,10 @@ async function createApplication(context,boundary,continuity,reportPhase,ownedAd
    need(server.listening===true&&own(current,'address')===host&&own(current,'family')===family&&own(current,'port')===port,'TASK16_APP_RUNTIME_PROVIDER');
    return Object.freeze({origin:`http://127.0.0.1:${port}/`,runtime});
   };
-  const inspect=()=>{
+  const inspect=(token,handle)=>{
    check();
    if(ownedAdmission&&isCurrent259OwnedModule(moduleHandle)){
-    const proof=inspectCurrent259OwnedPaymentProviders(appHandle,moduleHandle,server);
+    const proof=token===undefined?inspectCurrent259OwnedPaymentProviders(appHandle,moduleHandle,server):inspectCurrent259OwnedPaymentProviders(appHandle,moduleHandle,server,token,handle);
     need(proof&&proof.runtime===runtime&&proof.moduleRuntime===runtime,'TASK16_APP_RUNTIME_PROVIDER');
     need(proof.reader===impactReader&&proof.moduleReader===impactReader,'TASK16_APP_IMPACT_READER_PROOF');
     return inspectServer();
@@ -350,7 +350,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    ...(effectiveAccessBinding?{effectiveAccessBinding}:{}),
    check:()=>{
     checkPaymentModule();
-    const inspected=businessToken&&inspectScoped?inspectScoped():appInspect.call(app);
+    const inspected=businessToken&&inspectScoped?inspectScoped():businessToken?appInspect.call(app,businessToken,handle):appInspect.call(app);
     need(inspected.runtime===original.runtime&&inspected.origin===application.origin,code);
    },
    activateContinuity(token){businessIssuer(token,handle);need(!businessToken||businessToken===token,code);need(typeof activateSession==='function'&&own(session,'activateBusinessContinuity')===activateSession,code);activateSession.call(session,token);businessToken=token;check();},
