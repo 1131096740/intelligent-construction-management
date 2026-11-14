@@ -65,9 +65,9 @@ export async function readRegisteredNormalSnapshot(tx:Prisma.TransactionClient,p
  const openingA=row(own(source,"openingA"),opening),openingB=row(own(source,"openingB"),opening);
  const postings=array(own(source,"postings")).map(v=>row(v,posting));
  const accountAmount=(o:typeof openingA)=>{
-  if(o.balanceYuan===null)return fail();const covered=new Set(o.coveredExecutionIds);
+  if(o.balanceYuan===null)throw Object.defineProperty(new Error("PG_CASE_INITIAL_BALANCE_MUST_BE_KNOWN"),"code",{value:"PG_CASE_INITIAL_BALANCE_MUST_BE_KNOWN"});const covered=new Set(o.coveredExecutionIds);
   const spent=postings.filter(p=>p.accountId===o.accountId&&!covered.has(p.executionId)).reduce((sum,p)=>sum+p.amountCents,0n);
-  if(spent<0n)return fail();return o.balanceYuan.minus(`${spent/100n}.${(spent%100n).toString().padStart(2,"0")}`).toFixed(4);
+  if(spent<0n)throw Object.defineProperty(new Error("PG_CASE_POSTING_DIRECTION"),"code",{value:"PG_CASE_POSTING_DIRECTION"});return o.balanceYuan.minus(`${spent/100n}.${(spent%100n).toString().padStart(2,"0")}`).toFixed(4);
  };
  return {request,settlement:settlementRow,executions,funding,allocations,events,roots,facts,impacts,audits,balanceA:accountAmount(openingA),balanceB:accountAmount(openingB)};
 }

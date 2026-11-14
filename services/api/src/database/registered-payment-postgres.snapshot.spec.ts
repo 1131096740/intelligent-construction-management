@@ -35,3 +35,10 @@ test.each(["getter","proxy","bad-bigint","bad-date"])("decoder rejects %s withou
 test("query rejection is rethrown as the original error before decoding",async()=>{
  const original=new Error("private");await expect(readRegisteredNormalSnapshot({$queryRawUnsafe:jest.fn().mockRejectedValue(original)} as unknown as Prisma.TransactionClient,"p","s","a","b")).rejects.toBe(original);
 });
+
+test.each([["null-balance","PG_CASE_INITIAL_BALANCE_MUST_BE_KNOWN"],["negative-spent","PG_CASE_POSTING_DIRECTION"]])("original financial invariant %s retains its existing failure code",async(mode,code)=>{
+ const data=wire();
+ if(mode==="null-balance")data.openingA={accountId:"a",balanceYuan:null,coveredExecutionIds:[]};
+ else data.postings=[{executionId:"other",accountId:"a",sourceBatchId:"s",amountCents:"-2"}];
+ await expect(readRegisteredNormalSnapshot({$queryRawUnsafe:jest.fn().mockResolvedValue([data])} as unknown as Prisma.TransactionClient,"p","s","a","b")).rejects.toMatchObject({code});
+});
