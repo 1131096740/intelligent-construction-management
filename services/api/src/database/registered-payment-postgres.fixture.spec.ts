@@ -326,7 +326,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 });
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
-  it.each(["normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
+  it.each(["normal-null-balance-after-guard", "normal-negative-spent-after-guard", "normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
       "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
       "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
       "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
@@ -450,8 +450,8 @@ describe("registered PG original case: explicit observer projection protocol (no
         const facts=await read("operatingFact",projection),impacts=await read("operatingImpactEntry",projection),audits=await read("auditLog",{businessType:"payment_request",businessId:ids.payment,action:"payment.execution.record"});
         const openingA=await unique("fundAccountBalanceRegistration","registration-a"),openingB=await unique("fundAccountBalanceRegistration","registration-b");
         const postings=await read("registeredFundPaymentAllocation",{accountId:{in:[openingA.accountId,openingB.accountId]}});
-        if(snapshotFailureMode==="normal-null-balance")openingA.balanceYuan=null;
-        if(snapshotFailureMode==="normal-negative-spent")postings.push({executionId:"negative-posting",accountId:"account-a",sourceBatchId:"source-a",amountCents:-2n});
+        if(snapshotFailureMode?.startsWith("normal-null-balance"))openingA.balanceYuan=null;
+        if(snapshotFailureMode?.startsWith("normal-negative-spent"))postings.push({executionId:"negative-posting",accountId:"account-a",sourceBatchId:"source-a",amountCents:-2n});
         return JSON.parse(JSON.stringify([{request:snapshotFailureMode==="normal-missing-required"?null:request,settlement,executions,funding,allocations,events,roots,facts,impacts,audits,openingA,openingB,postings}],(_key,value)=>typeof value==="bigint"?value.toString():value));
       }
     });
@@ -546,7 +546,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
-      const continuity = { checkLight: jest.fn(()=>{if(inObserverTx){normalTxLight++;if(snapshotFailureMode==="normal-snapshot-before-query-guard"&&normalTxLight===4||snapshotFailureMode==="normal-snapshot-after-query-guard"&&normalTxLight===5)throw originalSnapshotError;}}), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(), recordObserverDiagnostic: jest.fn(),
+      const continuity = { checkLight: jest.fn(()=>{if(inObserverTx){normalTxLight++;if(snapshotFailureMode==="normal-snapshot-before-query-guard"&&normalTxLight===4||(snapshotFailureMode==="normal-snapshot-after-query-guard"||snapshotFailureMode?.endsWith("-after-guard"))&&normalTxLight===5)throw originalSnapshotError;}}), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(), recordObserverDiagnostic: jest.fn(),
         ...(ownedJson ? { async requestJson(target: URL, init: RequestInit, timeoutMs: number) {
           const response = await globalThis.fetch(target, { ...init, signal: AbortSignal.timeout(timeoutMs) });
           const body: unknown = await response.json();
@@ -656,7 +656,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared, ownedJson||snapshotFailureMode ? continuity : undefined)
         : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
       if(snapshotFailureMode){
-        if(snapshotFailureMode.startsWith("normal-snapshot-")){
+        if(snapshotFailureMode.startsWith("normal-snapshot-")||snapshotFailureMode.endsWith("-after-guard")){
           await expect(run).rejects.toBe(originalSnapshotError);expect(fetch).not.toHaveBeenCalled();
           expect(rawSnapshotQueries).toBe(snapshotFailureMode==="normal-snapshot-before-query-guard"?0:1);
         }else if(snapshotFailureMode==="normal-null-balance"||snapshotFailureMode==="normal-negative-spent"){

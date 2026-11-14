@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { readRegisteredNormalSnapshot } from "./registered-payment-postgres.snapshot";
+import { readRegisteredNormalSnapshot as readNormal, finishRegisteredNormalSnapshot } from "./registered-payment-postgres.snapshot";
+async function readRegisteredNormalSnapshot(...args:Parameters<typeof readNormal>) { return finishRegisteredNormalSnapshot(await readNormal(...args)); }
 function wire():Record<string,unknown> { return {request:{approvedAmountCents:"9007199254740993",paidAmountCents:"0",status:"approved_pending_payment"},settlement:{payableAmountCents:"9007199254740993",paidAmountCents:"0"},executions:[],funding:[],allocations:[],events:[],roots:[],facts:[],impacts:[],audits:[],openingA:{accountId:"a",balanceYuan:"100.1234",coveredExecutionIds:["covered"]},openingB:{accountId:"b",balanceYuan:"100.0000",coveredExecutionIds:[]},postings:[{executionId:"covered",accountId:"a",sourceBatchId:"s",amountCents:"99999"},{executionId:"other",accountId:"a",sourceBatchId:"s",amountCents:"2"}]}; }
 test("one fixed four-parameter query preserves large bigint, original covered-posting arithmetic and four decimals",async()=>{
  const query=jest.fn().mockResolvedValue([wire()]);const result=await readRegisteredNormalSnapshot({$queryRawUnsafe:query} as unknown as Prisma.TransactionClient,"payment","settlement","opening-a","opening-b");

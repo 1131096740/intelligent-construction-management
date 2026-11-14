@@ -1,4 +1,4 @@
-import { readRegisteredNormalSnapshot } from "./registered-payment-postgres.snapshot";
+import { readRegisteredNormalSnapshot, finishRegisteredNormalSnapshot } from "./registered-payment-postgres.snapshot";
 import { performance } from "node:perf_hooks";
 import { isDeepStrictEqual, types } from "node:util";
 import type { Prisma } from "@prisma/client";
@@ -34,7 +34,10 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
   clock.phase("SNAPSHOT_ENTER");
   light();
   const { ids } = fixture.plan;
-  if (consolidatedNormal) return checked("SNAPSHOT_ENTER", () => readRegisteredNormalSnapshot(tx, ids.payment, ids.settlement, fixture.companyARegistrationId, fixture.companyBRegistrationId));
+  if (consolidatedNormal) {
+    const decoded = await checked("SNAPSHOT_ENTER", () => readRegisteredNormalSnapshot(tx, ids.payment, ids.settlement, fixture.companyARegistrationId, fixture.companyBRegistrationId));
+    return finishRegisteredNormalSnapshot(decoded);
+  }
   const request = await checked("PAYMENT_REQUEST", () => tx.paymentRequest.findUniqueOrThrow({ where: { id: ids.payment }, select: { approvedAmountCents: true, paidAmountCents: true, status: true } }));
   const settlement = await checked("SETTLEMENT", () => tx.settlement.findUniqueOrThrow({ where: { id: ids.settlement }, select: { payableAmountCents: true, paidAmountCents: true } }));
   const executions = await checked("EXECUTIONS", () => tx.paymentExecution.findMany({ where: { paymentRequestId: ids.payment }, select: { id: true, idempotencyKey: true, amountCents: true, paymentRequestId: true, voucherFileId: true } }));
