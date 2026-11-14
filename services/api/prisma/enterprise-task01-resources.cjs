@@ -1062,8 +1062,20 @@ ROLLBACK;`;
     for (const role of logins) {
       const cursor = await captureLogCursor();
       checkScope("PLAINTEXT");
-      try { await sendLoopbackPlaintextStartup(role); }
-      catch { throw fault("TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT"); }
+      // Retire this probe's exact worker cohort before synchronous scope checks.
+      // The reply and strict worker join share the original 2000ms probe budget.
+      const probeEndAt = Math.min(Date.now() + 2000, endAt);
+      let probeTimer;
+      try {
+        const finishProbe = beginPrismaRelayDrain();
+        await sendLoopbackPlaintextStartup(role);
+        const remaining = probeEndAt - Date.now();
+        requireThat(remaining > 0, "TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT");
+        await Promise.race([finishProbe(), new Promise((_, reject) => {
+          probeTimer = setTimeout(() => reject(fault("TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT")), remaining);
+        })]);
+      } catch { throw fault("TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT"); }
+      finally { clearTimeout(probeTimer); }
       checkScope("PLAINTEXT");
       await verifyDaemon(); await inspectOwned();
       checkScope("PLAINTEXT");

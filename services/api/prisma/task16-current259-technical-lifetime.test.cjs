@@ -224,10 +224,8 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
      const peer=mode==='document-plaintext-peer'?'172.17.0.2':'127.0.0.1';
      if(mode!=='document-plaintext-stale'&&!(mode==='document-ordinary-stale'&&role===documentRoles[3]))log+=`2026-11-12T03:00:00.000000001Z 2026-11-12 03:00:00.000 UTC [40] user=${role} db=${database} FATAL:  pg_hba.conf rejects connection for host "${peer}", user "${role}", database "${database}", no encryption\n`;
     }else log=`FATAL: pg_hba.conf rejects connection for host "${mode==='wrong-log-peer'?'172.17.0.2':'127.0.0.1'}", user "jg_task01_owner", database "${database}", no encryption\n`;
-    queueMicrotask(()=>{
-     socket.emit('data',Buffer.from([69,0,0]));
-     socket.emit('data',Buffer.from([0,5,0]));
-    });
+    const reply=()=>{socket.emit('data',Buffer.from([69,0,0]));socket.emit('data',Buffer.from([0,5,0]));};
+    if(mode==='document-drain-budget')setTimeout(reply,1000);else queueMicrotask(reply);
    }
   };
   queueMicrotask(()=>socket.emit('connect'));
@@ -237,20 +235,30 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   connect(opts,ready){assert.equal(opts.rejectUnauthorized,true);assert.equal(opts.ca.toString(),'ca.crt');opts.checkServerIdentity('ignored',{});
    const socket=new EventEmitter();socket.destroy=()=>queueMicrotask(()=>socket.emit('close'));
    socket.getPeerCertificate=()=>({raw:Buffer.from('correct.crt')});queueMicrotask(ready);return socket;}};
+ let documentDrainPending=false;
  const relay={async startCurrent259LoopbackForward(input){
   calls.push(['relay-start']);assert.deepEqual(input,{containerId,dockerConfig:config.artifactsDir+'/tls-private/docker-config',signal:config.signal});
   assert.equal(running,true);relayOpen=true;
   return {port:43125,check(){assert.equal(relayOpen,true);if(relayFailure)throw relayFailure;},
-   beginPrismaDrain(){assert.equal(relayOpen,true);calls.push(['relay-drain-open']);return async()=>{
+   beginPrismaDrain(){assert.equal(relayOpen,true);calls.push(['relay-drain-open']);
+    if(mode==='document-drain-active')throw Object.assign(Error('MODEL_OUTER_DRAIN_ACTIVE'),{code:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_ACTIVE'});
+    documentDrainPending=true;return async()=>{
     calls.push(['relay-drain-wait']);if(relayFailure)throw relayFailure;
+    if(mode==='document-drain-hung')await new Promise(()=>{});
+    if(mode==='document-drain-budget')await new Promise(resolve=>setTimeout(resolve,1500));
+    if(mode==='document-drain-error')throw Object.assign(Error('MODEL_DRAIN_FAILURE'),{code:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+    if(mode==='document-drain-ordered')await new Promise(resolve=>setImmediate(resolve));
+    documentDrainPending=false;calls.push(['relay-drain-joined']);
    };},async close(){relayOpen=false;calls.push(['relay-close']);if(mode==='relay-close-unknown')throw Error('synthetic');}};
  }};
  const imports={'node:fs':fsModel,'node:crypto':{...crypto,X509Certificate:class{constructor(raw){this.raw=raw;}}},
   'node:child_process':{spawn},'node:net':net,'node:tls':tls,'./task16-current259-loopback-forward.cjs':relay,
   ...(document?{'./task12-current259-document-login.cjs':{assertCurrent259GeneratedDocumentLoginScope(proof,handle){
+   if(mode==='document-drain-ordered')assert.equal(documentDrainPending,false,'scope cannot run before probe worker join');
    if(privateScopeError)throw privateScopeError;
    assert.ok(!lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
   },assertCurrent261GeneratedLifecycleLoginScope(proof,handle){
+   if(mode==='document-drain-ordered')assert.equal(documentDrainPending,false,'scope cannot run before probe worker join');
    if(privateScopeError)throw privateScopeError;
    assert.ok(lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
   }}}:{})};
@@ -627,4 +635,21 @@ test('private scope only retains enumerated own error codes without reading gett
   const f=rollbackResourceModel('healthy',{firstQ2:true,document:true,privateScopeError:cause}),resource=await f.start();
   await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),error=>{assert.deepEqual(error.documentHbaScope,{predicate:'PRIVATE_SCOPE',subphase:'ENTRY'});return true;});await resource.close();
  }assert.equal(reads,0);
+});
+
+test('document HBA joins each owned probe cohort before scope guards resume',async()=>{
+ const f=rollbackResourceModel('document-drain-ordered',{firstQ2:true,document:true,lifecycle:true}),resource=await f.start();
+ const hba=await resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof);assert.equal(hba.rules,13);
+ assert.deepEqual(f.calls.filter(row=>row[0].startsWith('relay-drain-')).map(row=>row[0]),Array.from({length:4},()=>['relay-drain-open','relay-drain-wait','relay-drain-joined']).flat());
+ await resource.close();
+});
+test('document HBA rejects active windows, worker faults and hung joins within the same probe budget',async()=>{
+ for(const mode of ['document-drain-active','document-drain-error','document-drain-hung','document-drain-budget']){
+  const f=rollbackResourceModel(mode,{firstQ2:true,document:true}),resource=await f.start();
+  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),{code:'TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT'});
+  assert.equal(resource.getReceipt().documentHba,undefined);
+  // Budget mode has a 1000ms reply plus 1500ms successful join: one 2000ms
+  // deadline rejects it; resetting a second 2000ms budget would wrongly pass.
+  await resource.close();
+ }
 });
