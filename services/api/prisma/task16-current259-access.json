@@ -10,6 +10,24 @@
       "select": [
         "originalSignedNumber"
       ]
+    },
+    {
+      "table": "ProjectProxyPayment",
+      "select": [
+        "id"
+      ]
+    },
+    {
+      "table": "ContractProxyExecution",
+      "select": [
+        "id"
+      ]
+    },
+    {
+      "table": "PaymentExecutionAllocation",
+      "select": [
+        "id"
+      ]
     }
   ],
   "observerSelectAdditions": [

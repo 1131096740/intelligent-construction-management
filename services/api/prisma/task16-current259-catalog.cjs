@@ -8,7 +8,7 @@ const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-cur
 const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='f6354c36a2e6740caf21fa3ac5f621bfaa985fa226ebdbd34d5f757566a42e31';
+const MANIFEST_SHA='87fd3228b8cd83676e604b26e7e536265435d1cbe5bb337c12594e0a4d9f74aa';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -49,12 +49,17 @@ function material(source,paymentProfile){
  const files=manifest.files.map(r=>{const c=capture(r.path);need(c.sha256===r.sha256);return{...r,bytes:c.bytes};});
  const sql=files.find(f=>f.path==='services/api/prisma/prepared/task16-current259/registered-impact-reader.sql').bytes.toString('utf8'),parts=sql.split('$reader$');need(parts.length===3&&hash(parts[1])===BODY);
  const plan=JSON.parse(files[1].bytes.toString('utf8'));
- // The current generated SDK also selects the signed-original number in the
- // unprojected contract read. Keep the historical access materials intact.
- need(equal(manifest.runtimeSelectAdditions,[{table:'ContractVersion',select:['originalSignedNumber']}]));
- const version=plan.runtime.tables.find(table=>table.table==='ContractVersion');
- need(version&&!version.select.includes('originalSignedNumber'));
- version.select=[...version.select,'originalSignedNumber'].sort();
+ // Exact native SDK projections: the unprojected contract scalar and the
+ // three proxy/capacity reads which internally select their primary keys.
+ const requiredRuntimeReads=[{table:'ContractVersion',select:['originalSignedNumber']},
+  {table:'ProjectProxyPayment',select:['id']},{table:'ContractProxyExecution',select:['id']},
+  {table:'PaymentExecutionAllocation',select:['id']}];
+ need(equal(manifest.runtimeSelectAdditions,requiredRuntimeReads));
+ for(const {table,select}of requiredRuntimeReads){
+  const rows=plan.runtime.tables.filter(row=>row.table===table);
+  need(rows.length===1&&select.every(column=>!rows[0].select.includes(column)));
+  rows[0].select=[...rows[0].select,...select].sort();
+ }
  // The real generated SDK's explicit allocation projection also reads its PK.
  // Keep the frozen historical material and every other observer grant intact.
  need(equal(manifest.observerSelectAdditions,[{table:'RegisteredFundPaymentAllocation',select:['id']},{table:'AuditLog',select:['id']}]));

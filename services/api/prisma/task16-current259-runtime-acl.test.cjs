@@ -239,3 +239,16 @@ test('audit PK observer read is exact in original grant and postimage readback',
  assert.deepEqual(audit.map(row=>row[3]).sort(),['action','actorUserId','businessId','businessType','id','metadata']);
  assert.ok(audit.every(row=>row[1]==='column'&&row[4]==='SELECT'&&row[5]===false));
 });
+
+test('three native proxy PK grants are narrow runtime selects in writer and independent postimage',()=>{
+ const acl=renderCurrent259RuntimeAcl(source,receipt(),nonce);
+ const caps=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(acl.sql)[1]);
+ const after=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(acl.readbackSql)[1]);assert.deepEqual(after,caps);
+ for(const table of ['ProjectProxyPayment','ContractProxyExecution','PaymentExecutionAllocation']){
+  assert.deepEqual(caps.filter(r=>r[0]==='jg_task01_runtime'&&r[2]===table&&r[3]==='id'),[['jg_task01_runtime','column',table,'id','SELECT',false]]);
+  const grant=acl.sql.split('\n').filter(line=>line.startsWith('GRANT SELECT (')&&line.includes(`ON TABLE public."${table}" TO "jg_task01_runtime"`));
+  assert.equal(grant.length,1);assert.ok(grant[0].includes('"id"'));
+  assert.ok(!caps.some(r=>r[0]==='jg_task01_observer'&&r[2]===table&&r[3]==='id'));
+ }
+ assert.doesNotMatch(acl.sql,/GRANT SELECT ON TABLE/u);
+});
