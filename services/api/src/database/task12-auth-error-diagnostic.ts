@@ -7,10 +7,12 @@ import { types } from "node:util";
 import { ProjectOperatingConstraintFilter } from "../project/project-operating-constraint.filter";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 
+import { takeTask12AuthTransactionPhase, type Task12AuthTransactionPhase } from "./task12-auth-transaction-phase";
+
 // Reuse the fixed finite decoder only. AUTH owns separate state and tickets.
 const projectError = projectTask16RegistrationError;
-type Detail = ReturnType<typeof projectTask16RegistrationError> & Readonly<{ serverAuthBoundary: "PRE_CONTROLLER_MARKER" | "CONTROLLER_MARKER_REACHED" }>;
-type Active = { server: Server; phoneHash: string; expiresAt: number; observed: boolean; captured?: Detail };
+type Detail = ReturnType<typeof projectTask16RegistrationError> & Readonly<{ serverAuthTransactionPhase?: Task12AuthTransactionPhase; serverAuthBoundary: "PRE_CONTROLLER_MARKER" | "CONTROLLER_MARKER_REACHED" }>;
+type Active = { server: Server; phoneHash: string; armedAt: number; expiresAt: number; observed: boolean; captured?: Detail };
 type State = { active?: Active; interceptor?: object };
 const states = new WeakMap<object, State>();
 const interceptorOwners = new WeakMap<object, object>();
@@ -37,7 +39,7 @@ export function armTask12AuthError(filter: object, server: object, phone: string
   if (![3, 4].includes(arguments.length) || !state || state.active || types.isProxy(server) || !(server instanceof Server) || !server.listening ||
     typeof phone !== "string" || phone.length < 1 || phone.length > 32 || Array.from(phone).some(char => char.charCodeAt(0) < 32) ||
     !Number.isFinite(remainingMs) || remainingMs <= 0 || remainingMs > 15000) throw fail();
-  const active: Active = { server, phoneHash: hash(phone), expiresAt: performance.now() + remainingMs, observed: false };
+  const active: Active = { server, phoneHash: hash(phone), armedAt: performance.now(), expiresAt: performance.now() + remainingMs, observed: false };
   const ticket = Object.freeze(Object.create(null)) as object;
   state.active = active; tickets.set(ticket, { state, active }); return ticket;
 }
@@ -65,7 +67,9 @@ export class Task12AuthErrorFilter extends ProjectOperatingConstraintFilter {
         const phone = own(own(request, "body"), "phone");
         if (typeof phone === "string" && phone.length <= 32 && hash(phone) === active.phoneHash) {
           const marker = markers.get(request), state = states.get(this);
+          const transactionPhase = takeTask12AuthTransactionPhase(exception, request, active.armedAt);
           active.captured = active.observed ? undefined : Object.freeze({ ...projectError(exception),
+            ...(transactionPhase?{serverAuthTransactionPhase:transactionPhase}:{}),
             serverAuthBoundary: marker?.filter === this && marker.interceptor === state?.interceptor && interceptorOwners.get(marker.interceptor) === this
               ? "CONTROLLER_MARKER_REACHED" : "PRE_CONTROLLER_MARKER" });
           active.observed = true;

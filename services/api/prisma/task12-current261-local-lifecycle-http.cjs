@@ -36,10 +36,22 @@ const own=(v,k)=>v&&!types.isProxy(v)?Object.getOwnPropertyDescriptor(v,k)?.valu
 const authKinds=new Set(['ERROR','TYPE_ERROR','RANGE_ERROR','KNOWN_REQUEST_ERROR','UNKNOWN_REQUEST_ERROR','VALIDATION_ERROR','INITIALIZATION_ERROR','OTHER_NATIVE_ERROR','NON_NATIVE_THROWN','UNINSPECTED']);
 const authCodes=new Set(['P1000','P1001','P1002','P1003','P1008','P1010','P1011','P1017','P2000','P2002','P2003','P2004','P2010','P2011','P2021','P2022','P2024','P2025','P2028','P2034']);
 const authStates=new Set(['23502','23503','23505','42501','25006','25P02','40001','40P01','42P01','42703','57014']);
+function closedAuthTransactionPhase(value){
+ const operation=own(value,'operation'),phase=own(value,'phase'),upsertOrdinal=own(value,'upsertOrdinal'),callbackEntered=own(value,'callbackEntered'),callbackReturned=own(value,'callbackReturned'),elapsedMs=own(value,'elapsedMs'),phaseElapsedMs=own(value,'phaseElapsedMs');
+ if(operation!=='ACCOUNT_RATE_LIMIT'||![0,1,2].includes(upsertOrdinal)||typeof callbackEntered!=='boolean'||typeof callbackReturned!=='boolean'||
+  !Number.isSafeInteger(elapsedMs)||elapsedMs<0||elapsedMs>3600000||!Number.isSafeInteger(phaseElapsedMs)||phaseElapsedMs<0||phaseElapsedMs>elapsedMs)return;
+ const valid=phase==='PRE_CALLBACK_UNRESOLVED'?!callbackEntered&&!callbackReturned&&upsertOrdinal===0:
+  phase==='POST_CALLBACK_UNRESOLVED'?callbackEntered&&callbackReturned:
+  ['DELETE_PENDING','DELETE_RETURNED'].includes(phase)?callbackEntered&&!callbackReturned&&upsertOrdinal===0:
+  ['UPSERT_1_PENDING','UPSERT_1_RETURNED'].includes(phase)?callbackEntered&&!callbackReturned&&upsertOrdinal===1:
+  ['UPSERT_2_PENDING','UPSERT_2_RETURNED'].includes(phase)?callbackEntered&&!callbackReturned&&upsertOrdinal===2:false;
+ if(valid)return Object.freeze({operation,phase,upsertOrdinal,callbackEntered,callbackReturned,elapsedMs,phaseElapsedMs});
+}
 function closedAuthDetail(value){
  const kind=own(value,'serverErrorKind'),code=own(value,'serverPrismaCode'),sql=own(value,'serverSqlState'),boundary=own(value,'serverAuthBoundary');
  if(!authKinds.has(kind))return {};
- return {serverErrorKind:kind,...(['PRE_CONTROLLER_MARKER','CONTROLLER_MARKER_REACHED'].includes(boundary)?{serverAuthBoundary:boundary}:{}),...(['KNOWN_REQUEST_ERROR','INITIALIZATION_ERROR'].includes(kind)&&authCodes.has(code)?{serverPrismaCode:code}:{}),
+ const transactionPhase=closedAuthTransactionPhase(own(value,'serverAuthTransactionPhase'));
+ return {serverErrorKind:kind,...(transactionPhase?{serverAuthTransactionPhase:transactionPhase}:{}),...(['PRE_CONTROLLER_MARKER','CONTROLLER_MARKER_REACHED'].includes(boundary)?{serverAuthBoundary:boundary}:{}),...(['KNOWN_REQUEST_ERROR','INITIALIZATION_ERROR'].includes(kind)&&authCodes.has(code)?{serverPrismaCode:code}:{}),
   ...(kind==='KNOWN_REQUEST_ERROR'&&authStates.has(sql)?{serverSqlState:sql}:{})};
 }
 const relayCodes=new Set(['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT','DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(part=>'CURRENT259_LOOPBACK_FORWARD_'+part));

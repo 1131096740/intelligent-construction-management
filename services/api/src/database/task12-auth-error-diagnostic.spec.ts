@@ -204,3 +204,28 @@ test("former pre-consume full-verification ordering loses a native cause at the 
   expect(detail).not.toHaveProperty("serverPrismaCode");
  }finally{await app.close();}
 },25000);
+
+test("phase-only model binds original guard request and unchanged limits without network",async()=>{
+ const take=jest.fn().mockResolvedValue(undefined),guard=new AccountRateLimitGuard({take} as unknown as AuthRateLimitService);
+ const request={method:"POST",route:{path:"/auth/login"},body:{phone},socket:{remoteAddress:"192.0.2.1"}};
+ expect(await guard.canActivate({switchToHttp:()=>({getRequest:()=>request})} as never)).toBe(true);
+ expect(take).toHaveBeenCalledTimes(1);expect(take.mock.calls[0][1]).toBe(request);
+ expect(take.mock.calls[0][0]).toEqual([{scope:"account-ip",value:"192.0.2.1",seconds:900,max:300},{scope:"login-phone",value:phone,seconds:900,max:30}]);
+});
+
+test("phase-only model filter accepts only the same request ticket and error without socket construction",async()=>{
+ const {IncomingMessage,ServerResponse}=await import("node:http");
+ const {ProjectOperatingConstraintFilter}=await import("../project/project-operating-constraint.filter");
+ const {observeTask12AuthTransaction}=await import("./task12-auth-transaction-phase");
+ const parent=jest.spyOn(ProjectOperatingConstraintFilter.prototype,"catch").mockImplementation(()=>{});
+ try{
+  const server=Object.create(Server.prototype) as Server;Object.defineProperty(server,"listening",{value:true});
+  const filter=new Task12AuthErrorFilter({httpAdapter:{}} as HttpAdapterHost),ticket=armTask12AuthError(filter,server,phone);
+  const socket={server},request=Object.assign(Object.create(IncomingMessage.prototype),{socket,method:"POST",route:{path:"/auth/login"},body:{phone}});
+  const response=Object.defineProperties(Object.create(ServerResponse.prototype),{req:{value:request},socket:{value:socket}});
+  const error=new Error("private original"),phase=observeTask12AuthTransaction(request);phase.step("CALLBACK_ENTERED");phase.step("DELETE_PENDING");phase.capture(error);
+  const host={switchToHttp:()=>({getRequest:()=>request,getResponse:()=>response})};filter.catch(error,host as never);
+  const result=takeTask12AuthError(filter,server,ticket);expect(result?.serverAuthTransactionPhase).toMatchObject({phase:"DELETE_PENDING",callbackEntered:true,callbackReturned:false});
+  expect(parent.mock.calls[0][0]).toBe(error);expect(JSON.stringify(result)).not.toContain("private original");
+ }finally{parent.mockRestore();}
+});
