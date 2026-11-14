@@ -123,6 +123,8 @@ async function waitForPostgres(
           "exec",
           containerName,
           "pg_isready",
+          "-h",
+          "127.0.0.1",
           "-U",
           "jiangkong",
           "-d",
