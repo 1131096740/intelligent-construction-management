@@ -161,15 +161,35 @@ test('actual factory take closure consumes once before local verifier and retain
  assert.equal(f.authTickets.size,0);
 });
 
-test('loader diagnostic verifier actual closure has no indirect full-check call (lexical model, no genuine build claim)',()=>{
- const fs=require('node:fs'),path=require('node:path');
+function localVerifierModel(){
+ const fs=require('node:fs'),path=require('node:path'),{types}=require('node:util');
  const source=fs.readFileSync(path.join(__dirname,'task16-current259-client-loader.cjs'),'utf8');
- const start=source.indexOf('const authModules=new Map(records.map(row=>[row.module,row.module.exports]));'),end=source.indexOf('return Object.freeze({...result,verifyAuthDiagnosticReceiver});',start);
+ const start=source.indexOf('      // Diagnostic-only continuity:'),end=source.indexOf('return Object.freeze({...result,verifyAuthDiagnosticReceiver});',start);
  const result={auth:{}},row={module:{filename:'closed-model',exports:{key:42}},key:'key',value:42};
- const Module={_load:function(){}},hooks={load:Module._load};const reflection={get:Reflect.getMetadata,define:Reflect.defineMetadata};
- let fullCalls=0,creation=0,metadata=0,operations=0;
- const verify=new Function('need','Module','hooks','reflection','nativeProxy','checkCreation','document','records','own','guardedOperation','readAuth','result','require','check','material',`let failed=false,loading=false;${source.slice(start,end)}return verifyAuthDiagnosticReceiver;`)(
-  (value)=>assert.ok(value),Module,hooks,reflection,Proxy,()=>creation++,{checkMetadata(){metadata++;}},[row],(o,k)=>Object.getOwnPropertyDescriptor(o,k)?.value,action=>{operations++;return action();},()=>({...result}),result,{cache:{'closed-model':row.module}},()=>{fullCalls++;throw Error('FULL_CHECK_FORBIDDEN');},{checkLight(){fullCalls++;throw Error('FULL_CHECK_FORBIDDEN');}});
- assert.equal(verify(),true);assert.equal(fullCalls,0);assert.equal(creation,1);assert.equal(metadata,1);assert.equal(operations,1);
- row.module.exports.key=43;assert.throws(()=>verify());assert.equal(fullCalls,0);
+ const Module={_load:function(){}},hooks={load:Module._load},required={cache:{'closed-model':row.module}};
+ const reflection={get:Reflect.getMetadata,define:Reflect.defineMetadata};let fullCalls=0,creation=0,metadata=0,operations=0;
+ const verify=new Function('need','types','Module','hooks','reflection','nativeProxy','checkCreation','document','records','own','guardedOperation','readAuth','result','require','check','material',`let failed=false,loading=false;${source.slice(start,end)}return verifyAuthDiagnosticReceiver;`)(
+  (value)=>assert.ok(value),types,Module,hooks,reflection,Proxy,()=>creation++,{checkMetadata(){metadata++;}},[row],(o,k)=>o&&!types.isProxy(o)?Object.getOwnPropertyDescriptor(o,k)?.value:undefined,action=>{operations++;return action();},()=>({...result}),result,required,()=>{fullCalls++;throw Error('FULL_CHECK_FORBIDDEN');},{checkLight(){fullCalls++;throw Error('FULL_CHECK_FORBIDDEN');}});
+ return {verify,row,required,counts:()=>({fullCalls,creation,metadata,operations})};
+}
+test('loader diagnostic verifier actual closure has no indirect full-check call (lexical model, no genuine build claim)',()=>{
+ const f=localVerifierModel();assert.equal(f.verify(),true);assert.deepEqual(f.counts(),{fullCalls:0,creation:1,metadata:1,operations:1});
+ f.row.module.exports.key=43;assert.throws(()=>f.verify());assert.equal(f.counts().fullCalls,0);
+});
+for(const variant of ['module-exports-getter','module-filename-getter','cache-slot-getter','cache-getter','module-proxy','exports-proxy','cache-proxy','descriptor-flags'])test('actual local verifier rejects '+variant+' without invoking untrusted accessors or proxy traps',()=>{
+ const f=localVerifierModel();assert.equal(f.verify(),true);let traps=0;const mod=f.row.module,cache=f.required.cache;
+ const key=variant==='module-filename-getter'?'filename':'exports',original=Object.getOwnPropertyDescriptor(mod,key),slot=Object.getOwnPropertyDescriptor(cache,'closed-model'),cacheDescriptor=Object.getOwnPropertyDescriptor(f.required,'cache');
+ if(variant.startsWith('module-')&&variant.endsWith('-getter'))Object.defineProperty(mod,key,{get(){traps++;return original.value;},configurable:true});
+ if(variant==='cache-slot-getter')Object.defineProperty(cache,'closed-model',{get(){traps++;return mod;},configurable:true});
+ if(variant==='cache-getter')Object.defineProperty(f.required,'cache',{get(){traps++;return cache;},configurable:true});
+ const proxy=object=>new Proxy(object,{get(){traps++;throw Error('PRIVATE_TRAP');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_TRAP');}});
+ if(variant==='module-proxy')f.row.module=proxy(mod);
+ if(variant==='exports-proxy')mod.exports=proxy(original.value);
+ if(variant==='cache-proxy')f.required.cache=proxy(cache);
+ if(variant==='descriptor-flags')Object.defineProperty(mod,'exports',{...original,enumerable:!original.enumerable});
+ assert.throws(()=>f.verify());assert.equal(traps,0);assert.deepEqual(f.counts(),{fullCalls:0,creation:1,metadata:1,operations:1});
+ // Restoration of the exact same descriptors/objects is allowed; this is a
+ // diagnostic observation, not a new business capability or sticky full gate.
+ f.row.module=mod;Object.defineProperty(mod,key,original);Object.defineProperty(cache,'closed-model',slot);Object.defineProperty(f.required,'cache',cacheDescriptor);
+ assert.equal(f.verify(),true);
 });

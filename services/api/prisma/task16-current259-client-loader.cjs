@@ -506,14 +506,35 @@ function loadCurrent259Client(handle){
       const result=guardedOperation(readAuth);check();
       // Diagnostic-only continuity: no material/graph hashing and no returned
       // providers. The HTTP AFTER_CHECK still performs the original full gate.
-      const authModules=new Map(records.map(row=>[row.module,row.module.exports]));
+      const authData=(object,key)=>{
+       need(object&&!types.isProxy(object),'CURRENT259_LOADER_EXPORT');
+       const descriptor=Object.getOwnPropertyDescriptor(object,key);
+       need(descriptor&&Object.hasOwn(descriptor,'value'),'CURRENT259_LOADER_EXPORT');return descriptor;
+      };
+      const sameAuthData=(object,key,expected)=>{
+       const actual=authData(object,key);
+       need(['value','writable','enumerable','configurable'].every(field=>actual[field]===expected[field]),'CURRENT259_LOADER_EXPORT');return actual.value;
+      };
+      const authCacheDescriptor=authData(require,'cache'),authCache=authCacheDescriptor.value;
+      need(authCache&&!types.isProxy(authCache),'CURRENT259_LOADER_EXPORT');
+      const authModules=new Map(records.map(row=>{
+       const mod=row.module,filename=authData(mod,'filename'),exports=authData(mod,'exports');
+       need(typeof filename.value==='string'&&filename.value.length>0&&exports.value&&!types.isProxy(exports.value),'CURRENT259_LOADER_EXPORT');
+       const slot=authData(authCache,filename.value);need(slot.value===mod,'CURRENT259_LOADER_EXPORT');
+       return [mod,{filename,exports,slot}];
+      }));
       const verifyAuthDiagnosticReceiver=()=>{
        need(!failed&&!loading&&Module._load===hooks.load&&globalThis.Proxy===nativeProxy&&Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'CURRENT259_FRAMEWORK_CHANGED');
-       checkCreation();document.checkMetadata();
+       need(sameAuthData(require,'cache',authCacheDescriptor)===authCache,'CURRENT259_LOADER_EXPORT');
        for(const row of records){
-        need(require.cache[row.module.filename]===row.module&&row.module.exports===authModules.get(row.module)&&own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');
-        if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(key=>actual[key]===row.descriptor[key]),'CURRENT259_LOADER_EXPORT');}
+        const saved=authModules.get(row.module);need(saved,'CURRENT259_LOADER_EXPORT');
+        const filename=sameAuthData(row.module,'filename',saved.filename),exports=sameAuthData(row.module,'exports',saved.exports);
+        need(sameAuthData(authCache,filename,saved.slot)===row.module&&exports&&!types.isProxy(exports)&&own(exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');
+        if(row.descriptor)sameAuthData(exports,row.key,row.descriptor);
        }
+       // Reject module/cache descriptor substitutions before invoking existing
+       // metadata or creation helpers that may inspect these original modules.
+       checkCreation();document.checkMetadata();
        return guardedOperation(()=>{const current=readAuth();need(Object.keys(result).every(key=>current[key]===result[key]),'CURRENT259_FRAMEWORK_CHANGED');return true;});
       };
       return Object.freeze({...result,verifyAuthDiagnosticReceiver});
