@@ -125,7 +125,7 @@ function fixture(t,options={}){
      fs.writeFileSync(path.join(plan.artifactsDir,'resource-manifest.json'),JSON.stringify(manifest),{mode:0o600});
      if(options.cleanupFailure)throw Object.assign(new Error('SECRET_SQL_PASSWORD'),{code:'CURRENT259_RESOURCE_CLEANUP_UNKNOWN'});
     };
-    try{return await consume(handle);}finally{try{if(options.afterConsumeFailure)throw options.afterConsumeFailure;}finally{finishResource();}}
+    try{return await consume(handle);}catch(error){options.onConsumeError?.(error);throw error;}finally{try{if(options.afterConsumeFailure)throw options.afterConsumeFailure;}finally{finishResource();}}
    }},
   '../../../scripts/prepare-task16-current259-payment-install.cjs':s.api
  };
@@ -200,7 +200,7 @@ function fixture(t,options={}){
    async withCurrent259LiveSessions(b7,h,consume){
     assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live');
     try{if(Object.hasOwn(options,'liveFailure'))throw options.liveFailure;return await consume(liveProof);}
-    finally{state.calls.push('pools-close');}
+    finally{state.calls.push('pools-close');options.afterLive?.();}
    }
   };
   ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check,...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
@@ -327,7 +327,7 @@ function fixture(t,options={}){
   const resolved=path.resolve(__dirname,name);
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
- };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
+ };state.replaceRelayDecoder=()=>{cache[path.resolve(__dirname,'task16-current259-relay-sysread.cjs')].exports={decodeRelaySysreadExit(){return {relaySysreadDirection:'PG',relaySysreadErrno:'OTHER'};}};};rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
  const launcherOptions=options.launchOption?[options.launchOption]:options.followUp261?[options.default?'--competition-follow-up261':'--competition-follow-up261-once']:options.voucher261?[options.default?'--voucher261':'--voucher261-once']:
   options.attributionGap261?[options.default?'--attribution-gap261':'--attribution-gap261-once']:options.competition261?[options.default?'--competition261':'--competition261-once']:options.payment261?
   [options.business?(options.default?'--business261':'--business261-once'):(options.default?'--install261':'--install261-once')]:undefined;
@@ -473,6 +473,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  const write=(relative,content)=>{const target=path.join(base,relative);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,content,{mode:0o600});};
  write('services/api/prisma/task16-current259-payment-run-authorization.cjs',fs.readFileSync(file,'utf8'));
  write('services/api/prisma/task16-current259-payment-diagnostics.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-diagnostics.cjs'),'utf8'));
+ write('services/api/prisma/task16-current259-relay-sysread.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-relay-sysread.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-payment-loopback.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-loopback.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-profile.cjs'),'utf8'));
  write('services/api/prisma/task16-current261-competition-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current261-competition-profile.cjs'),'utf8'));
@@ -1411,4 +1412,62 @@ for(const status of [500,400,403,409])test('ordinary controller retains finite s
  const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
  assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'PG_CASE_REGISTRATION_HTTP_STATUS',httpPhase:'RESPONSE_RETURNED',httpStatus:status,expectedHttpStatus:201,...(status===409?{businessErrorCode:'PAYMENT_RESULT_UNCONFIRMED'}:{})});
  assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.doesNotMatch(text,/private URL token|private body/u);
+});
+
+
+test('post-live original relay error reaches physical receipt without changing case return or first failure',async t=>{
+ const closeState={hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:true,stdoutRawEnd:true,receiveSettled:false,cliExited:true,peerSocketDestroyed:false,peerEndReturned:false};
+ const primary=new Error('private relay message URL token');
+ Object.defineProperties(primary,{code:{value:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'},relayCode:{value:'CURRENT259_LOOPBACK_FORWARD_FRAME'},relayFrameStage:{value:'STDOUT_EOF_WITHOUT_FIN'},relayChildExitCode:{value:47},relaySysreadExit:{value:70},relayCloseState:{value:closeState}});
+ const before=Object.getOwnPropertyDescriptors(primary);let postLive=false,escaped;
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,afterLive(){postLive=true;},onCheck(){if(postLive)throw primary;},onConsumeError(error){escaped=error;}});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(escaped,primary);assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,primary.code);assert.equal(receipt.failureStage,'seedAndSelectedCase');
+ assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');assert.equal(receipt.financialAcceptance,false);assert.equal(receipt.nativeAdmission,false);
+ assert.deepEqual(receipt.postLiveFailure,{phase:'POST_LIVE_RESOURCE_CHECK',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47,relaySysreadExit:70,relayCloseState:closeState});
+ const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1);assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8')).postLiveFailure,receipt.postLiveFailure);
+ assert.deepEqual(Object.getOwnPropertyDescriptors(primary),before);assert.doesNotMatch(JSON.stringify(receipt),/private relay message|URL token/);
+ assert.deepEqual(f.state.calls.slice(-5),['app','case','app-close','env-close','pools-close']);assert.ok(fs.readdirSync(f.state.progressRoot).length<=64);
+});
+
+for(const mode of ['missing','unknown','proxy','getter'])test('post-live '+mode+' detail is absent without reading untrusted values',async t=>{
+ let reads=0,postLive=false;const plain=Object.assign(new Error('private payload'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'});
+ if(mode==='unknown')plain.relayCode='CURRENT259_LOOPBACK_FORWARD_PRIVATE_TOKEN';
+ if(mode==='getter')for(const key of ['relayCode','relayFrameStage','relayCloseState'])Object.defineProperty(plain,key,{get(){reads++;throw Error('private getter');}});
+ const error=mode==='proxy'?new Proxy(plain,{get(){reads++;throw Error('private trap');},getOwnPropertyDescriptor(){reads++;throw Error('private descriptor');}}):plain;
+ const f=ordinaryBusinessFailureFixture(t,{afterLive(){postLive=true;},onCheck(){if(postLive)throw error;}});await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.deepEqual(receipt.postLiveFailure,{phase:'POST_LIVE_RESOURCE_CHECK',relayDiagnosticAbsent:true});
+ assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');assert.equal(receipt.status,'STOPPED');assert.equal(reads,0);
+ assert.doesNotMatch(JSON.stringify(receipt),/private payload|private getter|PRIVATE_TOKEN/);
+});
+for(const target of ['PLAN','ATTEMPT'])test('post-live phase reflects original '+target+' check rather than assuming resource failure',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{afterLive(){const file=target==='PLAN'?f.s.output:path.join(f.s.runRoot,'attempt.json');fs.appendFileSync(file,' private changed bytes');}});await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.deepEqual(receipt.postLiveFailure,{phase:'POST_LIVE_'+target+'_CHECK',relayDiagnosticAbsent:true});
+ assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');assert.equal(receipt.status,'STOPPED');assert.doesNotMatch(JSON.stringify(receipt),/private changed bytes/);
+});
+for(const secondary of ['postcheck','cleanup'])test('post-live relay first cause survives later '+secondary+' failure unchanged',async t=>{
+ let postLive=false;const first=Object.assign(Error('private first relay'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT'});
+ const f=ordinaryBusinessFailureFixture(t,{afterLive(){postLive=true;},onCheck(){if(postLive)throw first;},...(secondary==='cleanup'?{cleanupFailure:true}:{afterConsumeFailure:Object.assign(Error('private later'),{code:'CURRENT259_BUILD_CHANGED'})})});await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.failureCode,first.code);assert.deepEqual(receipt.postLiveFailure,{phase:'POST_LIVE_RESOURCE_CHECK',relayCode:first.relayCode});
+ assert.ok(receipt.secondaryFailures.length>0);assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');assert.doesNotMatch(JSON.stringify(receipt),/private first relay|private later/);
+});
+test('earlier business UNKNOWN and later resource error never acquire post-live context',async t=>{
+ const first=Object.assign(Error('private business first'),{code:'P2028'}),later=Object.assign(Error('private later relay'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+ const f=ordinaryBusinessFailureFixture(t,{caseFailure:first,afterConsumeFailure:later,onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE',first.code);}});await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'P2028'});assert.equal(receipt.postLiveFailure,undefined);assert.ok(receipt.secondaryFailures.length>0);
+});
+test('resource failure inside the business callback is not labeled post-live',async t=>{
+ let armed=false;const error=Object.assign(Error('private early relay'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+ const f=ordinaryBusinessFailureFixture(t,{onBusiness(){armed=true;},onCheck(){if(armed)throw error;}});await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.equal(receipt.postLiveFailure,undefined);
+});
+
+test('new fixed relay decoder import identity is rechecked before post-live diagnostics',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{afterLive(){f.state.replaceRelayDecoder();}});await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_IMPORT_CHANGED');assert.equal(receipt.postLiveFailure,undefined);assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');
 });

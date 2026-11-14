@@ -40,7 +40,8 @@ const voucherFailureCodes=new Map([
 const caseFailureStages=new Set(['APPLICATION_LEASE','PERMIT_CLAIM','CONTINUITY_ACTIVATION','CASE_SETUP',
  'PRE_SEED_AUTHORITY','PRE_SEED_LIVE','SEED_FIXTURE','SEED_IDENTITY','SEED_PREPARE','SEED_OWNER_TRANSACTION',
  'SEED_LOGIN','SEED_OPENING','POST_SEED_AUTHORITY','POST_SEED_LIVE','SELECTED_CASE','FINAL']);
-const {isPaymentFailureCode,filterPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');
+const {decodeRelaySysreadExit}=require('./task16-current259-relay-sysread.cjs');
+const {isPaymentFailureCode,filterPaymentDiagnostic,projectPostLiveFailure}=require('./task16-current259-payment-diagnostics.cjs');
 const caseFailureCodes=Object.freeze({has:isPaymentFailureCode});
 const secondaryFailureCodes=new Set(['CURRENT259_RESOURCE_CLEANUP_UNKNOWN','PAYMENT_INSTALL_ONCE_RESOURCE_CHANGED',
  'PAYMENT_INSTALL_ONCE_RESOURCE_IDENTITY','PAYMENT_INSTALL_ONCE_MANIFEST','PAYMENT_INSTALL_ONCE_PROGRESS_ROOT',
@@ -207,8 +208,10 @@ function original(relative,names){
  const slots=Object.fromEntries(names.map(key=>{const d=Object.getOwnPropertyDescriptor(exports,key);need(d&&Object.hasOwn(d,'value')&&typeof d.value==='function','IMPORT');return [key,d];}));
  records.push({file,exports,loaded,slots});return exports;
 }
-const diagnosticExports=original('./task16-current259-payment-diagnostics.cjs',['isPaymentFailureCode','filterPaymentDiagnostic','describePaymentDiagnostic','carryPaymentDiagnostic']);
-need(diagnosticExports.isPaymentFailureCode===isPaymentFailureCode&&diagnosticExports.filterPaymentDiagnostic===filterPaymentDiagnostic,'IMPORT');
+const relaySysreadExports=original('./task16-current259-relay-sysread.cjs',['decodeRelaySysreadExit']);
+need(relaySysreadExports.decodeRelaySysreadExit===decodeRelaySysreadExit,'IMPORT');
+const diagnosticExports=original('./task16-current259-payment-diagnostics.cjs',['isPaymentFailureCode','filterPaymentDiagnostic','describePaymentDiagnostic','carryPaymentDiagnostic','projectPostLiveFailure']);
+need(diagnosticExports.isPaymentFailureCode===isPaymentFailureCode&&diagnosticExports.filterPaymentDiagnostic===filterPaymentDiagnostic&&diagnosticExports.projectPostLiveFailure===projectPostLiveFailure,'IMPORT');
 const {installCurrent259B7}=original('./task16-current259-b7-install.cjs',['installCurrent259B7']);
 const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=original('./local-staged-current259-profile.cjs',
  ['createCurrent259TechnicalMigration','describeCurrent259TechnicalFailure']);
@@ -345,7 +348,7 @@ function parse(args){
 async function run(args){
  const requestedOnce=Array.isArray(args)&&ONCE_OPTIONS.includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
- let disconnect=false;
+ let disconnect=false,postLiveCheck=false;
  let hasFirst=false,first,firstBusiness,stage='preflight',state,controller,timer,businessFlow,endAt;
  const startedAt=performance.now(),stageTimings=[];
  const checkTimings=Object.fromEntries(['planVerification','planCheck','resourceCheck','inputCheck'].map(name=>[name,{count:0,elapsedMs:0}]));
@@ -388,6 +391,7 @@ async function run(args){
     ...(receipt.failureCode?{failureCode:diagnosticCode(receipt.failureCode),failureStage:receipt.failureStage}:{}),
     ...(receipt.secondaryFailures?{secondaryFailures:receipt.secondaryFailures.slice()}:{}),
     ...(receipt.paymentCaseFailure?{paymentCaseFailure:receipt.paymentCaseFailure}:{}),
+    ...(receipt.postLiveFailure?{postLiveFailure:receipt.postLiveFailure}:{}),
     ...(receipt.attributionGapFailure?{attributionGapFailure:receipt.attributionGapFailure}:{}),
     ...(receipt.voucherFailure?{voucherFailure:receipt.voucherFailure}:{}),
     receiptPublished:false,executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
@@ -561,12 +565,24 @@ async function run(args){
      return result.value;
     };
     state.check=()=>{
+     let postLivePhase;
      try{
-      need(state.active&&!controller.signal.aborted,'CLOSED');importsCheck();measured('planCheck',()=>checked.check());measured('resourceCheck',()=>view.check());
+      need(state.active&&!controller.signal.aborted,'CLOSED');importsCheck();
+      if(postLiveCheck)postLivePhase='POST_LIVE_PLAN_CHECK';
+      measured('planCheck',()=>checked.check());
+      if(postLiveCheck)postLivePhase='POST_LIVE_RESOURCE_CHECK';
+      measured('resourceCheck',()=>view.check());
+      if(postLiveCheck)postLivePhase='POST_LIVE_ATTEMPT_CHECK';
       const now=read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,collect:true,expectedIdentity:attempt.identity,code:'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED'});
       need(now.sha256===attempt.sha256&&claimCurrent259TechnicalResource(handle)===view&&view.source===source&&
        source.candidateSha===plan.material.source.candidateSha&&source.sourceSealSha256===plan.material.source.sourceSealSha256,'SCOPE_CHANGED');
-     }catch(error){rememberFirst(error);revoke(state);throw error;}
+     }catch(error){
+      if(postLivePhase&&!hasFirst){
+       try{const detail=projectPostLiveFailure(error,postLivePhase);if(detail)receipt.postLiveFailure=detail;}
+       catch{/* Diagnostics never replace the original failure. */}
+      }
+      rememberFirst(error);revoke(state);throw error;
+     }
     };
     const completed=(name,result)=>{state.check();need(result&&result.sourceSha===source.candidateSha&&result.runId===view.runId,'STAGE_RESULT');
      receipt.stages.push(Object.freeze({stage:name,status:'RETURNED_NOT_ADMISSION',...(result.installXid?{installXid:result.installXid}:{}),...(result.commitXid?{commitXid:result.commitXid}:{})}));};
@@ -732,7 +748,9 @@ async function run(args){
         });
        });
       }));
-      state.check();enterStage('ownedCleanup');
+      postLiveCheck=request.payment261&&request.business&&plan.case.scenario==='normal';
+      try{state.check();}finally{postLiveCheck=false;}
+      enterStage('ownedCleanup');
      }
     }catch(error){
      rememberFirst(error);

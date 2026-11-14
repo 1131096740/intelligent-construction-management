@@ -1,6 +1,7 @@
 'use strict';
 // Fixed diagnostic data only. These projections never confer run authority.
 const {types}=require('node:util');
+const {decodeRelaySysreadExit}=require('./task16-current259-relay-sysread.cjs');
 const caseFailureCodes=new Set(['PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY','PAYMENT_INSTALL_ONCE_BUSINESS_CONTINUITY',
  'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED','PAYMENT_BUSINESS_PLAN_FILE','PAYMENT_INSTALL_PLAN_FILE',
  'CURRENT259_RESOURCE_CLOSED','CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','CURRENT259_LIVE_SESSIONS_VERIFICATION',
@@ -93,6 +94,34 @@ function filterPaymentDiagnostic(value){
   ...([...prismaClasses.values()].includes(prismaErrorClass)?{prismaErrorClass}:{}),
   ...(prismaCodes.has(prismaCode)?{prismaCode}:{}),...(sqlStates.has(sqlState)?{sqlState}:{})});
 }
+const postLivePhases=new Set(['POST_LIVE_PLAN_CHECK','POST_LIVE_RESOURCE_CHECK','POST_LIVE_ATTEMPT_CHECK']);
+const relayCodes=new Set(['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT','DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(value=>'CURRENT259_LOOPBACK_FORWARD_'+value));
+const frameStages=new Set(['DATA_AFTER_FIN','OVERSIZED_LENGTH','TRAILING_AFTER_FIN','STDOUT_EOF_WITHOUT_FIN']);
+const relayCloseFields=['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'];
+function projectPostLiveFailure(error,phase){
+ if(!postLivePhases.has(phase))return undefined;
+ const absent=()=>Object.freeze({phase,relayDiagnosticAbsent:true});
+ if(!error||typeof error!=='object'||types.isProxy(error)||!types.isNativeError(error)||own(error,'code')!=='TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED')return absent();
+ const relayCode=own(error,'relayCode');if(!relayCodes.has(relayCode))return absent();
+ const result={phase,relayCode};
+ if(relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME'){
+  const stage=own(error,'relayFrameStage');
+  if(frameStages.has(stage))result.relayFrameStage=stage;
+  if(stage==='STDOUT_EOF_WITHOUT_FIN'){
+   const exit=own(error,'relayChildExitCode');
+   if(Number.isInteger(exit)&&(exit===0||exit>=41&&exit<=48)){
+    result.relayChildExitCode=exit;
+    const sysread=own(error,'relaySysreadExit');
+    if(exit===47&&decodeRelaySysreadExit(sysread))result.relaySysreadExit=sysread;
+   }
+  }
+ }
+ if(['CURRENT259_LOOPBACK_FORWARD_FRAME','CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'].includes(relayCode)){
+  const state=own(error,'relayCloseState'),snapshot=Object.fromEntries(relayCloseFields.map(key=>[key,own(state,key)]));
+  if(Object.values(snapshot).every(value=>typeof value==='boolean'))result.relayCloseState=Object.freeze(snapshot);
+ }
+ return Object.freeze(result);
+}
 function describePaymentDiagnostic(error){
  if(!error||typeof error!=='object'||types.isProxy(error))return undefined;
  const prior=remembered.get(error);if(!types.isNativeError(error))return prior;
@@ -108,4 +137,4 @@ function carryPaymentDiagnostic(target,source,guardPhase){
  if(Object.keys(detail).length)remembered.set(target,detail);
  return target;
 }
-module.exports=Object.freeze({isPaymentFailureCode,isPaymentCaseGate,paymentErrorKind,filterPaymentDiagnostic,describePaymentDiagnostic,carryPaymentDiagnostic});
+module.exports=Object.freeze({isPaymentFailureCode,isPaymentCaseGate,paymentErrorKind,filterPaymentDiagnostic,describePaymentDiagnostic,carryPaymentDiagnostic,projectPostLiveFailure});
