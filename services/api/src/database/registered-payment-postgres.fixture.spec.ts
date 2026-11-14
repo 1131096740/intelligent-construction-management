@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
 import { Prisma } from "@prisma/client";
 import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
@@ -725,4 +726,75 @@ describe("seed opening fixed failure boundary", () => {
     expect(JSON.stringify(recordSeedFailure.mock.calls)).not.toMatch(/private|synthetic-token|endpoint|payload/);
     expect(opening).toBe(failedOpening + 1);
   });
+});
+
+
+it("owned native JSON survives the opening A to B synchronous guard stall without retry (simulation, no PG)", async () => {
+  const { requestCurrent261SeedJson } = createRequire(__filename)("../../prisma/task16-current261-seed-json.cjs") as {
+    requestCurrent261SeedJson: (target: URL, init: RequestInit, timeoutMs: number) => Promise<{ response: Response; body: unknown }>;
+  };
+  const f = fixture(), recordSeedFailure = jest.fn();
+  Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });
+  f.context.httpTimeoutMs = 5000;
+  let logins = 0, openings = 0, connections = 0, stalled = false, pendingStall = false;
+  const closedRequests: boolean[] = [], preservedAuthAndBody: boolean[] = [];
+  const methods: string[] = [];
+  const server = createServer(async (request, response) => {
+    let bytes = ""; for await (const chunk of request) bytes += String(chunk);
+    const input = JSON.parse(bytes) as Record<string, unknown>;
+    closedRequests.push(request.headers.connection === "close");
+    methods.push(request.method ?? "");
+    let body: unknown;
+    if (request.url === "/auth/login") { logins++; preservedAuthAndBody.push(request.headers.authorization === undefined && typeof input.phone === "string" && input.password === f.context.password); body = { tokens: { accessToken: "synthetic-only-token" } }; }
+    else {
+      expect(request.url).toBe("/fund-accounts/openings");
+      openings++;
+      preservedAuthAndBody.push(request.headers.authorization === "Bearer synthetic-only-token" && typeof input.scopeKey === "string" && input.scopeKey.startsWith("company:") && input.balanceYuan === "100" && typeof input.idempotencyKey === "string");
+      body = { id: "opening-" + openings, sources: [{ id: "source-" + openings }] };
+      if (openings === 1) pendingStall = true;
+    }
+    response.writeHead(201, { "content-type": "application/json" });
+    response.end(JSON.stringify(body));
+  });
+  server.on("connection", () => { connections++; });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Synthetic listener missing");
+  f.proof.application.origin = "http://127.0.0.1:" + address.port;
+  try {
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-10", "2026-11-09");
+    const prepared = await seedRegisteredPgFixture(f.context, plan, {
+      checkLight() {
+        if (pendingStall) {
+          pendingStall = false; stalled = true;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6000);
+        }
+      }, fetch: globalThis.fetch, requestJson: requestCurrent261SeedJson, recordSeedFailure
+    }).catch(error => {
+      expect(recordSeedFailure).toHaveBeenCalledWith("SEED_OPENING", "HTTP_CONNECTION_RESET", undefined,
+        expect.objectContaining({ seedGate: "OPENING_B_REQUEST" }));
+      throw error;
+    });
+    expect(prepared.companyBSourceId).toBe("source-2");
+    expect(stalled).toBe(true); expect(logins).toBe(1); expect(openings).toBe(2);
+    expect(methods).toEqual(["POST", "POST", "POST"]);
+    expect(connections).toBe(3); expect(closedRequests).toEqual([true, true, true]);
+    expect(preservedAuthAndBody).toEqual([true, true, true]);
+    expect(recordSeedFailure).not.toHaveBeenCalled();
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+}, 15000);
+
+it("legacy fetch fallback retains its original header and signal shape", async () => {
+  const f = fixture();
+  const response = new Response("{}", { status: 201 });
+  Object.defineProperty(response, "url", { value: new URL("/auth/login", f.proof.application.origin).href });
+  const fetch = jest.fn().mockResolvedValue(response);
+  await registeredPgHttp(f.context, "/auth/login", "POST", { synthetic: true }, "synthetic-bearer", { checkLight() {}, fetch });
+  const init = fetch.mock.calls[0]![1] as RequestInit;
+  expect(init.headers).toEqual({ "content-type": "application/json", authorization: "Bearer synthetic-bearer" });
+  expect(init.signal).toBeInstanceOf(AbortSignal);
+  expect(fetch).toHaveBeenCalledTimes(1);
 });

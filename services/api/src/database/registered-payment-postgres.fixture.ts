@@ -323,7 +323,9 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
   let response: Response;
   let parsedBody: unknown;
   if (requestJson) {
-    const result = await checked(() => requestJson(target, init, context.httpTimeoutMs));
+    // Synchronous qualification can outlive Node's idle keepalive window.
+    // The owned same-origin JSON request uses one connection, never a retry.
+    const result = await checked(() => requestJson(target, { ...init, headers: { ...init.headers, connection: "close" } }, context.httpTimeoutMs));
     response = result.response;
     parsedBody = result.body;
   } else {
