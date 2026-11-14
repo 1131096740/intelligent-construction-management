@@ -4,10 +4,14 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本轮从准确`c8f9c8e0da40c09763bbc8553a8ac601bd4b1029`正常快进本地集成`b67f547664d8fba0c63d2f833d26e602c2d63579`。c8准确CI43563509746尚待自然终态，按主控要求先不推送新head、不取消旧CI；729的32/32仅绑定旧SHA。PR428保持Draft，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本轮正常快进付款连续性检查修复`821239dd`并普通合并合同阶段诊断`dbf974de`，八blob/mode与各作者相同，双轴审查每片各0项。ea准确CI43564951368自然32/32仅绑定旧ea；组合候选窄联合验证及新准确CI待。PR428保持Draft，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
 - 任务16：旧29c完整normal真实exit1/2124.35秒，停在OBSERVER_BEFORE/ALLOCATIONS/UNKNOWN_REQUEST_ERROR，业务保持UNKNOWN_DO_NOT_RETRY；原清理及独立资源缺席保持。本轮继分配id修复后，真实SDK审计读取对照在原五列授权下失败、仅fixture新增id读取后成功；组件整体仍STOPPED且relayFRAME次因与独立清理证据保留，不冒称业务通过。fd29仅增加观察角色AuditLog.id列级SELECT，前次分配主键增量与其他权限/角色/SQL/守卫保持。作者129项相关、81项pin及API门通过，双轴独审各0项，merger按同blob承接未重复测试。729旧normal计划仅准备未执行，因候选变化不复用；新准确候选完整正常链、异常/并发/凭证后补及整票验收待，旧UNKNOWN未改写。
 
-- 任务12：冻结`3f92b002`本轮life真实exit1/1857.369秒，停在APPLICATION/CONSUME，主因CURRENT259_DOCUMENT_LOGIN_ROLE_CLEANUP_UNKNOWN、来源TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED；业务与原控制器清理保持UNKNOWN，整票未通过。原资源清理超时后，root只读确认run24173d4d准确自建容器/网络残留；按持续授权另立恢复执行，0.670秒清理，05:57Z独立核实准确容器、网络、两PID和relay全部缺席。原cleanup_failed不改写，未续旧业务；当前仅本地集成有限relay/frame/关闭状态脱敏投影，双轴独审各0项，原主因/UNKNOWN、helper、权限/SQL及预算保持；不是已证旧内因或修复通过。完整15类型/联合浏览器仍待。
+- 任务16当前终态：准确c8完整normal原session59856真实exit1/2256.4秒，SELECTED_CASE/OBSERVER_BEFORE/EVENTS明确KNOWN_REQUEST_ERROR/P2028，观察事务5042ms，其中14次light检查5016ms、查询26ms；业务保持UNKNOWN_DO_NOT_RETRY，不倒填旧失败原因。原清理完成，root06:47Z同daemon独核run7ffbbf98准确容器/网络/两PID/relay缺席。本轮真实成本对照支持重复全量哈希为慢点，组件未复现P2028且整体FRAME次因失败保留；修复由原私有business token/handle接既有模块图与逐文件FD真实性检查，四provider及原方法/服务器身份检查仍逐次保留，无token仍完整核验，原前后full边界和5秒事务预算不变。新完整normal尚未执行，不倒填旧失败原因。原generic组件缺FIN/reset及独立清理仍分开保留，不冒称整票通过。
+
+- 任务12：冻结`3f92b002`本轮life真实exit1/1857.369秒，停在APPLICATION/CONSUME，主因CURRENT259_DOCUMENT_LOGIN_ROLE_CLEANUP_UNKNOWN、来源TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED；业务与原控制器清理保持UNKNOWN，整票未通过。原资源清理超时后，root只读确认run24173d4d准确自建容器/网络残留；按持续授权另立恢复执行，0.670秒清理，05:57Z独立核实准确容器、网络、两PID和relay全部缺席。原cleanup_failed不改写，未续旧业务；当前已推送有限relay/frame/关闭状态脱敏投影，双轴独审各0项，原主因/UNKNOWN、helper、权限/SQL及预算保持；不是已证旧内因或修复通过。完整15类型/联合浏览器仍待。
+
+- 任务12当前终态：冻结611b8463原78755真实exit1/1952.709秒，新增实际内因ROLE_CLEANUP_UNKNOWN→LOOPBACK_FORWARD_FAILED→HALF_CLOSE_TIMEOUT；hostFin/stdinEnded为真、PG FIN/stdout/CLI等未关闭，与其他组件FRAME/reset不得混因。业务/原控制器清理UNKNOWN、整票未通过。原资源清理超时，另立完整身份守卫的新恢复0.692秒完成，root06:59Z独核run480d3d0c准确资源/进程/relay全部缺席，原cleanup_failed不改写。本轮新增消费者有限子阶段、原guard有界耗时及超时/断连/drain三布尔脱敏投影，原reason/cause/UNKNOWN、调用顺序次数、SQL/权限与预算保持；仅诊断，未证HALF_CLOSE内因已修，不重跑完整life。ea文书资格与独立纸面复核仍只证明其原限定样张，不是业务通过。
 
 - 开发工具：原完整类型覆盖、预算、超时、权限、业务断言与封闭错误控制均保持，helper pin仅固定标量4fae074d→716979ad。作者门按准确源码证据承接，merger未重复测试；canonical状态与完整旧历史见主回执，不以组件、局部门或历史成功代替当前业务验收。
 
