@@ -12,6 +12,14 @@
       ]
     }
   ],
+  "observerSelectAdditions": [
+    {
+      "table": "RegisteredFundPaymentAllocation",
+      "select": [
+        "id"
+      ]
+    }
+  ],
   "readerSignature": "public.jg_read_registered_payment_impacts(text,text,text,text,text)",
   "readerBodySha256": "f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20",
   "files": [

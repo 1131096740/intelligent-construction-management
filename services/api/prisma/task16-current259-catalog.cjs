@@ -8,7 +8,7 @@ const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-cur
 const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='61e7f62e7292f00c5c73f5011bdfafd71eab70b3d8663faab4eb892470312f1a';
+const MANIFEST_SHA='639de723a132bf9a73c795f8dd04ec76dd52359af56f38de02025e196db9c1fa';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -55,6 +55,12 @@ function material(source,paymentProfile){
  const version=plan.runtime.tables.find(table=>table.table==='ContractVersion');
  need(version&&!version.select.includes('originalSignedNumber'));
  version.select=[...version.select,'originalSignedNumber'].sort();
+ // The real generated SDK's explicit allocation projection also reads its PK.
+ // Keep the frozen historical material and every other observer grant intact.
+ need(equal(manifest.observerSelectAdditions,[{table:'RegisteredFundPaymentAllocation',select:['id']}]));
+ const allocations=plan.observer.tables.filter(table=>table.table==='RegisteredFundPaymentAllocation');
+ need(allocations.length===1&&!allocations[0].select.includes('id')&&allocations[0].insert.length===0&&allocations[0].update.length===0);
+ allocations[0].select=[...allocations[0].select,'id'].sort();
  const required=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
   ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
   ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];

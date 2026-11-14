@@ -30,7 +30,15 @@ test('current259 supplies the same effective read plan to future role installers
   ['ContractVersion','originalSignedNumber','SELECT']
  ]);
  assert.deepEqual([...before].filter(row=>!after.has(row)),[]);
- assert.deepEqual(effective.observer,historical.observer);
+ const beforeObserver=new Set(permissions(historical.observer).map(row=>JSON.stringify(row)));
+ const afterObserver=new Set(permissions(effective.observer).map(row=>JSON.stringify(row)));
+ assert.deepEqual([...afterObserver].filter(row=>!beforeObserver.has(row)).map(row=>JSON.parse(row)),[['RegisteredFundPaymentAllocation','id','SELECT']]);
+ assert.deepEqual([...beforeObserver].filter(row=>!afterObserver.has(row)),[]);
+ const expectedObserver=structuredClone(historical.observer);
+ expectedObserver.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.push('id');
+ expectedObserver.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.sort();
+ assert.deepEqual(effective.observer,expectedObserver);
+ assert.equal(historical.observer.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.includes('id'),false);
  assert.deepEqual(effective.runtime.functions,historical.runtime.functions);
  assert.equal(historical.runtime.tables.find(table=>table.table==='ContractVersion').select.includes('originalSignedNumber'),false);
  assert.equal(Object.isFrozen(effective.runtime.tables),true);
@@ -46,6 +54,8 @@ const plan=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-registered-acc
 // Current SDK default scalar reads include the original signed number. This
 // observation is independent of the historical permission matrix on disk.
 plan.runtime.tables.find(table=>table.table==='ContractVersion').select.push('originalSignedNumber');
+// Mirror only the observed SDK allocation-PK read in this independent catalog protocol fixture.
+plan.observer.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.push('id');
 const sort=rows=>rows.sort((a,b)=>JSON.stringify(a)<JSON.stringify(b)?-1:JSON.stringify(a)>JSON.stringify(b)?1:0);
 function observed(phase='before',access=plan){
  const roles=[['owner','jg_task01_owner'],['runtime','jg_task01_runtime'],['observer','jg_task01_observer']].map(([key,name])=>{
@@ -403,4 +413,14 @@ test('normal261 physical readback rejects each missing addition, any expanded au
  const grantable=row();grantable.capabilities.find(c=>c[0]==='jg_task01_runtime'&&c[2]==='AuditLog'&&c[3]==='createdAt'&&c[4]==='INSERT')[5]=true;
  assert.throws(()=>parse(grantable),/TASK16_CURRENT259_CATALOG/u);
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),{...r,identity:{...identity}}),/TASK16_CURRENT259_CATALOG/u);
+});
+
+
+for(const mutation of ['missing-pk','observer-write','outside-column','table-grant','grant-option','readonly-off'])test('public catalog rejects observer allocation '+mutation+' outside the single-column read delta',()=>{
+ const row=observed(),isPk=cap=>cap[0]==='jg_task01_observer'&&cap[1]==='column'&&cap[2]==='RegisteredFundPaymentAllocation'&&cap[3]==='id';
+ if(mutation==='missing-pk')row.capabilities=row.capabilities.filter(cap=>!isPk(cap));
+ else if(mutation==='grant-option')row.capabilities.find(isPk)[5]=true;
+ else if(mutation==='readonly-off')row.roles.find(role=>role.name==='jg_task01_observer').readOnlyDefault=false;
+ else row.capabilities=sort([...row.capabilities,['jg_task01_observer',mutation==='table-grant'?'table':'column','RegisteredFundPaymentAllocation',mutation==='outside-column'?'private_unapproved_column':mutation==='table-grant'?'':'id',mutation==='observer-write'?'UPDATE':'SELECT',false]]);
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);
 });

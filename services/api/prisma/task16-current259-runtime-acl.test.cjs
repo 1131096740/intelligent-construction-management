@@ -214,3 +214,18 @@ test('261 voucher and attribution gap retain exactly their historical grants, so
  assert.throws(()=>renderCurrent259VoucherRuntimeAcl(source,voucher,nonce));
  assert.throws(()=>renderCurrent259RuntimeAcl(source,gap,nonce));
 });
+
+
+test('original ACL renderer grants only the observer allocation PK read and closes its exact postimage',()=>{
+ const acl=renderCurrent259RuntimeAcl(source,receipt(),nonce);
+ assert.match(acl.sql,/GRANT SELECT \("accountId", "amountCents", "executionId", "id", "sourceBatchId"\) ON TABLE public\."RegisteredFundPaymentAllocation" TO "jg_task01_observer";/u);
+ const expected=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(acl.sql)?.[1]??'null');assert.ok(Array.isArray(expected));
+ const observerCaps=expected.filter(row=>row[0]==='jg_task01_observer');
+ assert.ok(observerCaps.length>0);assert.ok(observerCaps.every(row=>row[1]==='column'&&row[4]==='SELECT'&&row[5]===false));
+ assert.deepEqual(observerCaps.filter(row=>row[2]==='RegisteredFundPaymentAllocation').map(row=>row[3]).sort(),['accountId','amountCents','executionId','id','sourceBatchId']);
+ assert.ok(!observerCaps.some(row=>row[3]==='xmin'||row[4]!=='SELECT'||row[1]==='table'));
+ assert.match(acl.sql,/"name":"jg_task01_observer"[^']*"readOnlyDefault":true/u);
+ assert.doesNotMatch(acl.sql,/GRANT (?:INSERT|UPDATE|DELETE|REFERENCES)[^\n]+TO "jg_task01_observer"/u);
+ const readback=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(acl.readbackSql)?.[1]??'null');assert.deepEqual(readback,expected);
+ assert.match(acl.sql,/TASK16_CURRENT259_RUNTIME_ACL_POSTIMAGE: WRITER_CAPABILITIES/u);
+});
