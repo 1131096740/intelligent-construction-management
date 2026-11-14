@@ -92,13 +92,40 @@ function safeDocumentScope(cause){
   hasPrivate&&(predicate!=='PRIVATE_SCOPE'||!documentPrivateScopeCodes.has(privateScopeCode)))return undefined;
  return {scopePredicate:predicate,scopeSubphase:subphase,...(hasPrivate?{privateScopeCode}:undefined)};
 }
+const documentRelayCodes=new Set(['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT',
+ 'DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(part=>'CURRENT259_LOOPBACK_FORWARD_'+part));
+const documentRelayCloseFields=['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed',
+ 'stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'];
+const documentRelayFrameStages=new Set(['DATA_AFTER_FIN','OVERSIZED_LENGTH','TRAILING_AFTER_FIN','STDOUT_EOF_WITHOUT_FIN']);
+function safeDocumentRelay(cause){
+ const relayCode=own(cause,'relayCode');if(!documentRelayCodes.has(relayCode))return undefined;
+ const result={relayCode};
+ if(relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME'){
+  const stage=own(cause,'relayFrameStage');
+  if(documentRelayFrameStages.has(stage)){
+   result.relayFrameStage=stage;const exit=own(cause,'relayChildExitCode');
+   if(stage==='STDOUT_EOF_WITHOUT_FIN'&&Number.isInteger(exit)&&(exit===0||exit>=41&&exit<=48)){
+    result.relayChildExitCode=exit;
+    const sysread=own(cause,'relaySysreadExit');
+    if(exit===47&&require('./task16-current259-relay-sysread.cjs').decodeRelaySysreadExit(sysread))result.relaySysreadExit=sysread;
+   }
+  }
+ }
+ if(['CURRENT259_LOOPBACK_FORWARD_FRAME','CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'].includes(relayCode)){
+  const source=own(cause,'relayCloseState');
+  const state=Object.fromEntries(documentRelayCloseFields.map(key=>[key,own(source,key)]));
+  if(Object.values(state).every(value=>typeof value==='boolean'))result.relayCloseState=Object.freeze(state);
+ }
+ return result;
+}
 function safeDocumentLoginFailure(cause){
  const seen=new WeakSet();let documentConsume=false;
  for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause)&&!seen.has(cause);i++,cause=own(cause,'cause')){
   seen.add(cause);const code=own(cause,'code');
   if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&own(cause,'phase')==='CONSUME')documentConsume=true;
   if(documentConsume&&documentConsumeResourceReasons.has(code))return Object.freeze({phase:'CONSUME',resourceCode:code,
-   ...(code==='TASK01_RESOURCE_DOCUMENT_HBA_SCOPE'?safeDocumentScope(cause):undefined)});
+   ...(code==='TASK01_RESOURCE_DOCUMENT_HBA_SCOPE'?safeDocumentScope(cause):undefined),
+   ...(code==='TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'?safeDocumentRelay(cause):undefined)});
  }
  return undefined;
 }
