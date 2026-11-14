@@ -229,3 +229,13 @@ test('original ACL renderer grants only the observer allocation PK read and clos
  const readback=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(acl.readbackSql)?.[1]??'null');assert.deepEqual(readback,expected);
  assert.match(acl.sql,/TASK16_CURRENT259_RUNTIME_ACL_POSTIMAGE: WRITER_CAPABILITIES/u);
 });
+
+test('audit PK observer read is exact in original grant and postimage readback',()=>{
+ const acl=renderCurrent259RuntimeAcl(source,receipt(),nonce);
+ assert.match(acl.sql,/GRANT SELECT \("action", "actorUserId", "businessId", "businessType", "id", "metadata"\) ON TABLE public\."AuditLog" TO "jg_task01_observer";/u);
+ const caps=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(acl.sql)[1]);
+ const readback=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(acl.readbackSql)[1]);assert.deepEqual(readback,caps);
+ const audit=caps.filter(row=>row[0]==='jg_task01_observer'&&row[2]==='AuditLog');
+ assert.deepEqual(audit.map(row=>row[3]).sort(),['action','actorUserId','businessId','businessType','id','metadata']);
+ assert.ok(audit.every(row=>row[1]==='column'&&row[4]==='SELECT'&&row[5]===false));
+});

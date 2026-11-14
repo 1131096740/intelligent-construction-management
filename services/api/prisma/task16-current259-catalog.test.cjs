@@ -32,11 +32,13 @@ test('current259 supplies the same effective read plan to future role installers
  assert.deepEqual([...before].filter(row=>!after.has(row)),[]);
  const beforeObserver=new Set(permissions(historical.observer).map(row=>JSON.stringify(row)));
  const afterObserver=new Set(permissions(effective.observer).map(row=>JSON.stringify(row)));
- assert.deepEqual([...afterObserver].filter(row=>!beforeObserver.has(row)).map(row=>JSON.parse(row)),[['RegisteredFundPaymentAllocation','id','SELECT']]);
+ assert.deepEqual([...afterObserver].filter(row=>!beforeObserver.has(row)).map(row=>JSON.parse(row)),[['AuditLog','id','SELECT'],['RegisteredFundPaymentAllocation','id','SELECT']]);
  assert.deepEqual([...beforeObserver].filter(row=>!afterObserver.has(row)),[]);
  const expectedObserver=structuredClone(historical.observer);
  expectedObserver.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.push('id');
  expectedObserver.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.sort();
+ expectedObserver.tables.find(table=>table.table==='AuditLog').select.push('id');
+ expectedObserver.tables.find(table=>table.table==='AuditLog').select.sort();
  assert.deepEqual(effective.observer,expectedObserver);
  assert.equal(historical.observer.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.includes('id'),false);
  assert.deepEqual(effective.runtime.functions,historical.runtime.functions);
@@ -56,6 +58,7 @@ const plan=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-registered-acc
 plan.runtime.tables.find(table=>table.table==='ContractVersion').select.push('originalSignedNumber');
 // Mirror only the observed SDK allocation-PK read in this independent catalog protocol fixture.
 plan.observer.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.push('id');
+plan.observer.tables.find(table=>table.table==='AuditLog').select.push('id');
 const sort=rows=>rows.sort((a,b)=>JSON.stringify(a)<JSON.stringify(b)?-1:JSON.stringify(a)>JSON.stringify(b)?1:0);
 function observed(phase='before',access=plan){
  const roles=[['owner','jg_task01_owner'],['runtime','jg_task01_runtime'],['observer','jg_task01_observer']].map(([key,name])=>{
@@ -422,5 +425,21 @@ for(const mutation of ['missing-pk','observer-write','outside-column','table-gra
  else if(mutation==='grant-option')row.capabilities.find(isPk)[5]=true;
  else if(mutation==='readonly-off')row.roles.find(role=>role.name==='jg_task01_observer').readOnlyDefault=false;
  else row.capabilities=sort([...row.capabilities,['jg_task01_observer',mutation==='table-grant'?'table':'column','RegisteredFundPaymentAllocation',mutation==='outside-column'?'private_unapproved_column':mutation==='table-grant'?'':'id',mutation==='observer-write'?'UPDATE':'SELECT',false]]);
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);
+});
+
+test('observer audit projection retains its PK read and zero writes',()=>{
+ const role=api.loadCurrent259CatalogMaterial(source).accessPlan.observer;
+ const row=role.tables.find(row=>row.table==='AuditLog');
+ assert.deepEqual(row.select,['action','actorUserId','businessId','businessType','id','metadata']);
+ assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);
+});
+
+for(const mutation of ['missing-pk','observer-write','outside-column','table-grant','grant-option','readonly-off'])test('public catalog rejects observer audit '+mutation+' outside the single-column read delta',()=>{
+ const row=observed(),isPk=cap=>cap[0]==='jg_task01_observer'&&cap[1]==='column'&&cap[2]==='AuditLog'&&cap[3]==='id';
+ if(mutation==='missing-pk')row.capabilities=row.capabilities.filter(cap=>!isPk(cap));
+ else if(mutation==='grant-option')row.capabilities.find(isPk)[5]=true;
+ else if(mutation==='readonly-off')row.roles.find(role=>role.name==='jg_task01_observer').readOnlyDefault=false;
+ else row.capabilities=sort([...row.capabilities,['jg_task01_observer',mutation==='table-grant'?'table':'column','AuditLog',mutation==='outside-column'?'private_unapproved_column':mutation==='table-grant'?'':'id',mutation==='observer-write'?'UPDATE':'SELECT',false]]);
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);
 });

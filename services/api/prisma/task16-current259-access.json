@@ -18,6 +18,12 @@
       "select": [
         "id"
       ]
+    },
+    {
+      "table": "AuditLog",
+      "select": [
+        "id"
+      ]
     }
   ],
   "readerSignature": "public.jg_read_registered_payment_impacts(text,text,text,text,text)",
