@@ -5,7 +5,7 @@ const { cp, lstat, mkdir, mkdtemp, readFile, readdir, writeFile } = require("nod
 const path = require("node:path");
 const { types, isDeepStrictEqual } = require("node:util");
 const controls = require("./local-staged-migration-controls.cjs");
-const { createLocalTailQualification } = require("./local-staged-tail-qualification.cjs");
+const { createLocalTailQualification, createCurrent261AuthOnlyTailSupply } = require("./local-staged-tail-qualification.cjs");
 
 const technicalProfiles = require("./local-staged-technical-profile-policy.cjs");
 
@@ -69,9 +69,12 @@ function identity(row, database, owner = "jiangkong") {
   };
 }
 
-function createLocalMigrationFixture(input) {
+function createLocalMigrationFixture(input) { return createMigrationFixture(input,false); }
+function createLocalAuthOnlyDiagnosticFixture(input) { return createMigrationFixture(input,true); }
+function createMigrationFixture(input,authOnly) {
   const supplied = snapshot(input);
-  const technical = Object.hasOwn(supplied, "technicalProfile") ? require("./local-staged-current259-profile.cjs").resolveTechnicalProfile(supplied.technicalProfile) : null;
+  const technical = authOnly ? require("./local-staged-current259-profile.cjs").resolveCurrent261AuthOnlyDiagnosticProfile(supplied.authOnlyDiagnosticProfile) : Object.hasOwn(supplied, "technicalProfile") ? require("./local-staged-current259-profile.cjs").resolveTechnicalProfile(supplied.technicalProfile) : null;
+  if(authOnly)need(Object.hasOwn(supplied,"authOnlyDiagnosticProfile")&&technical?.executionPurpose==="AUTH_ONLY_DIAGNOSTIC"&&technical.id==="CURRENT261_AUTH_ONLY_DIAGNOSTIC_V1"&&technical.sqlMaterialProfileId==="CURRENT259_OWNED_TECHNICAL_V1"&&technical.ledger.length===261,"AUTH_ONLY_PROFILE");
   if (technical) need(Object.keys(supplied).length === 2 && typeof supplied.temporaryRoot === "string", "INPUT");
   const options = technical ? snapshot({ ...supplied, ...technical.options }) : supplied;
   const owner = technical?.owner ?? "jiangkong";
@@ -169,7 +172,7 @@ function createLocalMigrationFixture(input) {
         expected: structuredClone(source.expected) };
     }
     const roots = new Map();
-    for (const size of [203, 205, ...[213, 215, 218, 221].filter(size => size < targetLength)]) {
+    for (const size of (authOnly?[203,205,213]:[203, 205, ...[213, 215, 218, 221].filter(size => size < targetLength)])) {
       if (!prefixCache.has(size)) {
         const dir = path.join(phaseRoot, String(size));
         await mkdir(path.join(dir, "migrations"), { recursive: true });
@@ -372,7 +375,7 @@ function createLocalMigrationFixture(input) {
         ...bound, runId: randomUUID(), nonce: randomBytes(32).toString("hex"),
         appName: "jg_fixture_app_" + randomBytes(12).toString("hex"),
         schemaName: "jg_fixture_" + randomBytes(12).toString("hex"),
-        ...(technical ? { technicalProfile: technical.id, resourceRunId: technical.runId } : {}),
+        ...(technical ? { technicalProfile: authOnly?technical.sqlMaterialProfileId:technical.id, resourceRunId: technical.runId } : {}),
         ...(ci ? { ciFixture: options.ciFixture } : {}),
         migrations: expected.slice(0, 205)
       };
@@ -397,7 +400,14 @@ function createLocalMigrationFixture(input) {
       const after = await read(database, "post-qualification", controls.inspectSql());
       need(isDeepStrictEqual(identity(after, database, owner), bound), "DATABASE_IDENTITY");
       checkRoles(after, declaredRoles);
-      if (target.length > 213) {
+      if(authOnly){
+        const prefix=await deploy({...request,schemaPath:path.join(roots.get(213),"schema.prisma")});phaseOutput.push(prefix.stdout??"");
+        const observed=await read(database,"stage213-readback",controls.inspectSql());
+        need(isDeepStrictEqual(identity(observed,database,owner),bound)&&checkLedger(observed.ledger,target,rolledBack)===213,"AUTH_ONLY_STAGE213");checkRoles(observed,declaredRoles);
+        const tail=createCurrent261AuthOnlyTailSupply(supplied.authOnlyDiagnosticProfile,{plan,setup,migrations:expected},{
+          read:(phase,sql)=>read(database,phase,sql),write:(phase,sql)=>read(database,phase,sql,true),recordMaterial:technical.recordMaterial});
+        await tail.supplyRequired();
+      }else if (target.length > 213) {
         const tail = createLocalTailQualification({ plan, setup, migrations: expected }, {
           read: (phase, sql) => read(database, phase, sql),
           write: (phase, sql) => read(database, phase, sql, true),
@@ -418,7 +428,7 @@ function createLocalMigrationFixture(input) {
       need(isDeepStrictEqual(identity(final, database, owner), bound) &&
         checkLedger(final.ledger, target, rolledBack) === target.length, "COMPLETION");
       checkRoles(final, declaredRoles);
-      return { ...result, ...(technical ? { technicalApplication: Object.freeze({ name: plan.appName, oid: setup.appOid, nonce: plan.nonce }) } : {}), stdout: [...phaseOutput, result.stdout ?? ""].join("\n") };
+      return { ...result, ...(technical ? { [authOnly?"authOnlyDiagnosticApplication":"technicalApplication"]: Object.freeze({ name: plan.appName, oid: setup.appOid, nonce: plan.nonce }) } : {}), stdout: [...phaseOutput, result.stdout ?? ""].join("\n") };
     } finally {
       busy = false;
     }
@@ -438,4 +448,4 @@ function createLocalMigrationFixture(input) {
   };
 }
 
-module.exports = { createLocalMigrationFixture };
+module.exports = { createLocalMigrationFixture, createLocalAuthOnlyDiagnosticFixture };

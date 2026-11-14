@@ -6,6 +6,8 @@ const {types,isDeepStrictEqual}=require('node:util');
 const {randomBytes}=require('node:crypto');
 const ROOT=path.resolve(__dirname,'../../..'),ID='CURRENT259_OWNED_TECHNICAL_V1',OWNER='jg_task01_owner';
 const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
+const AUTH_ID='CURRENT261_AUTH_ONLY_DIAGNOSTIC_V1';
+const authProfiles=new WeakMap(),authSupplies=new WeakMap();
 const profiles=new WeakMap(),usedHandles=new WeakSet(),supplies=new WeakMap(),failures=new WeakMap();
 const need=ok=>{if(!ok)throw new Error('CURRENT259_TECHNICAL_PROFILE');};
 function dataDescriptor(owner,key){need(owner&&!types.isProxy(owner));const d=Object.getOwnPropertyDescriptor(owner,key);need(d&&Object.hasOwn(d,'value'));return Object.freeze(d);}
@@ -25,11 +27,12 @@ const corePath=require.resolve('./local-staged-migrations.cjs');
 const corePreloaded=Boolean(require.cache[corePath]);
 const coreExports=require('./local-staged-migrations.cjs'),coreModule=require.cache[corePath];
 const coreSlot=dataDescriptor(coreExports,'createLocalMigrationFixture'),createLocalMigrationFixture=coreSlot.value;
+const authCoreSlot=dataDescriptor(coreExports,'createLocalAuthOnlyDiagnosticFixture'),createLocalAuthOnlyDiagnosticFixture=authCoreSlot.value;
 const modules=[[ownedPath,ownedModule,ownedExports],[inputsPath,inputsModule,inputsExports],[commandPath,commandModule,commandExports],[corePath,coreModule,coreExports]].map(([file,loaded,exports])=>({file,loaded,exports,slot:dataDescriptor(loaded,'exports')}));
 function bindings(){
  need(!ownedPreloaded&&!corePreloaded&&dataDescriptor(require.cache,__filename).value===module&&dataDescriptor(module,'exports').value===moduleApi);
  for(const {file,loaded,exports,slot} of modules){need(dataDescriptor(require.cache,file).value===loaded&&slot.value===exports);sameDescriptor(loaded,'exports',slot);}
- for(const [owner,key,slot] of [[ownedExports,'claimCurrent259TechnicalResource',claimSlot],[ownedExports,'closeCurrent259OwnedResource',closeSlot],[inputsExports,'readQualifiedTask16File',inputSlot],[commandExports,'runTask16BoundedCommand',commandSlot],[coreExports,'createLocalMigrationFixture',coreSlot]])sameDescriptor(owner,key,slot);
+ for(const [owner,key,slot] of [[ownedExports,'claimCurrent259TechnicalResource',claimSlot],[ownedExports,'closeCurrent259OwnedResource',closeSlot],[inputsExports,'readQualifiedTask16File',inputSlot],[commandExports,'runTask16BoundedCommand',commandSlot],[coreExports,'createLocalMigrationFixture',coreSlot],[coreExports,'createLocalAuthOnlyDiagnosticFixture',authCoreSlot]])sameDescriptor(owner,key,slot);
 }
 const SCHEMA_ENGINE_SHA='57b090d47b947dc9284379d9480d11ffe14fe63155e3da515b359f3aa7fa408a';
 const CLI_SHA='ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388';
@@ -106,8 +109,22 @@ function claimCurrent259TechnicalSupply(result,handle){
  const supply=supplies.get(result);need(supply.handle===handle);supplies.delete(result);
  supply.check();return Object.freeze({source:supply.source,completion:result,check:supply.check,checkContinuity:supply.checkContinuity});
 }
+function resolveCurrent261AuthOnlyDiagnosticProfile(token){
+ need(arguments.length===1&&token&&!types.isProxy(token)&&authProfiles.has(token));
+ const profile=authProfiles.get(token);profile.check();return profile;
+}
+function claimCurrent261AuthOnlyDiagnosticSupply(result,handle){
+ need(arguments.length===2&&result&&!types.isProxy(result)&&authSupplies.has(result));
+ const supply=authSupplies.get(result);need(supply.handle===handle);authSupplies.delete(result);
+ supply.check();return Object.freeze({source:supply.source,completion:result,executionPurpose:'AUTH_ONLY_DIAGNOSTIC',check:supply.check,checkContinuity:supply.checkContinuity});
+}
 function createCurrent259TechnicalMigration(handle,signal){
- need(arguments.length===1||arguments.length===2);
+ need(arguments.length===1||arguments.length===2);return createTechnicalMigration(handle,signal,false);
+}
+function createCurrent261AuthOnlyDiagnosticBootstrap(handle,signal){
+ need(arguments.length===1||arguments.length===2);return createTechnicalMigration(handle,signal,true);
+}
+function createTechnicalMigration(handle,signal,authOnly){
  if(signal!==undefined)need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===AbortSignal.prototype&&!Object.hasOwn(signal,"aborted"));
  const cancellation=new AbortController();
  const aborted=()=>signal!==undefined&&Object.getOwnPropertyDescriptor(AbortSignal.prototype,"aborted").get.call(signal);
@@ -127,7 +144,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  let failed=false,started=false,closing,physicalAnchor;const sqlMaterials=[];let cliMaterial,nodeMaterial,engineMaterial;
  let recording=false,stage='INITIAL_CHECK',controlPhase,controlBoundary,firstFailure,lastSuccessfulDeployPrefix=null,prismaExitZeroPrefix;
  function recordControlPhase(phase,boundary){
-  need(typeof phase==='string'&&CONTROL_PHASE.test(phase)&&CONTROL_BOUNDARIES.has(boundary));
+  need(typeof phase==='string'&&(CONTROL_PHASE.test(phase)||authOnly&&/^auth213-columns-(?:before|supply|readback)$/u.test(phase))&&CONTROL_BOUNDARIES.has(boundary));
   controlPhase=phase;controlBoundary=boundary;stage='CONTROL_'+boundary;
  }
  function remember(error,checkGate){
@@ -196,8 +213,8 @@ function createCurrent259TechnicalMigration(handle,signal){
   const r=resource.getReceiptContinuity(businessToken);need(r.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&r.limits?.totalDeadlineMs===3600000);
   need(isDeepStrictEqual({runId:r.runId,containerId:r.containerId,networkId:r.networkId,database:r.databaseName,port:r.port,name:r.containerName},frozenIdentity));
  }catch(error){void stop().catch(()=>{});throw error;}}
- const token=Object.freeze({kind:ID});
- const profile={id:ID,owner:OWNER,database,runId,check,recordControlPhase,
+ const token=Object.freeze({kind:authOnly?AUTH_ID:ID});
+ const profile={id:authOnly?AUTH_ID:ID,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC',sqlMaterialProfileId:ID}:{}),owner:OWNER,database,runId,check,recordControlPhase,
   ledger:source.profile.ledger,
   recordMaterial:row=>{check();sqlMaterials.push(Object.freeze({kind:row.kind??"setup",beforeSha256:row.beforeSha256,afterSha256:row.afterSha256}));},
   options:{container:{id:resource.containerId,name:receipt.containerName,runId},databaseNames:[database],
@@ -242,8 +259,8 @@ function createCurrent259TechnicalMigration(handle,signal){
     for(const [key,value] of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:resource.caPath,connect_timeout:'5',pool_timeout:'5'}))url.searchParams.set(key,value);
     stage='PRISMA_TOOL_QUALIFICATION';const tools=toolMaterials();check();
     const env={PATH:path.dirname(process.execPath),DATABASE_URL:url.toString(),PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1',PRISMA_SCHEMA_ENGINE_BINARY:tools.engine};
-    const prefix=request.schemaPath===undefined?'259':path.basename(path.dirname(request.schemaPath));
-    const phase=prefix==='259'||DEPLOY_PREFIXES.has(prefix)?prefix:'UNCLASSIFIED';
+    const prefix=request.schemaPath===undefined?(authOnly?'261':'259'):path.basename(path.dirname(request.schemaPath));
+    const phase=prefix==='259'||authOnly&&prefix==='261'||DEPLOY_PREFIXES.has(prefix)?prefix:'UNCLASSIFIED';
     try{
      stage='PRISMA_RELAY_PRECHECK';
      const waitForRelay=beginPrismaRelayDrain?.call(view);
@@ -271,24 +288,24 @@ function createCurrent259TechnicalMigration(handle,signal){
     }catch(error){failed=true;throw error;}
    }}};
  profile.options.executeSqlStdin=profile.options.executeSql;
- profiles.set(token,profile);
+ (authOnly?authProfiles:profiles).set(token,profile);
  return Object.freeze({async migrate(){
   let supplied=false;
   try{
    recording=!started;check();need(arguments.length===0&&!started);started=true;if(signal)EventTarget.prototype.addEventListener.call(signal,"abort",onAbort,{once:true});
    stage='MIGRATION_FIXTURE';const temporaryRoot=fs.mkdtempSync(path.join(os.tmpdir(),'jg-current259-migrations-'));check();
-   const fixture=createLocalMigrationFixture({technicalProfile:token,temporaryRoot});
+   const fixture=authOnly?createLocalAuthOnlyDiagnosticFixture({authOnlyDiagnosticProfile:token,temporaryRoot}):createLocalMigrationFixture({technicalProfile:token,temporaryRoot});
    const url=new URL('postgresql://'+OWNER+'@127.0.0.1:'+resource.port+'/'+database);url.password=view.credentials().owner;url.searchParams.set('application_name','jg-current259-migrate');
    stage='CORE_MIGRATE';const result=await fixture.migrate({databaseUrl:url.toString(),runtimeEnv:{}});
    stage='FINAL_CHECK';controlPhase=undefined;controlBoundary=undefined;check();
-   const completion=Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,sourceSha:source.candidateSha,runId,containerId:resource.containerId,database,
-    application:result.technicalApplication,databaseIdentity:Object.freeze({...physicalAnchor}),sqlMaterials:Object.freeze(sqlMaterials.slice())});
-   supplies.set(completion,{handle,source:frozenMetadata(source),check,checkContinuity});supplied=true;return completion;
+   const completion=Object.freeze({status:authOnly?'CURRENT261_AUTH_ONLY_DIAGNOSTIC_SUPPLIED_NOT_ADMISSION':'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC',financialAcceptance:false}:{}),executionAllowed:false,nativeAdmission:false,sourceSha:source.candidateSha,runId,containerId:resource.containerId,database,
+    application:authOnly?result.authOnlyDiagnosticApplication:result.technicalApplication,databaseIdentity:Object.freeze({...physicalAnchor}),sqlMaterials:Object.freeze(sqlMaterials.slice())});
+   (authOnly?authSupplies:supplies).set(completion,{handle,source:frozenMetadata(source),check,checkContinuity});supplied=true;return completion;
   }catch(error){bindFailure(error);return await failedOutcome(error);}
   // The same once listener protects the completed result before and after claim.
   // The original owned scope still revokes and closes independently on exit.
   finally{recording=false;if(signal&&!supplied)EventTarget.prototype.removeEventListener.call(signal,"abort",onAbort);}
  }});
 }
-const moduleApi=Object.freeze({createCurrent259TechnicalMigration,resolveTechnicalProfile,claimCurrent259TechnicalSupply,describeCurrent259TechnicalFailure});
+const moduleApi=Object.freeze({createCurrent259TechnicalMigration,resolveTechnicalProfile,claimCurrent259TechnicalSupply,describeCurrent259TechnicalFailure,createCurrent261AuthOnlyDiagnosticBootstrap,resolveCurrent261AuthOnlyDiagnosticProfile,claimCurrent261AuthOnlyDiagnosticSupply});
 module.exports=moduleApi;

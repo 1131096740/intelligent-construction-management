@@ -99,7 +99,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       currentDatabase = targetDatabase;
       calls.push(phase);
       let result = readback();
-      if (phase.startsWith("tail")) {
+      if (phase.startsWith("tail") || phase.startsWith("auth213-columns-")) {
         result = require("./testdata/local-staged-tail-model.cjs").observe(sql, phase);
         result.ledger = readback().ledger;
         result.identity.actor = actor.name; result.identity.sessionActor = actor.name;
@@ -1242,4 +1242,71 @@ for(const mode of ["child-failed","relay-failed"])test("owned migration preserve
     return true;
   });
   assert.equal(opened,1);assert.equal(f.counts().commands,1);assert.equal(f.counts().closes,1);
+});
+
+// Source-shaped owned-resource/CLI model only: no PostgreSQL, SDK, or native authority.
+test("auth-only bootstrap retains real203/205/213 prerequisites then completes261 with a separate single-use proof",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'auth261-bootstrap-model-'));
+ try{
+  const model=await current259Model(root);
+  const result=await model.api.createCurrent261AuthOnlyDiagnosticBootstrap(model.handle).migrate();
+  assert.equal(result.status,'CURRENT261_AUTH_ONLY_DIAGNOSTIC_SUPPLIED_NOT_ADMISSION');
+  assert.equal(result.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');
+  assert.equal(result.executionAllowed,false);assert.equal(result.nativeAdmission,false);assert.equal(result.financialAcceptance,false);
+  assert.deepEqual(model.deploymentRequests.map(x=>x.count),[203,205,213,261]);
+  assert.ok(model.calls.indexOf('stage205-readback')<model.calls.indexOf('qualification-cleanup'));
+  assert.ok(model.calls.indexOf('cleanup-readback')<model.calls.indexOf('deploy-213'));
+  assert.ok(model.calls.indexOf('tail213-readback')<model.calls.indexOf('auth213-columns-before'));
+  assert.ok(model.calls.indexOf('auth213-columns-readback')<model.calls.indexOf('deploy-261'));
+  assert.equal(model.calls.some(x=>/tail(?:215|218|221)/u.test(x)),false);
+  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,model.handle));
+  assert.throws(()=>model.api.claimCurrent261AuthOnlyDiagnosticSupply({...result},model.handle));
+  assert.throws(()=>model.api.claimCurrent261AuthOnlyDiagnosticSupply(result,{}));
+  const proof=model.api.claimCurrent261AuthOnlyDiagnosticSupply(result,model.handle);
+  assert.equal(proof.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.equal(proof.completion,result);proof.check();
+  assert.throws(()=>model.api.claimCurrent261AuthOnlyDiagnosticSupply(result,model.handle));
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+for(const [phase,alter,forbidden] of [
+ ['stage205-readback',row=>row.ledger.pop(),'qualification-cleanup'],
+ ['tail213-before',row=>row.routines[0].bodySha256='0'.repeat(64),'tail213-supply'],
+ ['auth213-columns-before',row=>row.ledger.pop(),'auth213-columns-supply'],
+ ['auth213-columns-supply',row=>row.targets[0].direct[0][3]=true,'auth213-columns-readback'],
+ ['auth213-columns-readback',row=>row.commitStatus='in progress','deploy-261'],
+ ['complete-readback',row=>row.ledger.pop(),null]
+])test(`auth-only bootstrap model stops permanently on changed ${phase} proof`,async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'auth261-bootstrap-reject-'));
+ try{
+  const model=await current259Model(root,(current,row)=>{if(current===phase)alter(row);return row;});
+  const run=model.api.createCurrent261AuthOnlyDiagnosticBootstrap(model.handle);
+  await assert.rejects(run.migrate());assert.equal(model.counts().closes,1);
+  if(forbidden)assert.equal(model.calls.includes(forbidden),false);
+  const calls=model.calls.length;await assert.rejects(run.migrate());assert.equal(model.calls.length,calls);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+for(const ended of ['scope ended','signal aborted'])test(`auth-only supply model revokes claimed and unclaimed authority after ${ended}`,async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'auth261-bootstrap-revoke-'));
+ try{
+  const model=await current259Model(root),controller=new AbortController();
+  const result=await model.api.createCurrent261AuthOnlyDiagnosticBootstrap(model.handle,controller.signal).migrate();
+  const proof=model.api.claimCurrent261AuthOnlyDiagnosticSupply(result,model.handle);
+  if(ended==='scope ended')model.close();else controller.abort();
+  assert.throws(()=>proof.check());
+  assert.throws(()=>model.api.claimCurrent261AuthOnlyDiagnosticSupply(result,model.handle));
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('auth-only supply model cannot consume normal completion or replace the full core entry',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'auth261-bootstrap-purpose-'));
+ try{
+  const model=await current259Model(root);
+  const result=await model.api.createCurrent259TechnicalMigration(model.handle).migrate();
+  assert.throws(()=>model.api.claimCurrent261AuthOnlyDiagnosticSupply(result,model.handle));
+  assert.equal(model.api.claimCurrent259TechnicalSupply(result,model.handle).completion,result);
+  for(const token of [{kind:'CURRENT261_AUTH_ONLY_DIAGNOSTIC_V1'},new Proxy({kind:'CURRENT261_AUTH_ONLY_DIAGNOSTIC_V1'},{})]){
+   assert.throws(()=>model.api.resolveTechnicalProfile(token));
+   assert.throws(()=>model.api.resolveCurrent261AuthOnlyDiagnosticProfile(token));
+  }
+ }finally{await fs.rm(root,{recursive:true,force:true});}
 });

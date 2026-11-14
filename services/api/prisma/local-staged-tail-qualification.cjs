@@ -55,17 +55,21 @@ function context(input){
  need(!ciRecovery||rollback);
  return Object.freeze({...v,migrations:qualifiedMigrations,ledger:Object.freeze(ledger),rollback,requireSingleRollback:Boolean(ciRecovery)});
 }
+const authEligible=Object.freeze([...new Set([215,218,221].flatMap(stage=>matrix.windows[stage].eligible))]);
+const authRequired=Object.freeze([...new Set([215,218,221].flatMap(stage=>matrix.windows[stage].required))]);
+const authLocks=Object.freeze([...new Set([215,218,221].flatMap(stage=>matrix.windows[stage].lockUpdateRequired))]);
+function window(stage){return stage===0?{eligible:authEligible,required:authRequired,lockUpdateRequired:authLocks}:matrix.windows[stage];}
 function targets(stage){
- need(WINDOWS.includes(stage));return stage===213?matrix.post213Targets:
- matrix.windows[stage].eligible.map(key=>{const [table,member,privilege]=key.split('/');return {kind:'column',table,member,privilege,recipients:'app'};});
+ need(WINDOWS.includes(stage)||stage===0);return stage===213?matrix.post213Targets:
+ window(stage).eligible.map(key=>{const [table,member,privilege]=key.split('/');return {kind:'column',table,member,privilege,recipients:'app'};});
 }
 function config(c,stage,phase,xid=null){
- need(['before','staged','committed'].includes(phase)&&WINDOWS.includes(stage));
+ need(['before','staged','committed'].includes(phase)&&(WINDOWS.includes(stage)||stage===0&&c.authOnlyFutureColumns===true));
  return {stage,phase,nonce:c.plan.nonce,runId:c.plan.runId,sourceSha256:FULL,identity:Object.fromEntries(['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'].map(k=>[k,c.plan[k]])),
-  appOid:c.setup.appOid,appName:c.plan.appName,fileCallerOids:c.setup.fileCallerOids.map(String),ledger:c.ledger.slice(0,stage),
-  targets:targets(stage),routines:stage===213?matrix.routines213:[],triggers:stage===213?matrix.triggers213:[],required:stage===213?[]:matrix.windows[stage].required,
-  locks:stage===213?[]:matrix.windows[stage].lockUpdateRequired,
-  bindings:BINDINGS.filter(([created])=>created<=stage).map(([created,name,produced])=>({name,count:produced!==null&&(produced<stage||produced===stage&&(stage!==213||phase!=='before'))?1:0})),
+  appOid:c.setup.appOid,appName:c.plan.appName,fileCallerOids:c.setup.fileCallerOids.map(String),ledger:c.ledger.slice(0,stage===0?213:stage),
+  targets:targets(stage),routines:stage===213||stage===0?matrix.routines213:[],triggers:stage===213||stage===0?matrix.triggers213:[],required:stage===213?[]:window(stage).required,
+  locks:stage===213?[]:window(stage).lockUpdateRequired,
+  bindings:BINDINGS.filter(([created])=>created<=(stage===0?213:stage)).map(([created,name,produced])=>({name,count:produced!==null&&(stage===0?produced<=213:produced<stage||produced===stage&&(stage!==213||phase!=='before'))?1:0})),
   installXid:xid};
 }
 function projection(c,stage,phase,xid=null){
@@ -149,7 +153,7 @@ function validateRow(input,c,stage,phase,prior){
    rollbackCount++;
   }
  }
- need(equal(completed,c.ledger.slice(0,stage))&&(!c.requireSingleRollback||rollbackCount===1));
+ need(equal(completed,c.ledger.slice(0,stage===0&&c.authOnlyFutureColumns?213:stage))&&(!c.requireSingleRollback||rollbackCount===1));
  reason='PENDING';
  const p=row.pending;keys(p,['appOid','fileCallerOids','databaseOid','namespaceOid','ownerOid','relationOid','sha256']);
  need(p.appOid===c.setup.appOid&&equal(p.fileCallerOids,c.setup.fileCallerOids.map(String))&&p.databaseOid===c.plan.databaseOid&&p.namespaceOid===c.plan.namespaceOid&&p.ownerOid===c.plan.actorOid&&oid(p.relationOid)&&digest(p.sha256));
@@ -200,7 +204,7 @@ function validateRow(input,c,stage,phase,prior){
  row.targets.forEach((t,i)=>{keys(t,['kind','object','member','privilege','roleOid','objectOid','attnum','typeOid','catalogXmin','effective','grantable','direct']);need(equal(Object.fromEntries(['kind','object','member','privilege','roleOid'].map(k=>[k,t[k]])),unique[i])&&oid(t.objectOid)&&Number.isInteger(t.attnum)&&(t.kind==='column'?t.attnum>0&&t.attnum<=32767&&oid(t.typeOid):t.attnum===0&&t.typeOid==='0')&&txid(t.catalogXmin)&&BigInt(t.catalogXmin)<=0xffffffffn&&typeof t.effective==='boolean'&&t.grantable===false&&Array.isArray(t.direct)&&t.direct.every(a=>equal(a,[c.plan.actorOid,t.roleOid,t.privilege,false]))&&t.direct.length<=1);if(phase!=='before')need(t.effective===true);});
  reason='REQUIRED_COLUMNS';
  const required=cfg.required.slice().sort();need(Array.isArray(row.required)&&row.required.length===required.length);
- row.required.forEach((r,i)=>{keys(r,['key','objectOid','attnum','typeOid','effective']);need(r.key===required[i]&&oid(r.objectOid)&&Number.isInteger(r.attnum)&&r.attnum>0&&r.attnum<=32767&&oid(r.typeOid)&&typeof r.effective==='boolean'&&(r.effective===true||phase==='before'&&matrix.windows[stage].eligible.includes(r.key)));});
+ row.required.forEach((r,i)=>{keys(r,['key','objectOid','attnum','typeOid','effective']);need(r.key===required[i]&&oid(r.objectOid)&&Number.isInteger(r.attnum)&&r.attnum>0&&r.attnum<=32767&&oid(r.typeOid)&&typeof r.effective==='boolean'&&(r.effective===true||phase==='before'&&window(stage).eligible.includes(r.key)));});
  reason='LOCKS';
  need(equal(row.locks,cfg.locks.slice().sort().map(table=>({table,effective:true}))));
  reason='TRANSACTION';
@@ -258,7 +262,7 @@ function renderSupply(c,stage,before){
   END $tail_columns$;`;
  }
  const exclusive=stage===213?['jg_contract_direct_review_retention_binding_v1','jg_contract_direct_archive_binding_v1','jg_contract_direct_archive_retention_binding_v1']: [...new Set(targets(stage).map(t=>t.table))];
- const shared=stage===213?['jg_contract_direct_pending_binding_v1','Contract','ContractVersion','Project','ContractEconomicReview','ContractEconomicReviewFileReference','FileObject','ContractArchiveFile','ContractArchiveEvidenceFile','ContractDraftAttachment','PaymentTermsVersion','PaymentTermsStage','ProjectAffiliateAssignment','OperatingFact','OperatingImpactEntry']: [...new Set([...matrix.windows[stage].required.map(x=>x.split('/')[0]),...config(c,stage,'before').bindings.map(x=>x.name)])].filter(x=>!exclusive.includes(x));
+ const shared=stage===213?['jg_contract_direct_pending_binding_v1','Contract','ContractVersion','Project','ContractEconomicReview','ContractEconomicReviewFileReference','FileObject','ContractArchiveFile','ContractArchiveEvidenceFile','ContractDraftAttachment','PaymentTermsVersion','PaymentTermsStage','ProjectAffiliateAssignment','OperatingFact','OperatingImpactEntry']: [...new Set([...window(stage).required.map(x=>x.split('/')[0]),...config(c,stage,'before').bindings.map(x=>x.name)])].filter(x=>!exclusive.includes(x));
  const relation=name=>'public."'+name.replaceAll('"','""')+'"';
  const locks=`LOCK TABLE ${exclusive.slice().sort().map(relation).join(',')} IN ACCESS EXCLUSIVE MODE;\nLOCK TABLE ${shared.slice().sort().map(relation).join(',')} IN SHARE MODE;`;
  const script=`-- local-tail ${stage} supply\nBEGIN ISOLATION LEVEL SERIALIZABLE;\nSET LOCAL search_path=pg_catalog,pg_temp;\nSET LOCAL lock_timeout='5s';\nSET LOCAL statement_timeout='20s';\nLOCK TABLE public._prisma_migrations IN SHARE MODE;\n${locks}
@@ -306,4 +310,24 @@ function createLocalTailQualification(input,ports){
   }finally{busy=false;}
  }});
 }
-module.exports={createLocalTailQualification,localTailFailureDiagnostic};
+function createCurrent261AuthOnlyTailSupply(token,input,ports){
+ need(arguments.length===3);
+ const profile=require('./local-staged-current259-profile.cjs').resolveCurrent261AuthOnlyDiagnosticProfile(token);
+ need(profile.id==='CURRENT261_AUTH_ONLY_DIAGNOSTIC_V1'&&profile.executionPurpose==='AUTH_ONLY_DIAGNOSTIC'&&profile.sqlMaterialProfileId==='CURRENT259_OWNED_TECHNICAL_V1');
+ const base=context(input);need(base.plan.resourceRunId===profile.runId&&base.plan.database===profile.database&&equal(base.migrations,profile.ledger.slice(0,259).map(({name,sha256})=>({name,sha256}))));
+ const original=createLocalTailQualification(input,ports),c=Object.freeze({...base,authOnlyFutureColumns:true});
+ need(ports&&!types.isProxy(ports));const ds=Object.getOwnPropertyDescriptors(ports);
+ need(equal(Reflect.ownKeys(ds).sort(),['read','recordMaterial','write'])&&Object.values(ds).every(d=>Object.hasOwn(d,'value')&&typeof d.value==='function'&&!types.isProxy(d.value)));
+ const read=ds.read.value,write=ds.write.value;let used=false;
+ return Object.freeze({async supplyRequired(){
+  need(arguments.length===0&&!used);used=true;profile.check();
+  // Genuine original post213 installers remain mandatory; future column grants
+  // are the same pinned finite material, on objects already present at213.
+  await original.qualify(213);profile.check();
+  const before=validateRow(await read('auth213-columns-before',readSql(c,0,'before')),c,0,'before');profile.check();
+  const staged=validateRow(await write('auth213-columns-supply',renderSupply(c,0,before)),c,0,'staged',before);profile.check();
+  const after=validateRow(await read('auth213-columns-readback',readSql(c,0,'committed',staged.writeXid)),c,0,'committed',staged);profile.check();
+  return Object.freeze({status:'CURRENT261_AUTH_ONLY_RUNTIME_COLUMNS_NOT_ADMISSION',executionPurpose:'AUTH_ONLY_DIAGNOSTIC',ledgerPrefix:213,writeXid:staged.writeXid,readerPid:after.identity.backendPid,executionAllowed:false,nativeAdmission:false,financialAcceptance:false});
+ }});
+}
+module.exports={createLocalTailQualification,createCurrent261AuthOnlyTailSupply,localTailFailureDiagnostic};

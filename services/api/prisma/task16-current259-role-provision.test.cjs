@@ -45,7 +45,8 @@ function modelRow(index){
   state:{...base,app:{...app},roles:after?roleRows:[],databases:after?postDatabaseAcls:databaseAcls,
    settings:after?[{oid:'117',database:'0',config:['default_transaction_read_only=on']}]:[],violations:0}};
 }
-function fixture(change,cleanup,historical=false){
+function fixture(change,cleanup,historical=false,authOnly=false){
+ const selectedCompletion=authOnly?Object.freeze({...completion,status:'CURRENT261_AUTH_ONLY_DIAGNOSTIC_SUPPLIED_NOT_ADMISSION',executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}):completion;
  const selectedSource=historical?{...source,profile:qualifyCurrent259Source({candidateSha,sealSha256:sourceSealSha256,schemaSha256:profile.schemaSha256,migrations:migrations.slice(0,259)})}:source;
  const handle=Object.freeze({}),token=Object.freeze({}),permit=Object.freeze({}),calls=[],metadata={parent:0};let forbidFull=false;
  let taken=false,closed=false,paymentPermitUsed=false;
@@ -69,13 +70,17 @@ function fixture(change,cleanup,historical=false){
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
   './local-staged-current259-profile.cjs':Object.freeze({claimCurrent259TechnicalSupply(result,provided){
    assert.equal(result,completion);assert.equal(provided,handle);assert.equal(taken,false);taken=true;
+   assert.equal(authOnly,false);
    return {source:selectedSource,completion,check,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
+  },claimCurrent261AuthOnlyDiagnosticSupply(result,provided){
+   assert.equal(authOnly,true);assert.equal(result,selectedCompletion);assert.equal(provided,handle);assert.equal(taken,false);taken=true;
+   return {source:selectedSource,completion:selectedCompletion,executionPurpose:'AUTH_ONLY_DIAGNOSTIC',check,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
   }}),
   './task16-current259-owned-resource.cjs':Object.freeze({claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);check();return view;},async closeCurrent259OwnedResource(provided){assert.equal(provided,handle);closed=true;cleanup?.();}}),
  };
  const holder={exports:{}};
  new Function('require','module','__dirname',fs.readFileSync(modulePath,'utf8'))(name=>imports[name]??require(name),holder,__dirname);
- return {api:holder.exports,handle,token,permit,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed,stop(){closed=true;}};
+ return {api:holder.exports,completion:selectedCompletion,handle,token,permit,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed,stop(){closed=true;}};
 }
 test('only the original payment261 permit binds the exact 261 ordinary role receipt',async()=>{
  const f=fixture();
@@ -197,4 +202,50 @@ test('the issued role continuity recursively checks its original technical capab
  const f=fixture(),result=await f.api.provisionCurrent259Roles(completion,f.handle),lease=f.api.claimCurrent259ProvisionedRoles(result,f.handle);
  f.forbidFull();lease.checkContinuity(f.token);assert.equal(f.metadata.parent,1);assert.throws(()=>lease.check());
  assert.throws(()=>lease.checkContinuity({...f.token}));
+});
+
+test('auth-only role supply exposes separate claims and refuses plain diagnostic or normal metadata',()=>{
+ const api=require('./task16-current259-role-provision.cjs');
+ assert.equal(typeof api.provisionCurrent261AuthOnlyDiagnosticRoles,'function');
+ assert.equal(typeof api.claimCurrent261AuthOnlyDiagnosticRoles,'function');
+ for(const value of [{},Object.freeze({executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}),Object.freeze({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'})]){
+  assert.throws(()=>api.claimCurrent261AuthOnlyDiagnosticRoles(value,{}));
+  assert.throws(()=>api.claimCurrent259ProvisionedRoles(value,{}));
+ }
+});
+
+test('auth-only real-role SQL model preserves original grants and separates both private role claims',async()=>{
+ const normal=fixture(),auth=fixture(undefined,undefined,false,true);
+ const full=await normal.api.provisionCurrent259Roles(completion,normal.handle);
+ const result=await auth.api.provisionCurrent261AuthOnlyDiagnosticRoles(auth.completion,auth.handle);
+ assert.equal(result.status,'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION');
+ assert.equal(result.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.equal(result.executionAllowed,false);assert.equal(result.nativeAdmission,false);assert.equal(result.financialAcceptance,false);
+ assert.deepEqual(auth.calls.map(x=>x.sql),normal.calls.map(x=>x.sql));
+ assert.deepEqual(result.roles,full.roles);assert.deepEqual(result.databaseAcl,full.databaseAcl);
+ assert.throws(()=>auth.api.claimCurrent259ProvisionedRoles(result,auth.handle));
+ assert.throws(()=>normal.api.claimCurrent261AuthOnlyDiagnosticRoles(full,normal.handle));
+ for(const value of [{...result},new Proxy(result,{})])assert.throws(()=>auth.api.claimCurrent261AuthOnlyDiagnosticRoles(value,auth.handle));
+ assert.throws(()=>auth.api.claimCurrent261AuthOnlyDiagnosticRoles(result,{}));
+ const proof=auth.api.claimCurrent261AuthOnlyDiagnosticRoles(result,auth.handle);proof.check();
+ assert.equal(proof.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');
+ assert.throws(()=>auth.api.claimCurrent261AuthOnlyDiagnosticRoles(result,auth.handle));
+ auth.stop();assert.throws(()=>proof.check());
+});
+for(const [name,alter] of [
+ ['incomplete ledger',row=>row.state.ledger.pop()],
+ ['changed role privilege',row=>row.state.roles[0].superuser=true],
+ ['changed protected ACL',row=>row.state.protectedSha256='0'.repeat(64)],
+ ['unconfirmed commit',row=>row.commitStatus='in progress']
+])test(`auth-only role model rejects ${name} and closes before issuing a diagnostic proof`,async()=>{
+ const f=fixture((row,index)=>{if(index===2)alter(row);},undefined,false,true);
+ await assert.rejects(f.api.provisionCurrent261AuthOnlyDiagnosticRoles(f.completion,f.handle));
+ assert.equal(f.calls.length,3);assert.equal(f.closed(),true);
+ assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticRoles(f.completion,f.handle));
+});
+
+test('auth-only and full role provisioning reject the opposite private supply before SQL',async()=>{
+ const normal=fixture(),auth=fixture(undefined,undefined,false,true);
+ await assert.rejects(normal.api.provisionCurrent261AuthOnlyDiagnosticRoles(completion,normal.handle));
+ await assert.rejects(auth.api.provisionCurrent259Roles(auth.completion,auth.handle));
+ assert.equal(normal.calls.length,0);assert.equal(auth.calls.length,0);
 });

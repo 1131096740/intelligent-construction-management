@@ -31,3 +31,14 @@ test('old PFQ imports do not load owned resource and cannot become the fixed nat
  const child=spawnSync(process.execPath,['-e',script],{encoding:'utf8',timeout:10000});
  assert.equal(child.status,0,child.stderr);
 });
+
+// New fixed diagnostic purpose: interface RED until the genuine bootstrap is wired.
+test('auth-only diagnostic supply has a separate named producer and cannot adopt caller-created handles',()=>{
+ const api=require('./local-staged-current259-profile.cjs');
+ assert.equal(typeof api.createCurrent261AuthOnlyDiagnosticBootstrap,'function');
+ assert.equal(typeof api.claimCurrent261AuthOnlyDiagnosticSupply,'function');
+ for(const handle of [{},Object.freeze({kind:'AUTH_ONLY_DIAGNOSTIC'}),new Proxy({}, {get(){throw new Error('proxy trap');}})]){
+  assert.throws(()=>api.createCurrent261AuthOnlyDiagnosticBootstrap(handle));
+  assert.throws(()=>api.claimCurrent261AuthOnlyDiagnosticSupply(Object.freeze({executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}),handle));
+ }
+});
