@@ -12,6 +12,7 @@ const { types } = require("node:util");
 const TECHNICAL_LIFETIME = Symbol("current259 technical lifetime");
 const FIRST_ROLLBACK_LIFETIME = Symbol("current259 first-rollback lifetime");
 const FIRST_Q2_LIFETIME = Symbol("current259 first-Q2 lifetime");
+const documentHbaScopeFailures = new WeakMap();
 
 function requireFixedIdentityMain() {
   const main=require.main;
@@ -629,6 +630,10 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
       catch (error) {
         const code = ownErrorField(error, "code");
         const failure = fault(typeof code === "string" && code.startsWith("TASK01_RESOURCE_") ? code : "TASK01_RESOURCE_OPERATION_FAILED");
+        if (operation === applyCurrent259DocumentHbaV1 && code === "TASK01_RESOURCE_DOCUMENT_HBA_SCOPE") {
+          const detail = documentHbaScopeFailures.get(error);
+          if (detail) Object.defineProperty(failure, "documentHbaScope", { value: detail });
+        }
         if (paymentLoopback) {
           const commandKind = ownErrorField(error, "commandKind"), cursorStage = ownErrorField(error, "cursorStage"), relayCode = ownErrorField(error, "relayCode");
           if (COMMAND_KINDS.has(commandKind)) Object.defineProperty(failure, "commandKind", { value: commandKind });
@@ -937,30 +942,42 @@ COMMIT;`;
   }
   async function applyCurrent259DocumentHbaV1(handle, proof) {
     const scopeError = "TASK01_RESOURCE_DOCUMENT_HBA_SCOPE";
-    requireThat(firstQ2 && arguments.length === 2 && !contractHbaAttempted && !documentHbaAttempted && !closePromise, scopeError);
+    // Diagnostics follow original short-circuit order; no proof value is retained.
+    const scopeNeed = (value, predicate, subphase = "ENTRY") => {
+      if (!value) {
+        const error = fault(scopeError);
+        documentHbaScopeFailures.set(error, Object.freeze({ predicate, subphase }));
+        throw error;
+      }
+      return value;
+    };
+    scopeNeed(firstQ2, "ENTRY_FIRST_Q2") && scopeNeed(arguments.length === 2, "ENTRY_ARITY") &&
+      scopeNeed(!contractHbaAttempted, "ENTRY_CONTRACT_UNUSED") && scopeNeed(!documentHbaAttempted, "ENTRY_DOCUMENT_UNUSED") &&
+      scopeNeed(!closePromise, "ENTRY_OPEN");
     const { assertCurrent259GeneratedDocumentLoginScope, assertCurrent261GeneratedLifecycleLoginScope } = require("./task12-current259-document-login.cjs");
-    requireThat(proof&&typeof proof==="object"&&!types.isProxy(proof),scopeError);
+    scopeNeed(proof&&typeof proof==="object"&&!types.isProxy(proof), "PROOF_OBJECT");
     const purpose=Object.getOwnPropertyDescriptor(proof,"purpose")?.value;
     const lifecycle=purpose==="CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1";
-    const checkScope = () => {
-      requireThat(!closePromise && !signal.aborted, scopeError);
+    const checkScope = subphase => {
+      scopeNeed(!closePromise, "LIVE_OPEN", subphase) && scopeNeed(!signal.aborted, "LIVE_SIGNAL", subphase);
       try { (lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof, handle); }
-      catch { throw fault(scopeError); }
-      requireThat(proof.runId === runId && proof.containerId === containerId && proof.sourceSha === sourceSha, scopeError);
+      catch { scopeNeed(false, "PRIVATE_SCOPE", subphase); }
+      scopeNeed(proof.runId === runId, "BIND_RUN", subphase) && scopeNeed(proof.containerId === containerId, "BIND_CONTAINER", subphase) &&
+        scopeNeed(proof.sourceSha === sourceSha, "BIND_SOURCE", subphase);
       checkRelay();
     };
-    checkScope();
+    checkScope("ENTRY");
     const savePurpose = "CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1";
     const save = purpose === savePurpose || lifecycle;
-    requireThat(!lifecycle || proof.installation === "ARCHIVE261_REGISTERED_SEVEN" && typeof proof.effectivePlanSha256 === "string" && /^[a-f0-9]{64}$/u.test(proof.effectivePlanSha256),scopeError);
-    requireThat(save ? typeof proof.ordinaryName === "string" && /^jg_fixture_app_[a-f0-9]{24}$/u.test(proof.ordinaryName) :
-      proof.purpose === undefined && proof.ordinaryName === undefined, scopeError);
+    scopeNeed(!lifecycle || proof.installation === "ARCHIVE261_REGISTERED_SEVEN" && typeof proof.effectivePlanSha256 === "string" && /^[a-f0-9]{64}$/u.test(proof.effectivePlanSha256), "LIFECYCLE_PLAN");
+    scopeNeed(save ? typeof proof.ordinaryName === "string" && /^jg_fixture_app_[a-f0-9]{24}$/u.test(proof.ordinaryName) :
+      proof.purpose === undefined && proof.ordinaryName === undefined, "ORDINARY_NAME");
     const logins = save ? [...DOCUMENT_LOGINS, proof.ordinaryName] : DOCUMENT_LOGINS;
     const ids = proof.roleOids, xmins = proof.roleXmins, xid = proof.installXid;
     const oid = value => typeof value === "string" && /^[1-9][0-9]{0,9}$/u.test(value) && Number(value) <= 0xffffffff;
-    requireThat(ids.length === logins.length && ids.every(value => oid(value) && value !== "10") && new Set(ids).size === logins.length &&
+    scopeNeed(ids.length === logins.length && ids.every(value => oid(value) && value !== "10") && new Set(ids).size === logins.length &&
       typeof xid === "string" && /^[1-9][0-9]{0,19}$/u.test(xid) && BigInt(xid) <= 0xffffffffffffffffn &&
-      xmins.length === logins.length && xmins.every(value => oid(value) && value === String(BigInt(xid) % 0x100000000n)), scopeError);
+      xmins.length === logins.length && xmins.every(value => oid(value) && value === String(BigInt(xid) % 0x100000000n)), "ROLE_COORDINATES");
     documentHbaAttempted = true;
 
     const readSql = `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
@@ -980,9 +997,10 @@ SELECT jsonb_build_object('pid',pg_backend_pid(),'start',
 ROLLBACK;`;
     const timestamp = value => typeof value === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(value);
     const read = async (rules, phase) => {
-      checkScope();
-      const result = await runOwnerSql(readSql, phase, checkScope);
-      checkScope();
+      const check = () => checkScope(phase === "document-hba-before" ? "READ_BEFORE" : "READ_COMMITTED");
+      check();
+      const result = await runOwnerSql(readSql, phase, check);
+      check();
       const code = "TASK01_RESOURCE_DOCUMENT_HBA_" + (phase === "document-hba-before" ? "PREIMAGE" : "READBACK");
       const expectedRules = rules.map(([type, database, role, address, auth, options], index) =>
         [index + 1, index + 1, HBA_PATH, type, [database], [role], address, address === "127.0.0.1" ? "255.255.255.255" : address, auth, options, null]);
@@ -1000,13 +1018,13 @@ ROLLBACK;`;
     requireThat(receipt.configuration.hbaSha256 === beforeSha256, "TASK01_RESOURCE_DOCUMENT_HBA_PREIMAGE");
     const before = await read(original, "document-hba-before");
     await inspectOwned(); await verifyDaemon();
-    checkScope();
+    checkScope("WRITE");
     const written = await docker(["exec", "--interactive", "--user", "postgres", containerId, "sh", "-ceu", hbaWrite,
       "document-hba", beforeSha256, afterSha256], { input: contents, timeoutMs: 10000 });
-    checkScope();
+    checkScope("WRITE");
     requireThat(written.stdout.toString("utf8") === afterSha256 + "\n", "TASK01_RESOURCE_DOCUMENT_HBA_FILE");
-    const reload = await runOwnerSql("SELECT pg_catalog.pg_reload_conf();", "document-hba-reload", checkScope);
-    checkScope();
+    const reload = await runOwnerSql("SELECT pg_catalog.pg_reload_conf();", "document-hba-reload", () => checkScope("RELOAD"));
+    checkScope("RELOAD");
     requireThat(reload.stdout.trim() === "t", "TASK01_RESOURCE_DOCUMENT_HBA_RELOAD");
     let after;
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -1018,20 +1036,20 @@ ROLLBACK;`;
       "TASK01_RESOURCE_DOCUMENT_HBA_RELOAD");
     for (const role of logins) {
       const cursor = await captureLogCursor();
-      checkScope();
+      checkScope("PLAINTEXT");
       try { await sendLoopbackPlaintextStartup(role); }
       catch { throw fault("TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT"); }
-      checkScope();
+      checkScope("PLAINTEXT");
       await verifyDaemon(); await inspectOwned();
-      checkScope();
+      checkScope("PLAINTEXT");
       const logs = await docker(["logs", "--timestamps", containerId], { timeoutMs: 10000 });
-      checkScope();
+      checkScope("PLAINTEXT");
       requireThat(contractPlaintextReadback(logs, cursor, role, databaseName, true), "TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT");
     }
     await verifyDaemon();
-    checkScope();
+    checkScope("FINAL_FILE");
     const file = await docker(["exec", "--user", "postgres", containerId, "sha256sum", HBA_PATH], { timeoutMs: 10000 });
-    checkScope();
+    checkScope("FINAL_FILE");
     requireThat(file.stdout.toString("utf8") === `${afterSha256}  ${HBA_PATH}\n`, "TASK01_RESOURCE_DOCUMENT_HBA_FILE");
     const transition = Object.freeze({ beforeSha256, afterSha256, rules: rules.length, loginInstallXid: xid,
       plaintextNoEncryptionRejected: true, ...(save ? { purpose: lifecycle?purpose:savePurpose } : {}),

@@ -70,12 +70,24 @@ const documentConsumeResourceReasons=new Set([
  'TASK01_RESOURCE_UNEXPECTED_IMAGE_VOLUME','TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED','TASK01_RESOURCE_SQL_INPUT_INVALID',
  'TASK01_RESOURCE_CLOSED','TASK01_RESOURCE_RECEIPT_PATH_CHANGED','TASK01_RESOURCE_METADATA_INVALID','TASK01_RESOURCE_OPERATION_FAILED'
 ]);
+const documentScopePredicates=new Set(['ENTRY_FIRST_Q2','ENTRY_ARITY','ENTRY_CONTRACT_UNUSED','ENTRY_DOCUMENT_UNUSED','ENTRY_OPEN',
+ 'PROOF_OBJECT','LIVE_OPEN','LIVE_SIGNAL','PRIVATE_SCOPE','BIND_RUN','BIND_CONTAINER','BIND_SOURCE','LIFECYCLE_PLAN','ORDINARY_NAME','ROLE_COORDINATES']);
+const documentScopeSubphases=new Set(['ENTRY','READ_BEFORE','READ_COMMITTED','WRITE','RELOAD','PLAINTEXT','FINAL_FILE']);
+function safeDocumentScope(cause){
+ const detail=own(cause,'documentHbaScope');
+ if(!detail||typeof detail!=='object'||types.isProxy(detail))return undefined;
+ const keys=Reflect.ownKeys(detail),predicate=own(detail,'predicate'),subphase=own(detail,'subphase');
+ if(keys.length!==2||!keys.includes('predicate')||!keys.includes('subphase')||
+  !documentScopePredicates.has(predicate)||!documentScopeSubphases.has(subphase))return undefined;
+ return {scopePredicate:predicate,scopeSubphase:subphase};
+}
 function safeDocumentLoginFailure(cause){
  const seen=new WeakSet();let documentConsume=false;
  for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause)&&!seen.has(cause);i++,cause=own(cause,'cause')){
   seen.add(cause);const code=own(cause,'code');
   if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&own(cause,'phase')==='CONSUME')documentConsume=true;
-  if(documentConsume&&documentConsumeResourceReasons.has(code))return Object.freeze({phase:'CONSUME',resourceCode:code});
+  if(documentConsume&&documentConsumeResourceReasons.has(code))return Object.freeze({phase:'CONSUME',resourceCode:code,
+   ...(code==='TASK01_RESOURCE_DOCUMENT_HBA_SCOPE'?safeDocumentScope(cause):undefined)});
  }
  return undefined;
 }

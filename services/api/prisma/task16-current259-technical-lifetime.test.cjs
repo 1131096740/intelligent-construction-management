@@ -588,3 +588,27 @@ test('explicit lifecycle HBA consumes its private login brand and retains the ef
  assert.equal(f.documentProbes.length,4);assert.equal(resource.getReceipt().contractHba,undefined);
  await resource.close();
 });
+
+// Source-backed resource model; no native private login proof or PostgreSQL.
+test('document HBA scope reports only the original first rejected predicate and fixed callsite',async()=>{
+ for(const [mode,predicate,subphase] of [
+  ['document-foreign-scope','BIND_RUN','ENTRY'],
+  ['document-scope-before-spawn','PRIVATE_SCOPE','WRITE'],
+  ['document-scope-drift','PRIVATE_SCOPE','READ_COMMITTED']
+ ]){
+  const f=rollbackResourceModel(mode,{firstQ2:true,document:true}),resource=await f.start();
+  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),error=>{
+   assert.equal(error.code,'TASK01_RESOURCE_DOCUMENT_HBA_SCOPE');
+   assert.deepEqual(error.documentHbaScope,{predicate,subphase});
+   assert.ok(Object.isFrozen(error.documentHbaScope));return true;
+  });await resource.close();
+ }
+ const f=rollbackResourceModel('healthy',{firstQ2:true,document:true}),resource=await f.start();
+ for(const [args,predicate] of [[[f.docHandle],'ENTRY_ARITY'],[[f.docHandle,null],'PROOF_OBJECT'],[[f.docHandle,{}],'PRIVATE_SCOPE']])
+  await assert.rejects(resource.applyCurrent259DocumentHbaV1(...args),error=>{assert.deepEqual(error.documentHbaScope,{predicate,subphase:'ENTRY'});return true;});
+ const result=await resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof);
+ assert.equal(result.rules,12);
+ await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),error=>{
+  assert.deepEqual(error.documentHbaScope,{predicate:'ENTRY_DOCUMENT_UNUSED',subphase:'ENTRY'});return true;
+ });await resource.close();
+});
