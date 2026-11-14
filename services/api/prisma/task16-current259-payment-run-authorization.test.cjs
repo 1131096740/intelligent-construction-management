@@ -125,7 +125,7 @@ function fixture(t,options={}){
      fs.writeFileSync(path.join(plan.artifactsDir,'resource-manifest.json'),JSON.stringify(manifest),{mode:0o600});
      if(options.cleanupFailure)throw Object.assign(new Error('SECRET_SQL_PASSWORD'),{code:'CURRENT259_RESOURCE_CLEANUP_UNKNOWN'});
     };
-    try{return await consume(handle);}catch(error){options.onConsumeError?.(error);throw error;}finally{try{if(options.afterConsumeFailure)throw options.afterConsumeFailure;}finally{finishResource();}}
+    try{return await consume(handle);}catch(error){options.onConsumeError?.(error);throw error;}finally{try{if(options.afterConsumeFailure)throw options.afterConsumeFailure;}finally{await options.beforeResourceCleanup?.(state);finishResource();}}
    }},
   '../../../scripts/prepare-task16-current259-payment-install.cjs':s.api
  };
@@ -203,7 +203,7 @@ function fixture(t,options={}){
     finally{state.calls.push('pools-close');options.afterLive?.();}
    }
   };
-  ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check,...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
+  ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check(){check();options.onEnvironmentCheck?.();},...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
   ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume,reportPhase){await options.onApplicationPhase?.(reportPhase);assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{if(Object.hasOwn(options,'applicationFailure'))throw options.applicationFailure;return await consume(application);}catch(error){if(options.wrapApplicationError)throw options.wrapApplicationError(error);throw error;}finally{state.calls.push('app-close');}}};
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
@@ -322,7 +322,9 @@ function fixture(t,options={}){
    return {caseId:business.scope.caseId,passed:true,rollbackObserved:true,executionId:'execution',rootId:'root'};
   };
  }
+ let controllerFs;
  const rq=name=>{
+  if(name==='node:fs'&&options.controllerFs)return controllerFs??=(options.controllerFs(fs,state));
   if(!name.startsWith('.'))return require(name);
   const resolved=path.resolve(__dirname,name);
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
@@ -332,11 +334,11 @@ function fixture(t,options={}){
   options.attributionGap261?[options.default?'--attribution-gap261':'--attribution-gap261-once']:options.competition261?[options.default?'--competition261':'--competition261-once']:options.payment261?
   [options.business?(options.default?'--business261':'--business261-once'):(options.default?'--install261':'--install261-once')]:undefined;
  const proc={argv:['node',file,...(launcherOptions??(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once'])),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256,...(options.progress?['--progress-root',state.progressRoot]:[])],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
-  stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
+  stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;if(options.nativeSignals)process.once(name,fn);},removeListener(name,fn){delete state.signals[name];if(options.nativeSignals)process.removeListener(name,fn);},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
- const launcherTimer=options.captureDeadline?((fn,ms)=>{assert.equal(ms,3600000);state.expireDeadline=fn;return Object.freeze({});}):setTimeout;
+ const launcherTimer=options.realTimerCallback?((fn,ms)=>{assert.equal(ms,3600000);state.originalTimerRequestedMs=ms;return setTimeout(fn,10);}):options.captureDeadline?((fn,ms)=>{assert.equal(ms,3600000);state.expireDeadline=fn;return Object.freeze({});}):setTimeout;
  const clearLauncherTimer=options.captureDeadline?noop:clearTimeout;
- new Function('require','module','__dirname','__filename','process','setTimeout','clearTimeout',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc,launcherTimer,clearLauncherTimer);
+ new Function('require','module','__dirname','__filename','process','setTimeout','clearTimeout',(options.sourceTransform?options.sourceTransform(fs.readFileSync(file,'utf8')):fs.readFileSync(file,'utf8')).replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc,launcherTimer,clearLauncherTimer);
  return {api:module.exports,done,state,s,saved,handle,acl};
 }
 test('default verifies a fixed payment install plan without consuming an attempt or resource',async t=>{
@@ -1552,4 +1554,119 @@ test('durable checkpoint publication remains first when application wraps it and
  assert.equal(receipt.financialAcceptance,false);assert.equal(receipt.nativeAdmission,false);assert.equal(receipt.executionAllowed,false);
  assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');
  assert.doesNotMatch(JSON.stringify(receipt),/private later unwind|private outer application/);
+});
+
+function readControl(root,name){
+ const bytes=fs.readFileSync(path.join(root,name)),ack=JSON.parse(fs.readFileSync(path.join(root,name+'.durable.json'),'utf8'));
+ assert.equal(ack.sha256,hash(bytes));assert.equal(ack.priorFileAndDirectoryFsyncReturned,true);
+ return JSON.parse(bytes);
+}
+test('first controller cause is durable before owned cleanup and survives its secondary failure unchanged',async t=>{
+ const primary=Object.assign(Error('PRIVATE_SQL_PASSWORD'),{code:'CURRENT259_RESOURCE_CLOSED'});let escaped,atCleanup;
+ const f=ordinaryBusinessFailureFixture(t,{onBusiness(){throw primary;},onConsumeError(error){escaped=error;atCleanup=readControl(f.s.runRoot,'controller-first-error.json');},cleanupFailure:true});
+ const result=await f.done;assert.equal(escaped,primary);assert.equal(result.failureCode,primary.code);
+ assert.equal(atCleanup.event,'FIRST_CONTROLLER_ERROR');assert.equal(atCleanup.phase,'seedAndSelectedCase');assert.equal(atCleanup.failureCode,primary.code);assert.equal(atCleanup.cleanupStatus,'NOT_YET_OBSERVED');
+ assert.equal(atCleanup.nativeAdmission,false);assert.equal(atCleanup.financialAcceptance,false);assert.doesNotMatch(JSON.stringify(atCleanup),/PRIVATE_SQL_PASSWORD/);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));assert.equal(receipt.failureCode,primary.code);assert.ok(receipt.secondaryFailures.length>0);
+});
+test('actual deadline callback and each handled signal have separate durable facts after an earlier abort',async t=>{
+ const f=fixture(t,{captureDeadline:true,onTechnical(state){state.expireDeadline();state.signals.SIGINT();state.signals.SIGTERM();}});await f.done;
+ const deadline=readControl(f.s.runRoot,'controller-resource-deadline.json'),sigint=readControl(f.s.runRoot,'controller-handled-sigint.json'),sigterm=readControl(f.s.runRoot,'controller-handled-sigterm.json');
+ assert.equal(deadline.event,'RESOURCE_DEADLINE_CALLBACK');assert.equal(sigint.event,'HANDLED_SIGINT');assert.equal(sigterm.event,'HANDLED_SIGTERM');
+ assert.equal(deadline.controllerAlreadyAborted,false);assert.equal(sigint.controllerAlreadyAborted,true);assert.equal(sigterm.controllerAlreadyAborted,true);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));assert.equal(receipt.timing.resourceAbort.origin,'RESOURCE_DEADLINE');
+});
+
+test('successful execution never fabricates signal or resource deadline evidence',async t=>{
+ const f=fixture(t);await f.done;
+ for(const name of ['controller-first-error.json','controller-handled-sigint.json','controller-handled-sigterm.json','controller-resource-deadline.json'])assert.equal(fs.existsSync(path.join(f.s.runRoot,name)),false);
+});
+for(const mode of ['file-fsync','dir-fsync'])test('control evidence '+mode+' is independently UNKNOWN and never replaces the primary',async t=>{
+ const primary=Object.assign(Error('private first'),{code:'CURRENT259_RESOURCE_CLOSED'});let armed=false,failed=false;const f=fixture(t,{technicalFailure:primary,cleanupFailure:true,
+  controllerFs(real){const names=new Map();return {...real,openSync(...args){const fd=real.openSync(...args);names.set(fd,String(args[0]));if(String(args[0]).endsWith('controller-first-error.json'))armed=true;return fd;},fsyncSync(fd){const name=names.get(fd);if(!failed&&armed&&(mode==='file-fsync'&&name?.endsWith('controller-first-error.json')||mode==='dir-fsync'&&name===f.s.runRoot)){failed=true;throw Error('private fsync detail');}return real.fsyncSync(fd);}};},
+  onTechnical(){},beforeConsume(){}});
+ const result=await f.done;
+ {
+  assert.equal(result.failureCode,primary.code);const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+  assert.equal(receipt.controlEvidence['first-error'],'UNKNOWN');const unknown=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'controller-control-evidence-unknown.json'),'utf8'));assert.equal(unknown.reason,'PUBLICATION_FAILED');assert.doesNotMatch(JSON.stringify(unknown),/private fsync detail|private first/);
+ }
+});
+test('occupied evidence is not overwritten or retried and the original cause stays first',async t=>{
+ const primary=Object.assign(Error('private'),{code:'CURRENT259_RESOURCE_CLOSED'});
+ const f=fixture(t,{onTechnical(){fs.writeFileSync(path.join(f.s.runRoot,'controller-first-error.json'),'existing',{mode:0o600});throw primary;}});const result=await f.done;
+ assert.equal(result.failureCode,primary.code);assert.equal(fs.readFileSync(path.join(f.s.runRoot,'controller-first-error.json'),'utf8'),'existing');assert.equal(fs.existsSync(path.join(f.s.runRoot,'controller-first-error.json.durable.json')),false);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8')).controlEvidence['first-error'],'UNKNOWN');
+});
+for(const mode of ['getter','proxy','primitive','unknown-code'])test('first-error '+mode+' projection cannot inspect private thrown values',async t=>{
+ let reads=0;const plain=new Error('private SQL');if(mode==='getter')Object.defineProperty(plain,'code',{get(){reads++;throw Error();}});
+ if(mode==='unknown-code')plain.code='CURRENT259_RESOURCE_PRIVATE_PASSWORD';
+ const error=mode==='primitive'?'private primitive':mode==='proxy'?new Proxy(plain,{getOwnPropertyDescriptor(){reads++;throw Error();},get(){reads++;throw Error();}}):plain;
+ const f=fixture(t,{technicalFailure:error});await f.done;const row=readControl(f.s.runRoot,'controller-first-error.json');assert.equal(reads,0);assert.equal(row.observedCauseCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');assert.doesNotMatch(JSON.stringify(row),/private SQL|private primitive|PRIVATE_PASSWORD/);
+});
+test('an unlisted controller phase remains UNKNOWN without replacing its real error',async t=>{
+ const primary=Object.assign(Error('private'),{code:'CURRENT259_RESOURCE_CLOSED'});
+ const f=fixture(t,{technicalFailure:primary,sourceTransform(source){return source.replace("'technical259',",'');}});await f.done;
+ const row=readControl(f.s.runRoot,'controller-first-error.json');assert.equal(row.phase,'UNKNOWN');assert.equal(row.evidenceStatus,'UNKNOWN');assert.equal(row.failureCode,primary.code);
+});
+
+for(const mode of ['signals','timer'])test('owned Node '+mode+' executes original controller callbacks and persists real files without SDK or network',async t=>{
+ const {spawn}=require('node:child_process');
+ const program=String.raw`
+ const fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
+ const target=process.argv[1],mode=process.argv[2],baseline=process.argv[3],holder={exports:{}},base=Module.createRequire(target);
+ const rq=name=>name==='node:test'?{test:()=>{}}:base(name);
+ const text=fs.readFileSync(target,'utf8')+'\nmodule.exports={fixture};';
+ new Function('require','module','__dirname',text)(rq,holder,path.dirname(target));
+ const pending=new Promise(()=>{}),cleanup=[];
+ const f=holder.exports.fixture({after(fn){cleanup.push(fn);}},{nativeSignals:mode==='signals',realTimerCallback:mode==='timer',sourceTransform:baseline?()=>fs.readFileSync(baseline,'utf8'):undefined,
+ onTechnical(){process.stdout.write(JSON.stringify({event:'READY'})+'\n');return pending;},
+ async beforeResourceCleanup(){if(mode==='signals'){process.stdout.write(JSON.stringify({event:'CLEANUP_WAIT'})+'\n');await new Promise(resolve=>setTimeout(resolve,200));}}
+ });
+ f.done.then(result=>{process.stdout.write(JSON.stringify({event:'DONE',runRoot:f.s.runRoot,base:f.s.base,result,timerRequestedMs:f.state.originalTimerRequestedMs??null})+'\n');});
+ `;
+ const child=spawn(process.execPath,['-e',program,__filename,mode,...(process.env.JG_T16_CONTROL_BASELINE?[process.env.JG_T16_CONTROL_BASELINE]:[])],{env:{PATH:process.env.PATH},stdio:['ignore','pipe','pipe']});
+ let stdout='',stderr='',done;
+ const timeout=setTimeout(()=>child.kill('SIGKILL'),10000);t.after(()=>clearTimeout(timeout));
+ child.stderr.on('data',data=>{stderr+=data;});
+ let buffer='';child.stdout.on('data',data=>{
+  stdout+=data;buffer+=data;
+  let pos;while((pos=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,pos);buffer=buffer.slice(pos+1);if(!line)continue;const row=JSON.parse(line);
+   if(mode==='signals'&&row.event==='READY')child.kill('SIGINT');
+   if(mode==='signals'&&row.event==='CLEANUP_WAIT')child.kill('SIGTERM');
+   if(row.event==='DONE')done=row;
+  }
+ });
+ const terminal=await new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',(code,signal)=>resolve({code,signal}));});clearTimeout(timeout);
+ assert.deepEqual(terminal,{code:0,signal:null},stderr);assert.ok(done,stdout);assert.equal(done.result.status,'STOPPED');
+ t.after(()=>fs.rmSync(done.base,{recursive:true,force:true}));
+ if(mode==='signals'){
+  const a=readControl(done.runRoot,'controller-handled-sigint.json'),b=readControl(done.runRoot,'controller-handled-sigterm.json');
+  assert.equal(a.event,'HANDLED_SIGINT');assert.equal(b.event,'HANDLED_SIGTERM');assert.equal(a.controllerAlreadyAborted,false);assert.equal(b.controllerAlreadyAborted,true);
+  assert.equal(fs.existsSync(path.join(done.runRoot,'controller-resource-deadline.json')),false);
+ }else{
+  assert.equal(done.timerRequestedMs,3600000);const row=readControl(done.runRoot,'controller-resource-deadline.json');
+  assert.equal(row.source,'ORIGINAL_RESOURCE_TIMER_CALLBACK');assert.equal(row.configuredResourceBudgetMs,3600000);
+  assert.equal(fs.existsSync(path.join(done.runRoot,'controller-handled-sigint.json')),false);assert.equal(fs.existsSync(path.join(done.runRoot,'controller-handled-sigterm.json')),false);
+ }
+});
+
+for(const mode of ['signal','deadline'])test('failed '+mode+' event fsync remains UNKNOWN and preserves original abort source',async t=>{
+ let failed=false;const descriptors=new Map(),name=mode==='signal'?'controller-handled-sigint.json':'controller-resource-deadline.json';
+ const f=fixture(t,{captureDeadline:true,controllerFs(real){return {...real,openSync(...args){const fd=real.openSync(...args);descriptors.set(fd,String(args[0]));return fd;},fsyncSync(fd){if(!failed&&descriptors.get(fd)?.endsWith(name)){failed=true;throw Error('PRIVATE_IO');}return real.fsyncSync(fd);}};},
+ onTechnical(state){if(mode==='signal')state.signals.SIGINT();else state.expireDeadline();}});const result=await f.done;
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_ABORTED_UNSETTLED');const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.timing.resourceAbort.origin,mode==='signal'?'SIGNAL_SIGINT':'RESOURCE_DEADLINE');assert.equal(receipt.controlEvidence[mode==='signal'?'handled-sigint':'resource-deadline'],'UNKNOWN');assert.equal(fs.existsSync(path.join(f.s.runRoot,name+'.durable.json')),false);
+});
+
+for(const mode of ['selected case','verifyFull'])test(mode+' first fact precedes controller business token revoke and application wrapping',async t=>{
+ const primary=Object.assign(Error('PRIVATE_ORIGINAL'),{code:'CURRENT259_RESOURCE_CLOSED'}),wrapper=Object.assign(Error('PRIVATE_WRAPPER'),{code:'TASK16_APP_FAILED_CLOSED'});
+ let lease,activeAtFirstFsync=false,originalAtWrapper,revokedAtWrapper=false,fileAtWrapper,failEnvironment=false;const names=new Map();
+ const f=ordinaryBusinessFailureFixture(t,{...(mode==='selected case'?{caseFailure:primary}:{}),onEnvironmentCheck(){if(failEnvironment)throw primary;},onBusiness(value){lease=value.lease;if(mode==='verifyFull'){failEnvironment=true;lease.verifyFull();}},
+  controllerFs(real){return {...real,openSync(...args){const fd=real.openSync(...args);names.set(fd,String(args[0]));return fd;},fsyncSync(fd){if(names.get(fd)?.endsWith('controller-first-error.json.durable.json')){try{lease.check();activeAtFirstFsync=true;}catch{activeAtFirstFsync=false;}}return real.fsyncSync(fd);}};},
+  wrapApplicationError(error){originalAtWrapper=error;try{fileAtWrapper=readControl(f.s.runRoot,'controller-first-error.json');}catch{}try{lease.check();}catch{revokedAtWrapper=true;}return wrapper;},cleanupFailure:true});
+ const result=await f.done;
+ assert.equal(activeAtFirstFsync,true);assert.equal(originalAtWrapper,primary);assert.equal(revokedAtWrapper,true);
+ assert.equal(fileAtWrapper.failureCode,primary.code);assert.equal(fileAtWrapper.phase,'seedAndSelectedCase');assert.equal(result.failureCode,primary.code);
+ assert.throws(()=>lease.check());assert.equal(f.state.calls.filter(x=>x==='case').length,1);
+ assert.doesNotMatch(JSON.stringify(fileAtWrapper),/PRIVATE_ORIGINAL|PRIVATE_WRAPPER/);
 });

@@ -348,7 +348,7 @@ function parse(args){
 async function run(args){
  const requestedOnce=Array.isArray(args)&&ONCE_OPTIONS.includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
- let disconnect=false,postLiveCheck=false;
+ let disconnect=false,postLiveCheck=false,controlAttemptSha256;
  let hasFirst=false,first,firstBusiness,stage='preflight',state,controller,timer,businessFlow,endAt;
  const startedAt=performance.now(),stageTimings=[];
  const checkTimings=Object.fromEntries(['planVerification','planCheck','resourceCheck','inputCheck'].map(name=>[name,{count:0,elapsedMs:0}]));
@@ -358,6 +358,49 @@ async function run(args){
  const progressPhases=new Set(['preflight','resourceStartup','technical259','technical261','roles9','sevenFragments','paymentAcl','b7',
   'pfqConcurrency','liveSessions','applicationEnvironment','ownedApplication','replacementApplication','seedAndSelectedCase',
   'closeOriginalApplication','retireOriginalRuntimeAndConfirmRollback','ownedCleanup']);
+ const controlFiles=Object.freeze({'first-error':'controller-first-error.json','handled-sigint':'controller-handled-sigint.json','handled-sigterm':'controller-handled-sigterm.json','resource-deadline':'controller-resource-deadline.json'});
+ const controlEvents=Object.freeze({'first-error':'FIRST_CONTROLLER_ERROR','handled-sigint':'HANDLED_SIGINT','handled-sigterm':'HANDLED_SIGTERM','resource-deadline':'RESOURCE_DEADLINE_CALLBACK'});
+ const controlAttempted=new Set();let controlUnknownAttempted=false;
+ function controlWrite(file,value){
+  const bytes=Buffer.from(JSON.stringify(value,null,2)+'\n');need(bytes.length<=16384,'CONTROL_EVIDENCE');
+  writeNew(plan,path.join(plan.run.root,file),bytes);checkRoot(plan);return hash(bytes);
+ }
+ function controlUnknown(kind,reason,observedPhase=stage){
+  if(controlUnknownAttempted)return;controlUnknownAttempted=true;
+  try{controlWrite('controller-control-evidence-unknown.json',{schemaVersion:1,event:'CONTROL_EVIDENCE_UNKNOWN',kind,reason,
+   candidateSha:plan.material.source.candidateSha,tree:plan.material.source.tree,planSha256:request.sha256,attemptSha256:controlAttemptSha256,
+   runRoot:plan.run.root,runId:typeof created?.runId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(created.runId)?created.runId:null,
+   phase:progressPhases.has(observedPhase)?observedPhase:'UNKNOWN',evidenceStatus:'UNKNOWN',nativeAdmission:false,financialAcceptance:false});}
+  catch{if(receipt)receipt.controlEvidenceUnknownWriteFailed=true;}
+ }
+ function recordControlEvidence(kind,error,observedPhase=stage){
+  if(!marker||!receipt||!plan||!controlAttemptSha256)return;
+  try{
+   need(Object.hasOwn(controlFiles,kind),'CONTROL_EVIDENCE');
+   const statuses=receipt.controlEvidence??(receipt.controlEvidence={});
+   if(controlAttempted.has(kind)){statuses[kind]='UNKNOWN';controlUnknown(kind,'ALREADY_ATTEMPTED',observedPhase);return;}
+   controlAttempted.add(kind);statuses[kind]='UNKNOWN';
+   const phaseKnown=progressPhases.has(observedPhase),elapsedMs=Math.round(performance.now()-startedAt);
+   need(Number.isSafeInteger(elapsedMs)&&elapsedMs>=0&&elapsedMs<=86400000,'CONTROL_EVIDENCE');
+   const runId=typeof created?.runId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(created.runId)?created.runId:null;
+   const row={schemaVersion:1,event:controlEvents[kind],candidateSha:plan.material.source.candidateSha,tree:plan.material.source.tree,
+    planSha256:request.sha256,attemptSha256:controlAttemptSha256,runRoot:plan.run.root,runId,
+    phase:phaseKnown?observedPhase:'UNKNOWN',evidenceStatus:phaseKnown?'OBSERVED':'UNKNOWN',elapsedMs,
+    controllerAlreadyAborted:controller?controller.signal.aborted:null,
+    ...(kind==='first-error'?{failureCode:diagnosticCode(receipt.failureCode),observedCauseCode:diagnosticCode(data(error,'code')),
+     errorKind:!error||typeof error!=='object'?'NON_OBJECT':types.isProxy(error)?'PROXY':types.isNativeError(error)?'NATIVE_ERROR':'OBJECT',
+     caseDiagnostic:filterPaymentDiagnostic(receipt.paymentCaseFailure),
+     businessFailureStage:caseFailureStages.has(data(receipt.paymentCaseFailure,'stage'))?data(receipt.paymentCaseFailure,'stage'):null,
+     postLivePhase:['POST_LIVE_PLAN_CHECK','POST_LIVE_RESOURCE_CHECK','POST_LIVE_ATTEMPT_CHECK'].includes(data(receipt.postLiveFailure,'phase'))?data(receipt.postLiveFailure,'phase'):null,
+     cleanupStatus:['completed','failed','UNKNOWN'].includes(data(data(receipt.resource,'cleanup'),'status'))?data(data(receipt.resource,'cleanup'),'status'):'NOT_YET_OBSERVED'}:{}),
+    ...(kind==='resource-deadline'?{source:'ORIGINAL_RESOURCE_TIMER_CALLBACK',configuredResourceBudgetMs:plan.limits.resourceMs}:{}),
+    businessOutcome:'UNKNOWN',nativeAdmission:false,financialAcceptance:false,executionAllowed:false};
+   const sha256=controlWrite(controlFiles[kind],row);
+   controlWrite(controlFiles[kind]+'.durable.json',{schemaVersion:1,event:controlEvents[kind],candidateSha:row.candidateSha,
+    planSha256:row.planSha256,attemptSha256:row.attemptSha256,sha256,priorFileAndDirectoryFsyncReturned:true});
+   statuses[kind]=phaseKnown?'PERSISTED':'UNKNOWN';
+  }catch{if(receipt)(receipt.controlEvidence??={})[kind]='UNKNOWN';controlUnknown(kind,'PUBLICATION_FAILED',observedPhase);}
+ }
  function progressDirectory(){
   const root=request.progressRoot,sourceRoot=path.resolve(__dirname,'../../..');
   need(typeof root==='string'&&path.isAbsolute(root)&&path.normalize(root)===root&&fs.realpathSync(root)===root&&
@@ -436,7 +479,7 @@ async function run(args){
   resourceAbort={origin,stage,elapsedMs:Math.round(performance.now()-resourceStartedAt)};
   controller.abort();
  }
- const onSigint=()=>abort('SIGNAL_SIGINT'),onSigterm=()=>abort('SIGNAL_SIGTERM');
+ const onSigint=()=>{recordControlEvidence('handled-sigint');abort('SIGNAL_SIGINT');},onSigterm=()=>{recordControlEvidence('handled-sigterm');abort('SIGNAL_SIGTERM');};
  function recordTiming(row){
   if(row.timing)return;
   const now=performance.now();recordStage(failureObservedAt??now);
@@ -453,9 +496,11 @@ async function run(args){
   if(request?.attributionGap&&firstBusiness?.attributionGapFailure)receipt.attributionGapFailure??=firstBusiness.attributionGapFailure;
   if(request?.voucher&&firstBusiness?.voucherFailure)receipt.voucherFailure??=firstBusiness.voucherFailure;
  }
- function rememberFirst(error){
+ function rememberFirst(error,observedPhase=stage){
   if(hasFirst){refreshBusinessFailureContext();return;}
-  failureObservedAt=performance.now();hasFirst=true;first=error;firstBusiness=state?.business;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
+  failureObservedAt=performance.now();hasFirst=true;first=error;firstBusiness=state?.business;receipt.failureCode=safeCode(error);receipt.failureStage=observedPhase;
+  refreshBusinessFailureContext();
+  recordControlEvidence('first-error',error,observedPhase);
   const technicalFailure=stage==='technical259'||stage==='technical261'?describeCurrent259TechnicalFailure(error):undefined;
   if(technicalFailure)receipt.technicalFailure=technicalFailure;
   const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
@@ -513,6 +558,7 @@ async function run(args){
   catch(error){if(data(error,'code')==='EEXIST')throw fault('ALREADY_ATTEMPTED');throw error;}
   marker=true;
   const attempt=read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,collect:true,code:'PAYMENT_INSTALL_ONCE_ATTEMPT'});
+  controlAttemptSha256=attempt.sha256;
   receipt={schemaVersion:1,purpose:plan.purpose,expectedCandidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,
    status:'STOPPED',scope:plan.scope,limits:plan.limits,stages:[],sourceMaterialVerified:false,
    executionAllowed:false,nativeAdmission:false,financialAcceptance:false,liveSessionAdmission:false};
@@ -560,7 +606,7 @@ async function run(args){
    if(effectiveAccessBinding)receipt.effectiveAccessBinding=effectiveAccessBinding;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
    controller=new AbortController();resourceStartedAt=performance.now();endAt=Date.now()+plan.limits.resourceMs;
-   process.once('SIGINT',onSigint);process.once('SIGTERM',onSigterm);timer=setTimeout(()=>abort('RESOURCE_DEADLINE'),plan.limits.resourceMs);
+   process.once('SIGINT',onSigint);process.once('SIGTERM',onSigterm);timer=setTimeout(()=>{recordControlEvidence('resource-deadline');abort('RESOURCE_DEADLINE');},plan.limits.resourceMs);
    enterStage('resourceStartup');started=true;
    await withResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt(),false,loopback?.topology);
@@ -702,7 +748,7 @@ async function run(args){
          business.verifyFull=()=>{
           try{state.check();environment.check();need(business.active&&state.business===business&&currentRun===state&&
            business.handle===handle&&business.b7===b7&&business.liveProof===liveProof&&sameApplications(),'BUSINESS_SCOPE');}
-          catch(error){business.active=false;revoke(state);throw error;}
+          catch(error){rememberFirst(error);business.active=false;revoke(state);throw error;}
          };
          business.check=()=>assertCurrent259PaymentBusinessContinuity(business.continuityToken,handle);
          const casePermissions=request.attributionGap?attributionGapPermissions:request.voucher?voucherBusinessPermissions:businessPermissions;
@@ -750,7 +796,7 @@ async function run(args){
           return result;
          }catch(error){
           if(!business.claimed)recordCaseFailure(business,'APPLICATION_LEASE',data(error,'code'));
-          throw error;
+          rememberFirst(error);throw error;
          }finally{business.active=false;casePermissions.delete(businessPermit);}
          });
         };
@@ -777,7 +823,7 @@ async function run(args){
    checked.check();importsCheck();
   }catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_SCOPE');else rememberFirst(error);}
   finally{if(state)state.active=false;currentRun=undefined;if(timer)clearTimeout(timer);process.removeListener('SIGINT',onSigint);process.removeListener('SIGTERM',onSigterm);}
-  try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_FINALIZATION');if(!hasFirst){failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
+  try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_FINALIZATION');if(!hasFirst)rememberFirst(error,'ownedCleanup');receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
   if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.pfq||receipt.pfq)&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.pfq?'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED':request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
   else{receipt.status='STOPPED';receipt.failureCode??='PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
   refreshBusinessFailureContext();recordTiming(receipt);
@@ -786,6 +832,7 @@ async function run(args){
   return {status:receipt.status,candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,resourceCreationRequested:started,
    failureCode:receipt.failureCode,receiptFile:plan.run.receiptFile,receiptSha256,executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
  }catch(error){
+  if(marker&&plan&&receipt&&!hasFirst)rememberFirst(error);
   if(marker&&plan&&!published&&!publicationStarted){
    const stopped=receipt??{schemaVersion:1,purpose:plan.purpose,planSha256:request.sha256,expectedCandidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true,scope:plan.scope,limits:plan.limits,stages:[],executionAllowed:false,nativeAdmission:false,financialAcceptance:false,liveSessionAdmission:false};
    stopped.status='STOPPED';stopped.failureCode??=safeCode(hasFirst?first:error);stopped.failureStage??=stage;stopped.resource??={status:'unconfirmed',cleanup:{status:'UNKNOWN'}};
