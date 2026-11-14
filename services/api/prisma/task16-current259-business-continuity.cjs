@@ -3,6 +3,7 @@
 // No registration, issuer injection, token mint or resource operation.
 const fs=require('node:fs'),path=require('node:path'),{types}=require('node:util');
 const FILE=path.join(__dirname,'task16-current259-payment-run-authorization.cjs');
+const CONTRACT_FILE=path.join(__dirname,'task12-current261-local-lifecycle-once.cjs');
 const need=ok=>{if(!ok)throw new Error('CURRENT259_BUSINESS_CONTINUITY');};
 const fdMethods=Object.freeze(Object.fromEntries(['realpathSync','lstatSync','fstatSync','openSync'].map(k=>[k,Object.freeze(Object.getOwnPropertyDescriptor(fs,k))])));
 // Dependencies may wrap the global close slot. Close our own FD with the original method.
@@ -15,25 +16,27 @@ function ownData(owner,key){
  need(descriptor&&Object.hasOwn(descriptor,'value'));return descriptor;
 }
 const sameDescriptor=(a,b)=>a&&b&&['value','writable','enumerable','configurable'].every(k=>a[k]===b[k]);
-function captureCurrent259BusinessIssuer(){
- need(arguments.length===0);
+function captureCurrent259BusinessIssuer(){need(arguments.length===0);return captureIssuer(FILE,'assertCurrent259PaymentBusinessContinuity');}
+function captureCurrent261ContractBusinessIssuer(){need(arguments.length===0);return captureIssuer(CONTRACT_FILE,'assertCurrent261ContractBusinessContinuity');}
+function captureIssuer(file,validator){
  try{
   need(!broken);
-  const cache=ownData(require,'cache').value,main=ownData(require,'main').value,issuer=ownData(cache,FILE).value;
+  const cache=ownData(require,'cache').value,main=ownData(require,'main').value,issuer=ownData(cache,file).value;
   need(issuer&&issuer===main&&!types.isProxy(issuer));
   const filename=ownData(main,'filename'),exportsDescriptor=ownData(issuer,'exports'),exports=exportsDescriptor.value;
-  need(filename.value===FILE&&exports&&!types.isProxy(exports)&&Object.isFrozen(exports));
-  const descriptor=ownData(exports,'assertCurrent259PaymentBusinessContinuity');need(typeof descriptor.value==='function');
-  if(original){need(original.issuer===issuer&&original.exports===exports&&sameDescriptor(original.exportsDescriptor,exportsDescriptor)&&sameDescriptor(original.descriptor,descriptor)&&sameDescriptor(original.filename,filename));return;}
-  original=Object.freeze({issuer,main,exports,exportsDescriptor:Object.freeze(exportsDescriptor),filename:Object.freeze(filename),descriptor:Object.freeze(descriptor)});
+  need(filename.value===file&&exports&&!types.isProxy(exports)&&Object.isFrozen(exports));
+  const descriptor=ownData(exports,validator);need(typeof descriptor.value==='function');
+  if(original){need(original.file===file&&original.validator===validator&&original.issuer===issuer&&original.exports===exports&&sameDescriptor(original.exportsDescriptor,exportsDescriptor)&&sameDescriptor(original.descriptor,descriptor)&&sameDescriptor(original.filename,filename));return;}
+  original=Object.freeze({file,validator,issuer,main,exports,exportsDescriptor:Object.freeze(exportsDescriptor),filename:Object.freeze(filename),descriptor:Object.freeze(descriptor)});
  }catch(error){broken=true;throw error;}
 }
 function assertIssuer(token,handle,scenario){
  try{
-  need(original&&!broken);const {issuer,main,exports,descriptor}=original;
+  need(original&&!broken);const {file,validator,issuer,main,exports,descriptor}=original;
+  need(scenario===undefined||file===FILE);
   const cache=ownData(require,'cache').value;
-  need(ownData(require,'main').value===main&&ownData(cache,FILE).value===issuer&&sameDescriptor(ownData(main,'filename'),original.filename)&&sameDescriptor(ownData(issuer,'exports'),original.exportsDescriptor));
-  need(sameDescriptor(ownData(exports,'assertCurrent259PaymentBusinessContinuity'),descriptor));
+  need(ownData(require,'main').value===main&&ownData(cache,file).value===issuer&&sameDescriptor(ownData(main,'filename'),original.filename)&&sameDescriptor(ownData(issuer,'exports'),original.exportsDescriptor));
+  need(sameDescriptor(ownData(exports,validator),descriptor));
   const admitted=scenario===undefined?descriptor.value(token,handle):descriptor.value(token,handle,scenario);
   need(admitted===true);return true;
  }catch(error){broken=true;throw error;}
@@ -53,4 +56,4 @@ function checkCurrent259FileIdentity(file,expected){
  try{need(matches(fs.fstatSync(fd,{bigint:big}))&&matches(fs.lstatSync(file,{bigint:big})));}finally{Reflect.apply(fdClose.value,fs,[fd]);}
  return true;
 }
-module.exports=Object.freeze({captureCurrent259BusinessIssuer,assertCurrent259BusinessIssuer,assertCurrent259CommitCancellationIssuer,assertCurrent259CommitDisconnectIssuer,checkCurrent259FileIdentity});
+module.exports=Object.freeze({captureCurrent259BusinessIssuer,captureCurrent261ContractBusinessIssuer,assertCurrent259BusinessIssuer,assertCurrent259CommitCancellationIssuer,assertCurrent259CommitDisconnectIssuer,checkCurrent259FileIdentity});

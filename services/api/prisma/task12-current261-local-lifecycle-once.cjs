@@ -13,6 +13,20 @@ const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescrip
 const SHA=/^[a-f0-9]{64}$/u;
 const businessDay=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
 
+// Tokens are issued only by this fresh main after its genuine document ACL stage.
+// The fixed binder can validate them; callers cannot register, mint or renew one.
+const contractContinuities=new WeakMap();
+let currentContractContinuity;
+function assertCurrent261ContractBusinessContinuity(token,handle){
+ const entry=token&&!types.isProxy(token)&&contractContinuities.get(token);
+ try{
+  need(arguments.length===2&&FRESH&&entry&&entry===currentContractContinuity&&entry.active&&entry.handle===handle&&
+   !entry.signal.aborted&&entry.acl===entry.binding.acl&&entry.build===entry.binding.build&&entry.source===entry.binding.source,'BUSINESS_CONTINUITY');
+  entry.check();return true;
+ }catch(error){if(entry)entry.active=false;throw error;}
+}
+
+
 function writeExclusive(file,bytes,onOpen){
  const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
  try{onOpen?.();fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
@@ -203,7 +217,9 @@ async function main(){
   checked.check();
 
   const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
-  const {withCurrent259FirstQ2LoopbackResource}=require('./task16-current259-owned-resource.cjs');
+  const {withCurrent259FirstQ2LoopbackResource,claimCurrent259TechnicalResource}=require('./task16-current259-owned-resource.cjs');
+  const {captureCurrent261ContractBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
+  captureCurrent261ContractBusinessIssuer();
   const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
   const {provisionCurrent259Roles}=require('./task16-current259-role-provision.cjs');
   const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource}=require('./task16-current259-archive-install.cjs');
@@ -237,6 +253,29 @@ async function main(){
   const check=()=>{
    need(!controller.signal.aborted&&businessDay()===plan.case.businessDate,'CONTINUITY');
    checked.check();
+   need(read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,expectedIdentity:attempt.identity,
+    code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_ATTEMPT'}).sha256===attempt.sha256,'ATTEMPT');
+  };
+
+  const inputFiles=[args.file,plan.runtime.file,plan.run.attemptFile];
+  const inputSnapshots=inputFiles.map(file=>{
+   const stat=fs.lstatSync(file,{bigint:true});
+   return {file,identity:Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'].map(key=>[key,String(stat[key])]))) };
+  });
+  // Directory timestamps legitimately change as this run writes receipts. Preserve
+  // canonical ownership/mode and dev+ino; regular inputs retain ns mtime+ctime.
+  const parentSnapshots=new Map();
+  for(const file of inputFiles)for(let dir=path.dirname(file);;dir=path.dirname(dir)){
+   const stat=fs.lstatSync(dir,{bigint:true});need(stat.isDirectory()&&!stat.isSymbolicLink()&&fs.realpathSync(dir)===dir,'CONTINUITY');
+   parentSnapshots.set(dir,Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid'].map(key=>[key,String(stat[key])]))));
+   if(dir===path.dirname(dir))break;
+  }
+  const checkInputs=()=>{
+   need(!controller.signal.aborted&&businessDay()===plan.case.businessDate,'CONTINUITY');
+   for(const row of inputSnapshots)checkCurrent259FileIdentity(row.file,row.identity);
+   for(const [dir,identity]of parentSnapshots){const stat=fs.lstatSync(dir,{bigint:true});
+    need(stat.isDirectory()&&!stat.isSymbolicLink()&&fs.realpathSync(dir)===dir&&Object.keys(identity).every(key=>String(stat[key])===identity[key]),'CONTINUITY');
+   }
    need(read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,expectedIdentity:attempt.identity,
     code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_ATTEMPT'}).sha256===attempt.sha256,'ATTEMPT');
   };
@@ -281,10 +320,17 @@ async function main(){
      need(!runtimeEntered,'RUNTIME');runtimeEntered=true;
      const projected=await stage('APPLICATION',async()=>{
       let invoked=false;
-      const app=await withCurrent261LocalLifecyclePublicApplication(acl,handle,plan.case.id,controller.signal,outcome=>{
+      const view=claimCurrent259TechnicalResource(handle);
+      const token=Object.freeze({}),binding=Object.freeze({acl,build:checked.buildHandle,source:plan.source});
+      const entry={active:true,handle,signal:controller.signal,acl,build:checked.buildHandle,source:plan.source,binding,
+       check:()=>{need(phase==='APPLICATION'&&view.source.candidateSha===plan.source.candidateSha,'BUSINESS_CONTINUITY');checkInputs();}};
+      need(!currentContractContinuity,'BUSINESS_CONTINUITY');
+      contractContinuities.set(token,entry);currentContractContinuity=entry;
+      let app;
+      try{app=await withCurrent261LocalLifecyclePublicApplication(acl,handle,plan.case.id,controller.signal,outcome=>{
        need(!invoked,'RESULT');invoked=true;check();
        return outcome;
-      });
+      },token);}finally{entry.active=false;contractContinuities.delete(token);currentContractContinuity=undefined;}
       check();need(invoked,'RESULT');
       const projection=projectCurrent261LocalLifecycleOutcome(app);
       need(projection&&typeof projection==='object'&&!types.isProxy(projection)&&
@@ -325,4 +371,5 @@ async function main(){
   process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);
  }
 }
+module.exports=Object.freeze({assertCurrent261ContractBusinessContinuity});
 if(require.main===module)void main().then(result=>process.stdout.write(JSON.stringify(result)+'\n'));

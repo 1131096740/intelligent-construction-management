@@ -94,7 +94,9 @@ function model(alter = row => row, alterClaim = () => {}, migrationCount = 261) 
       }, phase)) };
     },
   };
-  const view = { source, runId, resource, check, verifyFull: check };
+  const continuityToken=Object.freeze({});let continuityCalls=0;
+  const checkContinuity=token=>{assert.equal(token,continuityToken);continuityCalls++;};
+  const view = { source, runId, resource, check, verifyFull: check, checkContinuity };
   const ports = {
     './task16-current259-role-provision.cjs': {
       claimCurrent259ProvisionedRoles(result, actualHandle) {
@@ -102,7 +104,7 @@ function model(alter = row => row, alterClaim = () => {}, migrationCount = 261) 
         assert.equal(actualHandle, handle);
         assert.equal(used, false);
         used = true;
-        return { source, completion, check };
+        return { source, completion, check, checkContinuity };
       },
     },
     './task16-current259-owned-resource.cjs': {
@@ -115,7 +117,7 @@ function model(alter = row => row, alterClaim = () => {}, migrationCount = 261) 
   runInThisContext(`(function(require,module,__dirname){${readFileSync(file, 'utf8')}\n})`, { filename: file })(
     name => Object.hasOwn(ports, name) ? ports[name] : require(name), module, __dirname,
   );
-  return { ...module.exports, calls, handle, provisionResult, suppliedRoles: completion,
+  return { ...module.exports, continuityToken,continuityCalls:()=>continuityCalls, calls, handle, provisionResult, suppliedRoles: completion,
     expire: () => { expired = true; }, closed: () => closed };
 }
 
@@ -444,3 +446,5 @@ test('the historical 259 and explicit 261 archive profiles render independent fr
     [...raw.migrations,{path:'services/api/prisma/migrations/20261111150000_unqualified/migration.sql',sha256:'1'.repeat(64)}],
   ]) assert.throws(()=>qualifyCurrent259Source({...raw,migrations}),/CURRENT259_SOURCE/u);
 });
+
+test('archive continuation retains the original role and resource capability without a full-hash call',async()=>{const f=model();const result=await f.installCurrent259ArchiveAuthorities(f.provisionResult,f.handle);const lease=f.claimCurrent259ArchiveInstallation(result,f.handle);lease.checkContinuity(f.continuityToken);assert.equal(f.continuityCalls(),2);assert.throws(()=>lease.checkContinuity({}));});

@@ -4,7 +4,7 @@ const {readFileSync}=require('node:fs');
 const {join}=require('node:path');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 const {claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl,claimCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl-transport.cjs');
-const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
+const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {withCurrent259ApplicationEnvironment}=require('./task16-current259-application-environment.cjs');
 const {createCurrent259GeneratedDocumentSeed,createCurrent261LocalLifecycleSeed}=require('./task12-current259-q2-seed.cjs');
@@ -264,9 +264,9 @@ function withCurrent259GeneratedDocumentPublicApplication(aclResult,handle,caseI
  if(arguments.length!==4||typeof caseId!=='string'||!caseCoordinate.test(caseId))return Promise.reject(fault('HANDLE'));
  return runLogin(aclResult,handle,use,true,true,true,caseId);
 }
-function withCurrent261LocalLifecyclePublicApplication(aclResult,handle,caseId,signal,use){
- if(arguments.length!==5||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
- return runLogin(aclResult,handle,use,true,true,true,caseId,true,signal);
+function withCurrent261LocalLifecyclePublicApplication(aclResult,handle,caseId,signal,use,continuityToken){
+ if(![5,6].includes(arguments.length)||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
+ return runLogin(aclResult,handle,use,true,true,true,caseId,true,signal,continuityToken);
 }
 function takeCurrent261LocalLifecycleExerciseBridge(key){
  need(arguments.length===1&&key&&!types.isProxy(key)&&lifecycleExercises.has(key),'HANDLE');
@@ -275,7 +275,7 @@ function takeCurrent261LocalLifecycleExerciseBridge(key){
 function takeCurrent259GeneratedDocumentApplicationBridge(bridge){
  need(arguments.length===1&&nestBridges.delete(bridge),'HANDLE');
 }
-async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId,lifecycle=false,lifecycleSignal){
+async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId,lifecycle=false,lifecycleSignal,continuityToken){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&
   typeof use==='function'&&!types.isProxy(use)&&!consumed.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle),resource=view.resource,exec=own(resource,'execOwnerSql');
@@ -291,13 +291,15 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
  }
  consumed.add(handle);
  const check=()=>{
-  lease.check();view.check();
+  if(continuityToken!==undefined){
+   need(lifecycle,'HANDLE');lease.checkContinuity(continuityToken);view.checkContinuity(continuityToken);
+  }else{lease.check();view.check();}
   if(lifecycle)need(!lifecycleSignal.aborted&&view.loader.loadCurrent261LocalLifecycleDocumentModules().currentOfficialDocumentScope()===official,'ROLE_RUNTIME');
-  need(claimCurrent259TechnicalResource(handle)===view&&view.resource===resource&&
+  need((continuityToken===undefined?claimCurrent259TechnicalResource(handle):claimCurrent259TechnicalResourceContinuity(handle,continuityToken))===view&&view.resource===resource&&
    resource.topology===topology&&own(resource,'execOwnerSql')===exec,'CONTINUITY');
  };
  const secrets=[];
- let phase='BEFORE',proof;
+ let phase='BEFORE',proof,continuityCleanupUnknown=false;
  try{
   check();
   const c=catalog(input);
@@ -332,11 +334,19 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
    ...(lifecycle?{effectivePlanSha256:aclResult.effectivePlanSha256,installation:aclResult.installation}:{}),
    roleXmins:Object.freeze(committed.roles.map(role=>role[2])),executionAllowed:false,nativeAdmission:false});
   active.set(proof,{handle,check,lifecycle,identity:input.identity,continuitySql:c.stable});
-  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId,lifecycleSignal):use(proof));
+  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken):use(proof));
+  if(active.get(proof)?.continuityActivated){
+   active.get(proof).continuityActivated=false;
+   try{view.deactivateBusinessContinuity(continuityToken);}catch(cause){continuityCleanupUnknown=true;throw cause;}
+  }
   check();return result;
  }catch(cause){
   const error=Object.assign(fault(phase==='BEFORE'?'PRESTATE_REJECTED':phase==='CONSUME'?'CONSUME_FAILED':'COMMIT_UNCONFIRMED'),{phase});
   if(lifecycle){Object.defineProperty(error,'cause',{value:cause});if(own(cause,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(error,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
+  if(active.get(proof)?.continuityActivated){
+   active.get(proof).continuityActivated=false;
+   try{view.deactivateBusinessContinuity(continuityToken);}catch{continuityCleanupUnknown=true;}
+  }
   if(proof)active.delete(proof);
   const inner=withRoles?own(cause,'cause'):undefined;
   const recognized=fixedReasons.has(cause)?cause:fixedReasons.has(inner)?inner:undefined;
@@ -353,7 +363,8 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
     Object.defineProperty(error,key,{value:'UNKNOWN',enumerable:true});
   }
   try{await closeCurrent259OwnedResource(handle);}
-  catch{Object.defineProperty(error,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});}
+  catch{continuityCleanupUnknown=true;}
+  if(continuityCleanupUnknown)Object.defineProperty(error,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});
   throw error;
  }finally{
   if(proof)active.delete(proof);
@@ -378,7 +389,7 @@ const backend=(pid,start)=>Number.isInteger(pid)&&pid>0&&pid<=2147483647&&typeof
 const port=value=>Number.isInteger(value)&&value>0&&value<=65535;
 const project=(row,keys)=>Object.fromEntries(keys.map(key=>[key,own(row,key)]));
 
-async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId,lifecycleSignal){
+async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken){
  const {resource,loader}=view;
  const lifecycle=proof.purpose===lifecyclePurpose;
  const save=proof.purpose===savePurpose||lifecycle;
@@ -513,6 +524,7 @@ ROLLBACK;`;
   const waitDrain=beginDrain.call(view);
   need(typeof waitDrain==='function','ROLE_DRAIN');
   try{
+   if(continuityToken!==undefined){view.activateBusinessContinuity(continuityToken);active.get(proof).continuityActivated=true;}
    let publicLifecycle;
    if(lifecycle){
     const build=own(modules,'buildTask12LocalLifecycleFixture'),isFixture=own(modules,'isTask12LocalLifecycleFixture'),hash=own(modules,'hashTask12GeneratedAdmissionPassword');

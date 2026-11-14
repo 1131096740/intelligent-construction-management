@@ -37,7 +37,9 @@ function fixture(options={}) {
   let claimed=false, closes=0;
   const check = () => { assert.equal(closes,0); options.check?.(); };
   const anchor = options.witness ?? (() => Object.freeze({guardSql: 'PERFORM 1;', sevenCatalogSql: "pg_catalog.repeat('2',64) /* pg_catalog.aclexplode(CASE WHEN pg_catalog.cardinality(coalesce(a.attacl,'{}'::aclitem[]))>0 THEN coalesce(a.attacl,'{}'::aclitem[]) END) jsonb_build_array(a.attnum,a.attacl) */", catalogSql: 'pg_catalog.repeat(\'a\',64) /* c.relacl::text a.attacl::text */'}));
-  const view = {source,runId:completion.runId,check,resource:{containerId:completion.containerId,databaseName:scope.databaseIdentity.database,topology:options.topology??'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS',
+  const continuityToken=Object.freeze({});let continuityCalls=0;
+  const checkContinuity=token=>{assert.equal(token,continuityToken);continuityCalls++;};
+  const view = {checkContinuity,source,runId:completion.runId,check,resource:{containerId:completion.containerId,databaseName:scope.databaseIdentity.database,topology:options.topology??'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS',
     async execOwnerSql(sql,phase){
       calls.push({sql,phase});
       const n=phases.indexOf(phase);
@@ -54,18 +56,19 @@ function fixture(options={}) {
       claimCurrent259ArchiveInstallation(value,h){
         assert.equal(value,completion);assert.equal(h,handle);assert.equal(claimed,false);
         claimed=true;
-        return Object.freeze({source:Object.freeze(structuredClone(source)),completion,roleCompletion,check,ordinaryAclWitness:anchor});
+        return Object.freeze({source:Object.freeze(structuredClone(source)),completion,roleCompletion,check,checkContinuity,ordinaryAclWitness:anchor});
       }
     },
     './task16-current259-owned-resource.cjs':{
       claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},
+      claimCurrent259TechnicalResourceContinuity(h,token){assert.equal(h,handle);checkContinuity(token);return view;},
       async closeCurrent259OwnedResource(h){assert.equal(h,handle);closes++;}
     }
   };
   const holder={exports:{}};
   new Function('require','module','__dirname',fs.readFileSync(path.resolve(__dirname,file),'utf8'))(
     name=>ports[name]??require(name),holder,__dirname);
-  return {api:holder.exports,handle,completion,calls,closes:()=>closes};
+  return {api:holder.exports,continuityToken,continuityCalls:()=>continuityCalls,handle,completion,calls,closes:()=>closes};
 }
 
 test('same archive handle supplies only actual missing privileges then requires independent committed proof',async()=>{
@@ -337,3 +340,5 @@ test('lifecycle invoker correction predicates require both hidden predicate colu
  for(const column of ['attachmentFileId','correctionType','schemaVersion'])assert.ok(m.rows.some(r=>r.relation==='ContractTakeoverCorrection'&&r.column===column&&r.privilege==='SELECT'));
  for(const [relation,column]of [['PaymentExecution','voucherFileId'],['ProjectExpenseExecution','voucherFileId'],['ProjectFinancingQuota','attachmentFileId']])assert.ok(m.rows.some(r=>r.relation===relation&&r.column===column&&r.privilege==='SELECT'));
 });
+
+test('ordinary ACL continuation retains its original archive and view capability',async()=>{const f=fixture();const result=await f.api.installCurrent259OrdinaryArchiveAcl(f.completion,f.handle);const lease=f.api.claimCurrent259OrdinaryArchiveAcl(result,f.handle);lease.checkContinuity(f.continuityToken);assert.ok(f.continuityCalls()>=2);assert.throws(()=>lease.checkContinuity({}));});

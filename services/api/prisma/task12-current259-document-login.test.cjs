@@ -134,20 +134,23 @@ const publicFixture=Object.freeze({users:seedUsers,handler:seedUsers[0],
   positionId:'c0000000-0000-4000-8000-00000000000'+index,positionName:roleKey
  }))
 });
-function poolFixture(mode='success',save=false,priorSql){
+function poolFixture(mode='success',save=false,priorSql,lifecycle=false){
+ const continuityToken=Object.freeze({});
  const trace=[],urls=[],clients=[],ownerSql=[];
  const state={queries:0};
  const second=session=>({...session,pid:702,start:'2026-11-12T00:00:00.000070Z',clientPort:37002});
  const pool={
   setup({resource,view,handle,roles,identity,source,imports}){
    const relay={id:'00000000-0000-4000-8000-000000000002',containerId:resource.containerId,host:'127.0.0.1',port:43211};
-   const transition={beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64),rules:save?13:12,loginInstallXid:'903',plaintextNoEncryptionRejected:true,...(save?{purpose:savePurpose}:{})};
+   const life=lifecycle?require('./task12-current261-local-lifecycle-scope.cjs').describeCurrent261LocalLifecycle(source):undefined;
+   const expectedPurpose=lifecycle?'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1':savePurpose;
+   const transition={...(lifecycle?{effectivePlanSha256:life.effectivePlanSha256,installation:life.installation}:{}),beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64),rules:save?13:12,loginInstallXid:'903',plaintextNoEncryptionRejected:true,...(save?{purpose:expectedPurpose}:{})};
    const cert={mode:'correct',derSha256:'c'.repeat(64)},file='/private/tmp/model/tls-private/ca.crt',caSha='d'.repeat(64),stat={uid:process.getuid()};
    Object.assign(resource,{port:relay.port,networkId:'e'.repeat(64),caPath:file,
     serverCertHashes:{correctCertificateDerSha256:cert.derSha256,caSha256:caSha},
     async applyCurrent259DocumentHbaV1(proof){
-     f.api.assertCurrent259GeneratedDocumentLoginScope(proof,handle);
-     assert.equal(proof.purpose,save?savePurpose:undefined);
+     (lifecycle?f.api.assertCurrent261GeneratedLifecycleLoginScope:f.api.assertCurrent259GeneratedDocumentLoginScope)(proof,handle);
+     assert.equal(proof.purpose,save?expectedPurpose:undefined);
      assert.equal(proof.ordinaryName,save?ordinaryName:undefined);
      assert.equal(proof.roleOids.length,save?4:3);
      trace.push('hba');
@@ -216,7 +219,7 @@ function poolFixture(mode='success',save=false,priorSql){
    const ownerScope=Object.freeze({});
   imports['./task12-current259-document-owner-readback.cjs']={
    async beginCurrent259GeneratedDocumentOwnerReadback(h,proof){
-    assert.equal(h,handle);f.api.assertCurrent259GeneratedDocumentLoginScope(proof,handle);
+    assert.equal(h,handle);(lifecycle?f.api.assertCurrent261GeneratedLifecycleLoginScope:f.api.assertCurrent259GeneratedDocumentLoginScope)(proof,handle);
     trace.push('owner-readback-begin');return ownerScope;
    },
    async readCurrent259GeneratedDocumentOwnerReadback(key,result){
@@ -256,6 +259,17 @@ function poolFixture(mode='success',save=false,priorSql){
      }
     }
    };
+   if(lifecycle){
+    const scope=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',source:{head:source.candidateSha}});
+    const documentModules=view.loader.loadGeneratedContractDocumentModules();
+    view.loader.loadCurrent261LocalLifecycleDocumentModules=()=>({...documentModules,currentOfficialDocumentScope:()=>scope});
+    view.checkContinuity=t=>assert.equal(t,continuityToken);
+    view.activateBusinessContinuity=t=>{assert.equal(t,continuityToken);trace.push('activate');if(mode==='activation-failure')throw new Error('PRIVATE_DO_NOT_PRINT');};
+    view.deactivateBusinessContinuity=t=>{assert.equal(t,continuityToken);trace.push('deactivate');if(mode==='deactivation-failure')throw new Error('PRIVATE_DO_NOT_PRINT');};
+    imports['./task16-current259-owned-resource.cjs'].claimCurrent259TechnicalResourceContinuity=(h,t)=>{assert.equal(h,handle);assert.equal(t,continuityToken);return view;};
+    const original=imports['./task12-current259-document-acl-transport.cjs'].claimCurrent261GeneratedLifecycleDocumentAcl;
+    imports['./task12-current259-document-acl-transport.cjs'].claimCurrent261GeneratedLifecycleDocumentAcl=(...args)=>({...original(...args),checkContinuity:t=>assert.equal(t,continuityToken)});
+   }
   },
   seed(sql,label,n,identity){
    const phase=label.split('-').at(-1),writer=phase==='write';
@@ -287,8 +301,8 @@ function poolFixture(mode='success',save=false,priorSql){
  const f=fixture((n,row)=>{
   if(mode==='ordinary-prestate'&&!n)row.roles[3][4]=1;
   if(mode==='ordinary-poststate'&&n===2)row.roles[3][4]=1;
- },priorSql,pool,save);
- return {...f,trace,urls,clients,ownerSql,state};
+ },priorSql,pool,save,lifecycle);
+ return {...f,trace,urls,clients,ownerSql,state,continuityToken};
 }
 
 test('three role pools are unavailable when owned HBA verification fails',async()=>{
@@ -545,4 +559,35 @@ test('reported guard timing observes a real synchronous verification stall witho
   assert.equal(error.documentRoleFailure.subphase,'OWNER_AFTER');
   assert.ok(error.documentRoleFailure.maxGuardMs>=10);assert.ok(error.documentRoleFailure.lastGuardMs>=10);return true;
  });
+});
+
+test('life optional continuity uses its original lease and resource identities before SQL, and rejects a foreign token',async()=>{
+ const token=Object.freeze({}),foreign=Object.freeze({});let light=0,leaseLight=0;
+ const pool={setup({view,imports,handle}){
+  view.checkContinuity=t=>{assert.equal(t,token);light++;};
+  imports['./task16-current259-owned-resource.cjs'].claimCurrent259TechnicalResourceContinuity=(h,t)=>{assert.equal(h,handle);assert.equal(t,token);return view;};
+  const original=imports['./task12-current259-document-acl-transport.cjs'].claimCurrent261GeneratedLifecycleDocumentAcl;
+  imports['./task12-current259-document-acl-transport.cjs'].claimCurrent261GeneratedLifecycleDocumentAcl=(...args)=>({...original(...args),checkContinuity(t){assert.equal(t,token);leaseLight++;}});
+ }};
+ const f=fixture(()=>{throw new Error('STOP_AFTER_VALIDATED_LIGHT_GUARD');},undefined,pool,true,true);
+ await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail(),token));
+ assert.equal(f.calls.length,1);assert.ok(light>0&&leaseLight>0);
+ const rejected=fixture(undefined,undefined,pool,true,true);
+ await assert.rejects(rejected.api.withCurrent261LocalLifecyclePublicApplication(rejected.completion,rejected.handle,publicCase,new AbortController().signal,()=>assert.fail(),foreign));
+ assert.equal(rejected.calls.length,0);
+});
+
+test('contract activation failures still join the original drain; deactivation failures preserve the primary reason',async()=>{
+ for(const mode of ['activation-failure','success','deactivation-failure']){
+  const f=poolFixture(mode,true,undefined,true);
+  await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail(),f.continuityToken),error=>{
+   if(mode!=='activation-failure')assert.equal(error.reason,'ROLE_ENTRY');
+   if(mode==='deactivation-failure')assert.equal(error.resourceCleanup.status,'UNKNOWN');
+   return true;
+  });
+  assert.ok(f.trace.indexOf('drain-open')<f.trace.indexOf('activate'));
+  assert.ok(f.trace.includes('drain-closed'));
+  assert.equal(f.trace.filter(x=>x==='deactivate').length,mode==='activation-failure'?0:1);
+  assert.equal(f.clients.length,0);assert.equal(f.closed(),1);
+ }
 });
