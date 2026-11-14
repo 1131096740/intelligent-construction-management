@@ -36,7 +36,7 @@ const commonRole=Object.freeze({superuser:false,createRole:false,createDb:false,
 const invariantKeys=['ledger','bindings','oldRoleSha256','membershipsSha256','protectedSha256'];
 const roleSpec=([name,login,secret],competition)=>({...commonRole,name,login,
  limit:competition&&name==='jg_task01_runtime'?2:login?1:0,password:secret?'scram':'absent'});
-const proofs=new WeakMap(),authRoleProofs=new WeakMap();
+const proofs=new WeakMap(),authRoleProofs=new WeakMap(),authRoleFailures=new WeakMap();
 const fault=code=>Object.assign(new Error(`CURRENT259_ROLE_PROVISION_${code}`),{code:`CURRENT259_ROLE_PROVISION_${code}`});
 const need=(test,code)=>{if(!test)throw fault(code);};
 const snapshotBytes=fs.readFileSync(path.join(__dirname,'task16-current259-role-provision.sql'));
@@ -270,7 +270,7 @@ async function provisionCurrent261AuthOnlyDiagnosticRoles(technicalCompletion,ha
 async function provision(technicalCompletion,handle,competition,paymentProfile,authOnly=false){
  const supply=authOnly?claimCurrent261AuthOnlyDiagnosticSupply(technicalCompletion,handle):claimCurrent259TechnicalSupply(technicalCompletion,handle);
  if(authOnly)need(supply.executionPurpose==='AUTH_ONLY_DIAGNOSTIC','HANDLE');
- let phase='BEFORE';
+ let phase='BEFORE',authPhase='BEFORE';
  try{
   const view=claimCurrent259TechnicalResource(handle),{completion,source}=supply,{application:app,databaseIdentity:identity}=completion;
   const check=()=>{supply.check();view.verifyFull();};
@@ -284,7 +284,7 @@ async function provision(technicalCompletion,handle,competition,paymentProfile,a
   need(qualified&&isCurrentPaymentRuntimeMode(paymentProfile,competition)&&
    profile.candidateSha===source.candidateSha&&profile.sealSha256===source.sourceSealSha256,'HANDLE');
   const scope={identity,app,ledger:profile.ledger,competition};
-  const run=async(sql,label)=>{check();const value=await view.resource.execOwnerSql(sql,`current259-roles-${label}`);check();return observed(value?.stdout);};
+  const run=async(sql,label)=>{if(authOnly)authPhase=label==='committed'?'COMMITTED_READBACK':label.toUpperCase();check();const value=await view.resource.execOwnerSql(sql,`current259-roles-${label}`);check();return observed(value?.stdout);};
   const before=await run(readSql(app.oid),'before');verifyBefore(before,scope);
   const credentials=view.credentials();
   need(['runtime','observer'].every(key=>typeof credentials[key]==='string'&&/^[a-f0-9]{96}$/u.test(credentials[key]))&&credentials.runtime!==credentials.observer,'BEFORE');
@@ -293,17 +293,29 @@ async function provision(technicalCompletion,handle,competition,paymentProfile,a
   const staged=await run(sql,'install');const state=verifyInstall(staged,before,scope);
   const committed=await run(readSql(app.oid,staged.writeXid),'committed');verifyBase(committed,scope,'committed');
   need([before,staged].every(r=>r.backend.pid!==committed.backend.pid&&r.backend.start!==committed.backend.start)&&equal(committed.identity,staged.identity)&&equal(committed.state,state)&&equal(committed.access,staged.access),'COMMITTED');
-  check();
+  if(authOnly)authPhase='FINAL_CHECK';check();
   const result=freeze({status:authOnly?'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION':'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC',financialAcceptance:false}:{}),sourceSha:source.candidateSha,runId:view.runId,containerId:view.resource.containerId,
    databaseIdentity:{...identity},ordinary:{...state.app},roles:state.roles,commitXid:staged.writeXid,
    databaseAcl:{before:before.state.databases,after:state.databases,effective:committed.access},executionAllowed:false,nativeAdmission:false,
    ...(paymentProfile?{paymentProfile}:{})});
   (authOnly?authRoleProofs:proofs).set(result,{handle,source,check,checkContinuity,competition,paymentProfile});return result;
- }catch{
+ }catch(cause){
+  if(authOnly){
+   let cleanupFailed=false;try{await closeCurrent259OwnedResource(handle);}catch{cleanupFailed=true;}
+   // Preserve the original thrown object, including frozen errors. Diagnostics
+   // contain only our finite phase and cleanup outcome, never transport fields.
+   if(cause!==null&&(typeof cause==='object'||typeof cause==='function')&&!authRoleFailures.has(cause))
+    authRoleFailures.set(cause,Object.freeze({phase:authPhase,resourceCleanup:Object.freeze({status:cleanupFailed?'UNKNOWN':'COMPLETED'})}));
+   throw cause;
+  }
   const error=fault(phase);
   try{await closeCurrent259OwnedResource(handle);}catch{Object.defineProperty(error,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});}
   throw error;
  }
+}
+function describeCurrent261AuthOnlyRoleFailure(error){
+ if(error===null||(typeof error!=='object'&&typeof error!=='function'))return undefined;
+ return authRoleFailures.get(error);
 }
 function claimCurrent259ProvisionedRoles(result,handle){
  need(arguments.length===2&&result&&!types.isProxy(result)&&proofs.has(result),'HANDLE');
@@ -316,5 +328,5 @@ function claimCurrent261AuthOnlyDiagnosticRoles(result,handle){
  const proof=authRoleProofs.get(result);need(proof.handle===handle,'HANDLE');authRoleProofs.delete(result);proof.check();
  return Object.freeze({source:proof.source,completion:result,executionPurpose:'AUTH_ONLY_DIAGNOSTIC',check:proof.check,checkContinuity:proof.checkContinuity});
 }
-module.exports=Object.freeze({provisionCurrent261AuthOnlyDiagnosticRoles,claimCurrent261AuthOnlyDiagnosticRoles,provisionCurrent259Roles,provisionCurrent259CompetitionRoles,provisionCurrent259Payment261Roles,provisionCurrent259Payment261CompetitionRoles,provisionCurrent259Payment261VoucherRoles,
+module.exports=Object.freeze({describeCurrent261AuthOnlyRoleFailure,provisionCurrent261AuthOnlyDiagnosticRoles,claimCurrent261AuthOnlyDiagnosticRoles,provisionCurrent259Roles,provisionCurrent259CompetitionRoles,provisionCurrent259Payment261Roles,provisionCurrent259Payment261CompetitionRoles,provisionCurrent259Payment261VoucherRoles,
  provisionCurrent259Payment261AttributionGapRoles,claimCurrent259ProvisionedRoles});

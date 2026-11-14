@@ -249,3 +249,46 @@ test('auth-only and full role provisioning reject the opposite private supply be
  await assert.rejects(auth.api.provisionCurrent259Roles(auth.completion,auth.handle));
  assert.equal(normal.calls.length,0);assert.equal(auth.calls.length,0);
 });
+
+for(const [index,phase] of [[0,'BEFORE'],[1,'INSTALL'],[2,'COMMITTED_READBACK']])
+ for(const cleanupFails of [false,true])test(`auth-only roles preserve the original frozen cause at ${phase} with cleanup failure ${cleanupFails}`,async()=>{
+  const original=Object.freeze(Object.assign(new Error('synthetic private SQL or cancellation detail'),{code:'SYNTHETIC_CANCEL_OR_SQL'}));
+  const f=fixture((row,i)=>{if(i===index)throw original;},()=>{if(cleanupFails)throw new Error('synthetic private cleanup detail');},false,true);
+  await assert.rejects(f.api.provisionCurrent261AuthOnlyDiagnosticRoles(f.completion,f.handle),error=>{
+   assert.equal(error,original);
+   const detail=f.api.describeCurrent261AuthOnlyRoleFailure(error);
+   assert.deepEqual(detail,{phase,resourceCleanup:{status:cleanupFails?'UNKNOWN':'COMPLETED'}});
+   assert.ok(Object.isFrozen(detail));assert.ok(Object.isFrozen(detail.resourceCleanup));
+   assert.equal(Object.hasOwn(error,'resourceCleanup'),false);
+   return true;
+  });
+  assert.equal(f.closed(),true);assert.equal(f.calls.length,index+1);
+ });
+test('auth-only role failure projection rejects unknown objects without reading message, code, or accessors',()=>{
+ const f=fixture();let reads=0;
+ const fake=Object.create(null,{message:{get(){reads++;throw Error('must not read');}},code:{get(){reads++;throw Error('must not read');}}});
+ assert.equal(f.api.describeCurrent261AuthOnlyRoleFailure(fake),undefined);
+ assert.equal(f.api.describeCurrent261AuthOnlyRoleFailure(new Proxy(fake,{})),undefined);
+ assert.equal(f.api.describeCurrent261AuthOnlyRoleFailure(null),undefined);
+ assert.equal(reads,0);
+});
+
+test('auth-only identity readback retains its original rejection code alongside cleanup failure',async()=>{
+ const f=fixture((row,index)=>{if(index===2)row.identity.systemIdentifier='foreign';},()=>{throw new Error('synthetic cleanup failure');},false,true);
+ await assert.rejects(f.api.provisionCurrent261AuthOnlyDiagnosticRoles(f.completion,f.handle),error=>{
+  assert.equal(error.code,'CURRENT259_ROLE_PROVISION_COMMITTED');
+  assert.deepEqual(f.api.describeCurrent261AuthOnlyRoleFailure(error),{phase:'COMMITTED_READBACK',resourceCleanup:{status:'UNKNOWN'}});
+  return true;
+ });
+});
+test('auth-only cancellation keeps the exact original cause and never reads hostile error fields',async()=>{
+ let reads=0;const original=new DOMException('synthetic cancellation','AbortError');
+ for(const key of ['stack','message','code'])Object.defineProperty(original,key,{get(){reads++;throw new Error('must not inspect error');},configurable:true});
+ Object.freeze(original);
+ const f=fixture((row,index)=>{if(index===1)throw original;},()=>{throw new DOMException('synthetic cancellation','AbortError');},false,true);
+ await assert.rejects(f.api.provisionCurrent261AuthOnlyDiagnosticRoles(f.completion,f.handle),error=>{
+  assert.equal(error,original);assert.deepEqual(f.api.describeCurrent261AuthOnlyRoleFailure(error),{phase:'INSTALL',resourceCleanup:{status:'UNKNOWN'}});
+  assert.equal(f.api.describeCurrent261AuthOnlyRoleFailure({...error}),undefined);return true;
+ });
+ assert.equal(reads,0);
+});
