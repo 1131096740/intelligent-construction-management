@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { isDeepStrictEqual } from "node:util";
+import { isDeepStrictEqual, types } from "node:util";
 import type { Prisma } from "@prisma/client";
 import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, assertRegisteredPgResourceProof, registeredPgHttp } from "./registered-payment-postgres.fixture";
 import type { PreparedRegisteredPgAttributionGap, PreparedRegisteredPgCompetition, PreparedRegisteredPgCompetitionFollowUp, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgObserverPhase, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
@@ -408,7 +408,18 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
     check(lost, "PG_CASE_RESPONSE_LOSS_BOUNDARY");
   } else {
     const response = await checked(() => submit());
-    check(response.status === 201, "PG_CASE_REGISTRATION_HTTP_STATUS");
+    if (response.status !== 201) {
+      const body = response.body;
+      const descriptor = body && typeof body === "object" && !types.isProxy(body)
+        ? Object.getOwnPropertyDescriptor(body, "code") : undefined;
+      const error = Object.defineProperties(new Error("PG_CASE_REGISTRATION_HTTP_STATUS"), {
+        code: { value: "PG_CASE_REGISTRATION_HTTP_STATUS" },
+        httpStatus: { value: response.status }, expectedHttpStatus: { value: 201 },
+        ...(response.status === 409 && descriptor && Object.hasOwn(descriptor, "value") && descriptor.value === "PAYMENT_RESULT_UNCONFIRMED"
+          ? { businessErrorCode: { value: "PAYMENT_RESULT_UNCONFIRMED" } } : {})
+      });
+      throw error;
+    }
   }
   continuity?.markCaseGate?.("OBSERVER_AFTER");
   const after = await checked(() => observe(context, fixture, continuity));

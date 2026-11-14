@@ -1404,3 +1404,11 @@ for(const secondary of ['postcheck','cleanup'])test('observer diagnostic timing 
  const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'P2028',...diagnostic});assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.ok(receipt.secondaryFailures.length>=1);
  const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1);assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8')).paymentCaseFailure,receipt.paymentCaseFailure);assert.doesNotMatch(JSON.stringify(receipt),/private cause|private postcheck/);
 });
+
+for(const status of [500,400,403,409])test('ordinary controller retains finite selected registration HTTP '+status+' and keeps business unknown',async t=>{
+ const diagnostic={httpStatus:status,expectedHttpStatus:201,businessErrorCode:'PAYMENT_RESULT_UNCONFIRMED',rawBody:'private URL token'};
+ const f=ordinaryBusinessFailureFixture(t,{caseFailure:new Error('private body'),onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE','PG_CASE_REGISTRATION_HTTP_STATUS',undefined,'RESPONSE_RETURNED',diagnostic);}});await f.done;
+ const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'PG_CASE_REGISTRATION_HTTP_STATUS',httpPhase:'RESPONSE_RETURNED',httpStatus:status,expectedHttpStatus:201,...(status===409?{businessErrorCode:'PAYMENT_RESULT_UNCONFIRMED'}:{})});
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.doesNotMatch(text,/private URL token|private body/u);
+});

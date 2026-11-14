@@ -554,3 +554,24 @@ test('observer diagnostic rejects getter/proxy/unknown values without replacing 
  await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
  assert.deepEqual(seen[0]?.[4],{caseGate:'OBSERVER_BEFORE',errorKind:'ERROR'});assert.equal(reads,0);
 });
+
+for(const status of [500,400,403,409])test('selected registration assertion preserves finite HTTP '+status+' without response payload',async t=>{
+ const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ const error=Object.assign(new Error('private response URL token'),{code:'PG_CASE_REGISTRATION_HTTP_STATUS',httpStatus:status,expectedHttpStatus:201,businessErrorCode:'PAYMENT_RESULT_UNCONFIRMED',body:'private SQL'});
+ const m=paymentModel(f,{onCase(){throw error;}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen,[['SELECTED_CASE','PG_CASE_REGISTRATION_HTTP_STATUS',undefined,undefined,{httpStatus:status,expectedHttpStatus:201,...(status===409?{businessErrorCode:'PAYMENT_RESULT_UNCONFIRMED'}:{}),caseGate:'COMPILED_CASE',errorKind:'ERROR'}]]);
+ assert.doesNotMatch(JSON.stringify(seen),/private response|private SQL/u);
+});
+
+for(const mode of ['unknown-status','wrong-expected','unknown-business','status-getter','business-getter','proxy'])test('registration diagnostic omits unsafe '+mode+' without invoking untrusted accessors',()=>{
+ const {describePaymentDiagnostic,filterPaymentDiagnostic}=require('./task16-current259-payment-diagnostics.cjs');let reads=0;
+ const error=Object.assign(new Error('private body'),{code:'PG_CASE_REGISTRATION_HTTP_STATUS',httpStatus:409,expectedHttpStatus:201,businessErrorCode:'PAYMENT_RESULT_UNCONFIRMED'});
+ if(mode==='unknown-status')error.httpStatus=599;if(mode==='wrong-expected')error.expectedHttpStatus=202;if(mode==='unknown-business')error.businessErrorCode='PRIVATE_TOKEN';
+ if(mode==='status-getter')Object.defineProperty(error,'httpStatus',{get(){reads++;throw Error('private getter');}});
+ if(mode==='business-getter')Object.defineProperty(error,'businessErrorCode',{get(){reads++;throw Error('private getter');}});
+ const actual=mode==='proxy'?describePaymentDiagnostic(new Proxy(error,{get(){reads++;throw Error('private trap');},getOwnPropertyDescriptor(){reads++;throw Error('private trap');}})):describePaymentDiagnostic(error);
+ assert.deepEqual(actual,mode==='proxy'?undefined:['unknown-status','wrong-expected','status-getter'].includes(mode)?{}:{httpStatus:409,expectedHttpStatus:201,...(!['unknown-business','business-getter'].includes(mode)?{businessErrorCode:'PAYMENT_RESULT_UNCONFIRMED'}:{})});
+ assert.equal(reads,0);assert.doesNotMatch(JSON.stringify(actual??{}),/private|PRIVATE_TOKEN/u);
+ assert.deepEqual(filterPaymentDiagnostic({httpStatus:500,expectedHttpStatus:'201',rawBody:'private'}),{});
+});

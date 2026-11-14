@@ -72,12 +72,15 @@ const isPaymentFailureCode=code=>typeof code==='string'&&caseFailureCodes.has(co
 const observerPhases=new Set(['TX_START','SET_READ_ONLY','SNAPSHOT_ENTER','PAYMENT_REQUEST','SETTLEMENT','EXECUTIONS','FUNDING','ALLOCATIONS','EVENTS','ROOTS','FACTS','IMPACTS','AUDITS','OPENINGS','ACCOUNT_POSTINGS','TX_RETURN']);
 const prismaClasses=new Map([['PrismaClientKnownRequestError','KNOWN_REQUEST_ERROR'],['PrismaClientUnknownRequestError','UNKNOWN_REQUEST_ERROR'],['PrismaClientValidationError','VALIDATION_ERROR'],['PrismaClientInitializationError','INITIALIZATION_ERROR']]);
 const prismaCodes=new Set(['P1001','P1002','P1008','P1010','P1011','P1017','P2002','P2003','P2010','P2024','P2025','P2028','P2034']);
+const registrationStatuses=new Set([200,201,400,401,403,404,409,422,429,500,503]);
 const sqlStates=new Set(['42501','25006','25P02','40001','40P01','42P01','42703','57014']);
 function filterPaymentDiagnostic(value){
  const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode'),caseGate=own(value,'caseGate'),errorKind=own(value,'errorKind'),seedGate=own(value,'seedGate');
  const observerPhase=own(value,'observerPhase'),prismaErrorClass=own(value,'prismaErrorClass'),prismaCode=own(value,'prismaCode'),sqlState=own(value,'sqlState');
+ const status=own(value,'httpStatus'),expected=own(value,'expectedHttpStatus'),business=own(value,'businessErrorCode');
+ const http=registrationStatuses.has(status)&&expected===201?{httpStatus:status,expectedHttpStatus:201,...(status===409&&business==='PAYMENT_RESULT_UNCONFIRMED'?{businessErrorCode:business}:{})}:{};
  const timings={};if(observerPhases.has(observerPhase))for(const key of ['observerElapsedMs','txElapsedMs','lightCalls','lightElapsedMs','queryElapsedMs']){const n=own(value,key);if(Number.isInteger(n)&&n>=0&&n<=(key==='lightCalls'?128:3600000))timings[key]=n;}
- return Object.freeze({...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
+ return Object.freeze({...http,...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
   ...(isPaymentFailureCode(originCode)?{originCode}:{}),...(isPaymentCaseGate(caseGate)?{caseGate}:{}),
   ...(typeof errorKind==='string'&&errorKinds.has(errorKind)?{errorKind}:{}),
   ...(typeof seedGate==='string'&&seedGates.has(seedGate)?{seedGate}:{}),
@@ -88,6 +91,7 @@ function filterPaymentDiagnostic(value){
 function describePaymentDiagnostic(error){
  if(!error||typeof error!=='object'||types.isProxy(error))return undefined;
  const prior=remembered.get(error);if(!types.isNativeError(error))return prior;
+ if(own(error,'code')==='PG_CASE_REGISTRATION_HTTP_STATUS')return filterPaymentDiagnostic({...prior,httpStatus:own(error,'httpStatus'),expectedHttpStatus:own(error,'expectedHttpStatus'),businessErrorCode:own(error,'businessErrorCode')});
  const prismaErrorClass=prismaClasses.get(own(error,'name'));
  if(!prismaErrorClass)return prior;
  return filterPaymentDiagnostic({...prior,prismaErrorClass,prismaCode:own(error,'code'),sqlState:own(own(error,'meta'),'code')});

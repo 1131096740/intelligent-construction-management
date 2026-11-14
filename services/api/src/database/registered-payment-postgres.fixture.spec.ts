@@ -326,7 +326,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 });
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
-  it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
+  it.each(["normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
       "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
       "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
       "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
@@ -334,7 +334,9 @@ describe("registered PG original case: explicit observer projection protocol (no
       "competition-follow-up-wrong-payer-owned-json", "competition-follow-up-double-debit-owned-json", "competition-follow-up-ineligible-owned-json"])(
     "verifies the %s case through only the approved observer columns", async scenarioName => {
     const ownedJson = scenarioName.endsWith("-owned-json");
-    const scenario = ownedJson ? scenarioName.slice(0, -"-owned-json".length) : scenarioName;
+    const rawScenario = ownedJson ? scenarioName.slice(0, -"-owned-json".length) : scenarioName;
+    const registrationFailureStatus = /^normal-http-(500|400|403|409)$/u.exec(rawScenario)?.[1];
+    const scenario = registrationFailureStatus ? "normal" : rawScenario;
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
@@ -499,6 +501,7 @@ describe("registered PG original case: explicit observer projection protocol (no
           orphanImpact = scenario === "cancel-orphan-impact";
           return respond(scenario === "cancel-fake-success" ? 201 : 500, {});
         }
+        if (registrationFailureStatus) return respond(Number(registrationFailureStatus), { code: "PAYMENT_RESULT_UNCONFIRMED", message: "private response URL token", idempotencyKey: "private-key" });
         recorded = scenario !== "absent-db-fact";
         const response = respond(201, {});
         responseCancellations.push(jest.spyOn(response.body!, "cancel"));
@@ -627,6 +630,17 @@ describe("registered PG original case: explicit observer projection protocol (no
       }
       const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared, ownedJson ? continuity : undefined)
         : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
+      if (registrationFailureStatus) {
+        const failure: unknown = await run.catch((error: unknown) => error);
+        expect(failure).toBeInstanceOf(Error);
+        expect(Object.getOwnPropertyDescriptor(failure, "code")?.value).toBe("PG_CASE_REGISTRATION_HTTP_STATUS");
+        expect(Object.getOwnPropertyDescriptor(failure, "httpStatus")?.value).toBe(Number(registrationFailureStatus));
+        expect(Object.getOwnPropertyDescriptor(failure, "expectedHttpStatus")?.value).toBe(201);
+        expect(Object.getOwnPropertyDescriptor(failure, "businessErrorCode")?.value).toBe(registrationFailureStatus === "409" ? "PAYMENT_RESULT_UNCONFIRMED" : undefined);
+        expect(JSON.stringify(failure)).not.toMatch(/private response|private-key/u);
+        expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST"]);
+        return;
+      }
       if (scenario === "upstream-failure" || scenario === "absent-db-fact") {
         await expect(run).rejects.toThrow(scenario === "upstream-failure" ? "PG_CASE_RESPONSE_LOSS_BOUNDARY" : "PG_CASE_COMMITTED_GRAPH_COUNTS");
         const error = await run.catch((error: unknown) => error);
