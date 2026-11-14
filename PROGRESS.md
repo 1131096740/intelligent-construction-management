@@ -4,7 +4,7 @@
 
 ## 当前候选
 
-集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`。本轮仅集成T16 post-live有限诊断b3e及Auth87de/678两个净提交；16个源码blob/mode与作者一致。Auth通过新鲜491 stage顺序cherry-pick，未合入cfe08祖先，四个parked ACL/login文件仍逐字等于491。最终源码与本地进度已封板，准确候选指纹见本轮集成回执；待全新无API dist的完整prebuild门、API检查/构建及限定sealed-loader/Nest组件。每片最终双轴各0项，旧Auth P2及失败反例保留。
+集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`。本轮仅集成T16 post-live有限诊断b3e及Auth87de/678两个净提交；16个源码blob/mode与作者一致。Auth通过新鲜491 stage顺序cherry-pick，未合入cfe08祖先，四个parked ACL/login文件仍逐字等于491。原562候选的全新无API dist完整prebuild已2027通过/0失败/1既有skip，类型、lint和API构建通过；首次Auth组件缺临时key、补齐受限环境后负例sticky错误期望不符的两次真实失败均保留。本轮仅追加4ea观测测试修订，三个固定case各用独立Node图，精确区分首次拒绝与后继sticky；ff333单scope有限通过、ac42同进程PRELOADED失败也保留。其余15源码及7生产文件与全部API/shared编译产物、Schema/SDK未变，按增量规程继承未受影响562前置门；最终候选只复验该组件，准确指纹及结果见本轮集成回执，新远端完整CI仍待。每片最终双轴各0项，旧Auth P2及失败反例保留。
 
 前次准确491d6d0c/tree488a747c的CI43588768732自然32/32成功、PR428仍Draft；该证据只绑定旧491，不能外推本轮候选或两条实际业务验收。用户根目录及无关改动未纳入本轮。
 
