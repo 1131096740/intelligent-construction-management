@@ -16,12 +16,15 @@ test('the original owned document app inspects same ordinary AUTH receivers and 
   assert.equal(proof.auth.prisma,ordinary);assert.equal(proof.rateLimits.prisma,ordinary);assert.equal(proof.authController.auth,proof.auth);
   assert.equal(proof.moduleAuth,proof.auth);assert.equal(proof.moduleAuthFilter,proof.authFilter);assert.equal(proof.moduleAuthInterceptor,proof.authInterceptor);assert.equal(proof.authInterceptor.filter,proof.authFilter);assert.equal(proof.verifyAuthDiagnosticReceiver(),true);
   assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,{},server),/CURRENT259_FRAMEWORK_CHANGED/u);
-  assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,{}),/CURRENT259_FRAMEWORK_CHANGED/u);
   let traps=0;assert.equal(inspectCurrent259OwnedDocumentAuthProviders(new Proxy({}, {get(){traps++;throw Error('trap');}}),testing,server),undefined);assert.equal(traps,0);
   Object.defineProperty(proof.auth,'login',{value(){},configurable:true});
-  assert.throws(()=>proof.verifyAuthDiagnosticReceiver(),/CURRENT259_FRAMEWORK_CHANGED/u);
-  assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),/CURRENT259_FRAMEWORK_CHANGED/u);
+  // This must be the first guarded-operation rejection: an earlier wrong-server
+  // call would poison the loader and hide whether the shadow itself was caught.
+  assert.throws(()=>proof.verifyAuthDiagnosticReceiver(),{code:'CURRENT259_FRAMEWORK_CHANGED',message:'CURRENT259_FRAMEWORK_CHANGED'});
+  assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),{code:'CURRENT259_LOADER_CHANGED',message:'CURRENT259_LOADER_CHANGED'});
+  assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,{}),{code:'CURRENT259_LOADER_CHANGED',message:'CURRENT259_LOADER_CHANGED'});
   delete proof.auth.login;
+  assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),{code:'CURRENT259_LOADER_CHANGED',message:'CURRENT259_LOADER_CHANGED'});
  }finally{await view.close();}
- assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),/CURRENT259_FRAMEWORK_CHANGED/u);
+ assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),{code:'CURRENT259_LOADER_CHANGED',message:'CURRENT259_LOADER_CHANGED'});
 });
