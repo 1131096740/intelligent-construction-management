@@ -4,9 +4,9 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确19fa9432的CI43533660352已自然32/32成功，仅绑定该SHA。本地SCOPE诊断源码`f3b75d5f39a7efb0bc21e2b06eeaafc1e58cf130`已两轴独审0项并集成，五blob与作者一致，新候选准确CI待。Draft PR428保持，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
-- 任务16：19fa normal原91840真实exit1/2057.171秒，在OBSERVER_BEFORE报OTHER_NATIVE_ERROR，业务仍UNKNOWN；seed函数及后置已返回、本轮未现B reset，不等于funding全链或旧物理cause已证明。原receipt SHA256 `04e90d46dbb702f31dcfaba6def73fe513cc9e4d2143ab49966b234e72afef53`、controller清理completed与root同daemon独核80a4准确容器/网络/PID/relay缺席分别保留。205次轮询首6.110秒、后最大10.068秒均不超过30秒。下一步仅source-only DMMF/observer query/ACL诊断，无新PG或计划，不重发旧键。
-- 任务12：原3893 SCOPE失败UNKNOWN、87.110秒监控偏差及其他旧回执保留。新f3仅给原HbaScope固定predicate/subphase加元数据并在精确CONSUME严格接收，PRIVATE_SCOPE内部仍opaque；原首因、UNKNOWN、条件短路顺序及次数不变，无新export/hook/proof值。202项相关/type/lint通过，8模型旧新完整trace及SQL字节等同；这些不证明native私有scope或真实内因已修。helper pin仅固定标量c90→fac2acc5，driver/validator不变，零hash/单字节负控仍拒绝；registry仍PENDING。当前无live资源，旧0e/E26资格不跨用，待准确新资格与CI后再完整life。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确`3a2bffc9cdfaaf5d7457d1f8924426107bff918d`的CI43540468884已自然32/32成功，仅绑定该SHA。最小端口诊断源码`448c016909f29e712982a27f287689e9f61a3c02`已两轴独审0项并集成，三blob/mode与作者一致；新候选准确CI待，旧SCOPE诊断证据保留。Draft PR428保持，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
+- 任务16：19fa normal原91840真实exit1/2057.171秒，在OBSERVER_BEFORE报OTHER_NATIVE_ERROR，业务仍UNKNOWN；seed函数及后置已返回、本轮未现B reset，不等于funding全链或旧物理cause已证明。原receipt SHA256 `04e90d46dbb702f31dcfaba6def73fe513cc9e4d2143ab49966b234e72afef53`、controller清理completed与root同daemon独核80a4准确资源缺席分别保留。205次轮询首6.110秒、后最大10.068秒均不超过30秒。DMMF/observer query/ACL静态诊断未见明确缺口，不猜P2028。新最小PG组件原77559真实exit1/17.418秒，在原factory published-port-probe/nonzero-exit停止，未进入DDL或SDK正负控；原清理completed且root独核1c5a准确资源/两进程缺席。新448仅补该启动点的封闭exitCode/stderrKind诊断，原单次命令及10000ms不变，非零仍首错停止；60项resource、包门及81项pin/manifest门通过，不证明原端口或PG根因已修。下一步新准确候选窄取证，不原样盲跑或重发旧键。
+- 任务12：原3893 SCOPE失败UNKNOWN、87.110秒监控偏差及其他旧回执保留。新f3仅给原HbaScope固定predicate/subphase加元数据，PRIVATE_SCOPE内部仍opaque；原首因、UNKNOWN、条件短路顺序及次数不变。202项相关/type/lint、8模型旧新trace/SQL等同与pin正负控通过，未证明真实内因已修。新3a2工具资格真实0/120.582秒；root核493原件/mirror、60PNG及第二PDF解析15/15/30页A4，仅限定样张。metadata-only`5c849b95c10a8c2492c83c8bcd5a0a0202e1bad6`仅登记变化、其余3937blob同3a2，source witness另重绑。新plan b1b1c93c PREPARE/VERIFY均0，原session8047于01:54:16Z启动完整life并持续10秒自动观察；root独核9bfdb080准确资源归属。仍运行，尚无新业务通过；3a2 CI不冒称5c84 CI。
 
 - 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门按准确源码证据承接，merger未重复测试；CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
 
