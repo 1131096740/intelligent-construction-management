@@ -27,7 +27,8 @@ test('current259 supplies the same effective read plan to future role installers
  const before=new Set(permissions(historical.runtime).map(row=>JSON.stringify(row)));
  const after=new Set(permissions(effective.runtime).map(row=>JSON.stringify(row)));
  assert.deepEqual([...after].filter(row=>!before.has(row)).map(row=>JSON.parse(row)),[
-  ['ContractVersion','originalSignedNumber','SELECT']
+  ['ContractProxyExecution','id','SELECT'],['ContractVersion','originalSignedNumber','SELECT'],
+  ['PaymentExecutionAllocation','id','SELECT'],['ProjectProxyPayment','id','SELECT']
  ]);
  assert.deepEqual([...before].filter(row=>!after.has(row)),[]);
  const beforeObserver=new Set(permissions(historical.observer).map(row=>JSON.stringify(row)));
@@ -56,6 +57,7 @@ const plan=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-registered-acc
 // Current SDK default scalar reads include the original signed number. This
 // observation is independent of the historical permission matrix on disk.
 plan.runtime.tables.find(table=>table.table==='ContractVersion').select.push('originalSignedNumber');
+for(const table of ['ProjectProxyPayment','ContractProxyExecution','PaymentExecutionAllocation'])plan.runtime.tables.find(row=>row.table===table).select.push('id');
 // Mirror only the observed SDK allocation-PK read in this independent catalog protocol fixture.
 plan.observer.tables.find(table=>table.table==='RegisteredFundPaymentAllocation').select.push('id');
 plan.observer.tables.find(table=>table.table==='AuditLog').select.push('id');
@@ -442,4 +444,47 @@ for(const mutation of ['missing-pk','observer-write','outside-column','table-gra
  else if(mutation==='readonly-off')row.roles.find(role=>role.name==='jg_task01_observer').readOnlyDefault=false;
  else row.capabilities=sort([...row.capabilities,['jg_task01_observer',mutation==='table-grant'?'table':'column','AuditLog',mutation==='outside-column'?'private_unapproved_column':mutation==='table-grant'?'':'id',mutation==='observer-write'?'UPDATE':'SELECT',false]]);
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);
+});
+
+test('runtime proxy reads add only the three native required PK columns without other authority',()=>{
+ const historical=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-registered-access.json'),'utf8'));
+ const expected=structuredClone(historical.runtime);
+ for(const [table,column] of [['ContractVersion','originalSignedNumber'],['ContractProxyExecution','id'],['PaymentExecutionAllocation','id'],['ProjectProxyPayment','id']]){
+  const row=expected.tables.find(row=>row.table===table);assert.equal(row.select.includes(column),false);row.select.push(column);row.select.sort();
+ }
+ const effective=api.loadCurrent259CatalogMaterial(source).accessPlan;
+ assert.deepEqual(effective.runtime,expected);
+ assert.deepEqual(effective.runtime.functions,historical.runtime.functions);
+ assert.equal(Object.isFrozen(effective.runtime.tables),true);
+});
+
+for(const table of ['ProjectProxyPayment','ContractProxyExecution','PaymentExecutionAllocation']){
+ for(const [label,change] of [
+  ['missing runtime PK',r=>{r.capabilities=r.capabilities.filter(c=>!(c[0]==='jg_task01_runtime'&&c[2]===table&&c[3]==='id'&&c[4]==='SELECT'));}],
+  ['runtime PK update',r=>r.capabilities.push(['jg_task01_runtime','column',table,'id','UPDATE',false])],
+  ['observer PK expansion',r=>r.capabilities.push(['jg_task01_observer','column',table,'id','SELECT',false])],
+  ['whole table select',r=>r.capabilities.push(['jg_task01_runtime','table',table,'','SELECT',false])]
+ ])test(`catalog rejects ${table} ${label}`,()=>{const row=observed();change(row);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);});
+}
+
+test('runtime PK manifest decoder remains closed after a separately rebound file digest',()=>{
+ const os=require('node:os'),temporary=fs.mkdtempSync(path.join(os.tmpdir(),'current259-proxy-pk-'));
+ try{
+  const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-current259-access.json'),'utf8'));
+  const files=[...manifest.files.map(x=>x.path),'services/api/prisma/task16-current259-catalog.cjs','services/api/prisma/task16-current259-access.json',
+   'services/api/prisma/task16-current261-competition-profile.cjs','services/api/prisma/schema.prisma',...migrations.map(x=>x.path)];
+  for(const relative of files){const to=path.join(temporary,relative);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(root,relative),to);}
+  const catalogPath=path.join(temporary,'services/api/prisma/task16-current259-catalog.cjs');
+  const manifestPath=path.join(temporary,'services/api/prisma/task16-current259-access.json');
+  const originalCatalog=fs.readFileSync(catalogPath,'utf8');
+  const mutations=[m=>m.runtimeSelectAdditions.pop(),m=>m.runtimeSelectAdditions.push({table:'User',select:['id']}),
+   m=>m.runtimeSelectAdditions[1].select.push('amountCents'),m=>m.runtimeSelectAdditions.reverse(),
+   m=>m.runtimeSelectAdditions.push(m.runtimeSelectAdditions[1])];
+  for(const mutate of mutations){
+   const changed=structuredClone(manifest);mutate(changed);const bytes=Buffer.from(JSON.stringify(changed));fs.writeFileSync(manifestPath,bytes);
+   fs.writeFileSync(catalogPath,originalCatalog.replace(/MANIFEST_SHA='[a-f0-9]{64}'/u,`MANIFEST_SHA='${hash(bytes)}'`));
+   delete require.cache[require.resolve(catalogPath)];const isolated=require(catalogPath);
+   assert.throws(()=>isolated.loadCurrent259CatalogMaterial(source),/TASK16_CURRENT259_CATALOG/u);
+  }
+ }finally{fs.rmSync(temporary,{recursive:true,force:true});}
 });
