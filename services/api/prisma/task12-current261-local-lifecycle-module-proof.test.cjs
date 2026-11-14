@@ -60,3 +60,13 @@ test('actual loader check and checkContinuity bodies reject auth descriptor muta
   const check=new Function('context','with(context){return ('+body+');}')(context);assert.throws(()=>check({},{}),e=>e.code==='CURRENT259_LOADER_CHANGED');assert.equal(traps,0,target);assert.ok(!calls.includes('material')&&!calls.includes('visit'));
  }
 });
+
+test('first-owned-load phase/service baseline exists before filter load and is never adopted again',()=>{
+ const api=require('./task12-current261-local-lifecycle-module-proof.cjs'),root='/private/tmp/auth-initial-closure-model',cache={};
+ const phase={filename:path.join(root,'services/api/dist/database/task12-auth-transaction-phase.js'),loaded:true,exports:{observeTask12AuthTransaction(){},takeTask12AuthTransactionPhase(){}},children:[]};
+ const service={filename:path.join(root,'services/api/dist/auth/auth-rate-limit.service.js'),loaded:true,exports:{},children:[phase]};cache[phase.filename]=phase;cache[service.filename]=service;
+ const initial=api.captureCurrent261AuthTransactionBaseClosure(root,cache);initial();
+ const filter={filename:path.join(root,'services/api/dist/database/task12-auth-error-diagnostic.js'),loaded:true,exports:{},children:[phase]};cache[filter.filename]=filter;
+ const full=api.captureCurrent261AuthTransactionClosure(root,cache);initial();full();
+ let traps=0;Object.defineProperty(phase,'exports',{get(){traps++;return{};}});assert.throws(initial,/MODULE_SOURCE/u);assert.throws(full,/MODULE_SOURCE/u);assert.equal(traps,0);
+});

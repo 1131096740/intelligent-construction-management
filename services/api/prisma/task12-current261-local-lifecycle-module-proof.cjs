@@ -22,9 +22,11 @@ function assertCurrent261LocalLifecycleToolClosure(root,modules,cache){
  const reaches=mod=>{if(mod===own(modules,'profile'))return true;if(visited.has(mod))return false;visited.add(mod);need(visited.size<=1000);return children(mod).some(reaches);};
  need(reaches(own(modules,'runtime')));
 }
-function captureCurrent261AuthTransactionClosure(root,cache){
- need(arguments.length===2&&typeof root==='string'&&path.isAbsolute(root));
- const names=['database/task12-auth-transaction-phase.js','auth/auth-rate-limit.service.js','database/task12-auth-error-diagnostic.js'];
+function captureCurrent261AuthTransactionBaseClosure(root,cache){need(arguments.length===2);return captureAuthTransactionClosure(root,cache,false);}
+function captureCurrent261AuthTransactionClosure(root,cache){need(arguments.length===2);return captureAuthTransactionClosure(root,cache,true);}
+function captureAuthTransactionClosure(root,cache,withFilter){
+ need(typeof root==='string'&&path.isAbsolute(root));
+ const names=['database/task12-auth-transaction-phase.js','auth/auth-rate-limit.service.js',...(withFilter?['database/task12-auth-error-diagnostic.js']:[])];
  const descriptor=(v,k)=>{own(v,k);return Object.freeze({...Object.getOwnPropertyDescriptor(v,k)});};
  const same=(v,k,d)=>{const now=descriptor(v,k);need(['value','writable','enumerable','configurable'].every(f=>now[f]===d[f]));return now.value;};
  const slots=names.map(name=>{const file=path.join(root,'services/api/dist',name),slot=descriptor(cache,file),mod=slot.value;
@@ -37,4 +39,4 @@ function captureCurrent261AuthTransactionClosure(root,cache){
  };
  check();return check;
 }
-module.exports=Object.freeze({assertCurrent261LocalLifecycleToolClosure,captureCurrent261AuthTransactionClosure});
+module.exports=Object.freeze({assertCurrent261LocalLifecycleToolClosure,captureCurrent261AuthTransactionBaseClosure,captureCurrent261AuthTransactionClosure});

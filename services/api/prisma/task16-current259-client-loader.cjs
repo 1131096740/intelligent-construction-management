@@ -82,6 +82,18 @@ function loadCurrent259Client(handle){
   records.push({module:mod,key,value});values[key]=value;
   if(i===0){const token=own(exports,'Task16ImpactReaderToken');need(typeof token==='symbol','CURRENT259_LOADER_EXPORT');records.push({module:mod,key:'Task16ImpactReaderToken',value:token});values.Task16ImpactReaderToken=token;for(const key of ['Task16RegistrationErrorFilter','armTask16RegistrationError','takeTask16RegistrationError']){const value=own(exports,key);need(typeof value==='function','CURRENT259_LOADER_EXPORT');records.push({module:mod,key,value});values[key]=value;}}
  }
+ // AuthModule has already loaded the real rate-limit service/phase module.
+ // Pin that first owned load before any graph walk or initial facade is exposed.
+ const authProof=require('./task12-current261-local-lifecycle-module-proof.cjs');
+ const captureBaseAuthClosure=own(authProof,'captureCurrent261AuthTransactionBaseClosure'),captureFullAuthClosure=own(authProof,'captureCurrent261AuthTransactionClosure');
+ const authCacheDescriptor=Object.freeze({...Object.getOwnPropertyDescriptor(require,'cache')});
+ need(Object.hasOwn(authCacheDescriptor,'value')&&authCacheDescriptor.value&&!types.isProxy(authCacheDescriptor.value),'CURRENT259_LOADER_EXPORT');
+ const verifyBaseAuthClosure=captureBaseAuthClosure(root,authCacheDescriptor.value);let verifyDocumentAuthClosure;
+ const checkAuthTransactionClosure=()=>{
+  const now=Object.getOwnPropertyDescriptor(require,'cache');
+  need(now&&['value','writable','enumerable','configurable'].every(key=>now[key]===authCacheDescriptor[key]),'CURRENT259_LOADER_EXPORT');
+  verifyBaseAuthClosure();verifyDocumentAuthClosure?.();
+ };
  // Pin the shared pure decoder before any caller can mutate a same-object export.
  const diagnosticModule=require.cache[path.join(root,'services/api/dist/database/task16-registration-error-diagnostic.js')];
  need(diagnosticModule&&!types.isProxy(diagnosticModule)&&own(diagnosticModule,'loaded')===true,'CURRENT259_LOADER_EXPORT');
@@ -135,7 +147,7 @@ function loadCurrent259Client(handle){
   const visited=new Set();
   for(const mod of roots)visit(mod,visited);
  }
- visitRoots();
+ checkAuthTransactionClosure();visitRoots();
  // Preserve the existing exact Nest composition and all six global guards.
   need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype,"TASK16_APP_PRISMA_CLASS");
   reflection={get:Reflect.getMetadata,define:Reflect.defineMetadata};need(typeof reflection.get==='function'&&typeof reflection.define==='function',"TASK16_APP_REFLECTION_CHANGED");
@@ -164,11 +176,11 @@ function loadCurrent259Client(handle){
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
- let contract,document,lifeDocument,ordinaryTestingUsed=false,checkAuthTransactionClosure;
+ let contract,document,lifeDocument,ordinaryTestingUsed=false;
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
-   checkAuthTransactionClosure?.();
+   checkAuthTransactionClosure();
    material.checkLight();visitRoots();
    for(const row of files.values())need(require.cache[row.path]===row.module&&row.module.exports===row.exports,'CURRENT259_LOADER_MODULE');
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2'&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine,'CURRENT259_LOADER_CLASS');
@@ -183,7 +195,7 @@ function loadCurrent259Client(handle){
   try{
    businessIssuer(token,ownedHandle);
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
-   checkAuthTransactionClosure?.();
+   checkAuthTransactionClosure();
    material.checkContinuity(token,ownedHandle);
    const seen=new Set();
    const visitIdentity=mod=>{if(seen.has(mod))return;seen.add(mod);const row=files.get(mod?.filename);
@@ -208,7 +220,7 @@ function loadCurrent259Client(handle){
  }
  const expectedRequest=Object.freeze(['database/task16-registered-application.module.js','database/prisma.service.js','api-security.js','operating-projection/projection-export-json.js','api-json-replacer.js','validation/api-validation.js','api-listen.js'].map((p,i)=>Object.freeze({name:['application','database','security','projection','json','validation','listen'][i],path:'services/api/dist/'+p})));
  const loadApplicationModules=request=>{check();need(JSON.stringify(request)===JSON.stringify(expectedRequest),'TASK16_APP_FIXED_ENTRIES');return exportedValues;};
- function collect(){visitRoots();check();}
+ function collect(){checkAuthTransactionClosure();visitRoots();check();}
  function loadContractApplicationModules(){
   need(arguments.length===0&&!document,'CURRENT259_CONTRACT_FIXED_ENTRIES');check();
   if(contract)return contract.exports;
@@ -313,14 +325,11 @@ function loadCurrent259Client(handle){
      documentValues[key]=value;
     }
    }
-   const authCacheDescriptor=Object.freeze({...Object.getOwnPropertyDescriptor(require,'cache')});
-   need(Object.hasOwn(authCacheDescriptor,'value')&&authCacheDescriptor.value&&!types.isProxy(authCacheDescriptor.value),code);
-   const verifyAuthClosure=require('./task12-current261-local-lifecycle-module-proof.cjs').captureCurrent261AuthTransactionClosure(root,authCacheDescriptor.value);
-   checkAuthTransactionClosure=()=>{
-    const now=Object.getOwnPropertyDescriptor(require,'cache');
-    need(now&&['value','writable','enumerable','configurable'].every(key=>now[key]===authCacheDescriptor[key]),code);
-    verifyAuthClosure();
-   };
+   // Verify the first phase/service baseline before adding the first legitimate
+   // filter edge. The base guard remains the same closure for this whole loader.
+   checkAuthTransactionClosure();
+   verifyDocumentAuthClosure=captureFullAuthClosure(root,authCacheDescriptor.value);
+   checkAuthTransactionClosure();
    const {Task12GeneratedDocumentApplicationModule:rootClass,ContractModule,ContractTemplateModule,
     ContractTemplateController,ContractTemplateService,ContractScenarioService,LayoutTemplateService,
     ContractDocumentWorkerModule,ContractDocumentProcessor,ContractDocumentModule,ContractDocumentService,
