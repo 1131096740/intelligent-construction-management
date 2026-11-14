@@ -1,12 +1,12 @@
 'use strict';
 // Public main-entry port fixture shared by source-flow and actual technical HTTP tests.
 // It grants no PG/native/business authority.
-const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{createRequire}=require('node:module');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{createHash}=require('node:crypto'),{createRequire}=require('node:module');
 const prismaDir=path.resolve(__dirname,'../prisma'),requireAtPrisma=createRequire(path.join(prismaDir,'task12-current261-local-lifecycle-once.test.cjs'));
 const entry=path.join(prismaDir,'task12-current261-local-lifecycle-once.cjs'),id='12345678-1234-4234-8234-123456789012',digest='a'.repeat(64),runtimeDigest='b'.repeat(64);
 const sha=v=>createHash('sha256').update(v).digest('hex'),today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
 function model(t,{once=true,failure,applicationFailure,cleanupFailure=false,used=false,date=today(),continuityProbe,httpFailureApi,applicationRun}={}){
- const root=fs.mkdtempSync('/private/tmp/jg-life-once-model-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'jg-life-once-model-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const run=path.join(root,'lifecycle-run'),toolRun=path.join(root,'tool-run');fs.mkdirSync(run,{mode:0o700});fs.mkdirSync(toolRun,{mode:0o700});
  const plan={source:{candidateSha:'c'.repeat(40)},case:{id,businessDate:date},resource:{daemonId:'model-daemon'},runtime:{sha256:runtimeDigest,runRoot:toolRun},run:{root:run,resourceDir:path.join(run,'resource'),attemptFile:path.join(run,'attempt.json'),receiptFile:path.join(run,'receipt.json')}};
  plan.runtime.file=path.join(root,'runtime.json');fs.writeFileSync(plan.runtime.file,'runtime',{mode:0o600});

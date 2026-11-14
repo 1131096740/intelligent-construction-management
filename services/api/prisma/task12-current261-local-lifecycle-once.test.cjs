@@ -215,3 +215,29 @@ test('actual fresh contract main revokes on application failure and refuses modi
   assert.throws(()=>f.api.assertCurrent261ContractBusinessContinuity(f.token,{}));
  }
 });
+
+test('shared main model uses an exclusive canonical TMPDIR when the platform private temp prefix is unavailable',async t=>{
+ const os=require('node:os'),{execFile}=require('node:child_process'),{promisify}=require('node:util');
+ const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'jg-life-model-tmpdir-'));
+ t.after(()=>fs.rmSync(temporary,{recursive:true,force:true}));
+ const helper=path.resolve(__dirname,'../test-support/task12-lifecycle-main-model.cjs');
+ const child=String.raw`
+  const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+  const helper=process.argv[1],callbacks=[],modulePort={exports:{}};
+  // Only this fixture's filesystem port models the absent platform path. The
+  // host filesystem, globals, production checks and other tests stay untouched.
+  const fsPort={...fs,mkdtempSync(prefix,...args){
+   if(prefix==='/private/tmp/jg-life-once-model-')throw Object.assign(Error('SIMULATED_PLATFORM_TEMP_UNAVAILABLE'),{code:'ENOENT'});
+   return fs.mkdtempSync(prefix,...args);
+  }};
+  new Function('require','module','__dirname',fs.readFileSync(helper,'utf8'))(name=>name==='node:fs'?fsPort:require(name),modulePort,path.dirname(helper));
+  (async()=>{try{
+   const f=modulePort.exports.model({after(fn){callbacks.push(fn);}}),result=await f.result();
+   const root=path.dirname(f.plan.run.root),canonical=fs.realpathSync(process.env.TMPDIR);
+   assert.equal(path.dirname(root),canonical);assert.ok(path.basename(root).startsWith('jg-life-once-model-'));
+   assert.equal(fs.realpathSync(root),root);assert.equal(result.status,'CURRENT261_LOCAL_LIFECYCLE_PROTOCOL_COMPLETE');assert.equal(result.outcome.full394Accepted,false);
+  }finally{for(const cleanup of callbacks.reverse())cleanup();}})().catch(error=>{console.error(error);process.exitCode=1;});
+ `;
+ const result=await promisify(execFile)(process.execPath,['-e',child,helper],{env:{PATH:path.dirname(process.execPath)+':/usr/bin:/bin',TMPDIR:temporary,LANG:'en_US.UTF-8'},timeout:10000,maxBuffer:1024*1024});
+ assert.equal(result.stdout,'');assert.equal(result.stderr,'');assert.deepEqual(fs.readdirSync(temporary),[]);
+});
