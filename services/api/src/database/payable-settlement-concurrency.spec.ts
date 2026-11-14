@@ -1,3 +1,5 @@
+import { CompanyEntityService } from "../company-entity/company-entity.service";
+import { CompanyEntityAccess } from "../company-entity/company-entity-access";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -674,9 +676,14 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).resolves.toBe(1);
   });
 
-  it("confirms a cross-company service path while reusing voucher and authorization evidence", async () => {
+  it("confirms a cross-company service path while reusing voucher and authorization evidence", () => confirmCrossCompanyService(true));
+
+  // Prepared only: the existing explicit RUN_PAYABLE_SETTLEMENT_DATABASE gate remains mandatory.
+  it("task07 continues a frozen cross-company payment after both directory companies stop new selections", () => confirmCrossCompanyService(false));
+
+  async function confirmCrossCompanyService(directoryActive: boolean) {
     const fixture = await createEligibleServiceFixture(observer, 1_000n, true);
-    const authority = await createPayerAuthority(observer, fixture);
+    const authority = await createPayerAuthority(observer, fixture, fixture.executionPayerCreditCode);
     const createdAuthority = await issuePayerAuthority(observer, authority);
     const reauthorizerUserId = randomUUID();
     const confirmerUserId = randomUUID();
@@ -754,6 +761,19 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         reauthorizedAt: new Date("2026-08-27T08:30:00.000Z")
       }
     });
+    if (!directoryActive) {
+      const chairman = await observer.position.upsert({ where: { key: "chairman" }, update: {}, create: { key: "chairman", name: "董事长" } });
+      await observer.userPosition.create({ data: { userId: fixture.actorUserId, positionId: chairman.id, projectId: null } });
+      const companies = new CompanyEntityService(observer as never, new CompanyEntityAccess(observer as never), new AuditService());
+      const frozen = await observer.contractVersion.findUniqueOrThrow({ where: { id: fixture.contractVersionId } });
+      const before = await observer.companyEntityVersion.findUniqueOrThrow({ where: { id: frozen.companyEntityVersionId! } });
+      for (const id of [fixture.debtorCompanyId, fixture.executionPayerCompanyId]) {
+        await expect(companies.updateStatus(id, fixture.actorUserId, { isActive: false })).resolves.toMatchObject({
+          entity: { id, isActive: false, currentVersionNo: 2 }, unchanged: false
+        });
+      }
+      expect(await observer.companyEntityVersion.findUnique({ where: { id: before.id } })).toEqual(before);
+    }
     const service = realService(
       observer,
       new AuditService(),
@@ -820,7 +840,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
       select: { evidenceFileId: true }
     });
     expect(relationship.evidenceFileId).toBe(execution.voucherFileId);
-  });
+  }
 
   it("rolls back case, allocation, receipt and audit when the real service audit step fails", async () => {
     const fixture = await createEligibleServiceFixture(observer, 1_000n);
@@ -1163,7 +1183,8 @@ async function createFixture(
 
 async function createPayerAuthority(
   client: DatabaseClient,
-  fixture: Pick<Fixture, "debtorCompanyId" | "executionPayerCompanyId">
+  fixture: Pick<Fixture, "debtorCompanyId" | "executionPayerCompanyId">,
+  holderCreditCodeSnapshot = "91310000DYNAMICGATE"
 ): Promise<Omit<PayerAuthority, "createdAt">> {
   const verifierUserId = randomUUID();
   const verificationEvidenceFileId = randomUUID();
@@ -1190,7 +1211,7 @@ async function createPayerAuthority(
     holderNameSnapshot: fixture.executionPayerCompanyId === fixture.debtorCompanyId
       ? "动态门付款主体"
       : "动态门实际付款主体",
-    holderCreditCodeSnapshot: "91310000DYNAMICGATE",
+    holderCreditCodeSnapshot,
     verificationReference: `bank-check-${randomUUID()}`,
     verifiedByUserId: verifierUserId,
     verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
@@ -1360,6 +1381,9 @@ async function createEligibleServiceFixture(
   const actorUserId = randomUUID();
   const companyId = randomUUID();
   const executionPayerCompanyId = crossCompany ? randomUUID() : companyId;
+  const executionPayerCreditCode = crossCompany
+    ? `DYN${executionPayerCompanyId.replace(/-/g, "").slice(0, 15).toUpperCase()}`
+    : "91310000DYNAMICGATE";
   const companyVersionId = randomUUID();
   const projectId = randomUUID();
   const businessPartyId = randomUUID();
@@ -1408,7 +1432,8 @@ async function createEligibleServiceFixture(
     data: {
       id: companyId,
       name: "动态门付款主体",
-      unifiedSocialCreditCode: `DYN${companyId.replace(/-/g, "").slice(0, 15)}`
+      unifiedSocialCreditCode: `DYN${companyId.replace(/-/g, "").slice(0, 15)}`,
+      currentVersionNo: 1
     }
   });
   await client.companyEntityVersion.create({
@@ -1428,7 +1453,19 @@ async function createEligibleServiceFixture(
       data: {
         id: executionPayerCompanyId,
         name: "动态门实际付款主体",
-        unifiedSocialCreditCode: "91310000DYNAMICGATE"
+        unifiedSocialCreditCode: executionPayerCreditCode,
+        currentVersionNo: 1
+      }
+    });
+    await client.companyEntityVersion.create({
+      data: {
+        companyEntityId: executionPayerCompanyId,
+        versionNo: 1,
+        name: "动态门实际付款主体",
+        unifiedSocialCreditCode: executionPayerCreditCode,
+        isActive: true,
+        action: "create",
+        actorUserId
       }
     });
   }
@@ -1654,7 +1691,7 @@ async function createEligibleServiceFixture(
       paymentSubjectType: "our_company",
       companyEntityIdSnapshot: executionPayerCompanyId,
       companyEntityNameSnapshot: crossCompany ? "动态门实际付款主体" : "动态门付款主体",
-      companyEntityCreditCodeSnapshot: "91310000DYNAMICGATE",
+      companyEntityCreditCodeSnapshot: executionPayerCreditCode,
       amountCents,
       paidAt: new Date(),
       executedByUserId: actorUserId,
@@ -1693,6 +1730,7 @@ async function createEligibleServiceFixture(
     payableRef,
     paymentExecutionId,
     executionPayerCompanyId,
+    executionPayerCreditCode,
     debtorCompanyId: companyId,
     paymentRequestId,
     contractId,

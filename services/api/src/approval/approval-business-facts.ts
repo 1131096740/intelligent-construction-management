@@ -1,3 +1,4 @@
+import { generalRequestEstimateText } from "../general-procurement/general-procurement-request-facts";
 import type { Prisma } from "@prisma/client";
 import { BadRequestException } from "@nestjs/common";
 import { formatMoneyCentsAsYuan } from "../money/decimal-money";
@@ -87,8 +88,9 @@ export async function additionalApprovalFacts(
   const money = (amount: bigint) => `${formatMoneyCentsAsYuan(amount)} 元`;
   if (businessType === "general_procurement") {
     const row = await tx.generalProcurement.findUniqueOrThrow({ where: { id: businessId } });
-    projectId = row.projectId; code = row.code; companyName = row.companyNameSnapshot; applicantName = row.applicantNameSnapshot;
-    summary.push({ label: "采购内容及原因", value: row.reason }, { label: "申请金额", value: money(row.requestedAmountCents) });
+    projectId = row.projectId; code = row.code; companyName = row.companyNameSnapshot ?? "待明确承担公司"; applicantName = row.applicantNameSnapshot;
+    summary.push({ label: "采购内容及原因", value: row.reason || "详见采购清单" }, { label: row.requestProtocolVersion === 2 ? "申请预计金额" : "申请金额", value: row.requestProtocolVersion === 2 ? generalRequestEstimateText(row.estimatedAmount) ?? "待明确" : row.requestedAmountCents == null ? "待明确" : money(row.requestedAmountCents) });
+    if (row.requestProtocolVersion === 2 && row.scope === "company_daily") summary.push({ label: "采购范围", value: "公司日常" });
   } else if (businessType === "project_expense_request") {
     const row = await tx.projectExpenseRequest.findUniqueOrThrow({ where: { id: businessId } });
     projectId = row.projectId; code = row.code;

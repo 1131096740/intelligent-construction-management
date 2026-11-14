@@ -1,16 +1,38 @@
+import { UPWARD_DIRECT_ARCHIVE_AUTHORITY, type UpwardDirectArchiveAuthority } from "../contract/contract-upward-direct-registration";
+import { readUpwardArchiveAdmission } from "../contract/contract-upward-direct-archive-native";
+import { DIRECT_ARCHIVE_EXECUTOR, type DirectArchiveExecutor } from "../contract/contract-direct-archive-executor";
+import { readDirectArchiveNativeAdmission } from "../contract/contract-direct-archive-native-admission";
+import { hasDirectOutsideOperatingExecutor } from "../contract/contract-direct-outside-operating-executor-qualification";
+import { assertDirectArchiveSourceScope } from "../contract/contract-direct-archive-scope";
+import { readDirectArchivePreflightProfile } from "../contract/contract-direct-archive-writer-profile";
+import { assertUpwardPendingSaveContinuity, discoverUpwardPendingSave, qualifyUpwardPendingSave } from "../contract/contract-upward-pending-save-profile";
+import { saveUpwardPendingAggregate, UPWARD_PENDING_SAVE_ACTIONS } from "../contract/contract-upward-pending-save";
+import { readUpwardPendingSubjects } from "../contract/contract-upward-pending-subjects";
+import { resolveGovernedFinalArchiveAccess } from "../contract/contract-final-archive-access";
+import { emptyUpwardDirectPendingRead, isUpwardDirectPendingDraft, readUpwardDirectPending } from "../contract/contract-upward-pending-read";
+import { saveDirectPendingAggregate, readDirectPendingInput } from "../contract/contract-direct-pending-save";
+import { resolveContractDraftBusinessType } from "./contract-draft-basics";
+import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity, hasDirectSigningInput } from "../contract/contract-direct-pending-source";
+import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
+import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ContractBillRow } from "@prisma/client";
+import { readDeletedDraftRow, deletedRowPublicOriginalValues } from "../contract-bill/contract-bill-row-undo";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, contractPricingPolicy, normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
 import { ContractBillService } from "../contract-bill/contract-bill.service";
+import { sumContractBillBusinessAmounts, compatibleBillCents } from "../contract-bill/contract-bill-totals";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
@@ -18,10 +40,19 @@ import { calculateContractDocumentContentFingerprint } from "./contract-document
 import { ContractWorkbenchService } from "./contract-workbench.service";
 import { CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION, contractBasicEntryValues, resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
 import { projectContractDraftOperationCapabilities } from "./contract-mutation-authority";
+import { mappedLayoutSourceForVersion } from "../contract-template/layout-field-mapping";
+import { REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, CONTRACT_BODY_RENDER_PROFILE_KEY, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_SOURCE_SHA256, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION, assertReviewedTypographySource, REVIEWED_LABOR_SOURCE_SHA256, REVIEWED_LABOR_TAX_BINDING_VERSION, REVIEWED_LABOR_TYPOGRAPHY_VERSION, REVIEWED_GENERIC_SOURCE_SHA256, REVIEWED_GENERIC_TYPOGRAPHY_VERSION, readContractBodyRenderProfile, upgradeReviewedLaborTaxPlan, normalizeContractBodyPlan } from "../contract-document/contract-body-document";
 import type {
   SaveContractDraftAggregateDto,
   SaveContractDraftAttachmentDto
 } from "./dto/contract-workbench.dto";
+
+function publicSaveSnapshot(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const snapshot = { ...value as Record<string, unknown> };
+  delete snapshot["_rowUndo"];
+  return snapshot;
+}
 
 const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft"]);
 
@@ -41,22 +72,50 @@ export class ContractDraftAggregateService {
     private readonly bills: ContractBillService,
     private readonly parties: BusinessPartyService,
     private readonly files: FileService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @Optional() @Inject(DIRECT_ARCHIVE_EXECUTOR) private readonly directArchiveExecutor?: DirectArchiveExecutor,
+    @Optional() @Inject(UPWARD_DIRECT_ARCHIVE_AUTHORITY) private readonly upwardDirectAuthority?: UpwardDirectArchiveAuthority
   ) {}
 
-  async getWorkbench(contractVersionId: string, actorUserId: string) {
-    const { version, templateEntry, billEntries } = await this.prisma.$transaction(async (tx) => {
+  async getSaveResult(contractVersionId: string, actorUserId: string, idempotencyKey: string, numericProtocol?: string) {
+    return this.prisma.$transaction(async tx => {
+      const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      if (!version) throw new NotFoundException("未找到合同草稿，不能核对保存结果");
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract || contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对该草稿的保存结果");
+      assertContractDraftNumericProtocol(version, numericProtocol);
+      const upwardPending = isUpwardDirectPendingDraft(version.draftData);
+      if (upwardPending) await qualifyUpwardPendingSave(tx);
+      const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey } });
+      if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId) {
+        // Absence cannot prove that a disconnected write is not still in flight.
+        return { status: "unknown" as const };
+      }
+      if (upwardPending) await this.assertUpwardSaveReceiptAccess(tx, actorUserId, contract.projectId);
+      return { status: "saved" as const, result: publicSaveSnapshot(receipt.responseSnapshot), latestRevision: version.draftRevision };
+    });
+  }
+
+  async getWorkbench(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
+    const { version, templateEntry, billEntries, layoutTemplateSelection } = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
       if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
-      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version) };
+      const layout = version.layoutTemplateVersionId ? await tx.contractLayoutTemplateVersion.findUnique({ where: { id: version.layoutTemplateVersionId } }) : null;
+      const layoutTemplate = layout ? await tx.contractLayoutTemplate.findUnique({ where: { id: layout.layoutTemplateId } }) : null;
+      const layoutTemplateSelection = layout && layoutTemplate ? { id: layout.id, name: layoutTemplate.name, versionNo: layout.versionNo, status: layout.status } : null;
+      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version), layoutTemplateSelection };
     });
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }
-    const legacyReadModel = await this.workbench.getDraftFromExactVersion(
-      version,
-      actorUserId
-    );
+    const legacyReadModel = await (numericProtocol === undefined ? this.workbench.getDraftFromExactVersion(version, actorUserId)
+      : this.workbench.getDraftFromExactVersion(version, actorUserId, numericProtocol));
+    if (numericProtocol !== undefined && numericProtocol !== "2") {
+      throw new BadRequestException("金额读取格式不受支持，请刷新页面后重试");
+    }
+    if (version.numericProtocolVersion === 2 && numericProtocol !== "2") {
+      throw new ConflictException("合同金额精度已升级，请刷新页面后重新读取");
+    }
     const settlementModeHistory = version.settlementModeConfirmedAt
       ? await this.prisma.businessEntrySubmissionSnapshot.findMany({
           where: { projectId: legacyReadModel.contract.projectId, sceneKey: "contract_settlement_mode", entityType: "contract_version", entityId: version.id },
@@ -88,22 +147,78 @@ export class ContractDraftAggregateService {
         ? "held_by_me"
         : "held_by_other";
     const isDirector = await this.isContractDirector(actorUserId);
-    const canTakeOver = leaseState === "held_by_other" && isDirector;
+    const upwardDirectPending = isUpwardDirectPendingDraft(version.draftData);
+    const canTakeOver = !upwardDirectPending && leaseState === "held_by_other" && isDirector;
     const isOwner = legacyReadModel.contract.ownerUserId === actorUserId;
-    const draftOperationAvailableActions = this.projectDraftOperationCapabilities(
+    let upwardSaveReady = false;
+    let upwardDraftSubjects: Awaited<ReturnType<typeof readUpwardPendingSubjects>>;
+    const draftOperationAvailableActions = upwardDirectPending ? [] : this.projectDraftOperationCapabilities(
       version,
       isOwner,
       isDirector,
       canTakeOver
     );
+    const directRead = upwardDirectPending
+      ? await this.prisma.$transaction(async tx => {
+        const saveQualification = isOwner ? await discoverUpwardPendingSave(tx) : undefined;
+        const read = await readUpwardDirectPending(tx, { ...version, projectId: legacyReadModel.contract.projectId },
+          actorUserId, isOwner, saveQualification);
+        if (read.source.state === "unavailable") return read;
+        const subjects = saveQualification
+          ? await readUpwardPendingSubjects(tx, legacyReadModel.contract.projectId, version.id, version.draftRevision, now)
+          : undefined;
+        if (saveQualification) {
+          if (!subjects) return emptyUpwardDirectPendingRead("unavailable");
+          await assertUpwardPendingSaveContinuity(tx, saveQualification);
+        }
+        const [fresh, contract] = await Promise.all([
+          tx.contractVersion.findUnique({ where: { id: version.id } }),
+          tx.contract.findUnique({ where: { id: version.contractId } })
+        ]);
+        if (contract?.ownerUserId !== actorUserId || contract.projectId !== legacyReadModel.contract.projectId || contract.voidedAt ||
+          fresh?.contractId !== contract.id || fresh.draftRevision !== version.draftRevision || fresh.status !== "draft" ||
+          fresh.versionNo !== 1 || fresh.changeType !== "original" || fresh.firstSubmittedAt || fresh.effectiveAt || fresh.endedAt ||
+          !isUpwardDirectPendingDraft(fresh.draftData)) {
+          return emptyUpwardDirectPendingRead("unavailable");
+        }
+        upwardDraftSubjects = subjects;
+        upwardSaveReady = !!saveQualification;
+        const registrationEnabled = !!this.upwardDirectAuthority && read.source.state === "complete"
+          && !!await readUpwardArchiveAdmission(tx).catch(() => null);
+        return { ...read, registrationEnabled };
+      })
+      : hasDirectSigningInput(version.draftData) ? await this.prisma.$transaction(async tx => {
+      try {
+        const qualification = await assertDirectPendingSourceQualification(tx);
+        const fresh = await tx.contractVersion.findUnique({ where: { id: version.id } });
+        if (!fresh || fresh.draftRevision !== version.draftRevision) throw new ConflictException("已签资料已变化，请刷新后核对");
+        const rows = await tx.$queryRaw<Array<{ id: string; originalSignedNumber: string | null }>>(Prisma.sql`SELECT "id", "originalSignedNumber" FROM public."ContractVersion" WHERE "id" = ${version.id} AND "contractId" = ${version.contractId}`);
+        const row = rows.length === 1 ? rows[0] : null;
+        if (!row || Object.keys(row).length !== 2 || row.id !== version.id || !("originalSignedNumber" in row) || (row.originalSignedNumber !== null && (typeof row.originalSignedNumber !== "string" || row.originalSignedNumber === ""))) throw new ConflictException("原合同编号暂时无法核对");
+        const source = await readDirectPendingInput(tx, version.id);
+        if (source.sourceRevision !== version.draftRevision) throw new ConflictException("已签资料修订暂时无法核对");
+        await assertDirectPendingSourceContinuity(tx, qualification);
+        const registrationEnabled = isOwner && await this.canRegisterDirect(tx, actorUserId, fresh, source, qualification);
+        return { originalSignedNumber: row.originalSignedNumber, originalSignedNumberState: "available", source, registrationEnabled };
+      } catch {
+        // Read availability is not a successful source proof; no repair or write.
+        return { originalSignedNumber: null, originalSignedNumberState: "unavailable", source: { protocolVersion: 1, sourceKind: "direct_signed_pending", state: "unavailable", sourceRevision: null, Q: null, inputSha256: null, reason: "已签合同来源暂时无法核对，请保留资料稍后办理" } };
+      }
+    }) : null;
     const legacyWithoutCheckpoints = { ...legacyReadModel };
     Reflect.deleteProperty(legacyWithoutCheckpoints, "checkpoints");
     return {
       ...legacyWithoutCheckpoints,
+      ...(upwardDirectPending ? { availableActions: [], availableLifecycleActions: [] } : {}),
       version: {
         ...legacyReadModel.version,
+        ...(directRead ? { originalSignedNumber: directRead.originalSignedNumber, originalSignedNumberState: directRead.originalSignedNumberState, documentContentRevision: null, documentContentFingerprint: null } : {}),
+        layoutTemplateSelection,
+        ...(version.numericProtocolVersion === 2 && legacyReadModel.version.amountYuan == null ? { amountCents: null } : {}),
         draftLifecycleKind: legacyReadModel.lifecycleKind
       },
+      ...(directRead ? { directPendingInput: directRead.source, directPendingCapabilities: { registrationEnabled: "registrationEnabled" in directRead && directRead.registrationEnabled === true, copyEnabled: false, purgeEnabled: false } } : {}),
+      ...(upwardDraftSubjects ? { upwardDraftSubjects } : {}),
       draft: version.draftData,
       templateEntry,
       billEntries,
@@ -122,6 +237,16 @@ export class ContractDraftAggregateService {
       },
       bills: legacyReadModel.bills.map((bill) => ({
         ...bill,
+        ...(bill.numericProtocolVersion === 2 ? {
+          taxInclusiveAmountCents: bill.taxInclusiveAmountYuan == null ? null : bill.taxInclusiveAmountCents,
+          taxExclusiveAmountCents: bill.taxExclusiveAmountYuan == null ? null : bill.taxExclusiveAmountCents,
+          taxAmountCents: bill.taxAmountYuan == null ? null : bill.taxAmountCents,
+          rows: bill.rows.map(row => ({ ...row, ...(row.numericProtocolVersion === 2 ? {
+            taxInclusiveAmountCents: row.taxInclusiveAmountYuan == null ? null : row.taxInclusiveAmountCents,
+            taxExclusiveAmountCents: row.taxExclusiveAmountYuan == null ? null : row.taxExclusiveAmountCents,
+            taxAmountCents: row.taxAmountYuan == null ? null : row.taxAmountCents
+          } : {}) }))
+        } : {}),
         businessEntryDefinition: billEntries.find((entry) => entry.billId === bill.id)?.definition
       })),
       businessEntry: {
@@ -129,7 +254,10 @@ export class ContractDraftAggregateService {
         values: contractBasicEntryValues(version.draftData)
       },
       attachments,
-      draftOperationAvailableActions,
+      draftOperationAvailableActions: upwardSaveReady
+        ? [...UPWARD_PENDING_SAVE_ACTIONS]
+        : draftOperationAvailableActions,
+      ...(version.numericProtocolVersion === 2 ? { draftSubmissionUnavailableReason: CONTRACT_PRECISE_SUBMISSION_REASON } : {}),
       lease: {
         state: leaseState,
         holderDisplayName: holder?.name ?? null,
@@ -137,6 +265,36 @@ export class ContractDraftAggregateService {
         canTakeOver
       }
     };
+  }
+
+  private async canRegisterDirect(
+    tx: Prisma.TransactionClient, actor: string, version: { id: string; contractId: string; draftRevision: number; status: string },
+    source: Awaited<ReturnType<typeof readDirectPendingInput>>,
+    qualification: Awaited<ReturnType<typeof assertDirectPendingSourceQualification>>
+  ) {
+    if (!this.directArchiveExecutor || version.status !== "draft" || source.state !== "complete" ||
+      typeof source.inputSha256 !== "string" || !qualification.dispatch || !qualification.retention?.completion) return false;
+    try {
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract || contract.voidedAt || contract.ownerUserId !== actor) return false;
+      const [project, access, archived] = await Promise.all([
+        tx.project.findUnique({ where: { id: contract.projectId } }),
+        resolveGovernedFinalArchiveAccess(tx, { actorUserId: actor, projectId: contract.projectId, handlerUserId: actor }),
+        tx.contractArchiveFile.count({ where: { contractVersionId: version.id } })
+      ]);
+      if (!project?.isActive || !access.canUpload || archived ||
+        await readDirectArchivePreflightProfile(tx, true) !== "attached_closed") return false;
+      const completionOid = qualification.retention.completion.actual.relationOid;
+      if (!project.operatingLedgerEffectiveDate) await assertDirectArchiveSourceScope(tx, {
+        contractId: contract.id, versionId: version.id, projectId: project.id, actor,
+        sourceRevision: version.draftRevision, inputSha256: source.inputSha256
+      }, completionOid, qualification.bootstrap);
+      const admission = await readDirectArchiveNativeAdmission(tx, qualification.bootstrap);
+      return admission !== null && admission.completionOid === completionOid
+        && (!project.operatingLedgerEffectiveDate || await hasDirectOutsideOperatingExecutor(tx, admission));
+    } catch {
+      return false;
+    }
   }
 
   async uploadPrivateFile(
@@ -173,6 +331,8 @@ export class ContractDraftAggregateService {
           message: "合同草稿当前不可编辑，请刷新后重试"
         });
       }
+      if (isUpwardDirectPendingDraft(version.draftData)) await qualifyUpwardPendingSave(tx);
+      else if (hasDirectSigningInput(version.draftData)) await assertDirectPendingSourceQualification(tx);
     });
 
     return this.files.uploadPrivateFile({
@@ -198,7 +358,8 @@ export class ContractDraftAggregateService {
     contractVersionId: string,
     actorUserId: string,
     rawLeaseToken: string,
-    input: SaveContractDraftAggregateDto
+    input: SaveContractDraftAggregateDto,
+    transportFingerprint?: string
   ) {
     const requestSha256 = this.sha256(this.stableJson(input));
     try {
@@ -217,6 +378,8 @@ export class ContractDraftAggregateService {
         if (!contract || !version) {
           throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
         }
+        const upwardPending = isUpwardDirectPendingDraft(version.draftData);
+        if (upwardPending && contract.ownerUserId === actorUserId) await qualifyUpwardPendingSave(tx);
         const receipt = await tx.contractDraftSaveRequest.findUnique({
           where: { idempotencyKey: input.idempotencyKey }
         });
@@ -232,6 +395,11 @@ export class ContractDraftAggregateService {
               message: "保存幂等键已用于另一份合同草稿请求，请重新保存"
             });
           }
+          if (hasDirectSigningInput(version.draftData)) {
+            if (contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对已签草稿保存");
+            if (upwardPending) await this.assertUpwardSaveReceiptAccess(tx, actorUserId, contract.projectId);
+            else await assertDirectPendingSourceQualification(tx);
+          }
           return this.completeIdempotentSaveReceipt(
             receipt.responseSnapshot,
             receipt.resultRevision,
@@ -239,6 +407,9 @@ export class ContractDraftAggregateService {
             contract.ownerUserId === actorUserId,
             await this.isContractDirector(actorUserId)
           );
+        }
+        if (version.numericProtocolVersion === 2 && input.draft.amountSource === "manual" && input.draft.numericProtocolVersion !== 2) {
+          throw new ConflictException("合同金额精度已升级，请刷新页面并保留四位合同金额后重试");
         }
         await tx.$queryRaw(Prisma.sql`
           SELECT "contractVersionId" FROM "ContractDraftEditLease"
@@ -303,6 +474,127 @@ export class ContractDraftAggregateService {
           });
         }
 
+        if (upwardPending) return saveUpwardPendingAggregate(tx, contract, version, actorUserId, input, requestSha256,
+          this.audit, this.parties, this.files, transportFingerprint);
+        if (hasDirectSigningInput(version.draftData)) return saveDirectPendingAggregate(tx, contract, version, actorUserId, input, requestSha256, this.audit, this.parties, this.files, transportFingerprint);
+        if (Object.hasOwn(input.draft.draftData, "directSigningInput") || input.draft.originalSignedNumber !== undefined) throw new BadRequestException("已有合同不能通过保存切换为已签合同登记");
+        const currentDraftBusinessType = version.status === "draft"
+          ? resolveContractDraftBusinessType(input.draft.draftData, contract.contractTypeKey, version.signingSubjectType)
+          : contract.contractTypeKey;
+        const effectiveLayoutTemplateVersionId = input.draft.layoutTemplateVersionId === undefined
+          ? version.layoutTemplateVersionId : input.draft.layoutTemplateVersionId;
+        if (effectiveLayoutTemplateVersionId && effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId) {
+          await assertSelectableLayoutVersion(tx, this.files, effectiveLayoutTemplateVersionId, currentDraftBusinessType);
+        }
+        const draftDataForSave = { ...input.draft.draftData };
+        const currentDraftData = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : {};
+        const currentBodyRenderProfile = readContractBodyRenderProfile(currentDraftData); // Unknown persisted profiles never fall back.
+        if (Object.hasOwn(draftDataForSave, CONTRACT_BODY_RENDER_PROFILE_KEY) &&
+          this.stableJson(draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY]) !== this.stableJson(currentDraftData[CONTRACT_BODY_RENDER_PROFILE_KEY])) {
+          throw new BadRequestException("合同文书呈现资料由系统维护，请刷新后重新保存");
+        }
+        delete draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY];
+        let reviewedLaborTaxBindingVersion: typeof REVIEWED_LABOR_TAX_BINDING_VERSION | undefined;
+        let typographyVersion: typeof REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION | typeof REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION | typeof REVIEWED_LABOR_TYPOGRAPHY_VERSION | typeof REVIEWED_GENERIC_TYPOGRAPHY_VERSION | undefined;
+        if (effectiveLayoutTemplateVersionId && (input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2)) {
+          const selected = await tx.contractLayoutTemplateVersion.findUnique({ where: { id: effectiveLayoutTemplateVersionId } });
+          if (!selected) throw new BadRequestException("原已选合同模板不存在，请保留当前正文并重新选择模板");
+          const selectedSource = await this.files.getFileBuffer(selected.docxFileId, tx);
+          const selectedSourceSha256 = createHash("sha256").update(selectedSource.buffer).digest("hex");
+          if (selectedSourceSha256 === REVIEWED_LABOR_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_LABOR_TYPOGRAPHY_VERSION);
+            reviewedLaborTaxBindingVersion = REVIEWED_LABOR_TAX_BINDING_VERSION;
+            typographyVersion = REVIEWED_LABOR_TYPOGRAPHY_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { reviewedLaborTaxBindingVersion, typographyVersion };
+          } else if (selectedSourceSha256 === REVIEWED_MATERIAL_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION);
+            typographyVersion = REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { typographyVersion, signatureDateVersion: REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION };
+          } else if (selectedSourceSha256 === REVIEWED_MECHANICAL_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION);
+            typographyVersion = REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { typographyVersion };
+          } else if (selectedSourceSha256 === REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256) {
+            assertReviewedOriginalMechanicalPageSource(selectedSource.buffer);
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { pageNumberVersion: REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION };
+          } else if (selectedSourceSha256 === REVIEWED_GENERIC_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_GENERIC_TYPOGRAPHY_VERSION);
+            typographyVersion = REVIEWED_GENERIC_TYPOGRAPHY_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { typographyVersion };
+          }
+        }
+        const bodyAction = draftDataForSave.documentBodyAction;
+        const bodyActionRecord = bodyAction && typeof bodyAction === "object" && !Array.isArray(bodyAction) ? bodyAction as Record<string, unknown> : null;
+        delete draftDataForSave.documentBodyAction;
+        const regenerateBody = bodyActionRecord?.kind === "regenerate";
+        const deleteSavedAddition = bodyActionRecord?.kind === "delete_saved_addition";
+        if ((bodyAction !== undefined && !regenerateBody && !deleteSavedAddition) ||
+          (regenerateBody && (!bodyActionRecord || Object.keys(bodyActionRecord).some(key => !["kind", "confirmOverwrite"].includes(key)) || bodyActionRecord.confirmOverwrite !== true))) {
+          throw new ConflictException("重新生成将覆盖手工正文，请先确认覆盖影响，原内容已保留");
+        }
+        if (deleteSavedAddition && (!bodyActionRecord || Object.keys(bodyActionRecord).some(key => !["kind", "additionId"].includes(key)) ||
+          typeof bodyActionRecord.additionId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(bodyActionRecord.additionId) ||
+          version.numericProtocolVersion !== 2 || input.draft.numericProtocolVersion !== 2)) {
+          throw new ConflictException("删除新增条款的信息已变化，请保留当前输入并重新读取后重试");
+        }
+        let provedSoleAdditionDeletion = false;
+        const bodyHasManualChanges = (value: unknown) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+          const body = value as Record<string, unknown>;
+          return [body.edits, body.additions, body.deletedPositionIds, body.paragraphOrder].some(items => Array.isArray(items) && items.length > 0);
+        };
+        const hadManualBody = bodyHasManualChanges(currentDraftData.documentBody);
+        if (hadManualBody && effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId && !regenerateBody) throw new ConflictException("重新生成或更换模板将覆盖手工正文，请先确认覆盖影响，原内容已保留");
+        if (!regenerateBody && draftDataForSave.documentBody === undefined && currentDraftData.documentBody !== undefined) {
+          draftDataForSave.documentBody = currentDraftData.documentBody;
+        }
+        if (draftDataForSave.documentBody !== undefined) {
+          if (!effectiveLayoutTemplateVersionId) throw new BadRequestException("请先选择合同模板，再保存正文");
+          // Retaining the already selected immutable source is not a new selection.
+          // A business-type-only save may keep its manual body until the operator
+          // confirms a replacement; generation still enforces selection policy.
+          const layout = effectiveLayoutTemplateVersionId === version.layoutTemplateVersionId
+            ? await tx.contractLayoutTemplateVersion.findUnique({ where: { id: effectiveLayoutTemplateVersionId } })
+            : await assertSelectableLayoutVersion(tx, this.files, effectiveLayoutTemplateVersionId, currentDraftBusinessType);
+          if (!layout) throw new BadRequestException("原已选合同模板不存在，请保留当前正文并重新选择模板");
+          const source = await this.files.getFileBuffer(layout.docxFileId, tx);
+          const mapped = mappedLayoutSourceForVersion(source.buffer, layout);
+          const upgradeLaborTaxOrder = currentBodyRenderProfile?.reviewedLaborTaxBindingVersion === undefined && reviewedLaborTaxBindingVersion === REVIEWED_LABOR_TAX_BINDING_VERSION;
+          const normalizeSavedBody = (value: unknown) => upgradeLaborTaxOrder
+            ? upgradeReviewedLaborTaxPlan(value, source.buffer, mapped, layout.id)
+            : normalizeContractBodyPlan(value, source.buffer, mapped, layout.id, reviewedLaborTaxBindingVersion);
+          draftDataForSave.documentBody = normalizeSavedBody(draftDataForSave.documentBody);
+          if (deleteSavedAddition) {
+            const old = normalizeSavedBody(currentDraftData.documentBody);
+            const additionId = bodyActionRecord!.additionId;
+            if (effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId || old.edits.length || old.deletedPositionIds?.length ||
+              old.paragraphOrder?.length || old.additions?.length !== 1 || old.additions[0].id !== additionId) {
+              throw new ConflictException("删除新增条款的信息已变化，请保留当前输入并重新读取后重试");
+            }
+            const expected = normalizeContractBodyPlan({ ...old, additions: old.additions.filter(addition => addition.id !== additionId) }, source.buffer, mapped, layout.id, reviewedLaborTaxBindingVersion);
+            if (this.stableJson(draftDataForSave.documentBody) !== this.stableJson(expected)) {
+              throw new ConflictException("删除操作与当前正文不一致，请保留当前输入并重新读取后重试");
+            }
+            provedSoleAdditionDeletion = true;
+          }
+        }
+        if (deleteSavedAddition && !provedSoleAdditionDeletion) throw new ConflictException("删除新增条款的信息已变化，请保留当前输入并重新读取后重试");
+        // Judge the resulting document semantics, never operation-shaped metadata.
+        // An unchanged order is normalized away and cannot hide an implicit reset.
+        if (hadManualBody && !bodyHasManualChanges(draftDataForSave.documentBody) && !regenerateBody && !provedSoleAdditionDeletion) throw new ConflictException("重新生成或更换模板将覆盖手工正文，请先确认覆盖影响，原内容已保留");
+        if (regenerateBody && bodyHasManualChanges(draftDataForSave.documentBody)) throw new BadRequestException("重新生成须使用当前填写资料，不能同时覆盖为另一份手工正文");
+        if (regenerateBody && hadManualBody) {
+          const existing = await tx.contractDraftCheckpoint.findMany({ where: { contractVersionId }, orderBy: { sequenceNo: "desc" } });
+          const checkpoint = await tx.contractDraftCheckpoint.create({ data: {
+            contractVersionId, sequenceNo: Math.max(0, ...existing.map(row => row.sequenceNo)) + 1,
+            name: "正文重新生成前", createdByUserId: actorUserId,
+            snapshot: { kind: "contract_body", protocolVersion: 1, documentBody: currentDraftData.documentBody!, layoutTemplateVersionId: version.layoutTemplateVersionId,
+              documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint }
+          } });
+          await this.audit.record(tx, { actorUserId, action: "contract.draft.checkpoint.create", businessType: "contract_version", businessId: contractVersionId,
+            metadata: { checkpointId: checkpoint.id, sequenceNo: checkpoint.sequenceNo, reason: "document_body_regenerate" } });
+        }
+
         await tx.$queryRaw(Prisma.sql`
           SELECT "id" FROM "ContractBill"
           WHERE "contractVersionId" = ${contractVersionId}
@@ -348,6 +640,24 @@ export class ContractDraftAggregateService {
         ) {
           throw new BadRequestException("合同清单集合已变化，请刷新后重试");
         }
+        // Validate the version-level default even when an empty bill has no rows
+        // through which the four-place line calculator could validate it.
+        if (input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2 ||
+          currentBills.some((bill) => bill.numericProtocolVersion === 2) ||
+          input.bills.some((bill) => bill.numericProtocolVersion === 2)) {
+          const rate = input.draft.taxFacts.defaultTaxRatePercent;
+          const storedRate = version.defaultTaxRatePercent?.toString();
+          const unchangedStoredRate = storedRate !== undefined &&
+            (storedRate.split(".")[1]?.length ?? 0) > 4 &&
+            rate === storedRate;
+          if (!unchangedStoredRate && rate !== null) {
+            try {
+              if (normalizeBusinessAmount(rate) === null) throw new Error("empty tax rate transport");
+            } catch {
+              throw new BadRequestException("默认税率须填写规范数字，最多保留4位小数；请保留原输入后修改");
+            }
+          }
+        }
         await this.assertNegotiationReferences(tx, contractVersionId, input);
         await this.files.assertCanBindContractDraftAttachments(
           tx,
@@ -358,6 +668,9 @@ export class ContractDraftAggregateService {
 
         const effectiveChangedSections = new Set<string>();
         const billRevisions: Record<string, number> = {};
+        const billRowKeys: Record<string, Array<{ clientRowKey: string; rowKey: string }>> = {};
+        const deletedRows: Record<string, Prisma.InputJsonObject[]> = {};
+        const restoreSources = new Map<string, { snapshot: Record<string, unknown>; undo: { version: number; deletedRows: Record<string, unknown[]>; restoredKeys: string[]; pricingModes: Record<string, string> } }>();
         const billVersionContext = {
           ...version,
           pricingNature: input.draft.pricingNature,
@@ -371,14 +684,62 @@ export class ContractDraftAggregateService {
           taxMode: input.draft.taxFacts.taxMode
         };
         for (const bill of currentBills) {
+          const billInput = inputBillsByKey.get(bill.billKey)!;
+          const trustedRestores = new Map<string, ContractBillRow>();
+          for (const row of billInput.rows) {
+            const ref = row.restoreRef;
+            if (!ref) continue;
+            if (billInput.numericProtocolVersion !== 2 || row.rowKey !== undefined || typeof ref !== "object" || Array.isArray(ref) || Object.keys(ref).length !== 2 ||
+              typeof ref.saveIntentKey !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(ref.saveIntentKey) ||
+              typeof ref.oldRowKey !== "string" || !ref.oldRowKey || ref.oldRowKey.length > 128) throw new BadRequestException("撤销来源格式不正确，请保留输入并核对原保存结果");
+            let source = restoreSources.get(ref.saveIntentKey);
+            if (!source) {
+              const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey: ref.saveIntentKey } });
+              if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId || receipt.expiresAt <= now || !receipt.responseSnapshot || typeof receipt.responseSnapshot !== "object" || Array.isArray(receipt.responseSnapshot)) throw new BadRequestException("原删除记录不属于当前经办人的合同草稿或已过期");
+              const snapshot = receipt.responseSnapshot as Record<string, unknown>;
+              const undo = snapshot["_rowUndo"] as { version?: unknown; deletedRows?: unknown; restoredKeys?: unknown; pricingModes?: unknown } | undefined;
+              if (!undo || undo.version !== 1 || !undo.deletedRows || typeof undo.deletedRows !== "object" || Array.isArray(undo.deletedRows) || !Array.isArray(undo.restoredKeys) || undo.restoredKeys.some(key => typeof key !== "string")) throw new BadRequestException("原保存记录没有可核对的删除事实，不能恢复该行");
+              if (!undo.pricingModes || typeof undo.pricingModes !== "object" || Array.isArray(undo.pricingModes)) {
+                throw new BadRequestException("原删除记录的金额口径缺少可核对依据，请保留草稿并联系合同部核对后恢复");
+              }
+              source = { snapshot, undo: { version: 1, deletedRows: undo.deletedRows as Record<string, unknown[]>, restoredKeys: [...undo.restoredKeys], pricingModes: undo.pricingModes as Record<string, string> } };
+              restoreSources.set(ref.saveIntentKey, source);
+            }
+            const requestedBasics = input.draft.draftData.contractBasics;
+            const targetPricingMode = requestedBasics && typeof requestedBasics === "object" && !Array.isArray(requestedBasics)
+              ? (requestedBasics as Record<string, unknown>).amountBasis ?? bill.pricingMode : bill.pricingMode;
+            if (source.undo.pricingModes[bill.billKey] !== bill.pricingMode || source.undo.pricingModes[bill.billKey] !== targetPricingMode) {
+              throw new BadRequestException("原删除记录的金额口径与当前草稿不一致，请保留草稿并先核对口径，不能直接恢复原行");
+            }
+            const consumedKey = JSON.stringify([bill.billKey, ref.oldRowKey]);
+            if (source.undo.restoredKeys.includes(consumedKey)) throw new BadRequestException("该删除记录已经恢复，不能重复恢复");
+            const candidates = source.undo.deletedRows[bill.billKey];
+            if (!Array.isArray(candidates)) throw new BadRequestException("原删除记录不属于当前清单");
+            const matches = candidates.filter(fact => fact && typeof fact === "object" && !Array.isArray(fact) && (fact as Record<string, unknown>)["rowKey"] === ref.oldRowKey);
+            if (matches.length !== 1) throw new BadRequestException("原删除记录不包含该行，不能恢复");
+            trustedRestores.set(row.clientRowKey, readDeletedDraftRow(matches[0], bill.id));
+            source.undo.restoredKeys.push(consumedKey);
+          }
           const result = await this.bills.replaceRowsInTransaction(
             tx,
             actorUserId,
             billVersionContext,
             bill,
-            inputBillsByKey.get(bill.billKey)!
+            { ...billInput, ...(
+              input.draft.draftData.contractBasics && typeof input.draft.draftData.contractBasics === "object" &&
+              ["tax_inclusive", "tax_exclusive"].includes((input.draft.draftData.contractBasics as Record<string, unknown>).amountBasis as string)
+                ? { pricingMode: (input.draft.draftData.contractBasics as { amountBasis: "tax_inclusive" | "tax_exclusive" }).amountBasis } : {}) },
+            trustedRestores
           );
           billRevisions[bill.billKey] = result.revision;
+          billRowKeys[bill.billKey] = result.rowKeys ?? [];
+          deletedRows[bill.billKey] = result.deletedRows ?? [];
+          for (const row of billInput.rows) if (row.restoreRef) {
+            const restored = result.rowKeys?.find(binding => binding.clientRowKey === row.clientRowKey);
+            if (!restored) throw new BadRequestException("恢复行回执不完整，请核对保存结果");
+            await this.audit.record(tx, { actorUserId, action: "contract.draft.row.restore", businessType: "contract_version", businessId: contractVersionId,
+              metadata: { billKey: bill.billKey, originalSaveIntentKey: row.restoreRef.saveIntentKey, oldRowKey: row.restoreRef.oldRowKey, newRowKey: restored.rowKey, restoreSaveIntentKey: input.idempotencyKey } });
+          }
           if (result.changed) effectiveChangedSections.add("bills");
         }
         const partyResult = await this.parties.replaceContractPartiesInTransaction(
@@ -405,11 +766,13 @@ export class ContractDraftAggregateService {
         if (attachmentResult.changed) {
           effectiveChangedSections.add("attachments");
         }
+        const fieldInput = { ...input, draft: { ...input.draft, draftData: draftDataForSave,
+          ...(input.draft.layoutTemplateVersionId === undefined ? { layoutTemplateVersionId: version.layoutTemplateVersionId ?? undefined } : {}) } };
         const fieldResult =
           await this.workbench.prepareAggregateDraftFieldsInTransaction(
             tx,
             version,
-            input
+            fieldInput
           );
         if (fieldResult.changed) effectiveChangedSections.add("draft");
         if (fieldResult.workbenchReferencesChanged) {
@@ -456,6 +819,16 @@ export class ContractDraftAggregateService {
             : Promise.resolve([])
         ]);
 
+        const numericProtocolVersion = input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2 || documentBills.some(bill => bill.numericProtocolVersion === 2) ? 2 : 1;
+        const pricingPolicy = contractPricingPolicy({ pricingNature: input.draft.pricingNature, amountLimitType: version.amountLimitType, hasPricedRows: documentBillRows.length > 0 });
+        const frameworkAmountUnknown = pricingPolicy.kind === "unlimited_framework" || (input.draft.pricingNature === "framework" && documentBills.length === 0);
+        const amountYuan = numericProtocolVersion === 2
+          ? frameworkAmountUnknown ? null : input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(documentBills)
+            : input.draft.numericProtocolVersion === 2 ? normalizeBusinessAmount(input.draft.manualAmountYuan ?? null)
+              : businessAmountFromLegacyCents(fieldResult.amountCents)
+          : null;
+        if (numericProtocolVersion === 2) Object.assign(fieldResult.data, { numericProtocolVersion, amountYuan, amountCents: compatibleBillCents(amountYuan) ?? 0n });
+
         const changed = effectiveChangedSections.size > 0;
         const documentContentChangedSections = [...effectiveChangedSections]
           .filter((section) => section !== "negotiation_documents")
@@ -469,7 +842,7 @@ export class ContractDraftAggregateService {
         const calculatedDocumentContentFingerprint =
           calculateContractDocumentContentFingerprint({
             templateSnapshot: version.templateSnapshot,
-            layoutTemplateVersionId: input.draft.layoutTemplateVersionId ?? null,
+            layoutTemplateVersionId: effectiveLayoutTemplateVersionId ?? null,
             parties: documentParties.map((party) => ({
               roleKey: party.roleKey,
               displayOrder: party.displayOrder,
@@ -481,6 +854,7 @@ export class ContractDraftAggregateService {
               pricingNature: input.draft.pricingNature,
               amountSource: input.draft.amountSource,
               amountCents: fieldResult.amountCents.toString(),
+              ...(numericProtocolVersion === 2 ? { numericProtocolVersion, amountYuan } : {}),
               estimatedAmountCents:
                 fieldResult.estimatedAmountCents?.toString() ?? null,
               amountAdjustmentReason: input.draft.amountAdjustmentReason ?? null,
@@ -495,6 +869,9 @@ export class ContractDraftAggregateService {
                 schemaSnapshot: bill.schemaSnapshot,
                 sourceExcelFileId: bill.sourceExcelFileId,
                 taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
+                ...(bill.numericProtocolVersion === 2 ? { numericProtocolVersion: 2,
+                  taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+                  taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null } : {}),
                 taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
                 taxAmountCents: bill.taxAmountCents.toString(),
                 rows: documentBillRows
@@ -512,6 +889,9 @@ export class ContractDraftAggregateService {
                     taxRateSource: row.taxRateSource,
                     pricingFactStatus: row.pricingFactStatus,
                     precisionPolicy: row.precisionPolicy,
+                    ...(row.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, numericSource: row.numericSource, numericReviewStatus: row.numericReviewStatus,
+                      taxInclusiveAmountYuan: row.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+                      taxExclusiveAmountYuan: row.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: row.taxAmountYuan?.toFixed(4) ?? null } : {}),
                     taxInclusiveAmountCents:
                       row.taxInclusiveAmountCents?.toString() ?? null,
                     taxExclusiveAmountCents:
@@ -661,6 +1041,12 @@ export class ContractDraftAggregateService {
         for (const bill of refreshedBills) {
           billRevisions[bill.billKey] = bill.revision;
         }
+        const decimalAmounts = numericProtocolVersion === 2 ? Object.fromEntries(
+          (["taxInclusiveAmount", "taxExclusiveAmount", "taxAmount"] as const).flatMap(kind => {
+            const amount = sumBusinessAmounts(refreshedBills.filter(bill => bill.amountRole === "included" || bill.amountRole === "provisional")
+              .map(bill => bill.numericProtocolVersion === 2 ? bill[`${kind}Yuan`]?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill[`${kind}Cents`])));
+            return [[`${kind}Yuan`, amount], [`${kind}Cents`, compatibleBillCents(amount)?.toString() ?? null]];
+          })) : {};
         const isDirector = await this.isContractDirector(actorUserId);
         const response = {
           contractVersionId,
@@ -670,6 +1056,17 @@ export class ContractDraftAggregateService {
           documentContentFingerprint,
           documentContentChangedSections,
           savedAt: now.toISOString(),
+          ...(numericProtocolVersion === 2 ? {
+            ...(transportFingerprint ? { requestFingerprint: transportFingerprint } : {}),
+            billRowKeys,
+            deletedRowRestoreRefs: Object.fromEntries(Object.entries(deletedRows).map(([billKey, rows]) => [billKey, rows.map(row => ({ saveIntentKey: input.idempotencyKey, oldRowKey: row["rowKey"], originalValues: deletedRowPublicOriginalValues(row) }))])),
+            versionAmount: { numericProtocolVersion: 2, amountYuan, amountCents: compatibleBillCents(amountYuan)?.toString() ?? null },
+            billAmounts: refreshedBills.filter(bill => bill.numericProtocolVersion === 2).map(bill => ({ billKey: bill.billKey, numericProtocolVersion: 2,
+              taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null, taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null,
+              taxInclusiveAmountCents: bill.taxInclusiveAmountYuan == null ? null : bill.taxInclusiveAmountCents.toString(),
+              taxExclusiveAmountCents: bill.taxExclusiveAmountYuan == null ? null : bill.taxExclusiveAmountCents.toString(),
+              taxAmountCents: bill.taxAmountYuan == null ? null : bill.taxAmountCents.toString() }))
+          } : {}),
           effectiveChangedSections: [...effectiveChangedSections].sort(),
           amounts: {
             taxInclusiveAmountCents: refreshedBills
@@ -692,7 +1089,8 @@ export class ContractDraftAggregateService {
                 bill.amountRole === "provisional"
               )
               .reduce((sum, bill) => sum + bill.taxAmountCents, 0n)
-              .toString()
+              .toString(),
+            ...(numericProtocolVersion === 2 ? { numericProtocolVersion: 2, ...decimalAmounts } : {})
           },
           billRevisions,
           issueCounts: {},
@@ -702,7 +1100,7 @@ export class ContractDraftAggregateService {
           capability: {
             refreshRequired: false,
             draftOperationAvailableActions: this.projectDraftOperationCapabilities(
-              version,
+              { ...version, numericProtocolVersion },
               true,
               isDirector,
               false
@@ -712,6 +1110,9 @@ export class ContractDraftAggregateService {
             status: documentContentChanged ? "document_invalidated" : "unchanged"
           }
         };
+        for (const [idempotencyKey, source] of restoreSources) await tx.contractDraftSaveRequest.update({
+          where: { idempotencyKey }, data: { responseSnapshot: { ...source.snapshot, _rowUndo: source.undo } as Prisma.InputJsonObject }
+        });
         await tx.contractDraftSaveRequest.create({
           data: {
             idempotencyKey: input.idempotencyKey,
@@ -720,7 +1121,7 @@ export class ContractDraftAggregateService {
             resultRevision,
             saveKind: input.saveKind,
             requestSha256,
-            responseSnapshot: response,
+            responseSnapshot: numericProtocolVersion === 2 ? { ...response, _rowUndo: { version: 1, deletedRows, restoredKeys: [], pricingModes: Object.fromEntries(currentBills.map(bill => [bill.billKey, bill.pricingMode])) } } : response,
             createdByUserId: actorUserId,
             expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
           }
@@ -815,6 +1216,21 @@ export class ContractDraftAggregateService {
     return !lease || lease.expiresAt.getTime() <= now.getTime();
   }
 
+  private async assertUpwardSaveReceiptAccess(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ) {
+    const access = await resolveGovernedFinalArchiveAccess(tx, {
+      actorUserId,
+      handlerUserId: actorUserId,
+      projectId
+    });
+    if (!access.canUpload) {
+      throw new ForbiddenException("当前账号无权核对该对上签章草稿的保存结果");
+    }
+  }
+
   private completeIdempotentSaveReceipt(
     responseSnapshot: unknown,
     resultRevision: number,
@@ -823,10 +1239,12 @@ export class ContractDraftAggregateService {
       changeType: string;
       baseVersionId: string | null;
       contractGovernanceVersion: number | null;
+      numericProtocolVersion?: number;
     },
     isOwner: boolean,
     isDirector: boolean
   ) {
+    responseSnapshot = publicSaveSnapshot(responseSnapshot);
     if (this.hasCompleteSaveReceipt(responseSnapshot, resultRevision)) {
       return responseSnapshot;
     }
@@ -896,6 +1314,8 @@ export class ContractDraftAggregateService {
       changeType: string;
       baseVersionId: string | null;
       contractGovernanceVersion: number | null;
+      numericProtocolVersion?: number;
+      draftData?: unknown;
     },
     isOwner: boolean,
     isDirector: boolean,
@@ -904,7 +1324,7 @@ export class ContractDraftAggregateService {
     const isOriginalDraft = version.changeType !== "change" &&
       version.changeType !== "supplement";
     const isEditableDraft = EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status);
-    return projectContractDraftOperationCapabilities([
+    const actions = projectContractDraftOperationCapabilities([
       ...(isOwner && isEditableDraft ? [
         "acquire_contract_draft_edit_lease",
         ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
@@ -929,7 +1349,7 @@ export class ContractDraftAggregateService {
         ...(version.contractGovernanceVersion === 1 ? [
           "set_contract_authorization"
         ] : []),
-        ...(version.status === "draft" ? ["submit_contract_draft"] : []),
+        ...(version.status === "draft" && version.numericProtocolVersion !== 2 ? ["submit_contract_draft"] : []),
         ...(version.contractGovernanceVersion === 1 ? [
           "upload_contract_formal_approval_file",
           "upload_contract_counterparty_signed_files",
@@ -945,6 +1365,7 @@ export class ContractDraftAggregateService {
       ] : []),
       ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
     ]);
+    return hasDirectSigningInput(version.draftData) ? actions.filter(action => ["acquire_contract_draft_edit_lease", "heartbeat_contract_draft_edit_lease", "release_contract_draft_edit_lease", "take_over_contract_draft_edit_lease", "save_contract_draft", "upload_contract_workbench_private_file"].includes(action)) : actions;
   }
 
   private async loadConflictSnapshot(

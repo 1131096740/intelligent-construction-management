@@ -1,0 +1,15 @@
+# Task16 B8 qualified App bridge：独立源码/模拟整合
+
+准确基线d1bbfd10bec9e0dff5988e2d2dcf43bbfbdab8bf；作者dac3248d9eca9b1a487fcc3a417df261036458ce以no-ff合入原integration 3f09ad7c96cc02f8a3e6764b6b2c738a22257884。完整tree均为67ab7e393d808e534d1b87d38e863186578f1acd，首尾clean。final11路径freeze SHA9a45dd04e550911f13da9d2062f507160027d2037eee1c6aef25087c39c15560（/private/tmp/jg-382-task16-application-bridge-evidence-20261108/freeze-manifest-v3.json）逐live/staged/hash/mode及原source前像核对通过；旧ledger完整d1bb后缀保留。九CJS源码及两说明文档，未混Task12 WIP或改Schema/迁移/权限JSON/七SQL/产品Auth/B9fixture与case。
+
+源2451666afbaeed0facb5598af9eaf84a16b0f16cb00f7d5aaae490b836df9134，verification9678a42de75bf84d05fa03b0ec513923acfb89f5807f3ddf5dca1f615ba5be08的16原件指纹独核；原完整初审、方法连续性P2增量、注册小delta及最终execution/doc双轴均0新增。旧d44/290/294、所有RED/前像、SDK静态资格与FF/.bin工具失败保留，不挪旧pass。
+
+原Spec方法漂移反例在第四次owner postflight替换runtime transaction时原仍SIMULATED完成，实际RED/GREEN已补每owner/runtime/observer四方法逐次单读，与首次function identity比较，拒绝重baseline。仍由原captured disconnect逆序清理，替代方法零调用；不对runtime加Proxy/rebind。Prisma5.22仅静态读资格，未加载SDK；storage目录最初候选已撤回，非仍未解决缺陷。
+
+one-shot模块/source/build/8FD见证、provider身份、B7live/角色/CA及环境前后协议由原public run与自有fake package验证。实际factory/TS module/Auth metadata编译不等真实Nest DI或guard执行。native map直接赋同私有NATIVE_APPLICATION_STAGE，无wrapper或新flag，原函数identity及资源前初见证门保持。原默认CLI列表维护和publicrun新增反例实际RED2/GREEN2；默认如今仅缺seedFixture/runNormalCase，stages空、resource/artifacts未建、nativeExecution/financialAcceptance false。两缺仅表示源码cap注册，不表示实际应用/资金可运行或授权升级。
+
+中央准确merge独立执行295/295模拟（0fail/skip）、原source CLI25、fixture Jest20、API tsc noEmit、九CJS语法与直接Node ESLint检查、两profile原字节及19/42pins、diff/clean均通过。原argv、cwd、时长/logSHA在 /private/tmp/jg-task16-B8-nativebridge-merger-20261108/integration-checks.json；JSON pins另单列。测试命令仅原mock tests，未加载真实SDK/Nest、不监听/HTTP/fetch、不解析执行SQL/PG/TLS/容器或资源，没有wholecanonical/构建或原生stage运行。SQL_NOT_EXECUTED_NOT_PARSED；模拟close不能证明物理清理。
+
+准确clean merge source-only prepare/verify各0：3478源码/202迁移源码/七prepared片/一static case，packet d303af87c2fb9322f6bbb6385cd1d662c9b039648b29b75ad7e9e7a6c3884825，seal 7d549fa8813e619be29d4f806cfacec6ed1431a4c892f649e289dd2cdd427a51。后继仅本收据与PROGRESS文档，准确最终干净HEAD另封fresh packet，外部final-head-seal-receipt.json、final-github-receipt.json分别记最终SHA/packet与远端，旧merge包不冒最终包。
+
+当前14/45限定阶段计数不变；#392已按用户接受的local-stage关闭，#394已领取且OPEN，CON10正式提交consumer由12实施。本片不关闭#398、不解除17/24与16/42/44真实门；B9 seed/case及日期、实际DI/SDK/HTTP/PG/TLS/ACL/锁/COMMIT/竞争/资金与物理清理未验。每个author/merge/docs/finalHEAD含[skip ci]，fresh原PR正文/branch/remote/全部完整message后仅推原integration/Draft428；准确新SHA Actions0或空checks不是CI通过。历史fe70误触事故及远端不确定性完整保留，不重跑/改写。无main/ready/部署或生产写，所有其它树与unknown保留。

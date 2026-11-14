@@ -53,7 +53,8 @@ describe("ContractDraftController", () => {
         editLease as never,
         contracts as never,
         deletion as never,
-        documents as never
+        documents as never,
+        undefined as never
       )
     };
   }

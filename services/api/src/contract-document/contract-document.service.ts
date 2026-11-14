@@ -1,3 +1,11 @@
+import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
+import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
+import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
+import { assertSelectableLayoutVersion, readSelectableLayoutSource } from "../contract-template/layout-selection-policy";
+import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
+import { REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
+import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
+import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -6,6 +14,9 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import {
+  businessAmountFromLegacyCents,
+  calculateBusinessLineAmount,
+  sumBusinessAmounts,
   CONTRACT_INVOICE_TYPES,
   contractInvoiceTypeLabel,
   type ContractInvoiceType
@@ -22,6 +33,7 @@ import { FileService } from "../file/file.service";
 import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
 import {
   formatChineseUppercaseMoney,
+  formatChineseUppercaseBusinessAmount,
   formatMoneyCents
 } from "./contract-docx-renderer";
 
@@ -53,6 +65,9 @@ export interface ContractDocumentInputSnapshot {
   documentContentRevision: number;
   documentContentFingerprint: string;
   templateFileId: string;
+  layoutSourceMapping?: LayoutSourceMapping;
+  bodyDocument?: { protocolVersion: 1; layoutTemplateVersionId: string; sourceSha256: string; editPlan?: ContractBodyEditPlan;
+    pdfEngine?: "docx4j-17.3.5"; runtimeLockSha256?: string; renderSemanticVersion?: typeof CONTRACT_BODY_MONEY_SEMANTICS_VERSION; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION };
   outputBaseName: string;
   renderInput: { values: Record<string, unknown> };
   requiredKeys: string[];
@@ -87,6 +102,9 @@ const PURPOSE_FILE_LABELS: Record<ContractDocumentPurpose, string> = {
   external: "外发合同"
 };
 export const CONTRACT_DOCUMENT_ENGINE_VERSION = "contract-document-v1";
+export const CONTRACT_BODY_DOCUMENT_ENGINE_VERSION = "contract-body-document-v1";
+export const CONTRACT_BODY_DOCX4J_ENGINE_VERSION = "contract-body-docx4j-v1";
+const ContractRenderDecimal = Prisma.Decimal.clone({ precision: 80 });
 
 @Injectable()
 export class ContractDocumentService {
@@ -96,6 +114,56 @@ export class ContractDocumentService {
     private readonly files: FileService,
     private readonly businessNumbers?: BusinessNumberingService
   ) {}
+
+  async getDraftBody(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
+    const { version, contract, layout, source, mapped, parties, bills, rows, checkpoints } = await this.prisma.$transaction(async tx => {
+      const { version, contract } = await this.loadOwnedVersion(tx, contractVersionId, actorUserId);
+      assertContractDraftNumericProtocol(version, numericProtocol);
+      if (version.status !== "draft") throw new BadRequestException("当前合同正文已冻结，请从合同详情查看原文");
+      if (!version.layoutTemplateVersionId) throw new BadRequestException("请先选择并保存合同模板，再查看完整正文");
+      const { layout, source, mapped } = await readSelectableLayoutSource(tx, this.files, version.layoutTemplateVersionId,
+        resolveContractDraftBusinessType(version.draftData, contract.contractTypeKey, version.signingSubjectType));
+      const [parties, bills] = await Promise.all([
+        tx.contractPartySnapshot.findMany({ where: { contractVersionId }, orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }] }),
+        tx.contractBill.findMany({ where: { contractVersionId }, orderBy: { billKey: "asc" } })
+      ]);
+      const rows = bills.length ? await tx.contractBillRow.findMany({ where: { contractBillId: { in: bills.map(bill => bill.id) } }, orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }] }) : [];
+      const checkpoints = await tx.contractDraftCheckpoint.findMany({ where: { contractVersionId }, orderBy: { sequenceNo: "desc" } });
+      return { version, contract, layout, source, mapped, parties, bills, rows, checkpoints };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+
+    // Release the snapshot connection before checking current file metadata and rendering.
+    const currentSource = await this.prisma.fileObject.findUnique({
+      where: { id: layout.docxFileId },
+      select: { storageStatus: true, contentSha256: true, objectKey: true }
+    });
+    if (!currentSource) throw new Error("资料文件不存在或已被移除");
+    if (currentSource.storageStatus !== "active") throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
+    if (currentSource.contentSha256 !== source.file.contentSha256 || currentSource.objectKey !== source.file.objectKey) {
+      throw new BadRequestException("版式原文件已变化，请由合同主管重新检查确认");
+    }
+    const draftData = this.isObject(version.draftData) ? version.draftData : {};
+    const bodyRenderProfile = readContractBodyRenderProfile(draftData);
+    const typographyVersion = bodyRenderProfile?.typographyVersion;
+    const signatureDateVersion = bodyRenderProfile?.signatureDateVersion;
+    const pageNumberVersion = bodyRenderProfile?.pageNumberVersion;
+    const rendered = renderContractBody(source.buffer, mapped, { values: this.renderValues(contract, version, parties,
+      bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION) }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
+        ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}) });
+    const savePoints = checkpoints.flatMap(checkpoint => {
+      const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
+      return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
+        layoutTemplateVersionId: snapshot.layoutTemplateVersionId, documentBody: snapshot.documentBody }] : [];
+    }).slice(0, 5);
+    return {
+      contractVersionId, draftRevision: version.draftRevision,
+      documentContentRevision: version.documentContentRevision,
+      layoutTemplateVersionId: layout.id, sourceSha256: rendered.sourceSha256,
+      blocks: rendered.blocks, flow: rendered.flow, paragraphGroups: rendered.paragraphGroups, savePoints,
+      warnings: createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
+        ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []
+    };
+  }
 
   async queue(
     contractVersionId: string,
@@ -119,6 +187,30 @@ export class ContractDocumentService {
           contractVersionId,
           actorUserId
         );
+        await assertNotDirectPendingSource(tx, contractVersionId);
+        const draftData = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : {};
+        const basics = draftData.contractBasics && typeof draftData.contractBasics === "object" && !Array.isArray(draftData.contractBasics) ? draftData.contractBasics : {};
+        if (version.status === "draft" && draftData.contractBasics !== undefined) {
+          const parties = await tx.contractPartySnapshot.findMany({ where: { contractVersionId: version.id } });
+          const namedParty = (role: string) => parties.some(party => party.roleKey === role && party.snapshot && typeof party.snapshot === "object" && !Array.isArray(party.snapshot) && typeof party.snapshot.name === "string" && party.snapshot.name.trim());
+          const company = this.isObject(draftData.companyEntitySelection) ? draftData.companyEntitySelection : null;
+          const upwardCompanyIsPartyA = version.numericProtocolVersion === 2 && version.changeType === "original" && basics.relationship === "upward"
+            && typeof company?.id === "string" && company.id === ownedContract.companyEntityId
+            && typeof company.versionId === "string" && Boolean(company.versionId)
+            && typeof company.versionNo === "number" && Number.isInteger(company.versionNo)
+            && typeof company.name === "string" && Boolean(company.name.trim());
+          const missing = [
+            ...(!ownedContract.projectId ? ["项目"] : []),
+            ...(typeof draftData.contractName !== "string" || !draftData.contractName.trim() ? ["合同名称"] : []),
+            ...(!["inside", "outside", "upward"].includes(String(basics.relationship ?? "")) ? ["合同关系"] : []),
+            ...(!namedParty("party_a") && !upwardCompanyIsPartyA ? ["甲方"] : []),
+            ...(!namedParty("party_b") ? ["乙方"] : [])
+          ];
+          if (missing.length) throw new BadRequestException(`生成前请补充：${missing.join("、")}。草稿内容已保留，可继续填写。`);
+        }
+        if (version.status === "draft" && version.numericProtocolVersion === 2 && version.signingSubjectType === "draft_unconfirmed" && !version.layoutTemplateVersionId) {
+          throw new BadRequestException("请选择并保存模板，再生成当前合同草稿；填写内容已保留");
+        }
         let contract = ownedContract;
         if (version.changeType === "historical_takeover") {
           throw new BadRequestException(
@@ -156,18 +248,12 @@ export class ContractDocumentService {
         if (!layoutTemplateVersionId) {
           throw new BadRequestException("合同草稿尚未选择文件版式，不能生成预览");
         }
-        const layout = await tx.contractLayoutTemplateVersion.findUnique({
-          where: { id: layoutTemplateVersionId }
-        });
-        if (!layout || layout.status !== "published") {
-          throw new BadRequestException("所选合同版式尚未发布，请重新选择已发布版式");
+        if (!command && version.layoutTemplateVersionId !== layoutTemplateVersionId) {
+          throw new ConflictException("请先保存当前选择的合同版式，再生成文档");
         }
-        const layoutTemplate = await tx.contractLayoutTemplate.findUnique({
-          where: { id: layout.layoutTemplateId }
-        });
-        if (!layoutTemplate || layoutTemplate.contractTypeKey !== contract.contractTypeKey) {
-          throw new BadRequestException("所选合同版式与当前合同类型不匹配，请重新选择");
-        }
+        const layout = await assertSelectableLayoutVersion(tx, this.files, layoutTemplateVersionId, version.status === "draft"
+          ? resolveContractDraftBusinessType(version.draftData, contract.contractTypeKey, version.signingSubjectType)
+          : contract.contractTypeKey);
         this.assertInternalReviewReady(
           input.purpose,
           version.readinessSnapshot,
@@ -190,13 +276,34 @@ export class ContractDocumentService {
           );
         }
 
+        const useBodyRenderer = version.numericProtocolVersion === 2 || draftData.documentBody !== undefined;
+        const engineVersion = useBodyRenderer ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION;
+        const renderSemanticVersion = this.moneyRenderSemanticVersion(version);
+        const tableLayoutVersion = useBodyRenderer ? CONTRACT_BODY_TABLE_LAYOUT_VERSION : undefined;
+        const renderProfile = readContractBodyRenderProfile(draftData);
+        const reviewedLaborTaxBindingVersion = renderProfile?.reviewedLaborTaxBindingVersion;
+        const typographyVersion = renderProfile?.typographyVersion;
+        const signatureDateVersion = renderProfile?.signatureDateVersion;
+        const pageNumberVersion = renderProfile?.pageNumberVersion;
+        if (pageNumberVersion && (!useBodyRenderer || version.numericProtocolVersion !== 2)) throw new BadRequestException("合同页码呈现版本无法核对，请联系管理员处理");
+        if (reviewedLaborTaxBindingVersion && (!useBodyRenderer || renderSemanticVersion !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION)) throw new BadRequestException("合同文书呈现版本无法核对，请联系管理员处理");
+        if (typographyVersion && (version.numericProtocolVersion !== 2 || !useBodyRenderer)) throw new BadRequestException("合同正文字体呈现版本无法核对，请联系管理员处理");
+        const runtimeLockSha256 = useBodyRenderer ? await contractBodyPdfRuntimeLockFingerprint(typographyVersion) : undefined;
         contestedKey = this.idempotencyKey(
           version.id,
           documentContent.revision,
           documentContent.fingerprint,
           layout.id,
           input.purpose,
-          attachmentFileIds
+          attachmentFileIds,
+          engineVersion,
+          runtimeLockSha256,
+          renderSemanticVersion,
+          tableLayoutVersion,
+          reviewedLaborTaxBindingVersion,
+          typographyVersion,
+          signatureDateVersion,
+          pageNumberVersion
         );
         const existing = await tx.contractGeneratedDocument.findUnique({
           where: { idempotencyKey: contestedKey }
@@ -242,11 +349,28 @@ export class ContractDocumentService {
               orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
             })
           : [];
-        assertContractBillDerivedUnitPrices(rows);
+        for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
+        const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
+        let bodyDocument: ContractDocumentInputSnapshot["bodyDocument"];
+        if (useBodyRenderer) {
+          const source = await this.files.getFileBuffer(layout.docxFileId, tx);
+          if (typographyVersion) assertReviewedTypographySource(source.buffer, typographyVersion);
+          if (pageNumberVersion) assertReviewedOriginalMechanicalPageSource(source.buffer);
+          bodyDocument = { protocolVersion: 1, layoutTemplateVersionId: layout.id, sourceSha256: createHash("sha256").update(source.buffer).digest("hex"),
+            pdfEngine: "docx4j-17.3.5", runtimeLockSha256,
+            ...(renderSemanticVersion ? { renderSemanticVersion } : {}),
+            ...(tableLayoutVersion ? { tableLayoutVersion } : {}),
+            ...(typographyVersion ? { typographyVersion } : {}),
+            ...(signatureDateVersion ? { signatureDateVersion } : {}),
+            ...(pageNumberVersion ? { pageNumberVersion } : {}),
+            ...(draftData.documentBody === undefined ? {} : { editPlan: normalizeContractBodyPlan(draftData.documentBody, source.buffer, mappedLayoutSourceForVersion(source.buffer, layout), layout.id, reviewedLaborTaxBindingVersion) }) };
+        }
         const inputSnapshot: ContractDocumentInputSnapshot = {
           documentContentRevision: documentContent.revision,
           documentContentFingerprint: documentContent.fingerprint,
           templateFileId: layout.docxFileId,
+          ...(layoutSourceMapping ? { layoutSourceMapping } : {}),
+          ...(bodyDocument ? { bodyDocument } : {}),
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
           renderInput: {
             values: this.renderValues(
@@ -257,7 +381,9 @@ export class ContractDocumentService {
                 ...bill,
                 rows: rows.filter((row) => row.contractBillId === bill.id)
               })),
-              input.purpose
+              input.purpose,
+              declaredBillKeys(layout.placeholderSchema, layout.inspectionReport),
+              tableLayoutVersion
             )
           },
           requiredKeys: requiredPlaceholderKeys(
@@ -279,7 +405,7 @@ export class ContractDocumentService {
             sourceRevision: version.draftRevision,
             inputSnapshot: inputSnapshot as unknown as Prisma.InputJsonValue,
             idempotencyKey: contestedKey,
-            engineVersion: CONTRACT_DOCUMENT_ENGINE_VERSION,
+            engineVersion,
             createdByUserId: actorUserId
           }
         });
@@ -580,7 +706,9 @@ export class ContractDocumentService {
       });
       if (
         !layoutTemplate ||
-        layoutTemplate.contractTypeKey !== contract.contractTypeKey
+        layoutTemplate.contractTypeKey !== (version.status === "draft"
+          ? resolveContractDraftBusinessType(version.draftData, contract.contractTypeKey, version.signingSubjectType)
+          : contract.contractTypeKey)
       ) {
         throw new BadRequestException("所选合同版式与当前合同类型不匹配，请重新选择");
       }
@@ -957,13 +1085,28 @@ export class ContractDocumentService {
     return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 
+  private moneyRenderSemanticVersion(version: { numericProtocolVersion?: number; draftData: Prisma.JsonValue }) {
+    const data = this.isObject(version.draftData) ? version.draftData : {};
+    const basics = this.isObject(data.contractBasics) ? data.contractBasics : {};
+    return version.numericProtocolVersion === 2 && ["tax_inclusive", "tax_exclusive"].includes(basics.amountBasis as string)
+      ? CONTRACT_BODY_MONEY_SEMANTICS_VERSION : undefined;
+  }
+
   private idempotencyKey(
     contractVersionId: string,
     documentContentRevision: number,
     documentContentFingerprint: string,
     layoutTemplateVersionId: string,
     purpose: ContractDocumentPurpose,
-    attachmentFileIds: string[]
+    attachmentFileIds: string[],
+    engineVersion = CONTRACT_DOCUMENT_ENGINE_VERSION,
+    runtimeLockSha256?: string,
+    renderSemanticVersion?: string,
+    tableLayoutVersion?: string,
+    reviewedLaborTaxBindingVersion?: string,
+    typographyVersion?: string,
+    signatureDateVersion?: string,
+    pageNumberVersion?: string
   ) {
     return createHash("sha256")
       .update(
@@ -973,7 +1116,14 @@ export class ContractDocumentService {
           documentContentFingerprint,
           layoutTemplateVersionId,
           purpose,
-          attachmentFileIds
+          attachmentFileIds,
+          ...(engineVersion === CONTRACT_DOCUMENT_ENGINE_VERSION ? [] : [engineVersion, ...(runtimeLockSha256 ? [runtimeLockSha256] : [])]),
+          ...(renderSemanticVersion ? [renderSemanticVersion] : []),
+          ...(tableLayoutVersion ? [tableLayoutVersion] : []),
+          ...(reviewedLaborTaxBindingVersion ? [reviewedLaborTaxBindingVersion] : []),
+          ...(typographyVersion ? [typographyVersion] : []),
+          ...(signatureDateVersion ? [signatureDateVersion] : []),
+          ...(pageNumberVersion ? [pageNumberVersion] : [])
         ])
       )
       .digest("hex");
@@ -988,6 +1138,10 @@ export class ContractDocumentService {
     version: {
       status: string;
       amountCents: bigint;
+      numericProtocolVersion?: number;
+      amountYuan?: Prisma.Decimal | null;
+      amountSource?: string;
+      pricingNature?: string | null;
       invoiceType: string | null;
       defaultTaxRatePercent: Prisma.Decimal | null;
       draftData: Prisma.JsonValue;
@@ -1002,7 +1156,21 @@ export class ContractDocumentService {
     bills: Array<{
       id: string;
       billKey: string;
+      amountRole?: string;
+      pricingMode?: string;
+      numericProtocolVersion?: number;
+      taxInclusiveAmountYuan?: Prisma.Decimal | null;
+      taxExclusiveAmountYuan?: Prisma.Decimal | null;
+      taxAmountYuan?: Prisma.Decimal | null;
+      taxInclusiveAmountCents?: bigint | null;
+      taxExclusiveAmountCents?: bigint | null;
+      taxAmountCents?: bigint | null;
       rows: Array<{
+        numericProtocolVersion?: number;
+        numericSource?: string;
+        taxInclusiveAmountYuan?: Prisma.Decimal | null;
+        taxExclusiveAmountYuan?: Prisma.Decimal | null;
+        taxAmountYuan?: Prisma.Decimal | null;
         itemCode: string | null;
         itemName: string;
         specification: string | null;
@@ -1019,14 +1187,18 @@ export class ContractDocumentService {
         customData: Prisma.JsonValue;
       }>;
     }>,
-    purpose: ContractDocumentPurpose
+    purpose: ContractDocumentPurpose,
+    billKeys: readonly string[] = [],
+    tableLayoutVersion?: ContractBodyTableLayoutVersion
   ) {
     const values: Record<string, unknown> = {
-      "contract.name": contract.name,
+      "contract.name": version.status === "draft" && this.isObject(version.draftData) && typeof version.draftData.contractName === "string" && version.draftData.contractName.trim()
+        ? version.draftData.contractName : contract.name,
       "contract.temporaryCode": contract.temporaryCode ?? "",
       "contract.code": contract.code ?? "",
-      "contract.amount": formatMoneyCents(version.amountCents),
-      "contract.amountUppercase": formatChineseUppercaseMoney(version.amountCents),
+      "contract.amount": version.numericProtocolVersion === 2 ? version.amountYuan?.toFixed(4) ?? "待确定" : formatMoneyCents(version.amountCents),
+      "contract.pricingNatureLabel": CONTRACT_COMMERCIAL_ENTRY_DEFINITION.fields.find(field => field.key === "pricingNature")?.options?.find(option => option.value === version.pricingNature)?.label ?? "未明确计价",
+      "contract.amountUppercase": version.numericProtocolVersion === 2 ? formatChineseUppercaseBusinessAmount(version.amountYuan?.toFixed(4) ?? null) : formatChineseUppercaseMoney(version.amountCents),
       "document.watermark":
         purpose === "draft"
           ? "草稿"
@@ -1037,6 +1209,51 @@ export class ContractDocumentService {
               : "",
       "document.generatedAt": new Date().toISOString()
     };
+
+    const storedDraft = this.isObject(version.draftData) ? version.draftData : {};
+    const storedBasics = this.isObject(storedDraft.contractBasics) ? storedDraft.contractBasics : {};
+    const renderProfile = readContractBodyRenderProfile(storedDraft);
+    const reviewedLaborTaxBindingVersion = renderProfile?.reviewedLaborTaxBindingVersion;
+    const typographyVersion = renderProfile?.typographyVersion;
+    const signatureDateVersion = renderProfile?.signatureDateVersion;
+    const pageNumberVersion = renderProfile?.pageNumberVersion;
+    const semanticVersion = this.moneyRenderSemanticVersion(version);
+    const moneySemantics = semanticVersion !== undefined;
+    if (reviewedLaborTaxBindingVersion && !moneySemantics) throw new BadRequestException("合同文书呈现版本无法核对，请联系管理员处理");
+    if (typographyVersion && version.numericProtocolVersion !== 2) throw new BadRequestException("合同正文字体呈现版本无法核对，请联系管理员处理");
+    if (reviewedLaborTaxBindingVersion) values["contract.reviewedLaborTaxBindingVersion"] = reviewedLaborTaxBindingVersion;
+    if (moneySemantics) {
+      // Presentation facts are derived only from the persisted version/bills.
+      // Legacy v2 drafts without the structured basis keep their old snapshots.
+      const basis = storedBasics.amountBasis === "tax_exclusive" ? "tax_exclusive" : "tax_inclusive";
+      const ownAmount = version.amountYuan?.toFixed(4) ?? null;
+      const included = bills.filter(bill => bill.amountRole === "included" || bill.amountRole === "provisional");
+      const canUseBills = version.amountSource === "bill_sum" && included.some(bill => bill.rows.length > 0);
+      const gross = basis === "tax_inclusive" ? ownAmount : canUseBills ? sumBusinessAmounts(included.map(bill =>
+        bill.numericProtocolVersion === 2 ? bill.taxInclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill.taxInclusiveAmountCents ?? null))) : null;
+      const net = basis === "tax_exclusive" ? ownAmount : canUseBills ? sumBusinessAmounts(included.map(bill =>
+        bill.numericProtocolVersion === 2 ? bill.taxExclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill.taxExclusiveAmountCents ?? null))) : null;
+      const tax = canUseBills ? sumBusinessAmounts(included.map(bill =>
+        bill.numericProtocolVersion === 2 ? bill.taxAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill.taxAmountCents ?? null))) : null;
+      Object.assign(values, {
+        "contract.renderSemanticVersion": semanticVersion,
+        "contract.amountBasis": basis,
+        "contract.amountBasisLabel": basis === "tax_exclusive" ? "不含税" : "含税",
+        "contract.taxInclusiveAmount": gross ?? "待确定",
+        "contract.taxExclusiveAmount": net ?? "待确定",
+        "contract.taxAmount": tax ?? "待确定",
+        "contract.taxInclusiveAmountUppercase": formatChineseUppercaseBusinessAmount(gross),
+        "contract.taxExclusiveAmountUppercase": formatChineseUppercaseBusinessAmount(net),
+        "contract.taxAmountUppercase": formatChineseUppercaseBusinessAmount(tax),
+        "contract.taxRateLabel": version.defaultTaxRatePercent == null ? "待补充" : `${version.defaultTaxRatePercent.toString()}%`
+      });
+      if (basis === "tax_exclusive") {
+        // Generic fields in an unclassified custom source must identify their
+        // basis themselves. The reviewed eight-column source binds pure amount keys.
+        values["contract.amount"] = `含税金额：${gross ?? "待确定"}；不含税金额：${net ?? "待确定"}`;
+        values["contract.amountUppercase"] = `含税大写：${formatChineseUppercaseBusinessAmount(gross)}；不含税大写：${formatChineseUppercaseBusinessAmount(net)}`;
+      }
+    }
 
     if (this.isObject(version.draftData)) {
       for (const [key, value] of Object.entries(version.draftData)) {
@@ -1122,19 +1339,60 @@ export class ContractDocumentService {
       }
     }
     for (const bill of bills) {
-      values[`bill.${bill.billKey}`] = bill.rows.map((row) => {
-        const taxInclusiveUnitPrice = row.unitPrice?.toFixed(2) ?? "—";
+      values[`bill.${bill.billKey}`] = bill.rows.map((row, rowIndex) => {
+        const decimalRow = row.numericProtocolVersion === 2;
+        const semanticRow = decimalRow && moneySemantics;
+        const unknownAmount = semanticRow ? "待确定" : "—";
+        const derivedGrossUnit = semanticRow && bill.pricingMode === "tax_exclusive" && row.unitPrice != null && row.taxRate != null
+          ? new ContractRenderDecimal(row.unitPrice.toString()).mul(new ContractRenderDecimal(row.taxRate.toString()).div(100).plus(1)).toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP).toFixed(4)
+          : null;
+        const taxInclusiveUnitPrice = decimalRow
+          ? (semanticRow && bill.pricingMode === "tax_exclusive" ? derivedGrossUnit : row.unitPrice?.toString() ?? null) ?? unknownAmount
+          : row.unitPrice?.toFixed(2) ?? "—";
         const taxExclusiveUnitPrice =
           row.taxExclusiveUnitPrice != null
-            ? row.taxExclusiveUnitPrice.toFixed(6)
+            ? row.taxExclusiveUnitPrice.toFixed(row.numericProtocolVersion === 2 && row.numericSource === "decimal_input" ? 4 : 6)
             : row.quantity && row.taxExclusiveAmountCents !== null
               ? deriveSixDecimalUnitPriceFromAmountCents(
                   row.taxExclusiveAmountCents,
                   row.quantity.toString()
                 ) ?? "—"
             : "—";
+        // Optional unit-tax display is a decomposition of existing facts, not
+        // a second tax calculation. Rounded line facts can make a unit split
+        // inconsistent (especially tiny quantities); keep that cell unknown.
+        let taxUnitPrice = unknownAmount;
+        if (semanticRow && row.quantity != null && row.unitPrice != null && row.taxExclusiveUnitPrice != null &&
+          row.taxInclusiveAmountYuan != null && row.taxExclusiveAmountYuan != null && row.taxAmountYuan != null) {
+          const grossUnit = bill.pricingMode === "tax_exclusive" ? derivedGrossUnit : row.unitPrice.toString();
+          if (grossUnit !== null) {
+            const split = new ContractRenderDecimal(grossUnit).minus(row.taxExclusiveUnitPrice);
+            if (!split.isNegative()) {
+              try {
+                const quantity = row.quantity.toString();
+                if (calculateBusinessLineAmount(quantity, grossUnit) === row.taxInclusiveAmountYuan.toFixed(4) &&
+                  calculateBusinessLineAmount(quantity, row.taxExclusiveUnitPrice.toString()) === row.taxExclusiveAmountYuan.toFixed(4) &&
+                  calculateBusinessLineAmount(quantity, split.toFixed(4)) === row.taxAmountYuan.toFixed(4)) {
+                  taxUnitPrice = split.toFixed(4);
+                }
+              } catch {
+                // A value outside the existing four-decimal display protocol
+                // cannot qualify this optional cell; original facts stay intact.
+              }
+            }
+          }
+        }
         return {
           ...(this.isObject(row.customData) ? row.customData : {}),
+          // Preserve unknown values. These original mechanical labels consume
+          // the persisted boolean before the JSON-safe string projection.
+          // Explicit unknowns also prevent a loop falling back to parent text.
+          是否含燃油: this.isObject(row.customData) && typeof row.customData.fuelIncluded === "boolean"
+            ? row.customData.fuelIncluded ? "是" : "否" : this.isObject(row.customData) ? row.customData.是否含燃油 ?? "" : "",
+          是否带操作人员: this.isObject(row.customData) && typeof row.customData.operatorIncluded === "boolean"
+            ? row.customData.operatorIncluded ? "是" : "否" : this.isObject(row.customData) ? row.customData.是否带操作人员 ?? "" : "",
+          rowNumber: String(rowIndex + 1),
+          taxUnitPrice,
           itemCode: row.itemCode ?? "",
           itemName: row.itemName,
           specification: row.specification ?? "",
@@ -1143,15 +1401,33 @@ export class ContractDocumentService {
           unitPrice: taxInclusiveUnitPrice,
           taxInclusiveUnitPrice,
           taxExclusiveUnitPrice,
-          taxRatePercent: row.taxRate ? `${row.taxRate.toString()}%` : "—",
-          taxInclusiveAmount: this.moneyText(row.taxInclusiveAmountCents),
-          taxExclusiveAmount: this.moneyText(row.taxExclusiveAmountCents),
-          taxAmount: this.moneyText(row.taxAmountCents),
+          taxRatePercent: row.taxRate != null ? `${row.taxRate.toString()}%` : semanticRow ? "待补充" : "—",
+          taxInclusiveAmount: row.numericProtocolVersion === 2 ? row.taxInclusiveAmountYuan?.toFixed(4) ?? unknownAmount : this.moneyText(row.taxInclusiveAmountCents),
+          taxExclusiveAmount: row.numericProtocolVersion === 2 ? row.taxExclusiveAmountYuan?.toFixed(4) ?? unknownAmount : this.moneyText(row.taxExclusiveAmountCents),
+          taxAmount: row.numericProtocolVersion === 2 ? row.taxAmountYuan?.toFixed(4) ?? unknownAmount : this.moneyText(row.taxAmountCents),
           isProvisional: row.isProvisional,
           settlementBasis: row.settlementBasis ?? ""
         };
       });
     }
+    // A new unified draft has one grid. A selected template may name its one
+    // explicitly declared loop differently; never combine multiple bills or
+    // guess among multiple destinations, and leave the legacy protocol intact.
+    if (version.numericProtocolVersion === 2 && bills.length === 1 && billKeys.length === 1) {
+      const sourceKey = `bill.${bills[0].billKey}`;
+      const targetKey = billKeys[0];
+      if (targetKey !== sourceKey && values[targetKey] === undefined) values[targetKey] = values[sourceKey];
+    }
+    // Server typography partner is never supplied by configurable values.
+    delete values["contract.typographyVersion"];
+    if (typographyVersion) values["contract.typographyVersion"] = typographyVersion;
+    delete values["contract.signatureDateVersion"];
+    if (signatureDateVersion) values["contract.signatureDateVersion"] = signatureDateVersion;
+    delete values["contract.pageNumberVersion"];
+    if (pageNumberVersion) values["contract.pageNumberVersion"] = pageNumberVersion;
+    // Server layout context wins after every configurable field/party/bill merge.
+    if (tableLayoutVersion !== undefined) values["contract.tableLayoutVersion"] = tableLayoutVersion;
+
     return Object.fromEntries(
       Object.entries(values).map(([key, value]) => [key, this.jsonSafeRenderValue(value)])
     );

@@ -273,9 +273,10 @@ describe("ProjectService", () => {
 
   it("creates a project and records an audit log", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "chairman-position", key: "chairman" }]) },
       businessEntrySubmissionSnapshot: { create: jest.fn().mockResolvedValue({ id: "snapshot-1" }) },
       project: {
         create: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
@@ -307,9 +308,10 @@ describe("ProjectService", () => {
 
   it("updates a project name and records an audit log", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "chairman-position", key: "chairman" }]) },
       project: {
         update: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
       }
@@ -2215,6 +2217,7 @@ describe("ProjectService", () => {
           storageStatus: "active",
           contentSha256: attachmentFileSha256Snapshot
         }])
+        .mockResolvedValueOnce([{ state: "absent" }])
         .mockResolvedValueOnce([]),
       user: { findFirst: jest.fn().mockResolvedValue({ id: "finance-staff-1" }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

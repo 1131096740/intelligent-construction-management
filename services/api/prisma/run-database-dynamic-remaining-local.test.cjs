@@ -3,6 +3,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { listMigrationDirectories } = require("./migration-baseline.cjs");
 const {
   GROUPS,
   createRuntimeEnvironment
@@ -45,4 +46,43 @@ test("participant-history group uses its dedicated database and both profile gat
     pendingTests: 30,
     requiresOperatingLedgerWriteSecret: true
   });
+});
+
+test("the terminal upgrade stages the exact predecessor before deploying only its successor", async () => {
+  const Module = require("node:module");
+  const { readFileSync } = require("node:fs");
+  const path = require("node:path");
+  const filename = path.join(__dirname, "run-database-dynamic-remaining-local.cjs");
+  const fixture = new Module(filename, module);
+  fixture.filename = filename;
+  fixture.paths = Module._nodeModulePaths(__dirname);
+  fixture._compile(readFileSync(filename, "utf8").replace(/^#!.*\n/u, "") + `
+module.exports.runTerminalUpgrade = async (rejectPredecessor) => {
+  const calls = [];
+  const directory = await mkdtemp(path.join(tmpdir(), "remaining-model-"));
+  run = async (_bin, args) => { calls.push(args.slice(4)); return {}; };
+  try {
+    await migrate("postgresql://jiangkong:test@127.0.0.1:5432/jiangkong_wage_statement_dynamic_test", {}, {
+      temporaryRoot: directory,
+      group: GROUPS.find(group => group.preTerminalMigrationFixture === "terminal_migration"),
+      migration: { async migrate({schemaPath}) {
+        const {readdir} = require("node:fs/promises");
+        const entries = await readdir(path.join(path.dirname(schemaPath), "migrations"), {withFileTypes:true});
+        calls.push(["qualified", entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort()]);
+        if (rejectPredecessor) throw new Error("controlled predecessor rejection");
+      }}
+    });
+  } catch (error) {
+    if (!rejectPredecessor || error.message !== "controlled predecessor rejection") throw error;
+  } finally {
+    await rm(directory, {recursive:true,force:true});
+  }
+  return calls;
+};
+`, filename);
+  const predecessor = listMigrationDirectories().slice(0, -1);
+  assert.deepEqual(await fixture.exports.runTerminalUpgrade(false), [
+    ["qualified", predecessor], ["migrate", "deploy"], ["migrate", "status"]
+  ]);
+  assert.deepEqual(await fixture.exports.runTerminalUpgrade(true), [["qualified", predecessor]]);
 });

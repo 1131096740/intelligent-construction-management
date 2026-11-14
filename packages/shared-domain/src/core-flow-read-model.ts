@@ -88,6 +88,9 @@ export interface ContractSettlementPaymentReadModel {
 
 export interface ContractArchiveFileReadModel {
   archiveRecordId: string;
+  archiveProtocolVersion?: 1 | 2;
+  evidenceId?: string;
+  displayOrder?: number;
   fileId: string;
   fileName: string;
   mimeType: string;
@@ -237,7 +240,42 @@ export interface ProjectExpenseApprovalDetailReadModel {
   } | null;
 }
 
+export interface ContractV2LifecycleActionReadModel {
+  key: "confirm_seal_v2" | "archive_signed_v2";
+  eligible: boolean;
+  /** Commands still recheck the current authority in their own transaction. */
+  enabled: boolean;
+  reason: string | null;
+}
+
+export type ContractV2LifecycleReadModel = {
+  protocolVersion: 2;
+  contractVersionId: string;
+  webWriteReleased: boolean;
+  sealAction: ContractV2LifecycleActionReadModel;
+  archiveAction: ContractV2LifecycleActionReadModel;
+} & ({
+  status: "unavailable";
+  state: "unavailable";
+  reason: string;
+} | {
+  status: "ready";
+  source: "generated_approval";
+  scope: "inside_original" | "outside_original" | "upward_original";
+  actorUserId: string;
+  approvalInstanceId: string;
+  sealTaskId: string;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
+  state: "pending_seal" | "pending_archive" | "archived";
+  sealOutcome: { status: "pending" | "completed"; completedAt: string | null; completedByUserId: string | null };
+  /** Stored metadata only; real bytes are revalidated by the command. */
+  approvalSource: { status: "references_ready" };
+  signedFilePolicy: { mimeType: "application/pdf"; minCount: 1; maxCount: 20; ordered: true };
+});
+
 export interface ContractDetailReadModel {
+  v2Lifecycle?: ContractV2LifecycleReadModel;
   businessEntrySubmissions?: Array<{
     approvalInstanceId: string;
     snapshot: import("./business-entry-definition").BusinessEntryFrozenSnapshot;
@@ -275,7 +313,7 @@ export interface ContractDetailReadModel {
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
   draftRevision?: number;
-  documentContentRevision: number;
+  documentContentRevision: number | null;
   documentContentFingerprint: string | null;
   lifecycleUpdatedAt?: string;
   primaryAction: string | null;
@@ -302,6 +340,7 @@ export interface ContractDetailReadModel {
 }
 
 export interface ContractApprovalReviewContextReadModel {
+  expectedParallelApprovalEpoch?: string;
   expectedContractUpdatedAt: string;
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
@@ -392,6 +431,14 @@ export interface SettlementDetailReadModel {
 }
 
 export interface PaymentDetailReadModel {
+  /** Protocol ownership is independent of actor authority and fund capacity. */
+  registeredExecutionCapability?: {
+    supportedDomain: boolean;
+    allowedActor: boolean;
+    workflowReady: boolean;
+    canSupplementVoucher: boolean;
+    blockedReason: string | null;
+  };
   projectId?:string;
   businessEntryHistory?: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
   financeEntry?: {

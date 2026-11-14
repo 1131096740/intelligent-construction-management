@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
@@ -292,7 +293,7 @@ export function operatingInputFromStoredFact(
     factKind: fact.factKind as AppendOperatingFactInput["factKind"],
     operatingLevel: fact.operatingLevel as AppendOperatingFactInput["operatingLevel"],
     evidenceLevel: fact.evidenceLevel as AppendOperatingFactInput["evidenceLevel"],
-    amountCents: fact.amountCents,
+    amountCents: requireLegacyOperatingCents(fact),
     currencyCode: fact.currencyCode,
     direction: fact.direction as AppendOperatingFactInput["direction"],
     isBeforeOperatingLedgerEffectiveDate: fact.isBeforeOperatingLedgerEffectiveDate,
@@ -363,7 +364,7 @@ export function operatingInputFromStoredFact(
       idempotencyKey: impact.idempotencyKey,
       sourceImpactKey: impact.sourceImpactKey,
       impactKind: impact.impactKind as OperatingImpactInput["impactKind"],
-      amountCents: impact.amountCents,
+      amountCents: requireLegacyOperatingCents(impact),
       direction: impact.direction as OperatingImpactInput["direction"],
       ...(impact.subjectRole && impact.subjectKind && impact.subjectId
         ? {
@@ -510,6 +511,7 @@ function signedImpact(
   delta: bigint,
   correctionId: string
 ): OperatingImpactInput {
+  if (impact.numericProtocolVersion === 2) throw new BadRequestException("原历史分金额更正不能处理新版合同参考金额");
   const positive = delta >= 0n;
   const amountCents = absBigInt(delta);
   return {

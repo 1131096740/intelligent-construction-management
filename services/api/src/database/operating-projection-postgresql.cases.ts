@@ -12,6 +12,7 @@ import { CompanyRoleResolverService } from "../auth/company-role-resolver.servic
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { ClearingService } from "../clearing/clearing.service";
 import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
+import { registeredPaymentInstalled } from "./registered-payment-catalog";
 import { FileService } from "../file/file.service";
 import { FundsWorkbenchService } from "../funds-workbench/funds-workbench.service";
 import { MeService } from "../me/me.service";
@@ -815,9 +816,38 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
   });
 
   scenario("core", "通过公开经营账与限制资金释放流程覆盖全部已知影响的导出映射", async () => {
+    // The baseline does not install Task16's registered-payment posting authority.
+    const registeredCashKind = "public_cash_funds_decrease";
+    expect(await registeredPaymentInstalled(prisma)).toBe(false);
+    const unboundCashSource = `a18-unbound-cash-${runId}`;
+    await expect(append("fund_movement", {
+      sourceBusinessId: unboundCashSource,
+      idempotencyKey: unboundCashSource,
+      impacts: [impact("a18-unbound-cash", registeredCashKind, 1n, "decrease", {
+        subjectRole: "fund_holder", subject: company
+      })]
+    })).rejects.toMatchObject({
+      code: "P2010",
+      meta: { code: "23514", message: expect.stringContaining("OperatingImpactEntry_impact_kind_check") }
+    });
+    const cash = { kind: "public_cash", id: "public_cash" } as const;
+    await expect(append("payment_execution", {
+      sourceBusinessId: unboundCashSource,
+      idempotencyKey: unboundCashSource,
+      factKind: "downstream_payment",
+      direction: "outflow",
+      subjects: { actualPayer: cash, payee: { kind: "downstream_counterparty", id: `vendor-${runId}` } },
+      impacts: [impact(registeredCashKind, registeredCashKind, 1n, "decrease", {
+        subjectRole: "actual_payer", subject: cash
+      })]
+    })).rejects.toThrow("公共现金经营后果必须关联同一正式实付及无公司资金容器");
+    expect(await prisma.operatingFact.count({ where: { sourceBusinessId: unboundCashSource } })).toBe(0);
+    expect(await prisma.operatingImpactEntry.count({ where: { sourceBusinessId: unboundCashSource } })).toBe(0);
+
     const governed = new Set(["necessary_expense_reserve_increase", "necessary_expense_reserve_decrease",
       "project_disputed_funds_increase", "project_disputed_funds_decrease"]);
-    const ordinaryKinds = OPERATING_IMPACT_KINDS.filter((kind) => !governed.has(kind));
+    const baselineKinds = OPERATING_IMPACT_KINDS.filter((kind) => kind !== registeredCashKind);
+    const ordinaryKinds = baselineKinds.filter((kind) => !governed.has(kind));
     await append("fund_movement", {
       sourceBusinessId: `a18-mapping-${runId}`, sourceBusinessCode: "A18-MAPPING",
       idempotencyKey: `a18-mapping-${runId}`,
@@ -901,7 +931,8 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
       }, "pg16-confirmation-password", "project_operating_ledger_detail");
       content += await readUtf8Stream(result.stream);
     }
-    for (const kind of OPERATING_IMPACT_KINDS) expect(content).toContain(`"${OPERATING_IMPACT_KIND_LABELS[kind]}"`);
+    for (const kind of baselineKinds) expect(content).toContain(`"${OPERATING_IMPACT_KIND_LABELS[kind]}"`);
+    expect(content).not.toContain(`"${OPERATING_IMPACT_KIND_LABELS[registeredCashKind]}"`);
   });
 
   scenario("core", "以上游资金 V2 指纹稳定分页，并在 20,001 行内验证有界快照", async () => {
@@ -1725,7 +1756,7 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
 
   async function append(
     sourceType: string,
-    overrides: Partial<AppendOperatingFactInput>
+    overrides: Partial<Extract<AppendOperatingFactInput, { amountCents: bigint }>>
   ) {
     const sourceBusinessId = `${sourceType}-${runId}`;
     return ledger.appendFromSource({
@@ -1866,7 +1897,7 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
     impactKind: OperatingImpactInput["impactKind"],
     amountCents: bigint,
     direction: OperatingImpactInput["direction"],
-    overrides: Partial<OperatingImpactInput> = {}
+    overrides: Partial<Extract<OperatingImpactInput, { amountCents: bigint }>> = {}
   ): OperatingImpactInput {
     return {
       idempotencyKey: `pol108:${runId}:${key}`,

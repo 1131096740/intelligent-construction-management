@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Query, Param, Post, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, Header, Query, Param, Post, Res, StreamableFile } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ApprovalFormService } from "./approval-form.service";
@@ -19,11 +19,13 @@ export class ApprovalFormController {
   }
 
   @Get(":businessType/:businessId/capability")
+  @Header("Cache-Control", "no-store")
   capability(@Param("businessType") businessType: string, @Param("businessId") businessId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.approvalForms.downloadAvailability(businessType, businessId, user.id);
   }
 
   @Post(":businessType/:businessId/download")
+  @Header("Cache-Control", "no-store")
   async download(
     @Param("businessType") businessType: string,
     @Param("businessId") businessId: string,

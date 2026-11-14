@@ -1,4 +1,10 @@
 import { ledgerApprovalFacts } from "./ledger-approval-facts";
+it("履约复核审批事实保留已冻结的四位分项，不因旧分字段为空漏掉金额",async()=>{
+ const row={id:"review",projectId:"p",createdAt:new Date("2026-10-02"),leftSourceRef:"contract:a",rightSourceRef:"contract:b",relation:"shared_evidence",reason:"批次核对",frozenSources:[{ref:"contract:a",reference:"HT-A",title:"甲材料",counterparty:"供应商"},{ref:"contract:b",reference:"HT-B",title:"乙材料",counterparty:"供应商"}],coverage:[{scope:"已验批次",numericProtocolVersion:2,leftAmountCents:null,rightAmountCents:null,leftAmountYuan:"0.0010",rightAmountYuan:"0.0020",owner:"right"}]};
+ const tx={contractEconomicReview:{findUniqueOrThrow:async()=>row},project:{findUniqueOrThrow:async()=>({name:"项目一"})},contract:{findMany:async()=>row.frozenSources.map(d=>({id:d.ref.slice(9),code:d.reference,name:d.title,counterparty:d.counterparty}))},contractVersion:{findMany:async()=>["a","b"].map(id=>({id:`version-${id}`,contractId:id,numericProtocolVersion:2,amountYuan:"1.5340",amountCents:153n,documentContentRevision:1,effectiveAt:new Date("2026-10-01")}))},projectAffiliateContractFact:{findMany:async()=>[]},settlement:{findMany:async()=>[]},projectAffiliateSettlementFact:{findMany:async()=>[]}};
+ const result=await ledgerApprovalFacts(tx as never,"contract_economic_review","review");
+ expect(result.summary).toContainEqual({label:"履约分项",value:"已验批次：左方 0.0010 元；右方 0.0020 元；由右方计入及结算"});
+});
 
 const createdAt = new Date("2026-10-20T00:00:00Z");
 describe("ledger approval paper facts", () => {

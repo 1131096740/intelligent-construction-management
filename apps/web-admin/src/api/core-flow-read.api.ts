@@ -30,6 +30,7 @@ import {
 import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 import { SettlementApprovalWithdrawalResultUnknownError } from "../lib/settlement-approval-result";
 import { apiFetch } from "./api-fetch";
+import type { ApiFetchInit } from "./http";
 import { formatApiErrorMessage } from "./error-message";
 
 export class CoreFlowApiError extends Error {
@@ -75,17 +76,18 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   );
 }
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await apiFetch(path);
+async function readJson<T>(path: string, headers?: Record<string, string>, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<T> {
+  const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
   await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
 
-async function postJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+async function postJson<TResponse>(path: string, body?: unknown, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify(body ?? {}),
+    ...options
   });
   await ensureOk(response, "提交失败");
   return response.json() as Promise<TResponse>;
@@ -111,8 +113,8 @@ async function putJson<TResponse>(path: string, body?: unknown): Promise<TRespon
   return response.json() as Promise<TResponse>;
 }
 
-async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
-  const response = await apiFetch(path, { method: "POST", body });
+async function postForm<TResponse>(path: string, body: FormData, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<TResponse> {
+  const response = await apiFetch(path, { method: "POST", body, ...options });
   await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
 }
@@ -128,8 +130,67 @@ export function fetchContractDetail(contractId: string, options?: { versionId?: 
     ? `?versionId=${encodeURIComponent(options.versionId)}`
     : "";
   return readJson<ContractDetailReadModel>(
-    `/contracts/${encodeURIComponent(contractId)}${query}`
+    `/contracts/${encodeURIComponent(contractId)}${query}`,
+    { "x-contract-numeric-protocol": "2" }
   );
+}
+
+export interface ContractSealConfirmationV2Payload {
+  expectedApprovalInstanceId: string;
+  expectedSealTaskId: string;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
+  confirmed: true;
+}
+
+export function confirmContractSealV2(versionId: string, body: ContractSealConfirmationV2Payload, responseIsCurrent: () => boolean) {
+  return postJson<{ contractVersionId: string; approvalInstanceId: string; sealTaskId: string; status: "seal_approved_pending_archive" }>(
+    `/contracts/${encodeURIComponent(versionId)}/seal-confirmation`, body, { retryUnauthorized: false, responseIsCurrent }
+  );
+}
+
+export interface ContractSignedArchiveV2Payload extends Omit<ContractSealConfirmationV2Payload, "confirmed"> {
+  archiveProtocolVersion: 2;
+  archiveSource: "generated_approval";
+  idempotencyKey: string;
+  fileIds: string[];
+  confirmedMatchingSignedDocument: true;
+}
+export interface ContractSignedArchiveV2Result {
+  archiveId: string; contractVersionId: string; status: "effective"; fileIds: string[];
+}
+export type ContractSignedArchiveV2Lookup = { status: "unknown" } | {
+  status: "archived"; requestSha256: string; intent: ContractSignedArchiveV2Payload; result: ContractSignedArchiveV2Result;
+};
+export function fetchSignedContractArchiveV2Result(versionId: string, key: string) {
+  return readJson<ContractSignedArchiveV2Lookup>(`/contracts/${encodeURIComponent(versionId)}/archive-requests/${encodeURIComponent(key)}`);
+}
+
+export interface ContractDirectRegistrationPayload {
+  archiveProtocolVersion: 2;
+  archiveSource: "direct_signed";
+  idempotencyKey: string;
+  expectedDraftRevision: number;
+  expectedInputSha256: string;
+  fileIds: string[];
+  confirmedMatchingSignedDocument: true;
+}
+export type ContractDirectRegistrationLookup = { status: "unknown" } | {
+  status: "archived"; requestSha256: string; intent: ContractDirectRegistrationPayload; result: ContractSignedArchiveV2Result;
+};
+export function archiveSignedContractV2(versionId: string, body: ContractSignedArchiveV2Payload, responseIsCurrent: () => boolean): Promise<ContractSignedArchiveV2Result>;
+export function archiveSignedContractV2(versionId: string, body: ContractDirectRegistrationPayload, responseIsCurrent: () => boolean): Promise<ContractSignedArchiveV2Result>;
+export function archiveSignedContractV2(
+  versionId: string,
+  body: ContractSignedArchiveV2Payload | ContractDirectRegistrationPayload,
+  responseIsCurrent: () => boolean
+) {
+  const options = { retryUnauthorized: false, responseIsCurrent };
+  return postJson<ContractSignedArchiveV2Result>(`/contracts/${encodeURIComponent(versionId)}/signed-archive`, body, options);
+}
+export function fetchDirectSignedContractResult(versionId: string, key: string, responseIsCurrent: () => boolean) {
+  return readJson<ContractDirectRegistrationLookup>(`/contracts/${encodeURIComponent(versionId)}/archive-requests/${encodeURIComponent(key)}`,
+    undefined, { retryUnauthorized: false, responseIsCurrent });
 }
 
 export interface ContractSigningMaterialChangeActionContext {
@@ -1096,6 +1157,7 @@ export type ExecutePaymentApprovalReviewActionResult =
     };
 
 export interface ReviewContractApprovalPayload {
+  expectedParallelApprovalEpoch?: string;
   decision: "approve" | "reject";
   comment?: string;
   selfReviewReason?: string;
@@ -1109,6 +1171,7 @@ export interface ReviewContractApprovalPayload {
 }
 
 export interface ContractReviewApprovalCoordinates {
+  expectedParallelApprovalEpoch?: string;
   expectedContractUpdatedAt: string;
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
@@ -1498,6 +1561,10 @@ export interface ContractLedgerListReadModel {
   rows: Array<{
     contractRelationshipLabel?: string;
     id: string;
+    contractId?: string;
+    contractVersionId?: string;
+    originalSignedNumber?: string | null;
+    originalSignedNumberState?: "available" | "unavailable";
     contractNo: string;
     name: string;
     project: string;
@@ -2665,7 +2732,7 @@ export interface ProjectActionCapabilityReadModel {
 }
 
 export function validateProjectCreation(body: CreateProjectPayload) {
-  return postJson<BusinessEntryValidationResult>("/projects/create-validation", body);
+  return postJson<BusinessEntryValidationResult & { warnings: string[] }>("/projects/create-validation", body);
 }
 
 export function fetchProjectCreateCapability() {
@@ -3625,8 +3692,8 @@ export async function downloadProjectExpenseApprovalPdf(
   saveBlob(await response.blob(), name ? decodeURIComponent(name) : "项目费用审批单.pdf");
 }
 
-export function fetchContractLedger() {
-  return readJson<ContractLedgerListReadModel>("/contracts");
+export function fetchContractLedger(options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">) {
+  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" }, options);
 }
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
@@ -3669,7 +3736,8 @@ export function fetchContractLifecycleLedger(
     pageSize: String(pageSize)
   });
   return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/lifecycle-ledger?${query.toString()}`
+    `/contracts/lifecycle-ledger?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -3688,12 +3756,13 @@ export function fetchContractWorkbenchLedger(
     pageSize: String(pageSize)
   });
   return readJson<ContractWorkbenchLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/workbench?${query.toString()}`
+    `/contracts/workbench?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
 export function downloadContractLedgerExport() {
-  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败");
+  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败", { "x-contract-numeric-protocol": "2" });
 }
 
 export function fetchSettlementContractOptions(projectId: string) {
@@ -3833,14 +3902,16 @@ export function fetchArchives() {
 export function uploadPrivateFile(
   file: Blob,
   fileName: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  responseIsCurrent?: () => boolean
 ) {
   const form = new FormData();
   form.append("file", file, fileName);
   if (idempotencyKey !== undefined) {
     form.append("idempotencyKey", idempotencyKey);
   }
-  return postForm<PrivateFileReadModel>("/files", form);
+  const options = responseIsCurrent ? { retryUnauthorized: false, responseIsCurrent } : undefined;
+  return postForm<PrivateFileReadModel>("/files", form, options);
 }
 
 function projectDomainPrivateFileForm(
@@ -6087,7 +6158,10 @@ function contractApprovalReviewActionPayload(
     expectedContractUpdatedAt: context.expectedContractUpdatedAt,
     expectedApprovalInstanceId: context.expectedApprovalInstanceId,
     expectedNodeIndex: context.expectedNodeIndex,
-    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt,
+    ...(context.expectedParallelApprovalEpoch !== undefined
+      ? { expectedParallelApprovalEpoch: context.expectedParallelApprovalEpoch }
+      : {})
   };
 }
 
@@ -6122,6 +6196,9 @@ function normalizeContractApprovalReviewAction(
     !expectedContractUpdatedAt ||
     !expectedApprovalInstanceId ||
     !expectedApprovalUpdatedAt ||
+    (input.expectedParallelApprovalEpoch !== undefined &&
+      (typeof input.expectedParallelApprovalEpoch !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(input.expectedParallelApprovalEpoch))) ||
     !Number.isInteger(input.routeGeneration) ||
     input.routeGeneration < 0 ||
     !Number.isInteger(input.detailEpoch) ||
@@ -6160,6 +6237,9 @@ function normalizeContractApprovalReviewAction(
     expectedApprovalInstanceId,
     expectedNodeIndex: input.expectedNodeIndex,
     expectedApprovalUpdatedAt,
+    ...(input.expectedParallelApprovalEpoch !== undefined
+      ? { expectedParallelApprovalEpoch: input.expectedParallelApprovalEpoch }
+      : {}),
     decision: input.decision,
     requiresSelfReviewConfirmation:
       input.requiresSelfReviewConfirmation,
@@ -6191,6 +6271,7 @@ function sameContractApprovalReviewContext(
     expected.expectedNodeIndex === actual.expectedNodeIndex &&
     expected.expectedApprovalUpdatedAt ===
       actual.expectedApprovalUpdatedAt &&
+    expected.expectedParallelApprovalEpoch === actual.expectedParallelApprovalEpoch &&
     expected.decision === actual.decision &&
     expected.comment === actual.comment &&
     expected.requiresSelfReviewConfirmation ===
@@ -6243,20 +6324,22 @@ function assertContractApprovalReviewPreflight(
     (action) => action.key === "review_approval" && action.enabled
   );
   const coordinates = preflight.reviewApprovalContext;
+  const matchesReviewCoordinates = coordinates &&
+    (context.expectedParallelApprovalEpoch === undefined
+      ? coordinates.expectedContractUpdatedAt === context.expectedContractUpdatedAt &&
+        coordinates.expectedApprovalUpdatedAt === context.expectedApprovalUpdatedAt
+      : coordinates.expectedParallelApprovalEpoch === context.expectedParallelApprovalEpoch);
   if (
     preflight.id !== context.contractId ||
     preflight.contractVersionId !== context.contractVersionId ||
-    preflight.lifecycleUpdatedAt !== context.expectedContractUpdatedAt ||
+    preflight.lifecycleUpdatedAt !== coordinates?.expectedContractUpdatedAt ||
     enabledReviewActions.length !== 1 ||
     (enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !==
       context.requiresSelfReviewConfirmation ||
-    coordinates?.expectedContractUpdatedAt !==
-      context.expectedContractUpdatedAt ||
+    !coordinates || !matchesReviewCoordinates ||
     coordinates.expectedApprovalInstanceId !==
       context.expectedApprovalInstanceId ||
     coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
-    coordinates.expectedApprovalUpdatedAt !==
-      context.expectedApprovalUpdatedAt ||
     !sameContractApprovalOwnerRisk(
       context.ownerContractRisk,
       preflight.ownerContractRisk ?? null
@@ -7141,9 +7224,10 @@ function saveBlob(blob: Blob, fileName: string): void {
 async function downloadWorkbook(
   path: string,
   fallbackFileName: string,
-  fallbackError: string
+  fallbackError: string,
+  headers?: Record<string, string>
 ): Promise<void> {
-  const response = await apiFetch(path);
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, fallbackError);
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
@@ -7296,6 +7380,11 @@ export function generateSettlementPdfArchive(
 }
 
 export interface ApprovalDelegationReadModel {
+  reviewPath?: string;
+  actionKey?: string | null;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  scopeLabel?: string;
   id: string;
   fromUserId: string;
   fromUserName?: string;
@@ -7312,18 +7401,24 @@ export interface UserOptionReadModel {
   name: string;
 }
 
-export interface CreateApprovalDelegationPayload {
-  toUserId: string;
-  startsAt: string;
-  endsAt: string;
-}
+export type ApprovalDelegationDutyScope =
+  | { actionKey: "spot_procurement.approve"; resourceType: "spot_procurement_approval_duty" }
+  | { actionKey: "general_procurement.approve"; resourceType: "general_procurement_approval_duty" }
+  | { actionKey: "fund_account.balance.review"; resourceType: "fund_account_balance_review_duty" };
+export type CreateApprovalDelegationPayload = {
+  resourceId?: string; toUserId: string; startsAt: string; endsAt: string;
+} & (ApprovalDelegationDutyScope | { actionKey?: never; resourceType?: never });
 
 export function listApprovalDelegations() {
   return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
 }
 
-export function fetchApprovalDelegationUserOptions() {
-  return readJson<UserOptionReadModel[]>("/approval-delegations/user-options");
+export function fetchApprovalDelegationDutyOptions() {
+  return readJson<Array<{value: string; label: string} & ApprovalDelegationDutyScope>>("/approval-delegations/duty-options");
+}
+
+export function fetchApprovalDelegationUserOptions(dutyId?: string) {
+  return readJson<UserOptionReadModel[]>(`/approval-delegations/user-options${dutyId ? `?dutyId=${encodeURIComponent(dutyId)}` : ""}`);
 }
 
 export function createApprovalDelegation(body: CreateApprovalDelegationPayload) {
@@ -7342,4 +7437,20 @@ export function fetchContractFinancialBalances(input:{projectId?:string;companyE
  if(input.companyEntityId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/company/${encodeURIComponent(input.companyEntityId)}?${query}`);
  query.set("scopeKind","projects");
  return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/as-of?${query}`);
+}
+
+export interface ApprovalRuleAssignmentsReadModel {
+  projects: Array<{id: string; name: string}>;
+  projectId: string | null;
+  roles: Array<{roleKey: string; people: Array<{id: string; name: string}>; missing: boolean}>;
+}
+export function fetchApprovalRuleAssignments(projectId?: string) {
+  return readJson<ApprovalRuleAssignmentsReadModel>(`/approval-rule-assignments${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`);
+}
+
+export function fetchApprovalDelegationDutyCapability(dutyId: string) {
+  return readJson<{canDelegate: boolean; actionKey?: CreateApprovalDelegationPayload["actionKey"]; resourceType?: CreateApprovalDelegationPayload["resourceType"]; resourceId?: string}>(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(dutyId)}`);
+}
+export function fetchApprovalDelegationRevokeCapability(id: string) {
+  return readJson<{canRevoke: boolean}>(`/approval-delegations/${encodeURIComponent(id)}/revoke-capability`);
 }

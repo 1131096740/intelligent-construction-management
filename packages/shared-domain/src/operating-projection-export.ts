@@ -86,6 +86,7 @@ export const OPERATING_EXPORT_IMPACT_KINDS = Object.freeze({
   payable_increase: flow, payable_decrease: flow, construction_enterprise_funds_increase: ceCash,
   construction_enterprise_funds_decrease: ceCash, construction_enterprise_funds_freeze: ce,
   construction_enterprise_funds_release: ce, company_project_funds_increase: coCash,
+  public_cash_funds_decrease: flow,
   company_project_funds_decrease: coCash, company_advance_for_project_increase: co,
   company_advance_for_project_decrease: co, company_returnable_to_project_increase: co,
   company_returnable_to_project_decrease: co, inter_subject_balance_increase: co,

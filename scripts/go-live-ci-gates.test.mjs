@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import pol113Pol115Shards from "../services/api/prisma/pol113-pol115-shards.cjs";
 import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -33,6 +34,28 @@ function jobBlock(workflow, jobName) {
   const end = nextJob ? start + marker.length + nextJob.index : workflow.length;
   return workflow.slice(start, end);
 }
+
+test("quality typecheck has a bounded compiler-only heap while preserving complete commands", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const quality = jobBlock(workflow, "quality-gates");
+  const step = /      - name: Typecheck\n([\s\S]*?)(?=\n      - name:)/u.exec(quality)?.[1];
+  assert.ok(step);
+  assert.match(step, /        env:\n          NODE_OPTIONS: --max-old-space-size=3072\n/u);
+  const commands = step.split("        run: |\n")[1].trim().split("\n").map(line => line.trim());
+  assert.deepEqual(commands, ["pnpm typecheck", "pnpm --filter @jiangkong/web-admin typecheck:e2e"]);
+  assert.doesNotMatch(jobBlock(workflow, "postgresql16-dynamic-gates"), /max-old-space-size=3072/u);
+});
+
+test("API runtime shards reuse isolated transpilation without changing heap, timeout or coverage", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const unit = jobBlock(workflow, "unit-test-gates");
+  const step = /      - name: Test API shard\n([\s\S]*?)(?=\n      - name:)/u.exec(unit)?.[1];
+  assert.ok(step);
+  assert.match(step, /NODE_OPTIONS: --max-old-space-size=4096/u);
+  assert.match(step, /pnpm --filter @jiangkong\/api run test --runInBand --config jest\.runtime\.config\.cjs --shard="\$shard\/4"/u);
+  assert.match(unit, /target: \[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
+  assert.doesNotMatch(step, /testTimeout|testNamePattern|passWithNoTests|testPathIgnore/u);
+});
 
 test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on success and drift", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
@@ -261,7 +284,10 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(quality, /pnpm audit --prod --audit-level high/u);
   assert.match(quality, /pnpm typecheck/u);
   assert.match(quality, /pnpm lint/u);
-  assert.match(tests, /pnpm test/u);
+  assert.match(tests, /target:\s*\[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/api run test --runInBand --config jest\.runtime\.config\.cjs --shard="\$shard\/4"/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/web-admin test/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/shared-domain test/u);
   assert.match(build, /pnpm --filter @jiangkong\/web-admin build/u);
   assert.match(build, /pnpm test:business-zeroing-tools/u);
   assert.ok(
@@ -273,10 +299,27 @@ test("CI fans out independent static and database gates behind one stable summar
   const configuredGroups = [
     ...dynamic.matchAll(/^\s{10}- ([a-z0-9_]+)$/gmu)
   ].map((match) => match[1]);
+  const manualGroups = manifest.coveredGroups.filter(group => group.ciExecution === "manual-only");
+  assert.deepEqual(manualGroups.map(group => group.id), ["enterprise_task01_entry"]);
+  assert.equal(manualGroups[0].pendingTests, 1);
+  assert.equal(manualGroups[0].testFiles.length, 1);
+  assert.equal(manualGroups[0].runner.invocation, "task01_explicit_inputs");
+  assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
+  const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
+  assert.equal(ciGroups.length, 22);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 78);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 540);
+  assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,
-    manifest.coveredGroups.map((group) => group.id)
+    ciGroups.filter(group => group.id !== pol113Pol115Shards.POL113_POL115_GROUP).map((group) => group.id)
   );
+  const matrixShards = [...dynamic.matchAll(/^ {10}- group: ([a-z0-9_]+)\n {12}shard: ([a-z0-9_]+)$/gmu)]
+    .map(([, group, shard]) => [group, shard]);
+  assert.deepEqual(matrixShards, Object.keys(pol113Pol115Shards.SHARDS)
+    .map(shard => [pol113Pol115Shards.POL113_POL115_GROUP, shard]));
+  assert.match(dynamic, /name: PostgreSQL 16 dynamic gate \(\$\{\{ matrix\.shard && format\('\{0\}\/\{1\}', matrix\.group, matrix\.shard\) \|\| matrix\.group \}\}\)/u);
+  assert.match(dynamic, /DYNAMIC_SHARD: \$\{\{ matrix\.shard \}\}[\s\S]*?shard_args=\(--pol113-pol115-shard "\$DYNAMIC_SHARD"\)[\s\S]*?--confirm LOCAL_PG16_DYNAMIC_GATE "\$\{shard_args\[@\]\}"/u);
   assert.match(dynamic, /fail-fast: false/u);
   assert.match(dynamic, /--group "\$DYNAMIC_GROUP"/u);
   assert.match(dynamic, /--candidate-sha "\$candidate_sha"/u);

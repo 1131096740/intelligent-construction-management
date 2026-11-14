@@ -1,5 +1,7 @@
+import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
 import { hasProjectBusiness, lockMasterDataRow } from "../master-data/master-data-lifecycle";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { CompanyEntityAccess } from "../company-entity/company-entity-access";
 import {
   BadRequestException,
@@ -20,7 +22,7 @@ import {
 } from "@prisma/client";
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { freezeProjectCreation, validateProjectCreation } from "./project-base-entry";
+import { PROJECT_CREATE_DEFINITION, freezeProjectCreation, validateProjectCreation } from "./project-base-entry";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -309,8 +311,20 @@ export class ProjectService {
     private readonly masterDataAccess: CompanyEntityAccess = new CompanyEntityAccess(prisma)
   ) {}
 
+  private async assertCanMaintainBasics(actorUserId: string, tx: Prisma.TransactionClient | PrismaService = this.prisma) {
+    let roles: RoleKey[];
+    try {
+      roles = await new CompanyRoleResolverService(this.prisma).resolveActiveRoleScopesInTransaction(tx, actorUserId);
+    } catch {
+      throw new ForbiddenException("当前账号不可用或公司岗位已变化，请刷新后重试");
+    }
+    if (!canPerform("project.basics.manage", roles)) {
+      throw new ForbiddenException("仅董事长、总经理或公司级综合部主管可以维护项目基础资料");
+    }
+  }
+
   async assertCanRenameBusinessEntry(_projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
-    await this.masterDataAccess.assertCanMaintain(actorUserId, tx ?? this.prisma);
+    await this.assertCanMaintainBasics(actorUserId, tx ?? this.prisma);
   }
 
   async assertCanRecordUpstreamFundBusinessEntry(
@@ -336,6 +350,24 @@ export class ProjectService {
     return validateProjectCreation({ code, name }, input.definitionVersion);
   }
 
+  async validateCreationWithWarnings(actorUserId: string, input: CreateProjectDto) {
+    await this.assertCanMaintainBasics(actorUserId);
+    const validation = this.validateCreation(input);
+    const matches = await this.prisma.project.findMany({
+      where: { name: String(validation.values.name), code: { not: String(validation.values.code) } },
+      select: { id: true }, take: 1
+    });
+    return { ...validation, warnings: matches.length ? ["已有同名项目，请核对项目编号；确认后仍可继续保存"] : [] };
+  }
+
+  async basicCapability(actorUserId: string, projectId?: string) {
+    await this.assertCanMaintainBasics(actorUserId);
+    const roles = await new CompanyRoleResolverService(this.prisma).resolveActiveRoleScopes(actorUserId);
+    return projectId
+      ? { projectId, availableActions: ["update_project", ...(canPerform("project.master_data.manage", roles) ? ["update_project_status"] : [])] }
+      : { availableActions: ["create_project"], definition: PROJECT_CREATE_DEFINITION };
+  }
+
   async createProject(actorUserId: string, input: CreateProjectDto) {
     const validation = this.validateCreation(input);
     if (!validation.valid) throw new BadRequestException(validation);
@@ -343,7 +375,7 @@ export class ProjectService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await this.masterDataAccess.assertCanMaintain(actorUserId, tx);
+        await this.assertCanMaintainBasics(actorUserId, tx);
         const project = await tx.project.create({
           data: { code, name },
           select: { id: true, code: true, name: true }
@@ -373,7 +405,7 @@ export class ProjectService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await this.masterDataAccess.assertCanMaintain(actorUserId, tx);
+        await this.assertCanMaintainBasics(actorUserId, tx);
         const project = await tx.project.update({
           where: { id: projectId },
           data: { name },
@@ -399,7 +431,7 @@ export class ProjectService {
   }
 
   async listForManagement(actorUserId: string) {
-    await this.masterDataAccess.assertCanMaintain(actorUserId);
+    await this.assertCanMaintainBasics(actorUserId);
     return this.prisma.project.findMany({
       select: { id: true, code: true, name: true, isActive: true }, orderBy: { createdAt: "asc" }
     });
@@ -1105,7 +1137,7 @@ export class ProjectService {
     const factType = normalizeUpstreamFundFactType(input.factType);
     const basisType = normalizeUpstreamFundBasisType(input.basisType);
     const entryKind = normalizeUpstreamFundEntryKind(input.entryKind ?? "original");
-    const occurredAt = parseUpstreamFundDate(input.occurredAt);
+    const occurredAt = parseUpstreamFundDate(input.occurredAt, factType !== "affiliate_deduction");
     const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
       "上游资金金额必须大于零"
@@ -4627,7 +4659,11 @@ function normalizeLowercaseSha256(value: unknown, message: string): string {
   return value;
 }
 
-function parseUpstreamFundDate(value: unknown): Date {
+function parseUpstreamFundDate(value: unknown, cashDate = false): Date {
+  if (cashDate) {
+    try { return requiredPastChinaDate(value as string, "上游资金发生日期"); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "上游资金发生日期格式不正确，请核对实际日期"); }
+  }
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new BadRequestException("请填写上游资金发生日期");
   }

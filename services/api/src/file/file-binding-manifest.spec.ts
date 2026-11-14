@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import {
   buildFileBindingManifest,
   buildContractFileBindingManifest,
+  fileBusinessBindingRefs,
   classifyFileBinding,
   type FileBindingManifestRow,
   type ResolvedFileBinding
@@ -38,7 +39,12 @@ function fakeTx(options: {
   refs: ResolvedFileBinding[];
   fileObjects: ReturnType<typeof fileObjectLite>[];
 }) {
-  const $queryRaw = jest.fn().mockResolvedValue(options.refs);
+  const $queryRaw = jest.fn(async (query: Prisma.Sql) => {
+    if (query.sql.includes("registered_payment_voucher_catalog")) return [{ state: "absent" }];
+    if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "legacy" }];
+    if (query.sql.includes("contract_economic_review_file_reference_migration")) return [{ applied: false }];
+    return options.refs;
+  });
   const findMany = jest.fn().mockResolvedValue(options.fileObjects);
   const tx = {
     $queryRaw,
@@ -388,13 +394,38 @@ describe("buildFileBindingManifest", () => {
   });
 });
 
+describe("fileBusinessBindingRefs", () => {
+  it.each(["absent", "installed"] as const)("scans the fixed voucher binding only in the %s catalog", async (state) => {
+    const voucher = ref("RegisteredPaymentVoucher", "fileId", "execution-1", "file-a");
+    const $queryRaw = jest.fn(async (query: Prisma.Sql) => {
+      if (query.text.includes("registered_payment_voucher_catalog")) return [{ state }];
+      expect(query.text.includes('FROM public."RegisteredPaymentVoucher"')).toBe(state === "installed");
+      expect(query.text.includes('x."executionId" AS "rowId"')).toBe(state === "installed");
+      return state === "installed" ? [voucher] : [];
+    });
+    const tx = { $queryRaw } as unknown as Prisma.TransactionClient;
+    await expect(fileBusinessBindingRefs(tx, ["file-a"])).resolves.toEqual(state === "installed" ? [voucher] : []);
+    expect($queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses an incomplete voucher catalog before reading the file bindings", async () => {
+    const $queryRaw = jest.fn().mockResolvedValue([{ state: "unavailable" }]);
+    const tx = { $queryRaw } as unknown as Prisma.TransactionClient;
+    await expect(fileBusinessBindingRefs(tx, ["file-a"])).rejects.toThrow("付款凭证文件绑定暂不可核验");
+    expect($queryRaw).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("buildContractFileBindingManifest", () => {
   it("resolves the version's owned bindings and builds the manifest", async () => {
     const owned = [ownedRef("ContractDraftAttachment", "fileId", "draft-1", "file-a")];
     const $queryRaw = jest
       .fn()
       .mockResolvedValueOnce(owned) // resolveContractVersionFileBindings
-      .mockResolvedValueOnce(owned); // fileBusinessBindingRefs
+      .mockResolvedValueOnce([{ state: "absent" }]) // registeredPaymentVoucherInstalled
+      .mockResolvedValueOnce(owned) // fileBusinessBindingRefs
+      .mockResolvedValueOnce([{ state: "legacy" }])
+      .mockResolvedValueOnce([{ applied: false }]);
     const findMany = jest.fn().mockResolvedValue([fileObjectLite("file-a")]);
     const tx = {
       $queryRaw,
@@ -403,7 +434,7 @@ describe("buildContractFileBindingManifest", () => {
 
     const manifest = await buildContractFileBindingManifest(tx, { contractVersionIds: ["v1"] });
 
-    expect($queryRaw).toHaveBeenCalledTimes(2);
+    expect($queryRaw).toHaveBeenCalledTimes(5);
     expect(manifest.rows).toHaveLength(1);
     expect(manifest.rows[0]).toMatchObject({ fileId: "file-a", bindingType: "exclusive" });
     expect(manifest.rows[0].businessBindings).toEqual([

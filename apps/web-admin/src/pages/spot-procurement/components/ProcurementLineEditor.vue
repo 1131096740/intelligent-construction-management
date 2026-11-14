@@ -1,128 +1,149 @@
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
+import { computed, nextTick, ref } from "vue";
+import { calculateBusinessLineAmount, normalizeBusinessAmount, normalizeBusinessQuantity, sumBusinessAmounts } from "@jiangkong/shared-domain";
+import { VGridVueTemplate, type ColumnRegular } from "@revolist/vue3-datagrid";
 import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
-import type { ColumnRegular } from "@revolist/vue3-datagrid";
-
+import JgBusinessGridSelectionCell from "../../../components/JgBusinessGridSelectionCell.vue";
+import JgBusinessGridRowActionsCell from "../../../components/JgBusinessGridRowActionsCell.vue";
 export interface ProcurementLineDraft extends Record<string, string> {
-  materialName: string;
-  specification: string;
-  unit: string;
-  quantity: string;
-  note: string;
+  materialName: string; specification: string; unit: string; quantity: string; note: string;
 }
-
-const props = withDefaults(defineProps<{
-  modelValue: ProcurementLineDraft[];
-  readonly?: boolean;
-}>(), {
-  readonly: false
+const props = withDefaults(defineProps<{modelValue: ProcurementLineDraft[]; readonly?: boolean}>(), {readonly: false});
+const emit = defineEmits<{"update:modelValue": [value: ProcurementLineDraft[]]; "editor-input": [state: {pending: boolean; edited: boolean}]} >();
+const grid = ref<InstanceType<typeof JgBusinessGrid>>();
+const selected = ref<number[]>([]);
+const undo = ref<ProcurementLineDraft[] | null>(null);
+let anchor = 0;
+function amount(row: ProcurementLineDraft) {
+  try { return row.estimatedAmount || calculateBusinessLineAmount(row.quantity || null, row.estimatedUnitPrice || null); }
+  catch { return "需修改输入"; }
+}
+const errors = computed(() => props.readonly ? [] : props.modelValue.flatMap((row, index) => {
+  const result: Array<{index: number; key: string; label: string; message: string}> = [];
+  if (!row.materialName.trim()) result.push({index, key: "materialName", label: "材料名称", message: "请填写材料名称"});
+  for (const [key, label] of [["quantity", "数量"], ["estimatedUnitPrice", "预计单价"], ["estimatedAmount", "预计金额"]] as const) {
+    if (!row[key]?.trim()) continue;
+    try {if (key === "quantity") {normalizeBusinessQuantity(row[key]!); if (Number(row[key]) <= 0) throw new Error("数量已知时须大于0，未知请留空");} else normalizeBusinessAmount(row[key]!);}
+    catch (error) {result.push({index, key: key!, label: label!, message: formatUnknownApiError(error, "请核对输入")});}
+  }
+  return result;
+}));
+function locateError(error: {index: number; key: string}) {void grid.value?.editCell(error.index, error.key);}
+const total = computed(() => {try { return sumBusinessAmounts(props.modelValue.map(amount)); } catch { return "需修改输入"; }});
+const selectedTotal = computed(() => {
+  try {
+    const amounts = selected.value.flatMap(index => {const row = props.modelValue[index]; return row ? [amount(row)] : [];});
+    const known = amounts.filter((value): value is string => value !== null);
+    if (amounts.length && !known.length) return "所选预计金额待确定";
+    const knownAmount = sumBusinessAmounts(known);
+    return known.length < amounts.length ? `所选已知预计合计：${knownAmount} 元（部分预计金额待确定）` : `所选预计合计：${knownAmount} 元`;
+  } catch { return "所选预计金额需修改输入"; }
 });
-
-const emit = defineEmits<{
-  "update:modelValue": [value: ProcurementLineDraft[]];
-}>();
-
-const columns: ColumnRegular[] = [
-  { prop: "materialName", name: "材料名称", size: 180 },
-  { prop: "specification", name: "规格型号", size: 150 },
-  { prop: "unit", name: "单位", size: 96 },
-  { prop: "quantity", name: "数量（最多 2 位小数）", size: 160 },
-  { prop: "note", name: "备注", size: 180 }
-];
-
-function addLine() {
-  emit("update:modelValue", [
-    ...props.modelValue,
-    {
-      materialName: "",
-      specification: "",
-      unit: "",
-      quantity: "",
-      note: ""
-    }
-  ]);
+const source = computed(() => props.modelValue.map((row, index) => ({...row, __rowIndex: String(index), __selected: selected.value.includes(index) ? "true" : "false", __calculatedAmount: amount(row) ?? "待确定"})));
+function selectRows(all: boolean) {selected.value = all ? props.modelValue.map((_, index) => index) : [];}
+function toggle(index: number | null, shift: boolean) {
+  if (props.readonly) return;
+  if (index === null) {selectRows(selected.value.length !== props.modelValue.length); return;}
+  if (shift) selected.value = [...new Set([...selected.value, ...props.modelValue.map((_, i) => i).filter(i => i >= Math.min(anchor, index) && i <= Math.max(anchor, index))])];
+  else {selected.value = selected.value.includes(index) ? selected.value.filter(i => i !== index) : [...selected.value, index]; anchor = index;}
 }
-
-function removeLine(index: number) {
-  if (props.modelValue.length <= 1) return;
-  emit(
-    "update:modelValue",
-    props.modelValue.filter((_line, lineIndex) => lineIndex !== index)
-  );
+function replace(value: Record<string, string>[]) {
+  if (props.readonly) return;
+  emit("update:modelValue", value.map(row => ({clientRowKey: row.clientRowKey || crypto.randomUUID(), materialName: row.materialName ?? "", specification: row.specification ?? "", unit: row.unit ?? "", quantity: row.quantity ?? "", estimatedUnitPrice: row.estimatedUnitPrice ?? "", estimatedAmount: row.estimatedAmount ?? "", note: row.note ?? ""})));
 }
-
-function replaceLines(value: Record<string, string>[]) {
-  emit("update:modelValue", value.map((line) => ({
-    materialName: line.materialName ?? "",
-    specification: line.specification ?? "",
-    unit: line.unit ?? "",
-    quantity: line.quantity ?? "",
-    note: line.note ?? ""
-  })));
-}
-
-function updateLine(index: number, key: keyof ProcurementLineDraft, value: unknown) {
-  emit("update:modelValue", props.modelValue.map((line, lineIndex) =>
-    lineIndex === index ? { ...line, [key]: typeof value === "string" ? value : "" } : line
-  ));
-}
-
+function copy(indices: number[]) {const next = [...props.modelValue]; for (const index of indices) {const row = props.modelValue[index]; if (row) next.push({...row, clientRowKey: crypto.randomUUID()});} replace(next); void nextTick(() => grid.value?.focusCell(next.length - 1, "materialName"));}
+function remove(indices: number[]) {undo.value = props.modelValue.map(row => ({...row})); replace(props.modelValue.filter((_, index) => !indices.includes(index))); selected.value = [];}
+function restore() {if (undo.value) {replace(undo.value); undo.value = null;}}
+function add() {replace([...props.modelValue, {materialName: "", specification: "", unit: "", quantity: "", estimatedUnitPrice: "", estimatedAmount: "", note: ""}]);}
+function move(index: number, offset: -1 | 1) {const rows = [...props.modelValue]; if (!rows[index] || !rows[index + offset]) return; [rows[index], rows[index + offset]] = [rows[index + offset]!, rows[index]!]; replace(rows); selectRows(false);}
+const columns = computed<ColumnRegular[]>(() => [{prop: "__selected", name: "选择", size: 60, readonly: true, pin: "colPinStart", cellTemplate: VGridVueTemplate(JgBusinessGridSelectionCell, {disabled: props.readonly, toggle, selectRows}), columnTemplate: VGridVueTemplate(JgBusinessGridSelectionCell, {header: true, disabled: props.readonly, toggle, selectRows, allSelected: !!props.modelValue.length && selected.value.length === props.modelValue.length, partiallySelected: !!selected.value.length && selected.value.length < props.modelValue.length})},
+  ...[{prop: "materialName", name: "材料名称 *", size: 140, pin: "colPinStart" as const}, {prop: "specification", name: "规格型号", size: 150}, {prop: "unit", name: "单位", size: 96}, {prop: "quantity", name: "数量（可空，最多4位）", size: 160}, {prop: "estimatedUnitPrice", name: "预计单价（元）", size: 150}, {prop: "estimatedAmount", name: "预计金额（元，可空）", size: 180}, {prop: "note", name: "说明", size: 180}].map(column => ({...column, cellProperties: ({model}: {model: Record<string, string>}) => ({className: `${selected.value.includes(Number(model.__rowIndex)) ? "spot-grid-selected" : ""} ${["quantity", "estimatedUnitPrice", "estimatedAmount"].includes(column.prop) ? "spot-grid-number" : ""} ${errors.value.some(error => error.index === Number(model.__rowIndex) && error.key === column.prop) ? "spot-grid-error" : ""}`})})),
+  {prop: "__calculatedAmount", name: "本行预计金额", size: 160, readonly: true, cellProperties: () => ({className: "spot-grid-number spot-grid-calculated"})},
+  {prop: "__actions", name: "行操作", size: 220, readonly: true, cellTemplate: VGridVueTemplate(JgBusinessGridRowActionsCell, {disabled: props.readonly, lastIndex: props.modelValue.length - 1, canDelete: () => true, copy: (index: number) => copy([index]), remove: (index: number) => remove([index]), move})}
+]);
 </script>
-
 <template>
-  <section class="procurement-line-editor">
-    <header>
-      <div>
-        <h3>材料明细</h3>
-        <p>采购申请只确认材料范围和数量；价格、商户、票据与付款条件在后续付款申请中确定。</p>
-      </div>
+  <section
+    class="procurement-line-editor"
+    data-testid="spot-request-grid"
+  >
+    <header><div><h3>材料需求明细</h3><p>填写需要什么；规格、单位、数量、预计单价及金额未知可留空。预计与实际差异供核对，无收货登记。</p></div></header>
+    <div
+      v-if="!readonly"
+      class="procurement-line-editor__row-actions"
+    >
+      <span>已选择 {{ selected.length }} 行</span>
+      <span>{{ selectedTotal }}</span>
       <t-button
-        v-if="!readonly"
-        size="small"
         variant="outline"
-        @click="addLine"
+        size="small"
+        :disabled="!selected.length"
+        @click="copy(selected)"
       >
-        添加材料
+        复制所选
       </t-button>
-    </header>
-
-    <JgBusinessGrid
-      class="procurement-line-editor__grid"
-      :source="modelValue"
-      :columns="columns"
-      :readonly="readonly"
-      :min-height="260"
-      expand-paste-rows
-      @update:source="replaceLines"
-    />
-    <div class="procurement-line-editor__cards" aria-label="材料明细卡片填写">
-      <article v-for="(line, index) in modelValue" :key="index">
-        <h4>材料明细第 {{ index + 1 }} 行</h4>
-        <label><span>材料名称</span><t-input :model-value="line.materialName" :readonly="readonly" @update:model-value="updateLine(index, 'materialName', $event)" /></label>
-        <label><span>规格型号</span><t-input :model-value="line.specification" :readonly="readonly" @update:model-value="updateLine(index, 'specification', $event)" /></label>
-        <label><span>单位</span><t-input :model-value="line.unit" :readonly="readonly" @update:model-value="updateLine(index, 'unit', $event)" /></label>
-        <label><span>数量（最多 2 位小数）</span><t-input :model-value="line.quantity" :readonly="readonly" @update:model-value="updateLine(index, 'quantity', $event)" /></label>
-        <label><span>备注</span><t-input :model-value="line.note" :readonly="readonly" @update:model-value="updateLine(index, 'note', $event)" /></label>
-      </article>
+      <t-button
+        variant="outline"
+        size="small"
+        :disabled="!selected.length"
+        @click="remove(selected)"
+      >
+        删除所选
+      </t-button>
+      <t-button
+        variant="text"
+        size="small"
+        :disabled="!undo"
+        @click="restore"
+      >
+        撤销删除
+      </t-button>
+      <t-button
+        variant="text"
+        size="small"
+        @click="selectRows(false)"
+      >
+        取消选择
+      </t-button>
     </div>
     <div
-      v-if="!readonly && modelValue.length > 1"
-      class="procurement-line-editor__row-actions"
-      aria-label="材料行操作"
+      v-if="errors.length"
+      role="alert"
     >
       <t-button
-        v-for="(_line, index) in modelValue"
-        :key="index"
-        size="small"
-        theme="danger"
+        v-for="issue in errors.slice(0, 3)"
+        :key="`${issue.index}:${issue.key}`"
         variant="text"
-        @click="removeLine(index)"
+        theme="danger"
+        @click="locateError(issue)"
       >
-        删除第 {{ index + 1 }} 行
+        第{{ issue.index + 1 }}行{{ issue.label }}：{{ issue.message }}（定位）
       </t-button>
+    </div>
+    <JgBusinessGrid
+      ref="grid"
+      :source="source"
+      :columns="columns"
+      :readonly="readonly"
+      :min-height="300"
+      expand-paste-rows
+      row-selection-keyboard
+      @update:source="replace"
+      @toggle-focused-row="index => toggle(index, false)"
+      @editor-input="emit('editor-input', $event)"
+    />
+    <div class="procurement-line-editor__row-actions">
+      <t-button
+        v-if="!readonly"
+        variant="outline"
+        @click="add"
+      >
+        新增材料
+      </t-button><span>{{ total === null ? '部分预计金额待确定' : `预计合计：${total} 元` }}</span>
     </div>
   </section>
 </template>
-
 <style scoped>
 .procurement-line-editor {
   display: grid;
@@ -163,12 +184,9 @@ function updateLine(index: number, key: keyof ProcurementLineDraft, value: unkno
   flex-wrap: wrap;
   gap: var(--jg-space-sm);
 }
-.procurement-line-editor__cards { display: none; }
-@media (max-width: 767px) {
-  .procurement-line-editor__grid { display: none; }
-  .procurement-line-editor__cards { display: grid; gap: var(--jg-space-md); }
-  .procurement-line-editor__cards article { display: grid; gap: var(--jg-space-sm); padding: var(--jg-space-md); border: 1px solid var(--jg-color-border); border-radius: var(--jg-radius-panel); min-width: 0; }
-  .procurement-line-editor__cards h4 { margin: 0; }
-  .procurement-line-editor__cards label { display: grid; gap: var(--jg-space-xs); min-width: 0; }
-}
+.procurement-line-editor :deep(.spot-grid-selected) { background: var(--jg-color-bg-brand-soft); }
+.procurement-line-editor :deep(.spot-grid-number) { text-align: right; }
+.procurement-line-editor :deep(.spot-grid-calculated) { background: var(--jg-color-bg-muted); }
+
+.procurement-line-editor :deep(.spot-grid-error) { outline: var(--jg-border-width-base) solid var(--jg-color-danger); outline-offset: calc(-1 * var(--jg-border-width-base)); background: var(--jg-color-danger-soft); }
 </style>

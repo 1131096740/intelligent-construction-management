@@ -54,11 +54,9 @@
         "abandonContractDraft",
         "addBillRow",
         "cloneContractTemplateVersion",
-        "cloneLayoutTemplateVersion",
         "createContractNumberRule",
         "createContractTemplate",
         "createDraftCheckpoint",
-        "createLayoutTemplate",
         "createStandardClause",
         "deleteBillRow",
         "deletePristineContractDraft",
@@ -66,14 +64,10 @@
         "discardLayoutTemplateVersion",
         "discardStandardClauseVersion",
         "fetchContractWorkbench",
-        "getLatestLayoutTemplatePreview",
-        "inspectLayoutTemplateVersion",
         "listContractDrafts",
         "listStandardClauseHistory",
         "publishContractTemplateVersion",
-        "publishLayoutTemplateVersion",
         "publishStandardClauseVersion",
-        "queueLayoutTemplatePreview",
         "reorderBillRows",
         "restoreDraftCheckpoint",
         "revokeContractTemplateVersion",
@@ -81,14 +75,11 @@
         "saveContractDraft",
         "stopContractNumberRule",
         "stopContractTemplateVersion",
-        "stopLayoutTemplateVersion",
         "submitContractTemplateVersion",
-        "submitLayoutTemplateVersion",
         "submitStandardClauseVersion",
         "updateBillRow",
         "updateContractNumberRule",
         "updateContractTemplateVersion",
-        "updateLayoutTemplateVersion",
         "uploadContractFormalApprovalFile",
         "voidContractDraft"
       ]
@@ -110,7 +101,6 @@
         "confirmProjectOwnerContract",
         "confirmProjectUpstreamSettlement",
         "copyAbandonedContractDraft",
-        "createApprovalDelegation",
         "createSettlementDraft",
         "fetchActiveContractNumberRules",
         "fetchContractWorkbenchLedger",
@@ -128,8 +118,7 @@
         "remindPaymentApproval",
         "remindSettlementApproval",
         "requestSettlementExceptionQuota",
-        "reviewSettlementExceptionQuota",
-        "revokeApprovalDelegation"
+        "reviewSettlementExceptionQuota"
       ]
     },
     {
@@ -180,6 +169,15 @@
         "downloadSettlementTemplatePreview",
         "publishSettlementTemplateVersion",
         "updateSettlementTemplateVersion"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "classification": "test_only",
+      "reason": "Task09 CON09 requires manual template selection without recommendations; these two wrappers have no production consumer after removing the former scenario recommendation flow. Retained API unit tests and backend APIs pending task43 retirement.",
+      "wrappers": [
+        "listAvailableContractBusinessScenarios",
+        "recommendContractScenarioTemplates"
       ]
     }
   ]

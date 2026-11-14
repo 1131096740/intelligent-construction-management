@@ -382,3 +382,30 @@ describe('spot procurement effective role scope',()=>{
     await expect(f.service.detail('flow','first')).rejects.toThrow('无权查看');
   });
 });
+
+
+it('并联轮所有职责同时展示待办，缺岗补齐后只唤醒未办职责', async () => {
+  const { service, instance } = fixture();
+  instance.frozenNodes = [
+    { name: '综合部主管', mode: 'any', roleKeys: ['comprehensive_director'], protocolVersion: 1, executionMode: 'parallel' },
+    { name: '项目经理', mode: 'any', roleKeys: ['project_manager'], protocolVersion: 1, executionMode: 'parallel' }
+  ] as FrozenApprovalNode[];
+  const progress = await service.detail('flow', 'owner');
+  expect(progress.pendingRecipients.map(user => user.id)).toEqual(['first', 'later']);
+  expect(progress.nodes.map(node => node.status)).toEqual(['处理中', '处理中']);
+});
+
+
+it('已办职责保留当时办理人，调岗只改变未办职责', async () => {
+  const { service, instance, db, logs, users } = fixture();
+  users[1].name = '后来修改的姓名';
+  instance.frozenNodes = [
+    { name: '综合部主管', mode: 'any', roleKeys: ['comprehensive_director'], approvedRoleKeys: ['comprehensive_director'], protocolVersion: 1, executionMode: 'parallel' },
+    { name: '项目经理', mode: 'any', roleKeys: ['project_manager'], protocolVersion: 1, executionMode: 'parallel' }
+  ] as FrozenApprovalNode[];
+  logs.push({id: 'approved-first', approvalInstanceId: 'flow', actorUserId: 'first', action: 'approve', approvedRoleKey: 'comprehensive_director', createdAt: new Date(), comment: null, signatureFileIdSnapshot: 'sig', signatureSha256Snapshot: 'a'.repeat(64), signatureVersionIdSnapshot: 'sigv', representedUserId: 'first', metadata: { approverName: '综合主管' }});
+  db.userPosition.findMany.mockResolvedValue([{ userId: 'stranger', positionId: 'p1', projectId: null }, { userId: 'later', positionId: 'p2', projectId: 'project' }]);
+  const progress = await service.detail('flow', 'owner');
+  expect(progress.nodes[0].participants).toEqual([{id: 'first', name: '综合主管'}]);
+  expect(progress.pendingRecipients.map(user => user.id)).toEqual(['later']);
+});

@@ -11,11 +11,16 @@ const {
 const { mkdtemp, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
+const { createHash } = require("node:crypto");
+const { Script } = require("node:vm");
 const {
   assertManifestBaseline,
   deriveMigrationBaseline
 } = require("./migration-baseline.cjs");
 const { resolveCorepackHome } = require("./money-bigint-runner-runtime.cjs");
+const {
+  POL113_POL115_GROUP, pol113Pol115Batches, assertPol113Pol115Coverage, projectPol113Pol115Shard
+} = require("./pol113-pol115-shards.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const manifestPath = path.join(
@@ -31,6 +36,29 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const SUITE_STATUSES = new Set(["fully_pending", "partial_pending"]);
 const RUNNER_KINDS = new Set(["workspaceScript", "apiScript", "node"]);
+const TASK01_GROUP = "enterprise_task01_entry";
+const TASK01_DRIVER = "services/api/prisma/run-enterprise-task01-local.cjs";
+const TASK01_HELPER = "services/api/prisma/enterprise-task01-resources.cjs";
+const TASK01_IMAGE = "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d";
+const TASK01_FLAGS = ["--task01-packet", "--task01-inputs", "--task01-inputs-sha256", "--task01-artifacts", "--task01-confirm"];
+
+function ciExecutionFor(group) {
+  const category = group.ciExecution === undefined ? "automatic" : group.ciExecution;
+  if (!["automatic", "manual-only"].includes(category) || (group.id !== TASK01_GROUP && category !== "automatic")) {
+    fail("CI执行分类无效；旧组必须继续全部进入CI");
+  }
+  if (group.id === TASK01_GROUP && category !== "manual-only") fail("任务01必须显式登记manual-only");
+  return category;
+}
+
+function executionInventory(groups) {
+  const result = { ciEligible: { groups: 0, files: 0, tests: 0 }, manualOnly: { groups: 0, files: 0, tests: 0 } };
+  for (const group of groups) {
+    const bucket = ciExecutionFor(group) === "automatic" ? result.ciEligible : result.manualOnly;
+    bucket.groups += 1; bucket.files += group.testFiles?.length ?? 0; bucket.tests += group.pendingTests;
+  }
+  return result;
+}
 
 function fail(message) {
   throw new Error(message);
@@ -100,6 +128,23 @@ function assertRunGatedPgSpecsRegistered(registeredPaths) {
 function validateRunner(runner, groupId, rootPackage, apiPackage) {
   if (!runner || !RUNNER_KINDS.has(runner.kind)) {
     fail(`coveredGroups.${groupId}.runner.kind 不受支持`);
+  }
+  if (groupId === TASK01_GROUP || runner.invocation === "task01_explicit_inputs") {
+    if (groupId !== TASK01_GROUP || runner.kind !== "node" || runner.path !== TASK01_DRIVER
+      || runner.resourceHelper !== TASK01_HELPER || runner.imageId !== TASK01_IMAGE || runner.invocation !== "task01_explicit_inputs"
+      || Object.keys(runner).sort().join(",") !== "imageId,invocation,kind,path,resourceHelper,resourceHelperSha256,sourceSha256") {
+      fail("任务01只允许固定operator、资源helper与准确镜像");
+    }
+    // Bind the reviewed executable bodies, not postgres:16 strings in comments.
+    // Parsing compiles syntax only: neither module is imported or executed here.
+    for (const [relative, expected] of [[TASK01_DRIVER, runner.sourceSha256], [TASK01_HELPER, runner.resourceHelperSha256]]) {
+      const source = readFileSync(resolveRepositoryPath(relative, "task01 source"));
+      if (!/^[a-f0-9]{64}$/u.test(expected ?? "") || createHash("sha256").update(source).digest("hex") !== expected) {
+        fail("任务01固定执行源码哈希不匹配");
+      }
+      new Script(source.toString("utf8"), { filename: relative });
+    }
+    return;
   }
   if (runner.kind === "workspaceScript") {
     if (!rootPackage.scripts?.[runner.script]) {
@@ -199,6 +244,7 @@ function validateManifest(manifest) {
     fail("coveredGroups 不能为空");
   }
   for (const group of manifest.coveredGroups) {
+    ciExecutionFor(group);
     if (!group.id || seenGroupIds.has(group.id)) {
       fail(`coveredGroups id 缺失或重复：${group.id ?? "missing"}`);
     }
@@ -218,6 +264,7 @@ function validateManifest(manifest) {
     if (groupTests !== group.pendingTests) {
       fail(`coveredGroups.${group.id} pendingTests 与文件小计不一致`);
     }
+    if (group.id === POL113_POL115_GROUP) assertPol113Pol115Coverage(group);
     validateRunner(group.runner, group.id, rootPackage, apiPackage);
     coveredTests += group.pendingTests;
   }
@@ -247,6 +294,15 @@ function validateManifest(manifest) {
   }
 
   assertRunGatedPgSpecsRegistered(seenPaths);
+
+  const execution = executionInventory(manifest.coveredGroups);
+  for (const category of ["ciEligible", "manualOnly"]) {
+    for (const count of ["groups", "files", "tests"]) {
+      if (manifest.executionInventory?.[category]?.[count] !== execution[category][count]) {
+        fail(`CI执行分类库存漂移：${category}.${count}`);
+      }
+    }
+  }
 
   const derived = {
     pendingFiles: seenPaths.size,
@@ -282,6 +338,7 @@ function parseArguments(argv) {
     groups: []
   };
   const modes = new Set();
+  const task01 = {};
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--list") {
@@ -296,16 +353,37 @@ function parseArguments(argv) {
     } else if (argument === "--confirm") {
       options.confirmation = argv[++index];
       if (!options.confirmation) fail("--confirm 缺少值");
+    } else if (argument === "--automatic-only") {
+      if (options.automaticOnly) fail("--automatic-only 不能重复");
+      options.automaticOnly = true;
     } else if (argument === "--group") {
       const group = argv[++index];
       if (!group) fail("--group 缺少数据库组名称");
       options.groups.push(group);
+    } else if (argument === "--pol113-pol115-shard") {
+      if (options.pol113Pol115Shard !== undefined) fail("--pol113-pol115-shard 不能重复");
+      const shard = argv[++index];
+      if (!shard) fail("--pol113-pol115-shard 缺少值");
+      pol113Pol115Batches(shard);
+      options.pol113Pol115Shard = shard;
+    } else if (TASK01_FLAGS.includes(argument)) {
+      if (Object.hasOwn(task01, argument)) fail(`任务01独立参数重复：${argument}`);
+      task01[argument] = argv[++index];
+      if (!task01[argument] || task01[argument].startsWith("--")) fail(`任务01独立参数缺少值：${argument}`);
     } else {
       fail(`未知参数：${argument}`);
     }
   }
   if (modes.size > 1) fail("--list、--validate-manifest 与 --execute 只能选择一个");
   options.mode = [...modes][0] ?? "preview";
+  assertAutomaticSelection(options, Object.keys(task01).length > 0);
+  assertPol113Pol115Selection(options);
+  if (Object.keys(task01).length) {
+    if (options.mode !== "execute" || !options.groups.includes(TASK01_GROUP)) {
+      fail("任务01独立参数只能用于显式单独执行任务01组");
+    }
+    options.task01 = task01;
+  }
   if (options.mode !== "execute" && (options.candidateSha || options.confirmation)) {
     fail("--candidate-sha 与 --confirm 只能和 --execute 一起使用");
   }
@@ -326,6 +404,45 @@ function selectCoveredGroups(manifest, requestedGroups) {
   return manifest.coveredGroups.filter((group) => uniqueGroups.has(group.id));
 }
 
+function assertAutomaticSelection(options, hasTask01Inputs = Boolean(options.task01)) {
+  if (options.automaticOnly && (options.groups.length > 0 || hasTask01Inputs)) {
+    fail("--automatic-only 不能与 --group 或任务01独立参数同时使用");
+  }
+}
+
+function groupsForInvocation(manifest, options) {
+  assertPol113Pol115Selection(options);
+  if (options.pol113Pol115Shard !== undefined) {
+    const [group] = selectCoveredGroups(manifest, options.groups);
+    return [projectPol113Pol115Shard(group, options.pol113Pol115Shard)];
+  }
+  if (!options.automaticOnly) return selectCoveredGroups(manifest, options.groups);
+  assertAutomaticSelection(options);
+  const automatic = manifest.coveredGroups.filter(group => ciExecutionFor(group) === "automatic");
+  if (automatic.length === 0) fail("--automatic-only 未找到自动执行组");
+  return automatic;
+}
+
+function assertPol113Pol115Selection(options) {
+  if (options.pol113Pol115Shard !== undefined &&
+    (options.automaticOnly || options.groups.length !== 1 || options.groups[0] !== POL113_POL115_GROUP)) {
+    fail("--pol113-pol115-shard 仅用于单独选择 POL113-POL115 数据库组");
+  }
+}
+
+function automaticScopeEvidence(manifest, options) {
+  if (!options.automaticOnly) return {};
+  const deferred = manifest.coveredGroups.filter(group => ciExecutionFor(group) === "manual-only");
+  return {
+    executionScope: "automatic-only",
+    deferredManualOnly: {
+      ...executionInventory(deferred).manualOnly,
+      groupIds: deferred.map(group => group.id),
+      executionStatus: "NOT_EXECUTED"
+    }
+  };
+}
+
 function selectedCoverage(groups) {
   return {
     pendingFiles: groups.reduce((total, group) => total + group.testFiles.length, 0),
@@ -343,6 +460,19 @@ function assertExecutionArguments(options, manifest) {
     fail(
       `--execute 必须提供 --confirm ${manifest.executionPolicy.confirmation}`
     );
+  }
+  const selected = groupsForInvocation(manifest, options);
+  if (selected.some(group => group.id === TASK01_GROUP)) {
+    if (options.groups.length !== 1 || options.groups[0] !== TASK01_GROUP || selected.length !== 1) {
+      fail("任务01必须显式单独选择，不能默认all或与旧组混跑");
+    }
+    if (!options.task01 || TASK01_FLAGS.some(flag => !options.task01[flag])) fail("任务01必须提供全部独立输入和确认串");
+    if (options.task01["--task01-confirm"] !== "LOCAL_TASK01_HTTP_PG") fail("任务01必须独立确认 LOCAL_TASK01_HTTP_PG");
+    if (!/^[a-f0-9]{64}$/u.test(options.task01["--task01-inputs-sha256"])) fail("任务01输入清单SHA256必须为完整64位");
+    for (const flag of ["--task01-packet", "--task01-inputs", "--task01-artifacts"]) {
+      const value = options.task01[flag];
+      if (!path.isAbsolute(value) || !value.startsWith("/private/tmp/") || path.normalize(value) !== value) fail("任务01独立路径必须是准确/private/tmp绝对路径");
+    }
   }
 }
 
@@ -524,7 +654,13 @@ async function resolveLocalDocker(environment, image) {
   return { endpoint, imageId };
 }
 
-function resolveGroupCommand(group) {
+function resolveGroupCommand(group, options = {}) {
+  if (group.id === TASK01_GROUP) {
+    if (!options.task01 || TASK01_FLAGS.some(flag => !options.task01[flag])) fail("任务01必须提供全部独立输入和确认串");
+    return { command: process.execPath, args: [resolveRepositoryPath(TASK01_DRIVER, "task01 driver"),
+      "--packet", options.task01["--task01-packet"], "--inputs", options.task01["--task01-inputs"],
+      "--inputs-sha256", options.task01["--task01-inputs-sha256"], "--artifacts", options.task01["--task01-artifacts"]] };
+  }
   // This dispatcher runs only after the gate's real generate + build preflight.
   // Standalone pnpm entry points retain their normal preparation lifecycle.
   const pol108Shards = {
@@ -536,6 +672,12 @@ function resolveGroupCommand(group) {
     return { command: process.execPath, args: [
       resolveRepositoryPath(group.runner.path, `${group.id}.runner.path`),
       "--shard", pol108Shards[group.id]
+    ] };
+  }
+  if (group.id === POL113_POL115_GROUP && group.pol113Pol115Shard !== undefined) {
+    return { command: process.execPath, args: [
+      resolveRepositoryPath(group.runner.path, `${group.id}.runner.path`),
+      "--shard", group.pol113Pol115Shard
     ] };
   }
   if (group.runner.kind === "workspaceScript") {
@@ -570,10 +712,23 @@ async function runPreflight(environment) {
 async function executeGate({ manifest, options, sourceEnv = process.env }) {
   assertExecutionArguments(options, manifest);
   assertSafeExecutionEnvironment(sourceEnv);
-  const coveredGroups = selectCoveredGroups(manifest, options.groups);
+  const coveredGroups = groupsForInvocation(manifest, options);
   const coverage = selectedCoverage(coveredGroups);
+  if (coveredGroups.length === 1 && coveredGroups[0].id === TASK01_GROUP) {
+    if (sourceEnv.GITHUB_ACTIONS === "true") fail("任务01仅限本机独立授权，禁止GitHub Actions自动执行");
+    // The operator owns its exact source/dependency/build/TLS/ACL admissions.
+    // No generic build, Docker discovery, temporary resource or SQL precedes it.
+    const environment = { PATH: sourceEnv.PATH ?? "", LANG: "C", LC_ALL: "C", NODE_ENV: "test",
+      JG_TASK01_EXECUTION_APPROVED: "LOCAL_TASK01_HTTP_PG", JG_TASK01_EXPECTED_SOURCE_SHA: options.candidateSha.toLowerCase() };
+    const resolved = resolveGroupCommand(coveredGroups[0], options);
+    await runCommand(resolved.command, resolved.args, { env: environment, forwardOutput: true });
+    return { status: "task01-operator-completed", scope: "first-case-tracer-only", candidateSha: options.candidateSha,
+      driverReceiptPath: path.join(options.task01["--task01-artifacts"], "task01-receipt.json"),
+      coveredTests: 1, fullDynamicGate: false, executionInventory: executionInventory(coveredGroups), ciExecution: "manual-only" };
+  }
   const temporaryRoot = await mkdtemp(
-    path.join(tmpdir(), "jiangkong-database-dynamic-gate-")
+    path.join(tmpdir(), "jiangkong-database-dynamic-gate-" +
+      (options.pol113Pol115Shard === undefined ? "" : options.pol113Pol115Shard + "-"))
   );
   const startedAt = new Date();
   const groupReceipts = [];
@@ -607,6 +762,10 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       const groupStartedAt = Date.now();
       const resolved = resolveGroupCommand(group);
       const groupEnvironment = { ...childEnvironment };
+      if (group.id === POL113_POL115_GROUP) {
+        // The preflight above generated this checkout's client and built the API.
+        groupEnvironment.POL113_POL115_PREPARED_SHA = candidateSha;
+      }
       if (group.runner.evidenceEnv) {
         groupEnvironment[group.runner.evidenceEnv] = path.join(
           temporaryRoot,
@@ -614,7 +773,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
         );
       }
       process.stdout.write(
-        `[database-dynamic-gate] start ${group.id} (${group.pendingTests} pending tests)\n`
+        `[database-dynamic-gate] start ${group.id}${group.pol113Pol115Shard ? "/" + group.pol113Pol115Shard : ""} (${group.pendingTests} pending tests)\n`
       );
       await runCommand(resolved.command, resolved.args, {
         env: groupEnvironment,
@@ -622,6 +781,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       });
       groupReceipts.push({
         id: group.id,
+        ...(group.pol113Pol115Shard ? { shard: group.pol113Pol115Shard } : {}),
         pendingTests: group.pendingTests,
         durationMs: Date.now() - groupStartedAt,
         status: "passed"
@@ -646,6 +806,8 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       containerImageId: dockerReceipt.imageId,
       coveredTests: coverage.coveredTests,
       coveredFiles: coverage.coveredFiles,
+      executionInventory: executionInventory(coveredGroups),
+      ...automaticScopeEvidence(manifest, options),
       remainingTests: manifest.inventory.remainingTests,
       remainingFiles: manifest.inventory.remainingFiles,
       groups: groupReceipts
@@ -665,13 +827,16 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
 }
 
 function preview(manifest, validation, options) {
-  const coveredGroups = selectCoveredGroups(manifest, options.groups);
+  const coveredGroups = groupsForInvocation(manifest, options);
   const coverage = selectedCoverage(coveredGroups);
   const payload = {
     schemaVersion: 1,
     gate: manifest.id,
     mode: options.mode,
+    ...(options.pol113Pol115Shard ? { shard: options.pol113Pol115Shard } : {}),
     executed: false,
+    executionInventory: executionInventory(coveredGroups),
+    ...automaticScopeEvidence(manifest, options),
     manifestValid: true,
     migrationCount: validation.migrationCount,
     terminalMigration: validation.terminalMigration,
@@ -686,6 +851,7 @@ function preview(manifest, validation, options) {
   if (options.mode === "list") {
     payload.coveredGroups = coveredGroups.map((group) => ({
       id: group.id,
+      ciExecution: ciExecutionFor(group),
       pendingTests: group.pendingTests,
       testFiles: group.testFiles.map((file) => file.path),
       runner: group.runner

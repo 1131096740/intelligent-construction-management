@@ -1,8 +1,67 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { BadRequestException } from "@nestjs/common";
 
 import { PaymentExecutionOperatingSourceAdapter } from "./payment-operating-source.adapter";
 
 describe("PaymentExecutionOperatingSourceAdapter", () => {
+  it("uses the historical payer in a pre-installation database without reading registered funding", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.registeredPaymentFunding.findUnique.mockRejectedValue(new Error("RegisteredPaymentFunding is absent"));
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    });
+    expect(adapter.toOperatingFactInput(snapshot!).input.subjects.actualPayer).toEqual({
+      kind: "participating_company", id: "company-entity-1"
+    });
+    expect(tx.registeredPaymentFunding.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("checks the catalog once for all historical payment executions in the project", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    const execution = await tx.paymentExecution.findUnique();
+    tx.paymentExecution.findMany.mockResolvedValue([
+      execution,
+      { ...execution, id: "execution-2" }
+    ]);
+
+    const snapshots = await adapter.readProjectSnapshots(tx as never, "project-1");
+
+    expect(snapshots.map((snapshot) => snapshot.sourceBusinessId)).toEqual(["execution-1", "execution-2"]);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.registeredPaymentFunding.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("reads registered funding when installed even if the execution has a legacy voucher", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.$queryRaw.mockResolvedValue([{ state: "installed" }]);
+    tx.registeredPaymentFunding.findUnique.mockResolvedValue({
+      actualPayerKind: "participating_company", actualPayerId: "actual-company",
+      accountId: "account-1", balanceRegistrationId: "balance-1",
+      openingTreatment: "not_included", actualPayerSnapshot: { name: "实际付款公司" }
+    });
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    });
+    expect(snapshot?.sourceSnapshot).toMatchObject({
+      voucherFileId: "voucher-1", actualPayerId: "actual-company",
+      registeredFunding: { accountId: "account-1" }
+    });
+    expect(tx.registeredPaymentFunding.findUnique).toHaveBeenCalledWith({ where: { executionId: "execution-1" } });
+  });
+
+  it("rejects a partially installed payment catalog before projecting a historical payer", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.$queryRaw.mockResolvedValue([{ state: "unavailable" }]);
+    await expect(adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    })).rejects.toMatchObject({ status: 503 });
+    expect(tx.registeredPaymentFunding.findUnique).not.toHaveBeenCalled();
+  });
+
   it("maps a partial multi-settlement payment to payable and company funds decreases without cost", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx();
@@ -118,7 +177,7 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     expect(input.subjects.approvedPayer).toEqual({ kind: "participating_company", id: "company-entity-1" });
     expect(input.subjects.actualPayer).toEqual(input.subjects.approvedPayer);
     expect(input.impacts.filter((i) => i.impactKind === "inter_subject_balance_increase")).toHaveLength(1);
-    expect(input.impacts.filter((i) => i.impactKind === "payable_decrease").reduce((sum, i) => sum + i.amountCents, 0n)).toBe(600_00n);
+    expect(input.impacts.filter((i) => i.impactKind === "payable_decrease").reduce((sum, i) => sum + requireLegacyOperatingCents(i), 0n)).toBe(600_00n);
     expect(input.impacts.some((i) => i.impactKind === "confirmed_cost")).toBe(false);
   });
 
@@ -192,6 +251,8 @@ function paymentTx(executionOverrides: Record<string, unknown> = {}) {
     ...executionOverrides
   };
   return {
+    $queryRaw: jest.fn().mockResolvedValue([{ state: "absent" }]),
+    registeredPaymentFunding: { findUnique: jest.fn().mockResolvedValue(null) },
     project: {
       findUnique: jest.fn().mockResolvedValue({
         operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")

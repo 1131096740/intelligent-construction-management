@@ -11,6 +11,7 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const {
   waitForLocalTcpReady
 } = require("./wait-for-local-tcp-ready.cjs");
@@ -122,6 +123,8 @@ async function waitForPostgres(
           "exec",
           containerName,
           "pg_isready",
+          "-h",
+          "127.0.0.1",
           "-U",
           "jiangkong",
           "-d",
@@ -179,6 +182,7 @@ async function main() {
     path.join(tmpdir(), "jiangkong-template-scenario-")
   );
   const databasePassword = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl =
     `postgresql://jiangkong:${databasePassword}` +
     `@127.0.0.1:${databasePort}/${DATABASE_NAME}`;
@@ -233,7 +237,7 @@ async function main() {
       assertLocalDockerEndpoint(dockerEndpoint.stdout);
       await dockerCommand(["info"]);
 
-      await dockerCommand(
+      const created = await dockerCommand(
         [
           "run",
           "--pull=never",
@@ -241,6 +245,8 @@ async function main() {
           "--rm",
           "--name",
           containerName,
+          "--label",
+          CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
           "--env",
           "POSTGRES_USER=jiangkong",
           "--env",
@@ -268,18 +274,17 @@ async function main() {
           `（${DATABASE_NAME}，仅 127.0.0.1）`
       );
 
-      await command(
-        pnpm,
-        [
-          "--filter",
-          "@jiangkong/api",
-          "exec",
-          "prisma",
-          "migrate",
-          "deploy"
-        ],
-        { env: runtimeEnv, forwardOutput: true }
-      );
+      const migrationFixture = createCiDynamicMigrationFixture({
+        ciFixture: "DYNAMIC_CONTRACT_TEMPLATE_SCENARIO_V1",
+        container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+        databaseNames: [DATABASE_NAME], temporaryRoot, dockerCommand,
+        deploy: ({ databaseUrl, runtimeEnv, schemaPath }) => {
+          const args = ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"];
+          if (schemaPath) args.push("--schema", schemaPath);
+          return command(pnpm, args, { env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, forwardOutput: true });
+        }
+      });
+      await migrationFixture.migrate({ databaseUrl, runtimeEnv });
       await command(
         pnpm,
         [

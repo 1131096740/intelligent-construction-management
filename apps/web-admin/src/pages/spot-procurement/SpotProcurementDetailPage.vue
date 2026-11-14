@@ -1,16 +1,19 @@
 <script setup lang="ts">
+import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
+import {buildApprovalSelfReviewPayload} from "../../components/approval-self-review.config";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { BusinessSummaryTone } from "../../components/business-status-summary.config";
 import type { UploadFile } from "tdesign-vue-next";
 import {
   computed,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   reactive,
   ref,
   watch
 } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
   abandonSpotProcurementDraft,
@@ -83,6 +86,77 @@ const activeTab = ref("overview");
 const editVisible = ref(false);
 const editMode = ref<"draft" | "version">("draft");
 const editError = ref("");
+const editSaveStatus = ref("");
+const editSaveBlocked = ref(false);
+const editEditorPending = ref(false);
+const editEditorBuffered = ref(false);
+const editCloseConfirm = ref(false);
+const editGridSession = ref(0);
+interface EditSession {procurementId: string; versionId: string; routeGeneration: number}
+const editSession = ref<EditSession | null>(null);
+function editSessionCurrent(session: EditSession | null) {
+  return Boolean(session && editSession.value === session && reviewComponentActive &&
+    detailRouteGeneration === session.routeGeneration && procurementId.value === session.procurementId &&
+    detail.value?.procurement.id === session.procurementId && detail.value.currentVersion.id === session.versionId);
+}
+const hasUnsavedEdit = computed(() => editSignature() !== savedEditSignature.value || editEditorBuffered.value);
+function editEditorInput(state: {pending: boolean; edited: boolean}) {
+  editEditorPending.value = state.pending;
+  editEditorBuffered.value = state.pending && (editEditorBuffered.value || state.edited);
+  if (editEditorBuffered.value) {
+    clearTimeout(editSaveTimer);
+    editSaveStatus.value = "当前单元格尚未确认，请按Tab或Enter后保存";
+  } else queueEditSave();
+}
+function closeEdit() {
+  if (actionBusy.value) return;
+  clearTimeout(editSaveTimer);
+  if (hasUnsavedEdit.value) editCloseConfirm.value = true;
+  else discardEdit();
+}
+function discardEdit() {
+  clearTimeout(editSaveTimer);
+  editCloseConfirm.value = false;
+  editVisible.value = false;
+  editSession.value = null;
+  editEditorPending.value = false;
+  editEditorBuffered.value = false;
+}
+function keepEdit() {editCloseConfirm.value = false; queueEditSave();}
+function beforeEditUnload(event: BeforeUnloadEvent) {
+  if (editVisible.value && hasUnsavedEdit.value) {event.preventDefault(); event.returnValue = "";}
+}
+function guardEditNavigation() {
+  if (!editVisible.value || !hasUnsavedEdit.value) return true;
+  editError.value = "当前填写尚未保存，请先确认单元格并保存，或关闭填写窗口后再离开";
+  return false;
+}
+onBeforeRouteLeave(guardEditNavigation);
+onBeforeRouteUpdate(guardEditNavigation);
+const confirmedEditSave = ref<{versionId: string; draftRevision: number} | null>(null);
+const serverDraftCheck = ref("");
+let editSaveTimer: ReturnType<typeof setTimeout> | undefined;
+const savedEditSignature = ref("");
+const editSignature = () => JSON.stringify(editForm);
+function queueEditSave() {
+  clearTimeout(editSaveTimer);
+  if (!editSessionCurrent(editSession.value) || editEditorBuffered.value || editCloseConfirm.value || !editVisible.value || editMode.value !== "draft" || detail.value?.currentVersion.requestProtocolVersion !== 2 || editSaveBlocked.value || editSignature() === savedEditSignature.value) return;
+  editSaveStatus.value = "有待保存修改";
+  editSaveTimer = setTimeout(() => {if (!actionBusy.value && editVisible.value) void saveDraft(true);}, 800);
+}
+async function checkServerDraft() {
+  const current = detail.value;
+  const session = editSession.value;
+  if (!current || !editSessionCurrent(session)) return;
+  try {
+    const fresh = await fetchSpotProcurementDetail(current.procurement.id);
+    if (!editSessionCurrent(session)) return;
+    serverDraftCheck.value = `服务器当前材料：${fresh.lines.map(line => line.materialName).join("；")}。本页填写仍保留，请核对后再重新打开草稿，当前不会自动覆盖。`;
+  } catch (error) {
+    if (editSessionCurrent(session)) serverDraftCheck.value = formatUnknownApiError(error, "暂未读到服务器内容，请保留当前页面稍后核对");
+  }
+}
+
 const editQuotationFiles = ref<UploadFile[]>([]);
 const editReferencePhotoFiles = ref<UploadFile[]>([]);
 const retainedAttachmentFileIds = ref<string[]>([]);
@@ -90,11 +164,13 @@ const editForm = reactive({
   applicationDepartment: "",
   applicationName: "",
   requestedArrivalAt: "",
+  estimatedTotalAmount: "",
   reason: "",
   note: "",
   changeReason: "",
   lines: [] as ProcurementLineDraft[]
 });
+watch(editForm, queueEditSave, {deep: true, flush: "post"});
 const confirmation = reactive({
   visible: false,
   kind: "withdraw" as ActionKind,
@@ -148,6 +224,7 @@ type AbnormalTerminationActionContext = {
   routeGeneration: number;
 };
 type SubmitActionContext = {
+  coordinates?: {expectedVersionId: string; expectedDraftRevision?: number};
   procurementId: string;
   routeGeneration: number;
   operationId: number;
@@ -453,42 +530,85 @@ async function loadDetail() {
   }
 }
 
-function openEdit(mode: "draft" | "version" = "draft") {
-  const current = detail.value;
+async function openEdit(mode: "draft" | "version" = "draft") {
+  let current = detail.value;
+  if (editVisible.value || actionBusy.value) return;
+  if (mode === "draft" && current?.currentVersion.requestProtocolVersion === 2) {
+    const expectedProcurementId = current.procurement.id;
+    const expectedGeneration = detailRouteGeneration;
+    try {
+      const fresh = await fetchSpotProcurementDetail(expectedProcurementId);
+      if (!reviewComponentActive || detailRouteGeneration !== expectedGeneration || procurementId.value !== expectedProcurementId || editVisible.value) return;
+      detail.value = fresh;
+      current = fresh;
+      confirmedEditSave.value = null;
+    } catch (error) {
+      if (!reviewComponentActive || detailRouteGeneration !== expectedGeneration || procurementId.value !== expectedProcurementId) return;
+      actionState.value = "error";
+      actionMessage.value = formatUnknownApiError(error, "草稿未能重新读取，请稍后再打开，原保存结果不变");
+      return;
+    }
+  }
   const actionKey = mode === "version" ? "create_version" : "edit_draft";
   if (!current || !actionEnabled(actionKey)) return;
   editMode.value = mode;
+  editEditorPending.value = false;
+  editEditorBuffered.value = false;
+  editCloseConfirm.value = false;
+  editGridSession.value++;
+  editSession.value = {procurementId: current.procurement.id, versionId: current.currentVersion.id, routeGeneration: detailRouteGeneration};
   editForm.applicationDepartment = current.currentVersion.applicationDepartment ?? "";
   editForm.applicationName = current.currentVersion.applicationName ?? "";
-  editForm.requestedArrivalAt = toDateInput(current.currentVersion.requestedArrivalAt);
+  editForm.requestedArrivalAt = toDateInput(current.currentVersion.requestedArrivalAt ?? undefined);
+  editForm.estimatedTotalAmount = current.currentVersion.estimatedTotalAmount ?? "";
   editForm.reason = current.currentVersion.reason;
   editForm.note = current.currentVersion.note ?? "";
   editForm.changeReason = "";
   editForm.lines = current.lines.map((line) => ({
     materialName: line.materialName,
     specification: line.specification ?? "",
-    unit: line.unit,
-    quantity: line.quantity,
+    unit: line.unit ?? "",
+    quantity: line.quantity ?? "",
+    estimatedUnitPrice: line.estimatedUnitPrice ?? "",
+    estimatedAmount: line.estimatedAmount ?? "",
     note: line.note ?? ""
   }));
   editQuotationFiles.value = [];
   editReferencePhotoFiles.value = [];
   retainedAttachmentFileIds.value = activeSpotProcurementAttachmentIds(current.attachments);
   editError.value = "";
+  savedEditSignature.value = editSignature();
+  editSaveStatus.value = "当前草稿已保存";
+  editSaveBlocked.value = false;
+  serverDraftCheck.value = "";
   editVisible.value = true;
 }
 
-async function saveDraft() {
+async function saveDraft(automatic = false) {
+  clearTimeout(editSaveTimer);
+  const session = editSession.value;
+  await nextTick();
+  if (!session || !editVisible.value || !editSessionCurrent(session)) return;
+  if (editEditorPending.value && editEditorBuffered.value) {
+    editError.value = "请先按Tab或Enter确认当前单元格，填写仍保留，本次尚未保存";
+    return;
+  }
+  if (actionBusy.value || editSaveBlocked.value) return;
+  const submittedForm = JSON.parse(JSON.stringify(editForm)) as typeof editForm;
+  const submittedSignature = JSON.stringify(submittedForm);
   const current = detail.value;
   if (!current) return;
+  const mode = editMode.value;
+  const saveIsCurrent = () => editSessionCurrent(session);
   editError.value = "";
+  let requestStarted = false;
   actionBusy.value = true;
+  editSaveStatus.value = "保存中";
   try {
-    const applicationDepartment = requiredText(editForm.applicationDepartment, "申请部门");
-    const applicationName = requiredText(editForm.applicationName, "申请人");
-    if (!editForm.requestedArrivalAt) throw new Error("请选择要求采购到位日期");
-    const reason = requiredText(editForm.reason, "物资用途及采购原因");
-    if (!editForm.lines.length) throw new Error("请至少填写一条材料明细");
+    const applicationDepartment = requiredText(submittedForm.applicationDepartment, "申请部门");
+    const applicationName = requiredText(submittedForm.applicationName, "申请人");
+    const reason = submittedForm.reason.trim() || undefined;
+    if (!submittedForm.lines.length) throw new Error("请至少填写一条材料明细");
     const attachments = retainedSpotProcurementAttachments(current.attachments, retainedAttachmentFileIds.value);
     for (const file of selectedUploadFiles(editQuotationFiles.value)) {
       const validationError = spotProcurementQuotationFileError(file);
@@ -497,6 +617,7 @@ async function saveDraft() {
         current.procurement.id,
         file
       );
+      if (!saveIsCurrent()) return;
       attachments.push({ fileId: uploaded.id, category: "merchant_quote" });
     }
     for (const file of selectedUploadFiles(editReferencePhotoFiles.value)) {
@@ -506,56 +627,103 @@ async function saveDraft() {
         current.procurement.id,
         file
       );
+      if (!saveIsCurrent()) return;
       attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
     const definitions = await fetchSpotProcurementApplicationDefinitions(
       current.procurement.project.id
     );
+    if (!saveIsCurrent()) return;
     const draft = {
+      expectedDraftRevision: current.currentVersion.draftRevision,
+      expectedVersionId: current.currentVersion.id,
       entryDefinitionVersions: {
         application: definitions.application.version,
         line: definitions.line.version
       },
       applicationDepartment,
       applicationName,
-      requestedArrivalAt: editForm.requestedArrivalAt,
+      requestedArrivalAt: submittedForm.requestedArrivalAt || null,
+      estimatedTotalAmount: submittedForm.estimatedTotalAmount.trim() || null,
       reason,
-      note: optionalText(editForm.note),
-      lines: editForm.lines.map((line) => ({
+      note: optionalText(submittedForm.note),
+      lines: submittedForm.lines.map((line) => ({
         materialName: requiredText(line.materialName, "材料名称"),
         specification: optionalText(line.specification) ?? undefined,
-        unit: requiredText(line.unit, "材料单位"),
-        quantity: requiredQuantity(line.quantity),
+        unit: optionalText(line.unit) ?? null,
+        quantity: line.quantity.trim() ? requiredQuantity(line.quantity) : null,
+        estimatedUnitPrice: line.estimatedUnitPrice?.trim() || null,
+        estimatedAmount: line.estimatedAmount?.trim() || null,
         note: optionalText(line.note) ?? undefined
       })),
       attachments
     };
-    if (editMode.value === "version") {
+    if (mode === "version") {
+      requestStarted = true;
       await createSpotProcurementVersionWithCapability(current.procurement.id, {
         ...draft,
-        changeReason: requiredText(editForm.changeReason, "版本变更原因")
+        changeReason: requiredText(submittedForm.changeReason, "版本变更原因")
       });
     } else {
-      await updateSpotProcurementDraftWithCapability(
+      requestStarted = true;
+      const receipt = await updateSpotProcurementDraftWithCapability(
         current.procurement.id,
         draft
       );
+      if (!saveIsCurrent()) return;
+      if (typeof receipt.draftRevision === "number") confirmedEditSave.value = {versionId: draft.expectedVersionId, draftRevision: receipt.draftRevision};
+      savedEditSignature.value = submittedSignature;
+      editSaveStatus.value = "草稿已保存，正在核对最新内容";
+      const confirmed = await fetchSpotProcurementDetail(current.procurement.id);
+      if (!saveIsCurrent()) return;
+      if (confirmed.currentVersion.id !== draft.expectedVersionId ||
+        (current.currentVersion.requestProtocolVersion === 2 && confirmed.currentVersion.draftRevision !== receipt.draftRevision)) {
+        throw new Error("服务器草稿已变化，请保留当前填写并核对最新内容");
+      }
+      // Replace the confirmed content and its revision together. The form may
+      // already contain newer input, so this read must never refill editForm.
+      detail.value = confirmed;
     }
+    if (!saveIsCurrent()) return;
+    savedEditSignature.value = submittedSignature;
+    editSaveStatus.value = automatic ? "已自动保存" : "草稿已保存";
+    if (automatic) return;
     editVisible.value = false;
-    showSuccess(editMode.value === "version" ? "采购变更草稿已创建。" : "采购草稿已保存。");
+    showSuccess(mode === "version" ? "采购变更草稿已创建。" : "采购草稿已保存。");
     await loadDetail();
   } catch (error) {
+    if (!saveIsCurrent()) return;
+    if (confirmedEditSave.value?.versionId === current.currentVersion.id &&
+      confirmedEditSave.value.draftRevision !== current.currentVersion.draftRevision) {
+      editSaveBlocked.value = true;
+      editSaveStatus.value = "草稿已保存，最新内容暂未核对";
+      editError.value = "本次保存已成功，后续读取失败或草稿又有变化。当前填写仍保留，已停止自动写入；核对后重新打开，不会重发本次保存。";
+      return;
+    }
     editError.value = formatUnknownApiError(error, "采购草稿保存失败");
+    editSaveStatus.value = "保存失败，当前填写保留";
+    const status = (error as {status?: number}).status;
+    if (requestStarted && (status === 409 || !status || status >= 500)) {editSaveBlocked.value = true; editSaveStatus.value = "保存结果待核对，请保留当前填写并核对服务器最新内容";}
   } finally {
-    actionBusy.value = false;
+    // A successful new-version save may reload a newer version in this same
+    // session. Release only this route/session's busy owner, never a new editor.
+    if (editSession.value === session && detailRouteGeneration === session.routeGeneration && procurementId.value === session.procurementId) {
+      actionBusy.value = false;
+      if (saveIsCurrent() && editVisible.value && !editSaveBlocked.value && submittedSignature !== editSignature()) queueEditSave();
+    }
   }
 }
+
+const submitCoordinates = computed(() => detail.value?.currentVersion?.requestProtocolVersion === 2
+  ? {expectedVersionId: detail.value.currentVersion.id, expectedDraftRevision: detail.value.currentVersion.draftRevision}
+  : undefined);
 
 function captureSubmitContext(): SubmitActionContext {
   return {
     procurementId: procurementId.value,
     routeGeneration: detailRouteGeneration,
-    operationId: submitOperationId + 1
+    operationId: submitOperationId + 1,
+    coordinates: submitCoordinates.value
   };
 }
 
@@ -605,7 +773,7 @@ function finishSubmit(context: SubmitActionContext) {
 function runSubmit() {
   const context = captureSubmitContext();
   const request = submitSpotProcurement(
-    requireCurrentSubmitProcurementId(context)
+    requireCurrentSubmitProcurementId(context), context.coordinates
   );
   submitOperationId = context.operationId;
   actionBusy.value = true;
@@ -705,7 +873,7 @@ function openConfirmation(kind: ActionKind) {
   > = {
     review_approve: {
       title: "确认通过采购审批",
-      description: "通过后审批流进入下一节点或完成，并冻结本次采购审批单。",
+      description: "同意后保留本职责的手写签名，全部必需职责完成后审批才通过。",
       confirmText: "确认通过",
       confirmTheme: "primary",
       requireReason: false,
@@ -825,6 +993,11 @@ function reviewContextIsCurrent(
   );
 }
 
+const reviewSelfReviewReason = ref("");
+const reviewConfirmationPassword = ref("");
+const reviewRequiresSelfConfirmation = computed(() => Boolean(detail.value?.availableActions.find(action => action.key === "review_approval")?.requiresSelfReviewConfirmation));
+watch(() => confirmation.visible, visible => {if (!visible) {reviewSelfReviewReason.value = ""; reviewConfirmationPassword.value = "";}});
+
 function captureReviewContext(
   decision: SpotProcurementReviewActionDecision,
   reason: string
@@ -860,7 +1033,11 @@ function captureReviewContext(
     confirmation.error = "当前审批正在提交，请等待本次操作完成";
     return null;
   }
+  let selfReview: {selfReviewReason?: string; confirmationPassword?: string};
+  try {selfReview = buildApprovalSelfReviewPayload(reviewRequiresSelfConfirmation.value, {selfReviewReason: reviewSelfReviewReason.value, confirmationPassword: reviewConfirmationPassword.value});}
+  catch (error) {confirmation.error = formatUnknownApiError(error, "请完成本人自审确认"); return null;}
   const context = Object.freeze({
+    ...(reviewRequiresSelfConfirmation.value ? {requiresSelfReviewConfirmation: true, ...selfReview} : {}),
     ownerScope: reviewOwnerScope,
     routeGeneration: detailRouteGeneration,
     detailEpoch,
@@ -1585,8 +1762,8 @@ function requiredText(value: string, label: string) {
 
 function requiredQuantity(value: string) {
   const normalized = value.trim();
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(normalized) || Number(normalized) <= 0) {
-    throw new Error("采购数量必须大于 0，最多 2 位小数");
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(normalized) || Number(normalized) <= 0) {
+    throw new Error("采购数量必须大于 0，最多4位小数");
   }
   return normalized;
 }
@@ -1601,6 +1778,7 @@ function selectedUploadFiles(files: UploadFile[]) {
 }
 
 function clearDetailRouteContext() {
+  discardEdit();
   detailRouteGeneration += 1;
   detailLoadRequestId += 1;
   submitOperationId += 1;
@@ -1630,8 +1808,10 @@ watch(procurementId, () => {
   clearDetailRouteContext();
   void loadDetail();
 });
-onMounted(() => void loadDetail());
+onMounted(() => {if (typeof window !== "undefined") window.addEventListener("beforeunload", beforeEditUnload); void loadDetail();});
 onBeforeUnmount(() => {
+  if (typeof window !== "undefined") window.removeEventListener("beforeunload", beforeEditUnload);
+  clearTimeout(editSaveTimer);
   reviewComponentActive = false;
   withdrawalComponentActive = false;
   clearDetailRouteContext();
@@ -1663,9 +1843,9 @@ onBeforeUnmount(() => {
         :status-tone="statusTone(detail.procurement.status)"
         :owner="detail.currentVersion.purchaserName ?? detail.procurement.handler.name"
         :current-node="detail.approval.currentNodeName"
-        :next-step="primaryAction?.label ?? '等待既定条件满足'"
-        :requested-amount="paymentSummaryLabel(detail)"
-        amount-label="关联付款"
+        :next-step="detail.purchaseTask?.pending ? (detail.purchaseTask.canHandle ? '按需求采购' : '等待本项目物资员采购') : primaryAction?.label ?? '等待既定条件满足'"
+        :requested-amount="detail.currentVersion.requestProtocolVersion === 2 ? detail.currentVersion.estimatedTotalAmount ?? '待确定' : paymentSummaryLabel(detail)"
+        :amount-label="detail.currentVersion.requestProtocolVersion === 2 ? '申请预计金额' : '关联付款'"
         :primary-action-label="primaryAction?.label ?? ''"
         :primary-action-disabled="actionBusy"
         @primary-action="runPrimaryAction"
@@ -1702,10 +1882,12 @@ onBeforeUnmount(() => {
           label="审批与动作"
         />
         <t-tab-panel
+          v-if="detail.currentVersion.requestProtocolVersion !== 2"
           value="payments"
           label="关联付款"
         />
         <t-tab-panel
+          v-if="detail.currentVersion.requestProtocolVersion !== 2"
           value="receipt"
           label="收货与发票"
         />
@@ -1715,14 +1897,16 @@ onBeforeUnmount(() => {
         v-if="activeTab === 'overview'"
         class="detail-panel"
       >
-        <header><h2>零星/小额材料采购申请表</h2><p>该表沿用公司现有 A4 竖向申请表：采购阶段不记录价格、商户、税率或发票。</p></header>
+        <t-alert v-if="detail.purchaseTask?.pending" theme="info" :title="detail.purchaseTask.label" :message="detail.purchaseTask.canHandle ? detail.purchaseTask.note ?? '请按需求采购' : '等待本项目物资员采购'" />
+        <header><h2>零星/小额材料采购申请表</h2><p>填写生产零星材料需求，未知数量、单位、到位日和预计金额可留空。</p></header>
         <dl class="detail-grid">
           <div><dt>项目名称</dt><dd>{{ detail.procurement.project.code }} · {{ detail.procurement.project.name }}</dd></div>
           <div><dt>系统申请单编号</dt><dd>{{ detail.procurement.code }}</dd></div>
           <div><dt>申请部门</dt><dd>{{ detail.currentVersion.applicationDepartment ?? "—" }}</dd></div>
           <div><dt>申请人</dt><dd>{{ detail.currentVersion.applicationName ?? detail.procurement.applicant.name }}</dd></div>
-          <div><dt>采购人</dt><dd>{{ detail.currentVersion.purchaserName ?? detail.procurement.handler.name }}</dd></div>
+          <div><dt>{{ detail.currentVersion.requestProtocolVersion === 2 ? "制单经办人" : "采购人" }}</dt><dd>{{ detail.currentVersion.purchaserName ?? detail.procurement.handler.name }}</dd></div>
           <div><dt>采购部门</dt><dd>{{ detail.currentVersion.purchaserDepartment ?? "—" }}</dd></div>
+          <div><dt>申请预计总金额</dt><dd>{{ detail.currentVersion.estimatedTotalAmount ?? "待确定" }}</dd></div>
           <div><dt>要求采购到位日期</dt><dd>{{ dateOnly(detail.currentVersion.requestedArrivalAt) }}</dd></div>
           <div><dt>更新时间</dt><dd>{{ dateTime(detail.procurement.updatedAt) }}</dd></div>
           <div class="detail-grid__wide">
@@ -1737,8 +1921,8 @@ onBeforeUnmount(() => {
         </dl>
         <t-alert
           theme="info"
-          title="价格在付款申请中确定"
-          message="采购审批只确认材料范围、数量、统一到位日期和采购原因。最终商户、我方付款主体、收款对象、含税单价、税率、付款方式和发票资料在项目零星付款申请单中补充。"
+          title="申请预计与实际采购分开"
+          message="预计数量与价格供采购核对，不限制实际采购；两项职责均同意后，由项目物资员办理采购，物资主管可跨项目办理。无收货登记。"
         />
         <section class="version-list">
           <h3>版本记录</h3>
@@ -1964,19 +2148,25 @@ onBeforeUnmount(() => {
       </section>
     </template>
 
+
+
     <t-dialog
-      v-model:visible="editVisible"
+      :visible="editVisible"
       :header="editMode === 'version' ? '创建采购变更草稿' : '编辑零星材料采购草稿'"
       width="min(1180px, 94vw)"
       :close-on-overlay-click="false"
-      :confirm-btn="{ content: editMode === 'version' ? '创建变更草稿' : '保存草稿', loading: actionBusy }"
-      @confirm="saveDraft"
+      :confirm-btn="{ content: editMode === 'version' ? '创建变更草稿' : '保存草稿', loading: actionBusy, disabled: editSaveBlocked }"
+      @confirm="() => saveDraft()"
+      @close="closeEdit"
     >
       <div class="edit-form">
+        <p role="status">{{ editSaveStatus }}</p>
+        <t-button v-if="editSaveBlocked" variant="outline" @click="checkServerDraft">核对服务器最新草稿</t-button>
+        <p v-if="serverDraftCheck">{{ serverDraftCheck }}</p>
         <t-alert
           theme="info"
           title="只编辑采购申请事实"
-          message="本表不维护供应商、价格、税率、付款方式或发票。采购人由当前登录物资员在系统中冻结。"
+          :message="detail?.currentVersion.requestProtocolVersion === 2 ? '填写材料需求和预计数值，未知可留空；保存不会提交审批。批准后由项目物资员采购。' : '旧版申请仍须完整日期、单位和数量，保留原有业务资料。'"
         />
         <label v-if="editMode === 'version'"><span>版本变更原因</span><t-textarea
           v-model="editForm.changeReason"
@@ -2031,7 +2221,7 @@ onBeforeUnmount(() => {
         </label>
         <label>
           <span>补充现场参考照片（可选）</span>
-          <small>{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptText }}，{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitText }}；仅作申请参考，不替代后续收货照片。</small>
+          <small>{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptText }}，{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitText }}；仅作申请参考，不作为实际采购凭证。</small>
           <t-upload
             v-model="editReferencePhotoFiles"
             theme="image-flow"
@@ -2042,7 +2232,8 @@ onBeforeUnmount(() => {
             :disabled="actionBusy"
           />
         </label>
-        <ProcurementLineEditor v-model="editForm.lines" />
+        <label v-if="detail?.currentVersion.requestProtocolVersion === 2"><span>申请预计总金额（元，可空）</span><t-input v-model="editForm.estimatedTotalAmount" /></label>
+        <ProcurementLineEditor :key="editGridSession" v-model="editForm.lines" @editor-input="editEditorInput" />
         <t-alert
           v-if="editError"
           theme="error"
@@ -2051,6 +2242,16 @@ onBeforeUnmount(() => {
         />
       </div>
     </t-dialog>
+
+    <t-dialog
+      :visible="editCloseConfirm"
+      header="当前填写尚未保存"
+      :close-on-overlay-click="false"
+      confirm-btn="放弃未保存改动并关闭"
+      cancel-btn="保留当前填写"
+      @confirm="discardEdit"
+      @close="keepEdit"
+    >当前单元格或草稿还有未保存的修改。保留填写后可先确认单元格，再保存到服务器。</t-dialog>
 
     <SensitiveActionDialog
       v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_approve'"
@@ -2065,7 +2266,13 @@ onBeforeUnmount(() => {
       :loading="actionBusy"
       :error="confirmation.error"
       @confirm="confirmReviewApprove"
-    />
+    >
+      <ApprovalSelfReviewFields
+        v-model:self-review-reason="reviewSelfReviewReason"
+        v-model:confirmation-password="reviewConfirmationPassword"
+        :required="reviewRequiresSelfConfirmation"
+      />
+    </SensitiveActionDialog>
     <SensitiveActionDialog
       v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_reject'"
       v-model="confirmation.visible"
@@ -2079,7 +2286,13 @@ onBeforeUnmount(() => {
       :loading="actionBusy"
       :error="confirmation.error"
       @confirm="confirmReviewReject"
-    />
+    >
+      <ApprovalSelfReviewFields
+        v-model:self-review-reason="reviewSelfReviewReason"
+        v-model:confirmation-password="reviewConfirmationPassword"
+        :required="reviewRequiresSelfConfirmation"
+      />
+    </SensitiveActionDialog>
     <SensitiveActionDialog
       v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_return'"
       v-model="confirmation.visible"
@@ -2093,7 +2306,13 @@ onBeforeUnmount(() => {
       :loading="actionBusy"
       :error="confirmation.error"
       @confirm="confirmReviewReturn"
-    />
+    >
+      <ApprovalSelfReviewFields
+        v-model:self-review-reason="reviewSelfReviewReason"
+        v-model:confirmation-password="reviewConfirmationPassword"
+        :required="reviewRequiresSelfConfirmation"
+      />
+    </SensitiveActionDialog>
     <SensitiveActionDialog
       v-if="withdrawalApprovalActionEnabled('withdraw_approval') && confirmation.kind === 'withdraw'"
       v-model="confirmation.visible"

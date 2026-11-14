@@ -13,9 +13,9 @@ const localDispatch = join(root, "scripts", "ops", "request-github-deploy.sh");
 const localReceipt = join(root, "scripts", "ops", "local-release-receipt.mjs");
 const candidateSha = "a".repeat(40);
 const requiredChecks = [
-  "ci-orchestration",
   "frozen-dependency-install",
   "prisma-client-generation",
+  "ci-orchestration",
   "migration-baseline",
   "production-dependency-audit",
   "workspace-typecheck",
@@ -41,6 +41,9 @@ test("receipt validation reads child stdin and retains exact SHA and gate checks
       localReceipt, "--validate", "--receipt", "/dev/stdin", "--candidate-sha", sha
     ], { input, encoding: "utf8" });
     assert.equal(validate(bytes).status, 0);
+    const legacyOrder = JSON.parse(bytes);
+    legacyOrder.checks = ["ci-orchestration", ...legacyOrder.checks.filter((check) => check !== "ci-orchestration")];
+    assert.equal(validate(JSON.stringify(legacyOrder)).status, 0);
     const wrongSha = validate(bytes, "b".repeat(40));
     assert.notEqual(wrongSha.status, 0);
     assert.match(wrongSha.stderr, /does not match target SHA/u);
@@ -153,6 +156,10 @@ async function writeFakeLocalGateTools(testRoot) {
   const fakeDocker = join(testRoot, "docker");
   const fakeGit = join(testRoot, "git-gate");
   const fakeBash = join(testRoot, "bash");
+  const dynamicArgs = join(testRoot, "dynamic-args");
+  const pnpmCalls = join(testRoot, "pnpm-calls");
+  const dependenciesInstalled = join(testRoot, "dependencies-installed");
+  const prismaGenerated = join(testRoot, "prisma-generated");
   await writeExecutable(
     fakeNode,
     [
@@ -161,12 +168,24 @@ async function writeFakeLocalGateTools(testRoot) {
       "if [[ \"${1:-}\" == \"-p\" && \"${2:-}\" == \"process.versions.node\" ]]; then printf '20.19.0\\n'; exit 0; fi",
       `if [[ "\${1:-}" == "-p" && "\${2:-}" == "Date.now()" ]]; then exec ${JSON.stringify(process.execPath)} "$@"; fi`,
       `if [[ "\${1:-}" == */local-release-receipt.mjs ]]; then exec ${JSON.stringify(process.execPath)} "$@"; fi`,
+      `if [[ "\${1:-}" == */run-database-dynamic-gate-local.cjs ]]; then printf '%s\\n' "$@" > ${JSON.stringify(dynamicArgs)}; fi`,
       "exit 0"
     ].join("\n")
   );
   await writeExecutable(
     fakePnpm,
-    "#!/usr/bin/env bash\nif [[ \"${1:-}\" == \"--version\" ]]; then printf '9.15.9\\n'; fi\nexit 0\n"
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "if [[ \"${1:-}\" == \"--version\" ]]; then printf '9.15.9\\n'; exit 0; fi",
+      `printf '%s\\n' "$*" >> ${JSON.stringify(pnpmCalls)}`,
+      "if [[ \"$*\" == \"${JIANGKONG_TEST_FAIL_PNPM_COMMAND:-}\" ]]; then exit 42; fi",
+      'case "$*" in',
+      `  "install --frozen-lockfile") [[ "\${CI:-}" == "true" ]]; touch ${JSON.stringify(dependenciesInstalled)} ;;`,
+      `  "--filter @jiangkong/api exec prisma generate") [[ -f ${JSON.stringify(dependenciesInstalled)} ]]; touch ${JSON.stringify(prismaGenerated)} ;;`,
+      `  "test:ci-orchestration") [[ -f ${JSON.stringify(prismaGenerated)} ]] || { echo "Prisma Client is missing in the cold checkout" >&2; exit 43; } ;;`,
+      "esac"
+    ].join("\n")
   );
   await writeExecutable(
     fakeDocker,
@@ -186,7 +205,24 @@ async function writeFakeLocalGateTools(testRoot) {
     ].join("\n")
   );
   await writeExecutable(fakeBash, "#!/usr/bin/env bash\nexit 0\n");
-  return { fakeNode, fakePnpm, fakeDocker, fakeGit, fakeBash };
+  return { fakeNode, fakePnpm, fakeDocker, fakeGit, fakeBash, dynamicArgs, pnpmCalls };
+}
+
+function runFakeLocalGate(tools, receipt, extraEnv = {}) {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key !== "DATABASE_URL" && !key.endsWith("_DATABASE_URL"))
+  );
+  return runScript(localGate, ["--receipt", receipt], {
+    env: {
+      ...env,
+      NODE_BIN: tools.fakeNode,
+      PNPM_BIN: tools.fakePnpm,
+      DOCKER_BIN: tools.fakeDocker,
+      GIT_BIN: tools.fakeGit,
+      BASH_BIN: tools.fakeBash,
+      ...extraEnv
+    }
+  });
 }
 
 test("local release gate refuses a non-Node-20 host before writing a receipt", async () => {
@@ -298,35 +334,49 @@ test("release receipt tool serializes an exact per-phase duration ledger", async
   }
 });
 
-test("full local gate writes schema v2 with all per-phase durations", async () => {
+test("cold local release prepares dependencies before CI and writes all 17 phase durations", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-gate-test-"));
   try {
     const receipt = join(testRoot, "receipt.json");
     const tools = await writeFakeLocalGateTools(testRoot);
-    const env = Object.fromEntries(
-      Object.entries(process.env).filter(([key]) => key !== "DATABASE_URL" && !key.endsWith("_DATABASE_URL"))
-    );
-
-    const result = runScript(localGate, ["--receipt", receipt], {
-      env: {
-        ...env,
-        NODE_BIN: tools.fakeNode,
-        PNPM_BIN: tools.fakePnpm,
-        DOCKER_BIN: tools.fakeDocker,
-        GIT_BIN: tools.fakeGit,
-        BASH_BIN: tools.fakeBash
-      }
-    });
+    const result = runFakeLocalGate(tools, receipt);
 
     assert.equal(result.status, 0, result.stderr);
     const parsed = JSON.parse(await readFile(receipt, "utf8"));
     assert.equal(parsed.schemaVersion, 2);
+    assert.deepEqual(parsed.checks, requiredChecks);
     assert.deepEqual(Object.keys(parsed.durationsMs), requiredChecks);
+    assert.deepEqual([...result.stdout.matchAll(/^==> (.+)$/gmu)].map((match) => match[1]), requiredChecks);
+    const listed = runScript(localGate, ["--list-checks"], { env: { ...process.env, NODE_BIN: tools.fakeNode } });
+    assert.equal(listed.status, 0, listed.stderr);
+    assert.deepEqual(listed.stdout.trim().split("\n"), requiredChecks);
+    assert.deepEqual((await readFile(tools.dynamicArgs, "utf8")).trim().split("\n"), [
+      "services/api/prisma/run-database-dynamic-gate-local.cjs",
+      "--execute", "--automatic-only", "--candidate-sha", candidateSha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"
+    ]);
     for (const duration of Object.values(parsed.durationsMs)) {
       assert.equal(Number.isInteger(duration) && duration >= 0, true);
     }
   } finally {
     await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("cold local release stops at the first failed dependency or CI check", async () => {
+  const commands = ["install --frozen-lockfile", "--filter @jiangkong/api exec prisma generate", "test:ci-orchestration"];
+  for (const [index, command] of commands.entries()) {
+    const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-gate-stop-test-"));
+    try {
+      const receipt = join(testRoot, "receipt.json");
+      const tools = await writeFakeLocalGateTools(testRoot);
+      const result = runFakeLocalGate(tools, receipt, { JIANGKONG_TEST_FAIL_PNPM_COMMAND: command });
+      assert.equal(result.status, 42, result.stderr);
+      assert.deepEqual((await readFile(tools.pnpmCalls, "utf8")).trim().split("\n"), commands.slice(0, index + 1));
+      await assert.rejects(readFile(receipt), { code: "ENOENT" });
+      await assert.rejects(readFile(tools.dynamicArgs), { code: "ENOENT" });
+    } finally {
+      await rm(testRoot, { recursive: true, force: true });
+    }
   }
 });
 

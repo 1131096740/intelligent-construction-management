@@ -9,7 +9,7 @@ const withdrawalRuntime = vi.hoisted(() => ({
   prepareWithdrawal: vi.fn(),
   fetchDetail: vi.fn(),
   postWithdrawal: vi.fn(),
-  route: { params: { contractId: "contract-a" } }
+  route: { params: { contractId: "contract-a" }, query: {} }
 }));
 
 vi.mock("vue", async (importOriginal) => {

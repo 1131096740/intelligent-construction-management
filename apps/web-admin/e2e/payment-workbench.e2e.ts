@@ -285,6 +285,10 @@ async function mockPaymentExecutionShell(page: Page) {
         body: "[]"
       })
   );
+  await page.route(/\/api\/payment-executions\/(?:work-items|recorded-items)$/u, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: { items: [], total: 0 } });
+  });
 }
 
 async function mockPaymentExecutionRequests(

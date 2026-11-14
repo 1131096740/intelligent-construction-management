@@ -1,0 +1,1522 @@
+{
+  "profile": "LOCAL_F0_TAIL259_V1",
+  "windows": {
+    "215": {
+      "required": [
+        "Contract/id/SELECT",
+        "Contract/projectId/SELECT",
+        "Contract/ownerUserId/SELECT",
+        "Contract/contractTypeKey/SELECT",
+        "Contract/voidedAt/SELECT",
+        "Contract/code/SELECT",
+        "Contract/companyEntityId/SELECT",
+        "Contract/name/SELECT",
+        "Contract/counterparty/SELECT",
+        "Project/id/SELECT",
+        "Project/isActive/SELECT",
+        "ContractVersion/contractId/SELECT"
+      ],
+      "eligible": [
+        "Contract/companyEntityId/SELECT",
+        "Contract/counterparty/SELECT"
+      ],
+      "lockUpdateRequired": []
+    },
+    "218": {
+      "required": [
+        "BusinessParty/id/SELECT",
+        "BusinessParty/status/SELECT",
+        "BusinessPartyVersion/businessPartyId/SELECT",
+        "BusinessPartyVersion/id/SELECT",
+        "BusinessPartyVersion/snapshot/SELECT",
+        "CompanyEntity/currentVersionNo/SELECT",
+        "CompanyEntity/dataStatus/SELECT",
+        "CompanyEntity/id/SELECT",
+        "CompanyEntity/isActive/SELECT",
+        "CompanyEntityVersion/companyEntityId/SELECT",
+        "CompanyEntityVersion/id/SELECT",
+        "CompanyEntityVersion/isActive/SELECT",
+        "CompanyEntityVersion/name/SELECT",
+        "CompanyEntityVersion/registeredAddress/SELECT",
+        "CompanyEntityVersion/unifiedSocialCreditCode/SELECT",
+        "CompanyEntityVersion/versionNo/SELECT",
+        "Contract/code/SELECT",
+        "Contract/companyEntityId/SELECT",
+        "Contract/contractTypeKey/SELECT",
+        "Contract/id/SELECT",
+        "Contract/name/SELECT",
+        "Contract/ownerUserId/SELECT",
+        "Contract/projectId/SELECT",
+        "Contract/voidedAt/SELECT",
+        "ContractArchiveFile/contractVersionId/SELECT",
+        "ContractDraftAttachment/contractVersionId/SELECT",
+        "ContractDraftAttachment/displayOrder/SELECT",
+        "ContractDraftAttachment/fileId/SELECT",
+        "ContractDraftAttachment/slotKey/SELECT",
+        "ContractPartySnapshot/businessPartyVersionId/SELECT",
+        "ContractPartySnapshot/contractVersionId/SELECT",
+        "ContractPartySnapshot/displayOrder/SELECT",
+        "ContractPartySnapshot/id/SELECT",
+        "ContractPartySnapshot/roleKey/SELECT",
+        "ContractPartySnapshot/snapshot/SELECT",
+        "ContractVersion/affiliateAssignmentId/SELECT",
+        "ContractVersion/affiliateAssignmentId/UPDATE",
+        "ContractVersion/affiliateBusinessPartyVersionId/SELECT",
+        "ContractVersion/affiliateBusinessPartyVersionId/UPDATE",
+        "ContractVersion/affiliateCreditCodeSnapshot/SELECT",
+        "ContractVersion/affiliateCreditCodeSnapshot/UPDATE",
+        "ContractVersion/affiliateNameSnapshot/SELECT",
+        "ContractVersion/affiliateNameSnapshot/UPDATE",
+        "ContractVersion/amountCents/UPDATE",
+        "ContractVersion/amountLimitType/SELECT",
+        "ContractVersion/amountSource/SELECT",
+        "ContractVersion/amountSource/UPDATE",
+        "ContractVersion/amountYuan/SELECT",
+        "ContractVersion/amountYuan/UPDATE",
+        "ContractVersion/changeType/SELECT",
+        "ContractVersion/companyEntityCreditCodeSnapshot/SELECT",
+        "ContractVersion/companyEntityCreditCodeSnapshot/UPDATE",
+        "ContractVersion/companyEntityIdSnapshot/SELECT",
+        "ContractVersion/companyEntityIdSnapshot/UPDATE",
+        "ContractVersion/companyEntityNameSnapshot/SELECT",
+        "ContractVersion/companyEntityNameSnapshot/UPDATE",
+        "ContractVersion/companyEntityRegisteredAddressSnapshot/SELECT",
+        "ContractVersion/companyEntityRegisteredAddressSnapshot/UPDATE",
+        "ContractVersion/companyEntityVersionId/SELECT",
+        "ContractVersion/companyEntityVersionId/UPDATE",
+        "ContractVersion/contractId/SELECT",
+        "ContractVersion/defaultTaxRatePercent/SELECT",
+        "ContractVersion/defaultTaxRatePercent/UPDATE",
+        "ContractVersion/documentContentFingerprint/SELECT",
+        "ContractVersion/draftData/SELECT",
+        "ContractVersion/draftData/UPDATE",
+        "ContractVersion/draftRevision/SELECT",
+        "ContractVersion/draftRevision/UPDATE",
+        "ContractVersion/effectiveAt/SELECT",
+        "ContractVersion/endedAt/SELECT",
+        "ContractVersion/firstSubmittedAt/SELECT",
+        "ContractVersion/id/SELECT",
+        "ContractVersion/invoiceType/SELECT",
+        "ContractVersion/invoiceType/UPDATE",
+        "ContractVersion/numericProtocolVersion/SELECT",
+        "ContractVersion/originalSignedNumber/SELECT",
+        "ContractVersion/originalSignedNumber/UPDATE",
+        "ContractVersion/pricingNature/SELECT",
+        "ContractVersion/pricingNature/UPDATE",
+        "ContractVersion/signingSubjectType/SELECT",
+        "ContractVersion/signingSubjectType/UPDATE",
+        "ContractVersion/status/SELECT",
+        "ContractVersion/supersedesVersionId/SELECT",
+        "ContractVersion/taxMode/SELECT",
+        "ContractVersion/taxMode/UPDATE",
+        "ContractVersion/updatedAt/UPDATE",
+        "ContractVersion/versionNo/SELECT",
+        "FileObject/contentSha256/SELECT",
+        "FileObject/id/SELECT",
+        "FileObject/mimeType/SELECT",
+        "FileObject/purgeReceiptId/SELECT",
+        "FileObject/sizeBytes/SELECT",
+        "FileObject/storageStatus/SELECT",
+        "FileObject/supersedesFileObjectId/SELECT",
+        "PaymentTermsStage/paymentTermsVersionId/SELECT",
+        "PaymentTermsVersion/contractId/SELECT",
+        "PaymentTermsVersion/contractVersionId/SELECT",
+        "PaymentTermsVersion/id/SELECT",
+        "PaymentTermsVersion/originalText/SELECT",
+        "PaymentTermsVersion/status/SELECT",
+        "PaymentTermsVersion/versionNo/SELECT",
+        "Project/id/SELECT",
+        "Project/isActive/SELECT",
+        "ProjectAffiliateAssignment/affiliateCreditCodeSnapshot/SELECT",
+        "ProjectAffiliateAssignment/affiliateNameSnapshot/SELECT",
+        "ProjectAffiliateAssignment/businessPartyId/SELECT",
+        "ProjectAffiliateAssignment/businessPartyVersionId/SELECT",
+        "ProjectAffiliateAssignment/effectiveFrom/SELECT",
+        "ProjectAffiliateAssignment/endedAt/SELECT",
+        "ProjectAffiliateAssignment/id/SELECT",
+        "ProjectAffiliateAssignment/projectId/SELECT",
+        "ProjectParticipatingCompany/companyEntityId/SELECT",
+        "ProjectParticipatingCompany/companyEntityVersionId/SELECT",
+        "ProjectParticipatingCompany/effectiveFrom/SELECT",
+        "ProjectParticipatingCompany/endedAt/SELECT",
+        "ProjectParticipatingCompany/id/SELECT",
+        "ProjectParticipatingCompany/projectId/SELECT"
+      ],
+      "eligible": [
+        "BusinessParty/id/SELECT",
+        "BusinessParty/status/SELECT",
+        "CompanyEntity/currentVersionNo/SELECT",
+        "CompanyEntity/dataStatus/SELECT",
+        "CompanyEntity/isActive/SELECT",
+        "CompanyEntityVersion/companyEntityId/SELECT",
+        "CompanyEntityVersion/id/SELECT",
+        "CompanyEntityVersion/isActive/SELECT",
+        "CompanyEntityVersion/name/SELECT",
+        "CompanyEntityVersion/registeredAddress/SELECT",
+        "CompanyEntityVersion/unifiedSocialCreditCode/SELECT",
+        "CompanyEntityVersion/versionNo/SELECT",
+        "ContractVersion/affiliateAssignmentId/UPDATE",
+        "ContractVersion/affiliateBusinessPartyVersionId/UPDATE",
+        "ContractVersion/affiliateCreditCodeSnapshot/UPDATE",
+        "ContractVersion/affiliateNameSnapshot/UPDATE",
+        "ContractVersion/amountCents/UPDATE",
+        "ContractVersion/amountSource/UPDATE",
+        "ContractVersion/amountYuan/UPDATE",
+        "ContractVersion/companyEntityCreditCodeSnapshot/UPDATE",
+        "ContractVersion/companyEntityIdSnapshot/UPDATE",
+        "ContractVersion/companyEntityNameSnapshot/UPDATE",
+        "ContractVersion/companyEntityRegisteredAddressSnapshot/UPDATE",
+        "ContractVersion/companyEntityVersionId/UPDATE",
+        "ContractVersion/defaultTaxRatePercent/UPDATE",
+        "ContractVersion/draftData/UPDATE",
+        "ContractVersion/draftRevision/UPDATE",
+        "ContractVersion/invoiceType/UPDATE",
+        "ContractVersion/pricingNature/UPDATE",
+        "ContractVersion/signingSubjectType/UPDATE",
+        "ContractVersion/taxMode/UPDATE"
+      ],
+      "lockUpdateRequired": [
+        "CompanyEntity",
+        "Project",
+        "ProjectParticipatingCompany"
+      ]
+    },
+    "221": {
+      "required": [
+        "ContractVersion/affiliateAssignmentId/UPDATE",
+        "ContractVersion/affiliateBusinessPartyVersionId/UPDATE",
+        "ContractVersion/affiliateCreditCodeSnapshot/UPDATE",
+        "ContractVersion/affiliateNameSnapshot/UPDATE",
+        "ContractVersion/companyEntityCreditCodeSnapshot/UPDATE",
+        "ContractVersion/companyEntityIdSnapshot/UPDATE",
+        "ContractVersion/companyEntityNameSnapshot/UPDATE",
+        "ContractVersion/companyEntityRegisteredAddressSnapshot/UPDATE",
+        "ContractVersion/companyEntityVersionId/UPDATE",
+        "ContractVersion/firstSubmittedAt/UPDATE",
+        "ContractVersion/readinessSnapshot/UPDATE",
+        "ContractVersion/signingSubjectType/UPDATE",
+        "ContractVersion/status/UPDATE",
+        "ContractVersion/updatedAt/UPDATE"
+      ],
+      "eligible": [
+        "ContractVersion/firstSubmittedAt/UPDATE",
+        "ContractVersion/readinessSnapshot/UPDATE",
+        "ContractVersion/status/UPDATE"
+      ],
+      "lockUpdateRequired": []
+    }
+  },
+  "post213Targets": [
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "contractVersionId",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "archiveProtocolVersion",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "archiveSource",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "archiveFileId",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "contractVersionId",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "fileId",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "objectKey",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractEconomicReviewFileReference",
+      "member": "fileId",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractEconomicReviewFileReference",
+      "member": "objectKey",
+      "privilege": "SELECT",
+      "recipients": "file"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "contractVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "archiveProtocolVersion",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "archiveSource",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "status",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "fileId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "uploadedByUserId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "confirmedByUserId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "confirmedAt",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "idempotencyKey",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "requestSha256",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "sourceRevision",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "approvalInstanceId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "sealTaskId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "documentContentRevision",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "documentContentFingerprint",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "authoritySnapshot",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "authoritySha256",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "fileManifestSha256",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveFile",
+      "member": "responseSnapshot",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "contractId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "versionNo",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "numericProtocolVersion",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "changeType",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "supersedesVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "status",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "effectiveAt",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "taxFactsFrozenAt",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "firstSubmittedAt",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "endedAt",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "signingSubjectType",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "draftRevision",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "documentContentFingerprint",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "originalSignedNumber",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "affiliateAssignmentId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "affiliateBusinessPartyVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractVersion",
+      "member": "draftData",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "Contract",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "Contract",
+      "member": "projectId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "Project",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "Project",
+      "member": "isActive",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "Project",
+      "member": "operatingLedgerEffectiveDate",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ProjectAffiliateAssignment",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ProjectAffiliateAssignment",
+      "member": "projectId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ProjectAffiliateAssignment",
+      "member": "effectiveFrom",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ProjectAffiliateAssignment",
+      "member": "endedAt",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ProjectAffiliateAssignment",
+      "member": "businessPartyVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ProjectAffiliateAssignment",
+      "member": "businessPartyId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "OperatingFact",
+      "member": "sourceType",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "OperatingFact",
+      "member": "sourceBusinessId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "OperatingImpactEntry",
+      "member": "sourceType",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "OperatingImpactEntry",
+      "member": "sourceBusinessId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "PaymentTermsVersion",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "PaymentTermsVersion",
+      "member": "contractId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "PaymentTermsVersion",
+      "member": "contractVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "PaymentTermsVersion",
+      "member": "status",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "PaymentTermsVersion",
+      "member": "versionNo",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "PaymentTermsVersion",
+      "member": "originalText",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "PaymentTermsStage",
+      "member": "paymentTermsVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "archiveFileId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "contractVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "fileId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "displayOrder",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "mimeType",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "sizeBytes",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractArchiveEvidenceFile",
+      "member": "contentSha256",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "id",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "storageStatus",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "purgeReceiptId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "supersedesFileObjectId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "mimeType",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "sizeBytes",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "FileObject",
+      "member": "contentSha256",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractDraftAttachment",
+      "member": "contractVersionId",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "column",
+      "table": "ContractDraftAttachment",
+      "member": "slotKey",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "function",
+      "table": "public.jg_protect_contract_direct_review_file_v1()",
+      "member": "",
+      "privilege": "EXECUTE",
+      "recipients": "file"
+    },
+    {
+      "kind": "function",
+      "table": "public.jg_protect_contract_direct_archive_file_v1()",
+      "member": "",
+      "privilege": "EXECUTE",
+      "recipients": "file"
+    },
+    {
+      "kind": "function",
+      "table": "public.jg_require_contract_direct_archive_complete_v1()",
+      "member": "",
+      "privilege": "EXECUTE",
+      "recipients": "app"
+    },
+    {
+      "kind": "function",
+      "table": "public.jg_contract_direct_archive_proof_v1(text)",
+      "member": "",
+      "privilege": "EXECUTE",
+      "recipients": "app"
+    },
+    {
+      "kind": "function",
+      "table": "public.jg_contract_direct_archive_request_sha_v1(text,text,text,text,integer,text,text[])",
+      "member": "",
+      "privilege": "EXECUTE",
+      "recipients": "app"
+    },
+    {
+      "kind": "table",
+      "table": "jg_contract_direct_review_retention_binding_v1",
+      "member": "",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "table",
+      "table": "jg_contract_direct_archive_binding_v1",
+      "member": "",
+      "privilege": "SELECT",
+      "recipients": "app"
+    },
+    {
+      "kind": "table",
+      "table": "jg_contract_direct_archive_retention_binding_v1",
+      "member": "",
+      "privilege": "SELECT",
+      "recipients": "app"
+    }
+  ],
+  "routines213": [
+    {
+      "name": "guard_payment_execution_payer_evidence_immutable",
+      "signature": "public.\"guard_payment_execution_payer_evidence_immutable\"()",
+      "bodySha256": "cf2f8fd6a49b3cac5fef5e397ebe3f6745455cdd898bdea56b9d7879bbad0f20",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": null
+    },
+    {
+      "name": "guard_verified_bank_transaction_observation_evidence_immutable",
+      "signature": "public.\"guard_verified_bank_transaction_observation_evidence_immutable\"()",
+      "bodySha256": "1d99af05f59b13e9b0d5e2fddf8ff2d79b201352b2175f5e4f58920bfdd031f1",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": null
+    },
+    {
+      "name": "jg_assert_contract_direct_review_files_complete_v1",
+      "signature": "public.\"jg_assert_contract_direct_review_files_complete_v1\"()",
+      "bodySha256": "dc962c2e969636957e011f11b669e84b7b08096900e0cb03f41cb215eb958b63",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_contract_archive_v2_complete_guard",
+      "signature": "public.\"jg_contract_archive_v2_complete_guard\"()",
+      "bodySha256": "4f6b00903b08ac6c1b42bb0feea706271c34a4d2c1f27d9669f8da7b9420a329",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, public"
+      ]
+    },
+    {
+      "name": "jg_contract_direct_archive_proof_v1",
+      "signature": "public.\"jg_contract_direct_archive_proof_v1\"(pg_catalog.text)",
+      "bodySha256": "4c24e5aa811a8b9c98897377987dd59e4baf3d4d6cf323f049eac77c68a8b00f",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "3802",
+      "securityDefiner": false,
+      "volatility": "s",
+      "parallel": "u",
+      "strict": true,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [
+        "25"
+      ],
+      "inputNames": [
+        "p_archive_id"
+      ],
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_contract_direct_archive_request_sha_v1",
+      "signature": "public.\"jg_contract_direct_archive_request_sha_v1\"(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.text,pg_catalog.text[])",
+      "bodySha256": "f3e329de50e81169c974f55e6c0a965237372f47c2af950c12c8e1d406294cbf",
+      "kind": "f",
+      "language": "sql",
+      "returnTypeOid": "25",
+      "securityDefiner": false,
+      "volatility": "i",
+      "parallel": "s",
+      "strict": true,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [
+        "25",
+        "25",
+        "25",
+        "25",
+        "23",
+        "25",
+        "1009"
+      ],
+      "inputNames": [
+        "p_contract_id",
+        "p_version_id",
+        "p_actor",
+        "p_key",
+        "p_revision",
+        "p_input_sha256",
+        "p_file_ids"
+      ],
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_contract_direct_pending_file_guard_v1",
+      "signature": "public.\"jg_contract_direct_pending_file_guard_v1\"()",
+      "bodySha256": "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, public"
+      ]
+    },
+    {
+      "name": "jg_enforce_file_replacement_exclusive_binding",
+      "signature": "public.\"jg_enforce_file_replacement_exclusive_binding\"()",
+      "bodySha256": "4c91d71432a110f0b491bb04da4c1f0a0e5d53d7116f5ef1e4f3e2ca7f839bda",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": null
+    },
+    {
+      "name": "jg_guard_contract_direct_archive_retention_binding_v1",
+      "signature": "public.\"jg_guard_contract_direct_archive_retention_binding_v1\"()",
+      "bodySha256": "167157e946edc0539ce6136797ac9a1787bb02239bf06997f8b65a85ed161391",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_guard_contract_direct_review_file_reference_v1",
+      "signature": "public.\"jg_guard_contract_direct_review_file_reference_v1\"()",
+      "bodySha256": "0a637030b274eca9cb609a92549c700946b177befb48e40edac4057b0923e8fd",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_guard_contract_direct_review_v1",
+      "signature": "public.\"jg_guard_contract_direct_review_v1\"()",
+      "bodySha256": "20b307255fb78bd08df03d01708bbb2bf6a8e9660305b15cb24f6acc29a9999c",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_materialize_contract_direct_review_files_v1",
+      "signature": "public.\"jg_materialize_contract_direct_review_files_v1\"()",
+      "bodySha256": "a8b0f5183bbd92fa7362cf5fea5f7b0aff48ad1e366fd1fdc8ca04e7903ce132",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_protect_contract_direct_archive_file_v1",
+      "signature": "public.\"jg_protect_contract_direct_archive_file_v1\"()",
+      "bodySha256": "8c6801d789cdf60419d6e5d2239110197f164dabab444ef96f2e50c8ec88e40b",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_protect_contract_direct_review_file_v1",
+      "signature": "public.\"jg_protect_contract_direct_review_file_v1\"()",
+      "bodySha256": "6721a2e5a938aa46cba7a56d2f811eed6d09ce2db2765af44d83fcc1905dfa20",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "jg_require_contract_direct_archive_complete_v1",
+      "signature": "public.\"jg_require_contract_direct_archive_complete_v1\"()",
+      "bodySha256": "326ba01217db8a85b777ea5f416fbaf3515d4fa49c9eb3d65d4b895760bae6d5",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": [
+        "search_path=pg_catalog, pg_temp"
+      ]
+    },
+    {
+      "name": "protectContractEconomicReview",
+      "signature": "public.\"protectContractEconomicReview\"()",
+      "bodySha256": "e31b5ffda24ec9aea17ea49716b517355f87b5f9b6c70d31fcb61b383b3b91b1",
+      "kind": "f",
+      "language": "plpgsql",
+      "returnTypeOid": "2279",
+      "securityDefiner": false,
+      "volatility": "v",
+      "parallel": "u",
+      "strict": false,
+      "returnsSet": false,
+      "leakproof": false,
+      "inputTypes": [],
+      "inputNames": null,
+      "inputModes": null,
+      "allTypes": null,
+      "defaults": 0,
+      "variadicOid": "0",
+      "supportOid": "0",
+      "config": null
+    }
+  ],
+  "triggers213": [
+    {
+      "table": "ContractArchiveEvidenceFile",
+      "name": "ContractArchiveEvidenceFile_direct_complete_v1",
+      "signature": "public.\"jg_require_contract_direct_archive_complete_v1\"()",
+      "type": 5,
+      "enabled": "O",
+      "deferrable": true,
+      "initiallyDeferred": true,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractArchiveEvidenceFile",
+      "name": "ContractArchiveEvidenceFile_v2_complete",
+      "signature": "public.\"jg_contract_archive_v2_complete_guard\"()",
+      "type": 5,
+      "enabled": "O",
+      "deferrable": true,
+      "initiallyDeferred": true,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractArchiveFile",
+      "name": "ContractArchiveFile_direct_complete_v1",
+      "signature": "public.\"jg_require_contract_direct_archive_complete_v1\"()",
+      "type": 5,
+      "enabled": "O",
+      "deferrable": true,
+      "initiallyDeferred": true,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractArchiveFile",
+      "name": "ContractArchiveFile_v2_complete",
+      "signature": "public.\"jg_contract_archive_v2_complete_guard\"()",
+      "type": 5,
+      "enabled": "O",
+      "deferrable": true,
+      "initiallyDeferred": true,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractEconomicReview",
+      "name": "ContractEconomicReview_direct_source_complete_v1",
+      "signature": "public.\"jg_assert_contract_direct_review_files_complete_v1\"()",
+      "type": 17,
+      "enabled": "O",
+      "deferrable": true,
+      "initiallyDeferred": true,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractEconomicReview",
+      "name": "ContractEconomicReview_direct_source_files_v1",
+      "signature": "public.\"jg_materialize_contract_direct_review_files_v1\"()",
+      "type": 17,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractEconomicReview",
+      "name": "ContractEconomicReview_direct_source_guard_v1",
+      "signature": "public.\"jg_guard_contract_direct_review_v1\"()",
+      "type": 23,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractEconomicReview",
+      "name": "ContractEconomicReview_immutable",
+      "signature": "public.\"protectContractEconomicReview\"()",
+      "type": 27,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractEconomicReviewFileReference",
+      "name": "ContractEconomicReviewFileReference_complete_v1",
+      "signature": "public.\"jg_assert_contract_direct_review_files_complete_v1\"()",
+      "type": 5,
+      "enabled": "O",
+      "deferrable": true,
+      "initiallyDeferred": true,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "ContractEconomicReviewFileReference",
+      "name": "ContractEconomicReviewFileReference_guard_v1",
+      "signature": "public.\"jg_guard_contract_direct_review_file_reference_v1\"()",
+      "type": 31,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "FileObject",
+      "name": "FileObject_contract_direct_archive_retention_v1",
+      "signature": "public.\"jg_protect_contract_direct_archive_file_v1\"()",
+      "type": 31,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "FileObject",
+      "name": "FileObject_contract_direct_review_retention_v1",
+      "signature": "public.\"jg_protect_contract_direct_review_file_v1\"()",
+      "type": 31,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "FileObject",
+      "name": "PaymentExecutionPayerAttestation_evidence_immutable",
+      "signature": "public.\"guard_payment_execution_payer_evidence_immutable\"()",
+      "type": 27,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": [
+        "contentSha256",
+        "storageStatus",
+        "uploadedByUserId",
+        "supersedesFileObjectId"
+      ]
+    },
+    {
+      "table": "FileObject",
+      "name": "VerifiedBankTransactionObservation_evidence_immutable",
+      "signature": "public.\"guard_verified_bank_transaction_observation_evidence_immutable\"()",
+      "type": 27,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": [
+        "contentSha256",
+        "storageStatus",
+        "uploadedByUserId",
+        "supersedesFileObjectId"
+      ]
+    },
+    {
+      "table": "FileObject",
+      "name": "jg_direct_pending_file_retained",
+      "signature": "public.\"jg_contract_direct_pending_file_guard_v1\"()",
+      "type": 27,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "FileObject",
+      "name": "jg_efb_file_replacement",
+      "signature": "public.\"jg_enforce_file_replacement_exclusive_binding\"()",
+      "type": 23,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": [
+        "supersedesFileObjectId"
+      ]
+    },
+    {
+      "table": "jg_contract_direct_archive_retention_binding_v1",
+      "name": "jg_direct_archive_retention_binding_immutable",
+      "signature": "public.\"jg_guard_contract_direct_archive_retention_binding_v1\"()",
+      "type": 31,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    },
+    {
+      "table": "jg_contract_direct_archive_retention_binding_v1",
+      "name": "jg_direct_archive_retention_binding_no_truncate",
+      "signature": "public.\"jg_guard_contract_direct_archive_retention_binding_v1\"()",
+      "type": 34,
+      "enabled": "O",
+      "deferrable": false,
+      "initiallyDeferred": false,
+      "internal": false,
+      "condition": false,
+      "args": "",
+      "columns": []
+    }
+  ]
+}

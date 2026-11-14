@@ -1,0 +1,375 @@
+#!/usr/bin/env node
+'use strict';
+const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&
+  Object.keys(require.cache).every(key=>key===__filename);
+const fs=require('node:fs'),path=require('node:path');
+const {createHash}=require('node:crypto');
+const {types}=require('node:util');
+
+const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+const fault=phase=>{const code='CURRENT261_LOCAL_LIFECYCLE_ONCE_'+phase;return Object.assign(new Error(code),{code});};
+const need=(ok,phase)=>{if(!ok)throw fault(phase);};
+const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
+const SHA=/^[a-f0-9]{64}$/u;
+const businessDay=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+
+// Tokens are issued only by this fresh main after its genuine document ACL stage.
+// The fixed binder can validate them; callers cannot register, mint or renew one.
+const contractContinuities=new WeakMap();
+let currentContractContinuity;
+function assertCurrent261ContractBusinessContinuity(token,handle){
+ const entry=token&&!types.isProxy(token)&&contractContinuities.get(token);
+ try{
+  need(arguments.length===2&&FRESH&&entry&&entry===currentContractContinuity&&entry.active&&entry.handle===handle&&
+   !entry.signal.aborted&&entry.acl===entry.binding.acl&&entry.build===entry.binding.build&&entry.source===entry.binding.source,'BUSINESS_CONTINUITY');
+  entry.check();return true;
+ }catch(error){if(entry)entry.active=false;throw error;}
+}
+
+
+function writeExclusive(file,bytes,onOpen){
+ const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
+ try{onOpen?.();fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+ const dir=fs.openSync(path.dirname(file),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
+ try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}
+}
+
+function parseArgs(args){
+ need((args.length===4||args.length===5&&args[4]==='--once')&&args[0]==='--plan'&&
+  args[2]==='--expected-plan-sha256'&&SHA.test(args[3]),'ARGS');
+ return {file:args[1],digest:args[3],once:args.length===5};
+}
+
+function checkHostEnv(){
+ need(!Object.keys(process.env).some(key=>/^(?:NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED|SSL_CERT_FILE|SSL_CERT_DIR|SSLKEYLOGFILE|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|http_proxy|https_proxy|all_proxy|COS_.*)$/u.test(key)),'HOST_ENV');
+}
+
+const reasonCodes=new Set([
+ 'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING','TASK12_OFFICIAL_DOCUMENT_SOURCE','TASK12_OFFICIAL_DOCUMENT_SCOPE','TASK12_OFFICIAL_DOCUMENT_DEADLINE','TASK12_OFFICIAL_DOCUMENT_READER',
+ 'CURRENT261_LOCAL_LIFECYCLE_HTTP','CURRENT259_LOADER_CHANGED',
+ 'CURRENT261_LOCAL_LIFECYCLE_OWNER_OUTPUT','CURRENT261_LOCAL_LIFECYCLE_OWNER_FACTS','CURRENT261_LOCAL_LIFECYCLE_OWNER_FAULT_UNKNOWN',
+ 'TASK01_RESOURCE_START_FAILED','CURRENT259_RESOURCE_CLEANUP_UNKNOWN','CURRENT259_BUILD_SOURCE_NOT_CLEAN',
+ 'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','LOCAL_MIGRATION_SQL_STAGE203_READBACK',
+ 'CURRENT259_ROLE_PROVISION_BEFORE','CURRENT259_ROLE_PROVISION_COMMIT_UNCONFIRMED',
+ ...['PRESTATE_REJECTED','COMMIT_UNCONFIRMED','CLEANUP_UNCONFIRMED','COMMIT_AND_CLEANUP_UNCONFIRMED']
+  .map(part=>'CURRENT259_ARCHIVE_INSTALL_'+part),
+ ...['ORDINARY_ARCHIVE_ACL','DOCUMENT_ROLE_PROVISION','DOCUMENT_ACL_TRANSPORT','DOCUMENT_LOGIN']
+  .flatMap(stage=>['PRESTATE_REJECTED','COMMIT_UNCONFIRMED'].map(part=>'CURRENT259_'+stage+'_'+part)),
+ 'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',
+ ...['FRESH','ARGS','HOST_ENV','TIME','CONTINUITY','DEPENDENCIES','ATTEMPT','ATTEMPT_USED','RESULT','RUNTIME','RECEIPT']
+  .map(part=>'CURRENT261_LOCAL_LIFECYCLE_ONCE_'+part),
+ ...['DIRECTORY','DIGEST','SCOPE','CHANGED','RUN_ALREADY_USED','INPUT','RUNTIME']
+  .map(part=>'CURRENT259_GENERATED_DRAFT_PLAN_'+part),
+ ...['INPUT','SCOPE','ENV','CONTINUITY','CLEANUP_UNKNOWN','READER']
+  .map(part=>'CURRENT259_GENERATED_DOCUMENT_RUNTIME_'+part),
+ ...['INPUT','TEMPLATE','OPEN','SAVE','OWNER_BEGIN','GENERATE','PUBLIC_READBACK','OWNER_READBACK','RESULT']
+  .map(part=>'CURRENT259_GENERATED_DOCUMENT_EXERCISE_'+part)
+]);
+const loginReasons=new Set([
+ 'PREIMAGE','POSTIMAGE','READBACK','OUTPUT','ROLE_PRODUCER','ROLE_HBA','ROLE_IDENTITY','ROLE_DRAIN','ROLE_CONSTRUCT',
+ 'ROLE_CLIENT','ROLE_CONNECT','ROLE_OWNER_READ','ROLE_ENTRY','ROLE_CLEANUP_UNKNOWN','ROLE_CLOSE_TIMEOUT','ROLE_APP',
+ ...['HANDLE','DESCRIPTOR','PROVIDERS','MODULE','COMPILE','CREATE','INIT','LISTEN','HTTP','USE','CLOSE','TIMEOUT'].map(stage=>'ROLE_APP_'+stage)
+]);
+
+// Closed diagnostic values from the existing resource callgraph. They do
+// not identify an HBA cause or grant execution; only login CONSUME may emit them.
+const documentConsumeResourceReasons=new Set([
+ 'TASK01_RESOURCE_DOCUMENT_HBA_SCOPE','TASK01_RESOURCE_DOCUMENT_HBA_PREIMAGE',
+ 'TASK01_RESOURCE_DOCUMENT_HBA_READBACK','TASK01_RESOURCE_DOCUMENT_HBA_FILE',
+ 'TASK01_RESOURCE_DOCUMENT_HBA_RELOAD','TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT',
+ 'TASK01_RESOURCE_ABORTED_OR_TIMEOUT','TASK01_RESOURCE_COMMAND_TIMEOUT','TASK01_RESOURCE_ABORTED',
+ 'TASK01_RESOURCE_OUTPUT_LIMIT','TASK01_RESOURCE_COMMAND_FAILED','TASK01_RESOURCE_DAEMON_CHANGED',
+ 'TASK01_RESOURCE_NETWORK_CHANGED','TASK01_RESOURCE_NETWORK_OTHER_OWNER','TASK01_RESOURCE_CONTAINER_CHANGED',
+ 'TASK01_RESOURCE_LIMITS_CHANGED','TASK01_RESOURCE_MOUNTS_CHANGED','TASK01_RESOURCE_PORT_CHANGED',
+ 'TASK01_RESOURCE_UNEXPECTED_IMAGE_VOLUME','TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED','TASK01_RESOURCE_SQL_INPUT_INVALID',
+ 'TASK01_RESOURCE_CLOSED','TASK01_RESOURCE_RECEIPT_PATH_CHANGED','TASK01_RESOURCE_METADATA_INVALID','TASK01_RESOURCE_OPERATION_FAILED'
+]);
+const documentScopePredicates=new Set(['ENTRY_FIRST_Q2','ENTRY_ARITY','ENTRY_CONTRACT_UNUSED','ENTRY_DOCUMENT_UNUSED','ENTRY_OPEN',
+ 'PROOF_OBJECT','LIVE_OPEN','LIVE_SIGNAL','PRIVATE_SCOPE','BIND_RUN','BIND_CONTAINER','BIND_SOURCE','LIFECYCLE_PLAN','ORDINARY_NAME','ROLE_COORDINATES']);
+const documentScopeSubphases=new Set(['ENTRY','READ_BEFORE','READ_COMMITTED','WRITE','RELOAD','PLAINTEXT','FINAL_FILE']);
+const documentPrivateScopeCodes=new Set([
+  "CURRENT259_DOCUMENT_LOGIN_HANDLE", "CURRENT259_DOCUMENT_LOGIN_CONTINUITY", "CURRENT259_DOCUMENT_LOGIN_ROLE_RUNTIME",
+  "CURRENT259_DOCUMENT_ACL_TRANSPORT_CONTINUITY", "CURRENT259_DOCUMENT_ROLE_PROVISION_CONTINUITY", "CURRENT259_ORDINARY_ARCHIVE_ACL_CONTINUITY",
+  "CURRENT259_LOADER_CHANGED", "CURRENT259_RESOURCE_CLOSED", "CURRENT259_RESOURCE_ABORTED",
+  "CURRENT259_RESOURCE_SIGNAL", "CURRENT259_RESOURCE_PRODUCER_CHANGED", "CURRENT259_RESOURCE_TOOL_CHANGED",
+  "CURRENT259_RESOURCE_CHANGED", "CURRENT259_RESOURCE_IDENTITY", "CURRENT259_RESOURCE_PURPOSE",
+  "CURRENT259_RESOURCE_TLS", "TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED", "TASK12_OFFICIAL_DOCUMENT_CONTINUITY",
+  "TASK12_OFFICIAL_DOCUMENT_DEADLINE", "TASK12_OFFICIAL_DOCUMENT_MODULES"
+]);
+function safeDocumentScope(cause){
+ const detail=own(cause,'documentHbaScope');
+ if(!detail||typeof detail!=='object'||types.isProxy(detail))return undefined;
+ const keys=Reflect.ownKeys(detail),predicate=own(detail,'predicate'),subphase=own(detail,'subphase');
+ const hasPrivate=keys.length===3&&keys.includes('privateScopeCode'),privateScopeCode=hasPrivate?own(detail,'privateScopeCode'):undefined;
+ if((keys.length!==2&&!hasPrivate)||!keys.includes('predicate')||!keys.includes('subphase')||
+  !documentScopePredicates.has(predicate)||!documentScopeSubphases.has(subphase)||
+  hasPrivate&&(predicate!=='PRIVATE_SCOPE'||!documentPrivateScopeCodes.has(privateScopeCode)))return undefined;
+ return {scopePredicate:predicate,scopeSubphase:subphase,...(hasPrivate?{privateScopeCode}:undefined)};
+}
+const documentRelayCodes=new Set(['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT',
+ 'DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(part=>'CURRENT259_LOOPBACK_FORWARD_'+part));
+const documentRelayCloseFields=['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed',
+ 'stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'];
+const documentRelayFrameStages=new Set(['DATA_AFTER_FIN','OVERSIZED_LENGTH','TRAILING_AFTER_FIN','STDOUT_EOF_WITHOUT_FIN']);
+function safeDocumentRelay(cause){
+ const relayCode=own(cause,'relayCode');if(!documentRelayCodes.has(relayCode))return undefined;
+ const result={relayCode};
+ if(relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME'){
+  const stage=own(cause,'relayFrameStage');
+  if(documentRelayFrameStages.has(stage)){
+   result.relayFrameStage=stage;const exit=own(cause,'relayChildExitCode');
+   if(stage==='STDOUT_EOF_WITHOUT_FIN'&&Number.isInteger(exit)&&(exit===0||exit>=41&&exit<=48)){
+    result.relayChildExitCode=exit;
+    const sysread=own(cause,'relaySysreadExit');
+    if(exit===47&&require('./task16-current259-relay-sysread.cjs').decodeRelaySysreadExit(sysread))result.relaySysreadExit=sysread;
+   }
+  }
+ }
+ if(['CURRENT259_LOOPBACK_FORWARD_FRAME','CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'].includes(relayCode)){
+  const source=own(cause,'relayCloseState');
+  const state=Object.fromEntries(documentRelayCloseFields.map(key=>[key,own(source,key)]));
+  if(Object.values(state).every(value=>typeof value==='boolean'))result.relayCloseState=Object.freeze(state);
+ }
+ return result;
+}
+function safeDocumentLoginFailure(cause){
+ const seen=new WeakSet();let documentConsume=false;
+ for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause)&&!seen.has(cause);i++,cause=own(cause,'cause')){
+  seen.add(cause);const code=own(cause,'code');
+  if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&own(cause,'phase')==='CONSUME')documentConsume=true;
+  if(documentConsume&&documentConsumeResourceReasons.has(code))return Object.freeze({phase:'CONSUME',resourceCode:code,
+   ...(code==='TASK01_RESOURCE_DOCUMENT_HBA_SCOPE'?safeDocumentScope(cause):undefined),
+   ...(code==='TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'?safeDocumentRelay(cause):undefined)});
+ }
+ return undefined;
+}
+const documentRoleStages=new Set(['ENTRY','SEED_BEFORE','SEED_WRITE','SEED_COMMITTED','ORIGINALS',
+ 'ROLE_CONNECT','ROLE_OBSERVE','OWNER_BEFORE','APPLICATION','ROLE_POSTCHECK','OWNER_AFTER']);
+const documentRoleFields=['subphase','lastGuardMs','maxGuardMs','boundedTimeout','disconnectRejected','drainRejected'];
+function safeDocumentRoleFailure(cause){
+ const seen=new WeakSet();
+ for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause)&&!seen.has(cause);i++,cause=own(cause,'cause')){
+  seen.add(cause);
+  if(own(cause,'code')!=='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'||own(cause,'phase')!=='CONSUME')continue;
+  const detail=own(cause,'documentRoleFailure');
+  if(!detail||typeof detail!=='object'||types.isProxy(detail))continue;
+  const keys=Reflect.ownKeys(detail);if(keys.length!==documentRoleFields.length||!documentRoleFields.every(key=>keys.includes(key)))continue;
+  const result=Object.fromEntries(documentRoleFields.map(key=>[key,own(detail,key)]));
+  if(documentRoleStages.has(result.subphase)&&[result.lastGuardMs,result.maxGuardMs].every(ms=>Number.isSafeInteger(ms)&&ms>=0&&ms<=3600000)&&
+   result.maxGuardMs>=result.lastGuardMs&&[result.boundedTimeout,result.disconnectRejected,result.drainRejected].every(value=>typeof value==='boolean'))return Object.freeze(result);
+ }
+ return undefined;
+}
+function safeReason(cause){
+ let found;
+ for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause);i++,cause=own(cause,'cause')){
+  const code=own(cause,'code'),reason=own(cause,'reason'),exerciseCode=own(cause,'exerciseCode');
+  if(reasonCodes.has(code))found=code;
+  if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&loginReasons.has(reason))found='CURRENT259_DOCUMENT_LOGIN_'+reason;
+  if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&reason==='ROLE_APP_HTTP'&&reasonCodes.has(exerciseCode)&&
+   typeof exerciseCode==='string'&&exerciseCode.startsWith('CURRENT259_GENERATED_DOCUMENT_EXERCISE_'))found=exerciseCode;
+ }
+ return found;
+}
+
+const installerStages=Object.freeze({
+ ARCHIVE:['CURRENT259_ARCHIVE_INSTALL_',new Set(['archive-install-before','archive-install-write','archive-install-committed',
+  'current259-seven-before','archive-registered-write','archive-registered-committed'])],
+ DOCUMENT_ORDINARY_ACL:['CURRENT259_ORDINARY_ARCHIVE_ACL_',new Set(['current259-ordinary-acl-before',
+  'current259-ordinary-acl-write','current259-ordinary-acl-committed'])],
+ DOCUMENT_ACL:['CURRENT259_DOCUMENT_ACL_TRANSPORT_',new Set(['BEFORE','WRITE','COMMITTED'])],
+ APPLICATION:['CURRENT259_DOCUMENT_LOGIN_',new Set(['BEFORE','WRITE','COMMITTED','CONSUME'])]
+});
+
+function safeStage(cause,phase){
+ if(!Object.hasOwn(installerStages,phase))return undefined;
+ const [prefix,allowed]=installerStages[phase],code=own(cause,'code'),stage=own(cause,'phase');
+ return reasonCodes.has(code)&&code.startsWith(prefix)&&allowed.has(stage)?stage:undefined;
+}
+
+function safeCleanup(cause,scopeEntered){
+ let closed=false;
+ for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause);i++,cause=own(cause,'cause')){
+  const status=own(own(cause,'resourceReceipt'),'status'),code=own(cause,'code');
+  if(own(own(cause,'resourceCleanup'),'status')==='UNKNOWN'||own(cause,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE'||own(cause,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE'||
+   own(cause,'clientCleanup')==='UNKNOWN'||own(cause,'environmentRestoration')==='UNKNOWN'||own(cause,'storageCleanup')==='UNKNOWN'||
+   status==='cleanup_failed'||['CURRENT259_RESOURCE_CLEANUP_UNKNOWN','CURRENT259_GENERATED_DOCUMENT_RUNTIME_CLEANUP_UNKNOWN',
+    'CURRENT259_ARCHIVE_INSTALL_CLEANUP_UNCONFIRMED','CURRENT259_ARCHIVE_INSTALL_COMMIT_AND_CLEANUP_UNCONFIRMED'].includes(code))return 'UNKNOWN';
+  closed ||= !scopeEntered&&code==='TASK01_RESOURCE_START_FAILED'&&status==='closed';
+ }
+ return closed?'CLOSED':scopeEntered?'OWNER_SCOPE_RETURNED':'UNKNOWN';
+}
+
+async function main(){
+ let attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
+ let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure;
+ const controller=new AbortController(),abort=()=>controller.abort();
+ try{
+  need(FRESH,'FRESH');
+  const args=parseArgs(process.argv.slice(2));
+  const {verifyCurrent261LocalLifecyclePlan}=require('../../../scripts/prepare-task12-current261-local-lifecycle.cjs');
+  const checked=verifyCurrent261LocalLifecyclePlan(args.file,args.digest);
+  const {plan}=checked,runtimeSha256=plan.runtime.sha256;
+  need(checked.sha256===args.digest&&SHA.test(runtimeSha256)&&checked.runtime&&typeof checked.runtime==='object','RUNTIME');
+  if(!args.once)return {status:'CURRENT261_LOCAL_LIFECYCLE_HOLD',planSha256:checked.sha256,runtimeSha256};
+  checkHostEnv();
+  need(businessDay()===plan.case.businessDate,'TIME');
+  checked.check();
+
+  const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
+  const {withCurrent259FirstQ2LoopbackResource,claimCurrent259TechnicalResource}=require('./task16-current259-owned-resource.cjs');
+  const {captureCurrent261ContractBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
+  captureCurrent261ContractBusinessIssuer();
+  const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
+  const {provisionCurrent259Roles}=require('./task16-current259-role-provision.cjs');
+  const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource}=require('./task16-current259-archive-install.cjs');
+  const {installCurrent261GeneratedLifecycleOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
+  const {provisionCurrent261GeneratedLifecycleDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
+  const {installCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261DocumentAclFailure}=require('./task12-current259-document-acl-transport.cjs');
+  const {withOfficialTask12DocumentRuntime}=require('./task12-current259-generated-document-runtime.cjs');
+  const {withCurrent261LocalLifecyclePublicApplication}=require('./task12-current259-document-login.cjs');
+  const {projectCurrent261LocalLifecycleOutcome}=require('./task12-current261-local-lifecycle-exercise.cjs');
+  const {describeCurrent261LocalLifecycleHttpFailure}=require('./task12-current261-local-lifecycle-http.cjs');
+  need([read,withCurrent259FirstQ2LoopbackResource,createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure,provisionCurrent259Roles,
+   installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent261GeneratedLifecycleOrdinaryAcl,
+   provisionCurrent261GeneratedLifecycleDocumentRoles,installCurrent261GeneratedLifecycleDocumentAcl,withOfficialTask12DocumentRuntime,
+   withCurrent261LocalLifecyclePublicApplication,projectCurrent261LocalLifecycleOutcome,describeCurrent261LocalLifecycleHttpFailure,describeCurrent261DocumentAclFailure]
+   .every(fn=>typeof fn==='function'),'DEPENDENCIES');
+
+  process.once('SIGINT',abort);process.once('SIGTERM',abort);
+  phase='ATTEMPT';
+  need(!controller.signal.aborted&&fs.readdirSync(plan.run.root).length===0,'ATTEMPT_USED');
+  const coordinates={planSha256:checked.sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id,runtimeSha256};
+  const marker=Buffer.from(JSON.stringify({status:'CONSUMED',...coordinates})+'\n');
+  writeReceipt=(status,proof)=>{
+   const receipt={status,phase,...coordinates,relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
+   try{writeExclusive(plan.run.receiptFile,Buffer.from(JSON.stringify(receipt)+'\n'));}
+   catch{throw fault('RECEIPT');}
+   return receipt;
+  };
+  writeExclusive(plan.run.attemptFile,marker,()=>{attempted=true;});
+  const attempt=read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_ATTEMPT'});
+  need(attempt.sha256===hash(marker),'ATTEMPT');
+  const check=()=>{
+   need(!controller.signal.aborted&&businessDay()===plan.case.businessDate,'CONTINUITY');
+   checked.check();
+   need(read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,expectedIdentity:attempt.identity,
+    code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_ATTEMPT'}).sha256===attempt.sha256,'ATTEMPT');
+  };
+
+  const inputFiles=[args.file,plan.runtime.file,plan.run.attemptFile];
+  const inputSnapshots=inputFiles.map(file=>{
+   const stat=fs.lstatSync(file,{bigint:true});
+   return {file,identity:Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'].map(key=>[key,String(stat[key])]))) };
+  });
+  // Directory timestamps legitimately change as this run writes receipts. Preserve
+  // canonical ownership/mode and dev+ino; regular inputs retain ns mtime+ctime.
+  const parentSnapshots=new Map();
+  for(const file of inputFiles)for(let dir=path.dirname(file);;dir=path.dirname(dir)){
+   const stat=fs.lstatSync(dir,{bigint:true});need(stat.isDirectory()&&!stat.isSymbolicLink()&&fs.realpathSync(dir)===dir,'CONTINUITY');
+   parentSnapshots.set(dir,Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid'].map(key=>[key,String(stat[key])]))));
+   if(dir===path.dirname(dir))break;
+  }
+  const checkInputs=()=>{
+   need(!controller.signal.aborted&&businessDay()===plan.case.businessDate,'CONTINUITY');
+   for(const row of inputSnapshots)checkCurrent259FileIdentity(row.file,row.identity);
+   for(const [dir,identity]of parentSnapshots){const stat=fs.lstatSync(dir,{bigint:true});
+    need(stat.isDirectory()&&!stat.isSymbolicLink()&&fs.realpathSync(dir)===dir&&Object.keys(identity).every(key=>String(stat[key])===identity[key]),'CONTINUITY');
+   }
+   need(read(plan.run.attemptFile,{privateFile:true,maxBytes:4096,expectedIdentity:attempt.identity,
+    code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_ATTEMPT'}).sha256===attempt.sha256,'ATTEMPT');
+  };
+
+  const stage=async(name,work)=>{
+   phase=name;
+   let value;
+   try{check();value=await work();check();}
+   catch(cause){
+    if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause),
+     documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined,
+     documentLoginFailure:name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined,
+     documentRoleFailure:name==='APPLICATION'?safeDocumentRoleFailure(cause):undefined};
+    if(name===phase){
+     failureStage=safeStage(cause,name);
+     try{
+      if(name==='MIGRATE')technicalFailure=describeCurrent259TechnicalFailure(cause);
+      const detail=failureStage==='current259-seven-before'?own(cause,'sevenFailure'):undefined;
+      if(detail){
+       const {describeCurrent259SevenPrestateCommandFailure}=require('./task16-current259-seven-install.cjs');
+       sevenFailure=describeCurrent259SevenPrestateCommandFailure({code:own(detail,'causeCode'),sevenOwnerFailure:detail});
+      }
+     }catch{/* Keep the original failure when a diagnostic cannot be projected. */}
+    }
+    throw cause;
+   }
+   return value;
+  };
+
+  phase='RESOURCE';check();resourceEntered=true;
+  const outcome=await withCurrent259FirstQ2LoopbackResource(checked.buildHandle,
+   {artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
+    need(!scopeEntered,'RUNTIME');scopeEntered=true;
+    const technical=await stage('MIGRATE',()=>createCurrent259TechnicalMigration(handle,controller.signal).migrate());
+    const roles=await stage('ROLES',()=>provisionCurrent259Roles(technical,handle));
+    const archive=await stage('ARCHIVE',()=>installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(roles,handle));
+    const ordinary=await stage('DOCUMENT_ORDINARY_ACL',()=>installCurrent261GeneratedLifecycleOrdinaryAcl(archive,handle));
+    const documentRoles=await stage('DOCUMENT_ROLES',()=>provisionCurrent261GeneratedLifecycleDocumentRoles(ordinary,handle));
+    const acl=await stage('DOCUMENT_ACL',()=>installCurrent261GeneratedLifecycleDocumentAcl(documentRoles,handle));
+    let runtimeEntered=false;
+    const result=await stage('RUNTIME',()=>withOfficialTask12DocumentRuntime(checked.runtime,plan.runtime.runRoot,async()=>{
+     need(!runtimeEntered,'RUNTIME');runtimeEntered=true;
+     const projected=await stage('APPLICATION',async()=>{
+      let invoked=false;
+      const view=claimCurrent259TechnicalResource(handle);
+      const token=Object.freeze({}),binding=Object.freeze({acl,build:checked.buildHandle,source:plan.source});
+      const entry={active:true,handle,signal:controller.signal,acl,build:checked.buildHandle,source:plan.source,binding,
+       check:()=>{need(phase==='APPLICATION'&&view.source.candidateSha===plan.source.candidateSha,'BUSINESS_CONTINUITY');checkInputs();}};
+      need(!currentContractContinuity,'BUSINESS_CONTINUITY');
+      contractContinuities.set(token,entry);currentContractContinuity=entry;
+      let app;
+      try{app=await withCurrent261LocalLifecyclePublicApplication(acl,handle,plan.case.id,controller.signal,outcome=>{
+       need(!invoked,'RESULT');invoked=true;check();
+       return outcome;
+      },token);}finally{entry.active=false;contractContinuities.delete(token);currentContractContinuity=undefined;}
+      check();need(invoked,'RESULT');
+      const projection=projectCurrent261LocalLifecycleOutcome(app);
+      need(projection&&typeof projection==='object'&&!types.isProxy(projection)&&
+       Object.getPrototypeOf(projection)===Object.prototype,'RESULT');
+      return projection;
+     });
+     phase='RUNTIME_CLEANUP';
+     return projected;
+    }));
+    need(runtimeEntered,'RUNTIME');
+    phase='RESOURCE_CLEANUP';
+    return result;
+   });
+  cleanup='CLOSED';phase='COMPLETE';check();
+  need(scopeEntered&&outcome,'RESULT');
+  return writeReceipt('CURRENT261_LOCAL_LIFECYCLE_PROTOCOL_COMPLETE',{outcome});
+ }catch(cause){
+  process.exitCode=1;
+  if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
+  const primary=firstFailure?.cause??cause,reason=safeReason(primary);
+  const proof={...(reason?{reason}:{}),...(firstFailure?{failurePhase:firstFailure.phase}:{}),
+   ...(firstFailure?.httpFailure?{httpFailure:firstFailure.httpFailure}:{}),
+   ...(firstFailure?.documentAclFailure?{documentAclFailure:firstFailure.documentAclFailure}:{}),
+   ...(firstFailure?.documentLoginFailure?{documentLoginFailure:firstFailure.documentLoginFailure}:{}),
+   ...(firstFailure?.documentRoleFailure?{documentRoleFailure:firstFailure.documentRoleFailure}:{}),
+   ...(firstFailure&&cause!==primary?{secondaryReason:safeReason(cause)??'UNCLASSIFIED',secondaryPhase:'UNWIND'}:{}),
+   ...(scopeEntered?{businessOutcome:'UNKNOWN'}:{}),...(technicalFailure?{technicalFailure}:{}),
+   ...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};
+  let receiptWriteFailed=reason==='CURRENT261_LOCAL_LIFECYCLE_ONCE_RECEIPT';
+  if(attempted&&writeReceipt&&!receiptWriteFailed){
+   try{return writeReceipt('CURRENT261_LOCAL_LIFECYCLE_STOPPED',{attempted,...proof});}
+   catch{receiptWriteFailed=true;}
+  }
+  return {status:'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,...proof,
+   ...(receiptWriteFailed?{receiptWriteFailed:true}:{})};
+ }finally{
+  controller.abort();
+  process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);
+ }
+}
+module.exports=Object.freeze({assertCurrent261ContractBusinessContinuity});
+if(require.main===module)void main().then(result=>process.stdout.write(JSON.stringify(result)+'\n'));

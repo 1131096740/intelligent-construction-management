@@ -1,3 +1,18 @@
+import { Reflector } from "@nestjs/core";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { PermissionGuard } from "../auth/guards/permission.guard";
+import { JwtTokenService } from "../auth/jwt-token.service";
+import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
+import { createApiValidationPipe } from "../validation/api-validation";
+import { ContractWorkbenchService } from "./contract-workbench.service";
+import { Prisma } from "@prisma/client";
+import { Test } from "@nestjs/testing";
+import { ContractDraftController } from "./contract-draft.controller";
+import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
+import { ContractService } from "../contract/contract.service";
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
+import { PristineDraftDeletionService } from "./pristine-draft-deletion.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
 import {
   BadRequestException,
   ConflictException,
@@ -104,6 +119,38 @@ describe("ContractDraftAggregateService", () => {
       )
     };
   }
+
+  it("negotiates v2 over public HTTP and preserves unknown, zero and four-place money without a fake zero", async () => {
+    const { service, workbench } = makeService({ foundVersion: { ...version, numericProtocolVersion: 2 } as typeof version });
+    workbench.getDraftFromExactVersion.mockResolvedValue({ ...legacyReadModel,
+      version: { ...version, numericProtocolVersion: 2, amountYuan: null, amountCents: "0" },
+      bills: [null, "0.0000", "1.5340"].map((amount, index) => ({ id: `b-${index}`, billKey: `b-${index}`,
+        numericProtocolVersion: 2, taxInclusiveAmountYuan: amount, taxExclusiveAmountYuan: null, taxAmountYuan: null,
+        taxInclusiveAmountCents: amount === "1.5340" ? "153" : "0", taxExclusiveAmountCents: "0", taxAmountCents: "0", rows: [] }))
+    } as never);
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication();
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "actor-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const url = `${await app.getUrl()}/contract-drafts/cv-1/workbench`;
+      const old = await fetch(url);
+      expect(old.status).toBe(409);
+      expect(await old.text()).toContain("刷新");
+      const current = await fetch(url, { headers: { "x-contract-numeric-protocol": "2" } });
+      expect(current.status).toBe(200);
+      const body = await current.json();
+      expect(body.version.amountCents).toBeNull();
+      expect(body.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+      expect(body.draftSubmissionUnavailableReason).toContain("四位金额草稿尚不能提交审批");
+      expect(body.bills.map((bill: { taxInclusiveAmountYuan: unknown; taxInclusiveAmountCents: unknown }) => [bill.taxInclusiveAmountYuan, bill.taxInclusiveAmountCents]))
+        .toEqual([[null, null], ["0.0000", "0"], ["1.5340", "153"]]);
+      expect(body.bills[2].taxExclusiveAmountCents).toBeNull();
+    } finally { await app.close(); }
+  });
 
   it("loads the requested version id and never asks the legacy service to choose the latest", async () => {
     const { prisma, workbench, service } = makeService();
@@ -353,6 +400,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
   }
 
   function makeSaveService(options: {
+    realWorkbench?: boolean;
     leaseTokenHash?: string;
     leaseHolderUserId?: string;
     leaseExpiresAt?: Date;
@@ -449,7 +497,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         }
       },
       clauseSnapshot: [],
-      templateSnapshot: {},
+      templateSnapshot: options.realWorkbench ? { fieldSchema: [], billSchema: [], clauseSchema: [] } : {},
       changeType: options.versionChangeType ?? "original",
       baseVersionId: null,
       settlementMode: "settlement_required"
@@ -623,7 +671,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       audit,
       service: new ContractDraftAggregateService(
         prisma as never,
-        workbench as never,
+        options.realWorkbench ? new ContractWorkbenchService(prisma as never, audit as never) : workbench as never,
         bills as never,
         parties as never,
         files as never,
@@ -631,6 +679,125 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       )
     };
   }
+
+  it.each([["1.5340", "fixed_total"], [null, "fixed_total"], ["0.0000", "fixed_total"], [null, "framework"]] as const)("persists independent contract basics and four-place amount %s with %s over guarded public HTTP", async (amount, nature) => {
+    const { service, tx, prisma } = makeSaveService({ realWorkbench: true });
+    Object.assign(prisma, { contract: tx.contract, contractVersion: tx.contractVersion, user: { findUnique: async () => ({ id: "owner-1", name: "合成合同员", isActive: true, sessionVersion: 0, mustChangePassword: false }) }, projectMember: { findMany: async () => [] } });
+    prisma.userPosition.findMany.mockResolvedValue([{ userId: "owner-1", positionId: "contract-role", projectId: null }] as never);
+    prisma.position.findMany.mockResolvedValue([{ id: "contract-role", key: "contract_staff" }] as never);
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    const tokens = new JwtTokenService();
+    app.useGlobalGuards(new JwtAuthGuard(new Reflector(), tokens, prisma as never), new PermissionGuard(new Reflector(), prisma as never), new RetiredWriteEntryGuard());
+    app.useGlobalPipes(createApiValidationPipe());
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput();
+      const basics = { relationship: "upward", businessType: "other", amountBasis: "tax_exclusive", settlementText: "按双方实际确认结算", invoiceStatus: "none" };
+      input.draft.draftData = { contractName: "施工企业合作框架", fieldValues: {}, contractBasics: basics } as never;
+      Object.assign(input.draft, { numericProtocolVersion: 2, pricingNature: nature, amountSource: nature === "framework" ? "bill_sum" : "manual", ...(nature === "framework" ? {} : { manualAmountYuan: amount }) });
+      delete (input.draft as Record<string, unknown>).manualAmountCents;
+      input.draft.taxFacts = { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } as never;
+      const url = `${await app.getUrl()}/contract-drafts/cv-1`;
+      const headers = { "content-type": "application/json", "x-contract-draft-lease": leaseToken };
+      expect((await fetch(url, { method: "PUT", headers, body: JSON.stringify(input) })).status).toBe(401);
+      const response = await fetch(url, { method: "PUT", headers: { ...headers, authorization: `Bearer ${tokens.signAccessToken({ id: "owner-1", name: "合成合同员", phone: null, sessionVersion: 0 })}` }, body: JSON.stringify(input) });
+      const body = await response.json();
+      expect({ status: response.status, error: body.message }).toEqual({ status: 200, error: undefined });
+      const saved = tx.contractVersion.updateMany.mock.calls[0][0].data;
+      expect(saved.draftData.contractBasics).toEqual(basics);
+      expect(saved.numericProtocolVersion).toBe(2);
+      expect(saved.amountYuan).toBe(amount);
+      expect(body.versionAmount).toMatchObject({ numericProtocolVersion: 2, amountYuan: amount, amountCents: amount === null ? null : amount === "1.5340" ? "153" : "0" });
+      expect(saved.invoiceType).toBeNull();
+      expect(saved.defaultTaxRatePercent).toBeNull();
+    } finally { await app.close(); }
+  });
+
+  it.each([
+    { rate: "1.23456", stored: null },
+    { rate: "", stored: null },
+    { rate: "1.23450", stored: "1.2345" },
+    { rate: "1.234500", stored: "1.2345" }
+  ])("rejects an invalid new default tax rate %j on an empty v2 bill before writes over HTTP", async ({ rate, stored }) => {
+    const { service, tx, audit } = makeSaveService({ realWorkbench: true, persistedDocumentBills: [{ id: "bill-1", billKey: "main", revision: 1, amountRole: "included", numericProtocolVersion: 1,
+      defaultTaxRatePercent: new Prisma.Decimal("1.23456"), taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n }] });
+    const originalVersion = await tx.contractVersion.findUnique({ where: { id: "cv-1" } });
+    if (stored !== null) Object.assign(originalVersion, { defaultTaxRatePercent: new Prisma.Decimal(stored) });
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput(); input.draft.draftData = { fieldValues: {} } as typeof input.draft.draftData; input.draft.taxFacts.defaultTaxRatePercent = rate;
+      input.bills = [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }] as never;
+      const originalInput = JSON.stringify(input);
+      const response = await fetch(`${await app.getUrl()}/contract-drafts/cv-1`, { method: "PUT", headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: originalInput });
+      expect(response.status).toBe(400);
+      expect((await response.json()).message).toMatch(/默认税率.*4位/u);
+      expect(JSON.stringify(input)).toBe(originalInput);
+      for (const write of [tx.contractVersion.updateMany, tx.contract.updateMany, tx.contractDraftSaveRequest.create, tx.contractGeneratedDocument.updateMany, tx.contractDraftAttachment.createMany, audit.record]) expect(write).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it.each([
+    { protocol: 2, rate: null, stored: null },
+    { protocol: 2, rate: "0", stored: null },
+    { protocol: 2, rate: "1.2345", stored: null },
+    { protocol: 1, rate: "1.23456", stored: null },
+    { protocol: 2, rate: "1.23456", stored: "1.23456" }
+  ])("saves empty bill default tax facts without guessing or rounding (%j)", async ({ protocol, rate, stored }) => {
+    const { service, tx } = makeSaveService({ realWorkbench: true, persistedDocumentBills: [{ id: "bill-1", billKey: "main", revision: 1, amountRole: "included", numericProtocolVersion: protocol,
+      taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n,
+      ...(protocol === 2 ? { taxInclusiveAmountYuan: new Prisma.Decimal(0), taxExclusiveAmountYuan: null, taxAmountYuan: null } : {}) }] });
+    const originalVersion = await tx.contractVersion.findUnique({ where: { id: "cv-1" } });
+    if (stored !== null) Object.assign(originalVersion, { defaultTaxRatePercent: new Prisma.Decimal(stored), invoiceType: "vat_special", taxFactSource: "contract_document" });
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput(); input.draft.draftData = { fieldValues: {} } as typeof input.draft.draftData;
+      input.draft.taxFacts.defaultTaxRatePercent = rate as string;
+      input.bills = [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: protocol, rows: [] }] as never;
+      const response = await fetch(`${await app.getUrl()}/contract-drafts/cv-1`, { method: "PUT", headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: JSON.stringify(input) });
+      const body = await response.json();
+      expect({ status: response.status, error: body.message }).toEqual({ status: 200, error: undefined });
+      const saved = tx.contractVersion.updateMany.mock.calls[0][0].data;
+      expect(saved.defaultTaxRatePercent?.toString() ?? null).toBe(rate);
+      expect(originalVersion.defaultTaxRatePercent?.toString() ?? null).toBe(stored);
+      if (stored !== null) expect(saved).not.toHaveProperty("taxFactRevision");
+    } finally { await app.close(); }
+  });
+
+  it("returns canonical v2 save totals over HTTP, rounding to cents only after accumulating bills", async () => {
+    const { service } = makeSaveService({ persistedDocumentBills: ["a", "b"].map(id => ({ id, billKey: id, revision: 1, amountRole: "included", numericProtocolVersion: 2,
+      taxInclusiveAmountYuan: { toFixed: () => "0.0050" }, taxExclusiveAmountYuan: { toFixed: () => "0.0050" }, taxAmountYuan: { toFixed: () => "0.0000" },
+      taxInclusiveAmountCents: 1n, taxExclusiveAmountCents: 1n, taxAmountCents: 0n })) });
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput(); input.draft.amountSource = "bill_sum" as "manual"; input.bills = ["a", "b"].map(billKey => ({ billKey, expectedRevision: 1, rows: [], numericProtocolVersion: 2 })) as never;
+      const result = await fetch(`${await app.getUrl()}/contract-drafts/cv-1`, { method: "PUT", headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: JSON.stringify(input) });
+      const body = await result.json();
+      expect({ status: result.status, error: body.message }).toEqual({ status: 200, error: undefined });
+      expect(body.amounts).toMatchObject({ numericProtocolVersion: 2, taxInclusiveAmountYuan: "0.0100", taxInclusiveAmountCents: "1" });
+    } finally { await app.close(); }
+  });
 
   it("uploads a private file only after the exact draft owner boundary passes", async () => {
     const { files, service } = makeSaveService();
@@ -900,6 +1067,18 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     };
 
     await expect(save("9.00")).resolves.toBe(await save("9"));
+  });
+
+  it("changes the public document fingerprint when canonical four-place money changes within the same cent", async () => {
+    const save = async (amount: string) => {
+      const { service } = makeSaveService({ persistedDocumentBills: [{ id: "bill-1", billKey: "main", revision: 1, amountRole: "included", numericProtocolVersion: 2,
+        taxInclusiveAmountYuan: new Prisma.Decimal(amount), taxExclusiveAmountYuan: new Prisma.Decimal(amount), taxAmountYuan: new Prisma.Decimal(0),
+        taxInclusiveAmountCents: 1n, taxExclusiveAmountCents: 1n, taxAmountCents: 0n }] });
+      const input = { ...aggregateInput(), bills: [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }] };
+      return (await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)).documentContentFingerprint;
+    };
+    expect(await save("0.0050")).not.toBe(await save("0.0051"));
+    expect(await save("0.0050")).toBe(await save("0.0050"));
   });
 
   it("excludes bill expectedRevision from the persisted document fingerprint", async () => {

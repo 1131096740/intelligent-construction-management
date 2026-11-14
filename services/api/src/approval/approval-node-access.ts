@@ -1,3 +1,4 @@
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "./parallel-approval-protocol";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { requiresApprovalSelfReviewConfirmation } from "./approval-self-review";
 import {
@@ -20,7 +21,7 @@ export interface ApprovalReviewAccess {
   requiresSelfReviewConfirmation: boolean;
 }
 
-export function approvalReviewAccessOnFrozenNode(
+export function resolveApprovalReviewOnFrozenNode(
   frozenNodes: unknown,
   currentNodeIndex: number,
   roleKeys: RoleKey[],
@@ -30,7 +31,15 @@ export function approvalReviewAccessOnFrozenNode(
   allowContractDirectorSelfReview = false,
   actorRoleScopes?: ApprovalActorRoleScopes,
   legacyContractRoute = false
-): ApprovalReviewAccess {
+) {
+  if (hasVersionedApprovalNodes(frozenNodes) && !isParallelApprovalRound(frozenNodes)) {
+    return { currentNodeIndex, access: { canAct: false, canReview: false, requiresSelfReviewConfirmation: false } };
+  }
+  if (isParallelApprovalRound(frozenNodes)) {
+    currentNodeIndex = activeApprovalNodeIndexes(frozenNodes, currentNodeIndex).find(index =>
+      resolveApprovalReviewIdentity({ node: frozenNodes[index], actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes })
+    ) ?? -1;
+  }
   const node = approvalNodeAt(frozenNodes, currentNodeIndex);
   const identity = node
     ? resolveApprovalReviewIdentity({
@@ -60,11 +69,18 @@ export function approvalReviewAccessOnFrozenNode(
       allowContractDirectorSelfReview
     });
 
-  return {
+  const access: ApprovalReviewAccess = {
     canAct,
     canReview: canAct && (applicantUserId !== userId || requiresSelfReviewConfirmation),
     requiresSelfReviewConfirmation
   };
+  return { currentNodeIndex, access };
+}
+
+export function approvalReviewAccessOnFrozenNode(
+  ...args: Parameters<typeof resolveApprovalReviewOnFrozenNode>
+): ApprovalReviewAccess {
+  return resolveApprovalReviewOnFrozenNode(...args).access;
 }
 
 export function canActOnFrozenApprovalNode(
@@ -78,6 +94,11 @@ export function canActOnFrozenApprovalNode(
     return false;
   }
 
+  if (hasVersionedApprovalNodes(frozenNodes)) {
+    return activeApprovalNodeIndexes(frozenNodes, currentNodeIndex).some(index => Boolean(resolveApprovalReviewIdentity({
+      node: frozenNodes[index] as ApprovalNode, actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes
+    })));
+  }
   const node = frozenNodes[currentNodeIndex] as ApprovalNode | undefined;
   if (!node) {
     return false;

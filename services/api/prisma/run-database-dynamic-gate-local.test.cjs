@@ -14,6 +14,7 @@ const {
   inheritedDatabaseTargetNames,
   loadManifest,
   parseArguments,
+  resolveGroupCommand,
   validateManifest
 } = require("./run-database-dynamic-gate-local.cjs");
 const { deriveMigrationBaseline } = require("./migration-baseline.cjs");
@@ -56,6 +57,267 @@ const runnerPath = path.join(
   __dirname,
   "run-database-dynamic-gate-local.cjs"
 );
+
+const task01Args = ["--task01-packet", "/private/tmp/packet.json", "--task01-inputs", "/private/tmp/inputs.json",
+  "--task01-inputs-sha256", "b".repeat(64), "--task01-artifacts", "/private/tmp/new-task01-artifacts",
+  "--task01-confirm", "LOCAL_TASK01_HTTP_PG"];
+const task01Execute = ["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE",
+  "--group", "enterprise_task01_entry"];
+
+test("task01 operator lists real explicit inputs without execution or inherited target use", () => {
+  const result = spawnSync(process.execPath, [runnerPath, "--list", "--group", "enterprise_task01_entry"], {
+    encoding: "utf8", env: { PATH: "", NODE_ENV: "test", DATABASE_URL: "postgresql://must-not-use.invalid/db" }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.executed, false);
+  assert.equal(report.coveredTests, 1);
+  assert.equal(report.remainingTests, 0);
+  assert.equal(report.coveredGroups[0].runner.path, "services/api/prisma/run-enterprise-task01-local.cjs");
+  assert.equal(report.coveredGroups[0].runner.invocation, "task01_explicit_inputs");
+  assert.doesNotMatch(result.stdout, /must-not-use/u);
+});
+
+test("task01 operator rejects missing inputs, wrong confirmation and mixed groups before any executable lookup", () => {
+  const wrongConfirm = [...task01Args]; wrongConfirm[wrongConfirm.length - 1] = "yes";
+  const wrongSha = [...task01Args]; wrongSha[wrongSha.indexOf("--task01-inputs-sha256") + 1] = "bad";
+  for (const [argv, expected] of [
+    [task01Execute, /任务01必须提供全部独立输入/u],
+    [[...task01Execute, ...wrongConfirm], /LOCAL_TASK01_HTTP_PG/u],
+    [[...task01Execute, ...wrongSha], /任务01输入清单SHA256/u],
+    [[...task01Execute, ...task01Args, "--group", "payment_execution"], /任务01必须显式单独选择/u]
+  ]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...argv], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, expected);
+    assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
+  }
+});
+
+test("task01 inputs cannot be supplied to preview or an existing database group", () => {
+  for (const argv of [["--list", ...task01Args],
+    ["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE", "--group", "payment_execution", ...task01Args]]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...argv], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /任务01独立参数只能/u);
+  }
+});
+
+test("task01 rejects default all, unknown and duplicate independent flags without tools", () => {
+  for (const [argv, expected] of [
+    [["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE"], /任务01必须显式单独选择/u],
+    [[...task01Execute, ...task01Args, "--task01-packet", "/private/tmp/again.json"], /任务01独立参数重复/u],
+    [[...task01Execute, ...task01Args, "--task01-command", "arbitrary"], /未知参数/u]
+  ]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...argv], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, expected);
+    assert.doesNotMatch(result.stderr, /ENOENT|spawn/u);
+  }
+});
+
+test("task01 existing dispatcher forwards exactly the four fixed driver inputs", () => {
+  const options = parseArguments([...task01Execute, ...task01Args]);
+  const manifest = loadManifest();
+  assert.doesNotThrow(() => assertExecutionArguments(options, manifest));
+  const resolved = resolveGroupCommand(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry"), options);
+  assert.deepEqual(resolved, { command: process.execPath, args: [path.join(__dirname, "run-enterprise-task01-local.cjs"),
+    "--packet", "/private/tmp/packet.json", "--inputs", "/private/tmp/inputs.json", "--inputs-sha256", "b".repeat(64),
+    "--artifacts", "/private/tmp/new-task01-artifacts"] });
+});
+
+test("task01 registration binds reviewed source bodies and cannot substitute an arbitrary helper", () => {
+  for (const mutate of [runner => { runner.sourceSha256 = "0".repeat(64); },
+    runner => { runner.resourceHelperSha256 = "0".repeat(64); },
+    runner => { runner.resourceHelper = "arbitrary.cjs"; },
+    runner => { runner.environment = { JG_TASK01_EXECUTION_APPROVED: "injected" }; }]) {
+    const manifest = loadManifest();
+    mutate(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").runner);
+    assert.throws(() => validateManifest(manifest), /任务01固定执行源码哈希不匹配|任务01只允许固定operator/u);
+  }
+});
+
+test("offline task01 validation rejects a one-byte helper comment change before runtime import", t => {
+  const fs = require("node:fs"), os = require("node:os");
+  const repository = path.resolve(__dirname, "../../..");
+  const copy = fs.mkdtempSync(path.join(os.tmpdir(), "jg-task01-fixed-pin-"));
+  t.after(() => fs.rmSync(copy, { recursive: true, force: true }));
+  const listing = spawnSync("git", ["ls-files", "-z"], { cwd: repository, encoding: "utf8", timeout: 10000 });
+  assert.equal(listing.status, 0);
+  for (const relative of listing.stdout.split("\0").filter(Boolean)) {
+    const destination = path.join(copy, relative);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.join(repository, relative), destination);
+  }
+  const cli = path.join(copy, "services/api/prisma/run-database-dynamic-gate-local.cjs");
+  const helper = path.join(copy, "services/api/prisma/enterprise-task01-resources.cjs");
+  const run = () => spawnSync(process.execPath, [cli, "--validate-manifest"], {
+    cwd: copy, encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }, timeout: 15000
+  });
+  const positive = run();
+  assert.equal(positive.status, 0, positive.stderr);
+  const original = fs.readFileSync(helper), changed = Buffer.from(original);
+  const offset = original.indexOf(Buffer.from("// Prepared task01")) + 3;
+  assert.ok(offset > 2); assert.equal(changed[offset], 80); changed[offset] = 112;
+  assert.equal([...original].filter((byte, index) => byte !== changed[index]).length, 1);
+  fs.writeFileSync(helper, changed);
+  const rejected = run();
+  assert.equal(rejected.status, 1); assert.match(rejected.stderr, /任务01固定执行源码哈希不匹配/u);
+  // A separate syntax-valid import canary must also lose to the checksum gate.
+  // The committed pin is never recomputed for either changed fixture body.
+  fs.writeFileSync(helper, Buffer.concat([original, Buffer.from("\nthrow new Error('TASK01_HELPER_MUST_NOT_EXECUTE');\n")]));
+  const canary = run();
+  assert.equal(canary.status, 1); assert.match(canary.stderr, /任务01固定执行源码哈希不匹配/u);
+  assert.doesNotMatch(canary.stdout + canary.stderr, /TASK01_HELPER_MUST_NOT_EXECUTE/u);
+});
+
+test("CI classification cannot move an old group out or make the manual operator automatic", () => {
+  for (const mutate of [
+    manifest => { manifest.coveredGroups[0].ciExecution = "manual-only"; },
+    manifest => { manifest.coveredGroups[0].ciExecution = "unknown"; },
+    manifest => { manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").ciExecution = "automatic"; },
+    manifest => { delete manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").ciExecution; }
+  ]) {
+    const manifest = loadManifest(); mutate(manifest);
+    assert.throws(() => validateManifest(manifest), /CI执行分类|任务01必须显式登记manual-only/u);
+  }
+});
+
+test("public inventory distinguishes CI eligible tests from the explicitly manual operator", () => {
+  const result = spawnSync(process.execPath, [runnerPath, "--validate-manifest"], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.executed, false);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 78, tests: 540 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 541);
+});
+
+test("automatic-only lists the complete CI-eligible denominator and defers the manual operator", () => {
+  const result = spawnSync(process.execPath, [runnerPath, "--list", "--automatic-only"], {
+    encoding: "utf8",
+    env: { PATH: "", NODE_ENV: "test", DATABASE_URL: "postgresql://must-not-use.invalid/db" }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const manifest = loadManifest();
+  const automatic = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
+  assert.equal(report.executed, false);
+  assert.equal(report.executionScope, "automatic-only");
+  assert.deepEqual(report.coveredGroups.map(group => group.id), automatic.map(group => group.id));
+  assert.deepEqual(report.executionInventory, {
+    ciEligible: manifest.executionInventory.ciEligible,
+    manualOnly: { groups: 0, files: 0, tests: 0 }
+  });
+  assert.deepEqual(report.deferredManualOnly, {
+    groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
+  });
+  assert.doesNotMatch(result.stdout, /must-not-use/u);
+});
+
+test("automatic-only rejects group and operator flags before tools can be called", () => {
+  const execute = ["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE"];
+  for (const args of [
+    [...execute, "--automatic-only", "--group", "payment_execution"],
+    [...execute, "--automatic-only", "--group", "enterprise_task01_entry", ...task01Args],
+    [...execute, "--automatic-only", ...task01Args],
+    ["--list", "--automatic-only", "--group", "payment_execution"]
+  ]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...args], {
+      encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--automatic-only.*不能.*--group.*任务01/u);
+    assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
+  }
+  const manifest = loadManifest();
+  assert.doesNotThrow(() =>
+    assertExecutionArguments(parseArguments([...execute, "--automatic-only"]), manifest));
+});
+
+test("automatic-only execution dispatches every automatic group and reports the manual deferral", async () => {
+  // Exercise exact argument validation and dispatch without launching Docker,
+  // PostgreSQL, Prisma, or a real runner.
+  const Module = require("node:module");
+  const fixture = new Module(runnerPath, module);
+  fixture.filename = runnerPath;
+  fixture.paths = Module._nodeModulePaths(path.dirname(runnerPath));
+  const hook = `
+module.exports.executeAutomaticFixture = async argv => {
+  const dispatched = [];
+  createProbeEnvironment = () => ({});
+  assertRepositoryState = async sha => sha;
+  resolveLocalDocker = async () => ({ endpoint: "unix:///fixture", imageId: "fixture-only" });
+  createChildEnvironment = () => ({});
+  runPreflight = async () => {};
+  resolveGroupCommand = group => ({ command: "fixture-only", args: [group.id] });
+  runCommand = async (_command, args) => { dispatched.push(args[0]); };
+  return { receipt: await main(argv), dispatched };
+};
+`;
+  fixture._compile(
+    "const process = { ...require('node:process'), stdout: { write: () => true } };\n" +
+      readFileSync(runnerPath, "utf8").replace(/^#!.*\n/u, "") + hook,
+    runnerPath
+  );
+  const candidateSha = "a".repeat(40);
+  const { receipt, dispatched } = await fixture.exports.executeAutomaticFixture([
+    "--execute", "--automatic-only", "--candidate-sha", candidateSha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"
+  ]);
+  const manifest = loadManifest();
+  const groupIds = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only").map(group => group.id);
+  assert.deepEqual(dispatched, groupIds);
+  assert.deepEqual(receipt.groups.map(group => group.id), groupIds);
+  assert.equal(receipt.status, "passed");
+  assert.equal(receipt.candidateSha, candidateSha);
+  assert.equal(receipt.executionScope, "automatic-only");
+  assert.deepEqual(receipt.executionInventory.ciEligible, manifest.executionInventory.ciEligible);
+  assert.equal(receipt.coveredFiles, 78);
+  assert.equal(receipt.coveredTests, 540);
+  assert.deepEqual(receipt.deferredManualOnly, {
+    groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
+  });
+});
+
+test("manual task01 operator cannot run automatically on GitHub Actions", () => {
+  const script = `
+    const fs = require('node:fs'); const Module = require('node:module'); const path = require('node:path');
+    const file = ${JSON.stringify(runnerPath)}; const fixture = new Module(file, module);
+    fixture.filename = file; fixture.paths = Module._nodeModulePaths(path.dirname(file));
+    fixture._compile(fs.readFileSync(file, 'utf8').replace(/^#!.*\\n/u, '') +
+      '\\nresolveGroupCommand = () => { throw new Error("COMMAND_RESOLUTION_REACHED"); };', file);
+    fixture.exports.main(${JSON.stringify([...task01Execute, ...task01Args])})
+      .catch(error => { process.stderr.write(error.message); process.exitCode = 1; });
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], {
+    encoding: "utf8", env: { PATH: "", NODE_ENV: "test", GITHUB_ACTIONS: "true" }
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /禁止GitHub Actions自动执行/u);
+  assert.doesNotMatch(result.stderr, /spawn|ENOENT/u);
+});
+
+test("task01 dispatch handles real child stdout without interpreting inherited output as a captured receipt", () => {
+  // Existing dispatcher seam, real subprocess/stdio transport. Only command
+  // resolution is substituted; no driver/helper import, fake SQL or PG result.
+  const hook = `\nresolveGroupCommand = () => ({ command: process.execPath, args: ${JSON.stringify(["-e", 'process.stdout.write("real-child-stdout-not-json\\n")'])} });`;
+  const script = `
+    const fs = require('node:fs'); const Module = require('node:module'); const path = require('node:path');
+    const file = ${JSON.stringify(runnerPath)};
+    const fixture = new Module(file, module); fixture.filename = file;
+    fixture.paths = Module._nodeModulePaths(path.dirname(file));
+    fixture._compile(fs.readFileSync(file, 'utf8').replace(/^#!.*\\n/u, '') + ${JSON.stringify(hook)}, file);
+    fixture.exports.main(${JSON.stringify([...task01Execute, ...task01Args])})
+      .then(result => process.stdout.write('DISPATCH_RESULT=' + JSON.stringify(result) + '\\n'))
+      .catch(error => { process.stderr.write(error.name + ':' + error.message); process.exitCode = 1; });
+  `;
+  const child = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /real-child-stdout-not-json/u);
+  const line = child.stdout.split("\n").find(value => value.startsWith("DISPATCH_RESULT="));
+  const result = JSON.parse(line.slice("DISPATCH_RESULT=".length));
+  assert.equal(result.fullDynamicGate, false);
+  assert.equal(result.driverReceiptPath, "/private/tmp/new-task01-artifacts/task01-receipt.json");
+});
 
 test("fund verifier SQL completes without depending on Docker interactive stdin EOF", () => {
   const sql = readFileSync(path.join(__dirname, "migrations/20260814120000_operating_ledger_runtime_write_guard/migration.sql"), "utf8");
@@ -276,24 +538,26 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 511 pending tests as executable local coverage", () => {
+test("manifest preserves source inventory and one separately invoked task01 operator", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 77,
-    fullyPendingSuites: 66,
+    pendingFiles: 79,
+    fullyPendingSuites: 68,
     partiallyPendingSuites: 11,
-    pendingTests: 511,
-    coveredFiles: 77,
-    coveredTests: 511,
+    pendingTests: 541,
+    coveredFiles: 79,
+    coveredTests: 541,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 540);
+  assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
 test("canonical manifest executes all 14 POL-108 PG16 tests across three independent shards", () => {
@@ -376,7 +640,28 @@ test("POL-109 readiness ignores the Unix-only initialization server until TCP Po
   }
 });
 
-test("canonical manifest executes all 172 entry tests including the template workbench", () => {
+test("contract-template readiness waits for the same TCP database endpoint used by migration preflight", async () => {
+  const calls = [];
+  let hostCheck = false;
+  await waitForContractTemplateScenarioPostgres("owned-template-container", 15432, async (args, options) => {
+    calls.push({ args, options });
+    // The temporary init server accepts Unix sockets while final TCP PostgreSQL is still unavailable.
+    if (args.includes("-h") && calls.length === 1) throw new Error("TCP database still initializing");
+    return { stdout: "accepting connections" };
+  }, async (endpoint) => {
+    hostCheck = true;
+    assert.equal(calls.length, 2, "a Unix-only init server must not release migration preflight");
+    assert.deepEqual(endpoint, { host: "127.0.0.1", port: 15432 });
+  });
+  assert.equal(hostCheck, true);
+  assert.equal(calls.length, 2);
+  for (const { args, options } of calls) {
+    assert.deepEqual(args, ["exec", "owned-template-container", "pg_isready", "-h", "127.0.0.1", "-U", "jiangkong", "-d", "jiangkong_contract_template_scenario_concurrency"]);
+    assert.deepEqual(options, { timeoutMs: 15_000 });
+  }
+});
+
+test("canonical manifest executes all 181 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -384,7 +669,7 @@ test("canonical manifest executes all 172 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 172,
+    pendingTests: 181,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -408,7 +693,7 @@ test("canonical manifest executes all 172 entry tests including the template wor
       },
       {
         path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-        pendingTests: 3,
+        pendingTests: 12,
         suiteStatus: "fully_pending"
       },
       {
@@ -702,7 +987,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=511/u
+    /inventory\.coveredTests=26，派生值=541/u
   );
 });
 
@@ -781,7 +1066,7 @@ test("list mode exposes only the requested database group and stays read-only", 
     payload.coveredGroups.map((group) => group.id),
     ["payment_execution"]
   );
-  assert.equal(payload.coveredTests, 1);
+  assert.equal(payload.coveredTests, 2);
   assert.equal(payload.coveredFiles, 1);
   assert.doesNotMatch(result.stdout, /preview-must-not-use/u);
 });
@@ -1080,7 +1365,7 @@ test("default and list modes stay read-only even with no executable PATH", () =>
   }
 });
 
-async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture") {
+async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture", failPreparation = false, shard) {
   // Exercise the real executeGate/finally filesystem lifecycle. Infrastructure
   // callbacks are substituted; this fixture does not execute a business/PG gate.
   const Module = require('node:module');
@@ -1088,33 +1373,44 @@ async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture"
   fixtureModule.filename = runnerPath;
   fixtureModule.paths = Module._nodeModulePaths(path.dirname(runnerPath));
   const hook = `
-module.exports.artifactLifecycleFixture = async (shouldFail, groupId) => {
+module.exports.artifactLifecycleFixture = async (shouldFail, groupId, failPreparation, shard) => {
   let preparations = 0;
+  let childEnvironment;
+  let childArgs;
+  let receipt;
   let directory;
   assertExecutionArguments = () => {};
   assertSafeExecutionEnvironment = () => {};
-  selectCoveredGroups = () => [{ id: groupId, pendingTests: 1, runner: {} }];
-  selectedCoverage = () => ({ coveredFiles: 1, coveredTests: 1 });
+  const group = shard ? loadManifest().coveredGroups.find(entry => entry.id === groupId) : { id: groupId, pendingTests: 1, runner: {} };
+  selectCoveredGroups = () => [group];
+  if (!shard) selectedCoverage = () => ({ coveredFiles: 1, coveredTests: 1 });
   createProbeEnvironment = () => ({});
   assertRepositoryState = async () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   resolveLocalDocker = async () => ({ endpoint: 'unix:///fixture', imageId: 'fixture-only' });
   createChildEnvironment = (_source, temporaryRoot) => { directory = temporaryRoot; return { TMPDIR: temporaryRoot }; };
-  runPreflight = async () => { preparations += 1; };
-  resolveGroupCommand = () => ({ command: 'fixture', args: [] });
-  runCommand = async () => {
+  runPreflight = async env => {
+    if (env.POL113_POL115_PREPARED_SHA !== undefined) throw new Error('prepared before preflight');
+    preparations += 1;
+    if (failPreparation) throw new Error('controlled preflight failure');
+  };
+  if (!shard) resolveGroupCommand = () => ({ command: 'fixture', args: [] });
+  runCommand = async (_command, _args, options) => {
+    childArgs = _args;
+    childEnvironment = options.env;
     await require('node:fs/promises').mkdir(path.join(directory, 'browser-failure'));
     await require('node:fs/promises').writeFile(path.join(directory, 'browser-failure', 'trace.zip'), 'synthetic-private-trace');
     if (shouldFail) throw new Error('controlled browser failure');
   };
   let failure;
   try {
-    await executeGate({ manifest: { id: 'filesystem-lifecycle-fixture', executionPolicy: { confirmation: 'fixture' },
-      migrationBaseline: { containerImage: 'fixture', expectedDirectoryCount: 0 }, inventory: { remainingTests: 0, remainingFiles: 0 } }, options: {} });
+    receipt = await executeGate({ manifest: { id: 'filesystem-lifecycle-fixture', executionPolicy: { confirmation: 'fixture' },
+      migrationBaseline: { containerImage: 'fixture', expectedDirectoryCount: 0 }, inventory: { remainingTests: 0, remainingFiles: 0 } },
+      options: shard ? { groups: [groupId], pol113Pol115Shard: shard } : {} });
   } catch (error) { failure = error; }
-  return { directory, failure, preparations };
+  return { directory, failure, preparations, childEnvironment, childArgs, receipt };
 };`;
   fixtureModule._compile("const process = { ...require('node:process'), stdout: { write: () => true }, stderr: { write: () => true } };\n" + readFileSync(runnerPath, 'utf8').replace(/^#!.*\n/u, '') + hook, runnerPath);
-  return fixtureModule.exports.artifactLifecycleFixture(shouldFail, groupId);
+  return fixtureModule.exports.artifactLifecycleFixture(shouldFail, groupId, failPreparation, shard);
 }
 
 test('failed dynamic gate preserves its private browser trace instead of deleting evidence', async () => {
@@ -1134,6 +1430,178 @@ test('successful dynamic gate still removes its own temporary directory', async 
     assert.equal(result.failure, undefined);
     await assert.rejects(stat(result.directory), { code: 'ENOENT' });
   } finally { await rm(result.directory, { recursive: true, force: true }); }
+});
+
+test("POL113-POL115 preparation is issued only after the selected gate preflight succeeds", async () => {
+  const group = "pol113_pol115_business_entries";
+  const passed = await artifactLifecycleFixture(false, group);
+  assert.equal(passed.preparations, 1);
+  assert.equal(passed.childEnvironment.POL113_POL115_PREPARED_SHA, "a".repeat(40));
+  const unrelated = await artifactLifecycleFixture(false);
+  assert.equal(unrelated.childEnvironment.POL113_POL115_PREPARED_SHA, undefined);
+  const failed = await artifactLifecycleFixture(false, group, true);
+  try {
+    assert.match(failed.failure.message, /controlled preflight failure/u);
+    assert.equal(failed.childEnvironment, undefined);
+  } finally {
+    await require("node:fs/promises").rm(failed.directory, { recursive: true, force: true });
+  }
+  const inherited = createChildEnvironment({ POL113_POL115_PREPARED_SHA: "a".repeat(40) }, "/tmp/fixture", "unix:///fixture");
+  assert.equal(inherited.POL113_POL115_PREPARED_SHA, undefined);
+});
+
+test("POL113-POL115 exact gate emits a distinct shard receipt only after that shard returns", async () => {
+  for (const [shard, files, tests] of [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 150]]) {
+    const result = await artifactLifecycleFixture(false, "pol113_pol115_business_entries", false, shard);
+    assert.equal(result.failure, undefined);
+    assert.equal(result.receipt.candidateSha, "a".repeat(40));
+    assert.equal(result.receipt.status, "passed");
+    assert.equal(result.receipt.coveredFiles, files);
+    assert.equal(result.receipt.coveredTests, tests);
+    assert.equal(result.receipt.groups[0].shard, shard);
+    assert.deepEqual(result.childArgs.slice(1), ["--shard", shard]);
+    assert.ok(path.basename(result.directory).startsWith("jiangkong-database-dynamic-gate-" + shard + "-"));
+  }
+});
+
+test("POL113-POL115 runners preserve all five test batches with and without prepared sources", async () => {
+  const { createRequire } = require("node:module");
+  const { runInNewContext } = require("node:vm");
+  const { BATCH_FILES } = require("./pol113-pol115-shards.cjs");
+  const containerId = "a".repeat(64);
+  const sha = "b".repeat(40);
+  const profiles = [
+    ["run-pol113-http-local.cjs", [["src/database/base-entry-http-postgres.spec.ts"]]],
+    ["run-pol115-entry-local.cjs", [[
+      "src/operating-takeover/operating-takeover-entry.http.pg.spec.ts",
+      "src/database/approval-v6-independent-http-postgres.spec.ts",
+      "src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+      "src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+      "src/database/draft-hard-deletion.pg.spec.ts",
+      "src/database/draft-deletion-numbering.pg.spec.ts"
+    ]]],
+    ["run-pol113-pol115-entry-local.cjs", [
+      ["src/database/contract-business-entry-http.spec.ts"],
+      ["src/spot-procurement/spot-procurement-entry.http.pg.spec.ts"],
+      ["src/settlement/settlement-template-workbench.http.pg.spec.ts"]
+    ]]
+  ];
+  assert.deepEqual(profiles.map(([, batches]) => batches), [
+    [BATCH_FILES.pol113], [BATCH_FILES.pol115], [BATCH_FILES.pol114, BATCH_FILES.spot, BATCH_FILES.workbench]
+  ]);
+  for (const [prepared, shard] of [[false], [true], [true, "pol113_pol114"], [true, "pol115_workbench"],
+    [false, "pol113_pol114"], [true, "unknown"]]) {
+    for (const [name, defaultBatches] of shard ? profiles.slice(2) : profiles) {
+      const filename = path.join(__dirname, name);
+      const load = createRequire(filename);
+      const env = {
+        DOCKER_HOST: "unix:///fixture",
+        LOCAL_PG16_DYNAMIC_GATE: "LOCAL_PG16_DYNAMIC_GATE",
+        DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: sha,
+        ...(prepared ? { POL113_POL115_PREPARED_SHA: sha } : {})
+      };
+      const calls = [], staged = [];
+      const order = [];
+      const module = { exports: {} };
+      const injected = {
+        "node:child_process": { spawnSync(bin, args, options) {
+          calls.push({ bin, args: [...args], env: options.env, timeout: options.timeout });
+          const leaf = profiles.slice(0, 2).find(([runner]) => args[0] === path.join(__dirname, runner));
+          if (leaf) order.push(leaf[0]);
+          return { status: 0, stderr: "", stdout: args.includes("run") ? containerId : args.includes("port") ? "127.0.0.1:54321" : "" };
+        } },
+        "node:fs": { mkdtempSync: () => "/fixture", rmSync() {} },
+        "./money-bigint-runner-runtime.cjs": { createCommandRuntime: () => ({ command() { throw new Error("unexpected real migration command"); } }) },
+        "./local-staged-ci-dynamic.cjs": {
+          CI_DYNAMIC_MIGRATION_LABEL: "synthetic",
+          createCiDynamicMigrationFixture(options) {
+            return { async migrate() { staged.push(...options.databaseNames); order.push(...options.databaseNames); } };
+          }
+        }
+      };
+      const source = readFileSync(filename, "utf8").replace("main().catch", "module.exports = main().catch");
+      runInNewContext(source, {
+        module, __dirname, console: { log() {} },
+        process: { ...process, env, argv: [process.execPath, filename, ...(shard ? ["--shard", shard] : [])],
+          stdout: { write() {} }, stderr: { write() {} } },
+        require: id => injected[id] ?? load(id)
+      }, { filename });
+      await module.exports;
+      if (shard && (!prepared || shard === "unknown")) {
+        assert.equal(calls.length, 0);
+        assert.equal(staged.length, 0);
+        continue;
+      }
+      const batches = shard === "pol113_pol114" ? defaultBatches.slice(0, 1) :
+        shard === "pol115_workbench" ? defaultBatches.slice(1) : defaultBatches;
+      const testCalls = calls.filter(({ bin }) => bin === "pnpm");
+      const prefix = prepared ? ["exec", "jest"] : ["test", "--"];
+      const runtimeConfig = name === "run-pol113-http-local.cjs" ? ["--config", "jest.runtime.config.cjs"] : [];
+      assert.deepEqual(testCalls.map(call => call.args), batches.map(specs =>
+        ["--filter", "@jiangkong/api", ...prefix, "--runInBand", ...runtimeConfig, ...specs]
+      ));
+      assert.equal(staged.length, batches.length);
+      const subRunners = calls.filter(({ args }) => profiles.slice(0, 2).some(([runner]) => args[0] === path.join(__dirname, runner)));
+      for (const call of subRunners) assert.equal(call.env.POL113_POL115_PREPARED_SHA, prepared ? sha : undefined);
+      if (name === profiles[0][0]) assert.equal(testCalls[0].timeout, 180_000);
+      if (name === profiles[2][0]) {
+        const [pol113, pol115] = profiles.map(([runner]) => runner);
+        assert.deepEqual(order, shard === "pol113_pol114" ? [pol113, "jiangkong_pol114"] :
+          shard === "pol115_workbench" ? [pol115, "jiangkong_pol115_spot_entry_test", "template_workbench"] :
+            [pol113, pol115, "jiangkong_pol114", "jiangkong_pol115_spot_entry_test", "template_workbench"]);
+      }
+    }
+  }
+});
+
+test("POL113-POL115 shard coverage partitions exactly 181 original cases without changing the aggregate", () => {
+  const { POL113_POL115_GROUP, SHARDS, projectPol113Pol115Shard } = require("./pol113-pol115-shards.cjs");
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(group => group.id === POL113_POL115_GROUP);
+  const listing = (...args) => {
+    const result = spawnSync(process.execPath, [runnerPath, "--list", ...args], { encoding: "utf8", env: { PATH: "" } });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const aggregate = listing("--group", group.id);
+  assert.equal(aggregate.shard, undefined);
+  assert.equal(aggregate.coveredTests, 181);
+  const shardNames = Object.keys(SHARDS);
+  const shards = shardNames.map(shard => listing("--group", group.id, "--pol113-pol115-shard", shard));
+  assert.deepEqual(shards.map(receipt => [receipt.shard, receipt.coveredFiles, receipt.coveredTests]),
+    [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 150]]);
+  const allFiles = shards.flatMap(shard => shard.coveredGroups[0].testFiles);
+  assert.equal(new Set(allFiles).size, 10);
+  assert.deepEqual(allFiles.sort(), [...aggregate.coveredGroups[0].testFiles].sort());
+  for (const shard of shardNames) assert.deepEqual(resolveGroupCommand(projectPol113Pol115Shard(group, shard)).args,
+    [path.join(__dirname, "run-pol113-pol115-entry-local.cjs"), "--shard", shard]);
+  assert.deepEqual(resolveGroupCommand(group).args, [path.join(__dirname, "run-pol113-pol115-entry-local.cjs")]);
+  for (const args of [
+    [],
+    ["--automatic-only"],
+    ["--group", "contract_settlement_v2"],
+    ["--group", group.id, "--group", "contract_settlement_v2"]
+  ]) assert.throws(() => parseArguments([...args, "--pol113-pol115-shard", shardNames[0]]), /POL113-POL115 数据库组/u);
+  for (const bad of ["", "unknown", "constructor"]) {
+    assert.throws(() => parseArguments(["--group", group.id, "--pol113-pol115-shard", bad]), /子分片无效|缺少值/u);
+  }
+  assert.throws(() => parseArguments(["--group", group.id, "--pol113-pol115-shard", shardNames[0],
+    "--pol113-pol115-shard", shardNames[1]]), /不能重复/u);
+  assert.throws(() => projectPol113Pol115Shard({ ...group, testFiles: group.testFiles.slice(1) }, shardNames[0]),
+    /原登记测试一次/u);
+});
+
+test("POL113-POL115 rejects an incomplete or stale prepared-source SHA", () => {
+  const { pol113Pol115JestArgs } = require("./pol113-pol115-jest-command.cjs");
+  const sha = "a".repeat(40);
+  const env = { LOCAL_PG16_DYNAMIC_GATE: "LOCAL_PG16_DYNAMIC_GATE", DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: sha };
+  for (const invalid of [
+    { ...env, POL113_POL115_PREPARED_SHA: "b".repeat(40) },
+    { ...env, POL113_POL115_PREPARED_SHA: "a" },
+    { ...env, LOCAL_PG16_DYNAMIC_GATE: undefined, POL113_POL115_PREPARED_SHA: sha }
+  ]) {
+    assert.throws(() => pol113Pol115JestArgs([], invalid), /动态门候选版本不一致/u);
+  }
 });
 
 
@@ -1191,6 +1659,23 @@ test("outer gate delegates preparation only to the remaining runner that always 
   assert.equal((await artifactLifecycleFixture(false, "remaining_dynamic_postgresql16")).preparations, 0);
 });
 
+test("retained receipt fixtures copy only the history preceding the receipt migration", async () => {
+  const { mkdtemp, readdir, rm } = require("node:fs/promises");
+  const { preparePre160MigrationRoot } = require("./run-project-expense-receipt-concurrency-local.cjs");
+  const workspace = await mkdtemp(path.join(require("node:os").tmpdir(), "receipt-prefix-"));
+  const terminal = "20260728160000_project_expense_receipt_confirmation";
+  try {
+    const schema = await preparePre160MigrationRoot(workspace);
+    const copied = (await readdir(path.join(path.dirname(schema), "migrations"))).sort();
+    const current = (await readdir(path.join(__dirname, "migrations"))).sort();
+    const expected = current.filter(name => /^\d{14}_/u.test(name) && name < terminal);
+    assert.equal(expected.length, 112);
+    assert.deepEqual(copied, [...expected, "migration_lock.toml"].sort());
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("contract finance remaining subgroup creates its own ledger write credential", () => {
   const group = remainingGroups.find(({ id }) => id === "affiliate_company_contract");
   assert.ok(group);
@@ -1206,6 +1691,24 @@ test("contract settlement V2 runner isolates seed files per run and cleans only 
   const fixture = new Module(filename, module);
   fixture.filename = filename;
   fixture.paths = Module._nodeModulePaths(__dirname);
+  const requireFromFixture = fixture.require.bind(fixture);
+  fixture.require = name => {
+    if (name !== "./local-staged-ci-dynamic.cjs") return requireFromFixture(name);
+    return {
+      CI_DYNAMIC_MIGRATION_LABEL: "jg.local-ci-dynamic-migration",
+      createCiDynamicMigrationFixture({ ciFixture, container, databaseNames }) {
+        assert.equal(ciFixture, "DYNAMIC_CONTRACT_SETTLEMENT_V2");
+        assert.equal(container.id, "1".repeat(64));
+        assert.match(container.name, /^jiangkong-contract-settlement-v2-/u);
+        assert.match(container.runId, /^[0-9a-f-]{36}$/u);
+        assert.deepEqual(databaseNames, ["jiangkong_contract_bill_batch_test"]);
+        return { async migrate({ databaseUrl, runtimeEnv }) {
+          assert.equal(runtimeEnv.DATABASE_URL, databaseUrl);
+          assert.match(databaseUrl, /@127\.0\.0\.1:1234\//u);
+        } };
+      }
+    };
+  };
   fixture._compile(readFileSync(filename, "utf8").replace(/^#!.*\n/u, "") + `
 module.exports.captureSeedStorage = async () => {
   const environments = [];
@@ -1213,6 +1716,7 @@ module.exports.captureSeedStorage = async () => {
   waitForPostgres = async () => {};
   run = async (_bin, args, options = {}) => {
     if (args.includes("context")) return "unix:///fixture";
+    if (args[0] === "run") return "1".repeat(64);
     if (options.env?.DATABASE_URL) environments.push({ args, env: options.env, cwd: options.cwd });
     if (args.some(arg => arg.endsWith("seed.cjs"))) {
       const { mkdir, writeFile } = require("node:fs/promises");
@@ -1408,4 +1912,65 @@ module.exports.useSyntheticSnapshot = () => {
   assert.equal(forcedRollback, true);
   assert.equal(paidSource.status, "partially_paid");
   assert.equal(paidSource.paidAmountCents, 50n);
+});
+
+test("employee onboarding prepares once and gives both Jest batches their own command budget", async () => {
+  const runner = path.join(__dirname, "run-employee-onboarding-local.cjs");
+  const source = readFileSync(runner, "utf8").replace("\nverify().finally(", "\nreturn verify().finally(");
+  const run = new Function("require", "process", "console", "__dirname", source);
+  const id = "a".repeat(64);
+  const denials = [
+    "unexpected effective table privileges", "unexpected effective column privileges", "unexpected effective table privileges",
+    "role administration privileges", "role administration privileges", "role administration privileges",
+    "server mutation privileges", "server mutation privileges", "unexpected effective sequence privileges"
+  ];
+  for (const failFirstBatch of [false, true]) {
+    const invocations = [];
+    const directoriesRemoved = [];
+    let grants = 0;
+    const fakeProcess = { env: { NODE_ENV: "test", DOCKER_HOST: "unix:///fixture" }, stdout: { write() {} } };
+    const child = (bin, args, options) => {
+      invocations.push({ bin, args, options });
+      if (bin === "pnpm") {
+        if (failFirstBatch && args.includes("jest")) return { status: null, error: { code: "ETIMEDOUT" } };
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      assert.equal(bin, "docker");
+      let stdout = "";
+      if (args[2] === "run") stdout = id;
+      if (args[2] === "port") stdout = "127.0.0.1:1234";
+      if (args.at(-1) === "SELECT has_table_privilege('onboarding_runtime', 'public.\"AuthRateLimit\"', 'DELETE');") stdout = "f";
+      if (args.includes("--file=/tmp/onboarding-grants.sql")) {
+        const denial = denials[grants++ - 2];
+        if (denial) return { status: 3, stdout: "", stderr: denial };
+      }
+      return { status: 0, stdout, stderr: "" };
+    };
+    const imports = {
+      "node:child_process": { spawnSync: child },
+      "node:fs": { mkdtempSync: prefix => prefix + "fixture", rmSync: directory => directoriesRemoved.push(directory) },
+      "./local-staged-ci-dynamic.cjs": { CI_DYNAMIC_MIGRATION_LABEL: "fixture", createCiDynamicMigrationFixture: () => ({ async migrate() {} }) }
+    };
+    await run(name => imports[name] ?? require(name), fakeProcess, { log() {}, error() {} }, __dirname);
+    const pnpm = invocations.filter(call => call.bin === "pnpm");
+    const lifecycle = ["--filter", "@jiangkong/api", "run", "pretest"];
+    const jest = ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath"];
+    const first = [...jest, "src/database/personnel-lifecycle-http-postgres.spec.ts"];
+    const second = [...jest, "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts",
+      "src/database/employee-role-consistency-http-postgres.spec.ts", "src/database/employee-phone-reuse-postgres.spec.ts",
+      "src/database/personnel-roster-read-http-postgres.spec.ts"];
+    assert.deepEqual(pnpm.map(call => call.args), failFirstBatch ? [lifecycle, first] : [lifecycle, first, second]);
+    for (const { options } of pnpm) {
+      assert.equal(options.timeout, 180_000);
+      assert.equal(options.env, pnpm[0].options.env);
+      const database = new URL(options.env.DATABASE_URL);
+      assert.equal(database.username, "onboarding_runtime");
+      assert.equal(database.host, "127.0.0.1:1234");
+      assert.equal(database.pathname, "/onboarding");
+      assert.equal(options.env.RUN_EMPLOYEE_ONBOARDING_PG16, "1");
+    }
+    assert.deepEqual(invocations.at(-1).args, ["--host", "unix:///fixture", "rm", "--force", "--volumes", id]);
+    assert.equal(directoriesRemoved.length, 1);
+    assert.equal(fakeProcess.exitCode, failFirstBatch ? 1 : undefined);
+  }
 });

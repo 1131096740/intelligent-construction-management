@@ -1,0 +1,490 @@
+"use strict";
+const {test}=require('node:test'),assert=require('node:assert/strict');
+test('plain resource proof cannot create or claim an owned259 resource',async()=>{
+ const api=require('./task16-current259-owned-resource.cjs');
+ await assert.rejects(api.withCurrent259OwnedResource({native:true},{artifactsDir:'/private/tmp/no-create',daemonId:'synthetic-daemon-12345'},undefined,()=>{}),/CURRENT259_BUILD_HANDLE/u);
+ assert.throws(()=>api.claimCurrent259OwnedResource({kind:'CURRENT259_OWNED_RESOURCE'}),/CURRENT259_RESOURCE_HANDLE/u);
+});
+
+// Private module instance at the real resource/build system boundary. Production
+// exports have no injected start, IO, constructor, credential or proof argument.
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const sourceFile=path.join(__dirname,'task16-current259-owned-resource.cjs');
+test('document ACL diagnostic projection carries only its closed SQLSTATE and fixed labels, never authority',()=>{
+ const {projectCurrent261DocumentAclWriteFailure:project}=require('./enterprise-task01-resources.cjs');
+ assert.deepEqual(project({sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE',message:'PRIVATE_SQL',sql:'PRIVATE_SQL'}),
+  {sqlState:'P0001',section:'ACL_POSTIMAGE',guard:'CURRENT259_DOCUMENT_ACL_POSTIMAGE'});
+ assert.deepEqual(project({sqlState:'42501',section:'PRIVATE_RELATION',guard:'PRIVATE_PASSWORD'}),{sqlState:'42501'});
+ assert.deepEqual(project({sqlState:'P0002',section:'ACL_READBACK',message:'PRIVATE_NO_ROWS'}),{sqlState:'P0002',section:'ACL_READBACK'});
+ assert.equal(project({sqlState:'SECRET'}),undefined);
+ assert.equal(project(new Proxy({sqlState:'P0001'},{})),undefined);
+ let read=false;assert.equal(project({get sqlState(){read=true;return 'P0001';}}),undefined);assert.equal(read,false);
+});
+function fixture(){
+ const build=Object.freeze({}),continuityToken=Object.freeze({}),readonlyPermit=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:{ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24'}};
+ const issuer=(token,handle)=>{assert.equal(token,continuityToken);assert.equal(handle,state.continuityHandle);};
+ const loader=Object.freeze({check(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');},checkContinuity(token,handle){issuer(token,handle);state.metadataChecks=(state.metadataChecks??0)+1;if(!state.alive)throw new Error('STALE_METADATA');},verifyFull(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');if(state.fullInvalid)throw new Error('STALE_FULL_MATERIAL');},witness(){return {source,build:{trees:Array.from({length:5},(_,i)=>({root:String(i),digest:'d'.repeat(64)}))}};}});
+ const hashes={caSha256:'1'.repeat(64),wrongCaSha256:'2'.repeat(64),correctCertificateSha256:'3'.repeat(64),wrongSanCertificateSha256:'4'.repeat(64),correctCertificateDerSha256:'5'.repeat(64),wrongSanCertificateDerSha256:'6'.repeat(64)};
+ const receipt={runId:id,sourceSha:source.candidateSha,endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',daemonId:'synthetic-daemon-12345',imageId:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d',databaseName:'jg_task01_'+id.replaceAll('-',''),containerId:'7'.repeat(64),networkId:'8'.repeat(64),port:32456,status:'started-awaiting-driver-verification',cleanup:{status:'pending'},tls:{...hashes,correctChainVerified:true,correctSanVerified:true,wrongCaChainRejected:true,wrongSanChainVerified:true,wrongSanMismatchVerified:true},requestedCertificateMode:'correct',reloadState:'OBSERVED_PEER_CERTIFICATE_MATCHED',presentedCertificate:{mode:'correct',derSha256:hashes.correctCertificateDerSha256},hostOwnerCredentialFilesErased:true,hostPrivateKeyFilesErased:true,hostPrivateMaterialsErased:true,topology:'UNVERIFIED_HOST_PUBLISHED_TLS'};
+ const resource={containerId:receipt.containerId,networkId:receipt.networkId,port:receipt.port,databaseName:receipt.databaseName,caPath:'/private/tmp/model/run/tls-private/ca.crt',wrongCaPath:'/private/tmp/model/run/tls-private/wrong-ca.crt',serverCertHashes:hashes,getReceipt(){return structuredClone(receipt);},async close(){state.closeCount++;if(state.closeFailure)throw new Error('CLOSE_PRIVATE_DETAIL');receipt.status='closed';receipt.cleanup={status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true};},async captureLogCursor(){calls.push('inspect');if(state.inspectFailure)throw new Error('INSPECT_FAILED');if(state.inspectFullInvalid)state.fullInvalid=true;return {runId:id,containerId:resource.containerId};},async execOwnerSql(...args){calls.push(['owner',...args]);return {stdout:'fixed-result'};},async observePresentedCertificate(){},async setServerCertificate(){},async readPlaintextRejectionEvidence(){},async inspectConnectionEndpoint(){return {serverAddress:"172.29.0.2"};},async applyCurrent259ContractHbaV1(){},async beginCurrent259ContractPlaintextProbe(){},async verifyCurrent259ContractPlaintextRejection(){}};
+ const tools=new Map([['/Applications/Docker.app/Contents/Resources/bin/docker','6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40'],['/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl','103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c']]);
+ const mockFs={constants:{X_OK:1},realpathSync:p=>p,existsSync:()=>false,lstatSync:()=>({uid:process.getuid(),mode:0o40700,isDirectory:()=>true,isSymbolicLink:()=>false}),statSync:()=>({uid:501,gid:20,mode:0o100755,dev:1,ino:2,size:3,mtimeMs:4,ctimeMs:5,isFile:()=>true}),accessSync(){},readFileSync:p=>Buffer.from(p)};
+ const mockCrypto={randomUUID:()=>id,randomBytes:()=>Buffer.alloc(48,9),createHash:()=>({update(bytes){this.bytes=String(bytes);return this;},digest(){return state.toolChanged?'0'.repeat(64):tools.get(this.bytes)||crypto.createHash('sha256').update(this.bytes).digest('hex');}})};
+ const q2Id='12345678-1234-4234-8234-123456789012',q2Topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
+ const relayStart=(name,topology)=>async options=>{
+  calls.push(name);state.options=options;
+  receipt.topology=state.topologyOverride??topology;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';
+  receipt.limits={totalDeadlineMs:3600000};
+  receipt.relay={id:'ab49e313-e3da-407f-b279-3d09caecfc3e',containerId:receipt.containerId,host:'127.0.0.1',port:receipt.port};
+  receipt.loopbackPlaintextHba={sourceAddress:'127.0.0.1',role:'jg_task01_owner',databaseName:receipt.databaseName,noEncryptionRejected:true};
+  resource.relayId=receipt.relay.id;resource.checkRelay=()=>{};
+  resource.beginPrismaRelayDrain=()=>async()=>{calls.push('drained');};
+  const close=resource.close;resource.close=async()=>{
+   await close.call(resource);receipt.cleanup.relayId=resource.relayId;receipt.cleanup.relayClosed=true;
+   if(state.finalRelayPortDrift)receipt.relay.port++;
+  };
+  return resource;
+ };
+ const entries={},fixed={
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer,checkCurrent259FileIdentity(file,identity){assert.ok(tools.has(file));assert.equal(identity.ctimeMs,5);}},
+  './task16-current259-client-loader.cjs':Object.freeze({loadCurrent259Client(handle){calls.push('load');if(handle!==build)throw new Error('CURRENT259_BUILD_HANDLE');return loader;}}),
+  './enterprise-task01-resources.cjs':{async startTask01Postgres(options){calls.push('start');state.options=options;if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},async startCurrent259TechnicalPostgres(options){calls.push('technical-start');state.options=options;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},
+   async startCurrent259FirstQ2LoopbackPostgres(options){
+    calls.push('q2-start');state.options=options;
+    receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};
+    receipt.topology=state.topologyOverride??q2Topology;
+    receipt.relay={id:q2Id,containerId:receipt.containerId,host:'127.0.0.1',port:receipt.port};
+    resource.applyCurrent259DocumentHbaV1=async function(handle,proof){
+     assert.equal(this,resource);assert.equal(arguments.length,2);state.documentHbaInput={handle,proof};
+     return 'document-transition';
+    };
+    resource.relayId=q2Id;resource.checkRelay=()=>{if(state.relayDrift)throw new Error('MODEL_RELAY_DRIFT');};
+    resource.beginPrismaRelayDrain=()=>async()=>{calls.push('drained');};
+    const close=resource.close;resource.close=async()=>{
+     await close.call(resource);receipt.cleanup.relayId=q2Id;receipt.cleanup.relayClosed=!state.relayCleanupUnknown;
+     if(state.relayClosePortDrift)receipt.relay.port++;
+    };
+    return resource;
+   },
+   async startCurrent259ReadonlyRelayPostgres(options,permit){
+    assert.equal(permit,readonlyPermit);
+    resource.beginReadonlyRelayProbe=()=>Object.freeze({markDisconnect(){},finish(){}});
+    resource.applyCurrent259DocumentHbaV1=async()=>{};
+    return relayStart('readonly-start',q2Topology)(options);
+   },
+   startCurrent259NormalPaymentPostgres:relayStart('normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'),
+   startCurrent259AttributionGapPostgres:relayStart('gap-start','UNVERIFIED_PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS'),
+   startCurrent259VoucherPostgres:relayStart('voucher-start','UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS'),
+   startCurrent259ResponseLossPostgres:relayStart('loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'),
+   startCurrent259CompetitionPostgres:relayStart('competition-start','UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'),
+   startCurrent259DisconnectRecoveryPostgres:relayStart('disconnect-start','UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS')}
+ };
+ function privateRequire(name){if(Object.hasOwn(fixed,name)){const filename=privateRequire.resolve(name);entries[filename]||={exports:fixed[name],loaded:true};return entries[filename].exports;}if(name==='node:fs')return mockFs;if(name==='node:crypto')return mockCrypto;return require(name);}
+ privateRequire.resolve=name=>path.join(__dirname,name);privateRequire.cache=entries;
+ const instance={exports:{}};new Function('require','module','__dirname',fs.readFileSync(sourceFile,'utf8'))(privateRequire,instance,__dirname);
+ return {api:instance.exports,build,continuityToken,readonlyPermit,calls,state,receipt,resource,loader,plan:{artifactsDir:'/private/tmp/model/run',daemonId:'synthetic-daemon-12345'}};
+}
+test('a completed actual-shaped start owns one resource and the original loader only within its callback',async()=>{
+ const f=fixture();let retained,view;
+ const result=await f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,async handle=>{
+  retained=handle;view=f.api.claimCurrent259OwnedResource(handle);
+  assert.equal(view.loader,f.loader);assert.equal(f.api.claimCurrent259OwnedResource(handle),view);
+  assert.equal(view.resource.port,32456);assert.equal(view.scope,'OWNED_RESOURCE_ONLY');
+  assert.equal(view.resource.topology,'UNVERIFIED_HOST_PUBLISHED_TLS');
+  assert.deepEqual(await view.resource.execOwnerSql('fixed-stage-sql','stage'),{stdout:'fixed-result'});
+  return 'done';
+ });
+ assert.equal(result,'done');assert.equal(f.state.closeCount,1);
+ assert.throws(()=>f.api.claimCurrent259OwnedResource(retained),/CURRENT259_RESOURCE_HANDLE/u);
+ assert.throws(()=>view.credentials(),/CURRENT259_RESOURCE_CLOSED/u);
+ assert.equal(f.state.options.sourceSha,'a'.repeat(40));assert.equal(f.state.options.ownerPassword,'09'.repeat(48));
+});
+test('a malformed returned IO descriptor still closes the original returned resource once',async()=>{
+ const f=fixture();let getter=0;
+ Object.defineProperty(f.resource,'execOwnerSql',{get(){getter++;return ()=>{};}});
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>assert.fail('must not issue handle')),/CURRENT259_RESOURCE_DESCRIPTOR/u);
+ assert.equal(getter,0);assert.equal(f.state.closeCount,1);
+});
+test('a caught continuity failure initiates cleanup and cannot be repaired into a second claim',async()=>{
+ const f=fixture();
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,async handle=>{
+  const view=f.api.claimCurrent259OwnedResource(handle);f.state.alive=false;
+  assert.throws(()=>f.api.claimCurrent259OwnedResource(handle),/STALE_BUILD/u);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.closeCount,1);
+  f.state.alive=true;assert.throws(()=>f.api.claimCurrent259OwnedResource(handle),/CURRENT259_RESOURCE_HANDLE/u);
+  assert.throws(()=>view.credentials(),/CURRENT259_RESOURCE_CLOSED/u);
+ }),/CURRENT259_RESOURCE_CLOSED/u);
+ assert.equal(f.state.closeCount,1);
+});
+test('a falsey callback failure is still a failure after owned cleanup',async()=>{
+ const f=fixture();let rejected=false;
+ try{await f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{throw undefined;});}catch(error){rejected=true;assert.equal(error,undefined);}
+ assert.equal(rejected,true);assert.equal(f.state.closeCount,1);
+});
+test('the public API accepts no arbitrary tools, exec, resource or start authority',async()=>{
+ for(const key of ['tools','exec','resource','start','native']){
+  const f=fixture();let invoked=0;Object.defineProperty(f.plan,key,{get(){invoked++;throw new Error('unexpected');},enumerable:true});
+  await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{}),/CURRENT259_RESOURCE_PLAN/u);
+  assert.equal(invoked,0);assert.equal(f.calls.includes('start'),false);
+ }
+});
+test('copies and proxies cannot claim a currently live resource and do not execute getters',async()=>{
+ const f=fixture();let count=0;
+ await f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,handle=>{
+  for(const fake of [{...handle},new Proxy(handle,{get(){count++;}}),{get kind(){count++;return 'CURRENT259_OWNED_RESOURCE';}}])assert.throws(()=>f.api.claimCurrent259OwnedResource(fake),/CURRENT259_RESOURCE_HANDLE/u);
+ });assert.equal(count,0);
+});
+test('the same genuine build cannot issue a second resource lifetime',async()=>{
+ const f=fixture();await f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{});
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{}),/CURRENT259_RESOURCE_BUILD_REUSED/u);
+ assert.equal(f.calls.filter(x=>x==='start').length,1);
+});
+for(const [name,change,reason]of [
+ ['wrong run',r=>r.runId='foreign-run','IDENTITY'],['wrong daemon',r=>r.daemonId='foreign-daemon','IDENTITY'],
+ ['wrong source',r=>r.sourceSha='b'.repeat(40),'IDENTITY'],['wrong container',r=>r.containerId='f'.repeat(64),'IDENTITY'],
+ ['wrong port',r=>r.port++,'IDENTITY'],['uncleared host secret',r=>r.hostOwnerCredentialFilesErased=false,'TLS'],
+ ['unverified TLS',r=>r.tls.correctSanVerified=false,'TLS'],['no observed peer',r=>r.presentedCertificate=null,'TLS']
+])test(`${name} returned by the start cannot issue a handle`,async()=>{
+ const f=fixture();change(f.receipt);let called=0;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{called++;}),new RegExp('CURRENT259_RESOURCE_'+reason,'u'));
+ assert.equal(called,0);assert.equal(f.state.closeCount,1);
+});
+test('actual ownership inspect failure after start closes without a handle',async()=>{
+ const f=fixture();f.state.inspectFailure=true;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>assert.fail('no handle')),/INSPECT_FAILED/u);
+ assert.equal(f.state.closeCount,1);
+});
+test('pinned tool bytes cannot drift into a live capability',async()=>{
+ const f=fixture();f.state.toolChanged=true;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{}),/CURRENT259_RESOURCE_TOOL_CHANGED/u);
+ assert.equal(f.calls.includes('start'),false);
+});
+test('abort during the original start waits for its result and cleans it without issuance',async()=>{
+ const f=fixture(),controller=new AbortController();let release;f.state.startWait=new Promise(resolve=>release=resolve);
+ const running=f.api.withCurrent259OwnedResource(f.build,f.plan,controller.signal,()=>assert.fail('aborted no handle'));
+ controller.abort();release();await assert.rejects(running,/CURRENT259_RESOURCE_ABORTED/u);assert.equal(f.state.closeCount,1);
+});
+test('active abort revokes immediately and closes the same original resource',async()=>{
+ const f=fixture(),controller=new AbortController();
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,controller.signal,async handle=>{
+  const view=f.api.claimCurrent259OwnedResource(handle);controller.abort();
+  assert.throws(()=>f.api.claimCurrent259OwnedResource(handle),/CURRENT259_RESOURCE_HANDLE/u);
+  assert.throws(()=>view.credentials(),/CURRENT259_RESOURCE_CLOSED/u);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.closeCount,1);
+ }),/CURRENT259_RESOURCE_CLOSED/u);assert.equal(f.state.closeCount,1);
+});
+test('start failure is not retried and does not call a guessed cleanup port',async()=>{
+ const f=fixture(),original=new Error('FIXED_START_FAILURE');f.state.startFailure=original;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{}),error=>error===original);
+ assert.equal(f.state.closeCount,0);assert.equal(f.calls.filter(x=>x==='start').length,1);
+});
+test('cleanup failure retains the first stage error and reports only fixed UNKNOWN cleanup',async()=>{
+ const f=fixture(),original=new Error('FIXED_STAGE_FAILURE');f.state.closeFailure=true;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{throw original;}),error=>error===original&&error.resourceCleanup.status==='UNKNOWN'&&!JSON.stringify(error).includes('CLOSE_PRIVATE_DETAIL'));
+ assert.equal(f.state.closeCount,1);
+});
+test('cleanup failure after an otherwise complete stage cannot report success',async()=>{
+ const f=fixture();f.state.closeFailure=true;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=> 'done'),error=>error.code==='CURRENT259_RESOURCE_CLEANUP_UNKNOWN'&&error.resourceCleanup.status==='UNKNOWN');
+});
+test('resource artifacts cannot be created within the observed repository or its runtime trees',async()=>{
+ const f=fixture();f.plan.artifactsDir=path.resolve(__dirname,'../../../private-output');
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{}),/CURRENT259_RESOURCE_PLAN/u);
+ assert.equal(f.calls.includes('start'),false);
+});
+
+test('source or unloaded-tree drift during inspect is rejected before resource callback issuance',async()=>{
+ const f=fixture();f.state.inspectFullInvalid=true;let consumed=0;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{consumed++;}),/STALE_FULL_MATERIAL/u);
+ assert.equal(consumed,0);assert.equal(f.state.closeCount,1);
+ f.state.fullInvalid=false;f.state.inspectFullInvalid=false;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{consumed++;}),/CURRENT259_RESOURCE_BUILD_REUSED/u);
+ assert.equal(consumed,0);assert.equal(f.state.closeCount,1);assert.equal(f.calls.filter(x=>x==='start').length,1);
+});
+for(const accessor of [false,true])test(`cleanup UNKNOWN preserves an existing ${accessor?'accessor':'nonconfigurable'} stage error field without invoking or replacing it`,async()=>{
+ const f=fixture(),original=new Error('FIRST_STAGE_FAILURE');let reads=0;
+ Object.defineProperty(original,'resourceCleanup',accessor?{get(){reads++;throw new Error('GETTER_PRIVATE_DETAIL');},configurable:true}:{value:{status:'earlier'},configurable:false});
+ const before=Object.getOwnPropertyDescriptor(original,'resourceCleanup');f.state.closeFailure=true;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{throw original;}),error=>{
+  assert.equal(error.code,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(error.cause,original);
+  assert.equal(Object.getOwnPropertyDescriptor(error,'cause').enumerable,false);assert.equal(error.resourceCleanup.status,'UNKNOWN');return true;
+ });
+ assert.deepEqual(Object.getOwnPropertyDescriptor(original,'resourceCleanup'),before);assert.equal(reads,0);assert.equal(f.state.closeCount,1);
+});
+test('an explicit close revokes before awaiting original cleanup and cannot issue another physical close',async()=>{
+ const f=fixture();let retained;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,async handle=>{
+  retained=handle;const view=f.api.claimCurrent259OwnedResource(handle);
+  const first=f.api.closeCurrent259OwnedResource(handle);
+  assert.throws(()=>f.api.claimCurrent259OwnedResource(handle),/CURRENT259_RESOURCE_HANDLE/u);
+  assert.throws(()=>view.credentials(),/CURRENT259_RESOURCE_CLOSED/u);
+  await Promise.all([first,f.api.closeCurrent259OwnedResource(handle)]);
+ }),/CURRENT259_RESOURCE_CLOSED/u);
+ assert.equal(f.state.closeCount,1);
+ await f.api.closeCurrent259OwnedResource(retained);assert.equal(f.state.closeCount,1);
+ assert.throws(()=>f.api.claimCurrent259OwnedResource(retained),/CURRENT259_RESOURCE_HANDLE/u);
+});
+
+
+test('named technical owned resource uses only the fixed1h producer and binds its purpose',async()=>{
+ const f=fixture();let retained;
+ const result=await f.api.withCurrent259TechnicalResource(f.build,f.plan,undefined,handle=>{
+  retained=handle;const view=f.api.claimCurrent259TechnicalResource(handle);
+  assert.equal(view.purpose,'CURRENT259_TECHNICAL_MIGRATIONS_V1');assert.equal(view.deadlineMs,3600000);
+  assert.equal(view,f.api.claimCurrent259OwnedResource(handle));
+  assert.equal(view.resource.getReceipt().purpose,view.purpose);assert.equal(view.resource.getReceipt().limits.totalDeadlineMs,3600000);
+  return 'technical';
+ });
+ assert.equal(result,'technical');assert.ok(f.calls.includes('technical-start'));assert.equal(f.calls.includes('start'),false);
+ assert.equal(Object.hasOwn(f.state.options,'deadlineMs'),false);assert.equal(f.state.closeCount,1);
+ assert.throws(()=>f.api.claimCurrent259TechnicalResource(retained),/CURRENT259_RESOURCE_HANDLE/);
+});
+
+test('old900s resource cannot be promoted by copied purpose or receipt fields',async()=>{
+ const f=fixture();
+ await f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,handle=>{
+  f.receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';f.receipt.limits={totalDeadlineMs:3600000};
+  assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_TECHNICAL_RESOURCE_REQUIRED/);
+  assert.throws(()=>f.api.claimCurrent259TechnicalResource({...handle,purpose:f.receipt.purpose}),/CURRENT259_RESOURCE_HANDLE/);
+  assert.equal(f.api.claimCurrent259OwnedResource(handle).purpose,undefined);
+ });
+ assert.equal(f.state.options.deadlineMs,900000);assert.equal(f.state.closeCount,1);
+});
+
+test('technical receipt purpose or deadline drift revokes the original handle permanently',async()=>{
+ for(const drift of ['purpose','deadline']) {
+  const f=fixture();
+  await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,undefined,handle=>{
+   if(drift==='purpose')f.receipt.purpose='OWNED_RESOURCE_ONLY';else f.receipt.limits.totalDeadlineMs=900000;
+   assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_RESOURCE_PURPOSE/);
+   f.receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';f.receipt.limits.totalDeadlineMs=3600000;
+   assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_RESOURCE_HANDLE/);
+  }));
+  assert.equal(f.state.closeCount,1);
+ }
+});
+
+test('technical resource cancellation retains original once-only cleanup and revocation',async()=>{
+ const f=fixture(),signal=new AbortController();let handle;
+ await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,signal.signal,async value=>{
+  handle=value;const view=f.api.claimCurrent259TechnicalResource(value);signal.abort();
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.closeCount,1);
+  assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_RESOURCE_HANDLE/);
+  assert.throws(()=>view.credentials(),/CURRENT259_RESOURCE_CLOSED/);
+ }));
+ assert.equal(f.state.closeCount,1);
+});
+
+test('the original inspected endpoint is fetched afresh and revoked with its owned lifetime',async()=>{
+ const f=fixture();let count=0,retained;
+ f.resource.inspectConnectionEndpoint=async()=>{count++;return Object.freeze({serverAddress:count===1?'172.29.0.2':'172.29.0.3'});};
+ await f.api.withCurrent259TechnicalResource(f.build,f.plan,undefined,async handle=>{
+  retained=f.api.claimCurrent259TechnicalResource(handle).resource;
+  assert.deepEqual(await retained.inspectConnectionEndpoint(),{serverAddress:'172.29.0.2'});
+  assert.deepEqual(await retained.inspectConnectionEndpoint(),{serverAddress:'172.29.0.3'});
+ });
+ await assert.rejects(retained.inspectConnectionEndpoint(),/CURRENT259_RESOURCE_CLOSED/u);
+ assert.equal(count,2);
+});
+test('only an active business token switches the original resource wrapper to bounded metadata and full remains explicit',async()=>{
+ const f=fixture();let retained;
+ await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,undefined,async handle=>{
+  f.state.continuityHandle=handle;const view=f.api.claimCurrent259TechnicalResource(handle);retained=view;f.state.forbidFull=true;
+  view.activateBusinessContinuity(f.continuityToken);
+  assert.equal(f.api.claimCurrent259TechnicalResourceContinuity(handle,f.continuityToken),view);
+  assert.equal(view.resource.getReceipt().runId,f.receipt.runId);
+  await view.resource.execOwnerSql('SELECT 1','current259-live-catalog');
+  assert.ok(f.state.metadataChecks>0);assert.throws(()=>view.verifyFull(),/FULL_SOURCE_FORBIDDEN/);
+ }));
+ f.state.forbidFull=false;assert.throws(()=>retained.checkContinuity(f.continuityToken));assert.equal(f.state.closeCount,1);
+});
+
+test('only the technical owned view forwards the original no-argument contract HBA operation',async()=>{
+ for(const technical of [false,true]){
+  const f=fixture();
+  f.resource.applyCurrent259ContractHbaV1=async function(){assert.equal(this,f.resource);assert.equal(arguments.length,0);f.calls.push('contract-hba');return 'fixed-transition';};
+  const start=technical?f.api.withCurrent259TechnicalResource:f.api.withCurrent259OwnedResource;
+  await start(f.build,f.plan,undefined,async handle=>{
+   const view=f.api.claimCurrent259OwnedResource(handle);
+   if(!technical){assert.equal(view.resource.applyCurrent259ContractHbaV1,undefined);return;}
+   await assert.rejects(view.resource.applyCurrent259ContractHbaV1('/unexpected'),/CURRENT259_RESOURCE_DESCRIPTOR/u);
+   assert.equal(await view.resource.applyCurrent259ContractHbaV1(),'fixed-transition');
+  });
+  assert.equal(f.calls.filter(value=>value==='contract-hba').length,Number(technical));
+  assert.equal(f.state.closeCount,1);
+ }
+});
+
+test('contract plaintext has no caller-supplied cursor, target, path or legacy port',async()=>{
+ for(const technical of [false,true]){
+  const f=fixture();
+  for(const key of ['beginCurrent259ContractPlaintextProbe','verifyCurrent259ContractPlaintextRejection']){
+   f.resource[key]=async function(){assert.equal(this,f.resource);assert.equal(arguments.length,0);f.calls.push(key);return true;};
+  }
+  const start=technical?f.api.withCurrent259TechnicalResource:f.api.withCurrent259OwnedResource;
+  await start(f.build,f.plan,undefined,async handle=>{
+   const view=f.api.claimCurrent259OwnedResource(handle);
+   for(const key of ['beginCurrent259ContractPlaintextProbe','verifyCurrent259ContractPlaintextRejection']){
+    if(!technical){assert.equal(view.resource[key],undefined);continue;}
+    await assert.rejects(view.resource[key]({role:'unexpected'}),/CURRENT259_RESOURCE_DESCRIPTOR/u);
+    assert.equal(await view.resource[key](),true);
+   }
+  });
+  assert.equal(f.calls.filter(value=>typeof value==='string'&&value.includes('Plaintext')).length,technical?2:0);
+  assert.equal(f.state.closeCount,1);
+ }
+});
+
+test('Q2 owned wrapper keeps technical lineage, a unique relay identity and the original five-login methods',async()=>{
+ const f=fixture(),controller=new AbortController();
+ await f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,controller.signal,async handle=>{
+  const view=f.api.claimCurrent259TechnicalResource(handle);
+  assert.equal(view.purpose,'CURRENT259_TECHNICAL_MIGRATIONS_V1');
+  assert.equal(view.deadlineMs,3600000);
+  assert.equal(view.resource.topology,'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS');
+  assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
+  assert.equal(typeof view.resource.applyCurrent259ContractHbaV1,'function');
+  assert.equal(typeof view.resource.applyCurrent259DocumentHbaV1,'function');
+  const proof=Object.freeze({});
+  await assert.rejects(view.resource.applyCurrent259DocumentHbaV1(handle,proof),/CURRENT259_RESOURCE_DESCRIPTOR/u);
+  assert.equal(f.state.documentHbaInput,undefined);
+  assert.equal(await view.resource.applyCurrent259DocumentHbaV1(proof),'document-transition');
+  assert.deepEqual(f.state.documentHbaInput,{handle,proof});
+  assert.equal(view.resource.checkRelay,undefined);
+  assert.equal(view.resource.beginPrismaRelayDrain,undefined);
+  assert.throws(()=>view.beginPrismaRelayDrain('unexpected'),/CURRENT259_RESOURCE_CLOSED/u);
+  await view.beginPrismaRelayDrain()();
+ });
+ assert.equal(f.calls.includes('technical-start'),false);
+ assert.equal(f.calls.includes('q2-start'),true);
+ assert.equal(f.calls.filter(value=>value==='drained').length,1);
+ assert.equal(f.state.closeCount,1);
+});
+test('Q2 refuses a rollback transport receipt and never grants a handle',async()=>{
+ const f=fixture();f.state.topologyOverride='UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS';
+ await assert.rejects(f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,new AbortController().signal,
+  ()=>assert.fail('unmatched topology')),/CURRENT259_RESOURCE_TLS/u);
+ assert.equal(f.state.closeCount,1);
+});
+test('Q2 refuses to certify owned cleanup when the exact relay is unconfirmed',async()=>{
+ const f=fixture();f.state.relayCleanupUnknown=true;
+ await assert.rejects(f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,new AbortController().signal,()=>{}),
+  /CURRENT259_RESOURCE_CLEANUP_UNKNOWN/u);
+ assert.equal(f.state.closeCount,1);
+});
+
+test('Q2 cleanup binds the relay host and port in addition to its ID',async()=>{
+ const f=fixture();f.state.relayClosePortDrift=true;
+ await assert.rejects(f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,new AbortController().signal,()=>{}),
+  /CURRENT259_RESOURCE_CLEANUP_UNKNOWN/u);
+ assert.equal(f.state.closeCount,1);
+});
+
+for(const [name,call,topology] of [
+ ['withCurrent259NormalPaymentResource','normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'],
+ ['withCurrent259AttributionGapResource','gap-start','UNVERIFIED_PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS'],
+ ['withCurrent259VoucherResource','voucher-start','UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS'],
+ ['withCurrent259ResponseLossResource','loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'],
+ ['withCurrent259CompetitionResource','competition-start','UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'],
+ ['withCurrent259DisconnectRecoveryResource','disconnect-start','UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS']
+]) {
+ test('owned payment relay binds the exact starter, topology, HBA and cleanup: '+name,async()=>{
+  const f=fixture(),signal=new AbortController().signal;
+  await f.api[name](f.build,f.plan,signal,async handle=>{
+   const view=f.api.claimCurrent259TechnicalResource(handle);
+   assert.equal(view.resource.topology,topology);
+   assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
+   assert.equal(view.resource.applyCurrent259ContractHbaV1,undefined);
+   assert.equal(view.resource.applyCurrent259DocumentHbaV1,undefined);
+   assert.equal(view.resource.beginPrismaRelayDrain,undefined);
+   await view.beginPrismaRelayDrain()();
+  });
+  assert.deepEqual(f.calls,['load',call,'inspect','drained']);
+  assert.equal(f.state.closeCount,1);
+ });
+ test('owned payment relay rejects final relay-coordinate drift: '+name,async()=>{
+  const f=fixture();f.state.finalRelayPortDrift=true;
+  await assert.rejects(f.api[name](f.build,f.plan,new AbortController().signal,()=>{}),/CURRENT259_RESOURCE_CLEANUP_UNKNOWN/u);
+  assert.equal(f.state.closeCount,1);
+ });
+}
+
+test('readonly resource exposes only original owner login and the separate probe capability',async()=>{
+ const f=fixture();
+ const signal=new AbortController().signal;
+ await f.api.withCurrent259ReadonlyRelayResource(f.build,f.plan,signal,f.readonlyPermit,async handle=>{
+  const view=f.api.claimCurrent259TechnicalResource(handle);
+  assert.deepEqual(Object.keys(view.credentials()),['owner']);
+  assert.equal(typeof view.beginReadonlyRelayProbe,'function');
+  assert.throws(()=>view.beginReadonlyRelayProbe({}),/CURRENT259_RESOURCE_DESCRIPTOR/u);
+  assert.equal(typeof view.beginReadonlyRelayProbe().finish,'function');
+  for(const name of ['checkContinuity','activateBusinessContinuity','beginPrismaRelayDrain'])assert.equal(view[name],undefined);
+  for(const name of ['execOwnerSql','applyCurrent259DocumentHbaV1','setServerCertificate','getReceiptContinuity'])
+   assert.equal(view.resource[name],undefined);
+ });
+ assert.equal(f.state.closeCount,1);
+ const historical=fixture();
+ await historical.api.withCurrent259FirstQ2LoopbackResource(historical.build,historical.plan,signal,async handle=>{
+  const view=historical.api.claimCurrent259TechnicalResource(handle);
+  assert.equal(view.beginReadonlyRelayProbe,undefined);
+  assert.equal(typeof view.resource.execOwnerSql,'function');
+  assert.equal(typeof view.beginPrismaRelayDrain,'function');
+ });
+});
+
+
+// Private original factory instance at its filesystem/process boundary. No
+// Docker process, certificate, resource or production injection is created.
+function publishedPortFactoryFixture(options={}){
+ const {EventEmitter}=require('node:events'),actualCrypto=require('node:crypto');
+ const dirs=new Set(['/','/private','/private/tmp','/private/tmp/port-model']),files=new Map([['/model/docker',Buffer.from('model')],['/model/openssl',Buffer.from('model')]]);
+ const state={container:false,network:false,running:false,portCalls:0,portTimers:[],commands:[],last:[],portStderr:options.stderr??'',exitCode:options.exitCode??1,cleanupFailure:options.cleanupFailure};
+ const runId='12345678-1234-4234-8234-123456789012',cid='7'.repeat(64),nid='8'.repeat(64),sha='a'.repeat(40),name='jg-task01-'+runId;
+ const labels={'io.jiangkong.task01.run':runId,'io.jiangkong.task01.task':'enterprise-task01','io.jiangkong.task01.source':sha};
+ const tmpfs={'/var/lib/postgresql/data':'rw,nosuid,nodev,noexec,size=536870912,mode=0700','/var/run/postgresql':'rw,nosuid,nodev,noexec,size=16777216,mode=0775','/tmp':'rw,nosuid,nodev,noexec,size=67108864,mode=1777'};
+ const stat=p=>{const file=files.has(p);if(!file&&!dirs.has(p))throw Object.assign(new Error('MODEL_MISSING'),{code:'ENOENT'});return{uid:process.getuid(),mode:file?0o100600:0o40700,isFile:()=>file,isDirectory:()=>!file,isSymbolicLink:()=>false};};
+ const mockFs={constants:fs.constants,existsSync:p=>files.has(p)||dirs.has(p),lstatSync:stat,statSync:stat,realpathSync:p=>p,accessSync(){},mkdirSync:p=>{dirs.add(p);},writeFileSync(p,data,o){if(o?.flag==='wx')assert.ok(!files.has(p));files.set(p,Buffer.from(data));},readFileSync:p=>{assert.ok(files.has(p));return files.get(p);},renameSync(a,b){files.set(b,files.get(a));files.delete(a);},chmodSync(){},unlinkSync:p=>files.delete(p),rmdirSync:p=>dirs.delete(p)};
+ function inspectNetwork(){return{Id:nid,Name:name,Internal:true,Driver:'bridge',Labels:labels,Containers:state.container?{[cid]:{}}:{}};}
+ function inspectContainer(){return{Id:cid,Image:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d',Name:'/'+name,Config:{Labels:labels},State:{Running:state.running},HostConfig:{NetworkMode:nid,Binds:[],PortBindings:{'5432/tcp':[{HostIp:'127.0.0.1',HostPort:''}]},Memory:1073741824,MemorySwap:1073741824,NanoCpus:2000000000,PidsLimit:256,Tmpfs:tmpfs},Mounts:[],NetworkSettings:{Networks:{owned:{NetworkID:nid}},Ports:{}}};}
+ function spawn(executable,args){
+  const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin=new EventEmitter();child.stdin.end=()=>{};child.kill=()=>true;
+  const cmd=executable.endsWith('/docker')?args.slice(2):args;state.last=cmd;state.commands.push(cmd);
+  queueMicrotask(()=>{let out='',err='',code=0;
+   if(executable.endsWith('/openssl')){
+    const at=cmd.indexOf('-out');if(at!==-1)files.set(cmd[at+1],Buffer.from(path.basename(cmd[at+1])));
+    if(cmd[0]==='verify'&&(cmd.includes('/private/tmp/port-model/resource/tls-private/wrong-ca.crt')||cmd.includes('/private/tmp/port-model/resource/tls-private/wrong-san.crt')&&cmd.includes('127.0.0.1')))code=1;
+   }else if(cmd[0]==='info')out='synthetic-daemon-12345';
+   else if(cmd[0]==='image')out=JSON.stringify({Id:inspectContainer().Image,Config:{Env:['PG_MAJOR=16','PGDATA=/var/lib/postgresql/data']}});
+   else if(cmd[0]==='network'&&cmd[1]==='create'){state.network=true;out=nid;}
+   else if(cmd[0]==='network'&&cmd[1]==='inspect')out=JSON.stringify(inspectNetwork());
+   else if(cmd[0]==='network'&&cmd[1]==='ls')out=state.network?nid:'';
+   else if(cmd[0]==='network'&&cmd[1]==='rm')state.network=false;
+   else if(cmd[0]==='container'&&cmd[1]==='create'){state.container=true;out=cid;}
+   else if(cmd[0]==='container'&&cmd[1]==='inspect')out=JSON.stringify(inspectContainer());
+   else if(cmd[0]==='container'&&cmd[1]==='start')state.running=true;
+   else if(cmd[0]==='container'&&cmd[1]==='ls')out=state.container?cid:'';
+   else if(cmd[0]==='container'&&cmd[1]==='rm'){if(state.cleanupFailure){code=1;err='PRIVATE_CLEANUP';}else{state.container=false;state.running=false;}}
+   else if(cmd[0]==='cp'){}
+   else if(cmd[0]==='exec'){if(cmd.includes('/proc/1/comm'))out='postgres';else assert.ok(cmd.includes('pg_isready'));}
+   else if(cmd[0]==='port'){state.portCalls++;assert.deepEqual(cmd,['port',cid,'5432/tcp']);code=state.exitCode;err=state.portStderr;}
+   else throw new Error('MODEL_UNEXPECTED_COMMAND');
+   if(out)child.stdout.emit('data',Buffer.from(out));if(err)child.stderr.emit('data',Buffer.from(err));child.emit('close',code);
+  });return child;
+ }
+ const module={exports:{}};new Function('require','module','__dirname','setTimeout',fs.readFileSync(path.join(__dirname,'enterprise-task01-resources.cjs'),'utf8'))(
+  key=>key==='node:fs'?mockFs:key==='node:child_process'?{spawn}:key==='node:crypto'?{...actualCrypto,X509Certificate:class{constructor(bytes){this.raw=bytes;}}}:require(key),module,__dirname,(fn,ms,...args)=>{if(state.last[0]==='port'&&state.portTimers.length===0)state.portTimers.push(ms);return setTimeout(fn,ms,...args);});
+ return{api:module.exports,state,cid,async run(){return module.exports.startTask01Postgres({runId,sourceSha:sha,artifactsDir:'/private/tmp/port-model/resource',endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',daemonId:'synthetic-daemon-12345',imageId:inspectContainer().Image,tools:{docker:'/model/docker',openssl:'/model/openssl'},ownerPassword:'b'.repeat(96),signal:new AbortController().signal});}};
+}
+for(const [stderr,kind]of [["Error: No public port '5432/tcp' published for "+'7'.repeat(64),'NO_PUBLIC_PORT'],['Error response from daemon: No such container: '+'7'.repeat(64),'CONTAINER_NOT_FOUND'],['Cannot connect to the Docker daemon at unix:///Users/leoyang/.docker/run/docker.sock. Is the docker daemon running?','DAEMON_UNAVAILABLE'],['docker port requires 1 or 2 arguments','CLI_ARGUMENTS'],['PRIVATE_SQL_PASSWORD_URL','UNCLASSIFIED']])
+ test('public resource factory retains only published port '+kind+' with its original first failure',async()=>{
+  const f=publishedPortFactoryFixture({stderr});let error;try{await f.run();}catch(e){error=e;}
+  assert.equal(error?.code,'TASK01_RESOURCE_START_FAILED');const r=error.resourceReceipt;
+  assert.deepEqual(r.startupFailure,{stage:'published-port-probe',commandKind:'nonzero-exit',publishedPortFailure:{exitCode:1,stderrKind:kind}});
+  assert.equal(r.failureCode,'TASK01_RESOURCE_COMMAND_FAILED');assert.equal(r.cleanup.status,'completed');assert.equal(f.state.portCalls,1);assert.deepEqual(f.state.portTimers,[10000]);
+  assert.doesNotMatch(JSON.stringify(r),/PRIVATE_SQL_PASSWORD_URL|No public port|No such container|Cannot connect/);
+ });
+test('public published port first cause survives independent cleanup failure',async()=>{
+ const f=publishedPortFactoryFixture({stderr:"Error: No public port '5432/tcp' published for "+'7'.repeat(64),cleanupFailure:true});let error;try{await f.run();}catch(e){error=e;}
+ assert.equal(error.resourceReceipt.startupFailure.stage,'published-port-probe');assert.deepEqual(error.resourceReceipt.startupFailure.publishedPortFailure,{exitCode:1,stderrKind:'NO_PUBLIC_PORT'});assert.equal(error.resourceReceipt.failureCode,'TASK01_RESOURCE_COMMAND_FAILED');assert.equal(error.resourceReceipt.cleanup.status,'failed');assert.equal(f.state.portCalls,1);
+});

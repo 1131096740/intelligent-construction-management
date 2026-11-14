@@ -7,7 +7,8 @@ const { cp, mkdir, mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
-const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+const { loadCanonicalMigrationBaseline, migrationChecksum } = require("./migration-baseline.cjs");
 const {
   createCommandRuntime,
   createRunnerCleanup,
@@ -34,6 +35,14 @@ const manifest = JSON.parse(readFileSync(
 ));
 const TERMINAL_MIGRATION_CHECKSUM = migrationBaseline.terminalMigrationChecksum;
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
+const LEGACY_CLEANUP_DATABASE = "jiangkong_contract_cleanup_pre_m206_test";
+const RETENTION_MIGRATION = "20261109110000_contract_direct_review_retention_v1";
+const LEGACY_CLEANUP_TERMINAL = "20261109100000_contract_direct_pending_input_v1";
+const LEGACY_CLEANUP_PROOF = Object.freeze({
+  count: 205,
+  terminal: LEGACY_CLEANUP_TERMINAL,
+  checksum: migrationChecksum(migrationsRoot, LEGACY_CLEANUP_TERMINAL)
+});
 
 const GROUPS = [
   {
@@ -52,7 +61,7 @@ const GROUPS = [
       CONTRACT_DRAFT_AGGREGATE_DATABASE_URL: "databaseUrl",
       DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 18
+    pendingTests: 21
   },
   {
     id: "project_funding_availability",
@@ -161,7 +170,8 @@ const GROUPS = [
       "src/database/contract-governance-file-concurrency.spec.ts",
       "src/database/project-external-upstream-db.spec.ts",
       "src/database/project-affiliate-subject-db.spec.ts",
-      "src/database/operating-takeover-constraints.spec.ts"
+      "src/database/operating-takeover-constraints.spec.ts",
+      "src/database/fund-account-postgres.spec.ts"
     ],
     flags: {
       DATABASE_URL: "databaseUrl",
@@ -180,9 +190,10 @@ const GROUPS = [
       RUN_CONTRACT_GOVERNANCE_CONCURRENCY: "1",
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1",
-      RUN_POL215_DATABASE: "1"
+      RUN_POL215_DATABASE: "1",
+      RUN_REGISTERED_FUND_ACCOUNT_DATABASE: "1"
     },
-    pendingTests: 30,
+    pendingTests: 42,
     requiresOperatingLedgerWriteSecret: true
   },
   {
@@ -206,7 +217,7 @@ const GROUPS = [
       RUN_PAYABLE_SETTLEMENT_DATABASE: "1",
       PAYABLE_SETTLEMENT_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 19
+    pendingTests: 20
   },
   {
     id: "wage_statement",
@@ -293,7 +304,7 @@ function assertManifestMatchesGroups() {
 
 assertManifestMatchesGroups();
 
-const ALLOWED_DATABASE_NAMES = new Set(GROUPS.map((group) => group.database));
+const ALLOWED_DATABASE_NAMES = new Set([...GROUPS.map((group) => group.database), LEGACY_CLEANUP_DATABASE]);
 
 function fail(message) {
   throw new Error(message);
@@ -423,10 +434,10 @@ async function assertRepositoryState(candidateSha) {
   if (status.stdout.trim()) fail("剩余数据库动态门要求干净工作树");
 }
 
-async function waitForPostgres(containerName, database) {
+async function waitForPostgres(containerName, database, dockerEnv) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      await run(docker, ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", database]);
+      await run(docker, ["exec", containerName, "pg_isready", "-h", "127.0.0.1", "-U", "jiangkong", "-d", database], { env: dockerEnv });
       return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -465,20 +476,50 @@ function createRuntimeEnvironment(
   return environment;
 }
 
-async function migrate(databaseUrl, environment) {
-  await run(
+async function deployMigration({ databaseUrl, runtimeEnv, schemaPath }) {
+  return run(
     pnpm,
-    ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"],
-    { env: { ...environment, DATABASE_URL: databaseUrl }, forwardOutput: true }
+    ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy",
+      ...(schemaPath ? ["--schema", schemaPath] : [])],
+    { env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, forwardOutput: true }
   );
+}
+
+async function migrate(databaseUrl, environment, {
+  group, temporaryRoot, container, dockerEnv, migration, legacyCleanupDatabaseUrl
+}) {
+  migration ??= createCiDynamicMigrationFixture({
+    ciFixture: "DYNAMIC_REMAINING_V1",
+    container,
+    databaseNames: legacyCleanupDatabaseUrl ? [group.database, LEGACY_CLEANUP_DATABASE] : [group.database],
+    temporaryRoot,
+    dockerCommand: (args, options) => run(docker, args, { ...options, env: dockerEnv }),
+    deploy: deployMigration
+  });
+  if (group.preTerminalMigrationFixture === "terminal_migration") {
+    const schemaPath = await prepareMigrationPrefix(temporaryRoot, "terminal-migration-upgrade-prisma", TERMINAL_MIGRATION);
+    // This call proves the complete canonical predecessor ledger on the owned
+    // database. The original upgrade now has exactly one pending migration.
+    await migration.migrate({ databaseUrl, runtimeEnv: environment, schemaPath });
+    await deployMigration({ databaseUrl, runtimeEnv: environment });
+  } else {
+    await migration.migrate({ databaseUrl, runtimeEnv: environment });
+  }
   await run(
     pnpm,
     ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],
     { env: { ...environment, DATABASE_URL: databaseUrl }, forwardOutput: true }
   );
+  if (legacyCleanupDatabaseUrl) {
+    const schemaPath = await prepareMigrationPrefix(temporaryRoot, "contract-cleanup-pre-m206-prisma", RETENTION_MIGRATION);
+    await migration.migrate({ databaseUrl: legacyCleanupDatabaseUrl, runtimeEnv: environment, schemaPath });
+    await assertTerminalMigrationProof(container.name, LEGACY_CLEANUP_DATABASE, dockerEnv, LEGACY_CLEANUP_PROOF);
+  }
 }
 
-async function assertTerminalMigrationProof(containerName, database, dockerEnv) {
+async function assertTerminalMigrationProof(containerName, database, dockerEnv, expected = {
+  count: EXPECTED_MIGRATION_COUNT, terminal: TERMINAL_MIGRATION, checksum: TERMINAL_MIGRATION_CHECKSUM
+}) {
   const result = await run(
     docker,
     [
@@ -496,17 +537,17 @@ async function assertTerminalMigrationProof(containerName, database, dockerEnv) 
       "|",
       "-c",
       `SELECT count(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
-        `count(*) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
-        `max(checksum) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)` +
+        `count(*) FILTER (WHERE migration_name = '${expected.terminal}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
+        `max(checksum) FILTER (WHERE migration_name = '${expected.terminal}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)` +
         ` FROM _prisma_migrations;`
     ],
     { env: dockerEnv }
   );
   const [migrationCount, terminalCount, terminalChecksum] = result.stdout.trim().split("|");
   if (
-    Number(migrationCount) !== EXPECTED_MIGRATION_COUNT ||
+    Number(migrationCount) !== expected.count ||
     Number(terminalCount) !== 1 ||
-    terminalChecksum !== TERMINAL_MIGRATION_CHECKSUM
+    terminalChecksum !== expected.checksum
   ) {
     fail(
       `迁移终点证明不完整：count=${migrationCount} terminal=${terminalCount} checksum=${terminalChecksum}`
@@ -554,12 +595,8 @@ async function prepareProjectOperatingProfileUpgrade(
   );
 }
 
-async function prepareTerminalMigrationUpgrade(
-  databaseUrl,
-  environment,
-  temporaryRoot
-) {
-  const fixturePrismaRoot = path.join(temporaryRoot, "terminal-migration-upgrade-prisma");
+async function prepareMigrationPrefix(temporaryRoot, fixtureName, stopBeforeMigration) {
+  const fixturePrismaRoot = path.join(temporaryRoot, fixtureName);
   await mkdir(fixturePrismaRoot, { recursive: true });
   await cp(path.join(prismaRoot, "schema.prisma"), path.join(fixturePrismaRoot, "schema.prisma"));
   await cp(path.join(prismaRoot, "migrations"), path.join(fixturePrismaRoot, "migrations"), {
@@ -568,14 +605,10 @@ async function prepareTerminalMigrationUpgrade(
       const relativePath = path.relative(path.join(prismaRoot, "migrations"), source);
       if (!relativePath || relativePath === "migration_lock.toml") return true;
       const [migrationName] = relativePath.split(path.sep);
-      return migrationName < TERMINAL_MIGRATION;
+      return migrationName < stopBeforeMigration;
     }
   });
-  await run(
-    pnpm,
-    ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy", "--schema", path.join(fixturePrismaRoot, "schema.prisma")],
-    { env: { ...environment, DATABASE_URL: databaseUrl }, forwardOutput: true }
-  );
+  return path.join(fixturePrismaRoot, "schema.prisma");
 }
 
 async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
@@ -586,10 +619,7 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "jiangkong-database-dynamic-remaining-")
   );
-  const port = await freePort();
-  const password = randomUUID();
-  const initialDatabase = selectedGroups[0].database;
-  const containerName = `jiangkong-database-dynamic-remaining-${Date.now()}-${process.pid}`;
+  let activeContainer;
   const dockerEnv = {
     PATH: sourceEnv.PATH ?? "",
     HOME: sourceEnv.HOME ?? temporaryRoot,
@@ -597,19 +627,20 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
   };
   const startedAt = new Date();
   const receipts = [];
-  let containerRunAttempted = false;
+  async function removeContainer() {
+    if (!activeContainer) return;
+    try {
+      await run(docker, ["rm", "--force", "--volumes", activeContainer], {
+        env: dockerEnv, timeoutMs: 60_000
+      });
+    } catch (error) {
+      if (!String(error?.message).includes("No such container")) throw error;
+    }
+    activeContainer = undefined;
+  }
   const cleanup = createRunnerCleanup({
     stopChildren: () => commandRuntime.stopAll(),
-    removeContainer: async () => {
-      if (!containerRunAttempted) return;
-      try {
-        await run(docker, ["rm", "--force", "--volumes", containerName], {
-          env: dockerEnv, timeoutMs: 60_000
-        });
-      } catch (error) {
-        if (!String(error?.message).includes("No such container")) throw error;
-      }
-    },
+    removeContainer,
     removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true })
   });
   let interruptionPromise;
@@ -655,41 +686,23 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
     });
     process.stdout.write(`[database-dynamic-timing] ${JSON.stringify({ phase: "prepare.generate-and-build", durationMs: Math.round(performance.now() - preparationStarted) })}\n`);
 
-    containerRunAttempted = true;
-    await run(
-      docker,
-      [
-        "run",
-        "--pull=never",
-        "--detach",
-        "--rm",
-        "--name",
-        containerName,
-        "--env",
-        "POSTGRES_USER=jiangkong",
-        "--env",
-        "POSTGRES_PASSWORD",
-        "--env",
-        `POSTGRES_DB=${initialDatabase}`,
-        "--publish",
-        `127.0.0.1:${port}:5432`,
-        IMAGE
-      ],
-      {
-        env: { ...dockerEnv, POSTGRES_PASSWORD: password },
-        forwardOutput: true
-      }
-    );
-    await waitForPostgres(containerName, initialDatabase);
-
     for (const group of selectedGroups) {
       const groupStartedAt = Date.now();
+      const port = await freePort();
+      const password = randomUUID();
+      const runId = randomUUID();
+      const containerName = `jiangkong-database-dynamic-remaining-${runId}`;
+      activeContainer = containerName;
+      const started = await run(
+        docker,
+        ["run", "--pull=never", "--detach", "--rm", "--name", containerName,
+          "--label", `${CI_DYNAMIC_MIGRATION_LABEL}=${runId}`,
+          "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD",
+          "--env", `POSTGRES_DB=${group.database}`, "--publish", `127.0.0.1:${port}:5432`, IMAGE],
+        { env: { ...dockerEnv, POSTGRES_PASSWORD: password }, forwardOutput: true }
+      );
+      await waitForPostgres(containerName, group.database, dockerEnv);
       const databaseUrl = databaseUrlFor(password, port, group.database);
-      if (group.database !== initialDatabase) {
-        await run(docker, ["exec", containerName, "createdb", "-U", "jiangkong", group.database], {
-          env: dockerEnv
-        });
-      }
       const environment = createRuntimeEnvironment(
         sourceEnv,
         temporaryRoot,
@@ -709,14 +722,17 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
           dockerEnv,
           group.database
         );
-      } else if (group.preTerminalMigrationFixture === "terminal_migration") {
-        await prepareTerminalMigrationUpgrade(
-          databaseUrl,
-          environment,
-          temporaryRoot
-        );
       }
-      await migrate(databaseUrl, environment);
+      let legacyCleanupDatabaseUrl;
+      if (group.id === "contract_draft_aggregate") {
+        await run(docker, ["exec", containerName, "createdb", "-U", "jiangkong", LEGACY_CLEANUP_DATABASE], { env: dockerEnv });
+        legacyCleanupDatabaseUrl = databaseUrlFor(password, port, LEGACY_CLEANUP_DATABASE);
+        environment.CONTRACT_LEGACY_CLEANUP_DATABASE_URL = legacyCleanupDatabaseUrl;
+      }
+      await migrate(databaseUrl, environment, {
+        group, temporaryRoot, dockerEnv, legacyCleanupDatabaseUrl,
+        container: { id: started.stdout.trim(), name: containerName, runId }
+      });
       await assertTerminalMigrationProof(containerName, group.database, dockerEnv);
       if (group.id === "affiliate_company_contract") {
         environment.CONTRACT_BANK_RUNTIME_DATABASE_URL = require("./contract-bank-runtime-fixture.cjs")
@@ -727,11 +743,13 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
         ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath", ...group.files],
         { env: environment, forwardOutput: true }
       );
+      await removeContainer();
       receipts.push({
         id: group.id,
         database: group.database,
         pendingTests: group.pendingTests,
         files: group.files,
+        ...(legacyCleanupDatabaseUrl ? { legacyCleanupMigration: LEGACY_CLEANUP_PROOF } : {}),
         durationMs: Date.now() - groupStartedAt,
         status: "passed"
       });

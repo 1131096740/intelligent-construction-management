@@ -63,12 +63,17 @@ jobs:
         run: pnpm check:migration-baseline
 
       - name: Verify CI orchestration contract
-        run: pnpm test:ci-orchestration
+        run: |
+          set -euo pipefail
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          pnpm test:ci-orchestration
 
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high
 
       - name: Typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=3072
         run: |
           pnpm typecheck
           pnpm --filter @jiangkong/web-admin typecheck:e2e
@@ -84,9 +89,13 @@ jobs:
           bash scripts/ops/go-live-safety-self-test.sh
 
   unit-test-gates:
-    name: Unit test gates
+    name: Unit test gates (${{ matrix.target }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api-1, api-2, api-3, api-4, web, shared-domain]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -115,13 +124,23 @@ jobs:
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @jiangkong/api exec prisma generate
-
-      - name: Test
+      - name: Test API shard
+        if: startsWith(matrix.target, 'api-')
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm test
+          API_TEST_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shard="${API_TEST_TARGET#api-}"
+          pnpm --filter @jiangkong/api run test --runInBand --config jest.runtime.config.cjs --shard="$shard/4"
+
+      - name: Test Web
+        if: matrix.target == 'web'
+        run: pnpm --filter @jiangkong/web-admin test
+
+      - name: Test shared domain
+        if: matrix.target == 'shared-domain'
+        run: pnpm --filter @jiangkong/shared-domain test
 
   build-manifest-gates:
     name: Build and manifest gates
@@ -179,8 +198,8 @@ jobs:
         run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.upload-draft.config.ts
 
   postgresql16-dynamic-gates:
-    name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    name: PostgreSQL 16 dynamic gate (${{ matrix.shard && format('{0}/{1}', matrix.group, matrix.shard) || matrix.group }})
+    runs-on: ${{ matrix.group == 'pol113_pol115_business_entries' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
     timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
     strategy:
@@ -204,11 +223,15 @@ jobs:
           - operating_projection_pol108_facts
           - operating_projection_pol108_impacts
           - project_close_profit_pol109
-          - pol113_pol115_business_entries
           - remaining_dynamic_postgresql16
           - employee_onboarding
           - general_procurement
           - contract_finance_acceptance
+        include:
+          - group: pol113_pol115_business_entries
+            shard: pol113_pol114
+          - group: pol113_pol115_business_entries
+            shard: pol115_workbench
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -313,13 +336,18 @@ jobs:
       - name: Run exact-SHA PostgreSQL dynamic gate shard
         env:
           DYNAMIC_GROUP: ${{ matrix.group }}
+          DYNAMIC_SHARD: ${{ matrix.shard }}
         run: |
           candidate_sha="$(git rev-parse HEAD)"
+          shard_args=()
+          if [ -n "$DYNAMIC_SHARD" ]; then
+            shard_args=(--pol113-pol115-shard "$DYNAMIC_SHARD")
+          fi
           node services/api/prisma/run-database-dynamic-gate-local.cjs \
             --execute \
             --group "$DYNAMIC_GROUP" \
             --candidate-sha "$candidate_sha" \
-            --confirm LOCAL_PG16_DYNAMIC_GATE
+            --confirm LOCAL_PG16_DYNAMIC_GATE "${shard_args[@]}"
 
       - name: Verify personnel feedback and recovery on desktop and mobile
         if: ${{ matrix.group == 'employee_onboarding' }}

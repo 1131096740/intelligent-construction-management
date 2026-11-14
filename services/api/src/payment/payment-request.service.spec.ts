@@ -1,3 +1,8 @@
+import { Test } from "@nestjs/testing";
+import { PaymentController } from "./payment.controller";
+import { PaymentReadService } from "./payment-read.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { FileService } from "../file/file.service";
 import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
 jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
@@ -131,6 +136,81 @@ describe("PaymentRequestService", () => {
       buffer[index + 1] = low;
     }
     return buffer.toString("hex").toUpperCase();
+  }
+
+  /** Stateful persistence facts for the five legacy final-approval cases.
+   * Approval/signature/role services stay real; no production fallback is used. */
+  async function attachPaymentNotificationPersistence(tx: {
+    paymentRequest: {findFirst:jest.Mock;update:jest.Mock};
+    approvalInstance: {findFirst:jest.Mock;update:jest.Mock};
+    approvalActionLog: {create:jest.Mock};
+    user: {findUnique:jest.Mock};
+  }, knownUserIds: string[]) {
+    const initialPayment=await tx.paymentRequest.findFirst({where:{id:"payment-1"}});
+    const initialRound=await tx.approvalInstance.findFirst({where:{id:"approval-instance-1"}});
+    if (!initialPayment || !initialRound || !(initialRound.updatedAt instanceof Date)) throw new Error("Legacy approval fixture must contain its real request, round and frozen CAS date");
+    const payment:Record<string,unknown>={...initialPayment,contractId:"contract-1",contractVersionId:"contract-version-1",settlementId:"settlement-1",sourceType:"settlement",paidAmountCents:0n};
+    const round:Record<string,unknown>={...initialRound,businessType:"payment_request",businessId:payment.id,flowType:"payment.approve",status:"in_progress",createdAt:new Date(initialRound.updatedAt.getTime())};
+    tx.paymentRequest.update.mockImplementation(async ({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+      if(where.id!==payment.id) throw new Error("Unexpected request in legacy approval fixture");
+      Object.assign(payment,data);return {...payment};
+    });
+    Object.assign(tx.paymentRequest,{findUnique:jest.fn(async ({where}:{where:{id:string}})=>where.id===payment.id?{...payment}:null)});
+    tx.approvalInstance.findFirst.mockImplementation(async ({where}:{where?:Record<string,unknown>})=>Object.entries(where??{}).every(([field,value])=>round[field]===value)?{...round}:null);
+    Object.assign(tx.approvalInstance,{findMany:jest.fn(async({where={},orderBy,take}:{where?:Record<string,unknown>;orderBy?:Record<string,string>|Array<Record<string,string>>;take?:number}={})=>{
+      const selected=Object.entries(where).every(([field,value])=>{
+        if(value && typeof value==="object" && "in" in value && Array.isArray(value.in))return value.in.includes(round[field]);
+        if(value instanceof Date){const actual=round[field];return actual instanceof Date && actual.getTime()===value.getTime();}
+        return round[field]===value;
+      })?[{...round}]:[];
+      if(orderBy){
+        const entries=(Array.isArray(orderBy)?orderBy:[orderBy]).flatMap(item=>Object.entries(item));
+        for(const [field,direction] of entries)if(!["createdAt","updatedAt","id"].includes(field)||!["asc","desc"].includes(direction))throw new Error("Unexpected legacy approval round ordering");
+        selected.sort((a,b)=>{
+          for(const [field,direction] of entries){
+            const left=a[field],right=b[field];
+            const difference=left instanceof Date&&right instanceof Date?left.getTime()-right.getTime():typeof left==="string"&&typeof right==="string"?left.localeCompare(right):NaN;
+            if(Number.isNaN(difference))throw new Error("Legacy round sort values must match real persistence types");
+            if(difference)return difference*(direction==="desc"?-1:1);
+          }
+          return 0;
+        });
+      }
+      return take===undefined?selected:selected.slice(0,take);
+    })});
+    tx.approvalInstance.update.mockImplementation(async ({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+      if(where.id!==round.id) throw new Error("Unexpected round in legacy approval fixture");
+      Object.assign(round,data);return {...round};
+    });
+    Object.assign(tx,{
+      contractVersion:{findUnique:jest.fn(async ({where}:{where:{id:string}})=>where.id===payment.contractVersionId?{
+        id:payment.contractVersionId,contractId:payment.contractId,status:"active",signingSubjectType:"our_company",
+        companyEntityIdSnapshot:payment.companyEntityIdSnapshot,companyEntityNameSnapshot:payment.companyEntityNameSnapshot,companyEntityCreditCodeSnapshot:payment.companyEntityCreditCodeSnapshot
+      }:null)},
+      paymentExecution:{findMany:jest.fn(async ({where}:{where:{paymentRequestId:string}})=>{
+        if(where.paymentRequestId!==payment.id) throw new Error("Unexpected execution relation in legacy approval fixture");
+        return [];
+      })}
+    });
+    const actions=new Map<string,Record<string,unknown>>();
+    tx.approvalActionLog.create.mockImplementation(async ({data}:{data:Record<string,unknown>})=>{
+      const action={id:"87ae6b8a-1bee-4459-a1c4-9ef5d82ac415",createdAt:new Date("2026-07-31T01:01:01Z"),...data};
+      actions.set(action.id,{...action});return {...action};
+    });
+    Object.assign(tx.approvalActionLog,{
+      findUnique:jest.fn(async ({where}:{where:{id:string}})=>actions.get(where.id)??null),
+      createMany:jest.fn(async ({data,skipDuplicates}:{data:Array<Record<string,unknown>>;skipDuplicates?:boolean})=>{
+        let count=0;
+        for(const value of data){
+          if(typeof value.id!=="string") throw new Error("Outbox fixture requires its stable primary key");
+          if(actions.has(value.id)){if(skipDuplicates)continue;throw new Error("Duplicate outbox fixture primary key");}
+          actions.set(value.id,{createdAt:new Date("2026-07-31T01:01:01Z"),...value});count++;
+        }
+        return {count};
+      })
+    });
+    const users=await Promise.all(knownUserIds.map(id=>tx.user.findUnique({where:{id}})));
+    Object.assign(tx.user,{findMany:jest.fn(async ()=>users.filter(user=>user?.isActive))});
   }
 
   function approvalRoleTables(roleKey: string) {
@@ -475,6 +555,26 @@ name: "签批人甲",
     return { payment, createdExecution, tx, prisma };
   }
 
+  it.each([["2026-11-05", "2026-11-04T16:00:00.000Z"], ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z"]])("persists HTTP payment date %s at its exact Beijing/offset instant through the existing synthetic transaction", async (paidAt, expected) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
+    const { tx, prisma, createdExecution } = hardenedPaymentExecutionFixture();
+    tx.paymentExecution.create.mockImplementation(async ({ data }) => ({ ...createdExecution, ...data }));
+    const actual = paymentExecutionService(new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never, undefined, undefined, projectFunding as never);
+    Reflect.set(actual, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null) });
+    const module = await Test.createTestingModule({ controllers: [PaymentController], providers: [{ provide: PaymentRequestService, useValue: actual }, { provide: PaymentReadService, useValue: {} }, { provide: ProjectVisibilityService, useValue: {} }, { provide: FileService, useValue: fileAccess }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "cashier-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const url = `${await app.getUrl()}/payments/FK-2026-012/executions`;
+      const body = { ...paymentExecutionCoordinates, amountCents: "30000", paidAt, voucherFileId: "file-1", confirmationPassword: "synthetic-password" };
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(201); expect((await response.json()).paidAt).toBe(expected);
+      expect(tx.paymentExecution.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paidAt: new Date(expected) }) }));
+      tx.paymentExecution.create.mockClear(); prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(tx.paymentExecution.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
+  });
+
   it("requires payment execution CAS and UUID v4 idempotency coordinates", async () => {
     const dto = Object.assign(new RecordPaymentExecutionDto(), {
       amountCents: "10000",
@@ -720,7 +820,29 @@ name: "签批人甲",
     });
   });
 
-  it("routes a claimed PaymentExecution through the shared allocator in the same transaction and forces deferred contracts", async () => {
+  it.each([
+    { name: "原A停用实际B在用合法代付", directoryActive: false, fault: "active_proxy_", error: "" },
+    { name: "原A停用实际B在用仍拒缺冻结版本", directoryActive: false, fault: "active_proxy_missing", error: "冻结主体" },
+    { name: "原A停用实际B在用仍拒冻结冲突", directoryActive: false, fault: "active_proxy_mismatch", error: "冻结依据" },
+    { name: "原A停用实际B在用仍拒草稿合同", directoryActive: false, fault: "active_proxy_draft_source", error: "合同未生效" },
+    { name: "原A停用实际B在用仍拒作废合同", directoryActive: false, fault: "active_proxy_voided_source", error: "合同未生效" },
+    { name: "原A停用实际B在用仍拒项目冲突", directoryActive: false, fault: "active_proxy_project_source", error: "项目来源不一致" },
+    { name: "在用目录原路径", directoryActive: true, fault: "", error: "" },
+    { name: "停用目录可靠冻结原单及有效账户HTTP", directoryActive: false, fault: "", error: "" },
+    { name: "停用公司缺原版本", directoryActive: false, fault: "missing", error: "冻结主体" },
+    { name: "停用公司冻结身份冲突", directoryActive: false, fault: "mismatch", error: "冻结依据" },
+    { name: "旧单不得新选其它停用公司", directoryActive: false, fault: "foreign", error: "不能新选" },
+    { name: "账户核验已撤销", directoryActive: false, fault: "revoked", error: "已失效" },
+    { name: "失去本项目财务职责", directoryActive: false, fault: "scope", error: "当前项目财务" },
+    { name: "原合同仍是草稿", directoryActive: false, fault: "draft_source", error: "合同未生效" },
+    { name: "原合同项目冲突", directoryActive: false, fault: "project_source", error: "项目来源不一致" },
+    { name: "无可选签注也不得绕过原账户依据", directoryActive: false, fault: "no_attestation", error: "当前银行账户依据" },
+    { name: "原单尚未批准", directoryActive: false, fault: "request_pending", error: "审批" },
+    { name: "曾生效合同已被补充版本替代的已批准旧付款", directoryActive: false, fault: "superseded_source", error: "" },
+    { name: "作废版本不能充当曾生效来源", directoryActive: false, fault: "voided_source", error: "合同未生效" }
+  ])("存量公司付款公开路径 $name", async ({ directoryActive, fault: scenario, error }) => {
+    const activeProxy = scenario.startsWith("active_proxy_");
+    const fault = activeProxy ? scenario.slice("active_proxy_".length) : scenario;
     const fixture = hardenedPaymentExecutionFixture();
     const tx = fixture.tx as typeof fixture.tx & {
       $executeRawUnsafe: jest.Mock;
@@ -731,6 +853,7 @@ name: "签批人甲",
       };
       paymentExecutionPayerVerification: { findUnique: jest.Mock };
       companyEntity: { findUnique: jest.Mock };
+      companyEntityVersion: { findUnique: jest.Mock };
       fileObject: { findUnique: jest.Mock };
       paymentExecutionPayerAttestation: { create: jest.Mock };
     };
@@ -779,7 +902,7 @@ name: "签批人甲",
       findUnique: jest.fn().mockResolvedValue({
         id: "payer-verification-1",
         reference: "server-payer-verification-reference",
-        holderCompanyEntityId: "company-1",
+        holderCompanyEntityId: activeProxy ? "company-active-proxy" : fault === "foreign" ? "company-new" : "company-1",
         holderNameSnapshot: "建工智管建设有限公司",
         holderCreditCodeSnapshot: "91310000TEST000001",
         verificationReference: "verification-record-1",
@@ -787,7 +910,7 @@ name: "签批人甲",
         verifiedAt,
         verificationEvidenceFileId: "verification-evidence-1",
         verificationEvidenceContentSha256: "a".repeat(64),
-        status: "verified",
+        status: fault === "revoked" ? "revoked" : "verified",
         sourceType: "bank_account_legal_holder",
         sourceRecordId: "bank-source-record-1"
       })
@@ -796,7 +919,7 @@ name: "签批人甲",
     tx.userPosition.findMany = jest.fn(
       ({ where }: { where: { userId: string; projectId?: string | null } }) =>
         Promise.resolve(
-          where.userId === "finance-director-1" && where.projectId === null
+          ["finance-director-1", "reauthorizer"].includes(where.userId) && where.projectId === null
             ? [{ positionId: "finance-director-position" }]
             : []
         )
@@ -805,8 +928,12 @@ name: "签批人甲",
       { id: "finance-director-position", key: "finance_director" }
     ]);
     tx.companyEntity = {
-      findUnique: jest.fn().mockResolvedValue({ id: "company-1", isActive: true, name: "签批人甲" })
+      findUnique: jest.fn().mockResolvedValue({ id: activeProxy ? "company-active-proxy" : fault === "foreign" ? "company-new" : "company-1", isActive: activeProxy || directoryActive, name: "签批人甲" })
     };
+    tx.companyEntityVersion = { findUnique: jest.fn().mockResolvedValue({ id: "company-version-1", companyEntityId: fault === "mismatch" ? "conflicting-company" : "company-1", name: "建工智管建设有限公司", unifiedSocialCreditCode: "91310000TEST000001", isActive: true }) };
+    Object.assign(fixture.payment, { contractVersionStatus: fault === "draft_source" ? "draft" : fault === "superseded_source" ? "superseded" : fault === "voided_source" ? "voided" : "effective", contractProjectId: fault === "project_source" ? "other-project" : fixture.payment.projectId, companyDirectoryIsActive: directoryActive, companyEntityVersionId: fault === "missing" ? null : "company-version-1" });
+    if (fault === "scope") tx.projectMember.findMany.mockResolvedValue([]);
+    if (fault === "request_pending") fixture.payment.status = "approval_pending";
     tx.fileObject = {
       findUnique: jest.fn().mockResolvedValue({
         id: "verification-evidence-1",
@@ -818,6 +945,13 @@ name: "签批人甲",
     tx.paymentExecutionPayerAttestation = {
       create: jest.fn().mockResolvedValue({})
     };
+    if (activeProxy) {
+      Object.assign(tx, {
+        approvalActionLog: { findUnique: jest.fn().mockResolvedValue({ id: "reauth-action", approvalInstanceId: "reauth-round", action: "approve", actorUserId: "reauthorizer", approvedRoleKey: "finance_director", createdAt: new Date("2026-06-20T00:00:00Z"), metadata: { paymentRequestId: "payment-1", contractVersionId: "contract-version-1" } }) },
+        approvalInstance: { findUnique: jest.fn().mockResolvedValue({ id: "reauth-round", businessType: "payment_request", businessId: "payment-1", status: "approved" }) }
+      });
+      tx.fileObject.findUnique.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id, uploadedByUserId: where.id === "authorization-evidence" ? "reauthorizer" : "finance-director-1", storageStatus: "active", contentSha256: "a".repeat(64) }));
+    }
     const sharedAllocations = {
       materializeInTransaction: jest.fn().mockResolvedValue({
         allocationLineCount: 1
@@ -841,15 +975,17 @@ name: "签批人甲",
       sharedAllocations as never
     );
 
-    await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+    const payload = {
       ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password",
-      observationSelectionRef: "server-signed-observation-selection",
-      payerAttestation: {
-        bankAccountReference: "server-payer-verification-reference"
+      observationSelectionRef: fault === "no_attestation" ? undefined : "server-signed-observation-selection",
+      bankReceiptReference: fault === "no_attestation" ? "server-bank-reference" : undefined,
+      payerAttestation: fault === "no_attestation" ? undefined : {
+        bankAccountReference: "server-payer-verification-reference",
+        ...(activeProxy ? { authorization: { reason: "已有批准的跨主体代付", evidenceFileId: "authorization-evidence", reauthorizationReference: "reauth-action", reauthorizedByUserId: "reauthorizer", reauthorizedAt: "2026-06-20T00:00:00Z" } } : {})
       },
       wagePayableBindings: [
         {
@@ -857,13 +993,33 @@ name: "签批人甲",
           amountCents: "30000"
         }
       ]
-    });
+    };
+    if (error) {
+      await expect(paymentService.recordExecution("FK-2026-012", "cashier-1", payload)).rejects.toThrow(error);
+      expect(sharedAllocations.materializeInTransaction).not.toHaveBeenCalled();
+      expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+      if (activeProxy) {
+        expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+        expect(tx.paymentExecutionPayerAttestation.create).not.toHaveBeenCalled();
+      }
+      return;
+    }
+    if (!directoryActive) {
+      const module = await Test.createTestingModule({ controllers: [PaymentController], providers: [{ provide: PaymentRequestService, useValue: paymentService }, { provide: PaymentReadService, useValue: {} }, { provide: ProjectVisibilityService, useValue: {} }, { provide: FileService, useValue: fileAccess }] }).compile();
+      const app = module.createNestApplication({ logger: false });
+      app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "cashier-1" }; next(); });
+      try {
+        await app.listen(0,"127.0.0.1");
+        const response = await fetch(`${await app.getUrl()}/payments/FK-2026-012/executions`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+        expect(response.status).toBe(201);expect(await response.json()).toMatchObject({amountCents:"30000",paymentSubjectType:"our_company"});
+      } finally { await app.close(); }
+    } else await paymentService.recordExecution("FK-2026-012", "cashier-1", payload);
 
     expect(tx.paymentExecutionPayerAttestation.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         paymentExecutionId: "execution-hardened-1",
         payerVerificationId: "payer-verification-1",
-        holderCompanyEntityId: "company-1",
+        holderCompanyEntityId: activeProxy ? "company-active-proxy" : "company-1",
         verifiedByUserId: "finance-director-1",
         verificationEvidenceContentSha256: "a".repeat(64)
       })
@@ -4155,6 +4311,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
 
   it("付款领导自审成功后只记录修剪后的原因和自审标记", async () => {
     const { service, tx } = paymentLeaderSelfReviewFixture();
+    await attachPaymentNotificationPersistence(tx,["leader-1"]);
 
     await service.reviewApproval("payment-1", "leader-1", {
       ...paymentReviewCoordinates,
@@ -4279,6 +4436,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...approvalRoleTables("chairman")
     };
     attachApprovalSignatureFixture(tx);
+    await attachPaymentNotificationPersistence(tx,["chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4473,6 +4631,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...approvalRoleTables("chairman")
     };
     attachApprovalSignatureFixture(tx);
+    await attachPaymentNotificationPersistence(tx,["chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4573,6 +4732,7 @@ name: "签批人甲",
         }]),
       ...financingUsageUpdates()
     };
+    await attachPaymentNotificationPersistence(tx,["delegate-user-1","delegator-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5113,6 +5273,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...financingUsageUpdates(),
       ...approvalRoleTables("employee")
     };
+    await attachPaymentNotificationPersistence(tx,["transfer-user-1","chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };

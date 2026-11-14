@@ -1,3 +1,10 @@
+import { discoverUpwardPendingSave } from "./contract-upward-pending-save-profile";
+import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
+import { assertUpwardPendingCreateContinuity, qualifyUpwardPendingCreate, upwardPendingCreateMarker } from "./contract-upward-pending-create";
+import { assertUpwardDirectPendingWriteClosed } from "./contract-upward-pending-read";
+import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
+import { CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
+import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity, hasDirectSigningInput } from "./contract-direct-pending-source";
 import {
   BadRequestException,
   ConflictException,
@@ -11,7 +18,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
-import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
+import { contractCommercialEntryDefinition, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
 import {
   approvalElapsedHours,
   canRemindApproval,
@@ -23,6 +30,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
+import { resolveContractOriginators } from "./contract-originators";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
@@ -30,7 +38,8 @@ import {
   assertActiveApprovalRecipient,
   type ApprovalActorRoleScopes
 } from "../approval/approval-review-identity";
-import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { clearApprovalRoundSignatureSnapshots, snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { contractRoundSubmissionSnapshot } from "./contract-parallel-duty-access";
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -103,6 +112,7 @@ interface ContractApprovalAssignment {
 }
 
 interface ContractApprovalNode {
+  originatorUserIds?: string[];
   name: string;
   mode: "any";
   roleKeys: RoleKey[];
@@ -241,7 +251,29 @@ export class ContractService {
     private readonly activation: ContractVersionActivationService = new ContractVersionActivationService()
   ) {}
 
+  async canCreateUpwardPendingDraft(projectId: string, actorUserId: string): Promise<boolean> {
+    try {
+      return await this.prisma.$transaction(async tx => {
+        const project = await tx.project.findUnique({ where: { id: projectId }, select: { isActive: true } });
+        if (!project?.isActive) return false;
+        const access = await resolveGovernedFinalArchiveAccess(tx, { projectId, actorUserId, handlerUserId: actorUserId });
+        if (!access.canUpload) return false;
+        const saveWitness = await discoverUpwardPendingSave(tx);
+        if (!saveWitness) return false;
+        await qualifyUpwardPendingCreate(tx, saveWitness);
+        return true;
+      });
+    } catch {
+      return false;
+    }
+  }
+
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
+    if (input.handlingMode === "direct_signed" && (input.numericProtocolVersion !== 2 || (input.relationship !== "outside" && input.relationship !== "upward"))) {
+      throw new BadRequestException("已签合同直接登记只支持新版表外和对上合同");
+    }
+    if (input.numericProtocolVersion === 2) return this.createPreciseDraft(input, actorUserId);
+    if (!input.businessTemplateVersionId?.trim()) throw new BadRequestException("请选择已发布的合同模板");
     const normalizedPaymentStages = this.normalizePaymentStages(input.paymentStages);
     const signingSubjectType = normalizeContractSigningSubjectType(input.signingSubjectType);
     if (Boolean(input.businessScenarioId) !== Boolean(input.scenarioTemplateMappingId)) {
@@ -261,7 +293,7 @@ export class ContractService {
         : null;
       const lockedTemplate = await lockBusinessTemplateVersion(
         tx,
-        input.businessTemplateVersionId
+        input.businessTemplateVersionId!
       );
       const templateVersion = lockedTemplate?.version;
 
@@ -468,6 +500,62 @@ export class ContractService {
     });
   }
 
+  private async createPreciseDraft(input: CreateContractDraftDto, actorUserId: string) {
+    const businessTypes = ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"];
+    if (!businessTypes.includes(input.contractTypeKey)) throw new BadRequestException("请选择材料采购、机械租赁、劳务分包、专业分包或其他业务类型");
+    if (input.relationship !== undefined && !["inside", "outside", "upward"].includes(input.relationship)) throw new BadRequestException("合同关系不正确，请重新选择");
+    if (input.signingSubjectType !== undefined || input.businessTemplateVersionId !== undefined || input.businessScenarioId !== undefined || input.scenarioTemplateMappingId !== undefined || input.paymentStages !== undefined) {
+      throw new BadRequestException("新版合同请先保存基础草稿，再手动选择模板和填写实际约定");
+    }
+    const upwardDirect = input.handlingMode === "direct_signed" && input.relationship === "upward";
+    if (upwardDirect && input.paymentTermsOriginalText !== undefined) throw new BadRequestException("新建对上已签草稿时不能同时写入付款约定");
+    return this.prisma.$transaction(async tx => {
+      const upwardQualification = upwardDirect ? await qualifyUpwardPendingCreate(tx) : null;
+      const directQualification = !upwardDirect && input.handlingMode === "direct_signed" ? await assertDirectPendingSourceQualification(tx) : null;
+      const [project] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+        SELECT "id", "isActive" FROM "Project" WHERE "id" = ${input.projectId} FOR UPDATE
+      `);
+      if (!project?.isActive) throw new BadRequestException("项目不存在或已停用，不能新建合同草稿");
+      const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).replaceAll("-", "");
+      const temporaryCode = `草稿-${date}-${Math.floor(Math.random() * 100_000_000).toString().padStart(8, "0")}`;
+      if (directQualification) await assertDirectPendingSourceContinuity(tx, directQualification);
+      if (upwardQualification) await assertUpwardPendingCreateContinuity(tx, upwardQualification);
+      const contract = await tx.contract.create({ data: { projectId: input.projectId, contractTypeKey: input.contractTypeKey,
+        ownerUserId: actorUserId, name: "", counterparty: "", code: null, temporaryCode } });
+      const billDefinition = { key: "main", name: "合同清单", amountRole: "included", pricingMode: "tax_inclusive", quantityScale: 4, unitPriceScale: 4, columns: [] };
+      let version = await tx.contractVersion.create({ data: {
+        contractId: contract.id, versionNo: 1, changeType: "original", status: "draft", numericProtocolVersion: 2,
+        signingSubjectType: "draft_unconfirmed", amountCents: 0n, amountYuan: null, amountLimitType: input.amountLimitType ?? "capped",
+        pricingNature: "unit_price", amountSource: "bill_sum", contractGovernanceVersion: 1,
+        taxFactStatus: "draft", invoiceType: null, defaultTaxRatePercent: null, taxMode: "single_rate", taxFactSource: "contract_document",
+        businessTemplateVersionId: null, layoutTemplateVersionId: null,
+        draftData: { ...(upwardQualification ? { directSigningInput: upwardPendingCreateMarker() } : directQualification ? { directSigningInput: { protocolVersion: 1, source: "direct_signed", relationship: "outside", signedOn: null, enterpriseParty: null, counterpartyParty: null, fixedPaymentTermsVersionId: null } } : {}), contractName: "", fieldValues: {}, partyValues: {}, contractBasics: {
+          ...(input.relationship ? { relationship: input.relationship } : {}), businessType: input.contractTypeKey, amountBasis: "tax_inclusive", invoiceStatus: "pending", settlementText: ""
+        } },
+        templateSnapshot: { fieldSchema: [], billSchema: [billDefinition], clauseSchema: [], attachmentSchema: [], validationSchema: [] }, clauseSnapshot: []
+      } });
+      await tx.contractBill.createMany({ data: [{ contractVersionId: version.id, billKey: "main", name: billDefinition.name,
+        amountRole: "included", pricingMode: "tax_inclusive", numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4,
+        schemaSnapshot: billDefinition, taxInclusiveAmountYuan: null, taxExclusiveAmountYuan: null, taxAmountYuan: null }] });
+      const terms = upwardQualification || directQualification && input.paymentTermsOriginalText === undefined ? null : await tx.paymentTermsVersion.create({ data: { contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "draft", originalText: directQualification ? input.paymentTermsOriginalText ?? "" : input.paymentTermsOriginalText?.trim() ?? "" } });
+      let originalSignedNumber: string | null = null;
+      if (directQualification) {
+        const rows = await tx.$queryRaw<unknown[]>(Prisma.sql`SELECT "id", "originalSignedNumber" FROM public."ContractVersion" WHERE "id" = ${version.id} AND "contractId" = ${contract.id}`);
+        const row = rows.length === 1 && rows[0] !== null && typeof rows[0] === "object" && !Array.isArray(rows[0]) ? rows[0] : null;
+        if (!row || Object.keys(row).length !== 2 || !("id" in row) || row.id !== version.id || !("originalSignedNumber" in row)
+          || (row.originalSignedNumber !== null && (typeof row.originalSignedNumber !== "string" || row.originalSignedNumber === ""))) throw new InternalServerErrorException("原合同编号尚未核对，请保留资料稍后重试");
+        originalSignedNumber = row.originalSignedNumber;
+        if (terms) version = await tx.contractVersion.update({ where: { id: version.id }, data: { draftData: { contractName: "", fieldValues: {}, partyValues: {}, contractBasics: { relationship: "outside", businessType: input.contractTypeKey, amountBasis: "tax_inclusive", invoiceStatus: "pending", settlementText: "" }, directSigningInput: { protocolVersion: 1, source: "direct_signed", relationship: "outside", signedOn: null, enterpriseParty: null, counterpartyParty: null, fixedPaymentTermsVersionId: terms.id } } } });
+        await assertDirectPendingSourceContinuity(tx, directQualification);
+      }
+      await this.audit.record(tx, { actorUserId, action: "contract.draft.create", businessType: "contract", businessId: contract.id,
+        metadata: { projectId: input.projectId, numericProtocolVersion: 2, contractTypeKey: input.contractTypeKey, relationship: input.relationship ?? null, temporaryCode } });
+      if (directQualification) await assertDirectPendingSourceContinuity(tx, directQualification);
+      if (upwardQualification) await assertUpwardPendingCreateContinuity(tx, upwardQualification);
+      return { contract, version: { ...version, ...(directQualification || upwardQualification ? { originalSignedNumber } : {}), amountCents: null, amountYuan: null }, terms };
+    });
+  }
+
   async copyAbandonedDraft(
     sourceVersionId: string,
     actorUserId: string,
@@ -487,13 +575,14 @@ export class ContractService {
         abandonedByUserId: string | null;
         abandonReason: string | null;
         ownerUserId: string | null;
+        draftData: Prisma.JsonValue;
         hasHistoricalTakeoverRelation: boolean;
       }>>(Prisma.sql`
         SELECT
           cv."id", cv."contractId", cv."status", cv."changeType",
           cv."versionNo", cv."updatedAt", cv."firstSubmittedAt", cv."endedAt",
           cv."abandonedAt", cv."abandonedByUserId", cv."abandonReason",
-          c."ownerUserId",
+          c."ownerUserId", cv."draftData",
           EXISTS (
             SELECT 1
             FROM "ContractTakeover" takeover
@@ -508,6 +597,7 @@ export class ContractService {
       if (locked.ownerUserId !== actorUserId) {
         throw new ForbiddenException("只能复制本人已放弃的合同草稿");
       }
+      assertNotDirectPendingVersion(locked);
       assertGenericContractDraftVersion({
         changeType: locked.changeType,
         hasHistoricalTakeoverRelation: locked.hasHistoricalTakeoverRelation
@@ -1054,13 +1144,15 @@ export class ContractService {
           abandonedByUserId: string | null;
           abandonReason: string | null;
           ownerUserId: string | null;
+          draftData: Prisma.JsonValue;
+          numericProtocolVersion: number;
           hasHistoricalTakeoverRelation: boolean;
         }>>(Prisma.sql`
           SELECT
             v."id", v."contractId", v."versionNo", v."changeType", v."status",
             v."draftRevision", v."firstSubmittedAt", v."abandonedAt",
             v."abandonedByUserId", v."abandonReason",
-            c."ownerUserId",
+            c."ownerUserId", v."draftData", v."numericProtocolVersion",
             EXISTS (
               SELECT 1
               FROM "ContractTakeover" takeover
@@ -1083,6 +1175,25 @@ export class ContractService {
             throw new ForbiddenException("只有当前合同经办人、合同部主管或系统管理员可以删除纯净草稿");
           }
           proxyCleanup = true;
+        }
+        assertUpwardDirectPendingWriteClosed(locked.draftData);
+        if (hasDirectSigningInput(locked.draftData)) {
+          if (locked.numericProtocolVersion !== 2 || locked.changeType !== "original" || locked.ownerUserId !== actorUserId || input.action !== "abandon_application") throw new ConflictException("已签待登记资料仅支持经办人保留原件后放弃登记");
+          const qualification = await assertDirectPendingSourceQualification(tx);
+          if (locked.status === "abandoned") {
+            if (locked.abandonReason !== reason) throw new ConflictException("原放弃记录与本次内容不同，请核对原记录");
+            return { contractVersionId, status: "abandoned", action: "abandon_application", idempotent: true };
+          }
+          if (locked.status !== "draft" || locked.draftRevision !== input.expectedRevision) throw new ConflictException("待登记资料已变化，请刷新后核对");
+          const boundary = await lockContractDraftMutationBoundary(tx, contractVersionId);
+          if (!boundary || boundary.formalBlockers.length) throw new ConflictException("合同已有正式事实，不能从待登记入口放弃");
+          await assertDirectPendingSourceContinuity(tx, qualification);
+          const now = new Date();
+          await tx.contractVersion.update({ where: { id: contractVersionId }, data: { status: "abandoned", abandonedAt: now, abandonedByUserId: actorUserId, abandonReason: reason, endedAt: now, draftRevision: { increment: 1 } } });
+          await tx.contractDraftEditLease.deleteMany({ where: { contractVersionId } });
+          await this.audit.record(tx, { actorUserId, action: "contract.draft.abandon", businessType: "contract_version", businessId: contractVersionId, metadata: { sourceKind: "direct_signed_pending", reason, retainedOriginals: true } });
+          await assertDirectPendingSourceContinuity(tx, qualification);
+          return { contractVersionId, status: "abandoned", action: "abandon_application", idempotent: false };
         }
         assertGenericContractDraftVersion({
           changeType: locked.changeType,
@@ -1881,6 +1992,9 @@ export class ContractService {
         ) {
           throw new ForbiddenException("只有合同经办人可以提交该合同审批");
         }
+        if (version.numericProtocolVersion === 2) {
+          throw new ConflictException(CONTRACT_PRECISE_SUBMISSION_REASON);
+        }
         if (submissionRequest) {
           await tx.$queryRaw(Prisma.sql`
             SELECT "contractVersionId" FROM "ContractDraftEditLease"
@@ -2048,12 +2162,13 @@ export class ContractService {
           } as unknown as Prisma.JsonValue;
         }
 
-        const frozenNodes = await this.approvalNodesForSubmission(
+        const originatorUserIds = await resolveContractOriginators(tx, version.id);
+        const frozenNodes = (await this.approvalNodesForSubmission(
           tx,
           version,
           contract,
           actorUserId
-        );
+        )).map(node => ({ ...node, originatorUserIds }));
 
         if (!formalCode) {
           if (!this.businessNumbers) {
@@ -2138,7 +2253,7 @@ export class ContractService {
           }, submittedAt.toISOString());
         };
         const commercialEntrySnapshot = await freezeEntry(
-          CONTRACT_COMMERCIAL_ENTRY_DEFINITION.key, CONTRACT_COMMERCIAL_ENTRY_DEFINITION.version,
+          contractCommercialEntryDefinition(version).key, contractCommercialEntryDefinition(version).version,
           "contract_version", version.id, contractCommercialEntryValues(version)
         );
         const parties = await tx.contractPartySnapshot.findMany({
@@ -2784,23 +2899,7 @@ export class ContractService {
       }
       const approvedRoleKey = identity.approvedRoleKey;
 
-      const selfReview = await confirmApprovalSelfReview({
-        applicantUserId: expectedInstance.applicantUserId,
-        actorUserId,
-        actorRoleKeys: identity.representedUserId === actorUserId &&
-          !identity.viaAssignment
-          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
-          : actorRoleKeys,
-        approvedRoleKey,
-        representedUserId: identity.representedUserId,
-        viaAssignment: identity.viaAssignment,
-        allowContractDirectorSelfReview: true,
-        selfReviewReason: input.selfReviewReason,
-        confirmationPassword: input.confirmationPassword,
-        confirmPassword: this.auth
-          ? (password) => this.auth!.confirmPassword(actorUserId, password)
-          : undefined
-      });
+
 
       const activeInstance = activeInstances.length === 1
         ? activeInstances[0]
@@ -2819,6 +2918,25 @@ export class ContractService {
         throw contractApprovalReviewConflict();
       }
       const instance = expectedInstance;
+
+      const selfReview = await confirmApprovalSelfReview({
+        applicantUserId: expectedInstance.applicantUserId,
+        originatorUserIds: expectedInstance.applicantUserId === actorUserId ? [] : await resolveContractOriginators(tx, version.id, expectedInstance.frozenNodes),
+        actorUserId,
+        actorRoleKeys: identity.representedUserId === actorUserId &&
+          !identity.viaAssignment
+          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
+          : actorRoleKeys,
+        approvedRoleKey,
+        representedUserId: identity.representedUserId,
+        viaAssignment: identity.viaAssignment,
+        allowContractDirectorSelfReview: true,
+        selfReviewReason: input.selfReviewReason,
+        confirmationPassword: input.confirmationPassword,
+        confirmPassword: this.auth
+          ? (password) => this.auth!.confirmPassword(actorUserId, password)
+          : undefined
+      });
 
       const auditCoordinates = {
         expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),
@@ -3266,6 +3384,10 @@ export class ContractService {
         where: { id: instance.id },
         data: { status: "withdrawn" }
       });
+      if (version.numericProtocolVersion === 2 &&
+          contractRoundSubmissionSnapshot(instance.frozenNodes)?.contractVersionId === version.id) {
+        await clearApprovalRoundSignatureSnapshots(tx, instance.id);
+      }
 
       await tx.approvalActionLog.create({
         data: {
@@ -3392,8 +3514,11 @@ export class ContractService {
   async approveSeal(contractVersionId: string, actorUserId: string) {
     const governed = await this.prisma.contractVersion?.findUnique({
       where: { id: contractVersionId },
-      select: { contractGovernanceVersion: true }
+      select: { contractGovernanceVersion: true, numericProtocolVersion: true }
     });
+    if (governed?.numericProtocolVersion === 2) {
+      throw new ConflictException("新版合同请使用当前轮次的盖章确认入口");
+    }
     if (governed?.contractGovernanceVersion === 1) {
       throw new Error("受治理合同请使用用章确认入口");
     }

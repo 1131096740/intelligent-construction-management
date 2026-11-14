@@ -1,6 +1,10 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as apiTransport from "./api-fetch";
+import { createApiFetch } from "./http";
 import {
+  archiveSignedContractV2,
+  confirmContractSealV2,
   fetchContractDetail,
   downloadPrivateFileByTicket,
   fetchContractChangeEligibility,
@@ -575,6 +579,114 @@ describe("core flow read API client", () => {
       "/api/contracts/version%2F1/formal-files/final/return",
       "/api/contracts/version%2F1/formal-files/final/confirmation"
     ]);
+  });
+
+  it.each([false, true])("keeps V2 seal confirmation single-POST on 401 (account switched: %s)", async (switchAccount) => {
+    let actor = "original-user";
+    let token = "original-token";
+    const refresh = vi.fn(async () => { token = "refreshed-token"; return true; });
+    const onUnauthorized = vi.fn();
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockImplementationOnce(async () => {
+        if (switchAccount) { actor = "different-user"; token = "different-token"; }
+        return new Response(null, { status: 401 });
+      })
+      .mockResolvedValueOnce(Response.json({ status: "seal_approved_pending_archive" }));
+    vi.spyOn(apiTransport, "apiFetch").mockImplementation(createApiFetch({
+      getAccessToken: () => token,
+      refresh,
+      onUnauthorized
+    }, fetchMock));
+    const body = {
+      expectedApprovalInstanceId: "approval-1",
+      expectedSealTaskId: "seal-1",
+      documentContentRevision: 3,
+      documentContentFingerprint: "a".repeat(64),
+      confirmed: true
+    } as const;
+
+    await expect(confirmContractSealV2("version/1", body, () => actor === "original-user"))
+      .rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [[url, init]] = fetchMock.mock.calls;
+    expect(url).toBe("/api/contracts/version%2F1/seal-confirmation");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify(body));
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer original-token");
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledTimes(switchAccount ? 0 : 1);
+  });
+
+  it("posts generated and direct V2 archives through one endpoint without automatic retry", async () => {
+    const result = { archiveId: "archive-1", contractVersionId: "version/1", status: "effective", fileIds: ["file-2", "file-1"] };
+    const transport = vi.spyOn(apiTransport, "apiFetch").mockImplementation(async () => Response.json(result));
+    const common = { archiveProtocolVersion: 2, idempotencyKey: "request-1", fileIds: result.fileIds, confirmedMatchingSignedDocument: true } as const;
+    const generated = { ...common, archiveSource: "generated_approval", expectedApprovalInstanceId: "approval-1",
+      expectedSealTaskId: "seal-1", documentContentRevision: 3, documentContentFingerprint: "a".repeat(64) } as const;
+    const direct = { ...common, archiveSource: "direct_signed", expectedDraftRevision: 2, expectedInputSha256: "b".repeat(64) } as const;
+    const responseIsCurrent = () => false;
+    await expect(archiveSignedContractV2("version/1", generated, responseIsCurrent)).resolves.toEqual(result);
+    await expect(archiveSignedContractV2("version/1", direct, responseIsCurrent)).resolves.toEqual(result);
+    expect(transport.mock.calls).toEqual([
+      ["/contracts/version%2F1/signed-archive", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(generated),
+        retryUnauthorized: false, responseIsCurrent
+      }],
+      ["/contracts/version%2F1/signed-archive", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(direct),
+        retryUnauthorized: false, responseIsCurrent
+      }]
+    ]);
+  });
+
+  it("does not replay generated archive with a later account when the first POST returns 401", async () => {
+    const { createApiFetch } = await import("./http");
+    let token = "actor-a";
+    const refresh = vi.fn(async () => true);
+    const onUnauthorized = vi.fn();
+    const onRequestFailure = vi.fn();
+    const attempts: Array<{ path: string; authorization: string | null }> = [];
+    const send = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      attempts.push({ path: String(input), authorization: new Headers(init?.headers).get("Authorization") });
+      token = "actor-b";
+      return Response.json({ message: "请重新登录" }, { status: 401 });
+    });
+    const apiFetch = createApiFetch({ getAccessToken: () => token, refresh, onUnauthorized, onRequestFailure }, send);
+    vi.spyOn(apiTransport, "apiFetch").mockImplementation(apiFetch);
+    const fileIds = ["file-1"];
+    const body = { archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: "request-1",
+      fileIds, confirmedMatchingSignedDocument: true, expectedApprovalInstanceId: "approval-1",
+      expectedSealTaskId: "seal-1", documentContentRevision: 3, documentContentFingerprint: "a".repeat(64) } as const;
+
+    await expect(archiveSignedContractV2("version/1", body, () => token === "actor-a")).rejects.toMatchObject({ status: 401 });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(attempts).toEqual([{ path: "/api/contracts/version%2F1/signed-archive", authorization: "Bearer actor-a" }]);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(onRequestFailure).not.toHaveBeenCalled();
+  });
+
+  it("does not upload a selected signed PDF under a later account after 401", async () => {
+    const { createApiFetch } = await import("./http");
+    let token = "actor-a";
+    const attempts: Array<{ path: string; authorization: string | null; uploadKey: FormDataEntryValue | null }> = [];
+    const send = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body;
+      expect(form).toBeInstanceOf(FormData);
+      attempts.push({ path: String(input), authorization: new Headers(init?.headers).get("Authorization"),
+        uploadKey: (form as FormData).get("idempotencyKey") });
+      token = "actor-b";
+      return Response.json({ message: "请重新登录" }, { status: 401 });
+    });
+    const refresh = vi.fn(async () => true);
+    const onUnauthorized = vi.fn();
+    vi.spyOn(apiTransport, "apiFetch").mockImplementation(createApiFetch({ getAccessToken: () => token, refresh, onUnauthorized }, send));
+
+    await expect(uploadPrivateFile(new Blob(["%PDF-1.4"], { type: "application/pdf" }), "签章.pdf",
+      "upload-1", () => token === "actor-a")).rejects.toMatchObject({ status: 401 });
+    expect(attempts).toEqual([{ path: "/api/files", authorization: "Bearer actor-a", uploadKey: "upload-1" }]);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
   it("freshly verifies signing material-change coordinates before one POST", async () => {
@@ -2810,10 +2922,50 @@ describe("core flow read API client", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/contracts/route%2Fa",
-        {}
+        { headers: { "x-contract-numeric-protocol": "2" } }
       );
     }
   );
+
+  it("posts the same parallel round after another duty updates both timestamps", async () => {
+    const epoch = "a".repeat(64);
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail({
+        expectedParallelApprovalEpoch: epoch,
+        expectedContractUpdatedAt: "2026-08-01T00:08:00.000Z",
+        expectedApprovalUpdatedAt: "2026-08-01T00:08:00.000Z"
+      })))
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const input = contractReviewActionInput({ expectedParallelApprovalEpoch: epoch });
+    const prepared = await prepareContractApprovalReviewAction(input);
+
+    await expect(executeContractApprovalReviewAction({
+      decision: "approve",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      stale: vi.fn(),
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    })).resolves.toMatchObject({ status: "completed" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      expectedParallelApprovalEpoch: epoch, expectedApprovalInstanceId: "approval-a", expectedNodeIndex: 1,
+      expectedContractUpdatedAt: input.expectedContractUpdatedAt, expectedApprovalUpdatedAt: input.expectedApprovalUpdatedAt
+    });
+  });
+
+  it.each([undefined, "b".repeat(64)])("refuses a missing or changed parallel epoch before the approval POST", async (freshEpoch) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(
+      contractReviewDetail({ expectedParallelApprovalEpoch: freshEpoch })
+    ));
+    await expect(prepareContractApprovalReviewAction(contractReviewActionInput({
+      expectedParallelApprovalEpoch: "a".repeat(64)
+    }))).rejects.toThrow("合同审批资格、风险或审批坐标已变化");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
   it("freezes the contract review facts and performs one POST after the fresh GET", async () => {
     const risk = contractOwnerRisk();
@@ -4573,6 +4725,7 @@ function contractReviewDetail(
     expectedApprovalInstanceId?: string;
     expectedNodeIndex?: number;
     expectedApprovalUpdatedAt?: string;
+    expectedParallelApprovalEpoch?: string;
     reviewApprovalContext?: null;
     availableActions?: Array<Record<string, unknown>>;
     requiresSelfReviewConfirmation?: boolean;
@@ -4590,6 +4743,7 @@ function contractReviewDetail(
         ? null
         : {
             expectedContractUpdatedAt,
+            expectedParallelApprovalEpoch: overrides.expectedParallelApprovalEpoch,
             expectedApprovalInstanceId:
               overrides.expectedApprovalInstanceId ?? "approval-a",
             expectedNodeIndex: overrides.expectedNodeIndex ?? 1,

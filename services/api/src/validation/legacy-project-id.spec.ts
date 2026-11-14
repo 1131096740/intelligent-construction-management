@@ -10,8 +10,13 @@ describe.each([GeneralProcurementDraftDto, ProjectRosterChangeDto])("历史项�
     const errors = await validate(plainToInstance(Dto as typeof GeneralProcurementDraftDto, { projectId }));
     expect(errors.filter(error => error.property === "projectId")).toEqual([]);
   });
-  it.each([undefined, null, "", "   ", 123, {}, "a".repeat(129)])("拒绝无效值 %p", async (projectId) => {
+  it.each([123, {}, "a".repeat(129)])("拒绝无效值 %p", async (projectId) => {
     const errors = await validate(plainToInstance(Dto as typeof GeneralProcurementDraftDto, { projectId }));
     expect(errors.some(error => error.property === "projectId")).toBe(true);
+  });
+  it.each([undefined, null, "", "   "])("按业务入口处理缺失项目标识 %p", async (projectId) => {
+    const input = { scope: "company_daily", projectId };
+    const errors = await validate(plainToInstance(Dto as typeof GeneralProcurementDraftDto, input));
+    expect(errors.some(error => error.property === "projectId")).toBe(Dto === ProjectRosterChangeDto);
   });
 });

@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 
 import {
   frozenAffiliateFromJson,
@@ -53,7 +54,9 @@ export class PaymentExecutionOperatingSourceAdapter
       },
       orderBy: [{ paidAt: "asc" }, { id: "asc" }]
     });
-    return Promise.all(rows.map((row) => this.snapshot(tx, row)));
+    if (!rows.length) return [];
+    const readRegisteredFunding = await registeredPaymentInstalled(tx);
+    return Promise.all(rows.map((row) => this.snapshot(tx, row, readRegisteredFunding)));
   }
 
   async readSourceSnapshot(
@@ -78,7 +81,7 @@ export class PaymentExecutionOperatingSourceAdapter
       where: { id: row.paymentRequestId }
     });
     if (!request || request.projectId !== locator.projectId) return null;
-    return this.snapshot(tx, row, request);
+    return this.snapshot(tx, row, await registeredPaymentInstalled(tx), request);
   }
 
   toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
@@ -123,14 +126,15 @@ export class PaymentExecutionOperatingSourceAdapter
         description: "实际付款清偿下游应付"
       })
     );
-    impacts.push({
+    const registeredFunding = source.registeredFunding ? requiredJsonRecord(source.registeredFunding,"登记资金来源") : null;
+    if (registeredFunding?.openingTreatment !== "included") impacts.push({
       idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
       sourceImpactKey:
-        actualPayer.kind === "construction_enterprise"
+        actualPayer.kind === "public_cash" ? "public_cash_funds_decrease" : actualPayer.kind === "construction_enterprise"
           ? "construction_enterprise_funds_decrease"
           : "company_project_funds_decrease",
       impactKind:
-        actualPayer.kind === "construction_enterprise"
+        actualPayer.kind === "public_cash" ? "public_cash_funds_decrease" : actualPayer.kind === "construction_enterprise"
           ? "construction_enterprise_funds_decrease"
           : "company_project_funds_decrease",
       amountCents,
@@ -139,7 +143,7 @@ export class PaymentExecutionOperatingSourceAdapter
       subject: actualPayer,
       description: "实际付款减少付款主体项目资金"
     });
-    if (!sameSubject(debtor, actualPayer)) {
+    if (actualPayer.kind !== "public_cash" && !sameSubject(debtor, actualPayer)) {
       impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:proxy`,
         sourceImpactKey: "inter_subject_proxy_payment",
@@ -169,7 +173,7 @@ export class PaymentExecutionOperatingSourceAdapter
         "付款执行"
       ),
       factKind: "downstream_payment",
-      operatingLevel: sameSubject(debtor, actualPayer)
+      operatingLevel: actualPayer.kind === "public_cash" || sameSubject(debtor, actualPayer)
         ? "project"
         : "inter_subject",
       evidenceLevel: "A",
@@ -188,9 +192,10 @@ export class PaymentExecutionOperatingSourceAdapter
         : {}),
       sourceSnapshot: snapshot.sourceSnapshot,
       basisSnapshot: sourceJson({
-        authority: "payment_execution_with_voucher",
+        authority: registeredFunding ? "registered_payment_execution" : "payment_execution_with_voucher",
         financeRecordRole: "financial_evidence_only",
-        voucherFileId: requiredJsonText(source, "voucherFileId", "付款执行")
+        voucherFileId: registeredFunding ? source.voucherFileId ?? null : requiredJsonText(source, "voucherFileId", "付款执行"),
+        voucherPending: registeredFunding ? source.voucherFileId === null : false
       }),
       subjects: {
         debtor,
@@ -206,6 +211,7 @@ export class PaymentExecutionOperatingSourceAdapter
   private async snapshot(
     tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
     row: PaymentExecutionRow,
+    readRegisteredFunding: boolean,
     loadedRequest?: PaymentRequestRow
   ): Promise<OperatingSourceSnapshot> {
     const request =
@@ -265,11 +271,12 @@ export class PaymentExecutionOperatingSourceAdapter
     });
     const debtor = approvedPayerIdentity(version, { paymentSubjectType: version.signingSubjectType });
     const approvedPayer = approvedPayerIdentity(version, request);
-    const actualPayer = actualPayerIdentity(
-      row,
-      affiliate.businessPartyVersionId,
-      row.payerAttestation
-    );
+    const registeredFunding = readRegisteredFunding
+      ? await tx.registeredPaymentFunding.findUnique({where:{executionId:row.id}})
+      : null;
+    const actualPayer = registeredFunding
+      ? {type:registeredFunding.actualPayerKind === "public_cash" ? "public_cash" : "our_company", id:registeredFunding.actualPayerId}
+      : actualPayerIdentity(row, affiliate.businessPartyVersionId, row.payerAttestation);
     const dueAllocations = allocations.filter(
       (allocation) => allocation.allocationType === "contract_due_payment"
     );
@@ -319,6 +326,7 @@ export class PaymentExecutionOperatingSourceAdapter
         debtorId: debtor.id,
         approvedPayerType: approvedPayer.type,
         approvedPayerId: approvedPayer.id,
+        ...(registeredFunding ? { registeredFunding: { accountId: registeredFunding.accountId, balanceRegistrationId: registeredFunding.balanceRegistrationId, openingTreatment: registeredFunding.openingTreatment, actualPayerSnapshot: registeredFunding.actualPayerSnapshot } } : {}),
         actualPayerType: actualPayer.type,
         actualPayerId: actualPayer.id,
         payeeVersionId: counterparty.businessPartyVersionId,
@@ -339,7 +347,7 @@ interface PaymentExecutionRow {
   amountCents: bigint;
   paidAt: Date;
   executedByUserId: string;
-  voucherFileId: string;
+  voucherFileId: string | null;
   payerAttestationFingerprint?: string | null;
   payerAttestation?: {
     holderCompanyEntityId: string;
@@ -421,6 +429,7 @@ function payerSubject(
   type: string,
   id: string
 ): OperatingSubjectReference {
+  if (type === "public_cash" && id === "public_cash") return { kind: "public_cash", id };
   if (type === "affiliate") return { kind: "construction_enterprise", id };
   if (type === "our_company") return { kind: "participating_company", id };
   throw new BadRequestException("付款主体类型不正确");

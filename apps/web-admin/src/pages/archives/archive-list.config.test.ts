@@ -52,7 +52,7 @@ describe("archive ledger page configuration", () => {
 
   it("states file privacy, responsibility, and audit rules", () => {
     expect(archiveRules).toEqual([
-      "合同/结算归档件由合同部上传并由合同部主管确认",
+      "各类归档资料按相应业务流程办理",
       "付款凭证由出纳/财务上传并关联实际付款记录",
       "敏感文件必须经后台权限校验、当前密码和下载原因后生成短时效下载链接",
       "归档上传、确认、下载、作废必须写入审计日志"

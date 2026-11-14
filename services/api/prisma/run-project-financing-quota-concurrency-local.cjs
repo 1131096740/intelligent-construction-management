@@ -9,7 +9,8 @@ const {
   mkdtemp,
   readFile,
   readdir,
-  rm
+  rm,
+  writeFile
 } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
@@ -22,6 +23,10 @@ const {
   withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
+const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
+const { readbackWireLimit } = require("./local-staged-migration-controls.cjs");
+const { localTailFailureDiagnostic } = require("./local-staged-tail-qualification.cjs");
+const TERSE_SQL_LOG_OPTIONS = "PGOPTIONS=-c log_min_error_statement=panic -c log_error_verbosity=terse";
 
 const DATABASE_NAME = "jiangkong_project_financing_quota_concurrency";
 const LEGACY_DATABASE_NAME =
@@ -91,6 +96,8 @@ const pnpm =
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
 const { command } = commandRuntime;
+let migrationFixture;
+let recoveryReadbackDatabase;
 
 function isLocalHostName(hostname) {
   return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
@@ -346,7 +353,7 @@ async function preparePre115MigrationRoot(temporaryRoot) {
   return prismaRoot;
 }
 
-async function runPrismaMigrate({ databaseUrl, runtimeEnv, schemaPath }) {
+async function runPrismaMigrateRaw({ databaseUrl, runtimeEnv, schemaPath }) {
   const args = [
     "--filter",
     "@jiangkong/api",
@@ -361,6 +368,11 @@ async function runPrismaMigrate({ databaseUrl, runtimeEnv, schemaPath }) {
     forwardOutput: true,
     timeoutMs: 15 * 60 * 1000
   });
+}
+
+async function runPrismaMigrate(request) {
+  if (!migrationFixture) throw new Error("项目垫资额度迁移夹具尚未绑定临时容器");
+  return migrationFixture.migrate(request);
 }
 
 async function runPrismaResolveRolledBack({ databaseUrl, runtimeEnv }) {
@@ -417,15 +429,208 @@ async function runPsql(dockerCommand, databaseName, sql) {
   ], { timeoutMs: 60_000 });
 }
 
-async function capturePostgresLogs(dockerCommand) {
+async function capturePostgresLogs(dockerCommand, options = {}) {
   const result = await dockerCommand([
     "logs",
-    dockerCommand.containerName
-  ]);
+    ...(options.bounded ? ["--tail", "257"] : []),
+    options.containerId ?? dockerCommand.containerName
+  ], options.bounded ? { timeoutMs: 10_000, maxOutputBytes: 128 * 1024 } : {});
   return {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? ""
   };
+}
+
+// Diagnostic spellings only: neither a selected callee nor database qualification.
+// Every emitted name/type comes from these literals, never an arbitrary identifier.
+const postgresDiagnosticNames = new Map();
+for (const name of [
+  "acldefault", "aclexplode", "convert_to", "count", "current_database", "current_setting",
+  "encode", "format", "has_any_column_privilege", "has_column_privilege", "has_function_privilege",
+  "has_parameter_privilege", "has_schema_privilege", "has_table_privilege", "jsonb_agg", "jsonb_build_object",
+  "jsonb_each", "jsonb_object_agg", "jsonb_object_keys", "jsonb_set", "pg_backend_pid",
+  "pg_get_constraintdef", "pg_has_role", "string_agg", "to_jsonb", "to_regclass", "to_regnamespace",
+  "to_regprocedure", "to_regrole", "unnest", "array_agg", "cardinality", "getdatabaseencoding",
+  "has_sequence_privilege", "jsonb_array_elements", "jsonb_array_elements_text", "jsonb_build_array",
+  "pg_control_system", "pg_current_xact_id", "pg_current_xact_id_if_assigned", "pg_xact_status",
+  "set_config", "sha256", "split_part", "to_char"
+]) {
+  for (const spelling of [name, "pg_catalog." + name]) postgresDiagnosticNames.set(spelling, spelling);
+}
+for (const name of [
+  "digest", "jg_assert_contract_direct_review_files_complete_v1", "jg_contract_archive_v2_complete_guard",
+  "jg_contract_direct_archive_binding_guard_v1", "jg_contract_direct_archive_proof_v1",
+  "jg_contract_direct_archive_request_sha_v1", "jg_contract_direct_pending_binding_guard_v1",
+  "jg_enforce_file_replacement_exclusive_binding", "jg_guard_contract_direct_archive_retention_binding_v1",
+  "jg_guard_contract_direct_review_file_reference_v1", "jg_guard_contract_direct_review_v1",
+  "jg_materialize_contract_direct_review_files_v1", "jg_protect_contract_direct_archive_file_v1",
+  "jg_protect_contract_direct_review_file_v1", "jg_require_contract_direct_archive_complete_v1",
+  "guard_payment_execution_payer_evidence_immutable", "guard_verified_bank_transaction_observation_evidence_immutable",
+  "jg_contract_direct_pending_file_guard_v1", "protectContractEconomicReview"
+]) {
+  for (const spelling of [name, "public." + name, '"' + name + '"', 'public."' + name + '"']) {
+    postgresDiagnosticNames.set(spelling, spelling);
+  }
+}
+const postgresDiagnosticTypes = new Map();
+for (const [display, catalog] of [
+  ["unknown", "unknown"], ["oid", "oid"], ["text", "text"], ["name", "name"],
+  ["smallint", "int2"], ["integer", "int4"], ["bigint", "int8"], ["boolean", "bool"],
+  ["bytea", "bytea"], ["json", "json"], ["jsonb", "jsonb"], ["record", "record"],
+  ["cstring", "cstring"], ["regclass", "regclass"], ["regproc", "regproc"],
+  ["regprocedure", "regprocedure"], ["regnamespace", "regnamespace"], ["regrole", "regrole"],
+  ['"char"', '"char"'], ["aclitem", "aclitem"], ["xid", "xid"], ["xid8", "xid8"],
+  ["oidvector", "oidvector"], ["int2vector", "int2vector"],
+  ["timestamp without time zone", "timestamp"], ["timestamp with time zone", "timestamptz"]
+]) {
+  for (const spelling of [display, "pg_catalog." + catalog]) {
+    postgresDiagnosticTypes.set(spelling, spelling);
+    postgresDiagnosticTypes.set(spelling + "[]", spelling + "[]");
+  }
+}
+const postgresDiagnosticOperators = new Map([
+  "=", "<>", ">", "->", "->>", "#>", "#>>", "-", "||", "~"
+].map(operator => [operator, operator]));
+function postgresAmbiguityDiagnostic(sqlState, message) {
+  if (sqlState !== "42725" || Buffer.byteLength(message) > 4096) return null;
+  // PG16's server formatter may append this position even in TERSE mode.
+  // Check the original byte budget above; discard only its bounded literal suffix.
+  const position = / at character ([1-9][0-9]{0,9})$/u.exec(message);
+  if (position && Number(position[1]) <= 2147483647) message = message.slice(0, position.index);
+  const operatorPrefix = "operator is not unique: ";
+  if (message.startsWith(operatorPrefix)) {
+    const signature = message.slice(operatorPrefix.length), candidates = [];
+    for (const operator of postgresDiagnosticOperators.values()) {
+      const operands = signature.split(" " + operator + " ");
+      if (operands.length !== 2) continue;
+      const left = postgresDiagnosticTypes.get(operands[0]), right = postgresDiagnosticTypes.get(operands[1]);
+      if (left !== undefined && right !== undefined) candidates.push(left + " " + operator + " " + right);
+    }
+    return candidates.length === 1 ? { messageClass: "OPERATOR_AMBIGUOUS", operatorCall: candidates[0] } : null;
+  }
+  const call = /^function (.+)\(([^()]*)\) is not unique$/u.exec(message);
+  if (call) {
+    const name = postgresDiagnosticNames.get(call[1]);
+    const argumentsList = call[2] === "" ? [] : call[2].split(", ");
+    if (!name || argumentsList.length > 100) return null;
+    const types = argumentsList.map(type => postgresDiagnosticTypes.get(type));
+    if (types.some(type => type === undefined)) return null;
+    return { messageClass: "FUNCTION_CALL_AMBIGUOUS", functionCall: name + "(" + types.join(", ") + ")" };
+  }
+  for (const [prefix, suffix, messageClass] of [
+    ['function name "', '" is not unique', "FUNCTION_NAME_AMBIGUOUS"],
+    ['more than one function named "', '"', "REGPROC_NAME_AMBIGUOUS"]
+  ]) {
+    if (!message.startsWith(prefix) || !message.endsWith(suffix)) continue;
+    const name = postgresDiagnosticNames.get(message.slice(prefix.length, -suffix.length));
+    if (name) return { messageClass, functionName: name };
+  }
+  return null;
+}
+
+function firstPostgresFailure(logs, applicationName, database) {
+  // The unredirected postgres:16 process writes server records to stderr.
+  // Reject a saturated tail rather than label a later error as the first.
+  if (Buffer.byteLength(logs.stdout) + Buffer.byteLength(logs.stderr) > 128 * 1024) {
+    return { status: "window-exceeded" };
+  }
+  const lineCount = [logs.stdout, logs.stderr].reduce((count, stream) => {
+    if (!stream) return count;
+    return count + stream.split("\n").length - Number(stream.endsWith("\n"));
+  }, 0);
+  if (lineCount > 256) return { status: "window-exceeded" };
+  const lines = logs.stderr.split("\n");
+  const prefix = `JG-PFQ|${applicationName}|${database}|`;
+  const record = /^([1-9][0-9]{0,9})\|([0-9A-Z]{5})\|(?:ERROR|FATAL|PANIC):[ \t]+([^\r\n]*)\r?$/u;
+  for (const line of lines) {
+    if (!line.startsWith(prefix)) continue;
+    const match = record.exec(line.slice(prefix.length));
+    if (!match || Number(match[1]) > 2147483647) continue;
+    if (match[2] === "25P02") return { status: "primary-not-retained" };
+    const reasons = {
+      "真实归档应用角色或函数资格未提供，拒绝安装": "ARCHIVE_APPLICATION_QUALIFICATION_REQUIRED",
+      "旧文件链实际caller闭包未提供，拒绝假定": "ARCHIVE_FILE_CALLERS_REQUIRED",
+      "真实待登记应用与文件调用者尚未供应，拒绝安装": "DIRECT_PENDING_CALLERS_REQUIRED",
+      "local fixture setup identity rejected": "FIXTURE_SETUP_IDENTITY_REJECTED",
+      "local fixture exact203 ledger rejected": "FIXTURE_EXACT203_LEDGER_REJECTED",
+      "local fixture old relation owner changed": "FIXTURE_OLD_RELATION_OWNER_CHANGED",
+      "local fixture old function owner changed": "FIXTURE_OLD_FUNCTION_OWNER_CHANGED",
+      "local fixture real file caller closure missing": "FIXTURE_FILE_CALLER_CLOSURE_MISSING",
+      "local fixture collision source changed": "FIXTURE_COLLISION_SOURCE_CHANGED",
+      "local fixture base identity changed": "FIXTURE_BASE_IDENTITY_CHANGED",
+      "local fixture old trigger changed": "FIXTURE_OLD_TRIGGER_CHANGED",
+      "local fixture old routine changed": "FIXTURE_OLD_ROUTINE_CHANGED",
+      "local fixture role catalog changed": "FIXTURE_ROLE_CATALOG_CHANGED",
+      "local fixture file callers changed": "FIXTURE_FILE_CALLERS_CHANGED",
+      "local fixture file caller DML vector limit": "FIXTURE_FILE_CALLER_DML_VECTOR_LIMIT",
+      "local fixture file caller DML changed": "FIXTURE_FILE_CALLER_DML_CHANGED",
+      "local fixture file caller stage changed": "FIXTURE_FILE_CALLER_STAGE_CHANGED",
+      "local fixture file caller column ACL changed": "FIXTURE_FILE_CALLER_COLUMN_ACL_CHANGED",
+      "local fixture readback too large": "FIXTURE_READBACK_TOO_LARGE"
+    };
+    const diagnostic = postgresAmbiguityDiagnostic(match[2], match[3]);
+    return {
+      status: "captured",
+      sqlState: match[2],
+      reason: match[2] === "P0001" && Object.hasOwn(reasons, match[3])
+        ? reasons[match[3]]
+        : "POSTGRES_ERROR",
+      ...(diagnostic ? { diagnostic } : {})
+    };
+  }
+  return { status: "primary-not-retained" };
+}
+
+function controlSqlTransport(error) {
+  if (!(error instanceof Error)) return null;
+  const code = Object.getOwnPropertyDescriptor(error, "code")?.value;
+  const message = Object.getOwnPropertyDescriptor(error, "message")?.value;
+  if (code === "E2BIG") return "ARGUMENT_LIMIT";
+  if (message === `${docker} 执行超时（60000ms）`) return "TIMEOUT";
+  if (message === "子进程输出超过允许字节数") return "OUTPUT_LIMIT";
+  return null;
+}
+
+async function retainMigrationFailure(dockerCommand, applicationName, error, control) {
+  const controlDatabase = control?.database;
+  let postgres;
+  try {
+    postgres = firstPostgresFailure(await capturePostgresLogs(dockerCommand, {
+      bounded: true,
+      ...(control ? { containerId: control.containerId } : {})
+    }), applicationName, controlDatabase ?? DATABASE_NAME);
+  } catch {
+    postgres = { status: "unavailable" };
+  }
+  const candidateSha = process.env.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA;
+  const transport = control ? controlSqlTransport(error) : null;
+  const localMigration = control ? null : localTailFailureDiagnostic(error);
+  const receipt = {
+    schemaVersion: 1,
+    gate: "project_financing_quota",
+    status: "failed",
+    phase: control?.phase ?? "first-migrate-deploy",
+    ...(control ? { database: controlDatabase } : {}),
+    candidateSha: /^[0-9a-f]{40}$/u.test(candidateSha ?? "") ? candidateSha : null,
+    postgres,
+    ...(transport ? { transport } : {}),
+    ...(localMigration ? { localMigration } : {})
+  };
+  // Only fixed fields, a SQLSTATE and allowlisted reason codes leave this function.
+  console.error("\n[project-financing-quota-failure] " + JSON.stringify(receipt));
+  const evidencePath = process.env.PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH;
+  if (!evidencePath) return;
+  try {
+    if (evidencePath !== path.join(tmpdir(), "project_financing_quota-evidence.json")) {
+      throw new Error("unexpected evidence path");
+    }
+    await writeFile(evidencePath, JSON.stringify(receipt) + "\n", {
+      flag: "wx",
+      mode: 0o600
+    });
+  } catch {
+    console.error("[project-financing-quota-failure] evidence-write-unavailable");
+  }
 }
 
 function postgresLogDelta(before, after) {
@@ -889,7 +1094,7 @@ async function verifyPre115RetainedMigrations({
     const postgresLogBefore = await capturePostgresLogs(dockerCommand);
     let migrationFailure;
     try {
-      await runPrismaMigrate({ databaseUrl: scenarioUrl, runtimeEnv });
+      await runPrismaMigrate({ databaseUrl: scenarioUrl, runtimeEnv, expectedFailure: scenario.expectedFailure });
     } catch (error) {
       migrationFailure = error;
     }
@@ -934,7 +1139,12 @@ async function verifyPre115RetainedMigrations({
       databaseUrl: scenarioUrl,
       runtimeEnv
     });
-    await runPrismaMigrate({ databaseUrl: scenarioUrl, runtimeEnv });
+    recoveryReadbackDatabase = scenario.databaseName;
+    try {
+      await runPrismaMigrate({ databaseUrl: scenarioUrl, runtimeEnv });
+    } finally {
+      recoveryReadbackDatabase = undefined;
+    }
     await verifyHistoricalRequestSnapshotNull(
       dockerCommand,
       scenario.databaseName
@@ -1059,6 +1269,7 @@ async function main() {
     "../dist/database/money-bigint-live-verification"
   );
   const databasePort = await freePort();
+  const fixtureRunId = randomUUID();
   const suffix = `${Date.now()}-${process.pid}-${randomUUID().slice(0, 8)}`;
   const containerName = `jiangkong-pfq-concurrency-${suffix}`;
   const temporaryRoot = await mkdtemp(
@@ -1132,13 +1343,15 @@ async function main() {
       await dockerCommand(["info"]);
       await dockerCommand(["image", "inspect", "postgres:16"]);
       containerLifecycle.containerRunAttempted = true;
-      await dockerCommand([
+      const created = await dockerCommand([
         "run",
         "--pull=never",
         "--detach",
         "--rm",
         "--name",
         containerName,
+        "--label",
+        `jg.local-migration-fixture=${fixtureRunId}`,
         "--env",
         "POSTGRES_USER=jiangkong",
         "--env",
@@ -1147,14 +1360,96 @@ async function main() {
         `POSTGRES_DB=${DATABASE_NAME}`,
         "--publish",
         `127.0.0.1:${databasePort}:5432`,
-        "postgres:16"
+        "postgres:16",
+        "-c", "log_destination=stderr",
+        "-c", "logging_collector=off",
+        "-c", "log_line_prefix=JG-PFQ|%a|%d|%p|%e|",
+        "-c", "log_min_messages=error",
+        "-c", "log_error_verbosity=terse",
+        "-c", "log_statement=none",
+        "-c", "log_min_error_statement=panic",
+        "-c", "log_parameter_max_length_on_error=0"
       ], {
         extraEnv: { POSTGRES_PASSWORD: databasePassword },
         forwardOutput: true
       });
+      const createdContainerId = created.stdout.trim();
       await waitForPostgres(containerName, dockerCommand);
 
-      const firstDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv });
+      const firstApplicationName = `jg-pfq-first-${randomUUID()}`;
+      migrationFixture = createLocalMigrationFixture({
+        container: { id: createdContainerId, name: containerName, runId: fixtureRunId },
+        databaseNames: Object.freeze([...ALLOWED_DATABASE_NAMES]),
+        temporaryRoot,
+        inspectContainer: async (id) => {
+          const inspected = await dockerCommand([
+            "inspect", "--type", "container", "--format",
+            '{"id":{{json .Id}},"name":{{json .Name}},"runId":{{json (index .Config.Labels "jg.local-migration-fixture")}},"running":{{json .State.Running}},"ports":{{json .NetworkSettings.Ports}}}',
+            id
+          ], { timeoutMs: 10_000, maxOutputBytes: 8192 });
+          const value = JSON.parse(inspected.stdout);
+          const bindings = value.ports?.["5432/tcp"];
+          if (!Array.isArray(bindings) || bindings.length !== 1) {
+            throw new Error("项目垫资额度临时容器端口映射未封闭");
+          }
+          return {
+            id: value.id, name: value.name?.replace(/^\//u, ""), runId: value.runId,
+            running: value.running, publishedHost: bindings[0].HostIp,
+            publishedPort: bindings[0].HostPort
+          };
+        },
+        executeSql: async ({ database, sql, phase }) => {
+          if (!ALLOWED_DATABASE_NAMES.includes(database)) {
+            throw new Error("项目垫资额度迁移夹具拒绝非专用数据库");
+          }
+          const recoveryReadback = phase === "stage205-readback" && database === recoveryReadbackDatabase;
+          const historicalSetup = phase === "qualification-setup" && database !== DATABASE_NAME;
+          const evidencePhase = historicalSetup ? "qualification-setup"
+            : recoveryReadback ? "pre115-recovery-stage205-readback" : null;
+          const terse = evidencePhase || /^tail(213|215|218|221)-(before|readback)$/u.test(phase ?? "");
+          const applicationName = historicalSetup ? `jg-pfq-setup-${randomUUID()}`
+            : recoveryReadback ? `jg-pfq-pre115-205-${randomUUID()}` : firstApplicationName;
+          const pending = dockerCommand([
+            "exec", "--env", `PGAPPNAME=${applicationName}`,
+            ...(terse ? ["--env", TERSE_SQL_LOG_OPTIONS] : []), createdContainerId,
+            "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1", ...(terse ? ["-v", "VERBOSITY=terse"] : []),
+            "-U", "jiangkong", "-d", database, "-X", "-q", "-A", "-t", "-c", sql
+          ], { timeoutMs: 60_000, maxOutputBytes: phase === "stage205-readback" ? readbackWireLimit : 512 * 1024 });
+          if (!evidencePhase) return pending;
+          try {
+            return await pending;
+          } catch (error) {
+            await retainMigrationFailure(dockerCommand, applicationName, error, {
+              database, containerId: createdContainerId, phase: evidencePhase
+            });
+            throw error;
+          }
+        },
+        executeSqlStdin: async ({ database, sql }) => {
+          if (!ALLOWED_DATABASE_NAMES.includes(database)) {
+            throw new Error("项目垫资额度迁移夹具拒绝非专用数据库");
+          }
+          return dockerCommand([
+            "exec", "--interactive", "--env", `PGAPPNAME=${firstApplicationName}`, "--env", TERSE_SQL_LOG_OPTIONS, createdContainerId,
+            "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=terse",
+            "-U", "jiangkong", "-d", database, "-X", "-q", "-A", "-t", "-f", "-"
+          ], { stdinText: sql, timeoutMs: 60_000, maxOutputBytes: 512 * 1024 });
+        },
+        deploy: runPrismaMigrateRaw
+      });
+
+      const firstDatabaseUrl = new URL(databaseUrl);
+      firstDatabaseUrl.searchParams.set("application_name", firstApplicationName);
+      let firstDeploy;
+      try {
+        firstDeploy = await runPrismaMigrate({
+          databaseUrl: firstDatabaseUrl.toString(),
+          runtimeEnv
+        });
+      } catch (error) {
+        await retainMigrationFailure(dockerCommand, firstApplicationName, error);
+        throw error;
+      }
       const secondDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv });
       if (!/No pending migrations to apply\.?/u.test(secondDeploy.stdout)) {
         throw new Error("第二次 migrate deploy 未证明零待办");
@@ -1206,6 +1501,7 @@ async function main() {
       );
     }, cleanup);
   } finally {
+    migrationFixture = undefined;
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
   }

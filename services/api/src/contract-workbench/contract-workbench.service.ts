@@ -1,3 +1,8 @@
+import { assertNotDirectPendingVersion } from "../contract/contract-direct-pending-policy";
+import { hasDirectSigningInput } from "../contract/contract-direct-pending-source";
+import { resolveContractDraftBusinessType } from "./contract-draft-basics";
+import { CONTRACT_BODY_RENDER_PROFILE_KEY, readContractBodyRenderProfile } from "../contract-document/contract-body-document";
+import { assertContractDraftNumericProtocol, assertLegacyContractDraftWriter, CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON, contractVersionMoneyReadProjection, contractBillMoneyReadProjection } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -15,6 +20,7 @@ import {
   contractPricingPolicy,
   isContractSettlementMode,
   normalizeTaxRatePercent,
+  normalizeBusinessAmount,
   type ContractBillDefinition,
   type ContractClauseDefinition,
   type ContractFieldDefinition,
@@ -34,7 +40,7 @@ import {
   lockContractDraftMutationBoundary
 } from "../contract/contract-draft-lifecycle";
 import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
-import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
+import { assertContractBillDerivedUnitPrices, compatibleBillCents, sumContractBillBusinessAmounts } from "../contract-bill/contract-bill-totals";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
 import { calculateContractDocumentContentFingerprint } from "./contract-document-content";
@@ -82,6 +88,10 @@ interface TemplateSnapshot {
 }
 
 interface BillSnapshot {
+  numericProtocolVersion?: number;
+  taxInclusiveAmountYuan?: string | null;
+  taxExclusiveAmountYuan?: string | null;
+  taxAmountYuan?: string | null;
   billKey: string;
   name: string;
   amountRole: string;
@@ -95,6 +105,12 @@ interface BillSnapshot {
   taxExclusiveAmountCents: string;
   taxAmountCents: string;
   rows: Array<{
+    numericProtocolVersion?: number;
+    numericSource?: string;
+    numericReviewStatus?: string;
+    taxInclusiveAmountYuan?: string | null;
+    taxExclusiveAmountYuan?: string | null;
+    taxAmountYuan?: string | null;
     rowKey: string;
     sortOrder: number;
     itemCode: string | null;
@@ -188,14 +204,14 @@ export class ContractWorkbenchService {
     });
   }
 
-  async listDrafts(actorUserId: string, scope: "my" | "voided") {
+  async listDrafts(actorUserId: string, scope: "my" | "voided", numericProtocol?: string) {
     if (scope !== "my" && scope !== "voided") {
       throw new BadRequestException("合同工作台列表范围不正确，请刷新页面后重试");
     }
     const isDirector = await this.hasGlobalContractDirector(this.prisma, actorUserId);
     const versions = await this.prisma.contractVersion.findMany({
       where: { status: { in: [...EDITABLE_STATUSES] } },
-      select: { id: true, contractId: true, changeType: true }
+      select: { id: true, contractId: true, changeType: true, numericProtocolVersion: true }
     });
     const versionIds = versions.map((version) => version.id);
     const lookupClient = this.historicalTakeoverLookupClient(this.prisma);
@@ -212,7 +228,7 @@ export class ContractWorkbenchService {
       version.changeType !== "historical_takeover" &&
       !takeoverVersionIds.has(version.id)
     );
-    return this.toReadModel(await this.prisma.contract.findMany({
+    const contracts = await this.prisma.contract.findMany({
       where: {
         id: {
           in: [...new Set(ordinaryVersions.map((version) => version.contractId))]
@@ -221,21 +237,24 @@ export class ContractWorkbenchService {
         ...(isDirector ? {} : { ownerUserId: actorUserId })
       },
       orderBy: { updatedAt: "desc" }
-    }));
+    });
+    for (const version of ordinaryVersions.filter(item => contracts.some(contract => contract.id === item.contractId))) assertContractDraftNumericProtocol(version, numericProtocol);
+    return this.toReadModel(contracts);
   }
 
-  async getDraft(contractId: string, actorUserId: string) {
-    return this.loadDraft(contractId, actorUserId);
+  async getDraft(contractId: string, actorUserId: string, numericProtocol?: string) {
+    return this.loadDraft(contractId, actorUserId, undefined, numericProtocol);
   }
 
-  async getDraftFromExactVersion(version: ContractVersion, actorUserId: string) {
-    return this.loadDraft(version.contractId, actorUserId, version);
+  async getDraftFromExactVersion(version: ContractVersion, actorUserId: string, numericProtocol?: string) {
+    return this.loadDraft(version.contractId, actorUserId, version, numericProtocol);
   }
 
   private async loadDraft(
     contractId: string,
     actorUserId: string,
-    exactVersion?: ContractVersion
+    exactVersion?: ContractVersion,
+    numericProtocol?: string
   ) {
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
     if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
@@ -257,12 +276,14 @@ export class ContractWorkbenchService {
     if (!EDITABLE_STATUSES.has(version.status)) {
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
     }
+    assertContractDraftNumericProtocol(version, numericProtocol);
     const lifecycle = await loadContractDraftLifecycle(this.prisma, version);
     const lifecycleAction = lifecycle.expectedAction;
     if (!lifecycleAction) {
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
     }
 
+    const directPending = hasDirectSigningInput(version.draftData);
     const [
       bills,
       checkpoints,
@@ -289,10 +310,12 @@ export class ContractWorkbenchService {
         orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
       }),
       this.loadGeneratedDocumentsForDraft(version),
-      this.prisma.paymentTermsVersion.findFirst({
-        where: { contractVersionId: version.id },
-        select: { id: true, originalText: true }
-      }),
+      directPending
+        ? this.readFixedDirectPaymentTerms(version)
+        : this.prisma.paymentTermsVersion.findFirst({
+            where: { contractVersionId: version.id },
+            select: { id: true, originalText: true }
+          }),
       version.contractGovernanceVersion === 1
         ? this.prisma.contractVersionAuthorizationLink.findMany({
             where: { contractVersionId: version.id },
@@ -342,7 +365,7 @@ export class ContractWorkbenchService {
           orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
         })
       : [];
-    assertContractBillDerivedUnitPrices(rows);
+    for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
     const remainderCancellationFacts = await this.lineage.remainderCancellationFacts(
       this.prisma,
       { id: version.id, baseVersionId: version.baseVersionId },
@@ -377,8 +400,9 @@ export class ContractWorkbenchService {
         facts.historicalQuantity !== null &&
         Boolean(facts.expectedOccupancyToken?.trim())
     );
+    const preciseHistoricalRemainderBlocked = version.numericProtocolVersion === 2 || bills.some(bill => bill.numericProtocolVersion === 2);
     const remainderActionEnabled =
-      isOwner &&
+      !preciseHistoricalRemainderBlocked && isOwner &&
       EDITABLE_STATUSES.has(version.status) &&
       hasCompleteCancellableRemainder;
     const remainderAction = remainderFacts.length
@@ -393,7 +417,7 @@ export class ContractWorkbenchService {
               ? "只有当前合同经办人可以取消未实施余量"
               : !EDITABLE_STATUSES.has(version.status)
                 ? "合同版本当前不可编辑"
-                : "当前没有事实完整且可取消的未实施余量",
+                : preciseHistoricalRemainderBlocked ? CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON : "当前没有事实完整且可取消的未实施余量",
           requiresComment: true,
           requiresPassword: false
         }
@@ -419,9 +443,11 @@ export class ContractWorkbenchService {
       lifecycleBlockers: [...lifecycle.blockers, ...lifecycleDisabledReasons],
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       expectedDraftRevision: version.draftRevision,
-      contract,
+      contract: version.status === "draft" && version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) && typeof version.draftData.contractName === "string" && version.draftData.contractName.trim()
+        ? { ...contract, name: version.draftData.contractName } : contract,
       version: {
         ...version,
+        ...contractVersionMoneyReadProjection(version),
         taxFacts: this.taxFactsReadModel(version)
       },
       change: {
@@ -451,7 +477,7 @@ export class ContractWorkbenchService {
         confirmedAt: version.settlementModeConfirmedAt?.toISOString() ?? null,
         confirmedByUserId: version.settlementModeConfirmedByUserId,
         confirmationRequired: !version.settlementModeConfirmedAt,
-        canConfirm: await this.hasGlobalContractDirector(this.prisma, actorUserId)
+        canConfirm: !directPending && await this.hasGlobalContractDirector(this.prisma, actorUserId)
       },
       readiness: this.readinessFromSnapshot(version.readinessSnapshot),
       governance: version.contractGovernanceVersion === 1
@@ -465,6 +491,7 @@ export class ContractWorkbenchService {
         : null,
       bills: bills.map((bill) => ({
         ...bill,
+        ...contractBillMoneyReadProjection(bill),
         rows: rows
           .filter((row) => row.contractBillId === bill.id)
           .map((row) => {
@@ -472,6 +499,7 @@ export class ContractWorkbenchService {
             if (!facts?.hasHistoricalOccupancy) {
               return {
                 ...row,
+                ...contractBillMoneyReadProjection(row),
                 unitPrice: this.formatUnitPrice(row.unitPrice),
                 taxRatePercent: row.taxRate?.toString() ?? null
               };
@@ -480,7 +508,7 @@ export class ContractWorkbenchService {
               facts.historicalQuantity !== null &&
               Boolean(facts.expectedOccupancyToken?.trim());
             const enabled =
-              isOwner &&
+              !preciseHistoricalRemainderBlocked && isOwner &&
               EDITABLE_STATUSES.has(version.status) &&
               facts.canCancel &&
               factsComplete;
@@ -490,13 +518,14 @@ export class ContractWorkbenchService {
                 ? "只有当前合同经办人可以取消未实施余量"
                 : !EDITABLE_STATUSES.has(version.status)
                   ? "合同版本当前不可编辑"
-                  : facts.disabledReason ?? (
+                  : preciseHistoricalRemainderBlocked ? CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON : facts.disabledReason ?? (
                     factsComplete
                       ? "该清单行当前没有可取消的未实施余量"
                       : "历史结算占用事实不完整，请刷新后重试"
                   );
             return {
               ...row,
+              ...contractBillMoneyReadProjection(row),
               unitPrice: this.formatUnitPrice(row.unitPrice),
               taxRatePercent: row.taxRate?.toString() ?? null,
               availableActions: [{
@@ -523,8 +552,26 @@ export class ContractWorkbenchService {
       documents,
       paymentTerms: paymentTerms
         ? { originalText: paymentTerms.originalText, stages: paymentStages }
-        : { originalText: "", stages: [] }
+        : directPending ? null : { originalText: "", stages: [] }
     });
+  }
+
+  private async readFixedDirectPaymentTerms(version: ContractVersion) {
+    const draft = version.draftData;
+    const marker = this.isPlainObject(draft) ? draft.directSigningInput : undefined;
+    const termsId = this.isPlainObject(marker) ? marker.fixedPaymentTermsVersionId : undefined;
+    if (termsId === null) return null;
+    if (typeof termsId !== "string" || !termsId) {
+      throw new ConflictException("已签合同付款约定来源暂时无法核对");
+    }
+    const terms = await this.prisma.paymentTermsVersion.findUnique({
+      where: { id: termsId },
+      select: { id: true, contractId: true, contractVersionId: true, originalText: true }
+    });
+    if (!terms || terms.id !== termsId || terms.contractId !== version.contractId || terms.contractVersionId !== version.id) {
+      throw new ConflictException("已签合同付款约定来源暂时无法核对");
+    }
+    return terms;
   }
 
   async saveDraft(
@@ -539,6 +586,12 @@ export class ContractWorkbenchService {
         contractVersionId,
         actorUserId
       );
+      assertLegacyContractDraftWriter(version);
+      readContractBodyRenderProfile(version.draftData); // Unknown persisted data never downgrades through this legacy writer.
+      if (version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) &&
+        Object.hasOwn(version.draftData, CONTRACT_BODY_RENDER_PROFILE_KEY)) {
+        throw new ConflictException("合同文书呈现资料已升级，请使用新版合同草稿工作台保存，原内容已保留");
+      }
       this.assertRevision(version.draftRevision, input.expectedRevision);
 
       const template = this.parseTemplateSnapshot(version.templateSnapshot);
@@ -560,6 +613,7 @@ export class ContractWorkbenchService {
         throw new BadRequestException("合同变更不得修改我方签约主体，如需换主体请新签合同");
       }
       const clientDraftData = { ...input.draftData };
+      if (Object.hasOwn(clientDraftData, "documentRenderProfile")) throw new BadRequestException("合同文书呈现资料由系统维护，请刷新后重新保存");
       delete clientDraftData.companyEntitySelection;
       delete clientDraftData.myCompanyEntity;
       delete clientDraftData.workbenchReferences;
@@ -640,6 +694,8 @@ export class ContractWorkbenchService {
         ? pricingPolicy.contractAmountCents
         : pricingPolicy.kind === "priced_bill"
           ? billAmount
+          : input.numericProtocolVersion === 2
+          ? compatibleBillCents(input.manualAmountYuan ?? null) ?? 0n
           : this.toCents(input.manualAmountCents, "manualAmountCents");
       const estimatedAmountCents = this.resolveEstimatedAmountCents(
         input.estimatedAmountCents,
@@ -804,16 +860,17 @@ export class ContractWorkbenchService {
       template,
       changeBase?.draftData
     );
+    if (version.signingSubjectType === "draft_unconfirmed") resolveContractDraftBusinessType(storedDraftData, null, version.signingSubjectType);
     if (isChangeVersion) {
       if (!changeBase) {
         throw new BadRequestException("合同变更直接来源版本不存在，不能保存草稿");
       }
       assertContractChangeContentAllowed({
         baseDraftData: this.withoutWorkbenchReferences(
-          this.withoutTaxFactMirror(changeBase.draftData)
+          this.changeBusinessContentWithoutRenderProfile(this.withoutTaxFactMirror(changeBase.draftData))
         ) as Prisma.JsonValue,
         candidateDraftData: this.withoutWorkbenchReferences(
-          this.withoutTaxFactMirror(storedDraftData)
+          this.changeBusinessContentWithoutRenderProfile(this.withoutTaxFactMirror(storedDraftData))
         ) as Prisma.JsonValue,
         baseClauses: changeBase.clauseSnapshot,
         candidateClauses: input.clauses,
@@ -838,7 +895,7 @@ export class ContractWorkbenchService {
     const pricingPolicy = contractPricingPolicy({
       pricingNature: input.pricingNature,
       amountLimitType: version.amountLimitType,
-      hasPricedRows: pricedRows.length > 0
+      hasPricedRows: input.numericProtocolVersion === 2 && input.pricingNature === "fixed_total" ? false : pricedRows.length > 0
     });
     if (input.amountSource !== pricingPolicy.amountSource) {
       throw new BadRequestException(
@@ -853,7 +910,9 @@ export class ContractWorkbenchService {
       ? pricingPolicy.contractAmountCents
       : pricingPolicy.kind === "priced_bill"
         ? this.sumIncludedBills(bills)
-        : this.toCents(input.manualAmountCents, "manualAmountCents");
+        : input.numericProtocolVersion === 2
+          ? compatibleBillCents(input.manualAmountYuan ?? null) ?? 0n
+          : this.toCents(input.manualAmountCents, "manualAmountCents");
     const estimatedAmountCents = this.resolveEstimatedAmountCents(
       input.estimatedAmountCents,
       pricingPolicy
@@ -889,6 +948,7 @@ export class ContractWorkbenchService {
       version.pricingNature !== input.pricingNature ||
       version.amountSource !== input.amountSource ||
       version.amountCents !== amountCents ||
+      (input.numericProtocolVersion === 2 && input.amountSource === "manual" && (version.numericProtocolVersion !== 2 || (version.amountYuan?.toFixed(4) ?? null) !== input.manualAmountYuan)) ||
       version.estimatedAmountCents !== estimatedAmountCents ||
       version.amountAdjustmentReason !==
         (aggregateInput.draft.amountAdjustmentReason ?? null) ||
@@ -989,6 +1049,12 @@ export class ContractWorkbenchService {
       await tx.paymentTermsStage.deleteMany({
         where: { paymentTermsVersionId: terms.id }
       });
+      return { changed: true };
+    }
+    if (version.numericProtocolVersion === 2 && paymentTerms.stages.length === 0) {
+      if (terms.originalText === paymentTerms.originalText && existingStages.length === 0) return { changed: false };
+      await tx.paymentTermsVersion.update({ where: { id: terms.id }, data: { originalText: paymentTerms.originalText } });
+      await tx.paymentTermsStage.deleteMany({ where: { paymentTermsVersionId: terms.id } });
       return { changed: true };
     }
     const explicitSettlementMode = isContractSettlementMode(version.settlementMode);
@@ -1098,7 +1164,8 @@ export class ContractWorkbenchService {
   async confirmSettlementMode(
     contractVersionId: string,
     actorUserId: string,
-    input: ConfirmContractSettlementModeDto
+    input: ConfirmContractSettlementModeDto,
+    numericProtocol?: string
   ) {
     if (!isContractSettlementMode(input?.settlementMode)) {
       throw new BadRequestException("合同结算方式不正确，请重新选择");
@@ -1113,6 +1180,8 @@ export class ContractWorkbenchService {
         contractVersionId,
         "合同草稿当前不可确认结算方式，请刷新后查看最新状态"
       );
+      assertNotDirectPendingVersion(version);
+      assertContractDraftNumericProtocol(version, numericProtocol);
       this.assertRevision(version.draftRevision, input.expectedRevision);
       const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
       if (!contract) throw new NotFoundException("未找到合同，请刷新后重试");
@@ -1158,7 +1227,7 @@ export class ContractWorkbenchService {
           revisionAfter: input.expectedRevision + 1
         }
       });
-      return { ...this.toReadModel(confirmed!), settlementModeSnapshot };
+      return { ...this.toReadModel({ ...confirmed!, ...contractVersionMoneyReadProjection(confirmed!) }), settlementModeSnapshot };
     });
   }
 
@@ -1174,6 +1243,7 @@ export class ContractWorkbenchService {
         contractVersionId,
         actorUserId
       );
+      assertLegacyContractDraftWriter(version);
       const existing = await tx.contractDraftCheckpoint.findMany({
         where: { contractVersionId },
         orderBy: { sequenceNo: "desc" }
@@ -1238,6 +1308,7 @@ export class ContractWorkbenchService {
         contractVersionId,
         actorUserId
       );
+      assertLegacyContractDraftWriter(version);
       const checkpoint = await tx.contractDraftCheckpoint.findUnique({
         where: { id: checkpointId }
       });
@@ -1455,7 +1526,8 @@ export class ContractWorkbenchService {
   async applyTypeChange(
     contractVersionId: string,
     actorUserId: string,
-    rawInput: unknown
+    rawInput: unknown,
+    numericProtocol?: string
   ) {
     const input = this.parseApplyTypeChangeInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
@@ -1464,6 +1536,8 @@ export class ContractWorkbenchService {
         contractVersionId,
         actorUserId
       );
+      assertNotDirectPendingVersion(version);
+      assertContractDraftNumericProtocol(version, numericProtocol);
       if (version.changeType === "change" || version.changeType === "supplement") {
         throw new BadRequestException("合同变更不得切换合同类型或业务模板");
       }
@@ -1618,7 +1692,7 @@ export class ContractWorkbenchService {
       )) {
         await tx.contractBill.updateMany({
           where: { contractVersionId, billKey: bill.key },
-          data: this.billDefinitionData(bill)
+          data: { ...this.billDefinitionData(bill), ...(version.numericProtocolVersion === 2 ? { quantityScale: 4, unitPriceScale: 4 } : {}) }
         });
       }
       if (addedBills.length) {
@@ -1626,7 +1700,9 @@ export class ContractWorkbenchService {
           data: addedBills.map((bill) => ({
             contractVersionId,
             billKey: bill.key,
-            ...this.billDefinitionData(bill)
+            ...this.billDefinitionData(bill),
+            ...(version.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4,
+              taxInclusiveAmountYuan: "0.0000", taxExclusiveAmountYuan: "0.0000", taxAmountYuan: "0.0000" } : {})
           }))
         });
       }
@@ -1636,10 +1712,12 @@ export class ContractWorkbenchService {
       const finalAmountCents = version.amountSource === "bill_sum"
         ? this.sumIncludedBills(finalBills)
         : version.amountCents;
+      const finalAmountYuan = version.numericProtocolVersion === 2 ? version.amountSource === "bill_sum"
+        ? sumContractBillBusinessAmounts(finalBills) : version.amountYuan?.toFixed(4) ?? null : null;
       if (version.amountSource === "bill_sum") {
         await tx.contractVersion.update({
           where: { id: contractVersionId },
-          data: { amountCents: finalAmountCents }
+          data: { amountCents: finalAmountCents, ...(version.numericProtocolVersion === 2 ? { amountYuan: finalAmountYuan } : {}) }
         });
       }
       const [
@@ -1688,6 +1766,7 @@ export class ContractWorkbenchService {
             pricingNature: version.pricingNature,
             amountSource: version.amountSource,
             amountCents: finalAmountCents.toString(),
+            ...(version.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, amountYuan: finalAmountYuan } : {}),
             estimatedAmountCents: version.estimatedAmountCents?.toString() ?? null,
             amountAdjustmentReason: version.amountAdjustmentReason,
             taxFacts: {
@@ -1707,6 +1786,8 @@ export class ContractWorkbenchService {
               schemaSnapshot: bill.schemaSnapshot,
               sourceExcelFileId: bill.sourceExcelFileId,
               taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
+              ...(bill.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+                taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null } : {}),
               taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
               taxAmountCents: bill.taxAmountCents.toString(),
               rows: documentBillRows
@@ -1724,6 +1805,8 @@ export class ContractWorkbenchService {
                   taxRateSource: row.taxRateSource,
                   pricingFactStatus: row.pricingFactStatus,
                   precisionPolicy: row.precisionPolicy,
+                  ...(row.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, numericSource: row.numericSource, numericReviewStatus: row.numericReviewStatus,
+                    taxInclusiveAmountYuan: row.taxInclusiveAmountYuan?.toFixed(4) ?? null, taxExclusiveAmountYuan: row.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: row.taxAmountYuan?.toFixed(4) ?? null } : {}),
                   taxInclusiveAmountCents:
                     row.taxInclusiveAmountCents?.toString() ?? null,
                   taxExclusiveAmountCents:
@@ -1797,9 +1880,8 @@ export class ContractWorkbenchService {
           documentContentFingerprint
         }
       });
-      return this.toReadModel(
-        await tx.contractVersion.findUnique({ where: { id: contractVersionId } })
-      );
+      const current = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      return this.toReadModel({ ...current!, ...contractVersionMoneyReadProjection(current!) });
     });
   }
 
@@ -2233,7 +2315,17 @@ export class ContractWorkbenchService {
     ) {
       throw new BadRequestException("合同金额来源不正确，请重新选择");
     }
-    if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
+    if (input.numericProtocolVersion !== undefined && input.numericProtocolVersion !== 2) {
+      throw new BadRequestException("合同数值版本不正确，请刷新工作台");
+    }
+    if (input.manualAmountYuan !== undefined || input.numericProtocolVersion === 2 && input.amountSource === "manual") {
+      if (input.numericProtocolVersion !== 2 || input.manualAmountYuan !== null && typeof input.manualAmountYuan !== "string") {
+        throw new BadRequestException("请按新版合同金额格式填写，未知金额请留空");
+      }
+      try { normalizeBusinessAmount(input.manualAmountYuan as string | null); }
+      catch { throw new BadRequestException("合同金额须填写规范数字，最多保留4位小数；请保留原输入后修改"); }
+      if (input.manualAmountCents !== undefined) throw new BadRequestException("合同金额不能同时填写两种精度格式，请刷新后重试");
+    } else if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
       this.toCents(input.manualAmountCents as string | undefined, "手工合同金额");
     }
     if (input.estimatedAmountCents !== undefined) {
@@ -2249,7 +2341,7 @@ export class ContractWorkbenchService {
       throw new BadRequestException("合同金额调整原因必须填写文本");
     }
     if (
-      input.layoutTemplateVersionId !== undefined &&
+      input.layoutTemplateVersionId !== undefined && input.layoutTemplateVersionId !== null &&
       (typeof input.layoutTemplateVersionId !== "string" ||
         !input.layoutTemplateVersionId.trim())
     ) {
@@ -2270,6 +2362,8 @@ export class ContractWorkbenchService {
     }
     return {
       expectedRevision: input.expectedRevision as number,
+      ...(input.numericProtocolVersion === 2 ? { numericProtocolVersion: 2 as const } : {}),
+      ...(input.manualAmountYuan !== undefined ? { manualAmountYuan: normalizeBusinessAmount(input.manualAmountYuan as string | null) } : {}),
       ...(input.companyEntityId === undefined
         ? {}
         : { companyEntityId: (input.companyEntityId as string).trim() }),
@@ -2606,6 +2700,9 @@ export class ContractWorkbenchService {
     const fieldKeys = new Set(template.fieldSchema.map((field) => field.key));
     const structuralKeys = new Set([
       "contractName",
+      "contractBasics",
+      "documentBody",
+      "documentRenderProfile",
       "myCompanyEntity",
       "companyEntitySelection",
       "fieldValues",
@@ -2635,6 +2732,27 @@ export class ContractWorkbenchService {
     );
     if (unknownNestedField) {
       throw new BadRequestException(`字段 ${unknownNestedField} 未在合同模板中声明，不能保存`);
+    }
+    if (draftData.contractBasics !== undefined) {
+      const basics = this.requireObject(draftData.contractBasics, "合同基础资料");
+      const choices: Record<string, readonly string[]> = {
+        relationship: ["inside", "outside", "upward"],
+        businessType: ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"],
+        amountBasis: ["tax_inclusive", "tax_exclusive"],
+        invoiceStatus: ["vat_general", "vat_special", "none", "pending"]
+      };
+      if (Object.keys(basics).some(key => !Object.hasOwn(choices, key) && key !== "settlementText")) {
+        throw new BadRequestException("合同基础资料包含未知字段，请刷新后重试");
+      }
+      for (const [key, values] of Object.entries(choices)) {
+        if (basics[key] !== undefined && !values.includes(basics[key] as string)) {
+          throw new BadRequestException("合同关系、业务类型或金额税务口径不正确，请重新选择");
+        }
+      }
+      if (basics.settlementText !== undefined &&
+        (typeof basics.settlementText !== "string" || basics.settlementText.length > 2000)) {
+        throw new BadRequestException("结算约定应为不超过2000字的文字");
+      }
     }
     if (draftData.partyValues !== undefined) {
       this.requireObject(draftData.partyValues, "合同主体字段");
@@ -2775,6 +2893,7 @@ export class ContractWorkbenchService {
   private billIsCompatible(
     current: {
       pricingMode: string;
+      numericProtocolVersion?: number;
       quantityScale: number;
       unitPriceScale: number;
       schemaSnapshot?: Prisma.JsonValue;
@@ -2792,8 +2911,7 @@ export class ContractWorkbenchService {
         []);
     return (
       current.pricingMode === target.pricingMode &&
-      current.quantityScale === target.quantityScale &&
-      current.unitPriceScale === target.unitPriceScale &&
+      (current.numericProtocolVersion === 2 || (current.quantityScale === target.quantityScale && current.unitPriceScale === target.unitPriceScale)) &&
       JSON.stringify(currentColumns) === JSON.stringify(target.columns)
     );
   }
@@ -2821,8 +2939,9 @@ export class ContractWorkbenchService {
   }
 
   private sumIncludedBills(
-    bills: Array<{ amountRole: string; taxInclusiveAmountCents: bigint }>
+    bills: Array<{ amountRole: string; numericProtocolVersion?: number; taxInclusiveAmountYuan?: Prisma.Decimal | null; taxInclusiveAmountCents: bigint }>
   ) {
+    if (bills.some(bill => bill.numericProtocolVersion === 2)) return compatibleBillCents(sumContractBillBusinessAmounts(bills)) ?? 0n;
     return bills
       .filter((bill) => bill.amountRole === "included" || bill.amountRole === "provisional")
       .reduce((sum, bill) => sum + bill.taxInclusiveAmountCents, 0n);
@@ -2839,7 +2958,7 @@ export class ContractWorkbenchService {
           orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
         })
       : [];
-    assertContractBillDerivedUnitPrices(rows);
+    for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
     return bills.map((bill) => ({
       billKey: bill.billKey,
       name: bill.name,
@@ -2850,6 +2969,9 @@ export class ContractWorkbenchService {
       schemaSnapshot: bill.schemaSnapshot,
       sourceExcelFileId: bill.sourceExcelFileId,
       revision: bill.revision,
+      ...(bill.numericProtocolVersion === 2 ? { numericProtocolVersion: 2,
+        taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+        taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null } : {}),
       taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
       taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
       taxAmountCents: bill.taxAmountCents.toString(),
@@ -2869,6 +2991,9 @@ export class ContractWorkbenchService {
           taxRateSource: row.taxRateSource,
           pricingFactStatus: row.pricingFactStatus,
           precisionPolicy: row.precisionPolicy,
+          ...(row.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, numericSource: row.numericSource, numericReviewStatus: row.numericReviewStatus,
+            taxInclusiveAmountYuan: row.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+            taxExclusiveAmountYuan: row.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: row.taxAmountYuan?.toFixed(4) ?? null } : {}),
           taxInclusiveAmountCents: row.taxInclusiveAmountCents?.toString() ?? null,
           taxExclusiveAmountCents: row.taxExclusiveAmountCents?.toString() ?? null,
           taxAmountCents: row.taxAmountCents?.toString() ?? null,
@@ -2911,6 +3036,9 @@ export class ContractWorkbenchService {
     actorUserId?: string
   ) {
     const current = await tx.contractBill.findMany({ where: { contractVersionId } });
+    if (current.some(bill => bill.numericProtocolVersion === 2) && snapshots.some(bill => bill.numericProtocolVersion !== 2)) {
+      throw new BadRequestException("清单精度已升级，旧检查点不能覆盖四位金额，请刷新工作台后核对");
+    }
     const currentRows = current.length
       ? await tx.contractBillRow.findMany({ where: { contractBillId: { in: current.map((bill) => bill.id) } } })
       : [];
@@ -2934,6 +3062,8 @@ export class ContractWorkbenchService {
           schemaSnapshot: this.toJson(snapshot.schemaSnapshot),
           sourceExcelFileId: snapshot.sourceExcelFileId,
           revision: snapshot.revision,
+          ...(snapshot.numericProtocolVersion === 2 ? { numericProtocolVersion: 2,
+            taxInclusiveAmountYuan: snapshot.taxInclusiveAmountYuan, taxExclusiveAmountYuan: snapshot.taxExclusiveAmountYuan, taxAmountYuan: snapshot.taxAmountYuan } : {}),
           taxInclusiveAmountCents: parseMoneyCents(
             snapshot.taxInclusiveAmountCents,
             "清单含税金额"
@@ -3243,6 +3373,17 @@ export class ContractWorkbenchService {
     };
   }
 
+  /** The precise writer already owns this metadata. Business-change policy
+   * compares clones without it; persisted data, change detection and R/F keep it.
+   * Unknown versions are rejected, never stripped into an apparent legacy value.
+   */
+  private changeBusinessContentWithoutRenderProfile(value: unknown) {
+    readContractBodyRenderProfile(value);
+    const businessContent = { ...this.objectValue(value) };
+    delete businessContent[CONTRACT_BODY_RENDER_PROFILE_KEY];
+    return businessContent;
+  }
+
   private withoutTaxFactMirror(value: unknown) {
     const record = this.objectValue(value);
     const rest = { ...record };
@@ -3498,7 +3639,8 @@ export class ContractWorkbenchService {
     }
     if (value !== null && typeof value === "object" && !(value instanceof Date)) {
       return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [key, this.convertReadValue(item)])
+        Object.entries(value).map(([key, item]) => [key,
+          (key === "amountYuan" || key.endsWith("AmountYuan")) && item instanceof Prisma.Decimal ? item.toFixed(4) : this.convertReadValue(item)])
       );
     }
     return value;

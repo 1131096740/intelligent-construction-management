@@ -2,9 +2,9 @@ import PizZip from "pizzip";
 import type { ContractDocumentRenderInput } from "./contract-document.types";
 import { renderContractDocx } from "./contract-docx-renderer";
 
-/** Preview copies fill the existing blank page-number footer; source DOCX bytes stay unchanged. */
-export function renderLayoutPreviewDocx(source: Buffer, input: ContractDocumentRenderInput, required: readonly string[]) {
-  const zip = new PizZip(renderContractDocx(source, input, required));
+/** Fill only the existing blank page-number footer; unrelated package parts retain their contents. */
+export function completeContractPageNumberFields(docx: Buffer) {
+  const zip = new PizZip(docx);
   for (const name of Object.keys(zip.files)) {
     if (!/^word\/footer\d*\.xml$/.test(name)) continue;
     const xml = zip.file(name)?.asText();
@@ -14,4 +14,9 @@ export function renderLayoutPreviewDocx(source: Buffer, input: ContractDocumentR
       '<w:r><w:t xml:space="preserve"> 页 / 共 </w:t></w:r><w:fldSimple w:instr="NUMPAGES"><w:r><w:t>1</w:t></w:r></w:fldSimple><w:r><w:t> 页</w:t></w:r>'));
   }
   return zip.generate({ type: "nodebuffer" });
+}
+
+/** Preview copies and body25 output use the same existing footer field projection. */
+export function renderLayoutPreviewDocx(source: Buffer, input: ContractDocumentRenderInput, required: readonly string[]) {
+  return completeContractPageNumberFields(renderContractDocx(source, input, required));
 }

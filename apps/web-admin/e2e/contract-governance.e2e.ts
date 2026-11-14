@@ -5,6 +5,7 @@ import {
 } from "./helpers/responsive-assertions";
 
 const versionId = "version-governed-1";
+const documentCoordinates = { documentContentRevision: 4, documentContentFingerprint: "d".repeat(64) };
 const governedViewports = [
   { width: 1512, height: 982 },
   { width: 1440, height: 900 },
@@ -41,6 +42,16 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
       body: JSON.stringify({ id: "private-final-file", originalName: "双方最终版.pdf" })
     });
   });
+  await page.route("**/api/files/approval-file-1/download-ticket-capability", (route) => route.fulfill({
+    json: {
+      availableActions: ["create_private_file_download_ticket"],
+      action: { key: "create_private_file_download_ticket", enabled: true }
+    }
+  }));
+  await page.route("**/api/files/approval-file-1/download?ticket=short-lived", (route) => route.fulfill({
+    contentType: "application/pdf",
+    body: "%PDF-1.7 governed-approval-original"
+  }));
   await page.route("**/api/files/approval-file-1/download-ticket", (route) => {
     approvalOriginalDownloadBody = route.request().postDataJSON() as Record<string, unknown>;
     return route.fulfill({
@@ -82,13 +93,14 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
   await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "签署与归档证据" })).toBeVisible();
-  await expect(page.getByText("审批前乙方签章版", { exact: true })).toBeVisible();
-  await expect(page.getByText("双方最终签署版", { exact: true })).toBeVisible();
-  await expect(page.getByText("合同审批单", { exact: true })).toBeVisible();
+  const evidenceCards = page.locator(".formal-evidence-grid");
+  await expect(evidenceCards.getByText("审批前乙方签章版", { exact: true })).toBeVisible();
+  await expect(evidenceCards.getByText("双方最终签署版", { exact: true })).toBeVisible();
+  await expect(evidenceCards.getByText("合同审批单", { exact: true })).toBeVisible();
   const finalUploadGroup = page.locator(".action-group").filter({ hasText: "上传双方最终版" });
   await expect(finalUploadGroup.getByRole("button", { name: "上传双方最终版" })).toBeVisible();
   await expect(page.getByRole("button", { name: "确认归档" })).toHaveCount(0);
-  await page.getByText("审批前乙方签章版", { exact: true }).locator("xpath=ancestor::article")
+  await evidenceCards.getByText("审批前乙方签章版", { exact: true }).locator("xpath=ancestor::article")
     .getByRole("button", { name: "下载文件" }).click();
   await expect(page.getByText("确认下载合同正式文件？", { exact: true })).toBeVisible();
   await page.getByPlaceholder("说明本次操作原因").fill("归档核验");
@@ -196,11 +208,10 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
   for (let index = 0; index < 6; index += 1) await confirmationCheckboxes.nth(index).click();
   await finalReviewGroup.getByRole("button", { name: "确认归档" }).click();
   await expect(page.getByText("确认双方最终版并归档？", { exact: true })).toBeVisible();
-  await page.getByPlaceholder("用于确认当前操作者身份").fill("Governance@2026");
+  await expect(page.getByPlaceholder("用于确认当前操作者身份")).toHaveCount(0);
   await page.getByRole("button", { name: "确认归档" }).last().click();
   await expect.poll(() => confirmFinalBody).toEqual({
     formalFileId: "final-file-1",
-    confirmationPassword: "Governance@2026",
     ...finalDeclaration()
   });
 });
@@ -358,8 +369,17 @@ test("上传返回时切换合同仍保留原合同暂存文件且不关联新�
     body: JSON.stringify({ ...governedDetail(), id: "HT-GOVERNED-B", contractVersionId: "version-governed-b", title: "HT-GOVERNED-B · 合同 B" })
   }));
   let heldUpload: import("@playwright/test").Route | null = null;
+  let uploadRequests = 0;
+  const versionAAssociations: unknown[] = [];
   let versionBAssociations = 0;
-  await page.route("**/api/files", (route) => { heldUpload = route; });
+  await page.route("**/api/files", (route) => {
+    uploadRequests += 1;
+    heldUpload = route;
+  });
+  await page.route(`**/api/contracts/${versionId}/formal-files/final`, (route) => {
+    versionAAssociations.push(route.request().postDataJSON());
+    return route.fulfill({ json: { id: "formal-final-a" } });
+  });
   await page.route("**/api/contracts/version-governed-b/formal-files/final", (route) => {
     versionBAssociations += 1;
     return route.fulfill({ status: 500 });
@@ -374,15 +394,39 @@ test("上传返回时切换合同仍保留原合同暂存文件且不关联新�
   await uploadGroup.getByRole("button", { name: "上传双方最终版" }).click();
   await page.getByRole("button", { name: "确认上传" }).click();
   await expect.poll(() => heldUpload !== null).toBe(true);
-  await page.goto("/contracts/HT-GOVERNED-B");
+  await page.evaluate(() => {
+    history.pushState(history.state, "", "/contracts/HT-GOVERNED-B");
+    window.dispatchEvent(new PopStateEvent("popstate", { state: history.state }));
+  });
+  await expect(page.getByRole("heading", { name: /合同 B/u })).toBeVisible();
   const upload = heldUpload as import("@playwright/test").Route | null;
   if (!upload) throw new Error("未收到私有文件上传请求");
   await upload.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "file-staged-a" }) });
-  await expect.poll(() => versionBAssociations).toBe(0);
-  await expect(page.getByRole("button", { name: "上传双方最终版" })).toHaveCount(1);
+  await expect(page.getByText(/合同已切换，已停止关联暂存文件/u)).toBeVisible();
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  await expect(uploadGroup.getByRole("button", { name: "上传双方最终版" })).toBeVisible();
+  expect(versionBAssociations).toBe(0);
+  expect(versionAAssociations).toEqual([]);
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: /受治理材料采购合同/u })).toBeVisible();
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  await uploadGroup.getByRole("button", { name: "上传双方最终版" }).click();
+  await page.getByRole("button", { name: "确认上传" }).click();
+  await expect.poll(() => versionAAssociations).toEqual([
+    { fileId: "file-staged-a", sourceRevision: 7, ...finalDeclaration() }
+  ]);
+  expect(versionBAssociations).toBe(0);
+  expect(uploadRequests).toBe(1);
 });
 
 async function installLoginRoutes(page: Page, roleKeys: string[]) {
+  await page.route("**/api/approval-forms/contract_seal/seal-task-1/capability", (route) =>
+    route.fulfill({ json: { available: false } })
+  );
+  await page.route("**/api/approval-progress?businessType=contract_version&businessId=version-governed-*", (route) =>
+    route.fulfill({ json: { items: [], nextCursor: null } })
+  );
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -418,9 +462,15 @@ function governedDetail(options: {
   formalFiles?: ReturnType<typeof approvalOriginal>[];
   sealTask?: ReturnType<typeof sealTask>;
 } = {}) {
+  const availableActions = options.actions ?? [
+    action("upload_final_contract", "上传双方最终版", "primary", true),
+    action("download_approval_form", "下载审批单", "normal", true)
+  ];
   return {
     id: "HT-GOVERNED-001",
     contractVersionId: versionId,
+    draftRevision: 7,
+    ...documentCoordinates,
     title: "HT-GOVERNED-001 · 受治理材料采购合同",
     meta: [{ label: "当前状态", value: options.status ?? "待上传双方最终版", tone: "warning" }],
     baseInfo: [{ label: "合同金额", value: "¥100,000.00" }],
@@ -432,10 +482,8 @@ function governedDetail(options: {
     formalFiles: options.formalFiles ?? [approvalOriginal()],
     sealTask: options.sealTask ?? sealTask(),
     approvalTimeline: [],
-    availableActions: options.actions ?? [
-      action("upload_final_contract", "上传双方最终版", "primary", true),
-      action("download_approval_form", "下载审批单", "normal", true)
-    ],
+    availableActions,
+    availableActionKeys: availableActions.filter(({ enabled }) => enabled).map(({ key }) => key),
     primaryAction: options.primaryAction ?? "upload_final_contract",
     disabledReasons: [],
     chainLinks: [],
@@ -445,6 +493,7 @@ function governedDetail(options: {
 
 function approvalOriginal() {
   return {
+    ...documentCoordinates,
     formalFileId: "approval-original-1", purpose: "approval_original", fileId: "approval-file-1",
     fileName: "审批前乙方签章版.pdf", pageCount: 12, sourceRevision: 7, status: "active",
     uploadedByUserId: "governance-user-1", confirmedByUserId: null, confirmedAt: null
@@ -453,6 +502,7 @@ function approvalOriginal() {
 
 function mutuallySignedFinal() {
   return {
+    ...documentCoordinates,
     formalFileId: "final-file-1", purpose: "mutually_signed_final", fileId: "final-file-object-1",
     fileName: "双方最终版.pdf", pageCount: 12, sourceRevision: 7, status: "active",
     uploadedByUserId: "handler-user-1", confirmedByUserId: null, confirmedAt: null

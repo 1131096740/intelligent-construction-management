@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import {assertContractBankProject,contractBankProjectWhere} from "../contract-ledger/contract-bank-project";
 import {ContractBankVerificationService} from "../contract-ledger/contract-bank-verification.service";
 import {ContractEconomicReviewOperatingSourceAdapter} from "../contract-ledger/contract-economic-review-operating-source.adapter";
@@ -29,10 +30,14 @@ import { BadRequestException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { ProjectAffiliateCompanyContractService } from "../project/project-affiliate-company-contract.service";
 
 const TEST_DATABASE = "jiangkong_project_affiliate_company_contract_test";
+const { renderContractFinanceFileGuardGrant } = createRequire(__filename)("../../prisma/contract-bank-runtime-fixture.cjs") as {
+  renderContractFinanceFileGuardGrant: (role: string) => string;
+};
 const LIVE_TEST_ENABLED =
   process.env.RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS === "1";
 
@@ -111,15 +116,21 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       // while the deployed role retains main's existing grants for legacy fund commands.
       await tx.$executeRawUnsafe(`REVOKE ALL ON FUNCTION public."authorizeOperatingLedgerWrite"(TEXT,TEXT) FROM ${role}`);
       await tx.$executeRawUnsafe(`REVOKE ALL ON FUNCTION public.issue_contract_bank_holder(TEXT,TEXT,TEXT,TEXT,TEXT) FROM ${role}`);
+      await tx.$executeRawUnsafe(renderContractFinanceFileGuardGrant(role));
     });
     const url = new URL(databaseUrl!); url.username = role; url.password = password;
     financeRuntime = new PrismaClient({datasources: {db: {url: url.toString()}}});
-    const [privileges] = await financeRuntime.$queryRaw<Array<{internal: boolean; legacy: boolean; entry: boolean; secret: boolean}>>`
+    const [privileges] = await financeRuntime.$queryRaw<Array<{
+      internal: boolean; legacy: boolean; entry: boolean; secret: boolean;
+      fileGuard: boolean; fileGuardGrantable: boolean;
+    }>>`
       SELECT has_function_privilege(current_user, 'public."authorizeOperatingLedgerWrite"(text,text)', 'EXECUTE') AS internal,
       has_function_privilege(current_user, 'public.issue_contract_bank_holder(text,text,text,text,text)', 'EXECUTE') AS legacy,
       has_function_privilege(current_user, 'public.issue_contract_bank_holder(text,text,text,text,text,text)', 'EXECUTE') AS entry,
-      has_table_privilege(current_user, 'public."OperatingLedgerWriteSecret"', 'SELECT') AS secret`;
-    expect(privileges).toEqual({internal: false, legacy: false, entry: true, secret: false});
+      has_table_privilege(current_user, 'public."OperatingLedgerWriteSecret"', 'SELECT') AS secret,
+      has_function_privilege(current_user, 'public.jg_has_exclusive_file_business_binding(text)', 'EXECUTE') AS "fileGuard",
+      has_function_privilege(current_user, 'public.jg_has_exclusive_file_business_binding(text)', 'EXECUTE WITH GRANT OPTION') AS "fileGuardGrantable"`;
+    expect(privileges).toEqual({internal: false, legacy: false, entry: true, secret: false, fileGuard: true, fileGuardGrantable: false});
   });
 
   it("公司互转真实PG：独立领导OR终审、两侧流水、在途、借款归还、自有资金与项目权限", async()=>{
@@ -180,7 +191,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     const projectExport=await reader.list(f.recorderId,{projectsOnly:"true"},true);expect(projectExport.rows.some(r=>r.id===own.id)).toBe(false);expect(projectExport.balances.every(b=>b.projectId!==null)).toBe(true);
     expect(await prisma.operatingFact.count({where:{sourceType:"company_transfer_event",sourceBusinessId:ownOut.id}})).toBe(0);
     const facts=await prisma.operatingFact.findMany({where:{projectId:f.projectId,sourceType:"company_transfer_event"},include:{impacts:true}});expect(facts.flatMap(f=>f.impacts).some(i=>/cost|income|payable|receivable/.test(i.impactKind))).toBe(false);
-    expect(facts.flatMap(f=>f.impacts).reduce((a,i)=>a+(i.direction==="increase"?i.amountCents:-i.amountCents),0n)).toBe(0n);
+    expect(facts.flatMap(f=>f.impacts).reduce((a,i)=>a+(i.direction==="increase"?requireLegacyOperatingCents(i):-requireLegacyOperatingCents(i)),0n)).toBe(0n);
     // Two legal repayment reservations must not consume each other's historical capacity.
     const datedLoan=await request("loan","20000");await service.decide(gm.directorId,datedLoan.id,decision);
     const datedOut=await execute(datedLoan.id,"outgoing",f.companyId,"20000",undefined,f.projectId,"2026-08-01");
@@ -313,7 +324,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       const duplicate=await post("",{...input,evidenceFileId:await newFile(),idempotencyKey:randomUUID(),bankReference:randomUUID()});expect(duplicate.status).toBe(409);
       const early=await post("",{...input,entryKind:"refund",originalId:prepared.body.id,allocations:[{sourceRef:input.sourceRef,amountCents:"1000"}],amountCents:"1000",occurredAt:"2026-08-14",evidenceFileId:await newFile(),idempotencyKey:randomUUID(),bankReference:randomUUID()});expect(early.status).toBe(400);
       const impacts=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId}});
-      const sum=(kinds:string[])=>impacts.filter(i=>kinds.includes(i.impactKind)).reduce((sum,i)=>sum+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n);
+      const sum=(kinds:string[])=>impacts.filter(i=>kinds.includes(i.impactKind)).reduce((sum,i)=>sum+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n);
       expect(sum(["confirmed_cost"])).toBe(100000n);
       expect(sum(["payable_increase","payable_decrease"])).toBe(60000n);
       expect(sum(["inter_subject_balance_increase","inter_subject_balance_decrease"])).toBe(20000n);
@@ -345,7 +356,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       await fundService.confirmCase(cashConfirmer,{caseId:draft.caseId,expectedRevision:submitted.revision,idempotencyKey:randomUUID()});
       expect(await prisma.bankTransactionClaim.count({where:{observationId:incoming}})).toBe(1);
       const receiptFact=await prisma.operatingFact.findFirstOrThrow({where:{projectId:f.projectId,sourceType:"fund_execution",direction:"inflow"}});
-      const cashBefore=(await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId,impactKind:{in:["company_project_funds_increase","company_project_funds_decrease"]}}})).reduce((n,i)=>n+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n);
+      const cashBefore=(await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId,impactKind:{in:["company_project_funds_increase","company_project_funds_decrease"]}}})).reduce((n,i)=>n+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n);
       // 对上合同未定额 -> 追加确定金额 -> 对上结算 -> 真实拨款，收入成本均不得复制。
       const upperService=new ProjectAffiliateCompanyContractService(prisma as never,audit,auth as never);
       const upper=await upperService.record(f.projectId,f.recorderId,{contractReference:`UP-${randomUUID()}`,contractName:"合成对上合同",companyEntityId:f.companyId,signedAt:"2026-08-01",rightsObligationsSummary:"合成上游履约往来",amountNature:"uncapped",fileId:f.contractFileId,idempotencyKey:randomUUID()});
@@ -367,7 +378,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       const receipt=await projectService.recordUpstreamFundFact(f.projectId,f.recorderId,{bankObservationReference:directReceiptReference,factType:"affiliate_remittance_to_company",basisType:"oral",occurredAt:"2026-08-22",amountCents:"30000",counterpartyName:"我方建设有限公司",companyEntityId:f.companyId,affiliateCompanyContractId:upper.id,affiliateSettlementFactId:upperSettlement.id,invoiceRecordId:invoice.id,idempotencyKey:randomUUID()});
       await projectService.confirmUpstreamFundFact(f.projectId,receipt.id,f.directorId,{confirmationPassword:"test-password",confirmationActionId:randomUUID()});
       const final=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId}});
-      const finalSum=(kinds:string[])=>final.filter(i=>kinds.includes(i.impactKind)).reduce((sum,i)=>sum+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n);
+      const finalSum=(kinds:string[])=>final.filter(i=>kinds.includes(i.impactKind)).reduce((sum,i)=>sum+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n);
       expect(finalSum(["confirmed_cost"])).toBe(100000n);
       expect(finalSum(["confirmed_income"])).toBe(0n);
       expect(finalSum(["receivable_increase","receivable_decrease"])).toBe(30000n);
@@ -378,7 +389,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       await matching.decide(f.directorId,match.id,{decision:"confirm",confirmationPassword:"test-password"});
       await expect(matching.prepare(f.recorderId,{...matchInput,amountCents:"1",idempotencyKey:randomUUID()})).rejects.toThrow("未匹配");
       const matchImpacts=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId}});
-      const afterMatch=(k:string[])=>matchImpacts.filter(i=>k.includes(i.impactKind)).reduce((n,i)=>n+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n);
+      const afterMatch=(k:string[])=>matchImpacts.filter(i=>k.includes(i.impactKind)).reduce((n,i)=>n+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n);
       expect(afterMatch(["receivable_increase","receivable_decrease"])).toBe(10000n);
       expect(afterMatch(["company_project_funds_increase","company_project_funds_decrease"])).toBe(cashBefore+30000n);
       expect(afterMatch(["confirmed_cost"])).toBe(100000n);
@@ -386,7 +397,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       const unmatched=await matching.prepare(f.recorderId,{...matchInput,originalId:match.id,occurredAt:"2026-08-24",idempotencyKey:randomUUID()});
       await matching.decide(f.directorId,unmatched.id,{decision:"confirm",confirmationPassword:"test-password"});
       const afterUnmatch=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId}});
-      const unmatchSum=(k:string[])=>afterUnmatch.filter(i=>k.includes(i.impactKind)).reduce((n,i)=>n+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n);
+      const unmatchSum=(k:string[])=>afterUnmatch.filter(i=>k.includes(i.impactKind)).reduce((n,i)=>n+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n);
       expect(unmatchSum(["receivable_increase","receivable_decrease"])).toBe(30000n);
       expect(unmatchSum(["construction_enterprise_funds_increase","construction_enterprise_funds_decrease"])).toBe(-70000n);
       expect(unmatchSum(["company_project_funds_increase","company_project_funds_decrease"])).toBe(cashBefore+30000n);
@@ -410,7 +421,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       const reverseSubmitted=await fundService.submitCase(f.recorderId,{caseId:reverse.caseId,expectedRevision:reverse.revision,idempotencyKey:randomUUID()});
       await fundService.reviewApproval(f.directorId,{caseId:reverse.caseId,action:"approve",comment:"已核对退款流水"});await fundService.reviewApproval(chairman,{caseId:reverse.caseId,action:"approve",comment:"同意退回"});
       await fundService.confirmCase(cashConfirmer,{caseId:reverse.caseId,expectedRevision:reverseSubmitted.revision,idempotencyKey:randomUUID()});
-      const reversed=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId}}),net=(k:string[])=>reversed.filter(i=>k.includes(i.impactKind)).reduce((n,i)=>n+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n);
+      const reversed=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId}}),net=(k:string[])=>reversed.filter(i=>k.includes(i.impactKind)).reduce((n,i)=>n+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n);
       expect(net(["receivable_increase","receivable_decrease"])).toBe(30000n);expect(net(["company_project_funds_increase","company_project_funds_decrease"])).toBe(cashBefore+10000n);expect(net(["construction_enterprise_funds_increase","construction_enterprise_funds_decrease"])).toBe(-50000n);
       expect(net(["confirmed_cost"])).toBe(100000n);
 
@@ -449,13 +460,13 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     await reviews.decide(f.directorId,updated.id,{decision:"confirm",revision:1,confirmationPassword:"test-password"});await reviews.decide(finance,updated.id,{decision:"confirm",revision:2,confirmationPassword:"test-password"});
     const action={confirmationPassword:"test-password",confirmationActionId:randomUUID()};await business.confirmContractFact(f.projectId,change.id,f.directorId,action);await business.confirmContractFact(f.projectId,change.id,f.directorId,action);
     const fact=await prisma.operatingFact.findFirstOrThrow({where:{projectId:f.projectId,sourceBusinessId:change.id},include:{impacts:true}});expect(fact.impacts[0].amountCents).toBe(0n);
-    const all=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId,impactKind:"contract_commitment_reference"}});expect(all.reduce((v,i)=>v+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n)).toBe(100000n);
+    const all=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId,impactKind:"contract_commitment_reference"}});expect(all.reduce((v,i)=>v+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n)).toBe(100000n);
     const ledger=new ContractRelationshipLedgerService(prisma as never,new ProjectVisibilityService(prisma as never));const view=await ledger.list(f.directorId,{projectId:f.projectId,relationship:"outside"});expect(view.totals[0].knownAmountCents).toBe("100000");
     const secondReview=await reviews.prepare(f.recorderId,{...reviewInput,targetSourceRef:`affiliate:${a.ledgerId}`,supersedesReviewId:updated.id,coverage:[{scope:"同一供货批次",leftAmountCents:"50000",rightAmountCents:"50000",owner}],idempotencyKey:randomUUID()});
     await reviews.decide(f.directorId,secondReview.id,{decision:"confirm",revision:1,confirmationPassword:"test-password"});await reviews.decide(finance,secondReview.id,{decision:"confirm",revision:2,confirmationPassword:"test-password"});
     await business.confirmContractFact(f.projectId,changeA.id,f.directorId,{confirmationPassword:"test-password",confirmationActionId:randomUUID()});
     expect((await ledger.list(f.directorId,{projectId:f.projectId,relationship:"outside"})).totals[0].knownAmountCents).toBe("120000");
-    const total=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId,impactKind:"contract_commitment_reference"}});expect(total.reduce((v,i)=>v+(i.direction==="decrease"?-i.amountCents:i.amountCents),0n)).toBe(120000n);
+    const total=await prisma.operatingImpactEntry.findMany({where:{projectId:f.projectId,impactKind:"contract_commitment_reference"}});expect(total.reduce((v,i)=>v+(i.direction==="decrease"?-requireLegacyOperatingCents(i):requireLegacyOperatingCents(i)),0n)).toBe(120000n);
 
   },60000);
 

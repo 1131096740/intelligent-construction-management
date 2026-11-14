@@ -3,6 +3,52 @@
     class="workbench-page jg-responsive-workspace"
     data-jg-scroll-owner="child"
   >
+    <section
+      v-if="directRegistration.visible.value"
+      class="create-panel"
+      aria-label="正式登记已签合同"
+    >
+      <t-alert
+        v-if="directRegistration.message.value"
+        theme="info"
+        :message="directRegistration.message.value"
+      />
+      <div class="create-actions">
+        <t-button
+          v-if="directRegistration.available.value && !directRegistration.pending.value"
+          theme="primary"
+          :disabled="!directRegistration.canConfirm.value"
+          @click="directRegistrationConfirmVisible = true"
+        >
+          正式登记
+        </t-button>
+        <t-button
+          v-if="directRegistration.pending.value"
+          variant="outline"
+          :disabled="!directRegistration.canQuery.value"
+          @click="directRegistration.query()"
+        >
+          查询原登记结果
+        </t-button>
+        <t-button
+          v-if="directRegistration.pending.value && directRegistration.available.value"
+          variant="outline"
+          :disabled="!directRegistration.canContinue.value"
+          @click="directRegistration.query(true)"
+        >
+          按原请求继续
+        </t-button>
+      </div>
+      <t-dialog
+        v-model:visible="directRegistrationConfirmVisible"
+        header="确认正式登记已签合同"
+        :confirm-btn="{ content: '确认登记', disabled: !directRegistration.canConfirm.value }"
+        @confirm="confirmDirectRegistration"
+      >
+        请确认已保存的签章原件与纸面合同一致。正式登记完成后合同即生效。
+      </t-dialog>
+    </section>
+
     <!-- Draft-creation flow for /contracts/new ------------------------------->
     <div
       v-if="isNewDraft"
@@ -10,7 +56,7 @@
     >
       <h1>新建合同</h1>
       <p class="create-hint">
-        先选项目和业务场景，系统再按合同类型推荐精确已发布模板。
+        先选项目和业务类型开始填写；合同关系独立选择，资料不完整也可保留草稿。
       </p>
       <p
         v-if="projectOptionsLoaded && !projectOptions.length"
@@ -26,228 +72,88 @@
             :value="initializeDraft.projectId.value"
             :options="projectOptions"
             placeholder="选择项目"
+            :disabled="creating || initializeDraft.creationResultUnknown.value"
             @change="onProjectChange"
           />
         </label>
       </div>
-      <ContractEntryChoice
-        v-model="entryRelationship"
-        :project-id="initializeDraft.projectId.value"
-        mode="new"
-      />
-      <template v-if="entryRelationship === 'inside'">
-        <div class="create-fields">
-          <label
-            v-if="!directTemplateFallback"
-            class="field"
+      <div class="create-fields">
+        <label class="field">
+          <span class="field-label">业务类型</span>
+          <t-select :value="initializeDraft.contractTypeKey.value" :options="contractTypeOptions" placeholder="选择业务类型" :disabled="creating || initializeDraft.creationResultUnknown.value" @change="onContractTypeChange" />
+        </label>
+        <label class="field">
+          <span class="field-label">合同金额上限</span>
+          <t-select :value="initializeDraft.amountLimitType.value" :options="amountLimitTypeOptions" :disabled="creating || initializeDraft.creationResultUnknown.value" @change="onAmountLimitTypeChange" />
+        </label>
+        <label class="field">
+          <span class="field-label">合同关系</span>
+          <t-select :value="initializeDraft.relationship.value || undefined" :options="relationshipOptions" placeholder="可先留空，生成前选择" :disabled="creating || initializeDraft.creationResultUnknown.value" @change="initializeDraft.setRelationship" />
+        </label>
+      </div>
+      <div v-if="initializeDraft.relationship.value === 'outside' || initializeDraft.relationship.value === 'upward'" class="create-fields">
+        <div class="field">
+          <span class="field-label">办理方式</span>
+          <t-radio-group
+            :value="initializeDraft.handlingMode.value"
+            :disabled="creating || initializeDraft.creationResultUnknown.value"
+            @change="initializeDraft.setHandlingMode"
           >
-            <span class="field-label">业务场景</span>
-            <t-select
-              :value="initializeDraft.businessScenarioId.value"
-              :options="scenarioOptions"
-              :loading="scenarioLoading"
-              :disabled="!initializeDraft.projectId.value || scenarioLoading"
-              placeholder="选择本次签约场景"
-              @change="onScenarioChange"
-            />
-          </label>
-          <label class="field">
-            <span class="field-label">合同类型</span>
-            <t-select
-              :value="initializeDraft.contractTypeKey.value"
-              :options="contractTypeOptions"
-              placeholder="选择合同类型"
-              @change="onContractTypeChange"
-            />
-          </label>
-          <label class="field">
-            <span class="field-label">合同金额上限</span>
-            <t-select
-              :value="initializeDraft.amountLimitType.value"
-              :options="amountLimitTypeOptions"
-              @change="onAmountLimitTypeChange"
-            />
-            <small class="field-hint">无限额框架合同不以预计金额作为硬上限；后续变更仍需按合同变更流程审批。</small>
-          </label>
-          <label
-            v-if="directTemplateFallback"
-            class="field"
-          >
-            <span class="field-label">业务模板</span>
-            <div class="template-choice">
-              <t-select
-                :value="initializeDraft.businessTemplateVersionId.value"
-                :options="templateOptions"
-                :disabled="!initializeDraft.contractTypeKey.value"
-                placeholder="从模板库选择已发布模板"
-                @change="onNewTemplateChange"
-              />
-              <t-button
-                variant="outline"
-                :disabled="!selectedTemplate"
-                @click="templatePreviewVisible = true"
-              >
-                预览所选模板
-              </t-button>
-            </div>
-          </label>
+            <t-radio value="generated">起草新合同</t-radio>
+            <t-radio
+              value="direct_signed"
+              :disabled="initializeDraft.relationship.value === 'upward' && !initializeDraft.upwardDirectAvailable.value"
+            >已签合同资料</t-radio>
+          </t-radio-group>
+          <p v-if="initializeDraft.relationship.value === 'upward' && !initializeDraft.upwardDirectAvailable.value" class="create-hint">当前项目暂不能办理对上已签资料</p>
         </div>
+      </div>
+      <p v-if="initializeDraft.handlingMode.value === 'direct_signed'" class="create-hint">
+        记录已签合同的原编号、双方、条款和签章原件，保存后可继续补充资料。
+      </p>
+      <p v-else class="create-hint">起草只保存未提交资料。进入工作台后补充合同名称和甲乙方，再手动选择模板；不发起审批或生成正式合同。</p>
+      <div class="create-actions">
+        <t-button theme="primary" :loading="creating" :disabled="!initializeDraft.canCreate.value" @click="onCreateDraft">创建草稿</t-button>
+        <t-button v-if="initializeDraft.creationResultUnknown.value" variant="outline" @click="router.push('/首页')">前往首页核对我的草稿</t-button>
+      </div>
+      <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+      <t-alert v-if="initializeDraft.creationResultUnknown.value" theme="warning" message="创建结果待核对，请先在我的草稿确认是否已创建。" />
+    </div>
 
-        <t-alert
-          v-if="directTemplateFallback"
-          theme="info"
-          class="scenario-alert"
-        >
-          <template #message>
-            <div class="alert-action-row">
-              <span>当前使用模板库直接选择，合同草稿不冻结业务场景映射。</span>
-              <t-button
-                size="small"
-                variant="text"
-                @click="returnToScenarioRecommendation"
-              >
-                返回场景推荐
-              </t-button>
-            </div>
-          </template>
-        </t-alert>
-
-        <template v-else>
-          <t-alert
-            v-if="scenarioOptionsLoaded && initializeDraft.projectId.value && !scenarioOptions.length"
-            theme="warning"
-            class="scenario-alert"
-          >
-            <template #message>
-              <div class="alert-action-row">
-                <span>当前尚未配置可用业务场景，可先从模板库直接选择。</span>
-                <t-button
-                  size="small"
-                  variant="text"
-                  @click="useDirectTemplateFallback"
-                >
-                  从模板库直接选择
-                </t-button>
-              </div>
-            </template>
-          </t-alert>
-
-          <t-loading
-            v-if="recommendationLoading"
-            text="正在读取场景推荐……"
-          />
-          <t-alert
-            v-else-if="scenarioRecommendation?.selectionMode === 'unavailable'"
-            theme="warning"
-            class="scenario-alert"
-          >
-            <template #message>
-              <div class="alert-action-row">
-                <span>该场景和合同类型暂无可用推荐模板。</span>
-                <t-button
-                  size="small"
-                  variant="text"
-                  @click="useDirectTemplateFallback"
-                >
-                  从模板库直接选择
-                </t-button>
-              </div>
-            </template>
-          </t-alert>
-
-          <div
-            v-else-if="scenarioRecommendation?.selectionMode === 'automatic'"
-            class="recommendation-panel"
-          >
-            <div class="recommendation-head">
-              <strong>已自动选择场景模板</strong>
-              <t-tag
-                theme="success"
-                variant="light"
-              >
-                唯一匹配
-              </t-tag>
-            </div>
-            <div class="recommendation-choice selected">
-              <span>{{ scenarioRecommendation.recommendations[0].template.name }}</span>
-              <small>{{ scenarioRecommendation.recommendations[0].reason }}</small>
-            </div>
-            <t-button
-              size="small"
-              variant="outline"
-              @click="templatePreviewVisible = true"
-            >
-              预览推荐模板
-            </t-button>
-          </div>
-
-          <div
-            v-else-if="scenarioRecommendation?.selectionMode === 'choice_required'"
-            class="recommendation-panel"
-          >
-            <div class="recommendation-head">
-              <strong>请明确选择一个推荐模板</strong>
-              <span>{{ scenarioRecommendation.recommendations.length }} 个精确匹配</span>
-            </div>
-            <t-radio-group
-              :value="initializeDraft.businessTemplateVersionId.value"
-              class="recommendation-list"
-              @change="onRecommendedTemplateChange"
-            >
-              <t-radio
-                v-for="choice in scenarioRecommendation.recommendations"
-                :key="choice.mappingId"
-                :value="choice.template.versionId"
-                class="recommendation-choice"
-              >
-                <span class="recommendation-copy">
-                  <strong>{{ choice.template.name }}</strong>
-                  <small>{{ choice.reason }}</small>
-                </span>
-              </t-radio>
-            </t-radio-group>
-            <t-button
-              size="small"
-              variant="outline"
-              :disabled="!selectedTemplate"
-              @click="templatePreviewVisible = true"
-            >
-              预览所选模板
-            </t-button>
-          </div>
-
-          <div
-            v-if="scenarioOptions.length && !scenarioRecommendation && !recommendationLoading"
-            class="direct-fallback-entry"
-          >
-            <t-button
-              size="small"
-              variant="text"
-              @click="useDirectTemplateFallback"
-            >
-              从模板库直接选择
-            </t-button>
-          </div>
-        </template>
-
-        <div class="create-actions">
-          <t-button
-            theme="primary"
-            :loading="creating"
-            :disabled="!initializeDraft.canCreate.value || !selectedTemplate"
-            @click="onCreateDraft"
-          >
-            创建草稿
-          </t-button>
-        </div>
-
-        <p
-          v-if="errorMessage"
-          class="error-text"
-        >
-          {{ errorMessage }}
-        </p>
-      </template>
+    <DirectPendingDraftSection
+      v-else-if="directPending"
+      :key="route.fullPath + ':' + authStore.user?.id"
+      :contract-id="contractId"
+      :version-id="authoritySnapshot?.contractVersionId ?? ''"
+      :source-state="directPending"
+      :registration-enabled="directRegistration.available.value"
+      :aggregate="aggregateModel"
+      :upward-subjects="directUpwardSubjects"
+      :saved-file-ids="directSavedFileIds"
+      :capture-read-context="captureDirectReadContext"
+      :upload-original="uploadDirectOriginal"
+      :disabled="!canEdit || !online || pendingSaveResult || saveState === 'saving' || directRegistration.locked.value"
+      :online="online"
+      :can-refresh="Boolean(online && !canEdit && !pendingSaveResult && !pendingLocalRecovery && directSourceEditable && directOwned && !directRegistration.locked.value)"
+      :read-only-message="directReadOnlyMessage"
+      :saving="saveState === 'saving'"
+      :saved="saveState === 'saved'"
+      :saved-then-updated="directSaveSuperseded"
+      :dirty="isDirty"
+      :pending-result="pendingSaveResult"
+      :checking="checkingSaveResult"
+      :error="saveError"
+      @patch-draft="patchDirectDraft"
+      @set-payment-terms="setDirectPaymentTerms"
+      @set-parties="setDirectParties"
+      @set-attachments="setDirectAttachments"
+      @save="saveNow"
+      @check-result="checkSaveResult"
+      @refresh="loadExisting"
+    />
+    <div v-else-if="!workbench && !exactVersionError" class="create-panel">
+      <t-alert v-if="errorMessage" theme="error" :message="errorMessage" />
+      <p v-else>正在读取当前合同草稿</p>
     </div>
 
     <!-- Workbench shell for an existing contract ----------------------------->
@@ -310,6 +216,7 @@
             >
               {{ manualSaveMessage }}
             </small>
+            <small v-if="saveError" class="manual-save-message" data-testid="contract-draft-save-error">{{ saveError }}</small>
           </div>
           <t-button
             v-if="canTransfer"
@@ -324,11 +231,14 @@
             v-if="contractDraftOperationAvailableActions.includes('save_contract_draft')"
             size="small"
             variant="outline"
-            :disabled="editorDisabled"
+            :disabled="editorDisabled || pendingSaveResult || !online"
             :loading="saveState === 'saving'"
             @click="onSave"
           >
             保存草稿
+          </t-button>
+          <t-button v-if="pendingSaveResult" :loading="checkingSaveResult" :disabled="!online" @click="checkSaveResult">
+            核对保存结果
           </t-button>
           <t-button
             v-if="contractDraftOperationAvailableActions.includes('submit_contract_draft')"
@@ -344,7 +254,36 @@
       </header>
 
       <t-alert
-        v-if="workbench && editable && !canEdit"
+        v-if="submissionMessage"
+        :theme="submissionMessageTone"
+        :message="submissionMessage"
+      />
+
+      <t-alert
+        v-if="pendingSubmissionResult"
+        theme="warning"
+        message="提交结果待核对，请保留当前内容，暂不重复提交。"
+      >
+        <template #operation>
+          <t-button
+            :loading="checkingSubmissionResult"
+            :disabled="!online"
+            @click="checkSubmissionOutcome"
+          >
+            核对提交结果
+          </t-button>
+        </template>
+      </t-alert>
+
+      <t-alert
+        v-if="workbench?.draftSubmissionUnavailableReason"
+        theme="warning"
+        title="草稿已保留，暂不能提交审批"
+        :message="workbench.draftSubmissionUnavailableReason"
+      />
+
+      <t-alert
+        v-if="workbench && editable && !canEdit && !pendingSubmissionResult"
         theme="warning"
         title="当前页面只读"
         :message="leaseReadonlyMessage"
@@ -380,7 +319,7 @@
           <t-space>
             <t-button
               size="small"
-              :disabled="Boolean(localRecoveryError)"
+              :disabled="Boolean(localRecoveryError) || pendingSubmissionResult || submissionBusy || governanceMutationLocked"
               @click="restorePendingLocalRecovery"
             >
               恢复本机副本
@@ -388,6 +327,7 @@
             <t-button
               size="small"
               variant="outline"
+              :disabled="pendingSubmissionResult || submissionBusy || governanceMutationLocked"
               @click="discardLocalRecovery"
             >
               放弃本机副本
@@ -402,7 +342,7 @@
       >
         <div class="summary-item">
           <span class="summary-label">这是什么合同</span>
-          <strong>{{ contractTypeLabel(workbench.contract.contractTypeKey) }}</strong>
+          <strong>{{ contractTypeLabel(currentDraftBusinessType) }}</strong>
           <small>{{ workbench.contract.code ?? workbench.contract.temporaryCode }}</small>
         </div>
         <div class="summary-item">
@@ -473,7 +413,7 @@
             </div>
             <div class="change-banner-metrics">
               <span>基版金额 {{ moneyText(changeMeta?.baseVersion?.amountCents) }}</span>
-              <span>当前投影 {{ moneyText(workbench?.version.amountCents) }}</span>
+              <span>当前投影 {{ workbench?.version.numericProtocolVersion === 2 ? workbench.version.amountYuan == null ? "待确定" : `${workbench.version.amountYuan} 元` : moneyText(workbench?.version.amountCents) }}</span>
               <span>累计增加 {{ moneyText(changeMeta?.cumulativeIncreaseCents) }}</span>
               <span>累计减少 {{ moneyText(changeMeta?.cumulativeDecreaseCents) }}</span>
             </div>
@@ -493,11 +433,13 @@
         :bill="focusedBill"
         :contract-version-id="workbench?.version.id ?? ''"
         :disabled="editorDisabled"
+        :remote-disabled="writeLocked"
         :action-disabled="!contractDraftActionEnabled('contract-bill.remainder-cancellation')"
         :action-handler="executeFocusedBillRemainderCancellation"
         @close="requestBillFocusClose"
         @update:rows="updateFocusedBillRows"
         @edited="markDirty('bills')"
+        @editor-input="setEditorInput"
       />
 
       <div
@@ -506,17 +448,17 @@
       >
         <div
           class="mobile-pane-switch"
-          aria-label="移动端工作台视图"
+          aria-label="合同工作台标签"
         >
           <t-radio-group
             v-model="mobileWorkbenchPane"
             variant="default-filled"
           >
             <t-radio-button value="document">
-              文档
+              合同正文
             </t-radio-button>
             <t-radio-button value="data">
-              资料
+              填写信息
             </t-radio-button>
           </t-radio-group>
         </div>
@@ -532,7 +474,23 @@
             当前状态（{{ contractVersionStatusLabel(workbench.version.status) }}）不可编辑，仅供查看。
           </p>
 
+          <ContractBodyEditor
+            v-if="workbench?.version.status === 'draft' && workbench.version.numericProtocolVersion === 2"
+            :contract-version-id="workbench.version.id"
+            :draft-revision="savedRevision"
+            :layout-template-version-id="workbench.version.layoutTemplateVersionId ?? null"
+            :edit-plan="model.extraDraftData.documentBody"
+            :disabled="editorDisabled"
+            :saving="saveState === 'saving'"
+            :review-disabled="isDirty || pendingSaveResult || checkingSaveResult || !online || bodyBlankReviewChecking"
+            :paper-disabled="isDirty || pendingSaveResult || checkingSaveResult || !online || saveState === 'saving' || bodyBlankReviewChecking"
+            :blank-review-receipt="bodyBlankReviewReceipt"
+            @review-blanks="requestBodyBlankReview"
+            @update="updateBodyPlan"
+            @save="saveNow"
+          />
           <ContractDocumentCanvas
+            v-else
             :contract-name="workbench?.contract.name ?? ''"
             :document-content-revision="workbench?.version.documentContentRevision ?? 0"
             :document-content-fingerprint="workbench?.version.documentContentFingerprint ?? null"
@@ -762,6 +720,9 @@
               >
                 <ContractDocumentsSection
                   :workbench="workbench"
+                  :layout-template-version-id="model.layoutTemplateVersionId"
+                  :draft-business-type="currentDraftBusinessType"
+                  @update:layout-template-version-id="updateLayoutTemplateVersion"
                   :disabled="editorDisabled"
                   :prepare-mutation="prepareGovernanceMutation"
                   :complete-mutation="completeGovernanceMutation"
@@ -775,12 +736,7 @@
                     <strong>提交就绪</strong>
                     <span>提交前会先保存未保存修改，再重新检查当前修订。</span>
                   </div>
-                  <span>正式编号在首次手动保存时由系统按日流水生成，提交时不再选择编号规则。</span>
-                  <t-alert
-                    v-if="submissionMessage"
-                    :theme="submissionMessageTone"
-                    :message="submissionMessage"
-                  />
+                  <span>保存仅保留草稿，不发起审批或形成正式业务；正式编号在首次提交审批时生成。</span>
                 </section>
               </section>
 
@@ -820,12 +776,6 @@
         </aside>
       </div>
     </div>
-
-    <ContractTemplateUsagePreviewDrawer
-      :visible="templatePreviewVisible"
-      :template="selectedTemplate"
-      @close="templatePreviewVisible = false"
-    />
 
     <!-- Revision conflict resolution ---------------------------------------->
     <t-dialog
@@ -900,15 +850,98 @@
       </div>
     </t-dialog>
 
+    <t-dialog
+      v-model:visible="bodyBlankReviewVisible"
+      header="检查正文空位"
+      role="dialog"
+      aria-label="检查正文空位"
+      aria-modal="true"
+      :footer="false"
+      :close-on-overlay-click="false"
+    >
+      <p>
+        请核对以下附加空位；仍未填写的内容可按约定继续补充，确认后可继续办理。
+      </p>
+      <ul v-if="bodyBlankReviewRequest?.remaining.length">
+        <li
+          v-for="entry in bodyBlankReviewRequest.remaining"
+          :key="entry.positionId"
+        >
+          段落{{ entry.number }}：{{ entry.labels.join("、") }}
+        </li>
+      </ul>
+      <p v-else>
+        当前保存版本没有附加正文空位。
+      </p>
+      <t-alert
+        v-if="bodyBlankReviewError"
+        theme="error"
+        :message="bodyBlankReviewError"
+      />
+      <t-button
+        variant="outline"
+        :disabled="bodyBlankReviewChecking"
+        @click="cancelBodyBlankReview"
+      >
+        返回检查
+      </t-button>
+      <t-button
+        :loading="bodyBlankReviewChecking"
+        :disabled="!canConfirmBodyBlankReview"
+        @click="confirmBodyBlankReview"
+      >
+        已检查，继续
+      </t-button>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="templateSwitchVisible"
+      header="更换模板"
+      role="dialog"
+      aria-label="更换模板"
+      aria-modal="true"
+      :footer="false"
+      :close-on-overlay-click="false"
+      @close="cancelTemplateSwitch"
+    >
+      <p>更换模板会重新生成正文，当前手工修改和新增条款将被覆盖。原正文会保留检查点。</p>
+      <p>取消会保留当前模板和正文；确认后请核对保存回执。</p>
+      <t-button
+        variant="outline"
+        @click="cancelTemplateSwitch"
+      >
+        取消
+      </t-button>
+      <t-button
+        :disabled="!canConfirmTemplateSwitch"
+        @click="confirmTemplateSwitch"
+      >
+        确认更换
+      </t-button>
+    </t-dialog>
+
     <SensitiveActionDialog
       v-model="submissionConfirmVisible"
       title="确认提交合同审批？"
-      description="系统将先保存草稿，检查双方授权、乙方签章文件确认和审批人员，全部通过后才会冻结并提交。"
+      :description="workbench?.version.numericProtocolVersion === 2 ? '系统将保存当前资料，核对已检查的正文及同版Word和PDF，提交内部并联审批；双方签章在线下审批后办理。' : '系统将先保存草稿，检查双方授权、乙方签章文件确认和审批人员，全部通过后才会冻结并提交。'"
       confirm-text="确认提交审批"
       :loading="submissionBusy"
       :error="submissionError"
       @confirm="confirmSubmission"
-    />
+    >
+      <label
+        v-if="workbench?.version.numericProtocolVersion === 2"
+        class="field"
+      >
+        <span>本次提交的生成文件</span>
+        <t-select
+          v-model="selectedSubmissionDocumentId"
+          :options="submissionDocumentOptions"
+          :disabled="submissionBusy"
+          placeholder="选择已核对的Word和PDF"
+        />
+      </label>
+    </SensitiveActionDialog>
 
     <SensitiveActionDialog
       v-model="leaseTakeoverVisible"
@@ -1011,6 +1044,14 @@
             继续编辑
           </t-button>
           <t-button
+            v-if="canLeaveDirectPending"
+            variant="outline"
+            :disabled="navigationFlushBusy"
+            @click="leaveWithDirectPending"
+          >
+            保留本机输入并离开
+          </t-button>
+          <t-button
             v-if="navigationPrompt?.canFlush"
             theme="primary"
             :loading="navigationFlushBusy"
@@ -1042,7 +1083,10 @@
 </template>
 
 <script setup lang="ts">
-import ContractEntryChoice from "../../components/ContractEntryChoice.vue";
+import DirectPendingDraftSection from "./workbench/DirectPendingDraftSection.vue";
+import { useDirectContractRegistration } from "./workbench/use-direct-contract-registration";
+import { directPendingBusinessTypes, upwardSubjectOptions, type PendingSigningMarker } from "./workbench/direct-pending-draft";
+import type { ContractDraftAttachmentModel, ContractDraftPaymentTermsModel, ContractDraftWorkbenchReadModel } from "../../api/contract-workbench.api";
 import type {
   ContractReadinessResult,
   ContractSettlementMode,
@@ -1064,14 +1108,21 @@ import {
   checkContractSubmissionReadiness,
   confirmContractSettlementMode,
   executeContractBillRemainderCancellation,
+  fetchContractDraftBody,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftTransferCapabilities,
   listPublishedContractTemplates,
+  listContractDocuments,
   previewContractTypeChange,
   transferContractDraft,
+  type ContractBodyAction,
+  type ContractBodyEditPlan,
+  type ContractBodyUpdateContext,
   type ContractDraftChangedSection,
   type ContractDraftLifecycleAction,
   type ContractDraftPartyModel,
+  type ContractDraftV2SubmissionIntent,
+  type ContractGeneratedSubmissionDocument,
   type ContractBillRemainderCancellationOperationContext,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
@@ -1193,19 +1244,13 @@ import {
   fetchApprovalDelegationUserOptions,
   fetchContractCreateProjects
 } from "../../api/core-flow-read.api";
-import {
-  listAvailableContractBusinessScenarios,
-  recommendContractScenarioTemplates
-} from "../../api/contract-scenario.api";
-import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplateUsagePreviewDrawer.vue";
 import { businessDraftActionConfig } from "../../components/business-draft-action.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
-  normalizePublishedContractTemplates,
-  publishedTemplateForSelection
+  normalizePublishedContractTemplates
 } from "../contract-templates/contract-template.config";
-import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
+import { contractTypeLabel, contractVersionStatusLabel, resolveCurrentContractBusinessType } from "./contract-labels";
 import { historicalTakeoverReturnTargetFromError } from "./contract-list.config";
 import { centsTextToYuanText } from "../../lib/money";
 import {
@@ -1214,12 +1259,6 @@ import {
   CONTRACT_NAME_DRAFT_KEY,
   normalizeWorkbenchChange
 } from "./contract-change.state";
-import {
-  canApplyContractScenarioResponse,
-  normalizeAvailableContractBusinessScenarios,
-  normalizeContractScenarioRecommendation,
-  type ContractScenarioRecommendation
-} from "./contract-scenario.state";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractAuthorizationSection from "./workbench/ContractAuthorizationSection.vue";
 import ContractCounterpartySignedFilesPanel from "./workbench/ContractCounterpartySignedFilesPanel.vue";
@@ -1231,6 +1270,7 @@ import ContractBillTransitionsSection from "./workbench/ContractBillTransitionsS
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
+import ContractBodyEditor from "./workbench/ContractBodyEditor.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
 import {
   contractWorkbenchNavigationPrompt,
@@ -1286,8 +1326,38 @@ const submissionConfirmVisible = ref(false);
 const submissionError = ref("");
 const submissionMessage = ref("");
 const submissionMessageTone = ref<"success" | "error">("success");
+const selectedSubmissionDocumentId = ref("");
+const submissionDocumentOptions = ref<Array<{ value: string; label: string }>>([]);
 const settlementModeConfirming = ref(false);
 const governanceMutationLocked = ref(false);
+type BodyBlankReviewContext = {
+  contractVersionId: string;
+  draftRevision: number;
+  documentContentRevision: number;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  planJson: string;
+  remaining: Array<{ positionId: string; number: number; labels: string[] }>;
+};
+
+const bodyBlankReviewRequest = ref<BodyBlankReviewContext | null>(null);
+const bodyBlankReviewReceipt = ref<(BodyBlankReviewContext & { documentContentFingerprint: string }) | null>(null);
+const bodyBlankReviewChecking = ref(false);
+const bodyBlankReviewError = ref("");
+const bodyBlankReviewVisible = computed({
+  get: () => bodyBlankReviewRequest.value !== null,
+  set: (visible: boolean) => { if (!visible && !bodyBlankReviewChecking.value) cancelBodyBlankReview(); }
+});
+const templateSwitchVisible = ref(false);
+const templateSwitchRequest = ref<{
+  contractVersionId: string;
+  draftRevision: number;
+  oldLayoutTemplateVersionId: string;
+  savedLayoutTemplateVersionId: string | null | undefined;
+  sourceSha256: unknown;
+  bodyJson: string | undefined;
+  requestedLayoutTemplateVersionId: string;
+} | null>(null);
 const focusedBillKey = ref("");
 const mobileWorkbenchPane = ref<"document" | "data">("data");
 const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | null>(null);
@@ -1296,14 +1366,26 @@ const draft = useContractDraft({
   replace: (to) => {
     void router.replace(to);
   },
-  userId: () => authStore.user?.id
+  userId: () => authStore.user?.id,
+  routePath: () => router.currentRoute.value.fullPath,
+  sessionIdentity: () => authStore.user
 });
 const {
   aggregateModel,
+  directPending,
+  captureDirectReadContext,
+  directSaveSuperseded,
+  uploadDirectOriginal,
   model,
   authoritySnapshot,
   saveState,
   saveError,
+  pendingSaveResult,
+  online,
+  checkingSaveResult,
+  checkSaveResult,
+  canLeaveDirectPending,
+  persistDirectPendingBeforeLeave,
   conflict,
   dirty,
   isDirty,
@@ -1312,6 +1394,7 @@ const {
   clearAuthoritySnapshot,
   requireAuthorityRefresh,
   markDirty,
+  setEditorInput,
   savedRevision,
   formalSaveCompleted,
   lastSavedAt,
@@ -1322,6 +1405,9 @@ const {
   saveNow,
   queuePreviewForCurrentRevision,
   submitNow,
+  pendingSubmissionResult,
+  checkingSubmissionResult,
+  checkSubmissionResult,
   takeOverLease,
   restoreLocalRecovery,
   discardLocalRecovery,
@@ -1332,7 +1418,7 @@ const {
 // The receipt remains deeply readonly at the composable boundary. Existing
 // presentation-only child props still describe the legacy mutable read model,
 // so narrow only the view type here without cloning or creating a second state.
-const workbench = computed<ContractWorkbenchReadModel | null>(() => {
+const workbench = computed<(ContractWorkbenchReadModel & { version: { originalSignedNumber?: string | null } }) | null>(() => {
   const receipt = authoritySnapshot.value?.workbench;
   return receipt ? (receipt as unknown as ContractWorkbenchReadModel) : null;
 });
@@ -1362,9 +1448,15 @@ const navigationState = computed(() => ({
   saveState: saveState.value,
   error: saveError.value
 }));
-const navigationPrompt = computed(() =>
-  contractWorkbenchNavigationPrompt(navigationState.value)
-);
+const navigationPrompt = computed(() => directPending.value && pendingSaveResult.value
+  ? {
+      title: "已签合同保存结果待核对",
+      message: saveError.value || "可保留本机输入，返回这份草稿后核对原请求。",
+      actionLabel: "",
+      canFlush: false,
+      tone: "warning" as const
+    }
+  : contractWorkbenchNavigationPrompt(navigationState.value));
 const leaveSave = createContractWorkbenchLeaveSave({
   state: () => navigationState.value,
   flushBeforeLeave: saveNow
@@ -1413,6 +1505,14 @@ function cancelPendingNavigation() {
   resolve?.(false);
 }
 
+function leaveWithDirectPending() {
+  if (!persistDirectPendingBeforeLeave()) return;
+  navigationConfirmVisible.value = false;
+  const resolve = resolvePendingNavigation;
+  resolvePendingNavigation = null;
+  resolve?.(true);
+}
+
 async function flushNavigationAndLeave() {
   if (navigationFlushBusy.value || !navigationPrompt.value?.canFlush) {
     return;
@@ -1439,7 +1539,7 @@ const contractDraftActionSubject = computed(() => ({
 }));
 
 function contractDraftActionEnabled(key: string) {
-  return Boolean(
+  return !pendingSubmissionResult.value && Boolean(
     contractDraftAvailableActions.value?.some(
       (action) => action.key === key && action.enabled
     )
@@ -1520,9 +1620,131 @@ function applyPatch(
   patch: Partial<ContractDraftModel>,
   section: ContractDraftChangedSection = "draft"
 ) {
-  if (writeLocked.value) return;
+  if (editorDisabled.value) return;
   Object.assign(model, patch);
   markDirty(section);
+}
+
+function bodyBlankReviewContextCurrent(context: BodyBlankReviewContext) {
+  return !editorDisabled.value && !isDirty.value && online.value && saveState.value !== "saving" &&
+    !pendingSaveResult.value && !checkingSaveResult.value &&
+    workbench.value?.contract.id === contractId.value && context.contractVersionId === workbench.value?.version.id &&
+    context.draftRevision === savedRevision.value && context.layoutTemplateVersionId === workbench.value?.version.layoutTemplateVersionId &&
+    context.layoutTemplateVersionId === model.layoutTemplateVersionId && context.planJson === JSON.stringify(model.extraDraftData.documentBody ?? null);
+}
+function requestBodyBlankReview(context: BodyBlankReviewContext) {
+  if (bodyBlankReviewChecking.value || !bodyBlankReviewContextCurrent(context)) return;
+  bodyBlankReviewError.value = "";
+  bodyBlankReviewRequest.value = { ...context, remaining: context.remaining.map(entry => ({ ...entry, labels: [...entry.labels] })) };
+}
+function cancelBodyBlankReview() {
+  if (bodyBlankReviewChecking.value) return;
+  bodyBlankReviewRequest.value = null;
+  bodyBlankReviewError.value = "";
+}
+const canConfirmBodyBlankReview = computed(() => Boolean(bodyBlankReviewRequest.value && !bodyBlankReviewChecking.value &&
+  bodyBlankReviewContextCurrent(bodyBlankReviewRequest.value)));
+async function confirmBodyBlankReview() {
+  const request = bodyBlankReviewRequest.value;
+  if (!request || !canConfirmBodyBlankReview.value) return;
+  bodyBlankReviewChecking.value = true;
+  bodyBlankReviewError.value = "";
+  try {
+    const current = await fetchContractDraftBody(request.contractVersionId);
+    if (request !== bodyBlankReviewRequest.value || !bodyBlankReviewContextCurrent(request)) return;
+    const remaining = current.blocks.flatMap((block, index) => block.editable && block.blankFields.length
+      ? [{ positionId: block.id, number: index + 1, labels: block.blankFields }] : []);
+    if (current.contractVersionId !== request.contractVersionId || current.draftRevision !== request.draftRevision ||
+      current.documentContentRevision !== request.documentContentRevision || current.layoutTemplateVersionId !== request.layoutTemplateVersionId ||
+      current.sourceSha256 !== request.sourceSha256 || JSON.stringify(remaining) !== JSON.stringify(request.remaining)) {
+      throw new Error("正文保存版本已变化，请保留当前内容，重新读取后检查。");
+    }
+    // Temporary current-revision review only. Task12 consumes it before its new submission flow.
+    const fingerprint = workbench.value?.version.documentContentFingerprint;
+    if (!fingerprint) throw new Error("当前正文校验信息缺失，请重新读取后检查。");
+    bodyBlankReviewReceipt.value = { ...request, documentContentFingerprint: fingerprint,
+      remaining: request.remaining.map(entry => ({ ...entry, labels: [...entry.labels] })) };
+    bodyBlankReviewRequest.value = null;
+  } catch (cause) {
+    if (request === bodyBlankReviewRequest.value) bodyBlankReviewError.value = formatUnknownApiError(cause, "正文空位检查失败，请保留当前内容后重试。");
+  } finally { bodyBlankReviewChecking.value = false; }
+}
+
+function updateLayoutTemplateVersion(value: string | null) {
+  if (editorDisabled.value || saveState.value === "saving" || pendingSaveResult.value || checkingSaveResult.value ||
+    value === model.layoutTemplateVersionId) return;
+  if (value && model.layoutTemplateVersionId && workbench.value) {
+    const body = model.extraDraftData.documentBody;
+    templateSwitchRequest.value = {
+      contractVersionId: workbench.value.version.id, draftRevision: savedRevision.value,
+      oldLayoutTemplateVersionId: model.layoutTemplateVersionId,
+      savedLayoutTemplateVersionId: workbench.value.version.layoutTemplateVersionId,
+      sourceSha256: body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).sourceSha256 : undefined,
+      bodyJson: JSON.stringify(body), requestedLayoutTemplateVersionId: value
+    };
+    templateSwitchVisible.value = true;
+    return;
+  }
+  const action = model.extraDraftData.documentBodyAction as Partial<ContractBodyAction> | undefined;
+  if (value !== model.layoutTemplateVersionId && (action?.kind === "delete_saved_addition" || action?.kind === "regenerate")) {
+    const extraDraftData = { ...model.extraDraftData };
+    delete extraDraftData.documentBodyAction;
+    applyPatch({ layoutTemplateVersionId: value, extraDraftData });
+    return;
+  }
+  applyPatch({ layoutTemplateVersionId: value });
+}
+
+const canConfirmTemplateSwitch = computed(() => {
+  const request = templateSwitchRequest.value, body = model.extraDraftData.documentBody;
+  const sourceSha256 = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).sourceSha256 : undefined;
+  return Boolean(request && !editorDisabled.value && saveState.value !== "saving" && !pendingSaveResult.value && !checkingSaveResult.value &&
+    request.contractVersionId === workbench.value?.version.id && request.draftRevision === savedRevision.value &&
+    request.draftRevision === workbench.value?.version.draftRevision &&
+    request.oldLayoutTemplateVersionId === model.layoutTemplateVersionId &&
+    request.savedLayoutTemplateVersionId === workbench.value?.version.layoutTemplateVersionId &&
+    request.sourceSha256 === sourceSha256 && request.bodyJson === JSON.stringify(body));
+});
+
+function cancelTemplateSwitch() {
+  templateSwitchVisible.value = false;
+  templateSwitchRequest.value = null;
+}
+
+function confirmTemplateSwitch() {
+  const request = templateSwitchRequest.value;
+  if (!request || !canConfirmTemplateSwitch.value) return;
+  const extraDraftData = { ...model.extraDraftData };
+  delete extraDraftData.documentBody;
+  extraDraftData.documentBodyAction = { kind: "regenerate", confirmOverwrite: true };
+  applyPatch({ layoutTemplateVersionId: request.requestedLayoutTemplateVersionId, extraDraftData });
+  cancelTemplateSwitch();
+  void saveNow();
+}
+
+function updateBodyPlan(documentBody: ContractBodyEditPlan, command?: ContractBodyUpdateContext) {
+  if (editorDisabled.value) return;
+  const previousBody = model.extraDraftData.documentBody;
+  const previous = previousBody && typeof previousBody === "object" && !Array.isArray(previousBody) ? previousBody as Record<string, unknown> : null;
+  if (command && (
+    command.contractVersionId !== workbench.value?.version.id || command.draftRevision !== savedRevision.value ||
+    command.layoutTemplateVersionId !== workbench.value?.version.layoutTemplateVersionId || command.layoutTemplateVersionId !== model.layoutTemplateVersionId ||
+    command.layoutTemplateVersionId !== documentBody.layoutTemplateVersionId || command.sourceSha256 !== documentBody.sourceSha256 ||
+    ((command.action.kind === "delete_saved_addition" || previousBody !== undefined) &&
+      (previous?.layoutTemplateVersionId !== command.layoutTemplateVersionId || previous?.sourceSha256 !== command.sourceSha256))
+  )) return;
+  const extraDraftData: Record<string, unknown> = { ...model.extraDraftData, documentBody };
+  const action = extraDraftData.documentBodyAction as Partial<ContractBodyAction> | undefined;
+  if (action?.kind === "delete_saved_addition" && (
+    [documentBody.edits, documentBody.additions, documentBody.deletedPositionIds, documentBody.paragraphOrder].some(items => Array.isArray(items) && items.length > 0) ||
+    documentBody.layoutTemplateVersionId !== model.layoutTemplateVersionId || previous?.layoutTemplateVersionId !== documentBody.layoutTemplateVersionId ||
+    previous?.sourceSha256 !== documentBody.sourceSha256
+  )) delete extraDraftData.documentBodyAction;
+  if (action?.kind === "regenerate" && (JSON.stringify(previousBody) !== JSON.stringify(documentBody) ||
+    documentBody.layoutTemplateVersionId !== model.layoutTemplateVersionId)) delete extraDraftData.documentBodyAction;
+  if (command) extraDraftData.documentBodyAction = { ...command.action };
+  applyPatch({ extraDraftData });
+  if (command?.action.kind === "regenerate") void saveNow();
 }
 
 const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
@@ -1590,49 +1812,56 @@ const migrationPreview = ref<Record<string, unknown> | null>(null);
 const projectOptions = ref<Array<{ label: string; value: string }>>([]);
 const projectOptionsLoaded = ref(false);
 const contractTypeOptions = ref<Array<{ label: string; value: string }>>([]);
-const amountLimitTypeOptions = [
-  { label: "有金额上限", value: "capped" },
-  { label: "无限额框架合同", value: "unlimited" }
-] as const;
-const templateOptions = ref<Array<{ label: string; value: string }>>([]);
-const templateRecords = ref<PublishedContractTemplateReadModel[]>([]);
-const templatePreviewVisible = ref(false);
-const scenarioOptions = ref<Array<{ label: string; value: string }>>([]);
-const scenarioOptionsLoaded = ref(false);
-const scenarioLoading = ref(false);
-const scenarioRecommendation = ref<ContractScenarioRecommendation | null>(null);
-const recommendationLoading = ref(false);
-const directTemplateFallback = ref(false);
-const directQueryPreset = ref<{ contractTypeKey: string; templateVersionId: string } | null>(null);
-let templateLoadRequestId = 0;
-let scenarioLoadRequestId = 0;
-let recommendationRequestId = 0;
+const amountLimitTypeOptions = [{ label: "有金额上限", value: "capped" }, { label: "无限额框架合同", value: "unlimited" }];
+const relationshipOptions = [
+  { value: "inside", label: "表内合同（我方公司与下游）" },
+  { value: "outside", label: "表外合同（施工企业与下游）" },
+  { value: "upward", label: "对上合同（我方公司与施工企业）" }
+];
 let workbenchLoadRequestId = 0;
 
 const contractId = computed(() => {
   const value = route.params.contractId;
   return typeof value === "string" ? value : Array.isArray(value) ? value[0] : "";
 });
-const entryRelationship = ref<"inside" | "outside" | "upward">("inside");
 const isNewDraft = computed(() => !contractId.value);
-const selectedTemplate = computed(() =>
-  publishedTemplateForSelection(
-    templateRecords.value,
-    initializeDraft.businessTemplateVersionId.value,
-    initializeDraft.contractTypeKey.value
-  )
-);
-
+const currentDraftBusinessType = computed(() => resolveCurrentContractBusinessType({
+  version: workbench.value?.version,
+  parentType: workbench.value?.contract.contractTypeKey,
+  contractBasics: model.extraDraftData.contractBasics
+}));
 const editable = computed(() => {
   const status = workbench.value?.version.status;
   return status ? EDITABLE_STATUSES.has(status) : false;
 });
 const writeLocked = computed(() =>
+  pendingSaveResult.value || pendingSubmissionResult.value || !online.value ||
   governanceMutationLocked.value ||
   submissionBusy.value ||
   (editable.value && !canEdit.value)
 );
-const editorDisabled = computed(() => !editable.value || !canEdit.value || writeLocked.value);
+const editorDisabled = computed(() => !editable.value || !canEdit.value || pendingSubmissionResult.value || governanceMutationLocked.value || submissionBusy.value);
+
+watch(() => [contractId.value, workbench.value?.version.id, workbench.value?.version.layoutTemplateVersionId,
+  workbench.value?.version.documentContentRevision, workbench.value?.version.documentContentFingerprint,
+  savedRevision.value, model.layoutTemplateVersionId, isDirty.value, JSON.stringify(model.extraDraftData.documentBody ?? null)] as const, () => {
+  const current = workbench.value;
+  // Authority is temporarily absent during a fresh read; only actual changed
+  // coordinates invalidate a review, not a no-op preflight reload.
+  if (!current) return;
+  const receipt = bodyBlankReviewReceipt.value;
+  if (receipt && (contractId.value !== current.contract.id || receipt.contractVersionId !== current.version.id ||
+    receipt.draftRevision !== current.version.draftRevision || receipt.documentContentRevision !== current.version.documentContentRevision ||
+    receipt.documentContentFingerprint !== current.version.documentContentFingerprint || receipt.layoutTemplateVersionId !== current.version.layoutTemplateVersionId ||
+    receipt.layoutTemplateVersionId !== model.layoutTemplateVersionId || isDirty.value ||
+    receipt.planJson !== JSON.stringify(model.extraDraftData.documentBody ?? null))) {
+    bodyBlankReviewReceipt.value = null;
+    selectedSubmissionDocumentId.value = "";
+    submissionDocumentOptions.value = [];
+  }
+  if (bodyBlankReviewRequest.value && !bodyBlankReviewContextCurrent(bodyBlankReviewRequest.value)) bodyBlankReviewRequest.value = null;
+});
+
 const leaseCanTakeOver = computed(() =>
   "canTakeOver" in lease.value && lease.value.canTakeOver
 );
@@ -1660,7 +1889,7 @@ const leaseReadonlyMessage = computed(() => {
   return "当前页面尚未取得有效编辑租约。";
 });
 const governedWorkbench = computed(() =>
-  workbench.value?.governance ? workbench.value : null
+  workbench.value?.governance && workbench.value.version.signingSubjectType !== "draft_unconfirmed" ? workbench.value : null
 );
 const changePolicy = computed(() => contractChangePolicyView(workbench.value));
 const isChangeVersion = computed(() => changePolicy.value.isChange);
@@ -1671,8 +1900,8 @@ const approvalRouteText = computed(() => {
   return change?.approvalRouteLabel ?? contractApprovalRouteText(change?.approvalRoute);
 });
 
-function moneyText(value: string | undefined) {
-  return value === undefined ? "—" : `¥${centsTextToYuanText(value)}`;
+function moneyText(value: string | null | undefined) {
+  return value == null ? "—" : `¥${centsTextToYuanText(value)}`;
 }
 
 const activeSectionLabel = computed(
@@ -1877,13 +2106,15 @@ function closeBillFocus() {
 }
 
 function updateFocusedBillRows(rows: ContractBillCandidateRow[]) {
-  if (writeLocked.value || !focusedBillKey.value) return;
+  if (editorDisabled.value || !focusedBillKey.value) return;
   const bill = aggregateModel.bills.find(
     (candidate) => candidate.billKey === focusedBillKey.value
   );
   if (!bill) return;
   bill.rows = rows.map((row, sortOrder) => ({
     clientRowKey: row.clientRowKey,
+    ...(row.restoreRef ? { restoreRef: { ...row.restoreRef } } : {}),
+    ...(row.restoreOriginalValues ? { restoreOriginalValues: JSON.parse(JSON.stringify(row.restoreOriginalValues)) as Record<string, unknown> } : {}),
     ...(row.rowKey ? { rowKey: row.rowKey } : {}),
     sortOrder,
     ...(row.itemCode ? { itemCode: row.itemCode } : {}),
@@ -1955,7 +2186,7 @@ const transferUserOptions = computed(() =>
   transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
 const autosaveLabel = computed(() =>
-  contractDraftSaveStatusText({
+  pendingSaveResult.value ? "保存结果待核对" : !online.value ? "离线，当前输入已保留" : contractDraftSaveStatusText({
     formalSaveCompleted: formalSaveCompleted.value,
     dirty: dirty.value,
     saveState: saveState.value
@@ -1963,6 +2194,7 @@ const autosaveLabel = computed(() =>
 );
 
 const saveReceiptText = computed(() => {
+  if (lastSavedAt.value === null) return "";
   return contractDraftSaveReceiptText({
     formalSaveCompleted: formalSaveCompleted.value,
     savedRevision: sessionSavedRevision.value,
@@ -2032,56 +2264,13 @@ const autosaveTone = computed(() => {
   }
 });
 
-async function loadTemplatesForType(contractTypeKey: string) {
-  const requestId = ++templateLoadRequestId;
-  const coordinates = [contractTypeKey, directTemplateFallback.value ? "direct" : "scenario"];
-  templatePreviewVisible.value = false;
-  templateRecords.value = [];
-  templateOptions.value = [];
-  if (!contractTypeKey) {
-    return;
-  }
-  try {
-    const templates = normalizePublishedContractTemplates(
-      await listPublishedContractTemplates(contractTypeKey),
-      contractTypeKey
-    );
-    if (!canApplyContractScenarioResponse(
-      requestId,
-      templateLoadRequestId,
-      coordinates,
-      [initializeDraft.contractTypeKey.value, directTemplateFallback.value ? "direct" : "scenario"]
-    )) return;
-    templateRecords.value = templates;
-    templateOptions.value = templates.map((template) => ({
-      label: template.name,
-      value: template.versionId
-    }));
-    if (
-      initializeDraft.businessTemplateVersionId.value &&
-      !publishedTemplateForSelection(
-        templates,
-        initializeDraft.businessTemplateVersionId.value,
-        contractTypeKey
-      )
-    ) {
-      initializeDraft.setBusinessTemplateVersionId("");
-    }
-  } catch (error) {
-    if (!canApplyContractScenarioResponse(
-      requestId,
-      templateLoadRequestId,
-      coordinates,
-      [initializeDraft.contractTypeKey.value, directTemplateFallback.value ? "direct" : "scenario"]
-    )) return;
-    templateRecords.value = [];
-    templateOptions.value = [];
-    initializeDraft.setBusinessTemplateVersionId("");
-    errorMessage.value = formatUnknownApiError(error, "模板加载失败");
-  }
-}
+
 
 async function loadContractTypeOptions() {
+  if (isNewDraft.value) {
+    contractTypeOptions.value = directPendingBusinessTypes;
+    return;
+  }
   try {
     const templates = normalizePublishedContractTemplates(
       await listPublishedContractTemplates()
@@ -2117,7 +2306,7 @@ async function loadProjectOptions() {
         : "";
     initializeDraft.setProjectId(nextProjectId);
     if (selectedProjectId && !nextProjectId) errorMessage.value = "指定项目已停用或无权办理，请重新选择项目";
-    await loadScenariosForProject(nextProjectId);
+
   } catch (error) {
     errorMessage.value = formatUnknownApiError(error, "项目加载失败");
     projectOptions.value = [];
@@ -2126,235 +2315,31 @@ async function loadProjectOptions() {
   }
 }
 
-async function loadScenariosForProject(projectId: string) {
-  const requestId = ++scenarioLoadRequestId;
-  const coordinates = [projectId];
-  scenarioOptionsLoaded.value = false;
-  scenarioLoading.value = Boolean(projectId);
-  scenarioOptions.value = [];
-  if (!projectId) {
-    scenarioOptionsLoaded.value = true;
-    scenarioLoading.value = false;
-    return;
-  }
-  try {
-    const scenarios = normalizeAvailableContractBusinessScenarios(
-      await listAvailableContractBusinessScenarios(projectId)
-    );
-    if (!canApplyContractScenarioResponse(
-      requestId,
-      scenarioLoadRequestId,
-      coordinates,
-      [initializeDraft.projectId.value]
-    )) return;
-    scenarioOptions.value = scenarios.map((scenario) => ({
-      label: scenario.name,
-      value: scenario.id
-    }));
-  } catch (error) {
-    if (!canApplyContractScenarioResponse(
-      requestId,
-      scenarioLoadRequestId,
-      coordinates,
-      [initializeDraft.projectId.value]
-    )) return;
-    errorMessage.value = formatUnknownApiError(error, "业务场景加载失败");
-  } finally {
-    if (canApplyContractScenarioResponse(
-      requestId,
-      scenarioLoadRequestId,
-      coordinates,
-      [initializeDraft.projectId.value]
-    )) {
-      scenarioOptionsLoaded.value = true;
-      scenarioLoading.value = false;
-    }
-  }
-}
 
-async function loadScenarioRecommendation() {
-  const projectId = initializeDraft.projectId.value;
-  const scenarioId = initializeDraft.businessScenarioId.value;
-  const contractTypeKey = initializeDraft.contractTypeKey.value;
-  const requestId = ++recommendationRequestId;
-  const coordinates = [projectId, scenarioId, contractTypeKey, "scenario"];
-  recommendationLoading.value = Boolean(projectId && scenarioId && contractTypeKey);
-  scenarioRecommendation.value = null;
-  templatePreviewVisible.value = false;
-  templateRecords.value = [];
-  templateOptions.value = [];
-  initializeDraft.setBusinessTemplateVersionId("");
-  initializeDraft.setBusinessScenarioSelection(scenarioId, "");
-  if (!projectId || !scenarioId || !contractTypeKey || directTemplateFallback.value) {
-    recommendationLoading.value = false;
-    return;
-  }
-  try {
-    const result = normalizeContractScenarioRecommendation(
-      await recommendContractScenarioTemplates(projectId, scenarioId, contractTypeKey),
-      scenarioId,
-      contractTypeKey
-    );
-    if (!canApplyContractScenarioResponse(
-      requestId,
-      recommendationRequestId,
-      coordinates,
-      currentRecommendationCoordinates()
-    )) return;
-    scenarioRecommendation.value = result;
-    templateRecords.value = result.recommendations.map((choice) => choice.template);
-    templateOptions.value = result.recommendations.map((choice) => ({
-      label: choice.template.name,
-      value: choice.template.versionId
-    }));
-    if (result.selectionMode === "automatic") {
-      const choice = result.recommendations[0];
-      initializeDraft.setBusinessTemplateVersionId(choice.template.versionId);
-      initializeDraft.setBusinessScenarioSelection(scenarioId, choice.mappingId);
-    }
-  } catch (error) {
-    if (!canApplyContractScenarioResponse(
-      requestId,
-      recommendationRequestId,
-      coordinates,
-      currentRecommendationCoordinates()
-    )) return;
-    initializeDraft.setBusinessScenarioSelection(scenarioId, "");
-    errorMessage.value = formatUnknownApiError(error, "场景模板推荐加载失败");
-  } finally {
-    if (canApplyContractScenarioResponse(
-      requestId,
-      recommendationRequestId,
-      coordinates,
-      currentRecommendationCoordinates()
-    )) recommendationLoading.value = false;
-  }
-}
 
-function currentRecommendationCoordinates() {
-  return [
-    initializeDraft.projectId.value,
-    initializeDraft.businessScenarioId.value,
-    initializeDraft.contractTypeKey.value,
-    directTemplateFallback.value ? "direct" : "scenario"
-  ];
-}
 
-function onProjectChange(value: string) {
-  const preserveDirectPreset =
-    !initializeDraft.projectId.value &&
-    directTemplateFallback.value &&
-    directQueryPreset.value?.contractTypeKey === initializeDraft.contractTypeKey.value &&
-    directQueryPreset.value?.templateVersionId === initializeDraft.businessTemplateVersionId.value;
-  scenarioLoadRequestId += 1;
-  recommendationRequestId += 1;
-  templateLoadRequestId += 1;
-  initializeDraft.setProjectId(value);
-  if (preserveDirectPreset) {
-    void loadTemplatesForType(initializeDraft.contractTypeKey.value);
-    return;
-  }
-  directQueryPreset.value = null;
-  initializeDraft.setContractTypeKey("");
-  initializeDraft.setBusinessTemplateVersionId("");
-  initializeDraft.setBusinessScenarioSelection("", "");
-  directTemplateFallback.value = false;
-  scenarioRecommendation.value = null;
-  templateRecords.value = [];
-  templateOptions.value = [];
-  templatePreviewVisible.value = false;
-  errorMessage.value = "";
-  void loadScenariosForProject(value);
-}
 
-function onScenarioChange(value: string) {
-  recommendationRequestId += 1;
-  templateLoadRequestId += 1;
-  directTemplateFallback.value = false;
-  initializeDraft.setBusinessScenarioSelection(value, "");
-  initializeDraft.setBusinessTemplateVersionId("");
-  scenarioRecommendation.value = null;
-  templateRecords.value = [];
-  templateOptions.value = [];
-  templatePreviewVisible.value = false;
-  errorMessage.value = "";
-  void loadScenarioRecommendation();
-}
 
-function onRecommendedTemplateChange(value: unknown) {
-  const versionId = String(value ?? "");
-  const choice = scenarioRecommendation.value?.recommendations.find(
-    (item) => item.template.versionId === versionId
-  );
-  templatePreviewVisible.value = false;
-  errorMessage.value = "";
-  initializeDraft.setBusinessTemplateVersionId(choice?.template.versionId ?? "");
-  initializeDraft.setBusinessScenarioSelection(
-    choice ? initializeDraft.businessScenarioId.value : "",
-    choice?.mappingId ?? ""
-  );
-}
 
-function useDirectTemplateFallback() {
-  recommendationRequestId += 1;
-  templateLoadRequestId += 1;
-  directTemplateFallback.value = true;
-  scenarioRecommendation.value = null;
-  recommendationLoading.value = false;
-  initializeDraft.setBusinessScenarioSelection("", "");
-  initializeDraft.setBusinessTemplateVersionId("");
-  templateRecords.value = [];
-  templateOptions.value = [];
-  templatePreviewVisible.value = false;
-  errorMessage.value = "";
-  void loadTemplatesForType(initializeDraft.contractTypeKey.value);
-}
 
-function returnToScenarioRecommendation() {
-  templateLoadRequestId += 1;
-  recommendationRequestId += 1;
-  directTemplateFallback.value = false;
-  initializeDraft.setBusinessTemplateVersionId("");
-  initializeDraft.setBusinessScenarioSelection("", "");
-  templateRecords.value = [];
-  templateOptions.value = [];
-  templatePreviewVisible.value = false;
-  errorMessage.value = "";
-}
 
-function onContractTypeChange(value: string) {
-  directQueryPreset.value = null;
-  recommendationRequestId += 1;
-  templateLoadRequestId += 1;
-  templatePreviewVisible.value = false;
-  errorMessage.value = "";
-  initializeDraft.setContractTypeKey(value);
-  initializeDraft.setBusinessTemplateVersionId("");
-  initializeDraft.setBusinessScenarioSelection(
-    directTemplateFallback.value ? "" : initializeDraft.businessScenarioId.value,
-    ""
-  );
-  scenarioRecommendation.value = null;
-  templateRecords.value = [];
-  templateOptions.value = [];
-  if (directTemplateFallback.value) {
-    void loadTemplatesForType(value);
-  } else {
-    void loadScenarioRecommendation();
-  }
-}
 
-function onAmountLimitTypeChange(value: "capped" | "unlimited") {
-  initializeDraft.setAmountLimitType(value);
-}
 
-function onNewTemplateChange(value: string) {
-  directQueryPreset.value = null;
-  templatePreviewVisible.value = false;
-  errorMessage.value = "";
-  initializeDraft.setBusinessTemplateVersionId(value);
-  initializeDraft.setBusinessScenarioSelection("", "");
-}
+
+
+
+
+
+
+
+
+
+
+
+
+function onAmountLimitTypeChange(value: "capped" | "unlimited") { initializeDraft.setAmountLimitType(value); }
+function onProjectChange(value: string) { initializeDraft.setProjectId(value); }
+function onContractTypeChange(value: string) { initializeDraft.setContractTypeKey(value); }
 
 function firstTemplateVersionId(templates: PublishedContractTemplateReadModel[]): string {
   return templates[0]?.versionId ?? "";
@@ -2444,8 +2429,9 @@ async function onConfirmMigration() {
 }
 
 async function onCreateDraft() {
-  if (!selectedTemplate.value || !initializeDraft.canCreate.value) {
-    errorMessage.value = "请选择当前合同类型下最新发布的业务模板";
+  if (creating.value) return;
+  if (!initializeDraft.canCreate.value) {
+    errorMessage.value = "请选择项目和业务类型后起草合同";
     return;
   }
   creating.value = true;
@@ -2457,6 +2443,63 @@ async function onCreateDraft() {
   } finally {
     creating.value = false;
   }
+}
+
+const directRegistrationConfirmVisible = ref(false);
+const directRegistration = useDirectContractRegistration({
+  actor: computed(() => authStore.user?.id),
+  routeContract: computed(() => contractId.value ?? ""),
+  routeVersion: computed(() => queryText(route.query.versionId).trim()),
+  workbench: computed(() => (authoritySnapshot.value?.workbench as ContractDraftWorkbenchReadModel | undefined) ?? null),
+  blocked: computed(() => Boolean(isDirty.value || pendingSaveResult.value || pendingLocalRecovery.value ||
+    saveState.value === "saving" || authoritySnapshot.value?.refreshRequired)),
+  online,
+  completed: (id, versionId) => { void router.replace({ path: `/contracts/${encodeURIComponent(id)}`, query: { versionId } }); }
+});
+watch([directRegistration.confirmationKey, () => authStore.user?.id, () => route.fullPath],
+  () => { directRegistrationConfirmVisible.value = false; }, { flush: "sync" });
+function confirmDirectRegistration() {
+  directRegistrationConfirmVisible.value = false;
+  void directRegistration.confirm();
+}
+
+const directSourceEditable = computed(() => directPending.value === "incomplete" || directPending.value === "complete");
+const directOwned = computed(() => workbench.value?.contract.ownerUserId === authStore.user?.id);
+const directReadOnlyMessage = computed(() => {
+  if (pendingLocalRecovery.value) return localRecoveryError.value || "服务端资料已更新，本机输入仍保留，请联系合同部核对。";
+  if (pendingSaveResult.value || !directSourceEditable.value || canEdit.value) return "";
+  if (!directOwned.value) return "当前账号可查看合同资料，草稿由经办人编辑。";
+  return "当前为只读，请刷新编辑状态。若其他页面仍在编辑，请关闭后稍候重试。";
+});
+const directUpwardSubjects = computed(() => {
+  const receipt = authoritySnapshot.value?.workbench;
+  return receipt ? upwardSubjectOptions(receipt) : null;
+});
+const directSavedFileIds = computed(() => authoritySnapshot.value?.workbench.attachments.map(item => item.fileId) ?? []);
+
+function canMutateDirectDraft() {
+  return Boolean(directPending.value && canEdit.value && online.value && !pendingSaveResult.value && saveState.value !== "saving" && !directRegistration.locked.value);
+}
+function patchDirectDraft(patch: Partial<ContractDraftModel>) {
+  if (!canMutateDirectDraft()) return;
+  Object.assign(model, patch);
+  markDirty("draft");
+}
+function setDirectPaymentTerms(terms: ContractDraftPaymentTermsModel | null) {
+  if (!canMutateDirectDraft()) return;
+  aggregateModel.paymentTerms = terms;
+  markDirty("payment_terms");
+}
+function setDirectParties(parties: ContractDraftPartyModel[], marker: PendingSigningMarker, companyEntityId?: string) {
+  if (!canMutateDirectDraft()) return;
+  aggregateModel.parties = parties;
+  patchDirectDraft({ ...(companyEntityId !== undefined ? { companyEntityId } : {}), extraDraftData: { ...model.extraDraftData, directSigningInput: marker } });
+  markDirty("parties");
+}
+function setDirectAttachments(attachments: ContractDraftAttachmentModel[]) {
+  if (!canMutateDirectDraft()) return;
+  aggregateModel.attachments = attachments;
+  markDirty("attachments");
 }
 
 async function onSave() {
@@ -2743,7 +2786,15 @@ async function completeGovernanceMutation(reload: boolean) {
   }
 }
 
-function requestSubmission() {
+function matchingSubmissionDocuments(current: ContractWorkbenchReadModel, sourceSha256: string, documents: ContractGeneratedSubmissionDocument[]) {
+  return documents.filter(document => document.contractVersionId === current.version.id && document.status === "success" &&
+    document.sourceRevision === current.version.draftRevision && document.layoutTemplateVersionId === current.version.layoutTemplateVersionId &&
+    document.documentContentRevision === current.version.documentContentRevision && document.documentContentFingerprint === current.version.documentContentFingerprint &&
+    document.inputSnapshot?.layoutSourceMapping?.sourceSha256 === sourceSha256 && document.docxFileId && document.pdfFileId && document.docxFileId !== document.pdfFileId);
+}
+
+async function requestSubmission() {
+  if (pendingSubmissionResult.value) return;
   if (
     !contractDraftOperationAvailableActions.value.includes(
       "submit_contract_draft"
@@ -2751,8 +2802,33 @@ function requestSubmission() {
   ) return;
   submissionError.value = "";
   submissionMessage.value = "";
+  selectedSubmissionDocumentId.value = "";
+  submissionDocumentOptions.value = [];
+  const current = workbench.value;
+  if (current?.version.numericProtocolVersion === 2) {
+    const receipt = bodyBlankReviewReceipt.value;
+    if (!receipt || isDirty.value) {
+      submissionMessageTone.value = "error";
+      submissionMessage.value = "请先检查当前保存版本的正文空位；确认后可继续，未填写空位不必强行补齐。";
+      return;
+    }
+    try {
+      const matching = matchingSubmissionDocuments(current, receipt.sourceSha256, await listContractDocuments(current.version.id));
+      if (receipt !== bodyBlankReviewReceipt.value || current.version.id !== workbench.value?.version.id) return;
+      submissionDocumentOptions.value = matching.map((document, index) => ({ value: document.id, label: `第${index + 1}份当前Word/PDF` }));
+      if (matching.length === 1) selectedSubmissionDocumentId.value = matching[0].id;
+    } catch (cause) {
+      submissionMessageTone.value = "error";
+      submissionMessage.value = formatUnknownApiError(cause, "当前生成文件读取失败，请保留草稿后重试。");
+      return;
+    }
+  }
   submissionConfirmVisible.value = true;
 }
+
+watch(submissionConfirmVisible, visible => {
+  if (!visible) { selectedSubmissionDocumentId.value = ""; submissionDocumentOptions.value = []; }
+});
 
 function requestLeaseTakeover() {
   if (
@@ -2790,6 +2866,7 @@ async function confirmLeaseTakeover(values: { password: string }) {
 }
 
 function restorePendingLocalRecovery() {
+  if (pendingSubmissionResult.value || submissionBusy.value || governanceMutationLocked.value) return;
   if (restoreLocalRecovery()) {
     manualSaveMessage.value = "已恢复本机副本；请核对服务端新修订后手动保存。";
   }
@@ -2800,6 +2877,8 @@ async function confirmSubmission() {
   submissionBusy.value = true;
   submissionError.value = "";
   submissionMessage.value = "";
+  const reviewedBody = bodyBlankReviewReceipt.value;
+  const selectedDocumentId = selectedSubmissionDocumentId.value;
   try {
     const current = await prepareGovernanceMutation();
     if (!current) throw new Error("草稿保存失败，本次未提交审批。");
@@ -2819,17 +2898,43 @@ async function confirmSubmission() {
     }
     const latest = workbench.value;
     if (!latest) throw new Error("当前合同版本读取失败，本次未提交。");
-    const submitted = await submitNow();
+    let intent: ContractDraftV2SubmissionIntent | undefined;
+    if (latest.version.numericProtocolVersion === 2) {
+      const body = await fetchContractDraftBody(latest.version.id);
+      const remaining = body.blocks.flatMap((block, index) => block.editable && block.blankFields.length
+        ? [{ positionId: block.id, number: index + 1, labels: block.blankFields }] : []);
+      if (!reviewedBody || reviewedBody.contractVersionId !== latest.version.id || reviewedBody.draftRevision !== latest.version.draftRevision ||
+        reviewedBody.documentContentFingerprint !== latest.version.documentContentFingerprint ||
+        reviewedBody.documentContentRevision !== latest.version.documentContentRevision || body.documentContentRevision !== reviewedBody.documentContentRevision ||
+        body.contractVersionId !== reviewedBody.contractVersionId || body.draftRevision !== reviewedBody.draftRevision ||
+        body.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId || latest.version.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId ||
+        body.sourceSha256 !== reviewedBody.sourceSha256 || JSON.stringify(remaining) !== JSON.stringify(reviewedBody.remaining) ||
+        JSON.stringify(model.extraDraftData.documentBody ?? null) !== reviewedBody.planJson || !latest.version.documentContentFingerprint) {
+        throw new Error("请在合同正文检查当前保存版本的空位；确认后可继续，未填写空位不必强行补齐。");
+      }
+      const documents = await listContractDocuments(latest.version.id);
+      const selected = matchingSubmissionDocuments(latest, body.sourceSha256, documents).find(document => document.id === selectedDocumentId);
+      if (!selected) throw new Error("请先核对并选择当前正文的Word和PDF生成记录，再提交审批。");
+      intent = { expectedRevision: latest.version.draftRevision, submissionProtocolVersion: 2,
+        documentContentRevision: body.documentContentRevision, documentContentFingerprint: latest.version.documentContentFingerprint,
+        generatedDocumentId: selected.id, sourceSha256: body.sourceSha256, blanksReviewed: true };
+    }
+    const submitted = await submitNow(intent);
     if (!submitted) {
       throw new Error("合同草稿未能以当前修订提交，请核对保存状态和编辑租约。");
     }
     submissionConfirmVisible.value = false;
     submissionMessageTone.value = "success";
     submissionMessage.value =
-      `合同 ${submitted.formalCode} 已提交审批，审批实例 ${submitted.approvalInstanceId}。`;
+      `合同 ${submitted.formalCode} 已提交审批。`;
     navigationBypass.value = true;
     await router.push(`/contracts/${latest.contract.id}`);
   } catch (error) {
+    if (pendingSubmissionResult.value) {
+      submissionConfirmVisible.value = false;
+      submissionError.value = "";
+      return;
+    }
     failClosedForAuthorityRefresh(error);
     submissionError.value = formatUnknownApiError(
       error,
@@ -2839,6 +2944,14 @@ async function confirmSubmission() {
     submissionBusy.value = false;
     governanceMutationLocked.value = false;
   }
+}
+
+async function checkSubmissionOutcome() {
+  const routeId = contractId.value;
+  const result = await checkSubmissionResult();
+  if (!result || routeId !== contractId.value) return;
+  navigationBypass.value = true;
+  await router.push(`/contracts/${routeId}`);
 }
 
 async function reloadCurrent() {
@@ -2880,7 +2993,9 @@ async function onConfirmTransfer() {
 async function loadExisting() {
   const loadContext = {
     contractId: contractId.value,
-    versionId: queryText(route.query.versionId).trim()
+    versionId: queryText(route.query.versionId).trim(),
+    actor: authStore.user?.id,
+    requestId: workbenchLoadRequestId + 1
   };
   if (!loadContext.contractId) {
     return;
@@ -2890,6 +3005,14 @@ async function loadExisting() {
     historicalTakeoverRouteRequired.value = false;
     historicalTakeoverReturnTarget.value = null;
     await loadExpectedWorkbench(loadContext.contractId);
+    if (contractWorkbenchLoadContextCurrent(loadContext) && workbench.value && !directPending.value) {
+      void loadContractTypeOptions();
+      void fetchApprovalDelegationUserOptions().then((users) => {
+        if (contractWorkbenchLoadContextCurrent(loadContext)) transferUsers.value = users;
+      }).catch(() => {
+        if (contractWorkbenchLoadContextCurrent(loadContext)) transferUsers.value = [];
+      });
+    }
   } catch (error) {
     if (!contractWorkbenchLoadContextCurrent(loadContext)) return;
     const code = error && typeof error === "object" && "code" in error
@@ -2924,8 +3047,10 @@ async function loadExisting() {
 function contractWorkbenchLoadContextCurrent(context: {
   contractId: string;
   versionId: string;
+  actor: string | undefined;
+  requestId: number;
 }) {
-  return contractId.value === context.contractId &&
+  return contractWorkbenchComponentAlive && workbenchLoadRequestId === context.requestId && authStore.user?.id === context.actor && contractId.value === context.contractId &&
     queryText(route.query.versionId).trim() === context.versionId;
 }
 
@@ -2938,7 +3063,7 @@ async function loadExpectedWorkbench(id: string) {
   if (!expectedVersionId) {
     throw new Error("工作台缺少合同版本编号，已停止读取最新草稿");
   }
-  await load(expectedVersionId);
+  await load(expectedVersionId, id);
   if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
   const snapshot = authoritySnapshot.value;
   if (
@@ -2969,46 +3094,24 @@ function returnToHistoricalTakeover() {
 
 onMounted(() => {
   void loadProjectOptions();
-  void loadContractTypeOptions();
-  initializeDraftFromQuery();
+  if (isNewDraft.value) void loadContractTypeOptions();
+  initializeDraft.setPreciseDraft(true);
   void loadExisting();
-  void fetchApprovalDelegationUserOptions()
-    .then((users) => {
-      transferUsers.value = users;
-    })
-    .catch(() => {
-      transferUsers.value = [];
-    });
 });
 
-// Loading a different contract (or arriving from the create flow) reloads.
-watch(contractId, (next, previous) => {
-  if (next && next !== previous) {
-    clearManualSaveMessage();
-    clearSessionSaveReceipt();
-    focusedBillKey.value = "";
-    workbenchLoadRequestId += 1;
-    clearAuthoritySnapshot();
-    exactVersionError.value = "";
-    historicalTakeoverRouteRequired.value = false;
-    historicalTakeoverReturnTarget.value = null;
-    void loadExisting();
-  }
+// A route replacement can change both coordinates together.
+watch([contractId, () => route.query.versionId, () => authStore.user?.id], ([id, , actor], [previousId]) => {
+  clearManualSaveMessage();
+  clearSessionSaveReceipt();
+  transferUsers.value = [];
+  if (id !== previousId) focusedBillKey.value = "";
+  workbenchLoadRequestId += 1;
+  clearAuthoritySnapshot();
+  exactVersionError.value = "";
+  historicalTakeoverRouteRequired.value = false;
+  historicalTakeoverReturnTarget.value = null;
+  if (id && actor) void loadExisting();
 });
-
-watch(() => route.query.versionId, (next, previous) => {
-  if (contractId.value && next !== previous) {
-    clearManualSaveMessage();
-    clearSessionSaveReceipt();
-    workbenchLoadRequestId += 1;
-    clearAuthoritySnapshot();
-    exactVersionError.value = "";
-    historicalTakeoverRouteRequired.value = false;
-    historicalTakeoverReturnTarget.value = null;
-    void loadExisting();
-  }
-});
-
 watch(
   [() => workbench.value?.version.id, focusedBillKey],
   () => {
@@ -3023,7 +3126,7 @@ watch(
     if (!isNewDraft.value || (next[0] === previous?.[0] && next[1] === previous?.[1])) {
       return;
     }
-    initializeDraftFromQuery();
+    initializeDraft.setPreciseDraft(true);
   }
 );
 
@@ -3046,25 +3149,7 @@ function stringMessages(value: unknown) {
     : [];
 }
 
-function initializeDraftFromQuery() {
-  if (!isNewDraft.value) {
-    return;
-  }
-  const contractTypeKey = queryText(route.query.contractType).trim();
-  const templateVersionId = queryText(route.query.templateVersionId).trim();
-  recommendationRequestId += 1;
-  templateLoadRequestId += 1;
-  directTemplateFallback.value = Boolean(contractTypeKey || templateVersionId);
-  directQueryPreset.value = contractTypeKey && templateVersionId
-    ? { contractTypeKey, templateVersionId }
-    : null;
-  scenarioRecommendation.value = null;
-  templatePreviewVisible.value = false;
-  initializeDraft.setBusinessScenarioSelection("", "");
-  initializeDraft.setContractTypeKey(contractTypeKey);
-  initializeDraft.setBusinessTemplateVersionId(templateVersionId);
-  void loadTemplatesForType(contractTypeKey);
-}
+
 </script>
 
 <style scoped>
@@ -3395,12 +3480,16 @@ function initializeDraftFromQuery() {
 
 .shell-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--jg-space-lg);
   margin-top: var(--jg-space-lg);
 }
 
 .mobile-pane-switch {
+  display: flex;
+}
+
+.shell-body > .mobile-pane-hidden {
   display: none;
 }
 
@@ -3672,6 +3761,7 @@ function initializeDraftFromQuery() {
 
 @container jg-page (max-width: 620px) {
   .status-bar {
+    position: static;
     align-items: flex-start;
     flex-direction: column;
     justify-content: flex-start;

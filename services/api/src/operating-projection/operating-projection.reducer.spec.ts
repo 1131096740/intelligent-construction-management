@@ -33,6 +33,91 @@ const fact = (
   ...overrides
 });
 
+describe("经营金额双协议", () => {
+  it.each(["decimal","legacy-uncapped"] as const)("%s所选追溯事实在直读与分页只累计一次",kind=>{
+    const selected=kind==="decimal"?fact({id:"after-cutoff",sourceType:"contract_version",factKind:"downstream_contract",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050",confirmedAt:"2026-02-01T00:00:00.000Z",sourceSnapshot:{contractRelationship:"inside"},impacts:[{id:"selected-impact",impactKind:"contract_commitment_reference",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050",direction:"increase"}]} as never):fact({id:"after-cutoff",sourceType:"contract_version",factKind:"downstream_contract",amountCents:500n,confirmedAt:"2026-02-01T00:00:00.000Z",sourceSnapshot:{amountNature:"uncapped",contractRelationship:"inside"},impacts:[{id:"selected-impact",impactKind:"contract_commitment_reference",amountCents:500n,direction:"decrease"}]});
+    const before=fact({id:"before-cutoff",sourceType:"contract_version",factKind:"downstream_contract",amountCents:0n,sourceSnapshot:{amountNature:"fixed"},impacts:[{id:"known-zero",impactKind:"contract_commitment_reference",amountCents:0n,direction:"increase"}]});
+    const excluded=fact({id:"filtered-out",sourceType:"contract_economic_review",factKind:"downstream_contract",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0010",confirmedAt:"2026-02-02T00:00:00.000Z",impacts:[{id:"excluded-impact",impactKind:"contract_commitment_reference",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0010",direction:"decrease"}]} as never);
+    const facts=[selected,before,excluded];
+    for(const cutoffAt of ["2026-01-31T00:00:00.000Z","2026-03-01T00:00:00.000Z"]){
+      const context={numericProtocolVersion:2 as const,scope:{kind:"project" as const,projectId:"project-1",projectIds:["project-1"],filters:{sourceType:"contract_version"}},readAt:"2026-03-01T00:00:00.000Z",cutoffAt,riskByProject:[]};
+      const direct=reduceOperatingProjection({...context,facts});
+      const stream=new OperatingProjectionStreamAccumulator(context);
+      for(const row of facts){stream.startFacts([{...row,impacts:[]}]);stream.addImpacts(row.impacts.map(impact=>({...impact,factId:row.id})));stream.finishFacts();}
+      const bounded=reduceOperatingProjection({...context,facts:[],...stream.result()});
+      expect(bounded.asOf.retroactiveFactCount).toBe(cutoffAt.startsWith("2026-01")?1:0);
+      expect(direct.asOf.retroactiveFactCount).toBe(bounded.asOf.retroactiveFactCount);
+      expect(direct.details.filter(row=>row.confirmedAfterAsOf)).toHaveLength(cutoffAt.startsWith("2026-01")?1:0);
+    }
+  });
+  it("V2直读与分页同样尊重旧uncapped状态及原非零差额，普通旧零仍已知",()=>{
+    const facts=[fact({id:"uncapped",sourceType:"contract_version",factKind:"downstream_contract",amountCents:500n,sourceSnapshot:{amountNature:"uncapped",contractRelationship:"inside"},impacts:[{id:"old-impact",impactKind:"contract_commitment_reference",amountCents:500n,direction:"decrease"}]}),fact({id:"known-zero",sourceType:"contract_version",factKind:"downstream_contract",amountCents:0n,sourceSnapshot:{amountNature:"fixed",contractRelationship:"inside"},impacts:[{id:"zero-impact",impactKind:"contract_commitment_reference",amountCents:0n,direction:"increase"}]})];
+    const context={scope:{kind:"project" as const,projectId:"project-1",projectIds:["project-1"]},readAt:"2026-10-19T00:00:00.000Z",cutoffAt:"2026-10-19T00:00:00.000Z",riskByProject:[]};
+    const direct=reduceOperatingProjection({...context,numericProtocolVersion:2,facts});
+    expect(direct.commitments).toMatchObject({contractCommitmentCents:null,contractCommitmentYuan:null,knownContractCommitmentYuan:"0.0000",unknownContractCommitmentCount:1});
+    expect(direct.details.find(row=>row.factId==="uncapped")).toMatchObject({numericProtocolVersion:1,sourceAmountCents:"500",amountState:"unknown",signedImpactCents:null,signedImpactYuan:null});
+    expect(direct.details.find(row=>row.factId==="known-zero")).toMatchObject({amountState:"known",signedImpactYuan:"0.0000"});
+    expect(direct.relationshipTotals.find(row=>row.relationship==="inside")).toMatchObject({contractCommitmentCents:null,contractCommitmentYuan:null,unknownContractCommitmentCount:1});
+    expect(direct.evidence.A.unknownCount).toBe(1);
+    const stream=new OperatingProjectionStreamAccumulator({...context,numericProtocolVersion:2});
+    for(const row of facts){stream.startFacts([{...row,impacts:[]}]);stream.addImpacts(row.impacts.map(impact=>({...impact,factId:row.id})));stream.finishFacts();}
+    const bounded=reduceOperatingProjection({...context,numericProtocolVersion:2,facts:[],...stream.result()});
+    expect(bounded.commitments).toEqual(direct.commitments);
+    expect(reduceOperatingProjection({...context,facts}).commitments.contractCommitmentCents).toBe("-500");
+  });
+  it("原分2元与两笔0.0050元承诺精确聚合为2.0100元且不冒充分合计", () => {
+    const facts = [fact({ id: "legacy-contract", sourceType: "contract_version", factKind: "downstream_contract", amountCents: 200n, sourceSnapshot: { contractRelationship: "inside" }, impacts: [{ id: "legacy-commitment", impactKind: "contract_commitment_reference", amountCents: 200n, direction: "increase" }] }), ...["one", "two"].map(id => fact({ id, sourceType: "contract_version", factKind: "downstream_contract", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0050", sourceSnapshot: { contractRelationship: "inside" }, impacts: [{ id: `impact-${id}`, impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0050", direction: "increase" }] } as never))];
+    const result = reduceOperatingProjection({ numericProtocolVersion: 2, scope: { kind: "project", projectId: "project-1", projectIds: ["project-1"] }, readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", facts, riskByProject: [] }) as unknown as { commitments: { contractCommitmentCents: string | null; contractCommitmentYuan: string | null; knownContractCommitmentYuan: string; unknownContractCommitmentCount: number }; operating: { confirmedCostCents: string } };
+    expect(result).toMatchObject({ schema: "operating_projection/V2", numericProtocolVersion: 2 });
+    expect(result.commitments).toMatchObject({ contractCommitmentCents: null, contractCommitmentYuan: "2.0100", knownContractCommitmentYuan: "2.0100", unknownContractCommitmentCount: 0 });
+    expect(result.operating.confirmedCostCents).toBe("0");
+  });
+  it("分页经营聚合保留两笔四位合同承诺，不在页间丢失精度", () => {
+    const accumulator = new OperatingProjectionStreamAccumulator({ scope: { kind: "project", projectId: "project-1", projectIds: ["project-1"] }, cutoffAt: "2026-10-19T00:00:00.000Z", numericProtocolVersion: 2 } as never);
+    for (const id of ["page-one", "page-two"]) {
+      accumulator.startFacts([fact({ id, sourceType: "contract_version", factKind: "downstream_contract", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0050", sourceSnapshot: { contractRelationship: "inside" } } as never)]);
+      accumulator.addImpacts([{ factId: id, id: `impact-${id}`, impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0050", direction: "increase" } as never]);
+      accumulator.finishFacts();
+    }
+    const result = reduceOperatingProjection({ numericProtocolVersion: 2, scope: { kind: "project", projectId: "project-1", projectIds: ["project-1"] }, readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", facts: [], riskByProject: [], ...accumulator.result() });
+    expect(result.schema).toBe("operating_projection/V2");
+    expect(result.commitments.contractCommitmentYuan).toBe("0.0100");
+    expect(result.commitments.contractCommitmentCents).toBeNull();
+    expect(result.evidence.A).toMatchObject({ factCount: 2, amountCents: null, amountYuan: "0.0100" });
+  });
+
+  it("V1读取不得误消费V2分页摘要后返回零承诺", () => {
+    const accumulator = new OperatingProjectionStreamAccumulator({ scope: { kind: "project", projectIds: ["project-1"] }, cutoffAt: "2026-10-19T00:00:00.000Z", numericProtocolVersion: 2 });
+    accumulator.startFacts([fact({ id: "unknown", sourceType: "contract_version", factKind: "downstream_contract", numericProtocolVersion: 2, amountCents: null, amountYuan: null } as never)]);
+    accumulator.addImpacts([{ factId: "unknown", id: "unknown-impact", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: null, direction: "notice" }]);
+    accumulator.finishFacts();
+    expect(() => reduceOperatingProjection({ scope: { kind: "project", projectIds: ["project-1"] }, readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", facts: [], riskByProject: [], ...accumulator.result() })).toThrow("新版经营读取入口");
+  });
+
+  it("未知合同承诺展示已知数与未知计数，仍按已确认收入减成本计算当前盈亏", () => {
+    const result = reduceOperatingProjection({ numericProtocolVersion: 2, scope: { kind: "project", projectIds: ["project-1"] }, readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", facts: [fact({ id: "income-cost", amountCents: 10000n, impacts: [{ id: "income", impactKind: "confirmed_income", amountCents: 10000n, direction: "increase" }, { id: "cost", impactKind: "confirmed_cost", amountCents: 3000n, direction: "increase", costCategoryCode: "material" }] }), fact({ id: "unknown", sourceType: "contract_version", factKind: "downstream_contract", numericProtocolVersion: 2, amountCents: null, amountYuan: null, impacts: [{ id: "unknown-impact", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: null, direction: "notice" }] } as never)], riskByProject: [] });
+    expect(result.commitments).toMatchObject({ contractCommitmentCents: null, contractCommitmentYuan: null, knownContractCommitmentYuan: "0.0000", unknownContractCommitmentCount: 1 });
+    expect(result.evidence.A.amountYuan).toBeNull();
+    expect(result.evidence.A.knownSubtotalYuan).toBe("100.0000");
+    expect(result.evidence.A.unknownCount).toBe(1);
+    expect(result.profitAndLoss.currentOperatingProfitCents).toBe("7000");
+    expect(result.operating.confirmedCostCents).toBe("3000");
+  });
+
+  it("V2公开汇总限定收支完整性并中性提示未知合同参考金额", () => {
+    const projection = reduceOperatingProjection({ numericProtocolVersion: 2, scope: { kind: "project", projectIds: ["project-1"] }, readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", facts: [fact({ id: "income-cost", amountCents: 10000n, impacts: [{ id: "income", impactKind: "confirmed_income", amountCents: 10000n, direction: "increase" }, { id: "cost", impactKind: "confirmed_cost", amountCents: 3000n, direction: "increase", costCategoryCode: "material" }] }), fact({ id: "unknown", sourceType: "contract_version", factKind: "downstream_contract", numericProtocolVersion: 2, amountCents: null, amountYuan: null, impacts: [{ id: "unknown-impact", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: null, direction: "notice" }] } as never)], riskByProject: [] });
+    const result = toOperatingProjectionAggregate(projection);
+    expect(result.integrity).toMatchObject({ statusLabel: "已确认收支及资金金额完整", moneyComplete: true });
+    expect(result.integrity.notices).toContain("合同参考金额含未知项（1项）；已知小计为0.0000元。");
+    expect(result.commitments).toMatchObject({ contractCommitmentYuan: null, knownContractCommitmentYuan: "0.0000", unknownContractCommitmentCount: 1 });
+    expect(result.profitAndLoss.currentOperatingProfitCents).toBe("7000");
+    expect(result.operating.confirmedIncomeCents).toBe("10000");
+    expect(result.operating.confirmedCostCents).toBe("3000");
+    expect(result.actualFunds.netProjectCashPositionCents).toBe("0");
+  });
+
+});
+
 const reserveFact = (input: {
   id: string;
   entryId: string;

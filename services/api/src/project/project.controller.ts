@@ -57,7 +57,6 @@ import { ProjectAffiliateBusinessService } from "./project-affiliate-business.se
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectService } from "./project.service";
 import { ProjectOperatingProfileService } from "./project-operating-profile.service";
-import { PROJECT_CREATE_DEFINITION } from "./project-base-entry";
 
 @Controller("projects")
 export class ProjectController {
@@ -95,25 +94,25 @@ export class ProjectController {
   }
 
   @Post()
-  @RequireProjectRole("project.master_data.manage")
+  @RequireProjectRole("project.basics.manage")
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
     return this.projects.createProject(user.id, body);
   }
 
   @Get("create-capability")
-  @RequireProjectRole("project.master_data.manage")
-  createCapability() {
-    return { availableActions: ["create_project"], definition: PROJECT_CREATE_DEFINITION };
+  @RequireProjectRole("project.basics.manage")
+  createCapability(@CurrentUser() user: AuthenticatedUser) {
+    return this.projects.basicCapability(user.id);
   }
 
   @Post("create-validation")
-  @RequireProjectRole("project.master_data.manage")
-  validateCreation(@Body() body: CreateProjectDto) {
-    return this.projects.validateCreation(body);
+  @RequireProjectRole("project.basics.manage")
+  validateCreation(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
+    return this.projects.validateCreationWithWarnings(user.id, body);
   }
 
   @Patch(":projectId")
-  @RequireProjectRole("project.master_data.manage")
+  @RequireProjectRole("project.basics.manage")
   update(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -123,9 +122,9 @@ export class ProjectController {
   }
 
   @Get(":projectId/update-capability")
-  @RequireProjectRole("project.master_data.manage")
-  updateCapability(@Param("projectId") projectId: string) {
-    return { projectId, availableActions: ["update_project", "update_project_status"] };
+  @RequireProjectRole("project.basics.manage")
+  updateCapability(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projects.basicCapability(user.id, projectId);
   }
 
   @Get()
@@ -134,7 +133,7 @@ export class ProjectController {
   }
 
   @Get("management")
-  @RequirePositions("comprehensive_director", "chairman")
+  @RequireProjectRole("project.basics.manage")
   management(@CurrentUser() user: AuthenticatedUser) {
     return this.projects.listForManagement(user.id);
   }

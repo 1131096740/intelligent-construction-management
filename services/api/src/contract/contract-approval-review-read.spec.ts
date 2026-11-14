@@ -57,6 +57,7 @@ function detailFixture(
     id: index === 0 ? instance.id : `approval-instance-${index + 1}`
   }));
   const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([{ actorUserId: "applicant-1" }]),
     contract: {
       findFirst: jest.fn().mockResolvedValue({
         id: "contract-1",

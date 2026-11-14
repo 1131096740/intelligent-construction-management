@@ -11,6 +11,7 @@ import { centsTextToYuanText } from "../../lib/money";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
+import GeneralProcurementRequestGrid from "./components/GeneralProcurementRequestGrid.vue";
 import ProcurementDraftDrawer from "./components/ProcurementDraftDrawer.vue";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 const route = useRoute(); const router = useRouter(); const detail = ref<ProcurementDetail>(); const loading = ref(true); const loadError = ref(""); const error = ref(""); const busy = ref(false);
@@ -19,8 +20,9 @@ const review = ref({ comment: "", selfReviewReason: "", confirmationPassword: ""
 const download = ref({ confirmationPassword: "", downloadReason: "核对综合采购归档资料" });
 const payment = ref({ amountCents: "", payeeName: "", paymentMethod: "银行转账", payeeAccountName: "", payeeBankName: "", payeeBankAccount: "", reason: "" }); const paymentKey = ref("");
 const cancelVisible = ref(false); const cancelClaimId = ref(""); const cancelReason = ref("");
-const nextStep = computed(() => !detail.value ? "" : detail.value.status === "archived" ? "综合部按实际采购情况发起付款审批" : detail.value.status === "approved_pending_archive" ? "综合部上传资料并归档" : detail.value.status === "approval_pending" ? `等待${detail.value.currentNodeName}审批` : "核对内容后提交审批");
-const money = (value: string) => `${centsTextToYuanText(value)} 元`;
+const reviewDutyIndex = ref<number>();
+const nextStep = computed(() => !detail.value ? "" : detail.value.status === "approved_pending_procurement" ? "已通过申请审批，等待综合部按实际需要采购；实际金额和付款另行办理" : detail.value.status === "archived" ? "综合部按实际采购情况发起付款审批" : detail.value.status === "approved_pending_archive" ? "综合部上传资料并归档" : detail.value.status === "approval_pending" ? `等待${detail.value.currentNodeName}审批` : "核对内容后提交审批");
+const money = (value: string | null) => value == null ? "预计金额待明确" : `${centsTextToYuanText(value)} 元`;
 const date = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const actionLabel = (value: string) => ({ approve: "批准", return_to_applicant: "退回补充", withdraw: "撤回" } as Record<string, string>)[value] ?? "处理记录";
 const paymentStatus = (value: string) => ({ draft: "付款草稿", approval_pending: "付款审批中", approved_pending_payment: "待财务付款", partially_paid: "部分已付", paid: "已付清", rejected: "已驳回或撤销" } as Record<string, string>)[value] ?? "处理中";
@@ -59,7 +61,7 @@ async function submit() { await run(async () => { await submitProcurementWithCap
 async function decide(decision: "approve" | "return") {
   await run(async () => {
     if (decision === "return" && !review.value.comment.trim()) throw new Error("请填写退回原因");
-    await reviewProcurementWithCapability(detail.value!.id, { revision: detail.value!.revision, decision, ...(review.value.comment.trim() ? { comment: review.value.comment.trim() } : {}),
+    await reviewProcurementWithCapability(detail.value!.id, { revision: detail.value!.revision, ...(detail.value!.requestProtocolVersion === 2 ? { expectedNodeIndex: reviewDutyIndex.value } : {}), decision, ...(review.value.comment.trim() ? { comment: review.value.comment.trim() } : {}),
       ...(detail.value!.requiresSelfReviewConfirmation ? { selfReviewReason: review.value.selfReviewReason.trim(), confirmationPassword: review.value.confirmationPassword } : {}) });
     reviewVisible.value = false; review.value = { comment: "", selfReviewReason: "", confirmationPassword: "" };
   });
@@ -73,12 +75,12 @@ async function archive() { await run(async () => {
   await archiveProcurementWithCapability(detail.value!.id, detail.value!.revision, uploadedArchive.value!.id, archiveNote.value.trim()); archiveVisible.value = false;
 }); }
 function openPayment() {
-  payment.value = { amountCents: detail.value!.paymentSummary.availableAmountCents, payeeName: "", paymentMethod: "银行转账", payeeAccountName: "", payeeBankName: "", payeeBankAccount: "", reason: detail.value!.reason };
+  payment.value = { amountCents: detail.value!.paymentSummary.availableAmountCents ?? "", payeeName: "", paymentMethod: "银行转账", payeeAccountName: "", payeeBankName: "", payeeBankAccount: "", reason: detail.value!.reason };
   paymentKey.value = crypto.randomUUID(); paymentVisible.value = true;
 }
 async function savePayment() { await run(async () => {
   const row = await fetchProcurementDetail(detail.value!.id); const form = payment.value;
-  if (!row.canRequestPayment) throw new Error("当前申请不能继续请款，请刷新后核对");
+  if (!row.canRequestPayment || !row.projectId || !row.companyEntityId) throw new Error("当前申请不能继续请款，请刷新后核对");
   if (!form.amountCents || BigInt(form.amountCents) <= 0n) throw new Error("请款金额须大于零");
   if (!form.payeeName.trim() || !form.reason.trim()) throw new Error("请填写收款对象和付款事由");
   const saved = await createExpenseClaimWithCapability({ claimType: "incidental_expense", incidentalExpenseCategory: `procurement_${row.category}`, generalProcurementId: row.id, generalProcurementRequestKey: paymentKey.value,
@@ -157,10 +159,15 @@ onMounted(load);
           :owner="detail.applicantName"
           :current-node="detail.currentNodeName ?? detail.statusLabel"
           :next-step="nextStep"
-          :requested-amount="money(detail.requestedAmountCents)"
+          :requested-amount="detail.requestProtocolVersion === 2 ? (detail.estimatedAmount == null ? '预计金额待明确' : `${detail.estimatedAmount} 元`) : money(detail.requestedAmountCents)"
+          :amount-label="detail.requestProtocolVersion === 2 ? '整单独立预计金额' : '申请金额'"
         >
           <template #actions>
-<ApprovalDocumentDownload  business-type="general_procurement" :business-id="detail.id" :refresh-key="detail.status" />
+            <ApprovalDocumentDownload
+              business-type="general_procurement"
+              :business-id="detail.id"
+              :refresh-key="detail.status"
+            />
             <t-space break-line>
               <t-popconfirm
                 v-if="detail.canDeleteDraft"
@@ -193,7 +200,7 @@ onMounted(load);
               </t-button><t-button
                 v-if="detail.canReview"
                 :disabled="busy"
-                @click="error = ''; reviewVisible = true"
+                @click="error = ''; reviewDutyIndex = detail.reviewDuties?.[0]?.nodeIndex; reviewVisible = true"
               >
                 审批
               </t-button><t-button
@@ -210,7 +217,7 @@ onMounted(load);
               >
                 综合部归档
               </t-button><t-button
-                v-if="detail.canRequestPayment && BigInt(detail.paymentSummary.availableAmountCents) > 0n"
+                v-if="detail.canRequestPayment && detail.paymentSummary.availableAmountCents != null && BigInt(detail.paymentSummary.availableAmountCents) > 0n"
                 :disabled="busy"
                 @click="openPayment"
               >
@@ -225,9 +232,26 @@ onMounted(load);
           :message="error"
         />
         <t-card title="申请内容">
-          <p>所属项目：{{ detail.projectName }}</p><p>费用承担公司：{{ detail.companyName }}</p><p>类别：{{ detail.categoryLabel }}</p><p>用途：{{ detail.reason }}</p><p v-if="detail.currentNodeName">
+          <p>所属项目：{{ detail.projectName }}</p><p>费用承担公司：{{ detail.companyName ?? "待明确" }}</p><p>类别：{{ detail.categoryLabel }}</p><p>用途：{{ detail.reason }}</p><p v-if="detail.currentNodeName">
             当前办理：{{ detail.currentNodeName }}
           </p>
+        </t-card>
+        <t-card
+          v-if="detail.requestProtocolVersion === 2"
+          title="采购需求清单"
+        >
+          <p>以下为申请预计内容，未定项保持空白；实际采购数量和金额由人员核对，不因与预计不同而自动阻止。此申请不办理收货。</p>
+          <p>已知行预计小计：{{ detail.lineSummary?.knownLineEstimatedSubtotal == null ? "待明确" : `${detail.lineSummary.knownLineEstimatedSubtotal} 元` }}；未定 {{ detail.lineSummary?.unknownLineCount ?? "待核对" }} 行。整单独立预计金额单独填写，均仅供人员核对。</p>
+          <GeneralProcurementRequestGrid
+            :definition="detail.entryDefinition"
+            :lines="detail.lines ?? []"
+            readonly
+          />
+          <t-alert
+            v-if="detail.canProcure"
+            theme="info"
+            message="该申请已进入综合部采购待办，请按实际需要采购；实际采购记录和付款另行办理。"
+          />
         </t-card>
         <t-card
           v-if="detail.archive"
@@ -273,7 +297,7 @@ onMounted(load);
             class="procurement-round"
           >
             <h3>第 {{ index + 1 }} 次提交</h3><p v-if="detail.submissions[index]">
-              {{ detail.submissions[index]!.reason }} · {{ money(detail.submissions[index]!.requestedAmountCents) }} · {{ detail.submissions[index]!.companyName }}
+              {{ detail.submissions[index]!.reason || "用途待明确" }} · {{ detail.submissions[index]!.requestProtocolVersion === 2 ? (detail.submissions[index]!.estimatedAmount == null ? "预计金额待明确" : `${detail.submissions[index]!.estimatedAmount} 元`) : money(detail.submissions[index]!.requestedAmountCents) }} · {{ detail.submissions[index]!.companyNameSnapshot ?? detail.submissions[index]!.companyName ?? "承担公司待明确" }}
             </p><p>{{ approval.nodes.map(node => `${node.name}${node.approved ? '（已批准）' : ''}`).join(' → ') }}</p><p
               v-for="(action, actionIndex) in approval.actions"
               :key="actionIndex"
@@ -314,7 +338,7 @@ onMounted(load);
       :close-on-overlay-click="false"
       @confirm="submit"
     >
-      <p>将依次交综合部主管、项目经理、董事长/总经理或签审批，通过后由综合部归档。发起人兼任审批岗位时仍须本人审批并签名。</p><t-alert
+      <p>{{ detail?.requestProtocolVersion === 2 ? (detail.scope === "company_daily" ? "将交公司综合部主管审批，通过后交综合部采购。" : "将同时交综合主管、项目经理审批，两项均通过后交综合部采购。") : "将按此历史申请的审批流程办理，通过后由综合部归档。" }}发起人兼任审批岗位时，须填写自审原因、验证当前密码并使用当前签名。</p><t-alert
         v-if="error"
         theme="error"
         :message="error"
@@ -332,6 +356,12 @@ onMounted(load);
           v-if="error"
           theme="error"
           :message="error"
+        /><t-select
+          v-if="detail?.requestProtocolVersion === 2"
+          v-model="reviewDutyIndex"
+          :options="detail.reviewDuties?.map(duty => ({ value: duty.nodeIndex, label: duty.name })) ?? []"
+          aria-label="本次办理职责"
+          placeholder="请选择本次办理职责"
         /><t-textarea
           v-model="review.comment"
           placeholder="审批意见；退回时必填"
@@ -456,6 +486,10 @@ onMounted(load);
 </template>
 <style scoped>
 .procurement-detail, .procurement-form { display: grid; min-width: 0; gap: var(--jg-space-md); }
+.procurement-detail { grid-template-columns: minmax(0, 1fr); max-width: 100%; }
+.procurement-detail > * { min-width: 0; max-width: 100%; }
+.procurement-detail :deep(.jg-result-state) { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: 100%; }
+.procurement-detail :deep(.jg-result-state > *) { min-width: 0; max-width: 100%; }
 .procurement-detail p { overflow-wrap: anywhere; }
 .procurement-form label { display: grid; gap: var(--jg-space-xs); }
 .procurement-round, .procurement-payment-row { padding-block: var(--jg-space-sm); border-bottom: 1px solid var(--jg-color-border); overflow-wrap: anywhere; }

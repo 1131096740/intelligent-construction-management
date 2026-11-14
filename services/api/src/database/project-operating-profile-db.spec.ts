@@ -570,6 +570,13 @@ describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 
     await prisma.$executeRawUnsafe(
       `GRANT EXECUTE ON FUNCTION public."serializeProjectParticipatingCompanyMutation"(TEXT) TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
     );
+    // The archive-aware participant stop guard calls these invoker routines.
+    await prisma.$executeRawUnsafe(
+      `GRANT EXECUTE ON FUNCTION
+        public.jg_contract_archive_v2_ownership_day(TEXT),
+        public.jg_assert_contract_archive_v2_manifest(TEXT)
+      TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+    );
   });
 
   afterAll(async () => {

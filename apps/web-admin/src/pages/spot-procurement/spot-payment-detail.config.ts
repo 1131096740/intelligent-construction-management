@@ -1,3 +1,4 @@
+import { chinaDateTimeInput } from "@jiangkong/shared-domain";
 import type { SpotProcurementPaymentDetailReadModel } from "../../api/spot-procurement.api";
 import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import type { BusinessStatusSemantic } from "../../components/business-status-text.config";
@@ -44,12 +45,11 @@ export function defaultSpotPaymentExecutionDraft(input: {
   );
   const channel = methodChannels.find((item) => item.primary) ?? methodChannels[0];
   const now = input.now ?? new Date();
-  const part = (value: number) => String(value).padStart(2, "0");
   return {
     amountYuan: input.remainingAmountCents
       ? centsTextToYuanText(input.remainingAmountCents).replaceAll(",", "")
       : "",
-    paidAt: `${now.getFullYear()}-${part(now.getMonth() + 1)}-${part(now.getDate())} ${part(now.getHours())}:${part(now.getMinutes())}:${part(now.getSeconds())}`,
+    paidAt: chinaDateTimeInput(now),
     paymentMethod: method,
     paymentChannelId: channel?.id ?? ""
   };

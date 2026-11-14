@@ -1,0 +1,78 @@
+{
+  "date": "2026-11-05",
+  "scope": "synthetic-loopback-TLS-transport-only",
+  "node": "v22.23.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "prisma": {
+    "client": "5.22.0",
+    "engine": "605197351a3c8bdd595af2d2a9bc3025bca48ea2"
+  },
+  "sourceBaseSha": "71201d840c503f0ea886c212767693a2cd6f87c2",
+  "artifacts": [
+    {
+      "path": "/private/tmp/jg-tls-transport-investigate-20261105.cjs",
+      "sha256": "cf5d39172db6c7327c9d0f9e9d0ba831f3a19d9d5004525a5a7b5398d476c820"
+    },
+    {
+      "path": "/private/tmp/jg-tls-transport-investigate-20261105.jsonl",
+      "sha256": "18e29486871c0a7e842c96ea49fa27bb4ac94102a2545f1e700b67d6e0a1007f"
+    }
+  ],
+  "observations": [
+    {
+      "name": "correct_ca_transport",
+      "status": "rejected",
+      "errorCode": "P1010",
+      "code": null,
+      "errorClass": "PrismaClientInitializationError",
+      "markers": [
+        "denied access"
+      ],
+      "messageSha256": "c1d4520c81406c55d594f57f2eed4d73a2e89f527d0970df555e25c88b151377",
+      "databaseHealthy": "NOT_PROVEN",
+      "secureHandshakes": 1,
+      "startupMessages": 1,
+      "ownedSocketsRemaining": 0
+    },
+    {
+      "name": "wrong_ca_transport",
+      "status": "rejected",
+      "errorCode": "P1011",
+      "code": null,
+      "errorClass": "PrismaClientInitializationError",
+      "markers": [
+        "certificate was not trusted",
+        "tls connection"
+      ],
+      "messageSha256": "bef0fc58651142d1ca7ef68cae067d5047ffbe02ed864d9e5205933af8df6c8c",
+      "databaseHealthy": "NOT_PROVEN",
+      "secureHandshakes": 0,
+      "startupMessages": 0,
+      "ownedSocketsRemaining": 0
+    },
+    {
+      "name": "wrong_san_transport",
+      "status": "rejected",
+      "errorCode": "P1011",
+      "code": null,
+      "errorClass": "PrismaClientInitializationError",
+      "markers": [
+        "certificate was not trusted",
+        "tls connection"
+      ],
+      "messageSha256": "bef0fc58651142d1ca7ef68cae067d5047ffbe02ed864d9e5205933af8df6c8c",
+      "databaseHealthy": "NOT_PROVEN",
+      "secureHandshakes": 0,
+      "startupMessages": 0,
+      "ownedSocketsRemaining": 0
+    }
+  ],
+  "temporaryCertificateDirectoriesRemaining": [],
+  "databaseServerStarted": false,
+  "sqlExecuted": false,
+  "dockerUsed": false,
+  "migrationExecuted": false,
+  "sourceCodeChanged": false,
+  "conclusion": "CA and SAN failures have identical P1011 messages on this platform. Do not infer distinguishable causes from message text."
+}

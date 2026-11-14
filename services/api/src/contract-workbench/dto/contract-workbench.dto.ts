@@ -10,6 +10,7 @@ import { Type } from "class-transformer";
 import {
   Allow,
   ArrayNotEmpty,
+  ArrayMaxSize,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -54,6 +55,8 @@ export class SaveContractTaxFactsDto {
 }
 
 export interface SaveContractDraftDto {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
   expectedRevision: number;
   companyEntityId?: string;
   draftData: Record<string, unknown>;
@@ -63,7 +66,7 @@ export interface SaveContractDraftDto {
   manualAmountCents?: string;
   estimatedAmountCents?: string;
   amountAdjustmentReason?: string;
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
   paymentTermsOriginalText?: string;
   paymentStages?: Array<{
     name: string;
@@ -176,6 +179,17 @@ export class SaveContractClauseDto implements ContractClauseDefinition {
 
 export class SaveContractDraftFieldsDto {
   @IsOptional()
+  @IsString({ message: "原合同编号必须是文字或空值" })
+  originalSignedNumber?: string | null;
+
+  @IsOptional()
+  @IsIn([2], { message: "合同数值版本不正确，请刷新工作台" })
+  numericProtocolVersion?: 2;
+
+  @Allow()
+  manualAmountYuan?: string | null;
+
+  @IsOptional()
   @IsRequiredText({
     requiredMessage: "公司主体编号不能为空",
     typeMessage: "公司主体编号必须是文字",
@@ -231,7 +245,7 @@ export class SaveContractDraftFieldsDto {
     typeMessage: "版式模板版本编号必须是文字",
     blankMessage: "版式模板版本编号不能为空白"
   })
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
 
   @IsObject({ message: "合同税务事实必须是对象" })
   @ValidateNested({ message: "合同税务事实必须是对象" })
@@ -240,6 +254,10 @@ export class SaveContractDraftFieldsDto {
 }
 
 export class SaveContractDraftBillDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn([1, 2], { message: "清单数值版本不正确，请刷新工作台" })
+  numericProtocolVersion?: number;
+
   @IsRequiredText({
     requiredMessage: "合同清单键不能为空",
     typeMessage: "合同清单键必须是文字",
@@ -330,6 +348,15 @@ export class SaveContractDraftNegotiationDocumentsDto {
   referencedGeneratedDocumentIds!: string[];
 }
 
+class SaveDirectPendingPaymentTermsDto {
+  @IsString({ message: "付款约定原文必须是文字" })
+  originalText!: string;
+
+  @IsArray({ message: "付款阶段必须是数组" })
+  @ArrayMaxSize(0, { message: "已签合同待登记仅保存实际付款原文" })
+  stages!: CreatePaymentTermsStageDto[];
+}
+
 export class SaveContractDraftAggregateDto {
   static readonly [API_VALIDATION_ERROR_CODE] = "DRAFT_VALIDATION_FAILED";
 
@@ -376,7 +403,17 @@ export class SaveContractDraftAggregateDto {
   @ValidateIf((_object, value) => value !== null)
   @IsObject({ message: "付款条款必须是对象或 null" })
   @ValidateNested({ message: "付款条款必须是对象或 null" })
-  @Type(() => SaveContractDraftPaymentTermsDto)
+  @Type(options => {
+    const parent: unknown = options?.object;
+    if (parent && typeof parent === "object" && "draft" in parent) {
+      const draft = parent.draft;
+      if (draft && typeof draft === "object" && "draftData" in draft) {
+        const data = draft.draftData;
+        if (data && typeof data === "object" && Object.hasOwn(data, "directSigningInput")) return SaveDirectPendingPaymentTermsDto;
+      }
+    }
+    return SaveContractDraftPaymentTermsDto;
+  })
   paymentTerms!: SaveContractDraftPaymentTermsDto | null;
 
   @IsArray({ message: "合同草稿附件必须是数组" })
@@ -434,6 +471,31 @@ export class SubmitContractDraftDto {
 
   @IsUUID("4", { message: "提交幂等键必须是 UUID" })
   idempotencyKey!: string;
+
+  @IsOptional()
+  @IsIn([2])
+  submissionProtocolVersion?: 2;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @IsIntegerInRange({ min: 1, max: 2_147_483_647, typeMessage: "正文修订必须是整数", rangeMessage: "正文修订必须大于0" })
+  documentContentRevision?: number;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @Matches(/^[a-f0-9]{64}$/u)
+  documentContentFingerprint?: string;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @IsUUID("4")
+  generatedDocumentId?: string;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @Matches(/^[a-f0-9]{64}$/u)
+  sourceSha256?: string;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @IsBoolean()
+  blanksReviewed?: boolean;
+
 }
 
 export class GenerateContractDraftPreviewDto {

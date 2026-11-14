@@ -7,14 +7,18 @@ import {
   Headers,
   Inject,
   Param,
+  ParseUUIDPipe,
   Post,
+  Req,
   Put,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { createHash } from "node:crypto";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
 import { ContractService } from "../contract/contract.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
@@ -43,16 +47,51 @@ export class ContractDraftController {
     @Inject(forwardRef(() => ContractService))
     private readonly contracts: ContractService,
     private readonly deletion: PristineDraftDeletionService,
-    private readonly documents: ContractDocumentService
+    private readonly documents: ContractDocumentService,
+    private readonly v2Submission: ContractV2SubmissionService
   ) {}
+
+  @Get(":contractVersionId/save-requests/:idempotencyKey")
+  @RequireProjectRole("contract.create")
+  saveResult(
+    @Param("contractVersionId") contractVersionId: string,
+    @Param("idempotencyKey", new ParseUUIDPipe({ version: "4" })) idempotencyKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string
+  ) {
+    return this.aggregate.getSaveResult(contractVersionId, user.id, idempotencyKey, numericProtocol);
+  }
+
+  @Get(":contractVersionId/submission-requests/:idempotencyKey")
+  @RequireProjectRole("contract.create")
+  submissionResult(
+    @Param("contractVersionId") contractVersionId: string,
+    @Param("idempotencyKey", new ParseUUIDPipe({ version: "4" })) idempotencyKey: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.v2Submission.getSubmissionResult(contractVersionId, user.id, idempotencyKey);
+  }
 
   @Get(":contractVersionId/workbench")
   @RequireProjectRole("contract.create")
   workbench(
     @Param("contractVersionId") contractVersionId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string
   ) {
-    return this.aggregate.getWorkbench(contractVersionId, user.id);
+    return numericProtocol === undefined
+      ? this.aggregate.getWorkbench(contractVersionId, user.id)
+      : this.aggregate.getWorkbench(contractVersionId, user.id, numericProtocol);
+  }
+
+  @Get(":contractVersionId/document-body")
+  @RequireProjectRole("contract.create")
+  documentBody(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string
+  ) {
+    return this.documents.getDraftBody(contractVersionId, user.id, numericProtocol);
   }
 
   @Put(":contractVersionId")
@@ -61,13 +100,16 @@ export class ContractDraftController {
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string,
     @Body() body: SaveContractDraftAggregateDto,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request?: { body: unknown }
   ) {
+    if (!request) return this.aggregate.saveAggregate(contractVersionId, user.id, leaseToken, body);
     return this.aggregate.saveAggregate(
       contractVersionId,
       user.id,
       leaseToken,
-      body
+      body,
+      createHash("sha256").update(JSON.stringify(request.body)).digest("hex")
     );
   }
 
@@ -127,12 +169,9 @@ export class ContractDraftController {
     @Body() body: SubmitContractDraftDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.contracts.submitApproval(
-      contractVersionId,
-      user.id,
-      body,
-      leaseToken
-    );
+    return body.submissionProtocolVersion === 2
+      ? this.v2Submission.submit(contractVersionId, user.id, body, leaseToken)
+      : this.contracts.submitApproval(contractVersionId, user.id, body, leaseToken);
   }
 
   @Post(":contractVersionId/edit-lease")

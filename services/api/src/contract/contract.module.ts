@@ -1,3 +1,13 @@
+import { UPWARD_DIRECT_ARCHIVE_AUTHORITY } from "./contract-upward-direct-registration";
+import { nativeUpwardDirectArchiveAuthority } from "./contract-upward-direct-archive-native";
+import { DIRECT_ARCHIVE_EXECUTOR, DIRECT_ARCHIVE_ISSUER_CLIENT, DIRECT_ARCHIVE_RUNTIME_CLIENT,
+  nativeDirectArchiveExecutor, type DirectArchiveRuntimeClient, type DirectArchiveSqlClient } from "./contract-direct-archive-executor";
+import { ContractDirectArchiveRuntime, ContractUpwardDirectArchiveRuntime } from "./contract-direct-archive-runtime";
+import { GENERATED_UPWARD_OPERATING_ACTIVATION } from "./contract-generated-upward-operating";
+import { nativeGeneratedUpwardOperatingActivation } from "./contract-generated-upward-operating-installation";
+import { GENERATED_ARCHIVE_PREPARATION_READER } from "./contract-generated-archive-preparation";
+import { ContractV2ArchiveService } from "./contract-v2-archive.service";
+import { CONTRACT_VERSION_FILE_READ_AUTHORITY } from "./contract-version-file-read-authority";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { forwardRef, Module } from "@nestjs/common";
 import { ApprovalModule } from "../approval/approval.module";
@@ -8,12 +18,14 @@ import { BusinessEntryTransactionModule } from "../business-entry-definition/bus
 import { ContractBillModule } from "../contract-bill/contract-bill.module";
 import { ContractWorkbenchModule } from "../contract-workbench/contract-workbench.module";
 import { FileModule } from "../file/file.module";
+import { PrivateFileStorage } from "../file/file.service";
 import { MeModule } from "../me/me.module";
 import {
   ContractController,
   ContractNumberRuleController
 } from "./contract.controller";
 import { ContractReadService } from "./contract-read.service";
+import { ContractV2SubmissionService } from "./contract-v2-submission.service";
 import { ContractService } from "./contract.service";
 import { ContractStatusService } from "./contract-status.service";
 import { ContractApprovalRouteService } from "./contract-approval-route.service";
@@ -38,18 +50,54 @@ import { ContractVersionActivationService } from "./contract-version-activation.
   controllers: [ContractController, ContractNumberRuleController],
   providers: [
     ContractService,
+    ContractV2SubmissionService,
+    ContractV2ArchiveService,
+    { provide: GENERATED_ARCHIVE_PREPARATION_READER, useExisting: PrivateFileStorage },
+    ContractDirectArchiveRuntime,
+    ContractUpwardDirectArchiveRuntime,
+    {
+      provide: DIRECT_ARCHIVE_ISSUER_CLIENT,
+      inject: [ContractDirectArchiveRuntime],
+      useFactory: (runtime: ContractDirectArchiveRuntime) => runtime.issuer
+    },
+    {
+      provide: DIRECT_ARCHIVE_RUNTIME_CLIENT,
+      inject: [ContractDirectArchiveRuntime],
+      useFactory: (runtime: ContractDirectArchiveRuntime) => runtime.executor
+    },
+    {
+      provide: DIRECT_ARCHIVE_EXECUTOR,
+      inject: [PrivateFileStorage, { token: DIRECT_ARCHIVE_ISSUER_CLIENT, optional: true },
+        { token: DIRECT_ARCHIVE_RUNTIME_CLIENT, optional: true }],
+      useFactory: (storage: PrivateFileStorage, issuer?: DirectArchiveSqlClient, runtime?: DirectArchiveRuntimeClient) =>
+        issuer && runtime && !Object.is(issuer, runtime) ? nativeDirectArchiveExecutor(storage, issuer, runtime) : undefined
+    },
+    {
+      provide: UPWARD_DIRECT_ARCHIVE_AUTHORITY,
+      inject: [PrivateFileStorage, ContractUpwardDirectArchiveRuntime],
+      useFactory: (storage: PrivateFileStorage, runtime: ContractUpwardDirectArchiveRuntime) =>
+        runtime.issuer && runtime.executor && !Object.is(runtime.issuer, runtime.executor)
+          ? nativeUpwardDirectArchiveAuthority(storage, runtime.issuer, runtime.executor) : undefined
+    },
     ContractStatusService,
     ContractReadService,
+    { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
     ContractApprovalRouteService,
     ContractFormalFileService,
     ContractAuthorizationService,
     ContractSealService,
-    ContractVersionActivationService
+    ContractVersionActivationService,
+    { provide: GENERATED_UPWARD_OPERATING_ACTIVATION, useValue: nativeGeneratedUpwardOperatingActivation }
   ],
   exports: [
+    UPWARD_DIRECT_ARCHIVE_AUTHORITY,
+    DIRECT_ARCHIVE_EXECUTOR,
     ContractService,
+    ContractV2SubmissionService,
+    ContractV2ArchiveService,
     ContractStatusService,
     ContractReadService,
+    CONTRACT_VERSION_FILE_READ_AUTHORITY,
     ContractFormalFileService,
     ContractAuthorizationService,
     ContractSealService,

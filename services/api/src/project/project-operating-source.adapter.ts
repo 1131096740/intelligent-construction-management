@@ -107,7 +107,7 @@ function sourceCore(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
   affiliate: ReturnType<typeof frozenAffiliateFromJson>,
-  input: Pick<AppendOperatingFactInput, "factKind" | "operatingLevel" | "direction" | "amountCents" | "subjects" | "impacts" | "basisSnapshot">,
+  input: Pick<Extract<AppendOperatingFactInput, { amountCents: bigint }>, "factKind" | "operatingLevel" | "direction" | "amountCents" | "subjects" | "impacts" | "basisSnapshot">,
   label: string
 ): AppendOperatingFactInput {
   const occurredAt = requiredJsonDate(source, "occurredAt", label);

@@ -176,21 +176,24 @@ export const useAuthStore = defineStore("auth", {
 
       return user;
     },
-    async refreshTokens(): Promise<boolean> {
-      if (!this.refreshToken) {
+    async refreshTokens({ clearSessionOnFailure = true }: { clearSessionOnFailure?: boolean } = {}): Promise<boolean> {
+      const refreshToken = this.refreshToken;
+      const user = this.user;
+      if (!refreshToken) {
         return false;
       }
 
       try {
         const result = await postAuth<{ tokens: AuthTokens }>("refresh", {
-          refreshToken: this.refreshToken
+          refreshToken
         });
+        if (this.user !== user || this.refreshToken !== refreshToken) return false;
         this.accessToken = result.tokens.accessToken;
         this.refreshToken = result.tokens.refreshToken;
         this.persist();
         return true;
       } catch {
-        this.clearSession();
+        if (clearSessionOnFailure && this.user === user && this.refreshToken === refreshToken) this.clearSession();
         return false;
       }
     },

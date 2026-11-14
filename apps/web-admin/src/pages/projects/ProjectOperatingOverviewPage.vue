@@ -18,7 +18,7 @@
           />
         </div>
         <t-button
-          v-if="canManageProjects && selectedProjectId"
+          v-if="canManageProjectEntities && selectedProjectId"
           variant="outline"
           @click="activeTab = 'settings'"
         >
@@ -69,6 +69,7 @@
                   :key="selectedProjectId"
                   :project-id="selectedProjectId"
                   :name="selectedProjectName"
+                  :code="projects.find((project) => project.id === selectedProjectId)?.code ?? ''"
                   :saving="projectUpdating"
                   @save="submitProjectName"
                 />
@@ -330,6 +331,14 @@
             </ul>
           </section>
         </template>
+      </t-tab-panel>
+
+      <t-tab-panel
+        v-if="selectedProjectId"
+        value="personnel"
+        label="项目人员"
+      >
+        <ProjectPersonnelPanel :project-id="selectedProjectId" />
       </t-tab-panel>
 
       <t-tab-panel
@@ -895,6 +904,7 @@
 </template>
 
 <script setup lang="ts">
+import { chinaDateOnly } from "@jiangkong/shared-domain";
 import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
@@ -962,6 +972,7 @@ import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
+import ProjectPersonnelPanel from "./components/ProjectPersonnelPanel.vue";
 import ProjectRenameForm from "./components/ProjectRenameForm.vue";
 import ProjectCreateForm from "./components/ProjectCreateForm.vue";
 import ProjectLifecyclePanel from "./components/ProjectLifecyclePanel.vue";
@@ -1326,6 +1337,10 @@ const visibleExpenseTypeOptions = computed(() =>
 );
 
 const canManageProjects = computed(
+  () => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director" || role === "general_manager") ?? false
+);
+
+const canManageProjectEntities = computed(
   () => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false
 );
 
@@ -2552,11 +2567,7 @@ function canRecordPurchaseExecution(row: ProjectExpenseRow) {
 }
 
 function todayText(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return chinaDateOnly();
 }
 
 function requiredText(value: string, label: string): string {
@@ -2766,6 +2777,7 @@ function upstreamFundStatusLabel(status: ProjectUpstreamFundFactReadModel["statu
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
@@ -2774,6 +2786,7 @@ function formatDate(value: string): string {
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

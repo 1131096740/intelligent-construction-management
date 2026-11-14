@@ -1,0 +1,214 @@
+# 任务08：真实DOCX编辑/转换技术探针（#390）
+
+当前结论：**八样张18项技术输出矩阵及三compact漏双方的P1补修已完成测量，待新SHA独立双轴；任务08未收票，未宣称八份正式母版全标准通过。** 本目录是隔离、可丢弃的技术验证，不接入业务API、数据库、对象存储或正式模板目录。完整可复核输入及测量摘要见 [sources.json](sources.json)、[receipt.json](receipt.json)。原始DOCX/PDF、逐页文字/字体/版式数据、渲染图和失败日志保留在 `/private/tmp/jg-task08-document-receipts-20261105`，不把截图或本说明当作实际产物。
+
+## 样张和确认依据
+
+准确起点 `f352d187b720a2e8231874775616c24e91eb3bd8`。按D04只复制保留工作区的八份模板作为本票样张，逐份字节/哈希与主线差异见sources；没有整体承接旧业务代码、覆盖主线七模板或改动原件。类型为劳务2、材料2、机械2、专业分包1、其他1。专业分包是旧根新增资产，主线不存在。
+
+字体依据为保留工作区 `docs/design/建工智管_合同Word版式标准.md` 的精确副本 [confirmed-layout-standard.md](samples/confirmed-layout-standard.md)，并核对10月30日字体修正记录。该历史文件中的旧税务/发票选项不导入本轮业务规则；当前193条规格优先。
+
+本机现有上传字体：方正小标宋简体、仿宋_GB2312、楷体_GB2312；数字英文Times New Roman。读取既有字体的哈希、name表和OS/2 fsType，未安装、修改或提交字库。历史LO PDF包含FZXBSJW--GB1-0、FangSong_GB2312、KaiTi_GB2312（适用处）、TimesNewRomanPSMT及SIL-Hei-Med-Jian；当前明确选择docx4j后的实际精确字库及新标题文件版本见后文锁定收据。**全部字库嵌入不等于字体规范全部通过**：三个简版资产没有正式封面标题字体，仍是源资产差异；黑体PDF名称也不冒充已证明逐字库来源链。
+
+## 已确认公开接缝与红绿
+
+候选CLI以真实DOCX、权威字段及普通条款编辑为输入，输出真实DOCX/PDF；测试读取导出文件，不调用私有分类器或渲染替身。`candidate.py`采用保留OOXML的方案：
+
+1. `render`克隆真实模板、展开既有清单循环，把字段位置映射为有锁定标记的内容控件；其余包部件、段落/表格/图片/字体声明保留。
+2. `revise`只更新对应字段锚点；普通条款可在唯一原段落后插入并修改。再次同步关键资料后手改仍在。普通编辑遇锚点段落拒绝，不能用本入口直接改权威字段。仅为段落级文字编辑探针，不是完整富文本Web编辑器、后端权限或修订冲突实现。
+3. `regenerate`/换模板必须显式确认放弃手改，输出新文件，并另存原DOCX的 `.previous.docx` 恢复点；不覆盖原路径。测试中未确认拒绝，确认后原件字节保留。
+4. `export-pdf`对**同一已修订DOCX**导出：最终候选必须显式`--engine docx4j --runtime-manifest <精确清单>`；默认LibreOffice保留为已知失败的历史比较基线，没有宣称修复。没有另外拼接纯文本PDF。`printProfile=a4-portrait`仅显式设置派生样张A4页式，来源是确认标准；不偷偷修改源文件，也不称版式完全未变。
+
+红绿记录：无候选CLI时公开导出测试失败；实现首条渲染/同步后通过（首轮夹具遗漏页眉水印而失败，另存日志）；普通条款修改与后续同步先红后绿；换模板恢复点先红后绿。可用的OOXML行为测试：
+
+```sh
+TASK08_PY=/private/tmp/jg-task08-document-tools311-20261105/bin/python
+"$TASK08_PY" scripts/probes/task08-documents/test_candidate.py CandidateCLI.test_authoritative_sync_preserves_inserted_clause_and_original_format
+```
+
+历史默认LibreOffice的真实劳务标点回归仍红，**不能称默认转换器或包含该项的全套通过**：
+
+```sh
+"$TASK08_PY" scripts/probes/task08-documents/test_candidate.py CandidateCLI.test_explicit_print_profile_keeps_fullwidth_comma_in_actual_pdf
+```
+
+该测试需要本机应用转换权限。沙箱内LibreOffice退出-6的失败另保留；获批本机转换才取得真实文件。此命令会打开新的独立转换profile，不是当前允许反复重跑的许可。后续转换按主控当前调度执行；不自动重跑已保留的历史LO红项。
+
+## 真实产物与未通过项
+
+原样式生成8份基线+8份修订PDF；显式A4派生再生成8+8份；另生成3份A09反例。最终A4派生页数前后分别为：机械真实20/20、机械简版2/2、其他2/2、劳务真实15/15、劳务简版1/1、材料真实20/20、材料简版2/2、专业分包2/2。页数相等只是本组结果，不是禁止合理重排或原生Word分页证明。
+
+- 机械真实10列、材料真实13列各45行，逐个行标记001–045完整；均跨PDF第2–3页，续页重复表头。独立读取PDF字库字节、逐页尺寸和文字坐标，最终八份修订版均A4、字库已嵌入、没有页面范围外文字。补充目视核对材料第2页和机械第3页：表格边框及续表行连续；机械源样张黄色提示仍在，不冒充正式签认。
+- **真实劳务丢字**：源文“公司审批后方可生效，…”（PDF第4页）、“所有工序、工艺，…”（第5页）、“向甲方汇报，48…”（第7页）中的3个U+FF0C，在普通文字提取和PDF绘制texttrace均不存在；字体为FangSong_GB2312。第4页真实渲染已目视确认。另“材料浪费、遗失”的1个U+3001只在普通提取缺失，texttrace存在，不能混称真实丢字。两种差异分别保留，未删原字符或放宽容差。
+- `overflowPunct=0` 和 `characterSpacingControl=doNotCompress` 两个明确假设分别实测无效，失败保留，均已从候选移除，不继续猜参数。
+- 原机械/劳务简版未定义纸张，原样导出Letter612×792；只有显式A4派生修正页式。三个简版原资产还缺少正式封面/标题字形，不能因计入八模板就当全字体规范通过。
+- A09历史反例：框架空总价、包干无数量、不含税且税率/发票待补3个真实DOCX/PDF。未知税率未被转成0，但源模板会留下“合同金额（含税）：人民币元”，且不含税说明与固定含税标题冲突；这是需要显式语义锚点/模板映射修正的**真实失败**，不能仅补一段说明后称口径一致。技术探针不改正式模板或新业务规则。此处是保留的修复前失败；下节记本票派生语义锚点的实测修复，不删除旧收据。
+
+`run_comparison.py --artifacts <新的不存在目录>`可重建八模板对比；完整测量失败时返回非零。`run_pricing_cases.py --baseline-request <对比生成的generic render.json> --artifacts <新目录>`重建反例。字符多重集合会被重复页眉等掩盖，因此只作有界测量，不作为完整逐字等价证明。PDF字节因生成时间/子集等可变化；收据的哈希绑定本次文件，不承诺重建字节恒等。
+
+Microsoft Word未安装；已有Pages15.4。一次AppleScript在open处40秒超时(-1712)，未生成PDF；脚本没有finally，原结果不推断转换能力或关闭状态。父控后来以原生UI打开同f938源副本，观察到缺字体警告，正确本地路径/文件名的导出按钮始终不可用，无PDF；随后取消并关闭唯一自有文稿，UI返回noWindowsAvailable。该诊断为NOT_ACCEPTED，不推断按钮失效原因；未安装字体、登录、改设置或触碰未知文稿。原生Word分页、移动端编辑及合同部/法务逐页签认仍未验证。
+
+## 后续有界差分与A09语义锚点修复
+
+保留相同劳务派生源 `f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043` 的字节、LibreOffice版本、字体及页式，只执行一次 `SelectPdfVersion=2`→`0` 差分。转换前创建独占尝试目录，不允许重复；标准PDF仍真实缺3个U+FF0C，所有字体嵌入、页面外文字0，源前后哈希相同。PDF/A导出/子集独有原因假设被否，停止此参数方向；实际PDF与日志在外部 `lo-standard17-once/`。
+
+A09修复在**本票派生文档**明确映射关键语义金额范围，不改原模板：`pricing`参数包含mode、basis、total、uppercase、taxRate、invoiceKind。NULL总价在框架模式显示“部分金额待确定（非最终总价）”；已知总价原样显示调用方精确小数字串及大写。含税/不含税标签随同一个权威上下文同步，NULL税率/发票显示待补充，不推算另一口径。此探针不复制02正式金额/大写算法：`1.5340`及调用方给出的“人民币壹元伍角叁分肆厘”按字面保留。
+
+语义金额范围以八份样张各自明确的原文映射，必须唯一匹配；缺映射或旧文稿没有语义锚点时拒绝。同步关键资料后普通新增条款保留；语义依赖字段不能另用raw fields单独改税率/金额造成两套口径。该拒绝先红后绿。三项公开DOCX流程通过（含八模板逐份映射、后续同步保留手改、恢复点），styles.xml仍与原样张字节相同。
+
+三个修复后的实际generic DOCX/PDF位于 `pricing-cases-02-semantic/`；框架NULL、包干无数量、不含税未知税率的预期文字均在实际PDF存在，独立检查缺字符0、嵌入true、A4true、页面外文字0。八份**DOCX**映射通过不等于八份修改后PDF版式全部验收；劳务转换红、简版封面/字体差异仍阻止任务08完成。
+
+公开回归命令（不包含仍红的劳务转换项）：
+
+```sh
+"$TASK08_PY" scripts/probes/task08-documents/test_candidate.py CandidateCLI.test_eight_real_templates_have_explicit_semantic_total_mapping CandidateCLI.test_pricing_semantic_anchors_keep_unknowns_and_sync_basis_without_losing_clause CandidateCLI.test_authoritative_sync_preserves_inserted_clause_and_original_format
+```
+
+## 独立引擎诊断：字体前置未成立，转换未执行
+
+主控复核官方源及许可后，仅在 `/private/tmp/jg-task08-docx4j-tools-20261105` 准备Temurin17.0.17+10及docx4j17.3.5 core/extras两jar；下载235,989,010字节，总560,593,557字节，未全局安装。JDK核官方SHA256，两jar核官方发布SHA1并另记本地SHA256；没有伪称不存在的上游jar SHA256或未验签的签名已验证。实际许可/NOTICE已逐项留证并由主控读取接受为本地诊断，不构成产品依赖采纳。
+
+第二阶段编译最小adapter，Java17 SecurityManager以`policy==`覆盖默认策略：只准任务目录、原派生DOCX及显式本机字体读取/输出；不授SocketPermission。实际loopback Socket、DNS及目录外文件权限三项拒绝均在加载文稿前验证，XML/URI限制file/jar与文件白名单相交，原DOCX外部关系/DTD/ENTITY均0。
+
+仅一次adapter启动：精确仿宋注册成功，随后原FZXBSJW_1.TTF没有得到精确PhysicalFont，按规则停止；未替换字库、没有进入CONVERSION_CALL_BEGIN、转换调用0次、没有PDF，源前后f938相同。该结果只证明当前字体前置失败，不判docx4j/FOP渲染能力失败。
+
+随后只读因果核实：当前原路径FZXBSJW_1.TTF不存在；当前同家族“方正小标宋简体.ttf”为单TTF、fsType8、相同家族/PS名称，却是另一SHA256（da8112c1…），与早期已记录2322dbfb…字节不同，不将它静默替换。jar字节码在FontInfoFinder返回null后直接返回，alias参数尚未参与字体构建，否定alias查找假设；当前缺失路径是可解释该失败的前置问题，不足以宣布解析器不支持。字体目录变化原因未知，未修改、安装或跨目录寻找旧字体。源码、policy、字节码及失败日志见外部目录与receipt指纹，不随机改旗标或字体再试。
+
+### 新字体版本与首次真实PDF的安全检查点
+
+主控随后明确选择当前已存在的同家族da8112c1…标题字库为**新版本候选**，不冒充历史2322dbfb…同一文件；仿宋正文fef7cf99…仍逐字节相同。单次字体发现成功，离线/越界三拒绝仍成立。复核还纠正了初版adapter的STHeiti SC映射：Heiti SC不是模板的精确黑体；v3改用主控指定的既有SimHei/黑体.ttf（aa4560dd…），仅换该文件映射和读取许可，单次发现成功。旧adapter和失败均保留，未安装、恢复或修改字体。
+
+获批首次真正toFO时，全部10份显式字体映射成功，但FOP默认cwd读取被策略拒绝，留下0字节PDF及241,590字节中间FO。主控核因后仅追加一次cwd修正：Java子进程工作目录设为本票新输出目录，适配器、policy、源、字体与转换flags不变，不增加读取权限。源f938与10字体前后哈希均相同，实际三个离线/越界拒绝仍成立。
+
+该次实际PDF完成：16页A4，原3个逗号上下文均存在（第4/5/7页），文字和texttrace缺失计数均0；没有.notdef/替换字形候选，字库全部嵌入，实际字体为FZXBSJW、FangSong、SimHei、Times变体，没有Heiti SC。封面、正文、两个签署表和清单页已独立渲染核对。
+
+**仍为NOT_ACCEPTED_LAYOUT**：第16页仅水印/页脚、没有正文，相比LO15页多一个无正文末页；第15页三个清单数据行各重复表头，尚需只读区分源循环和转换原因。恢复逗号不是完整版式通过；未开展新引擎八模板/45行批量转换，也未证明原生Word分页。安全交接证据在 `tracer-v4-cwd-correction/` 的receipt、literal-font-checks、final-layout-assessment及实际PDF/PNG；原0字节失败保留，停止追加转换。
+
+### 两个布局反例的有因果源修复
+
+只读对照原模板、f938派生DOCX及v4 FO：原模板用两个独立loop段包住整张清单表，候选按条目克隆整个区间，三条数据遂生成三张同头表；FO只是保留了这个结构。原模板与派生文末均另有6个纯空/空格段，FO将其展开成6个25pt空block，末节`force-page-count=no-force`，没有发现强制奇偶空页。这两个反例不能据此归为引擎能力不支持。
+
+按主控确认，只在派生源做最小修复：明确的“开始标记段+一张表+结束标记段”必须仅有一个占位数据行，只复制此行，静态表头保留一次并标注可续页；多表、额外归属不明块或多占位行拒绝，不造通用模板引擎。现有A4 profile只裁剪文末连续惰性空段；字段、图形、分页、书签或节属性会停止裁剪，文中空段及签署区域不动。
+
+两项结构先红后绿，并补歧义拒绝红绿，共6项公开DOCX流程通过；3行/45行都是单表头加对应数据行，两张签署表与原件相同，末尾书签保留。初次空段保护将段落制表位属性误判为正文元素而只裁3段的失败亦保留，随后正确区分属性后代与实际内容，未删分页或书签求绿。
+
+唯一获批的新源转换使用f56203e2…派生DOCX：比f938仅合并重复表头并裁掉6末空段；3条数据行、两张签署表及最终节属性的C14N相同，手改条款保留。引擎、10字库、policy和flags均与v4相同，离线拒绝与输入前后哈希检查成立。实际PDF为15页，无空末页；末页仅1头+3行，已真实渲染核对。全字符/trace缺失0、.notdef候选0，3个原逗号存在，精确字库嵌入、A4及页面坐标检查通过。第11/14页签署正文固定区域像素与v4完全相同（页脚总页数在区域外）。
+
+此结论仅为单样张测量通过，尚未固定整套方案或完成任务08；新引擎八模板/45行批量及简版封面/字体标准仍待验证。`derived-layout-fix/`与`tracer-v5-derived-layout-fix/`保存新源、生成器快照、因果清单、PDF和独立检查；旧f938、v4反例及全部原8样张字节保留。本轮没有追加第二次转换。
+
+### 已验证引擎接入公开export-pdf
+
+`candidate.py export-pdf --engine docx4j --runtime-manifest <清单>`已接入本票离线adapter，不是将外部tracer成功冒充默认LO能力。[Task08Fo.java](docx4j/Task08Fo.java)与[runtime-lock.json](docx4j/runtime-lock.json)可复核；仓库没有JDK、jar、class或字库二进制。运行清单必须与此精确锁一致，逐次核完整JDK树456项、两个jar、两个已核class及10份指定字库，adapter源码也核哈希。不安装工具、不跨目录找字体、不接受任意命令或shell。
+
+每次创建新的自有scratch，只复制已核class和输入DOCX。生成的policy仅允许此scratch读写、固定JDK/jar/字体读取；真实Socket/DNS/目录外拒绝、独立cwd、外部关系/实体/外部域拒绝和一次120秒导出均在原公开输出缝内。失败保留scratch日志/侧车收据，不回退或重试；输出字体未嵌入或不在固定名单也拒绝。默认`--engine libreoffice`仍是历史比较基线，其已知反例未宣称修复。
+
+公开接口先RED（原CLI不认识engine/manifest参数），后实际GREEN：v5劳务DOCX通过同一CLI输出15页PDF，3个原逗号、精确FZX/FangSong/SimHei/Times字库、嵌入、单头3行及非空末页检查通过；侧车`.export.json`记录实际三个拒绝与一次转换。证据 `/private/tmp/task08-public-export-pqyq_i_r/`。解冻后运行清单漂移、外部关系、禁止隐式LO三类拒绝测试通过；继承JVM选项的不存在agent负例先红后绿，Java子进程只使用PATH/LANG/LC_ALL/TMPDIR新白名单，未改变全局HOME或环境。最终公开测试2项通过，实际结果保留在 `/private/tmp/task08-public-export-xd9ovvej/`；完整18份矩阵尚未开始。
+
+```sh
+"$TASK08_PY" scripts/probes/task08-documents/candidate.py export-pdf --engine docx4j --runtime-manifest /private/tmp/jg-task08-docx4j-tools-20261105/public-runtime-manifest.json --document /private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/labor-layout-fixed.docx --output /private/tmp/新的任务输出目录/labor.pdf
+```
+
+此为任务专用可重建临时工具清单，不是跨机器安装器或正式服务依赖。字库/运行时变化必须明确重新核定，不能改清单绕过锁；每次PDF仍须独立核验文字、版式、签署与分页，不能只凭EXPORTED状态算任务08完成。
+
+### 固定18份矩阵首例停止（不重试）
+
+矩阵计划固定为8份基线、8份编辑同步版、材料13列和机械10列各一份45行长表，共18份。准确候选584b8ce0的第1份机械真实基线实际导出12页后，独立检查停止，后17份未执行；不能把结果文件中“0项验收通过”误读为“未导出”，实际PDF/侧车及失败均保留。
+
+第一停点是检查器将所有U+25A1都标为缺字：原DOCX恰有两个燃油费复选框□，PDF在相同完整上下文中也为两个□，glyph127而非.notdef；该事实不能当作引擎丢字。同时真实渲染发现两个不可接受的布局问题：完整计价/税率/发票上下文被候选插入狭窄数字合计格，合计行异常高；数量1.0000在窄列拆为两行。字符/trace缺失0、字体嵌入、A4与页外0并未因此当成版式通过。
+
+只读量得数量列680dxa、9pt Times字串1.0000宽24.75pt，原cell padding约10.3pt不足以容纳；尚未减字号、改数字、换字体或静默重试。下一步需先对源复选框的独立检查及机械受控金额位置/数量padding作有因果的最小修复，再按主控明确范围重验。原矩阵及首份在 `public-matrix18-20261105/`，状态NOT_ACCEPTED_LAYOUT，任务08仍未完成。
+
+### 机械单样张修复后的冻结检查点
+
+原全U+25A1缺字判定被替换为严格来源核对：只接受完整原段上下文中位置相同且glyph非0的原有□；来源段少一个□的实际DOCX/PDF差分负例仍拒绝。新增□、U+FFFD、glyph0不在白名单。历史首份失败未改写。
+
+本票派生机械源将表内合计限制为短数值/待确定，权威计价、金额口径、税率、发票上下文放在紧随表格的全宽受控段。含税与不含税两合计格共同受同一pricing同步：当前口径显示调用方精确金额，另一口径待确定，不推算另一金额，也不留下旧raw不含税总额。普通条款、原表宽/网格和签署表不动；数量列只设左右及对应start/end各2pt。
+
+先前只读笔记的“9pt”是宽度估算错误：原DOCX run `w:sz=17`、原PDF实际均8.5pt。第一次只修位置/padding的12页PDF忠实保留8.5pt，所以不是最低字号标准通过。主控明确核已确认表格最低小五9pt后，仅在该已确认清单表把低于9pt的明确run提升至9pt，保留更大原值、字库、正文和签署字号；原8样张不变。8.5pt原失败与首次修复产物都保留。
+
+结构分别RED/GREEN后，唯一获批9pt机械重验通过公开CLI实际导出12页：3个`1.0000`各在单一PDF文本行且字号9pt，表格实际文字最小9pt；合计行边框高度从193.604降至17.129pt。字符/trace缺失0、glyph异常0、原上下文复选框2、嵌入/A4/页面外0，字库仍精确FZX/FangSong/SimHei/Times，未换字库或导出flags。独立渲染查看第2页表格/全宽说明和第12页签署区；签署表C14N相同，PDF签署相对文字坐标/字号/字库相同，仅随前文整体上移，末页有签署正文。
+
+源与实测：`mechanical-nine-point-single/actual.docx` SHA256 `3b6d91cb09bd35ca5a97bc2e97d3deaa3e7fa08c299f735e4482f2f06a742714`；PDF `a87a36b6ad44b3ec2713e21f7afbfb505d391e53ef9eca4be943a1c9705905a9`。该目录保存一次标记、同请求、源码指纹、实际侧车收据、独立inspection/layout-measurement及PNG。10项检查点测试通过（7项公开DOCX、清单/外部关系/隐式LO拒绝、原复选框差分、已生成9pt PDF独立检查），未追加PDF转换。接线时一次正则capture缺失及一次测试名称选择错误均留原日志，未充作行为RED。
+
+当前只是单样张安全检查点，任务08仍open；原18矩阵的后17份继续NOT RUN。八模板编辑同步、两张45行长表及三个简版的封面/字体标准未据此通过。后续矩阵必须采用新来源感知glyph检查，不能复用原外部脚本的全□误判；须主控冻结核完准确新SHA后明确下一运行范围。本票没有运行PG/SQL/迁移/部署。
+
+### 八包元数据全面核查与矩阵第二停点
+
+中央文档40b3b0c6已合入。本轮固定18项矩阵开始：机械真实基线与已验9pt样张的请求、生成器指纹、每个OOXML part及固定运行时均严格核对后复用；机械编辑同步版新增/修改普通条款、同步甲乙方/合同名/付款条款后实际导出12页，手改保留且内容检查通过。该矩阵金额仍75.0000，金额值变化由独立A09/公开DOCX案例覆盖，不能宣称本矩阵改了总额。
+
+第3项机械简版在load时发生styles `ClassCastException`，toFO调用0次。其原包缺styles MIME Override，落到generic application/xml。经公开render行为RED/GREEN，仅在两已知派生包补styles声明后的单次重验，旧cast消失却遇`Null InputStream`，仍在toFO前；进一步全面只读核8包全部parts/内容类型/内部关系，确认三简版还存在缺settings.xml的可选关系、五非real包fontTable缺MIME声明。不是随机参数/字体试跑。两次失败、无PDF及完整包清单保留在`public-matrix18-source-aware-02-20261105/`和`compact-style-package-fix-single/`。
+
+主控逐项批准、并在公开render结构RED/GREEN后固定如下**派生包元数据**修复清单，原8文件不动：
+
+| 已知样张 | 允许修复 | 必须成立的条件 |
+| --- | --- | --- |
+| equipment-rental-v1、labor-subcontract-v1 | 补`/word/styles.xml`标准styles Override | 唯一标准styles关系、target恰为styles.xml、part存在且根w:styles；已有冲突拒绝 |
+| 上述两份及material-purchase-v1 | 删除精确可选悬空settings关系 | Id=rIdSettings、标准settings类型、内部target=settings.xml、part实际缺失、所有XML无r命名空间引用；已有settings/其它关系不动，不造默认settings |
+| 上述三份及generic-contract-v1、professional-subcontract-v1 | 补`/word/fontTable.xml`标准fontTable Override | 唯一标准fontTable关系、同路径part存在且根w:fonts；已有冲突拒绝，不改字体表/字名 |
+
+完整一次只读包清单：`compact-style-package-fix-single/all-eight-source-package-audit.json`；记录全部part哈希/声明及关系解析目标，未知类型期望null，不假称所有未知语义已校验。未列样张/路径不自动修复，必需缺part、冲突或歧义不由本修复删除求通过。
+
+合并这三种已批准元数据修复后，机械简版唯一获批新单次输出实际1页PDF；与原失败派生包比较仅`[Content_Types].xml`和`word/_rels/document.xml.rels`变化，document/styles/fontTable字节相同。独立文字/trace缺失0、glyph异常0、嵌入/A4/页外0，真实字体仅FangSong/Times。**仍NOT_ACCEPTED标准**：源简版缺正式封面和确认标题字体；嵌入只证明其原字形，不等于完整标准通过。
+
+安全检查点证据在`compact-known-package-fix-single/`，含实际DOCX/PDF、一次标记、侧车、inspection及逐页PNG。4项公开包修复检查通过（含坏根/缺part/重复关系/类型冲突拒绝、引用的缺settings拒绝、既有settings字节保留）。按主控为05双轴复审腾窗口的调度，在此停机，无转换子进程；矩阵后15项尚未开始，任务08仍open，不启动下一项、不把旧失败覆盖为成功。依赖/许可限制及三个compact版式差异继续保留。
+
+### 819f3e25复审前18项技术矩阵（历史，双方缺口已被P1指出）
+
+剩15项已按f8冻结生成器及同一锁定引擎各单次实际导出，文字/trace/glyph、真实嵌入、A4、页外坐标、行顺序及手改同步自动检查通过。再独立量得材料13列表格源样式实际8.5pt，不能算9pt标准通过；主控仅批准同机械规则的该表低字号派生规范。公开render先RED（17半磅<18）→GREEN后，材料基线/编辑版/45行各唯一新导出，实际12/12/13页，3/3/45个1.0000都为单行9pt；不改grid、padding、字库、正文或签署表，旧8.5产物仍留存。
+
+其余15项以**最终生成器**再次经公开CLI生成DOCX，全部ZIP part名称及每part字节15/15严格等于前18项的实际PDF输入；运行时/adapter/10字库/flags锁相同，明确继承对应PDF测量，没有将旧PDF说成新SHA重新导出。等价证据`current-generator-other15-docx-equivalence/receipt.json`，最终逐项输入/输出路径与SHA256总清单`task08-final-effective-matrix.json`。材料3项新结果在`material-nine-point-three/`；全部原样张哈希未变。
+
+| 样张 | 基线/编辑后实际页数 | 目前证实与源资产限制 |
+| --- | --- | --- |
+| 机械real | 12/12 | 10列表9pt；原封面30pt、正文题18pt及正文12pt/页边距与母版规范不一致，忠实保留，非转换丢失 |
+| 机械compact | 1/1 | 原源无正式封面/确认标题字体/甲乙方锚点，不假称已同步不存在的双方字段 |
+| 通用 | 2/2 | 正式源标题字库22pt、表9pt；映射范围内双方/标题/付款/语义金额同步 |
+| 劳务real | 15/16 | 3个原FF0C均恢复、清单单头3行；编辑后的正常分页增加有清单正文，非空白末页 |
+| 劳务compact | 1/1 | 同compact源缺口，已有标题/付款/语义金额及普通条款保留 |
+| 材料real | 12/12 | 13列表已派生9pt；原封面36pt、正文题18pt及页边距与母版不同，未冒充标准通过 |
+| 材料compact | 1/1 | 同compact源缺口，非正式13列表母版 |
+| 专业分包 | 2/2 | 标题精确字库22pt、表9pt；旧根独有样张，不自动吸收为正式主线资产 |
+
+材料13列45行及机械10列45行均实际13页，表格均跨第2/3页，分别28+17/27+18行，表头和边框真实续页，45个数量均单行9pt。独立查看表格起止页、合计上下文和签署实际渲染，并结合文字/字形、字体、坐标、45行标记及OOXML grid/签署源C14N检查；截图仅补充。全18项styles.xml/fontTable.xml/media与各原样张字节相同；批准的改动限派生document/字段/包声明及已知清单9pt，不改原源字库声明。
+
+| 本票验收/技术决定 | 已有证据与边界 |
+| --- | --- |
+| 08覆盖五类型八模板/长表/确认字库 | 8×基线+编辑同步实际DOCX/PDF和2×45行；字体固定到物理文件/hash，材料/机械9pt可行。三compact及真实源原版式差异独立列出，未伪称八正式母版通过 |
+| 08真实文字/版式/嵌入/分页比较 | 全18实际产物逐项独立解析；字形0/FFFD/多余方框仍拒绝；两长表及签署真实渲染核查；原生Microsoft Word分页/合同部逐页签认未证明 |
+| D04/A07正文编辑与关键同步 | 8份都新增并修改普通条款、同步已有标题/付款/语义金额后手改仍在；5份完整源另验甲乙方；3compact源缺该锚点。换模板明确确认及原件恢复点已验公开DOCX，不假称正式持久化/修订冲突已实现 |
+| D04/A09未知与口径 | 公开CLI语义锚点拒第二金额权威、NULL待确定、含/不含税标签同源、4位/调用方大写保留；历史3个generic实际PDF已作独立文字检查。18矩阵金额仍75.0000/长表1125.0000，不虚称这里做金额算法/修改总额；正式02算法与10业务链另验 |
+| 08依赖/格式限制 | 下表及下载LICENSE/NOTICE收据；固定引擎已覆盖审定八包，不是任意上传Word的全能转换器、Web编辑器或跨机器安装器 |
+
+**可固定的技术路线**是受审模板版本+权威字段锚点+独立普通条款/表格/签署结构，以同一修订的DOCX交固定离线docx4j输出PDF；实测没有退化成纯文本PDF。**10/11仍需正式实现与验收**：10负责服务端版本/权限/持久化、同修订导出、私有文件、手机编辑/A4预览、普通条款操作和完整确认字体母版；11负责上传映射主管确认、版本停用隔离、八份源母版审定，修正compact缺封面/双方及已列源样式差异后再做真实产物签认。本探针不解除原票据条件或新增依赖边。
+
+最后15项聚焦检查通过（含材料9pt公开DOCX/4种包守卫/既有字段和恢复点/无新转换的独立PDF检查）；默认LO历史劳务3逗号失败仍保留，未称包含它的全套通过。当前只准备独立复审候选，不推送/合中央/收票；没有PG/SQL/迁移/部署或生产操作。
+
+### 三compact双方P1的正文根因修复（当前候选）
+
+819f3e25的Standards轴0项、Spec轴P1明确否定了把三compact双方缺锚点当源资产限制交10/11的处理：用户已输入双方却未落到正文，after还主动省略双方同步，是本票关键能力缺失。上述复审前表格及旧六份漏名DOCX/PDF、旧sync请求作为失败证据保留，不能用于本轮完成结论。
+
+逐段核原机械/劳务/材料compact及其它word部件，确实只有标题、合同名/编号、金额、地点、付款和清单，根本没有双方段或签署命名。按主控明确批准，在唯一原编号段后、原金额段前添加两段**中性**受控正文“甲方：{甲方名称}”“乙方：{乙方名称}”，不猜承租/出租、发包/承包、买/卖法律角色；段落属性取原编号段，字库明确仿宋_GB2312 14pt/数字英文Times。原8源字节不变，原正文段保留，不把名字放sidecar或附录，也不伪造原不存在的签署区/母版批准。
+
+render要求明确非空双方及唯一编号/紧随原金额位置，已有未审双方段、位置变化或冲突均拒绝；两个字段用既有权威锚点，普通编辑不能另改一套双方。revise同步也拒绝空/非字符串双方。原包metadata专用测试的合法输入现在明确提供双方，原冲突/缺part守卫断言未改。
+
+公开CLI先RED47/48（旧产物没有双方），GREEN49；空名同步RED51→GREEN52，金额位置变化RED56→GREEN57。随后三compact baseline/after共6份各唯一新实际DOCX/PDF均通过，全部1页：正文双方存在，after两名均更新且旧值不残留，普通新增/修改条款保留。新增两段实际PDF均为精确FangSong14pt；字符/trace缺失、glyph异常、页外文字均0，嵌入/A4通过；原正文段C14N相同。已看三份after实际整页，作为解析/字体/字形/位置测量补充。
+
+六份新产物在`compact-party-six-real-outputs/`。其余12项用当前生成器公开CLI重建DOCX，每个ZIP part名称和字节12/12严格同原PDF输入，未重新导出；增加最后严格金额位置守卫后又对当前全18 DOCX逐part核等价，没有追加PDF。当前总清单`task08-party-fixed-effective-matrix-current.json`及`party-fix-final18-docx-equivalence/receipt.json`绑定完整来源。全18实际DOCX/PDF均验证双方存在、双方锚点存在，8份after旧双方值均不残留，8份手改仍保留；不再把这项能力推给10/11。
+
+最终17项聚焦检查通过，包含原15项和两项公开双方/冲突守卫；没有追加转换或产品全套。10/11仍承担正式API/UI、持久修订、模板主管映射/版本隔离及母版规范/人工签认；三compact原封面/标题字形/签署区和real原样式差异仍明列，不能冒充已正式通过。819双审不能替代本轮新SHA复审；当前仅交新候选，不自行收票或推中央。
+
+## 依赖、许可及后续约束
+
+Python3.11.15；隔离工具环境按 [requirements.txt](requirements.txt) 固定版本，没有改pnpm依赖/锁文件。首次误用Python3.9安装PyMuPDF1.26.7失败，改用已存在Python3.11另建独立环境后成功，未升级包。工具说明：
+
+| 组件 | 本票用途 | 许可/限制依据 |
+| --- | --- | --- |
+| lxml6.0.2 | 保留OOXML结构的候选 | [BSD及依赖许可](https://github.com/lxml/lxml/blob/master/LICENSES.txt)，未修改库 |
+| fonttools4.60.1 | 只读字体元数据 | [MIT](https://pypi.org/pypi/fonttools/4.60.1/json) |
+| LibreOffice26.2.4.2 | 既有本机离线转换进程 | [MPL2.0及组件许可](https://www.libreoffice.org/licenses/)，[PDF参数](https://help.libreoffice.org/latest/en-US/text/shared/guide/pdf_params.html)；本次实际丢字，未选为合格正式方案 |
+| Temurin17.0.17+10 | 任务临时JDK | 实际GPLv2+Classpath Exception及各模块NOTICE；官方SHA256已核，签名仅保存来源未验信任；不作为全局或产品运行时安装 |
+| docx4j-bundle/core+extras17.3.5 | 固定离线OOXML→FO/PDF | 实际META-INF Apache2 LICENSE及各NOTICE、Oracle BSD等随包文本已留证；两jar核官方SHA1、另记本地SHA256，不伪称全部传递依赖均单一许可或已采纳到产品 |
+| PyMuPDF1.26.7 | 本机独立解析、字库读取、逐页渲染诊断 | [AGPL/商业双轨](https://pymupdf.readthedocs.io/en/latest/about.html)；未购买商业许可，未作为产品运行依赖或分发二进制，不能把此探针直接移入闭源服务 |
+| 上传/系统字体与Pages | 只使用既有本机安装 | 未收集可再分发EULA；fsType只是技术标志，不是法律授权。未复制字体到仓库、未安装新应用、未购买或登录 |
+
+下一步由独立双轴复核准确候选及有效18项清单；正式10/11须实现上述未完成业务链，并完成源母版规范与合同部逐页验收。任务09/10/11不能复用本票失败结果当完成。此处没有运行任务01 driver、PG/Docker/SQL/迁移、部署、生产读写、真实业务或外发文档。

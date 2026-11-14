@@ -97,6 +97,8 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
   ),
   SpotProcurementVersion: expectedModel(
     [
+      "requestProtocolVersion Int @default(1)",
+      "draftRevision Int @default(1)",
       "id String @id @default(uuid())",
       "procurementId String",
       "versionNo Int",
@@ -112,7 +114,8 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "purchaserNameSnapshot String",
       "purchaserDepartmentId String?",
       "purchaserDepartmentNameSnapshot String",
-      "requestedArrivalAt DateTime",
+      "requestedArrivalAt DateTime?",
+      "estimatedTotalAmount Decimal? @db.Decimal(24, 4)",
       "totalAmountCents BigInt? // legacy: the A4 procurement application has no amount",
       "changeReason String?",
       "changeSummary Json?",
@@ -139,13 +142,15 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "sortOrder Int",
       "materialName String",
       "specification String?",
-      "unit String",
-      "quantity Decimal @db.Decimal(24, 6)",
+      "unit String?",
+      "quantity Decimal? @db.Decimal(24, 6)",
       "invoiceMode String? // legacy: expected invoice facts belong to payment lines",
       "invoiceType String?",
       "vatRateOptionId String?",
       "vatRateValueSnapshot Decimal? @db.Decimal(9, 6)",
       "vatRateLabelSnapshot String?",
+      "estimatedUnitPrice Decimal? @db.Decimal(24, 4)",
+      "estimatedAmount Decimal? @db.Decimal(24, 4)",
       "unitPrice Decimal? @db.Decimal(24, 6) // legacy: price belongs to payment lines",
       "amountCents BigInt? // legacy: amount belongs to payment lines",
       "usageLocation String?",
@@ -336,6 +341,8 @@ const CORE_MIGRATION_FIELD_OVERRIDES: Record<string, Record<string, string>> = {
     totalAmountCents: "totalAmountCents BigInt"
   },
   SpotProcurementLine: {
+    unit: "unit String",
+    quantity: "quantity Decimal @db.Decimal(24, 6)",
     invoiceMode: "invoiceMode String",
     unitPrice: "unitPrice Decimal @db.Decimal(24, 6)",
     amountCents: "amountCents BigInt"
@@ -358,6 +365,11 @@ const CORE_MIGRATION_FORWARD_FIELDS = new Set([
   "SpotProcurementVersion.purchaserDepartmentId",
   "SpotProcurementVersion.purchaserDepartmentNameSnapshot",
   "SpotProcurementVersion.requestedArrivalAt",
+  "SpotProcurementVersion.requestProtocolVersion",
+  "SpotProcurementVersion.draftRevision",
+  "SpotProcurementVersion.estimatedTotalAmount",
+  "SpotProcurementLine.estimatedUnitPrice",
+  "SpotProcurementLine.estimatedAmount",
   "SpotProcurementVersion.abandonedAt",
   "SpotProcurementVersion.abandonedByUserId",
   "SpotProcurementVersion.abandonReason",
@@ -420,7 +432,9 @@ const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
   "ProjectAffiliateSettlementFact",
   "ProjectAffiliatePaymentFact",
   "ProjectAffiliateBusinessEvidence",
-  "ProjectAffiliateCompanyContract"
+  "ProjectAffiliateCompanyContract",
+  "ContractArchiveEvidenceFile",
+  "RegisteredPaymentVoucher"
 ]);
 
 const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([

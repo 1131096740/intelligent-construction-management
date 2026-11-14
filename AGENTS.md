@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## 当前开发授权
+
+- 开发与隔离验证遵循 [开发规程](docs/agents/development-loop.md)。#382 已获 2026-11-13 持续隔离开发授权，普通失败可诊断、修复和重新验证；生产、真实数据及真实云服务写入仍另行确认。旧单次目录、令牌和失败回执保留，不复用。
+
 ## Project Truth
 
 - This is an enterprise construction project management system, not merely a WeChat mini program.

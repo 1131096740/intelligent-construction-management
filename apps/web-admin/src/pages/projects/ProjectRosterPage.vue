@@ -145,6 +145,7 @@ type RosterTableRow = ProjectRosterRowReadModel & {
   projectPositions: string;
 };
 
+const props = defineProps<{ initialProjectId?: string }>();
 const mobile = usePersonnelMobile();
 const auth = useAuthStore();
 const canManage = computed(() => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false);
@@ -159,7 +160,7 @@ const columns = computed(() => [
 const loading = ref(false);
 const message = ref("");
 const savedMessage = ref("");
-const selectedProjectId = ref("");
+const selectedProjectId = ref(props.initialProjectId ?? "");
 const rows = ref<ProjectRosterRowReadModel[]>([]);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const management = ref<ProjectRosterManagementOptions | null>(null);

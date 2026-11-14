@@ -6,6 +6,18 @@ import { ContractBillService } from "../contract-bill/contract-bill.service";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
+import { Test } from "@nestjs/testing";
+import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
+import { ContractDraftBillExcelController } from "../contract-bill/contract-draft-bill-excel.controller";
+import { ContractBillExcelService } from "../contract-bill/contract-bill-excel.service";
+import { apiJsonReplacer } from "../api-json-replacer";
+import { createApiValidationPipe } from "../validation/api-validation";
+import * as ExcelJS from "exceljs";
+import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
+import { ContractService } from "../contract/contract.service";
+import { PristineDraftDeletionService } from "../contract-workbench/pristine-draft-deletion.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
 const LEASE_TOKEN_PREFIX = "contract-draft-aggregate-concurrency-lease";
@@ -28,6 +40,295 @@ export function contractDraftAggregateDatabaseUrl(value: string | undefined) {
 describe("contract draft aggregate PostgreSQL evidence", () => {
   const integrationTest =
     process.env.RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE === "1" ? it : it.skip;
+
+  // Task 09 PREPARED ONLY: no resource/SQL execution is authorised in this run.
+  integrationTest("creates a pending v2 draft without a legacy template and preserves its four-place or unknown facts under the real subject CHECK", async () => {
+    const client = new PrismaClient({ datasources: { db: { url: contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL) } } });
+    const ids = makeIds("task09-new-v2");
+    const audit = new AuditService();
+    let created = false;
+    try {
+      await client.user.create({ data: { id: ids.owner, name: "新合同合成经办人" } });
+      await client.project.create({ data: { id: ids.project, code: `DRAFT-09-${randomUUID()}`, name: "新合同合成项目" } });
+      const contracts = new ContractService(client as never, audit);
+      const result = await contracts.createDraft({ numericProtocolVersion: 2, projectId: ids.project, contractTypeKey: "other", relationship: "upward" }, ids.owner);
+      ids.contract = result.contract.id; ids.version = result.version.id; created = true;
+      const bill = await client.contractBill.findFirstOrThrow({ where: { contractVersionId: ids.version } }); ids.billA = bill.id;
+      const workbench = new ContractWorkbenchService(client as never, audit);
+      const aggregate = new ContractDraftAggregateService(client as never, workbench, new ContractBillService(client as never, audit), new BusinessPartyService(client as never, audit), { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
+      const initial = await aggregate.getWorkbench(ids.version, ids.owner, "2");
+      expect(initial.version).toMatchObject({ signingSubjectType: "draft_unconfirmed", amountYuan: null, amountCents: null, businessTemplateVersionId: null });
+      expect(initial.bills).toHaveLength(1); expect(initial.paymentTerms).toMatchObject({ originalText: "", stages: [] });
+      const lease = await new ContractDraftEditLeaseService(client as never, {} as never, audit).acquire(ids.version, ids.owner);
+      const base = aggregateInput(randomUUID());
+      await aggregate.saveAggregate(ids.version, ids.owner, lease.token, { ...base, changedSections: ["draft", "bills"], draft: { ...base.draft,
+        numericProtocolVersion: 2, manualAmountYuan: "1.5340", manualAmountCents: undefined,
+        draftData: { contractName: "仅保存未完整的新合同", contractBasics: { businessType: "other", relationship: "upward", amountBasis: "tax_exclusive", invoiceStatus: "none" } }
+      }, bills: [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }] });
+      const saved = await aggregate.getWorkbench(ids.version, ids.owner, "2");
+      expect(saved.version).toMatchObject({ amountYuan: "1.5340", amountCents: "153", status: "draft" });
+      expect(saved.parties).toEqual([]); expect(saved.version.taxFacts.defaultTaxRatePercent).toBeNull();
+      expect(saved.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+      await expect(client.contractVersion.update({ where: { id: ids.version }, data: { status: "effective" } })).rejects.toThrow();
+      expect((await aggregate.getWorkbench(ids.version, ids.owner, "2")).version.status).toBe("draft");
+    } finally {
+      if (created) {
+        const terms = await client.paymentTermsVersion.findMany({ where: { contractVersionId: ids.version }, select: { id: true } });
+        await client.paymentTermsStage.deleteMany({ where: { paymentTermsVersionId: { in: terms.map(term => term.id) } } });
+        await client.paymentTermsVersion.deleteMany({ where: { contractVersionId: ids.version } });
+        await client.auditLog.deleteMany({ where: { businessId: ids.contract } });
+      }
+      await cleanupDraft(client, ids);
+      await client.$disconnect();
+    }
+  });
+
+  // PREPARED / NOT RUN: requires separately authorised migrations/resources.
+  // Real domain services + PG + public HTTP; synthetic actor injection exercises
+  // draft ownership, not production login or global permission guard wiring.
+  integrationTest("keeps four-decimal draft facts across HTTP save/read/export and rejects lossy legacy writes atomically", async () => {
+    const client = new PrismaClient({ datasources: { db: { url: contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL) } } });
+    const ids = makeIds("decimal-v2");
+    const audit = new AuditService();
+    const aggregate = new ContractDraftAggregateService(client as never, new ContractWorkbenchService(client as never, audit),
+      new ContractBillService(client as never, audit), new BusinessPartyService(client as never, audit),
+      { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
+    const excel = new ContractBillExcelService(client as never, audit, {} as never);
+    // Constructor collaborators unrelated to these public routes are left out;
+    // actual save/read/export business methods above are never substituted.
+    const routed = await Test.createTestingModule({ controllers: [ContractDraftController, ContractDraftBillExcelController],
+      providers: [
+        { provide: ContractDraftAggregateService, useValue: aggregate },
+        { provide: ContractBillExcelService, useValue: excel },
+        { provide: ContractDraftEditLeaseService, useValue: {} },
+        { provide: ContractService, useValue: {} },
+        { provide: PristineDraftDeletionService, useValue: {} },
+        { provide: ContractDocumentService, useValue: {} },
+        { provide: ContractV2SubmissionService, useValue: {} }
+      ] }).compile();
+    const http = routed.createNestApplication({ logger: false });
+    http.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+    http.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => { request.user = { id: ids.owner }; next(); });
+    http.useGlobalPipes(createApiValidationPipe());
+    try {
+      await seedDraft(client, ids, true);
+      await http.listen(0, "127.0.0.1");
+      const base = await http.getUrl();
+      const body = {
+        ...aggregateInput(randomUUID(), true), changedSections: ["draft", "bills"],
+        draft: { ...aggregateInput(randomUUID()).draft, amountSource: "bill_sum", manualAmountCents: undefined,
+          taxFacts: { ...aggregateInput(randomUUID()).draft.taxFacts, defaultTaxRatePercent: "0" } },
+        bills: [
+          { billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [
+            { clientRowKey: "line", sortOrder: 0, itemName: "四位清单", unit: "项", quantity: "1.2345", unitPrice: "1.2345", customData: {} },
+            { clientRowKey: "a", sortOrder: 1, itemName: "微额一", unit: "项", quantity: "1", unitPrice: "0.005", customData: {} },
+            { clientRowKey: "b", sortOrder: 2, itemName: "微额二", unit: "项", quantity: "1", unitPrice: "0.005", customData: {} }
+          ] }, { billKey: "secondary", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }
+        ]
+      };
+      const put = (value: unknown) => fetch(`${base}/contract-drafts/${ids.version}`, { method: "PUT",
+        headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken(ids) }, body: JSON.stringify(value) });
+      expect((await put(body)).status).toBe(200);
+      const read = await fetch(`${base}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } });
+      expect(read.status).toBe(200);
+      expect((await fetch(`${base}/contract-drafts/${ids.version}/workbench`)).status).toBe(409);
+      const saved = await read.json();
+      expect(saved.bills[0]).toMatchObject({ numericProtocolVersion: 2, taxInclusiveAmountYuan: "1.5340", taxInclusiveAmountCents: "153" });
+      expect(saved.bills[0].rows[0]).toMatchObject({ quantity: "1.2345", unitPrice: "1.2345", taxInclusiveAmountYuan: "1.5240" });
+      const download = await fetch(`${base}/contract-drafts/${ids.version}/bills/main/export`);
+      expect(download.status).toBe(200);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(Buffer.from(await download.arrayBuffer()) as never);
+      expect(workbook.worksheets.every(sheet => sheet.state === "visible")).toBe(true);
+      const sheet = workbook.worksheets[0]!;
+      expect(sheet.getRow(2).values).toEqual(expect.arrayContaining(["1.2345", "1.5240"]));
+      expect(sheet.columns.every(column => !column.hidden)).toBe(true);
+      const invalid = structuredClone(body);
+      invalid.idempotencyKey = randomUUID(); invalid.expectedRevision = saved.version.draftRevision;
+      invalid.bills.forEach(bill => { bill.expectedRevision = saved.bills.find((current: { billKey: string }) => current.billKey === bill.billKey).revision; });
+      invalid.bills[0]!.rows[0]!.unitPrice = "1.23456";
+      const invalidResponse = await put(invalid);
+      expect(invalidResponse.status).toBe(400);
+      expect(await invalidResponse.json()).toMatchObject({
+        code: "DRAFT_VALIDATION_FAILED",
+        message: "清单有 1 处需要修改"
+      });
+      const overflow = structuredClone(invalid); overflow.idempotencyKey = randomUUID();
+      overflow.bills[0]!.rows[0]!.quantity = "1";
+      overflow.bills[0]!.rows[0]!.unitPrice = "92233720368547758.0750";
+      expect((await put(overflow)).status).toBe(400);
+      const trailingFifthPlace = structuredClone(invalid); trailingFifthPlace.idempotencyKey = randomUUID();
+      trailingFifthPlace.bills[0]!.rows[0]!.unitPrice = "1.23450";
+      expect((await put(trailingFifthPlace)).status).toBe(400);
+      const oldProtocol = structuredClone(invalid); oldProtocol.idempotencyKey = randomUUID();
+      oldProtocol.bills[0]!.rows[0]!.unitPrice = "1.2345";
+      oldProtocol.bills.forEach(bill => { delete (bill as { numericProtocolVersion?: number }).numericProtocolVersion; });
+      const legacyResponse = await put(oldProtocol);
+      expect(legacyResponse.status).toBe(400);
+      expect((await legacyResponse.json()).message).toMatch(/精度已升级/u);
+      expect(await (await fetch(`${base}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } })).json()).toEqual(saved);
+      const unknown = structuredClone(body); unknown.idempotencyKey = randomUUID(); unknown.expectedRevision = saved.version.draftRevision;
+      unknown.bills.forEach(bill => { bill.expectedRevision = saved.bills.find((current: { billKey: string }) => current.billKey === bill.billKey).revision; });
+      Object.assign(unknown.bills[0]!.rows[0]!, { quantity: null, unitPrice: null });
+      unknown.bills[0]!.rows[1]!.unitPrice = "0";
+      expect((await put(unknown)).status).toBe(200);
+      const unknownRead = await (await fetch(`${base}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } })).json();
+      expect(unknownRead.version).toMatchObject({ amountYuan: null, amountCents: null });
+      expect(unknownRead.bills[0]).toMatchObject({ taxInclusiveAmountYuan: null, taxInclusiveAmountCents: null });
+      expect(unknownRead.bills[0].rows[0]).toMatchObject({ quantity: null, unitPrice: null, taxInclusiveAmountYuan: null });
+      expect(unknownRead.bills[0].rows[1]).toMatchObject({ unitPrice: "0.00", taxInclusiveAmountYuan: "0.0000" });
+    } finally {
+      await http.close(); await cleanupDraft(client, ids); await client.$disconnect();
+    }
+  }, 45_000);
+
+  // Task06 PREPARED / NOT EXECUTED. No PG/resource authorisation in this phase.
+  // Two actual HTTP apps/Prisma pools; synthetic actor injection is not a
+  // production authentication/global PermissionGuard or restricted-role proof.
+  integrationTest("restores deleted legacy/null/zero facts once under the version lock and replays only public receipts", async () => {
+    const databaseUrl = contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL);
+    const ids = makeIds("row-undo");
+    const appName = `draft-row-undo-${randomUUID()}`;
+    const firstUrl = new URL(databaseUrl); firstUrl.searchParams.set("application_name", appName);
+    const first = new PrismaClient({ datasources: { db: { url: firstUrl.toString() } } });
+    const second = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const blocker = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const observer = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const createHttp = async (client: PrismaClient) => {
+      const audit = new AuditService();
+      const aggregate = new ContractDraftAggregateService(client as never,
+        new ContractWorkbenchService(client as never, audit), new ContractBillService(client as never, audit),
+        new BusinessPartyService(client as never, audit),
+        { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
+      const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+        { provide: ContractDraftAggregateService, useValue: aggregate },
+        ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService]
+          .map(provide => ({ provide, useValue: {} }))
+      ] }).compile();
+      const app = module.createNestApplication({ logger: false });
+      app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+      app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => { request.user = { id: ids.owner }; next(); });
+      app.useGlobalPipes(createApiValidationPipe());
+      await app.listen(0, "127.0.0.1");
+      return app;
+    };
+    const apps: Array<Awaited<ReturnType<typeof createHttp>>> = [];
+    let releaseLock: (() => void) | undefined;
+    const inFlight: Array<Promise<unknown>> = [];
+    // Explicit numeric/source projection: no private receipt, actor, credential,
+    // arbitrary table dump or generated row id participates in conservation.
+    const factSelect = { itemName: true, quantity: true, unitPrice: true, taxRate: true, taxRateSource: true,
+      pricingFactStatus: true, precisionPolicy: true, numericProtocolVersion: true, numericSource: true,
+      numericReviewStatus: true, taxInclusiveAmountYuan: true, taxExclusiveAmountYuan: true, taxAmountYuan: true,
+      taxInclusiveAmountCents: true, taxExclusiveAmountCents: true, taxAmountCents: true, taxExclusiveUnitPrice: true,
+      isProvisional: true, customData: true } as const;
+    const facts = async () => JSON.parse(JSON.stringify(await observer.contractBillRow.findMany({
+      where: { contractBillId: ids.billA }, orderBy: { itemName: "asc" }, select: factSelect
+    }), apiJsonReplacer));
+    try {
+      await seedDraft(first, ids, true);
+      await first.contractVersion.update({ where: { id: ids.version }, data: {
+        numericProtocolVersion: 2, pricingNature: "unit_price", amountSource: "bill_sum", taxMode: "multiple_rate",
+        defaultTaxRatePercent: "0", amountYuan: null
+      } });
+      await first.contractBill.updateMany({ where: { contractVersionId: ids.version }, data: {
+        numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4
+      } });
+      const common = { contractBillId: ids.billA, unit: "项", quantity: "1", taxRate: "0", taxRateSource: "version_default",
+        pricingFactStatus: "confirmed", precisionPolicy: "four_decimal", numericProtocolVersion: 2,
+        numericSource: "decimal_input", numericReviewStatus: "verified", customData: {} };
+      await first.contractBillRow.createMany({ data: [
+        { ...common, rowKey: "legacy", sortOrder: 0, itemName: "历史六位", quantity: "1.234567", unitPrice: "2.345678",
+          taxRate: "13", taxRateSource: "row_override", taxExclusiveUnitPrice: "8.027106", numericProtocolVersion: 1,
+          numericSource: "legacy_cents", numericReviewStatus: "not_assessed", precisionPolicy: "legacy",
+          taxInclusiveAmountCents: 991n, taxExclusiveAmountCents: 991n, taxAmountCents: 0n },
+        { ...common, rowKey: "unknown", sortOrder: 1, itemName: "未知单价", unitPrice: null, pricingFactStatus: "unconfirmed" },
+        { ...common, rowKey: "zero", sortOrder: 2, itemName: "明确零", unitPrice: "0", taxExclusiveUnitPrice: "0",
+          taxInclusiveAmountYuan: "0", taxExclusiveAmountYuan: "0", taxAmountYuan: "0",
+          taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n }
+      ] });
+      const original = await facts();
+      apps.push(await createHttp(first), await createHttp(second));
+      const bases = await Promise.all(apps.map(app => app.getUrl()));
+      const put = (base: string, body: unknown) => fetch(`${base}/contract-drafts/${ids.version}`, { method: "PUT",
+        headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken(ids) }, body: JSON.stringify(body) });
+      const read = async () => {
+        const response = await fetch(`${bases[0]}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } });
+        expect(response.status).toBe(200); return response.json();
+      };
+      const lookup = async (key: string) => {
+        const response = await fetch(`${bases[0]}/contract-drafts/${ids.version}/save-requests/${key}`, { headers: { "x-contract-numeric-protocol": "2" } });
+        expect(response.status).toBe(200); return response.json();
+      };
+      const deleteBody = { ...aggregateInput(randomUUID()), changedSections: ["draft", "bills"],
+        draft: { ...aggregateInput(randomUUID()).draft, pricingNature: "unit_price", amountSource: "bill_sum", manualAmountCents: undefined,
+          taxFacts: { ...aggregateInput(randomUUID()).draft.taxFacts, taxMode: "multiple_rate", defaultTaxRatePercent: "0" } },
+        bills: [ { billKey: "main", numericProtocolVersion: 2, expectedRevision: 1, rows: [] },
+          { billKey: "secondary", numericProtocolVersion: 2, expectedRevision: 1, rows: [] } ] };
+      const deletion = await put(bases[0]!, deleteBody); expect(deletion.status).toBe(200);
+      const deleted = await deletion.json();
+      expect(await facts()).toEqual([]);
+      expect(deleted).not.toHaveProperty("_rowUndo");
+      const originalLookup = await lookup(deleteBody.idempotencyKey);
+      expect(originalLookup.result).toEqual(deleted);
+      const refs = deleted.deletedRowRestoreRefs.main as Array<{ saveIntentKey: string; oldRowKey: string; originalValues: Record<string, unknown> }>;
+      expect(refs).toHaveLength(3);
+      const afterDelete = await read();
+      const restoreBody = { ...deleteBody, idempotencyKey: randomUUID(), expectedRevision: afterDelete.version.draftRevision,
+        bills: afterDelete.bills.map((bill: { billKey: string; revision: number }) => ({ billKey: bill.billKey, numericProtocolVersion: 2,
+          expectedRevision: bill.revision, rows: bill.billKey === "main" ? refs.map((ref, index) => ({ ...ref.originalValues,
+            clientRowKey: `restore-${index}`, sortOrder: index, restoreRef: { saveIntentKey: ref.saveIntentKey, oldRowKey: ref.oldRowKey } })) : [] })) };
+      let locked!: (pid: number) => void;
+      const lockedPid = new Promise<number>(resolve => { locked = resolve; });
+      const held = new Promise<void>(resolve => { releaseLock = resolve; });
+      const lockTask = blocker.$transaction(async tx => {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${ids.version} FOR UPDATE`);
+        const [identity] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        locked(identity!.pid); await held;
+      }, { timeout: 20_000 });
+      inFlight.push(lockTask);
+      const blockerPid = await lockedPid;
+      const winningAttempt = put(bases[0]!, restoreBody); inFlight.push(winningAttempt);
+      await waitForBlockedApplication(observer, appName, blockerPid);
+      const competingBody = { ...restoreBody, idempotencyKey: randomUUID() };
+      const competingAttempt = put(bases[1]!, competingBody); inFlight.push(competingAttempt);
+      releaseLock!(); await lockTask;
+      const responses = await Promise.all([winningAttempt, competingAttempt]);
+      const outcomes = await Promise.all(responses.map(async response => response.status === 400
+        ? { status: response.status, error: await response.clone().json() }
+        : { status: response.status }));
+      expect(outcomes.sort((left, right) => left.status - right.status)).toEqual([{ status: 200 }, { status: 409 }]);
+      const winnerIndex = responses.findIndex(response => response.status === 200);
+      const winnerBody = winnerIndex === 0 ? restoreBody : competingBody;
+      const restored = await responses[winnerIndex]!.json();
+      expect(restored).not.toHaveProperty("_rowUndo");
+      expect(restored.billRowKeys.main).toHaveLength(3);
+      expect(await facts()).toEqual(original);
+      const current = await read();
+      expect(current.bills.find((bill: { billKey: string }) => bill.billKey === "main").rows).toHaveLength(3);
+      const counts = async () => ({ receipts: await observer.contractDraftSaveRequest.count({ where: { contractVersionId: ids.version } }),
+        audits: await observer.auditLog.count({ where: { businessId: ids.version } }) });
+      const beforeReplay = await counts();
+      const replay = await put(bases[0]!, winnerBody); expect(replay.status).toBe(200); expect(await replay.json()).toEqual(restored);
+      expect((await lookup(winnerBody.idempotencyKey)).result).toEqual(restored);
+      expect((await lookup(deleteBody.idempotencyKey)).result).toEqual(originalLookup.result);
+      // Fresh current version AND bill coordinates distinguish consumed-ref
+      // rejection from the preceding stale-revision concurrency loser.
+      const consumedBody = { ...winnerBody, idempotencyKey: randomUUID(), expectedRevision: current.version.draftRevision,
+        bills: winnerBody.bills.map((bill: { billKey: string }) => ({ ...bill,
+          expectedRevision: current.bills.find((entry: { billKey: string }) => entry.billKey === bill.billKey).revision })) };
+      const consumed = await put(bases[0]!, consumedBody); expect(consumed.status).toBe(400);
+      expect((await consumed.json()).message).toMatch(/已经恢复/u);
+      expect(await counts()).toEqual(beforeReplay);
+      expect(await facts()).toEqual(original);
+      expect(await read()).toEqual(current);
+    } finally {
+      releaseLock?.(); await Promise.allSettled(inFlight);
+      await Promise.all(apps.map(app => app.close()));
+      await cleanupDraft(first, ids);
+      await Promise.all([first, second, blocker, observer].map(client => client.$disconnect()));
+    }
+  }, 30_000);
 
   integrationTest(
     "allows one revision winner and rolls back an earlier section after a later failure",
@@ -256,6 +557,13 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
             });
 
           expect(persistedRows).toHaveLength(rowCount);
+          const lineages = await client.contractBillRowLineage.findMany({
+            where: { contractId: ids.contract, createdInContractVersionId: ids.version },
+            select: { id: true, createdByUserId: true }
+          });
+          expect(lineages).toHaveLength(rowCount);
+          expect(new Set(persistedRows.map(row => row.lineageId))).toEqual(new Set(lineages.map(row => row.id)));
+          expect(lineages.every(row => row.createdByUserId === ids.owner)).toBe(true);
           expect(billAfterFirst.revision).toBe(2);
           expect(firstResult).toMatchObject({
             draftRevision: 2,

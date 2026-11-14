@@ -1,3 +1,5 @@
+import { Test } from "@nestjs/testing";
+import { ContractBillController } from "./contract-bill.controller";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
@@ -136,7 +138,10 @@ describe("ContractBillService", () => {
         ),
         count: jest.fn().mockImplementation(() => Promise.resolve(rows.length)),
         create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
-          const row = { id: `row-${rows.length + 1}`, ...data };
+          const row: Record<string, unknown> = { id: `row-${rows.length + 1}`, ...data };
+          if (data.numericProtocolVersion === 2) for (const key of ["taxInclusiveAmountYuan", "taxExclusiveAmountYuan", "taxAmountYuan"]) {
+            if (typeof row[key] === "string") row[key] = new Prisma.Decimal(row[key] as string);
+          }
           rows.push(row);
           return Promise.resolve(row);
         }),
@@ -227,6 +232,29 @@ describe("ContractBillService", () => {
       ...overrides
     };
   }
+
+  it("blocks retired row mutations and historical cancellation for v2 over HTTP before any mutation or lineage changes", async () => {
+    const lineage = { remainderCancellationFacts: jest.fn(), assertRowsDeletable: jest.fn(), assertRowsOrdinarilyMutable: jest.fn() };
+    const { service, tx, bill, version } = fixture({ rows: [existingRow(0)], lineage: lineage as never });
+    Object.assign(bill, { numericProtocolVersion: 2 }); Object.assign(version, { numericProtocolVersion: 2 });
+    const module = await Test.createTestingModule({ controllers: [ContractBillController], providers: [{ provide: ContractBillService, useValue: service }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      for (const [method, path, body] of [
+        ["DELETE", "rows/key-0", { expectedBillRevision: 2 }],
+        ["POST", "rows/reorder", { expectedBillRevision: 2, rowKeys: ["key-0"] }],
+        ["POST", "rows/key-0/remainder-cancellation", { reason: "合成核对", expectedBillRevision: 2, expectedDraftRevision: 5, expectedOccupancyToken: occupancyToken }]
+      ] as const) {
+        const response = await fetch(`${await app.getUrl()}/contract-bills/bill-1/${path}`, { method, headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: JSON.stringify(body) });
+        expect({ method, path, status: response.status }).toEqual({ method, path, status: 409 });
+        const message = await response.text(); expect(message).toMatch(/核对|精度已升级/u); expect(message).not.toContain("numericProtocol");
+      }
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled(); expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+      expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled(); expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+      expect(lineage.remainderCancellationFacts).not.toHaveBeenCalled(); expect(lineage.assertRowsDeletable).not.toHaveBeenCalled(); expect(audit.record).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
 
   function existingRow(index: number) {
     return {
@@ -1145,6 +1173,35 @@ describe("ContractBillService", () => {
       taxExclusiveAmountCents: 88n,
       taxAmountCents: 12n
     });
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { rate: null, gross: null, tax: null },
+    { rate: "13", gross: "1.7221", tax: "0.1981" }
+  ])("saves declared tax-exclusive four-place draft facts without guessing missing tax (%j)", async ({ rate, gross, tax }) => {
+    const { service, tx, bill, version } = fixture({ pricingMode: "tax_exclusive", pricingNature: "unit_price", defaultTaxRatePercent: rate });
+    Object.assign(bill, { numericProtocolVersion: 2 });
+    const createLineages = jest.fn();
+    const createRows = jest.fn(async ({ data }: { data: Record<string, unknown>[] }) => {
+      for (const row of data) await tx.contractBillRow.create({ data: row });
+      return { count: data.length };
+    });
+    Object.assign(tx, { contractBillRowLineage: { createMany: createLineages } });
+    Object.assign(tx.contractBillRow, { createMany: createRows });
+    const result = await service.replaceRowsInTransaction(tx as never, "owner-1", version, bill, {
+      expectedRevision: 2, numericProtocolVersion: 2,
+      rows: [{ clientRowKey: "net-row", sortOrder: 0, itemName: "不含税约定材料", unit: "吨", quantity: "1.2345", unitPrice: "1.2345", customData: {} }]
+    });
+    expect(result.changed).toBe(true);
+    const [data] = createRows.mock.calls[0]![0].data;
+    expect(createLineages).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ id: data!.lineageId, createdByUserId: "owner-1" })]
+    });
+    expect(data!.taxExclusiveAmountYuan).toBe("1.5240");
+    expect(data!.taxInclusiveAmountYuan).toBe(gross);
+    expect(data!.taxAmountYuan).toBe(tax);
+    expect(String(data!.taxExclusiveUnitPrice)).toBe("1.2345");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
