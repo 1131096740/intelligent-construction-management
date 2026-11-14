@@ -4,8 +4,9 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本轮从准确`815eacc440df283199d3c83e0e5811c52e575aa8`正常快进集成`84c522b7a308921b13a8c62281a3f401108d41e5`。815的CI43553844034已自然32/32成功，只绑定815；后继候选准确CI待。PR428保持Draft，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
-- 任务16：旧29c完整normal真实exit1/2124.35秒，停在OBSERVER_BEFORE/ALLOCATIONS/UNKNOWN_REQUEST_ERROR，业务保持UNKNOWN_DO_NOT_RETRY；原清理完成且03:54:05Z独立核实准确资源缺席。真实SDK最小对照支持分配主键读取缺口；本轮84c仅增加观察角色对RegisteredFundPaymentAllocation.id的列级SELECT，历史权限材料、其他权限和守卫保持。作者121+71+81项及API门通过，新接续窄确认75项通过，Standards/Spec双轴独审各0项；按同blob承接，merger未重复测试。修复已本地集成，完整正常链、异常/并发/凭证后补及整票真实验收均待新候选，未将旧UNKNOWN改写为成功。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本轮从准确`729bd7214017b5b229a6e88cf3b6d00dda777c19`正常快进集成`fd29ebb1fbfb8bf612efce276392bae2b100d9cb`。729的CI43561921162已自然32/32成功，只绑定729；后继候选准确CI待。PR428保持Draft，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
+- 任务16：旧29c完整normal真实exit1/2124.35秒，停在OBSERVER_BEFORE/ALLOCATIONS/UNKNOWN_REQUEST_ERROR，业务保持UNKNOWN_DO_NOT_RETRY；原清理及独立资源缺席保持。本轮继分配id修复后，真实SDK审计读取对照在原五列授权下失败、仅fixture新增id读取后成功；组件整体仍STOPPED且relayFRAME次因与独立清理证据保留，不冒称业务通过。fd29仅增加观察角色AuditLog.id列级SELECT，前次分配主键增量与其他权限/角色/SQL/守卫保持。作者129项相关、81项pin及API门通过，双轴独审各0项，merger按同blob承接未重复测试。729旧normal计划仅准备未执行，因候选变化不复用；新准确候选完整正常链、异常/并发/凭证后补及整票验收待，旧UNKNOWN未改写。
+
 - 任务12：准确815文书工具资格及物理复核后，registry-only后继`3f92b00216320585ea492260702edf6bb2e65f87`准备/验证通过；05:24:30Z原冻结候选亲启新隔离life，case2facf387/run24173d4d，专属actor持原句柄到终态。root05:26Z同daemon独核源码、镜像、两PID、mounts[]及唯一internal网络成员，当前仍运行、尚无业务通过。新398集成不改其冻结源；旧e605失败/原cleanup_failed及独立恢复分开保留，完整15类型/联合浏览器验收仍待。
 
 - 开发工具：原完整类型覆盖、预算、超时、权限、业务断言与封闭错误控制均保持，helper pin仅固定标量4fae074d→716979ad。作者门按准确源码证据承接，merger未重复测试；canonical状态与完整旧历史见主回执，不以组件、局部门或历史成功代替当前业务验收。
