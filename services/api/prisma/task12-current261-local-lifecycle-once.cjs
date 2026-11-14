@@ -2,7 +2,8 @@
 'use strict';
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&
   Object.keys(require.cache).every(key=>key===__filename);
-const fs=require('node:fs'),path=require('node:path');
+const fs=require('node:fs'),path=require('node:path'),NodeModule=require('node:module');
+const nodeParentPrototype=NodeModule.prototype,nodeParentDescriptor=Object.freeze({...Object.getOwnPropertyDescriptor(nodeParentPrototype,'parent')});
 const {createHash}=require('node:crypto');
 const {types}=require('node:util');
 
@@ -207,6 +208,40 @@ function safeCleanup(cause,scopeEntered){
  return closed?'CLOSED':scopeEntered?'OWNER_SCOPE_RETURNED':'UNKNOWN';
 }
 
+// Fixed diagnostic receiver only. It never reads the Error's public fields,
+// grants a role, changes cleanup, or substitutes a failed business cause.
+function captureAuthRoleFailureProjector(namespace,read,checkFile){
+ const data=(v,k)=>{need(v&&!types.isProxy(v),'DEPENDENCIES');const d=Object.getOwnPropertyDescriptor(v,k);need(d&&Object.hasOwn(d,'value'),'DEPENDENCIES');return Object.freeze({...d});};
+ const same=(v,k,d)=>{const now=data(v,k);need(['value','writable','enumerable','configurable'].every(f=>now[f]===d[f]),'DEPENDENCIES');return now.value;};
+ const cacheSlot=data(require,'cache'),cache=cacheSlot.value,file=path.join(path.dirname(__filename),'task16-current259-role-provision.cjs'),slot=data(cache,file),role=slot.value;
+ const metadata=mod=>{const filename=data(mod,'filename'),exports=data(mod,'exports');need(typeof filename.value==='string'&&path.isAbsolute(filename.value),'DEPENDENCIES');const cacheDescriptor=data(cache,filename.value);need(cacheDescriptor.value===mod&&!types.isProxy(exports.value),'DEPENDENCIES');return{mod,filename,exports,cacheDescriptor};};
+ const parentOf=mod=>{need(!types.isProxy(mod)&&Object.getPrototypeOf(mod)===nodeParentPrototype&&!Object.getOwnPropertyDescriptor(mod,'parent'),'DEPENDENCIES');const now=Object.getOwnPropertyDescriptor(nodeParentPrototype,'parent');need(now&&['get','set','enumerable','configurable'].every(k=>now[k]===nodeParentDescriptor[k])&&typeof nodeParentDescriptor.get==='function','DEPENDENCIES');return Reflect.apply(nodeParentDescriptor.get,mod,[]);};
+ const roleMeta=metadata(role),parent=parentOf(role),parentMeta=metadata(parent);
+ need(roleMeta.filename.value===file&&roleMeta.exports.value===namespace&&Object.isFrozen(namespace)&&own(role,'loaded')===true&&
+  [__filename,path.join(path.dirname(__filename),'task16-current259-archive-install.cjs')].includes(parentMeta.filename.value),'DEPENDENCIES');
+ const children=data(role,'children'),rows=children.value;need(Array.isArray(rows)&&!types.isProxy(rows),'DEPENDENCIES');
+ const edges=Array.from({length:rows.length},(_,i)=>({slot:data(rows,String(i)),meta:metadata(data(rows,String(i)).value)}));
+ const mainChildren=data(module,'children');need(Array.isArray(mainChildren.value)&&!types.isProxy(mainChildren.value),'DEPENDENCIES');
+ const projector=data(namespace,'describeCurrent261AuthOnlyRoleFailure'),arity=data(projector.value,'length');need(typeof projector.value==='function'&&arity.value===1,'DEPENDENCIES');
+ const material=read(file,{maxBytes:512*1024,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_ROLE_PROJECTOR_SOURCE'});need(SHA.test(material.sha256)&&material.identity,'DEPENDENCIES');
+ const verifyMeta=row=>{same(cache,row.filename.value,row.cacheDescriptor);same(row.mod,'filename',row.filename);same(row.mod,'exports',row.exports);};
+ const verify=()=>{
+  same(require,'cache',cacheSlot);verifyMeta(roleMeta);verifyMeta(parentMeta);need(parentOf(role)===parent,'DEPENDENCIES');same(role,'children',children);
+  need(own(role,'loaded')===true&&rows.length===edges.length,'DEPENDENCIES');
+  for(let i=0;i<edges.length;i++){same(rows,String(i),edges[i].slot);verifyMeta(edges[i].meta);}
+  const mainRows=same(module,'children',mainChildren);let count=0;for(let i=0;i<mainRows.length;i++)if(data(mainRows,String(i)).value===role)count++;
+  need(count===1,'DEPENDENCIES');same(namespace,'describeCurrent261AuthOnlyRoleFailure',projector);same(projector.value,'length',arity);checkFile(file,material.identity);
+ };
+ verify();
+ const unknown=()=>Object.freeze({phase:'UNKNOWN',resourceCleanup:Object.freeze({status:'UNKNOWN'})});
+ return error=>{try{
+  verify();const result=projector.value(error);if(!result||types.isProxy(result)||!Object.isFrozen(result)||Reflect.ownKeys(result).length!==2)return unknown();
+  const phase=own(result,'phase'),cleanup=own(result,'resourceCleanup');
+  if(!['BEFORE','INSTALL','COMMITTED_READBACK','FINAL_CHECK'].includes(phase)||!cleanup||types.isProxy(cleanup)||!Object.isFrozen(cleanup)||Reflect.ownKeys(cleanup).length!==1||!['COMPLETED','UNKNOWN'].includes(own(cleanup,'status')))return unknown();
+  return Object.freeze({phase,resourceCleanup:Object.freeze({status:own(cleanup,'status')})});
+ }catch{return unknown();}};
+}
+
 async function main(){
  let authOnly=false,attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
  let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure,receivedSignal=null,signalEvidenceWriteFailed=false,signalsArmed=false,recordSignal,describeOwnedBudget,budgetObservation;
@@ -217,6 +252,8 @@ async function main(){
  try{
   need(FRESH,'FRESH');
   const args=parseArgs(process.argv.slice(2));authOnly=args.authOnly;
+  const {captureCurrent261ContractBusinessIssuer,captureCurrent261FirstLoginBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
+  (authOnly?captureCurrent261FirstLoginBusinessIssuer:captureCurrent261ContractBusinessIssuer)();
   const {verifyCurrent261LocalLifecyclePlan,verifyCurrent261FirstLoginPlan}=require('../../../scripts/prepare-task12-current261-local-lifecycle.cjs');
   const checked=(authOnly?verifyCurrent261FirstLoginPlan:verifyCurrent261LocalLifecyclePlan)(args.file,args.digest);
   const {plan}=checked,runtimeSha256=plan.runtime.sha256;
@@ -228,12 +265,12 @@ async function main(){
   checked.check();
 
   const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
+  const {createCurrent259TechnicalMigration,createCurrent261AuthOnlyDiagnosticBootstrap,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
   const {withCurrent259FirstQ2LoopbackResource,claimCurrent259TechnicalResource,describeCurrent259OwnedResourceBudget}=require('./task16-current259-owned-resource.cjs');
   describeOwnedBudget=describeCurrent259OwnedResourceBudget;
-  const {captureCurrent261ContractBusinessIssuer,captureCurrent261FirstLoginBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
-  (authOnly?captureCurrent261FirstLoginBusinessIssuer:captureCurrent261ContractBusinessIssuer)();
-  const {createCurrent259TechnicalMigration,createCurrent261AuthOnlyDiagnosticBootstrap,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
-  const {provisionCurrent259Roles,provisionCurrent261AuthOnlyDiagnosticRoles}=require('./task16-current259-role-provision.cjs');
+  const roleNamespace=require('./task16-current259-role-provision.cjs');
+  const {provisionCurrent259Roles,provisionCurrent261AuthOnlyDiagnosticRoles}=roleNamespace;
+  const projectAuthRoleFailure=authOnly?captureAuthRoleFailureProjector(roleNamespace,read,checkCurrent259FileIdentity):undefined;
   const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent261AuthOnlyDiagnosticArchive}=require('./task16-current259-archive-install.cjs');
   const {installCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent261AuthOnlyDiagnosticOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
   const {provisionCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent261AuthOnlyDiagnosticDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
@@ -304,7 +341,8 @@ async function main(){
      documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined,
      documentLoginFailure:name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined,
      documentRoleFailure:name==='APPLICATION'?safeDocumentRoleFailure(cause):undefined,
-     authOwnerObservation:authOnly&&name==='APPLICATION'?describeCurrent261FirstLoginOwnerObservation(cause):undefined};
+     authOwnerObservation:authOnly&&name==='APPLICATION'?describeCurrent261FirstLoginOwnerObservation(cause):undefined,
+     authRoleFailure:authOnly&&name==='ROLES'?projectAuthRoleFailure(cause):undefined};
     if(name===phase){
      failureStage=safeStage(cause,name);
      try{
@@ -373,6 +411,7 @@ async function main(){
    ...(firstFailure?.documentLoginFailure?{documentLoginFailure:firstFailure.documentLoginFailure}:{}),
    ...(firstFailure?.documentRoleFailure?{documentRoleFailure:firstFailure.documentRoleFailure}:{}),
    ...(firstFailure?.authOwnerObservation?{authOwnerObservation:firstFailure.authOwnerObservation}:{}),
+   ...(firstFailure?.authRoleFailure?{authRoleFailure:firstFailure.authRoleFailure}:{}),
    ...(firstFailure&&cause!==primary?{secondaryReason:safeReason(cause)??'UNCLASSIFIED',secondaryPhase:'UNWIND'}:{}),
    ...(scopeEntered?{businessOutcome:'UNKNOWN'}:{}),...(technicalFailure?{technicalFailure}:{}),
    ...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};

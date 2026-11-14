@@ -271,3 +271,27 @@ test('actual resource budget observation is separate from original first error, 
  const f=model(t,{authOnly:true,applicationFailure:first,cleanupFailure:true,budgetEvidence}),r=await f.result();assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.cleanup,'UNKNOWN');assert.equal(r.cleanupBudgetReason,'CLEANUP_COMMAND_TIMEOUT');assert.equal(r.budgetReason,null);assert.equal(r.receivedSignal,null);assert.equal(r.budgetObservation,'DURABLE_EVENT_RECORDED');
  const g=model(t,{authOnly:true,applicationFailure:first}),normal=await g.result();assert.equal(normal.budgetObservation,'UNKNOWN');assert.equal(normal.budgetReason,null);assert.equal(normal.receivedSignal,null);
 });
+
+test('actual fresh producer imports follow the main source order before rejecting an unregistered handle, never loosening preload gates',()=>{
+ const {execFileSync}=require('node:child_process');
+ const source=`const fs=require('node:fs'),path=require('node:path'),root=process.cwd(),main=fs.readFileSync(path.join(root,'services/api/prisma/task12-current261-local-lifecycle-once.cjs'),'utf8');
+ const start=main.indexOf('async function main()'),owned=main.indexOf("=require('./task16-current259-owned-resource.cjs')",start),profile=main.indexOf("=require('./local-staged-current259-profile.cjs')",start);
+ const files=owned<profile?['task16-current259-owned-resource.cjs','local-staged-current259-profile.cjs']:['local-staged-current259-profile.cjs','task16-current259-owned-resource.cjs'];
+ for(const file of files)require(path.join(root,'services/api/prisma',file));let code;
+ try{require(path.join(root,'services/api/prisma/local-staged-current259-profile.cjs')).createCurrent261AuthOnlyDiagnosticBootstrap(Object.freeze({}));}catch(error){code=error.code??error.message;}
+ process.stdout.write(JSON.stringify({files,code,sdkLoaded:Object.keys(require.cache).some(p=>p.includes('/node_modules/@prisma/client/'))}));`;
+ const row=JSON.parse(execFileSync(process.execPath,['-e',source],{cwd:path.resolve(__dirname,'../../..'),encoding:'utf8'}));
+ assert.equal(row.code,'CURRENT259_RESOURCE_HANDLE');assert.equal(row.sdkLoaded,false);assert.equal(row.files[0],'local-staged-current259-profile.cjs');
+});
+
+test('auth ROLES same original error yields only its fixed private phase and independent cleanup status',async t=>{
+ const first=Object.freeze(Object.assign(Error('DO_NOT_PRINT'),{code:'CURRENT259_LOCAL_ROLE_UNKNOWN'})),facts=Object.freeze({phase:'INSTALL',resourceCleanup:Object.freeze({status:'COMPLETED'})});
+ const f=model(t,{authOnly:true,roleFailure:first,roleFailureFacts:facts}),r=await f.result();assert.deepEqual(r.authRoleFailure,facts);assert.equal(r.businessOutcome,'UNKNOWN');assert.equal(r.full394Accepted,false);assert.equal(r.outcome,undefined);assert.ok(!JSON.stringify(r).includes('DO_NOT_PRINT'));
+});
+test('role projector module getter/proxy substitution and absent private fact remain UNKNOWN without traps or replaced first cause',async t=>{
+ for(const mutation of ['getter','proxy','missing']){
+  let traps=0;const first=Object.assign(Error('FIRST'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),facts=Object.freeze({phase:'BEFORE',resourceCleanup:Object.freeze({status:'UNKNOWN'})});
+  const f=model(t,{authOnly:true,roleFailure:first,roleFailureFacts:mutation==='missing'?undefined:facts,beforeAuthRoles(mod){if(mutation==='getter')Object.defineProperty(mod,'exports',{get(){traps++;return{};}});if(mutation==='proxy')mod.exports=new Proxy(mod.exports,{get(){traps++;}});}}),r=await f.result();
+  assert.deepEqual(r.authRoleFailure,{phase:'UNKNOWN',resourceCleanup:{status:'UNKNOWN'}});assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(traps,0);
+ }
+});

@@ -5,6 +5,7 @@ const {assertCurrent259BusinessIssuer:businessIssuer,checkCurrent259FileIdentity
 const fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{createHash}=require('node:crypto');
 const {types}=require('node:util');
 const {claimCurrent259Build}=require('./task16-current259-build.cjs');
+const nodeParentPrototype=Module.prototype,nodeParentDescriptor=Object.freeze({...Object.getOwnPropertyDescriptor(nodeParentPrototype,'parent')});
 const BUILTIN_LOADER_SOURCE=process.binding('natives')['internal/modules/cjs/loader'];
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code});};
 const own=(value,key)=>{need(value&&!types.isProxy(value),'CURRENT259_LOADER_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'),'CURRENT259_LOADER_DESCRIPTOR');return d.value;};
@@ -116,6 +117,41 @@ function loadCurrent259Client(handle){
    records.push({module:mod,key,value:descriptor.value,descriptor});if(publish)paymentValues[key]=descriptor.value;
   }
  }
+ // Fixed normal-snapshot closure is captured at its first legitimate cases
+ // import, before any graph walk or facade publication. It is never reissued.
+ const snapshotCode='CURRENT259_PAYMENT_SNAPSHOT',snapshotIsProxy=types.isProxy;
+ const snapshotData=(v,k)=>{need(v&&!snapshotIsProxy(v),snapshotCode);const d=Object.getOwnPropertyDescriptor(v,k);need(d&&Object.hasOwn(d,'value'),snapshotCode);return Object.freeze({...d});};
+ const sameSnapshotData=(v,k,d)=>{const now=snapshotData(v,k);need(['value','writable','enumerable','configurable'].every(f=>now[f]===d[f]),snapshotCode);return now.value;};
+ const snapshotCacheSlot=snapshotData(require,'cache'),snapshotCache=snapshotCacheSlot.value;
+ const snapshotFile=path.join(root,'services/api/dist/database/registered-payment-postgres.snapshot.js'),casesFile=path.join(root,'services/api/dist/database/registered-payment-postgres.cases.js');
+ const snapshotMeta=file=>{const slot=snapshotData(snapshotCache,file),mod=slot.value,filename=snapshotData(mod,'filename'),exports=snapshotData(mod,'exports');need(filename.value===file&&snapshotData(mod,'loaded').value===true&&!snapshotIsProxy(exports.value),snapshotCode);return{file,slot,mod,filename,exports};};
+ const snapshotModule=snapshotMeta(snapshotFile),casesModule=snapshotMeta(casesFile),snapshotSdk=snapshotMeta(material.clientEntry);
+ const snapshotCaseEdges=Array.from({length:snapshotData(casesModule.mod,'children').value.length},(_,i)=>{const slot=snapshotData(snapshotData(casesModule.mod,'children').value,String(i)),child=slot.value,filename=snapshotData(child,'filename');return{slot,meta:snapshotMeta(filename.value)};});
+ const snapshotParentOf=mod=>{need(!snapshotIsProxy(mod)&&Object.getPrototypeOf(mod)===nodeParentPrototype&&!Object.getOwnPropertyDescriptor(mod,'parent'),snapshotCode);const now=Object.getOwnPropertyDescriptor(nodeParentPrototype,'parent');need(now&&['get','set','enumerable','configurable'].every(k=>now[k]===nodeParentDescriptor[k])&&typeof nodeParentDescriptor.get==='function',snapshotCode);return Reflect.apply(nodeParentDescriptor.get,mod,[]);};
+ const snapshotExports=snapshotModule.exports.value,snapshotParent=snapshotParentOf(snapshotModule.mod),snapshotChildren=snapshotData(snapshotModule.mod,'children'),casesChildren=snapshotData(casesModule.mod,'children');
+ need(Object.getPrototypeOf(snapshotExports)===Object.prototype&&snapshotParent===casesModule.mod&&Array.isArray(snapshotChildren.value)&&!snapshotIsProxy(snapshotChildren.value)&&snapshotChildren.value.length===1&&snapshotData(snapshotChildren.value,'0').value===snapshotSdk.mod&&Array.isArray(casesChildren.value)&&!snapshotIsProxy(casesChildren.value),snapshotCode);
+ const snapshotKeys=['__esModule','finishRegisteredNormalSnapshot','readRegisteredNormalSnapshot'];
+ const snapshotSlots=snapshotKeys.map(key=>{const d=snapshotData(snapshotExports,key);need(key==='__esModule'?d.value===true&&d.writable===false&&d.enumerable===false&&d.configurable===false:typeof d.value==='function'&&d.writable===true&&d.enumerable===true&&d.configurable===true,snapshotCode);return{key,d,...(key==='__esModule'?{}:{length:snapshotData(d.value,'length')})};});
+ need(snapshotSlots.find(r=>r.key==='readRegisteredNormalSnapshot').length.value===5&&snapshotSlots.find(r=>r.key==='finishRegisteredNormalSnapshot').length.value===1,snapshotCode);
+ const sdkPrisma=snapshotData(snapshotSdk.exports.value,'Prisma'),sdkClass=snapshotData(snapshotSdk.exports.value,'PrismaClient'),decimal=snapshotData(prisma,'Decimal'),decimalPrototype=snapshotData(decimal.value,'prototype');
+ need(sdkPrisma.value===prisma&&sdkClass.value===Class&&typeof decimal.value==='function',snapshotCode);
+ const decimalMethods=['minus','toFixed'].map(key=>({key,d:snapshotData(decimalPrototype.value,key)}));need(decimalMethods.every(row=>typeof row.d.value==='function'),snapshotCode);
+ const utilNamespace=require('node:util'),utilTypes=snapshotData(utilNamespace,'types'),utilProxy=snapshotData(types,'isProxy');need(utilTypes.value===types&&utilProxy.value===snapshotIsProxy,snapshotCode);
+ const snapshotMaterial=material.capture(snapshotFile);
+ for(const row of snapshotSlots)if(row.key!=='__esModule')records.push({module:snapshotModule.mod,key:row.key,value:row.d.value,descriptor:row.d});
+ const checkSnapshotClosure=()=>{
+  sameSnapshotData(require,'cache',snapshotCacheSlot);
+  for(const row of [snapshotModule,casesModule,snapshotSdk]){sameSnapshotData(snapshotCache,row.file,row.slot);sameSnapshotData(row.mod,'filename',row.filename);sameSnapshotData(row.mod,'exports',row.exports);need(snapshotData(row.mod,'loaded').value===true,snapshotCode);}
+  need(snapshotParentOf(snapshotModule.mod)===snapshotParent,snapshotCode);const children=sameSnapshotData(snapshotModule.mod,'children',snapshotChildren),parentChildren=sameSnapshotData(casesModule.mod,'children',casesChildren);
+  need(children.length===1&&snapshotData(children,'0').value===snapshotSdk.mod,snapshotCode);let count=0,edge=0;
+  for(let i=0;i<parentChildren.length;i++){const child=snapshotData(parentChildren,String(i)).value;if(child===casesModule.mod)continue;need(edge<snapshotCaseEdges.length&&child===snapshotCaseEdges[edge].slot.value,snapshotCode);const row=snapshotCaseEdges[edge++].meta;sameSnapshotData(snapshotCache,row.file,row.slot);sameSnapshotData(row.mod,'filename',row.filename);sameSnapshotData(row.mod,'exports',row.exports);if(child===snapshotModule.mod)count++;}need(edge===snapshotCaseEdges.length&&count===1,snapshotCode);
+  need(Object.getPrototypeOf(snapshotExports)===Object.prototype&&Reflect.ownKeys(snapshotExports).length===snapshotKeys.length&&snapshotKeys.every(key=>Object.hasOwn(snapshotExports,key)),snapshotCode);
+  for(const row of snapshotSlots){sameSnapshotData(snapshotExports,row.key,row.d);if(row.length)sameSnapshotData(row.d.value,'length',row.length);}
+  sameSnapshotData(snapshotSdk.exports.value,'Prisma',sdkPrisma);sameSnapshotData(snapshotSdk.exports.value,'PrismaClient',sdkClass);sameSnapshotData(prisma,'Decimal',decimal);sameSnapshotData(decimal.value,'prototype',decimalPrototype);
+  for(const row of decimalMethods)sameSnapshotData(decimalPrototype.value,row.key,row.d);sameSnapshotData(utilNamespace,'types',utilTypes);sameSnapshotData(types,'isProxy',utilProxy);
+  checkCurrent259FileIdentity(snapshotFile,snapshotMaterial.identity);
+ };
+ checkSnapshotClosure();
  const paymentExports=Object.freeze(paymentValues);
  const framework={};
  for(const [name,entry]of [['TestingModule','@nestjs/testing/testing-module'],['NestContainer','@nestjs/core/injector/container'],['NestApplication','@nestjs/core/nest-application'],['ExpressAdapter','@nestjs/platform-express/adapters/express-adapter']]){
@@ -147,7 +183,7 @@ function loadCurrent259Client(handle){
   const visited=new Set();
   for(const mod of roots)visit(mod,visited);
  }
- checkAuthTransactionClosure();visitRoots();
+ checkAuthTransactionClosure();checkSnapshotClosure();visitRoots();
  // Preserve the existing exact Nest composition and all six global guards.
   need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype,"TASK16_APP_PRISMA_CLASS");
   reflection={get:Reflect.getMetadata,define:Reflect.defineMetadata};need(typeof reflection.get==='function'&&typeof reflection.define==='function',"TASK16_APP_REFLECTION_CHANGED");
@@ -180,7 +216,7 @@ function loadCurrent259Client(handle){
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
-   checkAuthTransactionClosure();
+   checkAuthTransactionClosure();checkSnapshotClosure();
    material.checkLight();visitRoots();
    for(const row of files.values())need(require.cache[row.path]===row.module&&row.module.exports===row.exports,'CURRENT259_LOADER_MODULE');
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2'&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine,'CURRENT259_LOADER_CLASS');
@@ -195,7 +231,7 @@ function loadCurrent259Client(handle){
   try{
    businessIssuer(token,ownedHandle);
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
-   checkAuthTransactionClosure();
+   checkAuthTransactionClosure();checkSnapshotClosure();
    material.checkContinuity(token,ownedHandle);
    const seen=new Set();
    const visitIdentity=mod=>{if(seen.has(mod))return;seen.add(mod);const row=files.get(mod?.filename);
@@ -220,7 +256,7 @@ function loadCurrent259Client(handle){
  }
  const expectedRequest=Object.freeze(['database/task16-registered-application.module.js','database/prisma.service.js','api-security.js','operating-projection/projection-export-json.js','api-json-replacer.js','validation/api-validation.js','api-listen.js'].map((p,i)=>Object.freeze({name:['application','database','security','projection','json','validation','listen'][i],path:'services/api/dist/'+p})));
  const loadApplicationModules=request=>{check();need(JSON.stringify(request)===JSON.stringify(expectedRequest),'TASK16_APP_FIXED_ENTRIES');return exportedValues;};
- function collect(){checkAuthTransactionClosure();visitRoots();check();}
+ function collect(){checkAuthTransactionClosure();checkSnapshotClosure();visitRoots();check();}
  function loadContractApplicationModules(){
   need(arguments.length===0&&!document,'CURRENT259_CONTRACT_FIXED_ENTRIES');check();
   if(contract)return contract.exports;
