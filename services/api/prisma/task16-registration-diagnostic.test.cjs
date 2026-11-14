@@ -15,3 +15,7 @@ test('server diagnostic does not execute getters, proxy traps or retain raw fiel
  assert.deepEqual(filterPaymentDiagnostic(new Proxy(input,{getOwnPropertyDescriptor(){calls++;throw Error('private');}})),{});
  assert.equal(calls,0);
 });
+
+test('supported P2004 producer output survives the final receipt projection',()=>{
+ assert.deepEqual(filterPaymentDiagnostic({httpStatus:500,expectedHttpStatus:201,serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2004'}),{httpStatus:500,expectedHttpStatus:201,serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2004'});
+});

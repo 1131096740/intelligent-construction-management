@@ -28,8 +28,9 @@ function method(value: unknown, key: string): ((...args: unknown[]) => unknown) 
   }
   return undefined;
 }
-const codes = new Set(["P1001", "P1002", "P1008", "P1010", "P1011", "P1017", "P2002", "P2003", "P2004", "P2010", "P2024", "P2025", "P2028", "P2034"]);
-const sqlStates = new Set(["42501", "25006", "25P02", "40001", "40P01", "42P01", "42703", "57014"]);
+// Literal diagnostic catalogs are checked through the actual collector→case roundtrip.
+const codes = new Set(["P1000", "P1001", "P1002", "P1003", "P1008", "P1010", "P1011", "P1017", "P2000", "P2002", "P2003", "P2004", "P2010", "P2011", "P2021", "P2022", "P2024", "P2025", "P2028", "P2034"]);
+const sqlStates = new Set(["23502", "23503", "23505", "42501", "25006", "25P02", "40001", "40P01", "42P01", "42703", "57014"]);
 const kinds = new Map<object, string>([[Error.prototype, "ERROR"], [TypeError.prototype, "TYPE_ERROR"], [RangeError.prototype, "RANGE_ERROR"],
   [Prisma.PrismaClientKnownRequestError.prototype, "KNOWN_REQUEST_ERROR"], [Prisma.PrismaClientUnknownRequestError.prototype, "UNKNOWN_REQUEST_ERROR"],
   [Prisma.PrismaClientValidationError.prototype, "VALIDATION_ERROR"], [Prisma.PrismaClientInitializationError.prototype, "INITIALIZATION_ERROR"]]);
@@ -38,9 +39,9 @@ export function projectTask16RegistrationError(error: unknown): Detail {
   if (error && typeof error === "object" && types.isProxy(error)) return Object.freeze({ serverErrorKind: "UNINSPECTED" });
   if (!types.isNativeError(error)) return Object.freeze({ serverErrorKind: "NON_NATIVE_THROWN" });
   const kind = kinds.get(Object.getPrototypeOf(error)) ?? "OTHER_NATIVE_ERROR";
-  const code = own(error, "code"), sql = own(own(error, "meta"), "code");
+  const code = own(error, kind === "INITIALIZATION_ERROR" ? "errorCode" : "code"), sql = own(own(error, "meta"), "code");
   return Object.freeze({ serverErrorKind: kind,
-    ...(kind === "KNOWN_REQUEST_ERROR" && typeof code === "string" && codes.has(code) ? { serverPrismaCode: code } : {}),
+    ...((kind === "KNOWN_REQUEST_ERROR" || kind === "INITIALIZATION_ERROR") && typeof code === "string" && codes.has(code) ? { serverPrismaCode: code } : {}),
     ...(kind === "KNOWN_REQUEST_ERROR" && typeof sql === "string" && sqlStates.has(sql) ? { serverSqlState: sql } : {}) });
 }
 export function armTask16RegistrationError(filter: object, server: object, paymentId: string, key: string): object {
