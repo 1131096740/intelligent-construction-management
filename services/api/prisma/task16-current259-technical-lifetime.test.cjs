@@ -89,7 +89,7 @@ test('the fixed first-rollback starter claims its own transport without arbitrar
  assert.equal(f.receipts[0].limits.totalDeadlineMs,3600000);
 });
 
-function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false,lifecycle=false}={}){
+function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false,lifecycle=false,privateScopeError}={}){
  if(lifecycle)save=true;
  const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream'),crypto=require('node:crypto');
  const docker='/Applications/Docker.app/Contents/Resources/bin/docker';
@@ -248,8 +248,10 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
  const imports={'node:fs':fsModel,'node:crypto':{...crypto,X509Certificate:class{constructor(raw){this.raw=raw;}}},
   'node:child_process':{spawn},'node:net':net,'node:tls':tls,'./task16-current259-loopback-forward.cjs':relay,
   ...(document?{'./task12-current259-document-login.cjs':{assertCurrent259GeneratedDocumentLoginScope(proof,handle){
+   if(privateScopeError)throw privateScopeError;
    assert.ok(!lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
   },assertCurrent261GeneratedLifecycleLoginScope(proof,handle){
+   if(privateScopeError)throw privateScopeError;
    assert.ok(lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
   }}}:{})};
  const holder={exports:{}};
@@ -611,4 +613,18 @@ test('document HBA scope reports only the original first rejected predicate and 
  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),error=>{
   assert.deepEqual(error.documentHbaScope,{predicate:'ENTRY_DOCUMENT_UNUSED',subphase:'ENTRY'});return true;
  });await resource.close();
+});
+
+const privateScopeCodes=["CURRENT259_DOCUMENT_LOGIN_HANDLE", "CURRENT259_DOCUMENT_LOGIN_CONTINUITY", "CURRENT259_DOCUMENT_LOGIN_ROLE_RUNTIME", "CURRENT259_DOCUMENT_ACL_TRANSPORT_CONTINUITY", "CURRENT259_DOCUMENT_ROLE_PROVISION_CONTINUITY", "CURRENT259_ORDINARY_ARCHIVE_ACL_CONTINUITY", "CURRENT259_LOADER_CHANGED", "CURRENT259_RESOURCE_CLOSED", "CURRENT259_RESOURCE_ABORTED", "CURRENT259_RESOURCE_SIGNAL", "CURRENT259_RESOURCE_PRODUCER_CHANGED", "CURRENT259_RESOURCE_TOOL_CHANGED", "CURRENT259_RESOURCE_CHANGED", "CURRENT259_RESOURCE_IDENTITY", "CURRENT259_RESOURCE_PURPOSE", "CURRENT259_RESOURCE_TLS", "TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED", "TASK12_OFFICIAL_DOCUMENT_CONTINUITY", "TASK12_OFFICIAL_DOCUMENT_DEADLINE", "TASK12_OFFICIAL_DOCUMENT_MODULES"];
+test('private scope only retains enumerated own error codes without reading getters or proxies',async()=>{
+ for(const code of privateScopeCodes){
+  const f=rollbackResourceModel('healthy',{firstQ2:true,document:true,privateScopeError:{code}}),resource=await f.start();
+  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),error=>{assert.equal(error.code,'TASK01_RESOURCE_DOCUMENT_HBA_SCOPE');assert.deepEqual(error.documentHbaScope,{predicate:'PRIVATE_SCOPE',subphase:'ENTRY',privateScopeCode:code});return true;});await resource.close();
+ }
+ let reads=0;const getter={};Object.defineProperty(getter,'code',{get(){reads++;throw Error('PRIVATE_DO_NOT_PRINT');}});
+ const proxy=new Proxy({code:privateScopeCodes[0]},{getOwnPropertyDescriptor(){throw Error('PRIVATE_DO_NOT_PRINT');}});
+ for(const cause of [{code:'CURRENT259_DOCUMENT_LOGIN_HANDLE_UNKNOWN'},{code:'EACCES'},getter,proxy]){
+  const f=rollbackResourceModel('healthy',{firstQ2:true,document:true,privateScopeError:cause}),resource=await f.start();
+  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),error=>{assert.deepEqual(error.documentHbaScope,{predicate:'PRIVATE_SCOPE',subphase:'ENTRY'});return true;});await resource.close();
+ }assert.equal(reads,0);
 });

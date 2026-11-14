@@ -13,6 +13,15 @@ const TECHNICAL_LIFETIME = Symbol("current259 technical lifetime");
 const FIRST_ROLLBACK_LIFETIME = Symbol("current259 first-rollback lifetime");
 const FIRST_Q2_LIFETIME = Symbol("current259 first-Q2 lifetime");
 const documentHbaScopeFailures = new WeakMap();
+const documentPrivateScopeCodes = new Set([
+  "CURRENT259_DOCUMENT_LOGIN_HANDLE", "CURRENT259_DOCUMENT_LOGIN_CONTINUITY", "CURRENT259_DOCUMENT_LOGIN_ROLE_RUNTIME",
+  "CURRENT259_DOCUMENT_ACL_TRANSPORT_CONTINUITY", "CURRENT259_DOCUMENT_ROLE_PROVISION_CONTINUITY", "CURRENT259_ORDINARY_ARCHIVE_ACL_CONTINUITY",
+  "CURRENT259_LOADER_CHANGED", "CURRENT259_RESOURCE_CLOSED", "CURRENT259_RESOURCE_ABORTED",
+  "CURRENT259_RESOURCE_SIGNAL", "CURRENT259_RESOURCE_PRODUCER_CHANGED", "CURRENT259_RESOURCE_TOOL_CHANGED",
+  "CURRENT259_RESOURCE_CHANGED", "CURRENT259_RESOURCE_IDENTITY", "CURRENT259_RESOURCE_PURPOSE",
+  "CURRENT259_RESOURCE_TLS", "TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED", "TASK12_OFFICIAL_DOCUMENT_CONTINUITY",
+  "TASK12_OFFICIAL_DOCUMENT_DEADLINE", "TASK12_OFFICIAL_DOCUMENT_MODULES"
+]);
 
 function requireFixedIdentityMain() {
   const main=require.main;
@@ -955,10 +964,11 @@ COMMIT;`;
   async function applyCurrent259DocumentHbaV1(handle, proof) {
     const scopeError = "TASK01_RESOURCE_DOCUMENT_HBA_SCOPE";
     // Diagnostics follow original short-circuit order; no proof value is retained.
-    const scopeNeed = (value, predicate, subphase = "ENTRY") => {
+    const scopeNeed = (value, predicate, subphase = "ENTRY", privateScopeCode) => {
       if (!value) {
         const error = fault(scopeError);
-        documentHbaScopeFailures.set(error, Object.freeze({ predicate, subphase }));
+        documentHbaScopeFailures.set(error, Object.freeze({ predicate, subphase,
+          ...(privateScopeCode === undefined ? {} : { privateScopeCode }) }));
         throw error;
       }
       return value;
@@ -973,7 +983,10 @@ COMMIT;`;
     const checkScope = subphase => {
       scopeNeed(!closePromise, "LIVE_OPEN", subphase) && scopeNeed(!signal.aborted, "LIVE_SIGNAL", subphase);
       try { (lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof, handle); }
-      catch { scopeNeed(false, "PRIVATE_SCOPE", subphase); }
+      catch (cause) {
+        const code = ownErrorField(cause, "code");
+        scopeNeed(false, "PRIVATE_SCOPE", subphase, documentPrivateScopeCodes.has(code) ? code : undefined);
+      }
       scopeNeed(proof.runId === runId, "BIND_RUN", subphase) && scopeNeed(proof.containerId === containerId, "BIND_CONTAINER", subphase) &&
         scopeNeed(proof.sourceSha === sourceSha, "BIND_SOURCE", subphase);
       checkRelay();
