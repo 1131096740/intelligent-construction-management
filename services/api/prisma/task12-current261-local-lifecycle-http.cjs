@@ -1,5 +1,6 @@
 'use strict';
 const {request}=require('node:http'),{randomBytes,createHash}=require('node:crypto'),{setTimeout:delay}=require('node:timers/promises'),{types,isDeepStrictEqual:equal}=require('node:util');
+const {decodeRelaySysreadExit}=require('./task16-current259-relay-sysread.cjs');
 const id=x=>typeof x==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(x);
 const issued=new WeakMap(),failures=new WeakMap();
 // Diagnostics are observations only; these entries confer no runtime authority.
@@ -40,6 +41,33 @@ function closedAuthDetail(value){
  if(!authKinds.has(kind))return {};
  return {serverErrorKind:kind,...(['PRE_CONTROLLER_MARKER','CONTROLLER_MARKER_REACHED'].includes(boundary)?{serverAuthBoundary:boundary}:{}),...(['KNOWN_REQUEST_ERROR','INITIALIZATION_ERROR'].includes(kind)&&authCodes.has(code)?{serverPrismaCode:code}:{}),
   ...(kind==='KNOWN_REQUEST_ERROR'&&authStates.has(sql)?{serverSqlState:sql}:{})};
+}
+const relayCodes=new Set(['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT','DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(part=>'CURRENT259_LOOPBACK_FORWARD_'+part));
+const relayFrameStages=new Set(['DATA_AFTER_FIN','OVERSIZED_LENGTH','TRAILING_AFTER_FIN','STDOUT_EOF_WITHOUT_FIN']);
+const relayCloseFields=['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'];
+// Snapshot only the error thrown by this HTTP postcheck, before later unwind.
+// These fixed observations neither replace that error nor confer run authority.
+function projectPostCheckFailure(cause){
+ if(!cause||typeof cause!=='object'||types.isProxy(cause)||!types.isNativeError(cause)||own(cause,'code')!=='TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED')return undefined;
+ const relayCode=own(cause,'relayCode');if(!relayCodes.has(relayCode))return undefined;
+ const result={resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode};
+ if(relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME'){
+  const stage=own(cause,'relayFrameStage');
+  if(relayFrameStages.has(stage))result.relayFrameStage=stage;
+  if(stage==='STDOUT_EOF_WITHOUT_FIN'){
+   const exit=own(cause,'relayChildExitCode');
+   if(Number.isInteger(exit)&&(exit===0||exit>=41&&exit<=48)){
+    result.relayChildExitCode=exit;
+    const sysread=own(cause,'relaySysreadExit');
+    if(exit===47&&decodeRelaySysreadExit(sysread))result.relaySysreadExit=sysread;
+   }
+  }
+ }
+ if(['CURRENT259_LOOPBACK_FORWARD_FRAME','CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'].includes(relayCode)){
+  const state=own(cause,'relayCloseState'),snapshot=Object.fromEntries(relayCloseFields.map(key=>[key,own(state,key)]));
+  if(Object.values(snapshot).every(value=>typeof value==='boolean'))result.relayCloseState=Object.freeze(snapshot);
+ }
+ return Object.freeze(result);
 }
 const secondary=(detail,cause)=>{detail.secondaryPhase='AFTER_CHECK';const code=own(cause,'code');detail.secondaryReason=['CURRENT259_LOADER_CHANGED','CURRENT261_LOCAL_LIFECYCLE_HTTP'].includes(code)?code:'UNCLASSIFIED';};
 function exchange(port,method,path,headers,wire,binary,observe){
@@ -90,6 +118,7 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
   }catch(cause){
    collectAuth();
    if(observation.phase==='EXCHANGE')try{continuity();}catch(later){secondary(observation,later);}
+   if(observation.phase==='AFTER_CHECK'){const detail=projectPostCheckFailure(cause);if(detail)observation.postCheckFailure=detail;}
    remember(cause,observation);throw cause;
   }finally{collectAuth();}
  };

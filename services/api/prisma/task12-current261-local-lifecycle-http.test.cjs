@@ -1,18 +1,18 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events');
 const id=n=>'10000000-0000-4000-8000-'+String(n).padStart(12,'0');
-function model(mode){
+function model(mode,postcheckError){
  const users=Array.from({length:8},(_,i)=>({id:id(i+1),phone:'1990000000'+i})),passwords=Object.fromEntries(users.map((u,i)=>[u.id,String(i).repeat(64)]));
  const fixture={approval:{users,handler:users[0],project:{id:id(20)},members:[{userId:users[0].id,positionKey:'contract_staff'},{userId:users[3].id,positionKey:'project_manager'}],globalRoles:[[1,'material_director'],[2,'contract_director'],[4,'finance_director'],[5,'general_manager'],[6,'comprehensive_director']].map(([actor,roleKey])=>({userId:users[actor].id,roleKey}))}};
  const config=Object.freeze({fixture,passwords,sourceDocx:Buffer.from('model-docx'),originals:[Buffer.from('%PDF-original1'),Buffer.from('%PDF-original2')]}),calls=[];
- const server={listening:true,address(){return{address:'127.0.0.1',family:'IPv4',port:24080};}};let live=true,claimed=false;const authCalls=[],authTickets=new Set();const authDiagnostics=Object.freeze({arm(phone){assert.ok(users.some(u=>u.phone===phone));const ticket=Object.freeze({});authTickets.add(ticket);authCalls.push('arm');return ticket;},take(ticket){assert.equal(authTickets.delete(ticket),true);authCalls.push('take');if(mode==='native-take-failure-and-postcheck')throw Error('PRIVATE_DIAG_FAILURE');return mode?.startsWith('native')?Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2010',serverSqlState:'42501',private:'MUST_OMIT'}):undefined;}});
+ const server={listening:true,address(){return{address:'127.0.0.1',family:'IPv4',port:24080};}};let live=true,claimed=false;const checks=[],authCalls=[],authTickets=new Set();const authDiagnostics=Object.freeze({arm(phone){assert.ok(users.some(u=>u.phone===phone));const ticket=Object.freeze({});authTickets.add(ticket);authCalls.push('arm');return ticket;},take(ticket){assert.equal(authTickets.delete(ticket),true);authCalls.push('take');if(mode==='native-take-failure-and-postcheck')throw Error('PRIVATE_DIAG_FAILURE');return mode?.startsWith('native-p1017')?Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P1017',serverAuthBoundary:'PRE_CONTROLLER_MARKER',private:'MUST_OMIT'}):mode?.startsWith('native')?Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2010',serverSqlState:'42501',private:'MUST_OMIT'}):undefined;}});
  const imports={'./task12-current259-document-application.cjs':{takeCurrent261LocalLifecycleHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;}},'node:http':{request(options,consume){const outgoing=new EventEmitter();outgoing.end=wire=>{calls.push({options,wire});queueMicrotask(()=>{if(mode==='transport-and-postcheck'){live=false;outgoing.emit('error',Error('PRIVATE_TRANSPORT'));return;}const response=new EventEmitter();response.complete=true;response.socket={remoteAddress:mode==='foreign-peer'?'127.0.0.2':'127.0.0.1',remotePort:24080};response.headers=mode==='redirect'?{location:'https://invalid.example'}:{};response.statusCode=201;response.destroy=()=>{};const actor=options.path==='/auth/login'?users.findIndex(u=>u.phone===JSON.parse(wire).phone):0,roles=[...fixture.approval.members.filter(r=>r.userId===users[actor].id).map(r=>r.positionKey),...fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)];let body=options.path==='/auth/login'?{user:{id:users[actor].id,phone:users[actor].phone,mustChangePassword:false,roleKeys:roles,globalRoleKeys:fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)},tokens:{accessToken:actor?'model'+actor+'.access.token':'model.access.token'}}:{contract:{id:id(21)},version:{id:id(22)}};if(options.path.endsWith('/workbench')){body={documents:[{docxFileId:id(50),pdfFileId:id(51)}]};response.statusCode=200;}
  if(options.path.endsWith('/download-ticket'))body={downloadUrl:'/files/'+id(51)+'/download?token=model',mimeType:'application/pdf',sizeBytes:1024*1024};
  if(mode?.startsWith('native')){response.statusCode=500;body={statusCode:500,message:'Internal server error'};}
  const binary=options.path.includes('/download?');let bytes=Buffer.from(JSON.stringify(body));if(binary){bytes=Buffer.alloc(1024*1024,65);Buffer.from('%PDF-').copy(bytes);response.statusCode=200;response.headers={'content-type':mode==='wrong-mime'?'text/html':'application/pdf','content-length':String(mode==='wrong-size'?bytes.length+1:bytes.length)};}
- consume(response);response.emit('data',bytes.subarray(0,100));response.emit('data',bytes.subarray(100));response.emit('end');if(mode==='returned-and-postcheck'||mode==='native500-and-postcheck'||mode==='native-take-failure-and-postcheck')live=false;});};return outgoing;}}};
+ consume(response);response.emit('data',bytes.subarray(0,100));response.emit('data',bytes.subarray(100));response.emit('end');if(mode==='returned-and-postcheck'||mode==='native500-and-postcheck'||mode==='native-take-failure-and-postcheck'||mode==='native-p1017-postcheck')live=false;});};return outgoing;}}};
  const holder={exports:{}};new Function('require','module',fs.readFileSync(path.join(__dirname,'task12-current261-local-lifecycle-http.cjs'),'utf8'))(name=>imports[name]??require(name),holder);
- return{api:holder.exports,config,server,calls,authCalls,authTickets,close(){live=false;},verify(){if(!live&&mode==='transport-and-postcheck')throw Object.assign(Error('PRIVATE_GUARD'),{code:'CURRENT259_LOADER_CHANGED'});assert.equal(live,true);},verifyToken(token){const actor=Number(token.match(/^model(\d*)\./u)[1]||0);return{sub:users[actor].id,phone:users[actor].phone,type:'access',ver:0};}};
+ return{api:holder.exports,config,server,calls,authCalls,authTickets,checks,close(){live=false;},verify(){checks.push(live);if(!live&&postcheckError)throw postcheckError;if(!live&&mode==='transport-and-postcheck')throw Object.assign(Error('PRIVATE_GUARD'),{code:'CURRENT259_LOADER_CHANGED'});assert.equal(live,true);},verifyToken(token){const actor=Number(token.match(/^model(\d*)\./u)[1]||0);return{sub:users[actor].id,phone:users[actor].phone,type:'access',ver:0};}};
 }
 test('life HTTP owns login tokens, pins its loopback server and revokes escaped operations',async()=>{
  const f=model();let escaped;
@@ -115,4 +115,67 @@ test('failed diagnostic take cannot replace the original AFTER_CHECK error500 or
  await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,b=>b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}})),cause=>{first=cause;return true;});
  assert.deepEqual(f.api.describeCurrent261LocalLifecycleHttpFailure(first),{method:'POST',routeTemplate:'/auth/login',phase:'AFTER_CHECK',httpStatus:500,businessOutcome:'UNKNOWN'});
  assert.doesNotMatch(first.message,/DIAG_FAILURE/);assert.equal(f.authTickets.size,0);
+});
+
+
+test('modeled P1017 and original postcheck relay failure survive together without replacing the error',async()=>{
+ const cause=Object.assign(Error('PRIVATE_POSTCHECK'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'});
+ const closeState={hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,peerEndReturned:false};
+ for(const [key,value]of Object.entries({relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47,relaySysreadExit:70,relayCloseState:closeState}))Object.defineProperty(cause,key,{value,configurable:true});
+ const f=model('native-p1017-postcheck',cause);
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,b=>b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}})),error=>error===cause);
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(cause);
+ assert.deepEqual(detail,{method:'POST',routeTemplate:'/auth/login',phase:'AFTER_CHECK',httpStatus:500,businessOutcome:'UNKNOWN',serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P1017',serverAuthBoundary:'PRE_CONTROLLER_MARKER',postCheckFailure:{resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47,relaySysreadExit:70,relayCloseState:{hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,peerEndReturned:false}}});
+ assert.equal(f.calls.length,1);assert.deepEqual(f.authCalls,['arm','take']);assert.equal(f.authTickets.size,0);assert.deepEqual(f.checks,[true,true,false]);
+ closeState.pgFin=true;Object.defineProperty(cause,'relayCode',{value:'CURRENT259_LOOPBACK_FORWARD_ABORTED'});
+ assert.equal(detail.postCheckFailure.relayCode,'CURRENT259_LOOPBACK_FORWARD_FRAME');assert.equal(detail.postCheckFailure.relayCloseState.pgFin,false);
+ assert.ok(Object.isFrozen(detail.postCheckFailure));assert.ok(Object.isFrozen(detail.postCheckFailure.relayCloseState));
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|199000|password|token|10000000/u);
+});
+
+
+async function modeledPostcheck(cause){
+ const f=model('native-p1017-postcheck',cause);let caught;
+ // assert.rejects inspects thrown proxies itself; observe only original identity.
+ try{await f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,b=>b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}}));}catch(error){caught=error;}
+ assert.equal(caught,cause);return f.api.describeCurrent261LocalLifecycleHttpFailure(cause);
+}
+for(const mode of ['code-getter','relay-getter','unknown-resource','unknown-relay','non-native','proxy'])test('postcheck projection omits untrusted '+mode+' without evaluating it',async()=>{
+ let traps=0;
+ const cause=mode==='non-native'?{}:Error('PRIVATE');
+ Object.defineProperty(cause,'code',mode==='code-getter'?{get(){traps++;throw Error('getter');}}:{value:mode==='unknown-resource'?'PRIVATE_CODE':'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'});
+ Object.defineProperty(cause,'relayCode',mode==='relay-getter'?{get(){traps++;throw Error('getter');}}:{value:mode==='unknown-relay'?'CURRENT259_LOOPBACK_FORWARD_PRIVATE':'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+ const error=mode==='proxy'?new Proxy(cause,{get(){traps++;throw Error('proxy');},getOwnPropertyDescriptor(){traps++;throw Error('proxy');},getPrototypeOf(){traps++;throw Error('proxy');}}):cause;
+ const detail=await modeledPostcheck(error);
+ assert.equal(detail?.postCheckFailure,undefined);assert.equal(traps,0);
+ if(mode!=='proxy'){assert.equal(detail.httpStatus,500);assert.equal(detail.serverPrismaCode,'P1017');assert.equal(detail.businessOutcome,'UNKNOWN');}
+});
+for(const mode of ['frame-getter','state-getter','state-proxy','state-field-getter','partial-state','nonboolean-state','unknown-exit','unknown-sysread','wrong-exit-sysread','wrong-frame-sysread'])test('postcheck projection retains only complete fixed relay fields for '+mode,async()=>{
+ let traps=0;
+ const cause=Object.assign(Error('PRIVATE'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME'});
+ const state={hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,peerEndReturned:false};
+ if(mode==='partial-state')delete state.hostFin;
+ if(mode==='nonboolean-state')state.hostFin='true';
+ if(mode==='state-field-getter')Object.defineProperty(state,'hostFin',{get(){traps++;throw Error('getter');}});
+ Object.defineProperty(cause,'relayFrameStage',mode==='frame-getter'?{get(){traps++;throw Error('getter');}}:{value:mode==='wrong-frame-sysread'?'DATA_AFTER_FIN':'STDOUT_EOF_WITHOUT_FIN'});
+ Object.defineProperty(cause,'relayCloseState',mode==='state-getter'?{get(){traps++;throw Error('getter');}}:{value:mode==='state-proxy'?new Proxy(state,{getOwnPropertyDescriptor(){traps++;throw Error('proxy');}}):state});
+ Object.defineProperty(cause,'relayChildExitCode',{value:mode==='unknown-exit'?255:mode==='wrong-exit-sysread'?48:47});
+ Object.defineProperty(cause,'relaySysreadExit',{value:mode==='unknown-sysread'?76:70});
+ const detail=(await modeledPostcheck(cause)).postCheckFailure;
+ assert.equal(detail.resourceCode,'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED');assert.equal(detail.relayCode,'CURRENT259_LOOPBACK_FORWARD_FRAME');assert.equal(traps,0);
+ if(['state-getter','state-proxy','state-field-getter','partial-state','nonboolean-state'].includes(mode))assert.equal(detail.relayCloseState,undefined);
+ else assert.deepEqual(detail.relayCloseState,state);
+ if(mode==='frame-getter')assert.equal(detail.relayFrameStage,undefined);
+ if(mode==='unknown-exit'||mode==='wrong-frame-sysread'||mode==='frame-getter')assert.equal(detail.relayChildExitCode,undefined);
+ if(['unknown-exit','unknown-sysread','wrong-exit-sysread','wrong-frame-sysread','frame-getter'].includes(mode))assert.equal(detail.relaySysreadExit,undefined);
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|getter|proxy/u);
+});
+
+
+test('modeled P1017 with a passing postcheck remains CONSUME and cannot borrow relay diagnostics',async()=>{
+ const f=model('native-p1017-consume');let cause;
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,b=>b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}})),error=>{cause=error;return true;});
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(cause);
+ assert.equal(detail.phase,'CONSUME');assert.equal(detail.httpStatus,500);assert.equal(detail.serverPrismaCode,'P1017');assert.equal(detail.businessOutcome,'UNKNOWN');assert.equal(detail.postCheckFailure,undefined);
+ assert.deepEqual(f.checks,[true,true,true]);assert.equal(f.calls.length,1);
 });

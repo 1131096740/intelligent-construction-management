@@ -204,7 +204,7 @@ function fixture(t,options={}){
    }
   };
   ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check,...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
-  ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume,reportPhase){await options.onApplicationPhase?.(reportPhase);assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{if(Object.hasOwn(options,'applicationFailure'))throw options.applicationFailure;return await consume(application);}finally{state.calls.push('app-close');}}};
+  ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume,reportPhase){await options.onApplicationPhase?.(reportPhase);assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{if(Object.hasOwn(options,'applicationFailure'))throw options.applicationFailure;return await consume(application);}catch(error){if(options.wrapApplicationError)throw options.wrapApplicationError(error);throw error;}finally{state.calls.push('app-close');}}};
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
    if(options.beforeCaseFailure)throw options.beforeCaseFailure;
@@ -227,7 +227,7 @@ function fixture(t,options={}){
    lease.check();options.afterCaseResult?.();return {caseId:lease.scope.caseId,passed:true,...(options.scenario==='cancel-commit'
     ?{rollbackObserved:true,...(options.omitOriginalResult?{}:{originalResultUnconfirmed:true}),
       ...(options.omitRollbackEvidence?{}:{rollbackEvidence:{fault:'commit-cancelled',observedXid32:'9101',originalRequestKeySha256:'a'.repeat(64)}})}:options.attributionGap?{attributionGapEvidence:{registrationStatus:409,projectAmountCents:'500',gapAmountCents:'300',originalRequestKeySha256:'e'.repeat(64),
-      originalResultUnconfirmed:true,...options.gapEvidenceOverride},...(options.gapExecution?{executionId:'forged'}:{})}:{executionId:'public-execution',rootId:'public-root'})};
+      originalResultUnconfirmed:true,...options.gapEvidenceOverride},...(options.gapExecution?{executionId:'forged'}:{})}:{executionId:'public-execution',rootId:'public-root',...options.businessResult})};
   }};
  }
 
@@ -1470,4 +1470,86 @@ test('new fixed relay decoder import identity is rechecked before post-live diag
  const f=ordinaryBusinessFailureFixture(t,{afterLive(){f.state.replaceRelayDecoder();}});await f.done;
  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
  assert.equal(receipt.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_IMPORT_CHANGED');assert.equal(receipt.postLiveFailure,undefined);assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');
+});
+
+
+test('normal case assertions remain durable before a post-live failure without claiming full acceptance',async t=>{
+ const executionId='11223344-1234-4bcd-8f12-0123456789ab',rootId='22334455-1234-4bcd-8f12-0123456789ab';
+ let postLive=false,escaped;
+ const primary=Object.assign(new Error('private relay detail'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'});
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,businessResult:{executionId,rootId},afterLive(){postLive=true;},onCheck(){if(postLive)throw primary;},onConsumeError(error){escaped=error;}});
+ const result=await f.done,rows=fs.readdirSync(f.state.progressRoot).sort().map(name=>JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')));
+ const boundaries=rows.filter(row=>['BUSINESS_CASE_ASSERTIONS_RETURNED','LIVE_UNWIND_RETURNED'].includes(row.event));
+ assert.deepEqual(boundaries.map(row=>row.event),['BUSINESS_CASE_ASSERTIONS_RETURNED','LIVE_UNWIND_RETURNED']);
+ for(const row of boundaries){
+  assert.equal(row.businessOutcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');
+  assert.deepEqual(row.businessProof,{scenario:'normal',caseId:'registered.null-cross-company.commit',permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',executionId,rootId});
+  assert.equal(row.receiptPublished,false);assert.equal(row.financialAcceptance,false);assert.equal(row.nativeAdmission,false);assert.equal(row.executionAllowed,false);
+  assert.equal(row.cleanup.status,'PENDING');
+ }
+ assert.equal(escaped,primary);assert.equal(result.status,'STOPPED');
+ assert.equal(rows.some(row=>row.event==='PHASE'&&row.phase==='ownedCleanup'),false);
+ assert.ok(rows.length<=64);assert.doesNotMatch(JSON.stringify(rows),/private relay detail/);
+});
+
+
+for(const mode of ['invalid-result','live-close','business-primary','progress-write'])test('normal durable boundaries preserve '+mode+' failure without an unwind success',async t=>{
+ const primary=Object.assign(Error('private first detail'),{code:'P2028'});
+ const options={progress:true,...(mode==='invalid-result'?{businessResult:{passed:false}}:mode==='live-close'?{afterLive(){throw primary;}}:mode==='business-primary'?{caseFailure:primary}:{})};
+ const f=ordinaryBusinessFailureFixture(t,{...options,...(mode==='progress-write'?{afterCaseResult(){
+  const names=fs.readdirSync(f.state.progressRoot),next=String(names.length+1).padStart(3,'0');
+  fs.writeFileSync(path.join(f.state.progressRoot,next+'-business_case_assertions_returned.json'),'untouched',{mode:0o600});
+ }}:{})});
+ const result=await f.done,rows=fs.readdirSync(f.state.progressRoot).sort().flatMap(name=>{
+  const text=fs.readFileSync(path.join(f.state.progressRoot,name),'utf8');return text==='untouched'?[]:[JSON.parse(text)];
+ });
+ assert.equal(result.status,'STOPPED');
+ const events=rows.filter(row=>['BUSINESS_CASE_ASSERTIONS_RETURNED','LIVE_UNWIND_RETURNED'].includes(row.event)).map(row=>row.event);
+ assert.deepEqual(events,mode==='live-close'?['BUSINESS_CASE_ASSERTIONS_RETURNED']:[]);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.financialAcceptance,false);assert.equal(receipt.nativeAdmission,false);assert.equal(receipt.status,'STOPPED');
+ assert.equal(receipt.failureCode,mode==='invalid-result'?'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT':mode==='progress-write'?'PAYMENT_INSTALL_ONCE_PROGRESS_WRITE':'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+ assert.doesNotMatch(JSON.stringify(rows),/private first detail/);
+});
+
+test('normal progress never publishes arbitrary handler identity fields',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,businessResult:{executionId:'private credential URL',rootId:{private:'secret'}}});await f.done;
+ const rows=fs.readdirSync(f.state.progressRoot).map(name=>JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,name),'utf8')));
+ const boundaries=rows.filter(row=>['BUSINESS_CASE_ASSERTIONS_RETURNED','LIVE_UNWIND_RETURNED'].includes(row.event));
+ assert.equal(boundaries.length,2);
+ for(const row of boundaries){assert.equal(row.businessProof.executionId,undefined);assert.equal(row.businessProof.rootId,undefined);}
+ assert.doesNotMatch(JSON.stringify(rows),/private credential URL|secret/);
+});
+
+test('durable normal observations preserve original checks and successful unwind order',async t=>{
+ const plain=ordinaryBusinessFailureFixture(t,{});await plain.done;
+ const observed=ordinaryBusinessFailureFixture(t,{progress:true});await observed.done;
+ const readReceipt=f=>JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ const before=readReceipt(plain),after=readReceipt(observed);
+ assert.deepEqual(Object.fromEntries(Object.entries(after.timing.checks).map(([name,value])=>[name,value.count])),
+  Object.fromEntries(Object.entries(before.timing.checks).map(([name,value])=>[name,value.count])));
+ assert.deepEqual(observed.state.calls,plain.state.calls);assert.equal(after.status,before.status);
+ const rows=fs.readdirSync(observed.state.progressRoot).sort().map(name=>JSON.parse(fs.readFileSync(path.join(observed.state.progressRoot,name),'utf8')));
+ const returned=rows.findIndex(row=>row.event==='LIVE_UNWIND_RETURNED'),cleanup=rows.findIndex(row=>row.event==='PHASE'&&row.phase==='ownedCleanup');
+ assert.ok(returned>=0&&cleanup>returned);assert.equal(rows.at(-1).event,'FINALIZATION');
+});
+
+
+test('durable checkpoint publication remains first when application wraps it and later unwind also fails',async t=>{
+ let original,wrapped;
+ const later=Object.assign(new Error('private later unwind'),{code:'CURRENT259_RESOURCE_CLEANUP_UNKNOWN'});
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,afterCaseResult(){
+  const next=String(fs.readdirSync(f.state.progressRoot).length+1).padStart(3,'0');
+  fs.writeFileSync(path.join(f.state.progressRoot,next+'-business_case_assertions_returned.json'),'existing evidence',{mode:0o600});
+ },wrapApplicationError(error){
+  original=error;wrapped=Object.assign(new Error('private outer application'),{code:'TASK16_APP_FAILED_CLOSED'});return wrapped;
+ },afterLive(){throw later;}});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(original.code,'PAYMENT_INSTALL_ONCE_PROGRESS_WRITE');assert.notEqual(original,wrapped);
+ assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_PROGRESS_WRITE');
+ assert.equal(receipt.failureStage,'seedAndSelectedCase');
+ assert.ok(receipt.secondaryFailures.some(row=>row.code==='CURRENT259_RESOURCE_CLEANUP_UNKNOWN'));
+ assert.equal(receipt.financialAcceptance,false);assert.equal(receipt.nativeAdmission,false);assert.equal(receipt.executionAllowed,false);
+ assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');
+ assert.doesNotMatch(JSON.stringify(receipt),/private later unwind|private outer application/);
 });

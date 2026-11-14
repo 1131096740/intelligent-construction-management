@@ -1,23 +1,25 @@
 # 建工智管当前状态
 
-更新：2026-11-14。#382仍为193条规格、45项依赖任务；22:18经GitHub逐项刷新仍14项关闭、31项开放，前沿#394（任务12）和#398（任务16）。未完成整体验收，不以测试数、CI或诊断代码代替业务里程碑。
+更新：2026-11-15。#382仍为193条规格、45项依赖任务；11-15 00:13经GitHub逐项刷新仍14项关闭、31项开放，前沿#394（任务12）和#398（任务16）。本轮尚无新增整票关闭，不以测试数、CI或诊断代码代替业务里程碑。
 
 ## 当前候选
 
-集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`。本轮只追加便携测试夹具修复1fd7f9f6：helper使用canonical系统TMPDIR后沿原随机独占prefix创建目录，并由原once测试验证；净2个源码blob/mode与作者一致，最终Spec/Standards各0项。生产七文件、Schema、ACL、observed组件、编译产物、SDK和固定pins保持原样，按增量规程继承未受影响本地门禁，仅复验原once消费者及Auth诊断spec；准确最终HEAD、验证结果和新远端CI见本轮回执。无新PG、SDK连接或业务运行。
+集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`，准确已推送HEAD `372028031dc1c2cc302d7bf0dafc9972c908d814`、tree `c02248ac70941956c04fdc5fa37af9393373d456`，CI43612048107自然32/32成功，root另鲜核所有job均准确372终态。PR428仍Draft。便携夹具1fd7f9f6净2个blob与作者一致、双轴各0，原once21/Auth11通过；7份生产源码、Schema/ACL、observed组件、API2487/shared68/SDK12产物mode与SHA和固定pins均未变。本轮基于准确372合入c1938bd的T12后置错误快照及ad48d828→7b0c832的T16持久边界/首因修复，共四个源码与既有测试文件；两轴均按最终作者SHA独审0项。当前新增候选仅本地验证，尚未推送或取得新准确CI；372的CI不跨SHA继承。两份原实际运行源码分别冻结在各自独立树。本地合并后HTTP/once/T16 controller/有限诊断窄回归255/255通过，API typecheck（noEmit、无增量写）及lint通过，语法/diff检查通过；2552个API/shared生成文件mode与SHA与集成前一致。
 
-前次准确eb5f0c77/tree9c94b30d的CI43610094658已自然完成全部32作业：30成功，api-3因测试helper硬编码macOS `/private/tmp` 在Ubuntu报ENOENT，Release汇总失败；所有PG分片、Quality及Build通过。该问题发生于目标断言前，不是实际Auth500原因。原CI未重试，eb5资格及付款packet保持unused/HOLD，不跨SHA继承。前次562全新无API dist prebuild2027通过/0失败/1既有skip、类型/lint/API构建与最终eb5三独立进程Auth组件3/3的技术证据保留；缺key、sticky期望、ff333有限通过、ac42 PRELOADED等原失败亦保留。Auth87de/678经fresh491净cherry-pick，未合入cfe08祖先，四个parked ACL/login文件仍等491。当前候选完整远端CI及两条业务验收仍待，PR428保持Draft，用户根目录及无关改动未纳入。
+依据当前开发规程反馈4，当前准确372的完整CI已自然32/32成功。两次业务运行均已停止：T12原session45652于00:36:33真实exit1，首次POST /auth/login HTTP500捕获P1017、PRE_CONTROLLER_MARKER，业务UNKNOWN/full394=false；T16原session46965最后00:45:11记录用例及独立断言返回、进入OWNED_CLEANUP，随后原进程消失，stdout/stderr为空且原终态回执缺失，故原退出码、post-live结果和清理结果均UNKNOWN，不能记自然完成或业务通过。两次原许可均已消费，不重启。00:55另立身份守卫恢复，01:01:57/01:02:02分别完成准确T16/T12容器网络清理，root01:02:41独立确认两组准确资源、旧PID与端口缺席；该恢复不改写原清理失败/未知。
+
+前次准确eb5f0c77/tree9c94b30d的CI43610094658已自然完成全部32作业：30成功，api-3因测试helper硬编码macOS `/private/tmp` 在Ubuntu报ENOENT，Release汇总失败；所有PG分片、Quality及Build通过。该问题发生于目标断言前，不是实际Auth500原因。原CI未重试，eb5资格及付款packet保持unused/HOLD，不跨SHA继承。前次562全新无API dist prebuild2027通过/0失败/1既有skip、类型/lint/API构建与最终eb5三独立进程Auth组件3/3的技术证据保留；缺key、sticky期望、ff333有限通过、ac42 PRELOADED等原失败亦保留。Auth87de/678经fresh491净cherry-pick，未合入cfe08祖先，四个parked ACL/login文件仍等491。已推送372的准确CI已通过，两条业务验收仍待，PR428保持Draft，用户根目录及无关改动未纳入。
 
 ## 两条业务线各一个主阻塞
 
-- **任务12：真实登录HTTP500。** registry-only `2c6bff609a0c919ba7462f75eed8c86ab7ebfa45`（其余3941个blob/mode与491一致）原会话17100真实exit1/1861.618秒，首因POST `/auth/login` 500、AFTER_CHECK；业务UNKNOWN、full394=false。后续FRAME是单独收束观察，不能据此解释500。原资源清理失败保持；另立完整身份守卫恢复0.685秒，root12:10:17Z独立确认准确容器/网络/PID/relay缺席。当前只补私有有限原生错误捕获，区分AccountRateLimit事务与AuthService故障，公开响应、密码、权限、时间预算不变。七张登录表的普通角色标量读取静态审计未见缺列，仍非原生原因证明。
-- **任务16：用例返回后的转发/收束失败。** 准确491原会话36525真实exit1/2484.667秒。源码绑定与回执支持登记201、同键重放201、原键查询200及独立账目/幂等断言已返回，执行ID72b8ed21、root475f7541；但整体STOPPED、financialAcceptance=false、nativeAdmission=false，首因TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED。实际回执没有内层FRAME/70，不能从组件倒填。原清理完成，root12:26:16Z独立确认准确资源/进程/端口缺席。当前只用现有证据与纯离线生命周期顺序验证，核对Nest关闭外部runtime与最终校验的所有权；无新证据和修复短验证，不重复长链。
+- **任务12：真实登录HTTP500/P1017，尚未修复。** 最新registry-only da06f9bd（基于372，其他3945个blob/mode一致）原00:36:33 exit1/1891.228秒，AFTER_CHECK捕获KNOWN_REQUEST_ERROR/P1017、PRE_CONTROLLER_MARKER。源码审计将marker前唯一数据库路径限定为AccountRateLimitGuard→AuthRateLimitService.take→ordinary.$transaction；尚不能区分事务起始/删除/两次upsert/提交，也未证明底层谁关闭连接。后续FRAME/47/sysread70及PG重置日志不倒填P1017原因。原清理失败保留，另立恢复与root缺席核验已完成。新c1938bd仅补同一原后置错误的冻结有限快照，双轴独审0项并合入本地候选；原HTTP check次数/顺序、同一Error、500/P1017/UNKNOWN保持，无新实际运行或根因修复声明。
+- **任务16：完整正常付款链终态证据缺失。** 准确372原运行在00:45:11进入OWNED_CLEANUP，说明原handler及独立业务断言已返回；其后原进程消失，没有原终态回执/退出码/post-live结果，不计整链通过。01:00终态交付目标明确未达，原许可不重跑，独立恢复已完成。新ad48d828补两个持久边界检查点；Standards发现首个写入错误可能被真实清理包装丢失首因，7b0c832以同原对象先锁首因再抛出修复，新增真实包装语义模型RED→GREEN，最终双轴0项后合入本地候选。原ad48问题与失败保留，不计新实际业务通过。准确491原TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED与有限原因缺失仍保留，不能借新模型倒填。
 
 ## 已完成局部工作与待办边界
 
 本轮Auth有限诊断保持真实server/request/response/phone关联、原15秒期限与完整arm检查；native ticket先及时consume到有限局部值，随后原局部身份检查与HTTP AFTER_CHECK仍可拒绝，不能授权业务进展。Module filename/exports及cache的访问器/代理P2已以描述符先核修复，八类反例保持trap0、无额外metadata/creation调用；原P2和RED不覆盖。当前TS24与CJS66为作者技术模型证据，真实Auth500内因和捕获性能仍未证明。
 
-T16仅对原post-withLive一次state.check在记首因/撤权前复制有限阶段及原relay闭集字段，并重抛同一原对象；缺席明确缺席，不把构造FRAME/47/70倒填实际491。原plan/resource/attempt顺序、检查次数、首因/UNKNOWN、FIN和预算不变。作者193项离线证据不等于原生收束修好或整票通过。本轮只做源码集成与上述本地门禁，无新PG、SDK连接、业务normal/full生命周期或新网络故障实验；标准原CI已授权的既有localhost夹具保持原样。
+T16仅对原post-withLive一次state.check在记首因/撤权前复制有限阶段及原relay闭集字段，并重抛同一原对象；缺席明确缺席，不把构造FRAME/47/70倒填实际491。原plan/resource/attempt顺序、检查次数、首因/UNKNOWN、FIN和预算不变。作者193项离线证据不等于原生收束修好或整票通过。上述源码集成阶段当时未启动PG、SDK连接、业务normal/full生命周期或新网络故障实验；标准原CI已授权的既有localhost夹具保持原样。
 
 491包含三代PDF语义、合同专属连续性、有限付款诊断、TCP就绪检查、旧impact-runtime模型修订及三个临时runtime主键列读取修正。各自源码、审查、测试和真实组件证据见主回执；局部通过不等于整票通过。
 
@@ -29,7 +31,7 @@ T16仅对原post-withLive一次state.check在记首因/撤权前复制有限阶�
 
 ## 结果检查点与授权
 
-按用户最新要求先短验证再长链，每项只锁一个主阻塞。**北京时间2026-11-14 22:30检查已发送，下一检查为2026-11-15 00:30**，此后每两小时。每次必须交付新根因证据、修复验证或业务里程碑；没有有效进展就调整方法并说明，持续运行不算进度。详见[结果检查点](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/RESULT-CHECKPOINTS.md)。
+按用户最新要求先短验证再长链，每项只锁一个主阻塞。**22:30及2026-11-15 00:30检查已按时发送；00:30窗口主阻塞未减少，明确未达结果目标。下一检查为2026-11-15 02:30**，此后每两小时。每次必须交付新根因证据、修复验证或业务里程碑；没有有效进展就调整方法并说明，持续运行不算进度。详见[结果检查点](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/RESULT-CHECKPOINTS.md)。
 
 持续独占虚构开发授权按[开发规程](docs/agents/development-loop.md)执行；未知按原键查证，查不清保留，不盲重发。生产、真实数据、真实云写、新费用及main发布仍单独确认。本轮无main合并、部署或生产变更。
 

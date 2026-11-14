@@ -376,16 +376,31 @@ async function run(args){
    recordProgress('APPLICATION_CHECKPOINT',phase);
   }catch(error){rememberFirst(error);throw error;}
  }
+ function recordNormalBoundary(event){
+  try{
+   if(request.payment261&&request.business&&plan.case.scenario==='normal')recordProgress(event);
+  }catch(error){rememberFirst(error);throw error;}
+ }
+ function progressBusinessProof(){
+  const business=receipt.business,proof={scenario:'normal',caseId:plan.case.caseId,
+   permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE'};
+  // The opaque case owns result validation. Progress publishes only bounded UUIDs.
+  for(const key of ['executionId','rootId'])if(typeof business[key]==='string'&&
+   /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(business[key]))proof[key]=business[key];
+  return proof;
+ }
  function recordProgress(event,applicationPhase){
   if(!progressIdentity||progressFailed)return;
   let fd,dir;
   try{
    progressDirectory();need(progressSequence<64&&progressPhases.has(stage),'PROGRESS_WRITE');
    const sequence=progressSequence+1,root=request.progressRoot;
-   const target=path.join(root,String(sequence).padStart(3,'0')+'-'+(event==='PHASE'?stage:event==='APPLICATION_CHECKPOINT'?'application-'+applicationPhase:'finalization')+'.json');
+   const businessBoundary=event==='BUSINESS_CASE_ASSERTIONS_RETURNED'||event==='LIVE_UNWIND_RETURNED';
+   const target=path.join(root,String(sequence).padStart(3,'0')+'-'+(event==='PHASE'?stage:event==='APPLICATION_CHECKPOINT'?'application-'+applicationPhase:businessBoundary?event.toLowerCase():'finalization')+'.json');
    const now=performance.now(),row={schemaVersion:1,event,sequence,expectedCandidateSha:plan.material.source.candidateSha,
     planSha256:request.sha256,phase:stage,...(applicationPhase?{applicationPhase}:{}),elapsedMs:Math.round(now-startedAt),phaseElapsedMs:Math.round(now-stageStartedAt),
     stages:stageTimings.slice(),checks:checkSnapshot(),businessOutcome:receipt.business?.outcome??'NOT_ENTERED',
+    ...(businessBoundary?{businessProof:progressBusinessProof()}:{}),
     resource:created?Object.fromEntries(['runId','sourceSha','daemonId','endpoint','imageId','containerId','networkId','databaseName','port'].map(key=>[key,created[key]])):null,
     cleanup:receipt.resource?.cleanup??{status:'PENDING'},
     ...(receipt.failureCode?{failureCode:diagnosticCode(receipt.failureCode),failureStage:receipt.failureStage}:{}),
@@ -731,6 +746,7 @@ async function run(args){
            ...(request.voucher?{voucherVerified:true}:{}),
            ...(request.followUp261?{fullyPaid:true,secondExecutionId:result.secondExecutionId}:{}),
            ...(disconnectPhase==='recovery'?{rollbackObserved:true,runtimeReplaced:true}:{})};
+          recordNormalBoundary('BUSINESS_CASE_ASSERTIONS_RETURNED');
           return result;
          }catch(error){
           if(!business.claimed)recordCaseFailure(business,'APPLICATION_LEASE',data(error,'code'));
@@ -748,6 +764,7 @@ async function run(args){
         });
        });
       }));
+      recordNormalBoundary('LIVE_UNWIND_RETURNED');
       postLiveCheck=request.payment261&&request.business&&plan.case.scenario==='normal';
       try{state.check();}finally{postLiveCheck=false;}
       enterStage('ownedCleanup');
