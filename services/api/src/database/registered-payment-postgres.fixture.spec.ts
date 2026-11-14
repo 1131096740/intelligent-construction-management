@@ -326,7 +326,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 });
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
-  it.each(["normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
+  it.each(["normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
       "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
       "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
       "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
@@ -336,7 +336,9 @@ describe("registered PG original case: explicit observer projection protocol (no
     const ownedJson = scenarioName.endsWith("-owned-json");
     const rawScenario = ownedJson ? scenarioName.slice(0, -"-owned-json".length) : scenarioName;
     const registrationFailureStatus = /^normal-http-(500|400|403|409)$/u.exec(rawScenario)?.[1];
-    const scenario = registrationFailureStatus ? "normal" : rawScenario;
+    const snapshotFailureMode=/^normal-(?:snapshot-|extra-graph|missing-required)/u.test(rawScenario)?rawScenario:undefined;
+    const originalSnapshotError=new Error("owned snapshot failure");
+    const scenario = registrationFailureStatus||snapshotFailureMode ? "normal" : rawScenario;
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
@@ -429,8 +431,29 @@ describe("registered PG original case: explicit observer projection protocol (no
       };
       return [model, { findMany: read, findUniqueOrThrow: async (input: Parameters<typeof read>[0]) => (await read(input))[0] }];
     }));
-    Object.assign(observer, { $executeRawUnsafe: async (sql: string) => { expect(sql).toBe("SET TRANSACTION READ ONLY"); } });
-    Object.assign(f.context.observer, { $transaction: async (operation: (client: unknown) => Promise<unknown>) => operation(observer) });
+    let rawSnapshotQueries=0,normalReadOnly=false,inObserverTx=false,normalTxLight=0;
+    Object.assign(observer, {
+      $executeRawUnsafe: async (sql: string) => { expect(sql).toBe("SET TRANSACTION READ ONLY");normalReadOnly=true; },
+      $queryRawUnsafe: async (sql:string,...parameters:unknown[])=>{
+        expect(scenario).toBe("normal");expect(normalReadOnly).toBe(true);rawSnapshotQueries++;
+        if(snapshotFailureMode==="normal-snapshot-query-error")throw originalSnapshotError;
+        expect(parameters).toEqual([ids.payment,ids.settlement,"registration-a","registration-b"]);
+        expect(/\b(?:LIMIT|DISTINCT|INSERT|UPDATE|DELETE)\b/iu.test(sql)).toBe(false);
+        // Independent old 13-read delegate oracle. This models rows, not SQL execution.
+        const read=(model:string,where:Record<string,unknown>)=>observer[model]!.findMany({where,select:Object.fromEntries(allowed[model]!.map(key=>[key,true]))});
+        const unique=async(model:string,id:string)=>(await read(model,{id}))[0];
+        const request=await unique("paymentRequest",ids.payment),settlement=await unique("settlement",ids.settlement),executions=await read("paymentExecution",{paymentRequestId:ids.payment});
+        if(snapshotFailureMode==="normal-extra-graph"&&recorded)executions.push({...executions[0]!,id:"extra-execution"});
+        const executionIds=executions.map(e=>e.id),where={executionId:{in:executionIds}};
+        const funding=await read("registeredPaymentFunding",where),allocations=await read("registeredFundPaymentAllocation",where),events=await read("registeredPaymentEvent",where),roots=await read("interEntityRelationshipEntry",{paymentExecutionId:{in:executionIds}});
+        const projection={sourceType:"payment_execution",sourceBusinessId:{in:executionIds}};
+        const facts=await read("operatingFact",projection),impacts=await read("operatingImpactEntry",projection),audits=await read("auditLog",{businessType:"payment_request",businessId:ids.payment,action:"payment.execution.record"});
+        const openingA=await unique("fundAccountBalanceRegistration","registration-a"),openingB=await unique("fundAccountBalanceRegistration","registration-b");
+        const postings=await read("registeredFundPaymentAllocation",{accountId:{in:[openingA.accountId,openingB.accountId]}});
+        return JSON.parse(JSON.stringify([{request:snapshotFailureMode==="normal-missing-required"?null:request,settlement,executions,funding,allocations,events,roots,facts,impacts,audits,openingA,openingB,postings}],(_key,value)=>typeof value==="bigint"?value.toString():value));
+      }
+    });
+    Object.assign(f.context.observer, { $transaction: async (operation: (client: unknown) => Promise<unknown>,options:unknown) => {expect(options).toEqual({isolationLevel:"RepeatableRead"});normalReadOnly=false;normalTxLight=0;inObserverTx=true;try{return await operation(observer);}finally{inObserverTx=false;}} });
     const responseCancellations: jest.SpyInstance[] = [];
     const fetch = jest.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const route = new URL(String(input)).pathname;
@@ -521,7 +544,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
-      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(), recordObserverDiagnostic: jest.fn(),
+      const continuity = { checkLight: jest.fn(()=>{if(inObserverTx){normalTxLight++;if(snapshotFailureMode==="normal-snapshot-before-query-guard"&&normalTxLight===4||snapshotFailureMode==="normal-snapshot-after-query-guard"&&normalTxLight===5)throw originalSnapshotError;}}), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(), recordObserverDiagnostic: jest.fn(),
         ...(ownedJson ? { async requestJson(target: URL, init: RequestInit, timeoutMs: number) {
           const response = await globalThis.fetch(target, { ...init, signal: AbortSignal.timeout(timeoutMs) });
           const body: unknown = await response.json();
@@ -628,8 +651,15 @@ describe("registered PG original case: explicit observer projection protocol (no
         expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST", ...(resultRead ? ["GET"] : [])]);
         return;
       }
-      const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared, ownedJson ? continuity : undefined)
+      const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared, ownedJson||snapshotFailureMode ? continuity : undefined)
         : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
+      if(snapshotFailureMode){
+        if(snapshotFailureMode.startsWith("normal-snapshot-")){
+          await expect(run).rejects.toBe(originalSnapshotError);expect(fetch).not.toHaveBeenCalled();
+          expect(rawSnapshotQueries).toBe(snapshotFailureMode==="normal-snapshot-before-query-guard"?0:1);
+        }else await expect(run).rejects.toMatchObject({code:snapshotFailureMode==="normal-extra-graph"?"PG_CASE_COMMITTED_GRAPH_COUNTS":"PG_CASE_NORMAL_SNAPSHOT_DECODE"});
+        return;
+      }
       if (registrationFailureStatus) {
         const failure: unknown = await run.catch((error: unknown) => error);
         expect(failure).toBeInstanceOf(Error);
@@ -662,8 +692,9 @@ describe("registered PG original case: explicit observer projection protocol (no
       ]);
       if (scenario === "normal" && ownedJson) {
         expect(continuity.recordObserverDiagnostic).toHaveBeenCalledTimes(3);
-        for (const [detail] of continuity.recordObserverDiagnostic.mock.calls) expect(detail).toMatchObject({ observerPhase: "TX_RETURN", lightCalls: 27 });
+        for (const [detail] of continuity.recordObserverDiagnostic.mock.calls) expect(detail).toMatchObject({ observerPhase: "TX_RETURN", lightCalls: 5 });
       }
+      if(scenario==="normal"&&!registrationFailureStatus)expect(rawSnapshotQueries).toBe(3);
       expect(ownerReads).toBe(0);
     } finally { fetch.mockRestore(); }
   });

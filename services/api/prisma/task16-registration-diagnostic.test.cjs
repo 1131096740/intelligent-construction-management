@@ -54,3 +54,10 @@ test('post-live close snapshot is complete immutable own booleans with no retain
  let reads=0;const proxy=new Proxy(state,{getOwnPropertyDescriptor(){reads++;throw Error('private');}});
  assert.equal(projectPostLiveFailure(relayError({relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayCloseState:proxy}),'POST_LIVE_RESOURCE_CHECK').relayCloseState,undefined);assert.equal(reads,0);
 });
+
+test('normal snapshot decoder has one exact finite source reason without wildcard acceptance',()=>{
+ const {isPaymentFailureCode}=require('./task16-current259-payment-diagnostics.cjs');
+ assert.equal(isPaymentFailureCode('PG_CASE_NORMAL_SNAPSHOT_DECODE'),true);
+ assert.equal(isPaymentFailureCode('PG_CASE_NORMAL_SNAPSHOT_DECODE_PRIVATE_SQL'),false);
+ assert.deepEqual(filterPaymentDiagnostic({originCode:'PG_CASE_NORMAL_SNAPSHOT_DECODE',observerPhase:'SNAPSHOT_ENTER',message:'private SQL'}),{originCode:'PG_CASE_NORMAL_SNAPSHOT_DECODE',observerPhase:'SNAPSHOT_ENTER'});
+});
