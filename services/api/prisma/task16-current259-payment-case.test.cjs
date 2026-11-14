@@ -575,3 +575,27 @@ for(const mode of ['unknown-status','wrong-expected','unknown-business','status-
  assert.equal(reads,0);assert.doesNotMatch(JSON.stringify(actual??{}),/private|PRIVATE_TOKEN/u);
  assert.deepEqual(filterPaymentDiagnostic({httpStatus:500,expectedHttpStatus:'201',rawBody:'private'}),{});
 });
+
+for(const stale of [false,true])test('private server cause accompanies only current failed registration; stale='+stale,async t=>{
+ const http=require('node:http'),seen=[],issued=[],consumed=[];
+ const server=http.createServer((_req,res)=>{res.writeHead(500,{'content-type':'application/json','connection':'close'});res.end('{"statusCode":500,"message":"Internal server error"}');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row),
+  onDiagnosticArm(value){issued.push(value);},onDiagnosticTake(value){consumed.push(value);return {serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2010',serverSqlState:'42501',message:'private rejected'};}});
+ f.apps[0].server.address=()=>({address:'127.0.0.1',family:'IPv4',port:server.address().port});
+ const m=paymentModel(f,{async onCase(c){
+  c.markCaseGate('REGISTRATION_REQUEST');
+  const origin=m.captured().execution.proof.application.origin;
+  const result=await c.requestJson(new URL(`/payment-executions/${m.plan.ids.payment}/registrations`,origin),{method:'POST',headers:{connection:'close'}},5000);
+  assert.equal(result.response.status,500);
+  if(stale)await c.requestJson(new URL(`/payment-executions/results/${m.plan.ids.requestKey}`,origin),{method:'GET',headers:{connection:'close'}},5000);
+  throw Object.assign(new Error('private original assertion'),{code:'PG_CASE_REGISTRATION_HTTP_STATUS',httpStatus:500,expectedHttpStatus:201});
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  await assert.rejects(f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})),error=>error.fixtureOutcome==='UNKNOWN_DO_NOT_RETRY');
+  assert.throws(()=>app.inspect());
+ }));
+ assert.equal(issued.length,1);assert.equal(consumed.length,1);assert.equal(issued[0].paymentId,m.plan.ids.payment);assert.equal(issued[0].key,m.plan.ids.requestKey);
+ assert.deepEqual(seen[0]?.[4],{httpStatus:500,expectedHttpStatus:201,...(!stale?{serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2010',serverSqlState:'42501'}:{}),caseGate:'REGISTRATION_REQUEST',errorKind:'ERROR'});
+ assert.doesNotMatch(JSON.stringify(seen),/private/);
+});

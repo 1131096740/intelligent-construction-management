@@ -71,16 +71,21 @@ function own(value,key){
 const isPaymentFailureCode=code=>typeof code==='string'&&caseFailureCodes.has(code);
 const observerPhases=new Set(['TX_START','SET_READ_ONLY','SNAPSHOT_ENTER','PAYMENT_REQUEST','SETTLEMENT','EXECUTIONS','FUNDING','ALLOCATIONS','EVENTS','ROOTS','FACTS','IMPACTS','AUDITS','OPENINGS','ACCOUNT_POSTINGS','TX_RETURN']);
 const prismaClasses=new Map([['PrismaClientKnownRequestError','KNOWN_REQUEST_ERROR'],['PrismaClientUnknownRequestError','UNKNOWN_REQUEST_ERROR'],['PrismaClientValidationError','VALIDATION_ERROR'],['PrismaClientInitializationError','INITIALIZATION_ERROR']]);
-const prismaCodes=new Set(['P1001','P1002','P1008','P1010','P1011','P1017','P2002','P2003','P2010','P2024','P2025','P2028','P2034']);
+const prismaCodes=new Set(['P1000','P1001','P1002','P1003','P1008','P1010','P1011','P1017','P2000','P2002','P2003','P2004','P2010','P2011','P2021','P2022','P2024','P2025','P2028','P2034']);
 const registrationStatuses=new Set([200,201,400,401,403,404,409,422,429,500,503]);
-const sqlStates=new Set(['42501','25006','25P02','40001','40P01','42P01','42703','57014']);
+const serverKinds=new Set([...errorKinds,'KNOWN_REQUEST_ERROR','UNKNOWN_REQUEST_ERROR','VALIDATION_ERROR','INITIALIZATION_ERROR']);
+const sqlStates=new Set(['23502','23503','23505','42501','25006','25P02','40001','40P01','42P01','42703','57014']);
 function filterPaymentDiagnostic(value){
  const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode'),caseGate=own(value,'caseGate'),errorKind=own(value,'errorKind'),seedGate=own(value,'seedGate');
  const observerPhase=own(value,'observerPhase'),prismaErrorClass=own(value,'prismaErrorClass'),prismaCode=own(value,'prismaCode'),sqlState=own(value,'sqlState');
  const status=own(value,'httpStatus'),expected=own(value,'expectedHttpStatus'),business=own(value,'businessErrorCode');
  const http=registrationStatuses.has(status)&&expected===201?{httpStatus:status,expectedHttpStatus:201,...(status===409&&business==='PAYMENT_RESULT_UNCONFIRMED'?{businessErrorCode:business}:{})}:{};
+ const serverKind=own(value,'serverErrorKind'),serverCode=own(value,'serverPrismaCode'),serverState=own(value,'serverSqlState');
+ const server=status===500&&expected===201&&serverKinds.has(serverKind)?{serverErrorKind:serverKind,
+  ...((serverKind==='KNOWN_REQUEST_ERROR'||serverKind==='INITIALIZATION_ERROR')&&prismaCodes.has(serverCode)?{serverPrismaCode:serverCode}:{}),
+  ...(serverKind==='KNOWN_REQUEST_ERROR'&&sqlStates.has(serverState)?{serverSqlState:serverState}:{})}:{};
  const timings={};if(observerPhases.has(observerPhase))for(const key of ['observerElapsedMs','txElapsedMs','lightCalls','lightElapsedMs','queryElapsedMs']){const n=own(value,key);if(Number.isInteger(n)&&n>=0&&n<=(key==='lightCalls'?128:3600000))timings[key]=n;}
- return Object.freeze({...http,...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
+ return Object.freeze({...http,...server,...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
   ...(isPaymentFailureCode(originCode)?{originCode}:{}),...(isPaymentCaseGate(caseGate)?{caseGate}:{}),
   ...(typeof errorKind==='string'&&errorKinds.has(errorKind)?{errorKind}:{}),
   ...(typeof seedGate==='string'&&seedGates.has(seedGate)?{seedGate}:{}),

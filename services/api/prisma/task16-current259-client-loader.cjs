@@ -77,7 +77,7 @@ function loadCurrent259Client(handle){
   const entry=material.applicationEntries[i],exports=guardedRequire(entry.path),mod=require.cache[entry.path],key=material.keys[i],value=own(exports,key);
   need(typeof value==='function'&&mod?.loaded===true&&mod.exports===exports,'CURRENT259_LOADER_EXPORT');
   records.push({module:mod,key,value});values[key]=value;
-  if(i===0){const token=own(exports,'Task16ImpactReaderToken');need(typeof token==='symbol','CURRENT259_LOADER_EXPORT');records.push({module:mod,key:'Task16ImpactReaderToken',value:token});values.Task16ImpactReaderToken=token;}
+  if(i===0){const token=own(exports,'Task16ImpactReaderToken');need(typeof token==='symbol','CURRENT259_LOADER_EXPORT');records.push({module:mod,key:'Task16ImpactReaderToken',value:token});values.Task16ImpactReaderToken=token;for(const key of ['Task16RegistrationErrorFilter','armTask16RegistrationError','takeTask16RegistrationError']){const value=own(exports,key);need(typeof value==='function','CURRENT259_LOADER_EXPORT');records.push({module:mod,key,value});values[key]=value;}}
  }
  const requireAt=Module.createRequire(path.join(root,'services/api/package.json'));
  // Capture both original cases and their seed's lazy dependencies before the
@@ -140,10 +140,11 @@ function loadCurrent259Client(handle){
   need(readerModule&&files.get(readerModule.filename)?.module===readerModule&&
    Object.getOwnPropertyDescriptor(readerModule.exports,readerKey)?.value===token,"TASK16_APP_METADATA_SOURCE");
   records.push({module:readerModule,key:readerKey,value:token});
-  const initialReaderProvider=metadata('providers',values.Task16RegisteredApplicationModule)?.[6];
+  const diagnostic=values.Task16RegistrationErrorFilter,diagnosticCatch=dataMethod(diagnostic.prototype,'catch'),baseFilterCatch=dataMethod(filter.prototype,'catch');
+  const initialReaderProvider=metadata('providers',values.Task16RegisteredApplicationModule)?.[7];
   const initialReaderValue=Object.getOwnPropertyDescriptor(initialReaderProvider??{},'useValue')?.value;
   need(typeof initialReaderValue==='function',"TASK16_APP_METADATA_CHANGED");
-  const checkMetadata=()=>{const actualImports=metadata('imports',values.Task16RegisteredApplicationModule);need(Array.isArray(actualImports)&&actualImports.length===imports.length&&imports.every((v,i)=>actualImports[i]===v),"TASK16_APP_METADATA_CHANGED");const controllers=metadata('controllers',values.Task16RegisteredApplicationModule);need(controllers?.length===1&&controllers[0]===controller,"TASK16_APP_METADATA_CHANGED");const providers=metadata('providers',values.Task16RegisteredApplicationModule);need(providers?.length===7&&serviceProviders.every((Class,i)=>providers[i]===Class)&&providers[5]?.provide==='APP_FILTER'&&providers[5].useClass===filter&&providers[6]===initialReaderProvider&&providers[6].provide===token&&Object.getOwnPropertyDescriptor(providers[6],'useValue')?.value===initialReaderValue,"TASK16_APP_METADATA_CHANGED");const actual=metadata('providers',imports[1])?.filter(row=>row?.provide==='APP_GUARD');need(actual?.length===6&&guards.every((Class,i)=>actual[i].useClass===Class),"TASK16_APP_METADATA_CHANGED");};
+  const checkMetadata=()=>{const actualImports=metadata('imports',values.Task16RegisteredApplicationModule);need(Array.isArray(actualImports)&&actualImports.length===imports.length&&imports.every((v,i)=>actualImports[i]===v),"TASK16_APP_METADATA_CHANGED");const controllers=metadata('controllers',values.Task16RegisteredApplicationModule);need(controllers?.length===1&&controllers[0]===controller,"TASK16_APP_METADATA_CHANGED");const providers=metadata('providers',values.Task16RegisteredApplicationModule);need(providers?.length===8&&serviceProviders.every((Class,i)=>providers[i]===Class)&&providers[5]===diagnostic&&providers[6]&&!types.isProxy(providers[6])&&Reflect.ownKeys(providers[6]).length===2&&own(providers[6],'provide')==='APP_FILTER'&&own(providers[6],'useExisting')===diagnostic&&Object.getPrototypeOf(diagnostic)===filter&&Object.getPrototypeOf(diagnostic.prototype)===filter.prototype&&dataMethod(diagnostic.prototype,'catch')===diagnosticCatch&&dataMethod(filter.prototype,'catch')===baseFilterCatch&&providers[7]===initialReaderProvider&&providers[7].provide===token&&Object.getOwnPropertyDescriptor(providers[7],'useValue')?.value===initialReaderValue,"TASK16_APP_METADATA_CHANGED");const actual=metadata('providers',imports[1])?.filter(row=>row?.provide==='APP_GUARD');need(actual?.length===6&&guards.every((Class,i)=>actual[i].useClass===Class),"TASK16_APP_METADATA_CHANGED");};
 
  need(!/\bconstructor\s*\(/u.test(Function.prototype.toString.call(values.PrismaService)),'CURRENT259_LOADER_CONSTRUCTOR');
  const wrapper=require.cache[material.clientEntry];need(wrapper&&own(wrapper.exports,'PrismaClient')===Class,'CURRENT259_LOADER_CLASS');
@@ -476,7 +477,7 @@ function loadCurrent259Client(handle){
       const verify=arguments.length===4?()=>verifyBusinessFiles(token,handle):check;
       verify();
       // A single synchronous guarded operation reads the same server and four
-      // providers. Each original method and the adapter are still checked.
+      // providers plus the private filter pair. Each original method and the adapter are still checked.
       const result=guardedOperation(()=>{
        const server=verifyTarget('getHttpServer').call(target);
        need(server===expectedServer,'CURRENT259_FRAMEWORK_CHANGED');
@@ -487,7 +488,8 @@ function loadCurrent259Client(handle){
         return testingGet.call(testing,token);
        };
        const moduleRuntime=readModule(values.PrismaService),moduleReader=readModule(values.Task16ImpactReaderToken);
-       return {runtime,reader,moduleRuntime,moduleReader};
+       const registrationFilter=verifyTarget('get').call(target,values.Task16RegistrationErrorFilter),moduleRegistrationFilter=readModule(values.Task16RegistrationErrorFilter);
+       return {runtime,reader,moduleRuntime,moduleReader,registrationFilter,moduleRegistrationFilter};
       });
       // Authenticated business reads recheck the graph and every current file FD.
       // Explicit non-business inspection retains the full physical hash pass.
