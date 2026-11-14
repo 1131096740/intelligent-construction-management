@@ -4,9 +4,9 @@
 
 ## 当前候选
 
-集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`。本轮仅集成T16 post-live有限诊断b3e及Auth87de/678两个净提交；16个源码blob/mode与作者一致。Auth通过新鲜491 stage顺序cherry-pick，未合入cfe08祖先，四个parked ACL/login文件仍逐字等于491。原562候选的全新无API dist完整prebuild已2027通过/0失败/1既有skip，类型、lint和API构建通过；首次Auth组件缺临时key、补齐受限环境后负例sticky错误期望不符的两次真实失败均保留。本轮仅追加4ea观测测试修订，三个固定case各用独立Node图，精确区分首次拒绝与后继sticky；ff333单scope有限通过、ac42同进程PRELOADED失败也保留。其余15源码及7生产文件与全部API/shared编译产物、Schema/SDK未变，按增量规程继承未受影响562前置门；最终候选只复验该组件，准确指纹及结果见本轮集成回执，新远端完整CI仍待。每片最终双轴各0项，旧Auth P2及失败反例保留。
+集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`。本轮只追加便携测试夹具修复1fd7f9f6：helper使用canonical系统TMPDIR后沿原随机独占prefix创建目录，并由原once测试验证；净2个源码blob/mode与作者一致，最终Spec/Standards各0项。生产七文件、Schema、ACL、observed组件、编译产物、SDK和固定pins保持原样，按增量规程继承未受影响本地门禁，仅复验原once消费者及Auth诊断spec；准确最终HEAD、验证结果和新远端CI见本轮回执。无新PG、SDK连接或业务运行。
 
-前次准确491d6d0c/tree488a747c的CI43588768732自然32/32成功、PR428仍Draft；该证据只绑定旧491，不能外推本轮候选或两条实际业务验收。用户根目录及无关改动未纳入本轮。
+前次准确eb5f0c77/tree9c94b30d的CI43610094658已自然完成全部32作业：30成功，api-3因测试helper硬编码macOS `/private/tmp` 在Ubuntu报ENOENT，Release汇总失败；所有PG分片、Quality及Build通过。该问题发生于目标断言前，不是实际Auth500原因。原CI未重试，eb5资格及付款packet保持unused/HOLD，不跨SHA继承。前次562全新无API dist prebuild2027通过/0失败/1既有skip、类型/lint/API构建与最终eb5三独立进程Auth组件3/3的技术证据保留；缺key、sticky期望、ff333有限通过、ac42 PRELOADED等原失败亦保留。Auth87de/678经fresh491净cherry-pick，未合入cfe08祖先，四个parked ACL/login文件仍等491。当前候选完整远端CI及两条业务验收仍待，PR428保持Draft，用户根目录及无关改动未纳入。
 
 ## 两条业务线各一个主阻塞
 
