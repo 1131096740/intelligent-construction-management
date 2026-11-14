@@ -4,11 +4,10 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确`3a2bffc9cdfaaf5d7457d1f8924426107bff918d`的CI43540468884已自然32/32成功，仅绑定该SHA。最小端口诊断源码`448c016909f29e712982a27f287689e9f61a3c02`已两轴独审0项并集成，三blob/mode与作者一致；新候选准确CI待，旧SCOPE诊断证据保留。Draft PR428保持，45项/14关闭不变；旧失败、未知和用户根混合改动保留。
-- 任务16：19fa normal原91840真实exit1/2057.171秒，在OBSERVER_BEFORE报OTHER_NATIVE_ERROR，业务仍UNKNOWN；seed函数及后置已返回、本轮未现B reset，不等于funding全链或旧物理cause已证明。原receipt SHA256 `04e90d46dbb702f31dcfaba6def73fe513cc9e4d2143ab49966b234e72afef53`、controller清理completed与root同daemon独核80a4准确资源缺席分别保留。205次轮询首6.110秒、后最大10.068秒均不超过30秒。DMMF/observer query/ACL静态诊断未见明确缺口，不猜P2028。新最小PG组件原77559真实exit1/17.418秒，在原factory published-port-probe/nonzero-exit停止，未进入DDL或SDK正负控；原清理completed且root独核1c5a准确资源/两进程缺席。新448仅补该启动点的封闭exitCode/stderrKind诊断，原单次命令及10000ms不变，非零仍首错停止；60项resource、包门及81项pin/manifest门通过，不证明原端口或PG根因已修。下一步新准确候选窄取证，不原样盲跑或重发旧键。
-- 任务12：原3893 SCOPE失败UNKNOWN、87.110秒监控偏差及其他旧回执保留。新f3仅给原HbaScope固定predicate/subphase加元数据，PRIVATE_SCOPE内部仍opaque；原首因、UNKNOWN、条件短路顺序及次数不变。202项相关/type/lint、8模型旧新trace/SQL等同与pin正负控通过，未证明真实内因已修。新3a2工具资格真实0/120.582秒；root核493原件/mirror、60PNG及第二PDF解析15/15/30页A4，仅限定样张。metadata-only`5c849b95c10a8c2492c83c8bcd5a0a0202e1bad6`仅登记变化、其余3937blob同3a2，source witness另重绑。新plan b1b1c93c PREPARE/VERIFY均0，原session8047于01:54:16Z启动完整life并持续10秒自动观察；root独核9bfdb080准确资源归属。仍运行，尚无新业务通过；3a2 CI不冒称5c84 CI。
-
-- 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门按准确源码证据承接，merger未重复测试；CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地私有scope来源码诊断`e160e8887a4e74bf55500808c8cf59ed499c9432`已两轴独审0项并集成，五blob/mode与作者一致，448端口诊断保持。准确旧d8650cb1的CI43545813604已自然32/32成功；新head准确CI待，旧CI不跨继承。Draft PR428保持，45项/14关闭不变，旧失败、未知和用户根混合改动保留。
+- 任务16：SOURCE_DIAGNOSIS。原19fa observer失败UNKNOWN及独立清理证据保留。最新04f1 relay技术组件真实exit1/9.738秒：真实只读SDK三字段预期行匹配8ms，第四次light检查受控暂停6000ms后触发真实P2028/6013ms；正负控制是机制证据，不能证明原19fa物理cause或财务结果。组件整体仍因RELAY_DRAIN/ERROR收尾失败，具体码未保留；resource清理completed、root独核准确资源/PID/relay缺席，启动归属未及时独核不补认。下一步仅原27次checkLight时序/调用链和封闭错误码投影，不盲跑全链；旧端口组件失败及清理记录见主回执。
+- 任务12：SOURCE_DIAGNOSIS。原5c84 life真实exit1/1547.831秒，APPLICATION/CONSUME→SCOPE/PRIVATE_SCOPE/PLAINTEXT，business/controller UNKNOWN、full394=false保持；receipt SHA256 `3f064aad839c966d52f18fefbeaf70a8d68d0e1ad8ca569de21a2ef76f71840d`、resource completed与root独核9bfdb资源/PID/relay缺席分别保留。新e160仅补20个既有私有assert own-code闭集，原global/first/secondary/UNKNOWN及条件、权限、HBA、预算不变，无新品牌/hook/export；210项CJS/type/lint和pin正负控通过，不证明真实内因已修。当前无运行中life；旧样张资格不跨移，集成registry仍PENDING，待新准确资格和有依据的下一验证。
+- 开发工具：原完整类型覆盖、预算、超时、权限、业务断言与封闭错误控制均保持，helper pin仅固定标量bf254a7e→4fae074d。作者门按准确源码证据承接，merger未重复测试；canonical状态与完整旧历史见主回执，不以组件、局部门或历史成功代替当前业务验收。
 
 ## 授权、证据和下一步
 
