@@ -1,6 +1,8 @@
 import "reflect-metadata";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
+import { Task12AuthErrorFilter, Task12AuthStageInterceptor } from "./task12-auth-error-diagnostic";
 import { MODULE_METADATA } from "@nestjs/common/constants";
 import { ContractDocumentWorkerModule } from "../contract-document/contract-document-worker.module";
 import { ContractTemplateModule } from "../contract-template/contract-template.module";
@@ -113,4 +115,8 @@ it.each([
   const f = fixture(mode);
   await expect(runTask12GeneratedDocument(f.input, f.port)).rejects.toThrow("TASK12_GENERATED_DOCUMENT_" + phase);
   expect(f.trace.every(request => !request.path.endsWith("/submission") && !request.path.endsWith("/edit-lease"))).toBe(true);
+});
+
+it("the separate document fixture exposes its actual AUTH filter instance through useExisting",()=>{
+ expect(Reflect.getMetadata(MODULE_METADATA.PROVIDERS,Task12GeneratedDocumentApplicationModule)).toEqual([Task12AuthErrorFilter,Task12AuthStageInterceptor,{provide:APP_FILTER,useExisting:Task12AuthErrorFilter},{provide:APP_INTERCEPTOR,useExisting:Task12AuthStageInterceptor}]);
 });

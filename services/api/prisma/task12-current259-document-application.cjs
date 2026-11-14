@@ -2,7 +2,7 @@
 
 const {types}=require('node:util');
 const {isCurrent259OwnedModule,createCurrent259OwnedApplication,current259OwnedApplicationView,
- takeCurrent259CreationFailure}=require('./task16-current259-client-loader.cjs');
+ takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders}=require('./task16-current259-client-loader.cjs');
 const CODE='CURRENT259_GENERATED_DOCUMENT_APP';
 const faults=new WeakMap(),httpBridges=new WeakMap(),lifecycleHttpBridges=new WeakMap();
 const exercisePattern=/^CURRENT259_GENERATED_DOCUMENT_EXERCISE_(?:INPUT|TEMPLATE|OPEN|SAVE|OWNER_BEGIN|GENERATE|PUBLIC_READBACK|OWNER_READBACK|RESULT)$/u;
@@ -48,7 +48,8 @@ function takeCurrent259GeneratedDocumentHttpBridge(config,server){
 }
 
 function takeCurrent261LocalLifecycleHttpBridge(config,server){
- need(arguments.length===2&&lifecycleHttpBridges.get(config)===server&&lifecycleHttpBridges.delete(config),'HANDLE');
+ const entry=lifecycleHttpBridges.get(config);
+ need(arguments.length===2&&entry?.server===server&&lifecycleHttpBridges.delete(config),'HANDLE');return entry.authDiagnostics;
 }
 
 async function runCurrent259GeneratedDocumentApplication(bridge){
@@ -57,7 +58,7 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
  try{takeCurrent259GeneratedDocumentApplicationBridge(bridge);}catch{throw fault('HANDLE');}
  const {check,loader,loaded,ordinary,providers,queue,exercise,publicDraft,publicLifecycle}=bridge;
  let testing,view,orphan,closeApp,closeModule,restoreQueue,restoreOrdinary,server;
- let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value;
+ let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value,authActive=false;
  const bounded=async operation=>{
   let timer;
   try{return await Promise.race([Promise.resolve().then(operation),new Promise((_,reject)=>{
@@ -91,10 +92,21 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
   const documentToken=own(loaded,'ContractDocumentService'),draftToken=own(loaded,'ContractDraftController');
   const fileToken=own(loaded,'FileService'),authorityToken=own(loaded,'CONTRACT_VERSION_FILE_READ_AUTHORITY');
   const document=get(testing,documentToken),file=get(testing,fileToken),draft=get(testing,draftToken),authority=get(testing,authorityToken);
+  const authKeys=['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor'];
+  const authTokens=publicLifecycle?authKeys.map(key=>own(loaded,key)):[];
+  need(authTokens.every(token=>typeof token==='function'),'PROVIDERS');
+  const authObjects=authTokens.map(token=>get(testing,token));
+  const authMethods=publicLifecycle?[['AuthService',['login','loadUserRoleScopes','issueTokens']],['AuthRateLimitService',['take']],['AuthController',['login']],['Task12AuthErrorFilter',['catch']],['Task12AuthStageInterceptor',['intercept']]].flatMap(([key,names])=>names.map(name=>({target:own(loaded,key).prototype,receiver:authObjects[authKeys.indexOf(key)],name,value:method(own(loaded,key).prototype,name)}))):[];
+  const authReceivers=target=>{
+   if(!publicLifecycle)return;
+   need(authTokens.every((token,i)=>get(target,token)===authObjects[i]&&authObjects[i]&&!types.isProxy(authObjects[i])&&Object.getPrototypeOf(authObjects[i])===token.prototype)&&
+    own(authObjects[0],'prisma')===ordinary&&own(authObjects[1],'prisma')===ordinary&&own(authObjects[2],'auth')===authObjects[0]&&own(authObjects[4],'filter')===authObjects[3]&&
+    authMethods.every(row=>method(row.target,row.name)===row.value&&method(row.receiver,row.name)===row.value),'PROVIDERS');
+  };
   const moduleRef=own(file,'moduleRef'),getModule=method(moduleRef,'get');
   const routeQueue=(...args)=>{check();return queue(...args);};
   const verifyProviders=target=>{
-   check();
+   check();authReceivers(target);
    need(tokens.every((token,i)=>get(target,token)===instances[i])&&ordinary.onApplicationShutdown===deferredDisconnect&&
     get(target,documentToken)===document&&get(target,fileToken)===file&&get(target,draftToken)===draft&&
     own(document,'prisma')===ordinary&&own(document,'files')===file&&own(draft,'documents')===document&&
@@ -141,7 +153,41 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
    };
    const verifyToken=token=>{checkPublic();return verifyAccess.call(jwtService,token);};
    const config=publicLifecycle??publicDraft,bridges=publicLifecycle?lifecycleHttpBridges:httpBridges;
-   bridges.set(config,server);
+   let authDiagnostics;
+   if(publicLifecycle){
+    const arm=own(loaded,'armTask12AuthError'),take=own(loaded,'takeTask12AuthError'),current=own(loaded,'currentOfficialDocumentScope');
+    need([arm,take,current].every(fn=>typeof fn==='function'),'HTTP');
+    const official=current(),remaining=own(official,'remainingTotalMilliseconds'),signal=own(publicLifecycle,'signal');
+    need(own(official,'kind')==='OFFICIAL_TOOL_RUNTIME'&&typeof remaining==='function'&&signal instanceof AbortSignal&&!types.isProxy(signal),'HTTP');authActive=true;
+    let pendingAuth;
+    const inspectAuthLocal=()=>{
+     need(authActive&&!signal.aborted&&remaining()>0&&authMethods.every(row=>method(row.target,row.name)===row.value&&method(row.receiver,row.name)===row.value)&&
+      own(loaded,'armTask12AuthError')===arm&&own(loaded,'takeTask12AuthError')===take&&own(loaded,'currentOfficialDocumentScope')===current,'HTTP');
+     need(own(authObjects[0],'prisma')===ordinary&&own(authObjects[1],'prisma')===ordinary&&own(authObjects[2],'auth')===authObjects[0]&&own(authObjects[4],'filter')===authObjects[3],'HTTP');
+    };
+    const inspectAuth=()=>{
+     inspectAuthLocal();
+     const proof=inspectCurrent259OwnedDocumentAuthProviders(application,testing,server);
+     need(proof&&proof.runtime===ordinary&&proof.moduleRuntime===ordinary&&
+      ['auth','rateLimits','authController','authFilter','authInterceptor'].every((key,i)=>proof[key]===authObjects[i]&&proof['module'+key[0].toUpperCase()+key.slice(1)]===authObjects[i]),'HTTP');
+     const verify=own(proof,'verifyAuthDiagnosticReceiver');need(typeof verify==='function','HTTP');return verify;
+    };
+    authDiagnostics=Object.freeze({arm(phone){try{
+     need(!pendingAuth,'HTTP');const verify=inspectAuth();
+     const ticket=arm(authObjects[3],server,phone,Math.min(15000,remaining()));pendingAuth={ticket,verify};return ticket;
+    }catch(error){authActive=false;throw error;}},take(ticket){
+     const pending=pendingAuth;pendingAuth=undefined;
+     try{
+      // Consume within the original ticket lifetime before any validation work.
+      // Data stays local until the same live receiver is verified. This never
+      // replaces or authorizes the original full HTTP AFTER_CHECK.
+      const detail=take(authObjects[3],server,ticket);
+      need(pending&&pending.ticket===ticket,'HTTP');inspectAuthLocal();
+      need(pending.verify()===true,'HTTP');inspectAuthLocal();return detail;
+     }catch{authActive=false;return undefined;}
+    }});
+   }
+   bridges.set(config,publicLifecycle?Object.freeze({server,authDiagnostics}):server);
    try{value=await withHttp(config,server,checkPublic,verifyToken,exercise);}
    finally{bridges.delete(config);}
   }else{
@@ -155,6 +201,7 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
   if(exerciseCode)Object.defineProperty(primary,'exerciseCode',{value:exerciseCode,enumerable:true});
   if(own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')cleanupUnknown=true;
  }
+ authActive=false;
  try{
   if(closeApp)await bounded(()=>closeApp.call(view));
   else if(orphan)await bounded(()=>orphan.close());

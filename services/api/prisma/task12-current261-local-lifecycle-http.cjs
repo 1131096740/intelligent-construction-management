@@ -32,6 +32,15 @@ const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const error=()=>Object.assign(Error('CURRENT261_LOCAL_LIFECYCLE_HTTP'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'});
 const need=ok=>{if(!ok)throw error();};
 const own=(v,k)=>v&&!types.isProxy(v)?Object.getOwnPropertyDescriptor(v,k)?.value:undefined;
+const authKinds=new Set(['ERROR','TYPE_ERROR','RANGE_ERROR','KNOWN_REQUEST_ERROR','UNKNOWN_REQUEST_ERROR','VALIDATION_ERROR','INITIALIZATION_ERROR','OTHER_NATIVE_ERROR','NON_NATIVE_THROWN','UNINSPECTED']);
+const authCodes=new Set(['P1000','P1001','P1002','P1003','P1008','P1010','P1011','P1017','P2000','P2002','P2003','P2004','P2010','P2011','P2021','P2022','P2024','P2025','P2028','P2034']);
+const authStates=new Set(['23502','23503','23505','42501','25006','25P02','40001','40P01','42P01','42703','57014']);
+function closedAuthDetail(value){
+ const kind=own(value,'serverErrorKind'),code=own(value,'serverPrismaCode'),sql=own(value,'serverSqlState'),boundary=own(value,'serverAuthBoundary');
+ if(!authKinds.has(kind))return {};
+ return {serverErrorKind:kind,...(['PRE_CONTROLLER_MARKER','CONTROLLER_MARKER_REACHED'].includes(boundary)?{serverAuthBoundary:boundary}:{}),...(['KNOWN_REQUEST_ERROR','INITIALIZATION_ERROR'].includes(kind)&&authCodes.has(code)?{serverPrismaCode:code}:{}),
+  ...(kind==='KNOWN_REQUEST_ERROR'&&authStates.has(sql)?{serverSqlState:sql}:{})};
+}
 const secondary=(detail,cause)=>{detail.secondaryPhase='AFTER_CHECK';const code=own(cause,'code');detail.secondaryReason=['CURRENT259_LOADER_CHANGED','CURRENT261_LOCAL_LIFECYCLE_HTTP'].includes(code)?code:'UNCLASSIFIED';};
 function exchange(port,method,path,headers,wire,binary,observe){
  const signal=AbortSignal.timeout(15000);
@@ -54,7 +63,9 @@ function exchange(port,method,path,headers,wire,binary,observe){
 }
 async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken,consume){
  need(arguments.length===5&&typeof verify==='function'&&typeof verifyToken==='function'&&typeof consume==='function');
- require('./task12-current259-document-application.cjs').takeCurrent261LocalLifecycleHttpBridge(config,server);
+ const authDiagnostics=require('./task12-current259-document-application.cjs').takeCurrent261LocalLifecycleHttpBridge(config,server);
+ need(authDiagnostics&&!types.isProxy(authDiagnostics)&&Object.isFrozen(authDiagnostics));
+ const armAuth=own(authDiagnostics,'arm'),takeAuth=own(authDiagnostics,'take');need(typeof armAuth==='function'&&typeof takeAuth==='function');
  const {fixture,passwords,sourceDocx,originals}=config,seed=fixture.approval;
  need(seed.users.length===8&&new Set(seed.users.map(u=>u.id)).size===8&&id(seed.project.id)&&seed.handler===seed.users[0]&&
   seed.users.every(u=>id(u.id)&&typeof u.phone==='string'&&typeof passwords[u.id]==='string'&&/^[a-f0-9]{64}$/u.test(passwords[u.id]))&&new Set(Object.values(passwords)).size===8&&
@@ -65,17 +76,22 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
  const continuity=()=>{verify();const a=address.call(server);need(available&&server.address===address&&server.listening===true&&a?.address==='127.0.0.1'&&a.family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535&&a.port===port);};
  const check=()=>{continuity();need(!failed);};
  const actorCheck=actor=>{check();need(Number.isInteger(actor)&&actor>=0&&actor<8);};
- const wire=async(method,path,headers,body,binary=false)=>{
+ const wire=async(method,path,headers,body,binary=false,authPhone)=>{
   const observation={method,routeTemplate:routeTemplate(path),phase:'BEFORE_CHECK',httpStatus:null,businessOutcome:'UNKNOWN'};
-  lastObservation=undefined;
+  lastObservation=undefined;let ticket;
+  const collectAuth=()=>{if(ticket===undefined)return;const current=ticket;ticket=undefined;try{Object.assign(observation,closedAuthDetail(takeAuth.call(authDiagnostics,current)));}catch{/* Preserve the original HTTP failure and UNKNOWN. */}};
   try{
-   check();need(++requests<=600);observation.phase='EXCHANGE';
+   check();need(++requests<=600);
+   if(authPhone!==undefined){need(method==='POST'&&path==='/auth/login');try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
+   observation.phase='EXCHANGE';
    const result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});
+   collectAuth(); // Retain the native cause before a later resource guard can fail.
    observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME'});return result;
   }catch(cause){
+   collectAuth();
    if(observation.phase==='EXCHANGE')try{continuity();}catch(later){secondary(observation,later);}
    remember(cause,observation);throw cause;
-  }
+  }finally{collectAuth();}
  };
  const registerFile=(fileId,mimeType,expected)=>{need(id(fileId));const prior=files.get(fileId);if(prior){need(prior.mimeType===mimeType&&(!expected||prior.sizeBytes===expected.sizeBytes&&prior.sha256===expected.sha256));}else files.set(fileId,{mimeType,...expected});};
  const roleKeys=actor=>[...seed.members.filter(r=>r.userId===seed.users[actor].id).map(r=>r.positionKey),...seed.globalRoles.filter(r=>r.userId===seed.users[actor].id).map(r=>r.roleKey)].sort();
@@ -134,7 +150,7 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
   if(path==='/contracts')need(equal(json,{projectId:seed.project.id,numericProtocolVersion:2,contractTypeKey:'material_purchase',relationship:'inside',amountLimitType:'capped'}));
   let drained;const pending={parallel,done:new Promise(resolve=>{drained=resolve;})};active.set(actor,pending);
   try{
-   const result=await wire(method,path,h,body),value=result.body;
+   const result=await wire(method,path,h,body,false,path==='/auth/login'?seed.users[actor].phone:undefined),value=result.body;
    if(path==='/auth/login'){
     const user=own(value,'user'),token=own(own(value,'tokens'),'accessToken');
     need(result.status===201&&own(user,'id')===seed.users[actor].id&&own(user,'phone')===seed.users[actor].phone&&own(user,'mustChangePassword')===false&&

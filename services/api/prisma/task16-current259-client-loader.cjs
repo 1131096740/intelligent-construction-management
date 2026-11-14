@@ -19,6 +19,9 @@ const APP_METHODS=['close','get','getHttpAdapter','enableCors','useGlobalPipes',
 function dataMethod(value,key){let next=value;for(let i=0;next&&i<32;i++,next=Object.getPrototypeOf(next)){need(!types.isProxy(next),'CURRENT259_OWNED_METHOD');const d=Object.getOwnPropertyDescriptor(next,key);if(d){need(Object.hasOwn(d,'value')&&typeof d.value==='function','CURRENT259_OWNED_METHOD');return d.value;}}throw new Error('CURRENT259_OWNED_METHOD');}
 function current259OwnedApplicationMethod(value,key){return ownedApps.get(value)?.method(key);}
 function current259OwnedApplicationView(value){return ownedApps.get(value)?.view;}
+function inspectCurrent259OwnedDocumentAuthProviders(value,testing,server){
+ need(arguments.length===3,'CURRENT259_FRAMEWORK_CHANGED');return ownedApps.get(value)?.inspectDocumentAuthProviders(testing,server);
+}
 function inspectCurrent259OwnedPaymentProviders(value,testing,server,token,handle){
  need(arguments.length===3||arguments.length===5,'CURRENT259_FRAMEWORK_CHANGED');
  return arguments.length===5?ownedApps.get(value)?.inspectPaymentProviders(testing,server,token,handle):ownedApps.get(value)?.inspectPaymentProviders(testing,server);
@@ -79,6 +82,13 @@ function loadCurrent259Client(handle){
   records.push({module:mod,key,value});values[key]=value;
   if(i===0){const token=own(exports,'Task16ImpactReaderToken');need(typeof token==='symbol','CURRENT259_LOADER_EXPORT');records.push({module:mod,key:'Task16ImpactReaderToken',value:token});values.Task16ImpactReaderToken=token;for(const key of ['Task16RegistrationErrorFilter','armTask16RegistrationError','takeTask16RegistrationError']){const value=own(exports,key);need(typeof value==='function','CURRENT259_LOADER_EXPORT');records.push({module:mod,key,value});values[key]=value;}}
  }
+ // Pin the shared pure decoder before any caller can mutate a same-object export.
+ const diagnosticModule=require.cache[path.join(root,'services/api/dist/database/task16-registration-error-diagnostic.js')];
+ need(diagnosticModule&&!types.isProxy(diagnosticModule)&&own(diagnosticModule,'loaded')===true,'CURRENT259_LOADER_EXPORT');
+ const diagnosticExports=own(diagnosticModule,'exports');need(diagnosticExports&&!types.isProxy(diagnosticExports),'CURRENT259_LOADER_EXPORT');
+ const projectorDescriptor=Object.getOwnPropertyDescriptor(diagnosticExports,'projectTask16RegistrationError');
+ need(projectorDescriptor&&Object.hasOwn(projectorDescriptor,'value')&&typeof projectorDescriptor.value==='function','CURRENT259_LOADER_EXPORT');
+ records.push({module:diagnosticModule,key:'projectTask16RegistrationError',value:projectorDescriptor.value,descriptor:projectorDescriptor});
  const requireAt=Module.createRequire(path.join(root,'services/api/package.json'));
  // Capture both original cases and their seed's lazy dependencies before the
  // loader is returned. Same-object export replacement is not a fresh baseline.
@@ -268,6 +278,8 @@ function loadCurrent259Client(handle){
     ['database/task12-generated-document-application.module.js',['Task12GeneratedDocumentApplicationModule']],
     ['database/task12-generated-approval-admission.js',['buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft']],
     ['auth/jwt-token.service.js',['JwtTokenService']],
+    ['auth/auth.service.js',['AuthService']],['auth/auth-rate-limit.service.js',['AuthRateLimitService']],['auth/auth.controller.js',['AuthController']],
+    ['database/task12-auth-error-diagnostic.js',['Task12AuthErrorFilter','Task12AuthStageInterceptor','armTask12AuthError','takeTask12AuthError']],
     ['contract/contract.module.js',['ContractModule']],
     ['contract-template/contract-template.module.js',['ContractTemplateModule']],
     ['contract-template/contract-template.controller.js',['ContractTemplateController']],
@@ -303,6 +315,7 @@ function loadCurrent259Client(handle){
     ContractDocumentWorkerModule,ContractDocumentProcessor,ContractDocumentModule,ContractDocumentService,
     ContractWorkbenchModule,ContractDraftController,FileService,PrivateFileStorage}=documentValues;
    const tokens=Object.freeze([values.PrismaService,PrivateFileStorage,LayoutTemplateService,ContractDocumentProcessor]);
+   const authMethods=[['AuthService',['login','loadUserRoleScopes','issueTokens']],['AuthRateLimitService',['take']],['AuthController',['login']],['Task12AuthErrorFilter',['catch']],['Task12AuthStageInterceptor',['intercept']]].flatMap(([key,names])=>names.map(name=>({target:documentValues[key].prototype,name,value:dataMethod(documentValues[key].prototype,name)})));
    const originalQueue=dataMethod(ContractDocumentService.prototype,'queueDraftPreview');
    const originalVerifyJwt=dataMethod(documentValues.JwtTokenService.prototype,'verifyAccessToken');
    const originalFileAccess=dataMethod(FileService.prototype,'assertCanDownloadFile');
@@ -323,7 +336,8 @@ function loadCurrent259Client(handle){
     'withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices',
     'PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService',
     'ContractDraftController','FileService','CONTRACT_VERSION_FILE_READ_AUTHORITY','JwtTokenService',
-    'buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft'
+    'buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft',
+    'AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','armTask12AuthError','takeTask12AuthError'
    ].map(key=>[key,documentValues[key]])),...Object.fromEntries([
     'PrismaService','configureApiSecurity','configureProjectionExportJson','apiJsonReplacer','createApiValidationPipe','listenApi'
    ].map(key=>[key,values[key]]))});
@@ -340,8 +354,9 @@ function loadCurrent259Client(handle){
      dataMethod(ContractDocumentService.prototype,'queueDraftPreview')===originalQueue&&
      dataMethod(documentValues.JwtTokenService.prototype,'verifyAccessToken')===originalVerifyJwt&&
      dataMethod(FileService.prototype,'assertCanDownloadFile')===originalFileAccess&&
-     Array.isArray(rootProviders)&&rootProviders.length===1&&own(rootProviders[0],'provide')==='APP_FILTER'&&
-     own(rootProviders[0],'useClass')===filter&&
+     Array.isArray(rootProviders)&&rootProviders.length===4&&rootProviders[0]===documentValues.Task12AuthErrorFilter&&rootProviders[1]===documentValues.Task12AuthStageInterceptor&&own(rootProviders[2],'provide')==='APP_FILTER'&&
+     own(rootProviders[2],'useExisting')===documentValues.Task12AuthErrorFilter&&own(rootProviders[3],'provide')==='APP_INTERCEPTOR'&&own(rootProviders[3],'useExisting')===documentValues.Task12AuthStageInterceptor&&Object.getPrototypeOf(documentValues.Task12AuthErrorFilter.prototype)===filter.prototype&&dataMethod(filter.prototype,'catch')===baseFilterCatch&&
+     authMethods.every(row=>dataMethod(row.target,row.name)===row.value)&&
      hooks.every(([key,value])=>dataMethod(ContractDocumentProcessor.prototype,key)===value)&&
      ['app.module.js','main.js'].every(file=>!files.has(path.join(dist,file))),code);
    }});
@@ -472,7 +487,58 @@ function loadCurrent259Client(handle){
        getAdapter.call(target)===adapter,'CURRENT259_FRAMEWORK_CHANGED');
       return fn;
      }
-     const record={inspectPaymentProviders(module,expectedServer,token,handle){
+     const record={inspectDocumentAuthProviders(module,expectedServer){
+      need(document&&contractMode===document&&module===testing,'CURRENT259_FRAMEWORK_CHANGED');
+      // Source/graph/FD ownership only: no resource or official-scope callback.
+      check();
+      const readAuth=()=>{
+       need(verifyTarget('getHttpServer').call(target)===expectedServer&&dataMethod(testing,'get')===testingGet,'CURRENT259_FRAMEWORK_CHANGED');
+       const read=token=>verifyTarget('get').call(target,token),fromModule=token=>testingGet.call(testing,token);
+       const result={runtime:read(values.PrismaService),moduleRuntime:fromModule(values.PrismaService),
+        ...Object.fromEntries([['auth','AuthService'],['rateLimits','AuthRateLimitService'],['authController','AuthController'],['authFilter','Task12AuthErrorFilter'],['authInterceptor','Task12AuthStageInterceptor']].flatMap(([name,key])=>[[name,read(document.exports[key])],['module'+name[0].toUpperCase()+name.slice(1),fromModule(document.exports[key])]]))};
+       for(const [name,key,names]of [['auth','AuthService',['login','loadUserRoleScopes','issueTokens']],['rateLimits','AuthRateLimitService',['take']],['authController','AuthController',['login']],['authFilter','Task12AuthErrorFilter',['catch']],['authInterceptor','Task12AuthStageInterceptor',['intercept']]]){
+        const receiver=result[name],Class=document.exports[key];
+        need(receiver&&!types.isProxy(receiver)&&Object.getPrototypeOf(receiver)===Class.prototype&&result['module'+name[0].toUpperCase()+name.slice(1)]===receiver&&names.every(key=>dataMethod(receiver,key)===dataMethod(Class.prototype,key)),'CURRENT259_FRAMEWORK_CHANGED');
+       }
+       need(own(result.authInterceptor,'filter')===result.authFilter,'CURRENT259_FRAMEWORK_CHANGED');
+       return result;
+      };
+      const result=guardedOperation(readAuth);check();
+      // Diagnostic-only continuity: no material/graph hashing and no returned
+      // providers. The HTTP AFTER_CHECK still performs the original full gate.
+      const authData=(object,key)=>{
+       need(object&&!types.isProxy(object),'CURRENT259_LOADER_EXPORT');
+       const descriptor=Object.getOwnPropertyDescriptor(object,key);
+       need(descriptor&&Object.hasOwn(descriptor,'value'),'CURRENT259_LOADER_EXPORT');return descriptor;
+      };
+      const sameAuthData=(object,key,expected)=>{
+       const actual=authData(object,key);
+       need(['value','writable','enumerable','configurable'].every(field=>actual[field]===expected[field]),'CURRENT259_LOADER_EXPORT');return actual.value;
+      };
+      const authCacheDescriptor=authData(require,'cache'),authCache=authCacheDescriptor.value;
+      need(authCache&&!types.isProxy(authCache),'CURRENT259_LOADER_EXPORT');
+      const authModules=new Map(records.map(row=>{
+       const mod=row.module,filename=authData(mod,'filename'),exports=authData(mod,'exports');
+       need(typeof filename.value==='string'&&filename.value.length>0&&exports.value&&!types.isProxy(exports.value),'CURRENT259_LOADER_EXPORT');
+       const slot=authData(authCache,filename.value);need(slot.value===mod,'CURRENT259_LOADER_EXPORT');
+       return [mod,{filename,exports,slot}];
+      }));
+      const verifyAuthDiagnosticReceiver=()=>{
+       need(!failed&&!loading&&Module._load===hooks.load&&globalThis.Proxy===nativeProxy&&Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'CURRENT259_FRAMEWORK_CHANGED');
+       need(sameAuthData(require,'cache',authCacheDescriptor)===authCache,'CURRENT259_LOADER_EXPORT');
+       for(const row of records){
+        const saved=authModules.get(row.module);need(saved,'CURRENT259_LOADER_EXPORT');
+        const filename=sameAuthData(row.module,'filename',saved.filename),exports=sameAuthData(row.module,'exports',saved.exports);
+        need(sameAuthData(authCache,filename,saved.slot)===row.module&&exports&&!types.isProxy(exports)&&own(exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');
+        if(row.descriptor)sameAuthData(exports,row.key,row.descriptor);
+       }
+       // Reject module/cache descriptor substitutions before invoking existing
+       // metadata or creation helpers that may inspect these original modules.
+       checkCreation();document.checkMetadata();
+       return guardedOperation(()=>{const current=readAuth();need(Object.keys(result).every(key=>current[key]===result[key]),'CURRENT259_FRAMEWORK_CHANGED');return true;});
+      };
+      return Object.freeze({...result,verifyAuthDiagnosticReceiver});
+     },inspectPaymentProviders(module,expectedServer,token,handle){
       need(!contractMode&&module===testing&&(arguments.length===2||arguments.length===4),'CURRENT259_FRAMEWORK_CHANGED');
       const verify=arguments.length===4?()=>verifyBusinessFiles(token,handle):check;
       verify();
@@ -523,4 +589,4 @@ function loadCurrent259Client(handle){
  cache.set(handle,result);return result;
 }
 module.exports=Object.freeze({loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
- inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});
+ inspectCurrent259OwnedDocumentAuthProviders,inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});
