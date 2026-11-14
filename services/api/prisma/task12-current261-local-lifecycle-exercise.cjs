@@ -38,7 +38,7 @@ async function exerciseCurrent261LocalLifecycle(key,http){
  const final=modules.claimTask12LocalLifecycleCheckpoint(result);
  const projection=Object.freeze({status:'CURRENT261_LOCAL_LIFECYCLE_LOCAL_ONLY_MATCHED',storage:'LOCAL_ONLY',
   projectId:final.projectId,versionId:final.versionId,sourceSha:proof.sourceSha,effectivePlanSha256:proof.effectivePlanSha256,
-  pdfInspection:Object.freeze({reads:1,generationId:final.generationIds.first,laterGenerationPdfSemanticInspection:false}),
+  pdfInspection:final.pdfInspection,
   ownerMatched:true,cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,nativeAdmission:false,executionAllowed:false});
  const outcome=Object.freeze({});outcomes.set(outcome,projection);return outcome;
 }
