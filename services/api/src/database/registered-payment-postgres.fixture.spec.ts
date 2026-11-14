@@ -808,10 +808,11 @@ describe("observer fixed diagnostics through original public case (simulation, n
  it.each(["TX_START","GUARD","QUERY","PRIMITIVE","PROXY","CALLBACK"])("retains original %s failure and fixed observer timing",async mode=>{
   const f=fixture(),plan=buildRegisteredPgFixturePlan(f.proof.runId,"2026-11-07","2026-11-01"),prepared={plan,accessToken:"synthetic",companyARegistrationId:"a",companyBRegistrationId:"b",companyBSourceId:"b"};
   let inTx=false,guards=0,reads=0;const original=mode==='PRIMITIVE'?17:mode==='PROXY'?new Proxy({},{get(){reads++;throw Error('private');},getPrototypeOf(){reads++;throw Error('private');}}):Object.assign(new Error('private SQL'),{code:'P2028'});
-  const recordObserverDiagnostic=jest.fn((_detail: RegisteredPgObserverDiagnostic)=>{if(mode==='CALLBACK')throw new Error('private delivery');});
+  const recordObserverDiagnostic=jest.fn((detail: RegisteredPgObserverDiagnostic)=>{expect(Object.isFrozen(detail)).toBe(true);if(mode==='CALLBACK')throw new Error('private delivery');});
   Object.assign(f.context.observer,{$transaction:async(operation:(tx:unknown)=>Promise<unknown>,options:unknown)=>{expect(options).toEqual({isolationLevel:'RepeatableRead'});if(mode==='TX_START')throw original;inTx=true;try{return await operation({$executeRawUnsafe:async()=>{},paymentRequest:{findUniqueOrThrow:async()=>{if(mode==='QUERY')await new Promise(resolve=>setTimeout(resolve,20));throw original;}}});}finally{inTx=false;}}});
   const continuity={checkLight(){if(inTx){guards++;if(mode==='GUARD'){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);throw original;}}},fetch:globalThis.fetch,recordObserverDiagnostic};
   await expect(registeredCases.runRegisteredNullCrossCompanyCommit(f.context,prepared,continuity)).rejects.toBe(original);
+  expect(guards).toBe(mode==='TX_START'?0:mode==='GUARD'?1:4);
   expect(recordObserverDiagnostic).toHaveBeenCalledTimes(1);const detail=recordObserverDiagnostic.mock.calls[0]![0];
   expect(detail).toMatchObject({observerPhase:mode==='TX_START'?'TX_START':mode==='GUARD'?'SET_READ_ONLY':'PAYMENT_REQUEST',lightCalls:mode==='TX_START'?0:mode==='GUARD'?1:4});
   for(const k of ['observerElapsedMs','txElapsedMs','lightElapsedMs','queryElapsedMs'] as const)expect(Number.isInteger(detail[k])&&detail[k]>=0&&detail[k]<=3600000).toBe(true);
