@@ -537,3 +537,20 @@ test('seed opening boundary merges its fixed context with the original post-resp
  assert.deepEqual(seen[0],['SEED_OPENING','TASK16_APP_FAILED_CLOSED',201,'AFTER_CHECK',{guardPhase:'RESOURCE_VIEW_SOURCE_METHODS',originCode:'CURRENT259_RESOURCE_CLOSED',seedGate:'OPENING_A_REQUEST',errorKind:'ERROR'}]);
  assert.doesNotMatch(JSON.stringify(seen),/private guard payload/);
 });
+
+for(const [name,prismaErrorClass]of [['PrismaClientKnownRequestError','KNOWN_REQUEST_ERROR'],['PrismaClientValidationError','VALIDATION_ERROR']])test('selected observer retains closed native Prisma class '+name,async t=>{
+ const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ const error=Object.assign(new Error('private SQL and credential'),{name,...(name==='PrismaClientKnownRequestError'?{code:'P2028',meta:{code:'42501'}}:{})});
+ const m=paymentModel(f,{onCase(c){c.markCaseGate('OBSERVER_BEFORE');c.recordObserverDiagnostic?.({observerPhase:'PAYMENT_REQUEST',observerElapsedMs:6005,txElapsedMs:6001,lightCalls:4,lightElapsedMs:6000,queryElapsedMs:1});throw error;}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0]?.[4],{caseGate:'OBSERVER_BEFORE',errorKind:'ERROR',prismaErrorClass,...(name==='PrismaClientKnownRequestError'?{prismaCode:'P2028',sqlState:'42501'}:{}),observerPhase:'PAYMENT_REQUEST',observerElapsedMs:6005,txElapsedMs:6001,lightCalls:4,lightElapsedMs:6000,queryElapsedMs:1});
+ assert.doesNotMatch(JSON.stringify(seen),/private SQL|credential/);
+});
+
+test('observer diagnostic rejects getter/proxy/unknown values without replacing the selected failure',async t=>{
+ let reads=0;const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ const error=new Error('private');Reflect.deleteProperty(error,'stack');for(const key of ['name','meta','message','stack'])Object.defineProperty(error,key,{get(){reads++;throw new Error('getter');},configurable:true});
+ const m=paymentModel(f,{onCase(c){c.markCaseGate('OBSERVER_BEFORE');c.recordObserverDiagnostic?.(new Proxy({},{get(){reads++;throw Error('proxy');},ownKeys(){reads++;throw Error('proxy');}}));c.recordObserverDiagnostic?.({observerPhase:'PAYMENT_REQUEST_PRIVATE',observerElapsedMs:Infinity,txElapsedMs:-1,lightCalls:129,lightElapsedMs:NaN,queryElapsedMs:3600001});throw error;}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0]?.[4],{caseGate:'OBSERVER_BEFORE',errorKind:'ERROR'});assert.equal(reads,0);
+});

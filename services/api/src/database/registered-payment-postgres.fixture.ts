@@ -56,6 +56,11 @@ export type RegisteredPgCaseGate = "CONNECTED_ROLES" | "OBSERVER_BEFORE" | "BEFO
   "REGISTRATION_REQUEST" | "OBSERVER_AFTER" | "COMMITTED_ASSERTION" | "RESULT_REQUEST" | "RESULT_ASSERTION" |
   "REPLAY_REQUEST" | "OBSERVER_REPLAY" | "REPLAY_ASSERTION";
 
+export type RegisteredPgObserverPhase = "TX_START" | "SET_READ_ONLY" | "SNAPSHOT_ENTER" | "PAYMENT_REQUEST" | "SETTLEMENT" |
+  "EXECUTIONS" | "FUNDING" | "ALLOCATIONS" | "EVENTS" | "ROOTS" | "FACTS" | "IMPACTS" | "AUDITS" | "OPENINGS" | "ACCOUNT_POSTINGS" | "TX_RETURN";
+export type RegisteredPgObserverDiagnostic = Readonly<{ observerPhase: RegisteredPgObserverPhase; observerElapsedMs: number;
+  txElapsedMs: number; lightCalls: number; lightElapsedMs: number; queryElapsedMs: number }>;
+
 export interface RegisteredPgSeedContinuity {
   checkLight: () => void;
   fetch: typeof fetch;
@@ -68,6 +73,8 @@ export interface RegisteredPgSeedContinuity {
   assertHttpBody?: (route: string, method: "GET" | "POST", body: unknown) => void;
   /** Fixed diagnostic boundary only; never an admission or request payload. */
   markCaseGate?: (gate: RegisteredPgCaseGate) => void;
+  /** Fixed observer timings only; no resource, client, query or authority is supplied. */
+  recordObserverDiagnostic?: (detail: RegisteredPgObserverDiagnostic) => void;
   markAttributionGapStage?: (stage: "OBSERVER_BEFORE" | "OWNER_BEFORE" | "BEFORE_STATE" | "PUBLIC_ACCOUNT" |
     "PUBLIC_OPTIONS" | "REGISTRATION" | "ORIGINAL_RESULT" | "OBSERVER_AFTER" | "OWNER_AFTER" |
     "FINANCIAL_COMPARISON") => void;

@@ -1397,3 +1397,10 @@ for(const secondary of ['postcheck','cleanup'])test('seed opening gate and netwo
  const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1);assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8')).paymentCaseFailure,receipt.paymentCaseFailure);
  assert.doesNotMatch(JSON.stringify(receipt),/private seed payload|private postcheck/);
 });
+
+for(const secondary of ['postcheck','cleanup'])test('observer diagnostic timing and native Prisma context survive '+secondary+' in public CLI receipt',async t=>{
+ const diagnostic={caseGate:'OBSERVER_BEFORE',errorKind:'OTHER_NATIVE_ERROR',prismaErrorClass:'KNOWN_REQUEST_ERROR',prismaCode:'P2028',sqlState:'42501',observerPhase:'PAYMENT_REQUEST',observerElapsedMs:6006,txElapsedMs:6001,lightCalls:4,lightElapsedMs:6000,queryElapsedMs:1};
+ const f=ordinaryBusinessFailureFixture(t,{progress:true,caseFailure:Object.assign(new Error('private cause'),{code:'P2028'}),...(secondary==='cleanup'?{cleanupFailure:true}:{afterConsumeFailure:Object.assign(new Error('private postcheck'),{code:'CURRENT259_BUILD_CHANGED'})}),onBusiness({lease}){lease.recordCaseFailure('SELECTED_CASE','P2028',undefined,undefined,diagnostic);}});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'P2028',...diagnostic});assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');assert.ok(receipt.secondaryFailures.length>=1);
+ const latest=fs.readdirSync(f.state.progressRoot).sort().at(-1);assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.state.progressRoot,latest),'utf8')).paymentCaseFailure,receipt.paymentCaseFailure);assert.doesNotMatch(JSON.stringify(receipt),/private cause|private postcheck/);
+});

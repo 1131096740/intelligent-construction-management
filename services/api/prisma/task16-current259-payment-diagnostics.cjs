@@ -69,15 +69,28 @@ function own(value,key){
  return descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:undefined;
 }
 const isPaymentFailureCode=code=>typeof code==='string'&&caseFailureCodes.has(code);
+const observerPhases=new Set(['TX_START','SET_READ_ONLY','SNAPSHOT_ENTER','PAYMENT_REQUEST','SETTLEMENT','EXECUTIONS','FUNDING','ALLOCATIONS','EVENTS','ROOTS','FACTS','IMPACTS','AUDITS','OPENINGS','ACCOUNT_POSTINGS','TX_RETURN']);
+const prismaClasses=new Map([['PrismaClientKnownRequestError','KNOWN_REQUEST_ERROR'],['PrismaClientUnknownRequestError','UNKNOWN_REQUEST_ERROR'],['PrismaClientValidationError','VALIDATION_ERROR'],['PrismaClientInitializationError','INITIALIZATION_ERROR']]);
+const prismaCodes=new Set(['P1001','P1002','P1008','P1010','P1011','P1017','P2002','P2003','P2010','P2024','P2025','P2028','P2034']);
+const sqlStates=new Set(['42501','25006','25P02','40001','40P01','42P01','42703','57014']);
 function filterPaymentDiagnostic(value){
  const guardPhase=own(value,'guardPhase'),originCode=own(value,'originCode'),caseGate=own(value,'caseGate'),errorKind=own(value,'errorKind'),seedGate=own(value,'seedGate');
+ const observerPhase=own(value,'observerPhase'),prismaErrorClass=own(value,'prismaErrorClass'),prismaCode=own(value,'prismaCode'),sqlState=own(value,'sqlState');
+ const timings={};if(observerPhases.has(observerPhase))for(const key of ['observerElapsedMs','txElapsedMs','lightCalls','lightElapsedMs','queryElapsedMs']){const n=own(value,key);if(Number.isInteger(n)&&n>=0&&n<=(key==='lightCalls'?128:3600000))timings[key]=n;}
  return Object.freeze({...((typeof guardPhase==='string'&&phases.has(guardPhase))?{guardPhase}:{}),
   ...(isPaymentFailureCode(originCode)?{originCode}:{}),...(isPaymentCaseGate(caseGate)?{caseGate}:{}),
   ...(typeof errorKind==='string'&&errorKinds.has(errorKind)?{errorKind}:{}),
-  ...(typeof seedGate==='string'&&seedGates.has(seedGate)?{seedGate}:{})});
+  ...(typeof seedGate==='string'&&seedGates.has(seedGate)?{seedGate}:{}),
+  ...(observerPhases.has(observerPhase)?{observerPhase,...timings}:{}),
+  ...([...prismaClasses.values()].includes(prismaErrorClass)?{prismaErrorClass}:{}),
+  ...(prismaCodes.has(prismaCode)?{prismaCode}:{}),...(sqlStates.has(sqlState)?{sqlState}:{})});
 }
 function describePaymentDiagnostic(error){
- return error&&typeof error==='object'&&!types.isProxy(error)?remembered.get(error):undefined;
+ if(!error||typeof error!=='object'||types.isProxy(error))return undefined;
+ const prior=remembered.get(error);if(!types.isNativeError(error))return prior;
+ const prismaErrorClass=prismaClasses.get(own(error,'name'));
+ if(!prismaErrorClass)return prior;
+ return filterPaymentDiagnostic({...prior,prismaErrorClass,prismaCode:own(error,'code'),sqlState:own(own(error,'meta'),'code')});
 }
 function carryPaymentDiagnostic(target,source,guardPhase){
  if(!target||typeof target!=='object'||types.isProxy(target)||remembered.has(target))return target;

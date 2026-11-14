@@ -518,7 +518,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
-      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(),
+      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(), recordObserverDiagnostic: jest.fn(),
         ...(ownedJson ? { async requestJson(target: URL, init: RequestInit, timeoutMs: number) {
           const response = await globalThis.fetch(target, { ...init, signal: AbortSignal.timeout(timeoutMs) });
           const body: unknown = await response.json();
@@ -646,6 +646,10 @@ describe("registered PG original case: explicit observer projection protocol (no
         "CONNECTED_ROLES", "OBSERVER_BEFORE", "BEFORE_STATE", "OPTIONS_REQUEST", "OPTIONS_ASSERTION", "REGISTRATION_REQUEST",
         "OBSERVER_AFTER", "COMMITTED_ASSERTION", "REPLAY_REQUEST", "OBSERVER_REPLAY", "REPLAY_ASSERTION", "RESULT_REQUEST", "RESULT_ASSERTION"
       ]);
+      if (scenario === "normal" && ownedJson) {
+        expect(continuity.recordObserverDiagnostic).toHaveBeenCalledTimes(3);
+        for (const [detail] of continuity.recordObserverDiagnostic.mock.calls) expect(detail).toMatchObject({ observerPhase: "TX_RETURN", lightCalls: 27 });
+      }
       expect(ownerReads).toBe(0);
     } finally { fetch.mockRestore(); }
   });
@@ -797,4 +801,21 @@ it("legacy fetch fallback retains its original header and signal shape", async (
   expect(init.headers).toEqual({ "content-type": "application/json", authorization: "Bearer synthetic-bearer" });
   expect(init.signal).toBeInstanceOf(AbortSignal);
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+
+describe("observer fixed diagnostics through original public case (simulation, no PG)",()=>{
+ it.each(["TX_START","GUARD","QUERY","PRIMITIVE","PROXY","CALLBACK"])("retains original %s failure and fixed observer timing",async mode=>{
+  const f=fixture(),plan=buildRegisteredPgFixturePlan(f.proof.runId,"2026-11-07","2026-11-01"),prepared={plan,accessToken:"synthetic",companyARegistrationId:"a",companyBRegistrationId:"b",companyBSourceId:"b"};
+  let inTx=false,guards=0,reads=0;const original=mode==='PRIMITIVE'?17:mode==='PROXY'?new Proxy({},{get(){reads++;throw Error('private');},getPrototypeOf(){reads++;throw Error('private');}}):Object.assign(new Error('private SQL'),{code:'P2028'});
+  const recordObserverDiagnostic=jest.fn(()=>{if(mode==='CALLBACK')throw new Error('private delivery');});
+  Object.assign(f.context.observer,{$transaction:async(operation:(tx:unknown)=>Promise<unknown>,options:unknown)=>{expect(options).toEqual({isolationLevel:'RepeatableRead'});if(mode==='TX_START')throw original;inTx=true;try{return await operation({$executeRawUnsafe:async()=>{},paymentRequest:{findUniqueOrThrow:async()=>{if(mode==='QUERY')await new Promise(resolve=>setTimeout(resolve,20));throw original;}}});}finally{inTx=false;}}});
+  const continuity={checkLight(){if(inTx){guards++;if(mode==='GUARD'){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);throw original;}}},fetch:globalThis.fetch,recordObserverDiagnostic};
+  await expect(registeredCases.runRegisteredNullCrossCompanyCommit(f.context,prepared,continuity)).rejects.toBe(original);
+  expect(recordObserverDiagnostic).toHaveBeenCalledTimes(1);const detail=recordObserverDiagnostic.mock.calls[0]![0];
+  expect(detail).toMatchObject({observerPhase:mode==='TX_START'?'TX_START':mode==='GUARD'?'SET_READ_ONLY':'PAYMENT_REQUEST',lightCalls:mode==='TX_START'?0:mode==='GUARD'?1:4});
+  for(const k of ['observerElapsedMs','txElapsedMs','lightElapsedMs','queryElapsedMs'])expect(Number.isInteger(detail[k])&&detail[k]>=0&&detail[k]<=3600000).toBe(true);
+  if(mode==='GUARD')expect(detail.lightElapsedMs).toBeGreaterThanOrEqual(15);if(mode==='QUERY')expect(detail.queryElapsedMs).toBeGreaterThanOrEqual(15);
+  expect(reads).toBe(0);expect(JSON.stringify(detail)).not.toMatch(/private SQL/);
+ });
 });

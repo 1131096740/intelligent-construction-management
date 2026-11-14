@@ -1,7 +1,8 @@
+import { performance } from "node:perf_hooks";
 import { isDeepStrictEqual } from "node:util";
 import type { Prisma } from "@prisma/client";
 import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, assertRegisteredPgResourceProof, registeredPgHttp } from "./registered-payment-postgres.fixture";
-import type { PreparedRegisteredPgAttributionGap, PreparedRegisteredPgCompetition, PreparedRegisteredPgCompetitionFollowUp, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
+import type { PreparedRegisteredPgAttributionGap, PreparedRegisteredPgCompetition, PreparedRegisteredPgCompetitionFollowUp, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgObserverPhase, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
 
 /** Source-derived inventory, not an executable resource runner or a PG result. */
 export function registeredPaymentPostgresCases() {
@@ -25,27 +26,29 @@ function check(condition: unknown, code: string): asserts condition {
   if (!condition) throw Object.defineProperty(new Error(code), "code", { value: code });
 }
 
-async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false) {
-  const light = () => continuity?.checkLight();
-  const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
+type ObserverClock = { light: () => void; checked: <T>(phase: RegisteredPgObserverPhase, operation: () => T | PromiseLike<T>) => Promise<T>; phase: (phase: RegisteredPgObserverPhase) => void };
+
+async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture, clock: ObserverClock, isolatedPaymentScope = false) {
+  const { light, checked } = clock;
+  clock.phase("SNAPSHOT_ENTER");
   light();
   const { ids } = fixture.plan;
-  const request = await checked(() => tx.paymentRequest.findUniqueOrThrow({ where: { id: ids.payment }, select: { approvedAmountCents: true, paidAmountCents: true, status: true } }));
-  const settlement = await checked(() => tx.settlement.findUniqueOrThrow({ where: { id: ids.settlement }, select: { payableAmountCents: true, paidAmountCents: true } }));
-  const executions = await checked(() => tx.paymentExecution.findMany({ where: { paymentRequestId: ids.payment }, select: { id: true, idempotencyKey: true, amountCents: true, paymentRequestId: true, voucherFileId: true } }));
+  const request = await checked("PAYMENT_REQUEST", () => tx.paymentRequest.findUniqueOrThrow({ where: { id: ids.payment }, select: { approvedAmountCents: true, paidAmountCents: true, status: true } }));
+  const settlement = await checked("SETTLEMENT", () => tx.settlement.findUniqueOrThrow({ where: { id: ids.settlement }, select: { payableAmountCents: true, paidAmountCents: true } }));
+  const executions = await checked("EXECUTIONS", () => tx.paymentExecution.findMany({ where: { paymentRequestId: ids.payment }, select: { id: true, idempotencyKey: true, amountCents: true, paymentRequestId: true, voucherFileId: true } }));
   const executionIds = executions.map(row => row.id);
-  const funding = await checked(() => tx.registeredPaymentFunding.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true, operatingLedgerEffectiveDateAtRegistration: true, actualPayerId: true, actualPayerKind: true } }));
-  const allocations = await checked(() => tx.registeredFundPaymentAllocation.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true, accountId: true, sourceBatchId: true, amountCents: true } }));
-  const events = await checked(() => tx.registeredPaymentEvent.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true } }));
-  const roots = await checked(() => tx.interEntityRelationshipEntry.findMany({ where: { paymentExecutionId: { in: executionIds } }, select: { id: true, paymentExecutionId: true, sourceType: true, entryKind: true, direction: true, status: true, originalDebtorCompanyId: true, creditorCompanyId: true, amountCents: true, projectId: true } }));
+  const funding = await checked("FUNDING", () => tx.registeredPaymentFunding.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true, operatingLedgerEffectiveDateAtRegistration: true, actualPayerId: true, actualPayerKind: true } }));
+  const allocations = await checked("ALLOCATIONS", () => tx.registeredFundPaymentAllocation.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true, accountId: true, sourceBatchId: true, amountCents: true } }));
+  const events = await checked("EVENTS", () => tx.registeredPaymentEvent.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true } }));
+  const roots = await checked("ROOTS", () => tx.interEntityRelationshipEntry.findMany({ where: { paymentExecutionId: { in: executionIds } }, select: { id: true, paymentExecutionId: true, sourceType: true, entryKind: true, direction: true, status: true, originalDebtorCompanyId: true, creditorCompanyId: true, amountCents: true, projectId: true } }));
   const projection = { sourceType: "payment_execution", ...(isolatedPaymentScope ? {} : { sourceBusinessId: { in: executionIds } }) };
-  const facts = await checked(() => tx.operatingFact.findMany({ where: projection, select: { id: true } }));
-  const impacts = await checked(() => tx.operatingImpactEntry.findMany({ where: projection, select: { id: true } }));
-  const audits = await checked(() => tx.auditLog.findMany({ where: { businessType: "payment_request", businessId: ids.payment, action: "payment.execution.record" }, select: { actorUserId: true, metadata: true } }));
+  const facts = await checked("FACTS", () => tx.operatingFact.findMany({ where: projection, select: { id: true } }));
+  const impacts = await checked("IMPACTS", () => tx.operatingImpactEntry.findMany({ where: projection, select: { id: true } }));
+  const audits = await checked("AUDITS", () => tx.auditLog.findMany({ where: { businessType: "payment_request", businessId: ids.payment, action: "payment.execution.record" }, select: { actorUserId: true, metadata: true } }));
   // Independent amounts come from the real immutable opening + canonical
   // postings, never the response or the application balance helper.
-  const [openingA, openingB] = await checked(() => Promise.all([fixture.companyARegistrationId, fixture.companyBRegistrationId].map(id => tx.fundAccountBalanceRegistration.findUniqueOrThrow({ where: { id }, select: { accountId: true, balanceYuan: true, coveredExecutionIds: true } }))));
-  const allPostings = await checked(() => tx.registeredFundPaymentAllocation.findMany({ where: { accountId: { in: [openingA.accountId, openingB.accountId] } }, select: { executionId: true, accountId: true, sourceBatchId: true, amountCents: true } }));
+  const [openingA, openingB] = await checked("OPENINGS", () => Promise.all([fixture.companyARegistrationId, fixture.companyBRegistrationId].map(id => tx.fundAccountBalanceRegistration.findUniqueOrThrow({ where: { id }, select: { accountId: true, balanceYuan: true, coveredExecutionIds: true } }))));
+  const allPostings = await checked("ACCOUNT_POSTINGS", () => tx.registeredFundPaymentAllocation.findMany({ where: { accountId: { in: [openingA.accountId, openingB.accountId] } }, select: { executionId: true, accountId: true, sourceBatchId: true, amountCents: true } }));
   const accountAmount = (opening: typeof openingA) => {
     check(opening.balanceYuan !== null, "PG_CASE_INITIAL_BALANCE_MUST_BE_KNOWN");
     const covered = new Set(opening.coveredExecutionIds);
@@ -58,14 +61,36 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
 }
 
 async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false) {
-  const light = () => continuity?.checkLight();
-  const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
-  light();
-  return context.observer.$transaction(async tx => {
-    const setReadOnly = tx.$executeRawUnsafe;
-    await checked(() => setReadOnly.call(tx, "SET TRANSACTION READ ONLY"));
-    return snapshot(tx, fixture, continuity, isolatedPaymentScope);
-  }, { isolationLevel: "RepeatableRead" });
+  const start = performance.now();
+  let phase: RegisteredPgObserverPhase = "TX_START", txStart: number | undefined, lightCalls = 0, lightElapsedMs = 0, queryElapsedMs = 0;
+  const elapsed = (value: number) => Math.min(3600000, Math.max(0, Math.round(value)));
+  const light = () => {
+    const before = performance.now(); lightCalls++;
+    try { continuity?.checkLight(); } finally { lightElapsedMs += performance.now() - before; }
+  };
+  const checked = async <T>(next: RegisteredPgObserverPhase, operation: () => T | PromiseLike<T>): Promise<T> => {
+    phase = next; light();
+    const before = performance.now(); let value: T;
+    try { value = await operation(); } finally { queryElapsedMs += performance.now() - before; }
+    light(); return value;
+  };
+  try {
+    // This original pre-transaction check is outside the 27 transaction checks.
+    continuity?.checkLight();
+    const result = await context.observer.$transaction(async tx => {
+      txStart = performance.now();
+      const setReadOnly = tx.$executeRawUnsafe;
+      await checked("SET_READ_ONLY", () => setReadOnly.call(tx, "SET TRANSACTION READ ONLY"));
+      return snapshot(tx, fixture, { light, checked, phase(next) { phase = next; } }, isolatedPaymentScope);
+    }, { isolationLevel: "RepeatableRead" });
+    phase = "TX_RETURN"; return result;
+  } finally {
+    try {
+      continuity?.recordObserverDiagnostic?.(Object.freeze({ observerPhase: phase, observerElapsedMs: elapsed(performance.now() - start),
+        txElapsedMs: txStart === undefined ? 0 : elapsed(performance.now() - txStart), lightCalls: Math.min(128, lightCalls),
+        lightElapsedMs: elapsed(lightElapsedMs), queryElapsedMs: elapsed(queryElapsedMs) }));
+    } catch { /* Diagnostic delivery cannot replace the original observer result or failure. */ }
+  }
 }
 
 /** Never called on import. The future executor owns authorization, installation,
