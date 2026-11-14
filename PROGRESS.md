@@ -4,9 +4,10 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地私有scope来源码诊断`e160e8887a4e74bf55500808c8cf59ed499c9432`已两轴独审0项并集成，五blob/mode与作者一致，448端口诊断保持。准确旧d8650cb1的CI43545813604已自然32/32成功；新head准确CI待，旧CI不跨继承。Draft PR428保持，45项/14关闭不变，旧失败、未知和用户根混合改动保留。
-- 任务16：SOURCE_DIAGNOSIS。原19fa observer失败UNKNOWN及独立清理证据保留。最新04f1 relay技术组件真实exit1/9.738秒：真实只读SDK三字段预期行匹配8ms，第四次light检查受控暂停6000ms后触发真实P2028/6013ms；正负控制是机制证据，不能证明原19fa物理cause或财务结果。组件整体仍因RELAY_DRAIN/ERROR收尾失败，具体码未保留；resource清理completed、root独核准确资源/PID/relay缺席，启动归属未及时独核不补认。下一步仅原27次checkLight时序/调用链和封闭错误码投影，不盲跑全链；旧端口组件失败及清理记录见主回执。
-- 任务12：SOURCE_DIAGNOSIS。原5c84 life真实exit1/1547.831秒，APPLICATION/CONSUME→SCOPE/PRIVATE_SCOPE/PLAINTEXT，business/controller UNKNOWN、full394=false保持；receipt SHA256 `3f064aad839c966d52f18fefbeaf70a8d68d0e1ad8ca569de21a2ef76f71840d`、resource completed与root独核9bfdb资源/PID/relay缺席分别保留。新e160仅补20个既有私有assert own-code闭集，原global/first/secondary/UNKNOWN及条件、权限、HBA、预算不变，无新品牌/hook/export；210项CJS/type/lint和pin正负控通过，不证明真实内因已修。当前无运行中life；旧样张资格不跨移，集成registry仍PENDING，待新准确资格和有依据的下一验证。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本地observer诊断源码`3d8379f831e2a20786b56f432033e94d6482b20b`已两轴最终独审0项并集成，七blob/mode与作者一致，生产源码与b8相同。最近鲜核cb8f7b11的CI43547754212仍运行（30项成功、无失败），待其自然终态后推新候选，避免取消任务12所需准确CI；旧d865准确32/32不跨继承。Draft PR428保持，45项/14关闭不变，旧失败、未知和用户根混合改动保留。
+- 任务16：SOURCE_DIAGNOSIS。新3d仅补observer固定phase、耗时/检查计数与封闭错误类观察，原15次Prisma调用、27次guard、5000ms、SQL/权限及首因/UNKNOWN守恒，不代表cause已修。原1c1类型、4f lint和b8冻结断言吞错问题均保留；最终外部断言以真移除freeze mutant6项RED、恢复108项GREEN闭环，最终type/lint通过，其余221CJS/81pin/build/qualified-load1按相同blob承接，merger未重复。原19fa业务UNKNOWN及04f1机制正负控/整体drain失败、独立清理边界保持；暂无新PG/normal。
+- 任务12：cb8f准确工具资格128.598秒与独立root formal29f仅证明限定样张；metadata-only e60540dc8c9b46592e9d26d27a6ac85cbb469b66在独立冻结树准备/校验完整life材料，尚未PG，等待cb8f准确CI及主控启动。该冻结源不随新398集成移动，不继承新head的CI或源码。原5c84 APPLICATION/CONSUME/SCOPE/PRIVATE_SCOPE/PLAINTEXT失败UNKNOWN、清理独核与历史回执保持；集成registry仍PENDING，完整合同链、类型矩阵及异常链仍未通过。
+
 - 开发工具：原完整类型覆盖、预算、超时、权限、业务断言与封闭错误控制均保持，helper pin仅固定标量bf254a7e→4fae074d。作者门按准确源码证据承接，merger未重复测试；canonical状态与完整旧历史见主回执，不以组件、局部门或历史成功代替当前业务验收。
 
 ## 授权、证据和下一步
