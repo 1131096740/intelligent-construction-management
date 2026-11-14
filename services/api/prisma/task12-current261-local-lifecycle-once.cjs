@@ -73,13 +73,24 @@ const documentConsumeResourceReasons=new Set([
 const documentScopePredicates=new Set(['ENTRY_FIRST_Q2','ENTRY_ARITY','ENTRY_CONTRACT_UNUSED','ENTRY_DOCUMENT_UNUSED','ENTRY_OPEN',
  'PROOF_OBJECT','LIVE_OPEN','LIVE_SIGNAL','PRIVATE_SCOPE','BIND_RUN','BIND_CONTAINER','BIND_SOURCE','LIFECYCLE_PLAN','ORDINARY_NAME','ROLE_COORDINATES']);
 const documentScopeSubphases=new Set(['ENTRY','READ_BEFORE','READ_COMMITTED','WRITE','RELOAD','PLAINTEXT','FINAL_FILE']);
+const documentPrivateScopeCodes=new Set([
+  "CURRENT259_DOCUMENT_LOGIN_HANDLE", "CURRENT259_DOCUMENT_LOGIN_CONTINUITY", "CURRENT259_DOCUMENT_LOGIN_ROLE_RUNTIME",
+  "CURRENT259_DOCUMENT_ACL_TRANSPORT_CONTINUITY", "CURRENT259_DOCUMENT_ROLE_PROVISION_CONTINUITY", "CURRENT259_ORDINARY_ARCHIVE_ACL_CONTINUITY",
+  "CURRENT259_LOADER_CHANGED", "CURRENT259_RESOURCE_CLOSED", "CURRENT259_RESOURCE_ABORTED",
+  "CURRENT259_RESOURCE_SIGNAL", "CURRENT259_RESOURCE_PRODUCER_CHANGED", "CURRENT259_RESOURCE_TOOL_CHANGED",
+  "CURRENT259_RESOURCE_CHANGED", "CURRENT259_RESOURCE_IDENTITY", "CURRENT259_RESOURCE_PURPOSE",
+  "CURRENT259_RESOURCE_TLS", "TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED", "TASK12_OFFICIAL_DOCUMENT_CONTINUITY",
+  "TASK12_OFFICIAL_DOCUMENT_DEADLINE", "TASK12_OFFICIAL_DOCUMENT_MODULES"
+]);
 function safeDocumentScope(cause){
  const detail=own(cause,'documentHbaScope');
  if(!detail||typeof detail!=='object'||types.isProxy(detail))return undefined;
  const keys=Reflect.ownKeys(detail),predicate=own(detail,'predicate'),subphase=own(detail,'subphase');
- if(keys.length!==2||!keys.includes('predicate')||!keys.includes('subphase')||
-  !documentScopePredicates.has(predicate)||!documentScopeSubphases.has(subphase))return undefined;
- return {scopePredicate:predicate,scopeSubphase:subphase};
+ const hasPrivate=keys.length===3&&keys.includes('privateScopeCode'),privateScopeCode=hasPrivate?own(detail,'privateScopeCode'):undefined;
+ if((keys.length!==2&&!hasPrivate)||!keys.includes('predicate')||!keys.includes('subphase')||
+  !documentScopePredicates.has(predicate)||!documentScopeSubphases.has(subphase)||
+  hasPrivate&&(predicate!=='PRIVATE_SCOPE'||!documentPrivateScopeCodes.has(privateScopeCode)))return undefined;
+ return {scopePredicate:predicate,scopeSubphase:subphase,...(hasPrivate?{privateScopeCode}:undefined)};
 }
 function safeDocumentLoginFailure(cause){
  const seen=new WeakSet();let documentConsume=false;
