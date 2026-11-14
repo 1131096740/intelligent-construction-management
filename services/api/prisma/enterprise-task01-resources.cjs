@@ -743,13 +743,18 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
     const remaining = Math.min(2000, endAt - Date.now());
     requireThat(remaining > 0 && !signal?.aborted && !closePromise, "TASK01_RESOURCE_ABORTED_OR_TIMEOUT");
     checkRelay();
+    const probeDeadline = Date.now() + remaining;
+    // The lifecycle probe closes before expensive source guards resume. Join
+    // only its original relay cohort within this probe's existing time budget.
+    const finishProbe = loopback && receipt.documentHba?.purpose === "CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1"
+      ? beginPrismaRelayDrain() : null;
     // Public certificate metadata channel only. Deliberately no startup/auth/SQL
     // bytes are ever sent; business/role probes must independently verify TLS.
     return new Promise((resolve, reject) => {
       const socket = net.createConnection({ host: "127.0.0.1", port: receipt.port });
       metadataSockets.add(socket);
-      let secure, completed = false;
-      const finish = (error, hash) => {
+      let secure, completed = false, joining = false, pendingError;
+      const settle = (error, hash) => {
         if (completed) return;
         completed = true;
         clearTimeout(timer);
@@ -757,11 +762,20 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
         secure?.destroy(); socket.destroy();
         if (error) reject(fault(error)); else resolve(hash);
       };
-      const onAbort = () => finish("TASK01_RESOURCE_ABORTED");
-      const timer = setTimeout(() => finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_TIMEOUT"), remaining);
+      const finish = (error, hash) => {
+        if (completed || joining) return;
+        if (!finishProbe) { settle(error, hash); return; }
+        joining = true; pendingError = error;
+        secure?.destroy(); socket.destroy();
+        Promise.resolve().then(() => finishProbe()).then(() => {
+          settle(pendingError || (Date.now() >= probeDeadline ? "TASK01_RESOURCE_CERTIFICATE_OBSERVATION_TIMEOUT" : null), hash);
+        }, () => settle(pendingError || "TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"));
+      };
+      const onAbort = () => settle("TASK01_RESOURCE_ABORTED");
+      const timer = setTimeout(() => settle(pendingError || "TASK01_RESOURCE_CERTIFICATE_OBSERVATION_TIMEOUT"), remaining);
       signal?.addEventListener("abort", onAbort, { once: true });
       if (signal?.aborted) onAbort();
-      socket.once("close", () => { metadataSockets.delete(socket); if (!completed) finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"); });
+      socket.once("close", () => { metadataSockets.delete(socket); if (!completed && !joining) finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"); });
       socket.on("error", () => finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"));
       socket.once("connect", () => {
         const request = Buffer.alloc(8); request.writeInt32BE(8, 0); request.writeInt32BE(80877103, 4);
