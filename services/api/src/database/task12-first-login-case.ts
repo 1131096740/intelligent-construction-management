@@ -60,4 +60,3 @@ export async function runTask12FirstLoginCase(input: Task12FirstLoginCaseInput):
   return Object.freeze({ goal: "TASK12_FIRST_LOGIN_HTTP_RETURNED", actorUserId: seed.handler.id,
     httpStatus: 201, nativeAdmission: false, cleanupAccepted: false, full394Accepted: false });
 }
-

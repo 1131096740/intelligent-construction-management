@@ -79,4 +79,3 @@ it("rejects a different handler before sending another actor's credentials", asy
   await expect(runTask12FirstLoginCase(model.input)).rejects.toMatchObject({ code: "TASK12_FIRST_LOGIN_CASE_INPUT" });
   expect(model.input.bridge.send).not.toHaveBeenCalled();
 });
-
