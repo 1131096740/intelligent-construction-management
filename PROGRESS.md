@@ -4,9 +4,9 @@
 
 ## 当前候选与两条业务线
 
-- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确6f972e13的CI43524797051已自然32/32成功，仅绑定该SHA。本地CONSUME诊断源码`d733969e6610e24eb8a090fa3993ea82dfb28a2b`已两轴独审0项并集成，两blob与作者一致，新候选准确CI待。Draft PR428保持；旧失败、未知和用户根混合改动保留。
-- 任务16：新6f972e13/plan b3e71152 normal由原actor56025/PID86564/wrapper86560自23:24:18Z持续监控，现处technical261；root已独核新3c8a专属资源，冻结现场不改。首条监控约33秒超过30秒限制的记录原样保留，后续20秒持续轮询，暂无business结论。旧3bf实测SEED_OPENING/HTTP_CONNECTION_RESET/FETCH UNKNOWN、原receipt00e78e04及独立清理缺席证据保留；不换键重发，不把6秒stall未复现当作已修复。
-- 任务12：原metadata-only5a56 life真实exit1/1567.794秒，越过串行DACL/RUNTIME后停于APPLICATION/CONSUME、LOGIN_CONSUME_FAILED；业务和原controller清理UNKNOWN、full394=false。原receipt SHA256 `cb3a2cc22e0e358be48f15eea93196e0fbe1b5660c085f52c1b3ec63c9a5a9e6`与root76f059准确资源/PID/relay缺席独核保留。新d733仅在精确CONSUME上下文内有界读取6层own cause、投影25个已有资源码，49项相关/TDD10/type/lint通过；原safeReason/helper/pin、global/first/secondary/UNKNOWN不变，无HBA或权限修复，也无新PG/life结论。978工具158.561秒及正式Z回执0e4326仅限定样张，ad9格式失败保留；集成registry仍PENDING。下一步窄定位真实内因，完整合同链、类型矩阵和异常链仍未通过。
+- 集成持久树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；准确5560ba17的CI43528448405已自然32/32成功，仅绑定该SHA。本地owned JSON连接策略修复`813b7ab29ca12064f3f09c3a25b91e5dbe859852`已两轴独审0项并集成，两blob与作者一致，新候选准确CI待。Draft PR428保持，旧失败、未知及用户根混合改动保留。
+- 任务16：原6f normal真实exit1/2100.511秒，B_REQUEST/HTTP_CONNECTION_RESET/TYPE_ERROR、业务UNKNOWN；receipt6c4c前缀与root独立清理缺席证据保留。105次轮询首32.642秒超30、后最大20.061秒原样记录。新813在原owned requestJson派生init仅加固定Connection:close；真实native helper/server受控A-body后6秒guard场景已单变量复现B reset并修复，独立延迟header仍TIMEOUT。原fallback、fetch、全局dispatcher、Nest、5秒预算、守卫、SQL权限不变，无重试；216项CJS/102项fixture和API build/type/lint通过。仅支持受控因果，原实际物理cause与提交状态仍未知，新PG/normal未启。
+- 任务12：新metadata-only389361c94602dbe631613b0f06a4f4abd9ab2079以已验5560为parent，仅配套E26工具/root限定样张资格。plan b36231c5原actor52080/PID3014/wrapper2119自23:55:39Z完整life运行，root已独核55c38570专属资源，暂无业务通过结论。监控曾87.110秒超20/30限制的不合规记录保留，现由同namespace每10秒自动轮询至终态，不改冻结现场。原5a56 APPLICATION/CONSUME失败及业务/controller cleanup UNKNOWN保持；集成registry仍PENDING，不跨移旧资格。完整合同链、类型矩阵和异常链仍未通过。
 
 - 开发工具：原完整类型覆盖、预算、超时、权限、业务断言、封闭首因/次因与UNKNOWN控制均保持。作者门按准确源码证据承接，merger未重复测试；CI与真实业务分别验，不以局部门或历史成功代替当前完整门禁。
 
