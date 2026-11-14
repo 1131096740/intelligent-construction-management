@@ -98,34 +98,52 @@ test('returned admission data cannot reset its consumed application claim',async
  });
  assert.equal(result.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',JSON.stringify(result));
 });
-test('the factory keeps seven fixed module paths, overrides both mock providers before compile and closes the reader',async t=>{
+for(const variant of ['complete','missing-filter','missing-arm','missing-take','accessor-arm','substituted-provider','substituted-catch'])test(variant==='complete'?'the factory keeps seven fixed module paths, overrides both mock providers before compile and closes the reader':'the factory rejects stale diagnostic model '+variant+' before the reader runs',async t=>{
  const {bindSimulatedCurrent259Application,createCurrent259Application}=require('./task16-current259-application-factory.cjs');
  const directory=fs.mkdtempSync('/private/tmp/jg-current259-factory-'),storage=path.join(directory,'storage');fs.chmodSync(directory,0o700);fs.mkdirSync(storage,{mode:0o700});
  const env={NODE_ENV:'test',SMS_ENABLED:'false',APPROVAL_SMS_ENABLED:'false',FILE_STORAGE_DRIVER:'local',FILE_STORAGE_ROOT:storage,JWT_ACCESS_SECRET:'a'.repeat(64),JWT_REFRESH_SECRET:'b'.repeat(64),FILE_DOWNLOAD_SECRET:'c'.repeat(64)};
  const previous=Object.fromEntries(Object.keys(env).map(k=>[k,process.env[k]]));Object.assign(process.env,env);
  t.after(()=>{for(const[k,v]of Object.entries(previous))if(v===undefined)delete process.env[k];else process.env[k]=v;fs.rmSync(directory,{recursive:true});});
- const calls=[];
+ const calls=[];let readerRan=false,getterReads=0;
  const result=await runWithSession(async(context,f)=>{
   context.options.artifactsDir=directory;
   const Token=Symbol('synthetic registered-payment token export'),Prisma=class PrismaService{},AppModule=class Task16RegisteredApplicationModule{};
+  // This is the simulated application boundary, never genuine SDK/DB admission.
+  class DiagnosticFilter {catch(){}}
+  const filter=new DiagnosticFilter(),substitute=new DiagnosticFilter();
   let provider;
-  const get=token=>token===Token?provider:token===Prisma?f.session.runtime:undefined;
+  const get=token=>token===Token?provider:token===Prisma?f.session.runtime:token===DiagnosticFilter?filter:undefined;
   const server={listening:true,address:()=>({address:'127.0.0.1',family:'IPv4',port:15433})};
-  const app={close:async()=>{calls.push('close');},get,getHttpAdapter:()=>({getInstance:()=>({set:()=>calls.push('json')})}),enableCors:()=>calls.push('cors'),useGlobalPipes:()=>calls.push('pipe'),init:async()=>calls.push('init'),getHttpServer:()=>server};
+  const app={close:async()=>{calls.push('close');},get:token=>token===DiagnosticFilter&&variant==='substituted-provider'?substitute:get(token),getHttpAdapter:()=>({getInstance:()=>({set:()=>calls.push('json')})}),enableCors:()=>calls.push('cors'),useGlobalPipes:()=>calls.push('pipe'),init:async()=>{calls.push('init');if(variant==='substituted-catch')filter.catch=()=>{};},getHttpServer:()=>server};
   const module={close:async()=>calls.push('module-close'),get,createNestApplication:()=>app};
   const boundary={loadModules:async rows=>{
    assert.deepEqual(rows.map(r=>r.path),['database/task16-registered-application.module.js','database/prisma.service.js','api-security.js','operating-projection/projection-export-json.js','api-json-replacer.js','validation/api-validation.js','api-listen.js'].map(p=>'services/api/dist/'+p));
-   return {Task16RegisteredApplicationModule:AppModule,Task16ImpactReaderToken:Token,PrismaService:Prisma,
+   const exports={Task16RegisteredApplicationModule:AppModule,Task16ImpactReaderToken:Token,PrismaService:Prisma,
+    Task16RegistrationErrorFilter:DiagnosticFilter,
+    armTask16RegistrationError(){throw new Error('diagnostic HTTP is outside this reader model');},
+    takeTask16RegistrationError(){throw new Error('diagnostic HTTP is outside this reader model');},
     configureApiSecurity:()=>calls.push('security'),configureProjectionExportJson:()=>calls.push('projection'),apiJsonReplacer:()=>{},createApiValidationPipe:()=>{calls.push('validation');return{};},listenApi:async(target,port,host)=>{assert.equal(target,app);assert.equal(port,0);assert.equal(host,'127.0.0.1');calls.push('listen');}};
+   const missing={'missing-filter':'Task16RegistrationErrorFilter','missing-arm':'armTask16RegistrationError','missing-take':'takeTask16RegistrationError'}[variant];
+   if(missing)delete exports[missing];
+   if(variant==='accessor-arm')Object.defineProperty(exports,'armTask16RegistrationError',{get(){getterReads++;throw new Error('untrusted getter');}});
+   return exports;
   },createTestingModule:metadata=>{assert.deepEqual(metadata,{imports:[AppModule]});const builder={overrideProvider:token=>({useValue(value){if(token===Token){provider=value;calls.push('provider');}else{assert.equal(token,Prisma);assert.equal(value,f.session.runtime);calls.push('runtime');}}}),compile:async()=>{calls.push('compile');assert.ok(provider);return module;}};return builder;}};
   bindSimulatedCurrent259Application(context,f.session);
   const application=await createCurrent259Application(context,boundary);
   assert.equal(application.inspect().runtime,f.session.runtime);
+  readerRan=true;
   assert.deepEqual(await provider.withTransaction((tx,read)=>read(tx,f.scope,['fact'])),[{factId:'fact',impactKind:'payment',amountCents:23n,numericProtocolVersion:1,subjectKind:null,subjectId:null}]);
   await application.close();await application.close();
   await assert.rejects(provider.withTransaction(()=>null),/TASK16_CLIENT_IMPACT_READER_TRANSACTION/u);
  });
- assert.equal(result.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',JSON.stringify(result));
+ assert.equal(getterReads,0);assert.equal(result.nativeExecution,false);assert.equal(result.financialAcceptance,false);
+ if(variant!=='complete'){
+  assert.equal(result.status,'FAILED_CLOSED');
+  assert.equal(result.failureCode,variant.startsWith('missing-')||variant==='accessor-arm'?'TASK16_APP_DATA_DESCRIPTOR':'TASK16_APP_RUNTIME_PROVIDER');
+  assert.equal(result.stages.find(row=>row.name==='startApplication')?.status,'failed');
+  assert.equal(readerRan,false);return;
+ }
+ assert.equal(result.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',JSON.stringify(result));assert.equal(readerRan,true);
  assert.deepEqual(calls.slice(0,3),['runtime','provider','compile']);assert.equal(calls.filter(x=>x==='close').length,1);
  assert.ok(calls.indexOf('security')<calls.indexOf('projection'));assert.ok(calls.indexOf('pipe')<calls.indexOf('init'));assert.ok(calls.indexOf('init')<calls.indexOf('listen'));
 });
