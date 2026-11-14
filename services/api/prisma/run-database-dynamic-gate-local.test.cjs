@@ -640,6 +640,27 @@ test("POL-109 readiness ignores the Unix-only initialization server until TCP Po
   }
 });
 
+test("contract-template readiness waits for the same TCP database endpoint used by migration preflight", async () => {
+  const calls = [];
+  let hostCheck = false;
+  await waitForContractTemplateScenarioPostgres("owned-template-container", 15432, async (args, options) => {
+    calls.push({ args, options });
+    // The temporary init server accepts Unix sockets while final TCP PostgreSQL is still unavailable.
+    if (args.includes("-h") && calls.length === 1) throw new Error("TCP database still initializing");
+    return { stdout: "accepting connections" };
+  }, async (endpoint) => {
+    hostCheck = true;
+    assert.equal(calls.length, 2, "a Unix-only init server must not release migration preflight");
+    assert.deepEqual(endpoint, { host: "127.0.0.1", port: 15432 });
+  });
+  assert.equal(hostCheck, true);
+  assert.equal(calls.length, 2);
+  for (const { args, options } of calls) {
+    assert.deepEqual(args, ["exec", "owned-template-container", "pg_isready", "-h", "127.0.0.1", "-U", "jiangkong", "-d", "jiangkong_contract_template_scenario_concurrency"]);
+    assert.deepEqual(options, { timeoutMs: 15_000 });
+  }
+});
+
 test("canonical manifest executes all 181 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
