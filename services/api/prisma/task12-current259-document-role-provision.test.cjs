@@ -31,30 +31,33 @@ function fixture(options={}){
    options.modify?.(payload,n);
    return {stdout:JSON.stringify(payload)};
   }};
- const view={resource,runId,source,check(){}};
+ const continuityToken=Object.freeze({});let continuityCalls=0;
+ const checkContinuity=token=>{assert.equal(token,continuityToken);continuityCalls++;};
+ const view={resource,runId,source,check(){},checkContinuity};
  const imports={
   './task16-current259-ordinary-archive-acl.cjs':{claimCurrent259OrdinaryArchiveAcl(r,h){
    if(options.document)throw Error('HANDLE');
    assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
    return {source,completion,archiveCompletion,roleCompletion,generatedDraft:!options.oldProfile,
-    catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){}};
+    catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){},checkContinuity};
   },claimCurrent259GeneratedDocumentOrdinaryAcl(r,h){
    if(!options.document)throw Error('HANDLE');
    assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
    return {source,completion,archiveCompletion,roleCompletion,generatedDocument:true,
-    catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){}};
+    catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){},checkContinuity};
   },claimCurrent261GeneratedLifecycleOrdinaryAcl(r,h){
    assert.equal(options.lifecycle,true);assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
-   return {source,completion,archiveCompletion,roleCompletion,generatedLifecycle:true,catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){}};
+   return {source,completion,archiveCompletion,roleCompletion,generatedLifecycle:true,catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){},checkContinuity};
   }},
   './task16-current259-owned-resource.cjs':{
    claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},
+   claimCurrent259TechnicalResourceContinuity(h,token){assert.equal(h,handle);checkContinuity(token);return view;},
    async closeCurrent259OwnedResource(h){assert.equal(h,handle);closed++;if(options.cleanupUnknown)throw Error('model cleanup');}
   }
  };
  const filename=path.join(__dirname,'task12-current259-document-role-provision.cjs'),mod={exports:{}};
  new Function('require','module',fs.readFileSync(filename,'utf8'))(name=>imports[name]??require(name),mod);
- return {api:mod.exports,handle,completion,calls,closed:()=>closed,resource};
+ return {api:mod.exports,continuityToken,continuityCalls:()=>continuityCalls,handle,completion,calls,closed:()=>closed,resource};
 }
 test('issues only three inert roles using the original owner transport and private generated-draft receipt',async()=>{
  const f=fixture(),result=await f.api.provisionCurrent259GeneratedDocumentRoles(f.completion,f.handle);
@@ -135,3 +138,5 @@ test('explicit lifecycle role provision requires its genuine 261 ordinary predec
  await assert.rejects(wrong.api.provisionCurrent261GeneratedLifecycleDocumentRoles(wrong.completion,wrong.handle));
  assert.equal(wrong.calls.length,0);
 });
+
+test('role continuation propagates only its original capability through the original view',async()=>{const f=fixture();const result=await f.api.provisionCurrent259GeneratedDocumentRoles(f.completion,f.handle);const lease=f.api.claimCurrent259GeneratedDocumentRoles(result,f.handle);lease.checkContinuity(f.continuityToken);assert.ok(f.continuityCalls()>=2);assert.throws(()=>lease.checkContinuity({}));});

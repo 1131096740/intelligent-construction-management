@@ -6,7 +6,7 @@ const { join } = require('node:path');
 const { isDeepStrictEqual: equal, types } = require('node:util');
 // Preserve the technical profile's original load order.
 const { claimCurrent259ArchiveInstallation } = require('./task16-current259-archive-install.cjs');
-const { claimCurrent259TechnicalResource, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
+const { claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 const { current259AclRowsSql, current259SignedNumberAclSql } = require('./task16-current259-catalog.cjs');
 
 const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
@@ -461,6 +461,8 @@ async function install(archiveCompletion,handle,profile){
   need(typeof exec==='function','HANDLE');
   const check=()=>{lease.check();view.check();need(claimCurrent259TechnicalResource(handle)===view && view.resource===resource &&
     Object.getOwnPropertyDescriptor(resource,'execOwnerSql')?.value===exec,'CONTINUITY');};
+ const checkContinuity=token=>{lease.checkContinuity(token);view.checkContinuity(token);need(claimCurrent259TechnicalResourceContinuity(handle,token)===view && view.resource===resource &&
+    Object.getOwnPropertyDescriptor(resource,'execOwnerSql')?.value===exec,'CONTINUITY');};
   check();
   const ordinary=candidateShape(archiveCompletion,view,lease);
   if(profile===null)profile=lifecycleProfile(lease.source);
@@ -488,7 +490,7 @@ async function install(archiveCompletion,handle,profile){
     catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256:profile.sha256,
     ...(profile.lifecycle?{effectivePlanSha256:profile.effectivePlanSha256,installation:profile.installation}:{}),
     ...(documentMode(profile)?{purpose:profile.lifecycle?lifecyclePurpose:documentPurpose}:{}),executionAllowed:false,nativeAdmission:false});
-  proofs.set(completion,{handle,check,profile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
+  proofs.set(completion,{handle,check,checkContinuity,profile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
     catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql,
     protectedSql:protectSeven(normalizedSevenCatalog(lease.ordinaryAclWitness(phases[2]).sevenCatalogSql,before.changes))});
   return completion;
@@ -513,8 +515,8 @@ function claim(completion,handle,document){
  need(receipt.handle===handle && (document==='lifecycle'?receipt.profile.lifecycle===true:
   receipt.profile.lifecycle!==true&&(receipt.profile===documentProfile)===document),'HANDLE');
  proofs.delete(completion);receipt.check();
- const {check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql}=receipt;
- return Object.freeze({completion,check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql,
+ const {check,checkContinuity,archiveCompletion,roleCompletion,source,catalogSql,protectedSql}=receipt;
+ return Object.freeze({completion,check,checkContinuity,archiveCompletion,roleCompletion,source,catalogSql,protectedSql,
   ...(receipt.profile===generatedProfile?{generatedDraft:true}:{}),...(document==='lifecycle'?{generatedLifecycle:true}:document?{generatedDocument:true}:{})});
 }
 

@@ -577,6 +577,7 @@ async function installArchive(provisionResult, handle, registered) {
   try {
     const view = claimCurrent259TechnicalResource(handle);
     const check = () => { lease.check(); view.check(); view.verifyFull(); };
+    const checkContinuity = token => { lease.checkContinuity(token); view.checkContinuity(token); };
     check();
     const input = roleInput(lease, view);
     const read = async (next, prior) => {
@@ -639,7 +640,7 @@ async function installArchive(provisionResult, handle, registered) {
       ...(registered ? { registeredFileSource: true, nativeAdmission: false, executionAllowed: false,
         originalRegistrySha256: committed.originalRegistrySha256, sevenCatalogSha256: committed.sevenCatalogSha256 } : {}),
     });
-    receipts.set(completion, { source: input.source, roleCompletion: input.completion, handle, check,
+    receipts.set(completion, { source: input.source, roleCompletion: input.completion, handle, check, checkContinuity,
       ...(registered ? { ordinaryAclWitness: ordinaryAclWitness(input, completion, sevenCatalogSql) } : {}) });
     return completion;
   } catch (cause) {
@@ -659,7 +660,7 @@ function claimCurrent259ArchiveInstallation(completion, handle) {
   need(receipt.handle === handle);
   receipts.delete(completion);
   receipt.check();
-  return Object.freeze({ source: receipt.source, completion, roleCompletion: receipt.roleCompletion, check: receipt.check,
+  return Object.freeze({ source: receipt.source, completion, roleCompletion: receipt.roleCompletion, check: receipt.check, checkContinuity: receipt.checkContinuity,
     ...(receipt.ordinaryAclWitness ? { ordinaryAclWitness: receipt.ordinaryAclWitness } : {}) });
 }
 

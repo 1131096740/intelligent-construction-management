@@ -1,6 +1,6 @@
 'use strict';
 const {claimCurrent259GeneratedDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
-const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
+const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,renderCurrent261DocumentAclContinuity}=require('./task12-current259-document-acl.cjs');
 const {registeredGeneratedLifecycleCollisionMaterial,generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
@@ -196,6 +196,11 @@ async function install(roleCompletion,handle,lifecycle){
   need(claimCurrent259TechnicalResource(handle)===view&&view.resource===resource&&
    resource.topology===topology&&own(resource,'execOwnerSql')===exec,'CONTINUITY');
  };
+ const checkContinuity=token=>{
+  rolesLease.checkContinuity(token);view.checkContinuity(token);
+  need(claimCurrent259TechnicalResourceContinuity(handle,token)===view&&view.resource===resource&&
+   resource.topology===topology&&own(resource,'execOwnerSql')===exec,'CONTINUITY');
+ };
  let phase='BEFORE',writing=false;
  try{
   check();
@@ -221,7 +226,7 @@ async function install(roleCompletion,handle,lifecycle){
    runId:view.runId,containerId:resource.containerId,roleInstallXid:roleCompletion.installXid,installXid:committed.installXid,
    profileSha256:matched.profileSha256,
    ...(lifecycle?{effectivePlanSha256:matched.effectivePlanSha256,installation:matched.installation}:{}),executionAllowed:false,nativeAdmission:false});
-  installed.set(result,{handle,check,lifecycle,rolesLease,continuitySha256:committed.continuitySha256,continuitySql:proof.continuity});
+  installed.set(result,{handle,check,checkContinuity,lifecycle,rolesLease,continuitySha256:committed.continuitySha256,continuitySql:proof.continuity});
   return result;
  }catch(cause){
   const error=Object.assign(fault(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED'),{phase});
@@ -250,7 +255,7 @@ function claim(result,handle,save){
   receipt.lifecycle!==true&&(receipt.rolesLease.ordinaryAcl.generatedDocument===true)===save),'HANDLE');
  installed.delete(result);receipt.check();
  const {ordinaryAcl,roles,source}=receipt.rolesLease;
- return Object.freeze({completion:result,ordinaryAcl,roles,source,check:receipt.check,
+ return Object.freeze({completion:result,ordinaryAcl,roles,source,check:receipt.check,checkContinuity:receipt.checkContinuity,
   continuitySha256:receipt.continuitySha256,continuitySql:receipt.continuitySql});
 }
 function claimCurrent261GeneratedLifecycleDocumentAcl(result,handle){

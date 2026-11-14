@@ -1,7 +1,7 @@
 'use strict';
 // Import the original ordinary ACL producer before claiming its owned resource.
 const {claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
-const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
+const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {randomBytes}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
@@ -190,6 +190,11 @@ async function provision(ordinaryAclCompletion,handle,document){
   need(claimCurrent259TechnicalResource(handle)===view&&view.resource===resource&&
    own(resource,'execOwnerSql')===exec&&resource.topology===top,'CONTINUITY');
  };
+ const checkContinuity=token=>{
+  acl.checkContinuity(token);view.checkContinuity(token);
+  need(claimCurrent259TechnicalResourceContinuity(handle,token)===view&&view.resource===resource&&
+   own(resource,'execOwnerSql')===exec&&resource.topology===top,'CONTINUITY');
+ };
  const run=async(phase,before,writeXid)=>{
   check();
   const challenge=randomBytes(32).toString('hex');
@@ -210,7 +215,7 @@ async function provision(ordinaryAclCompletion,handle,document){
   const result=Object.freeze({status:'CURRENT259_DOCUMENT_ROLES_COMMITTED_NOT_ADMISSION',sourceSha:ordinaryAclCompletion.sourceSha,
    runId:view.runId,containerId:resource.containerId,installXid:committed.installXid,
    ...(document==='lifecycle'?{effectivePlanSha256:ordinaryAclCompletion.effectivePlanSha256,installation:ordinaryAclCompletion.installation}:{}),roleCount:names.length,executionAllowed:false,nativeAdmission:false});
-  issued.set(result,{handle,check,lifecycle:document==='lifecycle',ordinaryAcl:acl,roles:Object.freeze(committed.roles.map(Object.freeze))});
+  issued.set(result,{handle,check,checkContinuity,lifecycle:document==='lifecycle',ordinaryAcl:acl,roles:Object.freeze(committed.roles.map(Object.freeze))});
   return result;
  }catch{
   const error=fault(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
@@ -230,7 +235,7 @@ function claim(result,handle,lifecycle){
  need(receipt?.handle===handle&&receipt.lifecycle===lifecycle,'HANDLE');
  issued.delete(result);receipt.check();
  return Object.freeze({completion:result,ordinaryAclCompletion:receipt.ordinaryAcl.completion,
-  ordinaryAcl:receipt.ordinaryAcl,source:receipt.ordinaryAcl.source,roles:receipt.roles,check:receipt.check});
+  ordinaryAcl:receipt.ordinaryAcl,source:receipt.ordinaryAcl.source,roles:receipt.roles,check:receipt.check,checkContinuity:receipt.checkContinuity});
 }
 module.exports=Object.freeze({provisionCurrent261GeneratedLifecycleDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
  claimCurrent259GeneratedDocumentRoles});

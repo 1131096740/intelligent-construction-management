@@ -43,21 +43,24 @@ function fixture(options={}){
    options.modify?.(row,continuity,n);
    return {stdout:JSON.stringify(continuity)+'\n'+JSON.stringify(row)+'\n'};
   }};
- const view={source,runId,resource,check(){}};
+ const continuityToken=Object.freeze({});let continuityCalls=0;
+ const checkContinuity=token=>{assert.equal(token,continuityToken);continuityCalls++;};
+ const view={source,runId,resource,check(){},checkContinuity};
  const imports={
   './task12-current259-document-role-provision.cjs':{claimCurrent259GeneratedDocumentRoles(r,h){
    assert.equal(r,completion);assert.equal(h,handle);assert.equal(claims++,0);
-   return Object.freeze({completion,ordinaryAclCompletion,ordinaryAcl,source,roles,check(){}});
+   return Object.freeze({completion,ordinaryAclCompletion,ordinaryAcl,source,roles,check(){},checkContinuity});
   },claimCurrent261GeneratedLifecycleDocumentRoles(r,h){
    assert.equal(options.lifecycle,true);assert.equal(r,completion);assert.equal(h,handle);assert.equal(claims++,0);
-   return Object.freeze({completion,ordinaryAclCompletion,ordinaryAcl,source,roles,check(){}});
+   return Object.freeze({completion,ordinaryAclCompletion,ordinaryAcl,source,roles,check(){},checkContinuity});
   }},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},
+   claimCurrent259TechnicalResourceContinuity(h,token){assert.equal(h,handle);checkContinuity(token);return view;},
    async closeCurrent259OwnedResource(h){assert.equal(h,handle);closed++;if(options.cleanupUnknown)throw Error('model cleanup');}}
  };
  const filename=path.join(__dirname,'task12-current259-document-acl-transport.cjs'),mod={exports:{}};
  new Function('require','module',fs.readFileSync(filename,'utf8'))(name=>imports[name]??require(name),mod);
- return {api:mod.exports,handle,completion,ordinaryAclCompletion,calls,closed:()=>closed};
+ return {api:mod.exports,continuityToken,continuityCalls:()=>continuityCalls,handle,completion,ordinaryAclCompletion,calls,closed:()=>closed};
 }
 test('executes the original renderer inside the same owned role scope and independently reads the commit',async()=>{
  const f=fixture(),result=await f.api.installCurrent259GeneratedDocumentAcl(f.completion,f.handle);
@@ -156,3 +159,5 @@ test('fixed DACL write detail survives a cleanup failure without claiming a comm
   assert.doesNotMatch(JSON.stringify(cause),/PRIVATE_SQL/u);return true;
  });assert.equal(f.calls.length,2);
 });
+
+test('ACL continuation propagates only its original capability through the original role lease',async()=>{const f=fixture();const result=await f.api.installCurrent259GeneratedDocumentAcl(f.completion,f.handle);const lease=f.api.claimCurrent259GeneratedDocumentAcl(result,f.handle);lease.checkContinuity(f.continuityToken);assert.ok(f.continuityCalls()>=2);assert.throws(()=>lease.checkContinuity({}));});

@@ -45,9 +45,9 @@ test('a later close wrapper or getter is never invoked and the actual FD closes 
   }
  }
 });
-function issuerFixture(){
+function issuerFixture(domain='payment'){
  const token=Object.freeze({}),handle=Object.freeze({});let calls=0;
- const main={filename:path.join(__dirname,'task16-current259-payment-run-authorization.cjs'),exports:Object.freeze({assertCurrent259PaymentBusinessContinuity(t,h){calls++;return t===token&&h===handle;}})};
+ const main={filename:path.join(__dirname,domain==='contract'?'task12-current261-local-lifecycle-once.cjs':'task16-current259-payment-run-authorization.cjs'),exports:Object.freeze({[domain==='contract'?'assertCurrent261ContractBusinessContinuity':'assertCurrent259PaymentBusinessContinuity'](t,h){calls++;return t===token&&h===handle;}})};
  const cache={[main.filename]:main},rq=name=>{assert.notEqual(name,'./task16-current259-payment-run-authorization.cjs');return require(name);};rq.main=main;rq.cache=cache;
  const module={exports:{}};
  new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-business-continuity.cjs'),'utf8'))(rq,module,__dirname);
@@ -97,4 +97,15 @@ for(const mutation of ['same-inode-bytes','same-inode-restored-mtime','renamed-i
  else{fs.renameSync(file,file+'.old');if(mutation==='symlink')fs.symlinkSync(file+'.old',file);else fs.copyFileSync(file+'.old',file);}
  let effects=0;const nextPublicOperation=()=>{checkCurrent259FileIdentity(file,identity);effects++;};
  assert.throws(nextPublicOperation,/CURRENT259_BUSINESS_CONTINUITY/u);assert.equal(effects,0);
+});
+
+test('the closed contract main has a separate validator and cannot authorize payment fault scenarios',()=>{
+ const f=issuerFixture('contract');f.api.captureCurrent261ContractBusinessIssuer();
+ assert.equal(f.api.assertCurrent259BusinessIssuer(f.token,f.handle),true);
+ assert.throws(()=>f.api.assertCurrent259CommitCancellationIssuer(f.token,f.handle));
+});
+test('the contract capture refuses payment main and caller supplied issuer parameters',()=>{
+ const f=issuerFixture();assert.throws(()=>f.api.captureCurrent261ContractBusinessIssuer());
+ const c=issuerFixture('contract');assert.throws(()=>c.api.captureCurrent261ContractBusinessIssuer(()=>true));
+ c.api.captureCurrent261ContractBusinessIssuer();assert.throws(()=>c.api.assertCurrent259BusinessIssuer(Object.freeze({kind:'CURRENT261_PRIVATE_BUSINESS_CONTINUITY'}),c.handle));
 });
