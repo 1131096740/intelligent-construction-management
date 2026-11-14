@@ -21,7 +21,7 @@ test('document ACL diagnostic projection carries only its closed SQLSTATE and fi
  let read=false;assert.equal(project({get sqlState(){read=true;return 'P0001';}}),undefined);assert.equal(read,false);
 });
 function fixture(){
- const build=Object.freeze({}),continuityToken=Object.freeze({}),readonlyPermit=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
+ const build=Object.freeze({}),builds=new Set([build]),continuityToken=Object.freeze({}),readonlyPermit=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:{ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24'}};
  const issuer=(token,handle)=>{assert.equal(token,continuityToken);assert.equal(handle,state.continuityHandle);};
  const loader=Object.freeze({check(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');},checkContinuity(token,handle){issuer(token,handle);state.metadataChecks=(state.metadataChecks??0)+1;if(!state.alive)throw new Error('STALE_METADATA');},verifyFull(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');if(state.fullInvalid)throw new Error('STALE_FULL_MATERIAL');},witness(){return {source,build:{trees:Array.from({length:5},(_,i)=>({root:String(i),digest:'d'.repeat(64)}))}};}});
@@ -48,7 +48,7 @@ function fixture(){
  };
  const entries={},fixed={
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer,checkCurrent259FileIdentity(file,identity){assert.ok(tools.has(file));assert.equal(identity.ctimeMs,5);}},
-  './task16-current259-client-loader.cjs':Object.freeze({loadCurrent259Client(handle){calls.push('load');if(handle!==build)throw new Error('CURRENT259_BUILD_HANDLE');return loader;}}),
+  './task16-current259-client-loader.cjs':Object.freeze({loadCurrent259Client(handle){calls.push('load');if(!builds.has(handle))throw new Error('CURRENT259_BUILD_HANDLE');return loader;}}),
   './enterprise-task01-resources.cjs':{async startTask01Postgres(options){calls.push('start');state.options=options;if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},async startCurrent259TechnicalPostgres(options){calls.push('technical-start');state.options=options;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},
    async startCurrent259FirstQ2LoopbackPostgres(options){
     calls.push('q2-start');state.options=options;
@@ -83,7 +83,7 @@ function fixture(){
  function privateRequire(name){if(Object.hasOwn(fixed,name)){const filename=privateRequire.resolve(name);entries[filename]||={exports:fixed[name],loaded:true};return entries[filename].exports;}if(name==='node:fs')return mockFs;if(name==='node:crypto')return mockCrypto;return require(name);}
  privateRequire.resolve=name=>path.join(__dirname,name);privateRequire.cache=entries;
  const instance={exports:{}};new Function('require','module','__dirname',fs.readFileSync(sourceFile,'utf8'))(privateRequire,instance,__dirname);
- return {api:instance.exports,build,continuityToken,readonlyPermit,calls,state,receipt,resource,loader,plan:{artifactsDir:'/private/tmp/model/run',daemonId:'synthetic-daemon-12345'}};
+ return {api:instance.exports,build,freshModeledBuild(){const b=Object.freeze({});builds.add(b);receipt.status='started-awaiting-driver-verification';receipt.cleanup={status:'pending'};state.alive=true;return b;},continuityToken,readonlyPermit,calls,state,receipt,resource,loader,plan:{artifactsDir:'/private/tmp/model/run',daemonId:'synthetic-daemon-12345'}};
 }
 test('a completed actual-shaped start owns one resource and the original loader only within its callback',async()=>{
  const f=fixture();let retained,view;
@@ -487,4 +487,26 @@ for(const [stderr,kind]of [["Error: No public port '5432/tcp' published for "+'7
 test('public published port first cause survives independent cleanup failure',async()=>{
  const f=publishedPortFactoryFixture({stderr:"Error: No public port '5432/tcp' published for "+'7'.repeat(64),cleanupFailure:true});let error;try{await f.run();}catch(e){error=e;}
  assert.equal(error.resourceReceipt.startupFailure.stage,'published-port-probe');assert.deepEqual(error.resourceReceipt.startupFailure.publishedPortFailure,{exitCode:1,stderrKind:'NO_PUBLIC_PORT'});assert.equal(error.resourceReceipt.failureCode,'TASK01_RESOURCE_COMMAND_FAILED');assert.equal(error.resourceReceipt.cleanup.status,'failed');assert.equal(f.state.portCalls,1);
+});
+
+test('budget observations bind only the same original error/result and copy finite resource facts after independent cleanup',async()=>{
+ const first=Object.assign(Error('FIRST_PRIVATE'),{code:'FIRST_PRIVATE'}),f=fixture();
+ Object.assign(f.receipt,{budgetReason:'EXECUTION_COMMAND_TIMEOUT',cleanupBudgetReason:'CLEANUP_TOTAL_TIMEOUT',budgetEvidenceWriteFailed:false});
+ f.state.closeFailure=true;let original;
+ await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,new AbortController().signal,()=>{throw first;}),e=>{original=e;return e===first&&e.resourceCleanup.status==='UNKNOWN';});
+ const r=f.api.describeCurrent259OwnedResourceBudget(original);assert.equal(r.budgetReason,'EXECUTION_COMMAND_TIMEOUT');assert.equal(r.cleanupBudgetReason,'CLEANUP_TOTAL_TIMEOUT');assert.equal(r.budgetObservation,'DURABLE_EVENT_RECORDED');
+ assert.equal(f.api.describeCurrent259OwnedResourceBudget({...first}),undefined);
+ const g=fixture(),value=Object.freeze({goal:'OPAQUE_RESULT'});Object.assign(g.receipt,{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:false});await g.api.withCurrent259TechnicalResource(g.build,g.plan,new AbortController().signal,()=>value);
+ assert.equal(g.api.describeCurrent259OwnedResourceBudget(value).budgetObservation,'UNKNOWN');
+});
+test('missing/write-failed/foreign/reused errors never borrow durable budget admission or invoke foreign accessors',async()=>{
+ const first=Error('SAME_ERROR'),f=fixture();Object.assign(f.receipt,{budgetReason:'EXECUTION_TOTAL_TIMEOUT',cleanupBudgetReason:null,budgetEvidenceWriteFailed:true});
+ await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,new AbortController().signal,()=>{throw first;}),e=>e===first);
+ assert.equal(f.api.describeCurrent259OwnedResourceBudget(first).budgetObservation,'UNKNOWN');
+ let traps=0;const foreign={};Object.defineProperty(foreign,'cause',{get(){traps++;return first;}});assert.equal(f.api.describeCurrent259OwnedResourceBudget(foreign),undefined);assert.equal(f.api.describeCurrent259OwnedResourceBudget(new Proxy({},{get(){traps++;}})),undefined);assert.equal(traps,0);
+ // The same private module observes a repeated Error from a second owned run: ambiguity tombstone.
+ f.state.closeFailure=false;const nextBuild=f.freshModeledBuild();
+ await assert.rejects(f.api.withCurrent259TechnicalResource(nextBuild,f.plan,new AbortController().signal,()=>{throw first;}),e=>e===first);
+ assert.equal(f.api.describeCurrent259OwnedResourceBudget(first),undefined);
+ assert.equal(f.api.describeCurrent259OwnedResourceBudget({code:'TASK01_RESOURCE_COMMAND_TIMEOUT'}),undefined);
 });

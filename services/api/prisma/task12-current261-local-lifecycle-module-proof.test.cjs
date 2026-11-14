@@ -42,3 +42,21 @@ test('auth transaction observer and filter share the same fixed module/functions
  let traps=0;const g=make(),verify=capture(g.root,g.cache);Object.defineProperty(g.modules[0],'exports',{get(){traps++;return{};}});assert.throws(verify,/MODULE_SOURCE/u);assert.equal(traps,0);
  const h=make();h.cache[h.modules[0].filename]=new Proxy(h.modules[0],{get(){traps++;}});assert.throws(()=>capture(h.root,h.cache),/MODULE_SOURCE/u);assert.equal(traps,0);
 });
+
+test('actual loader check and checkContinuity bodies reject auth descriptor mutations before root or material visits (port model, not full loader)',()=>{
+ const fs=require('node:fs'),cp=require('node:child_process'),file=path.join(__dirname,'task16-current259-client-loader.cjs');
+ const source=process.env.JG_TASK12_P2_LOADER_BASELINE==='1'?cp.execFileSync('git',['show','4c66040bf712e6a8833c666b7dcda71072bbb09f:services/api/prisma/task16-current259-client-loader.cjs'],{encoding:'utf8'}):fs.readFileSync(file,'utf8');
+ const checkSource=source.slice(source.indexOf(' function check(){'),source.indexOf(' function checkContinuity(')).trim(),continuitySource=source.slice(source.indexOf(' function checkContinuity('),source.indexOf(' function verifyBusinessFiles(')).trim();
+ for(const body of [checkSource,continuitySource])for(const target of ['cache-getter','exports-getter','module-proxy']){
+  const root='/private/tmp/actual-loader-check-body-model',cache={},names=['database/task12-auth-transaction-phase.js','auth/auth-rate-limit.service.js','database/task12-auth-error-diagnostic.js'],modules=names.map(name=>({filename:path.join(root,'services/api/dist',name),loaded:true,exports:{},children:[]}));
+  modules[0].exports={observeTask12AuthTransaction(){},takeTask12AuthTransactionPhase(){}};modules[1].children=[modules[0]];modules[2].children=[modules[0]];for(const m of modules)cache[m.filename]=m;
+  const verify=require('./task12-current261-local-lifecycle-module-proof.cjs').captureCurrent261AuthTransactionClosure(root,cache),calls=[];let traps=0;
+  const context={failed:false,loading:false,coreHooksUnmodified:()=>true,Module:{_load:1},hooks:{load:1},hooksMatch:()=>true,businessIssuer(){calls.push('issuer');},checkAuthTransactionClosure:verify,
+   material:{checkLight(){calls.push('material');},checkContinuity(){calls.push('material');}},need(ok){if(!ok)throw Error('MODEL_REJECT');},require:{cache},files:new Map(modules.map(m=>[m.filename,{path:m.filename,module:m,exports:m.exports}])),roots:[modules[0]],
+   visitRoots(){calls.push('visit');void cache[modules[0].filename].exports;throw Error('MODEL_END_OF_ROOT_VISIT');}};
+  if(target==='cache-getter')Object.defineProperty(cache,modules[0].filename,{get(){traps++;return modules[0];}});
+  if(target==='exports-getter')Object.defineProperty(modules[0],'exports',{get(){traps++;return{};}});
+  if(target==='module-proxy')cache[modules[0].filename]=new Proxy(modules[0],{get(){traps++;throw Error('TRAP');}});
+  const check=new Function('context','with(context){return ('+body+');}')(context);assert.throws(()=>check({},{}),e=>e.code==='CURRENT259_LOADER_CHANGED');assert.equal(traps,0,target);assert.ok(!calls.includes('material')&&!calls.includes('visit'));
+ }
+});

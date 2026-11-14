@@ -209,8 +209,11 @@ function safeCleanup(cause,scopeEntered){
 
 async function main(){
  let authOnly=false,attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
- let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure;
- const controller=new AbortController(),abort=()=>controller.abort();
+ let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure,receivedSignal=null,signalEvidenceWriteFailed=false,signalsArmed=false,recordSignal,describeOwnedBudget,budgetObservation;
+ const observeBudget=value=>{try{return typeof describeOwnedBudget==='function'?describeOwnedBudget(value):undefined;}catch{return undefined;}};
+ const controller=new AbortController();
+ const onSignal=name=>{receivedSignal??=name;try{recordSignal?.(name);}catch{signalEvidenceWriteFailed=true;}controller.abort();};
+ const onSigint=()=>onSignal('SIGINT'),onSigterm=()=>onSignal('SIGTERM');
  try{
   need(FRESH,'FRESH');
   const args=parseArgs(process.argv.slice(2));authOnly=args.authOnly;
@@ -225,7 +228,8 @@ async function main(){
   checked.check();
 
   const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
-  const {withCurrent259FirstQ2LoopbackResource,claimCurrent259TechnicalResource}=require('./task16-current259-owned-resource.cjs');
+  const {withCurrent259FirstQ2LoopbackResource,claimCurrent259TechnicalResource,describeCurrent259OwnedResourceBudget}=require('./task16-current259-owned-resource.cjs');
+  describeOwnedBudget=describeCurrent259OwnedResourceBudget;
   const {captureCurrent261ContractBusinessIssuer,captureCurrent261FirstLoginBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
   (authOnly?captureCurrent261FirstLoginBusinessIssuer:captureCurrent261ContractBusinessIssuer)();
   const {createCurrent259TechnicalMigration,createCurrent261AuthOnlyDiagnosticBootstrap,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
@@ -246,13 +250,14 @@ async function main(){
    withCurrent261LocalLifecyclePublicApplication,projectCurrent261LocalLifecycleOutcome,describeCurrent261LocalLifecycleHttpFailure,describeCurrent261DocumentAclFailure]
    .every(fn=>typeof fn==='function'),'DEPENDENCIES');
 
-  process.once('SIGINT',abort);process.once('SIGTERM',abort);
+  recordSignal=name=>writeExclusive(path.join(plan.run.root,'received-'+name+'.json'),Buffer.from(JSON.stringify({status:'RECEIVED_PROCESS_SIGNAL',receivedSignal:name,planSha256:checked.sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id,runtimeSha256})+'\n'));
+  process.once('SIGINT',onSigint);process.once('SIGTERM',onSigterm);signalsArmed=true;
   phase='ATTEMPT';
   need(!controller.signal.aborted&&fs.readdirSync(plan.run.root).length===0,'ATTEMPT_USED');
   const coordinates={planSha256:checked.sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id,runtimeSha256};
   const marker=Buffer.from(JSON.stringify({status:'CONSUMED',...coordinates})+'\n');
   writeReceipt=(status,proof)=>{
-   const receipt={status,phase,...coordinates,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
+   const receipt={status,phase,...coordinates,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
    try{writeExclusive(plan.run.receiptFile,Buffer.from(JSON.stringify(receipt)+'\n'));}
    catch{throw fault('RECEIPT');}
    return receipt;
@@ -355,11 +360,11 @@ async function main(){
     phase='RESOURCE_CLEANUP';
     return result;
    });
-  cleanup='CLOSED';phase='COMPLETE';check();
+  budgetObservation=observeBudget(outcome);cleanup='CLOSED';phase='COMPLETE';check();
   need(scopeEntered&&outcome,'RESULT');
   return writeReceipt(authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_COMPLETE':'CURRENT261_LOCAL_LIFECYCLE_PROTOCOL_COMPLETE',{outcome});
  }catch(cause){
-  process.exitCode=1;
+  budgetObservation=observeBudget(cause);process.exitCode=1;
   if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
   const primary=firstFailure?.cause??cause,reason=safeReason(primary);
   const proof={...(reason?{reason}:{}),...(firstFailure?{failurePhase:firstFailure.phase}:{}),
@@ -376,11 +381,11 @@ async function main(){
    try{return writeReceipt(authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',{attempted,...proof});}
    catch{receiptWriteFailed=true;}
   }
-  return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,...proof,
+  return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...proof,
    ...(receiptWriteFailed?{receiptWriteFailed:true}:{})};
  }finally{
   controller.abort();
-  process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);
+  process.removeListener('SIGINT',onSigint);process.removeListener('SIGTERM',onSigterm);
  }
 }
 module.exports=Object.freeze({assertCurrent261ContractBusinessContinuity,assertCurrent261FirstLoginBusinessContinuity});

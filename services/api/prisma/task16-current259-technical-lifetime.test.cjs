@@ -89,7 +89,7 @@ test('the fixed first-rollback starter claims its own transport without arbitrar
  assert.equal(f.receipts[0].limits.totalDeadlineMs,3600000);
 });
 
-function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false,lifecycle=false,authOnly=false,privateScopeError}={}){
+function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false,lifecycle=false,authOnly=false,privateScopeError,budgetModel=false}={}){
  if(lifecycle)save=true;
  const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream'),crypto=require('node:crypto');
  const docker='/Applications/Docker.app/Contents/Resources/bin/docker';
@@ -97,7 +97,9 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
  const networkId='d'.repeat(64),containerId='c'.repeat(64),name='jg-task01-'+config.runId;
  const database='jg_task01_'+config.runId.replaceAll('-','');
  const labels={'io.jiangkong.task01.run':config.runId,'io.jiangkong.task01.task':'enterprise-task01','io.jiangkong.task01.source':config.sourceSha};
- const files=new Map(),written=new Map(),calls=[];
+ const files=new Map(),written=new Map(),calls=[],fsyncEvents=[],fdPaths=new Map();let nextFd=100,clock=Date.now(),expireOnce=false,cleanupAdvance=0,budgetWriteFailure=false;
+ const ModelDate=class extends Date{static now(){return clock;}};
+ const timer=(fn,ms)=>{if(budgetModel&&expireOnce&&ms!==3000&&ms!==1000){expireOnce=false;fn();return undefined;}return setTimeout(fn,ms);};
  const owner='jg_task01_owner',logins=['jg_fixture_app_'+'1'.repeat(24),'jg_c259_outside_issuer_login','jg_c259_outside_executor_login',
   'jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
  const fixedRoles=[owner,'jg_task01_runtime','jg_task01_observer'],documentRoles=['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue'];
@@ -120,10 +122,10 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
  let appliedHbaSha;
  const fileStat={uid:process.getuid(),mode:0o100600,isFile:()=>true,isSymbolicLink:()=>false};
  const dirStat={...fileStat,mode:0o40700,isDirectory:()=>true};
- const fsModel={constants:{X_OK:1},realpathSync:v=>v,statSync:()=>fileStat,lstatSync:v=>files.has(v)?fileStat:dirStat,
+ const fsModel={constants:{...fs.constants,X_OK:1},realpathSync:v=>v,statSync:()=>fileStat,lstatSync:v=>files.has(v)?fileStat:dirStat,
   existsSync:v=>files.has(v),accessSync(){},mkdirSync(){},chmodSync(){},rmdirSync(){},
   renameSync(from,to){files.set(to,files.get(from));files.delete(from);},unlinkSync(v){files.delete(v);},
-  readFileSync:v=>Buffer.from(files.get(v)),writeFileSync(v,b){files.set(v,b);written.set(v,b);}};
+  readFileSync:v=>Buffer.from(files.get(v)),openSync(v,flags){if(budgetWriteFailure&&v.endsWith('budget-event.json'))throw Error('MODEL_EVENT_WRITE_FAILED');if(flags&fs.constants.O_EXCL)assert.equal(files.has(v),false);const fd=nextFd++;fdPaths.set(fd,v);return fd;},closeSync(fd){fdPaths.delete(fd);},fsyncSync(fd){fsyncEvents.push(fdPaths.get(fd)===config.artifactsDir?'directory':'file');},writeFileSync(v,b){if(typeof v==='number')v=fdPaths.get(v);files.set(v,b);written.set(v,b);if(cleanupAdvance&&v.endsWith('resource-manifest.pending')&&JSON.parse(String(b)).cleanup.status==='running'){clock+=cleanupAdvance;cleanupAdvance=0;}}};
  let network=false,container=false,running=false,relayOpen=false,log='',tmpfs={},logReadFailure=false,relayFailure,ownerSqlFailure;
  const output=(args,tool,input)=>{
   if(tool!==docker){
@@ -198,7 +200,7 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   }
  };
  function spawn(tool,args){
-  const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin=new PassThrough();
+  const child=new EventEmitter();child.kill=()=>true;child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin=new PassThrough();
   let input='';child.stdin.on('data',chunk=>{input+=chunk.toString();});
   queueMicrotask(()=>{
    const [status,text,err]=output(args,tool,input);
@@ -264,12 +266,12 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
    assert.ok(!authOnly&&lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
   },assertCurrent261FirstLoginScope(proof,handle){assert.ok(authOnly&&lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);}}}:{})};
  const holder={exports:{}};
- new Function('require','module',fs.readFileSync(source,'utf8'))(id=>imports[id]??require(id),holder);
+ new Function('require','module','setTimeout','Date',fs.readFileSync(source,'utf8'))(id=>imports[id]??require(id),holder,budgetModel?timer:setTimeout,budgetModel?ModelDate:Date);
  const logRejection=peer=>{
   log+=`2026-11-12T03:00:00.000000001Z 2026-11-12 03:00:00.000 UTC [40] user=${logins[0]} db=${database} FATAL:  pg_hba.conf rejects connection for host "${peer}", user "${logins[0]}", database "${database}", no encryption\n`;
  };
  return {start:extra=>holder.exports[firstQ2?'startCurrent259FirstQ2LoopbackPostgres':starter]({...config,...extra}),
-  written,calls,config,networkId,containerId,database,logRejection,docHandle,docProof,documentProbes,documentRenders,failLogRead:()=>{logReadFailure=true;},failRelay:error=>{relayFailure=error;},failOwnerSql:detail=>{ownerSqlFailure=detail;}};
+  written,calls,config,networkId,containerId,database,fsyncEvents,failBudgetEventWrite(){budgetWriteFailure=true;},expireCommand(advance=0,cleanup=false){expireOnce=true;if(cleanup)cleanupAdvance=advance;else clock+=advance;},advance(ms){clock+=ms;},logRejection,docHandle,docProof,documentProbes,documentRenders,failLogRead:()=>{logReadFailure=true;},failRelay:error=>{relayFailure=error;},failOwnerSql:detail=>{ownerSqlFailure=detail;}};
 }
 
 test('first-rollback startup checks no Docker publish, validates TLS and HBA, and joins relay and Docker cleanup',async()=>{
@@ -671,4 +673,22 @@ test('auth-only HBA dispatches only its private scope while preserving original 
  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,hostile),/DOCUMENT_HBA_SCOPE/u);assert.equal(getters,0);
  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,{...f.docProof}),/DOCUMENT_HBA_SCOPE/u);
  const hba=await resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof);assert.equal(hba.rules,13);assert.equal(hba.installation,'ARCHIVE261_REGISTERED_SEVEN');assert.equal(f.documentProbes.length,4);await resource.close();
+});
+
+// Actual original private run() timer/guard through resource API; clocks and children are ports, never PG.
+for(const [phase,total,expected]of [['execution',false,'EXECUTION_COMMAND_TIMEOUT'],['execution',true,'EXECUTION_TOTAL_TIMEOUT'],['cleanup',false,'CLEANUP_COMMAND_TIMEOUT'],['cleanup',true,'CLEANUP_TOTAL_TIMEOUT']])test('resource actual selected '+phase+' '+(total?'total':'command')+' timer records a separate durable finite budget event',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true,budgetModel:true}),resource=await f.start();assert.equal(resource.getReceipt().budgetReason,null);assert.equal(resource.getReceipt().cleanupBudgetReason,null);
+ f.expireCommand(total?(phase==='cleanup'?59999:3599999):0,phase==='cleanup');
+ await assert.rejects(phase==='cleanup'?resource.close():resource.inspectConnectionEndpoint());
+ const receipt=resource.getReceipt(),field=phase==='cleanup'?'cleanupBudgetReason':'budgetReason';assert.equal(receipt[field],expected);assert.equal(receipt.budgetEvidenceWriteFailed,false);
+ const file=f.config.artifactsDir+(phase==='cleanup'?'/resource-cleanup-budget-event.json':'/resource-budget-event.json'),event=JSON.parse(String(f.written.get(file)));assert.equal(event.budgetReason,expected);assert.equal(event.phase,phase.toUpperCase());assert.ok(f.fsyncEvents.some((v,i)=>v==='file'&&f.fsyncEvents[i+1]==='directory'));
+ if(phase!=='cleanup')await resource.close();
+});
+test('resource normal failure does not invent a budget event, but actual exhausted guard records its own bound',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true,budgetModel:true}),resource=await f.start();f.advance(3600001);await assert.rejects(resource.inspectConnectionEndpoint());assert.equal(resource.getReceipt().budgetReason,'EXECUTION_TOTAL_EXHAUSTED');await resource.close();
+});
+
+test('actual budget event IO failure keeps the original command failure and explicitly leaves evidence UNKNOWN',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true,budgetModel:true}),resource=await f.start();f.failBudgetEventWrite();f.expireCommand();
+ await assert.rejects(resource.inspectConnectionEndpoint(),{code:'TASK01_RESOURCE_COMMAND_TIMEOUT'});const r=resource.getReceipt();assert.equal(r.budgetReason,'EXECUTION_COMMAND_TIMEOUT');assert.equal(r.budgetEvidenceWriteFailed,true);assert.equal(f.written.has(f.config.artifactsDir+'/resource-budget-event.json'),false);await resource.close();
 });

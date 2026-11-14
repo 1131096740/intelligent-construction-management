@@ -412,6 +412,7 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
   const receipt = {
     runId, sourceSha, endpoint, daemonId, imageId, databaseName,
     ...(technical ? { purpose: TECHNICAL_PURPOSE } : {}),
+    budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:false,
     phase: "preparing", status: "preparing", containerName: name, containerId: null, networkId: null, port: null, attempts: { network: false, container: false },
     volumes: [], limits: { cpu: 2, memoryBytes: 1073741824, pids: 256, pgdataBytes: 536870912, totalDeadlineMs: deadlineMs },
     tls: null, requestedCertificateMode: "correct", reloadState: "not-requested", presentedCertificate: null,
@@ -431,10 +432,25 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
     fs.writeFileSync(file, contents, { flag: "wx", mode: 0o600 });
     files.add(file);
   }
+  // Record only a bound actually selected by run()'s existing timer/guard.
+  // Event IO cannot change the original command error or its cleanup result.
+  function recordBudget(reason,cleanup){
+    const field=cleanup?'cleanupBudgetReason':'budgetReason';if(receipt[field]!==null)return;
+    receipt[field]=reason;
+    try{
+      const file=path.join(artifactsDir,cleanup?'resource-cleanup-budget-event.json':'resource-budget-event.json');
+      const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
+      try{fs.writeFileSync(fd,JSON.stringify({status:'RESOURCE_BUDGET_EVENT',phase:cleanup?'CLEANUP':'EXECUTION',budgetReason:reason,runId,sourceSha})+'\n');fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+      const directory=fs.openSync(artifactsDir,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
+      try{fs.fsyncSync(directory);}finally{fs.closeSync(directory);}
+    }catch{receipt.budgetEvidenceWriteFailed=true;}
+  }
   const clientEnvironment = { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", TZ: "UTC", DOCKER_CONFIG: dockerConfig };
 
   function run(executable, args, { input, timeoutMs = 60000, cleanup = false, allowFailure = false, deadline = Infinity } = {}) {
-    const remaining = Math.min(cleanup ? cleanupEndAt : endAt, deadline) - Date.now();
+    const totalEnd=cleanup?cleanupEndAt:endAt,selectedEnd=Math.min(totalEnd,deadline),remaining=selectedEnd-Date.now();
+    const prefix=cleanup?'CLEANUP_':'EXECUTION_',bound=totalEnd<=deadline?'TOTAL':'OPERATION';
+    if(remaining<=0)recordBudget(prefix+bound+'_EXHAUSTED',cleanup);
     if (remaining <= 0 || !cleanup && signal?.aborted) return Promise.reject(fault(cleanup ? "TASK01_RESOURCE_CLEANUP_TIMEOUT" : "TASK01_RESOURCE_ABORTED_OR_TIMEOUT"));
     return new Promise((resolve, reject) => {
       const child = spawn(executable, args, { env: clientEnvironment, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
@@ -443,6 +459,7 @@ async function prepareTask01Postgres(options = {}, lifetime, identityScope) {
       let bytes = 0, stopped = null, commandKind = null, killTimer;
       const stop = (code, kind) => {
         if (stopped) return;
+        if(kind==='timeout')recordBudget(prefix+(timeoutMs<remaining?'COMMAND':bound)+'_TIMEOUT',cleanup);
         stopped = code;
         commandKind = kind;
         child.kill("SIGTERM");

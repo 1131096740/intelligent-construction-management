@@ -41,6 +41,22 @@ const DOCUMENT_HBA_METHOD='applyCurrent259DocumentHbaV1';
 const FIELDS=['containerId','networkId','port','databaseName','caPath','wrongCaPath','serverCertHashes'];
 const TLS_KEYS=['caSha256','wrongCaSha256','correctCertificateSha256','wrongSanCertificateSha256','correctCertificateDerSha256','wrongSanCertificateDerSha256'];
 const handles=new WeakMap(),closedHandles=new WeakMap(),usedBuilds=new WeakSet();
+// These observations never authorize a handle or a consumer. Reused identities
+// become permanently ambiguous instead of borrowing an older run's event.
+const budgetObservations=new WeakMap();
+const budgetReasons=new Set(['EXECUTION_COMMAND_TIMEOUT','EXECUTION_TOTAL_TIMEOUT','EXECUTION_OPERATION_TIMEOUT','EXECUTION_TOTAL_EXHAUSTED','EXECUTION_OPERATION_EXHAUSTED','CLEANUP_COMMAND_TIMEOUT','CLEANUP_TOTAL_TIMEOUT','CLEANUP_OPERATION_TIMEOUT','CLEANUP_TOTAL_EXHAUSTED','CLEANUP_OPERATION_EXHAUSTED']);
+const optionalBudget=(v,k)=>v&&typeof v==='object'&&!types.isProxy(v)?Object.getOwnPropertyDescriptor(v,k)?.value:undefined;
+function copyBudgetReceipt(receipt){
+ const budgetReason=optionalBudget(receipt,'budgetReason'),cleanupBudgetReason=optionalBudget(receipt,'cleanupBudgetReason'),budgetEvidenceWriteFailed=optionalBudget(receipt,'budgetEvidenceWriteFailed');
+ if(![budgetReason,cleanupBudgetReason].every(v=>v===null||budgetReasons.has(v))||typeof budgetEvidenceWriteFailed!=='boolean')return;
+ return Object.freeze({budgetReason,cleanupBudgetReason,budgetEvidenceWriteFailed,budgetObservation:!budgetEvidenceWriteFailed&&(budgetReason!==null||cleanupBudgetReason!==null)?'DURABLE_EVENT_RECORDED':'UNKNOWN'});
+}
+function describeCurrent259OwnedResourceBudget(value){
+ const seen=new WeakSet();
+ for(let n=0;n<8&&value&&typeof value==='object'&&!types.isProxy(value)&&!seen.has(value);n++,value=optionalBudget(value,'cause')){
+  seen.add(value);if(budgetObservations.has(value))return budgetObservations.get(value)||undefined;
+ }
+}
 const fail=code=>Object.assign(new Error(code),{code});
 const need=(ok,code)=>{if(!ok)throw fail(code);};
 function own(value,key){need(value&&!types.isProxy(value),'CURRENT259_RESOURCE_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'),'CURRENT259_RESOURCE_DESCRIPTOR');return d.value;}
@@ -205,6 +221,16 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical,t
   }
   invalidate();
  }
+ try{
+  const key=hasPrimary?primary:value;
+  if(key&&typeof key==='object'&&!types.isProxy(key)){
+   if(budgetObservations.has(key))budgetObservations.set(key,false);
+   else{
+    budgetObservations.set(key,false);
+    if(typeof methods?.getReceipt==='function'){const observed=copyBudgetReceipt(methods.getReceipt.call(resource));budgetObservations.set(key,observed??false);}
+   }
+  }
+ }catch{/* Diagnostics cannot replace the original error, result or cleanup. */}
  if(hasPrimary)throw primary;return value;
 }
 async function withCurrent259OwnedResource(build,plan,signal,consume){
@@ -263,4 +289,4 @@ function claimCurrent259TechnicalResourceContinuity(handle,token){
  businessIssuer(token,handle);need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
  const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.view.checkLifetime();return owner.view;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259ReadonlyRelayResource,withCurrent259Identity261Resource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259VoucherResource,withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});
+module.exports=Object.freeze({describeCurrent259OwnedResourceBudget,withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259ReadonlyRelayResource,withCurrent259Identity261Resource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259VoucherResource,withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});

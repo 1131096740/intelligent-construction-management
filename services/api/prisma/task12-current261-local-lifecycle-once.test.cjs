@@ -254,3 +254,20 @@ test('auth-only HOLD performs no attempt and a failed request retains its indepe
  const observation=Object.freeze({authObserved:true,httpReturned:false,effects:Object.freeze({actorLastLogin:1,actorRefresh:0}),ownerClosed:true,full394Accepted:false}),first=Object.assign(Error('model-first-auth'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'});
  const f=model(t,{authOnly:true,applicationFailure:first,authOwnerObservation:observation}),r=await f.result();assert.equal(r.status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED');assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.businessOutcome,'UNKNOWN');assert.deepEqual(r.authOwnerObservation,observation);assert.equal(r.full394Accepted,false);assert.equal(r.outcome,undefined);assert.equal(f.calls.filter(v=>v==='application').length,1);
 });
+
+for(const receivedSignal of ['SIGINT','SIGTERM'])test('actual '+receivedSignal+' handler persists its independent finite event with durable file and directory boundary',async t=>{
+ const fsyncEvents=[],first=Object.assign(Error('CONTROLLED_FIRST'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),f=model(t,{authOnly:true,signalDuringApplication:receivedSignal,applicationFailure:first,fsyncEvents}),r=await f.result();
+ assert.equal(r.receivedSignal,receivedSignal);assert.equal(r.signalEvidenceWriteFailed,false);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.full394Accepted,false);
+ const file=path.join(f.plan.run.root,'received-'+receivedSignal+'.json'),event=JSON.parse(fs.readFileSync(file));assert.equal(event.receivedSignal,receivedSignal);assert.equal(event.status,'RECEIVED_PROCESS_SIGNAL');assert.equal(fs.statSync(file).mode&0o777,0o600);
+ assert.ok(fsyncEvents.some((kind,i)=>kind==='file'&&fsyncEvents[i+1]==='directory'));
+});
+test('signal evidence collision cannot overwrite a file or replace the original first error',async t=>{
+ const first=Object.assign(Error('CONTROLLED_FIRST'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),f=model(t,{authOnly:true,signalDuringApplication:'SIGTERM',applicationFailure:first,signalEvidenceCollision:true}),r=await f.result();
+ assert.equal(r.receivedSignal,'SIGTERM');assert.equal(r.signalEvidenceWriteFailed,true);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(fs.readFileSync(path.join(f.plan.run.root,'received-SIGTERM.json'),'utf8'),'ORIGINAL_EVENT');
+});
+
+test('actual resource budget observation is separate from original first error, postcheck and cleanup-secondary outcome',async t=>{
+ const first=Object.assign(Error('MODEL_FIRST_500'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),budgetEvidence=Object.freeze({budgetReason:null,cleanupBudgetReason:'CLEANUP_COMMAND_TIMEOUT',budgetEvidenceWriteFailed:false,budgetObservation:'DURABLE_EVENT_RECORDED'});
+ const f=model(t,{authOnly:true,applicationFailure:first,cleanupFailure:true,budgetEvidence}),r=await f.result();assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.cleanup,'UNKNOWN');assert.equal(r.cleanupBudgetReason,'CLEANUP_COMMAND_TIMEOUT');assert.equal(r.budgetReason,null);assert.equal(r.receivedSignal,null);assert.equal(r.budgetObservation,'DURABLE_EVENT_RECORDED');
+ const g=model(t,{authOnly:true,applicationFailure:first}),normal=await g.result();assert.equal(normal.budgetObservation,'UNKNOWN');assert.equal(normal.budgetReason,null);assert.equal(normal.receivedSignal,null);
+});

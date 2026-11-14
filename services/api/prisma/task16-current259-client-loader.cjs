@@ -164,10 +164,11 @@ function loadCurrent259Client(handle){
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
- let contract,document,lifeDocument,ordinaryTestingUsed=false;
+ let contract,document,lifeDocument,ordinaryTestingUsed=false,checkAuthTransactionClosure;
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
+   checkAuthTransactionClosure?.();
    material.checkLight();visitRoots();
    for(const row of files.values())need(require.cache[row.path]===row.module&&row.module.exports===row.exports,'CURRENT259_LOADER_MODULE');
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2'&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine,'CURRENT259_LOADER_CLASS');
@@ -182,6 +183,7 @@ function loadCurrent259Client(handle){
   try{
    businessIssuer(token,ownedHandle);
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
+   checkAuthTransactionClosure?.();
    material.checkContinuity(token,ownedHandle);
    const seen=new Set();
    const visitIdentity=mod=>{if(seen.has(mod))return;seen.add(mod);const row=files.get(mod?.filename);
@@ -311,7 +313,14 @@ function loadCurrent259Client(handle){
      documentValues[key]=value;
     }
    }
-   const checkAuthTransactionClosure=require('./task12-current261-local-lifecycle-module-proof.cjs').captureCurrent261AuthTransactionClosure(root,require.cache);
+   const authCacheDescriptor=Object.freeze({...Object.getOwnPropertyDescriptor(require,'cache')});
+   need(Object.hasOwn(authCacheDescriptor,'value')&&authCacheDescriptor.value&&!types.isProxy(authCacheDescriptor.value),code);
+   const verifyAuthClosure=require('./task12-current261-local-lifecycle-module-proof.cjs').captureCurrent261AuthTransactionClosure(root,authCacheDescriptor.value);
+   checkAuthTransactionClosure=()=>{
+    const now=Object.getOwnPropertyDescriptor(require,'cache');
+    need(now&&['value','writable','enumerable','configurable'].every(key=>now[key]===authCacheDescriptor[key]),code);
+    verifyAuthClosure();
+   };
    const {Task12GeneratedDocumentApplicationModule:rootClass,ContractModule,ContractTemplateModule,
     ContractTemplateController,ContractTemplateService,ContractScenarioService,LayoutTemplateService,
     ContractDocumentWorkerModule,ContractDocumentProcessor,ContractDocumentModule,ContractDocumentService,
