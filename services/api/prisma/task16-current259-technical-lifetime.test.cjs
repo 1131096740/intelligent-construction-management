@@ -242,7 +242,8 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   return {port:43125,check(){assert.equal(relayOpen,true);if(relayFailure)throw relayFailure;},
    beginPrismaDrain(){assert.equal(relayOpen,true);calls.push(['relay-drain-open']);
     if(mode==='document-drain-active')throw Object.assign(Error('MODEL_OUTER_DRAIN_ACTIVE'),{code:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_ACTIVE'});
-    documentDrainPending=true;return async()=>{
+    documentDrainPending=true;return async function(){
+    assert.equal(arguments.length,0);
     calls.push(['relay-drain-wait']);if(relayFailure)throw relayFailure;
     if(mode==='document-drain-hung')await new Promise(()=>{});
     if(mode==='document-drain-budget')await new Promise(resolve=>setTimeout(resolve,1500));
@@ -652,4 +653,14 @@ test('document HBA rejects active windows, worker faults and hung joins within t
   // deadline rejects it; resetting a second 2000ms budget would wrongly pass.
   await resource.close();
  }
+});
+
+test('lifecycle certificate metadata is not published until its complete relay worker cohort joins',async()=>{
+ const f=rollbackResourceModel('document-drain-ordered',{firstQ2:true,document:true,lifecycle:true}),resource=await f.start();
+ await resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof);
+ const before=f.calls.filter(row=>row[0]==='relay-drain-joined').length;
+ const certificate=await resource.observePresentedCertificate('correct');
+ assert.equal(certificate.mode,'correct');assert.equal(f.calls.filter(row=>row[0]==='relay-drain-joined').length,before+1);
+ assert.deepEqual(f.calls.filter(row=>String(row[0]).startsWith('relay-drain')).slice(-3),[['relay-drain-open'],['relay-drain-wait'],['relay-drain-joined']]);
+ await resource.close();
 });
