@@ -2,6 +2,8 @@
 // Explicit post-build component only. Real sealed loader/Nest composition with
 // opaque DB/storage ports; no SDK instance/connect/init/listen/PG/business brand.
 const {test}=require('node:test'),assert=require('node:assert/strict');
+const {execFile}=require('node:child_process'),{promisify}=require('node:util');
+const runChild=promisify(execFile);
 const {observeCurrent259Build}=require('./task16-current259-build.cjs');
 const {loadCurrent259Client,createCurrent259OwnedApplication,current259OwnedApplicationView,inspectCurrent259OwnedDocumentAuthProviders}=require('./task16-current259-client-loader.cjs');
 const frameworkChanged={code:'CURRENT259_FRAMEWORK_CHANGED',message:'CURRENT259_FRAMEWORK_CHANGED'};
@@ -25,13 +27,12 @@ async function withObservedScope(use){
   return await use({application,testing,view,server,proof});
  }finally{await view.close();}
 }
-test('a fresh owned loader rejects a wrong server before sticky checks deny its real server',async()=>{
+const cases={wrongServer:async()=>{
  await withObservedScope(({application,testing,server})=>{
   assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,{}),frameworkChanged);
   assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),loaderChanged);
  });
-});
-test('a separate fresh owned loader rejects a shadow AUTH receiver and remains failed after restoration',async()=>{
+},shadow:async()=>{
  await withObservedScope(({application,testing,server,proof})=>{
   Object.defineProperty(proof.auth,'login',{value(){},configurable:true});
   try{
@@ -40,10 +41,22 @@ test('a separate fresh owned loader rejects a shadow AUTH receiver and remains f
   }finally{delete proof.auth.login;}
   assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),loaderChanged);
  });
-});
-test('an independently fresh unpoisoned scope rejects inspection after its original close',async()=>{
+},closed:async()=>{
  const {application,testing,server}=await withObservedScope(scope=>scope);
  // This first rejection is closed-owner identity, not another negative's latch.
  assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),frameworkChanged);
  assert.throws(()=>inspectCurrent259OwnedDocumentAuthProviders(application,testing,server),loaderChanged);
-});
+}};
+const childCase=process.env.JG_TASK12_AUTH_OBSERVED_CASE;
+if(childCase!==undefined){
+ assert.ok(Object.hasOwn(cases,childCase),'Only a fixed observed component case may run');
+ test('isolated observed AUTH '+childCase,cases[childCase]);
+}else{
+ for(const name of Object.keys(cases))test('fresh-process observed AUTH '+name,async()=>{
+  // A fresh handle in the same Node graph is rightly PRELOADED. Isolate the
+  // entire process instead; never delete require.cache or relax the original gate.
+  const env={...process.env,JG_TASK12_AUTH_OBSERVED_CASE:name};delete env.NODE_TEST_CONTEXT;
+  const output=await runChild(process.execPath,[__filename],{env,encoding:'utf8',timeout:45000,maxBuffer:1024*1024});
+  assert.equal(output.stderr,'');assert.match(output.stdout,/# tests 1\b/u);assert.match(output.stdout,/# pass 1\b/u);assert.match(output.stdout,/# fail 0\b/u);
+ });
+}
