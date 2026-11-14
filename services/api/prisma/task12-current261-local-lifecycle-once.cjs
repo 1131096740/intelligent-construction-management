@@ -244,6 +244,7 @@ function captureAuthRoleFailureProjector(namespace,read,checkFile){
 
 async function main(){
  let authOnly=false,attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
+ let rememberControllerFirstFailure,recordFirstFailure,firstFailureObservation='UNKNOWN',firstFailureEvidenceWriteFailed=null;
  let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure,receivedSignal=null,signalEvidenceWriteFailed=false,signalsArmed=false,recordSignal,describeOwnedBudget,budgetObservation;
  const observeBudget=value=>{try{return typeof describeOwnedBudget==='function'?describeOwnedBudget(value):undefined;}catch{return undefined;}};
  const controller=new AbortController();
@@ -260,6 +261,27 @@ async function main(){
   need(plan.purpose===(authOnly?'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC':'CURRENT261_GENERATED_LIFECYCLE_LOCAL'),'RUNTIME');
   need(checked.sha256===args.digest&&SHA.test(runtimeSha256)&&checked.runtime&&typeof checked.runtime==='object','RUNTIME');
   if(!args.once)return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_HOLD':'CURRENT261_LOCAL_LIFECYCLE_HOLD',planSha256:checked.sha256,runtimeSha256,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{})};
+  // Only an original verified, initially unused run root can receive this
+  // fixed evidence file. It grants no authority and never touches an old run.
+  try{
+   const root=plan.run.root,identity=fs.lstatSync(root,{bigint:true});
+   need(fs.realpathSync(root)===root&&identity.isDirectory()&&!identity.isSymbolicLink()&&identity.uid===BigInt(require('node:process').getuid())&&(identity.mode&0o7777n)===0o700n&&fs.readdirSync(root).length===0,'FIRST_FAILURE');
+   const coordinates=Object.freeze({planSha256:checked.sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id,runtimeSha256});
+   recordFirstFailure=()=>{
+    const now=fs.lstatSync(root,{bigint:true});
+    need(fs.realpathSync(root)===root&&!now.isSymbolicLink()&&['dev','ino','mode','uid','gid'].every(k=>now[k]===identity[k]),'FIRST_FAILURE');
+    writeExclusive(path.join(root,'first-failure.json'),Buffer.from(JSON.stringify({status:'FIRST_FAILURE_OBSERVED',observationBoundary:'CONTROLLER_FIRST_OBSERVED',purpose:plan.purpose,...coordinates,failurePhase:firstFailure.phase,reason:safeReason(firstFailure.cause)??'UNCLASSIFIED'})+'\n'));
+   };
+  }catch{/* No stable owned empty root: persistence stays UNKNOWN. */}
+  const rememberFirstFailure=(cause,observedPhase)=>{
+   if(firstFailure)return false;
+   firstFailure={cause,phase:observedPhase};
+   if(recordFirstFailure){try{recordFirstFailure();firstFailureObservation='DURABLE_EVENT_RECORDED';firstFailureEvidenceWriteFailed=false;}catch{firstFailureEvidenceWriteFailed=true;}}
+   return true;
+  };
+  // This closure is available to the outer catch even for initialization or
+  // RESOURCE failures that have no stage catch.
+  rememberControllerFirstFailure=rememberFirstFailure;
   checkHostEnv();
   need(businessDay()===plan.case.businessDate,'TIME');
   checked.check();
@@ -294,7 +316,7 @@ async function main(){
   const coordinates={planSha256:checked.sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id,runtimeSha256};
   const marker=Buffer.from(JSON.stringify({status:'CONSUMED',...coordinates})+'\n');
   writeReceipt=(status,proof)=>{
-   const receipt={status,phase,...coordinates,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
+   const receipt={status,phase,...coordinates,firstFailureObservation,firstFailureEvidenceWriteFailed,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
    try{writeExclusive(plan.run.receiptFile,Buffer.from(JSON.stringify(receipt)+'\n'));}
    catch{throw fault('RECEIPT');}
    return receipt;
@@ -337,12 +359,17 @@ async function main(){
    let value;
    try{check();value=await work();check();}
    catch(cause){
-    if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause),
-     documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined,
-     documentLoginFailure:name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined,
-     documentRoleFailure:name==='APPLICATION'?safeDocumentRoleFailure(cause):undefined,
-     authOwnerObservation:authOnly&&name==='APPLICATION'?describeCurrent261FirstLoginOwnerObservation(cause):undefined,
-     authRoleFailure:authOnly&&name==='ROLES'?projectAuthRoleFailure(cause):undefined};
+    rememberFirstFailure(cause,name);
+    if(Object.is(firstFailure.cause,cause)&&firstFailure.phase===name){
+     // Publication precedes optional diagnostics and controller unwind. A
+     // producer may already have performed its own cleanup before throwing.
+     try{firstFailure.httpFailure=describeCurrent261LocalLifecycleHttpFailure(cause);}catch{}
+     try{firstFailure.documentAclFailure=name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined;}catch{}
+     try{firstFailure.documentLoginFailure=name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined;}catch{}
+     try{firstFailure.documentRoleFailure=name==='APPLICATION'?safeDocumentRoleFailure(cause):undefined;}catch{}
+     try{firstFailure.authOwnerObservation=authOnly&&name==='APPLICATION'?describeCurrent261FirstLoginOwnerObservation(cause):undefined;}catch{}
+     try{firstFailure.authRoleFailure=authOnly&&name==='ROLES'?projectAuthRoleFailure(cause):undefined;}catch{}
+    }
     if(name===phase){
      failureStage=safeStage(cause,name);
      try{
@@ -384,7 +411,8 @@ async function main(){
       try{app=await application(acl,handle,plan.case.id,controller.signal,outcome=>{
        need(!invoked,'RESULT');invoked=true;check();
        return outcome;
-      },token);}finally{entry.active=false;contractContinuities.delete(token);currentContractContinuity=undefined;}
+      },token);}catch(cause){rememberFirstFailure(cause,'APPLICATION');throw cause;}
+      finally{entry.active=false;contractContinuities.delete(token);currentContractContinuity=undefined;}
       check();need(invoked,'RESULT');
       const projection=projectOutcome(app);
       need(projection&&typeof projection==='object'&&!types.isProxy(projection)&&
@@ -402,9 +430,13 @@ async function main(){
   need(scopeEntered&&outcome,'RESULT');
   return writeReceipt(authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_COMPLETE':'CURRENT261_LOCAL_LIFECYCLE_PROTOCOL_COMPLETE',{outcome});
  }catch(cause){
+  if(!firstFailure){
+   if(rememberControllerFirstFailure)rememberControllerFirstFailure(cause,phase);
+   else firstFailure={cause,phase}; // Preplan/unstable coordinates remain UNKNOWN.
+  }
   budgetObservation=observeBudget(cause);process.exitCode=1;
   if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
-  const primary=firstFailure?.cause??cause,reason=safeReason(primary);
+  const primary=firstFailure?firstFailure.cause:cause,reason=safeReason(primary);
   const proof={...(reason?{reason}:{}),...(firstFailure?{failurePhase:firstFailure.phase}:{}),
    ...(firstFailure?.httpFailure?{httpFailure:firstFailure.httpFailure}:{}),
    ...(firstFailure?.documentAclFailure?{documentAclFailure:firstFailure.documentAclFailure}:{}),
@@ -420,7 +452,7 @@ async function main(){
    try{return writeReceipt(authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',{attempted,...proof});}
    catch{receiptWriteFailed=true;}
   }
-  return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...proof,
+  return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,firstFailureObservation,firstFailureEvidenceWriteFailed,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...proof,
    ...(receiptWriteFailed?{receiptWriteFailed:true}:{})};
  }finally{
   controller.abort();

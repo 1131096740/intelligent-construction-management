@@ -295,3 +295,87 @@ test('role projector module getter/proxy substitution and absent private fact re
   assert.deepEqual(r.authRoleFailure,{phase:'UNKNOWN',resourceCleanup:{status:'UNKNOWN'}});assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(traps,0);
  }
 });
+
+
+test('first failure is independently durable at controller observation before outer unwind',async t=>{
+ const original=Object.freeze(Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}));
+ const open=fs.openSync,sync=fs.fsyncSync;let f,seen,firstFd,directoryPending=false;const events=[];
+ fs.openSync=function(file,...args){const fd=Reflect.apply(open,this,[file,...args]);if(typeof file==='string'&&file.endsWith('/first-failure.json')&&typeof args[0]==='number'&&(args[0]&fs.constants.O_CREAT)!==0){firstFd=fd;events.push('exclusive-open');assert.equal(f.calls.includes('runtime-close'),false);assert.equal(f.calls.includes('resource-close'),false);}return fd;};
+ fs.fsyncSync=function(fd){const result=Reflect.apply(sync,this,[fd]);if(fd===firstFd){events.push('file-fsync');directoryPending=true;firstFd=undefined;}else if(directoryPending&&fs.fstatSync(fd).isDirectory()){events.push('directory-fsync');directoryPending=false;assert.equal(f.calls.includes('resource-close'),false);}return result;};
+ t.after(()=>{fs.openSync=open;fs.fsyncSync=sync;});
+ f=model(t,{authOnly:true,applicationFailure:original,cleanupFailure:true,httpFailureApi:{describeCurrent261LocalLifecycleHttpFailure(error){seen=error;return undefined;}}});const result=await f.result();
+ const file=path.join(f.plan.run.root,'first-failure.json'),record=JSON.parse(fs.readFileSync(file));
+ assert.equal(seen,original);assert.equal(result.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(result.failurePhase,'APPLICATION');assert.equal(result.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');
+ assert.deepEqual(events,['exclusive-open','file-fsync','directory-fsync']);assert.equal(fs.statSync(file).mode&0o777,0o600);
+ assert.equal(record.purpose,'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC');assert.equal(record.status,'FIRST_FAILURE_OBSERVED');assert.equal(record.observationBoundary,'CONTROLLER_FIRST_OBSERVED');assert.equal(record.failurePhase,'APPLICATION');assert.equal(record.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');
+ assert.equal(record.sourceSha,f.plan.source.candidateSha);assert.equal(record.caseId,f.plan.case.id);assert.equal(record.runtimeSha256,f.plan.runtime.sha256);assert.equal(record.planSha256,'a'.repeat(64));assert.equal(result.firstFailureObservation,'DURABLE_EVENT_RECORDED');assert.equal(result.firstFailureEvidenceWriteFailed,false);
+ assert.doesNotMatch(JSON.stringify(record),/PRIVATE_DO_NOT_PRINT/u);
+});
+
+function firstFailureIo(t,point){
+ const slots=Object.fromEntries(['openSync','writeFileSync','fsyncSync','closeSync'].map(k=>[k,fs[k]])),fds=new Map();let root,opens=0;
+ const io=()=>Object.assign(Error('PRIVATE_IO_DO_NOT_PRINT'),{code:'EIO'});
+ fs.openSync=function(file,flags,...args){
+  const first=typeof file==='string'&&file.endsWith('/first-failure.json')&&typeof flags==='number'&&(flags&fs.constants.O_CREAT)!==0;
+  if(first){root=path.dirname(file);opens++;assert.ok(flags&fs.constants.O_EXCL);assert.ok(flags&fs.constants.O_NOFOLLOW);if(point==='open')throw io();}
+  const directory=file===root&&typeof flags==='number'&&(flags&fs.constants.O_NOFOLLOW)!==0;
+  if(directory&&point==='directory-open')throw io();const fd=Reflect.apply(slots.openSync,this,[file,flags,...args]);if(first||directory)fds.set(fd,first?'file':'directory');return fd;
+ };
+ fs.writeFileSync=function(file,...args){if(fds.get(file)==='file'&&point==='write')throw io();return Reflect.apply(slots.writeFileSync,this,[file,...args]);};
+ fs.fsyncSync=function(fd){if(point&&fds.get(fd)===point)throw io();return Reflect.apply(slots.fsyncSync,this,[fd]);};
+ fs.closeSync=function(fd){fds.delete(fd);return Reflect.apply(slots.closeSync,this,[fd]);};
+ t.after(()=>Object.assign(fs,slots));return{opens:()=>opens};
+}
+
+test('first failure write/fsync/directory errors remain UNKNOWN without replacing primary or retrying',async t=>{
+ for(const point of ['open','write','file','directory-open','directory'])await t.test(point,async st=>{
+  const io=firstFailureIo(st,point),original=Object.freeze(Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}));let observed;
+  const f=model(st,{authOnly:true,applicationFailure:original,cleanupFailure:true,httpFailureApi:{describeCurrent261LocalLifecycleHttpFailure(error){observed=error;return undefined;}}}),r=await f.result();
+  assert.equal(observed,original);assert.equal(io.opens(),1);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.cleanup,'UNKNOWN');assert.equal(r.firstFailureObservation,'UNKNOWN');assert.equal(r.firstFailureEvidenceWriteFailed,true);assert.doesNotMatch(JSON.stringify(r),/PRIVATE_.*DO_NOT_PRINT/u);
+ });
+});
+
+test('first-file collision preserves prior bytes and later unwind never retries or overwrites',async t=>{
+ const io=firstFailureIo(t),original=Object.freeze(Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}));let f;
+ f=model(t,{authOnly:true,roleFailure:original,cleanupFailure:true,beforeAuthRoles(){fs.writeFileSync(path.join(f.plan.run.root,'first-failure.json'),'PRIOR_IMMUTABLE_EVENT',{flag:'wx',mode:0o600});}});const r=await f.result();
+ assert.equal(io.opens(),1);assert.equal(fs.readFileSync(path.join(f.plan.run.root,'first-failure.json'),'utf8'),'PRIOR_IMMUTABLE_EVENT');assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.failurePhase,'ROLES');assert.equal(r.firstFailureObservation,'UNKNOWN');assert.equal(r.firstFailureEvidenceWriteFailed,true);assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');
+});
+
+test('diagnostic observer failure cannot replace the first cause or the file already fsynced before it',async t=>{
+ const original=Object.freeze(Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}));let f,bytes,calls=0;
+ f=model(t,{authOnly:true,applicationFailure:original,cleanupFailure:true,httpFailureApi:{describeCurrent261LocalLifecycleHttpFailure(error){calls++;assert.equal(error,original);assert.equal(f.calls.includes('resource-close'),false);bytes=fs.readFileSync(path.join(f.plan.run.root,'first-failure.json'));throw Error('PRIVATE_OBSERVER_DO_NOT_PRINT');}}});const r=await f.result();
+ assert.equal(calls,1);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');assert.deepEqual(fs.readFileSync(path.join(f.plan.run.root,'first-failure.json')),bytes);assert.doesNotMatch(JSON.stringify(r),/PRIVATE_OBSERVER/u);
+});
+
+test('primitive and hostile first causes stay original identities and finite without invoking getters or proxy traps',async t=>{
+ let traps=0;const hostile={};for(const key of ['code','message','cause','stack'])Object.defineProperty(hostile,key,{get(){traps++;throw Error('PRIVATE_DO_NOT_PRINT');}});
+ const proxy=new Proxy({},{get(){traps++;throw Error('PRIVATE_DO_NOT_PRINT');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_DO_NOT_PRINT');},ownKeys(){traps++;throw Error('PRIVATE_DO_NOT_PRINT');}});
+ for(const original of [0,null,undefined,'PRIVATE_PRIMITIVE_DO_NOT_PRINT',hostile,proxy]){
+  let seen;const f=model(t,{applicationRun:async()=>{throw original;},cleanupFailure:true,httpFailureApi:{describeCurrent261LocalLifecycleHttpFailure(error){seen=error;return undefined;}}}),r=await f.result(),event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,'first-failure.json')));
+  assert.equal(seen,original);assert.equal(event.reason,'UNCLASSIFIED');assert.equal(event.failurePhase,'APPLICATION');assert.equal(r.reason,undefined);assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');assert.doesNotMatch(JSON.stringify(event),/PRIVATE/u);
+ }
+ assert.equal(traps,0);
+});
+
+test('outer RESOURCE failure is recorded at its earliest controller catch before any resource is created',async t=>{
+ const original=Object.freeze(Object.assign(Error('PRIVATE_DO_NOT_PRINT'),{code:'CURRENT259_LOADER_CHANGED'})),read=fs.readFileSync;let count=0;
+ fs.readFileSync=function(file,...args){if(typeof file==='string'&&file.endsWith('/attempt.json')&&++count===2)throw original;return Reflect.apply(read,this,[file,...args]);};t.after(()=>{fs.readFileSync=read;});
+ const f=model(t,{authOnly:true}),r=await f.result(),event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,'first-failure.json')));assert.equal(f.calls.includes('resource'),false);assert.equal(event.failurePhase,'RESOURCE');assert.equal(event.reason,'CURRENT259_LOADER_CHANGED');assert.equal(r.failurePhase,'RESOURCE');assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');
+});
+
+test('a producer cleanup-only error is first observed afterwards and never represented as earlier than producer cleanup',async t=>{
+ const f=model(t,{authOnly:true,cleanupFailure:true}),r=await f.result(),event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,'first-failure.json')));assert.equal(event.failurePhase,'RESOURCE_CLEANUP');assert.equal(event.observationBoundary,'CONTROLLER_FIRST_OBSERVED');assert.equal(r.reason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');assert.equal(f.calls.at(-1),'resource-close');
+});
+
+test('success creates no first-failure file and preplan or spent-run failures remain UNKNOWN without touching old runs',async t=>{
+ const success=model(t,{authOnly:true});assert.equal((await success.result()).status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_COMPLETE');assert.equal(fs.existsSync(path.join(success.plan.run.root,'first-failure.json')),false);
+ for(const options of [{authOnly:true,failure:'pending'},{authOnly:true,used:true}]){const f=model(t,options),r=await f.result();assert.equal(r.firstFailureObservation,'UNKNOWN');assert.equal(r.firstFailureEvidenceWriteFailed,null);assert.equal(fs.existsSync(path.join(f.plan.run.root,'first-failure.json')),false);assert.equal(f.calls.includes('resource'),false);}
+});
+
+
+test('first-file file and directory fsync occur before controller token revoke, then original revoke remains',async t=>{
+ const sync=fs.fsyncSync,open=fs.openSync;let f,handle,token,eventFileFd,waitDirectory=false;const active=[];
+ fs.openSync=function(file,flags,...args){const fd=Reflect.apply(open,this,[file,flags,...args]);if(typeof file==='string'&&file.endsWith('/first-failure.json')&&typeof flags==='number'&&(flags&fs.constants.O_CREAT)!==0)eventFileFd=fd;return fd;};
+ fs.fsyncSync=function(fd){const result=Reflect.apply(sync,this,[fd]);if(fd===eventFileFd||waitDirectory&&fs.fstatSync(fd).isDirectory()){let alive=false;try{alive=f.api.assertCurrent261ContractBusinessContinuity(token,handle)===true;}catch{}active.push(alive);waitDirectory=fd===eventFileFd;eventFileFd=undefined;}return result;};t.after(()=>{fs.openSync=open;fs.fsyncSync=sync;});
+ f=model(t,{failure:'business',cleanupFailure:true,continuityProbe(api,tok,h){token=tok;handle=h;}});const r=await f.result();assert.deepEqual(active,[true,true]);assert.throws(()=>f.api.assertCurrent261ContractBusinessContinuity(token,handle));assert.equal(r.reason,'CURRENT259_GENERATED_DOCUMENT_EXERCISE_RESULT');assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');
+});
