@@ -1,29 +1,36 @@
 # 建工智管当前状态
 
-更新：2026-11-14。#382保持193条规格、45项依赖任务全范围；已核14项关闭、31项开放，实施前沿为#394（任务12）与#398（任务16），整体验收未完成。
+更新：2026-11-14。#382仍为193条规格、45项依赖任务；22:18经GitHub逐项刷新仍14项关闭、31项开放，前沿#394（任务12）和#398（任务16）。未完成整体验收，不以测试数、CI或诊断代码代替业务里程碑。
 
-## 当前候选与两条业务线
+## 当前候选
 
-- 集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本轮正常快进f3c旧impact-runtime模型修订、普通合并9e41三列runtime主键SELECT，5个不重叠blob/mode与作者一致，每片双轴各0项。新准确组合候选将先在全新无API dist的独立验证树生成SDK并运行完整CI编排门，再核API及权限材料；组合验证和准确远端CI待，PR428保持OPEN/Draft。
-- 旧8e719 CI43585629504的contract_template_scenario已通过，Quality因旧模型缺少新诊断导出/实例而失败（1969项仅1失败）；原失败及旧33a SQL预检失败不重跑、不倒填原因。f3仅补模拟边界和六个拒绝反例，生产factory/loader/守卫及选择器未改。旧8e719文书资格及限定纸面复核、registry-only be455和两份未消费准备计划保留为旧材料，不跨SHA复用。
-- 本轮组合为付款HTTP有限诊断ba13与合同TLS探针收束f7c，八blob/mode与作者一致，双轴各片0项。组合固定Node20 CJS273/273、pin81、当前TS公开夹具112/112通过；API检查按准确源码证据承接，实际运行材料由各自准确候选独立构建。初始依赖缺失及NODE_PATH被原环境守卫拒绝的失败保留，未以改守卫过门。
-- 任务16：准确e569完整normal原58620真实exit1/2290秒，09:30:47Z终止；实际POST登记返回HTTP500、期望201，原生后端原因未知，业务仍UNKNOWN_DO_NOT_RETRY。原资源清理完成，root09:31:05Z独核rune789ff9e准确容器/网络/两PID/relay缺席。当前只缩小调查登记失败原因，不重跑完整normal、不把500归因于某个数据库错误。旧64无状态原件、c8/P2028及29c分配观察UNKNOWN和各自清理证据原样保留。
+集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`。本轮仅集成T16 post-live有限诊断b3e及Auth87de/678两个净提交；16个源码blob/mode与作者一致。Auth通过新鲜491 stage顺序cherry-pick，未合入cfe08祖先，四个parked ACL/login文件仍逐字等于491。最终源码与本地进度已封板，准确候选指纹见本轮集成回执；待全新无API dist的完整prebuild门、API检查/构建及限定sealed-loader/Nest组件。每片最终双轴各0项，旧Auth P2及失败反例保留。
 
-- 任务12：e569限定文书资格及纸面复核、registry-only6202其余3937blob/mode同源事实保留。冻结6202完整life原88616真实exit1/2318.998秒，09:30:53Z终止，TASK12_OFFICIAL_DOCUMENT_DEADLINE；documentRoleFailure已推进至APPLICATION，lastGuard9738ms/max12263ms，boundedTimeout/disconnectRejected为false、drainRejected为true，业务UNKNOWN、full394Accepted=false。本轮未报告HALF_CLOSE，不扩展为TLS全部修好。原资源清理完成，root09:31:28Z独核run13b1be1f准确资源/进程/relay缺席；当前缩小调查耗时与阶段，不重跑完整life。
+前次准确491d6d0c/tree488a747c的CI43588768732自然32/32成功、PR428仍Draft；该证据只绑定旧491，不能外推本轮候选或两条实际业务验收。用户根目录及无关改动未纳入本轮。
 
-- 最近旧3c821b52完整life实际exit1，SEED_BEFORE尚未构建SDK，guard约12秒、HALF_CLOSE_TIMEOUT，业务及原控制器清理UNKNOWN；原cleanup_failed与另立恢复0.664秒/root08:03Z准确资源缺席分开保留。更早611b/3f92失败及独立恢复不改写。TLS修复只在已发布C261文书HBA目的下，于原2000ms总预算内收束原metadata FIN/CLI cohort；原5秒预算、TLS/身份/权限、SQL、201和UNKNOWN保持。7项机制矩阵与普通真实PG组件exit0、独立启动/清理证明机制可行，不是eligible业务验收或旧内因闭合。
-- 开发工具与权限修复保留原完整校验边界：付款私有token/handle接原模块图及逐文件FD检查，四provider和原服务器/方法身份逐次核验，无token仍完整检查；分配/审计id仅观察角色列级SELECT。helper固定pin为4b3d132a。完整正常链、异常/竞争/凭证后补、15类型及联合浏览器等整票门禁仍待。
-- 合同三代PDF语义补充为独立本地候选9ef047f3，四文件、双轴各0项；模型23项、投影5项及API检查通过，真实60页复制前后字形/坐标一致组件单列。保留原件哈希与逐代页面边界、原单次reader及25秒子进程预算；复制预处理不算该reader预算。现已正常集成，四blob/mode同作者，23/5及API门沿准确作者证据承接、未重复测试；真实60页组件仍单列，不计业务验收。两条旧运行均已真实终止并独核清理，新准确候选资格、构建、CI与完整验收仍待；详见当前证据目录task394/pdf-generations。
-- CI就绪检查局部候选cf8e13a4仅将pg_isready改用与原SQL预检一致的127.0.0.1，原超时/重试/SQL/权限不变；88项回归与API检查通过，双轴各0项，现已集成。独占本地ARM64 PG组件实际证明Unix就绪/TCP拒绝的初始化窗口，v3启动与清理已独核；只证明机制，不倒填旧CI原生原因。v1确认超时、v2测试初始化脚本读取失败及各次清理记录保留。
-- 合同专属连续性226仅由准确合同main在原DocumentACL后的APPLICATION闭包发行私有token，契约与付款能力分离；保留21次完整检查、plan/runtime/attempt逐文件无跟随纳秒身份、attempt原字节hash及父目录身份。原激活顺序、drain、撤销和900000ms预算保持；143项公开源流测试及API门单列，不证明真实APPLICATION性能或旧deadline已修。
-- 付款bfec仅在原真实Nest过滤器/私有ticket/原factory租约/原case/控制器回执链收集闭集20个Prisma码和11个SQLSTATE，不改公开500响应、201成功断言、财务写入/权限或UNKNOWN。修正初版遗漏P2004的P2证据保留；37项实际技术回执、337项相关、TS141及实际loader/FD门按准确作者范围保留。它不是业务身份准入，也未查明旧实际500内因。当前无新PG资源或全链运行，所有旧实际失败、UNKNOWN及独立清理事实保持。
+## 两条业务线各一个主阻塞
 
-## 授权、证据和下一步
+- **任务12：真实登录HTTP500。** registry-only `2c6bff609a0c919ba7462f75eed8c86ab7ebfa45`（其余3941个blob/mode与491一致）原会话17100真实exit1/1861.618秒，首因POST `/auth/login` 500、AFTER_CHECK；业务UNKNOWN、full394=false。后续FRAME是单独收束观察，不能据此解释500。原资源清理失败保持；另立完整身份守卫恢复0.685秒，root12:10:17Z独立确认准确容器/网络/PID/relay缺席。当前只补私有有限原生错误捕获，区分AccountRateLimit事务与AuthService故障，公开响应、密码、权限、时间预算不变。七张登录表的普通角色标量读取静态审计未见缺列，仍非原生原因证明。
+- **任务16：用例返回后的转发/收束失败。** 准确491原会话36525真实exit1/2484.667秒。源码绑定与回执支持登记201、同键重放201、原键查询200及独立账目/幂等断言已返回，执行ID72b8ed21、root475f7541；但整体STOPPED、financialAcceptance=false、nativeAdmission=false，首因TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED。实际回执没有内层FRAME/70，不能从组件倒填。原清理完成，root12:26:16Z独立确认准确资源/进程/端口缺席。当前只用现有证据与纯离线生命周期顺序验证，核对Nest关闭外部runtime与最终校验的所有权；无新证据和修复短验证，不重复长链。
 
-按[持续隔离开发规程](docs/agents/development-loop.md)在独占虚构资源继续诊断、修复、复验。身份/归属不明、越界或清理失败停止受影响动作；未知业务按原键查证，查不清保留未知，不换键盲重发。生产、真实数据、真实云写、新费用及main发布仍独立确认；无main合并、部署或生产变更。
+## 已完成局部工作与待办边界
 
-本轮准确命令、资格、CI、失败与清理见[当前主回执](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/RECEIPT.md)；本次压缩前完整进度保存在[逐字前像](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/PROGRESS-PRE-CURRENT-E569.md)，旧主控事实见[持久恢复主回执](/Users/leoyang/.codex/visualizations/2026/11/12/01a1d054-b95b-70f2-9b4f-c9cbeffe79e7/recovery-20261114/RECEIPT.md)。优先完成12/16真实业务，再扩展依赖前沿；最终准确SHA完整门禁保留，准备与组件结果不计整票完成。
+本轮Auth有限诊断保持真实server/request/response/phone关联、原15秒期限与完整arm检查；native ticket先及时consume到有限局部值，随后原局部身份检查与HTTP AFTER_CHECK仍可拒绝，不能授权业务进展。Module filename/exports及cache的访问器/代理P2已以描述符先核修复，八类反例保持trap0、无额外metadata/creation调用；原P2和RED不覆盖。当前TS24与CJS66为作者技术模型证据，真实Auth500内因和捕获性能仍未证明。
 
-本次进度随已审PDF片提交交付，不改旧冻结源码/计划，不继承旧SHA业务通过。规程前全文及其哈希仍见Git内[历史快照](docs/progress/2026-11-13-progress-before-development-loop.md)，后续前像及失败记录继续保留。
+T16仅对原post-withLive一次state.check在记首因/撤权前复制有限阶段及原relay闭集字段，并重抛同一原对象；缺席明确缺席，不把构造FRAME/47/70倒填实际491。原plan/resource/attempt顺序、检查次数、首因/UNKNOWN、FIN和预算不变。作者193项离线证据不等于原生收束修好或整票通过。本轮只做源码集成与上述本地门禁，无新PG、SDK连接、业务normal/full生命周期或新网络故障实验；标准原CI已授权的既有localhost夹具保持原样。
 
-本轮runtime权限材料固定摘要87fd3228，仅新增ProjectProxyPayment.id、ContractProxyExecution.id、PaymentExecutionAllocation.id的临时runtime列级SELECT；observer、Schema、SQL、写权限、角色属性、5秒和UNKNOWN保持。三查询原生单列正反对照支持机制，整体FRAME次因STOPPED及独立清理单列保留，不证明旧实际500原因或业务通过。当前不启动新PG、完整normal或life。
+491包含三代PDF语义、合同专属连续性、有限付款诊断、TCP就绪检查、旧impact-runtime模型修订及三个临时runtime主键列读取修正。各自源码、审查、测试和真实组件证据见主回执；局部通过不等于整票通过。
+
+本地另有文书角色两列SELECT(id)候选cfe08a35，双轴各0项，仅为后续模板/队列缺口；独立有效角色对照使用owner初始认证，不是实际文书LOGIN/HBA准入。整体组件FRAME STOPPED及独立清理均保留，不能当作当前登录500的修复。该项暂不扩散执行。
+
+传输诊断子代理被自动安全检查中止。B实验停止于ROOT_STARTUP_BARRIER，queryProof=null，0业务行/迁移；root13:03:21Z已确认其准确资源/PID/端口缺席。不得继续、换名重试或绕过该限制。保留此前所有失败、未知、清理失败及分开的恢复事实。
+
+合同15类型/岗位接力/竞态/直签/Web，付款竞争/分次/凭证/异常/公共现金/Web等整票条件仍待；先落实当前登录及一条生命周期、完整正常付款链，再拓展依赖前沿。
+
+## 结果检查点与授权
+
+按用户最新要求先短验证再长链，每项只锁一个主阻塞。**北京时间2026-11-14 22:30检查已发送，下一检查为2026-11-15 00:30**，此后每两小时。每次必须交付新根因证据、修复验证或业务里程碑；没有有效进展就调整方法并说明，持续运行不算进度。详见[结果检查点](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/RESULT-CHECKPOINTS.md)。
+
+持续独占虚构开发授权按[开发规程](docs/agents/development-loop.md)执行；未知按原键查证，查不清保留，不盲重发。生产、真实数据、真实云写、新费用及main发布仍单独确认。本轮无main合并、部署或生产变更。
+
+准确命令、SHA、原终态、真实/模型证据及独立核验见[当前主回执](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/RECEIPT.md)。本次压缩前全文及哈希在外部逐字前像保存，不覆盖历史。早期历史见[持久恢复回执](/Users/leoyang/.codex/visualizations/2026/11/12/01a1d054-b95b-70f2-9b4f-c9cbeffe79e7/recovery-20261114/RECEIPT.md)。
