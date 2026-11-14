@@ -65,6 +65,8 @@ function fixture(options={}) {
       async closeCurrent259OwnedResource(h){assert.equal(h,handle);closes++;}
     }
   };
+ const originalClaim=ports['./task16-current259-archive-install.cjs'].claimCurrent259ArchiveInstallation;
+ ports['./task16-current259-archive-install.cjs'].claimCurrent261AuthOnlyDiagnosticArchive=(...args)=>{assert.equal(options.authOnly,true);return Object.freeze({...originalClaim(...args),executionPurpose:'AUTH_ONLY_DIAGNOSTIC'});};
   const holder={exports:{}};
   new Function('require','module','__dirname',fs.readFileSync(path.resolve(__dirname,file),'utf8'))(
     name=>ports[name]??require(name),holder,__dirname);
@@ -342,3 +344,19 @@ test('lifecycle invoker correction predicates require both hidden predicate colu
 });
 
 test('ordinary ACL continuation retains its original archive and view capability',async()=>{const f=fixture();const result=await f.api.installCurrent259OrdinaryArchiveAcl(f.completion,f.handle);const lease=f.api.claimCurrent259OrdinaryArchiveAcl(result,f.handle);lease.checkContinuity(f.continuityToken);assert.ok(f.continuityCalls()>=2);assert.throws(()=>lease.checkContinuity({}));});
+
+ test('fixed auth diagnostic claim refuses public strings, clones and proxy previews without granting full authority',()=>{
+ const api=require('./task16-current259-ordinary-archive-acl.cjs');assert.equal(typeof api.installCurrent261AuthOnlyDiagnosticOrdinaryAcl,'function');
+ for(const v of [{},Object.freeze({executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}),new Proxy({},{})])assert.throws(()=>api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(v,{}));
+ });
+
+test('diagnostic SQL chain grants only its separate one-use purpose and refuses full claim',async()=>{
+ const {createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const f=fixture({source,authOnly:true,observe(row,n){if(n===0)row.changes=[{relation:'AuditLog',column:'createdAt',relationOid:'17002',attnum:9,privileges:['INSERT'],rawAcl:null,acl:[]}];}}),result=await f.api.installCurrent261AuthOnlyDiagnosticOrdinaryAcl(f.completion,f.handle);assert.equal(f.calls.length,3);
+ assert.throws(()=>f.api.claimCurrent261GeneratedLifecycleOrdinaryAcl(result,f.handle));assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl({...result},f.handle));
+ const lease=f.api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(result,f.handle);assert.equal(lease.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(result,f.handle));
+});

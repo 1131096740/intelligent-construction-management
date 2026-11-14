@@ -23,7 +23,7 @@ const expectedInstallers = [
   'jg_install_contract_direct_upward_v2',
 ];
 
-function model(alter = row => row, alterClaim = () => {}, migrationCount = 261) {
+function model(alter = row => row, alterClaim = () => {}, migrationCount = 261, authOnly=false) {
   const handle = Object.freeze({}), provisionResult = Object.freeze({});
   const runId = '01234567-89ab-cdef-0123-456789abcdef';
   const databaseIdentity = {
@@ -38,7 +38,7 @@ function model(alter = row => row, alterClaim = () => {}, migrationCount = 261) 
   ].map(([name, login], index) => ({ name, login, oid: String(17001 + index), xmin: '701', unlimitedValidity: true,
     limit: login ? 1 : 0, password: name.startsWith('jg_task01_') ? 'scram' : 'absent' }));
   const completion = {
-    status: 'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION', executionAllowed: false, nativeAdmission: false,
+    status: authOnly?'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION':'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION', executionAllowed: false, nativeAdmission: false,
     sourceSha: 'a'.repeat(40), runId, containerId: 'b'.repeat(64), databaseIdentity,
     ordinary: { name: 'jg_fixture_app_' + 'c'.repeat(24), oid: '16390', login: true, limit: 0, password: 'absent' },
     roles, commitXid: '701', databaseAcl: { before: [], after: [{
@@ -99,6 +99,7 @@ function model(alter = row => row, alterClaim = () => {}, migrationCount = 261) 
   const view = { source, runId, resource, check, verifyFull: check, checkContinuity };
   const ports = {
     './task16-current259-role-provision.cjs': {
+      claimCurrent261AuthOnlyDiagnosticRoles(result,actualHandle){assert.equal(authOnly,true);assert.equal(result,provisionResult);assert.equal(actualHandle,handle);assert.equal(used,false);used=true;return{source,completion,check,checkContinuity,executionPurpose:'AUTH_ONLY_DIAGNOSTIC'};},
       claimCurrent259ProvisionedRoles(result, actualHandle) {
         assert.equal(result, provisionResult);
         assert.equal(actualHandle, handle);
@@ -448,3 +449,15 @@ test('the historical 259 and explicit 261 archive profiles render independent fr
 });
 
 test('archive continuation retains the original role and resource capability without a full-hash call',async()=>{const f=model();const result=await f.installCurrent259ArchiveAuthorities(f.provisionResult,f.handle);const lease=f.claimCurrent259ArchiveInstallation(result,f.handle);lease.checkContinuity(f.continuityToken);assert.equal(f.continuityCalls(),2);assert.throws(()=>lease.checkContinuity({}));});
+
+ test('fixed auth diagnostic claim refuses public strings, clones and proxy previews without granting full authority',()=>{
+ const api=require('./task16-current259-archive-install.cjs');assert.equal(typeof api.installCurrent261AuthOnlyDiagnosticArchive,'function');
+ for(const v of [{},Object.freeze({executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}),new Proxy({},{})])assert.throws(()=>api.claimCurrent261AuthOnlyDiagnosticArchive(v,{}));
+ });
+
+test('auth archive executes the registered SQL chain but yields only its separate one-use diagnostic capability',async()=>{
+ const f=model(row=>row,()=>{},261,true),result=await f.installCurrent261AuthOnlyDiagnosticArchive(f.provisionResult,f.handle);
+ assert.throws(()=>f.claimCurrent259ArchiveInstallation(result,f.handle));assert.throws(()=>f.claimCurrent261AuthOnlyDiagnosticArchive({...result},f.handle));
+ const lease=f.claimCurrent261AuthOnlyDiagnosticArchive(result,f.handle);assert.equal(lease.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.equal(typeof lease.ordinaryAclWitness,'function');
+ assert.throws(()=>f.claimCurrent261AuthOnlyDiagnosticArchive(result,f.handle));
+});

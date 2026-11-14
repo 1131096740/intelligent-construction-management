@@ -18,6 +18,7 @@ function ownData(owner,key){
 const sameDescriptor=(a,b)=>a&&b&&['value','writable','enumerable','configurable'].every(k=>a[k]===b[k]);
 function captureCurrent259BusinessIssuer(){need(arguments.length===0);return captureIssuer(FILE,'assertCurrent259PaymentBusinessContinuity');}
 function captureCurrent261ContractBusinessIssuer(){need(arguments.length===0);return captureIssuer(CONTRACT_FILE,'assertCurrent261ContractBusinessContinuity');}
+function captureCurrent261FirstLoginBusinessIssuer(){need(arguments.length===0);return captureIssuer(CONTRACT_FILE,'assertCurrent261FirstLoginBusinessContinuity');}
 function captureIssuer(file,validator){
  try{
   need(!broken);
@@ -56,4 +57,4 @@ function checkCurrent259FileIdentity(file,expected){
  try{need(matches(fs.fstatSync(fd,{bigint:big}))&&matches(fs.lstatSync(file,{bigint:big})));}finally{Reflect.apply(fdClose.value,fs,[fd]);}
  return true;
 }
-module.exports=Object.freeze({captureCurrent259BusinessIssuer,captureCurrent261ContractBusinessIssuer,assertCurrent259BusinessIssuer,assertCurrent259CommitCancellationIssuer,assertCurrent259CommitDisconnectIssuer,checkCurrent259FileIdentity});
+module.exports=Object.freeze({captureCurrent259BusinessIssuer,captureCurrent261ContractBusinessIssuer,captureCurrent261FirstLoginBusinessIssuer,assertCurrent259BusinessIssuer,assertCurrent259CommitCancellationIssuer,assertCurrent259CommitDisconnectIssuer,checkCurrent259FileIdentity});

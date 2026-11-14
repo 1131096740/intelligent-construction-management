@@ -3,7 +3,7 @@ const {createHash,createHmac,pbkdf2Sync,randomBytes}=require('node:crypto');
 const {readFileSync}=require('node:fs');
 const {join}=require('node:path');
 const {isDeepStrictEqual:equal,types}=require('node:util');
-const {claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl,claimCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl-transport.cjs');
+const {claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl,claimCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261AuthOnlyDiagnosticDocumentAcl}=require('./task12-current259-document-acl-transport.cjs');
 const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {withCurrent259ApplicationEnvironment}=require('./task16-current259-application-environment.cjs');
@@ -20,7 +20,7 @@ const ordinaryLimit=2;
 const caseCoordinate=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
-const consumed=new WeakSet(),active=new WeakMap(),nestBridges=new WeakSet(),lifecycleExercises=new WeakMap();
+const consumed=new WeakSet(),active=new WeakMap(),firstLoginScopes=new WeakMap(),nestBridges=new WeakSet(),lifecycleExercises=new WeakMap(),firstLoginExercises=new WeakMap();
 const fixedReasons=new WeakMap();
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
@@ -68,7 +68,8 @@ function replaceExact(sql,marker,replacement){
  need(sql.split(marker).length===2,'RENDER');
  return sql.replace(marker,()=>replacement);
 }
-function qualify(lease,view,save,lifecycle=false){
+function qualify(lease,view,save,lifecycle=false,authOnly=false){
+ need(authOnly?lease.executionPurpose==='AUTH_ONLY_DIAGNOSTIC':lease.executionPurpose===undefined,'HANDLE');
  const {completion,roles,source,ordinaryAcl,continuitySql,continuitySha256}=lease;
  const {resource,runId}=view,identity=ordinaryAcl.roleCompletion.databaseIdentity;
  const predecessors=[completion.roleInstallXid,completion.installXid,ordinaryAcl.completion.installXid,ordinaryAcl.completion.archiveInstallXid];
@@ -90,7 +91,7 @@ function qualify(lease,view,save,lifecycle=false){
   const {roleCompletion}=ordinaryAcl;
   const {name,oid:roleOid,login,limit,password}=roleCompletion.ordinary??{};
   need(ordinaryAcl.completion.purpose===(lifecycle?lifecyclePurpose:savePurpose)&&ordinaryAcl.generatedDraft!==true&&
-   roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===completion.sourceSha&&
+   roleCompletion.status===(authOnly?'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION':'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION')&&roleCompletion.sourceSha===completion.sourceSha&&
    roleCompletion.runId===runId&&roleCompletion.containerId===resource.containerId&&
    roleCompletion.executionAllowed===false&&roleCompletion.nativeAdmission===false&&
    /^jg_fixture_app_[a-f0-9]{24}$/u.test(name)&&oid(roleOid)&&roleOid!=='10'&&
@@ -268,6 +269,14 @@ function withCurrent261LocalLifecyclePublicApplication(aclResult,handle,caseId,s
  if(![5,6].includes(arguments.length)||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
  return runLogin(aclResult,handle,use,true,true,true,caseId,true,signal,continuityToken);
 }
+function withCurrent261FirstLoginPublicApplication(aclResult,handle,caseId,signal,use,continuityToken){
+ if(![5,6].includes(arguments.length)||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
+ return runLogin(aclResult,handle,use,true,true,true,caseId,true,signal,continuityToken,true);
+}
+function takeCurrent261FirstLoginExerciseBridge(key){
+ need(arguments.length===1&&key&&!types.isProxy(key)&&firstLoginExercises.has(key),'HANDLE');
+ const scope=firstLoginExercises.get(key);scope.check();firstLoginExercises.delete(key);return scope;
+}
 function takeCurrent261LocalLifecycleExerciseBridge(key){
  need(arguments.length===1&&key&&!types.isProxy(key)&&lifecycleExercises.has(key),'HANDLE');
  const scope=lifecycleExercises.get(key);scope.check();lifecycleExercises.delete(key);return scope;
@@ -275,14 +284,15 @@ function takeCurrent261LocalLifecycleExerciseBridge(key){
 function takeCurrent259GeneratedDocumentApplicationBridge(bridge){
  need(arguments.length===1&&nestBridges.delete(bridge),'HANDLE');
 }
-async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId,lifecycle=false,lifecycleSignal,continuityToken){
+async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId,lifecycle=false,lifecycleSignal,continuityToken,authOnly=false){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&
   typeof use==='function'&&!types.isProxy(use)&&!consumed.has(handle),'HANDLE');
+ const loginScopes=authOnly?firstLoginScopes:active;
  const view=claimCurrent259TechnicalResource(handle),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(resource.topology===topology&&typeof exec==='function','HANDLE');
- const claim=lifecycle?claimCurrent261GeneratedLifecycleDocumentAcl:save?claimCurrent259GeneratedDocumentSaveAcl:claimCurrent259GeneratedDocumentAcl;
+ const claim=authOnly?claimCurrent261AuthOnlyDiagnosticDocumentAcl:lifecycle?claimCurrent261GeneratedLifecycleDocumentAcl:save?claimCurrent259GeneratedDocumentSaveAcl:claimCurrent259GeneratedDocumentAcl;
  need(typeof claim==='function','HANDLE');
- const lease=claim(aclResult,handle),input=qualify(lease,view,save,lifecycle);
+ const lease=claim(aclResult,handle),input=qualify(lease,view,save,lifecycle,authOnly);
  need(aclResult===lease.completion,'HANDLE');
  let official;
  if(lifecycle){
@@ -332,22 +342,23 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
    continuitySha256:committed.stable,roleOids:Object.freeze(input.targets.map(role=>role.oid)),
    ...(input.ordinary?{purpose:lifecycle?lifecyclePurpose:savePurpose,ordinaryName:input.ordinary.name}:{}),
    ...(lifecycle?{effectivePlanSha256:aclResult.effectivePlanSha256,installation:aclResult.installation}:{}),
+   ...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),
    roleXmins:Object.freeze(committed.roles.map(role=>role[2])),executionAllowed:false,nativeAdmission:false});
-  active.set(proof,{handle,check,lifecycle,identity:input.identity,continuitySql:c.stable});
-  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken):use(proof));
-  if(active.get(proof)?.continuityActivated){
-   active.get(proof).continuityActivated=false;
+  loginScopes.set(proof,{handle,check,lifecycle,authOnly,identity:input.identity,continuitySql:c.stable});
+  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken,authOnly):use(proof));
+  if(loginScopes.get(proof)?.continuityActivated){
+   loginScopes.get(proof).continuityActivated=false;
    try{view.deactivateBusinessContinuity(continuityToken);}catch(cause){continuityCleanupUnknown=true;throw cause;}
   }
   check();return result;
  }catch(cause){
   const error=Object.assign(fault(phase==='BEFORE'?'PRESTATE_REJECTED':phase==='CONSUME'?'CONSUME_FAILED':'COMMIT_UNCONFIRMED'),{phase});
   if(lifecycle){Object.defineProperty(error,'cause',{value:cause});if(own(cause,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(error,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
-  if(active.get(proof)?.continuityActivated){
-   active.get(proof).continuityActivated=false;
+  if(loginScopes.get(proof)?.continuityActivated){
+   loginScopes.get(proof).continuityActivated=false;
    try{view.deactivateBusinessContinuity(continuityToken);}catch{continuityCleanupUnknown=true;}
   }
-  if(proof)active.delete(proof);
+  if(proof)loginScopes.delete(proof);
   const inner=withRoles?own(cause,'cause'):undefined;
   const recognized=fixedReasons.has(cause)?cause:fixedReasons.has(inner)?inner:undefined;
   const reason=fixedReasons.get(recognized);
@@ -367,7 +378,7 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
   if(continuityCleanupUnknown)Object.defineProperty(error,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});
   throw error;
  }finally{
-  if(proof)active.delete(proof);
+  if(proof)loginScopes.delete(proof);
   for(const secret of secrets)secret.fill(0);
  }
 }
@@ -389,18 +400,18 @@ const backend=(pid,start)=>Number.isInteger(pid)&&pid>0&&pid<=2147483647&&typeof
 const port=value=>Number.isInteger(value)&&value>0&&value<=65535;
 const project=(row,keys)=>Object.fromEntries(keys.map(key=>[key,own(row,key)]));
 
-async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken){
+async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken,authOnly=false){
  const {resource,loader}=view;
  const lifecycle=proof.purpose===lifecyclePurpose;
  const save=proof.purpose===savePurpose||lifecycle;
  const loginNames=save?[...names,proof.ordinaryName]:names;
  const original=project(resource,['applyCurrent259DocumentHbaV1','getReceipt','inspectConnectionEndpoint',
   'observePresentedCertificate','execOwnerSql']);
- const loadName=lifecycle?'loadCurrent261LocalLifecycleDocumentModules':'loadGeneratedContractDocumentModules';
+ const loadName=authOnly?'loadCurrent261FirstLoginModules':lifecycle?'loadCurrent261LocalLifecycleDocumentModules':'loadGeneratedContractDocumentModules';
  const load=own(loader,loadName),Prisma=own(loader,'PrismaService'),beginDrain=own(view,'beginPrismaRelayDrain');
  need(Object.values(original).every(fn=>typeof fn==='function')&&[load,Prisma,beginDrain].every(fn=>typeof fn==='function'),'ROLE_PRODUCER');
  const check=()=>{
-  (lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof,handle);
+  (authOnly?assertCurrent261FirstLoginScope:lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof,handle);
   need(view.loader===loader&&view.resource===resource&&own(loader,'PrismaService')===Prisma&&
    own(loader,loadName)===load&&own(view,'beginPrismaRelayDrain')===beginDrain&&
    Object.entries(original).every(([key,value])=>own(resource,key)===value),'ROLE_PRODUCER');
@@ -524,7 +535,7 @@ ROLLBACK;`;
   const waitDrain=beginDrain.call(view);
   need(typeof waitDrain==='function','ROLE_DRAIN');
   try{
-   if(continuityToken!==undefined){view.activateBusinessContinuity(continuityToken);active.get(proof).continuityActivated=true;}
+   if(continuityToken!==undefined){view.activateBusinessContinuity(continuityToken);(authOnly?firstLoginScopes:active).get(proof).continuityActivated=true;}
    let publicLifecycle;
    if(lifecycle){
     const build=own(modules,'buildTask12LocalLifecycleFixture'),isFixture=own(modules,'isTask12LocalLifecycleFixture'),hash=own(modules,'hashTask12GeneratedAdmissionPassword');
@@ -542,7 +553,7 @@ ROLLBACK;`;
     need(observed.seedRows===26&&observed.seedXid!==proof.installXid&&observed.seedXid!==proof.aclInstallXid,'ROLE_SEED');
     roleStage='ORIGINALS';
     const sourceDocx=modules.readTask12LocalLifecycleSourceDocx(),originals=await modules.createTask12LocalLifecycleOriginals(fixture);verify();
-    publicLifecycle=Object.freeze({fixture,passwords,sourceDocx,originals,signal:lifecycleSignal});
+    publicLifecycle=Object.freeze({fixture,passwords,sourceDocx,originals,signal:lifecycleSignal,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{})});
    }
    for(const [index,name] of loginNames.entries()){
     roleStage='ROLE_CONNECT';verify();
@@ -617,9 +628,10 @@ ROLLBACK;`;
      const exercise=async http=>{
       if(publicLifecycle){
        need(http,'ROLE_ENTRY');verify();
-       const key=Object.freeze({});lifecycleExercises.set(key,Object.freeze({handle,proof,modules,config:publicLifecycle,check(){need(available,'ROLE_ENTRY');verify();}}));
-       try{const result=await require('./task12-current261-local-lifecycle-exercise.cjs').exerciseCurrent261LocalLifecycle(key,http);verify();return await use(result);}
-       finally{lifecycleExercises.delete(key);}
+       const keys=authOnly?firstLoginExercises:lifecycleExercises;
+       const key=Object.freeze({});keys.set(key,Object.freeze({handle,proof,modules,config:publicLifecycle,check(){need(available,'ROLE_ENTRY');verify();}}));
+       try{const result=await (authOnly?require('./task12-current261-first-login-exercise.cjs').exerciseCurrent261FirstLogin:require('./task12-current261-local-lifecycle-exercise.cjs').exerciseCurrent261LocalLifecycle)(key,http);verify();return await use(result);}
+       finally{keys.delete(key);}
       }
       if(!publicDraft){const result=await use(exposed);verify();return result;}
       need(http,'ROLE_ENTRY');
@@ -714,7 +726,14 @@ function assertCurrent259GeneratedDocumentLoginScope(proof,handle){
 }
 
 function assertCurrent261GeneratedLifecycleLoginScope(proof,handle){
- const scope=active.get(proof);need(arguments.length===2&&scope?.handle===handle&&scope.lifecycle===true,'HANDLE');scope.check();
+ const scope=active.get(proof);need(arguments.length===2&&scope?.handle===handle&&scope.lifecycle===true&&scope.authOnly!==true,'HANDLE');scope.check();
+}
+function assertCurrent261FirstLoginScope(proof,handle){
+ const scope=proof&&!types.isProxy(proof)&&firstLoginScopes.get(proof);need(arguments.length===2&&scope?.handle===handle&&scope.lifecycle===true&&scope.authOnly===true,'HANDLE');scope.check();
+}
+function claimCurrent261FirstLoginOwnerProof(proof,handle){
+ need(arguments.length===2,'HANDLE');assertCurrent261FirstLoginScope(proof,handle);const scope=firstLoginScopes.get(proof);
+ return Object.freeze({executionPurpose:'AUTH_ONLY_DIAGNOSTIC',identity:Object.freeze({...scope.identity}),continuitySql:scope.continuitySql,continuitySha256:proof.continuitySha256,effectivePlanSha256:proof.effectivePlanSha256,installation:proof.installation,check:scope.check});
 }
 function claimCurrent261LocalLifecycleOwnerProof(proof,handle){
  assertCurrent261GeneratedLifecycleLoginScope(proof,handle);
@@ -722,5 +741,5 @@ function claimCurrent261LocalLifecycleOwnerProof(proof,handle){
  return Object.freeze({identity:Object.freeze({...scope.identity}),continuitySql:scope.continuitySql,continuitySha256:proof.continuitySha256,
   effectivePlanSha256:proof.effectivePlanSha256,installation:proof.installation,check:scope.check});
 }
-module.exports=Object.freeze({takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
+module.exports=Object.freeze({withCurrent261FirstLoginPublicApplication,takeCurrent261FirstLoginExerciseBridge,assertCurrent261FirstLoginScope,claimCurrent261FirstLoginOwnerProof,takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
  withCurrent259GeneratedDocumentPublicApplication,takeCurrent259GeneratedDocumentApplicationBridge,assertCurrent259GeneratedDocumentLoginScope});

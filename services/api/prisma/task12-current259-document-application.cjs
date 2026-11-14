@@ -49,8 +49,13 @@ function takeCurrent259GeneratedDocumentHttpBridge(config,server){
 
 function takeCurrent261LocalLifecycleHttpBridge(config,server){
  const entry=lifecycleHttpBridges.get(config);
- need(arguments.length===2&&entry?.server===server&&lifecycleHttpBridges.delete(config),'HANDLE');return entry.authDiagnostics;
+ need(arguments.length===2&&entry?.server===server&&entry.authOnly!==true&&lifecycleHttpBridges.delete(config),'HANDLE');return entry.authDiagnostics;
 }
+function takeCurrent261FirstLoginHttpBridge(config,server){
+ const entry=lifecycleHttpBridges.get(config);
+ need(arguments.length===2&&entry?.server===server&&entry.authOnly===true&&lifecycleHttpBridges.delete(config),'HANDLE');return entry.authDiagnostics;
+}
+
 
 async function runCurrent259GeneratedDocumentApplication(bridge){
  need(arguments.length===1,'HANDLE');
@@ -142,7 +147,7 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
    await bounded(()=>listen(view,0,'127.0.0.1'));
    need(method(view,'getHttpServer').call(view)===server,'LISTEN');
    stage='HTTP';
-   const withHttp=publicLifecycle?require('./task12-current261-local-lifecycle-http.cjs').withCurrent261LocalLifecycleHttp:
+   const withHttp=publicLifecycle?(own(publicLifecycle,'executionPurpose')==='AUTH_ONLY_DIAGNOSTIC'?require('./task12-current261-local-lifecycle-http.cjs').withCurrent261FirstLoginHttp:require('./task12-current261-local-lifecycle-http.cjs').withCurrent261LocalLifecycleHttp):
     require('./task12-current259-document-http.cjs').withCurrent259DocumentHttp;
    const jwtToken=own(loaded,'JwtTokenService'),jwtService=get(view,jwtToken),verifyAccess=method(jwtService,'verifyAccessToken');
    need(typeof jwtToken==='function'&&get(testing,jwtToken)===jwtService,'HTTP');
@@ -187,7 +192,7 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
      }catch{authActive=false;return undefined;}
     }});
    }
-   bridges.set(config,publicLifecycle?Object.freeze({server,authDiagnostics}):server);
+   bridges.set(config,publicLifecycle?Object.freeze({server,authDiagnostics,authOnly:own(publicLifecycle,'executionPurpose')==='AUTH_ONLY_DIAGNOSTIC'}):server);
    try{value=await withHttp(config,server,checkPublic,verifyToken,exercise);}
    finally{bridges.delete(config);}
   }else{
@@ -218,4 +223,4 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
  if(primary)throw primary;
  return value;
 }
-module.exports=Object.freeze({takeCurrent261LocalLifecycleHttpBridge,runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});
+module.exports=Object.freeze({takeCurrent261FirstLoginHttpBridge,takeCurrent261LocalLifecycleHttpBridge,runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});

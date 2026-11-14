@@ -318,3 +318,12 @@ test('standalone and archive writers give the temporary checks every referenced 
  }
  assert.doesNotMatch(f.calls[0].sql,/ADD COLUMN "status"/u);
 });
+
+test('pure auth archive material uses identical SQL with fixed distinct status and cannot authorize an old claim',()=>{
+ const f=fixture(),executor={name:'jg_c259_outside_executor_owner',oid:'220',login:false},view={source,runId,resource:{containerId,databaseName:database}};
+ const full={source,completion:{...roleCompletion,roles:[...roles,executor]}},auth={...full,executionPurpose:'AUTH_ONLY_DIAGNOSTIC',completion:{...full.completion,status:'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION'}};
+ const original=f.api.archiveSevenMaterial(full,view,nonce),diagnostic=f.api.archiveSevenAuthOnlyDiagnosticMaterial(auth,view,nonce);assert.equal(diagnostic.beforeSql,original.beforeSql);
+ assert.throws(()=>f.api.archiveSevenMaterial(auth,view,nonce));assert.throws(()=>f.api.archiveSevenAuthOnlyDiagnosticMaterial(full,view,nonce));
+ assert.throws(()=>f.api.claimCurrent259SevenInstallation(diagnostic,f.handle));assert.equal(f.calls.length,0);
+ let getters=0;const hostile={...auth};Object.defineProperty(hostile,'executionPurpose',{get(){getters++;return 'AUTH_ONLY_DIAGNOSTIC';}});assert.throws(()=>f.api.archiveSevenAuthOnlyDiagnosticMaterial(hostile,view,nonce));assert.equal(getters,0);
+});

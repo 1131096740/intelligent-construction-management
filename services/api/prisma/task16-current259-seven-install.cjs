@@ -156,11 +156,11 @@ function material(witness,archive,paymentProfile){
  return {ledger:catalog.ledger,fragments:fragmentNames.map(name=>files.get(name)),newRoutines,
   ...currentRewriteBodies(catalog.ledger,changedRoutines),referenceEdit:`ALTER TABLE ${TEMP} ADD COLUMN "confirmedByUserId" text, ADD COLUMN "confirmedAt" timestamp(3), ADD COLUMN "status" text NOT NULL;\n${constraintEdit.replaceAll(RELATION,TEMP)}`};
 }
-function inputOf(lease,view,archive=false){
+function inputOf(lease,view,archive=false,authOnly=false){
  const {completion:roleCompletion,source,paymentProfile}=lease;
  const competition=lease.competition===true;
  need(roleCompletion.paymentProfile===paymentProfile&&isCurrentPaymentRuntimeMode(paymentProfile,competition));
- need(roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===source.candidateSha&&equal(source,view.source));
+ need(roleCompletion.status===(authOnly?'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION':'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION')&&roleCompletion.sourceSha===source.candidateSha&&equal(source,view.source));
  need(hex(roleCompletion.sourceSha,40)&&roleCompletion.runId===view.runId&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(roleCompletion.runId));
  const id=roleCompletion.databaseIdentity;
  need(id.database===`jg_task01_${roleCompletion.runId.replaceAll('-', '')}`&&id.database===view.resource.databaseName&&roleCompletion.containerId===view.resource.containerId&&hex(roleCompletion.containerId,64));
@@ -472,8 +472,10 @@ function readResult(result,input,phase,nonce){
   ['10',input.ordinary.oid].every(id=>fileRoles.includes(id))&&![input.runtime.oid,input.observer.oid].some(id=>fileRoles.includes(id)),'FILE_CALLERS');
  return {...row,pre:parseCurrent259SevenPreimage(JSON.stringify(row.pre),'10',nonce)};
 }
-function archiveSevenMaterial(lease,view,nonce){
- const input=inputOf(lease,view,true);
+function archiveSevenMaterial(lease,view,nonce){need(arguments.length===3);return archiveMaterial(lease,view,nonce,false);}
+function archiveSevenAuthOnlyDiagnosticMaterial(lease,view,nonce){need(arguments.length===3&&lease&&!types.isProxy(lease)&&Object.getOwnPropertyDescriptor(lease,'executionPurpose')?.value==='AUTH_ONLY_DIAGNOSTIC');return archiveMaterial(lease,view,nonce,true);}
+function archiveMaterial(lease,view,nonce,authOnly){
+ const input=inputOf(lease,view,true,authOnly);
  need(!input.competition,'ARCHIVE_EXECUTOR');
  const executor=input.roleCompletion.roles.find(role=>role.name==='jg_c259_outside_executor_owner');
  need(hex(nonce,64)&&executor?.login===false&&oid(executor.oid)&&![input.ordinary.oid,input.runtime.oid,input.observer.oid,'10'].includes(executor.oid));
@@ -636,5 +638,5 @@ BEGIN
 END $current259_voucher_seven_preimage$;
 SET LOCAL search_path=pg_catalog,pg_temp;`;
 }
-module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,
+module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
  claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure,describeCurrent259SevenPrestateReadbackFailure});

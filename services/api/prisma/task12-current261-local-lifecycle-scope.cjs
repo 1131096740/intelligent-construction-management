@@ -20,4 +20,10 @@ function describeCurrent261LocalLifecycle(source,runtimeProfile=PROFILE){
    'fiveConcurrentApprovals','seal','twoOriginalUploads','auditRollbackOriginalKeyRecovery','archiveIdempotency','publicDownload','independentOwnerReadback','ownedCleanup']),
   executionAllowed:false,nativeAdmission:false,cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false});
 }
-module.exports=Object.freeze({describeCurrent261LocalLifecycle});
+function describeCurrent261FirstLogin(source,runtimeProfile=PROFILE){
+ if(arguments.length<1||arguments.length>2)throw new Error('CURRENT261_FIRST_LOGIN_SCOPE');
+ const full=describeCurrent261LocalLifecycle(source,runtimeProfile);
+ return Object.freeze({...full,purpose:'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC',executionPurpose:'AUTH_ONLY_DIAGNOSTIC',httpRequests:1,
+  stages:Object.freeze(['diagnostic261','roles9','registeredArchive','lifecycleOrdinaryAcl','lifecycleDocumentRoles','lifecycleDocumentAcl','officialDocumentRuntime','lifecycleFiveTls','authOwnerBegin','firstActor0Login','authOwnerObserve','authOwnerClose','ownedCleanup'])});
+}
+module.exports=Object.freeze({describeCurrent261LocalLifecycle,describeCurrent261FirstLogin});

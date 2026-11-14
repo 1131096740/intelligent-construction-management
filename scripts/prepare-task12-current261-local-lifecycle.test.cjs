@@ -29,7 +29,7 @@ test('publication is only a preflight: fresh loader owns modules before formal v
  assert.throws(()=>module.exports.prepareCurrent261LocalLifecyclePlan({packetRoot:'/private/tmp/model',daemonId:'model-daemon-00000001',caseId:'12345678-1234-4234-8234-123456789012',businessDate:'2026-11-13',runtime:{file:'/private/tmp/model/runtime-input.json',sha256:'d'.repeat(64)}}),error=>error.code==='CURRENT261_LOCAL_LIFECYCLE_PLAN_RUNTIME_SOURCE');
  assert.deepEqual(events,['publication','build','loader','modules','formal','full']);
 });
-for(const profile of ['TASK12_OFFICIAL_TEMURIN17_0_17_10_V1','TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2'])test('separate fresh preparation and verification bind the exact '+profile+' scope',t=>{
+for(const profile of ['TASK12_OFFICIAL_TEMURIN17_0_17_10_V1','TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2'])for(const authOnly of [false,true])test('separate fresh preparation and verification bind the exact '+profile+' scope authOnly='+authOnly,t=>{
  const vm=require('node:vm'),root=fs.mkdtempSync('/private/tmp/jg-life-plan-positive-model-');fs.chmodSync(root,0o700);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const directory of ['lifecycle-run','tool-run'])fs.mkdirSync(path.join(root,directory),{mode:0o700});
  const sha=bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex'),source={candidateSha:'1'.repeat(40),tree:'2'.repeat(40),sourceSealSha256:'3'.repeat(64),profile:{profile:'TASK12_ARCHIVE261_SOURCE_V1'}};
@@ -37,18 +37,19 @@ for(const profile of ['TASK12_OFFICIAL_TEMURIN17_0_17_10_V1','TASK12_OFFICIAL_TE
  const runtimeFile=path.join(root,'runtime-input.json'),runtimeBytes=Buffer.from(JSON.stringify({profile,purpose:'TASK12_GENERATED_LIFECYCLE_LOCAL_ONLY_V1',source:sourceWitness,runRoot:path.join(root,'tool-run')}));fs.writeFileSync(runtimeFile,runtimeBytes,{mode:0o600});
  let captures=0;
  function fresh(){
-  const view=Object.freeze({}),handle=Object.freeze({}),loader={witness:()=>({source,build:{sealed:true},host:'MODEL',engineCommit:'MODEL'}),loadCurrent261LocalLifecycleDocumentModules:()=>view,verifyFull(){}};
+  const view=Object.freeze({}),handle=Object.freeze({}),loader={witness:()=>({source,build:{sealed:true},host:'MODEL',engineCommit:'MODEL'}),loadCurrent261LocalLifecycleDocumentModules:()=>view,loadCurrent261FirstLoginModules:()=>view,verifyFull(){}};
   const modules={
    '../services/api/prisma/task12-current259-generated-document-runtime.cjs':{observeOfficialTask12DocumentPublication(){return{profile};},verifyOfficialTask12DocumentRuntime(file,digest,v){assert.equal(file,runtimeFile);assert.equal(digest,sha(runtimeBytes));assert.equal(v,view);return{kind:'OFFICIAL_TOOL_RUNTIME',profile,inputSha256:digest,source:sourceWitness,...Object.fromEntries(['candidateLockSha256','buildSha256','materialSha256','machineReceiptSha256','physicalReviewSha256'].map(k=>[k,'5'.repeat(64)]))};},withOfficialTask12DocumentRuntime(){}},
    '../services/api/prisma/task12-current259-contract-login.cjs':{},
    '../services/api/prisma/task16-current259-build.cjs':{observeCurrent259Build(){captures++;return handle;}},
    '../services/api/prisma/task16-current259-client-loader.cjs':{loadCurrent259Client:h=>{assert.equal(h,handle);return loader;}},
-   '../services/api/prisma/task12-current261-local-lifecycle-scope.cjs':{describeCurrent261LocalLifecycle:()=>({purpose:'CURRENT261_GENERATED_LIFECYCLE_LOCAL',runtimeProfile:profile,storage:'LOCAL_ONLY'})}
+   '../services/api/prisma/task12-current261-local-lifecycle-scope.cjs':{describeCurrent261LocalLifecycle:()=>({purpose:'CURRENT261_GENERATED_LIFECYCLE_LOCAL',runtimeProfile:profile,storage:'LOCAL_ONLY'}),describeCurrent261FirstLogin:()=>({purpose:'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC',runtimeProfile:profile,storage:'LOCAL_ONLY',executionPurpose:'AUTH_ONLY_DIAGNOSTIC'})}
   };
   const module={exports:{}},body=fs.readFileSync(path.join(__dirname,'prepare-task12-current261-local-lifecycle.cjs'),'utf8').replace(/^#![^\n]*\n/u,'');vm.runInThisContext('(function(module,exports,require){'+body+'\n})')(module,module.exports,name=>Object.hasOwn(modules,name)?modules[name]:require(name));return{api:module.exports,handle};
  }
  const options={packetRoot:root,daemonId:'model-daemon-00000001',caseId:'12345678-1234-4234-8234-123456789012',businessDate:'2026-11-13',runtime:{file:runtimeFile,sha256:sha(runtimeBytes)}};
- const first=fresh(),prepared=first.api.prepareCurrent261LocalLifecyclePlan(options),second=fresh(),verified=second.api.verifyCurrent261LocalLifecyclePlan(prepared.file,prepared.sha256);
+ const first=fresh(),prepared=(authOnly?first.api.prepareCurrent261FirstLoginPlan:first.api.prepareCurrent261LocalLifecyclePlan)(options),second=fresh(),verified=(authOnly?second.api.verifyCurrent261FirstLoginPlan:second.api.verifyCurrent261LocalLifecyclePlan)(prepared.file,prepared.sha256);
+ assert.throws(()=>(authOnly?second.api.verifyCurrent261LocalLifecyclePlan:second.api.verifyCurrent261FirstLoginPlan)(prepared.file,prepared.sha256),/INPUT/u);
  assert.equal(captures,2);assert.notEqual(first.handle,second.handle);assert.equal(verified.buildHandle,second.handle);verified.check();
  assert.equal(verified.plan.source.sourceSealSha256,'3'.repeat(64));assert.equal(verified.plan.runtime.sourceWitness.sha256,'4'.repeat(64));assert.equal(verified.plan.runtime.runRoot,path.join(root,'tool-run'));
  assert.equal(fs.readdirSync(path.join(root,'lifecycle-run')).length,0);assert.equal(fs.readdirSync(path.join(root,'tool-run')).length,0);

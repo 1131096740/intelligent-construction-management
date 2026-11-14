@@ -27,3 +27,9 @@ test('local lifecycle scope selects only either exact official tool profile',()=
  const plan=api.describeCurrent261LocalLifecycle(s,profile);assert.equal(plan.runtimeProfile,profile);assert.equal(plan.resourceMs,3600000);assert.equal(plan.httpRequests,600);
  assert.throws(()=>api.describeCurrent261LocalLifecycle(s,'arbitrary-runtime'),/SCOPE/u);
 });
+
+test('fixed auth-only description preserves exact source/ACL and budgets but admits only one login diagnostic',()=>{
+ const api=require('./task12-current261-local-lifecycle-scope.cjs'),s=source(),full=api.describeCurrent261LocalLifecycle(s),auth=api.describeCurrent261FirstLogin(s);
+ assert.equal(auth.purpose,'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC');assert.equal(auth.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.equal(auth.httpRequests,1);assert.equal(auth.resourceMs,full.resourceMs);assert.equal(auth.httpMs,full.httpMs);assert.equal(auth.effectivePlanSha256,full.effectivePlanSha256);
+ assert.ok(auth.stages.includes('firstActor0Login'));assert.ok(!auth.stages.includes('archiveIdempotency'));assert.equal(auth.full394Accepted,false);assert.equal(auth.nativeAdmission,false);
+});

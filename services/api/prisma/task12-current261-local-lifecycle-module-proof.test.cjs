@@ -29,3 +29,16 @@ test('official modules claim rejects caller readers and cloned namespaces before
   assert.throws(()=>claim(value),error=>error.code==='CURRENT261_OFFICIAL_DOCUMENT_MODULES');
  }
 });
+
+test('auth transaction observer and filter share the same fixed module/functions and reject descriptor substitutions without traps',()=>{
+ const {captureCurrent261AuthTransactionClosure:capture}=require('./task12-current261-local-lifecycle-module-proof.cjs');
+ const make=()=>{const root='/private/tmp/auth-closure-model',cache={},names=['database/task12-auth-transaction-phase.js','auth/auth-rate-limit.service.js','database/task12-auth-error-diagnostic.js'];
+  const modules=names.map(name=>({filename:path.join(root,'services/api/dist',name),loaded:true,exports:{},children:[]}));
+  modules[0].exports={observeTask12AuthTransaction(){},takeTask12AuthTransactionPhase(){}};modules[1].children=[modules[0]];modules[2].children=[modules[0]];for(const m of modules)cache[m.filename]=m;return{root,cache,modules};};
+ const f=make(),check=capture(f.root,f.cache);check();
+ for(const mutate of [g=>{g.modules[0].exports.observeTask12AuthTransaction=()=>{};},g=>{g.cache[g.modules[0].filename]={...g.modules[0]};},g=>{g.modules[2].children=[{...g.modules[0]}];},g=>{g.modules[0].exports={...g.modules[0].exports};}]){
+  const g=make(),verify=capture(g.root,g.cache);mutate(g);assert.throws(verify,/MODULE_SOURCE/u);
+ }
+ let traps=0;const g=make(),verify=capture(g.root,g.cache);Object.defineProperty(g.modules[0],'exports',{get(){traps++;return{};}});assert.throws(verify,/MODULE_SOURCE/u);assert.equal(traps,0);
+ const h=make();h.cache[h.modules[0].filename]=new Proxy(h.modules[0],{get(){traps++;}});assert.throws(()=>capture(h.root,h.cache),/MODULE_SOURCE/u);assert.equal(traps,0);
+});

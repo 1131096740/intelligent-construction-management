@@ -5,7 +5,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { isDeepStrictEqual: equal, types } = require('node:util');
 // Preserve the technical profile's original load order.
-const { claimCurrent259ArchiveInstallation } = require('./task16-current259-archive-install.cjs');
+const { claimCurrent259ArchiveInstallation,claimCurrent261AuthOnlyDiagnosticArchive } = require('./task16-current259-archive-install.cjs');
 const { claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 const { current259AclRowsSql, current259SignedNumberAclSql } = require('./task16-current259-catalog.cjs');
 
@@ -13,7 +13,7 @@ const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-g
 const CODE = 'CURRENT259_ORDINARY_ARCHIVE_ACL';
 const phases = ['current259-ordinary-acl-before','current259-ordinary-acl-write','current259-ordinary-acl-committed'];
 const proofStatus = 'CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION';
-const used = new WeakSet(), proofs = new WeakMap();
+const used = new WeakSet(), proofs = new WeakMap(),authProofs=new WeakMap();
 const sha = data => createHash('sha256').update(data).digest('hex');
 const fault = code => Object.assign(new Error(CODE+'_'+code),{code:CODE+'_'+code});
 const need = (ok, code='QUALIFICATION') => { if (!ok) throw fault(code); };
@@ -451,9 +451,11 @@ async function installCurrent261GeneratedLifecycleOrdinaryAcl(archiveCompletion,
  need(arguments.length===2,'HANDLE');return install(archiveCompletion,handle,null);
 }
 
-async function install(archiveCompletion,handle,profile){
+async function installCurrent261AuthOnlyDiagnosticOrdinaryAcl(completion,handle){need(arguments.length===2,'HANDLE');return install(completion,handle,null,true);}
+async function install(archiveCompletion,handle,profile,authOnly=false){
  need(handle && typeof handle==='object' && !types.isProxy(handle) && !used.has(handle),'HANDLE');
- const lease=claimCurrent259ArchiveInstallation(archiveCompletion,handle);
+ const claimArchive=authOnly?claimCurrent261AuthOnlyDiagnosticArchive:claimCurrent259ArchiveInstallation;need(typeof claimArchive==='function','HANDLE');
+ const lease=claimArchive(archiveCompletion,handle);need(authOnly?Object.getOwnPropertyDescriptor(lease,'executionPurpose')?.value==='AUTH_ONLY_DIAGNOSTIC':Object.getOwnPropertyDescriptor(lease,'executionPurpose')===undefined,'HANDLE');
  used.add(handle);
  let writeAttempted=false,phase=phases[0];
  try{
@@ -490,7 +492,7 @@ async function install(archiveCompletion,handle,profile){
     catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256:profile.sha256,
     ...(profile.lifecycle?{effectivePlanSha256:profile.effectivePlanSha256,installation:profile.installation}:{}),
     ...(documentMode(profile)?{purpose:profile.lifecycle?lifecyclePurpose:documentPurpose}:{}),executionAllowed:false,nativeAdmission:false});
-  proofs.set(completion,{handle,check,checkContinuity,profile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
+  (authOnly?authProofs:proofs).set(completion,{handle,check,checkContinuity,profile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
     catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql,
     protectedSql:protectSeven(normalizedSevenCatalog(lease.ordinaryAclWitness(phases[2]).sevenCatalogSql,before.changes))});
   return completion;
@@ -501,6 +503,7 @@ async function install(archiveCompletion,handle,profile){
   throw error;
  }
 }
+const originalProofs=proofs;
 function claimCurrent259OrdinaryArchiveAcl(completion,handle){
  need(arguments.length===2,'HANDLE');
  return claim(completion,handle,false);
@@ -509,14 +512,15 @@ function claimCurrent259GeneratedDocumentOrdinaryAcl(completion,handle){
  need(arguments.length===2,'HANDLE');
  return claim(completion,handle,true);
 }
-function claim(completion,handle,document){
+function claim(completion,handle,document,authOnly=false){
+ const proofs=authOnly?authProofs:originalProofs;
  need(completion && !types.isProxy(completion) && proofs.has(completion),'HANDLE');
  const receipt=proofs.get(completion);
  need(receipt.handle===handle && (document==='lifecycle'?receipt.profile.lifecycle===true:
   receipt.profile.lifecycle!==true&&(receipt.profile===documentProfile)===document),'HANDLE');
  proofs.delete(completion);receipt.check();
  const {check,checkContinuity,archiveCompletion,roleCompletion,source,catalogSql,protectedSql}=receipt;
- return Object.freeze({completion,check,checkContinuity,archiveCompletion,roleCompletion,source,catalogSql,protectedSql,
+ return Object.freeze({...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),completion,check,checkContinuity,archiveCompletion,roleCompletion,source,catalogSql,protectedSql,
   ...(receipt.profile===generatedProfile?{generatedDraft:true}:{}),...(document==='lifecycle'?{generatedLifecycle:true}:document?{generatedDocument:true}:{})});
 }
 
@@ -524,5 +528,6 @@ function claimCurrent261GeneratedLifecycleOrdinaryAcl(completion,handle){
  need(arguments.length===2,'HANDLE');return claim(completion,handle,'lifecycle');
 }
 
-module.exports=Object.freeze({describeCurrent261GeneratedLifecycleOrdinaryAcl,describeMigration261GeneratedLifecycleOrdinaryAcl,installCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
+function claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(completion,handle){need(arguments.length===2,'HANDLE');return claim(completion,handle,'lifecycle',true);}
+module.exports=Object.freeze({installCurrent261AuthOnlyDiagnosticOrdinaryAcl,claimCurrent261AuthOnlyDiagnosticOrdinaryAcl,describeCurrent261GeneratedLifecycleOrdinaryAcl,describeMigration261GeneratedLifecycleOrdinaryAcl,installCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
  installCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl});

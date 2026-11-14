@@ -241,3 +241,16 @@ test('shared main model uses an exclusive canonical TMPDIR when the platform pri
  const result=await promisify(execFile)(process.execPath,['-e',child,helper],{env:{PATH:path.dirname(process.execPath)+':/usr/bin:/bin',TMPDIR:temporary,LANG:'en_US.UTF-8'},timeout:10000,maxBuffer:1024*1024});
  assert.equal(result.stdout,'');assert.equal(result.stderr,'');assert.deepEqual(fs.readdirSync(temporary),[]);
 });
+
+test('fixed auth-only main uses its diagnostic producers and independent close, preserving one-shot and full-purpose separation',async t=>{
+ const f=model(t,{authOnly:true}),r=await f.result();assert.equal(r.status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_COMPLETE');assert.equal(r.cleanup,'CLOSED');assert.equal(r.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');
+ assert.deepEqual(f.calls,['verify','resource','auth-bootstrap','roles','archive','ordinary','document-roles','document-acl','runtime','application','application-close','project-auth','runtime-close','resource-close']);
+ assert.equal(r.outcome.goal,'TASK12_FIRST_LOGIN_HTTP_RETURNED');assert.equal(r.outcome.full394Accepted,false);assert.equal(r.outcome.cleanupAccepted,false);assert.equal(r.outcome.nativeAdmission,false);
+ assert.deepEqual(JSON.parse(fs.readFileSync(f.plan.run.receiptFile)),r);assert.throws(()=>f.api.assertCurrent261FirstLoginBusinessContinuity(f.token,{}));
+});
+
+test('auth-only HOLD performs no attempt and a failed request retains its independent owner observation',async t=>{
+ const held=model(t,{authOnly:true,once:false}),h=await held.result();assert.equal(h.status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_HOLD');assert.deepEqual(held.calls,['verify']);assert.equal(fs.readdirSync(held.plan.run.root).length,0);
+ const observation=Object.freeze({authObserved:true,httpReturned:false,effects:Object.freeze({actorLastLogin:1,actorRefresh:0}),ownerClosed:true,full394Accepted:false}),first=Object.assign(Error('model-first-auth'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'});
+ const f=model(t,{authOnly:true,applicationFailure:first,authOwnerObservation:observation}),r=await f.result();assert.equal(r.status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED');assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.businessOutcome,'UNKNOWN');assert.deepEqual(r.authOwnerObservation,observation);assert.equal(r.full394Accepted,false);assert.equal(r.outcome,undefined);assert.equal(f.calls.filter(v=>v==='application').length,1);
+});

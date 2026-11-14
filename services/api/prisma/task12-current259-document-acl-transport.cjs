@@ -1,5 +1,5 @@
 'use strict';
-const {claimCurrent259GeneratedDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
+const {claimCurrent259GeneratedDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles,claimCurrent261AuthOnlyDiagnosticDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
 const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,renderCurrent261DocumentAclContinuity}=require('./task12-current259-document-acl.cjs');
 const {registeredGeneratedLifecycleCollisionMaterial,generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
@@ -17,7 +17,7 @@ const priorBindings=Object.freeze(['jg_contract_direct_pending_binding_v1','jg_c
  'jg_contract_direct_archive_binding_v1','jg_contract_direct_archive_retention_binding_v1','jg_contract_direct_archive_dispatch_binding_v1',
  'jg_contract_upward_pending_create_binding_v1','jg_contract_direct_archive_completion_binding_v1','jg_contract_upward_pending_save_binding_v1']);
 const phases=Object.freeze({BEFORE:'current259-document-acl-before',WRITE:'current259-document-acl-write',COMMITTED:'current259-document-acl-committed'});
-const used=new WeakSet(),installed=new WeakMap();
+const used=new WeakSet(),installed=new WeakMap(),authInstalled=new WeakMap();
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
 const fault=stage=>Object.assign(new Error(CODE+'_'+stage),{code:CODE+'_'+stage});
 const need=(ok,stage)=>{if(!ok)throw fault(stage);};
@@ -177,11 +177,13 @@ async function installCurrent259GeneratedDocumentAcl(roleCompletion,handle){
 async function installCurrent261GeneratedLifecycleDocumentAcl(roleCompletion,handle){
  need(arguments.length===2,'HANDLE');return install(roleCompletion,handle,true);
 }
-async function install(roleCompletion,handle,lifecycle){
+async function installCurrent261AuthOnlyDiagnosticDocumentAcl(completion,handle){need(arguments.length===2,'HANDLE');return install(completion,handle,true,true);}
+async function install(roleCompletion,handle,lifecycle,authOnly=false){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&!used.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(resource.topology===topology&&typeof exec==='function','HANDLE');
- const rolesLease=(lifecycle?claimCurrent261GeneratedLifecycleDocumentRoles:claimCurrent259GeneratedDocumentRoles)(roleCompletion,handle);
+ const claimRoles=authOnly?claimCurrent261AuthOnlyDiagnosticDocumentRoles:lifecycle?claimCurrent261GeneratedLifecycleDocumentRoles:claimCurrent259GeneratedDocumentRoles;need(typeof claimRoles==='function','HANDLE');
+ const rolesLease=claimRoles(roleCompletion,handle);need(authOnly?Object.getOwnPropertyDescriptor(rolesLease,'executionPurpose')?.value==='AUTH_ONLY_DIAGNOSTIC':Object.getOwnPropertyDescriptor(rolesLease,'executionPurpose')===undefined,'HANDLE');
  if(lifecycle){
   const plan=registeredGeneratedLifecycleCollisionMaterial(rolesLease.source);
   need(rolesLease.ordinaryAcl.generatedLifecycle===true&&roleCompletion.effectivePlanSha256===plan.sha256&&
@@ -226,7 +228,7 @@ async function install(roleCompletion,handle,lifecycle){
    runId:view.runId,containerId:resource.containerId,roleInstallXid:roleCompletion.installXid,installXid:committed.installXid,
    profileSha256:matched.profileSha256,
    ...(lifecycle?{effectivePlanSha256:matched.effectivePlanSha256,installation:matched.installation}:{}),executionAllowed:false,nativeAdmission:false});
-  installed.set(result,{handle,check,checkContinuity,lifecycle,rolesLease,continuitySha256:committed.continuitySha256,continuitySql:proof.continuity});
+  (authOnly?authInstalled:installed).set(result,{handle,check,checkContinuity,lifecycle,rolesLease,continuitySha256:committed.continuitySha256,continuitySql:proof.continuity});
   return result;
  }catch(cause){
   const error=Object.assign(fault(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED'),{phase});
@@ -241,6 +243,7 @@ async function install(roleCompletion,handle,lifecycle){
   throw error;
  }
 }
+const originalInstalled=installed;
 function claimCurrent259GeneratedDocumentAcl(result,handle){
  need(arguments.length===2,'HANDLE');
  return claim(result,handle,false);
@@ -249,16 +252,18 @@ function claimCurrent259GeneratedDocumentSaveAcl(result,handle){
  need(arguments.length===2,'HANDLE');
  return claim(result,handle,true);
 }
-function claim(result,handle,save){
+function claim(result,handle,save,authOnly=false){
+ const installed=authOnly?authInstalled:originalInstalled;
  const receipt=installed.get(result);
  need(receipt?.handle===handle&&receipt&&(save==='lifecycle'?receipt.lifecycle===true:
   receipt.lifecycle!==true&&(receipt.rolesLease.ordinaryAcl.generatedDocument===true)===save),'HANDLE');
  installed.delete(result);receipt.check();
  const {ordinaryAcl,roles,source}=receipt.rolesLease;
- return Object.freeze({completion:result,ordinaryAcl,roles,source,check:receipt.check,checkContinuity:receipt.checkContinuity,
+ return Object.freeze({...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),completion:result,ordinaryAcl,roles,source,check:receipt.check,checkContinuity:receipt.checkContinuity,
   continuitySha256:receipt.continuitySha256,continuitySql:receipt.continuitySql});
 }
 function claimCurrent261GeneratedLifecycleDocumentAcl(result,handle){
  need(arguments.length===2,'HANDLE');return claim(result,handle,'lifecycle');
 }
-module.exports=Object.freeze({describeCurrent261DocumentAclFailure,installCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261GeneratedLifecycleDocumentAcl,installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});
+function claimCurrent261AuthOnlyDiagnosticDocumentAcl(result,handle){need(arguments.length===2,'HANDLE');return claim(result,handle,'lifecycle',true);}
+module.exports=Object.freeze({installCurrent261AuthOnlyDiagnosticDocumentAcl,claimCurrent261AuthOnlyDiagnosticDocumentAcl,describeCurrent261DocumentAclFailure,installCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261GeneratedLifecycleDocumentAcl,installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});

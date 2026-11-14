@@ -22,4 +22,19 @@ function assertCurrent261LocalLifecycleToolClosure(root,modules,cache){
  const reaches=mod=>{if(mod===own(modules,'profile'))return true;if(visited.has(mod))return false;visited.add(mod);need(visited.size<=1000);return children(mod).some(reaches);};
  need(reaches(own(modules,'runtime')));
 }
-module.exports=Object.freeze({assertCurrent261LocalLifecycleToolClosure});
+function captureCurrent261AuthTransactionClosure(root,cache){
+ need(arguments.length===2&&typeof root==='string'&&path.isAbsolute(root));
+ const names=['database/task12-auth-transaction-phase.js','auth/auth-rate-limit.service.js','database/task12-auth-error-diagnostic.js'];
+ const descriptor=(v,k)=>{own(v,k);return Object.freeze({...Object.getOwnPropertyDescriptor(v,k)});};
+ const same=(v,k,d)=>{const now=descriptor(v,k);need(['value','writable','enumerable','configurable'].every(f=>now[f]===d[f]));return now.value;};
+ const slots=names.map(name=>{const file=path.join(root,'services/api/dist',name),slot=descriptor(cache,file),mod=slot.value;
+  need(own(mod,'filename')===file&&own(mod,'loaded')===true);const exports=descriptor(mod,'exports');need(exports.value&&!types.isProxy(exports.value));return{file,slot,mod,exports};});
+ const phase=slots[0],methods=['observeTask12AuthTransaction','takeTask12AuthTransactionPhase'].map(key=>{const d=descriptor(phase.exports.value,key);need(typeof d.value==='function');return{key,d};});
+ const check=()=>{
+  for(const s of slots){need(same(cache,s.file,s.slot)===s.mod&&own(s.mod,'filename')===s.file&&own(s.mod,'loaded')===true);same(s.mod,'exports',s.exports);}
+  for(const {key,d}of methods)same(phase.exports.value,key,d);
+  for(const s of slots.slice(1)){const children=own(s.mod,'children');need(Array.isArray(children)&&!types.isProxy(children));let count=0;for(let i=0;i<children.length;i++)if(own(children,String(i))===phase.mod)count++;need(count===1);}
+ };
+ check();return check;
+}
+module.exports=Object.freeze({assertCurrent261LocalLifecycleToolClosure,captureCurrent261AuthTransactionClosure});

@@ -55,6 +55,8 @@ function fixture(options={}){
    async closeCurrent259OwnedResource(h){assert.equal(h,handle);closed++;if(options.cleanupUnknown)throw Error('model cleanup');}
   }
  };
+ const originalClaim=imports['./task16-current259-ordinary-archive-acl.cjs'].claimCurrent261GeneratedLifecycleOrdinaryAcl;
+ imports['./task16-current259-ordinary-archive-acl.cjs'].claimCurrent261AuthOnlyDiagnosticOrdinaryAcl=(...args)=>{assert.equal(options.authOnly,true);return Object.freeze({...originalClaim(...args),executionPurpose:'AUTH_ONLY_DIAGNOSTIC'});};
  const filename=path.join(__dirname,'task12-current259-document-role-provision.cjs'),mod={exports:{}};
  new Function('require','module',fs.readFileSync(filename,'utf8'))(name=>imports[name]??require(name),mod);
  return {api:mod.exports,continuityToken,continuityCalls:()=>continuityCalls,handle,completion,calls,closed:()=>closed,resource};
@@ -140,3 +142,19 @@ test('explicit lifecycle role provision requires its genuine 261 ordinary predec
 });
 
 test('role continuation propagates only its original capability through the original view',async()=>{const f=fixture();const result=await f.api.provisionCurrent259GeneratedDocumentRoles(f.completion,f.handle);const lease=f.api.claimCurrent259GeneratedDocumentRoles(result,f.handle);lease.checkContinuity(f.continuityToken);assert.ok(f.continuityCalls()>=2);assert.throws(()=>lease.checkContinuity({}));});
+
+ test('fixed auth diagnostic claim refuses public strings, clones and proxy previews without granting full authority',()=>{
+ const api=require('./task12-current259-document-role-provision.cjs');assert.equal(typeof api.provisionCurrent261AuthOnlyDiagnosticDocumentRoles,'function');
+ for(const v of [{},Object.freeze({executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}),new Proxy({},{})])assert.throws(()=>api.claimCurrent261AuthOnlyDiagnosticDocumentRoles(v,{}));
+ });
+
+test('diagnostic SQL chain grants only its separate one-use purpose and refuses full claim',async()=>{
+ const {createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const f=fixture({source,lifecycle:true,authOnly:true}),result=await f.api.provisionCurrent261AuthOnlyDiagnosticDocumentRoles(f.completion,f.handle);assert.equal(f.calls.length,3);
+ assert.throws(()=>f.api.claimCurrent261GeneratedLifecycleDocumentRoles(result,f.handle));assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticDocumentRoles({...result},f.handle));
+ const lease=f.api.claimCurrent261AuthOnlyDiagnosticDocumentRoles(result,f.handle);assert.equal(lease.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticDocumentRoles(result,f.handle));
+});

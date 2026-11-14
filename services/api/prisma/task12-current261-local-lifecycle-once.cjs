@@ -17,10 +17,13 @@ const businessDay=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}
 // The fixed binder can validate them; callers cannot register, mint or renew one.
 const contractContinuities=new WeakMap();
 let currentContractContinuity;
-function assertCurrent261ContractBusinessContinuity(token,handle){
+function assertCurrent261ContractBusinessContinuity(token,handle){need(arguments.length===2,'BUSINESS_CONTINUITY');return assertBusinessContinuity(token,handle,false);}
+function assertCurrent261FirstLoginBusinessContinuity(token,handle){need(arguments.length===2,'BUSINESS_CONTINUITY');return assertBusinessContinuity(token,handle,true);}
+function assertBusinessContinuity(token,handle,authOnly){
  const entry=token&&!types.isProxy(token)&&contractContinuities.get(token);
+ need(entry&&entry.authOnly===authOnly,'BUSINESS_CONTINUITY');
  try{
-  need(arguments.length===2&&FRESH&&entry&&entry===currentContractContinuity&&entry.active&&entry.handle===handle&&
+  need(arguments.length===3&&FRESH&&entry&&entry===currentContractContinuity&&entry.active&&entry.handle===handle&&
    !entry.signal.aborted&&entry.acl===entry.binding.acl&&entry.build===entry.binding.build&&entry.source===entry.binding.source,'BUSINESS_CONTINUITY');
   entry.check();return true;
  }catch(error){if(entry)entry.active=false;throw error;}
@@ -35,9 +38,10 @@ function writeExclusive(file,bytes,onOpen){
 }
 
 function parseArgs(args){
+ const authOnly=args[0]==='--auth-only';if(authOnly)args=args.slice(1);
  need((args.length===4||args.length===5&&args[4]==='--once')&&args[0]==='--plan'&&
   args[2]==='--expected-plan-sha256'&&SHA.test(args[3]),'ARGS');
- return {file:args[1],digest:args[3],once:args.length===5};
+ return {file:args[1],digest:args[3],once:args.length===5,authOnly};
 }
 
 function checkHostEnv(){
@@ -47,6 +51,9 @@ function checkHostEnv(){
 const reasonCodes=new Set([
  'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING','TASK12_OFFICIAL_DOCUMENT_SOURCE','TASK12_OFFICIAL_DOCUMENT_SCOPE','TASK12_OFFICIAL_DOCUMENT_DEADLINE','TASK12_OFFICIAL_DOCUMENT_READER',
  'CURRENT261_LOCAL_LIFECYCLE_HTTP','CURRENT259_LOADER_CHANGED',
+ ...['HANDLE','SIGNAL','OWNER_CLOSE','OUTCOME','CLEANUP_UNKNOWN'].map(part=>'CURRENT261_FIRST_LOGIN_EXERCISE_'+part),
+ ...['INPUT','HANDLE','FIXTURE','CONTINUITY','CLOSED','PENDING','OUTPUT','FACTS','BACKEND','PREIMAGE','PHASE','SCOPE'].map(part=>'CURRENT261_FIRST_LOGIN_OWNER_'+part),
+ ...['INPUT','ABORTED','HTTP_STATUS','LOGIN'].map(part=>'TASK12_FIRST_LOGIN_CASE_'+part),
  'CURRENT261_LOCAL_LIFECYCLE_OWNER_OUTPUT','CURRENT261_LOCAL_LIFECYCLE_OWNER_FACTS','CURRENT261_LOCAL_LIFECYCLE_OWNER_FAULT_UNKNOWN',
  'TASK01_RESOURCE_START_FAILED','CURRENT259_RESOURCE_CLEANUP_UNKNOWN','CURRENT259_BUILD_SOURCE_NOT_CLEAN',
  'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','LOCAL_MIGRATION_SQL_STAGE203_READBACK',
@@ -201,36 +208,39 @@ function safeCleanup(cause,scopeEntered){
 }
 
 async function main(){
- let attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
+ let authOnly=false,attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
  let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure;
  const controller=new AbortController(),abort=()=>controller.abort();
  try{
   need(FRESH,'FRESH');
-  const args=parseArgs(process.argv.slice(2));
-  const {verifyCurrent261LocalLifecyclePlan}=require('../../../scripts/prepare-task12-current261-local-lifecycle.cjs');
-  const checked=verifyCurrent261LocalLifecyclePlan(args.file,args.digest);
+  const args=parseArgs(process.argv.slice(2));authOnly=args.authOnly;
+  const {verifyCurrent261LocalLifecyclePlan,verifyCurrent261FirstLoginPlan}=require('../../../scripts/prepare-task12-current261-local-lifecycle.cjs');
+  const checked=(authOnly?verifyCurrent261FirstLoginPlan:verifyCurrent261LocalLifecyclePlan)(args.file,args.digest);
   const {plan}=checked,runtimeSha256=plan.runtime.sha256;
+  need(plan.purpose===(authOnly?'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC':'CURRENT261_GENERATED_LIFECYCLE_LOCAL'),'RUNTIME');
   need(checked.sha256===args.digest&&SHA.test(runtimeSha256)&&checked.runtime&&typeof checked.runtime==='object','RUNTIME');
-  if(!args.once)return {status:'CURRENT261_LOCAL_LIFECYCLE_HOLD',planSha256:checked.sha256,runtimeSha256};
+  if(!args.once)return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_HOLD':'CURRENT261_LOCAL_LIFECYCLE_HOLD',planSha256:checked.sha256,runtimeSha256,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{})};
   checkHostEnv();
   need(businessDay()===plan.case.businessDate,'TIME');
   checked.check();
 
   const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
   const {withCurrent259FirstQ2LoopbackResource,claimCurrent259TechnicalResource}=require('./task16-current259-owned-resource.cjs');
-  const {captureCurrent261ContractBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
-  captureCurrent261ContractBusinessIssuer();
-  const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
-  const {provisionCurrent259Roles}=require('./task16-current259-role-provision.cjs');
-  const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource}=require('./task16-current259-archive-install.cjs');
-  const {installCurrent261GeneratedLifecycleOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
-  const {provisionCurrent261GeneratedLifecycleDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
-  const {installCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261DocumentAclFailure}=require('./task12-current259-document-acl-transport.cjs');
+  const {captureCurrent261ContractBusinessIssuer,captureCurrent261FirstLoginBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
+  (authOnly?captureCurrent261FirstLoginBusinessIssuer:captureCurrent261ContractBusinessIssuer)();
+  const {createCurrent259TechnicalMigration,createCurrent261AuthOnlyDiagnosticBootstrap,describeCurrent259TechnicalFailure}=require('./local-staged-current259-profile.cjs');
+  const {provisionCurrent259Roles,provisionCurrent261AuthOnlyDiagnosticRoles}=require('./task16-current259-role-provision.cjs');
+  const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent261AuthOnlyDiagnosticArchive}=require('./task16-current259-archive-install.cjs');
+  const {installCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent261AuthOnlyDiagnosticOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
+  const {provisionCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent261AuthOnlyDiagnosticDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
+  const {installCurrent261GeneratedLifecycleDocumentAcl,installCurrent261AuthOnlyDiagnosticDocumentAcl,describeCurrent261DocumentAclFailure}=require('./task12-current259-document-acl-transport.cjs');
   const {withOfficialTask12DocumentRuntime}=require('./task12-current259-generated-document-runtime.cjs');
-  const {withCurrent261LocalLifecyclePublicApplication}=require('./task12-current259-document-login.cjs');
+  const {withCurrent261LocalLifecyclePublicApplication,withCurrent261FirstLoginPublicApplication}=require('./task12-current259-document-login.cjs');
   const {projectCurrent261LocalLifecycleOutcome}=require('./task12-current261-local-lifecycle-exercise.cjs');
+  const {projectCurrent261FirstLoginOutcome,describeCurrent261FirstLoginOwnerObservation}=authOnly?require('./task12-current261-first-login-exercise.cjs'):{};
   const {describeCurrent261LocalLifecycleHttpFailure}=require('./task12-current261-local-lifecycle-http.cjs');
-  need([read,withCurrent259FirstQ2LoopbackResource,createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure,provisionCurrent259Roles,
+  const migration=authOnly?createCurrent261AuthOnlyDiagnosticBootstrap:createCurrent259TechnicalMigration,rolesProducer=authOnly?provisionCurrent261AuthOnlyDiagnosticRoles:provisionCurrent259Roles,archiveProducer=authOnly?installCurrent261AuthOnlyDiagnosticArchive:installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,ordinaryProducer=authOnly?installCurrent261AuthOnlyDiagnosticOrdinaryAcl:installCurrent261GeneratedLifecycleOrdinaryAcl,documentRolesProducer=authOnly?provisionCurrent261AuthOnlyDiagnosticDocumentRoles:provisionCurrent261GeneratedLifecycleDocumentRoles,aclProducer=authOnly?installCurrent261AuthOnlyDiagnosticDocumentAcl:installCurrent261GeneratedLifecycleDocumentAcl,application=authOnly?withCurrent261FirstLoginPublicApplication:withCurrent261LocalLifecyclePublicApplication,projectOutcome=authOnly?projectCurrent261FirstLoginOutcome:projectCurrent261LocalLifecycleOutcome;
+  need([migration,rolesProducer,archiveProducer,ordinaryProducer,documentRolesProducer,aclProducer,application,projectOutcome,...(authOnly?[describeCurrent261FirstLoginOwnerObservation]:[]),read,withCurrent259FirstQ2LoopbackResource,describeCurrent259TechnicalFailure,
    installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent261GeneratedLifecycleOrdinaryAcl,
    provisionCurrent261GeneratedLifecycleDocumentRoles,installCurrent261GeneratedLifecycleDocumentAcl,withOfficialTask12DocumentRuntime,
    withCurrent261LocalLifecyclePublicApplication,projectCurrent261LocalLifecycleOutcome,describeCurrent261LocalLifecycleHttpFailure,describeCurrent261DocumentAclFailure]
@@ -242,7 +252,7 @@ async function main(){
   const coordinates={planSha256:checked.sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id,runtimeSha256};
   const marker=Buffer.from(JSON.stringify({status:'CONSUMED',...coordinates})+'\n');
   writeReceipt=(status,proof)=>{
-   const receipt={status,phase,...coordinates,relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
+   const receipt={status,phase,...coordinates,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
    try{writeExclusive(plan.run.receiptFile,Buffer.from(JSON.stringify(receipt)+'\n'));}
    catch{throw fault('RECEIPT');}
    return receipt;
@@ -288,7 +298,8 @@ async function main(){
     if(!firstFailure)firstFailure={cause,phase:name,httpFailure:describeCurrent261LocalLifecycleHttpFailure(cause),
      documentAclFailure:name==='DOCUMENT_ACL'?describeCurrent261DocumentAclFailure(cause):undefined,
      documentLoginFailure:name==='APPLICATION'?safeDocumentLoginFailure(cause):undefined,
-     documentRoleFailure:name==='APPLICATION'?safeDocumentRoleFailure(cause):undefined};
+     documentRoleFailure:name==='APPLICATION'?safeDocumentRoleFailure(cause):undefined,
+     authOwnerObservation:authOnly&&name==='APPLICATION'?describeCurrent261FirstLoginOwnerObservation(cause):undefined};
     if(name===phase){
      failureStage=safeStage(cause,name);
      try{
@@ -309,12 +320,12 @@ async function main(){
   const outcome=await withCurrent259FirstQ2LoopbackResource(checked.buildHandle,
    {artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
     need(!scopeEntered,'RUNTIME');scopeEntered=true;
-    const technical=await stage('MIGRATE',()=>createCurrent259TechnicalMigration(handle,controller.signal).migrate());
-    const roles=await stage('ROLES',()=>provisionCurrent259Roles(technical,handle));
-    const archive=await stage('ARCHIVE',()=>installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(roles,handle));
-    const ordinary=await stage('DOCUMENT_ORDINARY_ACL',()=>installCurrent261GeneratedLifecycleOrdinaryAcl(archive,handle));
-    const documentRoles=await stage('DOCUMENT_ROLES',()=>provisionCurrent261GeneratedLifecycleDocumentRoles(ordinary,handle));
-    const acl=await stage('DOCUMENT_ACL',()=>installCurrent261GeneratedLifecycleDocumentAcl(documentRoles,handle));
+    const technical=await stage('MIGRATE',()=>migration(handle,controller.signal).migrate());
+    const roles=await stage('ROLES',()=>rolesProducer(technical,handle));
+    const archive=await stage('ARCHIVE',()=>archiveProducer(roles,handle));
+    const ordinary=await stage('DOCUMENT_ORDINARY_ACL',()=>ordinaryProducer(archive,handle));
+    const documentRoles=await stage('DOCUMENT_ROLES',()=>documentRolesProducer(ordinary,handle));
+    const acl=await stage('DOCUMENT_ACL',()=>aclProducer(documentRoles,handle));
     let runtimeEntered=false;
     const result=await stage('RUNTIME',()=>withOfficialTask12DocumentRuntime(checked.runtime,plan.runtime.runRoot,async()=>{
      need(!runtimeEntered,'RUNTIME');runtimeEntered=true;
@@ -322,17 +333,17 @@ async function main(){
       let invoked=false;
       const view=claimCurrent259TechnicalResource(handle);
       const token=Object.freeze({}),binding=Object.freeze({acl,build:checked.buildHandle,source:plan.source});
-      const entry={active:true,handle,signal:controller.signal,acl,build:checked.buildHandle,source:plan.source,binding,
+      const entry={active:true,authOnly,handle,signal:controller.signal,acl,build:checked.buildHandle,source:plan.source,binding,
        check:()=>{need(phase==='APPLICATION'&&view.source.candidateSha===plan.source.candidateSha,'BUSINESS_CONTINUITY');checkInputs();}};
       need(!currentContractContinuity,'BUSINESS_CONTINUITY');
       contractContinuities.set(token,entry);currentContractContinuity=entry;
       let app;
-      try{app=await withCurrent261LocalLifecyclePublicApplication(acl,handle,plan.case.id,controller.signal,outcome=>{
+      try{app=await application(acl,handle,plan.case.id,controller.signal,outcome=>{
        need(!invoked,'RESULT');invoked=true;check();
        return outcome;
       },token);}finally{entry.active=false;contractContinuities.delete(token);currentContractContinuity=undefined;}
       check();need(invoked,'RESULT');
-      const projection=projectCurrent261LocalLifecycleOutcome(app);
+      const projection=projectOutcome(app);
       need(projection&&typeof projection==='object'&&!types.isProxy(projection)&&
        Object.getPrototypeOf(projection)===Object.prototype,'RESULT');
       return projection;
@@ -346,7 +357,7 @@ async function main(){
    });
   cleanup='CLOSED';phase='COMPLETE';check();
   need(scopeEntered&&outcome,'RESULT');
-  return writeReceipt('CURRENT261_LOCAL_LIFECYCLE_PROTOCOL_COMPLETE',{outcome});
+  return writeReceipt(authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_COMPLETE':'CURRENT261_LOCAL_LIFECYCLE_PROTOCOL_COMPLETE',{outcome});
  }catch(cause){
   process.exitCode=1;
   if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
@@ -356,20 +367,21 @@ async function main(){
    ...(firstFailure?.documentAclFailure?{documentAclFailure:firstFailure.documentAclFailure}:{}),
    ...(firstFailure?.documentLoginFailure?{documentLoginFailure:firstFailure.documentLoginFailure}:{}),
    ...(firstFailure?.documentRoleFailure?{documentRoleFailure:firstFailure.documentRoleFailure}:{}),
+   ...(firstFailure?.authOwnerObservation?{authOwnerObservation:firstFailure.authOwnerObservation}:{}),
    ...(firstFailure&&cause!==primary?{secondaryReason:safeReason(cause)??'UNCLASSIFIED',secondaryPhase:'UNWIND'}:{}),
    ...(scopeEntered?{businessOutcome:'UNKNOWN'}:{}),...(technicalFailure?{technicalFailure}:{}),
    ...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};
   let receiptWriteFailed=reason==='CURRENT261_LOCAL_LIFECYCLE_ONCE_RECEIPT';
   if(attempted&&writeReceipt&&!receiptWriteFailed){
-   try{return writeReceipt('CURRENT261_LOCAL_LIFECYCLE_STOPPED',{attempted,...proof});}
+   try{return writeReceipt(authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',{attempted,...proof});}
    catch{receiptWriteFailed=true;}
   }
-  return {status:'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,...proof,
+  return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,...proof,
    ...(receiptWriteFailed?{receiptWriteFailed:true}:{})};
  }finally{
   controller.abort();
   process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);
  }
 }
-module.exports=Object.freeze({assertCurrent261ContractBusinessContinuity});
+module.exports=Object.freeze({assertCurrent261ContractBusinessContinuity,assertCurrent261FirstLoginBusinessContinuity});
 if(require.main===module)void main().then(result=>process.stdout.write(JSON.stringify(result)+'\n'));

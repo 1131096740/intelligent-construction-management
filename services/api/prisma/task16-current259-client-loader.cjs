@@ -279,6 +279,7 @@ function loadCurrent259Client(handle){
     ['database/task12-generated-approval-admission.js',['buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft']],
     ['auth/jwt-token.service.js',['JwtTokenService']],
     ['auth/auth.service.js',['AuthService']],['auth/auth-rate-limit.service.js',['AuthRateLimitService']],['auth/auth.controller.js',['AuthController']],
+    ['database/task12-auth-transaction-phase.js',['observeTask12AuthTransaction','takeTask12AuthTransactionPhase']],
     ['database/task12-auth-error-diagnostic.js',['Task12AuthErrorFilter','Task12AuthStageInterceptor','armTask12AuthError','takeTask12AuthError']],
     ['contract/contract.module.js',['ContractModule']],
     ['contract-template/contract-template.module.js',['ContractTemplateModule']],
@@ -310,6 +311,7 @@ function loadCurrent259Client(handle){
      documentValues[key]=value;
     }
    }
+   const checkAuthTransactionClosure=require('./task12-current261-local-lifecycle-module-proof.cjs').captureCurrent261AuthTransactionClosure(root,require.cache);
    const {Task12GeneratedDocumentApplicationModule:rootClass,ContractModule,ContractTemplateModule,
     ContractTemplateController,ContractTemplateService,ContractScenarioService,LayoutTemplateService,
     ContractDocumentWorkerModule,ContractDocumentProcessor,ContractDocumentModule,ContractDocumentService,
@@ -342,6 +344,7 @@ function loadCurrent259Client(handle){
     'PrismaService','configureApiSecurity','configureProjectionExportJson','apiJsonReplacer','createApiValidationPipe','listenApi'
    ].map(key=>[key,values[key]]))});
    document=Object.freeze({root:rootClass,tokens,exports,checkMetadata(){
+    checkAuthTransactionClosure();
     const rootProviders=metadata('providers',rootClass);
     need(exact('imports',rootClass,rootImports)&&exact('imports',ContractDocumentWorkerModule,workerImports)&&
      exact('providers',ContractDocumentWorkerModule,[ContractDocumentProcessor])&&
@@ -419,6 +422,17 @@ function loadCurrent259Client(handle){
  function createContractTestingModule(){
   need(arguments.length===0&&contract,'CURRENT259_CONTRACT_FIXED_ENTRIES');
   return createOwnedTestingModule({imports:[contract.root]},contract);
+ }
+ let firstLoginDocument;
+ function loadCurrent261FirstLoginModules(){
+  const code='CURRENT261_FIRST_LOGIN_MODULE_SOURCE';need(arguments.length===0,code);check();if(firstLoginDocument)return firstLoginDocument;
+  try{
+   const base=loadCurrent261LocalLifecycleDocumentModules(),file=path.join(root,'services/api/dist/database/task12-first-login-case.js');
+   const exports=guardedRequire(file),mod=own(require.cache,file),descriptor=Object.getOwnPropertyDescriptor(exports,'runTask12FirstLoginCase');
+   need(own(mod,'loaded')===true&&own(mod,'filename')===file&&own(mod,'exports')===exports&&descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',code);
+   roots.push(mod);records.push({module:mod,key:'runTask12FirstLoginCase',value:descriptor.value,descriptor});collect();
+   firstLoginDocument=Object.freeze({...base,runTask12FirstLoginCase:descriptor.value});officialDocumentModuleViews.set(firstLoginDocument,officialDocumentModuleViews.get(base));return firstLoginDocument;
+  }catch(error){failed=true;throw error;}
  }
  function createDocumentTestingModule(){
   need(arguments.length===0&&document,'CURRENT259_GENERATED_DOCUMENT_FIXED_ENTRY');
@@ -583,7 +597,7 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,loadCurrent261LocalLifecycleDocumentModules,createDocumentTestingModule,
+ check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,loadCurrent261LocalLifecycleDocumentModules,loadCurrent261FirstLoginModules,createDocumentTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;

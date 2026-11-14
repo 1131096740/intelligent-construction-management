@@ -89,7 +89,7 @@ test('the fixed first-rollback starter claims its own transport without arbitrar
  assert.equal(f.receipts[0].limits.totalDeadlineMs,3600000);
 });
 
-function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false,lifecycle=false,privateScopeError}={}){
+function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false,lifecycle=false,authOnly=false,privateScopeError}={}){
  if(lifecycle)save=true;
  const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream'),crypto=require('node:crypto');
  const docker='/Applications/Docker.app/Contents/Resources/bin/docker';
@@ -107,7 +107,7 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   roleOids:Object.freeze(save?['17000','17001','17002','17009']:['17000','17001','17002']),
   roleXmins:Object.freeze(documentRoles.map(()=> '903')),
   ...(save?{purpose:lifecycle?'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1':'CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1',ordinaryName:documentRoles[3]}:{}),
-  ...(lifecycle?{effectivePlanSha256:'e'.repeat(64),installation:'ARCHIVE261_REGISTERED_SEVEN'}:{})});
+  ...(lifecycle?{effectivePlanSha256:'e'.repeat(64),installation:'ARCHIVE261_REGISTERED_SEVEN'}:{}),...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{})});
  let docScopeActive=true,reloadObserved=false,ownerReads=0;
  const documentProbes=[],documentRenders=[];
  const digest=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
@@ -261,8 +261,8 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   },assertCurrent261GeneratedLifecycleLoginScope(proof,handle){
    if(mode==='document-drain-ordered')assert.equal(documentDrainPending,false,'scope cannot run before probe worker join');
    if(privateScopeError)throw privateScopeError;
-   assert.ok(lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
-  }}}:{})};
+   assert.ok(!authOnly&&lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
+  },assertCurrent261FirstLoginScope(proof,handle){assert.ok(authOnly&&lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);}}}:{})};
  const holder={exports:{}};
  new Function('require','module',fs.readFileSync(source,'utf8'))(id=>imports[id]??require(id),holder);
  const logRejection=peer=>{
@@ -663,4 +663,12 @@ test('lifecycle certificate metadata is not published until its complete relay w
  assert.equal(certificate.mode,'correct');assert.equal(f.calls.filter(row=>row[0]==='relay-drain-joined').length,before+1);
  assert.deepEqual(f.calls.filter(row=>String(row[0]).startsWith('relay-drain')).slice(-3),[['relay-drain-open'],['relay-drain-wait'],['relay-drain-joined']]);
  await resource.close();
+});
+
+test('auth-only HBA dispatches only its private scope while preserving original thirteen rules and actual-role model checks',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true,document:true,lifecycle:true,authOnly:true}),resource=await f.start();
+ let getters=0;const hostile={...f.docProof};Object.defineProperty(hostile,'executionPurpose',{get(){getters++;return 'AUTH_ONLY_DIAGNOSTIC';}});
+ await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,hostile),/DOCUMENT_HBA_SCOPE/u);assert.equal(getters,0);
+ await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,{...f.docProof}),/DOCUMENT_HBA_SCOPE/u);
+ const hba=await resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof);assert.equal(hba.rules,13);assert.equal(hba.installation,'ARCHIVE261_REGISTERED_SEVEN');assert.equal(f.documentProbes.length,4);await resource.close();
 });

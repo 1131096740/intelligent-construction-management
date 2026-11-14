@@ -26,7 +26,9 @@ const routeTemplate=path=>{
  for(const [pattern,template]of patterns){const match=new RegExp(pattern,'u').exec(path);if(match)return template+(match[1]??'');}
  return 'UNKNOWN';
 };
-function assertCurrent261LocalLifecycleHttp(bridge){need(arguments.length===1&&bridge&&!types.isProxy(bridge)&&issued.has(bridge));issued.get(bridge)();}
+function assertHttp(bridge,authOnly){need(bridge&&!types.isProxy(bridge)&&issued.has(bridge));const entry=issued.get(bridge);need(entry.authOnly===authOnly);entry.check();}
+function assertCurrent261LocalLifecycleHttp(bridge){need(arguments.length===1);assertHttp(bridge,false);}
+function assertCurrent261FirstLoginHttp(bridge){need(arguments.length===1);assertHttp(bridge,true);}
 const cap=512*1024,uploadCap=8*1024*1024,docxCap=25*1024*1024,pdfCap=100000000;
 const docxMime='application/vnd.openxmlformats-officedocument.wordprocessingml.document',pdfMime='application/pdf';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -101,9 +103,12 @@ function exchange(port,method,path,headers,wire,binary,observe){
   });outgoing.once('error',fail);outgoing.end(wire);
  });
 }
-async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken,consume){
- need(arguments.length===5&&typeof verify==='function'&&typeof verifyToken==='function'&&typeof consume==='function');
- const authDiagnostics=require('./task12-current259-document-application.cjs').takeCurrent261LocalLifecycleHttpBridge(config,server);
+async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken,consume){need(arguments.length===5&&own(config,'executionPurpose')===undefined);return withLifecycleHttp(config,server,verify,verifyToken,consume,false);}
+async function withCurrent261FirstLoginHttp(config,server,verify,verifyToken,consume){need(arguments.length===5&&own(config,'executionPurpose')==='AUTH_ONLY_DIAGNOSTIC');return withLifecycleHttp(config,server,verify,verifyToken,consume,true);}
+async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOnly){
+ need(arguments.length===6&&typeof verify==='function'&&typeof verifyToken==='function'&&typeof consume==='function');
+ const application=require('./task12-current259-document-application.cjs');
+ const authDiagnostics=(authOnly?application.takeCurrent261FirstLoginHttpBridge:application.takeCurrent261LocalLifecycleHttpBridge)(config,server);
  need(authDiagnostics&&!types.isProxy(authDiagnostics)&&Object.isFrozen(authDiagnostics));
  const armAuth=own(authDiagnostics,'arm'),takeAuth=own(authDiagnostics,'take');need(typeof armAuth==='function'&&typeof takeAuth==='function');
  const {fixture,passwords,sourceDocx,originals}=config,seed=fixture.approval;
@@ -138,6 +143,7 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
  const roleKeys=actor=>[...seed.members.filter(r=>r.userId===seed.users[actor].id).map(r=>r.positionKey),...seed.globalRoles.filter(r=>r.userId===seed.users[actor].id).map(r=>r.roleKey)].sort();
  const globalKeys=actor=>seed.globalRoles.filter(r=>r.userId===seed.users[actor].id).map(r=>r.roleKey).sort();
  const route=(actor,method,path)=>{
+  if(authOnly)return actor===0&&method==='POST'&&path==='/auth/login'&&requests===0;
   need(typeof path==='string'&&path.length<=4096&&path.startsWith('/')&&!path.startsWith('//')&&!/[\r\n#\\]/u.test(path));
   if(path==='/auth/login')return method==='POST'&&!tokens.has(actor);
   need(tokens.has(actor));
@@ -215,8 +221,8 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
   let drained;const pending={parallel:false,done:new Promise(resolve=>{drained=resolve;})};active.set('download',pending);
   try{return await wire('GET',path,{},undefined,ticket);}catch(cause){failed=true;throw cause;}finally{active.delete('download');drained();}
  }});
- issued.set(bridge,check);
- try{const result=await consume(bridge);check();need(active.size===0);return result;}
+ issued.set(bridge,{check,authOnly});
+ try{const result=await consume(bridge);check();need(active.size===0&&(!authOnly||requests===1&&tokens.has(0)));return result;}
  catch(cause){
   if(lastObservation&&!parallelObserved&&!describeCurrent261LocalLifecycleHttpFailure(cause)){
    const detail={...lastObservation};try{continuity();}catch(later){secondary(detail,later);}remember(cause,detail);
@@ -225,4 +231,4 @@ async function withCurrent261LocalLifecycleHttp(config,server,verify,verifyToken
  }
  finally{available=false;issued.delete(bridge);await Promise.allSettled([...active.values()].map(item=>item.done));tokens.clear();tickets.clear();}
 }
-module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp,describeCurrent261LocalLifecycleHttpFailure});
+module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp,withCurrent261FirstLoginHttp,assertCurrent261FirstLoginHttp,describeCurrent261LocalLifecycleHttpFailure});

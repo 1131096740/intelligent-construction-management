@@ -1,6 +1,6 @@
 'use strict';
 // Import the original ordinary ACL producer before claiming its owned resource.
-const {claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
+const {claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261AuthOnlyDiagnosticOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
 const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {randomBytes}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
@@ -14,7 +14,7 @@ const activeArchive=Object.freeze(['jg_contract_direct_archive_intent_binding_v1
 const top='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const owner='jg_task01_owner';
 const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
-const attempted=new WeakSet(),issued=new WeakMap();
+const attempted=new WeakSet(),issued=new WeakMap(),authIssued=new WeakMap();
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
 const fault=stage=>Object.assign(new Error(CODE+'_'+stage),{code:CODE+'_'+stage});
 const need=(ok,stage)=>{if(!ok)throw fault(stage);};
@@ -176,12 +176,13 @@ async function provisionCurrent259GeneratedDocumentSaveRoles(ordinaryAclCompleti
 async function provisionCurrent261GeneratedLifecycleDocumentRoles(ordinaryAclCompletion,handle){
  need(arguments.length===2,'HANDLE');return provision(ordinaryAclCompletion,handle,'lifecycle');
 }
-async function provision(ordinaryAclCompletion,handle,document){
+async function provisionCurrent261AuthOnlyDiagnosticDocumentRoles(completion,handle){need(arguments.length===2,'HANDLE');return provision(completion,handle,'lifecycle',true);}
+async function provision(ordinaryAclCompletion,handle,document,authOnly=false){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&!attempted.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle);
  need(view.resource.topology===top,'HANDLE');
- const claim=document==='lifecycle'?claimCurrent261GeneratedLifecycleOrdinaryAcl:document?claimCurrent259GeneratedDocumentOrdinaryAcl:claimCurrent259OrdinaryArchiveAcl;
- const acl=claim(ordinaryAclCompletion,handle);
+ const claim=authOnly?claimCurrent261AuthOnlyDiagnosticOrdinaryAcl:document==='lifecycle'?claimCurrent261GeneratedLifecycleOrdinaryAcl:document?claimCurrent259GeneratedDocumentOrdinaryAcl:claimCurrent259OrdinaryArchiveAcl;
+ need(typeof claim==='function','HANDLE');const acl=claim(ordinaryAclCompletion,handle);need(authOnly?Object.getOwnPropertyDescriptor(acl,'executionPurpose')?.value==='AUTH_ONLY_DIAGNOSTIC':Object.getOwnPropertyDescriptor(acl,'executionPurpose')===undefined,'HANDLE');
  const input=scope(acl,view,document),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(acl.completion===ordinaryAclCompletion&&typeof exec==='function','HANDLE');
  attempted.add(handle);
@@ -215,7 +216,7 @@ async function provision(ordinaryAclCompletion,handle,document){
   const result=Object.freeze({status:'CURRENT259_DOCUMENT_ROLES_COMMITTED_NOT_ADMISSION',sourceSha:ordinaryAclCompletion.sourceSha,
    runId:view.runId,containerId:resource.containerId,installXid:committed.installXid,
    ...(document==='lifecycle'?{effectivePlanSha256:ordinaryAclCompletion.effectivePlanSha256,installation:ordinaryAclCompletion.installation}:{}),roleCount:names.length,executionAllowed:false,nativeAdmission:false});
-  issued.set(result,{handle,check,checkContinuity,lifecycle:document==='lifecycle',ordinaryAcl:acl,roles:Object.freeze(committed.roles.map(Object.freeze))});
+  (authOnly?authIssued:issued).set(result,{handle,check,checkContinuity,lifecycle:document==='lifecycle',ordinaryAcl:acl,roles:Object.freeze(committed.roles.map(Object.freeze))});
   return result;
  }catch{
   const error=fault(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
@@ -224,18 +225,21 @@ async function provision(ordinaryAclCompletion,handle,document){
   throw error;
  }
 }
+const originalIssued=issued;
 function claimCurrent259GeneratedDocumentRoles(result,handle){
  need(arguments.length===2,'HANDLE');return claim(result,handle,false);
 }
 function claimCurrent261GeneratedLifecycleDocumentRoles(result,handle){
  need(arguments.length===2,'HANDLE');return claim(result,handle,true);
 }
-function claim(result,handle,lifecycle){
+function claim(result,handle,lifecycle,authOnly=false){
+ const issued=authOnly?authIssued:originalIssued;
  const receipt=issued.get(result);
  need(receipt?.handle===handle&&receipt.lifecycle===lifecycle,'HANDLE');
  issued.delete(result);receipt.check();
- return Object.freeze({completion:result,ordinaryAclCompletion:receipt.ordinaryAcl.completion,
+ return Object.freeze({...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),completion:result,ordinaryAclCompletion:receipt.ordinaryAcl.completion,
   ordinaryAcl:receipt.ordinaryAcl,source:receipt.ordinaryAcl.source,roles:receipt.roles,check:receipt.check,checkContinuity:receipt.checkContinuity});
 }
-module.exports=Object.freeze({provisionCurrent261GeneratedLifecycleDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
+function claimCurrent261AuthOnlyDiagnosticDocumentRoles(result,handle){need(arguments.length===2,'HANDLE');return claim(result,handle,true,true);}
+module.exports=Object.freeze({provisionCurrent261AuthOnlyDiagnosticDocumentRoles,claimCurrent261AuthOnlyDiagnosticDocumentRoles,provisionCurrent261GeneratedLifecycleDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
  claimCurrent259GeneratedDocumentRoles});

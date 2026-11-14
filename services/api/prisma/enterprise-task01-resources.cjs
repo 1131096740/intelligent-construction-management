@@ -990,13 +990,16 @@ COMMIT;`;
     scopeNeed(firstQ2, "ENTRY_FIRST_Q2") && scopeNeed(arguments.length === 2, "ENTRY_ARITY") &&
       scopeNeed(!contractHbaAttempted, "ENTRY_CONTRACT_UNUSED") && scopeNeed(!documentHbaAttempted, "ENTRY_DOCUMENT_UNUSED") &&
       scopeNeed(!closePromise, "ENTRY_OPEN");
-    const { assertCurrent259GeneratedDocumentLoginScope, assertCurrent261GeneratedLifecycleLoginScope } = require("./task12-current259-document-login.cjs");
+    const { assertCurrent259GeneratedDocumentLoginScope, assertCurrent261GeneratedLifecycleLoginScope, assertCurrent261FirstLoginScope } = require("./task12-current259-document-login.cjs");
     scopeNeed(proof&&typeof proof==="object"&&!types.isProxy(proof), "PROOF_OBJECT");
     const purpose=Object.getOwnPropertyDescriptor(proof,"purpose")?.value;
     const lifecycle=purpose==="CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1";
+    const executionSlot=Object.getOwnPropertyDescriptor(proof,"executionPurpose");
+    scopeNeed(!executionSlot||Object.hasOwn(executionSlot,"value")&&executionSlot.value==="AUTH_ONLY_DIAGNOSTIC"&&lifecycle,"PROOF_OBJECT");
+    const authOnly=executionSlot?.value==="AUTH_ONLY_DIAGNOSTIC";
     const checkScope = subphase => {
       scopeNeed(!closePromise, "LIVE_OPEN", subphase) && scopeNeed(!signal.aborted, "LIVE_SIGNAL", subphase);
-      try { (lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof, handle); }
+      try { (authOnly?assertCurrent261FirstLoginScope:lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof, handle); }
       catch (cause) {
         const code = ownErrorField(cause, "code");
         scopeNeed(false, "PRIVATE_SCOPE", subphase, documentPrivateScopeCodes.has(code) ? code : undefined);

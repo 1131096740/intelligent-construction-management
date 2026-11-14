@@ -4,12 +4,12 @@ const { createHash, randomBytes } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { types } = require('node:util');
-const { claimCurrent259ProvisionedRoles } = require('./task16-current259-role-provision.cjs');
+const { claimCurrent259ProvisionedRoles,claimCurrent261AuthOnlyDiagnosticRoles } = require('./task16-current259-role-provision.cjs');
 const { projectCurrent259ArchiveWriteFailure } = require('./enterprise-task01-resources.cjs');
 const {
   claimCurrent259TechnicalResource, closeCurrent259OwnedResource,
 } = require('./task16-current259-owned-resource.cjs');
-const { archiveSevenMaterial, describeCurrent259SevenPrestateCommandFailure, describeCurrent259SevenPrestateReadbackFailure } = require('./task16-current259-seven-install.cjs');
+const { archiveSevenMaterial, archiveSevenAuthOnlyDiagnosticMaterial, describeCurrent259SevenPrestateCommandFailure, describeCurrent259SevenPrestateReadbackFailure } = require('./task16-current259-seven-install.cjs');
 
 const OWNER = 'jg_task01_owner';
 const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
@@ -71,7 +71,7 @@ const ARCHIVE261_CHECKERS=Object.freeze({
   'jg_require_contract_direct_upward_source_v2()':'c4ed2c5040daf5f51e372a045e06fab5aeb8f048b16146c46e96c178f2128cee',
 });
 const attempted = new WeakSet();
-const receipts = new WeakMap();
+const authReceipts = new WeakMap(),receipts = new WeakMap();
 const fault = code => Object.assign(new Error(code), { code });
 const need = (ok, code = 'CURRENT259_ARCHIVE_INSTALL_QUALIFICATION') => { if (!ok) throw fault(code); };
 const sha = text => createHash('sha256').update(text).digest('hex');
@@ -92,12 +92,12 @@ function collisionRecipe() {
   return rows.map(({ signature, bodySha256 }) => ({ signature, bodySha256 }));
 }
 
-function roleInput(lease, view) {
+function roleInput(lease, view, authOnly=false) {
   const { source, completion } = lease;
   const { databaseIdentity: identity, ordinary, roles, commitXid, databaseAcl } = completion;
   const { database, databaseOid, namespaceOid, ownerOid, systemIdentifier } = identity;
   const { ledger, ledgerSha256 } = source.profile;
-  need(Object.isFrozen(completion) && completion.status === 'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION' &&
+  need(Object.isFrozen(completion) && completion.status === (authOnly?'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION':'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION') &&
     completion.executionAllowed === false && completion.nativeAdmission === false);
   need(source.candidateSha === completion.sourceSha && source.candidateSha === view.source.candidateSha && hex(source.candidateSha, 40));
   need(hex(source.tree, 40) && source.tree === view.source.tree && hex(source.sourceSealSha256, 64) && source.sourceSealSha256 === view.source.sourceSealSha256);
@@ -569,9 +569,11 @@ async function installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(provi
   need(arguments.length === 2);
   return installArchive(provisionResult, handle, true);
 }
-async function installArchive(provisionResult, handle, registered) {
+async function installCurrent261AuthOnlyDiagnosticArchive(provisionResult,handle){need(arguments.length===2);return installArchive(provisionResult,handle,true,true);}
+async function installArchive(provisionResult, handle, registered, authOnly=false) {
   need(handle && typeof handle === 'object' && !types.isProxy(handle) && !attempted.has(handle));
-  const lease = claimCurrent259ProvisionedRoles(provisionResult, handle);
+  const claim=authOnly?claimCurrent261AuthOnlyDiagnosticRoles:claimCurrent259ProvisionedRoles;need(typeof claim==='function');
+  const lease = claim(provisionResult, handle);need(authOnly?Object.getOwnPropertyDescriptor(lease,'executionPurpose')?.value==='AUTH_ONLY_DIAGNOSTIC':Object.getOwnPropertyDescriptor(lease,'executionPurpose')===undefined);
   attempted.add(handle);
   let writing = false, phase = STAGES[0], sevenFailure;
   try {
@@ -579,7 +581,7 @@ async function installArchive(provisionResult, handle, registered) {
     const check = () => { lease.check(); view.check(); view.verifyFull(); };
     const checkContinuity = token => { lease.checkContinuity(token); view.checkContinuity(token); };
     check();
-    const input = roleInput(lease, view);
+    const input = roleInput(lease, view, authOnly);
     const read = async (next, prior) => {
       phase = next;
       check();
@@ -594,7 +596,7 @@ async function installArchive(provisionResult, handle, registered) {
     let staged, committed, sevenCatalogSql;
     if (registered) {
       phase = 'current259-seven-before';
-      const plan = archiveSevenMaterial(lease, view, randomBytes(32).toString('hex'));
+      const plan = (authOnly?archiveSevenAuthOnlyDiagnosticMaterial:archiveSevenMaterial)(lease, view, randomBytes(32).toString('hex'));
       check();
       let beforeSeven;
       try { beforeSeven = await view.resource.execOwnerSql(plan.beforeSql, phase); }
@@ -640,7 +642,7 @@ async function installArchive(provisionResult, handle, registered) {
       ...(registered ? { registeredFileSource: true, nativeAdmission: false, executionAllowed: false,
         originalRegistrySha256: committed.originalRegistrySha256, sevenCatalogSha256: committed.sevenCatalogSha256 } : {}),
     });
-    receipts.set(completion, { source: input.source, roleCompletion: input.completion, handle, check, checkContinuity,
+    (authOnly?authReceipts:receipts).set(completion, { source: input.source, roleCompletion: input.completion, handle, check, checkContinuity,
       ...(registered ? { ordinaryAclWitness: ordinaryAclWitness(input, completion, sevenCatalogSql) } : {}) });
     return completion;
   } catch (cause) {
@@ -654,14 +656,18 @@ async function installArchive(provisionResult, handle, registered) {
   }
 }
 
-function claimCurrent259ArchiveInstallation(completion, handle) {
-  need(arguments.length === 2 && completion && !types.isProxy(completion) && receipts.has(completion));
+const originalReceipts=receipts;
+function claimCurrent259ArchiveInstallation(completion, handle) {need(arguments.length===2);return claimArchive(completion,handle,false);}
+function claimCurrent261AuthOnlyDiagnosticArchive(completion,handle){need(arguments.length===2);return claimArchive(completion,handle,true);}
+function claimArchive(completion,handle,authOnly){
+  const receipts=authOnly?authReceipts:originalReceipts;
+  need(completion && !types.isProxy(completion) && receipts.has(completion));
   const receipt = receipts.get(completion);
   need(receipt.handle === handle);
   receipts.delete(completion);
   receipt.check();
-  return Object.freeze({ source: receipt.source, completion, roleCompletion: receipt.roleCompletion, check: receipt.check, checkContinuity: receipt.checkContinuity,
+  return Object.freeze({ ...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),source: receipt.source, completion, roleCompletion: receipt.roleCompletion, check: receipt.check, checkContinuity: receipt.checkContinuity,
     ...(receipt.ordinaryAclWitness ? { ordinaryAclWitness: receipt.ordinaryAclWitness } : {}) });
 }
 
-module.exports = Object.freeze({ installCurrent259ArchiveAuthorities, installCurrent259ArchiveAuthoritiesWithRegisteredFileSource, claimCurrent259ArchiveInstallation });
+module.exports = Object.freeze({ installCurrent261AuthOnlyDiagnosticArchive,claimCurrent261AuthOnlyDiagnosticArchive,installCurrent259ArchiveAuthorities, installCurrent259ArchiveAuthoritiesWithRegisteredFileSource, claimCurrent259ArchiveInstallation });

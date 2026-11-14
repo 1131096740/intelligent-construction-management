@@ -6,7 +6,7 @@ const savePurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
 const ordinaryName='jg_fixture_app_0123456789abcdef01234567';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 
-function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'){
+function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfile='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',authOnly=false){
  const handle={},source={candidateSha:'a'.repeat(40)},runId='a0000000-0000-4000-8000-000000000001';
  if(lifecycle){
   const fs=require('node:fs'),path=require('node:path');
@@ -22,7 +22,7 @@ function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfi
  const ordinary={name:ordinaryName,oid:'17009',login:true,limit:0,password:'absent',superuser:false,inherit:false,createRole:false,
   createDb:false,replication:false,bypassRls:false,unlimitedValidity:true};
  const ordinaryAcl={...(lifecycle?{generatedLifecycle:true}:save?{generatedDocument:true}:{}),completion:{...plan,installXid:'900',archiveInstallXid:'899',...(save?{purpose:lifecycle?'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1':savePurpose}:{})},
-  roleCompletion:{ordinary,commitXid:'898',status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:source.candidateSha,
+  roleCompletion:{ordinary,commitXid:'898',status:authOnly?'CURRENT261_AUTH_ONLY_ROLES_PROVISIONED_NOT_ADMISSION':'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:source.candidateSha,
    runId,containerId,executionAllowed:false,nativeAdmission:false,databaseIdentity:{
   database,databaseOid:'17010',namespaceOid:'2200',systemIdentifier:'7200000000000000001'}}};
  const identityForSeed=Object.assign(ordinaryAcl.roleCompletion.databaseIdentity,{ownerOid:'10',actorOid:'10',actor:'jg_task01_owner',
@@ -51,14 +51,15 @@ function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfi
  }};
  const claim=(r,h)=>{
   assert.equal(r,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;
-  return {completion,ordinaryAcl,roles,source,continuitySql,continuitySha256,check(){}};
+  return {...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),completion,ordinaryAcl,roles,source,continuitySql,continuitySha256,check(){}};
  };
  const lifeRuntime=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:runtimeProfile,source:{head:source.candidateSha}});
  const view={resource,source,runId,check(){},...(lifecycle?{loader:{loadCurrent261LocalLifecycleDocumentModules(){return{currentOfficialDocumentScope(){return lifeRuntime;}};}}}:{})},imports={
   './task12-current259-document-acl-transport.cjs':{
    claimCurrent259GeneratedDocumentAcl(r,h){assert.equal(save,false,'HANDLE');return claim(r,h);},
    claimCurrent259GeneratedDocumentSaveAcl(r,h){assert.equal(lifecycle,false,'HANDLE');assert.equal(save,true,'HANDLE');return claim(r,h);},
-   claimCurrent261GeneratedLifecycleDocumentAcl(r,h){assert.equal(lifecycle,true,'HANDLE');return claim(r,h);}
+   claimCurrent261GeneratedLifecycleDocumentAcl(r,h){assert.equal(lifecycle,true,'HANDLE');assert.equal(authOnly,false,'HANDLE');return claim(r,h);},
+   claimCurrent261AuthOnlyDiagnosticDocumentAcl(r,h){assert.equal(lifecycle,true,'HANDLE');assert.equal(authOnly,true,'HANDLE');return claim(r,h);}
   },
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},
    async closeCurrent259OwnedResource(h){assert.equal(h,handle);closes++;}}
@@ -134,7 +135,7 @@ const publicFixture=Object.freeze({users:seedUsers,handler:seedUsers[0],
   positionId:'c0000000-0000-4000-8000-00000000000'+index,positionName:roleKey
  }))
 });
-function poolFixture(mode='success',save=false,priorSql,lifecycle=false){
+function poolFixture(mode='success',save=false,priorSql,lifecycle=false,authOnly=false){
  const continuityToken=Object.freeze({});
  const trace=[],urls=[],clients=[],ownerSql=[];
  const state={queries:0};
@@ -149,7 +150,7 @@ function poolFixture(mode='success',save=false,priorSql,lifecycle=false){
    Object.assign(resource,{port:relay.port,networkId:'e'.repeat(64),caPath:file,
     serverCertHashes:{correctCertificateDerSha256:cert.derSha256,caSha256:caSha},
     async applyCurrent259DocumentHbaV1(proof){
-     (lifecycle?f.api.assertCurrent261GeneratedLifecycleLoginScope:f.api.assertCurrent259GeneratedDocumentLoginScope)(proof,handle);
+     (authOnly?f.api.assertCurrent261FirstLoginScope:lifecycle?f.api.assertCurrent261GeneratedLifecycleLoginScope:f.api.assertCurrent259GeneratedDocumentLoginScope)(proof,handle);if(authOnly){assert.throws(()=>f.api.assertCurrent261GeneratedLifecycleLoginScope(proof,handle),/HANDLE/u);assert.equal(f.api.claimCurrent261FirstLoginOwnerProof(proof,handle).executionPurpose,'AUTH_ONLY_DIAGNOSTIC');}
      assert.equal(proof.purpose,save?expectedPurpose:undefined);
      assert.equal(proof.ordinaryName,save?ordinaryName:undefined);
      assert.equal(proof.roleOids.length,save?4:3);
@@ -263,12 +264,14 @@ function poolFixture(mode='success',save=false,priorSql,lifecycle=false){
     const scope=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',source:{head:source.candidateSha}});
     const documentModules=view.loader.loadGeneratedContractDocumentModules();
     view.loader.loadCurrent261LocalLifecycleDocumentModules=()=>({...documentModules,currentOfficialDocumentScope:()=>scope});
+    view.loader.loadCurrent261FirstLoginModules=view.loader.loadCurrent261LocalLifecycleDocumentModules;
     view.checkContinuity=t=>assert.equal(t,continuityToken);
     view.activateBusinessContinuity=t=>{assert.equal(t,continuityToken);trace.push('activate');if(mode==='activation-failure')throw new Error('PRIVATE_DO_NOT_PRINT');};
     view.deactivateBusinessContinuity=t=>{assert.equal(t,continuityToken);trace.push('deactivate');if(mode==='deactivation-failure')throw new Error('PRIVATE_DO_NOT_PRINT');};
     imports['./task16-current259-owned-resource.cjs'].claimCurrent259TechnicalResourceContinuity=(h,t)=>{assert.equal(h,handle);assert.equal(t,continuityToken);return view;};
-    const original=imports['./task12-current259-document-acl-transport.cjs'].claimCurrent261GeneratedLifecycleDocumentAcl;
-    imports['./task12-current259-document-acl-transport.cjs'].claimCurrent261GeneratedLifecycleDocumentAcl=(...args)=>({...original(...args),checkContinuity:t=>assert.equal(t,continuityToken)});
+    const claimName=authOnly?'claimCurrent261AuthOnlyDiagnosticDocumentAcl':'claimCurrent261GeneratedLifecycleDocumentAcl';
+    const original=imports['./task12-current259-document-acl-transport.cjs'][claimName];
+    imports['./task12-current259-document-acl-transport.cjs'][claimName]=(...args)=>({...original(...args),checkContinuity:t=>assert.equal(t,continuityToken)});
    }
   },
   seed(sql,label,n,identity){
@@ -301,7 +304,7 @@ function poolFixture(mode='success',save=false,priorSql,lifecycle=false){
  const f=fixture((n,row)=>{
   if(mode==='ordinary-prestate'&&!n)row.roles[3][4]=1;
   if(mode==='ordinary-poststate'&&n===2)row.roles[3][4]=1;
- },priorSql,pool,save,lifecycle);
+ },priorSql,pool,save,lifecycle,'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',authOnly);
  return {...f,trace,urls,clients,ownerSql,state,continuityToken};
 }
 
@@ -590,4 +593,20 @@ test('contract activation failures still join the original drain; deactivation f
   assert.equal(f.trace.filter(x=>x==='deactivate').length,mode==='activation-failure'?0:1);
   assert.equal(f.clients.length,0);assert.equal(f.closed(),1);
  }
+});
+
+test('auth-only scope cannot consume a full-purpose proof or lend its keys to the full lifecycle owner',async()=>{
+ const api=require('./task12-current259-document-login.cjs');
+ assert.equal(typeof api.withCurrent261FirstLoginPublicApplication,'function');
+ for(const proof of [{},Object.freeze({executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}),new Proxy({},{})]){
+  assert.throws(()=>api.assertCurrent261FirstLoginScope(proof,{}),/HANDLE/u);
+  assert.throws(()=>api.takeCurrent261FirstLoginExerciseBridge(proof),/HANDLE/u);
+  assert.throws(()=>api.claimCurrent261FirstLoginOwnerProof(proof,{}),/HANDLE/u);
+ }
+});
+
+test('auth-only genuine login model keeps full owner scope unavailable and reaches original HBA/drain before activation failure',async()=>{
+ const f=poolFixture('activation-failure',true,undefined,true,true);
+ await assert.rejects(f.api.withCurrent261FirstLoginPublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail(),f.continuityToken));
+ assert.ok(f.trace.includes('hba'));assert.ok(f.trace.includes('activate'));assert.ok(f.trace.includes('drain-closed'));assert.equal(f.clients.length,0);assert.equal(f.closed(),1);
 });
