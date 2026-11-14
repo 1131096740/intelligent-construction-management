@@ -14,8 +14,15 @@ import { REGISTERED_PAYMENT_IMPACT_READER } from "../payment/registered-payment-
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
 import { RegisteredPaymentNotificationService } from "../payment/registered-payment-notification.service";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
-import { Task16RegistrationErrorFilter } from "./task16-registration-error-diagnostic";
-export { Task16RegistrationErrorFilter, armTask16RegistrationError, takeTask16RegistrationError } from "./task16-registration-error-diagnostic";
+import {
+  Task16RegistrationErrorFilter as RegistrationErrorFilter,
+  armTask16RegistrationError as armRegistrationError,
+  takeTask16RegistrationError as takeRegistrationError
+} from "./task16-registration-error-diagnostic";
+// The sealed loader accepts own data exports, never forwarding accessors.
+export const Task16RegistrationErrorFilter = RegistrationErrorFilter;
+export const armTask16RegistrationError = armRegistrationError;
+export const takeTask16RegistrationError = takeRegistrationError;
 import { DatabaseModule } from "./database.module";
 
 export const Task16ImpactReaderToken = REGISTERED_PAYMENT_IMPACT_READER;
