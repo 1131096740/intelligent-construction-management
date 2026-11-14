@@ -3,6 +3,7 @@ import { isDeepStrictEqual, types } from "node:util";
 import { publishTask12GeneratedMaterialTemplate } from "./task12-generated-material-template";
 import { runTask12GeneratedDocument } from "./task12-generated-document-seam";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
+import { PDFDocument } from "pdf-lib";
 
 // This consumer performs public requests only. Admission, owner proofs and fault
 // installation belong to the owning controller, never to these continuations.
@@ -36,6 +37,8 @@ export interface Task12LocalLifecycleCheckpoint {
   roundIds: Readonly<{ withdrawn: string; rejected: string; approved: string }>;
   generationIds: Readonly<{ first: string; second: string; final: string }>;
   generatedFiles: readonly Readonly<{ generationId: string; docx: Task12LocalLifecycleDownloadedFile; pdf: Task12LocalLifecycleDownloadedFile }>[];
+  pdfInspection: Readonly<{ reads: 1; totalPages: number; mergedPdfSha256: string; laterGenerationPdfSemanticInspection: true;
+    generations: readonly Readonly<{ generationId: string; pdfSha256: string; firstPage: number; pageCount: number }>[] }>;
   final: Readonly<{ documentContentRevision: number; documentContentFingerprint: string }>;
   originals: readonly Readonly<{ id: string; sha256: string; sizeBytes: number }>[];
   archive?: Readonly<{ id: string; idempotencyKey: string }>;
@@ -116,7 +119,7 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
     const response = await input.bridge.download(0, ticket.downloadUrl); check(input); need(response.status === 200 && response.bytes instanceof Uint8Array && response.bytes.length === ticket.sizeBytes && response.mimeType === mimeType, "DOWNLOAD");
     return { bytes: response.bytes, evidence: Object.freeze({ id: fileId, sha256: hash(response.bytes), sizeBytes: response.bytes.length, mimeType }) };
   };
-  let physicalPdfRead = false;
+  const pdfRounds: { generationId: string; bytes: Buffer; sha256: string; expectedBody: string }[] = [];
   const generate = async () => {
     const current = await workbench(), version = object(current.version);
     const generated = await runTask12GeneratedDocument({ template: published, versionId, sourceRevision: version.draftRevision,
@@ -128,14 +131,7 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
     need(!previous || isDeepStrictEqual(previous, downloaded), "GENERATED_FILES_CHANGED");
     if (!previous) generatedFiles.set(generated.generationId, downloaded);
     need(extractContractDocx(word.bytes).blocks.map(block => block.text).join(" ").includes(clause.normalize("NFKC")), "WORD");
-    // Match the original native gate's one-use, 25-second runtime reader.
-    // Later rounds still download both outputs and inspect the edited Word;
-    // their PDF semantics are not claimed as physically parsed each round.
-    if (!physicalPdfRead) {
-      physicalPdfRead = true;
-      const pdfText = await input.readPdfDrawnText(pdf.bytes, input.signal); check(input);
-      need(pdfText.join(" ").includes("本轮隔离V2材料合同"), "PDF");
-    }
+    pdfRounds.push({ generationId: generated.generationId, bytes: Buffer.from(pdf.bytes), sha256: pdf.evidence.sha256, expectedBody: editable.text + clause });
     return { generated, submission: { expectedRevision: version.draftRevision, idempotencyKey: randomUUID(), submissionProtocolVersion: 2,
       documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint,
       generatedDocumentId: generated.generationId, sourceSha256: sourceBody.sourceSha256, blanksReviewed: true } };
@@ -155,7 +151,42 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
   need(second.submission.documentContentFingerprint !== first.submission.documentContentFingerprint && second.generated.generationId !== first.generated.generationId, "BODY_CHANGED");
   const round2 = await submit(second.submission); need(id(round2.approvalInstanceId) && round2.approvalInstanceId !== round1.approvalInstanceId, "ROUND");
   need((await review(1, await reviewContext(1), "reject")).status === 201, "REJECTION");
-  const final = await generate(), round3 = await submit(final.submission); need(id(round3.approvalInstanceId) && ![round1.approvalInstanceId,round2.approvalInstanceId].includes(round3.approvalInstanceId), "ROUND");
+  const final = await generate();
+  // Inspect all actual downloaded pages in one reader call. This preserves the
+  // qualified runtime's one-use/25s/100-page/100MB/500k-character limits. The
+  // first round's PDF check is now deferred until before the third submission.
+  const merged = await PDFDocument.create(), inspected = [];
+  let totalBytes = 0;
+  for (const item of pdfRounds) {
+    check(input); totalBytes += item.bytes.length;
+    need(pdfRounds.length === 3 && totalBytes <= 100000000 && item.bytes.subarray(0,5).toString() === "%PDF-" && hash(item.bytes) === item.sha256, "PDF");
+    let document;
+    try { document = await PDFDocument.load(item.bytes, { throwOnInvalidObject: true, updateMetadata: false }); }
+    catch { need(false, "PDF"); }
+    check(input);
+    const count = document.getPageCount(), firstPage = merged.getPageCount();
+    need(!document.isEncrypted && count > 0 && count + firstPage <= 100, "PDF");
+    const copied = await merged.copyPages(document, document.getPageIndices()); check(input);
+    for (const [index, page] of copied.entries()) {
+      const original = document.getPage(index);
+      need(isDeepStrictEqual(page.getSize(), original.getSize()) && isDeepStrictEqual(page.getCropBox(), original.getCropBox()) &&
+        isDeepStrictEqual(page.getRotation(), original.getRotation()), "PDF");
+      merged.addPage(page);
+    }
+    inspected.push(Object.freeze({ generationId: item.generationId, pdfSha256: item.sha256, firstPage, pageCount: count }));
+  }
+  const batch = Buffer.from(await merged.save()); check(input); need(batch.length <= 100000000, "PDF");
+  const pdfText = await input.readPdfDrawnText(batch, input.signal); check(input);
+  need(Array.isArray(pdfText) && pdfText.length === merged.getPageCount() && pdfText.every(page => typeof page === "string") &&
+    pdfText.reduce((length, page) => length + page.length, 0) <= 500000, "PDF");
+  const compact = (text: string) => text.normalize("NFKC").replace(/\s/gu, "");
+  for (const [index, evidence] of inspected.entries()) {
+    const text = compact(pdfText.slice(evidence.firstPage, evidence.firstPage + evidence.pageCount).join("")), expected = compact(pdfRounds[index].expectedBody);
+    need(text.includes(compact("本轮隔离V2材料合同")) && text.includes(expected) &&
+      pdfRounds.every(other => compact(other.expectedBody) === expected || !text.includes(compact(other.expectedBody))), "PDF");
+  }
+  const pdfInspection = Object.freeze({ reads: 1 as const, totalPages: pdfText.length, mergedPdfSha256: hash(batch), laterGenerationPdfSemanticInspection: true as const, generations: Object.freeze(inspected) });
+  const round3 = await submit(final.submission); need(id(round3.approvalInstanceId) && ![round1.approvalInstanceId,round2.approvalInstanceId].includes(round3.approvalInstanceId), "ROUND");
   need(isDeepStrictEqual(await submit(final.submission), round3), "SUBMIT_REPLAY");
   const contexts = await Promise.all([1,2,3,4,5].map(reviewContext));
   need(contexts.every(context => typeof context.expectedParallelApprovalEpoch === "string" && /^[a-f0-9]{64}$/u.test(context.expectedParallelApprovalEpoch)) && new Set(contexts.map(context => context.expectedParallelApprovalEpoch)).size === 1, "EPOCH");
@@ -179,7 +210,7 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
   const checkpoint: Task12LocalLifecycleCheckpoint = Object.freeze({ stage: "ORIGINALS", fixtureIdentity: seed.project.id, projectId: seed.project.id, handlerId: seed.handler.id, contractId, versionId,
     roundIds: Object.freeze({ withdrawn: round1.approvalInstanceId, rejected: round2.approvalInstanceId, approved: round3.approvalInstanceId }),
     generationIds: Object.freeze({ first: first.generated.generationId, second: second.generated.generationId, final: final.generated.generationId }),
-    generatedFiles: Object.freeze([...generatedFiles.values()]),
+    generatedFiles: Object.freeze([...generatedFiles.values()]), pdfInspection,
     final: Object.freeze({ documentContentRevision: final.submission.documentContentRevision, documentContentFingerprint: final.submission.documentContentFingerprint }), originals: Object.freeze(originals) });
   return issue({ input, checkpoint, archive: Object.freeze(archive), originalBytes });
 }

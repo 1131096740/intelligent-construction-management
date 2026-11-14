@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import PizZip from "pizzip";
+import { PDFDocument, PDFHexString, PDFName } from "pdf-lib";
 import { readLayoutSourcePositions, prepareLayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { type Task12LocalLifecycleCaseInput, type Task12LocalLifecycleRequest } from "./task12-local-lifecycle-case";
 // This state machine models HTTP responses only: no listening socket, database,
@@ -23,6 +24,20 @@ import { type Task12LocalLifecycleCaseInput, type Task12LocalLifecycleRequest } 
 const uid = (n: number) => "10000000-0000-4000-8000-" + n.toString().padStart(12, "0");
 const digest = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const source = readFileSync(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
+// The parser is a modeled external boundary. Page tags deliberately stand in
+// for painted glyphs; these checks do not qualify a physical PDF reader.
+async function modeledPdf(pages: readonly string[]) {
+  const document = await PDFDocument.create();
+  for (const text of pages) document.addPage().node.set(PDFName.of("ModelPageText"), PDFHexString.fromText(text));
+  return Buffer.from(await document.save());
+}
+async function modeledPdfText(bytes: Buffer) {
+  return (await PDFDocument.load(bytes)).getPages().map(page => {
+    const text = page.node.get(PDFName.of("ModelPageText"));
+    if (!(text instanceof PDFHexString)) throw new Error("MODEL_PAGE_TEXT_MISSING");
+    return text.decodeText();
+  });
+}
 function networkModel(mode = "normal") {
   const sourceFileId = uid(20), templateId = uid(21), layoutId = uid(22), previewJobId = uid(23), previewPdfFileId = uid(24);
   const contractId = uid(30), versionId = uid(31), sealId = uid(32), archiveId = uid(33), directorId = uid(3);
@@ -40,7 +55,7 @@ function networkModel(mode = "normal") {
       master: { CompanyEntity: [{id:uid(11),name:"我方公司"}], BusinessPartyVersion:[{id:uid(12)}] } },
     passwords: Array.from({length:8},(_,i)=>(i+1).toString().repeat(64)), sourceDocx: source,
     originals: [Buffer.from("%PDF-1.4 signed one"),Buffer.from("%PDF-1.4 signed two")],
-    readPdfDrawnText: async () => ["本轮隔离V2材料合同"],
+    readPdfDrawnText: modeledPdfText,
     bridge: {
       check() { if(!alive) throw new Error("MODEL_BRIDGE_CLOSED"); }, now:()=>1000, wait:async()=>undefined,
       async download(_actor,path) {
@@ -87,7 +102,10 @@ function networkModel(mode = "normal") {
           }
           activeGeneration={id:uid(40+generation),docxFileId:uid(50+generation),pdfFileId:uid(60+generation)};
           const zip=new PizZip(source), xml=zip.file("word/document.xml")!.asText();zip.file("word/document.xml",xml.replace("</w:body>","<w:p><w:r><w:t>"+clause+"</w:t></w:r></w:p></w:body>"));
-          files.set(activeGeneration.docxFileId,mode==="old-second-word"&&generation===2?source:zip.generate({type:"nodebuffer"}));files.set(activeGeneration.pdfFileId,Buffer.from("%PDF-model"));
+          files.set(activeGeneration.docxFileId,mode==="old-second-word"&&generation===2?source:zip.generate({type:"nodebuffer"}));
+          const pdfClause = mode === "stale-second-pdf" && generation === 2 || mode === "stale-final-pdf" && generation === 3 ? "双方补充约定第一版。" : clause;
+          const pages = generation === 1 ? ["本轮隔离V2材料合同", pdfClause] : generation === 2 ? ["本轮隔离V2材料合同 " + pdfClause] : ["本轮隔离V2材料合同", "最终生成中间页", pdfClause];
+          files.set(activeGeneration.pdfFileId,await modeledPdf(pages));
           return ok({generationId:activeGeneration.id,status:"queued",sourceRevision:revision,documentContentRevision:contentRevision,documentContentFingerprint:fingerprint});
         }
         if(path.startsWith("/files/")&&path.endsWith("/download-ticket"))return actor===7?ok({},403):ok({fileId:path.split("/")[2],mimeType:Number(path.split("/")[2].slice(-12))<60?"application/vnd.openxmlformats-officedocument.wordprocessingml.document":"application/pdf",sizeBytes:files.get(path.split("/")[2])!.length,downloadUrl:path.replace("/download-ticket","/download?token=model&expiresAt=2099-01-01")});
@@ -147,28 +165,56 @@ it("rejects altered signed-original bytes and stops without any later download",
   await expect(finishTask12LocalLifecycleCase(rollback)).rejects.toThrow("_DOWNLOAD");
   await expect(finishTask12LocalLifecycleCase(rollback)).rejects.toThrow("CHECKPOINT");
 });
-it("uses the one-shot physical PDF reader once while downloading all three generated pairs",async()=>{
-  const m=networkModel();let reads=0,downloads=0;
+it("uses the one-shot reader boundary for all three downloaded PDFs with distinct page boundaries",async()=>{
+  const m=networkModel();let reads=0,downloads=0,inspectedSha="";
   const download=m.input.bridge.download;
   m.input.bridge.download=async(actor,path)=>{downloads++;return download(actor,path);};
-  m.input.readPdfDrawnText=async()=>{if(++reads>1)throw new Error("ONE_READER_ALREADY_CONSUMED");return ["本轮隔离V2材料合同"];};
+  m.input.readPdfDrawnText=async bytes=>{if(++reads>1)throw new Error("ONE_READER_ALREADY_CONSUMED");inspectedSha=digest(bytes);return modeledPdfText(bytes);};
   const token=await runTask12LocalLifecycleCase(m.input);
-  expect(claimTask12LocalLifecycleCheckpoint(token).stage).toBe("ORIGINALS");expect(reads).toBe(1);expect(downloads).toBe(6);
+  const checkpoint = claimTask12LocalLifecycleCheckpoint(token);
+  expect(checkpoint.stage).toBe("ORIGINALS");expect(reads).toBe(1);expect(downloads).toBe(6);
+  expect(checkpoint.pdfInspection.mergedPdfSha256).toBe(inspectedSha);
+  expect(checkpoint.pdfInspection).toMatchObject({reads:1,totalPages:6,laterGenerationPdfSemanticInspection:true,generations:[
+    {generationId:uid(41),firstPage:0,pageCount:2},{generationId:uid(42),firstPage:2,pageCount:1},{generationId:uid(43),firstPage:3,pageCount:3}
+  ]});
+  for (const generation of checkpoint.pdfInspection.generations) expect(generation.pdfSha256).toBe(checkpoint.generatedFiles.find(item=>item.generationId===generation.generationId)!.pdf.sha256);
+  expect(Object.isFrozen(checkpoint.pdfInspection.generations)).toBe(true);
   expect(m.calls.filter(call=>call.request.path.endsWith("/preview-generation")&&call.request.method==="POST")).toHaveLength(4);
 });
-it("stops the entire case when the first physical PDF reader fails",async()=>{
+it("stops before the third submission or seal when the batch reader fails",async()=>{
   const m=networkModel();let reads=0;
   m.input.readPdfDrawnText=async()=>{reads++;throw new Error("MODEL_FIRST_READER_FAILED");};
   await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("MODEL_FIRST_READER_FAILED");expect(reads).toBe(1);
-  expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/submission"))).toHaveLength(0);
-  expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/preview-generation"))).toHaveLength(1);
+  expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/submission")&&call.request.json?.generatedDocumentId===uid(43))).toHaveLength(0);
+  expect(m.calls.some(call=>call.request.path.endsWith("/seal-confirmation"))).toBe(false);
+  expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/preview-generation"))).toHaveLength(3);
 });
-it("still rejects an unmodified Word in the second round after the sole PDF read",async()=>{
+it("still rejects an unmodified second-round Word before the deferred PDF batch",async()=>{
   const m=networkModel("old-second-word");let reads=0,downloads=0;const download=m.input.bridge.download;
-  m.input.readPdfDrawnText=async()=>{reads++;return ["本轮隔离V2材料合同"];};
+  m.input.readPdfDrawnText=async bytes=>{reads++;return modeledPdfText(bytes);};
   m.input.bridge.download=async(actor,path)=>{downloads++;return download(actor,path);};
-  await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("_WORD");expect(reads).toBe(1);expect(downloads).toBe(4);
+  await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("_WORD");expect(reads).toBe(0);expect(downloads).toBe(4);
   expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/preview-generation"))).toHaveLength(2);
+});
+
+it.each(["stale-second-pdf", "stale-final-pdf"])("rejects %s even though its Word and the other PDFs contain the current body", async mode => {
+  const model = networkModel(mode);
+  await expect(runTask12LocalLifecycleCase(model.input)).rejects.toThrow("_PDF");
+  expect(model.calls.some(call => call.request.path.endsWith("/seal-confirmation"))).toBe(false);
+});
+it.each(["missing-page", "extra-page", "duplicate-first-body", "missing-second-title", "missing-final-body"])("rejects %s at the batch page boundary", async mode => {
+  const model=networkModel();
+  model.input.readPdfDrawnText=async bytes=>{
+    const pages=await modeledPdfText(bytes);
+    if(mode==="missing-page")pages.pop();
+    if(mode==="extra-page")pages.push("unexpected page");
+    if(mode==="duplicate-first-body")pages[1]=pages[0];
+    if(mode==="missing-second-title")pages[2]="4.若卖方违背原约定双方补充约定第二版，撤回后全部重新审批。";
+    if(mode==="missing-final-body")pages[5]="final body missing";
+    return pages;
+  };
+  await expect(runTask12LocalLifecycleCase(model.input)).rejects.toThrow("_PDF");
+  expect(model.calls.some(call=>call.request.path.endsWith("/seal-confirmation"))).toBe(false);
 });
 
 it("records actual generated download bytes in an immutable safe checkpoint, deduplicating a matching replay",async()=>{
