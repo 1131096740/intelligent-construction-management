@@ -89,6 +89,8 @@ interface TechnicalHttpApi {
 interface MainModel { result(): Promise<Record<string, unknown>> }
 type MainPorts = { applicationRun: () => Promise<unknown>; httpFailureApi: TechnicalHttpApi };
 const fixtureRequire = createRequire(__filename);
+const lifecycleHttpFile = join(__dirname,"../../prisma/task12-current261-local-lifecycle-http.cjs");
+const lifecycleHttpRequire = createRequire(lifecycleHttpFile);
 const createMainModel: (cleanup: { after(action: () => void): void }, ports: MainPorts) => MainModel = fixtureRequire("../../test-support/task12-lifecycle-main-model.cjs").model;
 test("actual Nest finite catalog survives failing AFTER_CHECK through the actual closed main receipt",async()=>{
  const codes=["P1000","P1001","P1002","P1003","P1008","P1010","P1011","P1017","P2000","P2002","P2003","P2004","P2010","P2011","P2021","P2022","P2024","P2025","P2028","P2034"];
@@ -102,9 +104,9 @@ test("actual Nest finite catalog survives failing AFTER_CHECK through the actual
    const passwords=Object.fromEntries(users.map((u,i)=>[u.id,String(i).repeat(64)]));
    const config=Object.freeze({fixture:{approval:{users,handler:users[0],project:{id:id(20)},members:[],globalRoles:[]}},passwords,sourceDocx:Buffer.from("source"),originals:[Buffer.from("first"),Buffer.from("second")]});
    const diagnostics=Object.freeze({arm(identity:string){return armTask12AuthError(filter,server,identity);},take(ticket:object){const detail=takeTask12AuthError(filter,server,ticket);valid=false;return detail;}});
-   const imported=(name:string)=>name==="./task12-current259-document-application.cjs"?{takeCurrent261LocalLifecycleHttpBridge(c:unknown,s:unknown){expect(c).toBe(config);expect(s).toBe(server);expect(claimed).toBe(false);claimed=true;return diagnostics;}}:require(name);
+   const imported=(name:string)=>name==="./task12-current259-document-application.cjs"?{takeCurrent261LocalLifecycleHttpBridge(c:unknown,s:unknown){expect(c).toBe(config);expect(s).toBe(server);expect(claimed).toBe(false);claimed=true;return diagnostics;}}:name.startsWith(".")?lifecycleHttpRequire(name):require(name);
    const module={exports:{}};
-   new Function("require","module",readFileSync(join(__dirname,"../../prisma/task12-current261-local-lifecycle-http.cjs"),"utf8"))(imported,module);
+   new Function("require","module",readFileSync(lifecycleHttpFile,"utf8"))(imported,module);
    const api=module.exports as TechnicalHttpApi;
    const verify=()=>{if(!valid)throw Object.assign(new Error("private secondary relay evidence"),{code:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED"});};
    try{
@@ -164,8 +166,8 @@ test("actual original RateLimitGuard versus AuthService cohorts yield distinct m
    expect(takeTask12AuthError(filter,server,directTicket)).toMatchObject({serverPrismaCode:"P2028",serverAuthBoundary:selected==="GUARD"?"PRE_CONTROLLER_MARKER":"CONTROLLER_MARKER_REACHED"});
    guardDbCalls=0;serviceDbCalls=0;
    const diagnostics=Object.freeze({arm(identity:string){return armTask12AuthError(filter,server,identity);},take(ticket:object){const detail=takeTask12AuthError(filter,server,ticket);valid=false;return detail;}});
-   const imported=(name:string)=>name==="./task12-current259-document-application.cjs"?{takeCurrent261LocalLifecycleHttpBridge(c:unknown,s:unknown){expect(c).toBe(config);expect(s).toBe(server);expect(claimed).toBe(false);claimed=true;return diagnostics;}}:require(name);
-   const module={exports:{}};new Function("require","module",readFileSync(join(__dirname,"../../prisma/task12-current261-local-lifecycle-http.cjs"),"utf8"))(imported,module);const api=module.exports as TechnicalHttpApi;
+   const imported=(name:string)=>name==="./task12-current259-document-application.cjs"?{takeCurrent261LocalLifecycleHttpBridge(c:unknown,s:unknown){expect(c).toBe(config);expect(s).toBe(server);expect(claimed).toBe(false);claimed=true;return diagnostics;}}:name.startsWith(".")?lifecycleHttpRequire(name):require(name);
+   const module={exports:{}};new Function("require","module",readFileSync(lifecycleHttpFile,"utf8"))(imported,module);const api=module.exports as TechnicalHttpApi;
    const verify=()=>{if(!valid)throw Object.assign(new Error("controlled secondary frame"),{code:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED"});};
    const model=createMainModel({after(action){cleanups.push(action);}},{httpFailureApi:api,applicationRun:()=>api.withCurrent261LocalLifecycleHttp(config,server,verify,()=>undefined,bridge=>bridge.send(0,{method:"POST",path:"/auth/login",json:{phone,password:passwords[users[0].id]}}))});
    const receipt=await model.result(),boundary=selected==="GUARD"?"PRE_CONTROLLER_MARKER":"CONTROLLER_MARKER_REACHED";
@@ -190,8 +192,8 @@ test("former pre-consume full-verification ordering loses a native cause at the 
    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,16000);
    try{return takeTask12AuthError(filter,server,ticket);}finally{valid=false;}
   }});
-  const imported=(name:string)=>name==="./task12-current259-document-application.cjs"?{takeCurrent261LocalLifecycleHttpBridge(c:unknown,s:unknown){expect(c).toBe(config);expect(s).toBe(server);return diagnostics;}}:require(name);
-  const module={exports:{}};new Function("require","module",readFileSync(join(__dirname,"../../prisma/task12-current261-local-lifecycle-http.cjs"),"utf8"))(imported,module);const api=module.exports as TechnicalHttpApi;
+  const imported=(name:string)=>name==="./task12-current259-document-application.cjs"?{takeCurrent261LocalLifecycleHttpBridge(c:unknown,s:unknown){expect(c).toBe(config);expect(s).toBe(server);return diagnostics;}}:name.startsWith(".")?lifecycleHttpRequire(name):require(name);
+  const module={exports:{}};new Function("require","module",readFileSync(lifecycleHttpFile,"utf8"))(imported,module);const api=module.exports as TechnicalHttpApi;
   const first:unknown=await api.withCurrent261LocalLifecycleHttp(config,server,()=>{if(!valid)throw Object.assign(new Error("controlled original AFTER_CHECK"),{code:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED"});},()=>undefined,b=>b.send(0,{method:"POST",path:"/auth/login",json:{phone,password:passwords[users[0].id]}})).then(()=>undefined,cause=>cause);
   expect(first).toBeDefined();expect(valid).toBe(false);
   const detail=api.describeCurrent261LocalLifecycleHttpFailure(first);
