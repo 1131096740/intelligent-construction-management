@@ -321,6 +321,18 @@ function projectCurrent259PhysicalEndpoint(state,expected){
  return Object.freeze({containerId,networkId,databaseName,publishedHost:'127.0.0.1',publishedPort,serverAddress,serverPort:5432});
 }
 
+// Fixed diagnostic data only; never retain Docker output or infer admission.
+function publishedPortFailure(result, containerId) {
+  const exitCode = Number.isInteger(result.code) && result.code >= 1 && result.code <= 255 ? result.code : null;
+  const line = Buffer.isBuffer(result.stderr) ? result.stderr.toString("utf8").trim().split(/\r?\n/u)[0] : "";
+  let stderrKind = "UNCLASSIFIED";
+  if (["5432/tcp", "5432"].some(port => line === `Error: No public port '${port}' published for ${containerId}`)) stderrKind = "NO_PUBLIC_PORT";
+  else if (line === `Error response from daemon: No such container: ${containerId}`) stderrKind = "CONTAINER_NOT_FOUND";
+  else if (line === `Cannot connect to the Docker daemon at ${ENDPOINT}. Is the docker daemon running?`) stderrKind = "DAEMON_UNAVAILABLE";
+  else if (["docker port requires 1 or 2 arguments", "docker: 'docker port' requires 1 or 2 arguments"].includes(line)) stderrKind = "CLI_ARGUMENTS";
+  return Object.freeze({ exitCode, stderrKind });
+}
+
 function literalDirectory(target, allowMissing = false) {
   requireThat(typeof target === "string" && path.isAbsolute(target) && path.normalize(target) === target, "TASK01_RESOURCE_PATH_INVALID");
   let current = path.parse(target).root;
@@ -1153,7 +1165,14 @@ ROLLBACK;`;
       checkRelay(); persist();
     } else {
       startupStage = "published-port-probe";
-      const published = (await docker(["port", containerId, "5432/tcp"], { timeoutMs: 10000 })).stdout.toString().trim();
+      const portResult = await docker(["port", containerId, "5432/tcp"], { timeoutMs: 10000, allowFailure: true });
+      if (portResult.code !== 0) {
+        const failure = fault("TASK01_RESOURCE_COMMAND_FAILED");
+        failure.commandKind = portResult.code === null ? "signal-exit" : "nonzero-exit";
+        Object.defineProperty(failure, "publishedPortFailure", { value: publishedPortFailure(portResult, containerId) });
+        throw failure;
+      }
+      const published = portResult.stdout.toString().trim();
       requireThat(/^127\.0\.0\.1:[0-9]{1,5}$/u.test(published), "TASK01_RESOURCE_PORT_CHANGED");
       port = Number(published.split(":")[1]); requireThat(port > 0 && port <= 65535, "TASK01_RESOURCE_PORT_CHANGED");
       startupStage = "published-port-inspect";
@@ -1189,6 +1208,8 @@ ROLLBACK;`;
     receipt.phase = "failed"; receipt.status = "failed";
     const commandKind = ownErrorField(error, "commandKind");
     receipt.startupFailure = { stage: startupStage, commandKind: COMMAND_KINDS.has(commandKind) ? commandKind : null };
+    const portFailure = ownErrorField(error, "publishedPortFailure");
+    if (startupStage === "published-port-probe" && portFailure) receipt.startupFailure.publishedPortFailure = portFailure;
     receipt.failureCode = typeof error.code === "string" && error.code.startsWith("TASK01_RESOURCE_") ? error.code : "TASK01_RESOURCE_START_FAILED";
     try { await close(); } catch { receipt.status = "cleanup_failed"; }
     const failure = fault("TASK01_RESOURCE_START_FAILED"); failure.resourceReceipt = getReceipt(); throw failure;

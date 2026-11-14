@@ -432,3 +432,59 @@ test('readonly resource exposes only original owner login and the separate probe
   assert.equal(typeof view.beginPrismaRelayDrain,'function');
  });
 });
+
+
+// Private original factory instance at its filesystem/process boundary. No
+// Docker process, certificate, resource or production injection is created.
+function publishedPortFactoryFixture(options={}){
+ const {EventEmitter}=require('node:events'),actualCrypto=require('node:crypto');
+ const dirs=new Set(['/','/private','/private/tmp','/private/tmp/port-model']),files=new Map([['/model/docker',Buffer.from('model')],['/model/openssl',Buffer.from('model')]]);
+ const state={container:false,network:false,running:false,portCalls:0,portTimers:[],commands:[],last:[],portStderr:options.stderr??'',exitCode:options.exitCode??1,cleanupFailure:options.cleanupFailure};
+ const runId='12345678-1234-4234-8234-123456789012',cid='7'.repeat(64),nid='8'.repeat(64),sha='a'.repeat(40),name='jg-task01-'+runId;
+ const labels={'io.jiangkong.task01.run':runId,'io.jiangkong.task01.task':'enterprise-task01','io.jiangkong.task01.source':sha};
+ const tmpfs={'/var/lib/postgresql/data':'rw,nosuid,nodev,noexec,size=536870912,mode=0700','/var/run/postgresql':'rw,nosuid,nodev,noexec,size=16777216,mode=0775','/tmp':'rw,nosuid,nodev,noexec,size=67108864,mode=1777'};
+ const stat=p=>{const file=files.has(p);if(!file&&!dirs.has(p))throw Object.assign(new Error('MODEL_MISSING'),{code:'ENOENT'});return{uid:process.getuid(),mode:file?0o100600:0o40700,isFile:()=>file,isDirectory:()=>!file,isSymbolicLink:()=>false};};
+ const mockFs={constants:fs.constants,existsSync:p=>files.has(p)||dirs.has(p),lstatSync:stat,statSync:stat,realpathSync:p=>p,accessSync(){},mkdirSync:p=>{dirs.add(p);},writeFileSync(p,data,o){if(o?.flag==='wx')assert.ok(!files.has(p));files.set(p,Buffer.from(data));},readFileSync:p=>{assert.ok(files.has(p));return files.get(p);},renameSync(a,b){files.set(b,files.get(a));files.delete(a);},chmodSync(){},unlinkSync:p=>files.delete(p),rmdirSync:p=>dirs.delete(p)};
+ function inspectNetwork(){return{Id:nid,Name:name,Internal:true,Driver:'bridge',Labels:labels,Containers:state.container?{[cid]:{}}:{}};}
+ function inspectContainer(){return{Id:cid,Image:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d',Name:'/'+name,Config:{Labels:labels},State:{Running:state.running},HostConfig:{NetworkMode:nid,Binds:[],PortBindings:{'5432/tcp':[{HostIp:'127.0.0.1',HostPort:''}]},Memory:1073741824,MemorySwap:1073741824,NanoCpus:2000000000,PidsLimit:256,Tmpfs:tmpfs},Mounts:[],NetworkSettings:{Networks:{owned:{NetworkID:nid}},Ports:{}}};}
+ function spawn(executable,args){
+  const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin=new EventEmitter();child.stdin.end=()=>{};child.kill=()=>true;
+  const cmd=executable.endsWith('/docker')?args.slice(2):args;state.last=cmd;state.commands.push(cmd);
+  queueMicrotask(()=>{let out='',err='',code=0;
+   if(executable.endsWith('/openssl')){
+    const at=cmd.indexOf('-out');if(at!==-1)files.set(cmd[at+1],Buffer.from(path.basename(cmd[at+1])));
+    if(cmd[0]==='verify'&&(cmd.includes('/private/tmp/port-model/resource/tls-private/wrong-ca.crt')||cmd.includes('/private/tmp/port-model/resource/tls-private/wrong-san.crt')&&cmd.includes('127.0.0.1')))code=1;
+   }else if(cmd[0]==='info')out='synthetic-daemon-12345';
+   else if(cmd[0]==='image')out=JSON.stringify({Id:inspectContainer().Image,Config:{Env:['PG_MAJOR=16','PGDATA=/var/lib/postgresql/data']}});
+   else if(cmd[0]==='network'&&cmd[1]==='create'){state.network=true;out=nid;}
+   else if(cmd[0]==='network'&&cmd[1]==='inspect')out=JSON.stringify(inspectNetwork());
+   else if(cmd[0]==='network'&&cmd[1]==='ls')out=state.network?nid:'';
+   else if(cmd[0]==='network'&&cmd[1]==='rm')state.network=false;
+   else if(cmd[0]==='container'&&cmd[1]==='create'){state.container=true;out=cid;}
+   else if(cmd[0]==='container'&&cmd[1]==='inspect')out=JSON.stringify(inspectContainer());
+   else if(cmd[0]==='container'&&cmd[1]==='start')state.running=true;
+   else if(cmd[0]==='container'&&cmd[1]==='ls')out=state.container?cid:'';
+   else if(cmd[0]==='container'&&cmd[1]==='rm'){if(state.cleanupFailure){code=1;err='PRIVATE_CLEANUP';}else{state.container=false;state.running=false;}}
+   else if(cmd[0]==='cp'){}
+   else if(cmd[0]==='exec'){if(cmd.includes('/proc/1/comm'))out='postgres';else assert.ok(cmd.includes('pg_isready'));}
+   else if(cmd[0]==='port'){state.portCalls++;assert.deepEqual(cmd,['port',cid,'5432/tcp']);code=state.exitCode;err=state.portStderr;}
+   else throw new Error('MODEL_UNEXPECTED_COMMAND');
+   if(out)child.stdout.emit('data',Buffer.from(out));if(err)child.stderr.emit('data',Buffer.from(err));child.emit('close',code);
+  });return child;
+ }
+ const module={exports:{}};new Function('require','module','__dirname','setTimeout',fs.readFileSync(path.join(__dirname,'enterprise-task01-resources.cjs'),'utf8'))(
+  key=>key==='node:fs'?mockFs:key==='node:child_process'?{spawn}:key==='node:crypto'?{...actualCrypto,X509Certificate:class{constructor(bytes){this.raw=bytes;}}}:require(key),module,__dirname,(fn,ms,...args)=>{if(state.last[0]==='port'&&state.portTimers.length===0)state.portTimers.push(ms);return setTimeout(fn,ms,...args);});
+ return{api:module.exports,state,cid,async run(){return module.exports.startTask01Postgres({runId,sourceSha:sha,artifactsDir:'/private/tmp/port-model/resource',endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',daemonId:'synthetic-daemon-12345',imageId:inspectContainer().Image,tools:{docker:'/model/docker',openssl:'/model/openssl'},ownerPassword:'b'.repeat(96),signal:new AbortController().signal});}};
+}
+for(const [stderr,kind]of [["Error: No public port '5432/tcp' published for "+'7'.repeat(64),'NO_PUBLIC_PORT'],['Error response from daemon: No such container: '+'7'.repeat(64),'CONTAINER_NOT_FOUND'],['Cannot connect to the Docker daemon at unix:///Users/leoyang/.docker/run/docker.sock. Is the docker daemon running?','DAEMON_UNAVAILABLE'],['docker port requires 1 or 2 arguments','CLI_ARGUMENTS'],['PRIVATE_SQL_PASSWORD_URL','UNCLASSIFIED']])
+ test('public resource factory retains only published port '+kind+' with its original first failure',async()=>{
+  const f=publishedPortFactoryFixture({stderr});let error;try{await f.run();}catch(e){error=e;}
+  assert.equal(error?.code,'TASK01_RESOURCE_START_FAILED');const r=error.resourceReceipt;
+  assert.deepEqual(r.startupFailure,{stage:'published-port-probe',commandKind:'nonzero-exit',publishedPortFailure:{exitCode:1,stderrKind:kind}});
+  assert.equal(r.failureCode,'TASK01_RESOURCE_COMMAND_FAILED');assert.equal(r.cleanup.status,'completed');assert.equal(f.state.portCalls,1);assert.deepEqual(f.state.portTimers,[10000]);
+  assert.doesNotMatch(JSON.stringify(r),/PRIVATE_SQL_PASSWORD_URL|No public port|No such container|Cannot connect/);
+ });
+test('public published port first cause survives independent cleanup failure',async()=>{
+ const f=publishedPortFactoryFixture({stderr:"Error: No public port '5432/tcp' published for "+'7'.repeat(64),cleanupFailure:true});let error;try{await f.run();}catch(e){error=e;}
+ assert.equal(error.resourceReceipt.startupFailure.stage,'published-port-probe');assert.deepEqual(error.resourceReceipt.startupFailure.publishedPortFailure,{exitCode:1,stderrKind:'NO_PUBLIC_PORT'});assert.equal(error.resourceReceipt.failureCode,'TASK01_RESOURCE_COMMAND_FAILED');assert.equal(error.resourceReceipt.cleanup.status,'failed');assert.equal(f.state.portCalls,1);
+});
