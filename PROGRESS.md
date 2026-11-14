@@ -4,7 +4,8 @@
 
 ## 当前候选与两条业务线
 
-- 集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本轮普通合并cf8就绪检查、bfec付款原生诊断及226合同私有连续性，27个不重叠blob/mode与作者一致，每片双轴复核各0项。组合重建API、源码绑定联合门及新准确CI待。旧33a CI43581097469已自然终态：32项中30成功，合同模板SQL预检及Release汇总失败，未重跑；不归因为OOM，旧e56932/32只绑定旧SHA。PR428保持OPEN/Draft。
+- 集成树 `/Users/leoyang/.codex/worktrees/jg-382-recovery-20261114/建工智管`；本轮正常快进f3c旧impact-runtime模型修订、普通合并9e41三列runtime主键SELECT，5个不重叠blob/mode与作者一致，每片双轴各0项。新准确组合候选将先在全新无API dist的独立验证树生成SDK并运行完整CI编排门，再核API及权限材料；组合验证和准确远端CI待，PR428保持OPEN/Draft。
+- 旧8e719 CI43585629504的contract_template_scenario已通过，Quality因旧模型缺少新诊断导出/实例而失败（1969项仅1失败）；原失败及旧33a SQL预检失败不重跑、不倒填原因。f3仅补模拟边界和六个拒绝反例，生产factory/loader/守卫及选择器未改。旧8e719文书资格及限定纸面复核、registry-only be455和两份未消费准备计划保留为旧材料，不跨SHA复用。
 - 本轮组合为付款HTTP有限诊断ba13与合同TLS探针收束f7c，八blob/mode与作者一致，双轴各片0项。组合固定Node20 CJS273/273、pin81、当前TS公开夹具112/112通过；API检查按准确源码证据承接，实际运行材料由各自准确候选独立构建。初始依赖缺失及NODE_PATH被原环境守卫拒绝的失败保留，未以改守卫过门。
 - 任务16：准确e569完整normal原58620真实exit1/2290秒，09:30:47Z终止；实际POST登记返回HTTP500、期望201，原生后端原因未知，业务仍UNKNOWN_DO_NOT_RETRY。原资源清理完成，root09:31:05Z独核rune789ff9e准确容器/网络/两PID/relay缺席。当前只缩小调查登记失败原因，不重跑完整normal、不把500归因于某个数据库错误。旧64无状态原件、c8/P2028及29c分配观察UNKNOWN和各自清理证据原样保留。
 
@@ -24,3 +25,5 @@
 本轮准确命令、资格、CI、失败与清理见[当前主回执](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/RECEIPT.md)；本次压缩前完整进度保存在[逐字前像](/Users/leoyang/.codex/visualizations/2026/11/14/01a1d87f-8978-77a1-b05a-6ad815fa6829/PROGRESS-PRE-CURRENT-E569.md)，旧主控事实见[持久恢复主回执](/Users/leoyang/.codex/visualizations/2026/11/12/01a1d054-b95b-70f2-9b4f-c9cbeffe79e7/recovery-20261114/RECEIPT.md)。优先完成12/16真实业务，再扩展依赖前沿；最终准确SHA完整门禁保留，准备与组件结果不计整票完成。
 
 本次进度随已审PDF片提交交付，不改旧冻结源码/计划，不继承旧SHA业务通过。规程前全文及其哈希仍见Git内[历史快照](docs/progress/2026-11-13-progress-before-development-loop.md)，后续前像及失败记录继续保留。
+
+本轮runtime权限材料固定摘要87fd3228，仅新增ProjectProxyPayment.id、ContractProxyExecution.id、PaymentExecutionAllocation.id的临时runtime列级SELECT；observer、Schema、SQL、写权限、角色属性、5秒和UNKNOWN保持。三查询原生单列正反对照支持机制，整体FRAME次因STOPPED及独立清理单列保留，不证明旧实际500原因或业务通过。当前不启动新PG、完整normal或life。
