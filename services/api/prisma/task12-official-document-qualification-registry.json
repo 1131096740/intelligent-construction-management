@@ -1,5 +1,14 @@
 {
   "version": 1,
-  "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_V1",
-  "qualification": null
+  "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2",
+  "qualification": {
+    "machineReceipt": {
+      "path": "/private/tmp/jg-394-605c-formal-fxzowfcs/run/MACHINE-RECEIPT.json",
+      "sha256": "3c9dec89308e9e37e8b338e79829a01300c6e241e4dcfe085cbaabe69df9a6f6"
+    },
+    "physicalReview": {
+      "path": "/private/tmp/jg-394-605c-review-ei86e8k3/physical-review.json",
+      "sha256": "941a7009931ff1a630cf6613b07fc25a83db7486c5bfe00947f42c33ad607241"
+    }
+  }
 }
