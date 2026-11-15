@@ -333,3 +333,14 @@ test('invalid or throwing diagnostic clock stays UNKNOWN and never replaces the 
   const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);assert.deepEqual(detail.firstCause,{family:'OFFICIAL_DEADLINE',code:'TASK12_OFFICIAL_DOCUMENT_DEADLINE'});assert.deepEqual(detail.timingAtResponse,{status:'UNKNOWN'});assert.deepEqual(detail.timingAtConsumeFailure,{status:'UNKNOWN'});assert.deepEqual(detail.timingAfterSecondary,{status:'UNKNOWN'});
  }
 });
+
+test('non-number diagnostic clocks never coerce objects or execute proxy/valueOf traps and preserve firstError',async()=>{
+ let traps=0;const object={valueOf(){traps++;return 1;}},getter=Object.defineProperty({},'valueOf',{get(){traps++;throw Error('PRIVATE');}}),proxy=new Proxy({},{get(){traps++;throw Error('PRIVATE');}}),revoked=Proxy.revocable({},{});revoked.revoke();
+ for(const value of [object,getter,proxy,revoked.proxy,Symbol("PRIVATE"),1n]){
+  const f=model(undefined,undefined,undefined,undefined,undefined,undefined,()=>value),first=Object.assign(Error('PRIVATE_FIRST'),{code:'TASK12_GENERATED_MATERIAL_TEMPLATE_INSPECTION'});
+  await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});throw first;}),error=>error===first);
+  const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);assert.equal(detail.firstCause.code,'TASK12_GENERATED_MATERIAL_TEMPLATE_INSPECTION');
+  for(const key of ['timingAtResponse','timingAtConsumeFailure','timingAfterSecondary'])assert.deepEqual(detail[key],{status:'UNKNOWN'});
+ }
+ assert.equal(traps,0);
+});

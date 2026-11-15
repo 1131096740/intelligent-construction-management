@@ -2,7 +2,7 @@
 const {request}=require('node:http'),{randomBytes,createHash}=require('node:crypto'),{setTimeout:delay}=require('node:timers/promises'),{types,isDeepStrictEqual:equal}=require('node:util');
 const {performance}=require('node:perf_hooks');
 const readMonotonic=performance.now.bind(performance);
-const diagnosticNow=()=>{try{return readMonotonic();}catch{return NaN;}};
+const diagnosticNow=()=>{try{const value=readMonotonic();return typeof value==='number'&&Number.isFinite(value)?value:NaN;}catch{return NaN;}};
 const {decodeRelaySysreadExit}=require('./task16-current259-relay-sysread.cjs');
 const id=x=>typeof x==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(x);
 const issued=new WeakMap(),failures=new WeakMap();
