@@ -7,7 +7,7 @@ for(const args of [[],['--once'],['--docker'],['--prepare','--run-root','/tmp/fo
  assert.equal(result.status,1);assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_ARGUMENTS'});assert.equal(result.stderr,'');
 });
 const fs=require('node:fs'),{randomUUID,createHash}=require('node:crypto');
-function planModel(t){const root=fs.mkdtempSync('/private/tmp/jg-native-model-');fs.chmodSync(root,0o700);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const st=fs.lstatSync(root),runId=randomUUID();return {schemaVersion:1,purpose:'TASK16_NATIVE_DIRECT_PRODUCTION_READER_V1',runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:root,rootIdentity:Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,st[k]])),source:{},artifacts:[],dependencies:{},prismaTools:{},interfaces:[],binaryManifest:{},binaries:[],openssl:{},externalLibraries:[],node:{},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:[]};}
+function planModel(t){const root=fs.mkdtempSync('/private/tmp/jg-native-model-');fs.chmodSync(root,0o700);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const st=fs.lstatSync(root),runId=randomUUID();return {schemaVersion:2,purpose:'TASK16_NATIVE_DIRECT_CONTROLLED_NAME_V2',runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:root,rootIdentity:Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,st[k]])),source:{},artifacts:[],dependencies:{},prismaTools:{},interfaces:[],binaryManifest:{},binaries:[],openssl:{},externalLibraries:[],node:{},security:{},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:[]};}
 test('native plan keeps fixed purpose, original budgets and owned private root; structural data grants no execution',t=>{
  const {validateNativePlan}=require('./run-task16-native-direct-once.cjs'),p=planModel(t);assert.equal(validateNativePlan(p).runRoot,p.runRoot);
  for(const field of Object.keys(p.limits))assert.throws(()=>validateNativePlan({...p,limits:{...p.limits,[field]:p.limits[field]+1}}));
@@ -114,4 +114,22 @@ test('TLS error word projection is bounded own-data booleans and grants no new S
  for(const value of [undefined,null,{},accessor,proxy,{message:42},{message:'x'.repeat(32769)},{message:'汉'.repeat(11000)}]){const result=project(value);assert.equal(result.messageState,'UNKNOWN');assert.ok(Object.values(result.tokens).every(flag=>flag===false));}
  assert.equal(traps,0);assert.equal(project({message:'x'.repeat(32768)}).messageState,'BOUNDED_OWN_DATA');
  for(const [message,key]of [['NotValidForName','notValidForName'],['not valid for name','notValidForNameSpaced'],['hostname mismatch','hostnameMismatch'],['hostname does not match','hostnameDoesNotMatch'],['certificate is not valid for','certificateIsNotValidFor']])assert.equal(project({message}).tokens[key],true);
+});
+
+test('V2 controlled name result requires the current policy and real generic TLS evidence without changing strict classification',()=>{
+ const api=require('./run-task16-native-direct-once.cjs'),binding={runId:'12345678-1234-4234-8234-123456789012',port:55432,caSha256:'a'.repeat(64),serverSha256:'b'.repeat(64),configurationSha256:'c'.repeat(64)};
+ const context={binding,currentBinding:{...binding},positiveClientsVerified:true,onlyHostnameChanged:true,positivePolicy:{exitCode:0,hostnameMismatch:false,error67602:false},negativePolicy:{exitCode:1,hostnameMismatch:true,error67602:true}};
+ const error=Object.assign(new Error('Error opening a TLS connection. certificate was not trusted'),{errorCode:'P1011'}),project=c=>api.controlledNativeTask16NameResult(error,JSON.stringify(c));
+ assert.equal(api.classifyNativeTask16TlsFailure(error,'wrong-san').accepted,false);
+ assert.deepEqual(project(context),{kind:'CONTROLLED_NAME_REJECTION_WITH_NATIVE_POLICY',accepted:true,sdkDirectCause:false});
+ for(const delta of [{positiveClientsVerified:false},{onlyHostnameChanged:false},{currentBinding:{...binding,port:55433}},{currentBinding:{...binding,runId:'22345678-1234-4234-8234-123456789012'}},{currentBinding:{...binding,caSha256:'d'.repeat(64)}},{currentBinding:{...binding,serverSha256:'d'.repeat(64)}},{currentBinding:{...binding,configurationSha256:'d'.repeat(64)}},{positivePolicy:{...context.positivePolicy,exitCode:1}},{negativePolicy:{...context.negativePolicy,exitCode:0}},{negativePolicy:{...context.negativePolicy,hostnameMismatch:false}},{negativePolicy:{...context.negativePolicy,error67602:false}}])assert.equal(project({...context,...delta}).accepted,false);
+ for(const message of ['Error opening a TLS connection. UnknownIssuer','Error opening a TLS connection. certificate was not trusted UnknownIssuer','certificate was not trusted','Error opening a TLS connection generic','Error opening a TLS connection. certificate was not trusted ECONNREFUSED'])assert.equal(api.controlledNativeTask16NameResult(Object.assign(new Error(message),{errorCode:'P1011'}),JSON.stringify(context)).accepted,false);
+ assert.equal(api.controlledNativeTask16NameResult(Object.assign(new Error(error.message),{errorCode:'P1001'}),JSON.stringify(context)).accepted,false);
+ let traps=0;const getter={get message(){traps++;throw Error('private');}};assert.equal(api.controlledNativeTask16NameResult(getter,JSON.stringify(context)).accepted,false);assert.equal(traps,0);
+ assert.deepEqual(api.projectNativeTask16SecurityPolicy({code:1,stdout:'SSLHostname Host name mismatch -67602',stderr:''}),context.negativePolicy);
+ assert.throws(()=>api.projectNativeTask16SecurityPolicy({code:1,stdout:'x'.repeat(1048577),stderr:''}));
+});
+test('V2 plan rejects old V1 even with the new security field and qualifies only the fixed root-owned security tool',t=>{
+ const api=require('./run-task16-native-direct-once.cjs'),p=planModel(t);assert.throws(()=>api.validateNativePlan({...p,schemaVersion:1,purpose:'TASK16_NATIVE_DIRECT_PRODUCTION_READER_V1'}));
+ const tool=api.captureNativeTask16Security();assert.equal(tool.file,'/usr/bin/security');assert.equal(tool.identity.uid,'0');assert.equal((Number(tool.identity.mode)&0o022),0);assert.ok((Number(tool.identity.mode)&0o111)!==0);
 });

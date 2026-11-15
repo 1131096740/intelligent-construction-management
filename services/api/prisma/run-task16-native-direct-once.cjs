@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {createHash,randomBytes,randomUUID}=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
-const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_DIRECT_PRODUCTION_READER_V1';
+const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_DIRECT_CONTROLLED_NAME_V2';
 // Root's independently reviewed official16.15/pgcrypto93-file qualification.
 const BINARY_QUALIFICATION_SHA='26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1';
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -16,7 +16,7 @@ function fixed(value,keys){need(value&&typeof value==='object'&&!types.isProxy(v
 function capture(file,max=16*1024*1024){
  need(typeof file==='string'&&path.isAbsolute(file)&&path.normalize(file)===file&&fs.realpathSync(file)===file);
  let cursor='/';for(const part of file.slice(1).split('/')){cursor=path.join(cursor,part);need(!fs.lstatSync(cursor).isSymbolicLink());}
- let fd;try{fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);const a=fs.fstatSync(fd,{bigint:true});need(a.isFile()&&a.size<=BigInt(max)&&a.uid===BigInt(process.getuid())&&(a.mode&0o022n)===0n);
+ let fd;try{fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);const a=fs.fstatSync(fd,{bigint:true});need(a.isFile()&&a.size<=BigInt(max)&&a.uid===BigInt(file==='/usr/bin/security'?0:process.getuid())&&(a.mode&0o022n)===0n);
   const bytes=fs.readFileSync(fd),b=fs.fstatSync(fd,{bigint:true}),c=fs.lstatSync(file,{bigint:true});const identity=Object.fromEntries(['dev','ino','size','mode','uid','gid','mtimeNs','ctimeNs'].map(k=>[k,String(a[k])]));
   need(bytes.length===Number(a.size)&&Object.keys(identity).every(k=>String(b[k])===identity[k]&&String(c[k])===identity[k]));return {sha256:hash(bytes),identity,bytes};
  }finally{if(fd!==undefined)fs.closeSync(fd);}
@@ -46,8 +46,8 @@ function dependencyDigest(){const rows=['node_modules','services/api/node_module
 function compiledMaterials(){return [...treeFiles(path.join(ROOT,'services/api/dist')),...treeFiles(path.join(ROOT,'packages/shared-domain/dist'))];}
 
 function validateNativePlan(value){
- const p=fixed(value,['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','prismaTools','interfaces','binaryManifest','binaries','openssl','externalLibraries','node','limits','differences']);
- need(p.schemaVersion===1&&p.purpose===PURPOSE&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
+ const p=fixed(value,['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','prismaTools','interfaces','binaryManifest','binaries','openssl','externalLibraries','node','security','limits','differences']);
+ need(p.schemaVersion===2&&p.purpose===PURPOSE&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
  need(equal(fixed(p.limits,['resourceMs','migrationMs','ownerSqlMs','httpMs','commandBytes','ownerSqlBytes']),{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216}));
  need(equal(directory(p.runRoot),p.rootIdentity));return p;
 }
@@ -65,7 +65,7 @@ function prepareNativeTask16Plan(options){
  const externalLibraries=Object.entries(qualified.externalLibraries??{}).map(([file,expected])=>{const actual=capture(file,64*1024*1024);need(actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&nativeTask16QualifiedModeMatches(actual.identity.mode,expected.mode)&&['dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_EXTERNAL_LIBRARY');return {file,sha256:actual.sha256,identity:actual.identity};});need(externalLibraries.length===2,'NATIVE_DIRECT_EXTERNAL_LIBRARY');
  const prismaTools=resolveNativeTask16PrismaTools(),interfaces=resolveNativeTask16Interfaces();
  const nodeFile=fs.realpathSync(process.execPath),nodeCapture=capture(nodeFile,128*1024*1024);
- const runId=randomUUID(),p={schemaVersion:1,purpose:PURPOSE,runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:o.runRoot,rootIdentity:directory(o.runRoot),source:sourceCapture(),artifacts:compiledMaterials(),dependencies:dependencyDigest(),prismaTools,interfaces,binaryManifest:{file:o.binaryManifest,sha256:manifest.sha256,identity:manifest.identity},binaries,openssl:{file:opensslFile,sha256:openssl.sha256,identity:openssl.identity},externalLibraries,node:{file:nodeFile,sha256:nodeCapture.sha256,identity:nodeCapture.identity,version:process.version,platform:process.platform,arch:process.arch},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:['macOS native PG16.15/OpenSSL3/C locale/noICU','Production function reader; no F object-reader private lease wrapper','No Docker CPU/memory/pids/tmpfs enforcement equivalent']};
+ const runId=randomUUID(),p={schemaVersion:2,purpose:PURPOSE,runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:o.runRoot,rootIdentity:directory(o.runRoot),source:sourceCapture(),artifacts:compiledMaterials(),dependencies:dependencyDigest(),prismaTools,interfaces,binaryManifest:{file:o.binaryManifest,sha256:manifest.sha256,identity:manifest.identity},binaries,openssl:{file:opensslFile,sha256:openssl.sha256,identity:openssl.identity},externalLibraries,node:{file:nodeFile,sha256:nodeCapture.sha256,identity:nodeCapture.identity,version:process.version,platform:process.platform,arch:process.arch},security:captureNativeTask16Security(),limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:['V2 controlled name policy evidence; SDK direct cause remains unproven','macOS native PG16.15/OpenSSL3/C locale/noICU','Production function reader; no F object-reader private lease wrapper','No Docker CPU/memory/pids/tmpfs enforcement equivalent']};
  validateNativePlan(p);return writeNew(o.runRoot,'plan.json',p);
 }
 function verifyNativeTask16Plan(file,expected){
@@ -75,6 +75,7 @@ function verifyNativeTask16Plan(file,expected){
  need(p.binaryManifest.sha256===BINARY_QUALIFICATION_SHA,'NATIVE_DIRECT_BINARY_APPROVAL');
  const qualified=JSON.parse(capture(p.binaryManifest.file,1024*1024).bytes);need(qualified.version==='16.15'&&qualified.versionObserved==='postgres (PostgreSQL) 16.15'&&equal(treeFiles(qualified.privatePrefix),p.binaries),'NATIVE_DIRECT_BINARY_APPROVAL');
  need(equal(compiledMaterials(),p.artifacts)&&equal(dependencyDigest(),p.dependencies),'NATIVE_DIRECT_MATERIAL_CHANGED');
+ need(equal(captureNativeTask16Security(),p.security),'NATIVE_DIRECT_SECURITY_CHANGED');
  need(equal(resolveNativeTask16PrismaTools(),p.prismaTools)&&equal(resolveNativeTask16Interfaces(),p.interfaces),'NATIVE_DIRECT_PRISMA_OR_INTERFACE_CHANGED');
  for(const row of [...p.binaries,p.openssl,...p.externalLibraries,p.binaryManifest,p.node]){if(row.link){need(fs.readlinkSync(row.link)===row.target,'NATIVE_DIRECT_MATERIAL_CHANGED');continue;}const now=capture(row.file,128*1024*1024);need(now.sha256===row.sha256&&equal(now.identity,row.identity),'NATIVE_DIRECT_MATERIAL_CHANGED');}
  need(p.node.file===fs.realpathSync(process.execPath)&&p.node.version===process.version&&p.node.platform===process.platform&&p.node.arch===process.arch,'NATIVE_DIRECT_RUNTIME');return p;
@@ -101,8 +102,28 @@ function trackNativeTask16Child(child){
  const running=()=>!exited&&child.pid===pid&&child.kill===kill&&child.exitCode===null&&child.signalCode===null;
  return Object.freeze({pid,terminal,running,stop(){need(running(),'NATIVE_DIRECT_CHILD_CHANGED');need(kill.call(child,'SIGINT'),'NATIVE_DIRECT_PG_STOP');}});
 }
+function captureNativeTask16Security(){
+ const file='/usr/bin/security',row=capture(file,16*1024*1024);need(row.identity.uid==='0'&&(Number(row.identity.mode)&0o111)!==0,'NATIVE_DIRECT_SECURITY');return Object.freeze({file,sha256:row.sha256,identity:row.identity});
+}
+function projectNativeTask16SecurityPolicy(value){
+ const row=fixed(value,['code','stdout','stderr']);need(Number.isInteger(row.code)&&typeof row.stdout==='string'&&typeof row.stderr==='string'&&Buffer.byteLength(row.stdout)+Buffer.byteLength(row.stderr)<=1048576,'NATIVE_DIRECT_POLICY_OUTPUT');
+ const text=row.stdout+'\n'+row.stderr;return Object.freeze({exitCode:row.code,hostnameMismatch:/host name mismatch/iu.test(text),error67602:/(?<![0-9])-67602(?![0-9])/u.test(text)});
+}
+function controlledNativeTask16NameResult(error,contextJson){
+ const unknown=()=>Object.freeze({kind:'UNKNOWN',accepted:false,sdkDirectCause:false});
+ try{
+  need(typeof contextJson==='string'&&Buffer.byteLength(contextJson)<=8192);const context=fixed(JSON.parse(contextJson),['binding','currentBinding','positiveClientsVerified','onlyHostnameChanged','positivePolicy','negativePolicy']);
+  const binding=fixed(context.binding,['runId','port','caSha256','serverSha256','configurationSha256']),current=fixed(context.currentBinding,Object.keys(binding));
+  need(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(binding.runId)&&Number.isInteger(binding.port)&&binding.port>1024&&binding.port<=65535&&binding.port!==5432&&['caSha256','serverSha256','configurationSha256'].every(key=>hex(binding[key],64))&&equal(binding,current));
+  need(context.positiveClientsVerified===true&&context.onlyHostnameChanged===true);
+  need(equal(fixed(context.positivePolicy,['exitCode','hostnameMismatch','error67602']),{exitCode:0,hostnameMismatch:false,error67602:false})&&equal(fixed(context.negativePolicy,['exitCode','hostnameMismatch','error67602']),{exitCode:1,hostnameMismatch:true,error67602:true}));
+  const words=projectNativeTask16TlsWords(error),strict=classifyNativeTask16TlsFailure(error,'wrong-san');
+  need(words.messageState==='BOUNDED_OWN_DATA'&&strict.prismaCode==='P1011'&&words.tokens.tlsConnection&&words.tokens.certificateWasNotTrusted&&!words.tokens.otherIssuerMarker&&!words.tokens.connectionRefused&&!words.tokens.dnsFailure);
+  return Object.freeze({kind:'CONTROLLED_NAME_REJECTION_WITH_NATIVE_POLICY',accepted:true,sdkDirectCause:false});
+ }catch{return unknown();}
+}
 function projectNativeTask16TlsWords(error){
- const phrases={tlsConnection:['tls connection'],notValidForName:['notvalidforname'],notValidForNameSpaced:['not valid for name'],hostnameMismatch:['hostname mismatch'],hostnameDoesNotMatch:['hostname does not match'],certificateIsNotValidFor:['certificate is not valid for'],certificateNotValidForName:['certificate not valid for name'],ipAddressMismatch:['ip address mismatch'],certificateVerifyFailed:['certificate verify failed'],issuerMarker:['unknownissuer','unknown issuer','unable to get local issuer','unable to verify the first certificate','self signed certificate','self-signed certificate','certificate was not trusted'],connectionRefused:['connection refused','econnrefused'],dnsFailure:['dns','getaddrinfo','enotfound']};
+ const phrases={certificateWasNotTrusted:['certificate was not trusted'],otherIssuerMarker:['unknownissuer','unknown issuer','unable to get local issuer','unable to verify the first certificate','self signed certificate','self-signed certificate'],tlsConnection:['tls connection'],notValidForName:['notvalidforname'],notValidForNameSpaced:['not valid for name'],hostnameMismatch:['hostname mismatch'],hostnameDoesNotMatch:['hostname does not match'],certificateIsNotValidFor:['certificate is not valid for'],certificateNotValidForName:['certificate not valid for name'],ipAddressMismatch:['ip address mismatch'],certificateVerifyFailed:['certificate verify failed'],issuerMarker:['unknownissuer','unknown issuer','unable to get local issuer','unable to verify the first certificate','self signed certificate','self-signed certificate','certificate was not trusted'],connectionRefused:['connection refused','econnrefused'],dnsFailure:['dns','getaddrinfo','enotfound']};
  let text,messageState='UNKNOWN';
  if(error&&typeof error==='object'&&!types.isProxy(error)){const d=Object.getOwnPropertyDescriptor(error,'message');if(d&&Object.hasOwn(d,'value')&&typeof d.value==='string'&&Buffer.byteLength(d.value)<=32768){text=d.value.toLowerCase();messageState='BOUNDED_OWN_DATA';}}
  return Object.freeze({messageState,tokens:Object.freeze(Object.fromEntries(Object.entries(phrases).map(([key,values])=>[key,text!==undefined&&values.some(value=>text.includes(value))])))});
@@ -209,7 +230,7 @@ function renderNativeTask16RuntimeAcl(inputJson,nonce){
  const publicSql=publicParts.join(original.replace('5432',String(id.serverPort)));
  return Object.freeze({...rendered,sql,publicSql,writeSql:sql+'\n'+publicSql});
 }
-module.exports=Object.freeze({projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -222,11 +243,12 @@ async function executeNativeTask16Once(plan,planSha256){
  const {spawn}=require('node:child_process');
  const root=plan.runRoot,runId=plan.runId,db=plan.database,prefix=path.dirname(path.dirname(plan.binaries.find(row=>row.file?.endsWith('/bin/postgres')).file));
  const owner='jg_task01_owner',credentials=Object.fromEntries(['owner','runtime','observer'].map(k=>[k,randomBytes(48).toString('hex')]));
- const receipt={schemaVersion:1,purpose:PURPOSE,planSha256,candidateSha:plan.source.head,runId,status:'STOPPED',business:'NOT_ENTERED',stages:[],differences:plan.differences,cleanup:{status:'NOT_NEEDED'},financialAcceptance:false};
- const started=Date.now(),deadline=started+plan.limits.resourceMs;let stage='INIT',closing=false,pending=0,pgStarted=false,pgPid,pgStart,pgChild,pgLifetime,pgLogIdentity,app,moduleRef,restoreEnvironment,clients=[],port,dbReady=false;
+ const receipt={schemaVersion:2,purpose:PURPOSE,planSha256,candidateSha:plan.source.head,runId,status:'STOPPED',business:'NOT_ENTERED',stages:[],differences:plan.differences,cleanup:{status:'NOT_NEEDED'},financialAcceptance:false};
+ const started=Date.now(),deadline=started+plan.limits.resourceMs;let stage='INIT',closing=false,pending=0,pgStarted=false,pgPid,pgStart,pgChild,pgLifetime,pgLogIdentity,app,moduleRef,restoreEnvironment,clients=[],port,dbReady=false,publicCertificateBinding;
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),plan.limits.resourceMs);const onSignal=()=>controller.abort();process.once('SIGINT',onSignal);process.once('SIGTERM',onSignal);
  const childOwnedAndRunning=()=>pgLifetime?.running()===true;
  const needLive=()=>{need(!closing&&Date.now()<deadline&&!controller.signal.aborted,'NATIVE_DIRECT_DEADLINE');need(equal(directory(root),plan.rootIdentity),'NATIVE_DIRECT_ROOT_CHANGED');for(const row of plan.externalLibraries){const st=fs.lstatSync(row.file,{bigint:true});need(st.isFile()&&Object.keys(row.identity).every(key=>String(st[key])===row.identity[key]),'NATIVE_DIRECT_EXTERNAL_LIBRARY');}if(fs.existsSync(path.join(root,'postgres.log')))need(fs.lstatSync(path.join(root,'postgres.log')).size<=1048576,'NATIVE_DIRECT_LOG_BYTES');if(pgChild)need(childOwnedAndRunning(),'NATIVE_DIRECT_PG_CHANGED');if(pgStarted)need(fs.readFileSync(path.join(root,'data/postmaster.pid'),'utf8').split('\n')[2]===pgStart,'NATIVE_DIRECT_PG_CHANGED');};
+ const checkPublicCertificateContext=()=>{needLive();need(publicCertificateBinding&&publicCertificateBinding.length===3,'NATIVE_DIRECT_CERT_CONTEXT');for(const row of publicCertificateBinding){const now=capture(row.file,1048576);need(now.sha256===row.sha256&&equal(now.identity,row.identity),'NATIVE_DIRECT_CERT_CONTEXT');}return Object.freeze({runId,port,caSha256:publicCertificateBinding[0].sha256,serverSha256:publicCertificateBinding[1].sha256,configurationSha256:publicCertificateBinding[2].sha256});};
  const enter=name=>{needLive();stage=name;receipt.stages.push({stage:name,elapsedMs:Date.now()-started});};
  const wait=(operation,onLate)=>waitNativeTask16Operation(()=>{needLive();pending++;return Promise.resolve().then(()=>{needLive();return operation();}).finally(()=>{pending--;});},controller.signal,onLate);
  const cleanupWait=async operation=>{let timer;try{return await Promise.race([Promise.resolve().then(operation),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(new Error('NATIVE_DIRECT_CLOSE_TIMEOUT'),{code:'NATIVE_DIRECT_CLOSE_TIMEOUT'})),5000);})]);}finally{clearTimeout(timer);}};
@@ -264,6 +286,8 @@ async function executeNativeTask16Once(plan,planSha256){
   fs.writeFileSync(path.join(root,'data/pg_hba.conf'),hba,{mode:0o600});fs.writeFileSync(path.join(root,'data/pg_ident.conf'),`native_owner ${os.userInfo().username} ${owner}\n`,{mode:0o600});
   const config=`listen_addresses='127.0.0.1'\nport=${port}\nunix_socket_directories='${root}/socket'\nssl=on\nssl_min_protocol_version='TLSv1.2'\nssl_cert_file='${root}/server.crt'\nssl_key_file='${root}/server.key'\npassword_encryption='scram-sha-256'\nmax_connections=16\nshared_buffers='64MB'\nmax_wal_size='64MB'\nmin_wal_size='32MB'\nlog_statement='none'\nlog_min_error_statement='panic'\nlog_parameter_max_length_on_error=0\nlog_error_verbosity='terse'\nlog_duration=off\nlog_min_duration_statement=-1\nlog_min_duration_sample=-1\nlog_transaction_sample_rate=0\nlogging_collector=off\nlog_destination='stderr'\nlog_line_prefix='NATIVE_TASK16 [%p] '\nlc_messages='C'\nstatement_timeout='60s'\n`;
   fs.writeFileSync(path.join(root,'data/postgresql.conf'),config,{mode:0o600});writeNew(root,'postgres.log','');
+  const publicRows=()=>['ca.crt','server.crt','data/postgresql.conf'].map(name=>{const row=capture(path.join(root,name),1048576);return {file:path.join(root,name),sha256:row.sha256,identity:row.identity};});
+  publicCertificateBinding=publicRows();
   enter('PG_START');const logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_WRONLY|fs.constants.O_APPEND|fs.constants.O_NOFOLLOW);
   try{pgLogIdentity=assertNativeTask16LogIdentity(logFd);pgChild=spawn(bin('postgres'),['-D',path.join(root,'data')],{cwd:root,env,stdio:['ignore',logFd,logFd],detached:false});pgChild.once('error',()=>{});pgPid=pgChild.pid;
    pgLifetime=trackNativeTask16Child(pgChild);
@@ -303,7 +327,7 @@ async function executeNativeTask16Once(plan,planSha256){
   receipt.installation={migrations:261,roles:9,sevenCommitXid:sevenRows[2].installXid,b7CommitXid:stagedCatalog.raw.writeXid,catalogSha256:hash(Buffer.from(JSON.stringify(finalCatalog.raw)))};
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');
   receipt.directoryBytesBeforeBusiness=nativeDirectoryBytes(root);
-  enter('REAL_CLIENTS_NEST_AND_CASE');await wait(()=>runNativeTask16Business(plan,{root,port,credentials,identity,finalCatalog,sql,jsonSql,needLive,wait,cleanupWait,enter,receipt,logIdentity:pgLogIdentity,setRestoreEnvironment:value=>{restoreEnvironment=value;},setClients:value=>{clients=value;},setApplication:(a,m)=>{app=a;moduleRef=m;}}));
+  enter('REAL_CLIENTS_NEST_AND_CASE');await wait(()=>runNativeTask16Business(plan,{root,port,credentials,identity,finalCatalog,sql,jsonSql,needLive,wait,cleanupWait,enter,receipt,checkPublicCertificateContext,command,logIdentity:pgLogIdentity,setRestoreEnvironment:value=>{restoreEnvironment=value;},setClients:value=>{clients=value;},setApplication:(a,m)=>{app=a;moduleRef=m;}}));
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');receipt.status='NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE';
  }catch(error){const code=error&&!types.isProxy(error)?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;receipt.failure={stage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',elapsedMs:Date.now()-started};receipt.status='STOPPED';}
  finally{
@@ -386,14 +410,23 @@ async function runNativeTask16Business(plan,state){
    const next=rows.map(r=>{const copy={...r[0]};delete copy.nonce;return copy;});if(retained)need(equal(next,retained),'NATIVE_DIRECT_CLIENT_CHANGED');else retained=next;return next;
   };
   await verifyIdentity();receipt.sdkPositiveClients=retained.map(row=>({role:row.loginRole,pid:row.pid,startedAt:row.start,tls:row.tls,databaseOid:row.databaseOid,clientAddress:row.clientAddress,clientPort:row.clientPort,serverAddress:row.serverAddress,serverPort:row.serverPort}));
+  const policyBinding=state.checkPublicCertificateContext();need(equal(captureNativeTask16Security(),plan.security),'NATIVE_DIRECT_SECURITY_CHANGED');
+  const policies=[];for(const hostname of ['127.0.0.1','localhost']){
+   state.checkPublicCertificateContext();need(equal(captureNativeTask16Security(),plan.security),'NATIVE_DIRECT_SECURITY_CHANGED');
+   const result=await wait(()=>state.command('/usr/bin/security',['verify-cert','-c',path.join(root,'server.crt'),'-r',path.join(root,'ca.crt'),'-p','ssl','-n',hostname,'-N','-L','-R','offline','-v'],{timeoutMs:5000,allowFailure:true}));
+   policies.push(projectNativeTask16SecurityPolicy(result));state.checkPublicCertificateContext();
+  }
+  receipt.nativeNamePolicy={binding:policyBinding,positive:policies[0],negative:policies[1],sdkDirectCause:false};
+  need(equal(policies[0],{exitCode:0,hostnameMismatch:false,error67602:false})&&equal(policies[1],{exitCode:1,hostnameMismatch:true,error67602:true}),'NATIVE_DIRECT_NATIVE_POLICY_UNKNOWN');
   receipt.sdkTls={};receipt.sdkTlsWords={};
   for(const mode of ['wrong-ca','no-tls','wrong-san']){
-   const url=new URL(urlFor('runtime'));if(mode==='wrong-ca')url.searchParams.set('sslcert',path.join(root,'wrong-ca.crt'));else if(mode==='no-tls')url.searchParams.set('sslmode','disable');else url.hostname='localhost';
+   const originalRuntimeUrl=urlFor('runtime'),url=new URL(originalRuntimeUrl);if(mode==='wrong-ca')url.searchParams.set('sslcert',path.join(root,'wrong-ca.crt'));else if(mode==='no-tls')url.searchParams.set('sslmode','disable');else url.hostname='localhost';
    if(mode==='wrong-san')receipt.localhostAnswers=verifyNativeTask16LocalhostAnswers(await wait(()=>require('node:dns').promises.lookup('localhost',{all:true,verbatim:true})));
+   const restored=new URL(url);restored.hostname='127.0.0.1';const onlyHostnameChanged=mode==='wrong-san'&&url.hostname==='localhost'&&restored.toString()===originalRuntimeUrl;if(mode==='wrong-san')receipt.nameControlOnlyHostnameChanged=onlyHostnameChanged;state.checkPublicCertificateContext();
    const probe=new PrismaClient({datasources:{db:{url:url.toString()}}});state.setClients([...clients,probe]);let primary,logFd,logBefore;
    try{
     if(mode==='no-tls'){logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));logBefore=fs.fstatSync(logFd,{bigint:true});need(logBefore.isFile()&&logBefore.uid===BigInt(process.getuid())&&(logBefore.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');}
-    let rejected;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;receipt.sdkTlsWords[mode]=projectNativeTask16TlsWords(error);receipt.sdkTls[mode]={status:'UNKNOWN',...classifyNativeTask16TlsFailure(error,mode)};let hba;
+    let rejected,controlled;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;receipt.sdkTlsWords[mode]=projectNativeTask16TlsWords(error);receipt.sdkTls[mode]={status:'UNKNOWN',...classifyNativeTask16TlsFailure(error,mode)};let hba;
      if(mode==='no-tls'){
       assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));const after=fs.fstatSync(logFd,{bigint:true}),named=fs.lstatSync(path.join(root,'postgres.log'),{bigint:true});
       need(['dev','ino','mode','uid','gid'].every(key=>after[key]===logBefore[key]&&named[key]===logBefore[key])&&!named.isSymbolicLink()&&after.size>=logBefore.size&&after.size-logBefore.size<=65536n,'NATIVE_DIRECT_LOG_WINDOW');
@@ -401,9 +434,9 @@ async function runNativeTask16Business(plan,state){
       assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));const checked=fs.fstatSync(logFd,{bigint:true});need(['dev','ino','size','mtimeNs','ctimeNs'].every(key=>checked[key]===after[key]),'NATIVE_DIRECT_LOG_WINDOW');
       hba=projectNativeTask16PlaintextHba(bytes.toString('utf8'),plan.database);if(hba)receipt.plaintextHba=hba;
      }
-     rejected=classifyNativeTask16TlsFailure(error,mode,hba);}
+     rejected=classifyNativeTask16TlsFailure(error,mode,hba);if(mode==='wrong-san'&&!rejected.accepted){controlled=controlledNativeTask16NameResult(error,JSON.stringify({binding:policyBinding,currentBinding:state.checkPublicCertificateContext(),positiveClientsVerified:true,onlyHostnameChanged,positivePolicy:policies[0],negativePolicy:policies[1]}));receipt.controlledNameRejection=controlled;}}
     if(!rejected){receipt.sdkTls[mode]={status:'UNEXPECTEDLY_ACCEPTED'};fail('NATIVE_DIRECT_TLS_NEGATIVE_ACCEPTED');}
-    receipt.sdkTls[mode]={status:rejected.accepted?'REJECTED':'UNKNOWN',...rejected};need(rejected.accepted,'NATIVE_DIRECT_TLS_NEGATIVE_UNKNOWN');
+    receipt.sdkTls[mode]={status:rejected.accepted?'REJECTED':'UNKNOWN',...rejected};state.checkPublicCertificateContext();need(rejected.accepted||controlled?.accepted===true,'NATIVE_DIRECT_TLS_NEGATIVE_UNKNOWN');
    }catch(error){primary=error;throw error;}
    finally{let logCloseFailed=false;if(logFd!==undefined)try{fs.closeSync(logFd);}catch{logCloseFailed=true;receipt.sdkTlsLogClose='UNKNOWN';}state.setClients(clients);try{await cleanupWait(()=>probe.$disconnect());}catch{receipt.sdkTlsCleanup='UNKNOWN';if(!primary)fail('NATIVE_DIRECT_PROBE_CLEANUP_UNKNOWN');}if(logCloseFailed&&!primary)fail('NATIVE_DIRECT_LOG_CLOSE_UNKNOWN');}
   }
