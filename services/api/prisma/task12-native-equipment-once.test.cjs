@@ -42,3 +42,26 @@ test('native document owner readback binds four exact real role sessions and per
  assert.throws(()=>run({...row,rows:row.rows.map((value,i)=>i===0?{...value,arbitrary:'private'}:value)}));
  let traps=0;assert.throws(()=>api.assertNativeTask12DocumentPools(JSON.stringify(row),{get value(){traps++;return 'private';}}));assert.equal(traps,0);
 });
+
+// Cross the actual main producer expression/call into the real pure consumer.
+// Role readbacks are the existing finite model, not a repaired completion object.
+test('main passes its actual role readback payload through the strict native archive entrance',async()=>{
+ const archiveModel=new Function('require','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-archive-install.test.cjs'),'utf8')+'\nreturn model;')(
+  name=>name==='node:test'?{test(){}}:require(name),__dirname);
+ const f=archiveModel(),roles=f.suppliedRoles;
+ const roleIdentity={...roles.databaseIdentity,actorOid:'10',actor:'jg_task01_owner',sessionActor:'jg_task01_owner',tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:55432};
+ const plan={source:{head:f.source.candidateSha,tree:f.source.tree,witness:f.source}},roleRow={state:{app:roles.ordinary,roles:roles.roles,databases:roles.databaseAcl.after}},stagedRow={writeXid:roles.commitXid};
+ const source=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8');
+ const start=source.indexOf('  const provisioned={'),end=source.indexOf('\n  need(equal(sourceCapture()',start);
+ assert.ok(start>=0&&end>start);
+ const invoke=new Function('plan','runId','roleIdentity','roleRow','stagedRow','before','root','port','sql','jsonSql','enter','receipt','installNativeTask12Full261',
+  'return (async()=>{'+source.slice(start,end)+'\nreturn contract;})();');
+ let calls=0;
+ const result=await invoke(plan,roles.runId,roleIdentity,roleRow,stagedRow,JSON.stringify({state:{databases:roles.databaseAcl.before}}),'/private/tmp/model',55432,()=>{throw Error('NO_SQL');},()=>{throw Error('NO_SQL');},()=>{}, {},async(actualPlan,state)=>{
+  calls++;const api=require('./task16-current259-archive-install.cjs'),input={source:{...actualPlan.source.witness,tree:actualPlan.source.tree},completion:state.provisioned,serverPort:state.port};
+  const first=api.beginNativeTask12ArchiveProtocol(JSON.stringify(input));
+  for(const field of ['executionAllowed','nativeAdmission']){const broken={...input,completion:{...input.completion}};delete broken.completion[field];assert.throws(()=>api.beginNativeTask12ArchiveProtocol(JSON.stringify(broken)));}
+  return first;
+ });
+ assert.equal(calls,1);assert.equal(typeof result.beforeSql,'string');assert.match(result.beforeSql,/inet_server_port\(\) IS DISTINCT FROM 55432/u);
+});

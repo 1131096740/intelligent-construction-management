@@ -244,7 +244,7 @@ async function executeNativeTask16Once(plan,planSha256){
   const staged=(await sql(roles.renderNativeTask16RoleInstall(roleScope,before,{runtime:credentials.runtime,observer:credentials.observer}))).stdout;const stagedRow=roles.parseNativeTask16RoleRead(roleScope,staged,'install',before);
   const committed=(await sql(roles.renderNativeTask16RoleRead(migration.setup.appOid,stagedRow.writeXid))).stdout;const roleRow=roles.parseNativeTask16RoleRead(roleScope,committed,'committed',before,staged);
   need(roleRow.state.roles.length===9,'NATIVE_DIRECT_NINE_ROLES');
-  const provisioned={status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:plan.source.head,runId,databaseIdentity:roleIdentity,ordinary:roleRow.state.app,roles:roleRow.state.roles,commitXid:stagedRow.writeXid,databaseAcl:{before:JSON.parse(before).state.databases,after:roleRow.state.databases}};
+  const provisioned={status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,sourceSha:plan.source.head,runId,databaseIdentity:roleIdentity,ordinary:roleRow.state.app,roles:roleRow.state.roles,commitXid:stagedRow.writeXid,databaseAcl:{before:JSON.parse(before).state.databases,after:roleRow.state.databases}};
   const contract=await installNativeTask12Full261(plan,{root,port,provisioned,sql,jsonSql,enter,receipt});
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');
   receipt.directoryBytesBeforeBusiness=nativeDirectoryBytes(root);
@@ -427,7 +427,8 @@ async function runNativeTask16Business(plan,state){
   };
   check();enter('CONTRACT_MASTER_FIXTURE');
   const fixture=modules.buildTask12LocalLifecycleFixture(plan.runId,'inside:equipment_rental');need(modules.isTask12LocalLifecycleFixture(fixture)&&fixture.case.key==='inside:equipment_rental','NATIVE_DIRECT_CONTRACT_FIXTURE');
-  const passwords=fixture.approval.users.map(()=>randomBytes(32).toString('hex'));
+  const passwords=Object.freeze(fixture.approval.users.map(()=>randomBytes(32).toString('hex')));
+  const passwordsByUser=Object.freeze(Object.fromEntries(fixture.approval.users.map((user,index)=>[user.id,passwords[index]])));
   const hashes=Object.fromEntries(await wait(()=>Promise.all(fixture.approval.users.map(async(user,i)=>[user.id,await modules.hashTask12GeneratedAdmissionPassword(passwords[i])]))));
   const seed=require('./task12-current259-q2-seed.cjs').createNativeCurrent261EquipmentSeed(fixture,identity,hashes);
   const ownerSql=async(sql,label)=>{check();enter(label);const result=await state.sql(sql);check();return result;};
@@ -458,7 +459,7 @@ async function runNativeTask16Business(plan,state){
    roleOids:Object.fromEntries(['template','worker','queue'].map((slot,i)=>[slot,login.roles[i].oid])),serverPort:port,nativeProfile:'TASK12_NATIVE_HOST_EQUIPMENT_V1'};
   const ownerApi=require('./task12-current261-local-lifecycle-owner.cjs');
   const final=await wait(()=>modules.withTask12NativeHostDocumentRoleServices({template:templateClient,worker:workerClient,queue:queueClient},expected,async(operations,providers)=>{
-   const config=Object.freeze({fixture,passwords:Object.freeze(passwords),sourceDocx,originals,signal});
+   const config=Object.freeze({fixture,passwords:passwordsByUser,sourceDocx,originals,signal});
    const bridge=Object.freeze({check,loader,loaded:modules,ordinary,providers,queue:operations.queue.queueDraftPreview,publicLifecycle:config,
     async exercise(http){
      let window,first,result,closed;

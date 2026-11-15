@@ -351,7 +351,7 @@ function loadCurrent259Client(handle){
     ['database/task12-generated-document-draft-save.js',['saveTask12GeneratedDocumentDraft']],
     ['database/task12-generated-material-template.js',['publishTask12GeneratedMaterialTemplate','publishTask12GeneratedEquipmentTemplate']],
     ['database/task12-generated-document-readback.js',['readTask12GeneratedDocumentOutputs','claimTask12GeneratedDocumentOwnerReadback']],
-    ['database/task12-generated-document-role-services.js',['withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices','withTask12NativeHostDocumentRoleServices','withTask12NativeHostDocumentRoleServices']],
+    ['database/task12-generated-document-role-services.js',['withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices','withTask12NativeHostDocumentRoleServices']],
    ]){
     const file=path.join(dist,relative),exports=guardedRequire(file),mod=require.cache[file];
     need(mod?.loaded===true&&mod.exports===exports,code);
@@ -392,7 +392,7 @@ function loadCurrent259Client(handle){
     'verifyTask12MaterialTemplate','verifyTask12EquipmentTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument',
     'saveTask12GeneratedDocumentDraft',
     'publishTask12GeneratedMaterialTemplate','publishTask12GeneratedEquipmentTemplate','readTask12GeneratedDocumentOutputs','claimTask12GeneratedDocumentOwnerReadback',
-    'withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices',
+    'withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices','withTask12NativeHostDocumentRoleServices',
     'PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService',
     'ContractReadService','MeService','AuditService','ContractDraftController','FileService','CONTRACT_VERSION_FILE_READ_AUTHORITY','JwtTokenService',
     'buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft',
