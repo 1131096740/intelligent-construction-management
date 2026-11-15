@@ -3,12 +3,12 @@
   "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2",
   "qualification": {
     "machineReceipt": {
-      "path": "/private/tmp/jg-394-74ef-formal-sw9162pu/run/MACHINE-RECEIPT.json",
-      "sha256": "07574cd2dd59b805e3daf17ce55f466607148a9b939b43d5248d81f303f69232"
+      "path": "/private/tmp/jg-394-1144-formal-gsdovrms/run/MACHINE-RECEIPT.json",
+      "sha256": "3c14f934e4653712d440fe99d201c4af639201447e0192ad69f54d5b7c0c96dd"
     },
     "physicalReview": {
-      "path": "/private/tmp/jg-394-74ef-review-itnxp4le/physical-review.json",
-      "sha256": "60147ecd367fed050348f72546ee62bf96a90b462da0e34c6079bd79e0af14ff"
+      "path": "/private/tmp/jg-394-1144-review-1osd6ct2/physical-review.json",
+      "sha256": "3f708a79457ae4a9732fe99a532a76bd5bed2d50cc27068560c09e63da513a1d"
     }
   }
 }
