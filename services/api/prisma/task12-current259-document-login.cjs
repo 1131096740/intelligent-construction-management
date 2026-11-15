@@ -21,9 +21,39 @@ const caseCoordinate=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 const topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
 const consumed=new WeakSet(),active=new WeakMap(),firstLoginScopes=new WeakMap(),nestBridges=new WeakSet(),lifecycleExercises=new WeakMap(),firstLoginExercises=new WeakMap();
-const fixedReasons=new WeakMap();
+const fixedReasons=new WeakMap(),roleDrainFailures=new WeakMap();
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
+// Raw drain rejections stay private; this reader cannot grant a scope or expose
+// arbitrary error properties. The same wrapper remains the primary error.
+function describeCurrent261DocumentLoginDrainFailure(error){
+ const seen=new WeakSet();
+ for(let i=0;i<6&&error&&typeof error==='object'&&!types.isProxy(error)&&!seen.has(error);i++,error=own(error,'cause')){
+  seen.add(error);if(!roleDrainFailures.has(error))continue;
+  const cause=roleDrainFailures.get(error),unknown=()=>Object.freeze({status:'UNKNOWN'});
+  if(!cause||typeof cause!=='object'||types.isProxy(cause)||own(cause,'code')!=='TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED')return unknown();
+  const relayCode=own(cause,'relayCode');
+  const codes=['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT','DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(part=>'CURRENT259_LOOPBACK_FORWARD_'+part);
+  if(!codes.includes(relayCode))return unknown();
+  const result={status:'OBSERVED',resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode};
+  if(relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME'){
+   const stage=own(cause,'relayFrameStage');
+   if(['DATA_AFTER_FIN','OVERSIZED_LENGTH','TRAILING_AFTER_FIN','STDOUT_EOF_WITHOUT_FIN'].includes(stage)){
+    result.relayFrameStage=stage;const exit=own(cause,'relayChildExitCode');
+    if(stage==='STDOUT_EOF_WITHOUT_FIN'&&Number.isInteger(exit)&&(exit===0||exit>=41&&exit<=48)){
+     result.relayChildExitCode=exit;const sysread=own(cause,'relaySysreadExit');
+     if(exit===47&&require('./task16-current259-relay-sysread.cjs').decodeRelaySysreadExit(sysread))result.relaySysreadExit=sysread;
+    }
+   }
+  }
+  if(['CURRENT259_LOOPBACK_FORWARD_FRAME','CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'].includes(relayCode)){
+   const source=own(cause,'relayCloseState'),state=Object.fromEntries(['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'].map(key=>[key,own(source,key)]));
+   if(Object.values(state).every(value=>typeof value==='boolean'))result.relayCloseState=Object.freeze(state);
+  }
+  return Object.freeze(result);
+ }
+ return undefined;
+}
 const fault=part=>{
  const error=Object.assign(Error(CODE+'_'+part),{code:CODE+'_'+part});
  fixedReasons.set(error,part);return error;
@@ -705,11 +735,12 @@ ROLLBACK;`;
   const closed=await Promise.allSettled(clients.map(entry=>bounded(()=>entry.methods.$disconnect.call(entry.client),'ROLE_CLOSE_TIMEOUT')));
   const disconnectRejected=closed.some(result=>result.status==='rejected');
   if(disconnectRejected)unknown=true;
-  let drainRejected=false;try{await waitDrain();}catch{unknown=true;drainRejected=true;}
+  let drainRejected=false,drainCause;try{await waitDrain();}catch(cause){unknown=true;drainRejected=true;drainCause=cause;}
   if(unknown){
    const cleanup=Object.assign(fault(fixedReasons.get(first)??'ROLE_CLEANUP_UNKNOWN'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+   if(lifecycle&&drainRejected)roleDrainFailures.set(cleanup,drainCause);
    Object.defineProperty(cleanup,'documentRoleFailure',{value:Object.freeze({subphase:roleStage,lastGuardMs,maxGuardMs,boundedTimeout,disconnectRejected,drainRejected})});
-   if(lifecycle&&first!==undefined)Object.defineProperty(cleanup,'cause',{value:first});
+   if(lifecycle&&(failed||drainRejected))Object.defineProperty(cleanup,'cause',{value:failed?first:drainCause});
    const exerciseCode=fixedReasons.has(first)&&own(first,'exerciseCode');
    if(exerciseCode)Object.defineProperty(cleanup,'exerciseCode',{value:exerciseCode});
    throw cleanup;
@@ -741,5 +772,5 @@ function claimCurrent261LocalLifecycleOwnerProof(proof,handle){
  return Object.freeze({identity:Object.freeze({...scope.identity}),continuitySql:scope.continuitySql,continuitySha256:proof.continuitySha256,
   effectivePlanSha256:proof.effectivePlanSha256,installation:proof.installation,check:scope.check});
 }
-module.exports=Object.freeze({withCurrent261FirstLoginPublicApplication,takeCurrent261FirstLoginExerciseBridge,assertCurrent261FirstLoginScope,claimCurrent261FirstLoginOwnerProof,takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
+module.exports=Object.freeze({describeCurrent261DocumentLoginDrainFailure,withCurrent261FirstLoginPublicApplication,takeCurrent261FirstLoginExerciseBridge,assertCurrent261FirstLoginScope,claimCurrent261FirstLoginOwnerProof,takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
  withCurrent259GeneratedDocumentPublicApplication,takeCurrent259GeneratedDocumentApplicationBridge,assertCurrent259GeneratedDocumentLoginScope});

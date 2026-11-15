@@ -135,7 +135,7 @@ const publicFixture=Object.freeze({users:seedUsers,handler:seedUsers[0],
   positionId:'c0000000-0000-4000-8000-00000000000'+index,positionName:roleKey
  }))
 });
-function poolFixture(mode='success',save=false,priorSql,lifecycle=false,authOnly=false){
+function poolFixture(mode='success',save=false,priorSql,lifecycle=false,authOnly=false,model){
  const continuityToken=Object.freeze({});
  const trace=[],urls=[],clients=[],ownerSql=[];
  const state={queries:0};
@@ -183,7 +183,7 @@ function poolFixture(mode='success',save=false,priorSql,lifecycle=false,authOnly
     }
    }};
    view.beginPrismaRelayDrain=function(){
-    trace.push('drain-open');return async()=>{trace.push('drain-closed');if(mode==='drain-failure'||mode==='relay-owner-drain')throw Error('private relay evidence');};
+    trace.push('drain-open');return async()=>{trace.push('drain-closed');if(model&&Object.hasOwn(model,'drainCause'))throw model.drainCause;if(mode==='drain-failure'||mode==='relay-owner-drain')throw Error('private relay evidence');};
    };
    const participants=Object.freeze({storage:{},template:{},worker:{}});
    async function roleServices(connections,expected,use){
@@ -209,7 +209,7 @@ function poolFixture(mode='success',save=false,priorSql,lifecycle=false,authOnly
      assert.match(bridge.publicDraft.passwords.director,/^[a-f0-9]{64}$/u);
      assert.notEqual(bridge.publicDraft.passwords.handler,bridge.publicDraft.passwords.director);
     }
-    const value=await (mode.startsWith('public-')?bridge.exercise(http):bridge.exercise());
+    const value=await (mode.startsWith('public-')||model?bridge.exercise(http):bridge.exercise());
     trace.push('nest-close','worker-drain');
     if(mode==='public-fixed-error')throw Object.assign(Error('private details'),{code:'CURRENT259_GENERATED_DOCUMENT_APP_HTTP',
      exerciseCode:'CURRENT259_GENERATED_DOCUMENT_EXERCISE_SAVE',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
@@ -261,10 +261,15 @@ function poolFixture(mode='success',save=false,priorSql,lifecycle=false,authOnly
     }
    };
    if(lifecycle){
+    if(model){
+     const originalSql=resource.execOwnerSql;resource.execOwnerSql=async function(sql,phase){if(phase.startsWith('current261-local-lifecycle-seed-')){trace.push(phase);return {stdout:'MODEL_SEED'};}return originalSql.call(this,sql,phase);};
+     imports['./task12-current259-q2-seed.cjs']={createCurrent261LocalLifecycleSeed(){return {beforeSql:()=>'',writeSql:()=>'',committedSql:()=>'',verifyBefore(){},verifyWritten(){},finish:()=>({seedRows:26,seedXid:'975'})};}};
+     imports['./task12-current261-first-login-exercise.cjs']={async exerciseCurrent261FirstLogin(key,http){assert.ok(http);trace.push('consumer-returned');if(Object.hasOwn(model,'businessCause'))throw model.businessCause;return model.result;}};
+    }
     const scope=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',source:{head:source.candidateSha}});
     const documentModules=view.loader.loadGeneratedContractDocumentModules();
     view.loader.loadCurrent261LocalLifecycleDocumentModules=()=>({...documentModules,currentOfficialDocumentScope:()=>scope});
-    view.loader.loadCurrent261FirstLoginModules=view.loader.loadCurrent261LocalLifecycleDocumentModules;
+    view.loader.loadCurrent261FirstLoginModules=model?()=>({...documentModules,currentOfficialDocumentScope:()=>scope,buildTask12LocalLifecycleFixture:()=>({approval:{users:seedUsers}}),isTask12LocalLifecycleFixture:()=>true,readTask12LocalLifecycleSourceDocx:()=>Buffer.from('MODEL'),createTask12LocalLifecycleOriginals:async()=>Object.freeze({})}):view.loader.loadCurrent261LocalLifecycleDocumentModules;
     view.checkContinuity=t=>assert.equal(t,continuityToken);
     view.activateBusinessContinuity=t=>{assert.equal(t,continuityToken);trace.push('activate');if(mode==='activation-failure')throw new Error('PRIVATE_DO_NOT_PRINT');};
     view.deactivateBusinessContinuity=t=>{assert.equal(t,continuityToken);trace.push('deactivate');if(mode==='deactivation-failure')throw new Error('PRIVATE_DO_NOT_PRINT');};
@@ -609,4 +614,76 @@ test('auth-only genuine login model keeps full owner scope unavailable and reach
  const f=poolFixture('activation-failure',true,undefined,true,true);
  await assert.rejects(f.api.withCurrent261FirstLoginPublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail(),f.continuityToken));
  assert.ok(f.trace.includes('hba'));assert.ok(f.trace.includes('activate'));assert.ok(f.trace.includes('drain-closed'));assert.equal(f.clients.length,0);assert.equal(f.closed(),1);
+});
+
+// The existing role seam executes real control flow with finite fixture/seed and
+// exercise collaborators. These are controller models, never native Auth proof.
+test('auth role consumer return followed by drain rejection preserves the same original cause',async()=>{
+ const drain=Object.assign(Error('PRIVATE_DRAIN_SECRET'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'}),result=Object.freeze({});
+ const f=poolFixture('success',true,undefined,true,true,{drainCause:drain,result});
+ let seen;try{await f.api.withCurrent261FirstLoginPublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,value=>{assert.equal(value,result);return value;},f.continuityToken);}catch(error){seen=error;}
+ assert.ok(f.trace.includes('consumer-returned'));assert.ok(f.trace.indexOf('consumer-returned')<f.trace.indexOf('drain-closed'));
+ assert.equal(seen.reason,'ROLE_CLEANUP_UNKNOWN');assert.equal(seen.documentRoleFailure.subphase,'OWNER_AFTER');
+ assert.equal(seen.cause.cause.cause,drain);assert.doesNotMatch(JSON.stringify(seen),/PRIVATE_DRAIN_SECRET/u);
+});
+
+
+test('auth drain cause identity accepts nullish primitive and hostile values without inspecting them',async()=>{
+ let traps=0;const hostile=new Proxy({}, {get(){traps++;throw Error('PRIVATE_PROXY');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_PROXY');},ownKeys(){traps++;throw Error('PRIVATE_PROXY');}});
+ const getter=Object.defineProperty({},'message',{get(){traps++;throw Error('PRIVATE_GETTER');}});
+ for(const drain of [undefined,null,false,0,'PRIVATE_PRIMITIVE',hostile,getter]){
+  const f=poolFixture('success',true,undefined,true,true,{drainCause:drain,result:Object.freeze({})});
+  let seen;try{await f.api.withCurrent261FirstLoginPublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,value=>value,f.continuityToken);}catch(error){seen=error;}
+  const cleanup=seen.cause.cause,descriptor=Object.getOwnPropertyDescriptor(cleanup,'cause');
+  assert.ok(descriptor);assert.equal(descriptor.value,drain);assert.equal(descriptor.enumerable,false);
+  assert.equal(seen.reason,'ROLE_CLEANUP_UNKNOWN');assert.equal(seen.documentRoleFailure.drainRejected,true);
+  assert.deepEqual(f.api.describeCurrent261DocumentLoginDrainFailure(seen),{status:'UNKNOWN'});
+  assert.doesNotMatch(JSON.stringify(seen),/PRIVATE_/u);
+ }
+ assert.equal(traps,0);
+});
+
+test('earlier auth consumer failure stays primary when a distinct drain failure follows',async()=>{
+ for(const business of [undefined,null,false,Error('PRIVATE_BUSINESS')]){
+  const drain=Error('PRIVATE_DRAIN'),f=poolFixture('success',true,undefined,true,true,{businessCause:business,drainCause:drain});
+  let seen;try{await f.api.withCurrent261FirstLoginPublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail(),f.continuityToken);}catch(error){seen=error;}
+  const cleanup=seen.cause.cause;
+  assert.equal(Object.getOwnPropertyDescriptor(cleanup,'cause').value.cause,business);
+  assert.equal(seen.documentRoleFailure.subphase,'APPLICATION');assert.equal(seen.documentRoleFailure.drainRejected,true);
+  assert.notEqual(cleanup.cause,drain);assert.doesNotMatch(JSON.stringify(seen),/PRIVATE_/u);
+  assert.equal(f.trace.filter(v=>v==='drain-closed').length,1);assert.equal(f.trace.filter(v=>v.startsWith('disconnect-')).length,4);
+ }
+});
+
+
+test('auth drain secondary remains private and projects only finite relay facts alongside earlier business cause',async()=>{
+ const state=Object.freeze(Object.fromEntries(['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'].map(key=>[key,false])));
+ const drain=Object.assign(Error('PRIVATE_DRAIN'),{code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47,relaySysreadExit:70,relayCloseState:state});
+ const business=Error('PRIVATE_BUSINESS'),f=poolFixture('success',true,undefined,true,true,{businessCause:business,drainCause:drain});
+ let seen;try{await f.api.withCurrent261FirstLoginPublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail(),f.continuityToken);}catch(error){seen=error;}
+ assert.equal(seen.cause.cause.cause.cause,business);
+ const detail=f.api.describeCurrent261DocumentLoginDrainFailure(seen);
+ assert.deepEqual(detail,{status:'OBSERVED',resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47,relaySysreadExit:70,relayCloseState:state});
+ assert.equal(Object.isFrozen(detail),true);assert.equal(Object.isFrozen(detail.relayCloseState),true);
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE_/u);assert.equal(f.api.describeCurrent261DocumentLoginDrainFailure({cause:drain}),undefined);
+});
+
+
+test('private drain projector rejects foreign, proxy, getter, unknown and out-of-range diagnostics',async()=>{
+ let traps=0;const read=()=>{traps++;throw Error('PRIVATE_GETTER');};
+ const valid={code:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47};
+ const getter=Object.defineProperty({...valid},'relayCode',{get:read});
+ const closeProxy=new Proxy({},{get:read,getOwnPropertyDescriptor:read,ownKeys:read});
+ for(const drain of [getter,{...valid,relayCode:'PRIVATE_UNKNOWN'}, {...valid,relaySysreadExit:69,relayCloseState:closeProxy}, {...valid,relayChildExitCode:70,relaySysreadExit:70}, {...valid,relayFrameStage:'PRIVATE_FRAME'}]){
+  const f=poolFixture('success',true,undefined,true,true,{drainCause:drain,result:{}});
+  let seen;try{await f.api.withCurrent261FirstLoginPublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,v=>v,f.continuityToken);}catch(error){seen=error;}
+  const detail=f.api.describeCurrent261DocumentLoginDrainFailure(seen);
+  assert.ok(detail);assert.doesNotMatch(JSON.stringify(detail),/PRIVATE_|69/u);
+  assert.equal(detail.relaySysreadExit,undefined);assert.equal(detail.relayCloseState,undefined);
+  if(drain===getter||drain.relayCode==='PRIVATE_UNKNOWN')assert.deepEqual(detail,{status:'UNKNOWN'});
+  if(drain.relayChildExitCode===70)assert.equal(detail.relayChildExitCode,undefined);
+  assert.equal(f.api.describeCurrent261DocumentLoginDrainFailure(closeProxy),undefined);
+  const cycle={};Object.defineProperty(cycle,'cause',{value:cycle});assert.equal(f.api.describeCurrent261DocumentLoginDrainFailure(cycle),undefined);
+ }
+ assert.equal(traps,0);
 });
