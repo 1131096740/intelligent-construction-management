@@ -42,7 +42,14 @@ test('returned-outcome observation never consumes the opaque result or exposes p
 
 
 test('private stored owner observation getters and proxies stay UNKNOWN without consuming or reading them',async()=>{
- let traps=0;const getter=Object.defineProperty({},'authObserved',{get(){traps++;throw Error('PRIVATE_OBSERVATION');}}),proxy=new Proxy({},{get(){traps++;throw Error('PRIVATE_PROXY');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_PROXY');},ownKeys(){traps++;throw Error('PRIVATE_PROXY');}});
- for(const observation of [getter,proxy]){const f=model(undefined,undefined,observation),outcome=await f.run();assert.deepEqual(f.api.describeCurrent261FirstLoginReturnedOutcome(outcome),{status:'UNKNOWN'});assert.equal(f.api.projectCurrent261FirstLoginOutcome(outcome).authObservation,observation);assert.deepEqual(f.api.describeCurrent261FirstLoginReturnedOutcome(outcome),{status:'UNKNOWN'});}
- assert.equal(traps,0);
+ const reads={then:0,authObserved:0,descriptor:0,keys:0,otherGet:0};
+ const getter=Object.defineProperty({},'authObserved',{get(){reads.authObserved++;throw Error('PRIVATE_OBSERVATION');}});
+ const proxy=new Proxy({},{get(_target,key){if(key==='then'){reads.then++;return undefined;}if(key==='authObserved')reads.authObserved++;else reads.otherGet++;throw Error('PRIVATE_PROXY');},getOwnPropertyDescriptor(){reads.descriptor++;throw Error('PRIVATE_PROXY');},ownKeys(){reads.keys++;throw Error('PRIVATE_PROXY');}});
+ for(const observation of [getter,proxy]){
+  const f=model(undefined,undefined,observation),outcome=await f.run();
+  assert.deepEqual(f.api.describeCurrent261FirstLoginReturnedOutcome(outcome),{status:'UNKNOWN'});
+  const before={...reads};assert.deepEqual(f.api.describeCurrent261FirstLoginReturnedOutcome(observation),{status:'UNKNOWN'});assert.deepEqual(reads,before);
+  assert.equal(f.api.projectCurrent261FirstLoginOutcome(outcome).authObservation,observation);assert.deepEqual(f.api.describeCurrent261FirstLoginReturnedOutcome(outcome),{status:'UNKNOWN'});
+ }
+ assert.deepEqual(reads,{then:1,authObserved:0,descriptor:0,keys:0,otherGet:0});
 });
