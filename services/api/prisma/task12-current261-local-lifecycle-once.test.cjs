@@ -598,3 +598,25 @@ test('fresh genuine CJS pure observer pins the actual outcome module before its 
  `;
  const r=spawnSync(process.execPath,['-e',script,path.join(__dirname,'task12-current261-local-lifecycle-once.cjs')],{encoding:'utf8',timeout:15000,maxBuffer:128*1024});assert.equal(r.status,0,r.stderr);
 });
+
+
+test('optional consumer observer initialization read or closure failure stays UNKNOWN without blocking original consume',async t=>{
+ for(const consumerObserverInitFailure of ['read','arity']){
+  let callbackReturned=false;const f=model(t,{authOnly:true,consumerObserverInitFailure,afterConsumerRun(){callbackReturned=true;}}),r=await f.result();
+  assert.equal(r.status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_COMPLETE');assert.equal(callbackReturned,true);assert.equal(f.calls.filter(v=>v==='project-auth').length,1);assert.equal(f.calls.includes('peek-auth'),false);assert.equal(r.consumerObservation,'DURABLE_UNKNOWN');assert.equal(r.cleanup,'CLOSED');if(consumerObserverInitFailure==='read')assert.equal(f.calls.filter(v=>v==='consumer-init-read').length,1);const event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,consumerEvent)));assert.deepEqual(event.facts,{status:'UNKNOWN'});assert.equal(event.status,'UNKNOWN');
+ }
+});
+
+test('optional observer initialization failure cannot replace later original business and cleanup errors',async t=>{
+ for(const consumerObserverInitFailure of ['read','arity']){
+  const first=Object.freeze(Object.assign(Error('PRIVATE_ORIGINAL'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}));let seen,callbackReturned=false;
+  const f=model(t,{authOnly:true,consumerObserverInitFailure,cleanupFailure:true,afterConsumerRun(){callbackReturned=true;throw first;},httpFailureApi:{describeCurrent261LocalLifecycleHttpFailure(cause){seen=cause;}}}),r=await f.result();
+  assert.equal(callbackReturned,true);assert.equal(seen,first);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.consumerObservation,'DURABLE_UNKNOWN');assert.equal(f.calls.includes('peek-auth'),false);assert.equal(f.calls.includes('project-auth'),false);assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');
+ }
+});
+
+test('optional consumer catch never bypasses existing required source or business assembly gates',async t=>{
+ for(const consumerObserverInitFailure of ['required-role-read','required-application']){
+  const f=model(t,{authOnly:true,consumerObserverInitFailure}),r=await f.result();assert.equal(r.status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED');assert.equal(r.failurePhase,'PREFLIGHT');assert.equal(f.calls.includes('application'),false);assert.equal(f.calls.includes('resource'),false);assert.equal(fs.existsSync(path.join(f.plan.run.root,consumerEvent)),false);
+ }
+});
