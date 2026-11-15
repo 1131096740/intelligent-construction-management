@@ -7,7 +7,7 @@ const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
 const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_DIRECT_PRODUCTION_READER_V1';
 // Root's independently reviewed official16.15/pgcrypto93-file qualification.
-const BINARY_QUALIFICATION_SHA='84aa6cb54fabd27296e907f7aa2e304fc3d7ea4fd478c846e7b69fe7d68f932a';
+const BINARY_QUALIFICATION_SHA='26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1';
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const need=(value,code='NATIVE_DIRECT_INPUT')=>{if(!value)fail(code);};

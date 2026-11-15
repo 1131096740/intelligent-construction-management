@@ -57,7 +57,9 @@ test('fixed localhost TLS target accepts only actual loopback answers and reject
 test('new native purpose accepts only the explicitly reviewed93-file binary qualification hash',t=>{
  const p=planModel(t),{prepareNativeTask16Plan}=require('./run-task16-native-direct-once.cjs');
  if(process.platform!=='darwin'||process.arch!=='arm64'||process.version!=='v20.20.2')return;
- assert.throws(()=>prepareNativeTask16Plan({runRoot:p.runRoot,binaryManifest:'/private/tmp/not-approved.json',binaryManifestSha256:'0'.repeat(64),output:path.join(p.runRoot,'plan.json')}),error=>error.code==='NATIVE_DIRECT_BINARY_APPROVAL');assert.deepEqual(fs.readdirSync(p.runRoot),[]);
+ const options={runRoot:p.runRoot,binaryManifest:path.join(p.runRoot,'absent-qualified-manifest.json'),output:path.join(p.runRoot,'plan.json')};
+ for(const sha of ['0'.repeat(64),'84aa6cb54fabd27296e907f7aa2e304fc3d7ea4fd478c846e7b69fe7d68f932a'])assert.throws(()=>prepareNativeTask16Plan({...options,binaryManifestSha256:sha}),error=>error.code==='NATIVE_DIRECT_BINARY_APPROVAL');
+ assert.throws(()=>prepareNativeTask16Plan({...options,binaryManifestSha256:'26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1'}),error=>error.code==='ENOENT');assert.deepEqual(fs.readdirSync(p.runRoot),[]);
 });
 test('generic SDK P1010 alone is unknown; only matching fresh native runtime HBA plaintext evidence closes it',()=>{
  const api=require('./run-task16-native-direct-once.cjs'),db='jg_task01_'+'a'.repeat(32),error=Object.assign(new Error('generic denied access'),{errorCode:'P1010'});
