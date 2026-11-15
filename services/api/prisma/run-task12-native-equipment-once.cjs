@@ -149,6 +149,38 @@ function resolveNativeTask16Interfaces(){
  let output;try{output=execFileSync(process.execPath,['-e',source],{cwd:ROOT,env:{PATH:path.dirname(process.execPath)+':/usr/bin:/bin',LANG:'C',LC_ALL:'C',TZ:'UTC',PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'},encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000,maxBuffer:1048576});}catch{fail('NATIVE_DIRECT_INTERFACE_QUALIFICATION');}
  return JSON.parse(output);
 }
+// Task12 does not install the payment-only SECURITY DEFINER identity helper.
+// Each bootstrap pool observes itself; the separate owner witness binds the
+// actual three sessions to this cluster before any certificate control/business.
+const nativeTask12BootstrapIdentitySql=`SELECT pg_catalog.current_database()::text AS database,
+ d.oid::text AS "databaseOid",d.datdba::text AS "ownerOid",
+ current_user::text AS "effectiveRole",session_user::text AS "loginRole",
+ current_user::pg_catalog.regrole::pg_catalog.oid::text AS "effectiveOid",session_user::pg_catalog.regrole::pg_catalog.oid::text AS "loginOid",
+ a.pid,pg_catalog.to_char(a.backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS start,
+ s.ssl AS tls,pg_catalog.current_setting('server_version_num')::integer AS version,
+ pg_catalog.getdatabaseencoding() AS encoding,pg_catalog.current_setting('session_replication_role') AS replication,
+ pg_catalog.current_setting('transaction_read_only') AS "readOnly",pg_catalog.current_setting('default_transaction_read_only') AS "defaultReadOnly",
+ pg_catalog.host(pg_catalog.inet_client_addr()) AS "clientAddress",pg_catalog.inet_client_port() AS "clientPort",
+ pg_catalog.host(pg_catalog.inet_server_addr()) AS "serverAddress",pg_catalog.inet_server_port() AS "serverPort",$1::text AS nonce
+ FROM pg_catalog.pg_stat_activity a JOIN pg_catalog.pg_database d ON d.oid=a.datid
+ JOIN pg_catalog.pg_stat_ssl s ON s.pid=a.pid WHERE a.pid=pg_catalog.pg_backend_pid()`;
+function assertNativeTask12BootstrapPools(rowText,contextText){
+ need(arguments.length===2&&typeof rowText==='string'&&Buffer.byteLength(rowText)<=4096&&typeof contextText==='string'&&Buffer.byteLength(contextText)<=8192,'NATIVE_DIRECT_BOOTSTRAP_POOLS');
+ const row=fixed(JSON.parse(rowText),['ownerPid','tls','client','server','port','database','databaseOid','systemIdentifier','actorOid','sessionActor','rows']);
+ const context=fixed(JSON.parse(contextText),['database','databaseOid','systemIdentifier','port','roles','observed']);
+ const keys=['oid','role','pid','start','databaseOid','database','ssl','clientAddress','clientPort'];
+ need(Number.isInteger(context.port)&&context.port>1024&&context.port<=65535&&context.port!==5432&&/^jg_task01_[a-f0-9]{32}$/u.test(context.database)&&/^[1-9][0-9]{0,19}$/u.test(context.systemIdentifier)&&Array.isArray(context.roles)&&context.roles.length===3&&context.roles.every((role,i)=>role.name==='jg_task01_'+['owner','runtime','observer'][i]&&typeof role.oid==='string'&&/^[1-9][0-9]{0,9}$/u.test(role.oid)&&(i===0?role.oid==='10':role.oid!=='10'))&&new Set(context.roles.map(role=>role.oid)).size===3,'NATIVE_DIRECT_BOOTSTRAP_POOLS');
+ need(row.tls===true&&row.client==='127.0.0.1'&&row.server==='127.0.0.1'&&row.port===context.port&&row.database===context.database&&row.databaseOid===context.databaseOid&&row.systemIdentifier===context.systemIdentifier&&row.actorOid==='10'&&row.sessionActor==='jg_task01_owner'&&Number.isInteger(row.ownerPid)&&row.ownerPid>0&&Array.isArray(row.rows)&&row.rows.length===3&&Array.isArray(context.observed)&&context.observed.length===3&&Array.isArray(context.roles)&&context.roles.length===3,'NATIVE_DIRECT_BOOTSTRAP_POOLS');
+ const seen=new Set();
+ for(let i=0;i<3;i++){
+  const expected=context.observed[i],role=context.roles[i];
+  need(expected.loginRole===role.name&&expected.effectiveRole===role.name&&expected.loginOid===role.oid&&expected.effectiveOid===role.oid&&expected.database===context.database&&expected.databaseOid===context.databaseOid&&expected.ownerOid==='10'&&expected.tls===true&&expected.serverAddress==='127.0.0.1'&&expected.serverPort===context.port&&expected.clientAddress==='127.0.0.1'&&Number.isInteger(expected.pid)&&expected.pid>0&&expected.pid!==row.ownerPid&&Number.isInteger(expected.clientPort)&&expected.clientPort>0&&expected.clientPort<=65535&&typeof expected.start==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(expected.start),'NATIVE_DIRECT_BOOTSTRAP_POOLS');
+  const found=row.rows.filter(value=>value.pid===expected.pid);need(found.length===1&&!seen.has(expected.pid),'NATIVE_DIRECT_BOOTSTRAP_POOLS');seen.add(expected.pid);
+  const actual=fixed(found[0],keys);
+  need(equal(actual,{oid:role.oid,role:role.name,pid:expected.pid,start:expected.start,databaseOid:context.databaseOid,database:context.database,ssl:true,clientAddress:'127.0.0.1',clientPort:expected.clientPort}),'NATIVE_DIRECT_BOOTSTRAP_POOLS');
+ }
+ return Object.freeze({systemIdentifier:row.systemIdentifier,source:'INDEPENDENT_OWNER_CLUSTER_AND_THREE_SESSION_READBACK',sessions:3});
+}
 function assertNativeTask12DocumentPools(rowText,contextText){
  need(arguments.length===2&&typeof rowText==='string'&&Buffer.byteLength(rowText)<=4096&&typeof contextText==='string'&&Buffer.byteLength(contextText)<=8192,'NATIVE_DIRECT_DOCUMENT_POOLS');
  const row=fixed(JSON.parse(rowText),['ownerPid','tls','client','server','port','database','databaseOid','namespaceOid','systemIdentifier','actorOid','sessionActor','rows']),context=fixed(JSON.parse(contextText),['database','databaseOid','namespaceOid','systemIdentifier','port','roles','observed']);
@@ -164,7 +196,7 @@ function assertNativeTask12DocumentPools(rowText,contextText){
  }
  return Object.freeze(row.rows.map(value=>Object.freeze({...value})));
 }
-module.exports=Object.freeze({assertNativeTask12DocumentPools,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask12EquipmentPlan,verifyNativeTask12EquipmentPlan,validateNativeTask12EquipmentPlan});
+module.exports=Object.freeze({nativeTask12BootstrapIdentitySql,assertNativeTask12BootstrapPools,assertNativeTask12DocumentPools,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask12EquipmentPlan,verifyNativeTask12EquipmentPlan,validateNativeTask12EquipmentPlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask12EquipmentPlan(request.options)};
  const plan=verifyNativeTask12EquipmentPlan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -359,7 +391,7 @@ async function installNativeTask12Full261(plan,state){
  receipt.installation={migrations:261,roles:9,documentRoles:3,archiveInstallXid:archiveResult.installXid,
   ordinaryAclInstallXid:ordinaryResult.installXid,documentRoleInstallXid:roleResult.installXid,
   documentAclInstallXid:aclResult.installXid,documentLoginInstallXid:loginResult.installXid};
- return {source,archiveResult,ordinaryResult,roleResult,aclResult,loginResult,secrets};
+ return {source,archiveResult,ordinaryResult,roleResult,aclResult,loginResult,secrets,bootstrapRoles:[{name:"jg_task01_owner",oid:"10"},...["runtime","observer"].map(kind=>(need(provisioned.roles.filter(role=>role.name==="jg_task01_"+kind).length===1,"NATIVE_DIRECT_BOOTSTRAP_ROLES"),provisioned.roles.find(role=>role.name==="jg_task01_"+kind)))]};
 }
 async function runNativeTask16Business(plan,state){
  const {root,port,credentials,identity,contract,needLive,cleanupWait,enter,receipt}=state;
@@ -381,15 +413,21 @@ async function runNativeTask16Business(plan,state){
   const urlFor=kind=>{const url=new URL('postgresql://jg_task01_'+kind+'@127.0.0.1:'+port+'/'+plan.database);url.password=credentials[kind];for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5',application_name:'native_task16_'+plan.runId.replaceAll('-','')+'_'+kind}))url.searchParams.set(key,value);return url.toString();};
   const clients=['owner','runtime','observer'].map(kind=>new PrismaClient({datasources:{db:{url:urlFor(kind)}}}));state.setClients(clients);
   await wait(()=>Promise.all(clients.map(client=>client.$connect())));
-  const identitySql=require('./task16-current259-session-identity.cjs').current259ClientIdentitySql;
+  const identitySql=nativeTask12BootstrapIdentitySql;
   let retained;
   const verifyIdentity=async()=>{
    needLive();const nonce=randomBytes(32).toString('hex');const rows=await wait(()=>Promise.all(clients.map(client=>client.$queryRawUnsafe(identitySql,nonce))));
-   need(rows.every((result,i)=>result.length===1&&result[0].database===plan.database&&result[0].databaseOid===identity.databaseOid&&result[0].systemIdentifier===identity.systemIdentifier&&result[0].effectiveRole==='jg_task01_'+['owner','runtime','observer'][i]&&result[0].loginRole===result[0].effectiveRole&&result[0].effectiveOid===result[0].loginOid&&result[0].tls===true&&result[0].version===160015&&result[0].encoding==='UTF8'&&result[0].replication==='origin'&&result[0].clientAddress==='127.0.0.1'&&result[0].serverAddress==='127.0.0.1'&&result[0].serverPort===port&&result[0].nonce===nonce&&result[0].readOnly===(i===2?'on':'off')),'NATIVE_DIRECT_CLIENT_IDENTITY');
+   need(rows.every((result,i)=>result.length===1&&result[0].database===plan.database&&result[0].databaseOid===identity.databaseOid&&result[0].effectiveRole==='jg_task01_'+['owner','runtime','observer'][i]&&result[0].loginRole===result[0].effectiveRole&&result[0].effectiveOid===result[0].loginOid&&result[0].tls===true&&result[0].version===160015&&result[0].encoding==='UTF8'&&result[0].replication==='origin'&&result[0].clientAddress==='127.0.0.1'&&result[0].serverAddress==='127.0.0.1'&&result[0].serverPort===port&&result[0].nonce===nonce&&result[0].readOnly===(i===2?'on':'off')),'NATIVE_DIRECT_CLIENT_IDENTITY');
    need(new Set(rows.map(r=>r[0].pid)).size===3&&new Set(rows.map(r=>r[0].loginOid)).size===3&&new Set(rows.map(r=>r[0].clientPort)).size===3,'NATIVE_DIRECT_CLIENT_SEPARATION');
    const next=rows.map(r=>{const copy={...r[0]};delete copy.nonce;return copy;});if(retained)need(equal(next,retained),'NATIVE_DIRECT_CLIENT_CHANGED');else retained=next;return next;
   };
-  await verifyIdentity();receipt.sdkPositiveClients=retained.map(row=>({role:row.loginRole,pid:row.pid,startedAt:row.start,tls:row.tls,databaseOid:row.databaseOid,clientAddress:row.clientAddress,clientPort:row.clientPort,serverAddress:row.serverAddress,serverPort:row.serverPort}));
+  await verifyIdentity();
+  const bootstrapOwnerSql=`SELECT jsonb_build_object('ownerPid',pg_backend_pid(),'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),'client',host(inet_client_addr()),'server',host(inet_server_addr()),'port',inet_server_port(),'database',current_database(),'databaseOid',(SELECT oid::text FROM pg_database WHERE datname=current_database() AND datdba=10),'systemIdentifier',(SELECT system_identifier::text FROM pg_control_system()),'actorOid',current_user::regrole::oid::text,'sessionActor',session_user,'rows',(SELECT coalesce(jsonb_agg(jsonb_build_object('oid',a.usesysid::text,'role',a.usename,'pid',a.pid,'start',to_char(a.backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),'databaseOid',a.datid::text,'database',a.datname,'ssl',s.ssl,'clientAddress',host(a.client_addr),'clientPort',a.client_port) ORDER BY a.pid),'[]'::jsonb) FROM pg_stat_activity a JOIN pg_stat_ssl s ON s.pid=a.pid WHERE a.datid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND a.backend_type='client backend' AND a.pid<>pg_backend_pid()));`;
+  needLive();loader.check();state.checkPublicCertificateContext();
+  const bootstrapOwner=await wait(()=>state.sql(bootstrapOwnerSql));
+  needLive();loader.check();state.checkPublicCertificateContext();
+  receipt.bootstrapIdentity=assertNativeTask12BootstrapPools(bootstrapOwner.stdout,JSON.stringify({database:plan.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,port,roles:contract.bootstrapRoles,observed:retained}));
+  receipt.sdkPositiveClients=retained.map(row=>({role:row.loginRole,pid:row.pid,startedAt:row.start,tls:row.tls,databaseOid:row.databaseOid,clientAddress:row.clientAddress,clientPort:row.clientPort,serverAddress:row.serverAddress,serverPort:row.serverPort}));
   const policyBinding=state.checkPublicCertificateContext();need(equal(captureNativeTask16Security(),plan.security),'NATIVE_DIRECT_SECURITY_CHANGED');
   const policies=[];for(const hostname of ['127.0.0.1','localhost']){
    state.checkPublicCertificateContext();need(equal(captureNativeTask16Security(),plan.security),'NATIVE_DIRECT_SECURITY_CHANGED');

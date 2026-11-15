@@ -1,11 +1,11 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
-test('pending official runtime refuses lifecycle plan issuance before build loading or artifact writes',t=>{
+test('registered but stale-source official runtime refuses lifecycle plan issuance before build loading or artifact writes',t=>{
  const root=fs.mkdtempSync('/private/tmp/jg-life-plan-model-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const beforeCache=new Set(Object.keys(require.cache));
  const api=require('./prepare-task12-current261-local-lifecycle.cjs');
- assert.throws(()=>api.prepareCurrent261LocalLifecyclePlan({packetRoot:root,daemonId:'model-daemon-00000001',caseId:'12345678-1234-4234-8234-123456789012',businessDate:'2026-11-13',runtime:{file:path.join(root,'runtime-input.json'),sha256:'a'.repeat(64)}}),error=>error.code==='TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING');
+ assert.throws(()=>api.prepareCurrent261LocalLifecyclePlan({packetRoot:root,daemonId:'model-daemon-00000001',caseId:'12345678-1234-4234-8234-123456789012',businessDate:'2026-11-13',runtime:{file:path.join(root,'runtime-input.json'),sha256:'a'.repeat(64)}}),error=>error.code==='TASK12_OFFICIAL_DOCUMENT_REGISTRY');
  assert.deepEqual(fs.readdirSync(root),[]);
  assert.deepEqual(Object.keys(require.cache).filter(file=>!beforeCache.has(file)&&/\/node_modules\/|\/services\/api\/dist\//u.test(file)),[]);
 });

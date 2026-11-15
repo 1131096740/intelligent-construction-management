@@ -65,3 +65,43 @@ test('main passes its actual role readback payload through the strict native arc
  });
  assert.equal(calls,1);assert.equal(typeof result.beforeSql,'string');assert.match(result.beforeSql,/inet_server_port\(\) IS DISTINCT FROM 55432/u);
 });
+
+// Task12 full261 does not install Task16's payment-only identity routine.
+// Exercise the actual bootstrap query selection; this is a pure SQL dependency
+// regression, not a simulated database or proof of execution/permissions.
+test('actual Task12 bootstrap identity SQL has no uninstalled payment-only routine dependency',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8');
+ const statement=source.match(/  const identitySql=([^;]+);/u);assert.ok(statement);
+ const sql=new Function('require','nativeTask12BootstrapIdentitySql','return '+statement[1]) (require,require('./run-task12-native-equipment-once.cjs').nativeTask12BootstrapIdentitySql);
+ assert.doesNotMatch(sql,/public\.jg_task01_connection_identity\(\)/u,'Task12 installation never creates this payment-only helper; actual bootstrap must not call it');
+});
+
+test('bootstrap independent owner witness binds exact live self-observations and denies cluster/session replacement',()=>{
+ const api=require('./run-task12-native-equipment-once.cjs');
+ const archiveModel=new Function('require','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-archive-install.test.cjs'),'utf8')+'\nreturn model;')(name=>name==='node:test'?{test(){}}:require(name),__dirname);
+ const provisioned=archiveModel().suppliedRoles;assert.equal(provisioned.roles.length,9);
+ const main=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8');
+ const roles=new Function('provisioned','need','return '+main.match(/bootstrapRoles:([^;]+)\};/u)[1])(provisioned,(v)=>assert.ok(v));
+ const context={database:'jg_task01_'+'a'.repeat(32),databaseOid:'16390',systemIdentifier:'71000000000001',port:55432,roles,
+ observed:roles.map((role,i)=>({loginRole:role.name,effectiveRole:role.name,loginOid:role.oid,effectiveOid:role.oid,database:'jg_task01_'+'a'.repeat(32),databaseOid:'16390',ownerOid:'10',pid:710+i,start:`2026-11-16T00:00:00.00000${i+1}Z`,tls:true,clientAddress:'127.0.0.1',clientPort:47000+i,serverAddress:'127.0.0.1',serverPort:55432}))};
+ const row={ownerPid:900,tls:true,client:'127.0.0.1',server:'127.0.0.1',port:55432,database:context.database,databaseOid:context.databaseOid,systemIdentifier:context.systemIdentifier,actorOid:'10',sessionActor:'jg_task01_owner',rows:context.observed.map((v,i)=>({oid:roles[i].oid,role:roles[i].name,pid:v.pid,start:v.start,databaseOid:v.databaseOid,database:v.database,ssl:true,clientAddress:v.clientAddress,clientPort:v.clientPort}))};
+ const run=(r,c=context)=>api.assertNativeTask12BootstrapPools(JSON.stringify(r),JSON.stringify(c));
+ assert.equal(run(row).source,'INDEPENDENT_OWNER_CLUSTER_AND_THREE_SESSION_READBACK');
+ for(const patch of [{systemIdentifier:'71000000000002'},{databaseOid:'9999'},{ownerPid:710},{tls:false},{port:5432},{rows:row.rows.slice(1)},{rows:[...row.rows,row.rows[0]]},{actorOid:'17001'},{rows:row.rows.map((v,i)=>i===1?{...v,pid:800}:v)},{rows:row.rows.map((v,i)=>i===1?{...v,start:'2026-11-16T00:00:00.999999Z'}:v)},{rows:row.rows.map((v,i)=>i===1?{...v,role:'jg_task01_owner'}:v)},{rows:row.rows.map((v,i)=>i===1?{...v,ssl:false}:v)},{rows:row.rows.map((v,i)=>i===1?{...v,clientPort:49999}:v)}])assert.throws(()=>run({...row,...patch}),/NATIVE_DIRECT_BOOTSTRAP_POOLS/u);
+ assert.throws(()=>run(row,{...context,observed:context.observed.map((v,i)=>i===1?{...v,loginOid:'19999'}:v)}));
+ assert.doesNotMatch(api.nativeTask12BootstrapIdentitySql,/jg_task01_connection_identity|pg_control_system/u);
+ assert.match(api.nativeTask12BootstrapIdentitySql,/a.pid=pg_catalog\.pg_backend_pid\(\)/u);
+});
+test('actual contract return selects the three bootstrap identities from the real nine-role completion',()=>{
+ const archiveModel=new Function('require','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-archive-install.test.cjs'),'utf8')+'\nreturn model;')(name=>name==='node:test'?{test(){}}:require(name),__dirname);
+ const provisioned=archiveModel().suppliedRoles;assert.equal(provisioned.roles.length,9);
+ const source=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8');
+ const expression=source.match(/bootstrapRoles:([^;]+)\};/u);assert.ok(expression);
+ const roles=new Function('provisioned','need','return '+expression[1])(provisioned,(v)=>assert.ok(v));
+ assert.deepEqual(roles.map(role=>role.name),['jg_task01_owner','jg_task01_runtime','jg_task01_observer']);
+ assert.deepEqual(roles.slice(1).map(role=>role.oid),['17009','17008']);
+ for(const selected of ['jg_task01_runtime','jg_task01_observer']){
+  assert.throws(()=>new Function('provisioned','need','return '+expression[1])({...provisioned,roles:provisioned.roles.filter(role=>role.name!==selected)},(v)=>assert.ok(v)));
+  assert.throws(()=>new Function('provisioned','need','return '+expression[1])({...provisioned,roles:[...provisioned.roles,provisioned.roles.find(role=>role.name===selected)]},(v)=>assert.ok(v)));
+ }
+});
