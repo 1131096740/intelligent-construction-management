@@ -409,7 +409,55 @@ test('native Task12 ordinary material covers original workbench count primary id
  assert.deepEqual(missing,[]);
  for(const relation of ['Settlement','PaymentRequest'])assert.ok(writer.sql.includes('GRANT SELECT (\"id\") ON TABLE public.\"'+relation+'\" TO \"'+ordinary.name+'\";'));
  const key=r=>[r.relation,r.column,r.privilege].join('/'),previous=new Set(legacy.rows.map(key)),added=native.rows.map(key).filter(k=>!previous.has(k)).sort();
- assert.deepEqual(added,['PaymentRequest/id/SELECT','Settlement/id/SELECT']);assert.deepEqual(legacy.rows.map(key).filter(k=>!new Set(native.rows.map(key)).has(k)),[]);
+ assert.deepEqual(added.filter(k=>['PaymentRequest/id/SELECT','Settlement/id/SELECT'].includes(k)),['PaymentRequest/id/SELECT','Settlement/id/SELECT']);assert.deepEqual(legacy.rows.map(key).filter(k=>!new Set(native.rows.map(key)).has(k)),[]);
  assert.notEqual(native.sha256,legacy.requirementsSha256);assert.match(first.sql,/"relation":"Settlement","column":"id","privilege":"SELECT"/u);assert.match(first.sql,/"relation":"PaymentRequest","column":"id","privilege":"SELECT"/u);
  assert.ok(!legacy.rows.some(r=>['Settlement','PaymentRequest'].includes(r.relation)&&r.column==='id'));
+});
+
+function fixedEquipmentReadset(){
+ const schema=fs.readFileSync(path.join(__dirname,'schema.prisma'),'utf8'),required={};
+ for(const table of ['ContractDraftCheckpoint','Settlement','PaymentRequest','ContractEconomicReview'])required[table]=[...schema.match(new RegExp('^model '+table+' \\{([\\s\\S]*?)^\\}','m'))[1].matchAll(/^\s+(\w+)\s+(?:String|Int|BigInt|Float|Decimal|Boolean|DateTime|Json|Bytes)(?:\?|\[\])?(?:\s|$)/gmu)].map(row=>row[1]);
+ required.ContractNumberTombstone=['id','formalCode'];required.ApprovalDelegation=['fromUserId','toUserId','actionKey','resourceType','resourceId','enabled','startsAt','endsAt'];
+ const balance=fs.readFileSync(path.join(__dirname,'../src/payment/contract-takeover-balance.ts'),'utf8');required.ContractTakeover=[...balance.matchAll(/^  (\w+): true,?$/gmu)].map(row=>row[1]);
+ return required;
+}
+function fixedEquipmentSource(){
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});return {candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+}
+async function fixedNativeMaterial(f){
+ const first=f.api.beginNativeTask12OrdinaryAclProtocol(f.completion),writer=first.acceptBefore((await f.exec(first.sql,phases[0])).stdout),reader=writer.acceptWritten((await f.exec(writer.sql,phases[1])).stdout),result=reader.acceptCommitted((await f.exec(reader.sql,phases[2])).stdout);
+ return {first,writer,reader,result,profile:f.api.readNativeTask12OrdinaryAclProjection(result).profile};
+}
+test('fixed native equipment full scalar and explicit projections close exactly one hundred approved read dependencies',async()=>{
+ const source=fixedEquipmentSource(),required=fixedEquipmentReadset(),f=fixture({source,observe(row,n){if(n===0)row.changes.push({relation:'ApprovalDelegation',column:'fromUserId',relationOid:'17003',attnum:2,privileges:['SELECT'],rawAcl:null,acl:[]},{relation:'ContractNumberTombstone',column:'id',relationOid:'17004',attnum:1,privileges:['SELECT'],rawAcl:null,acl:[]});}}),run=await fixedNativeMaterial(f),key=r=>[r.relation,r.column,r.privilege].join('/');
+ const baseline=new Set(f.api.describeCurrent261GeneratedLifecycleOrdinaryAcl(source).rows.map(key));for(const t of ['Settlement','PaymentRequest'])baseline.add(t+'/id/SELECT');
+ const missing=Object.entries(required).flatMap(([table,cols])=>cols.filter(col=>!run.profile.rows.some(r=>key(r)===table+'/'+col+'/SELECT')).map(col=>table+'.'+col));assert.deepEqual(missing,[]);
+ const expected=Object.entries(required).flatMap(([t,cols])=>cols.map(c=>t+'/'+c+'/SELECT')).filter(k=>!baseline.has(k)).sort(),current=new Set(run.profile.rows.map(key));assert.equal(expected.length,100);assert.deepEqual([...current].filter(k=>!baseline.has(k)).sort(),expected);assert.deepEqual([...baseline].filter(k=>!current.has(k)),[]);
+ for(const relation of ['ApprovalDelegation','ContractNumberTombstone']){
+  assert.ok(run.profile.lockRelations.includes(relation));assert.ok(run.writer.sql.includes('public."'+relation+'"'));
+  for(const sql of [run.first.sql,run.writer.sql,run.reader.sql])assert.ok(sql.includes('"relation":"'+relation+'"'));
+ }
+ for(const [relation,column]of [['ApprovalDelegation','fromUserId'],['ContractNumberTombstone','id']])assert.ok(run.writer.sql.includes('GRANT SELECT (\"'+column+'\") ON TABLE public.\"'+relation+'\" TO \"'+ordinary.name+'\";'));
+ assert.match(run.writer.sql,/IN SHARE ROW EXCLUSIVE MODE NOWAIT/u);assert.match(run.writer.sql,/c\.relname IN \([^\n]*'ApprovalDelegation'[^\n]*'ContractNumberTombstone'[^\n]*\) AND pg_catalog\.has_table_privilege\([^\n]*,'SELECT'\)/u);
+ assert.match(run.writer.sql,/actual_attnum IS NULL/u);assert.match(run.reader.sql,/pg_catalog\.pg_xact_status/u);
+ assert.ok(!run.profile.rows.some(r=>['ApprovalDelegation','ContractNumberTombstone'].includes(r.relation)&&(r.column===null||r.privilege!=='SELECT')));
+});
+
+test('fixed native new-relation readback rejects extra, missing, wrong-role and wrong-phase evidence',async()=>{
+ const source=fixedEquipmentSource();
+ for(const change of [
+  {relation:'ContractNumberTombstone',column:'createdAt',attnum:3,privileges:['SELECT']},
+  {relation:'ApprovalDelegation',column:'id',attnum:1,privileges:['SELECT']},
+  {relation:'ApprovalDelegation',column:null,attnum:0,privileges:['SELECT']},
+  {relation:'ApprovalDelegation',column:'fromUserId',attnum:2,privileges:['UPDATE']}
+ ]){
+  const f=fixture({source,observe(row,n){if(n===0)row.changes.push({...change,relationOid:'17003',rawAcl:null,acl:[]});}}),first=f.api.beginNativeTask12OrdinaryAclProtocol(f.completion),stdout=(await f.exec(first.sql,phases[0])).stdout;
+  assert.throws(()=>first.acceptBefore(stdout),e=>e.code==='CURRENT259_ORDINARY_ARCHIVE_ACL_DELTA');
+ }
+ for(const [mutate,code]of [[row=>{delete row.changes[0].column;},'DELTA'],[row=>{row.phase=phases[1];},'OUTPUT']]){
+  const f=fixture({source,observe(row,n){if(n===0)mutate(row);}}),first=f.api.beginNativeTask12OrdinaryAclProtocol(f.completion),stdout=(await f.exec(first.sql,phases[0])).stdout;
+  assert.throws(()=>first.acceptBefore(stdout),e=>e.code==='CURRENT259_ORDINARY_ARCHIVE_ACL_'+code);
+ }
+ const role=fixture({source,completion:{ordinary:{...ordinary,oid:'0'}}});assert.throws(()=>role.api.beginNativeTask12OrdinaryAclProtocol(role.completion),e=>e.code==='CURRENT259_ORDINARY_ARCHIVE_ACL_QUALIFICATION');
 });

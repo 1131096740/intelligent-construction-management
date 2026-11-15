@@ -286,7 +286,7 @@ function limits(ordinary,profile) {
  ${lockFields}${profile.lifecycle?lifecycleFunctions.map(signature=>`
  OR pg_catalog.has_function_privilege(${app},${quote(signature)}::regprocedure,'EXECUTE') IS DISTINCT FROM true`).join(''):''}${profile!==ordinaryProfile?`
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relnamespace=pg_catalog.to_regnamespace('public')
-  AND c.relname IN (${literalList([...new Set([...Object.keys(generatedDraftReads),...(documentMode(profile)?Object.keys(documentReads):[])])])}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
+  AND c.relname IN (${literalList([...new Set([...Object.keys(generatedDraftReads),...(documentMode(profile)?Object.keys(documentReads):[]),...(profile.nativeEquipmentReadRelations??[])])])}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
  THEN RAISE EXCEPTION '${CODE}_PRIVILEGE_BOUNDARY'; END IF;`;
 }
 
@@ -540,8 +540,22 @@ function nativeTask12OrdinaryProfile(source){
  for(const relation of ['Settlement','PaymentRequest']){
   const key=relation+'.id',ops=keys.get(key)??[];need(!ops.includes('SELECT'),'SOURCE');keys.set(key,[...ops,'SELECT'].sort());
  }
+ const fixedEquipmentReads={
+  ContractDraftCheckpoint:["createdByUserId"],
+  Settlement:["projectId","contractId","paymentTermsVersionId","code","periodLabel","status","amountCents","finalCumulativeAmountCents","processId","periodStart","periodEnd","finalDeclarationVersion","finalDeclarationSnapshot","calculationVersion","sourceSnapshotToken","payableAmountCents","paidAmountCents","sourceType","sourceTakeoverId","settlementTemplateVersionId","isFinal","invoiceTypeSnapshot","taxFactRevisionSnapshot","governanceVersion","fieldReviewerUserId","fieldReviewerRoleKey","preparedByUserId","preparerSignatureSha256","preparerSignatureVersionId","finalScopeCompleted","finalPriorSettlementsIncluded","finalNoOutstandingSettlements","finalWithinContractCap","finalNoFurtherOrdinarySettlements","createdAt","updatedAt"],
+  PaymentRequest:["projectId","settlementId","sourceType","contractId","paymentTermsVersionId","paymentTermsStageId","code","status","requestedAmountCents","approvedAmountCents","paidAmountCents","paymentMatter","amountCalculationExplanation","paymentSubjectType","dueDate","abandonedAt","abandonedByUserId","abandonReason","createdAt","updatedAt"],
+  ContractEconomicReview:["leftSourceRef","rightSourceRef","leftFingerprint","rightFingerprint","supersedesReviewId","relation","coverage","reason","revision","preparedByUserId","contractReviewedById","financeReviewedById","financeRequired","idempotencyKey","requestFingerprint","targetSourceRef","targetVersionId","directSourcePins","createdAt","returnedAt","returnReason"],
+  ContractNumberTombstone:["id","formalCode"],
+  ApprovalDelegation:["fromUserId","toUserId","actionKey","resourceType","resourceId","enabled","startsAt","endsAt"],
+  ContractTakeover:["paymentTermsVersionId","historicalBalanceConfirmedAt","historicalSettledCents","historicalApprovalPendingPaymentCents","historicalApprovedPendingPaymentCents","historicalPaidCents","historicalProxyPaidCents","historicalAdvancePaidCents","historicalAdvanceDeductedCents","historicalRetentionWithheldCents","historicalRetentionReleasedCents","otherConfirmedOccupancyCents"],
+ };
+ for(const [relation,columns]of Object.entries(fixedEquipmentReads))for(const column of columns){
+  const key=relation+'.'+column,ops=keys.get(key)??[];need(!ops.includes('SELECT'),'SOURCE');keys.set(key,[...ops,'SELECT'].sort());
+ }
+ const nativeEquipmentReadRelations=Object.freeze(Object.keys(fixedEquipmentReads).sort());
+ const lockRelations=[...new Set([...prior.lockRelations,...nativeEquipmentReadRelations])].sort();
  const rows=[...keys].flatMap(([key,privileges])=>{const [relation,column=null]=key.split('.');return privileges.map(privilege=>({relation,column,privilege}));});
- return {...prior,keys,rows,sha256:sha(JSON.stringify(['NATIVE_TASK12_WORKBENCH_COUNT_PRIMARY_IDS_V1',prior.sha256,rows]))};
+ return {...prior,keys,rows,lockRelations,nativeEquipmentReadRelations,sha256:sha(JSON.stringify(['NATIVE_TASK12_FIXED_EQUIPMENT_READ_CLOSURE_V1',prior.sha256,rows,lockRelations,nativeEquipmentReadRelations]))};
 }
 const nativeOrdinaryProjections=new WeakMap();
 function readNativeTask12OrdinaryAclProjection(result){
