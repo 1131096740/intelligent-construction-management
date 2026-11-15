@@ -46,7 +46,7 @@ function dependencyDigest(){const rows=['node_modules','services/api/node_module
 function compiledMaterials(){return [...treeFiles(path.join(ROOT,'services/api/dist')),...treeFiles(path.join(ROOT,'packages/shared-domain/dist'))];}
 
 function validateNativePlan(value){
- const p=fixed(value,['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','binaryManifest','binaries','openssl','externalLibraries','node','limits','differences']);
+ const p=fixed(value,['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','prismaTools','interfaces','binaryManifest','binaries','openssl','externalLibraries','node','limits','differences']);
  need(p.schemaVersion===1&&p.purpose===PURPOSE&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
  need(equal(fixed(p.limits,['resourceMs','migrationMs','ownerSqlMs','httpMs','commandBytes','ownerSqlBytes']),{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216}));
  need(equal(directory(p.runRoot),p.rootIdentity));return p;
@@ -63,8 +63,9 @@ function prepareNativeTask16Plan(options){
  const required=['postgres','initdb','pg_isready','psql'];need(required.every(name=>binaries.some(row=>row.file===path.join(qualified.privatePrefix,'bin',name))));
  const opensslFile=fs.realpathSync('/opt/homebrew/opt/openssl@3/bin/openssl'),openssl=capture(opensslFile,64*1024*1024);
  const externalLibraries=Object.entries(qualified.externalLibraries??{}).map(([file,expected])=>{const actual=capture(file,64*1024*1024);need(actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&nativeTask16QualifiedModeMatches(actual.identity.mode,expected.mode)&&['dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_EXTERNAL_LIBRARY');return {file,sha256:actual.sha256,identity:actual.identity};});need(externalLibraries.length===2,'NATIVE_DIRECT_EXTERNAL_LIBRARY');
+ const prismaTools=resolveNativeTask16PrismaTools(),interfaces=resolveNativeTask16Interfaces();
  const nodeFile=fs.realpathSync(process.execPath),nodeCapture=capture(nodeFile,128*1024*1024);
- const runId=randomUUID(),p={schemaVersion:1,purpose:PURPOSE,runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:o.runRoot,rootIdentity:directory(o.runRoot),source:sourceCapture(),artifacts:compiledMaterials(),dependencies:dependencyDigest(),binaryManifest:{file:o.binaryManifest,sha256:manifest.sha256,identity:manifest.identity},binaries,openssl:{file:opensslFile,sha256:openssl.sha256,identity:openssl.identity},externalLibraries,node:{file:nodeFile,sha256:nodeCapture.sha256,identity:nodeCapture.identity,version:process.version,platform:process.platform,arch:process.arch},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:['macOS native PG16.15/OpenSSL3/C locale/noICU','Production function reader; no F object-reader private lease wrapper','No Docker CPU/memory/pids/tmpfs enforcement equivalent']};
+ const runId=randomUUID(),p={schemaVersion:1,purpose:PURPOSE,runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:o.runRoot,rootIdentity:directory(o.runRoot),source:sourceCapture(),artifacts:compiledMaterials(),dependencies:dependencyDigest(),prismaTools,interfaces,binaryManifest:{file:o.binaryManifest,sha256:manifest.sha256,identity:manifest.identity},binaries,openssl:{file:opensslFile,sha256:openssl.sha256,identity:openssl.identity},externalLibraries,node:{file:nodeFile,sha256:nodeCapture.sha256,identity:nodeCapture.identity,version:process.version,platform:process.platform,arch:process.arch},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:['macOS native PG16.15/OpenSSL3/C locale/noICU','Production function reader; no F object-reader private lease wrapper','No Docker CPU/memory/pids/tmpfs enforcement equivalent']};
  validateNativePlan(p);return writeNew(o.runRoot,'plan.json',p);
 }
 function verifyNativeTask16Plan(file,expected){
@@ -74,6 +75,7 @@ function verifyNativeTask16Plan(file,expected){
  need(p.binaryManifest.sha256===BINARY_QUALIFICATION_SHA,'NATIVE_DIRECT_BINARY_APPROVAL');
  const qualified=JSON.parse(capture(p.binaryManifest.file,1024*1024).bytes);need(qualified.version==='16.15'&&qualified.versionObserved==='postgres (PostgreSQL) 16.15'&&equal(treeFiles(qualified.privatePrefix),p.binaries),'NATIVE_DIRECT_BINARY_APPROVAL');
  need(equal(compiledMaterials(),p.artifacts)&&equal(dependencyDigest(),p.dependencies),'NATIVE_DIRECT_MATERIAL_CHANGED');
+ need(equal(resolveNativeTask16PrismaTools(),p.prismaTools)&&equal(resolveNativeTask16Interfaces(),p.interfaces),'NATIVE_DIRECT_PRISMA_OR_INTERFACE_CHANGED');
  for(const row of [...p.binaries,p.openssl,...p.externalLibraries,p.binaryManifest,p.node]){if(row.link){need(fs.readlinkSync(row.link)===row.target,'NATIVE_DIRECT_MATERIAL_CHANGED');continue;}const now=capture(row.file,128*1024*1024);need(now.sha256===row.sha256&&equal(now.identity,row.identity),'NATIVE_DIRECT_MATERIAL_CHANGED');}
  need(p.node.file===fs.realpathSync(process.execPath)&&p.node.version===process.version&&p.node.platform===process.platform&&p.node.arch===process.arch,'NATIVE_DIRECT_RUNTIME');return p;
 }
@@ -126,7 +128,56 @@ function assertNativeTask16LogIdentity(fd,expected,namedPath){
  const identity=Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid'].map(key=>[key,String(stat[key])])));if(expected)need(equal(identity,expected),'NATIVE_DIRECT_LOG_WINDOW');if(namedPath!==undefined){need(typeof namedPath==='string'&&path.basename(namedPath)==='postgres.log','NATIVE_DIRECT_LOG_WINDOW');const named=fs.lstatSync(namedPath,{bigint:true});need(named.isFile()&&!named.isSymbolicLink()&&Object.keys(identity).every(key=>String(named[key])===identity[key]),'NATIVE_DIRECT_LOG_WINDOW');}return identity;
 }
 function nativeTask16FixtureDates(now){need(typeof now==='number'&&Number.isFinite(now)&&Number.isFinite(new Date(now+8*3600000).getTime()),'NATIVE_DIRECT_FIXTURE_DATE');const paidAt=new Date(now+8*3600000).toISOString().slice(0,10),openingDate=new Date(Date.parse(paidAt+'T00:00:00.000Z')-86400000).toISOString().slice(0,10);return Object.freeze({paidAt,openingDate});}
-module.exports=Object.freeze({nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+function resolveNativeTask16PrismaTools(){
+ const cli=fs.realpathSync(require.resolve('prisma/build/index.js'));
+ const cliRequire=require('node:module').createRequire(cli),packageFile=fs.realpathSync(cliRequire.resolve('@prisma/engines/package.json'));
+ const pkg=capture(packageFile),version=JSON.parse(pkg.bytes).version;need(version==='5.22.0','NATIVE_DIRECT_PRISMA_VERSION');
+ const engine=fs.realpathSync(path.join(path.dirname(packageFile),'schema-engine-darwin-arm64'));
+ const collect=file=>{need(file.startsWith(ROOT+'/node_modules/')||file.startsWith(ROOT+'/services/api/node_modules/'),'NATIVE_DIRECT_PRISMA_PATH');const row=capture(file,64*1024*1024);return Object.freeze({file,sha256:row.sha256,identity:row.identity});};
+ const tools={version,cli:collect(cli),package:collect(packageFile),engine:collect(engine)};need((Number(tools.engine.identity.mode)&0o111)===0o111,'NATIVE_DIRECT_PRISMA_EXECUTABLE');return Object.freeze(tools);
+}
+function inspectNativeTask16Interfaces(){
+ // Fixed source-owned list, matching the original application factory/main.
+ // Read exports only: never construct a client, assemble Nest, or call a route.
+ const specs=[
+  ['./local-staged-migration-controls.cjs',[['inspectSql',0],['setupSql',1],['checkSetup',2],['readbackSql',2],['parseReadback',1],['checkCompletion',3],['cleanupSql',2],['cleanReadSql',2]]],
+  ['./local-staged-tail-qualification.cjs',[['createLocalTailQualification',2]]],
+  ['./task16-current259-role-provision.cjs',[['renderNativeTask16RoleRead',2],['renderNativeTask16RoleInstall',3],['parseNativeTask16RoleRead',3]]],
+  ['./task16-current259-seven-install.cjs',[['renderNativeTask16Seven',4],['parseNativeTask16Seven',4]]],
+  ['./task16-current259-runtime-acl.cjs',[['renderCurrent259RuntimeAcl',3]]],
+  ['./task16-current259-catalog.cjs',[['loadCurrent259CatalogMaterial',2],['renderCurrent259CatalogRead',1],['parseCurrent259CatalogRead',3],['renderCurrent259B7Install',1]]],
+  ['./task16-current259-session-identity.cjs',[['current259ClientIdentitySql','string']]],
+  ['./task16-current261-seed-json.cjs',[['requestCurrent261SeedJson',4]]],
+  ['../dist/api-security.js',[['configureApiSecurity',1]]],
+  ['../dist/operating-projection/projection-export-json.js',[['configureProjectionExportJson',1]]],
+  ['../dist/api-json-replacer.js',[['apiJsonReplacer',2]]],
+  ['../dist/validation/api-validation.js',[['createApiValidationPipe',0]]],
+  ['../dist/api-listen.js',[['listenApi',3]]],
+  ['../dist/database/prisma.service.js',[['PrismaService',0]]],
+  ['../dist/database/task16-registered-application.module.js',[['Task16RegisteredApplicationModule',0],['Task16ImpactReaderToken','symbol']]],
+  ['../dist/payment/registered-payment-impact-reader.js',[['readTask16RegisteredPaymentImpacts',3]]],
+  ['../dist/database/registered-payment-postgres.fixture.js',[['buildRegisteredPgFixturePlan',3],['seedRegisteredPgFixture',3],['assertRegisteredPgConnectedRoles',2]]],
+  ['../dist/database/registered-payment-postgres.cases.js',[['runRegisteredNullCrossCompanyCommit',3]]],
+  ['@prisma/client',[['PrismaClient',1]]],
+  ['@nestjs/testing/test.js',[['Test',0]]],
+  ['@nestjs/testing',[['Test',0]]]
+ ];
+ return Object.freeze(specs.map(([specifier,exports])=>{
+  const file=fs.realpathSync(require.resolve(specifier));need(file.startsWith(ROOT+'/'),'NATIVE_DIRECT_INTERFACE_PATH');const before=capture(file,64*1024*1024),loaded=require(specifier);
+  const shapes=exports.map(([name,expected])=>{const d=Object.getOwnPropertyDescriptor(loaded,name);need(d,'NATIVE_DIRECT_INTERFACE_EXPORT');let value;if(Object.hasOwn(d,'value'))value=d.value;else {need(specifier==='@nestjs/testing'&&name==='Test'&&typeof d.get==='function'&&d.set===undefined,'NATIVE_DIRECT_INTERFACE_EXPORT');value=loaded.Test;need(value===require('@nestjs/testing/test.js').Test,'NATIVE_DIRECT_INTERFACE_EXPORT');}const kind=typeof value;need(typeof expected==='number'?kind==='function'&&value.length===expected:kind===expected,'NATIVE_DIRECT_INTERFACE_EXPORT');
+   if(name==='Test'){const method=Object.getOwnPropertyDescriptor(value,'createTestingModule');need(method&&Object.hasOwn(method,'value')&&typeof method.value==='function'&&method.value.length===1,'NATIVE_DIRECT_INTERFACE_EXPORT');}
+   return Object.freeze({name,kind,...(kind==='function'?{arity:value.length}:{})});});
+  const after=capture(file,64*1024*1024);need(before.sha256===after.sha256&&equal(before.identity,after.identity),'NATIVE_DIRECT_INTERFACE_CHANGED');return Object.freeze({file,sha256:after.sha256,identity:after.identity,exports:Object.freeze(shapes)});
+ }));
+}
+function resolveNativeTask16Interfaces(){
+ // Discard qualification-only module state in a fixed read-only child. Actual
+ // business still sets its real temporary environment before importing Nest.
+ const source='const value=require('+JSON.stringify(__filename)+').inspectNativeTask16Interfaces();process.stdout.write(JSON.stringify(value));';
+ let output;try{output=execFileSync(process.execPath,['-e',source],{cwd:ROOT,env:{PATH:path.dirname(process.execPath)+':/usr/bin:/bin',LANG:'C',LC_ALL:'C',TZ:'UTC',PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'},encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000,maxBuffer:1048576});}catch{fail('NATIVE_DIRECT_INTERFACE_QUALIFICATION');}
+ return JSON.parse(output);
+}
+module.exports=Object.freeze({inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -252,8 +303,7 @@ async function executeNativeTask16Once(plan,planSha256){
 async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter){
  const controls=require('./local-staged-migration-controls.cjs'),{createLocalTailQualification}=require('./local-staged-tail-qualification.cjs');
  const ledger=plan.source.witness.profile.ledger,migrations=ledger.map(({name,sha256})=>({name,sha256})),database=plan.database;
- const cli=fs.realpathSync(require.resolve('prisma/build/index.js'));
- const engine=fs.realpathSync(require.resolve('@prisma/engines/schema-engine-darwin-arm64'));
+ const tools=resolveNativeTask16PrismaTools();need(equal(tools,plan.prismaTools),'NATIVE_DIRECT_PRISMA_TOOLS_CHANGED');const cli=tools.cli.file,engine=tools.engine.file;
  const schema=capture(path.join(__dirname,'schema.prisma')).bytes;
  const roots=new Map();
  for(const size of [203,205,213,215,218,221,261]){
@@ -329,13 +379,13 @@ async function runNativeTask16Business(plan,state){
   const module=await wait(()=>Test.createTestingModule({imports:[Task16RegisteredApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(Task16ImpactReaderToken).useValue(readTask16RegisteredPaymentImpacts).compile(),late=>cleanupWait(()=>late.close()));state.setApplication(undefined,module);
   const app=module.createNestApplication();state.setApplication(app,module);
   need(module.get(PrismaService)===runtime&&module.get(Task16ImpactReaderToken)===readTask16RegisteredPaymentImpacts&&app.get(PrismaService)===runtime&&app.get(Task16ImpactReaderToken)===readTask16RegisteredPaymentImpacts,'NATIVE_DIRECT_REAL_PROVIDERS');
-  require('../dist/api-security.js').configureApiSecurity(app);require('../dist/projection-export-json.js').configureProjectionExportJson(app);
+  require('../dist/api-security.js').configureApiSecurity(app);require('../dist/operating-projection/projection-export-json.js').configureProjectionExportJson(app);
   app.getHttpAdapter().getInstance().set('json replacer',require('../dist/api-json-replacer.js').apiJsonReplacer);app.enableCors({origin:[],credentials:false});app.useGlobalPipes(require('../dist/validation/api-validation.js').createApiValidationPipe());
   await wait(()=>app.init());await wait(()=>require('../dist/api-listen.js').listenApi(app,0,'127.0.0.1'));
   const address=app.getHttpServer().address();need(address.address==='127.0.0.1'&&address.family==='IPv4'&&address.port>1024,'NATIVE_DIRECT_HTTP_ENDPOINT');
   const origin='http://127.0.0.1:'+address.port;
   const catalog=require('./task16-current259-catalog.cjs'),material=catalog.loadCurrent259CatalogMaterial(plan.source.code,'TASK16_PAYMENT261_RUNTIME_V1');
-  const proof=Object.freeze({authorizationReference:'root-native-plan-sha256:'+hash(Buffer.from(JSON.stringify(plan))),runId:plan.runId.replaceAll('-','').slice(0,12),resourceRunId:plan.runId,databaseName:plan.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,host:'127.0.0.1',port,ownerRole:'jg_task01_owner',runtimeRole:'jg_task01_runtime',observerRole:'jg_task01_observer',sourceSealSha256:plan.source.code.sealSha256,preparedSqlSha256:Object.freeze(Object.fromEntries(material.sevenFragments.map(row=>[path.basename(row.path),row.sha256]))),transport:'isolated-loopback-tls-verify-full',application:Object.freeze({origin,databaseRole:'jg_task01_runtime',sourceSealSha256:plan.source.code.sealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'})});
+  const proof=Object.freeze({authorizationReference:'root-native-plan-sha256:'+receipt.planSha256,runId:plan.runId.replaceAll('-','').slice(0,12),resourceRunId:plan.runId,databaseName:plan.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,host:'127.0.0.1',port,ownerRole:'jg_task01_owner',runtimeRole:'jg_task01_runtime',observerRole:'jg_task01_observer',sourceSealSha256:plan.source.code.sealSha256,preparedSqlSha256:Object.freeze(Object.fromEntries(material.sevenFragments.map(row=>[path.basename(row.path),row.sha256]))),transport:'isolated-loopback-tls-verify-full',application:Object.freeze({origin,databaseRole:'jg_task01_runtime',sourceSealSha256:plan.source.code.sealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'})});
   const context=Object.freeze({proof,owner,runtime,observer,password:randomBytes(32).toString('hex'),httpTimeoutMs:5000});
   const fixture=require('../dist/database/registered-payment-postgres.fixture.js'),cases=require('../dist/database/registered-payment-postgres.cases.js');
   const dates=nativeTask16FixtureDates(Date.now());const fixturePlan=fixture.buildRegisteredPgFixturePlan(proof.runId,dates.paidAt,dates.openingDate);receipt.fixtureDates=dates;

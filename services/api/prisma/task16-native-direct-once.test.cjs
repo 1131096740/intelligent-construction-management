@@ -7,7 +7,7 @@ for(const args of [[],['--once'],['--docker'],['--prepare','--run-root','/tmp/fo
  assert.equal(result.status,1);assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_ARGUMENTS'});assert.equal(result.stderr,'');
 });
 const fs=require('node:fs'),{randomUUID,createHash}=require('node:crypto');
-function planModel(t){const root=fs.mkdtempSync('/private/tmp/jg-native-model-');fs.chmodSync(root,0o700);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const st=fs.lstatSync(root),runId=randomUUID();return {schemaVersion:1,purpose:'TASK16_NATIVE_DIRECT_PRODUCTION_READER_V1',runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:root,rootIdentity:Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,st[k]])),source:{},artifacts:[],dependencies:{},binaryManifest:{},binaries:[],openssl:{},externalLibraries:[],node:{},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:[]};}
+function planModel(t){const root=fs.mkdtempSync('/private/tmp/jg-native-model-');fs.chmodSync(root,0o700);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const st=fs.lstatSync(root),runId=randomUUID();return {schemaVersion:1,purpose:'TASK16_NATIVE_DIRECT_PRODUCTION_READER_V1',runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:root,rootIdentity:Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,st[k]])),source:{},artifacts:[],dependencies:{},prismaTools:{},interfaces:[],binaryManifest:{},binaries:[],openssl:{},externalLibraries:[],node:{},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:[]};}
 test('native plan keeps fixed purpose, original budgets and owned private root; structural data grants no execution',t=>{
  const {validateNativePlan}=require('./run-task16-native-direct-once.cjs'),p=planModel(t);assert.equal(validateNativePlan(p).runRoot,p.runRoot);
  for(const field of Object.keys(p.limits))assert.throws(()=>validateNativePlan({...p,limits:{...p.limits,[field]:p.limits[field]+1}}));
@@ -83,4 +83,20 @@ for(const [instant,paidAt,openingDate]of [
  ['2026-12-31T16:00:00.000Z','2027-01-01','2026-12-31']
 ])test('native fixture preserves China payment day and prior-day opening '+instant,()=>{
  const {nativeTask16FixtureDates:dates}=require('./run-task16-native-direct-once.cjs');assert.deepEqual(dates(Date.parse(instant)),{paidAt,openingDate});
+});
+test('actual pnpm CLI dependency resolves the same installed schema engine before any native startup',()=>{
+ const {resolveNativeTask16PrismaTools:resolve}=require('./run-task16-native-direct-once.cjs'),tools=resolve();
+ assert.equal(path.basename(tools.engine.file),'schema-engine-darwin-arm64');assert.equal(fs.realpathSync(tools.engine.file),tools.engine.file);assert.equal(tools.version,'5.22.0');
+ const packageFile=require('node:module').createRequire(tools.cli.file).resolve('@prisma/engines/package.json');assert.equal(tools.engine.file,path.join(path.dirname(fs.realpathSync(packageFile)),'schema-engine-darwin-arm64'));
+ assert.ok(tools.engine.file.startsWith(path.resolve(__dirname,'../../..')+'/node_modules/'));assert.equal(fs.statSync(tools.engine.file).mode&0o111,0o111);
+});
+test('fixed actual compiled interfaces retain original projection JSON configuration and public exports without assembly',()=>{
+ const {resolveNativeTask16Interfaces:resolve}=require('./run-task16-native-direct-once.cjs'),rows=resolve();
+ assert.ok(rows.some(row=>row.file.endsWith('/dist/operating-projection/projection-export-json.js')&&row.exports.some(e=>e.name==='configureProjectionExportJson'&&e.kind==='function'&&e.arity===1)));
+ assert.ok(rows.some(row=>row.exports.some(e=>e.name==='seedRegisteredPgFixture'&&e.kind==='function'&&e.arity===3)));
+ assert.equal(rows.some(row=>row.file.endsWith('/dist/projection-export-json.js')),false);
+});
+test('readonly export qualification leaves parent business environment and API module cache untouched',()=>{
+ const source=`const path=require('node:path');const api=require(${JSON.stringify(file)});const target=path.join(path.dirname(${JSON.stringify(file)}),'../dist/database/task16-registered-application.module.js');const before=Object.prototype.hasOwnProperty.call(require.cache,require.resolve(target));const value=process.env.NATIVE_QUAL_SENTINEL;const rows=api.resolveNativeTask16Interfaces();process.stdout.write(JSON.stringify({before,after:Object.prototype.hasOwnProperty.call(require.cache,require.resolve(target)),environmentUnchanged:process.env.NATIVE_QUAL_SENTINEL===value,count:rows.length}));`;
+ const result=spawnSync(process.execPath,['-e',source],{encoding:'utf8',env:{PATH:path.dirname(process.execPath),NATIVE_QUAL_SENTINEL:'unchanged'},timeout:10000,maxBuffer:1048576});assert.equal(result.status,0);const value=JSON.parse(result.stdout);assert.equal(value.before,false);assert.equal(value.after,false);assert.equal(value.environmentUnchanged,true);assert.ok(value.count>10);
 });
