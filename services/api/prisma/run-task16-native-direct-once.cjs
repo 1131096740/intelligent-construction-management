@@ -145,6 +145,7 @@ function inspectNativeTask16Interfaces(){
   ['./task16-current259-role-provision.cjs',[['renderNativeTask16RoleRead',2],['renderNativeTask16RoleInstall',3],['parseNativeTask16RoleRead',3]]],
   ['./task16-current259-seven-install.cjs',[['renderNativeTask16Seven',4],['parseNativeTask16Seven',4]]],
   ['./task16-current259-runtime-acl.cjs',[['renderCurrent259RuntimeAcl',3]]],
+  ['./task16-current259-public-access.cjs',[['renderCurrent259PublicAccess',1]]],
   ['./task16-current259-catalog.cjs',[['loadCurrent259CatalogMaterial',2],['renderCurrent259CatalogRead',1],['parseCurrent259CatalogRead',3],['describeNativeTask16CatalogFailure',3],['renderCurrent259B7Install',1]]],
   ['./task16-current259-session-identity.cjs',[['current259ClientIdentitySql','string']]],
   ['./task16-current261-seed-json.cjs',[['requestCurrent261SeedJson',4]]],
@@ -195,7 +196,12 @@ function renderNativeTask16RuntimeAcl(inputJson,nonce){
  const original="pg_catalog.host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR pg_catalog.host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR inet_server_port() IS DISTINCT FROM 5432";
  const parts=rendered.sql.split(original);
  need(parts.length===2&&(rendered.sql.match(/inet_server_port\(\)/gu)||[]).length===1&&['readbackSql','witnessSql'].every(field=>typeof rendered[field]==='string'&&!rendered[field].includes('inet_server_port(')),'NATIVE_DIRECT_ACL_ENDPOINT_RENDER');
- return Object.freeze({...rendered,sql:parts.join(original.replace('5432',String(id.serverPort)))});
+ const sql=parts.join(original.replace('5432',String(id.serverPort)));
+ // Match the original payment ACL transaction: runtime ACL, then its public-access closure.
+ const publicOriginal=require('./task16-current259-public-access.cjs').renderCurrent259PublicAccess(provisioned),publicParts=publicOriginal.split(original);
+ need(publicParts.length===2&&(publicOriginal.match(/inet_server_port\(\)/gu)||[]).length===1,'NATIVE_DIRECT_PUBLIC_ENDPOINT_RENDER');
+ const publicSql=publicParts.join(original.replace('5432',String(id.serverPort)));
+ return Object.freeze({...rendered,sql,publicSql,writeSql:sql+'\n'+publicSql});
 }
 module.exports=Object.freeze({parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
@@ -279,7 +285,7 @@ async function executeNativeTask16Once(plan,planSha256){
   const sevenRaw=[],sevenRows=[];for(let phase=0;phase<3;phase++){const out=(await sql(seven.renderNativeTask16Seven(sevenInput,phase,nonce,phase===0?null:sevenRaw[phase-1]))).stdout;sevenRaw.push(out);sevenRows.push(seven.parseNativeTask16Seven(sevenInput,phase,nonce,out));}
   need(sevenRows[1].installXid!==provisioned.commitXid&&sevenRows[1].catalogSha256!==sevenRows[0].catalogSha256&&sevenRows[2].installXid===sevenRows[1].installXid&&sevenRows[2].catalogSha256===sevenRows[1].catalogSha256&&new Set(sevenRows.map(row=>row.backendPid)).size===3&&new Set(sevenRows.map(row=>row.backendStart)).size===3,'NATIVE_DIRECT_SEVEN_COMMIT');
   enter('ACL_AND_B7');const acl=renderNativeTask16RuntimeAcl(JSON.stringify({source:plan.source.witness,provisioned}),nonce);
-  enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+acl.sql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
+  enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+acl.writeSql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
   const catalog=require('./task16-current259-catalog.cjs'),source=plan.source.code;
   const identity={runId,database:db,databaseOid:roleIdentity.databaseOid,namespaceOid:roleIdentity.namespaceOid,ownerOid:'10',systemIdentifier:roleIdentity.systemIdentifier,runtimeOid:provisioned.roles.find(r=>r.name==='jg_task01_runtime').oid,observerOid:provisioned.roles.find(r=>r.name==='jg_task01_observer').oid,paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'};
   const request={source,identity,nonce,phase:'before'};enter('B7_BEFORE_RENDER');const beforeSql=catalog.renderCurrent259CatalogRead(request);
