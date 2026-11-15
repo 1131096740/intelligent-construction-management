@@ -327,3 +327,14 @@ test('pure auth archive material uses identical SQL with fixed distinct status a
  assert.throws(()=>f.api.claimCurrent259SevenInstallation(diagnostic,f.handle));assert.equal(f.calls.length,0);
  let getters=0;const hostile={...auth};Object.defineProperty(hostile,'executionPurpose',{get(){getters++;return 'AUTH_ONLY_DIAGNOSTIC';}});assert.throws(()=>f.api.archiveSevenAuthOnlyDiagnosticMaterial(hostile,view,nonce));assert.equal(getters,0);
 });
+
+test('native pure seven protocol retains the original qualified before SQL and rejects a different source',async()=>{
+ const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations);
+ const f=fixture(undefined,false,undefined,{witness,paymentProfile:PAYMENT261_RUNTIME_PROFILE});
+ await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
+ const input={source:witness,id:identity,ordinary,roleCommitXid:f.suppliedRoles.commitXid,databaseAclAfter:f.suppliedRoles.databaseAcl.after,runtime:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_runtime'),observer:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_observer')};
+ const sql=api.renderNativeTask16Seven(JSON.stringify(input),0,nonce,null);
+ assert.equal(sql,f.calls[0].sql);
+ assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify({...input,source:{...witness,candidateSha:'0'.repeat(40)}}),0,nonce,null));
+ assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify(input),3,nonce,null));
+});

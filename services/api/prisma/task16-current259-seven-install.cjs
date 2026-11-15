@@ -638,5 +638,27 @@ BEGIN
 END $current259_voucher_seven_preimage$;
 SET LOCAL search_path=pg_catalog,pg_temp;`;
 }
-module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
+// Pure native diagnostic SQL/readback only. No installed WeakMap entry or
+// original owned-resource continuation is issued by these data functions.
+function nativeSevenInput(text){
+ need(typeof text==='string'&&Buffer.byteLength(text)<=512*1024,'NATIVE_INPUT');const value=JSON.parse(text);
+ need(value&&Object.getPrototypeOf(value)===Object.prototype&&equal(Object.keys(value).sort(),['source','id','ordinary','runtime','observer','roleCommitXid','databaseAclAfter'].sort()),'NATIVE_INPUT');
+ const {source,id,ordinary,runtime,observer}=value;
+ need(source&&id&&ordinary&&runtime&&observer&&id.ownerOid==='10'&&oid(id.databaseOid)&&oid(id.namespaceOid)&&xid(id.systemIdentifier)&&/^jg_task01_[a-f0-9]{32}$/u.test(id.database)&&
+  /^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name)&&oid(ordinary.oid)&&ordinary.limit===0&&ordinary.password==='absent'&&
+  runtime.name==='jg_task01_runtime'&&observer.name==='jg_task01_observer'&&[runtime,observer].every(r=>oid(r.oid)&&r.limit===1&&r.login===true&&r.password==='scram')&&
+  new Set(['10',ordinary.oid,runtime.oid,observer.oid]).size===4,'NATIVE_INPUT');
+ need(xid(value.roleCommitXid)&&Array.isArray(value.databaseAclAfter)&&value.databaseAclAfter.length>=1&&value.databaseAclAfter.length<=4,'NATIVE_INPUT');
+ return {...value,roleCompletion:{commitXid:value.roleCommitXid,databaseAcl:{after:value.databaseAclAfter}},competition:false,paymentProfile:require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE,
+  material:material(source,false,require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE)};
+}
+function renderNativeTask16Seven(inputJson,phase,nonce,priorStdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
+ const input=nativeSevenInput(inputJson),prior=phase===0?undefined:readResult({stdout:priorStdout},input,phase-1,nonce);
+ return render(input,phase,nonce,prior);
+}
+function parseNativeTask16Seven(inputJson,phase,nonce,stdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeSevenInput(inputJson),phase,nonce);
+}
+module.exports=Object.freeze({renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
  claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure,describeCurrent259SevenPrestateReadbackFailure});

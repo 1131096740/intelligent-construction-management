@@ -292,3 +292,15 @@ test('auth-only cancellation keeps the exact original cause and never reads host
  });
  assert.equal(reads,0);
 });
+
+test('native pure role protocol renders the original verified write without issuing resource authority',()=>{
+ const api=require('./task16-current259-role-provision.cjs');
+ const scope=JSON.stringify({identity:databaseIdentity,app:application,ledger,competition:false});
+ const before=JSON.stringify(modelRow(0));
+ const sql=api.renderNativeTask16RoleInstall(scope,before,{runtime:'a'.repeat(96),observer:'b'.repeat(96)});
+ assert.match(sql,/CREATE ROLE jg_task01_runtime LOGIN/u);assert.match(sql,/NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS/u);
+ assert.match(sql,/CURRENT259_ROLE_PROVISION_PREIMAGE/u);assert.match(sql,/BEGIN ISOLATION LEVEL SERIALIZABLE/u);
+ assert.throws(()=>api.renderNativeTask16RoleInstall(scope,JSON.stringify({...modelRow(0),identity:{...identity,actor:'other'}}),{runtime:'a'.repeat(96),observer:'b'.repeat(96)}));
+ let reads=0;assert.throws(()=>api.renderNativeTask16RoleInstall(scope,before,{get runtime(){reads++;return 'a'.repeat(96);},observer:'b'.repeat(96)}));assert.equal(reads,0);
+ assert.throws(()=>api.claimCurrent259ProvisionedRoles({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'},{}));
+});

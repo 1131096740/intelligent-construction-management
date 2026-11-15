@@ -328,5 +328,31 @@ function claimCurrent261AuthOnlyDiagnosticRoles(result,handle){
  const proof=authRoleProofs.get(result);need(proof.handle===handle,'HANDLE');authRoleProofs.delete(result);proof.check();
  return Object.freeze({source:proof.source,completion:result,executionPurpose:'AUTH_ONLY_DIAGNOSTIC',check:proof.check,checkContinuity:proof.checkContinuity});
 }
-module.exports=Object.freeze({describeCurrent261AuthOnlyRoleFailure,provisionCurrent261AuthOnlyDiagnosticRoles,claimCurrent261AuthOnlyDiagnosticRoles,provisionCurrent259Roles,provisionCurrent259CompetitionRoles,provisionCurrent259Payment261Roles,provisionCurrent259Payment261CompetitionRoles,provisionCurrent259Payment261VoucherRoles,
+// Pure native diagnostic protocol only: JSON readbacks are data, never an
+// original resource completion or a private continuation/admission.
+function nativeRoleScope(text){
+ need(typeof text==='string'&&Buffer.byteLength(text)<=256*1024,'NATIVE_INPUT');
+ const scope=JSON.parse(text);need(keys(scope,['identity','app','ledger','competition'])&&scope.competition===false&&
+  plain(scope.identity)&&scope.identity.ownerOid==='10'&&/^jg_task01_[a-f0-9]{32}$/u.test(scope.identity.database)&&
+  plain(scope.app)&&/^jg_fixture_app_[a-f0-9]{24}$/u.test(scope.app.name)&&oid(scope.app.oid)&&Array.isArray(scope.ledger),'NATIVE_INPUT');
+ return scope;
+}
+function renderNativeTask16RoleRead(appOid,commitXid){
+ need(arguments.length===2&&oid(appOid)&&(commitXid===null||xid(commitXid)),'NATIVE_INPUT');return readSql(appOid,commitXid);
+}
+function renderNativeTask16RoleInstall(scopeJson,beforeStdout,credentials){
+ need(arguments.length===3&&plain(credentials)&&keys(credentials,['runtime','observer']),'NATIVE_INPUT');
+ const values=Object.fromEntries(['runtime','observer'].map(key=>{const d=Object.getOwnPropertyDescriptor(credentials,key);need(d&&Object.hasOwn(d,'value')&&typeof d.value==='string'&&/^[a-f0-9]{96}$/u.test(d.value),'NATIVE_INPUT');return [key,d.value];}));
+ need(values.runtime!==values.observer,'NATIVE_INPUT');const scope=nativeRoleScope(scopeJson),before=observed(beforeStdout);verifyBefore(before,scope);return installSql(scope,before,values);
+}
+function parseNativeTask16RoleRead(scopeJson,stdout,phase,beforeStdout=null,stagedStdout=null){
+ need(arguments.length>=3&&['before','install','committed'].includes(phase),'NATIVE_INPUT');
+ const scope=nativeRoleScope(scopeJson),row=observed(stdout);
+ if(phase==='before')verifyBefore(row,scope);
+ else if(phase==='install')verifyInstall(row,observed(beforeStdout),scope);
+ else {verifyBase(row,scope,'committed');const before=observed(beforeStdout),staged=observed(stagedStdout);verifyBefore(before,scope);const state=verifyInstall(staged,before,scope);
+  need([before,staged].every(r=>r.backend.pid!==row.backend.pid&&r.backend.start!==row.backend.start)&&equal(row.identity,staged.identity)&&equal(row.state,state)&&equal(row.access,staged.access),'COMMITTED');}
+ return row;
+}
+module.exports=Object.freeze({renderNativeTask16RoleRead,renderNativeTask16RoleInstall,parseNativeTask16RoleRead,describeCurrent261AuthOnlyRoleFailure,provisionCurrent261AuthOnlyDiagnosticRoles,claimCurrent261AuthOnlyDiagnosticRoles,provisionCurrent259Roles,provisionCurrent259CompetitionRoles,provisionCurrent259Payment261Roles,provisionCurrent259Payment261CompetitionRoles,provisionCurrent259Payment261VoucherRoles,
  provisionCurrent259Payment261AttributionGapRoles,claimCurrent259ProvisionedRoles});
