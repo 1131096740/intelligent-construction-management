@@ -13,7 +13,8 @@ function model(failure){
   'ContractReadService','MeService','AuditService','ContractDocumentService','ContractDraftController','FileService','JwtTokenService','AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor'].map(key=>[key,class {}]));
  for(const [key,methods]of Object.entries({ContractReadService:['workbenchLedger'],MeService:['getContractPendingWorkItems','contractV2LifecycleWorkItems'],AuditService:['record'],AuthService:['login','loadUserRoleScopes','issueTokens'],AuthRateLimitService:['take'],AuthController:['login'],Task12AuthErrorFilter:['catch'],Task12AuthStageInterceptor:['intercept']}))for(const name of methods)token[key].prototype[name]=function(){};
  const authorityToken=Symbol('contract-version-file-read-authority'),authority={async assertCanReadVersionFile(){}};
- const ordinary=Object.assign(new token.PrismaService(),{async onApplicationShutdown(){trace.push('ordinary-disconnect');}});
+ const ordinaryTarget=Object.assign(new token.PrismaService(),{async onApplicationShutdown(){trace.push('ordinary-disconnect');}});
+ const ordinary=failure==='lifecycle-native-proxy'?new Proxy(ordinaryTarget,{}):ordinaryTarget;
  const originalShutdown=ordinary.onApplicationShutdown;
  const providers={storage:{},template:{},worker:{}};
  const document={prisma:ordinary,async queueDraftPreview(){trace.push('ordinary-queue');},async getDraftBody(){trace.push('ordinary-body');}};
@@ -77,7 +78,7 @@ function model(failure){
   './task12-current259-document-login.cjs':{readNativeTask12DocumentLoginProjection(value){assert.equal(value,nativeProof);return {source:{candidateSha:'a'.repeat(40),profile:{profile:'TASK12_ARCHIVE261_SOURCE_V1'}}};},takeCurrent259GeneratedDocumentApplicationBridge(candidate){
    assert.equal(candidate,bridge);assert.equal(claimed,false);claimed=true;
   }},
-  './task16-current259-client-loader.cjs':{
+  './task16-current259-client-loader.cjs':{takeCurrent261NativeOrdinaryClient(actualLoader,actualLoaded,client){assert.equal(actualLoader,loader);assert.equal(actualLoaded,loaded);assert.equal(client,ordinary);return true;},
    isCurrent259OwnedModule(value){return value===testing;},
    createCurrent259OwnedApplication(value){assert.equal(value,testing);return app;},
    current259OwnedApplicationView(value){assert.equal(value,app);return app;},
@@ -216,4 +217,19 @@ test('native document application retains original providers Me and public lifec
  const bad=model('lifecycle-missing-me');
  await assert.rejects(bad.api.runNativeTask12DocumentApplication(bad.nativeProof,bad.bridge),/PROVIDERS/u);
  const wrong=model('lifecycle');await assert.rejects(wrong.api.runNativeTask12DocumentApplication({},wrong.bridge));
+});
+
+test('actual native main bridge reaches provider verification with the Prisma composite-proxy call shape',async()=>{
+ const fs=require('node:fs'),path=require('node:path'),f=model('lifecycle-native-proxy');
+ const source=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8');
+ const start=source.indexOf('   const bridge=Object.freeze('),end=source.indexOf("   return require('./task12-current259-document-application.cjs')",start);
+ assert.ok(start>=0&&end>start);
+ const ordinary=f.ordinary;assert.equal(require('node:util').types.isProxy(ordinary),true);assert.equal(ordinary instanceof f.bridge.loaded.PrismaService,true);
+ const bridge=new Function('check','loader','modules','ordinary','providers','operations','config',source.slice(start,end)+'return bridge;')(f.bridge.check,f.bridge.loader,f.bridge.loaded,ordinary,f.providers,{queue:{queueDraftPreview:f.bridge.queue}},f.bridge.publicLifecycle);
+ // Fail exactly at the next model boundary: this is not a genuine SDK/provider
+ // claim or business execution. The native entry must not reject the genuine
+ // Prisma proxy shape before the original provider verifier can run.
+ f.bridge.loader.createDocumentTestingModule=()=>{f.trace.push('actual-main-provider-boundary');throw Error('MODEL_PROVIDER_BOUNDARY');};
+ await assert.rejects(f.api.runNativeTask12DocumentApplication(f.nativeProof,bridge),error=>error.code==='CURRENT259_GENERATED_DOCUMENT_APP_PROVIDERS');
+ assert.ok(f.trace.includes('actual-main-provider-boundary'));
 });

@@ -2,7 +2,7 @@
 
 const {types}=require('node:util');
 const {isCurrent259OwnedModule,createCurrent259OwnedApplication,current259OwnedApplicationView,
- takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders}=require('./task16-current259-client-loader.cjs');
+ takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders,takeCurrent261NativeOrdinaryClient}=require('./task16-current259-client-loader.cjs');
 const CODE='CURRENT259_GENERATED_DOCUMENT_APP';
 const faults=new WeakMap(),httpBridges=new WeakMap(),lifecycleHttpBridges=new WeakMap();
 const exercisePattern=/^CURRENT259_GENERATED_DOCUMENT_EXERCISE_(?:INPUT|TEMPLATE|OPEN|SAVE|OWNER_BEGIN|GENERATE|PUBLIC_READBACK|OWNER_READBACK|RESULT)$/u;
@@ -70,7 +70,7 @@ async function runNativeTask12DocumentApplication(loginProjection,bridge){
  const loader=own(bridge,'loader'),loaded=own(bridge,'loaded'),ordinary=own(bridge,'ordinary'),config=own(bridge,'publicLifecycle');
  need(loader&&loaded&&config&&own(bridge,'publicDraft')===undefined&&typeof own(loader,'loadCurrent261LocalLifecycleDocumentModules')==='function'&&loader.loadCurrent261LocalLifecycleDocumentModules()===loaded,'HANDLE');
  const Class=own(loaded,'PrismaService'),isFixture=own(loaded,'isTask12LocalLifecycleFixture');
- need(typeof Class==='function'&&ordinary&&!types.isProxy(ordinary)&&ordinary instanceof Class&&typeof isFixture==='function'&&isFixture(own(config,'fixture'))&&own(own(own(config,'fixture'),'case'),'key')==='inside:equipment_rental'&&prior.source.profile?.profile==='TASK12_ARCHIVE261_SOURCE_V1','HANDLE');
+ need(typeof Class==='function'&&ordinary&&takeCurrent261NativeOrdinaryClient(loader,loaded,ordinary)===true&&ordinary instanceof Class&&typeof isFixture==='function'&&isFixture(own(config,'fixture'))&&own(own(own(config,'fixture'),'case'),'key')==='inside:equipment_rental'&&prior.source.profile?.profile==='TASK12_ARCHIVE261_SOURCE_V1','HANDLE');
  nativeApplications.add(loginProjection);return runDocumentApplication(bridge);
 }
 async function runDocumentApplication(bridge){

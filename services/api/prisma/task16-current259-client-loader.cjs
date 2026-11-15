@@ -10,6 +10,15 @@ const BUILTIN_LOADER_SOURCE=process.binding('natives')['internal/modules/cjs/loa
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code});};
 const own=(value,key)=>{need(value&&!types.isProxy(value),'CURRENT259_LOADER_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'),'CURRENT259_LOADER_DESCRIPTOR');return d.value;};
 const officialDocumentModuleViews=new WeakMap();
+const nativeTask12OrdinaryClients=new WeakMap();
+function takeCurrent261NativeOrdinaryClient(loader,loaded,client){
+ need(arguments.length===3&&client&&(typeof client==='object'||typeof client==='function'),'CURRENT261_NATIVE_ORDINARY_HANDLE');
+ const entry=nativeTask12OrdinaryClients.get(client);
+ // Unknown/replacement proxies are rejected before reading any property.
+ need(entry&&entry.loader===loader&&entry.loaded===loaded&&!entry.used,'CURRENT261_NATIVE_ORDINARY_HANDLE');
+ entry.verify();entry.used=true;return true;
+}
+
 function claimCurrent261OfficialDocumentModules(view){
  const code='CURRENT261_OFFICIAL_DOCUMENT_MODULES';
  need(arguments.length===1&&view&&typeof view==='object'&&!types.isProxy(view)&&officialDocumentModuleViews.has(view),code);
@@ -656,10 +665,22 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,loadCurrent261LocalLifecycleDocumentModules,loadCurrent261FirstLoginModules,createDocumentTestingModule,
+ function createNativeTask12OrdinaryClient(urlText){
+  const code='CURRENT261_NATIVE_ORDINARY_HANDLE';
+  need(arguments.length===1&&typeof urlText==='string'&&urlText.length<=8192&&material.source.profile.profile==='TASK12_ARCHIVE261_SOURCE_V1',code);
+  check();const loaded=loadCurrent261LocalLifecycleDocumentModules(),Constructor=values.PrismaService;
+  const url=new URL(urlText),keys=['schema','connection_limit','sslmode','sslaccept','sslcert','connect_timeout','pool_timeout','application_name'];
+  need(url.protocol==='postgresql:'&&url.hostname==='127.0.0.1'&&Number(url.port)>1024&&Number(url.port)<=65535&&Number(url.port)!==5432&&/^jg_fixture_app_[a-f0-9]{24}$/u.test(url.username)&&/^[a-f0-9]{96}$/u.test(url.password)&&/^\/jg_task01_[a-f0-9]{32}$/u.test(url.pathname)&&url.hash===''&&[...url.searchParams.keys()].length===keys.length&&keys.every(key=>url.searchParams.getAll(key).length===1)&&url.searchParams.get('schema')==='public'&&url.searchParams.get('connection_limit')==='2'&&url.searchParams.get('sslmode')==='require'&&url.searchParams.get('sslaccept')==='strict'&&url.searchParams.get('connect_timeout')==='5'&&url.searchParams.get('pool_timeout')==='5'&&/^\/private\/tmp\/jg-native-contract-[A-Za-z0-9_-]{1,32}\/ca\.crt$/u.test(url.searchParams.get('sslcert'))&&/^native_task12_[a-f0-9]{32}_3$/u.test(url.searchParams.get('application_name')),code);
+  const client=new Constructor({datasources:{db:{url:urlText}}});
+  check();need(Constructor===values.PrismaService&&loaded.PrismaService===Constructor&&client instanceof Constructor,code);
+  nativeTask12OrdinaryClients.set(client,{loader:result,loaded,used:false,verify(){
+   check();need(loadCurrent261LocalLifecycleDocumentModules()===loaded&&values.PrismaService===Constructor&&loaded.PrismaService===Constructor&&client instanceof Constructor&&Object.getPrototypeOf(client)===Constructor.prototype,code);
+  }});return client;
+ }
+ check();material.check();const result=Object.freeze({createNativeTask12OrdinaryClient,Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,loadCurrent261LocalLifecycleDocumentModules,loadCurrent261FirstLoginModules,createDocumentTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;
 }
-module.exports=Object.freeze({loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
+module.exports=Object.freeze({takeCurrent261NativeOrdinaryClient,loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
  inspectCurrent259OwnedDocumentAuthProviders,inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});

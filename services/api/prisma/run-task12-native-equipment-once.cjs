@@ -477,7 +477,7 @@ async function runNativeTask16Business(plan,state){
   const login=require('./task12-current259-document-login.cjs').readNativeTask12DocumentLoginProjection(contract.loginResult);
   const docClients=login.roles.map((role,i)=>{const ordinary=i===3,url=new URL('postgresql://'+role.name+'@127.0.0.1:'+port+'/'+plan.database);url.password=contract.secrets[i];
    for(const [key,value]of Object.entries({schema:'public',connection_limit:ordinary?'2':'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5',application_name:'native_task12_'+plan.runId.replaceAll('-','')+'_'+i}))url.searchParams.set(key,value);
-   return new modules.PrismaService({datasources:{db:{url:url.toString()}}});});
+   return ordinary?loader.createNativeTask12OrdinaryClient(url.toString()):new modules.PrismaService({datasources:{db:{url:url.toString()}}});});
   state.setClients(docClients);await wait(()=>Promise.all(docClients.map(client=>client.$connect())));check();
   const [templateClient,workerClient,queueClient,ordinary]=docClients;
   // The ordinary app pool is never the owner/runtime/observer or any worker.
