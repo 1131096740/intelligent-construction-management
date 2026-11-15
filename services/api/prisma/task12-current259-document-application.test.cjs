@@ -10,10 +10,10 @@ function model(failure){
  const fs=require('node:fs'),path=require('node:path');
  const trace=[],bindings=new Map(),authTickets=new Set();let escapedAuth,remainingMs=900000,sourceOwned=true,traps=0;const abort=new AbortController();
  const token=Object.fromEntries(['PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor',
-  'ContractDocumentService','ContractDraftController','FileService','JwtTokenService','AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor'].map(key=>[key,class {}]));
- for(const [key,methods]of Object.entries({AuthService:['login','loadUserRoleScopes','issueTokens'],AuthRateLimitService:['take'],AuthController:['login'],Task12AuthErrorFilter:['catch'],Task12AuthStageInterceptor:['intercept']}))for(const name of methods)token[key].prototype[name]=function(){};
+  'ContractReadService','MeService','AuditService','ContractDocumentService','ContractDraftController','FileService','JwtTokenService','AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor'].map(key=>[key,class {}]));
+ for(const [key,methods]of Object.entries({ContractReadService:['workbenchLedger'],MeService:['getContractPendingWorkItems','contractV2LifecycleWorkItems'],AuditService:['record'],AuthService:['login','loadUserRoleScopes','issueTokens'],AuthRateLimitService:['take'],AuthController:['login'],Task12AuthErrorFilter:['catch'],Task12AuthStageInterceptor:['intercept']}))for(const name of methods)token[key].prototype[name]=function(){};
  const authorityToken=Symbol('contract-version-file-read-authority'),authority={async assertCanReadVersionFile(){}};
- const ordinary={async onApplicationShutdown(){trace.push('ordinary-disconnect');}};
+ const ordinary=Object.assign(new token.PrismaService(),{async onApplicationShutdown(){trace.push('ordinary-disconnect');}});
  const originalShutdown=ordinary.onApplicationShutdown;
  const providers={storage:{},template:{},worker:{}};
  const document={prisma:ordinary,async queueDraftPreview(){trace.push('ordinary-queue');},async getDraftBody(){trace.push('ordinary-body');}};
@@ -24,7 +24,11 @@ function model(failure){
   return failure==='authority'?{}:authority;
  }}};
  document.files=file;
- const objects=new Map([[token.ContractDocumentService,document],[token.ContractDraftController,draft],
+ const audit=new token.AuditService(),me=new token.MeService(),contractRead=new token.ContractReadService();
+ audit.prisma=ordinary;me.prisma=ordinary;me.files=file;me.audit=audit;contractRead.prisma=ordinary;contractRead.audit=audit;contractRead.me=failure==='lifecycle-missing-me'?undefined:me;
+ if(failure==='lifecycle-shadow-me')me.getContractPendingWorkItems=function(){return [];};
+ if(failure==='lifecycle-getter-me')Object.defineProperty(contractRead,'me',{get(){traps++;return me;}});
+ const objects=new Map([[token.ContractReadService,contractRead],[token.MeService,me],[token.AuditService,audit],[token.ContractDocumentService,document],[token.ContractDraftController,draft],
   [token.FileService,file],[authorityToken,authority]]);
  const auth=new token.AuthService(),rateLimits=new token.AuthRateLimitService(),authController=new token.AuthController(),authFilter=new token.Task12AuthErrorFilter(),authInterceptor=new token.Task12AuthStageInterceptor();authInterceptor.filter=authFilter;auth.prisma=failure==='lifecycle-wrong-auth'?{}:ordinary;rateLimits.prisma=failure==='lifecycle-wrong-rate'?{}:ordinary;authController.auth=auth;
  if(failure==='lifecycle-shadow-auth')auth.login=function(){};
@@ -47,9 +51,12 @@ function model(failure){
  };}};
  const loaded={...token,armTask12AuthError(){const ticket=Object.freeze({});authTickets.add(ticket);return ticket;},takeTask12AuthError(filter,live,ticket){trace.push('auth-native-take');assert.equal(filter,authFilter);assert.equal(live,server);assert.equal(authTickets.delete(ticket),true);return Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2028'});},currentOfficialDocumentScope(){return {kind:'OFFICIAL_TOOL_RUNTIME',remainingTotalMilliseconds(){if(remainingMs<=0)throw Error('EXPIRED');return remainingMs;}};},async listenApi(view,port,host){assert.equal(view,app);trace.push(['listen',port,host]);server.listening=true;},CONTRACT_VERSION_FILE_READ_AUTHORITY:authorityToken,configureApiSecurity(){trace.push('security');},
   configureProjectionExportJson(){trace.push('projection');},apiJsonReplacer(){},createApiValidationPipe(){return {};}};
+ loader.loadCurrent261LocalLifecycleDocumentModules=()=>loaded;
+ loaded.isTask12LocalLifecycleFixture=value=>value===nativeFixture;
+ const nativeFixture=Object.freeze({case:Object.freeze({key:'inside:equipment_rental'})}),nativeProof=Object.freeze({});
  const bridge=Object.freeze({check(){if(!sourceOwned)throw Error('MODEL_SOURCE_CHANGED');},loader,loaded,ordinary,providers,async queue(...args){trace.push(['queue',...args]);return 77;},
   ...(['public','stuck-listener','public-fixed-error','public-other-error'].includes(failure)?{publicDraft:Object.freeze({})}:{}),
-  ...(failure?.startsWith('lifecycle')?{publicLifecycle:Object.freeze({signal:abort.signal})}:{}),
+  ...(failure?.startsWith('lifecycle')?{publicLifecycle:Object.freeze({signal:abort.signal,fixture:nativeFixture})}:{}),
   async exercise(http){
    if(['public','stuck-listener','public-fixed-error','public-other-error','lifecycle'].includes(failure)||failure?.startsWith('lifecycle')){assert.deepEqual(http,{fixed:true});trace.push('exercise-public');
     if(failure.endsWith('-error'))throw Object.assign(Error('private details'),
@@ -67,7 +74,7 @@ function model(failure){
   './task12-current259-document-http.cjs':{async withCurrent259DocumentHttp(config,live,check,verifyToken,consume){
    assert.equal(config,bridge.publicDraft);assert.equal(live,server);check();assert.deepEqual(verifyToken('synthetic'),{});trace.push('public-http');return consume({fixed:true});
   }},
-  './task12-current259-document-login.cjs':{takeCurrent259GeneratedDocumentApplicationBridge(candidate){
+  './task12-current259-document-login.cjs':{readNativeTask12DocumentLoginProjection(value){assert.equal(value,nativeProof);return {source:{candidateSha:'a'.repeat(40),profile:{profile:'TASK12_ARCHIVE261_SOURCE_V1'}}};},takeCurrent259GeneratedDocumentApplicationBridge(candidate){
    assert.equal(candidate,bridge);assert.equal(claimed,false);claimed=true;
   }},
   './task16-current259-client-loader.cjs':{
@@ -80,7 +87,7 @@ function model(failure){
  };
  const filename=path.join(__dirname,'task12-current259-document-application.cjs'),mod={exports:{}};
  new Function('require','module',fs.readFileSync(filename,'utf8'))(id=>imports[id]??require(id),mod);
- return {api:mod.exports,bridge,token,bindings,trace,server,ordinary,originalShutdown,document,originalQueue,providers,authTickets,get escapedAuth(){return escapedAuth;},traps:()=>traps};
+ return {api:mod.exports,nativeProof,bridge,token,bindings,trace,server,ordinary,originalShutdown,document,originalQueue,providers,authTickets,get escapedAuth(){return escapedAuth;},traps:()=>traps};
 }
 test('the same application resolves original file authority, routes only queue to its role and drains before returning',async()=>{
  const f=model();
@@ -192,4 +199,21 @@ for(const variant of ['module-exports-getter','module-filename-getter','cache-sl
  // diagnostic observation, not a new business capability or sticky full gate.
  f.row.module=mod;Object.defineProperty(mod,key,original);Object.defineProperty(cache,'closed-model',slot);Object.defineProperty(f.required,'cache',cacheDescriptor);
  assert.equal(f.verify(),true);
+});
+
+
+for(const mode of ['lifecycle-missing-me','lifecycle-shadow-me','lifecycle-getter-me'])test('real contract pending provider path rejects '+mode+' before HTTP (factory model only)',async()=>{
+ const f=model(mode);await assert.rejects(f.api.runCurrent259GeneratedDocumentApplication(f.bridge),{code:'CURRENT259_GENERATED_DOCUMENT_APP_PROVIDERS'});
+ assert.equal(f.trace.includes('lifecycle-http'),false);assert.equal(f.traps(),0);
+});
+
+test('native document application retains original providers Me and public lifecycle without old resource bridge',async()=>{
+ const f=model('lifecycle');
+ assert.equal(await f.api.runNativeTask12DocumentApplication(f.nativeProof,f.bridge),false);
+ await assert.rejects(f.api.runNativeTask12DocumentApplication(f.nativeProof,f.bridge),/HANDLE/u);
+ assert.ok(f.trace.includes('lifecycle-http'));assert.ok(f.trace.includes('worker-drained'));
+ assert.equal(f.ordinary.onApplicationShutdown,f.originalShutdown);
+ const bad=model('lifecycle-missing-me');
+ await assert.rejects(bad.api.runNativeTask12DocumentApplication(bad.nativeProof,bad.bridge),/PROVIDERS/u);
+ const wrong=model('lifecycle');await assert.rejects(wrong.api.runNativeTask12DocumentApplication({},wrong.bridge));
 });

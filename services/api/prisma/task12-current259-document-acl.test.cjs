@@ -127,3 +127,53 @@ test('explicit 261 lifecycle document roles add only their reached defaults and 
  const legacy=f.run.acceptBefore(f.observation(f.challenge(f.run.beforeSql),'before'));
  assert.doesNotMatch(legacy.sql,/GRANT INSERT \([^\n]*"createdAt"[^\n]*\) ON TABLE public\."AuditLog"/u);
 });
+
+test('native document ACL requires the genuine native role projection before issuing any SQL',()=>{
+ const api=require('./task12-current259-document-acl.cjs');
+ assert.equal(typeof api.beginNativeTask12DocumentAclProtocol,'function');
+ for(const value of [{},Object.freeze({status:'NATIVE_TASK12_DOCUMENT_ROLES_MATCHED_NOT_ADMISSION'}),new Proxy({},{get(){throw Error('trap');}})]){
+  assert.throws(()=>api.beginNativeTask12DocumentAclProtocol(value),/HANDLE/u);
+ }
+});
+
+test('document roles read only the two native implicit primary keys without widening the original matrix',()=>{
+ const {createHash}=require('node:crypto'),fs=require('node:fs'),path=require('node:path');
+ const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task12-current259-document-acl.json'),'utf8'));
+ const targets=[['jg_c259_doc_template','UserPosition'],['jg_c259_doc_queue','ContractDraftAttachment']];
+ for(const [role,table]of targets){
+  assert.ok(manifest.roles[role][table].select.includes('id'),role+'/'+table+' requires native implicit PK');
+  manifest.roles[role][table].select=manifest.roles[role][table].select.filter(column=>column!=='id');
+ }
+ // Frozen independent pre-change whole manifest: roles, every privilege and all unrelated columns.
+ assert.equal(createHash('sha256').update(JSON.stringify(manifest,null,2)+'\n').digest('hex'),
+  'd2dfd0f356152bb7acb41074b9aa39004907dc24c2359b0f2f9dffd8b49b3038');
+ const f=fixture(),writer=f.run.acceptBefore(f.observation(f.challenge(f.run.beforeSql),'before'));
+ for(const [role,table]of targets){
+  assert.ok(writer.sql.split('\n').some(line=>line.startsWith('GRANT SELECT (')&&line.includes('"id"')&&line.endsWith('ON TABLE public."'+table+'" TO "'+role+'";')));
+ }
+ assert.match(writer.sql,/actual EXCEPT ALL SELECT \* FROM expected/u);
+ assert.match(writer.sql,/expected EXCEPT ALL SELECT \* FROM actual/u);
+});
+
+
+test('fixed document ACL source rejects either missing primary key and every added privilege before SQL issuance',()=>{
+ const fs=require('node:fs'),path=require('node:path');
+ const manifestPath=path.join(__dirname,'task12-current259-document-acl.json');
+ const original=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
+ const changes=[
+  manifest=>{manifest.roles.jg_c259_doc_template.UserPosition.select=manifest.roles.jg_c259_doc_template.UserPosition.select.filter(c=>c!=='id');},
+  manifest=>{manifest.roles.jg_c259_doc_queue.ContractDraftAttachment.select=manifest.roles.jg_c259_doc_queue.ContractDraftAttachment.select.filter(c=>c!=='id');},
+  manifest=>{manifest.roles.jg_c259_doc_template.UserPosition.select.push('createdAt');},
+  manifest=>{manifest.roles.jg_c259_doc_queue.ContractDraftAttachment.insert=['id'];},
+  manifest=>{manifest.roles.jg_c259_doc_worker.ContractFormalFile.select.push('id');}
+ ];
+ for(const change of changes){
+  const manifest=structuredClone(original);change(manifest);
+  const bytes=Buffer.from(JSON.stringify(manifest,null,2)+'\n'),mod={exports:{}};
+  // Filesystem is the public source-material boundary; issue no SQL for altered bytes.
+  const files={...fs,readFileSync(file,...args){return file===manifestPath?bytes:fs.readFileSync(file,...args);}};
+  new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task12-current259-document-acl.cjs'),'utf8'))(
+   id=>id==='node:fs'?files:require(id),mod,__dirname);
+  assert.throws(()=>mod.exports.beginCurrent259GeneratedDocumentAcl(),/CURRENT259_DOCUMENT_ACL_SOURCE/u);
+ }
+});

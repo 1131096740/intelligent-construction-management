@@ -64,6 +64,7 @@ function scope(acl,view,document){
 }
 
 function projection(input,phase,challenge,writeXid){
+ const serverPort=input.nativeServerPort??5432;
  const {identity,acl,ledger}=input;
  const staged=phase===phases[1],committed=phase===phases[2];
  const fixedNames=names.map(quote).join(',');
@@ -82,7 +83,7 @@ function projection(input,phase,challenge,writeXid){
   AND (SELECT system_identifier::text FROM pg_control_system())=${quote(identity.systemIdentifier)}
   AND current_setting('server_version_num')::integer BETWEEN 160000 AND 169999 AND current_setting('session_replication_role')='origin'
   AND current_setting('transaction_read_only')=${quote(staged?'off':'on')} AND current_setting('transaction_isolation')=${quote(staged?'serializable':'repeatable read')}
-  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5432 AND ssl.ssl
+  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=${serverPort} AND ssl.ssl
   AND pg_xact_status(${quote(acl.completion.installXid)}::xid8)='committed'
   AND pg_xact_status(${quote(acl.archiveCompletion.installXid)}::xid8)='committed'
   AND (${acl.catalogSql})=${quote(acl.completion.catalogSha256)} AND (${acl.protectedSql})=${quote(acl.completion.protectedSha256)}
@@ -241,5 +242,44 @@ function claim(result,handle,lifecycle,authOnly=false){
   ordinaryAcl:receipt.ordinaryAcl,source:receipt.ordinaryAcl.source,roles:receipt.roles,check:receipt.check,checkContinuity:receipt.checkContinuity});
 }
 function claimCurrent261AuthOnlyDiagnosticDocumentRoles(result,handle){need(arguments.length===2,'HANDLE');return claim(result,handle,true,true);}
-module.exports=Object.freeze({provisionCurrent261AuthOnlyDiagnosticDocumentRoles,claimCurrent261AuthOnlyDiagnosticDocumentRoles,provisionCurrent261GeneratedLifecycleDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
+const nativeRoleProjections=new WeakMap();
+function readNativeTask12DocumentRolesProjection(result){
+ need(arguments.length===1&&result&&!types.isProxy(result)&&nativeRoleProjections.has(result),'HANDLE');
+ return nativeRoleProjections.get(result);
+}
+function beginNativeTask12DocumentRolesProtocol(ordinaryCompletion){
+ need(arguments.length===1,'HANDLE');
+ const acl=require('./task16-current259-ordinary-archive-acl.cjs').readNativeTask12OrdinaryAclProjection(ordinaryCompletion);
+ const source=qualifyCurrent261GeneratedLifecycleSource(acl.source),plan=registeredGeneratedLifecycleCollisionMaterial(source);
+ need(acl.generatedLifecycle===true&&ordinaryCompletion.purpose==='CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1'&&
+  ordinaryCompletion.effectivePlanSha256===plan.sha256&&ordinaryCompletion.installation===plan.installation&&
+  Number.isInteger(acl.serverPort)&&acl.serverPort>1024&&acl.serverPort<=65535&&acl.serverPort!==5432,'HANDLE');
+ const identity=Object.freeze(Object.fromEntries(identityKeys.map(key=>[key,acl.roleCompletion.databaseIdentity[key]])));
+ const reserved=['10',acl.roleCompletion.ordinary.oid,...acl.roleCompletion.roles.map(role=>role.oid)];
+ need(reserved.every(oid)&&new Set(reserved).size===reserved.length,'HANDLE');
+ const input={identity,reserved,acl,ledger:source.profile.ledger,nativeServerPort:acl.serverPort};
+ let state=0;const take=expected=>{need(state===expected,'PHASE');state++;};
+ const firstChallenge=randomBytes(32).toString('hex');
+ return Object.freeze({sql:render(input,phases[0],firstChallenge),acceptBefore(stdout){
+  take(0);const before=observation({stdout},input,phases[0],firstChallenge);
+  const writerChallenge=randomBytes(32).toString('hex');
+  return Object.freeze({sql:render(input,phases[1],writerChallenge,before),acceptWritten(stdout){
+   take(1);const staged=observation({stdout},input,phases[1],writerChallenge);
+   need(distinct(before,staged)&&staged.stableSha256===before.stableSha256&&
+    ![ordinaryCompletion.installXid,ordinaryCompletion.archiveInstallXid].includes(staged.installXid),'STAGED');
+   const readerChallenge=randomBytes(32).toString('hex');
+   return Object.freeze({sql:render(input,phases[2],readerChallenge,before,staged.installXid),acceptCommitted(stdout){
+    take(2);const committed=observation({stdout},input,phases[2],readerChallenge);
+    need(distinct(before,committed)&&distinct(staged,committed)&&committed.stableSha256===staged.stableSha256&&
+     committed.installXid===staged.installXid&&equal(committed.roles,staged.roles),'COMMITTED');
+    const result=Object.freeze({status:'NATIVE_TASK12_DOCUMENT_ROLES_MATCHED_NOT_ADMISSION',sourceSha:ordinaryCompletion.sourceSha,
+     runId:ordinaryCompletion.runId,installXid:committed.installXid,effectivePlanSha256:ordinaryCompletion.effectivePlanSha256,
+     installation:ordinaryCompletion.installation,roleCount:names.length,executionAllowed:false,nativeAdmission:false});
+    nativeRoleProjections.set(result,Object.freeze({completion:result,ordinaryAclCompletion:ordinaryCompletion,ordinaryAcl:acl,
+     source,serverPort:acl.serverPort,roles:Object.freeze(committed.roles.map(Object.freeze))}));return result;
+   }});
+  }});
+ }});
+}
+module.exports=Object.freeze({beginNativeTask12DocumentRolesProtocol,readNativeTask12DocumentRolesProjection,provisionCurrent261AuthOnlyDiagnosticDocumentRoles,claimCurrent261AuthOnlyDiagnosticDocumentRoles,provisionCurrent261GeneratedLifecycleDocumentRoles,claimCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
  claimCurrent259GeneratedDocumentRoles});

@@ -8,7 +8,7 @@ const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-g
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const roles=['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue'];
-const manifestSha='d2dfd0f356152bb7acb41074b9aa39004907dc24c2359b0f2f9dffd8b49b3038';
+const manifestSha='f4614a208b34cfe73ddf7c2472504251b433350d382fa9ec1733f4d8054dbf4f';
 const manifestFile=path.join(__dirname,'task12-current259-document-acl.json');
 const keys=['challenge','phase','backendPid','backendStart','databaseOid','namespaceOid','systemIdentifier','coordinatesSha256',
  'roleOids','roleXmins','installXid','commitStatus'];
@@ -107,7 +107,7 @@ function catalog(material){
  return {rolesSql,publicNs,dbOid,roleHealth,fixedObjects:collision?`(${fixedObjects}) AND (${collision.metadata}) AND (${collision.installation})`:fixedObjects,effective,acl:post=>collision?`(${acl(post)}) AND (${collision.acl(post)})`:acl(post),coordinates};
 }
 
-function render(material,c,phase,challenge,before,staged){
+function render(material,c,phase,challenge,before,staged,serverPort=5432){
  const stagedPhase=phase==='staged',committed=phase==='committed';
  const committedStatus=committed?`pg_xact_status(${quote(staged.installXid)}::xid8)`:'NULL::text';
  const xid=stagedPhase?'pg_current_xact_id()::text':committed?quote(staged.installXid):'NULL::text';
@@ -115,7 +115,7 @@ function render(material,c,phase,challenge,before,staged){
  IF current_user::regrole::oid<>10 OR session_user IS DISTINCT FROM current_user OR ${c.dbOid} IS NULL
   OR current_database() !~ '^jg_task01_[a-f0-9]{32}$'
   OR host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'
-  OR inet_server_port() IS DISTINCT FROM 5432 OR
+  OR inet_server_port() IS DISTINCT FROM ${serverPort} OR
   current_setting('server_version_num')::integer NOT BETWEEN 160000 AND 169999 OR current_setting('session_replication_role')<>'origin'
   OR NOT EXISTS(SELECT FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
   OR ${c.roleHealth} IS DISTINCT FROM true OR NOT(${c.fixedObjects}) OR NOT(${c.effective}) OR NOT(${c.acl(post)})
@@ -224,15 +224,17 @@ function renderCurrent261DocumentAclContinuity(source,identities){
 function beginCurrent261GeneratedLifecycleDocumentAcl(source){
  need(arguments.length===1&&source!==undefined,'ARGUMENTS');return begin(profile(source));
 }
-function begin(material){
+function begin(material,native){
+ const serverPort=native?.serverPort??5432;
  const c=catalog(material),challenge=nonce();
- return Object.freeze({beforeSql:render(material,c,'before',challenge),acceptBefore:once(text=>{
+ return Object.freeze({beforeSql:render(material,c,'before',challenge,undefined,undefined,serverPort),acceptBefore:once(text=>{
   const before=observation(text,'before',challenge),challengeWrite=nonce();
-  return Object.freeze({sql:render(material,c,'staged',challengeWrite,before),acceptStaged:once(stagedText=>{
+  if(native)need(before.databaseOid===native.identity.databaseOid&&before.namespaceOid===native.identity.namespaceOid&&before.systemIdentifier===native.identity.systemIdentifier&&same(before.roleOids,native.roles.map(role=>role.oid))&&same(before.roleXmins,native.roles.map(role=>role.xmin)),'BEFORE');
+  return Object.freeze({sql:render(material,c,'staged',challengeWrite,before,undefined,serverPort),acceptStaged:once(stagedText=>{
    const staged=observation(stagedText,'staged',challengeWrite);
    need(same(stable(before),stable(staged))&&distinct(before,staged),'STAGED');
    const challengeReadback=nonce();
-   return Object.freeze({sql:render(material,c,'committed',challengeReadback,before,staged),acceptCommitted:once(committedText=>{
+   return Object.freeze({sql:render(material,c,'committed',challengeReadback,before,staged,serverPort),acceptCommitted:once(committedText=>{
     const committed=observation(committedText,'committed',challengeReadback);
     need(same(stable(staged),stable(committed))&&distinct(before,committed)&&distinct(staged,committed)&&
      committed.installXid===staged.installXid,'COMMITTED');
@@ -243,4 +245,11 @@ function begin(material){
   })});
  })});
 }
-module.exports=Object.freeze({beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261GeneratedLifecycleDocumentAcl,describeMigration261GeneratedLifecycleDocumentAcl,renderCurrent261DocumentAclContinuity});
+function beginNativeTask12DocumentAclProtocol(result){
+ need(arguments.length===1,'HANDLE');
+ const prior=require('./task12-current259-document-role-provision.cjs').readNativeTask12DocumentRolesProjection(result);
+ const serverPort=prior.serverPort;
+ need(Number.isInteger(serverPort)&&serverPort>1024&&serverPort<=65535&&serverPort!==5432,'HANDLE');
+ return begin(profile(prior.source),{serverPort,roles:prior.roles,identity:prior.ordinaryAcl.roleCompletion.databaseIdentity});
+}
+module.exports=Object.freeze({beginNativeTask12DocumentAclProtocol,beginCurrent259GeneratedDocumentAcl,beginCurrent261GeneratedLifecycleDocumentAcl,describeCurrent261GeneratedLifecycleDocumentAcl,describeMigration261GeneratedLifecycleDocumentAcl,renderCurrent261DocumentAclContinuity});

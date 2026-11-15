@@ -40,9 +40,10 @@ function writeExclusive(file,bytes,onOpen){
 
 function parseArgs(args){
  const authOnly=args[0]==='--auth-only';if(authOnly)args=args.slice(1);
+ let caseKey;if(args[0]==='--case'){need(!authOnly,'ARGS');caseKey=require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase(args[1]).key;args=args.slice(2);}
  need((args.length===4||args.length===5&&args[4]==='--once')&&args[0]==='--plan'&&
   args[2]==='--expected-plan-sha256'&&SHA.test(args[3]),'ARGS');
- return {file:args[1],digest:args[3],once:args.length===5,authOnly};
+ return {file:args[1],digest:args[3],once:args.length===5,authOnly,...(caseKey?{caseKey}:{})};
 }
 
 function checkHostEnv(){
@@ -348,9 +349,10 @@ async function main(){
   const args=parseArgs(process.argv.slice(2));authOnly=args.authOnly;
   const {captureCurrent261ContractBusinessIssuer,captureCurrent261FirstLoginBusinessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
   (authOnly?captureCurrent261FirstLoginBusinessIssuer:captureCurrent261ContractBusinessIssuer)();
-  const {verifyCurrent261LocalLifecyclePlan,verifyCurrent261FirstLoginPlan}=require('../../../scripts/prepare-task12-current261-local-lifecycle.cjs');
-  const checked=(authOnly?verifyCurrent261FirstLoginPlan:verifyCurrent261LocalLifecyclePlan)(args.file,args.digest);
+  const {verifyCurrent261LocalLifecyclePlan,verifyCurrent261FirstLoginPlan,verifyCurrent261LifecycleCasePlan}=require('../../../scripts/prepare-task12-current261-local-lifecycle.cjs');
+  const checked=(args.caseKey?verifyCurrent261LifecycleCasePlan:authOnly?verifyCurrent261FirstLoginPlan:verifyCurrent261LocalLifecyclePlan)(args.file,args.digest);
   const {plan}=checked,runtimeSha256=plan.runtime.sha256;
+  need(args.caseKey===plan.case.key,'RUNTIME');
   need(plan.purpose===(authOnly?'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC':'CURRENT261_GENERATED_LIFECYCLE_LOCAL'),'RUNTIME');
   need(checked.sha256===args.digest&&SHA.test(runtimeSha256)&&checked.runtime&&typeof checked.runtime==='object','RUNTIME');
   if(!args.once)return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_HOLD':'CURRENT261_LOCAL_LIFECYCLE_HOLD',planSha256:checked.sha256,runtimeSha256,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{})};
@@ -522,7 +524,7 @@ async function main(){
        need(!invoked,'RESULT');invoked=true;check();
        if(authOnly&&recordConsumerObservation){try{const facts=projectConsumerObservation?projectConsumerObservation(outcome):Object.freeze({status:'UNKNOWN'});recordConsumerObservation(facts);consumerObservation=facts.status==='OBSERVED'?'DURABLE_OBSERVED':'DURABLE_UNKNOWN';}catch{/* Observation cannot alter the original opaque callback result. */}}
        return outcome;
-      },token);}catch(cause){rememberFirstFailure(cause,'APPLICATION');throw cause;}
+      },token,...(args.caseKey?[args.caseKey]:[]));}catch(cause){rememberFirstFailure(cause,'APPLICATION');throw cause;}
       finally{entry.active=false;contractContinuities.delete(token);currentContractContinuity=undefined;}
       check();need(invoked,'RESULT');
       const projection=projectOutcome(app);

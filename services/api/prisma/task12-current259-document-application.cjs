@@ -61,6 +61,19 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
  need(arguments.length===1,'HANDLE');
  const {takeCurrent259GeneratedDocumentApplicationBridge}=require('./task12-current259-document-login.cjs');
  try{takeCurrent259GeneratedDocumentApplicationBridge(bridge);}catch{throw fault('HANDLE');}
+ return runDocumentApplication(bridge);
+}
+const nativeApplications=new WeakSet();
+async function runNativeTask12DocumentApplication(loginProjection,bridge){
+ need(arguments.length===2&&bridge&&!types.isProxy(bridge)&&loginProjection&&!types.isProxy(loginProjection)&&!nativeApplications.has(loginProjection),'HANDLE');
+ const prior=require('./task12-current259-document-login.cjs').readNativeTask12DocumentLoginProjection(loginProjection);
+ const loader=own(bridge,'loader'),loaded=own(bridge,'loaded'),ordinary=own(bridge,'ordinary'),config=own(bridge,'publicLifecycle');
+ need(loader&&loaded&&config&&own(bridge,'publicDraft')===undefined&&typeof own(loader,'loadCurrent261LocalLifecycleDocumentModules')==='function'&&loader.loadCurrent261LocalLifecycleDocumentModules()===loaded,'HANDLE');
+ const Class=own(loaded,'PrismaService'),isFixture=own(loaded,'isTask12LocalLifecycleFixture');
+ need(typeof Class==='function'&&ordinary&&!types.isProxy(ordinary)&&ordinary instanceof Class&&typeof isFixture==='function'&&isFixture(own(config,'fixture'))&&own(own(own(config,'fixture'),'case'),'key')==='inside:equipment_rental'&&prior.source.profile?.profile==='TASK12_ARCHIVE261_SOURCE_V1','HANDLE');
+ nativeApplications.add(loginProjection);return runDocumentApplication(bridge);
+}
+async function runDocumentApplication(bridge){
  const {check,loader,loaded,ordinary,providers,queue,exercise,publicDraft,publicLifecycle}=bridge;
  let testing,view,orphan,closeApp,closeModule,restoreQueue,restoreOrdinary,server;
  let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value,authActive=false;
@@ -108,10 +121,24 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
     own(authObjects[0],'prisma')===ordinary&&own(authObjects[1],'prisma')===ordinary&&own(authObjects[2],'auth')===authObjects[0]&&own(authObjects[4],'filter')===authObjects[3]&&
     authMethods.every(row=>method(row.target,row.name)===row.value&&method(row.receiver,row.name)===row.value),'PROVIDERS');
   };
+  // The contract ledger must use the genuine narrow Me projection. Optional
+  // provider absence must never turn a missing task into an accepted empty list.
+  const requireTasks=publicLifecycle&&own(publicLifecycle,'executionPurpose')!=='AUTH_ONLY_DIAGNOSTIC';
+  const taskKeys=requireTasks?['ContractReadService','MeService','AuditService']:[];
+  const taskTokens=taskKeys.map(key=>own(loaded,key));need(taskTokens.every(token=>typeof token==='function'),'PROVIDERS');
+  const taskObjects=taskTokens.map(token=>get(testing,token));
+  const taskMethods=requireTasks?[['workbenchLedger'],['getContractPendingWorkItems','contractV2LifecycleWorkItems'],['record']].flatMap((names,i)=>names.map(name=>({receiver:taskObjects[i],prototype:taskTokens[i].prototype,name,value:method(taskTokens[i].prototype,name)}))):[];
+  const taskReceivers=target=>{
+   if(!requireTasks)return;
+   need(taskTokens.every((token,i)=>taskObjects[i]&&!types.isProxy(taskObjects[i])&&Object.getPrototypeOf(taskObjects[i])===token.prototype&&get(target,token)===taskObjects[i])&&
+    taskObjects.every(value=>own(value,'prisma')===ordinary)&&own(taskObjects[0],'me')===taskObjects[1]&&
+    own(taskObjects[0],'audit')===taskObjects[2]&&own(taskObjects[1],'audit')===taskObjects[2]&&own(taskObjects[1],'files')===file&&
+    taskMethods.every(row=>method(row.prototype,row.name)===row.value&&method(row.receiver,row.name)===row.value),'PROVIDERS');
+  };
   const moduleRef=own(file,'moduleRef'),getModule=method(moduleRef,'get');
   const routeQueue=(...args)=>{check();return queue(...args);};
   const verifyProviders=target=>{
-   check();authReceivers(target);
+   check();authReceivers(target);taskReceivers(target);
    need(tokens.every((token,i)=>get(target,token)===instances[i])&&ordinary.onApplicationShutdown===deferredDisconnect&&
     get(target,documentToken)===document&&get(target,fileToken)===file&&get(target,draftToken)===draft&&
     own(document,'prisma')===ordinary&&own(document,'files')===file&&own(draft,'documents')===document&&
@@ -223,4 +250,4 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
  if(primary)throw primary;
  return value;
 }
-module.exports=Object.freeze({takeCurrent261FirstLoginHttpBridge,takeCurrent261LocalLifecycleHttpBridge,runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});
+module.exports=Object.freeze({runNativeTask12DocumentApplication,takeCurrent261FirstLoginHttpBridge,takeCurrent261LocalLifecycleHttpBridge,runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});

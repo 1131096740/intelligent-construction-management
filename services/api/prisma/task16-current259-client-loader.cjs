@@ -332,6 +332,8 @@ function loadCurrent259Client(handle){
     ['database/task12-auth-transaction-phase.js',['observeTask12AuthTransaction','takeTask12AuthTransactionPhase']],
     ['database/task12-auth-error-diagnostic.js',['Task12AuthErrorFilter','Task12AuthStageInterceptor','armTask12AuthError','takeTask12AuthError']],
     ['contract/contract.module.js',['ContractModule']],
+    ['contract/contract-read.service.js',['ContractReadService']],
+    ['me/me.service.js',['MeService']],['audit/audit.service.js',['AuditService']],
     ['contract-template/contract-template.module.js',['ContractTemplateModule']],
     ['contract-template/contract-template.controller.js',['ContractTemplateController']],
     ['contract-template/contract-template.service.js',['ContractTemplateService']],
@@ -345,11 +347,11 @@ function loadCurrent259Client(handle){
     ['contract-workbench/contract-draft.controller.js',['ContractDraftController']],
     ['file/file.service.js',['FileService','PrivateFileStorage']],
     ['contract/contract-version-file-read-authority.js',['CONTRACT_VERSION_FILE_READ_AUTHORITY']],
-    ['database/task12-generated-document-seam.js',['verifyTask12MaterialTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument']],
+    ['database/task12-generated-document-seam.js',['verifyTask12MaterialTemplate','verifyTask12EquipmentTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument']],
     ['database/task12-generated-document-draft-save.js',['saveTask12GeneratedDocumentDraft']],
-    ['database/task12-generated-material-template.js',['publishTask12GeneratedMaterialTemplate']],
+    ['database/task12-generated-material-template.js',['publishTask12GeneratedMaterialTemplate','publishTask12GeneratedEquipmentTemplate']],
     ['database/task12-generated-document-readback.js',['readTask12GeneratedDocumentOutputs','claimTask12GeneratedDocumentOwnerReadback']],
-    ['database/task12-generated-document-role-services.js',['withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices']],
+    ['database/task12-generated-document-role-services.js',['withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices','withTask12NativeHostDocumentRoleServices','withTask12NativeHostDocumentRoleServices']],
    ]){
     const file=path.join(dist,relative),exports=guardedRequire(file),mod=require.cache[file];
     need(mod?.loaded===true&&mod.exports===exports,code);
@@ -372,6 +374,7 @@ function loadCurrent259Client(handle){
     ContractWorkbenchModule,ContractDraftController,FileService,PrivateFileStorage}=documentValues;
    const tokens=Object.freeze([values.PrismaService,PrivateFileStorage,LayoutTemplateService,ContractDocumentProcessor]);
    const authMethods=[['AuthService',['login','loadUserRoleScopes','issueTokens']],['AuthRateLimitService',['take']],['AuthController',['login']],['Task12AuthErrorFilter',['catch']],['Task12AuthStageInterceptor',['intercept']]].flatMap(([key,names])=>names.map(name=>({target:documentValues[key].prototype,name,value:dataMethod(documentValues[key].prototype,name)})));
+   const taskMethods=[['ContractReadService',['workbenchLedger']],['MeService',['getContractPendingWorkItems','contractV2LifecycleWorkItems']],['AuditService',['record']]].flatMap(([key,names])=>names.map(name=>({target:documentValues[key].prototype,name,value:dataMethod(documentValues[key].prototype,name)})));
    const originalQueue=dataMethod(ContractDocumentService.prototype,'queueDraftPreview');
    const originalVerifyJwt=dataMethod(documentValues.JwtTokenService.prototype,'verifyAccessToken');
    const originalFileAccess=dataMethod(FileService.prototype,'assertCanDownloadFile');
@@ -386,12 +389,12 @@ function loadCurrent259Client(handle){
     return Array.isArray(actual)&&actual.length===expected.length&&expected.every((value,index)=>value===actual[index]);
    };
    const exports=Object.freeze({...Object.fromEntries([
-    'verifyTask12MaterialTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument',
+    'verifyTask12MaterialTemplate','verifyTask12EquipmentTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument',
     'saveTask12GeneratedDocumentDraft',
-    'publishTask12GeneratedMaterialTemplate','readTask12GeneratedDocumentOutputs','claimTask12GeneratedDocumentOwnerReadback',
+    'publishTask12GeneratedMaterialTemplate','publishTask12GeneratedEquipmentTemplate','readTask12GeneratedDocumentOutputs','claimTask12GeneratedDocumentOwnerReadback',
     'withTask12PreownedDocumentRoleServices','withTask12NestDocumentRoleServices',
     'PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService',
-    'ContractDraftController','FileService','CONTRACT_VERSION_FILE_READ_AUTHORITY','JwtTokenService',
+    'ContractReadService','MeService','AuditService','ContractDraftController','FileService','CONTRACT_VERSION_FILE_READ_AUTHORITY','JwtTokenService',
     'buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft',
     'AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','armTask12AuthError','takeTask12AuthError'
    ].map(key=>[key,documentValues[key]])),...Object.fromEntries([
@@ -413,7 +416,7 @@ function loadCurrent259Client(handle){
      dataMethod(FileService.prototype,'assertCanDownloadFile')===originalFileAccess&&
      Array.isArray(rootProviders)&&rootProviders.length===4&&rootProviders[0]===documentValues.Task12AuthErrorFilter&&rootProviders[1]===documentValues.Task12AuthStageInterceptor&&own(rootProviders[2],'provide')==='APP_FILTER'&&
      own(rootProviders[2],'useExisting')===documentValues.Task12AuthErrorFilter&&own(rootProviders[3],'provide')==='APP_INTERCEPTOR'&&own(rootProviders[3],'useExisting')===documentValues.Task12AuthStageInterceptor&&Object.getPrototypeOf(documentValues.Task12AuthErrorFilter.prototype)===filter.prototype&&dataMethod(filter.prototype,'catch')===baseFilterCatch&&
-     authMethods.every(row=>dataMethod(row.target,row.name)===row.value)&&
+     authMethods.every(row=>dataMethod(row.target,row.name)===row.value)&&taskMethods.every(row=>dataMethod(row.target,row.name)===row.value)&&
      hooks.every(([key,value])=>dataMethod(ContractDocumentProcessor.prototype,key)===value)&&
      ['app.module.js','main.js'].every(file=>!files.has(path.join(dist,file))),code);
    }});
@@ -448,8 +451,10 @@ function loadCurrent259Client(handle){
    const {assertCurrent261LocalLifecycleToolClosure}=require('./task12-current261-local-lifecycle-module-proof.cjs');
    const verify=()=>assertCurrent261LocalLifecycleToolClosure(root,modules,require.cache);verify();
    const readTask12LocalLifecycleSourceDocx=function(){
-    need(arguments.length===0,code);check();
-    const file=path.join(root,'services/api/assets/templates/material-purchase-real-v1.docx'),observed=material.capture(file);
+    need(arguments.length<=1,code);check();
+    const key=arguments.length===0?'inside:material_purchase':require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase(arguments[0]).key;
+    need(['inside:material_purchase','inside:equipment_rental'].includes(key),code);
+    const file=path.join(root,'services/api/assets/templates/'+(key==='inside:equipment_rental'?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx')),observed=material.capture(file);
     const fields=['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'];
     const identity=stat=>Object.fromEntries(fields.map(k=>[k,String(stat[k])]));
     const same=stat=>stat.isFile()&&JSON.stringify(identity(stat))===JSON.stringify(observed.identity);

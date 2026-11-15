@@ -1,9 +1,9 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events');
 const id=n=>'10000000-0000-4000-8000-'+String(n).padStart(12,'0');
-function model(mode,postcheckError,transactionPhase){
+function model(mode,postcheckError,transactionPhase,caseKey){
  const users=Array.from({length:8},(_,i)=>({id:id(i+1),phone:'1990000000'+i})),passwords=Object.fromEntries(users.map((u,i)=>[u.id,String(i).repeat(64)]));
- const fixture={approval:{users,handler:users[0],project:{id:id(20)},members:[{userId:users[0].id,positionKey:'contract_staff'},{userId:users[3].id,positionKey:'project_manager'}],globalRoles:[[1,'material_director'],[2,'contract_director'],[4,'finance_director'],[5,'general_manager'],[6,'comprehensive_director']].map(([actor,roleKey])=>({userId:users[actor].id,roleKey}))}};
+ const fixture={...(caseKey?{case:require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase(caseKey)}:{}),approval:{users,handler:users[0],project:{id:id(20)},members:[{userId:users[0].id,positionKey:'contract_staff'},{userId:users[3].id,positionKey:'project_manager'}],globalRoles:[[1,'material_director'],[2,'contract_director'],[4,'finance_director'],[5,'general_manager'],[6,'comprehensive_director']].map(([actor,roleKey])=>({userId:users[actor].id,roleKey}))}};
  const config=Object.freeze({...(mode==='auth-only'?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),fixture,passwords,sourceDocx:Buffer.from('model-docx'),originals:[Buffer.from('%PDF-original1'),Buffer.from('%PDF-original2')]}),calls=[];
  const server={listening:true,address(){return{address:'127.0.0.1',family:'IPv4',port:24080};}};let live=true,claimed=false;const checks=[],authCalls=[],authTickets=new Set();const authDiagnostics=Object.freeze({arm(phone){assert.ok(users.some(u=>u.phone===phone));const ticket=Object.freeze({});authTickets.add(ticket);authCalls.push('arm');return ticket;},take(ticket){assert.equal(authTickets.delete(ticket),true);authCalls.push('take');if(mode==='native-take-failure-and-postcheck')throw Error('PRIVATE_DIAG_FAILURE');return mode?.startsWith('native-p1017')?Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P1017',serverAuthBoundary:'PRE_CONTROLLER_MARKER',...(transactionPhase?{serverAuthTransactionPhase:transactionPhase}:{}),private:'MUST_OMIT'}):mode?.startsWith('native')?Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2010',serverSqlState:'42501',private:'MUST_OMIT'}):undefined;}});
  const imports={'./task12-current259-document-application.cjs':{takeCurrent261FirstLoginHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;},takeCurrent261LocalLifecycleHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;}},'node:http':{request(options,consume){const outgoing=new EventEmitter();outgoing.end=wire=>{calls.push({options,wire});queueMicrotask(()=>{if(mode==='transport-and-postcheck'){live=false;outgoing.emit('error',Error('PRIVATE_TRANSPORT'));return;}const response=new EventEmitter();response.complete=true;response.socket={remoteAddress:mode==='foreign-peer'?'127.0.0.2':'127.0.0.1',remotePort:24080};response.headers=mode==='redirect'?{location:'https://invalid.example'}:{};response.statusCode=201;response.destroy=()=>{};const actor=options.path==='/auth/login'?users.findIndex(u=>u.phone===JSON.parse(wire).phone):0,roles=[...fixture.approval.members.filter(r=>r.userId===users[actor].id).map(r=>r.positionKey),...fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)];let body=options.path==='/auth/login'?{user:{id:users[actor].id,phone:users[actor].phone,mustChangePassword:false,roleKeys:roles,globalRoleKeys:fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)},tokens:{accessToken:actor?'model'+actor+'.access.token':'model.access.token'}}:{contract:{id:id(21)},version:{id:id(22)}};if(options.path.endsWith('/workbench')){body={documents:[{docxFileId:id(50),pdfFileId:id(51)}]};response.statusCode=200;}
@@ -210,3 +210,44 @@ for(const mode of ['proxy','getter','unknown','inconsistent'])test('phase projec
   const f=model('auth-only');await assert.rejects(f.api.withCurrent261FirstLoginHttp(f.config,f.server,f.verify,f.verifyToken,async()=>{}),/LIFECYCLE_HTTP/u);assert.equal(f.calls.length,0);
   const g=model();await assert.rejects(g.api.withCurrent261FirstLoginHttp(g.config,g.server,g.verify,g.verifyToken,async()=>{}),/LIFECYCLE_HTTP/u);
  });
+
+
+test('equipment bridge accepts its exact selected creation payload and rejects a material payload before transport (model only)',async()=>{
+ const f=model(undefined,undefined,undefined,'inside:equipment_rental');
+ await f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'equipment_rental',amountLimitType:'capped'}});
+ });
+ assert.equal(f.calls.length,2);assert.equal(JSON.parse(f.calls[1].wire).contractTypeKey,'equipment_rental');
+ const wrong=model(undefined,undefined,undefined,'inside:equipment_rental');
+ await assert.rejects(wrong.api.withCurrent261LocalLifecycleHttp(wrong.config,wrong.server,wrong.verify,wrong.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:wrong.config.fixture.approval.users[0].phone,password:wrong.config.passwords[id(1)]}});
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase',amountLimitType:'capped'}});
+ }),/LIFECYCLE_HTTP/u);assert.equal(wrong.calls.length,1);
+});
+
+test('only the fixed contract pending workbench query is reachable by the handler or seal actor',async()=>{
+ const f=model();
+ await f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase',amountLimitType:'capped'}});
+  await b.send(0,{method:'GET',path:'/contracts/workbench?view=pending_action&page=1&pageSize=100'});
+ });assert.equal(f.calls.length,3);
+ const wrong=model();
+ await assert.rejects(wrong.api.withCurrent261LocalLifecycleHttp(wrong.config,wrong.server,wrong.verify,wrong.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:wrong.config.fixture.approval.users[0].phone,password:wrong.config.passwords[id(1)]}});
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase',amountLimitType:'capped'}});
+  await b.send(0,{method:'GET',path:'/contracts/workbench?view=all&page=1&pageSize=100'});
+ }),/LIFECYCLE_HTTP/u);assert.equal(wrong.calls.length,2);
+});
+
+test('HTTP rejects nested case accessor and proxy without executing traps or sending a request',async()=>{
+ const selected=require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase('inside:equipment_rental');
+ let traps=0;const trap=()=>{traps++;throw Error('SYNTHETIC_GETTER');};const getter={...selected};Object.defineProperty(getter,'billAlias',{enumerable:true,get:trap});
+ for(const value of [Object.freeze(getter),new Proxy(selected,{get:trap,getOwnPropertyDescriptor:trap})]){
+  const f=model();f.config.fixture.case=value;
+  await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,()=>assert.fail()),/LIFECYCLE_HTTP/u);
+  assert.equal(f.calls.length,0);
+ }
+ assert.equal(traps,0);
+});

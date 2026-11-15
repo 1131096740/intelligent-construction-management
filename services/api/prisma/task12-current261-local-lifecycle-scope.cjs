@@ -26,4 +26,12 @@ function describeCurrent261FirstLogin(source,runtimeProfile=PROFILE){
  return Object.freeze({...full,purpose:'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC',executionPurpose:'AUTH_ONLY_DIAGNOSTIC',httpRequests:1,
   stages:Object.freeze(['diagnostic261','roles9','registeredArchive','lifecycleOrdinaryAcl','lifecycleDocumentRoles','lifecycleDocumentAcl','officialDocumentRuntime','lifecycleFiveTls','authOwnerBegin','firstActor0Login','authOwnerObserve','authOwnerClose','ownedCleanup'])});
 }
-module.exports=Object.freeze({describeCurrent261LocalLifecycle,describeCurrent261FirstLogin});
+function describeCurrent261LocalLifecycleCase(source,runtimeProfile,caseKey){
+ if(arguments.length!==3)throw new Error('CURRENT261_LOCAL_LIFECYCLE_SCOPE');
+ const selected=require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase(caseKey);
+ const full=describeCurrent261LocalLifecycle(source,runtimeProfile);
+ return Object.freeze({...full,purpose:'CURRENT261_GENERATED_LIFECYCLE_LOCAL',caseKey:selected.key,
+  relationship:selected.relationship,contractTypeKey:selected.contractTypeKey,
+  stages:Object.freeze(full.stages.map(stage=>stage==='publicMaterialTemplate'&&selected.contractTypeKey==='equipment_rental'?'publicEquipmentTemplate':stage))});
+}
+module.exports=Object.freeze({describeCurrent261LocalLifecycle,describeCurrent261FirstLogin,describeCurrent261LocalLifecycleCase});

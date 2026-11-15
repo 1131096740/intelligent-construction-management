@@ -53,6 +53,7 @@ function fixture(options={}) {
     }}};
   const ports = {
     './task16-current259-archive-install.cjs': {
+      readNativeTask12ArchiveProjection(value){assert.equal(value,completion);return {source,completion,roleCompletion,serverPort:55432,ordinaryAclWitness:anchor};},
       claimCurrent259ArchiveInstallation(value,h){
         assert.equal(value,completion);assert.equal(h,handle);assert.equal(claimed,false);
         claimed=true;
@@ -70,7 +71,7 @@ function fixture(options={}) {
   const holder={exports:{}};
   new Function('require','module','__dirname',fs.readFileSync(path.resolve(__dirname,file),'utf8'))(
     name=>ports[name]??require(name),holder,__dirname);
-  return {api:holder.exports,continuityToken,continuityCalls:()=>continuityCalls,handle,completion,calls,closes:()=>closes};
+  return {api:holder.exports,exec:view.resource.execOwnerSql,continuityToken,continuityCalls:()=>continuityCalls,handle,completion,calls,closes:()=>closes};
 }
 
 test('same archive handle supplies only actual missing privileges then requires independent committed proof',async()=>{
@@ -359,4 +360,38 @@ test('diagnostic SQL chain grants only its separate one-use purpose and refuses 
  const f=fixture({source,authOnly:true,observe(row,n){if(n===0)row.changes=[{relation:'AuditLog',column:'createdAt',relationOid:'17002',attnum:9,privileges:['INSERT'],rawAcl:null,acl:[]}];}}),result=await f.api.installCurrent261AuthOnlyDiagnosticOrdinaryAcl(f.completion,f.handle);assert.equal(f.calls.length,3);
  assert.throws(()=>f.api.claimCurrent261GeneratedLifecycleOrdinaryAcl(result,f.handle));assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl({...result},f.handle));
  const lease=f.api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(result,f.handle);assert.equal(lease.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(result,f.handle));
+});
+
+
+test('native lifecycle ordinary ACL keeps original three-phase grants and rejects cloned projections', async()=>{
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const f=fixture({source});
+ const first=f.api.beginNativeTask12OrdinaryAclProtocol(f.completion);
+ const writer=first.acceptBefore((await f.exec(first.sql,phases[0])).stdout);
+ assert.throws(()=>first.acceptBefore('{}'));
+ const reader=writer.acceptWritten((await f.exec(writer.sql,phases[1])).stdout);
+ const result=reader.acceptCommitted((await f.exec(reader.sql,phases[2])).stdout);
+ assert.equal(result.status,'NATIVE_TASK12_ORDINARY_ACL_MATCHED_NOT_ADMISSION');
+ assert.equal(result.executionAllowed,false);assert.equal(result.nativeAdmission,false);
+ assert.equal(result.installXid,'12402');assert.equal(f.calls.length,3);
+ assert.match(f.calls[1].sql,/GRANT DELETE ON TABLE public\."AuthRateLimit"/u);
+ assert.match(f.calls[1].sql,/RegisteredPaymentFunding/u);
+ assert.throws(()=>f.api.beginNativeTask12OrdinaryAclProtocol({...f.completion}));
+ assert.throws(()=>f.api.readNativeTask12OrdinaryAclProjection({...result}));
+ assert.equal(f.api.readNativeTask12OrdinaryAclProjection(result).archiveCompletion,f.completion);
+});
+
+test('full261 real workbench reads takeoverStatus while unrelated ordinary and document profiles retain their matrix',()=>{
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const api=require(file),rows=api.describeCurrent261GeneratedLifecycleOrdinaryAcl(source).rows;
+ assert.deepEqual(rows.filter(row=>row.relation==='ContractTakeover'&&row.column==='takeoverStatus'),[{relation:'ContractTakeover',column:'takeoverStatus',privilege:'SELECT'}]);
+ assert.equal(hash(JSON.stringify(rows.filter(row=>!(row.relation==='ContractTakeover'&&row.column==='takeoverStatus')))),'56e54b126137138224ead3053a7d6bb739464cd2c54c612a861812c61247f7fb');
+ const consumer=fs.readFileSync(path.join(__dirname,'../src/contract/contract-read.service.ts'),'utf8');
+ assert.match(consumer,/private async contractTakeoverLedgerRows[\s\S]*takeoverStatus: true/u);
 });

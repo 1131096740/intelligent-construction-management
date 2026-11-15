@@ -3,7 +3,7 @@ import { copyFileSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PrismaService } from "./prisma.service";
-import { withTask12DocumentRoleServices, withTask12PreownedDocumentRoleServices } from "./task12-generated-document-role-services";
+import { withTask12DocumentRoleServices, withTask12PreownedDocumentRoleServices, withTask12NativeHostDocumentRoleServices } from "./task12-generated-document-role-services";
 
 const database = "jg_task01_" + "a".repeat(32);
 const roles = ["jg_c259_doc_template", "jg_c259_doc_worker", "jg_c259_doc_queue"] as const;
@@ -182,5 +182,43 @@ it("the fixed preowned role seam drains work but leaves the three disconnects to
     })).resolves.toBe(false);
     expect(f.trace).toEqual(["template:identity", "worker:identity", "queue:identity",
       "queue:transaction", "worker:recover", "template:identity", "worker:identity", "queue:identity"]);
+  } finally { f.cleanup(); }
+});
+
+it("native host document providers retain exact bound port identities without altering the legacy5432 seam", async () => {
+  const f = fixture();
+  try {
+    f.observed.forEach(row => { row.serverPort = 55432; });
+    await expect(withTask12NativeHostDocumentRoleServices(f.connections, { ...f.expected, serverPort: 55432, nativeProfile: "TASK12_NATIVE_HOST_EQUIPMENT_V1" }, async services => {
+      await expect(services.queue.queueDraftPreview("version", "actor", { sourceRevision: 1 })).rejects.toBe(reached);
+      return true;
+    })).resolves.toBe(true);
+    expect(f.trace.some(value => value.endsWith(":disconnect"))).toBe(false);
+  } finally { f.cleanup(); }
+});
+
+it("native host rejects a wrong port or plaintext identity and legacy still rejects a host-native port", async () => {
+  for (const mutation of ["port", "tls", "legacy"]) {
+    const f = fixture();
+    try {
+      f.observed.forEach(row => { row.serverPort = 55432; });
+      if (mutation === "port") f.observed[1].serverPort = 55433;
+      if (mutation === "tls") f.observed[1].ssl = false;
+      const use = async () => { throw new Error("UNREACHED_BUSINESS"); };
+      await expect(mutation === "legacy"
+        ? withTask12PreownedDocumentRoleServices(f.connections, f.expected, use)
+        : withTask12NativeHostDocumentRoleServices(f.connections, { ...f.expected, serverPort: 55432, nativeProfile: "TASK12_NATIVE_HOST_EQUIPMENT_V1" }, use)).rejects.toThrow("TASK12_DOCUMENT_ROLE_IDENTITY");
+      expect(f.trace.some(value => value.endsWith(":transaction"))).toBe(false);
+    } finally { f.cleanup(); }
+  }
+});
+it("native host expected port cannot execute an accessor or proxy", () => {
+  const f = fixture();let traps = 0;
+  try {
+    const expected = { ...f.expected, serverPort: 55432, nativeProfile: "TASK12_NATIVE_HOST_EQUIPMENT_V1" as const };
+    Object.defineProperty(expected, "serverPort", { get() { traps++; throw new Error("PRIVATE"); } });
+    expect(() => withTask12NativeHostDocumentRoleServices(f.connections, expected, async () => false)).toThrow("TASK12_DOCUMENT_ROLE_INPUT");
+    expect(() => withTask12NativeHostDocumentRoleServices(f.connections, new Proxy(expected, { getOwnPropertyDescriptor() { traps++; throw new Error("PRIVATE"); } }), async () => false)).toThrow("TASK12_DOCUMENT_ROLE_INPUT");
+    expect(traps).toBe(0);expect(f.trace).toEqual([]);
   } finally { f.cleanup(); }
 });

@@ -6,7 +6,8 @@ const CODE='CURRENT261_LOCAL_LIFECYCLE_PLAN';
 const need=(ok,part)=>{if(!ok){const code=CODE+'_'+part;throw Object.assign(new Error(code),{code});}};
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const hex=(v,n)=>typeof v==='string'&&new RegExp('^[a-f0-9]{'+n+'}$','u').test(v);
-const ENTRY='services/api/prisma/task12-current261-local-lifecycle-once.cjs',NAME='LIFECYCLE-PLAN.json',AUTH_NAME='FIRST-LOGIN-PLAN.json';
+const ENTRY='services/api/prisma/task12-current261-local-lifecycle-once.cjs',NAME='LIFECYCLE-PLAN.json',AUTH_NAME='FIRST-LOGIN-PLAN.json',CASE_NAME='MATRIX-CASE-PLAN.json';
+const {current261LifecycleCase}=require('../services/api/prisma/task12-current261-lifecycle-cases.cjs');
 const {officialDocumentProfile}=require('../services/api/prisma/task12-official-document-profiles.cjs');
 const RESOURCE=Object.freeze({transport:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS',endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',imageId:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d'});
 const fixed=(value,keys)=>{
@@ -35,14 +36,19 @@ function directory(file){
  const s=fs.lstatSync(file);need(s.isDirectory()&&s.uid===process.getuid()&&(s.mode&0o077)===0&&fs.realpathSync(file)===file,'DIRECTORY');
  return Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,s[k]]));
 }
-function capture(runtimeProfile,authOnly=false){
+function implementedCase(key){
+ const selected=current261LifecycleCase(key);
+ need(['inside:material_purchase','inside:equipment_rental'].includes(selected.key),'CASE_PENDING');
+ return selected;
+}
+function capture(runtimeProfile,authOnly=false,caseKey){
  // Preserve the original loader/resource producer import order.
  require('../services/api/prisma/task12-current259-contract-login.cjs');
  const {observeCurrent259Build}=require('../services/api/prisma/task16-current259-build.cjs');
  const {loadCurrent259Client}=require('../services/api/prisma/task16-current259-client-loader.cjs');
  const handle=observeCurrent259Build(),loader=loadCurrent259Client(handle),w=loader.witness();
- const {describeCurrent261LocalLifecycle,describeCurrent261FirstLogin}=require('../services/api/prisma/task12-current261-local-lifecycle-scope.cjs');
- const scope=(authOnly?describeCurrent261FirstLogin:describeCurrent261LocalLifecycle)(w.source,runtimeProfile);
+ const {describeCurrent261LocalLifecycle,describeCurrent261FirstLogin,describeCurrent261LocalLifecycleCase}=require('../services/api/prisma/task12-current261-local-lifecycle-scope.cjs');
+ const scope=caseKey?describeCurrent261LocalLifecycleCase(w.source,runtimeProfile,caseKey):(authOnly?describeCurrent261FirstLogin:describeCurrent261LocalLifecycle)(w.source,runtimeProfile);
  const source=freeze(JSON.parse(JSON.stringify({candidateSha:w.source.candidateSha,tree:w.source.tree,sourceSealSha256:w.source.sourceSealSha256,
   profile:w.source.profile,build:w.build,host:w.host,engineCommit:w.engineCommit})));
  const moduleView=authOnly?loader.loadCurrent261FirstLoginModules():loader.loadCurrent261LocalLifecycleDocumentModules();
@@ -67,9 +73,11 @@ function planFor(input,verified,captured){
  const day=new Date(businessDate+'T00:00:00Z');need(Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===businessDate,'INPUT');
  need(runtime.file===path.join(packetRoot,'runtime-input.json')&&verified.runRoot===path.join(packetRoot,'tool-run'),'RUNTIME');
  const root=path.join(packetRoot,'lifecycle-run');
- return {version:1,purpose:captured.scope.purpose,entry:ENTRY,source:captured.source,scope:captured.scope,
+ const selected=input.caseKey===undefined?null:implementedCase(input.caseKey);
+ need(!selected||captured.scope.caseKey===selected.key,'CASE');
+ return {version:selected?2:1,purpose:captured.scope.purpose,entry:ENTRY,source:captured.source,scope:captured.scope,
   packet:{root:packetRoot,identity:directory(packetRoot)},resource:{...RESOURCE,daemonId},
-  case:{id:caseId,businessDate,relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY'},
+  case:{id:caseId,businessDate,...(selected?{key:selected.key}:{}),relationship:selected?.relationship??'inside',contractTypeKey:selected?.contractTypeKey??'material_purchase',operating:false,storage:'LOCAL_ONLY'},
   runtime:{...runtime,profile:captured.scope.runtimeProfile,identity:verified.input.identity,runRoot:verified.runRoot,runIdentity:directory(verified.runRoot),sourceWitness:verified.proof.source,
    buildSha256:verified.proof.buildSha256,materialSha256:verified.proof.materialSha256,candidateLockSha256:verified.proof.candidateLockSha256,
    machineReceiptSha256:verified.proof.machineReceiptSha256,physicalReviewSha256:verified.proof.physicalReviewSha256},
@@ -82,24 +90,28 @@ function writeNew(file,bytes){
 }
 function prepareCurrent261LocalLifecyclePlan(options){need(arguments.length===1,'INPUT');return preparePlan(options,false);}
 function prepareCurrent261FirstLoginPlan(options){need(arguments.length===1,'INPUT');return preparePlan(options,true);}
-function preparePlan(options,authOnly){
- need(arguments.length===2,'INPUT');const {runtime,...input}=fixed(options,['packetRoot','daemonId','caseId','businessDate','runtime']);
- const observed=officialRuntime(runtime),captured=capture(observed.profile,authOnly),verified=formalRuntime(observed,captured);
+function prepareCurrent261LifecycleCasePlan(options){need(arguments.length===1,'INPUT');return preparePlan(options,false,true);}
+function preparePlan(options,authOnly,matrix=false){
+ need(arguments.length>=2&&arguments.length<=3,'INPUT');const {runtime,...input}=fixed(options,['packetRoot','daemonId','caseId','businessDate','runtime',...(matrix?['caseKey']:[])]);
+ if(matrix)implementedCase(input.caseKey);
+ const observed=officialRuntime(runtime),captured=capture(observed.profile,authOnly,input.caseKey),verified=formalRuntime(observed,captured);
  const plan=planFor(input,verified,captured);need(fs.readdirSync(plan.run.root).length===0&&fs.readdirSync(plan.runtime.runRoot).length===0,'USED');
- const file=path.join(plan.packet.root,authOnly?AUTH_NAME:NAME),bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');writeNew(file,bytes);
+ const file=path.join(plan.packet.root,matrix?CASE_NAME:authOnly?AUTH_NAME:NAME),bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');writeNew(file,bytes);
  return Object.freeze({status:authOnly?'CURRENT261_FIRST_LOGIN_PLAN_PREPARED_HOLD':'CURRENT261_LOCAL_LIFECYCLE_PLAN_PREPARED_HOLD',file,sha256:hash(bytes),candidateSha:plan.source.candidateSha});
 }
 function verifyCurrent261LocalLifecyclePlan(file,digest){need(arguments.length===2,'INPUT');return verifyPlan(file,digest,false);}
 function verifyCurrent261FirstLoginPlan(file,digest){need(arguments.length===2,'INPUT');return verifyPlan(file,digest,true);}
-function verifyPlan(file,digest,authOnly){
- need(arguments.length===3&&typeof file==='string'&&path.basename(file)===(authOnly?AUTH_NAME:NAME)&&hex(digest,64),'INPUT');
+function verifyCurrent261LifecycleCasePlan(file,digest){need(arguments.length===2,'INPUT');return verifyPlan(file,digest,false,true);}
+function verifyPlan(file,digest,authOnly,matrix=false){
+ need(arguments.length>=3&&arguments.length<=4&&typeof file==='string'&&path.basename(file)===(matrix?CASE_NAME:authOnly?AUTH_NAME:NAME)&&hex(digest,64),'INPUT');
  const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
  directory(path.dirname(file));const data=read(file,{privateFile:true,maxBytes:512*1024,collect:true,code:CODE+'_FILE'});need(data.sha256===digest,'DIGEST');
  let raw;try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data.bytes));}catch{need(false,'JSON');}
  const fields=fixed(raw,['version','purpose','entry','source','scope','packet','resource','case','runtime','run']);
  const runtime=fixed(fields.runtime,['file','sha256','profile','identity','runRoot','runIdentity','sourceWitness','buildSha256','materialSha256','candidateLockSha256','machineReceiptSha256','physicalReviewSha256']);need(officialDocumentProfile(runtime.profile),'RUNTIME');
- const observed=officialRuntime({file:runtime.file,sha256:runtime.sha256}),captured=capture(observed.profile,authOnly),verified=formalRuntime(observed,captured);
- const input={packetRoot:path.dirname(file),daemonId:fields.resource?.daemonId,caseId:fields.case?.id,businessDate:fields.case?.businessDate};
+ const caseKey=matrix?implementedCase(fixed(fields.case,['id','businessDate','key','relationship','contractTypeKey','operating','storage']).key).key:undefined;
+ const observed=officialRuntime({file:runtime.file,sha256:runtime.sha256}),captured=capture(observed.profile,authOnly,caseKey),verified=formalRuntime(observed,captured);
+ const input={packetRoot:path.dirname(file),daemonId:fields.resource?.daemonId,caseId:fields.case?.id,businessDate:fields.case?.businessDate,...(matrix?{caseKey}:{})};
  const expected=planFor(input,verified,captured);need(equal(expected,fields),'SCOPE');
  need(fs.readdirSync(expected.runtime.runRoot).length===0,'USED');
  let failed=false;
@@ -110,4 +122,15 @@ function verifyPlan(file,digest,authOnly){
  }catch{failed=true;need(false,'CHANGED');}};
  return Object.freeze({plan:freeze(expected),sha256:digest,buildHandle:captured.handle,runtime:verified.proof,check});
 }
-module.exports=Object.freeze({prepareCurrent261LocalLifecyclePlan,verifyCurrent261LocalLifecyclePlan,prepareCurrent261FirstLoginPlan,verifyCurrent261FirstLoginPlan});
+module.exports=Object.freeze({prepareCurrent261LocalLifecyclePlan,verifyCurrent261LocalLifecyclePlan,prepareCurrent261FirstLoginPlan,verifyCurrent261FirstLoginPlan,prepareCurrent261LifecycleCasePlan,verifyCurrent261LifecycleCasePlan});
+
+if(require.main===module){
+ try{
+  need(process.argv.length===3&&process.argv[2]==='--list-cases','ARGS');
+  const {current261LifecycleCases}=require('../services/api/prisma/task12-current261-lifecycle-cases.cjs');
+  process.stdout.write(JSON.stringify({status:'CURRENT261_LIFECYCLE_CASE_CATALOG',nativeAdmission:false,executionAllowed:false,cases:current261LifecycleCases()})+'\n');
+ }catch(error){
+  const code=Object.getOwnPropertyDescriptor(error,'code')?.value;
+  process.stderr.write(JSON.stringify({status:'CASE_CATALOG_REJECTED',code:typeof code==='string'?code:'CURRENT261_LIFECYCLE_CASE_UNKNOWN'})+'\n');process.exitCode=1;
+ }
+}

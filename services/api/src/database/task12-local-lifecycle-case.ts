@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual, types } from "node:util";
-import { publishTask12GeneratedMaterialTemplate } from "./task12-generated-material-template";
+import { current261LifecycleCaseFromFixture, type Current261LifecycleCase } from "../../prisma/task12-current261-lifecycle-cases.cjs";
+import { publishTask12GeneratedMaterialTemplate, publishTask12GeneratedEquipmentTemplate } from "./task12-generated-material-template";
 import { runTask12GeneratedDocument } from "./task12-generated-document-seam";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
 import { PDFDocument } from "pdf-lib";
@@ -20,6 +21,7 @@ export interface Task12LocalLifecycleBridge {
   now(): number; wait(ms: number): Promise<void>;
 }
 interface Fixture {
+  case?: Current261LifecycleCase;
   approval: { project: { id: string }; handler: { id: string }; users: readonly { id: string; phone: string }[] };
   master: { CompanyEntity: readonly { id: string; name: string }[]; BusinessPartyVersion: readonly { id: string }[] };
 }
@@ -33,7 +35,7 @@ export interface Task12LocalLifecycleDownloadedFile {
 }
 export interface Task12LocalLifecycleCheckpoint {
   stage: "ORIGINALS" | "AUDIT_ROLLBACK" | "COMPLETE";
-  fixtureIdentity: string; projectId: string; handlerId: string; contractId: string; versionId: string;
+  caseKey: string; fixtureIdentity: string; projectId: string; handlerId: string; contractId: string; versionId: string;
   roundIds: Readonly<{ withdrawn: string; rejected: string; approved: string }>;
   generationIds: Readonly<{ first: string; second: string; final: string }>;
   generatedFiles: readonly Readonly<{ generationId: string; docx: Task12LocalLifecycleDownloadedFile; pdf: Task12LocalLifecycleDownloadedFile }>[];
@@ -68,6 +70,12 @@ function claim(token: object, stage?: Task12LocalLifecycleCheckpoint["stage"]) {
 }
 export function claimTask12LocalLifecycleCheckpoint(token: object): Task12LocalLifecycleCheckpoint { return claim(token).checkpoint; }
 
+async function pendingTask(input: Task12LocalLifecycleCaseInput, actor: number, versionId: string, count: 0 | 1) {
+  const page = await accepted(input, actor, "/contracts/workbench?view=pending_action&page=1&pageSize=100");
+  need(Array.isArray(page.rows) && page.rows.length === count && page.meta?.total === count && page.summary?.pending_action === count &&
+    page.rows.every((row: unknown) => object(row).contractVersionId === versionId), "TASK_RELAY");
+}
+
 export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCaseInput): Promise<object> {
   need(input && !types.isProxy(input) && input.signal instanceof AbortSignal && !input.signal.aborted && input.bridge &&
     [input.bridge.check, input.bridge.send, input.bridge.download, input.bridge.now, input.bridge.wait, input.readPdfDrawnText].every(fn => typeof fn === "function"), "INPUT");
@@ -78,6 +86,9 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
     passwords.every(value => /^[a-f0-9]{64}$/u.test(value)) && new Set(passwords).size === 8 && input.originals.length === 2 &&
     input.originals.every(bytes => bytes instanceof Uint8Array && bytes.length > 5 && Buffer.from(bytes).subarray(0,5).toString() === "%PDF-") &&
     hash(input.originals[0]) !== hash(input.originals[1]), "INPUT");
+  const selected = current261LifecycleCaseFromFixture(fixture);
+  need(selected.relationship === "inside" && ["material_purchase", "equipment_rental"].includes(selected.contractTypeKey), "CASE");
+  const equipment = selected.contractTypeKey === "equipment_rental", contractName = equipment ? "本轮隔离V2设备租赁合同" : "本轮隔离V2材料合同";
   check(input);
   for (const [actor, user] of seed.users.entries()) {
     const result = await accepted(input, actor, "/auth/login", "POST", { phone: user.phone, password: passwords[actor] });
@@ -87,9 +98,9 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
   for (const actor of [1,2,3,4,5]) await accepted(input, actor, "/me/signature/canvas", "POST", undefined, form(signature, "image/png", "signature.png"));
   const port = (actor: number) => ({ now: () => { check(input); return input.bridge.now(); }, wait: async (ms: number) => { check(input); await input.bridge.wait(ms); check(input); },
     send: (request: Task12LocalLifecycleRequest) => send(input, actor, request.path, request.method, request.json, request.form, request.headers) });
-  const published = await publishTask12GeneratedMaterialTemplate(input.sourceDocx, seed.users[2].id, port(2));
-  const created = await accepted(input, 0, "/contracts", "POST", { projectId: seed.project.id, numericProtocolVersion: 2, contractTypeKey: "material_purchase", relationship: "inside", amountLimitType: "capped" });
-  const contractId = created.contract?.id, versionId = created.version?.id; need(id(contractId) && id(versionId), "DRAFT");
+  const published = await (equipment ? publishTask12GeneratedEquipmentTemplate : publishTask12GeneratedMaterialTemplate)(input.sourceDocx, seed.users[2].id, port(2));
+  const created = await accepted(input, 0, "/contracts", "POST", { projectId: seed.project.id, numericProtocolVersion: 2, contractTypeKey: selected.contractTypeKey, relationship: selected.relationship, amountLimitType: "capped" });
+  const contractId = created.contract?.id, versionId = created.version?.id; need(id(contractId) && id(versionId) && created.contract?.contractTypeKey === selected.contractTypeKey, "DRAFT");
   const draft = "/contract-drafts/" + versionId, contract = "/contracts/" + versionId;
   const lease = await accepted(input, 0, draft + "/edit-lease", "POST"); need(typeof lease.token === "string", "LEASE");
   const headers = { "x-contract-draft-lease": lease.token as string };
@@ -100,14 +111,14 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
     const current = await workbench(); need(Array.isArray(current.bills) && object(current.version).draftRevision, "DRAFT");
     await accepted(input, 0, draft, "PUT", { idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision,
       changedSections: ["draft","parties"], draft: { numericProtocolVersion: 2, companyEntityId: company.id,
-        draftData: { ...current.draft, contractName: "本轮隔离V2材料合同", contractBasics: { businessType: "material_purchase", relationship: "inside", amountBasis: "tax_inclusive", invoiceStatus: "pending" }, ...(bodyPlan ? { documentBody: bodyPlan } : {}) },
+        draftData: { ...current.draft, contractName, contractBasics: { businessType: selected.contractTypeKey, relationship: selected.relationship, amountBasis: "tax_inclusive", invoiceStatus: "pending" }, ...(bodyPlan ? { documentBody: bodyPlan } : {}) },
         clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: published.layoutId,
         taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } },
       parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: company.name } }, { roleKey: "party_b", displayOrder: 0, businessPartyVersionId: partyVersion.id, snapshot: {} }],
       bills: current.bills.map((bill: Body) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2, rows: [] })), paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] } }, undefined, 200, headers);
   };
   await save(); const sourceBody = await accepted(input, 0, draft + "/document-body");
-  const editable = Array.isArray(sourceBody.blocks) && sourceBody.blocks.find((block: Body) => block.editable && typeof block.text === "string" && block.text.startsWith("4.若卖方违背")); need(editable && typeof editable.id === "string", "BODY");
+  const editable = Array.isArray(sourceBody.blocks) && sourceBody.blocks.find((block: Body) => block.editable && typeof block.text === "string" && block.text.startsWith(equipment ? "3.甲方需要延长本合同租赁期限" : "4.若卖方违背")); need(editable && typeof editable.id === "string", "BODY");
   let clause = "双方补充约定第一版。";
   const edit = () => { bodyPlan = { protocolVersion: 1, layoutTemplateVersionId: published.layoutId, sourceSha256: sourceBody.sourceSha256, edits: [{ positionId: editable.id, text: editable.text + clause }] }; };
   edit(); await save();
@@ -182,7 +193,7 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
   const compact = (text: string) => text.normalize("NFKC").replace(/\s/gu, "");
   for (const [index, evidence] of inspected.entries()) {
     const text = compact(pdfText.slice(evidence.firstPage, evidence.firstPage + evidence.pageCount).join("")), expected = compact(pdfRounds[index].expectedBody);
-    need(text.includes(compact("本轮隔离V2材料合同")) && text.includes(expected) &&
+    need(text.includes(compact(contractName)) && text.includes(expected) &&
       pdfRounds.every(other => compact(other.expectedBody) === expected || !text.includes(compact(other.expectedBody))), "PDF");
   }
   const pdfInspection = Object.freeze({ reads: 1 as const, totalPages: pdfText.length, mergedPdfSha256: hash(batch), laterGenerationPdfSemanticInspection: true as const, generations: Object.freeze(inspected) });
@@ -190,13 +201,16 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
   need(isDeepStrictEqual(await submit(final.submission), round3), "SUBMIT_REPLAY");
   const contexts = await Promise.all([1,2,3,4,5].map(reviewContext));
   need(contexts.every(context => typeof context.expectedParallelApprovalEpoch === "string" && /^[a-f0-9]{64}$/u.test(context.expectedParallelApprovalEpoch)) && new Set(contexts.map(context => context.expectedParallelApprovalEpoch)).size === 1, "EPOCH");
+  await pendingTask(input, 6, versionId, 0); await pendingTask(input, 0, versionId, 0);
   const approvals = await Promise.all(contexts.map((context, index) => review(index + 1, context))); need(approvals.every(response => response.status === 201), "APPROVAL");
+  await pendingTask(input, 6, versionId, 1); await pendingTask(input, 0, versionId, 0);
   const lifecycle = object((await detail(6)).v2Lifecycle);
   need(lifecycle.status === "ready" && lifecycle.state === "pending_seal" && lifecycle.approvalInstanceId === round3.approvalInstanceId && id(lifecycle.sealTaskId) && lifecycle.documentContentFingerprint === final.submission.documentContentFingerprint && lifecycle.documentContentRevision === final.submission.documentContentRevision, "SEAL");
   const seal = { expectedApprovalInstanceId: round3.approvalInstanceId, expectedSealTaskId: lifecycle.sealTaskId, documentContentRevision: final.submission.documentContentRevision, documentContentFingerprint: final.submission.documentContentFingerprint, confirmed: true };
   need((await send(input, 0, contract + "/seal-confirmation", "POST", seal)).status === 403, "SEAL_ACTOR");
   const sealed = await accepted(input, 6, contract + "/seal-confirmation", "POST", seal);
   need(isDeepStrictEqual(await accepted(input, 6, contract + "/seal-confirmation", "POST", seal), sealed), "SEAL_REPLAY");
+  await pendingTask(input, 6, versionId, 0); await pendingTask(input, 0, versionId, 1);
   const originalBytes = input.originals.map(bytes => Buffer.from(bytes)), originals = [];
   for (const [index, bytes] of originalBytes.entries()) {
     const upload = await accepted(input, 0, "/files", "POST", undefined, form(bytes, "application/pdf", "signed-original-" + (index + 1) + ".pdf"));
@@ -207,7 +221,7 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
     documentContentRevision: seal.documentContentRevision, documentContentFingerprint: seal.documentContentFingerprint,
     archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: randomUUID(), fileIds: originals.map(original => original.id), confirmedMatchingSignedDocument: true };
   need((await send(input, 7, contract + "/signed-archive", "POST", archive)).status === 403, "OUTSIDER");
-  const checkpoint: Task12LocalLifecycleCheckpoint = Object.freeze({ stage: "ORIGINALS", fixtureIdentity: seed.project.id, projectId: seed.project.id, handlerId: seed.handler.id, contractId, versionId,
+  const checkpoint: Task12LocalLifecycleCheckpoint = Object.freeze({ stage: "ORIGINALS", caseKey: selected.key, fixtureIdentity: seed.project.id, projectId: seed.project.id, handlerId: seed.handler.id, contractId, versionId,
     roundIds: Object.freeze({ withdrawn: round1.approvalInstanceId, rejected: round2.approvalInstanceId, approved: round3.approvalInstanceId }),
     generationIds: Object.freeze({ first: first.generated.generationId, second: second.generated.generationId, final: final.generated.generationId }),
     generatedFiles: Object.freeze([...generatedFiles.values()]), pdfInspection,
@@ -219,6 +233,7 @@ export async function expectTask12LocalLifecycleAuditRollback(token: object): Pr
   const state = claim(token, "ORIGINALS"); checkpoints.delete(token);
   const response = await send(state.input, 0, "/contracts/" + state.checkpoint.versionId + "/signed-archive", "POST", state.archive);
   need(response.status === 500, "AUDIT_FAILURE");
+  await pendingTask(state.input, 6, state.checkpoint.versionId, 0); await pendingTask(state.input, 0, state.checkpoint.versionId, 1);
   return issue({ ...state, checkpoint: Object.freeze({ ...state.checkpoint, stage: "AUDIT_ROLLBACK" }) });
 }
 export async function finishTask12LocalLifecycleCase(token: object): Promise<object> {
@@ -228,6 +243,7 @@ export async function finishTask12LocalLifecycleCase(token: object): Promise<obj
   need(archived.status === "effective" && archived.contractVersionId === checkpoint.versionId && id(archived.archiveId) && isDeepStrictEqual(archived.fileIds, archive.fileIds), "ARCHIVE");
   need(isDeepStrictEqual(await accepted(input, 0, path + "/signed-archive", "POST", archive), archived), "ARCHIVE_REPLAY");
   const queried = await accepted(input, 0, path + "/archive-requests/" + archive.idempotencyKey); need(isDeepStrictEqual(queried.result, archived), "ARCHIVE_QUERY");
+  await pendingTask(input, 6, checkpoint.versionId, 0); await pendingTask(input, 0, checkpoint.versionId, 0);
   for (const [index, original] of checkpoint.originals.entries()) {
     const ticket = await accepted(input, 0, "/files/" + original.id + "/download-ticket", "POST", { confirmationPassword: input.passwords[0], downloadReason: "本轮签章原件核对" });
     need(ticket.fileId === original.id && ticket.mimeType === "application/pdf" && ticket.sizeBytes === original.sizeBytes &&

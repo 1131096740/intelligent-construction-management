@@ -1,3 +1,4 @@
+import { current261LifecycleCase } from "../../prisma/task12-current261-lifecycle-cases.cjs";
 import { runTask12LocalLifecycleCase, claimTask12LocalLifecycleCheckpoint, expectTask12LocalLifecycleAuditRollback, finishTask12LocalLifecycleCase } from "./task12-local-lifecycle-case";
 describe("fixed local lifecycle public exercise (network model only)", () => {
   it("rejects an already aborted case before sending a business request", async () => {
@@ -23,7 +24,6 @@ import { type Task12LocalLifecycleCaseInput, type Task12LocalLifecycleRequest } 
 // document engine, storage provider or admission proof is created by this test.
 const uid = (n: number) => "10000000-0000-4000-8000-" + n.toString().padStart(12, "0");
 const digest = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
-const source = readFileSync(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
 // The parser is a modeled external boundary. Page tags deliberately stand in
 // for painted glyphs; these checks do not qualify a physical PDF reader.
 async function modeledPdf(pages: readonly string[]) {
@@ -38,7 +38,9 @@ async function modeledPdfText(bytes: Buffer) {
     return text.decodeText();
   });
 }
-function networkModel(mode = "normal") {
+function networkModel(mode = "normal", equipment = false) {
+  const source = readFileSync(resolve(__dirname, equipment ? "../../assets/templates/equipment-rental-real-v1.docx" : "../../assets/templates/material-purchase-real-v1.docx"));
+  const contractName = equipment ? "本轮隔离V2设备租赁合同" : "本轮隔离V2材料合同";
   const sourceFileId = uid(20), templateId = uid(21), layoutId = uid(22), previewJobId = uid(23), previewPdfFileId = uid(24);
   const contractId = uid(30), versionId = uid(31), sealId = uid(32), archiveId = uid(33), directorId = uid(3);
   const calls: Array<{actor: number; request: Task12LocalLifecycleRequest}> = [];
@@ -46,12 +48,13 @@ function networkModel(mode = "normal") {
   let clause = "", fingerprint = "a".repeat(64), mapped: ReturnType<typeof prepareLayoutSourceMapping>["mapping"];
   let activeGeneration: { id: string; docxFileId: string; pdfFileId: string } | undefined;
   let round3: unknown, archived: unknown;
+  const finalApprovals = new Set<number>(); let sealed = false;
   const expiry = new Date(1000 + 120000).toISOString();
   const checkpointVersion = () => ({ id: versionId, status: "draft", layoutTemplateVersionId: layoutId, draftRevision: revision,
     documentContentRevision: contentRevision, documentContentFingerprint: fingerprint, latestDraftPreviewDocumentId: activeGeneration?.id });
   const input: Task12LocalLifecycleCaseInput = {
     signal: new AbortController().signal,
-    fixture: { approval: { project: {id:uid(10)}, handler: {id:uid(1)}, users: Array.from({length:8},(_,i)=>({id:uid(i+1),phone:"1380000000"+i})) },
+    fixture: { ...(equipment ? { case: current261LifecycleCase("inside:equipment_rental") } : {}), approval: { project: {id:uid(10)}, handler: {id:uid(1)}, users: Array.from({length:8},(_,i)=>({id:uid(i+1),phone:"1380000000"+i})) },
       master: { CompanyEntity: [{id:uid(11),name:"我方公司"}], BusinessPartyVersion:[{id:uid(12)}] } },
     passwords: Array.from({length:8},(_,i)=>(i+1).toString().repeat(64)), sourceDocx: source,
     originals: [Buffer.from("%PDF-1.4 signed one"),Buffer.from("%PDF-1.4 signed two")],
@@ -66,6 +69,11 @@ function networkModel(mode = "normal") {
       async send(actor,request) {
         calls.push({actor,request});const {method,path,json}=request;
         const ok=(body:unknown={},status=method==="POST"?201:200)=>({status,body});
+        if(path==="/contracts/workbench?view=pending_action&page=1&pageSize=100") {
+          const pending = mode==="premature-seal-task" || (actor===6&&finalApprovals.size===5&&!sealed) || (actor===0&&sealed&&!archived);
+          const rows = pending ? [{contractVersionId:versionId}] : [];
+          return ok({rows,meta:{total:rows.length},summary:{pending_action:rows.length}},200);
+        }
         if(path==="/auth/login")return ok({tokens:{accessToken:"model-jwt-"+actor}});
         if(path==="/me/signature/canvas")return ok();
         if(path==="/files") {
@@ -82,11 +90,11 @@ function networkModel(mode = "normal") {
         if(path===base+"/preview-generation")return method==="POST"?ok({...preview,status:"queued",previewPdfFileId:null}):ok({...preview,status:"succeeded",previewPdfFileId,errorMessage:null,startedAt:"2026-11-13T00:00:00Z",completedAt:"2026-11-13T00:00:01Z"});
         if(path===base+"/source-mapping-confirmation")return ok({confirmed:true,draftRevision:2,previewPdfFileId});
         if(path===base+"/submission")return ok({...version,status:"submitted",draftRevision:2,submittedByUserId:directorId});
-        if(path===base+"/publication")return ok({...version,status:"published",draftRevision:2,previewPdfFileId,publishedByUserId:directorId,placeholderSchema:{bills:[{key:"materials"}],sourceMapping:{...mapped,confirmation:{sourceFileId,sourceSha256:digest(source),draftRevision:2,mappingFingerprint:mapped.fingerprint,previewJobId,previewPdfFileId,actorUserId:directorId}}}});
-        if(path==="/contracts")return ok({contract:{id:contractId},version:{id:versionId}});
+        if(path===base+"/publication")return ok({...version,status:"published",draftRevision:2,previewPdfFileId,publishedByUserId:directorId,placeholderSchema:{bills:[{key:equipment?"equipmentRentals":"materials"}],sourceMapping:{...mapped,confirmation:{sourceFileId,sourceSha256:digest(source),draftRevision:2,mappingFingerprint:mapped.fingerprint,previewJobId,previewPdfFileId,actorUserId:directorId}}}});
+        if(path==="/contracts")return ok({contract:{id:contractId,contractTypeKey:equipment&&mode!=="wrong-business-response"?"equipment_rental":"material_purchase"},version:{id:versionId}});
         const draft="/contract-drafts/"+versionId, contract="/contracts/"+versionId;
         if(path===draft+"/edit-lease")return ok({token:"z".repeat(43),leaseRevision:1,expiresAt:expiry});
-        if(path===draft+"/document-body")return ok({sourceSha256:digest(source),blocks:[{id:"position-1",editable:true,text:"4.若卖方违背原约定"}]});
+        if(path===draft+"/document-body")return ok({sourceSha256:digest(source),blocks:[{id:"position-1",editable:true,text:equipment?"3.甲方需要延长本合同租赁期限的，应在合同期限届满前30日内，与乙方续签合同。":"4.若卖方违背原约定"}]});
         if(path===draft&&method==="PUT") {
           const document=(json?.draft as {draftData:{documentBody?:{edits:Array<{text:string}>}}}).draftData.documentBody;
           if(document) {const next=document.edits[0].text;if(next!==clause){contentRevision++;fingerprint=contentRevision.toString().repeat(64);clause=next;}}
@@ -104,7 +112,7 @@ function networkModel(mode = "normal") {
           const zip=new PizZip(source), xml=zip.file("word/document.xml")!.asText();zip.file("word/document.xml",xml.replace("</w:body>","<w:p><w:r><w:t>"+clause+"</w:t></w:r></w:p></w:body>"));
           files.set(activeGeneration.docxFileId,mode==="old-second-word"&&generation===2?source:zip.generate({type:"nodebuffer"}));
           const pdfClause = mode === "stale-second-pdf" && generation === 2 || mode === "stale-final-pdf" && generation === 3 ? "双方补充约定第一版。" : clause;
-          const pages = generation === 1 ? ["本轮隔离V2材料合同", pdfClause] : generation === 2 ? ["本轮隔离V2材料合同 " + pdfClause] : ["本轮隔离V2材料合同", "最终生成中间页", pdfClause];
+          const pages = generation === 1 ? [contractName, pdfClause] : generation === 2 ? [contractName + " " + pdfClause] : [contractName, "最终生成中间页", pdfClause];
           files.set(activeGeneration.pdfFileId,await modeledPdf(pages));
           return ok({generationId:activeGeneration.id,status:"queued",sourceRevision:revision,documentContentRevision:contentRevision,documentContentFingerprint:fingerprint});
         }
@@ -114,9 +122,9 @@ function networkModel(mode = "normal") {
           if(round===3)return ok(round3);round++;const result={approvalInstanceId:uid(70+round)};if(round===3)round3=result;return ok(result);
         }
         if(path.startsWith("/contracts/"+contractId+"?"))return ok({contractVersionId:versionId,reviewApprovalContext:{expectedParallelApprovalEpoch:"e".repeat(64),expectedApprovalInstanceId:uid(70+round)},withdrawApprovalContext:{expectedApprovalInstanceId:uid(71)},v2Lifecycle:{status:"ready",state:"pending_seal",approvalInstanceId:uid(73),sealTaskId:sealId,documentContentRevision:contentRevision,documentContentFingerprint:mode==="wrong-seal"?"f".repeat(64):fingerprint}});
-        if(path===contract+"/approval")return ok({},round===1&&actor===1?409:201);
+        if(path===contract+"/approval") { if(round===3&&json?.decision==="approve")finalApprovals.add(actor); return ok({},round===1&&actor===1?409:201); }
         if(path===contract+"/approval-withdrawal")return ok();
-        if(path===contract+"/seal-confirmation")return ok({status:"seal_approved_pending_archive"},actor===0?403:201);
+        if(path===contract+"/seal-confirmation") { if(actor===6)sealed=true;return ok({status:"seal_approved_pending_archive"},actor===0?403:201); }
         if(path===contract+"/signed-archive") {
           if(actor===7)return ok({},403);archiveCalls++;
           if(archiveCalls===1)return ok({},mode==="audit-unexpected-success"?201:500);
@@ -237,4 +245,50 @@ it.each(["ticket-mime", "ticket-size", "response-mime"])("rejects %s disagreemen
   m.input.bridge.download=async(actor,path)=>{const result=await download(actor,path);return mode==="response-mime"?{...result,mimeType:"text/plain"}:result;};
   await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("_DOWNLOAD");
   expect(m.calls.some(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/submission"))).toBe(false);
+});
+
+
+it("propagates equipment facts through creation, three PDF generations and archive recovery (HTTP response model only)", async () => {
+  const model = networkModel("normal", true);
+  const token = await runTask12LocalLifecycleCase(model.input);
+  const checkpoint = claimTask12LocalLifecycleCheckpoint(token);
+  expect(checkpoint.pdfInspection.generations).toHaveLength(3);
+  const created = model.calls.find(row => row.request.path === "/contracts")!;
+  expect(created.request.json).toMatchObject({ contractTypeKey: "equipment_rental", relationship: "inside" });
+  const saves = model.calls.filter(row => row.request.method === "PUT");
+  expect(saves.length).toBeGreaterThan(0);
+  for (const save of saves) expect(save.request.json).toMatchObject({ draft: { draftData: { contractName: "本轮隔离V2设备租赁合同", contractBasics: { businessType: "equipment_rental", relationship: "inside" } } } });
+  const rollback = await expectTask12LocalLifecycleAuditRollback(token);
+  const complete = await finishTask12LocalLifecycleCase(rollback);
+  expect(claimTask12LocalLifecycleCheckpoint(complete).stage).toBe("COMPLETE");
+  expect(JSON.stringify(model.calls.filter(row => row.request.json))).not.toContain('"businessType":"material_purchase"');
+});
+
+
+it("rejects a material contract response for an equipment case before any draft mutation", async () => {
+  const model = networkModel("wrong-business-response", true);
+  await expect(runTask12LocalLifecycleCase(model.input)).rejects.toThrow("TASK12_LOCAL_LIFECYCLE_CASE_DRAFT");
+  expect(model.calls.some(row => row.request.path.includes("/edit-lease"))).toBe(false);
+});
+
+
+it("rejects a premature supervisor task before the five final approvals (response model only)", async () => {
+  const model = networkModel("premature-seal-task", true);
+  await expect(runTask12LocalLifecycleCase(model.input)).rejects.toThrow("TASK12_LOCAL_LIFECYCLE_CASE_TASK_RELAY");
+  expect(model.calls.some(row => row.request.path.endsWith("/seal-confirmation"))).toBe(false);
+});
+
+it("rejects a nested case getter or proxy without executing traps or sending HTTP", async () => {
+  const selected = current261LifecycleCase("inside:equipment_rental");
+  let traps = 0;
+  const trap = () => { traps++; throw new Error("SYNTHETIC_GETTER"); };
+  const getter = { ...selected };
+  Object.defineProperty(getter, "billAlias", { enumerable: true, get: trap });
+  for (const value of [Object.freeze(getter), new Proxy(selected, { get: trap, getOwnPropertyDescriptor: trap })]) {
+    const model = networkModel("normal", true);
+    model.input.fixture.case = value;
+    await expect(runTask12LocalLifecycleCase(model.input)).rejects.toThrow("CASE_DESCRIPTION");
+    expect(model.calls).toEqual([]);
+  }
+  expect(traps).toBe(0);
 });

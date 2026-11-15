@@ -11,7 +11,7 @@ function describeCurrent261LocalLifecycleHttpFailure(cause){
 }
 const remember=(cause,detail)=>{if(cause&&typeof cause==='object'&&!types.isProxy(cause)&&!failures.has(cause))failures.set(cause,Object.freeze({...detail}));};
 const routeTemplate=path=>{
- const fixed=['/auth/login','/me/signature/canvas','/files','/contract-layout-templates','/contracts'];
+ const fixed=['/auth/login','/me/signature/canvas','/files','/contract-layout-templates','/contracts','/contracts/workbench?view=pending_action&page=1&pageSize=100'];
  if(fixed.includes(path))return path;
  const uuid='[a-f0-9-]{36}',patterns=[
   ['^/contracts/'+uuid+'\\?versionId='+uuid+'$','/contracts/:contractId?versionId=:versionId'],
@@ -112,6 +112,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  need(authDiagnostics&&!types.isProxy(authDiagnostics)&&Object.isFrozen(authDiagnostics));
  const armAuth=own(authDiagnostics,'arm'),takeAuth=own(authDiagnostics,'take');need(typeof armAuth==='function'&&typeof takeAuth==='function');
  const {fixture,passwords,sourceDocx,originals}=config,seed=fixture.approval;
+ let selected;try{selected=require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCaseFromFixture(fixture);}catch{need(false);}
  need(seed.users.length===8&&new Set(seed.users.map(u=>u.id)).size===8&&id(seed.project.id)&&seed.handler===seed.users[0]&&
   seed.users.every(u=>id(u.id)&&typeof u.phone==='string'&&typeof passwords[u.id]==='string'&&/^[a-f0-9]{64}$/u.test(passwords[u.id]))&&new Set(Object.values(passwords)).size===8&&
   sourceDocx instanceof Uint8Array&&Array.isArray(originals)&&originals.length===2&&originals.every(b=>b instanceof Uint8Array));
@@ -156,6 +157,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
     'source-mapping-confirmation':['POST'],submission:['POST'],publication:['POST']})[action]?.includes(method);
   }
   if(path==='/contracts')return actor===0&&method==='POST'&&!contractId;
+  if(contractId&&path==='/contracts/workbench?view=pending_action&page=1&pageSize=100')return method==='GET'&&(actor===0||actor===6);
   if(contractId&&path==='/contracts/'+contractId+'?versionId='+versionId)return method==='GET';
   if(versionId&&path==='/contract-drafts/'+versionId)return actor===0&&method==='PUT';
   if(versionId&&path.startsWith('/contract-drafts/'+versionId+'/')){
@@ -187,14 +189,14 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
    const signature=path==='/me/signature/canvas';
    const expected=signature?Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9e0AAAAASUVORK5CYII=','base64'):upload===0?sourceDocx:originals[upload-1];
    const mime=signature?'image/png':upload===0?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf';
-   const name=signature?'signature.png':upload===0?'material-purchase-real-v1.docx':'signed-original-'+upload+'.pdf';
+   const name=signature?'signature.png':upload===0?(selected.contractTypeKey==='equipment_rental'?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx'):'signed-original-'+upload+'.pdf';
    need(file&&file.name===name&&file.type===mime&&file.size===expected.byteLength);
    const bytes=Buffer.from(await file.arrayBuffer());check();need(equal(bytes,Buffer.from(expected)));uploaded={sizeBytes:bytes.length,sha256:sha(bytes),mimeType:mime};
    const boundary='jg-life-'+randomBytes(24).toString('hex');body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="'+name+'"\r\nContent-Type: '+mime+'\r\n\r\n'),bytes,Buffer.from('\r\n--'+boundary+'--\r\n')]);
    need(body.length<=uploadCap);h['content-type']='multipart/form-data; boundary='+boundary;if(signature)signatures.add(actor);else upload++;
   }else if(json!==undefined){body=Buffer.from(JSON.stringify(json));need(body.length<=cap);}
   if(path==='/auth/login')need(equal(json,{phone:seed.users[actor].phone,password:passwords[seed.users[actor].id]}));
-  if(path==='/contracts')need(equal(json,{projectId:seed.project.id,numericProtocolVersion:2,contractTypeKey:'material_purchase',relationship:'inside',amountLimitType:'capped'}));
+  if(path==='/contracts')need(equal(json,{projectId:seed.project.id,numericProtocolVersion:2,contractTypeKey:selected.contractTypeKey,relationship:selected.relationship,amountLimitType:'capped'}));
   let drained;const pending={parallel,done:new Promise(resolve=>{drained=resolve;})};active.set(actor,pending);
   try{
    const result=await wire(method,path,h,body,false,path==='/auth/login'?seed.users[actor].phone:undefined),value=result.body;
