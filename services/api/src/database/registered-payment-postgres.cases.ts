@@ -391,7 +391,7 @@ export async function runRegisteredProjectAttributionGap(context: RegisteredPgEx
 
 async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
   continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss") {
-  const { checked, identity, submit } = await prepareCrossCompanyCase(context, fixture, continuity, false, scenario === "commit");
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, false, scenario === "commit");
   continuity?.markCaseGate?.("REGISTRATION_REQUEST");
   if (scenario === "response-loss") {
     check(continuity?.assertHttpRequest, "PG_CASE_RESPONSE_LOSS_REQUIRES_OWNED_TRANSPORT");
@@ -443,8 +443,24 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
   check(final.executions.length === 1 && final.executions[0]?.id === execution.id && final.roots.length === 1 && final.roots[0]?.id === root.id && final.events.length === 1 && final.audits.length === 1 && final.allocations.length === 1 && final.request.paidAmountCents === 4000n && final.settlement.paidAmountCents === 4000n && final.balanceA === "100.0000" && final.balanceB === "60.0000", "PG_CASE_REPLAY_NO_SECOND_FINANCIAL_EFFECT");
   check(final.funding.length === 1 && final.funding[0]?.executionId === execution.id && final.funding[0]?.operatingLedgerEffectiveDateAtRegistration === null && final.funding[0]?.actualPayerId === fixture.plan.ids.companyB && final.funding[0]?.actualPayerKind === "participating_company" && final.facts.length === 0 && final.impacts.length === 0, "PG_CASE_REPLAY_CANONICAL_SCOPE");
   if (scenario === "commit") await verifyOriginalResult();
+  // Fixed projection of the three already verified independent observer snapshots.
+  // No additional query or HTTP-derived financial field enters this receipt.
+  const projectAccounting = (phase: "BEFORE" | "AFTER" | "REPLAY", value: typeof before) => Object.freeze({
+    phase, balanceAYuan4: value.balanceA, balanceBYuan4: value.balanceB,
+    paidAmountCents: value.request.paidAmountCents.toString(), settlementPaidAmountCents: value.settlement.paidAmountCents.toString(),
+    executionCount: value.executions.length, rootCount: value.roots.length,
+    fundingCount: value.funding.length, allocationCount: value.allocations.length,
+    eventCount: value.events.length, auditCount: value.audits.length,
+    projectFactCount: value.facts.length, projectImpactCount: value.impacts.length
+  });
+  const accountingEvidence = scenario === "commit" ? Object.freeze({
+    origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ" as const, currency: "CNY" as const,
+    before: projectAccounting("BEFORE", before), after: projectAccounting("AFTER", after), replay: projectAccounting("REPLAY", final),
+    executionId: execution.id, rootId: root.id, debtorCompanyId: root.originalDebtorCompanyId,
+    creditorCompanyId: root.creditorCompanyId, debtAmountCents: root.amountCents.toString()
+  }) : undefined;
   return { caseId: scenario === "commit" ? registeredPaymentPostgresCases()[0]!.id : "registered.null-cross-company.response-loss",
-    executed: true, database: identity.database, observerPid: identity.observerPid, executionId: execution.id, rootId: root.id, passed: true,
+    executed: true, database: identity.database, observerPid: identity.observerPid, executionId: execution.id, rootId: root.id, passed: true, ...(accountingEvidence ? { accountingEvidence } : {}),
     limits: scenario === "commit" ? ["Only the normal NULL-project commit/replay case", "No fault, concurrency, approval-path, TLS or deployment acceptance"]
       : ["Only the original-key recovery and replay after one lost HTTP response", "No database disconnect, rollback or concurrency acceptance"] };
 }

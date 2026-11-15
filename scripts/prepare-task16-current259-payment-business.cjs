@@ -18,6 +18,7 @@ const SCENARIOS=Object.freeze({normal:Object.freeze({scenario:'normal',caseId:'r
  'response-loss':Object.freeze({scenario:'response-loss',caseId:'registered.null-cross-company.response-loss',handler:'runRegisteredNullCrossCompanyResponseLoss'}),
  'cancel-commit':Object.freeze({scenario:'cancel-commit',caseId:'registered.null-cross-company.cancel-commit',handler:'runRegisteredNullCrossCompanyCommitCancellation'}),
  'disconnect-commit-recovery':Object.freeze({scenario:'disconnect-commit-recovery',caseId:'registered.null-cross-company.disconnect-commit-recovery',handler:'runRegisteredNullCrossCompanyDisconnectRecovery'})});
+const DIRECT261=Object.freeze({purpose:'current261-direct-payment-diagnostic',payment261:true,selected:SCENARIOS.normal,directDiagnostic:true});
 const COMPETITION=Object.freeze({scenario:'competition',caseId:'registered.two-actor.payment-competition',handler:'runRegisteredTwoActorPaymentCompetition'});
 const COMPETITION261=Object.freeze({purpose:'current261-payment-owned-two-actor-competition',
  payment261:true,runtimeProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE,selected:COMPETITION});
@@ -129,7 +130,7 @@ function scope(installation,selected){const cancellation=selected.scenario==='ca
  multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};}
 function planScope(installation,selected,profile){
  const selectedScope=scope(installation,selected);
- return profile?.runtimeProfile?{...selectedScope,paymentProfile:profile.runtimeProfile}:selectedScope;
+ return profile?.directDiagnostic?{...selectedScope,databaseTransport:'DIRECT_PAYMENT_HOST_TLS_V1',directDiagnostic:true}:profile?.runtimeProfile?{...selectedScope,paymentProfile:profile.runtimeProfile}:selectedScope;
 }
 function capture(file,expected){const data=read(file,{privateFile:true,maxBytes:512*1024,collect:true,...(expected?{expectedIdentity:expected}:{}),code:'PAYMENT_BUSINESS_PLAN_FILE'});need(data.identity.uid===process.getuid());return data;}
 function writeNew(file,bytes){parent(file);let fd;try{fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{if(fd!==undefined)fs.closeSync(fd);}const dir=fs.openSync(path.dirname(file),fs.constants.O_RDONLY);try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}}
@@ -137,6 +138,7 @@ function prepareCurrent259PaymentBusinessPlan(options){
  need(arguments.length===1);
  return prepare(options);
 }
+function prepareCurrent261DirectPaymentDiagnosticPlan(options){need(arguments.length===1);return prepare(options,DIRECT261);}
 function prepareCurrent261PaymentBusinessPlan(options){
  need(arguments.length===1);return prepare(options,PAYMENT261);
 }
@@ -178,6 +180,7 @@ function prepare(options,profile){
 function readCurrent259PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return readPlan(file,digest);
 }
+function readCurrent261DirectPaymentDiagnosticPlan(file,digest){need(arguments.length===2);return readPlan(file,digest,DIRECT261);}
 function readCurrent261PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return readPlan(file,digest,PAYMENT261);
 }
@@ -219,6 +222,7 @@ function readPlan(file,digest,profile){
 function verifyCurrent259PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return verifyPlan(file,digest);
 }
+function verifyCurrent261DirectPaymentDiagnosticPlan(file,digest){need(arguments.length===2);return verifyPlan(file,digest,DIRECT261);}
 function verifyCurrent261PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return verifyPlan(file,digest,PAYMENT261);
 }
@@ -255,20 +259,20 @@ function parse(args){
   const preparePlan=args[0]==='--prepare261'?prepareCurrent261PaymentBusinessPlan:prepareCurrent259PaymentBusinessPlan;
   return preparePlan({runRoot:args[2],daemonId:args[4],output:args[6],scenario:args[8],paidAt:args[10],openingDate:args[12]});
  }
- if(args.length===11&&['--prepare-competition261','--prepare-competition-follow-up261','--prepare-voucher261','--prepare-attribution-gap261'].includes(args[0])&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')
-  return (args[0]==='--prepare-competition-follow-up261'?prepareCurrent261PaymentCompetitionFollowUpPlan:args[0]==='--prepare-voucher261'?prepareCurrent261PaymentVoucherPlan:
+ if(args.length===11&&['--prepare-direct-diagnostic261','--prepare-competition261','--prepare-competition-follow-up261','--prepare-voucher261','--prepare-attribution-gap261'].includes(args[0])&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')
+  return (args[0]==='--prepare-direct-diagnostic261'?prepareCurrent261DirectPaymentDiagnosticPlan:args[0]==='--prepare-competition-follow-up261'?prepareCurrent261PaymentCompetitionFollowUpPlan:args[0]==='--prepare-voucher261'?prepareCurrent261PaymentVoucherPlan:
    args[0]==='--prepare-attribution-gap261'?prepareCurrent261PaymentAttributionGapPlan:prepareCurrent261PaymentCompetitionPlan)
    ({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
  if(args.length===11&&args[0]==='--prepare-competition'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentCompetitionPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
  if(args.length===11&&args[0]==='--prepare-attribution-gap'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentAttributionGapPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
  if(args.length===11&&args[0]==='--prepare-voucher'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentVoucherPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
- if(args.length===5&&['--verify','--verify261'].includes(args[0])&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256'){
-  const payment261=args[0]==='--verify261',verifyPlan=payment261?verifyCurrent261PaymentBusinessPlan:verifyCurrent259PaymentBusinessPlan;
+ if(args.length===5&&['--verify','--verify261','--verify-direct-diagnostic261'].includes(args[0])&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256'){
+  const directDiagnostic=args[0]==='--verify-direct-diagnostic261',payment261=directDiagnostic||args[0]==='--verify261',verifyPlan=directDiagnostic?verifyCurrent261DirectPaymentDiagnosticPlan:payment261?verifyCurrent261PaymentBusinessPlan:verifyCurrent259PaymentBusinessPlan;
   const v=verifyPlan(args[2],args[4]);return{status:payment261?'PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES',candidateSha:v.plan.material.source.candidateSha,planSha256:args[4]};
  }
  need(false);
 }
-module.exports=Object.freeze({prepareCurrent259PaymentBusinessPlan,readCurrent259PaymentBusinessPlan,verifyCurrent259PaymentBusinessPlan,
+module.exports=Object.freeze({prepareCurrent261DirectPaymentDiagnosticPlan,readCurrent261DirectPaymentDiagnosticPlan,verifyCurrent261DirectPaymentDiagnosticPlan,prepareCurrent259PaymentBusinessPlan,readCurrent259PaymentBusinessPlan,verifyCurrent259PaymentBusinessPlan,
  prepareCurrent259PaymentCompetitionPlan,readCurrent259PaymentCompetitionPlan,verifyCurrent259PaymentCompetitionPlan,
  prepareCurrent259PaymentAttributionGapPlan,readCurrent259PaymentAttributionGapPlan,verifyCurrent259PaymentAttributionGapPlan,
  prepareCurrent259PaymentVoucherPlan,readCurrent259PaymentVoucherPlan,verifyCurrent259PaymentVoucherPlan,

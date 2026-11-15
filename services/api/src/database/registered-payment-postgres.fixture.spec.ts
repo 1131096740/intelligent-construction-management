@@ -683,6 +683,13 @@ describe("registered PG original case: explicit observer projection protocol (no
       } else {
         await expect(run).resolves.toMatchObject({ caseId: scenario === "normal" ? "registered.null-cross-company.commit"
           : "registered.null-cross-company.response-loss", passed: true, executionId: "execution-one", rootId: "root-one" });
+        if (scenario === "normal") await expect(run).resolves.toMatchObject({ accountingEvidence: {
+          origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ", currency: "CNY",
+          before: { phase: "BEFORE", balanceAYuan4: "100.0000", balanceBYuan4: "100.0000", paidAmountCents: "0", executionCount: 0, rootCount: 0 },
+          after: { phase: "AFTER", balanceAYuan4: "100.0000", balanceBYuan4: "60.0000", paidAmountCents: "4000", executionCount: 1, rootCount: 1 },
+          replay: { phase: "REPLAY", balanceAYuan4: "100.0000", balanceBYuan4: "60.0000", paidAmountCents: "4000", executionCount: 1, rootCount: 1 },
+          executionId: "execution-one", rootId: "root-one", debtAmountCents: "4000", debtorCompanyId: ids.companyA, creditorCompanyId: ids.companyB
+        } });
         expect([...reads].sort()).toEqual(Object.keys(allowed).sort());
         expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(scenario === "normal" ? ["GET", "POST", "POST", "GET"] : ["GET", "POST", "GET", "POST"]);
         expect(responseCancellations.map(cancel => cancel.mock.calls.length)).toEqual(scenario === "normal" ? [0, 0] : [1, 0]);
