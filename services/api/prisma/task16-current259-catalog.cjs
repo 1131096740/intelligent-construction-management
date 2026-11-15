@@ -187,13 +187,16 @@ const readerExpected=(identity,oid,xmin)=>({oid,ownerOid:identity.ownerOid,names
   .sort((a,b)=>Number(a[1])-Number(b[1]))});
 const stableIdentity=value=>Object.fromEntries(Object.entries(value).filter(([key])=>!['backendPid','backendStart','readOnly'].includes(key)));
 const keys=(value,expected)=>need(equal(Object.keys(value).sort(),expected.sort()));
-function validate(row,r,m,prior,checkLink=true){
+function validate(row,r,m,prior,checkLink=true,diagnostic){
+ const mark=family=>{if(diagnostic)diagnostic.family=family;};mark('ENVELOPE_KEYS');
  keys(row,['phase','nonce','sourceSha','sealSha256','schemaSha256','identity','ledger','roles','relations',
   'capabilities','functions','extraFunctions','otherAclSha256','writeXid','commitStatus','reader','guardsVerified','readerColumns','publicAclViolations',...(m.voucher?['voucherBindingSha256']:[])]);
- need(row.phase===r.phase&&row.nonce===r.nonce&&row.sourceSha===m.p.candidateSha&&row.sealSha256===m.p.sealSha256&&
-  row.schemaSha256===m.p.schemaSha256&&equal(row.ledger,m.p.ledger)&&row.guardsVerified===true&&
-  equal(row.readerColumns,m.manifest.readerColumns)&&equal(row.publicAclViolations,[]));
- const id=row.identity;
+ mark('CORRELATION');need(row.phase===r.phase&&row.nonce===r.nonce&&row.sourceSha===m.p.candidateSha&&row.sealSha256===m.p.sealSha256&&row.schemaSha256===m.p.schemaSha256);
+ mark('LEDGER');need(equal(row.ledger,m.p.ledger));
+ mark('GUARDS');need(row.guardsVerified===true);
+ mark('READER_COLUMNS');need(equal(row.readerColumns,m.manifest.readerColumns));
+ mark('PUBLIC_ACL');need(equal(row.publicAclViolations,[]));
+ mark('IDENTITY');const id=row.identity;
  keys(id,['database','databaseOid','namespaceOid','ownerOid','systemIdentifier','currentRole','sessionRole',
   'backendPid','backendStart','tls','version','replication','readOnly']);
  for(const key of ['database','databaseOid','namespaceOid','ownerOid','systemIdentifier'])need(id[key]===r.identity[key]);
@@ -202,10 +205,10 @@ function validate(row,r,m,prior,checkLink=true){
   Number.isInteger(id.backendPid)&&id.backendPid>0&&id.backendPid<=2147483647&&
   typeof id.backendStart==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(id.backendStart)&&
   Number.isFinite(Date.parse(id.backendStart))&&new Date(Date.parse(id.backendStart)).toISOString().slice(0,19)===id.backendStart.slice(0,19));
- need(Array.isArray(row.roles)&&row.roles.length===3);
+ mark('ROLES');need(Array.isArray(row.roles)&&row.roles.length===3);
  const roleNames=['jg_task01_observer','jg_task01_owner','jg_task01_runtime'];
  row.roles.forEach((role,index)=>{
-  const key=index===0?'observer':index===1?'owner':'runtime',owner=key==='owner';
+  mark(['ROLE_OBSERVER','ROLE_OWNER','ROLE_RUNTIME'][index]);const key=index===0?'observer':index===1?'owner':'runtime',owner=key==='owner';
   keys(role,['oid','name','superuser','inherit','canLogin','createRole','createDb','replication','bypassRls',
    'connectionLimit','memberships','createSchema','usageSchema','connectDatabase','createDatabaseSchema',
    'temporary','otherDatabases','readOnlyDefault']);
@@ -220,14 +223,14 @@ function validate(row,r,m,prior,checkLink=true){
    const key=entry.join(':');need(!seen.has(key));seen.add(key);
   }
  });
- const cfg=config(r,m);
+ mark('RELATIONS');const cfg=config(r,m);
  need(Array.isArray(row.relations)&&row.relations.length===cfg.relations.length);
  row.relations.forEach((rel,index)=>{
   keys(rel,['table','oid','owner','kind','rls','forceRls']);const expected=cfg.relations[index];
   need(rel.table===expected.table&&oid(rel.oid)&&rel.owner===expected.owner&&rel.kind==='r'&&rel.rls===false&&rel.forceRls===false);
  });
- need(equal(row.capabilities,capabilities(m.plan))&&equal(row.extraFunctions,[]));
- const expectedFunctions=[...cfg.runtime.functions.map(sig=>['jg_task01_runtime',sig]),
+ mark('CAPABILITIES');need(equal(row.capabilities,capabilities(m.plan))&&equal(row.extraFunctions,[]));
+ mark('FUNCTIONS');const expectedFunctions=[...cfg.runtime.functions.map(sig=>['jg_task01_runtime',sig]),
   ...cfg.observer.functions.map(sig=>['jg_task01_observer',sig])].sort(lexical);
  need(Array.isArray(row.functions)&&row.functions.length===expectedFunctions.length);
  const routineIds=new Map(),signatures=new Map();
@@ -236,9 +239,9 @@ function validate(row,r,m,prior,checkLink=true){
   need(!routineIds.has(f[1])||routineIds.get(f[1])===f[2]);routineIds.set(f[1],f[2]);
   need(!signatures.has(f[2])||signatures.get(f[2])===f[1]);signatures.set(f[2],f[1]);
  });
- need(typeof row.otherAclSha256==='string'&&/^[a-f0-9]{64}$/u.test(row.otherAclSha256));
+ mark('OTHER_ACL');need(typeof row.otherAclSha256==='string'&&/^[a-f0-9]{64}$/u.test(row.otherAclSha256));
  if(m.voucher)need(typeof row.voucherBindingSha256==='string'&&/^[a-f0-9]{64}$/u.test(row.voucherBindingSha256));
- if(r.phase==='before')need(row.reader===null&&row.writeXid===null&&row.commitStatus===null&&prior===undefined);
+ mark('READER_STATE');if(r.phase==='before')need(row.reader===null&&row.writeXid===null&&row.commitStatus===null&&prior===undefined);
  else{
   const v=row.reader;need(v&&oid(v.oid));
   need(equal(v,readerExpected(r.identity,v.oid,v.xmin))&&routineIds.get(SIGNATURE)===v.oid);
@@ -247,7 +250,7 @@ function validate(row,r,m,prior,checkLink=true){
   else need(row.writeXid===null&&row.commitStatus==='committed'&&
     v.xmin===(BigInt(r.installXid)&0xffffffffn).toString());
   if(checkLink){
-   const before=snapshot(prior),previousRequest={source:r.source,identity:r.identity,nonce:r.nonce,
+   mark('PRIOR_LINK');const before=snapshot(prior),previousRequest={source:r.source,identity:r.identity,nonce:r.nonce,
     phase:r.phase==='staged'?'before':'staged'};
    // Revalidate every prior fact against this exact run, not its self-declared status.
    const checked=validate(before.raw,previousRequest,m,undefined,false);need(equal(before,checked));
@@ -264,12 +267,20 @@ function validate(row,r,m,prior,checkLink=true){
  }
  return snapshot({status:'CURRENT259_B7_CATALOG_MATCHED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,raw:row});
 }
-function parseCurrent259CatalogRead(stdout,input,prior){
+function parseCatalogRead(stdout,input,prior,diagnostic){
+ const mark=family=>{if(diagnostic)diagnostic.family=family;};
  try{
   need(typeof stdout==='string'&&Buffer.byteLength(stdout)<=512*1024);
-  const r=request(input),m=materialForRequest(r),row=snapshot(JSON.parse(stdout.trim()));
-  return validate(row,r,m,prior);
+  mark('REQUEST');const r=request(input);mark('MATERIAL');const m=materialForRequest(r);
+  mark('JSON');const row=snapshot(JSON.parse(stdout.trim()));
+  return validate(row,r,m,prior,true,diagnostic);
  }catch{fail();}
+}
+function parseCurrent259CatalogRead(stdout,input,prior){return parseCatalogRead(stdout,input,prior);}
+function describeNativeTask16CatalogFailure(stdout,input,prior){
+ const diagnostic={family:'UNKNOWN'};
+ try{parseCatalogRead(stdout,input,prior,diagnostic);return Object.freeze({matched:true,family:'MATCHED'});}
+ catch{return Object.freeze({matched:false,family:diagnostic.family});}
 }
 
 
@@ -336,4 +347,4 @@ COMMIT;
   return script;
  }catch{fail();}
 }
-module.exports={loadCurrent259CatalogMaterial,renderCurrent259CatalogRead,parseCurrent259CatalogRead,renderCurrent259B7Install,current259Schema205WitnessSql,current259AclRowsSql,current259SignedNumberAclSql};
+module.exports={describeNativeTask16CatalogFailure,loadCurrent259CatalogMaterial,renderCurrent259CatalogRead,parseCurrent259CatalogRead,renderCurrent259B7Install,current259Schema205WitnessSql,current259AclRowsSql,current259SignedNumberAclSql};

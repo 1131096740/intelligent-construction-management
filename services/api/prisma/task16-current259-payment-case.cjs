@@ -2,6 +2,7 @@
 // Only the original factory's private lease and the fresh-main business issuer
 // can reach the fixed seed/cases. Importing does not construct/connect anything.
 const {types,isDeepStrictEqual:equal}=require('node:util');
+const {isIP}=require('node:net');
 const {createHash,randomBytes}=require('node:crypto');
 const path=require('node:path');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
@@ -36,7 +37,7 @@ async function executeCurrent259PaymentCase(lease,permit){
   caseStage='CONTINUITY_ACTIVATION';
   permission.check();lease.activateContinuity(permission.continuityToken);lease.check();
   caseStage='CASE_SETUP';
-  const scope=permission.scope,cancellation=scope.scenario==='cancel-commit',disconnect=scope.scenario==='disconnect-commit-recovery';
+  const scope=permission.scope,directDiagnostic=scope.directDiagnostic===true,cancellation=scope.scenario==='cancel-commit',disconnect=scope.scenario==='disconnect-commit-recovery';
   const attributionGap=scope.scenario==='attribution-gap';
   const gapScope={expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false};
   if(attributionGap){
@@ -60,7 +61,18 @@ async function executeCurrent259PaymentCase(lease,permit){
   need(typeof load==='function'&&qualifiedFetch);
   const original={...Object.fromEntries(['owner','runtime','observer','verifyFull','checkLight'].map(k=>[k,session[k]]))};
   const resource=snapshot(lease.resourceIdentity()),identity=snapshot(session.identity[0]);
-  const loopback=paymentLoopbackForScenario(scope.scenario);
+  const loopback=directDiagnostic?undefined:paymentLoopbackForScenario(scope.scenario);
+  let directTransport,directEndpoint;
+  if(directDiagnostic){
+   const endpoint=snapshot(session.endpoint),identities=snapshot(session.identity);directEndpoint=endpoint;
+   const privateAddress=value=>typeof value==='string'&&isIP(value)===4&&/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/u.test(value);
+   need(scope.scenario==='normal'&&scope.databaseTransport==='DIRECT_PAYMENT_HOST_TLS_V1'&&
+    resource.topology==='UNVERIFIED_HOST_PUBLISHED_TLS'&&!Object.hasOwn(resource,'relay')&&
+    endpoint.publishedHost==='127.0.0.1'&&endpoint.publishedPort===resource.port&&endpoint.serverPort===5432&&
+    privateAddress(endpoint.clientAddress)&&privateAddress(endpoint.serverAddress)&&
+    identities.length===3&&identities.every((row,index)=>row.tls===true&&row.loginRole==='jg_task01_'+['owner','runtime','observer'][index]));
+   directTransport=Object.freeze({topology:resource.topology,...endpoint});
+  }
   need(resource.databaseName===identity.database&&Number.isInteger(resource.port));
   if(loopback){
    const {endpoint}=session,relay=resource.relay;
@@ -77,7 +89,7 @@ async function executeCurrent259PaymentCase(lease,permit){
   const check=()=>{
    permission.check();lease.check();
    need(session===lease.session&&loader===lease.loader&&source===lease.source&&Object.getOwnPropertyDescriptor(loader,'loadPaymentModules')?.value===load&&
-    Object.keys(original).every(k=>session[k]===original[k])&&(!faulting||Object.getOwnPropertyDescriptor(session,faultName)?.value===commitFault)&&equal(lease.resourceIdentity(),resource)&&equal(session.identity[0],identity)&&
+    Object.keys(original).every(k=>session[k]===original[k])&&(!directDiagnostic||equal(snapshot(session.endpoint),directEndpoint))&&(!faulting||Object.getOwnPropertyDescriptor(session,faultName)?.value===commitFault)&&equal(lease.resourceIdentity(),resource)&&equal(session.identity[0],identity)&&
     Object.getOwnPropertyDescriptor(globalThis,'fetch')?.value===originalFetch&&equal(permission.effectiveAccessBinding,material.effectiveAccessBinding)&&equal(lease.effectiveAccessBinding,material.effectiveAccessBinding)&&equal(session.effectiveAccessBinding,material.effectiveAccessBinding));
   };
   caseStage='PRE_SEED_AUTHORITY';
@@ -279,8 +291,10 @@ async function executeCurrent259PaymentCase(lease,permit){
     originalRequestKeySha256:createHash('sha256').update(plan.ids.requestKey).digest('hex'),originalResultUnconfirmed:true});
   }else if(cancellation)need(barrierUsed&&faultSettled&&postCount===1&&resultReads===1&&result.rollbackObserved===true&&result.originalResultUnconfirmed===true);
   else need([result.executionId,result.rootId].every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value)));
+  let accountingEvidence;
+  if(directDiagnostic){need(!types.isProxy(result));accountingEvidence=snapshot(Object.getOwnPropertyDescriptor(result,'accountingEvidence')?.value);}
   lease.finishContinuity(permission.continuityToken);permission.check();
-  return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:attributionGap?{attributionGapEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
+  return Object.freeze({caseId,passed:true,...(directDiagnostic?{directTransport,accountingEvidence}:{}),...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:attributionGap?{attributionGapEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
  }catch(error){
   let code=error&&typeof error==='object'&&!types.isProxy(error)?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;
   if(typeof code!=='string'&&error&&typeof error==='object'&&!types.isProxy(error)){

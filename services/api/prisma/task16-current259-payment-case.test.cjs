@@ -41,7 +41,7 @@ function caseFixture(t,options={}){
  f.session.deactivateBusinessContinuity=token=>{businessGuard(token,f.handle);f.calls.push('finish-continuity');};
  f.session.checkContinuity=token=>{businessGuard(token,f.handle);f.session.checkLight();};
  return {...f,caseApi:holder.exports,issue(application,scope){
-  const profile=require('./task16-current259-payment-loopback.cjs').paymentLoopbackForScenario(options.transportScenario??scope.scenario);
+  const profile=options.directDiagnostic?undefined:require('./task16-current259-payment-loopback.cjs').paymentLoopbackForScenario(options.transportScenario??scope.scenario);
   if(profile){
    const current=scope.disconnectPhase==='recovery'?f.otherSession:f.session;
    const {publishedPort,port}=current.endpoint;
@@ -59,6 +59,7 @@ function paymentModel(f,options={}){
  f.view.resource.getReceipt=()=>{
   const endpoint=f.session.endpoint,containerId='a'.repeat(64);
   return {runId,containerId,databaseName:f.session.identity[0].database,port:endpoint.port??endpoint.publishedPort,
+   ...(options.directDiagnostic?{topology:'UNVERIFIED_HOST_PUBLISHED_TLS'}:{}),
    ...(endpoint.transport?{topology:endpoint.transport,relay:{id:endpoint.relayId,containerId,host:endpoint.host,port:endpoint.port}}:{})};
  };
  f.view.resource.getReceiptContinuity=()=>f.view.resource.getReceipt();
@@ -74,7 +75,7 @@ function paymentModel(f,options={}){
   async runRegisteredNullCrossCompanyCommit(execution,fixture,continuity){consumers++;assert.equal(execution,captured.execution);assert.deepEqual(fixture.plan,captured.input);assert.equal(fixture.accessToken,'private-model-token');
    continuity.assertHttpRequest('/payment-executions/'+plan.ids.payment+'/registrations','POST');
    await options.onCase?.(continuity,fixture);
-   return {caseId:'registered.null-cross-company.commit',passed:true,executionId:'11111111-1111-4111-8111-111111111111',rootId:'22222222-2222-4222-8222-222222222222'};
+   return {caseId:'registered.null-cross-company.commit',passed:true,executionId:'11111111-1111-4111-8111-111111111111',rootId:'22222222-2222-4222-8222-222222222222',...(options.directDiagnostic?{accountingEvidence:{origin:'INDEPENDENT_OBSERVER_REPEATABLE_READ'}}:{})};
   },
   async runRegisteredNullCrossCompanyResponseLoss(execution,fixture,continuity){const result=await modules.runRegisteredNullCrossCompanyCommit(execution,fixture,continuity);return {...result,caseId:'registered.null-cross-company.response-loss'};}
  };
@@ -598,4 +599,15 @@ for(const stale of [false,true])test('private server cause accompanies only curr
  assert.equal(issued.length,1);assert.equal(consumed.length,1);assert.equal(issued[0].paymentId,m.plan.ids.payment);assert.equal(issued[0].key,m.plan.ids.requestKey);
  assert.deepEqual(seen[0]?.[4],{httpStatus:500,expectedHttpStatus:201,...(!stale?{serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2010',serverSqlState:'42501'}:{}),caseGate:'REGISTRATION_REQUEST',errorKind:'ERROR'});
  assert.doesNotMatch(JSON.stringify(seen),/private/);
+});
+
+for(const invalid of [false,true])test('fixed direct diagnostic uses genuine published TLS endpoint before seed '+invalid,async t=>{
+ const f=caseFixture(t,{directDiagnostic:true}),m=paymentModel(f,{directDiagnostic:true});
+ if(invalid)f.session.endpoint={...f.session.endpoint,publishedHost:'0.0.0.0'};
+ const run=f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  const permit=f.issue(app,{scenario:'normal',directDiagnostic:true,databaseTransport:'DIRECT_PAYMENT_HOST_TLS_V1',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate});
+  const result=await f.caseApi.runCurrent259PaymentCase(app,f.handle,permit);
+  assert.equal(result.passed,true);assert.equal(result.directTransport.topology,'UNVERIFIED_HOST_PUBLISHED_TLS');assert.equal(result.directTransport.publishedHost,'127.0.0.1');assert.equal(result.directTransport.clientAddress,'172.19.0.1');
+ });
+ if(invalid){await assert.rejects(run);assert.deepEqual(m.counts(),{builds:0,seeds:0,consumers:0});}else await run;
 });

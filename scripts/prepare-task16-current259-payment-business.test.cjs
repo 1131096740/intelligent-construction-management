@@ -300,3 +300,15 @@ test('follow-up reader rejects original competition and rehashed changes to its 
   assert.throws(()=>f.business.readCurrent261PaymentCompetitionFollowUpPlan(current.file,require('node:crypto').createHash('sha256').update(bytes).digest('hex')));
  }
 });
+
+test('direct261 diagnostic binds only a fresh normal sidecar and cannot consume old loopback purpose',t=>{
+ const f=fixture(t,{payment261:true}),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-15',openingDate:'2026-11-15'};
+ const saved=f.business.prepareCurrent261DirectPaymentDiagnosticPlan(options),v=f.business.verifyCurrent261DirectPaymentDiagnosticPlan(f.output,saved.sha256);
+ assert.equal(v.plan.purpose,'current261-direct-payment-diagnostic');assert.equal(v.plan.case.scenario,'normal');
+ assert.equal(v.plan.scope.databaseTransport,'DIRECT_PAYMENT_HOST_TLS_V1');assert.equal(v.plan.scope.commitFaults,false);
+ assert.equal(v.plan.scope.registrationPostCount,2);assert.equal(v.plan.scope.multiActorConcurrency,false);
+ assert.equal(v.plan.scope.directDiagnostic,true);assert.equal(v.plan.scope.financialAcceptance,false);
+ assert.throws(()=>f.business.verifyCurrent261PaymentBusinessPlan(f.output,saved.sha256));
+ assert.throws(()=>f.business.prepareCurrent261DirectPaymentDiagnosticPlan({...options,scenario:'response-loss'}));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});

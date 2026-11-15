@@ -7,7 +7,7 @@ const {performance}=require('node:perf_hooks');
 const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
 const {PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
-const ONCE_OPTIONS=Object.freeze(['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once','--install261-once','--business261-once','--competition261-once','--competition-follow-up261-once','--voucher261-once','--attribution-gap261-once']);
+const ONCE_OPTIONS=Object.freeze(['--direct-diagnostic261-once','--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once','--install261-once','--business261-once','--competition261-once','--competition-follow-up261-once','--voucher261-once','--attribution-gap261-once']);
 const permissions=new WeakMap(),businessPermissions=new WeakMap(),attributionGapPermissions=new WeakMap(),voucherBusinessPermissions=new WeakMap(),businessContinuities=new WeakMap();
 const payment261RolePermissions=new WeakMap(),competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap(),voucherAclPermissions=new WeakMap();
 const attributionGapFailureCodes=new Map([
@@ -65,6 +65,26 @@ function data(value,key){if(!value||types.isProxy(value))return undefined;const 
 function fixed(value,keys){
  need(value&&!types.isProxy(value)&&Object.getPrototypeOf(value)===Object.prototype&&Reflect.ownKeys(value).length===keys.length);
  return Object.fromEntries(keys.map(key=>{const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'));return [key,d.value];}));
+}
+// Receipt-only projection; it confers no admission and performs no query.
+function directAccountingResult(result,port){
+ const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value);
+ const evidence=fixed(data(result,'accountingEvidence'),['origin','currency','before','after','replay','executionId','rootId','debtorCompanyId','creditorCompanyId','debtAmountCents']);
+ need(evidence.origin==='INDEPENDENT_OBSERVER_REPEATABLE_READ'&&evidence.currency==='CNY'&&evidence.debtAmountCents==='4000'&&
+  ['executionId','rootId','debtorCompanyId','creditorCompanyId'].every(key=>uuid(evidence[key]))&&evidence.debtorCompanyId!==evidence.creditorCompanyId&&
+  evidence.executionId===data(result,'executionId')&&evidence.rootId===data(result,'rootId'),'DIRECT_ACCOUNTING_EVIDENCE');
+ const keys=['phase','balanceAYuan4','balanceBYuan4','paidAmountCents','settlementPaidAmountCents','executionCount','rootCount','fundingCount','allocationCount','eventCount','auditCount','projectFactCount','projectImpactCount'];
+ for(const [key,phase,count,paid,balance] of [['before','BEFORE',0,'0','100.0000'],['after','AFTER',1,'4000','60.0000'],['replay','REPLAY',1,'4000','60.0000']]){
+  const row=fixed(evidence[key],keys);
+  need(row.phase===phase&&row.balanceAYuan4==='100.0000'&&row.balanceBYuan4===balance&&row.paidAmountCents===paid&&row.settlementPaidAmountCents===paid&&
+   ['executionCount','rootCount','fundingCount','allocationCount','eventCount','auditCount'].every(field=>row[field]===count)&&row.projectFactCount===0&&row.projectImpactCount===0,'DIRECT_ACCOUNTING_EVIDENCE');
+  evidence[key]=Object.freeze(row);
+ }
+ const transport=fixed(data(result,'directTransport'),['topology','publishedHost','publishedPort','clientAddress','clientPort','serverAddress','serverPort']);
+ const privateAddress=value=>typeof value==='string'&&require('node:net').isIP(value)===4&&/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/u.test(value);
+ need(transport.topology==='UNVERIFIED_HOST_PUBLISHED_TLS'&&transport.publishedHost==='127.0.0.1'&&transport.publishedPort===port&&
+  transport.serverPort===5432&&privateAddress(transport.clientAddress)&&privateAddress(transport.serverAddress)&&Number.isInteger(transport.clientPort)&&transport.clientPort>0&&transport.clientPort<=65535,'DIRECT_ACCOUNTING_EVIDENCE');
+ return Object.freeze({accountingEvidence:Object.freeze(evidence),directTransport:Object.freeze(transport)});
 }
 function revoke(state){if(state){state.active=false;state.abort('CONTINUITY_REVOKED');}}
 function claimCurrent259B7WritePermit(permit,handle,acl){
@@ -337,13 +357,14 @@ function parse(args){
  const attributionGap261=args[0]==='--attribution-gap261'||args[0]==='--attribution-gap261-once';
  const attributionGap=attributionGap261||args[0]==='--attribution-gap'||args[0]==='--attribution-gap-once';
  const pfq=args[0]==='--pfq-composition'||args[0]==='--pfq-composition-once';
+ const directDiagnostic=args[0]==='--direct-diagnostic261'||args[0]==='--direct-diagnostic261-once';
  const business261=args[0]==='--business261'||args[0]==='--business261-once';
- const payment261=business261||competition261||voucher261||attributionGap261||args[0]==='--install261'||args[0]==='--install261-once';
- const business=business261||competition||attributionGap||args[0]==='--business'||args[0]==='--business-once';
+ const payment261=directDiagnostic||business261||competition261||voucher261||attributionGap261||args[0]==='--install261'||args[0]==='--install261-once';
+ const business=directDiagnostic||business261||competition||attributionGap||args[0]==='--business'||args[0]==='--business-once';
  const once=ONCE_OPTIONS.includes(args[0]),rest=once||business||pfq||payment261?args.slice(1):args;
  need(progressRoot===undefined||once,'ARGUMENTS');
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,business,payment261,followUp261,competition261,competition,attributionGap,attributionGap261,voucher,voucher261,pfq,file:rest[1],sha256:rest[3],progressRoot};
+ return {once,business,payment261,directDiagnostic,followUp261,competition261,competition,attributionGap,attributionGap261,voucher,voucher261,pfq,file:rest[1],sha256:rest[3],progressRoot};
 }
 async function run(args){
  const requestedOnce=Array.isArray(args)&&ONCE_OPTIONS.includes(args[0]);
@@ -525,7 +546,7 @@ async function run(args){
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
   const paymentProfile=request.voucher261?PAYMENT261_VOUCHER_RUNTIME_PROFILE:request.attributionGap261?PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE:
    request.competition261?PAYMENT261_COMPETITION_RUNTIME_PROFILE:request.payment261?PAYMENT261_RUNTIME_PROFILE:undefined;
-  const names=request.followUp261?['readCurrent261PaymentCompetitionFollowUpPlan','verifyCurrent261PaymentCompetitionFollowUpPlan']:request.voucher261?['readCurrent261PaymentVoucherPlan','verifyCurrent261PaymentVoucherPlan']:
+  const names=request.directDiagnostic?['readCurrent261DirectPaymentDiagnosticPlan','verifyCurrent261DirectPaymentDiagnosticPlan']:request.followUp261?['readCurrent261PaymentCompetitionFollowUpPlan','verifyCurrent261PaymentCompetitionFollowUpPlan']:request.voucher261?['readCurrent261PaymentVoucherPlan','verifyCurrent261PaymentVoucherPlan']:
    request.attributionGap261?['readCurrent261PaymentAttributionGapPlan','verifyCurrent261PaymentAttributionGapPlan']:
    request.competition261?['readCurrent261PaymentCompetitionPlan','verifyCurrent261PaymentCompetitionPlan']:
    request.payment261?(request.business?['readCurrent261PaymentBusinessPlan','verifyCurrent261PaymentBusinessPlan']:['readCurrent261PaymentInstallPlan','verifyCurrent261PaymentInstallPlan']):
@@ -536,7 +557,7 @@ async function run(args){
   const [readPlan,verifyPlan]=names.map(name=>planModule[name]);
   const basic=readPlan(request.file,request.sha256);plan=basic.plan;
   const loopbackScenario=request.pfq?'cancel-commit':request.business?plan.case.scenario:undefined;
-  const loopback=paymentLoopbackForScenario(loopbackScenario);
+  const loopback=request.directDiagnostic?undefined:paymentLoopbackForScenario(loopbackScenario);
   need(plan.scope.migrations===(request.payment261?261:259)&&
    plan.scope.paymentProfile===paymentProfile,'LEDGER_PROFILE');
   const {isExactCurrentPaymentRuntimeSource}=request.payment261?original('./task16-current261-competition-profile.cjs',['isExactCurrentPaymentRuntimeSource']):{};
@@ -545,7 +566,7 @@ async function run(args){
     source.profile.ledgerSha256===plan.material.source.ledgerSha256&&source.candidateSha===plan.material.source.candidateSha&&
     source.sourceSealSha256===plan.material.source.sourceSealSha256,'LEDGER_PROFILE');
   }
-  need(plan.scope.databaseTransport===loopback?.plan&&request.attributionGap===(loopbackScenario==='attribution-gap')&&
+  need((request.directDiagnostic?plan.scope.databaseTransport==='DIRECT_PAYMENT_HOST_TLS_V1'&&plan.scope.directDiagnostic===true&&loopbackScenario==='normal':plan.scope.databaseTransport===loopback?.plan)&&request.attributionGap===(loopbackScenario==='attribution-gap')&&
    request.voucher===(loopbackScenario==='competition-voucher')&&
    request.competition===(loopbackScenario==='competition'||loopbackScenario==='competition-follow-up'||loopbackScenario==='competition-voucher'),'RESOURCE_PROFILE');
   if(!request.once){
@@ -739,6 +760,7 @@ async function run(args){
          const business={active:true,claimed:false,recordCaseFailure:ordinary261,effectiveAccessBinding:state.effectiveAccessBinding,
           ...(paymentProfile!==undefined?{paymentProfile}:{}),...(batchedSeed?{seedProfile:paymentProfile}:{}),
           application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
+          ...(request.directDiagnostic?{directDiagnostic:true,databaseTransport:plan.scope.databaseTransport}:{}),
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,
           ...(request.competition261||request.voucher261||request.attributionGap261?{paymentProfile}:{}),
           ...(request.voucher?{voucherStorageRoot:data(environment,'storageRoot')}:{}),
@@ -758,6 +780,18 @@ async function run(args){
          receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'ISSUED_NOT_YET_CONSUMED',outcome:'UNKNOWN_DO_NOT_RETRY'};
          try{
           const result=await runCase(application,handle,businessPermit);
+          if(request.directDiagnostic){
+           // Consume the returned original observer facts before the unchanged
+           // post-case full guard can fail. A writer failure never resubmits.
+           try{
+            need(business.claimed&&data(result,'passed')===true&&data(result,'caseId')===plan.case.caseId,'BUSINESS_RESULT');
+            const evidence=directAccountingResult(result,created.port);
+            const bytes=Buffer.from(JSON.stringify({schemaVersion:1,purpose:plan.purpose,planSha256:request.sha256,candidateSha:source.candidateSha,runId:view.runId,...evidence})+'\n');
+            need(bytes.length<=8192,'DIRECT_ACCOUNTING_EVIDENCE');
+            writeNew(plan,path.join(plan.run.root,'direct-accounting-evidence.json'),bytes);
+            receipt.directAccountingEvidence={status:'RECORDED',sha256:hash(bytes),bytes:bytes.length};
+           }catch{receipt.directAccountingEvidence={status:'UNKNOWN_DO_NOT_RETRY'};}
+          }
           business.check();
           if(disconnectPhase==='attempt'){
            need(business.claimed&&result&&typeof result==='object'&&Reflect.ownKeys(result).length===0,'BUSINESS_RESULT');
@@ -824,8 +858,8 @@ async function run(args){
   }catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_SCOPE');else rememberFirst(error);}
   finally{if(state)state.active=false;currentRun=undefined;if(timer)clearTimeout(timer);process.removeListener('SIGINT',onSigint);process.removeListener('SIGTERM',onSigterm);}
   try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(hasFirst)rememberSecondary(error,'RESOURCE_FINALIZATION');if(!hasFirst)rememberFirst(error,'ownedCleanup');receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
-  if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.pfq||receipt.pfq)&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.pfq?'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED':request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
-  else{receipt.status='STOPPED';receipt.failureCode??='PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
+  if(!hasFirst&&(!request.directDiagnostic||receipt.directAccountingEvidence?.status==='RECORDED')&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.pfq||receipt.pfq)&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.pfq?'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED':request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
+  else{receipt.status='STOPPED';receipt.failureCode??=request.directDiagnostic&&receipt.directAccountingEvidence?.status==='UNKNOWN_DO_NOT_RETRY'?'PAYMENT_DIRECT_ACCOUNTING_EVIDENCE_UNKNOWN':'PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
   refreshBusinessFailureContext();recordTiming(receipt);
   try{recordProgress('FINALIZATION');}catch(error){if(hasFirst)rememberSecondary(error,'PROGRESS_PUBLICATION');else rememberFirst(error);receipt.status='STOPPED';}
   publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;

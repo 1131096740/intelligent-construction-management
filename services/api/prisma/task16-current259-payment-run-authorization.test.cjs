@@ -1670,3 +1670,73 @@ for(const mode of ['selected case','verifyFull'])test(mode+' first fact precedes
  assert.throws(()=>lease.check());assert.equal(f.state.calls.filter(x=>x==='case').length,1);
  assert.doesNotMatch(JSON.stringify(fileAtWrapper),/PRIVATE_ORIGINAL|PRIVATE_WRAPPER/);
 });
+
+function directDiagnosticFixture(t,options={}){
+ const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
+ new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
+ const s=holder.exports.fixture(t,{payment261:true}),plan=s.business.prepareCurrent261DirectPaymentDiagnosticPlan({
+  runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
+ });
+ const saved=s.api.readCurrent261PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ return fixture(t,{payment261:true,business:true,...options,launchOption:options.launchOption??'--direct-diagnostic261',planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+}
+test('new direct diagnostic public verify admits only its fresh fixed plan without resource or once',async t=>{
+ const f=directDiagnosticFixture(t),result=await f.done;
+ assert.equal(result.status,'PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));
+ assert.equal(f.state.exit,0);assert.deepEqual(f.state.calls,[]);
+ assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
+});
+for(const launchOption of ['--business261','--business261-once'])test('old normal entry rejects direct purpose '+launchOption,async t=>{
+ const f=directDiagnosticFixture(t,{launchOption}),result=await f.done;
+ assert.equal(result.status,'STOPPED');assert.deepEqual(f.state.calls,[]);
+});
+
+function directModelEvidence(){
+ const phase=(phase,paid,balance,count)=>({phase,balanceAYuan4:'100.0000',balanceBYuan4:balance,paidAmountCents:paid,settlementPaidAmountCents:paid,executionCount:count,rootCount:count,fundingCount:count,allocationCount:count,eventCount:count,auditCount:count,projectFactCount:0,projectImpactCount:0});
+ return {origin:'INDEPENDENT_OBSERVER_REPEATABLE_READ',currency:'CNY',before:phase('BEFORE','0','100.0000',0),after:phase('AFTER','4000','60.0000',1),replay:phase('REPLAY','4000','60.0000',1),executionId:'11111111-1111-4111-8111-111111111111',rootId:'22222222-2222-4222-8222-222222222222',debtorCompanyId:'33333333-3333-4333-8333-333333333333',creditorCompanyId:'44444444-4444-4444-8444-444444444444',debtAmountCents:'4000'};
+}
+function directResult(){return {executionId:'11111111-1111-4111-8111-111111111111',rootId:'22222222-2222-4222-8222-222222222222',accountingEvidence:directModelEvidence(),directTransport:{topology:'UNVERIFIED_HOST_PUBLISHED_TLS',publishedHost:'127.0.0.1',publishedPort:32456,clientAddress:'172.19.0.1',clientPort:53101,serverAddress:'172.19.0.2',serverPort:5432}};}
+test('direct once saves only bounded independent snapshot evidence before post-case check',async t=>{
+ const f=directDiagnosticFixture(t,{launchOption:'--direct-diagnostic261-once',businessResult:directResult(),onBusiness({lease}){
+  assert.equal(lease.scope.directDiagnostic,true);assert.equal(lease.scope.databaseTransport,'DIRECT_PAYMENT_HOST_TLS_V1');
+ }}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ const file=path.join(f.s.runRoot,'direct-accounting-evidence.json'),evidence=JSON.parse(fs.readFileSync(file));
+ assert.deepEqual(evidence.accountingEvidence,directModelEvidence());assert.equal(evidence.directTransport.publishedHost,'127.0.0.1');
+ assert.ok(fs.statSync(file).size<8192);assert.equal(fs.statSync(file).mode&0o777,0o600);
+ assert.equal(f.state.closes,1);assert.equal(f.state.calls[0],'start');
+});
+
+for(const invalid of ['getter','proxy','wrong-amount','occupied'])test('direct receipt rejects unsafe/unavailable evidence without repeating business '+invalid,async t=>{
+ let traps=0;const result=directResult();
+ if(invalid==='getter')Object.defineProperty(result.accountingEvidence.replay,'balanceBYuan4',{enumerable:true,get(){traps++;throw Error('private getter');}});
+ if(invalid==='proxy')result.accountingEvidence=new Proxy(result.accountingEvidence,{ownKeys(){traps++;throw Error('private proxy');}});
+ if(invalid==='wrong-amount')result.accountingEvidence.replay.paidAmountCents='8000';
+ const f=directDiagnosticFixture(t,{launchOption:'--direct-diagnostic261-once',businessResult:result,onBusiness({s}){
+  if(invalid==='occupied')fs.writeFileSync(path.join(s.runRoot,'direct-accounting-evidence.json'),'original marker',{flag:'wx',mode:0o600});
+ }}),done=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.equal(done.status,'STOPPED');assert.equal(done.failureCode,'PAYMENT_DIRECT_ACCOUNTING_EVIDENCE_UNKNOWN');assert.equal(receipt.directAccountingEvidence.status,'UNKNOWN_DO_NOT_RETRY');
+ assert.equal(receipt.business.outcome,'CASE_RETURNED_NOT_FULL_ACCEPTANCE');assert.equal(f.state.calls.filter(x=>x==='case').length,1);assert.equal(traps,0);
+ if(invalid==='occupied')assert.equal(fs.readFileSync(path.join(f.s.runRoot,'direct-accounting-evidence.json'),'utf8'),'original marker');
+ else assert.equal(fs.existsSync(path.join(f.s.runRoot,'direct-accounting-evidence.json')),false);
+});
+test('direct evidence persists before unchanged post-case guard rejects original first cause',async t=>{
+ let fail=false;const original=Object.assign(new Error('private source change'),{code:'CURRENT259_LOADER_CHANGED'});
+ const f=directDiagnosticFixture(t,{launchOption:'--direct-diagnostic261-once',businessResult:directResult(),onCheck(){if(fail)throw original;},afterCaseResult(){fail=true;}});
+ const done=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.equal(done.status,'STOPPED');assert.equal(done.failureCode,'CURRENT259_LOADER_CHANGED');
+ assert.equal(receipt.directAccountingEvidence.status,'RECORDED');assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'direct-accounting-evidence.json'))).accountingEvidence,directModelEvidence());
+ assert.equal(f.state.calls.filter(x=>x==='case').length,1);
+});
+
+test('direct entry cannot consume the old normal purpose or a consumed direct once',async t=>{
+ const old=ordinaryBusinessFailureFixture(t,{launchOption:'--direct-diagnostic261-once'}),oldResult=await old.done;
+ assert.equal(oldResult.status,'STOPPED');assert.deepEqual(old.state.calls,[]);assert.equal(fs.existsSync(path.join(old.s.runRoot,'attempt.json')),false);
+ const first=directDiagnosticFixture(t,{launchOption:'--direct-diagnostic261-once',businessResult:directResult()});
+ assert.equal((await first.done).status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED');
+ const original=fs.readFileSync(path.join(first.s.runRoot,'direct-accounting-evidence.json'));
+ const again=fixture(t,{payment261:true,business:true,launchOption:'--direct-diagnostic261-once',planFixture:first.s,saved:first.saved,businessApi:first.s.business,selectedPlanSha:hash(fs.readFileSync(first.s.output))});
+ assert.equal((await again.done).status,'STOPPED');assert.deepEqual(again.state.calls,[]);
+ assert.deepEqual(fs.readFileSync(path.join(first.s.runRoot,'direct-accounting-evidence.json')),original);
+});

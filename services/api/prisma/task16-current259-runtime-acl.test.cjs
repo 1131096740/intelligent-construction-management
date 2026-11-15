@@ -252,3 +252,25 @@ test('three native proxy PK grants are narrow runtime selects in writer and inde
  }
  assert.doesNotMatch(acl.sql,/GRANT SELECT ON TABLE/u);
 });
+
+test('native fixed ACL renderer changes only the fully verified endpoint and audits all three SQL outputs',()=>{
+ const {renderNativeTask16RuntimeAcl}=require('./run-task16-native-direct-once.cjs');
+ const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations})},provisioned={...receipt(),commitXid:'1234',paymentProfile:PAYMENT261_RUNTIME_PROFILE};
+ provisioned.databaseIdentity={...provisioned.databaseIdentity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54968};
+ const original=renderCurrent259RuntimeAcl(witness,provisioned,nonce),actual=renderNativeTask16RuntimeAcl(JSON.stringify({source:witness,provisioned}),nonce);
+ for(const field of ['sql','readbackSql','witnessSql']){
+  assert.equal(actual[field].replaceAll('inet_server_port() IS DISTINCT FROM 54968','inet_server_port() IS DISTINCT FROM 5432'),original[field]);
+  assert.ok(!actual[field].includes('inet_server_port() IS DISTINCT FROM 5432'));
+  assert.equal((actual[field].match(/inet_server_port\(\)/gu)||[]).length,field==='sql'?1:0);
+ }
+ assert.equal(actual.nativeAdmission,false);assert.equal(actual.publicAclStatus,original.publicAclStatus);
+ const publicOriginal=require('./task16-current259-public-access.cjs').renderCurrent259PublicAccess(provisioned);
+ assert.equal(actual.publicSql.replaceAll('inet_server_port() IS DISTINCT FROM 54968','inet_server_port() IS DISTINCT FROM 5432'),publicOriginal);
+ assert.equal(actual.writeSql,actual.sql+'\n'+actual.publicSql);
+ assert.equal((actual.publicSql.match(/inet_server_port\(\)/gu)||[]).length,1);
+ assert.match(actual.publicSql,/REVOKE EXECUTE ON ROUTINE %s FROM PUBLIC RESTRICT/u);assert.match(actual.publicSql,/REVOKE USAGE ON SCHEMA public FROM PUBLIC RESTRICT/u);
+ assert.ok(actual.writeSql.indexOf('REVOKE USAGE ON SCHEMA public FROM PUBLIC RESTRICT')>actual.writeSql.indexOf('jg_task01_connection_identity'));
+
+ for(const delta of [{serverPort:5432},{serverPort:'54968'},{serverPort:undefined},{serverPort:1024},{serverPort:65536},{tls:false},{clientAddress:'127.0.0.2'},{serverAddress:'0.0.0.0'}])assert.throws(()=>renderNativeTask16RuntimeAcl(JSON.stringify({source:witness,provisioned:{...provisioned,databaseIdentity:{...provisioned.databaseIdentity,...delta}}}),nonce),error=>error.code==='NATIVE_DIRECT_ACL_ENDPOINT');
+});
