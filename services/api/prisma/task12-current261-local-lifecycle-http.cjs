@@ -113,6 +113,7 @@ function previewSummary(value,coordinates){
  return Object.freeze({status:'OBSERVED',jobStatus,consumerBranch,sameJob,sameLayout,sameRevision,sameCreator,previewFileIdValid,errorMessageNull,startedAtValid,completedAfterStarted});
 }
 const consumeCodes=Object.freeze({
+ LOCAL_LIFECYCLE_CONSUMER:Object.freeze(['TASK12_LOCAL_LIFECYCLE_CASE_HTTP']),
  TEMPLATE_CONSUMER:Object.freeze(['INPUT','UPLOAD','CREATE','POSITIONS','MAPPING','INSPECTION','TIME','QUEUE','PREVIEW','CONFIRM','SUBMIT','PUBLISH'].map(stage=>'TASK12_GENERATED_MATERIAL_TEMPLATE_'+stage)),
  OFFICIAL_DEADLINE:Object.freeze(['TASK12_OFFICIAL_DOCUMENT_DEADLINE']),
  NATIVE_DEADLINE:Object.freeze(['NATIVE_DIRECT_DEADLINE','TASK12_LOCAL_LIFECYCLE_CASE_ABORTED']),

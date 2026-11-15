@@ -533,6 +533,16 @@ function claimCurrent261GeneratedLifecycleOrdinaryAcl(completion,handle){
 function claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(completion,handle){need(arguments.length===2,'HANDLE');return claim(completion,handle,'lifecycle',true);}
 // Native projections contain validated SQL readbacks only. They confer no
 // legacy resource/admission capability and cannot enter the old claim maps.
+// Fixed native Task12 workbench counts project each model's primary id in 5.22.
+// Keep every public/legacy lifecycle profile unchanged.
+function nativeTask12OrdinaryProfile(source){
+ const prior=lifecycleProfile(source),keys=new Map([...prior.keys].map(([key,ops])=>[key,[...ops]]));
+ for(const relation of ['Settlement','PaymentRequest']){
+  const key=relation+'.id',ops=keys.get(key)??[];need(!ops.includes('SELECT'),'SOURCE');keys.set(key,[...ops,'SELECT'].sort());
+ }
+ const rows=[...keys].flatMap(([key,privileges])=>{const [relation,column=null]=key.split('.');return privileges.map(privilege=>({relation,column,privilege}));});
+ return {...prior,keys,rows,sha256:sha(JSON.stringify(['NATIVE_TASK12_WORKBENCH_COUNT_PRIMARY_IDS_V1',prior.sha256,rows]))};
+}
 const nativeOrdinaryProjections=new WeakMap();
 function readNativeTask12OrdinaryAclProjection(result){
  need(arguments.length===1&&result&&!types.isProxy(result)&&nativeOrdinaryProjections.has(result),'HANDLE');
@@ -541,7 +551,7 @@ function readNativeTask12OrdinaryAclProjection(result){
 function beginNativeTask12OrdinaryAclProtocol(archiveCompletion){
  need(arguments.length===1,'HANDLE');
  const lease=require('./task16-current259-archive-install.cjs').readNativeTask12ArchiveProjection(archiveCompletion);
- const profile=lifecycleProfile(lease.source),ordinary=archiveCompletion.ordinary;
+ const profile=nativeTask12OrdinaryProfile(lease.source),ordinary=archiveCompletion.ordinary;
  need(ordinary&&oid(ordinary.oid)&&ordinary.login===true,'QUALIFICATION');
  let state=0;
  const take=expected=>{need(state===expected,'PHASE');state++;};
