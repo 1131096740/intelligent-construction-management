@@ -379,3 +379,116 @@ test('first-file file and directory fsync occur before controller token revoke, 
  fs.fsyncSync=function(fd){const result=Reflect.apply(sync,this,[fd]);if(fd===eventFileFd||waitDirectory&&fs.fstatSync(fd).isDirectory()){let alive=false;try{alive=f.api.assertCurrent261ContractBusinessContinuity(token,handle)===true;}catch{}active.push(alive);waitDirectory=fd===eventFileFd;eventFileFd=undefined;}return result;};t.after(()=>{fs.openSync=open;fs.fsyncSync=sync;});
  f=model(t,{failure:'business',cleanupFailure:true,continuityProbe(api,tok,h){token=tok;handle=h;}});const r=await f.result();assert.deepEqual(active,[true,true]);assert.throws(()=>f.api.assertCurrent261ContractBusinessContinuity(token,handle));assert.equal(r.reason,'CURRENT259_GENERATED_DOCUMENT_EXERCISE_RESULT');assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');
 });
+
+
+const drainEvent='first-role-drain-diagnostic.json';
+const drainFacts=()=>Object.freeze({status:'OBSERVED',resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47,relaySysreadExit:70,relayCloseState:Object.freeze(Object.fromEntries(['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'].map(k=>[k,false])))});
+test('first Auth catch durably publishes a separate finite drain diagnostic before revoke and later cleanup',async t=>{
+ const original=Object.freeze(Object.assign(Error('PRIVATE_ORIGINAL'),{code:'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',phase:'CONSUME',reason:'ROLE_CLEANUP_UNKNOWN'}));
+ const open=fs.openSync,sync=fs.fsyncSync;let f,token,handle,eventFd,directory=false;const order=[];
+ fs.openSync=function(file,flags,mode){const fd=Reflect.apply(open,this,[file,flags,mode]);if(path.basename(String(file))===drainEvent&&typeof flags==='number'&&(flags&fs.constants.O_WRONLY)){assert.ok(flags&fs.constants.O_EXCL);assert.ok(flags&fs.constants.O_NOFOLLOW);order.push('exclusive');eventFd=fd;assert.equal(fs.existsSync(path.join(f.plan.run.root,'first-failure.json')),true);}return fd;};
+ fs.fsyncSync=function(fd){const result=Reflect.apply(sync,this,[fd]);if(fd===eventFd||directory&&fs.fstatSync(fd).isDirectory()){assert.equal(f.api.assertCurrent261FirstLoginBusinessContinuity(token,handle),true);assert.equal(f.calls.includes('resource-close'),false);order.push(fd===eventFd?'file':'directory');directory=fd===eventFd;eventFd=undefined;}return result;};
+ t.after(()=>{fs.openSync=open;fs.fsyncSync=sync;});
+ f=model(t,{authOnly:true,applicationFailure:original,drainFailureFacts:drainFacts(),cleanupFailure:true,continuityProbe(api,tok,h){token=tok;handle=h;}});const r=await f.result();
+ const event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,drainEvent)));
+ assert.deepEqual(order,['exclusive','file','directory']);assert.equal(fs.statSync(path.join(f.plan.run.root,drainEvent)).mode&0o777,0o600);
+ assert.deepEqual(Object.keys(event),['schemaVersion','status','observationBoundary','purpose','planSha256','sourceSha','caseId','runtimeSha256','failurePhase','diagnostic']);
+ assert.equal(event.schemaVersion,1);assert.equal(event.status,'OBSERVED');assert.equal(event.observationBoundary,'CONTROLLER_OBSERVED_PRODUCER_DRAIN_FAILURE');assert.equal(event.purpose,f.plan.purpose);assert.equal(event.failurePhase,'APPLICATION');assert.equal(event.planSha256,'a'.repeat(64));assert.equal(event.sourceSha,f.plan.source.candidateSha);assert.equal(event.caseId,f.plan.case.id);assert.equal(event.runtimeSha256,f.plan.runtime.sha256);assert.deepEqual(event.diagnostic,drainFacts());
+ assert.equal(r.reason,'CURRENT259_DOCUMENT_LOGIN_ROLE_CLEANUP_UNKNOWN');assert.equal(r.diagnosticObservation,'DURABLE_OBSERVED');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.businessOutcome,'UNKNOWN');assert.equal(f.calls.filter(v=>v==='drain-project').length,1);assert.equal(f.calls.includes('project-auth'),false);assert.throws(()=>f.api.assertCurrent261FirstLoginBusinessContinuity(token,handle));assert.doesNotMatch(JSON.stringify(event),/PRIVATE_/u);
+});
+
+
+test('fixed Auth drain closure rejects cache exports children and helper mutations before accessor traps',async t=>{
+ for(const mutation of ['exports-getter','exports-proxy','cache-getter','cache-proxy','child-getter','child-foreign','helper-getter'])await t.test(mutation,async st=>{
+  let traps=0;const getter=()=>{traps++;throw Error('PRIVATE_TRAP');};
+  const original=Object.assign(Error('PRIVATE_PRIMARY'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'});
+  const f=model(st,{authOnly:true,applicationFailure:original,drainFailureFacts:drainFacts(),beforeAuthApplication(mod,cache){
+   if(mutation==='exports-getter')Object.defineProperty(mod,'exports',{get:getter});
+   if(mutation==='exports-proxy')mod.exports=new Proxy(mod.exports,{get:getter,getOwnPropertyDescriptor:getter,ownKeys:getter});
+   if(mutation==='cache-getter')Object.defineProperty(cache,mod.filename,{get:getter});
+   if(mutation==='cache-proxy')cache[mod.filename]=new Proxy(mod,{get:getter,getOwnPropertyDescriptor:getter,ownKeys:getter});
+   if(mutation==='child-getter')Object.defineProperty(mod.children,'0',{get:getter});
+   if(mutation==='child-foreign')mod.children.push({filename:'/PRIVATE_FOREIGN',exports:{}});
+   if(mutation==='helper-getter')Object.defineProperty(cache[path.join(path.dirname(mod.filename),'task16-current259-relay-sysread.cjs')],'exports',{get:getter});
+  }});const r=await f.result(),event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,drainEvent)));
+  assert.equal(event.status,'UNKNOWN');assert.deepEqual(event.diagnostic,{status:'UNKNOWN'});assert.equal(r.diagnosticObservation,'DURABLE_UNKNOWN');assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(f.calls.includes('drain-project'),false);assert.equal(traps,0);
+ });
+});
+
+test('absent throwing or hostile finite drain readers persist UNKNOWN without raw fields or primary replacement',async t=>{
+ let traps=0;const getter=Object.defineProperty({status:'OBSERVED',resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED'},'relayCode',{get(){traps++;throw Error('PRIVATE_GETTER');}});
+ const proxy=new Proxy({},{ownKeys(){traps++;throw Error('PRIVATE_PROXY');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_PROXY');}});
+ for(const facts of [undefined,Object.freeze({status:'UNKNOWN'}),Object.freeze({...drainFacts(),secret:'PRIVATE_SECRET'}),Object.freeze(getter),Object.freeze({...drainFacts(),relaySysreadExit:99}),proxy]){
+  const original=Object.assign(Error('PRIVATE_PRIMARY'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),f=model(t,{authOnly:true,applicationFailure:original,drainFailureFacts:facts,cleanupFailure:true}),r=await f.result();
+  const event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,drainEvent)));assert.deepEqual(event.diagnostic,{status:'UNKNOWN'});assert.equal(event.status,'UNKNOWN');assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.diagnosticObservation,'DURABLE_UNKNOWN');assert.doesNotMatch(JSON.stringify(event),/PRIVATE_/u);
+ }
+ const f=model(t,{authOnly:true,applicationFailure:Object.assign(Error('PRIVATE'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),drainReaderThrows:true}),r=await f.result();assert.equal(r.diagnosticObservation,'DURABLE_UNKNOWN');assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(traps,0);
+});
+
+test('drain event IO failure never retries or changes first bytes primary phase or later cleanup',async t=>{
+ for(const point of ['open','write','file','directory','exists'])await t.test(point,async st=>{
+  const slots={open:fs.openSync,write:fs.writeFileSync,sync:fs.fsyncSync,close:fs.closeSync};let f,eventFd,eventStarted=false,opens=0,firstBytes;
+  const fail=()=>Object.assign(Error('PRIVATE_IO'),{code:'EIO'});
+  fs.openSync=function(file,flags,mode){if(path.basename(String(file))===drainEvent&&typeof flags==='number'&&(flags&fs.constants.O_WRONLY)){opens++;firstBytes=fs.readFileSync(path.join(f.plan.run.root,'first-failure.json'));if(point==='open')throw fail();eventStarted=true;const fd=Reflect.apply(slots.open,this,[file,flags,mode]);eventFd=fd;return fd;}return Reflect.apply(slots.open,this,[file,flags,mode]);};
+  fs.writeFileSync=function(file,...args){if(eventStarted&&point==='write'&&file===eventFd){eventStarted=false;throw fail();}return Reflect.apply(slots.write,this,[file,...args]);};
+  fs.fsyncSync=function(fd){if(eventStarted&&(point==='file'&&fd===eventFd||point==='directory'&&fs.fstatSync(fd).isDirectory())){eventStarted=false;throw fail();}return Reflect.apply(slots.sync,this,[fd]);};
+  fs.closeSync=function(fd){if(fd===eventFd)eventFd=undefined;return Reflect.apply(slots.close,this,[fd]);};
+  st.after(()=>{fs.openSync=slots.open;fs.writeFileSync=slots.write;fs.fsyncSync=slots.sync;fs.closeSync=slots.close;});
+  const original=Object.freeze(Object.assign(Error('PRIVATE_PRIMARY'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}));let observed;
+  f=model(st,{authOnly:true,applicationFailure:original,drainFailureFacts:drainFacts(),cleanupFailure:true,beforeAuthApplication(){if(point==='exists')Reflect.apply(slots.write,fs,[path.join(f.plan.run.root,drainEvent),'PRIOR_IMMUTABLE',{flag:'wx',mode:0o600}]);},httpFailureApi:{describeCurrent261LocalLifecycleHttpFailure(error){observed=error;}}});const r=await f.result();
+  assert.equal(observed,original);assert.equal(opens,1);assert.deepEqual(fs.readFileSync(path.join(f.plan.run.root,'first-failure.json')),firstBytes);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.diagnosticObservation,'UNKNOWN');assert.equal(r.firstFailureObservation,'DURABLE_EVENT_RECORDED');assert.equal(r.firstFailureEvidenceWriteFailed,false);
+  if(point==='exists')assert.equal(fs.readFileSync(path.join(f.plan.run.root,drainEvent),'utf8'),'PRIOR_IMMUTABLE');
+ });
+});
+
+test('success full-purpose and earlier nonapplication failures never mint a drain event',async t=>{
+ for(const options of [{authOnly:true},{failure:'business'},{authOnly:true,roleFailure:Object.assign(Error('PRIVATE'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'})}]){
+  const f=model(t,options),r=await f.result();assert.equal(fs.existsSync(path.join(f.plan.run.root,drainEvent)),false);assert.equal(f.calls.includes('drain-project'),false);if(options.authOnly)assert.equal(r.diagnosticObservation,'UNKNOWN');
+ }
+});
+
+
+test('fresh Node genuine import-only Module closure accepts original lazy edges and rejects an extra same-directory edge',t=>{
+ const {spawnSync}=require('node:child_process');
+ const script=String.raw`
+  const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{Module}=require('node:module');
+  const entry=process.argv[1],dir=path.dirname(entry),main=new Module(entry,module);main.filename=entry;main.paths=Module._nodeModulePaths(dir);require.cache[entry]=main;
+  const source=fs.readFileSync(entry,'utf8'),prefix=source.slice(0,source.indexOf('async function main(){'));
+  main._compile(prefix+"\nmodule.exports={captureAuthDrainFailureProjector};",entry);main.loaded=true;
+  const owned=path.join(dir,'task16-current259-owned-resource.cjs');assert.equal(Boolean(require.cache[owned]),false);
+  main.require('./local-staged-current259-profile.cjs');main.require('./task16-current259-owned-resource.cjs');
+  const namespace=main.require('./task12-current259-document-login.cjs');main.require('./task12-current261-first-login-exercise.cjs');main.require('./task12-current261-local-lifecycle-http.cjs');
+  const read=main.require('./task16-runtime-inputs.cjs').readQualifiedTask16File,checkFile=main.require('./task16-current259-business-continuity.cjs').checkCurrent259FileIdentity;
+  let checks=0;const reader=main.exports.captureAuthDrainFailureProjector(namespace,read,(file,identity)=>{checkFile(file,identity);checks++;});
+  const login=require.cache[path.join(dir,'task12-current259-document-login.cjs')];assert.equal(login.parent,main);
+  checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});const initialChecks=checks;assert.ok(initialChecks>=4);
+  for(const name of ['task12-official-document-profiles.cjs','task12-current259-document-application.cjs','task12-current261-first-login-exercise.cjs','task16-current259-relay-sysread.cjs'])login.require('./'+name);
+  checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.ok(checks>initialChecks);
+  const legitimateChecks=checks;let traps=0;const trap=()=>{traps++;throw Error('PRIVATE_TRAP');};
+  const exportSlot=Object.getOwnPropertyDescriptor(login,'exports');Object.defineProperty(login,'exports',{get:trap});checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(checks,0);Object.defineProperty(login,'exports',exportSlot);
+  login.exports=new Proxy(namespace,{get:trap,getOwnPropertyDescriptor:trap,ownKeys:trap});checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(checks,0);Object.defineProperty(login,'exports',exportSlot);
+  const childSlot=Object.getOwnPropertyDescriptor(login.children,'0');Object.defineProperty(login.children,'0',{get:trap});checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(checks,0);Object.defineProperty(login.children,'0',childSlot);assert.equal(traps,0);
+  const appFile=path.join(dir,'task12-current259-document-application.cjs'),appIndex=login.children.findIndex(row=>row.filename===appFile),app=login.children[appIndex],forged=Object.assign(new Module(appFile,main),{filename:appFile,loaded:true,exports:app.exports});
+  login.children[appIndex]=forged;require.cache[appFile]=forged;checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(checks<legitimateChecks,true);login.children[appIndex]=app;require.cache[appFile]=app;
+  login.require('./task12-current261-first-login-owner.cjs');checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(checks<legitimateChecks,true);
+  process.stdout.write(JSON.stringify({initialChecks,legitimateChecks,extraEdgeRejected:true,ownedAbsentBeforeProfile:true,importsOnly:true}));
+ `;
+ const result=spawnSync(process.execPath,['-e',script,path.join(__dirname,'task12-current261-local-lifecycle-once.cjs')],{encoding:'utf8',timeout:15000,maxBuffer:128*1024});
+ assert.equal(result.status,0,result.stderr);const proof=JSON.parse(result.stdout);assert.equal(proof.extraEdgeRejected,true);assert.equal(proof.importsOnly,true);t.diagnostic(JSON.stringify(proof));
+});
+
+
+test('Auth primitive proxy and hostile first causes keep identity and publish only UNKNOWN diagnostic',async t=>{
+ let traps=0;const hostile={};for(const key of ['code','cause','message','stack'])Object.defineProperty(hostile,key,{get(){traps++;throw Error('PRIVATE_GETTER');}});
+ const proxy=new Proxy({},{get(){traps++;throw Error('PRIVATE_PROXY');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_PROXY');},ownKeys(){traps++;throw Error('PRIVATE_PROXY');}});
+ for(const original of [undefined,null,0,'PRIVATE_SECRET',hostile,proxy]){
+  let seen;const f=model(t,{authOnly:true,applicationRun:async()=>{throw original;},cleanupFailure:true,httpFailureApi:{describeCurrent261LocalLifecycleHttpFailure(error){seen=error;}}}),r=await f.result();
+  assert.equal(seen,original);assert.equal(r.failurePhase,'APPLICATION');assert.equal(r.businessOutcome,'UNKNOWN');assert.equal(r.secondaryReason,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(r.diagnosticObservation,'DURABLE_UNKNOWN');const event=JSON.parse(fs.readFileSync(path.join(f.plan.run.root,drainEvent)));assert.deepEqual(event.diagnostic,{status:'UNKNOWN'});assert.doesNotMatch(JSON.stringify(event),/PRIVATE_/u);
+ }
+ assert.equal(traps,0);
+});
+
+test('failed original first-file durability skips the drain event without changing the primary',async t=>{
+ const io=firstFailureIo(t,'file'),original=Object.assign(Error('PRIVATE'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),f=model(t,{authOnly:true,applicationFailure:original,drainFailureFacts:drainFacts(),cleanupFailure:true}),r=await f.result();
+ assert.equal(io.opens(),1);assert.equal(r.firstFailureObservation,'UNKNOWN');assert.equal(r.firstFailureEvidenceWriteFailed,true);assert.equal(r.diagnosticObservation,'UNKNOWN');assert.equal(fs.existsSync(path.join(f.plan.run.root,drainEvent)),false);assert.equal(f.calls.includes('drain-project'),false);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');
+});
