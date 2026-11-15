@@ -58,11 +58,11 @@ function prepareNativeTask16Plan(options){
  const manifest=capture(o.binaryManifest,1024*1024);need(manifest.sha256===o.binaryManifestSha256);const qualified=JSON.parse(manifest.bytes);
  need(qualified.version==='16.15'&&qualified.versionObserved==='postgres (PostgreSQL) 16.15'&&typeof qualified.privatePrefix==='string');
  const binaries=treeFiles(qualified.privatePrefix);
- for(const [relative,expected]of Object.entries(qualified.files??{})){const actual=binaries.find(row=>row.file===path.join(qualified.privatePrefix,relative));need(actual&&actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&['mode','dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_BINARY_QUALIFICATION');}
+ for(const [relative,expected]of Object.entries(qualified.files??{})){const actual=binaries.find(row=>row.file===path.join(qualified.privatePrefix,relative));need(actual&&actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&nativeTask16QualifiedModeMatches(actual.identity.mode,expected.mode)&&['dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_BINARY_QUALIFICATION');}
  need(binaries.some(row=>row.file.endsWith('/lib/postgresql/pgcrypto.dylib'))&&binaries.some(row=>row.file.endsWith('/share/postgresql/extension/pgcrypto.control')),'NATIVE_DIRECT_PGCRYPTO_REQUIRED');
  const required=['postgres','initdb','pg_isready','psql'];need(required.every(name=>binaries.some(row=>row.file===path.join(qualified.privatePrefix,'bin',name))));
  const opensslFile=fs.realpathSync('/opt/homebrew/opt/openssl@3/bin/openssl'),openssl=capture(opensslFile,64*1024*1024);
- const externalLibraries=Object.entries(qualified.externalLibraries??{}).map(([file,expected])=>{const actual=capture(file,64*1024*1024);need(actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&['mode','dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_EXTERNAL_LIBRARY');return {file,sha256:actual.sha256,identity:actual.identity};});need(externalLibraries.length===2,'NATIVE_DIRECT_EXTERNAL_LIBRARY');
+ const externalLibraries=Object.entries(qualified.externalLibraries??{}).map(([file,expected])=>{const actual=capture(file,64*1024*1024);need(actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&nativeTask16QualifiedModeMatches(actual.identity.mode,expected.mode)&&['dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_EXTERNAL_LIBRARY');return {file,sha256:actual.sha256,identity:actual.identity};});need(externalLibraries.length===2,'NATIVE_DIRECT_EXTERNAL_LIBRARY');
  const nodeFile=fs.realpathSync(process.execPath),nodeCapture=capture(nodeFile,128*1024*1024);
  const runId=randomUUID(),p={schemaVersion:1,purpose:PURPOSE,runId,database:'jg_task01_'+runId.replaceAll('-',''),runRoot:o.runRoot,rootIdentity:directory(o.runRoot),source:sourceCapture(),artifacts:compiledMaterials(),dependencies:dependencyDigest(),binaryManifest:{file:o.binaryManifest,sha256:manifest.sha256,identity:manifest.identity},binaries,openssl:{file:opensslFile,sha256:openssl.sha256,identity:openssl.identity},externalLibraries,node:{file:nodeFile,sha256:nodeCapture.sha256,identity:nodeCapture.identity,version:process.version,platform:process.platform,arch:process.arch},limits:{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216},differences:['macOS native PG16.15/OpenSSL3/C locale/noICU','Production function reader; no F object-reader private lease wrapper','No Docker CPU/memory/pids/tmpfs enforcement equivalent']};
  validateNativePlan(p);return writeNew(o.runRoot,'plan.json',p);
@@ -120,7 +120,12 @@ function projectNativeTask16PlaintextHba(text,database){
  const pids=[];for(const line of text.split('\n')){const match=/^NATIVE_TASK16 \[([1-9][0-9]{0,9})\]/u.exec(line);if(match&&line==='NATIVE_TASK16 ['+match[1]+']'+suffix){const pid=Number(match[1]);need(pid<=2147483647,'NATIVE_DIRECT_HBA_INPUT');pids.push(pid);}}
  need(pids.length<=16,'NATIVE_DIRECT_HBA_INPUT');return pids.length?Object.freeze({family:'HBA_PLAINTEXT_REJECT',backendPids:Object.freeze(pids),count:pids.length}):undefined;
 }
-module.exports=Object.freeze({projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+function nativeTask16QualifiedModeMatches(observed,declared){return typeof observed==='string'&&/^[0-9]+$/u.test(observed)&&Number.isInteger(declared)&&declared>=0&&declared<=511&&(BigInt(observed)&0o170000n)===0o100000n&&Number(BigInt(observed)&0o777n)===declared;}
+function assertNativeTask16LogIdentity(fd,expected){
+ need(Number.isInteger(fd)&&fd>=0,'NATIVE_DIRECT_LOG_WINDOW');const stat=fs.fstatSync(fd,{bigint:true});need(stat.isFile()&&stat.uid===BigInt(process.getuid())&&(stat.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');
+ const identity=Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid'].map(key=>[key,String(stat[key])])));if(expected)need(equal(identity,expected),'NATIVE_DIRECT_LOG_WINDOW');return identity;
+}
+module.exports=Object.freeze({nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -134,7 +139,7 @@ async function executeNativeTask16Once(plan,planSha256){
  const root=plan.runRoot,runId=plan.runId,db=plan.database,prefix=path.dirname(path.dirname(plan.binaries.find(row=>row.file.endsWith('/bin/postgres')).file));
  const owner='jg_task01_owner',credentials=Object.fromEntries(['owner','runtime','observer'].map(k=>[k,randomBytes(48).toString('hex')]));
  const receipt={schemaVersion:1,purpose:PURPOSE,planSha256,candidateSha:plan.source.head,runId,status:'STOPPED',business:'NOT_ENTERED',stages:[],differences:plan.differences,cleanup:{status:'NOT_NEEDED'},financialAcceptance:false};
- const started=Date.now(),deadline=started+plan.limits.resourceMs;let stage='INIT',closing=false,pending=0,pgStarted=false,pgPid,pgStart,pgChild,pgLifetime,app,moduleRef,restoreEnvironment,clients=[],port,dbReady=false;
+ const started=Date.now(),deadline=started+plan.limits.resourceMs;let stage='INIT',closing=false,pending=0,pgStarted=false,pgPid,pgStart,pgChild,pgLifetime,pgLogIdentity,app,moduleRef,restoreEnvironment,clients=[],port,dbReady=false;
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),plan.limits.resourceMs);const onSignal=()=>controller.abort();process.once('SIGINT',onSignal);process.once('SIGTERM',onSignal);
  const childOwnedAndRunning=()=>pgLifetime?.running()===true;
  const needLive=()=>{need(!closing&&Date.now()<deadline&&!controller.signal.aborted,'NATIVE_DIRECT_DEADLINE');need(equal(directory(root),plan.rootIdentity),'NATIVE_DIRECT_ROOT_CHANGED');for(const row of plan.externalLibraries){const st=fs.lstatSync(row.file,{bigint:true});need(st.isFile()&&Object.keys(row.identity).every(key=>String(st[key])===row.identity[key]),'NATIVE_DIRECT_EXTERNAL_LIBRARY');}if(fs.existsSync(path.join(root,'postgres.log')))need(fs.lstatSync(path.join(root,'postgres.log')).size<=1048576,'NATIVE_DIRECT_LOG_BYTES');if(pgChild)need(childOwnedAndRunning(),'NATIVE_DIRECT_PG_CHANGED');if(pgStarted)need(fs.readFileSync(path.join(root,'data/postmaster.pid'),'utf8').split('\n')[2]===pgStart,'NATIVE_DIRECT_PG_CHANGED');};
@@ -176,7 +181,7 @@ async function executeNativeTask16Once(plan,planSha256){
   const config=`listen_addresses='127.0.0.1'\nport=${port}\nunix_socket_directories='${root}/socket'\nssl=on\nssl_min_protocol_version='TLSv1.2'\nssl_cert_file='${root}/server.crt'\nssl_key_file='${root}/server.key'\npassword_encryption='scram-sha-256'\nmax_connections=16\nshared_buffers='64MB'\nmax_wal_size='64MB'\nmin_wal_size='32MB'\nlog_statement='none'\nlog_min_error_statement='panic'\nlog_parameter_max_length_on_error=0\nlog_error_verbosity='terse'\nlog_duration=off\nlog_min_duration_statement=-1\nlog_min_duration_sample=-1\nlog_transaction_sample_rate=0\nlogging_collector=off\nlog_destination='stderr'\nlog_line_prefix='NATIVE_TASK16 [%p] '\nlc_messages='C'\nstatement_timeout='60s'\n`;
   fs.writeFileSync(path.join(root,'data/postgresql.conf'),config,{mode:0o600});writeNew(root,'postgres.log','');
   enter('PG_START');const logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_WRONLY|fs.constants.O_APPEND|fs.constants.O_NOFOLLOW);
-  try{pgChild=spawn(bin('postgres'),['-D',path.join(root,'data')],{cwd:root,env,stdio:['ignore',logFd,logFd],detached:false});pgChild.once('error',()=>{});pgPid=pgChild.pid;
+  try{pgLogIdentity=assertNativeTask16LogIdentity(logFd);pgChild=spawn(bin('postgres'),['-D',path.join(root,'data')],{cwd:root,env,stdio:['ignore',logFd,logFd],detached:false});pgChild.once('error',()=>{});pgPid=pgChild.pid;
    pgLifetime=trackNativeTask16Child(pgChild);
   }finally{fs.closeSync(logFd);}
   need(Number.isSafeInteger(pgPid)&&pgPid>0,'NATIVE_DIRECT_PG_START');const readyBy=Math.min(deadline,Date.now()+60000);let ready=false;
@@ -212,7 +217,7 @@ async function executeNativeTask16Once(plan,planSha256){
   receipt.installation={migrations:261,roles:9,sevenCommitXid:sevenRows[2].installXid,b7CommitXid:stagedCatalog.raw.writeXid,catalogSha256:hash(Buffer.from(JSON.stringify(finalCatalog.raw)))};
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');
   receipt.directoryBytesBeforeBusiness=nativeDirectoryBytes(root);
-  enter('REAL_CLIENTS_NEST_AND_CASE');await wait(()=>runNativeTask16Business(plan,{root,port,credentials,identity,finalCatalog,sql,jsonSql,needLive,wait,cleanupWait,enter,receipt,setRestoreEnvironment:value=>{restoreEnvironment=value;},setClients:value=>{clients=value;},setApplication:(a,m)=>{app=a;moduleRef=m;}}));
+  enter('REAL_CLIENTS_NEST_AND_CASE');await wait(()=>runNativeTask16Business(plan,{root,port,credentials,identity,finalCatalog,sql,jsonSql,needLive,wait,cleanupWait,enter,receipt,logIdentity:pgLogIdentity,setRestoreEnvironment:value=>{restoreEnvironment=value;},setClients:value=>{clients=value;},setApplication:(a,m)=>{app=a;moduleRef=m;}}));
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');receipt.status='NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE';
  }catch(error){const code=error&&!types.isProxy(error)?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;receipt.failure={stage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',elapsedMs:Date.now()-started};receipt.status='STOPPED';}
  finally{
@@ -302,13 +307,13 @@ async function runNativeTask16Business(plan,state){
    if(mode==='wrong-san')receipt.localhostAnswers=verifyNativeTask16LocalhostAnswers(await wait(()=>require('node:dns').promises.lookup('localhost',{all:true,verbatim:true})));
    const probe=new PrismaClient({datasources:{db:{url:url.toString()}}});state.setClients([...clients,probe]);let primary,logFd,logBefore;
    try{
-    if(mode==='no-tls'){logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);logBefore=fs.fstatSync(logFd,{bigint:true});need(logBefore.isFile()&&logBefore.uid===BigInt(process.getuid())&&(logBefore.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');}
+    if(mode==='no-tls'){logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);assertNativeTask16LogIdentity(logFd,state.logIdentity);logBefore=fs.fstatSync(logFd,{bigint:true});need(logBefore.isFile()&&logBefore.uid===BigInt(process.getuid())&&(logBefore.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');}
     let rejected;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;receipt.sdkTls[mode]={status:'UNKNOWN',...classifyNativeTask16TlsFailure(error,mode)};let hba;
      if(mode==='no-tls'){
-      const after=fs.fstatSync(logFd,{bigint:true}),named=fs.lstatSync(path.join(root,'postgres.log'),{bigint:true});
+      assertNativeTask16LogIdentity(logFd,state.logIdentity);const after=fs.fstatSync(logFd,{bigint:true}),named=fs.lstatSync(path.join(root,'postgres.log'),{bigint:true});
       need(['dev','ino','mode','uid','gid'].every(key=>after[key]===logBefore[key]&&named[key]===logBefore[key])&&!named.isSymbolicLink()&&after.size>=logBefore.size&&after.size-logBefore.size<=65536n,'NATIVE_DIRECT_LOG_WINDOW');
       const bytes=Buffer.alloc(Number(after.size-logBefore.size));let read=0;while(read<bytes.length){const count=fs.readSync(logFd,bytes,read,bytes.length-read,Number(logBefore.size)+read);need(count>0,'NATIVE_DIRECT_LOG_WINDOW');read+=count;}
-      const checked=fs.fstatSync(logFd,{bigint:true});need(['dev','ino','size','mtimeNs','ctimeNs'].every(key=>checked[key]===after[key]),'NATIVE_DIRECT_LOG_WINDOW');
+      assertNativeTask16LogIdentity(logFd,state.logIdentity);const checked=fs.fstatSync(logFd,{bigint:true});need(['dev','ino','size','mtimeNs','ctimeNs'].every(key=>checked[key]===after[key]),'NATIVE_DIRECT_LOG_WINDOW');
       hba=projectNativeTask16PlaintextHba(bytes.toString('utf8'),plan.database);if(hba)receipt.plaintextHba=hba;
      }
      rejected=classifyNativeTask16TlsFailure(error,mode,hba);}

@@ -68,3 +68,11 @@ test('generic SDK P1010 alone is unknown; only matching fresh native runtime HBA
  assert.equal(api.projectNativeTask16PlaintextHba(line.replace('no encryption','SSL encryption'),db),undefined);
  assert.equal(api.projectNativeTask16PlaintextHba(line,'jg_task01_'+'b'.repeat(32)),undefined);
 });
+test('reviewed binary permission mode is compared to regular-file FD permissions without losing type checks',()=>{
+ const {nativeTask16QualifiedModeMatches:matches}=require('./run-task16-native-direct-once.cjs');assert.equal(matches('33261',493),true);assert.equal(matches('33261',420),false);assert.equal(matches('41453',493),false);assert.equal(matches('4516',420),false);
+});
+test('TLS log window rejects a rotated pathname against the original foreground stdout inode',t=>{
+ const {assertNativeTask16LogIdentity:check}=require('./run-task16-native-direct-once.cjs'),p=planModel(t),log=path.join(p.runRoot,'postgres.log');fs.writeFileSync(log,'',{mode:0o600});const original=fs.openSync(log,'r');
+ const identity=check(original);fs.renameSync(log,log+'.original');fs.writeFileSync(log,'',{mode:0o600});const rotated=fs.openSync(log,'r');
+ try{assert.throws(()=>check(rotated,identity),error=>error.code==='NATIVE_DIRECT_LOG_WINDOW');assert.deepEqual(check(original,identity),identity);}finally{fs.closeSync(original);fs.closeSync(rotated);}
+});
