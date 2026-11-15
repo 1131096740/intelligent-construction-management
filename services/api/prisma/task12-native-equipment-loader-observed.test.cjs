@@ -24,7 +24,8 @@ if(selected!==undefined){
  assert.ok(cases.includes(selected));test('genuine native document role slot '+selected,()=>observe(selected));
 }else{
  for(const scenario of cases)test('fresh-process genuine native document slot '+scenario,async()=>{
-  const result=await runChild(process.execPath,['--test',__filename],{cwd:path.resolve(__dirname,'../../..'),env:{...process.env,JG_TASK12_NATIVE_LOADER_OBSERVED_CASE:scenario},timeout:120000,maxBuffer:1024*1024});
+  const env={...process.env,JG_TASK12_NATIVE_LOADER_OBSERVED_CASE:scenario};delete env.NODE_TEST_CONTEXT;
+  const result=await runChild(process.execPath,[__filename],{cwd:path.resolve(__dirname,'../../..'),env,timeout:120000,maxBuffer:1024*1024});
   assert.match(result.stdout,/# pass 1/u);assert.match(result.stdout,/# fail 0/u);assert.match(result.stdout,/# skipped 0/u);
  });
 }
