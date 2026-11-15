@@ -59,7 +59,7 @@ function prepareNativeTask16Plan(options){
  need(qualified.version==='16.15'&&qualified.versionObserved==='postgres (PostgreSQL) 16.15'&&typeof qualified.privatePrefix==='string');
  const binaries=treeFiles(qualified.privatePrefix);
  for(const [relative,expected]of Object.entries(qualified.files??{})){const actual=binaries.find(row=>row.file===path.join(qualified.privatePrefix,relative));need(actual&&actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&nativeTask16QualifiedModeMatches(actual.identity.mode,expected.mode)&&['dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_BINARY_QUALIFICATION');}
- need(binaries.some(row=>row.file.endsWith('/lib/postgresql/pgcrypto.dylib'))&&binaries.some(row=>row.file.endsWith('/share/postgresql/extension/pgcrypto.control')),'NATIVE_DIRECT_PGCRYPTO_REQUIRED');
+ need(binaries.some(row=>row.file?.endsWith('/lib/postgresql/pgcrypto.dylib'))&&binaries.some(row=>row.file?.endsWith('/share/postgresql/extension/pgcrypto.control')),'NATIVE_DIRECT_PGCRYPTO_REQUIRED');
  const required=['postgres','initdb','pg_isready','psql'];need(required.every(name=>binaries.some(row=>row.file===path.join(qualified.privatePrefix,'bin',name))));
  const opensslFile=fs.realpathSync('/opt/homebrew/opt/openssl@3/bin/openssl'),openssl=capture(opensslFile,64*1024*1024);
  const externalLibraries=Object.entries(qualified.externalLibraries??{}).map(([file,expected])=>{const actual=capture(file,64*1024*1024);need(actual.sha256===expected.sha256&&Number(actual.identity.size)===expected.bytes&&nativeTask16QualifiedModeMatches(actual.identity.mode,expected.mode)&&['dev','ino','uid','gid','mtimeNs','ctimeNs'].every(key=>actual.identity[key]===String(expected[key])),'NATIVE_DIRECT_EXTERNAL_LIBRARY');return {file,sha256:actual.sha256,identity:actual.identity};});need(externalLibraries.length===2,'NATIVE_DIRECT_EXTERNAL_LIBRARY');
@@ -136,7 +136,7 @@ async function executeNativeTask16Once(plan,planSha256){
  need(equal(fs.readdirSync(plan.runRoot).sort(),['plan.json']),'NATIVE_DIRECT_ROOT_NOT_UNUSED');
  writeNew(plan.runRoot,'started.json',{purpose:PURPOSE,planSha256,candidateSha:plan.source.head,startedAt:new Date().toISOString(),pid:process.pid});
  const {spawn}=require('node:child_process');
- const root=plan.runRoot,runId=plan.runId,db=plan.database,prefix=path.dirname(path.dirname(plan.binaries.find(row=>row.file.endsWith('/bin/postgres')).file));
+ const root=plan.runRoot,runId=plan.runId,db=plan.database,prefix=path.dirname(path.dirname(plan.binaries.find(row=>row.file?.endsWith('/bin/postgres')).file));
  const owner='jg_task01_owner',credentials=Object.fromEntries(['owner','runtime','observer'].map(k=>[k,randomBytes(48).toString('hex')]));
  const receipt={schemaVersion:1,purpose:PURPOSE,planSha256,candidateSha:plan.source.head,runId,status:'STOPPED',business:'NOT_ENTERED',stages:[],differences:plan.differences,cleanup:{status:'NOT_NEEDED'},financialAcceptance:false};
  const started=Date.now(),deadline=started+plan.limits.resourceMs;let stage='INIT',closing=false,pending=0,pgStarted=false,pgPid,pgStart,pgChild,pgLifetime,pgLogIdentity,app,moduleRef,restoreEnvironment,clients=[],port,dbReady=false;
