@@ -76,3 +76,11 @@ test('TLS log window rejects a rotated pathname against the original foreground 
  const identity=check(original);fs.renameSync(log,log+'.original');fs.writeFileSync(log,'',{mode:0o600});const rotated=fs.openSync(log,'r');
  try{assert.throws(()=>check(rotated,identity),error=>error.code==='NATIVE_DIRECT_LOG_WINDOW');assert.deepEqual(check(original,identity),identity);assert.throws(()=>check(original,identity,log),error=>error.code==='NATIVE_DIRECT_LOG_WINDOW');}finally{fs.closeSync(original);fs.closeSync(rotated);}
 });
+for(const [instant,paidAt,openingDate]of [
+ ['2026-11-14T16:00:00.000Z','2026-11-15','2026-11-14'],
+ ['2026-02-28T16:00:00.000Z','2026-03-01','2026-02-28'],
+ ['2028-02-29T16:00:00.000Z','2028-03-01','2028-02-29'],
+ ['2026-12-31T16:00:00.000Z','2027-01-01','2026-12-31']
+])test('native fixture preserves China payment day and prior-day opening '+instant,()=>{
+ const {nativeTask16FixtureDates:dates}=require('./run-task16-native-direct-once.cjs');assert.deepEqual(dates(Date.parse(instant)),{paidAt,openingDate});
+});
