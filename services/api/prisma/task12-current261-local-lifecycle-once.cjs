@@ -274,23 +274,31 @@ function captureAuthDrainFailureProjector(namespace,read,checkFile){
  const children=data(role,'children'),rows=children.value;need(Array.isArray(rows)&&!types.isProxy(rows),'DEPENDENCIES');
  const edges=Array.from({length:rows.length},(_,i)=>({slot:data(rows,String(i)),meta:metadata(data(rows,String(i)).value)}));
  const lazyNames=['task12-official-document-profiles.cjs','task12-current259-document-application.cjs','task12-current261-first-login-exercise.cjs','task16-current259-relay-sysread.cjs'];
- const lazyEdges=new Map(),lazyMaterials=new Map(lazyNames.map(name=>{const file=path.join(path.dirname(__filename),name);const material=read(file,{maxBytes:512*1024,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_DRAIN_PROJECTOR_SOURCE'});need(SHA.test(material.sha256)&&material.identity,'DEPENDENCIES');return[file,material];}));
+ const lazyMaterials=new Map(lazyNames.map(name=>{const file=path.join(path.dirname(__filename),name);const material=read(file,{maxBytes:512*1024,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_DRAIN_PROJECTOR_SOURCE'});need(SHA.test(material.sha256)&&material.identity,'DEPENDENCIES');return[file,material];}));
  const helperFile=path.join(path.dirname(__filename),'task16-current259-relay-sysread.cjs'),helper=metadata(data(cache,helperFile).value),decoder=data(helper.exports.value,'decodeRelaySysreadExit'),decoderArity=data(decoder.value,'length');need(typeof decoder.value==='function'&&decoderArity.value===1&&own(helper.mod,'loaded')===true,'DEPENDENCIES');
  const mainChildren=data(module,'children');need(Array.isArray(mainChildren.value)&&!types.isProxy(mainChildren.value),'DEPENDENCIES');
  const projector=data(namespace,'describeCurrent261DocumentLoginDrainFailure'),arity=data(projector.value,'length');need(typeof projector.value==='function'&&arity.value===1,'DEPENDENCIES');
+ const provenance=data(namespace,'describeCurrent261DocumentLoginDrainProvenance'),provenanceArity=data(provenance.value,'length');need(typeof provenance.value==='function'&&provenanceArity.value===0,'DEPENDENCIES');
  const material=read(file,{maxBytes:512*1024,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_DRAIN_PROJECTOR_SOURCE'});need(SHA.test(material.sha256)&&material.identity,'DEPENDENCIES');
  const verifyMeta=row=>{same(cache,row.filename.value,row.cacheDescriptor);same(row.mod,'filename',row.filename);same(row.mod,'exports',row.exports);};
  const verify=()=>{
   same(require,'cache',cacheSlot);verifyMeta(roleMeta);verifyMeta(parentMeta);need(parentOf(role)===parent,'DEPENDENCIES');same(role,'children',children);
   need(own(role,'loaded')===true&&rows.length>=edges.length&&rows.length<=edges.length+lazyNames.length,'DEPENDENCIES');
   for(let i=0;i<edges.length;i++){same(rows,String(i),edges[i].slot);verifyMeta(edges[i].meta);}
+  same(namespace,'describeCurrent261DocumentLoginDrainProvenance',provenance);same(provenance.value,'length',provenanceArity);
+  const records=provenance.value();need(Array.isArray(records)&&!types.isProxy(records)&&Object.isFrozen(records)&&records.length<=lazyNames.length,'DEPENDENCIES');
+  const pins=new Map(),recordKeys=['file','cache','module','filenameDescriptor','exportsDescriptor','cacheDescriptor','children','childIndex','childDescriptor','sourceIdentity','sourceSha256'];
+  const fixedDescriptor=(record,key)=>{const descriptor=data(record,key).value;need(descriptor&&!types.isProxy(descriptor)&&Object.isFrozen(descriptor)&&Reflect.ownKeys(descriptor).length===4,'DEPENDENCIES');return Object.freeze(Object.fromEntries(['value','writable','enumerable','configurable'].map(k=>[k,data(descriptor,k).value])));};
+  for(let i=0;i<records.length;i++){
+   const record=data(records,String(i)).value;need(record&&!types.isProxy(record)&&Object.isFrozen(record)&&Reflect.ownKeys(record).length===recordKeys.length&&recordKeys.every(k=>Object.getOwnPropertyDescriptor(record,k)&&Object.hasOwn(Object.getOwnPropertyDescriptor(record,k),'value')),'DEPENDENCIES');
+   const name=own(record,'file'),index=own(record,'childIndex');need(lazyMaterials.has(name)&&!pins.has(name)&&own(record,'cache')===cache&&own(record,'children')===rows&&Number.isSafeInteger(index)&&index>=0&&index<rows.length&&own(record,'sourceSha256')===lazyMaterials.get(name).sha256,'DEPENDENCIES');
+   const mod=own(record,'module');same(cache,name,fixedDescriptor(record,'cacheDescriptor'));same(mod,'filename',fixedDescriptor(record,'filenameDescriptor'));same(mod,'exports',fixedDescriptor(record,'exportsDescriptor'));need(own(mod,'loaded')===true&&own(record,'module')===same(rows,String(index),fixedDescriptor(record,'childDescriptor')),'DEPENDENCIES');
+   checkFile(name,lazyMaterials.get(name).identity);checkFile(name,own(record,'sourceIdentity'));pins.set(name,{mod,index});
+  }
   const filenames=new Set(edges.map(row=>row.meta.filename.value));
   for(let i=edges.length;i<rows.length;i++){
-   const slot=data(rows,String(i)),edge=metadata(slot.value),name=edge.filename.value;need(lazyMaterials.has(name)&&!filenames.has(name)&&own(edge.mod,'loaded')===true,'DEPENDENCIES');filenames.add(name);
-   const pinned=lazyEdges.get(name);if(pinned){need(pinned.index===i&&edge.mod===pinned.meta.mod,'DEPENDENCIES');same(rows,String(i),pinned.slot);verifyMeta(pinned.meta);}else lazyEdges.set(name,{index:i,slot,meta:edge});
-   checkFile(name,lazyMaterials.get(name).identity);
+   const edge=metadata(data(rows,String(i)).value),name=edge.filename.value,pinned=pins.get(name);need(pinned&&pinned.mod===edge.mod&&pinned.index===i&&!filenames.has(name),'DEPENDENCIES');filenames.add(name);
   }
-  need([...lazyEdges.keys()].every(name=>filenames.has(name)),'DEPENDENCIES');
   verifyMeta(helper);same(helper.exports.value,'decodeRelaySysreadExit',decoder);same(decoder.value,'length',decoderArity);need(own(helper.mod,'loaded')===true,'DEPENDENCIES');checkFile(helperFile,lazyMaterials.get(helperFile).identity);
   const mainRows=same(module,'children',mainChildren);let count=0;for(let i=0;i<mainRows.length;i++)if(data(mainRows,String(i)).value===role)count++;
   need(count===1,'DEPENDENCIES');same(namespace,'describeCurrent261DocumentLoginDrainFailure',projector);same(projector.value,'length',arity);checkFile(file,material.identity);

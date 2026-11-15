@@ -457,12 +457,14 @@ test('fresh Node genuine import-only Module closure accepts original lazy edges 
   main._compile(prefix+"\nmodule.exports={captureAuthDrainFailureProjector};",entry);main.loaded=true;
   const owned=path.join(dir,'task16-current259-owned-resource.cjs');assert.equal(Boolean(require.cache[owned]),false);
   main.require('./local-staged-current259-profile.cjs');main.require('./task16-current259-owned-resource.cjs');
+  const instrumentedFile=path.join(dir,'task12-current259-document-login.cjs'),instrumented=new Module(instrumentedFile,main);instrumented.filename=instrumentedFile;instrumented.paths=Module._nodeModulePaths(dir);require.cache[instrumentedFile]=instrumented;
+  const loginSource=fs.readFileSync(instrumentedFile,'utf8');instrumented._compile(loginSource.replace('module.exports=Object.freeze({','module.exports=Object.freeze({__testDrainLoads:Object.freeze([loadDrainOfficialProfile,loadDrainDocumentApplication,loadDrainFirstLoginExercise,loadDrainSysread]),'),instrumentedFile);instrumented.loaded=true;
   const namespace=main.require('./task12-current259-document-login.cjs');main.require('./task12-current261-first-login-exercise.cjs');main.require('./task12-current261-local-lifecycle-http.cjs');
   const read=main.require('./task16-runtime-inputs.cjs').readQualifiedTask16File,checkFile=main.require('./task16-current259-business-continuity.cjs').checkCurrent259FileIdentity;
   let checks=0;const reader=main.exports.captureAuthDrainFailureProjector(namespace,read,(file,identity)=>{checkFile(file,identity);checks++;});
   const login=require.cache[path.join(dir,'task12-current259-document-login.cjs')];assert.equal(login.parent,main);
   checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});const initialChecks=checks;assert.ok(initialChecks>=4);
-  for(const name of ['task12-official-document-profiles.cjs','task12-current259-document-application.cjs','task12-current261-first-login-exercise.cjs','task16-current259-relay-sysread.cjs'])login.require('./'+name);
+  for(const load of namespace.__testDrainLoads)load();assert.equal(namespace.describeCurrent261DocumentLoginDrainProvenance().length,4);
   checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.ok(checks>initialChecks);
   const legitimateChecks=checks;let traps=0;const trap=()=>{traps++;throw Error('PRIVATE_TRAP');};
   const exportSlot=Object.getOwnPropertyDescriptor(login,'exports');Object.defineProperty(login,'exports',{get:trap});checks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(checks,0);Object.defineProperty(login,'exports',exportSlot);
@@ -491,4 +493,28 @@ test('Auth primitive proxy and hostile first causes keep identity and publish on
 test('failed original first-file durability skips the drain event without changing the primary',async t=>{
  const io=firstFailureIo(t,'file'),original=Object.assign(Error('PRIVATE'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),f=model(t,{authOnly:true,applicationFailure:original,drainFailureFacts:drainFacts(),cleanupFailure:true}),r=await f.result();
  assert.equal(io.opens(),1);assert.equal(r.firstFailureObservation,'UNKNOWN');assert.equal(r.firstFailureEvidenceWriteFailed,true);assert.equal(r.diagnosticObservation,'UNKNOWN');assert.equal(fs.existsSync(path.join(f.plan.run.root,drainEvent)),false);assert.equal(f.calls.includes('drain-project'),false);assert.equal(r.reason,'CURRENT261_LOCAL_LIFECYCLE_HTTP');
+});
+
+
+test('genuine same-file cache and child replacement before first diagnostic cannot become lazy provenance',()=>{
+ const {spawnSync}=require('node:child_process');
+ const script=String.raw`
+  const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{Module}=require('node:module');
+  const entry=process.argv[1],dir=path.dirname(entry),main=new Module(entry,module);main.filename=entry;main.paths=Module._nodeModulePaths(dir);require.cache[entry]=main;
+  const source=fs.readFileSync(entry,'utf8');main._compile(source.slice(0,source.indexOf('async function main(){'))+"\nmodule.exports={captureAuthDrainFailureProjector};",entry);main.loaded=true;
+  main.require('./local-staged-current259-profile.cjs');main.require('./task16-current259-owned-resource.cjs');const instrumentedFile=path.join(dir,'task12-current259-document-login.cjs'),instrumented=new Module(instrumentedFile,main);instrumented.filename=instrumentedFile;instrumented.paths=Module._nodeModulePaths(dir);require.cache[instrumentedFile]=instrumented;
+  const loginSource=fs.readFileSync(instrumentedFile,'utf8');instrumented._compile(loginSource.replace('module.exports=Object.freeze({','module.exports=Object.freeze({__testDrainLoads:Object.freeze([loadDrainOfficialProfile,loadDrainDocumentApplication,loadDrainFirstLoginExercise,loadDrainSysread]),'),instrumentedFile);instrumented.loaded=true;
+  const namespace=main.require('./task12-current259-document-login.cjs');main.require('./task12-current261-first-login-exercise.cjs');main.require('./task12-current261-local-lifecycle-http.cjs');
+  const read=main.require('./task16-runtime-inputs.cjs').readQualifiedTask16File,checkFile=main.require('./task16-current259-business-continuity.cjs').checkCurrent259FileIdentity,loginFile=path.join(dir,'task12-current259-document-login.cjs');let rootChecks=0;
+  const reader=main.exports.captureAuthDrainFailureProjector(namespace,read,(file,identity)=>{checkFile(file,identity);if(file===loginFile)rootChecks++;});
+  const login=require.cache[loginFile];for(const load of namespace.__testDrainLoads)load();assert.equal(namespace.describeCurrent261DocumentLoginDrainProvenance().length,4);
+  const file=path.join(dir,'task12-current259-document-application.cjs'),index=login.children.findIndex(row=>row.filename===file),original=login.children[index],forged=Object.assign(new Module(file,main),{filename:file,loaded:true,exports:process.argv[2]==='new-exports'?Object.freeze({}):original.exports});login.children[index]=forged;require.cache[file]=forged;
+  rootChecks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(rootChecks,0,'pre-first-reader same-file replacement must reject before private projector gate');
+  login.children[index]=original;require.cache[file]=original;rootChecks=0;assert.deepEqual(reader(undefined),{status:'UNKNOWN'});assert.equal(rootChecks,2,'authentic returned modules must pass before/after private reader verification');
+  const first=namespace.describeCurrent261DocumentLoginDrainProvenance();for(const load of namespace.__testDrainLoads)load();const repeated=namespace.describeCurrent261DocumentLoginDrainProvenance();assert.equal(repeated.length,4);for(let i=0;i<4;i++)assert.equal(repeated[i],first[i]);
+  const nativeRequire=login.require;for(const originalCause of [undefined,null,0,Object.freeze(Error('PRIVATE_REQUIRE'))]){login.require=()=>{throw originalCause;};let observed,thrown=false;try{namespace.__testDrainLoads[0]();}catch(error){observed=error;thrown=true;}login.require=nativeRequire;assert.equal(thrown,true);assert.equal(observed,originalCause);assert.equal(namespace.describeCurrent261DocumentLoginDrainProvenance()[0],first[0]);}
+  const sourceOpen=fs.openSync;fs.openSync=function(file,flags,...args){if(file===path.join(dir,'task12-official-document-profiles.cjs'))throw Error('PRIVATE_REGISTRATION');return Reflect.apply(sourceOpen,this,[file,flags,...args]);};let returned;try{returned=namespace.__testDrainLoads[0]();}finally{fs.openSync=sourceOpen;}assert.equal(returned,require.cache[path.join(dir,'task12-official-document-profiles.cjs')].exports);assert.equal(namespace.describeCurrent261DocumentLoginDrainProvenance(),undefined);
+
+ `;
+ for(const mode of ['same-exports','new-exports']){const r=spawnSync(process.execPath,['-e',script,path.join(__dirname,'task12-current261-local-lifecycle-once.cjs'),mode],{encoding:'utf8',timeout:15000,maxBuffer:128*1024});assert.equal(r.status,0,r.stderr);}
 });
