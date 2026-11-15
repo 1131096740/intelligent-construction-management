@@ -121,9 +121,9 @@ function projectNativeTask16PlaintextHba(text,database){
  need(pids.length<=16,'NATIVE_DIRECT_HBA_INPUT');return pids.length?Object.freeze({family:'HBA_PLAINTEXT_REJECT',backendPids:Object.freeze(pids),count:pids.length}):undefined;
 }
 function nativeTask16QualifiedModeMatches(observed,declared){return typeof observed==='string'&&/^[0-9]+$/u.test(observed)&&Number.isInteger(declared)&&declared>=0&&declared<=511&&(BigInt(observed)&0o170000n)===0o100000n&&Number(BigInt(observed)&0o777n)===declared;}
-function assertNativeTask16LogIdentity(fd,expected){
+function assertNativeTask16LogIdentity(fd,expected,namedPath){
  need(Number.isInteger(fd)&&fd>=0,'NATIVE_DIRECT_LOG_WINDOW');const stat=fs.fstatSync(fd,{bigint:true});need(stat.isFile()&&stat.uid===BigInt(process.getuid())&&(stat.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');
- const identity=Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid'].map(key=>[key,String(stat[key])])));if(expected)need(equal(identity,expected),'NATIVE_DIRECT_LOG_WINDOW');return identity;
+ const identity=Object.freeze(Object.fromEntries(['dev','ino','mode','uid','gid'].map(key=>[key,String(stat[key])])));if(expected)need(equal(identity,expected),'NATIVE_DIRECT_LOG_WINDOW');if(namedPath!==undefined){need(typeof namedPath==='string'&&path.basename(namedPath)==='postgres.log','NATIVE_DIRECT_LOG_WINDOW');const named=fs.lstatSync(namedPath,{bigint:true});need(named.isFile()&&!named.isSymbolicLink()&&Object.keys(identity).every(key=>String(named[key])===identity[key]),'NATIVE_DIRECT_LOG_WINDOW');}return identity;
 }
 module.exports=Object.freeze({nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
@@ -307,13 +307,13 @@ async function runNativeTask16Business(plan,state){
    if(mode==='wrong-san')receipt.localhostAnswers=verifyNativeTask16LocalhostAnswers(await wait(()=>require('node:dns').promises.lookup('localhost',{all:true,verbatim:true})));
    const probe=new PrismaClient({datasources:{db:{url:url.toString()}}});state.setClients([...clients,probe]);let primary,logFd,logBefore;
    try{
-    if(mode==='no-tls'){logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);assertNativeTask16LogIdentity(logFd,state.logIdentity);logBefore=fs.fstatSync(logFd,{bigint:true});need(logBefore.isFile()&&logBefore.uid===BigInt(process.getuid())&&(logBefore.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');}
+    if(mode==='no-tls'){logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));logBefore=fs.fstatSync(logFd,{bigint:true});need(logBefore.isFile()&&logBefore.uid===BigInt(process.getuid())&&(logBefore.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');}
     let rejected;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;receipt.sdkTls[mode]={status:'UNKNOWN',...classifyNativeTask16TlsFailure(error,mode)};let hba;
      if(mode==='no-tls'){
-      assertNativeTask16LogIdentity(logFd,state.logIdentity);const after=fs.fstatSync(logFd,{bigint:true}),named=fs.lstatSync(path.join(root,'postgres.log'),{bigint:true});
+      assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));const after=fs.fstatSync(logFd,{bigint:true}),named=fs.lstatSync(path.join(root,'postgres.log'),{bigint:true});
       need(['dev','ino','mode','uid','gid'].every(key=>after[key]===logBefore[key]&&named[key]===logBefore[key])&&!named.isSymbolicLink()&&after.size>=logBefore.size&&after.size-logBefore.size<=65536n,'NATIVE_DIRECT_LOG_WINDOW');
       const bytes=Buffer.alloc(Number(after.size-logBefore.size));let read=0;while(read<bytes.length){const count=fs.readSync(logFd,bytes,read,bytes.length-read,Number(logBefore.size)+read);need(count>0,'NATIVE_DIRECT_LOG_WINDOW');read+=count;}
-      assertNativeTask16LogIdentity(logFd,state.logIdentity);const checked=fs.fstatSync(logFd,{bigint:true});need(['dev','ino','size','mtimeNs','ctimeNs'].every(key=>checked[key]===after[key]),'NATIVE_DIRECT_LOG_WINDOW');
+      assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));const checked=fs.fstatSync(logFd,{bigint:true});need(['dev','ino','size','mtimeNs','ctimeNs'].every(key=>checked[key]===after[key]),'NATIVE_DIRECT_LOG_WINDOW');
       hba=projectNativeTask16PlaintextHba(bytes.toString('utf8'),plan.database);if(hba)receipt.plaintextHba=hba;
      }
      rejected=classifyNativeTask16TlsFailure(error,mode,hba);}

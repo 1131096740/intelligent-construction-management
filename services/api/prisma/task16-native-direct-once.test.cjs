@@ -74,5 +74,5 @@ test('reviewed binary permission mode is compared to regular-file FD permissions
 test('TLS log window rejects a rotated pathname against the original foreground stdout inode',t=>{
  const {assertNativeTask16LogIdentity:check}=require('./run-task16-native-direct-once.cjs'),p=planModel(t),log=path.join(p.runRoot,'postgres.log');fs.writeFileSync(log,'',{mode:0o600});const original=fs.openSync(log,'r');
  const identity=check(original);fs.renameSync(log,log+'.original');fs.writeFileSync(log,'',{mode:0o600});const rotated=fs.openSync(log,'r');
- try{assert.throws(()=>check(rotated,identity),error=>error.code==='NATIVE_DIRECT_LOG_WINDOW');assert.deepEqual(check(original,identity),identity);}finally{fs.closeSync(original);fs.closeSync(rotated);}
+ try{assert.throws(()=>check(rotated,identity),error=>error.code==='NATIVE_DIRECT_LOG_WINDOW');assert.deepEqual(check(original,identity),identity);assert.throws(()=>check(original,identity,log),error=>error.code==='NATIVE_DIRECT_LOG_WINDOW');}finally{fs.closeSync(original);fs.closeSync(rotated);}
 });
