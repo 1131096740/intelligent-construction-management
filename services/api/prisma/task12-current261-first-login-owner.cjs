@@ -10,7 +10,7 @@ const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/u.test(v);
 const uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(v);
 const counters=['actorLastLogin','otherLastLogin','refreshTotal','actorRefresh','authAuditTotal','actorAuthAudit','rateRows','rateHits'];
 // Fixed business readback: never select passwords, token hashes, tokens, or rate-limit keys.
-const protectedTables=['Contract','ContractVersion','ApprovalInstance','ApprovalActionLog','ContractArchiveFile','ContractArchiveEvidenceFile','ContractFormalFile','ContractGeneratedDocument','ContractSealTask','File','ContractLayoutTemplate','ContractLayoutTemplateVersion','ContractDraftCheckpoint','ContractDraftSubmissionRequest'];
+const protectedTables=['Contract','ContractVersion','ApprovalInstance','ApprovalActionLog','ContractArchiveFile','ContractArchiveEvidenceFile','ContractFormalFile','ContractGeneratedDocument','ContractSealTask','FileObject','ContractLayoutTemplate','ContractLayoutTemplateVersion','ContractDraftCheckpoint','ContractDraftSubmissionRequest'];
 function factsSql(scope){
  const actor=quote(scope.fixture.approval.users[0].id),users=scope.fixture.approval.users.map(u=>quote(u.id)).join(',');
  const protectedRows=protectedTables.map(table=>`SELECT ${quote(table)} AS name,coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb) AS records FROM public."${table}" r`).join(' UNION ALL ')+" UNION ALL SELECT 'NonAuthAuditLog' AS name,coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb) AS records FROM public.\"AuditLog\" r WHERE action NOT LIKE 'auth.%'";
