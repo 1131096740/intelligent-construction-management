@@ -644,6 +644,7 @@ function nativeSevenInput(text){
  need(typeof text==='string'&&Buffer.byteLength(text)<=512*1024,'NATIVE_INPUT');const value=JSON.parse(text);
  need(value&&Object.getPrototypeOf(value)===Object.prototype&&equal(Object.keys(value).sort(),['source','id','ordinary','runtime','observer','roleCommitXid','databaseAclAfter'].sort()),'NATIVE_INPUT');
  const {source,id,ordinary,runtime,observer}=value;
+ need(id&&id.tls===true&&id.clientAddress==='127.0.0.1'&&id.serverAddress==='127.0.0.1'&&Number.isInteger(id.serverPort)&&id.serverPort>1024&&id.serverPort<=65535&&id.serverPort!==5432,'NATIVE_INPUT');
  need(source&&id&&ordinary&&runtime&&observer&&id.ownerOid==='10'&&oid(id.databaseOid)&&oid(id.namespaceOid)&&xid(id.systemIdentifier)&&/^jg_task01_[a-f0-9]{32}$/u.test(id.database)&&
   /^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name)&&oid(ordinary.oid)&&ordinary.limit===0&&ordinary.password==='absent'&&
   runtime.name==='jg_task01_runtime'&&observer.name==='jg_task01_observer'&&[runtime,observer].every(r=>oid(r.oid)&&r.limit===1&&r.login===true&&r.password==='scram')&&
@@ -655,7 +656,11 @@ function nativeSevenInput(text){
 function renderNativeTask16Seven(inputJson,phase,nonce,priorStdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
  const input=nativeSevenInput(inputJson),prior=phase===0?undefined:readResult({stdout:priorStdout},input,phase-1,nonce);
- return render(input,phase,nonce,prior);
+ const sql=render(input,phase,nonce,prior);
+ // Native-only endpoint binding; the original private-runner guard stays byte-identical.
+ const original="host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port() IS DISTINCT FROM 5432";
+ const parts=sql.split(original);need(parts.length>1,'NATIVE_ENDPOINT_RENDER');
+ return parts.join(original.replace('5432',String(input.id.serverPort)));
 }
 function parseNativeTask16Seven(inputJson,phase,nonce,stdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeSevenInput(inputJson),phase,nonce);

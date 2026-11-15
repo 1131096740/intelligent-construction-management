@@ -332,9 +332,14 @@ test('native pure seven protocol retains the original qualified before SQL and r
  const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations);
  const f=fixture(undefined,false,undefined,{witness,paymentProfile:PAYMENT261_RUNTIME_PROFILE});
  await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
- const input={source:witness,id:identity,ordinary,roleCommitXid:f.suppliedRoles.commitXid,databaseAclAfter:f.suppliedRoles.databaseAcl.after,runtime:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_runtime'),observer:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_observer')};
+ const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,roleCommitXid:f.suppliedRoles.commitXid,databaseAclAfter:f.suppliedRoles.databaseAcl.after,runtime:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_runtime'),observer:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_observer')};
  const sql=api.renderNativeTask16Seven(JSON.stringify(input),0,nonce,null);
- assert.equal(sql,f.calls[0].sql);
+ assert.equal(sql.replaceAll('inet_server_port() IS DISTINCT FROM 54204','inet_server_port() IS DISTINCT FROM 5432'),f.calls[0].sql);
+ assert.ok(sql.includes('inet_server_port() IS DISTINCT FROM 54204'));assert.ok(!sql.includes('inet_server_port() IS DISTINCT FROM 5432'));
+ const raw=phase=>JSON.stringify({nonce,phase:['current259-seven-before','current259-seven-install','current259-seven-committed'][phase],backendPid:11+phase,backendStart:`2026-11-11T04:00:0${phase}.000000Z`,pre:phase===0?model():null,registry:phase===0?registry:null,fileRoles:phase===0?['10','100']:null,catalogSha256:(phase?'6':'5').repeat(64),installXid:phase?'202':null,commitStatus:phase===2?'committed':null})+'\n';
+ for(const phase of [1,2]){const rendered=api.renderNativeTask16Seven(JSON.stringify(input),phase,nonce,raw(phase-1));assert.equal(rendered.replaceAll('inet_server_port() IS DISTINCT FROM 54204','inet_server_port() IS DISTINCT FROM 5432'),f.calls[phase].sql);assert.ok(rendered.includes('inet_server_port() IS DISTINCT FROM 54204'));assert.ok(!rendered.includes('inet_server_port() IS DISTINCT FROM 5432'));}
+
+ for(const id of [{...input.id,serverPort:undefined},{...input.id,tls:undefined},{...input.id,serverPort:5432},{...input.id,serverPort:'54204'},{...input.id,serverPort:65536},{...input.id,serverPort:1024},{...input.id,tls:false},{...input.id,clientAddress:'127.0.0.2'},{...input.id,serverAddress:'0.0.0.0'}])assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify({...input,id}),0,nonce,null),error=>error.code==='CURRENT259_SEVEN_INSTALL_NATIVE_INPUT');
  assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify({...input,source:{...witness,candidateSha:'0'.repeat(40)}}),0,nonce,null));
  assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify(input),3,nonce,null));
 });
