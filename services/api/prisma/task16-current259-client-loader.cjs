@@ -11,12 +11,71 @@ const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code});};
 const own=(value,key)=>{need(value&&!types.isProxy(value),'CURRENT259_LOADER_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'),'CURRENT259_LOADER_DESCRIPTOR');return d.value;};
 const officialDocumentModuleViews=new WeakMap();
 const nativeTask12OrdinaryClients=new WeakMap();
+const nativeProviderWeakGet=WeakMap.prototype.get,nativeProviderWeakDescriptor=Object.getOwnPropertyDescriptor(WeakMap.prototype,'get'),nativeProviderWeakPrototype=WeakMap.prototype,nativeProviderDescriptor=Object.getOwnPropertyDescriptor,nativeProviderApply=Reflect.apply,nativeProviderFreeze=Object.freeze,nativeProviderDefine=Object.defineProperty,nativeProviderHasOwn=Object.hasOwn;
 function takeCurrent261NativeOrdinaryClient(loader,loaded,client){
  need(arguments.length===3&&client&&(typeof client==='object'||typeof client==='function'),'CURRENT261_NATIVE_ORDINARY_HANDLE');
  const entry=nativeTask12OrdinaryClients.get(client);
  // Unknown/replacement proxies are rejected before reading any property.
  need(entry&&entry.loader===loader&&entry.loaded===loaded&&!entry.used,'CURRENT261_NATIVE_ORDINARY_HANDLE');
  entry.verify();entry.used=true;return true;
+}
+
+// Fixed sixteen-token native equipment lookup witness. This is not a cache of
+// validation results: every batch re-reads every mutable edge before and after.
+function nativeEquipmentLookupRows(target,container,tokens,pins){
+ const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',rows=[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];let warmed=0;
+ const descriptor=pins.descriptor,prototype=pins.prototype,apply=pins.apply,isProxy=pins.isProxy;
+ const data=(object,key,edges)=>{
+  need(object&&(typeof object==='object'||typeof object==='function')&&!isProxy(object),code);
+  const d=descriptor(object,key);need(d&&pins.hasOwn(d,'value'),code);if(edges)pins.define(edges,''+edges.length,{value:[object,key,d],writable:true,enumerable:true,configurable:true});return d.value;
+ };
+ const same=(object,key,expected)=>{
+  need(object&&!isProxy(object),code);const d=descriptor(object,key);
+  need(d,code);const fields=['value','get','set','writable','enumerable','configurable'];for(let i=0;i<fields.length;i++)need(descriptor(d,fields[i])?.value===descriptor(expected,fields[i])?.value,code);
+ };
+ const absent=(object,key)=>{need(object&&!isProxy(object)&&descriptor(object,key)===undefined,code);};
+ const canonical=()=>{
+  absent(pins.objectPrototype,'each');absent(pins.objectPrototype,'moduleId');
+  for(let i=0;i<pins.edges.length;i++){const edge=pins.edges[i];same(edge[0],edge[1],edge[2]);}
+  need(prototype(target)===pins.appPrototype&&prototype(pins.appPrototype)===pins.contextPrototype&&prototype(pins.contextPrototype)===pins.resolverPrototype,code);
+  const absentKeys=['get','find','instanceLinksHost','getHttpAdapter'];for(let i=0;i<absentKeys.length;i++)absent(target,absentKeys[i]);
+  absent(pins.appPrototype,'get');absent(pins.appPrototype,'find');absent(pins.appPrototype,'instanceLinksHost');absent(pins.contextPrototype,'find');
+ };
+ const currentWithInstance=(token,instance,edges,prior)=>{
+  need(data(target,'container',edges)===container,code);
+  const host=data(target,'_instanceLinksHost',edges);if(prior)need(host===prior.host,code);need(host&&!isProxy(host)&&prototype(host)===pins.linksPrototype,code);absent(host,'get');
+  need(data(host,'container',edges)===container,code);
+  const links=data(host,'instanceLinks',edges);if(prior)need(links===prior.links,code);need(links&&!isProxy(links)&&prototype(links)===pins.Map.prototype,code);absent(links,'get');
+  let array;try{array=apply(pins.mapGet,links,[token]);}catch{need(false,code);}
+  if(prior)need(array===prior.array,code);
+  need(array&&!isProxy(array)&&pins.arrayIsArray(array)&&prototype(array)===pins.Array.prototype,code);
+  const length=data(array,'length',edges);need(typeof length==='number'&&length>0&&(!prior||length===prior.length),code);
+  for(let i=0;i<length;i++)data(array,''+i,edges);
+  const link=data(array,''+(length-1));if(prior)need(link===prior.link,code);need(link&&!isProxy(link)&&prototype(link)===pins.objectPrototype,code);
+  need(data(link,'token',edges)===token,code);data(link,'moduleId',edges);data(link,'collection',edges);
+  const wrapper=data(link,'wrapperRef',edges);if(prior)need(wrapper===prior.wrapper,code);need(wrapper&&!isProxy(wrapper)&&prototype(wrapper)===pins.wrapperPrototype,code);
+  absent(wrapper,'instance');absent(wrapper,'getInstanceByContextId');
+  const scope=data(wrapper,'scope',edges);need(scope===undefined||scope===0,code);
+  const values=data(wrapper,'values',edges);if(prior)need(values===prior.values,code);need(values&&!isProxy(values)&&prototype(values)===pins.WeakMap.prototype,code);absent(values,'get');
+  let state;try{state=apply(pins.weakGet,values,[pins.staticContext]);}catch{need(false,code);}
+  if(prior)need(state===prior.state,code);
+  need(state&&!isProxy(state)&&prototype(state)===pins.objectPrototype&&data(state,'instance',edges)===instance,code);
+  return {host,links,array,length,link,wrapper,values,state,instance,edges};
+ };
+ const read=(token,instance,prior)=>{canonical();return currentWithInstance(token,instance,[],prior);};
+ const verify=(token,prior)=>{
+  const now=read(token,prior.instance,prior);
+  const keys=['host','links','array','link','wrapper','values','state','instance'];for(let i=0;i<keys.length;i++)need(now[keys[i]]===prior[keys[i]],code);
+  need(now.edges.length===prior.edges.length,code);
+  for(let i=0;i<prior.edges.length;i++){const edge=prior.edges[i];need(now.edges[i][0]===edge[0]&&now.edges[i][1]===edge[1],code);same(edge[0],edge[1],edge[2]);}
+ };
+ const index=token=>{for(let i=0;i<tokens.length;i++)if(tokens[i]===token)return i;need(false,code);};
+ return pins.freeze({warm(token,instance){
+  canonical();const i=index(token),prior=rows[i];if(prior){need(prior.instance===instance,code);verify(token,prior);}else{rows[i]=read(token,instance);warmed++;}
+ },assert(){
+  canonical();need(data(target,'isInitialized')===true&&tokens.length===16&&warmed===16,code);
+  for(let i=0;i<tokens.length;i++){need(rows[i],code);verify(tokens[i],rows[i]);}
+ },ready(){return warmed===16;},expected(token){const row=rows[index(token)];need(row,code);return row.instance;}});
 }
 
 function claimCurrent261OfficialDocumentModules(view){
@@ -27,6 +86,11 @@ function claimCurrent261OfficialDocumentModules(view){
 const cache=new WeakMap(),ownedModules=new WeakMap(),ownedApps=new WeakMap(),creationFailures=new WeakMap();
 const APP_METHODS=['close','get','getHttpAdapter','enableCors','useGlobalPipes','init','getHttpServer','listen'];
 function dataMethod(value,key){let next=value;for(let i=0;next&&i<32;i++,next=Object.getPrototypeOf(next)){need(!types.isProxy(next),'CURRENT259_OWNED_METHOD');const d=Object.getOwnPropertyDescriptor(next,key);if(d){need(Object.hasOwn(d,'value')&&typeof d.value==='function','CURRENT259_OWNED_METHOD');return d.value;}}throw new Error('CURRENT259_OWNED_METHOD');}
+function inspectCurrent261OwnedNativeEquipmentProviders(value,module,server){
+ const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',d=nativeProviderDescriptor(nativeProviderWeakPrototype,'get');
+ need(arguments.length===3&&d&&nativeProviderDescriptor(d,'value')?.value===nativeProviderWeakGet&&d.writable===nativeProviderWeakDescriptor.writable&&d.enumerable===nativeProviderWeakDescriptor.enumerable&&d.configurable===nativeProviderWeakDescriptor.configurable,code);
+ const record=nativeProviderApply(nativeProviderWeakGet,ownedApps,[value]);need(record&&typeof record.inspectNativeEquipmentProviders==='function',code);return record.inspectNativeEquipmentProviders(module,server);
+}
 function current259OwnedApplicationMethod(value,key){return ownedApps.get(value)?.method(key);}
 function current259OwnedApplicationView(value){return ownedApps.get(value)?.view;}
 function inspectCurrent259OwnedDocumentAuthProviders(value,testing,server){
@@ -510,20 +574,46 @@ function loadCurrent259Client(handle){
   need(!document,'CURRENT259_GENERATED_DOCUMENT_FIXED_ENTRY');
   const builder=createOwnedTestingModule(metadata);ordinaryTestingUsed=true;return builder;
  }
+ let nativeLookupPins;
+ function prepareNativeEquipmentLookupPins(){
+  if(nativeLookupPins)return nativeLookupPins;
+  const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',edges=[];
+  const pin=(object,key)=>{need(object&&!types.isProxy(object),code);const d=Object.getOwnPropertyDescriptor(object,key);need(d,code);edges.push([object,key,d]);return d.value;};
+  for(const [name,entry]of [['NestApplicationContext','@nestjs/core/nest-application-context'],['AbstractInstanceResolver','@nestjs/core/injector/abstract-instance-resolver'],['InstanceLinksHost','@nestjs/core/injector/instance-links-host'],['InstanceWrapper','@nestjs/core/injector/instance-wrapper']]){
+   const file=fs.realpathSync(requireAt.resolve(entry)),exports=guardedRequire(file),mod=require.cache[file];framework[name]=own(exports,name);need(typeof framework[name]==='function',code);records.push({module:mod,key:name,value:framework[name]});roots.push(mod);
+  }
+  const namespaces=['@nestjs/common','@nestjs/common/interfaces','@nestjs/common/interfaces/scope-options.interface','@nestjs/core/injector/constants'].map(entry=>{
+   const file=fs.realpathSync(requireAt.resolve(entry)),exports=guardedRequire(file),mod=require.cache[file];
+   need(pin(require.cache,file)===mod&&pin(mod,'filename')===file&&pin(mod,'exports')===exports&&pin(mod,'loaded')===true,code);roots.push(mod);return exports;
+  });
+  // Scope has two original canonical barrel getters; pin both descriptors
+  // without invoking them, then pin the fixed own-data leaf enum.
+  for(const exports of namespaces.slice(0,2)){const d=Object.getOwnPropertyDescriptor(exports,'Scope');need(d&&typeof d.get==='function'&&d.set===undefined,code);pin(exports,'Scope');}
+  const scope=pin(namespaces[2],'Scope');need(scope&&!types.isProxy(scope),code);
+  need(pin(scope,'DEFAULT')===0&&pin(scope,'TRANSIENT')===1&&pin(scope,'REQUEST')===2,code);
+  const staticContext=pin(namespaces[3],'STATIC_CONTEXT');need(staticContext&&!types.isProxy(staticContext)&&pin(staticContext,'id')===1,code);
+  const appPrototype=framework.NestApplication.prototype,contextPrototype=framework.NestApplicationContext.prototype,resolverPrototype=framework.AbstractInstanceResolver.prototype,linksPrototype=framework.InstanceLinksHost.prototype,wrapperPrototype=framework.InstanceWrapper.prototype;
+  for(const [object,key]of [[appPrototype,'getHttpAdapter'],[contextPrototype,'get'],[resolverPrototype,'find'],[contextPrototype,'instanceLinksHost'],[linksPrototype,'get'],[wrapperPrototype,'instance'],[wrapperPrototype,'getInstanceByContextId'],[Map.prototype,'get'],[WeakMap.prototype,'get'],[Array,'isArray'],[types,'isProxy'],[Object,'getOwnPropertyDescriptor'],[Object,'getPrototypeOf'],[Reflect,'apply'],[globalThis,'Map'],[globalThis,'WeakMap'],[globalThis,'Array']])pin(object,key);
+  nativeLookupPins=Object.freeze({Map,WeakMap,Array,objectPrototype:Object.prototype,appPrototype,contextPrototype,resolverPrototype,linksPrototype,wrapperPrototype,staticContext,mapGet:Map.prototype.get,weakGet:WeakMap.prototype.get,descriptor:nativeProviderDescriptor,prototype:Object.getPrototypeOf,apply:nativeProviderApply,isProxy:types.isProxy,hasOwn:nativeProviderHasOwn,define:nativeProviderDefine,freeze:nativeProviderFreeze,arrayIsArray:Array.isArray,edges:Object.freeze(edges)});
+  collect();return nativeLookupPins;
+ }
+
  function createOwnedTestingModule(metadata,contractMode){
   check();need(metadata&&!types.isProxy(metadata)&&Reflect.ownKeys(metadata).length===1,'CURRENT259_FRAMEWORK_METADATA');
   const imports=own(metadata,'imports');need(Array.isArray(imports)&&!types.isProxy(imports)&&(contractMode?
    imports.length===1&&imports[0]===contractMode.root:
    imports.length===0||imports.length===1&&imports[0]===values.Task16RegisteredApplicationModule),'CURRENT259_FRAMEWORK_METADATA');
   const builder=guardedOperation(()=>testMethod.call(Test,metadata));collect();
-  const compile=dataMethod(builder,'compile'),override=dataMethod(builder,'overrideProvider');let compiled=false;
+  const compile=dataMethod(builder,'compile'),override=dataMethod(builder,'overrideProvider');let compiled=false,nativeOrdinary;
   const facade=Object.freeze({overrideProvider(token){
    check();need(!compiled&&(contractMode?contractMode.tokens.includes(token):
     token===values.PrismaService||token===values.Task16ImpactReaderToken),'CURRENT259_FRAMEWORK_OVERRIDE');
    const receiver=override.call(builder,token),use=dataMethod(receiver,'useValue');
-   return Object.freeze({useValue(value){check();need(!compiled,'CURRENT259_FRAMEWORK_OVERRIDE');use.call(receiver,value);return facade;}});
+   return Object.freeze({useValue(value){check();need(!compiled,'CURRENT259_FRAMEWORK_OVERRIDE');
+    if(document&&contractMode===document&&token===values.PrismaService){const issued=nativeProviderApply(nativeProviderWeakGet,nativeTask12OrdinaryClients,[value]);nativeOrdinary=issued&&issued.used&&issued.loader===result&&issued.loaded===lifeDocument?.exports?value:undefined;}
+    use.call(receiver,value);return facade;}});
   },async compile(){
-   check();need(!compiled,'CURRENT259_FRAMEWORK_REENTRY');compiled=true;
+   check();need(!compiled,'CURRENT259_FRAMEWORK_REENTRY');compiled=true;const nativePins=nativeOrdinary?prepareNativeEquipmentLookupPins():undefined;
    const testing=await guardedOperation(()=>compile.call(builder));collect();
    need(testing&&!types.isProxy(testing)&&Object.getPrototypeOf(testing)===framework.TestingModule.prototype,'CURRENT259_FRAMEWORK_MODULE');
    need(dataMethod(testing,'createNestApplication')===originalCreate&&dataMethod(testing,'createAdapterProxy')===originalAdapterProxy,'CURRENT259_FRAMEWORK_MODULE');
@@ -563,13 +653,34 @@ function loadCurrent259Client(handle){
      collect();need(target&&adapter&&types.isProxy(proxy)&&globalThis.Proxy===nativeProxy,'CURRENT259_FRAMEWORK_PROXY');
      const originalMethods=new Map(APP_METHODS.map(key=>[key,dataMethod(target,key)]));
      let closed=false;const methods=new Map();
+     const nativeTokens=nativePins?Object.freeze(['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController','CONTRACT_VERSION_FILE_READ_AUTHORITY'].map(key=>document.exports[key])):undefined;
+     const nativeRows=nativePins?nativeEquipmentLookupRows(target,container,nativeTokens,nativePins):undefined;
      function verifyTarget(key){
       const fn=originalMethods.get(key),getAdapter=originalMethods.get('getHttpAdapter');
       need(!closed&&dataMethod(target,key)===fn&&dataMethod(target,'getHttpAdapter')===getAdapter&&
        getAdapter.call(target)===adapter,'CURRENT259_FRAMEWORK_CHANGED');
       return fn;
      }
-     const record={inspectDocumentAuthProviders(module,expectedServer){
+     const record={inspectNativeEquipmentProviders(module,expectedServer){
+      const code='CURRENT261_NATIVE_PROVIDER_LOOKUP';
+      need(!closed&&nativeRows&&nativeOrdinary&&module===testing&&contractMode===document,code);
+      // Validate every finite mutable lookup edge before invoking any original
+      // getter or the existing full gate. No lazy registration at this entry.
+      const issued=nativeProviderApply(nativeProviderWeakGet,nativeTask12OrdinaryClients,[nativeOrdinary]);need(issued&&issued.used&&issued.loader===result&&issued.loaded===lifeDocument?.exports,code);
+      if(!nativeRows.ready())return undefined; // Caller keeps the original guarded reads.
+      nativeRows.assert();need(nativeRows.expected(values.PrismaService)===nativeOrdinary,code);
+      const server=Object.getOwnPropertyDescriptor(target,'httpServer'),adapterData=Object.getOwnPropertyDescriptor(target,'httpAdapter');
+      need(server&&nativeProviderHasOwn(server,'value')&&server.value===expectedServer&&adapterData&&nativeProviderHasOwn(adapterData,'value')&&adapterData.value===adapter,code);
+      check();let first,value;
+      try{value=guardedOperation(()=>{
+       nativeRows.assert();const pairs=[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];
+       const read=dataMethod(target,'get');need(read===originalMethods.get('get')&&dataMethod(target,'getHttpAdapter')===originalMethods.get('getHttpAdapter'),code);
+       for(let i=0;i<nativeTokens.length;i++){const token=nativeTokens[i],instance=nativeProviderApply(read,target,[token]);need(instance===nativeRows.expected(token),code);pairs[i]=nativeProviderFreeze([token,instance]);}
+       nativeRows.assert();return nativeProviderFreeze(pairs);
+      });}catch(error){first=error;}
+      try{collect();}catch(error){if(!first)first=error;}
+      if(first)throw first;return value;
+     },inspectDocumentAuthProviders(module,expectedServer){
       need(document&&contractMode===document&&module===testing,'CURRENT259_FRAMEWORK_CHANGED');
       // Source/graph/FD ownership only: no resource or official-scope callback.
       check();
@@ -650,7 +761,9 @@ function loadCurrent259Client(handle){
       const wrapped=key==='close'?()=>{closed=true;return close();}:(...args)=>{
        check();verifyTarget(key);
        const result=guardedOperation(()=>fn.apply(target,args));
-       if(types.isPromise(result))return result.then(value=>{collect();return value===target?record.view:value;});collect();return result===target?record.view:result;
+       if(types.isPromise(result))return result.then(value=>{collect();return value===target?record.view:value;});collect();
+       if(nativeRows&&key==='get'&&args.length===1&&nativeTokens.includes(args[0]))nativeRows.warm(args[0],result);
+       return result===target?record.view:result;
       };
       methods.set(key,wrapped);return wrapped;
      }};
@@ -682,5 +795,5 @@ function loadCurrent259Client(handle){
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;
 }
-module.exports=Object.freeze({takeCurrent261NativeOrdinaryClient,loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
+module.exports=Object.freeze({inspectCurrent261OwnedNativeEquipmentProviders,takeCurrent261NativeOrdinaryClient,loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
  inspectCurrent259OwnedDocumentAuthProviders,inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});

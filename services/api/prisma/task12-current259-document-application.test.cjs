@@ -39,7 +39,8 @@ function model(failure){
  const get=key=>bindings.has(key)?bindings.get(key):objects.get(key);
  const testing={get,async close(){trace.push('module-close');await ordinary.onApplicationShutdown();}};
  const server={listening:false,address(){return {address:'127.0.0.1',family:'IPv4',port:24080};}};
- const app={get,getHttpServer(){return server;},async close(){
+ const nativeWarm=new Set(),nativeReads=[];const appGet=key=>{nativeWarm.add(key);nativeReads.push(key);return get(key);};
+ const app={get:appGet,getHttpServer(){return server;},async close(){
   if(!['stuck-listener','public-fixed-error'].includes(failure))server.listening=false;
   trace.push('app-close');await Promise.resolve();trace.push('worker-drained');
   await ordinary.onApplicationShutdown();if(failure==='close')throw Error('private model cleanup');
@@ -78,7 +79,10 @@ function model(failure){
   './task12-current259-document-login.cjs':{readNativeTask12DocumentLoginProjection(value){assert.equal(value,nativeProof);return {source:{candidateSha:'a'.repeat(40),profile:{profile:'TASK12_ARCHIVE261_SOURCE_V1'}}};},takeCurrent259GeneratedDocumentApplicationBridge(candidate){
    assert.equal(candidate,bridge);assert.equal(claimed,false);claimed=true;
   }},
-  './task16-current259-client-loader.cjs':{takeCurrent261NativeOrdinaryClient(actualLoader,actualLoaded,client){assert.equal(actualLoader,loader);assert.equal(actualLoaded,loaded);assert.equal(client,ordinary);return true;},
+  './task16-current259-client-loader.cjs':{inspectCurrent261OwnedNativeEquipmentProviders(value,module,live){
+    assert.equal(value,app);assert.equal(module,testing);assert.equal(live,server);assert.equal(live.listening,true);const required=['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController'].map(key=>token[key]).concat([authorityToken]);if(!required.every(key=>nativeWarm.has(key))){trace.push('native-batch-unwarmed-original');return undefined;}trace.push('native-provider-batch');
+    return Object.freeze(['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController'].map(key=>Object.freeze([token[key],get(token[key])])).concat([Object.freeze([authorityToken,get(authorityToken)])]));
+   },takeCurrent261NativeOrdinaryClient(actualLoader,actualLoaded,client){assert.equal(actualLoader,loader);assert.equal(actualLoaded,loaded);assert.equal(client,ordinary);return true;},
    isCurrent259OwnedModule(value){return value===testing;},
    createCurrent259OwnedApplication(value){assert.equal(value,testing);return app;},
    current259OwnedApplicationView(value){assert.equal(value,app);return app;},
@@ -88,7 +92,7 @@ function model(failure){
  };
  const filename=path.join(__dirname,'task12-current259-document-application.cjs'),mod={exports:{}};
  new Function('require','module',fs.readFileSync(filename,'utf8'))(id=>imports[id]??require(id),mod);
- return {api:mod.exports,nativeProof,bridge,token,bindings,trace,server,ordinary,originalShutdown,document,originalQueue,providers,authTickets,get escapedAuth(){return escapedAuth;},traps:()=>traps};
+ return {api:mod.exports,nativeProof,bridge,token,bindings,trace,server,ordinary,originalShutdown,document,originalQueue,providers,authTickets,nativeWarm,nativeReads,get escapedAuth(){return escapedAuth;},traps:()=>traps};
 }
 test('the same application resolves original file authority, routes only queue to its role and drains before returning',async()=>{
  const f=model();
@@ -212,7 +216,7 @@ test('native document application retains original providers Me and public lifec
  const f=model('lifecycle');
  assert.equal(await f.api.runNativeTask12DocumentApplication(f.nativeProof,f.bridge),false);
  await assert.rejects(f.api.runNativeTask12DocumentApplication(f.nativeProof,f.bridge),/HANDLE/u);
- assert.ok(f.trace.includes('lifecycle-http'));assert.ok(f.trace.includes('worker-drained'));
+ assert.ok(f.trace.includes('lifecycle-http'));assert.ok(f.trace.includes('worker-drained'));assert.ok(f.trace.includes('native-provider-batch'));assert.ok(f.nativeWarm.size>=16);assert.ok(f.nativeReads.length>=32);
  assert.equal(f.ordinary.onApplicationShutdown,f.originalShutdown);
  const bad=model('lifecycle-missing-me');
  await assert.rejects(bad.api.runNativeTask12DocumentApplication(bad.nativeProof,bad.bridge),/PROVIDERS/u);
