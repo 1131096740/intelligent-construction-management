@@ -45,7 +45,7 @@ test('SDK TLS negative classification accepts certificate evidence and keeps DNS
  assert.equal(classify(Object.assign(new Error('Error opening a TLS connection: certificate was not trusted'),{errorCode:'P1011'}),'wrong-san').accepted,false);
  for(const message of ['Connection refused','DNS lookup failed','TLS connection generic'])assert.equal(classify(Object.assign(new Error(message),{errorCode:'P1001'}),'wrong-san').accepted,false);
  assert.equal(classify(Object.assign(new Error('generic TLS connection error'),{errorCode:'P1011'}),'wrong-san').accepted,false);
- assert.equal(classify(Object.assign(new Error('access denied'),{errorCode:'P1010'}),'no-tls').accepted,true);
+ assert.equal(classify(Object.assign(new Error('access denied'),{errorCode:'P1010'}),'no-tls').accepted,false);
  let traps=0;const error={get errorCode(){traps++;return 'P1011';},get message(){traps++;return 'TLS connection certificate was not trusted';}};assert.equal(classify(error,'wrong-san').accepted,false);assert.equal(traps,0);
  assert.equal(JSON.stringify(classify(Object.assign(new Error('private password'),{errorCode:'P1001'}),'wrong-san')).includes('password'),false);
 });
@@ -58,4 +58,13 @@ test('new native purpose accepts only the explicitly reviewed93-file binary qual
  const p=planModel(t),{prepareNativeTask16Plan}=require('./run-task16-native-direct-once.cjs');
  if(process.platform!=='darwin'||process.arch!=='arm64'||process.version!=='v20.20.2')return;
  assert.throws(()=>prepareNativeTask16Plan({runRoot:p.runRoot,binaryManifest:'/private/tmp/not-approved.json',binaryManifestSha256:'0'.repeat(64),output:path.join(p.runRoot,'plan.json')}),error=>error.code==='NATIVE_DIRECT_BINARY_APPROVAL');assert.deepEqual(fs.readdirSync(p.runRoot),[]);
+});
+test('generic SDK P1010 alone is unknown; only matching fresh native runtime HBA plaintext evidence closes it',()=>{
+ const api=require('./run-task16-native-direct-once.cjs'),db='jg_task01_'+'a'.repeat(32),error=Object.assign(new Error('generic denied access'),{errorCode:'P1010'});
+ const line='NATIVE_TASK16 [1234] FATAL:  pg_hba.conf rejects connection for host "127.0.0.1", user "jg_task01_runtime", database "'+db+'", no encryption\n';
+ const proof=api.projectNativeTask16PlaintextHba(line,db);assert.deepEqual(proof,{family:'HBA_PLAINTEXT_REJECT',backendPids:[1234],count:1});
+ assert.equal(api.classifyNativeTask16TlsFailure(error,'no-tls').accepted,false);assert.equal(api.classifyNativeTask16TlsFailure(error,'no-tls',proof).accepted,true);
+ assert.equal(api.projectNativeTask16PlaintextHba(line.replace('jg_task01_runtime','jg_task01_owner'),db),undefined);
+ assert.equal(api.projectNativeTask16PlaintextHba(line.replace('no encryption','SSL encryption'),db),undefined);
+ assert.equal(api.projectNativeTask16PlaintextHba(line,'jg_task01_'+'b'.repeat(32)),undefined);
 });

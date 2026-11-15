@@ -99,21 +99,28 @@ function trackNativeTask16Child(child){
  const running=()=>!exited&&child.pid===pid&&child.kill===kill&&child.exitCode===null&&child.signalCode===null;
  return Object.freeze({pid,terminal,running,stop(){need(running(),'NATIVE_DIRECT_CHILD_CHANGED');need(kill.call(child,'SIGINT'),'NATIVE_DIRECT_PG_STOP');}});
 }
-function classifyNativeTask16TlsFailure(error,mode){
+function classifyNativeTask16TlsFailure(error,mode,hba){
  need(['wrong-ca','wrong-san','no-tls'].includes(mode),'NATIVE_DIRECT_TLS_MODE');
  const own=key=>{if(!error||typeof error!=='object'||types.isProxy(error))return undefined;const d=Object.getOwnPropertyDescriptor(error,key);return d&&Object.hasOwn(d,'value')?d.value:undefined;};
  const code=own('errorCode')??own('code'),message=own('message');const text=typeof message==='string'?message.toLowerCase():'';
  const tls=code==='P1011'&&text.includes('tls connection');
  const name=tls&&(text.includes('notvalidforname')||text.includes('not valid for name')||text.includes('hostname mismatch')||text.includes('hostname does not match')||text.includes('certificate is not valid for'));
  const issuer=tls&&(text.includes('unknownissuer')||text.includes('unknown issuer')||text.includes('unable to get local issuer')||text.includes('unable to verify the first certificate')||text.includes('self signed certificate')||text.includes('self-signed certificate')||text.includes('certificate was not trusted'));
- const accepted=mode==='no-tls'?code==='P1010':mode==='wrong-san'?name:issuer;
- return Object.freeze({prismaCode:typeof code==='string'&&/^P[0-9]{4}$/u.test(code)?code:null,kind:mode==='wrong-san'&&name?'CERTIFICATE_NAME_REJECTED':mode==='wrong-ca'&&issuer?'CERTIFICATE_ISSUER_REJECTED':mode==='no-tls'&&code==='P1010'?'PLAINTEXT_ACCESS_REJECTED':'UNKNOWN',accepted});
+ let plaintext=false;if(mode==='no-tls'&&code==='P1010'&&hba&&!types.isProxy(hba)){try{const row=fixed(hba,['family','backendPids','count']);plaintext=row.family==='HBA_PLAINTEXT_REJECT'&&Array.isArray(row.backendPids)&&!types.isProxy(row.backendPids)&&Number.isInteger(row.count)&&row.count>0&&row.count<=16&&row.backendPids.length===row.count&&Array.from({length:row.count},(_,i)=>Object.getOwnPropertyDescriptor(row.backendPids,String(i))?.value).every(pid=>Number.isSafeInteger(pid)&&pid>0&&pid<=2147483647);}catch{/* Unknown HBA data grants no negative proof. */}}
+ const accepted=mode==='no-tls'?plaintext:mode==='wrong-san'?name:issuer;
+ return Object.freeze({prismaCode:typeof code==='string'&&/^P[0-9]{4}$/u.test(code)?code:null,kind:mode==='wrong-san'&&name?'CERTIFICATE_NAME_REJECTED':mode==='wrong-ca'&&issuer?'CERTIFICATE_ISSUER_REJECTED':mode==='no-tls'&&plaintext?'PLAINTEXT_HBA_REJECTED':'UNKNOWN',accepted});
 }
 function verifyNativeTask16LocalhostAnswers(answers){
  need(Array.isArray(answers)&&!types.isProxy(answers),'NATIVE_DIRECT_LOCALHOST');const length=Object.getOwnPropertyDescriptor(answers,'length')?.value;need(Number.isInteger(length)&&length>0&&length<=16,'NATIVE_DIRECT_LOCALHOST');
  return Object.freeze(Array.from({length},(_,index)=>{const d=Object.getOwnPropertyDescriptor(answers,String(index));need(d&&Object.hasOwn(d,'value'),'NATIVE_DIRECT_LOCALHOST');const row=fixed(d.value,['address','family']);need(row.address==='127.0.0.1'&&row.family===4||row.address==='::1'&&row.family===6,'NATIVE_DIRECT_LOCALHOST');return Object.freeze(row);}));
 }
-module.exports=Object.freeze({verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+function projectNativeTask16PlaintextHba(text,database){
+ need(typeof text==='string'&&Buffer.byteLength(text)<=65536&&typeof database==='string'&&/^jg_task01_[a-f0-9]{32}$/u.test(database),'NATIVE_DIRECT_HBA_INPUT');
+ const suffix=' FATAL:  pg_hba.conf rejects connection for host "127.0.0.1", user "jg_task01_runtime", database "'+database+'", no encryption';
+ const pids=[];for(const line of text.split('\n')){const match=/^NATIVE_TASK16 \[([1-9][0-9]{0,9})\]/u.exec(line);if(match&&line==='NATIVE_TASK16 ['+match[1]+']'+suffix){const pid=Number(match[1]);need(pid<=2147483647,'NATIVE_DIRECT_HBA_INPUT');pids.push(pid);}}
+ need(pids.length<=16,'NATIVE_DIRECT_HBA_INPUT');return pids.length?Object.freeze({family:'HBA_PLAINTEXT_REJECT',backendPids:Object.freeze(pids),count:pids.length}):undefined;
+}
+module.exports=Object.freeze({projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -166,7 +173,7 @@ async function executeNativeTask16Once(plan,planSha256){
   port=await connectPort();need(port>1024&&port!==5432,'NATIVE_DIRECT_PORT');
   const hba=`local all ${owner} peer map=native_owner\nlocal all all reject\nhostnossl all all 127.0.0.1/32 reject\nhostssl all ${owner} 127.0.0.1/32 scram-sha-256\nhostssl ${db} jg_task01_runtime,jg_task01_observer 127.0.0.1/32 scram-sha-256\nhostssl all all 127.0.0.1/32 reject\n`;
   fs.writeFileSync(path.join(root,'data/pg_hba.conf'),hba,{mode:0o600});fs.writeFileSync(path.join(root,'data/pg_ident.conf'),`native_owner ${os.userInfo().username} ${owner}\n`,{mode:0o600});
-  const config=`listen_addresses='127.0.0.1'\nport=${port}\nunix_socket_directories='${root}/socket'\nssl=on\nssl_min_protocol_version='TLSv1.2'\nssl_cert_file='${root}/server.crt'\nssl_key_file='${root}/server.key'\npassword_encryption='scram-sha-256'\nmax_connections=16\nshared_buffers='64MB'\nmax_wal_size='64MB'\nmin_wal_size='32MB'\nlog_statement='none'\nlog_min_error_statement='panic'\nlog_parameter_max_length_on_error=0\nlog_error_verbosity='terse'\nlog_duration=off\nlog_min_duration_statement=-1\nlog_min_duration_sample=-1\nlog_transaction_sample_rate=0\nlogging_collector=off\nlog_destination='stderr'\nlc_messages='C'\nstatement_timeout='60s'\n`;
+  const config=`listen_addresses='127.0.0.1'\nport=${port}\nunix_socket_directories='${root}/socket'\nssl=on\nssl_min_protocol_version='TLSv1.2'\nssl_cert_file='${root}/server.crt'\nssl_key_file='${root}/server.key'\npassword_encryption='scram-sha-256'\nmax_connections=16\nshared_buffers='64MB'\nmax_wal_size='64MB'\nmin_wal_size='32MB'\nlog_statement='none'\nlog_min_error_statement='panic'\nlog_parameter_max_length_on_error=0\nlog_error_verbosity='terse'\nlog_duration=off\nlog_min_duration_statement=-1\nlog_min_duration_sample=-1\nlog_transaction_sample_rate=0\nlogging_collector=off\nlog_destination='stderr'\nlog_line_prefix='NATIVE_TASK16 [%p] '\nlc_messages='C'\nstatement_timeout='60s'\n`;
   fs.writeFileSync(path.join(root,'data/postgresql.conf'),config,{mode:0o600});writeNew(root,'postgres.log','');
   enter('PG_START');const logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_WRONLY|fs.constants.O_APPEND|fs.constants.O_NOFOLLOW);
   try{pgChild=spawn(bin('postgres'),['-D',path.join(root,'data')],{cwd:root,env,stdio:['ignore',logFd,logFd],detached:false});pgChild.once('error',()=>{});pgPid=pgChild.pid;
@@ -225,7 +232,7 @@ async function executeNativeTask16Once(plan,planSha256){
   }catch{errors.push('POSTGRES_CLOSE_UNKNOWN');}
   if(pgChild&&(!pgLifetime||!pgLifetime.running()&&pgChild.exitCode===null&&pgChild.signalCode===null))errors.push('UNCONFIRMED_POSTGRES_START');
   if(!pgChild&&fs.existsSync(path.join(root,'data/postmaster.pid')))errors.push('UNCONFIRMED_POSTGRES_START');
-  if(pending>0)errors.push('NATIVE_OPERATIONS_NOT_SETTLED');if(receipt.sdkTlsCleanup==='UNKNOWN')errors.push('SDK_TLS_PROBE_CLEANUP_UNKNOWN');
+  if(pending>0)errors.push('NATIVE_OPERATIONS_NOT_SETTLED');if(receipt.sdkTlsCleanup==='UNKNOWN')errors.push('SDK_TLS_PROBE_CLEANUP_UNKNOWN');if(receipt.sdkTlsLogClose==='UNKNOWN')errors.push('SDK_TLS_LOG_CLOSE_UNKNOWN');
   for(const name of ['ca.key','wrong-ca.key','server.key'])if(fs.existsSync(path.join(root,name)))try{fs.unlinkSync(path.join(root,name));}catch{errors.push('PRIVATE_KEY_ERASURE_UNKNOWN');}
   if(restoreEnvironment)try{restoreEnvironment();}catch{errors.push('ENVIRONMENT_RESTORE_UNKNOWN');}
   clearTimeout(timer);process.removeListener('SIGINT',onSignal);process.removeListener('SIGTERM',onSignal);
@@ -278,18 +285,6 @@ async function runNativeTask16Business(plan,state){
   const {PrismaClient}=require('@prisma/client');
   const controllerAborted=error=>Object.getOwnPropertyDescriptor(error??{},'code')?.value==='NATIVE_DIRECT_DEADLINE';
   const urlFor=kind=>{const url=new URL('postgresql://jg_task01_'+kind+'@127.0.0.1:'+port+'/'+plan.database);url.password=credentials[kind];for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5',application_name:'native_task16_'+plan.runId.replaceAll('-','')+'_'+kind}))url.searchParams.set(key,value);return url.toString();};
-  receipt.sdkTls={};
-  for(const mode of ['wrong-ca','no-tls','wrong-san']){
-   const url=new URL(urlFor('runtime'));if(mode==='wrong-ca')url.searchParams.set('sslcert',path.join(root,'wrong-ca.crt'));else if(mode==='no-tls')url.searchParams.set('sslmode','disable');else url.hostname='localhost';
-   if(mode==='wrong-san')receipt.localhostAnswers=verifyNativeTask16LocalhostAnswers(await wait(()=>require('node:dns').promises.lookup('localhost',{all:true,verbatim:true})));
-   const probe=new PrismaClient({datasources:{db:{url:url.toString()}}});state.setClients([probe]);let primary;
-   try{
-    let rejected;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;rejected=classifyNativeTask16TlsFailure(error,mode);}
-    if(!rejected){receipt.sdkTls[mode]={status:'UNEXPECTEDLY_ACCEPTED'};fail('NATIVE_DIRECT_TLS_NEGATIVE_ACCEPTED');}
-    receipt.sdkTls[mode]={status:rejected.accepted?'REJECTED':'UNKNOWN',...rejected};need(rejected.accepted,'NATIVE_DIRECT_TLS_NEGATIVE_UNKNOWN');
-   }catch(error){primary=error;throw error;}
-   finally{state.setClients([]);try{await cleanupWait(()=>probe.$disconnect());}catch{receipt.sdkTlsCleanup='UNKNOWN';if(!primary)fail('NATIVE_DIRECT_PROBE_CLEANUP_UNKNOWN');}}
-  }
   const clients=['owner','runtime','observer'].map(kind=>new PrismaClient({datasources:{db:{url:urlFor(kind)}}}));state.setClients(clients);
   await wait(()=>Promise.all(clients.map(client=>client.$connect())));
   const [owner,runtime,observer]=clients,identitySql=require('./task16-current259-session-identity.cjs').current259ClientIdentitySql;
@@ -300,7 +295,28 @@ async function runNativeTask16Business(plan,state){
    need(new Set(rows.map(r=>r[0].pid)).size===3&&new Set(rows.map(r=>r[0].loginOid)).size===3&&new Set(rows.map(r=>r[0].clientPort)).size===3,'NATIVE_DIRECT_CLIENT_SEPARATION');
    const next=rows.map(r=>{const copy={...r[0]};delete copy.nonce;return copy;});if(retained)need(equal(next,retained),'NATIVE_DIRECT_CLIENT_CHANGED');else retained=next;return next;
   };
-  await verifyIdentity();
+  await verifyIdentity();receipt.sdkPositiveClients=retained.map(row=>({role:row.loginRole,pid:row.pid,startedAt:row.start,tls:row.tls,databaseOid:row.databaseOid,clientAddress:row.clientAddress,clientPort:row.clientPort,serverAddress:row.serverAddress,serverPort:row.serverPort}));
+  receipt.sdkTls={};
+  for(const mode of ['wrong-ca','no-tls','wrong-san']){
+   const url=new URL(urlFor('runtime'));if(mode==='wrong-ca')url.searchParams.set('sslcert',path.join(root,'wrong-ca.crt'));else if(mode==='no-tls')url.searchParams.set('sslmode','disable');else url.hostname='localhost';
+   if(mode==='wrong-san')receipt.localhostAnswers=verifyNativeTask16LocalhostAnswers(await wait(()=>require('node:dns').promises.lookup('localhost',{all:true,verbatim:true})));
+   const probe=new PrismaClient({datasources:{db:{url:url.toString()}}});state.setClients([...clients,probe]);let primary,logFd,logBefore;
+   try{
+    if(mode==='no-tls'){logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);logBefore=fs.fstatSync(logFd,{bigint:true});need(logBefore.isFile()&&logBefore.uid===BigInt(process.getuid())&&(logBefore.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');}
+    let rejected;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;receipt.sdkTls[mode]={status:'UNKNOWN',...classifyNativeTask16TlsFailure(error,mode)};let hba;
+     if(mode==='no-tls'){
+      const after=fs.fstatSync(logFd,{bigint:true}),named=fs.lstatSync(path.join(root,'postgres.log'),{bigint:true});
+      need(['dev','ino','mode','uid','gid'].every(key=>after[key]===logBefore[key]&&named[key]===logBefore[key])&&!named.isSymbolicLink()&&after.size>=logBefore.size&&after.size-logBefore.size<=65536n,'NATIVE_DIRECT_LOG_WINDOW');
+      const bytes=Buffer.alloc(Number(after.size-logBefore.size));let read=0;while(read<bytes.length){const count=fs.readSync(logFd,bytes,read,bytes.length-read,Number(logBefore.size)+read);need(count>0,'NATIVE_DIRECT_LOG_WINDOW');read+=count;}
+      const checked=fs.fstatSync(logFd,{bigint:true});need(['dev','ino','size','mtimeNs','ctimeNs'].every(key=>checked[key]===after[key]),'NATIVE_DIRECT_LOG_WINDOW');
+      hba=projectNativeTask16PlaintextHba(bytes.toString('utf8'),plan.database);if(hba)receipt.plaintextHba=hba;
+     }
+     rejected=classifyNativeTask16TlsFailure(error,mode,hba);}
+    if(!rejected){receipt.sdkTls[mode]={status:'UNEXPECTEDLY_ACCEPTED'};fail('NATIVE_DIRECT_TLS_NEGATIVE_ACCEPTED');}
+    receipt.sdkTls[mode]={status:rejected.accepted?'REJECTED':'UNKNOWN',...rejected};need(rejected.accepted,'NATIVE_DIRECT_TLS_NEGATIVE_UNKNOWN');
+   }catch(error){primary=error;throw error;}
+   finally{let logCloseFailed=false;if(logFd!==undefined)try{fs.closeSync(logFd);}catch{logCloseFailed=true;receipt.sdkTlsLogClose='UNKNOWN';}state.setClients(clients);try{await cleanupWait(()=>probe.$disconnect());}catch{receipt.sdkTlsCleanup='UNKNOWN';if(!primary)fail('NATIVE_DIRECT_PROBE_CLEANUP_UNKNOWN');}if(logCloseFailed&&!primary)fail('NATIVE_DIRECT_LOG_CLOSE_UNKNOWN');}
+  }
   const {Test}=require('@nestjs/testing');const {PrismaService}=require('../dist/database/prisma.service.js');
   const {Task16RegisteredApplicationModule,Task16ImpactReaderToken}=require('../dist/database/task16-registered-application.module.js');
   const {readTask16RegisteredPaymentImpacts}=require('../dist/payment/registered-payment-impact-reader.js');
