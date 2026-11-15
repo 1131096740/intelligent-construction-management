@@ -102,3 +102,16 @@ test('readonly export qualification leaves parent business environment and API m
  const source=`const path=require('node:path');const api=require(${JSON.stringify(file)});const target=path.join(path.dirname(${JSON.stringify(file)}),'../dist/database/task16-registered-application.module.js');const before=Object.prototype.hasOwnProperty.call(require.cache,require.resolve(target));const value=process.env.NATIVE_QUAL_SENTINEL;const rows=api.resolveNativeTask16Interfaces();process.stdout.write(JSON.stringify({before,after:Object.prototype.hasOwnProperty.call(require.cache,require.resolve(target)),environmentUnchanged:process.env.NATIVE_QUAL_SENTINEL===value,count:rows.length}));`;
  const result=spawnSync(process.execPath,['-e',source],{encoding:'utf8',env:{PATH:path.dirname(process.execPath),NATIVE_QUAL_SENTINEL:'unchanged'},timeout:10000,maxBuffer:1048576});assert.equal(result.status,0);const value=JSON.parse(result.stdout);assert.equal(value.before,false);assert.equal(value.after,false);assert.equal(value.environmentUnchanged,true);assert.ok(value.count>10);
 });
+
+test('TLS error word projection is bounded own-data booleans and grants no new SAN acceptance',()=>{
+ const api=require('./run-task16-native-direct-once.cjs'),project=api.projectNativeTask16TlsWords;
+ const message='Error opening a TLS connection: certificate not valid for name; IP address mismatch; certificate verify failed; https://private.invalid/password-secret';
+ const error=Object.assign(new Error(message),{errorCode:'P1011'}),words=project(error);
+ assert.equal(words.messageState,'BOUNDED_OWN_DATA');assert.equal(words.tokens.tlsConnection,true);assert.equal(words.tokens.certificateNotValidForName,true);assert.equal(words.tokens.ipAddressMismatch,true);assert.equal(words.tokens.certificateVerifyFailed,true);
+ assert.ok(Object.values(words.tokens).every(value=>typeof value==='boolean'));assert.ok(!JSON.stringify(words).includes('private.invalid'));assert.ok(!JSON.stringify(words).includes('password-secret'));
+ assert.equal(api.classifyNativeTask16TlsFailure(Object.assign(new Error('Error opening a TLS connection: IP address mismatch; certificate verify failed'),{errorCode:'P1011'}),'wrong-san').accepted,false);
+ let traps=0;const accessor={get message(){traps++;throw Error('private');}},proxy=new Proxy({}, {getOwnPropertyDescriptor(){traps++;throw Error('private');}});
+ for(const value of [undefined,null,{},accessor,proxy,{message:42},{message:'x'.repeat(32769)},{message:'汉'.repeat(11000)}]){const result=project(value);assert.equal(result.messageState,'UNKNOWN');assert.ok(Object.values(result.tokens).every(flag=>flag===false));}
+ assert.equal(traps,0);assert.equal(project({message:'x'.repeat(32768)}).messageState,'BOUNDED_OWN_DATA');
+ for(const [message,key]of [['NotValidForName','notValidForName'],['not valid for name','notValidForNameSpaced'],['hostname mismatch','hostnameMismatch'],['hostname does not match','hostnameDoesNotMatch'],['certificate is not valid for','certificateIsNotValidFor']])assert.equal(project({message}).tokens[key],true);
+});

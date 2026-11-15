@@ -101,6 +101,12 @@ function trackNativeTask16Child(child){
  const running=()=>!exited&&child.pid===pid&&child.kill===kill&&child.exitCode===null&&child.signalCode===null;
  return Object.freeze({pid,terminal,running,stop(){need(running(),'NATIVE_DIRECT_CHILD_CHANGED');need(kill.call(child,'SIGINT'),'NATIVE_DIRECT_PG_STOP');}});
 }
+function projectNativeTask16TlsWords(error){
+ const phrases={tlsConnection:['tls connection'],notValidForName:['notvalidforname'],notValidForNameSpaced:['not valid for name'],hostnameMismatch:['hostname mismatch'],hostnameDoesNotMatch:['hostname does not match'],certificateIsNotValidFor:['certificate is not valid for'],certificateNotValidForName:['certificate not valid for name'],ipAddressMismatch:['ip address mismatch'],certificateVerifyFailed:['certificate verify failed'],issuerMarker:['unknownissuer','unknown issuer','unable to get local issuer','unable to verify the first certificate','self signed certificate','self-signed certificate','certificate was not trusted'],connectionRefused:['connection refused','econnrefused'],dnsFailure:['dns','getaddrinfo','enotfound']};
+ let text,messageState='UNKNOWN';
+ if(error&&typeof error==='object'&&!types.isProxy(error)){const d=Object.getOwnPropertyDescriptor(error,'message');if(d&&Object.hasOwn(d,'value')&&typeof d.value==='string'&&Buffer.byteLength(d.value)<=32768){text=d.value.toLowerCase();messageState='BOUNDED_OWN_DATA';}}
+ return Object.freeze({messageState,tokens:Object.freeze(Object.fromEntries(Object.entries(phrases).map(([key,values])=>[key,text!==undefined&&values.some(value=>text.includes(value))])))});
+}
 function classifyNativeTask16TlsFailure(error,mode,hba){
  need(['wrong-ca','wrong-san','no-tls'].includes(mode),'NATIVE_DIRECT_TLS_MODE');
  const own=key=>{if(!error||typeof error!=='object'||types.isProxy(error))return undefined;const d=Object.getOwnPropertyDescriptor(error,key);return d&&Object.hasOwn(d,'value')?d.value:undefined;};
@@ -203,7 +209,7 @@ function renderNativeTask16RuntimeAcl(inputJson,nonce){
  const publicSql=publicParts.join(original.replace('5432',String(id.serverPort)));
  return Object.freeze({...rendered,sql,publicSql,writeSql:sql+'\n'+publicSql});
 }
-module.exports=Object.freeze({parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -380,14 +386,14 @@ async function runNativeTask16Business(plan,state){
    const next=rows.map(r=>{const copy={...r[0]};delete copy.nonce;return copy;});if(retained)need(equal(next,retained),'NATIVE_DIRECT_CLIENT_CHANGED');else retained=next;return next;
   };
   await verifyIdentity();receipt.sdkPositiveClients=retained.map(row=>({role:row.loginRole,pid:row.pid,startedAt:row.start,tls:row.tls,databaseOid:row.databaseOid,clientAddress:row.clientAddress,clientPort:row.clientPort,serverAddress:row.serverAddress,serverPort:row.serverPort}));
-  receipt.sdkTls={};
+  receipt.sdkTls={};receipt.sdkTlsWords={};
   for(const mode of ['wrong-ca','no-tls','wrong-san']){
    const url=new URL(urlFor('runtime'));if(mode==='wrong-ca')url.searchParams.set('sslcert',path.join(root,'wrong-ca.crt'));else if(mode==='no-tls')url.searchParams.set('sslmode','disable');else url.hostname='localhost';
    if(mode==='wrong-san')receipt.localhostAnswers=verifyNativeTask16LocalhostAnswers(await wait(()=>require('node:dns').promises.lookup('localhost',{all:true,verbatim:true})));
    const probe=new PrismaClient({datasources:{db:{url:url.toString()}}});state.setClients([...clients,probe]);let primary,logFd,logBefore;
    try{
     if(mode==='no-tls'){logFd=fs.openSync(path.join(root,'postgres.log'),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));logBefore=fs.fstatSync(logFd,{bigint:true});need(logBefore.isFile()&&logBefore.uid===BigInt(process.getuid())&&(logBefore.mode&0o777n)===0o600n,'NATIVE_DIRECT_LOG_WINDOW');}
-    let rejected;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;receipt.sdkTls[mode]={status:'UNKNOWN',...classifyNativeTask16TlsFailure(error,mode)};let hba;
+    let rejected;try{await wait(()=>probe.$connect());}catch(error){if(controllerAborted(error))throw error;receipt.sdkTlsWords[mode]=projectNativeTask16TlsWords(error);receipt.sdkTls[mode]={status:'UNKNOWN',...classifyNativeTask16TlsFailure(error,mode)};let hba;
      if(mode==='no-tls'){
       assertNativeTask16LogIdentity(logFd,state.logIdentity,path.join(root,'postgres.log'));const after=fs.fstatSync(logFd,{bigint:true}),named=fs.lstatSync(path.join(root,'postgres.log'),{bigint:true});
       need(['dev','ino','mode','uid','gid'].every(key=>after[key]===logBefore[key]&&named[key]===logBefore[key])&&!named.isSymbolicLink()&&after.size>=logBefore.size&&after.size-logBefore.size<=65536n,'NATIVE_DIRECT_LOG_WINDOW');
