@@ -1,5 +1,8 @@
 'use strict';
 const {request}=require('node:http'),{randomBytes,createHash}=require('node:crypto'),{setTimeout:delay}=require('node:timers/promises'),{types,isDeepStrictEqual:equal}=require('node:util');
+const {performance}=require('node:perf_hooks');
+const readMonotonic=performance.now.bind(performance);
+const diagnosticNow=()=>{try{return readMonotonic();}catch{return NaN;}};
 const {decodeRelaySysreadExit}=require('./task16-current259-relay-sysread.cjs');
 const id=x=>typeof x==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(x);
 const issued=new WeakMap(),failures=new WeakMap();
@@ -83,6 +86,30 @@ function projectPostCheckFailure(cause){
  }
  return Object.freeze(result);
 }
+function inspectionSummary(value){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'});
+ if(!value||typeof value!=='object'||types.isProxy(value)||Array.isArray(value))return unknown();
+ const revision=own(value,'sourceRevision'),loop=own(value,'hasBillLoop'),errors=own(value,'blockingErrors');
+ if(!Number.isSafeInteger(revision)||revision<0||revision>1000000||typeof loop!=='boolean'||types.isProxy(errors)||!Array.isArray(errors))return unknown();
+ const size=Object.getOwnPropertyDescriptor(errors,'length');
+ if(!size||!Object.hasOwn(size,'value')||!Number.isInteger(size.value)||size.value<0||size.value>1000)return unknown();
+ const descriptors=Object.getOwnPropertyDescriptors(errors);
+ if(Reflect.ownKeys(descriptors).length!==size.value+1)return unknown();
+ for(let i=0;i<size.value;i++)if(!descriptors[i]||!Object.hasOwn(descriptors[i],'value'))return unknown();
+ return Object.freeze({status:'OBSERVED',sourceRevision:revision,hasBillLoop:loop,blockingErrorCount:size.value});
+}
+const consumeCodes=Object.freeze({
+ TEMPLATE_CONSUMER:Object.freeze(['INPUT','UPLOAD','CREATE','POSITIONS','MAPPING','INSPECTION','TIME','QUEUE','PREVIEW','CONFIRM','SUBMIT','PUBLISH'].map(stage=>'TASK12_GENERATED_MATERIAL_TEMPLATE_'+stage)),
+ OFFICIAL_DEADLINE:Object.freeze(['TASK12_OFFICIAL_DOCUMENT_DEADLINE']),
+ NATIVE_DEADLINE:Object.freeze(['NATIVE_DIRECT_DEADLINE','TASK12_LOCAL_LIFECYCLE_CASE_ABORTED']),
+ INTEGRITY:Object.freeze(['CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','NATIVE_DIRECT_SOURCE_CHANGED','NATIVE_DIRECT_OFFICIAL_RUNTIME','NATIVE_DIRECT_HBA_CHANGED','NATIVE_DIRECT_CERT_CONTEXT'])
+});
+function consumeFirstCause(cause){
+ if(cause&&typeof cause==='object'&&!types.isProxy(cause)&&types.isNativeError(cause)){
+  const code=own(cause,'code');for(const [family,codes]of Object.entries(consumeCodes))if(codes.includes(code))return Object.freeze({family,code});
+ }
+ return Object.freeze({family:'UNKNOWN',code:'UNKNOWN'});
+}
 const secondary=(detail,cause)=>{detail.secondaryPhase='AFTER_CHECK';const code=own(cause,'code');detail.secondaryReason=['CURRENT259_LOADER_CHANGED','CURRENT261_LOCAL_LIFECYCLE_HTTP'].includes(code)?code:'UNCLASSIFIED';};
 function exchange(port,method,path,headers,wire,binary,observe){
  const signal=AbortSignal.timeout(15000);
@@ -119,7 +146,13 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  const address=server.address,port=address.call(server)?.port;
  let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false;
  const tokens=new Map(),active=new Map(),files=new Map(),tickets=new Map(),signatures=new Set();
- const continuity=()=>{verify();const a=address.call(server);need(available&&server.address===address&&server.listening===true&&a?.address==='127.0.0.1'&&a.family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535&&a.port===port);};
+ // Inclusive observational timings only. They neither gate nor extend work.
+ const began=diagnosticNow(),timing={guardCalls:0,guardElapsedMs:0,exchangeCalls:0,exchangeElapsedMs:0};
+ const snapshotTiming=()=>{
+  const value={guardCalls:timing.guardCalls,exchangeCalls:timing.exchangeCalls,guardElapsedMs:Math.floor(timing.guardElapsedMs),exchangeElapsedMs:Math.floor(timing.exchangeElapsedMs),consumerElapsedMs:Math.floor(diagnosticNow()-began)};
+  return Object.freeze(Object.values(value).every(n=>Number.isSafeInteger(n)&&n>=0)&&value.guardCalls<=1000000&&value.exchangeCalls<=600&&['guardElapsedMs','exchangeElapsedMs','consumerElapsedMs'].every(k=>value[k]<=3600000)?{status:'OBSERVED',...value}:{status:'UNKNOWN'});
+ };
+ const continuity=()=>{const started=diagnosticNow();timing.guardCalls++;try{verify();const a=address.call(server);need(available&&server.address===address&&server.listening===true&&a?.address==='127.0.0.1'&&a.family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535&&a.port===port);}finally{timing.guardElapsedMs+=diagnosticNow()-started;}};
  const check=()=>{continuity();need(!failed);};
  const actorCheck=actor=>{check();need(Number.isInteger(actor)&&actor>=0&&actor<8);};
  const wire=async(method,path,headers,body,binary=false,authPhone)=>{
@@ -130,9 +163,11 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
    check();need(++requests<=600);
    if(authPhone!==undefined){need(method==='POST'&&path==='/auth/login');try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
    observation.phase='EXCHANGE';
-   const result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});
+   const exchangeStarted=diagnosticNow();timing.exchangeCalls++;let result;
+   try{result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});}finally{timing.exchangeElapsedMs+=diagnosticNow()-exchangeStarted;}
+   if(method==='POST'&&observation.routeTemplate==='/contract-layout-template-versions/:versionId/inspection'&&result.status===201)observation.inspectionSummary=inspectionSummary(result.body);
    collectAuth(); // Retain the native cause before a later resource guard can fail.
-   observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME'});return result;
+   observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME',timingAtResponse:snapshotTiming()});return result;
   }catch(cause){
    collectAuth();
    if(observation.phase==='EXCHANGE')try{continuity();}catch(later){secondary(observation,later);}
@@ -227,7 +262,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  try{const result=await consume(bridge);check();need(active.size===0&&(!authOnly||requests===1&&tokens.has(0)));return result;}
  catch(cause){
   if(lastObservation&&!parallelObserved&&!describeCurrent261LocalLifecycleHttpFailure(cause)){
-   const detail={...lastObservation};try{continuity();}catch(later){secondary(detail,later);}remember(cause,detail);
+   const detail={...lastObservation,firstCause:consumeFirstCause(cause),timingAtConsumeFailure:snapshotTiming()};try{continuity();}catch(later){secondary(detail,later);}detail.timingAfterSecondary=snapshotTiming();remember(cause,detail);
   }
   throw cause;
  }

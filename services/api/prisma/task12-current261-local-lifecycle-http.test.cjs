@@ -1,12 +1,13 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events');
 const id=n=>'10000000-0000-4000-8000-'+String(n).padStart(12,'0');
-function model(mode,postcheckError,transactionPhase,caseKey,mainConfig){
+function model(mode,postcheckError,transactionPhase,caseKey,mainConfig,inspectionBody,clock){
  const users=Array.from({length:8},(_,i)=>({id:id(i+1),phone:'1990000000'+i})),passwords=Object.fromEntries(users.map((u,i)=>[u.id,String(i).repeat(64)]));
  const fixture={...(caseKey?{case:require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase(caseKey)}:{}),approval:{users,handler:users[0],project:{id:id(20)},members:[{userId:users[0].id,positionKey:'contract_staff'},{userId:users[3].id,positionKey:'project_manager'}],globalRoles:[[1,'material_director'],[2,'contract_director'],[4,'finance_director'],[5,'general_manager'],[6,'comprehensive_director']].map(([actor,roleKey])=>({userId:users[actor].id,roleKey}))}};
  const config=mainConfig??Object.freeze({...(mode==='auth-only'?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),fixture,passwords,sourceDocx:Buffer.from('model-docx'),originals:[Buffer.from('%PDF-original1'),Buffer.from('%PDF-original2')]}),calls=[];
  const server={listening:true,address(){return{address:'127.0.0.1',family:'IPv4',port:24080};}};let live=true,claimed=false;const checks=[],authCalls=[],authTickets=new Set();const authDiagnostics=Object.freeze({arm(phone){assert.ok(users.some(u=>u.phone===phone));const ticket=Object.freeze({});authTickets.add(ticket);authCalls.push('arm');return ticket;},take(ticket){assert.equal(authTickets.delete(ticket),true);authCalls.push('take');if(mode==='native-take-failure-and-postcheck')throw Error('PRIVATE_DIAG_FAILURE');return mode?.startsWith('native-p1017')?Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P1017',serverAuthBoundary:'PRE_CONTROLLER_MARKER',...(transactionPhase?{serverAuthTransactionPhase:transactionPhase}:{}),private:'MUST_OMIT'}):mode?.startsWith('native')?Object.freeze({serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2010',serverSqlState:'42501',private:'MUST_OMIT'}):undefined;}});
- const imports={'./task12-current259-document-application.cjs':{takeCurrent261FirstLoginHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;},takeCurrent261LocalLifecycleHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;}},'node:http':{request(options,consume){const outgoing=new EventEmitter();outgoing.end=wire=>{calls.push({options,wire});queueMicrotask(()=>{if(mode==='transport-and-postcheck'){live=false;outgoing.emit('error',Error('PRIVATE_TRANSPORT'));return;}const response=new EventEmitter();response.complete=true;response.socket={remoteAddress:mode==='foreign-peer'?'127.0.0.2':'127.0.0.1',remotePort:24080};response.headers=mode==='redirect'?{location:'https://invalid.example'}:{};response.statusCode=201;response.destroy=()=>{};const actor=options.path==='/auth/login'?users.findIndex(u=>u.phone===JSON.parse(wire).phone):0,roles=[...fixture.approval.members.filter(r=>r.userId===users[actor].id).map(r=>r.positionKey),...fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)];let body=options.path==='/auth/login'?{user:{id:users[actor].id,phone:users[actor].phone,mustChangePassword:false,roleKeys:roles,globalRoleKeys:fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)},tokens:{accessToken:actor?'model'+actor+'.access.token':'model.access.token'}}:{contract:{id:id(21)},version:{id:id(22)}};if(options.path.endsWith('/workbench')){body={documents:[{docxFileId:id(50),pdfFileId:id(51)}]};response.statusCode=200;}
+ const imports={...(clock?{'node:perf_hooks':{performance:{now:clock}}}:{}),'./task12-current259-document-application.cjs':{takeCurrent261FirstLoginHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;},takeCurrent261LocalLifecycleHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;}},'node:http':{request(options,consume){const outgoing=new EventEmitter();outgoing.end=wire=>{calls.push({options,wire});queueMicrotask(()=>{if(mode==='transport-and-postcheck'){live=false;outgoing.emit('error',Error('PRIVATE_TRANSPORT'));return;}const response=new EventEmitter();response.complete=true;response.socket={remoteAddress:mode==='foreign-peer'?'127.0.0.2':'127.0.0.1',remotePort:24080};response.headers=mode==='redirect'?{location:'https://invalid.example'}:{};response.statusCode=201;response.destroy=()=>{};const actor=options.path==='/auth/login'?users.findIndex(u=>u.phone===JSON.parse(wire).phone):0,roles=[...fixture.approval.members.filter(r=>r.userId===users[actor].id).map(r=>r.positionKey),...fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)];let body=options.path==='/auth/login'?{user:{id:users[actor].id,phone:users[actor].phone,mustChangePassword:false,roleKeys:roles,globalRoleKeys:fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)},tokens:{accessToken:actor?'model'+actor+'.access.token':'model.access.token'}}:{contract:{id:id(21)},version:{id:id(22)}};if(options.path.endsWith('/workbench')){body={documents:[{docxFileId:id(50),pdfFileId:id(51)}]};response.statusCode=200;}
+ if(options.path.endsWith('/inspection')&&inspectionBody!==undefined)body=inspectionBody;
  if(options.path.endsWith('/download-ticket'))body={downloadUrl:'/files/'+id(51)+'/download?token=model',mimeType:'application/pdf',sizeBytes:1024*1024};
  if(mode?.startsWith('native')){response.statusCode=500;body={statusCode:500,message:'Internal server error'};}
  const binary=options.path.includes('/download?');let bytes=Buffer.from(JSON.stringify(body));if(binary){bytes=Buffer.alloc(1024*1024,65);Buffer.from('%PDF-').copy(bytes);response.statusCode=200;response.headers={'content-type':mode==='wrong-mime'?'text/html':'application/pdf','content-length':String(mode==='wrong-size'?bytes.length+1:bytes.length)};}
@@ -83,7 +84,8 @@ test('a consume failure keeps its identity and records only the preceding respon
   await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
   f.close();throw business;
  }),cause=>cause===business);
- assert.deepEqual(f.api.describeCurrent261LocalLifecycleHttpFailure(business),{method:'POST',routeTemplate:'/auth/login',phase:'CONSUME',httpStatus:201,businessOutcome:'UNKNOWN',secondaryPhase:'AFTER_CHECK',secondaryReason:'UNCLASSIFIED'});
+ const {timingAtResponse,timingAtConsumeFailure,timingAfterSecondary,...observed}=f.api.describeCurrent261LocalLifecycleHttpFailure(business);for(const t of [timingAtResponse,timingAtConsumeFailure,timingAfterSecondary])assert.equal(t.status,'OBSERVED');
+ assert.deepEqual(observed,{method:'POST',routeTemplate:'/auth/login',phase:'CONSUME',httpStatus:201,businessOutcome:'UNKNOWN',firstCause:{family:'UNKNOWN',code:'UNKNOWN'},secondaryPhase:'AFTER_CHECK',secondaryReason:'UNCLASSIFIED'});
 });
 
 test('diagnostics redact dynamic route coordinates and do not borrow a prior response after a failed precheck',async()=>{
@@ -275,5 +277,59 @@ test('actual native main credentials feed the real HTTP dictionary and the order
   const sent=JSON.parse(f.calls[index].wire);
   assert.ok(sent.password===payload.input.passwords[index]&&sent.password===payload.config.passwords[user.id]&&sent.password===hashInputs[index]);
   assert.equal(payload.hashes[user.id],'model-hash-'+(index+1));
+ }
+});
+
+test('consume first cause stays finite and precedes a later guard failure without replacing HTTP201 or UNKNOWN',async()=>{
+ const first=Object.assign(Error('PRIVATE_ORIGINAL'),{code:'TASK12_GENERATED_MATERIAL_TEMPLATE_INSPECTION'}),later=Object.assign(Error('PRIVATE_LATER'),{code:'TASK12_OFFICIAL_DOCUMENT_DEADLINE'}),f=model(undefined,later);
+ const verify=()=>{try{f.verify();}catch(error){first.code='PRIVATE_MUTATED_AFTER_CAPTURE';throw error;}};
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,verify,f.verifyToken,async bridge=>{
+  const result=await bridge.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});assert.equal(result.status,201);f.close();throw first;
+ }),error=>error===first);
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);
+ assert.deepEqual(detail.firstCause,{family:'TEMPLATE_CONSUMER',code:'TASK12_GENERATED_MATERIAL_TEMPLATE_INSPECTION'});
+ assert.equal(detail.phase,'CONSUME');assert.equal(detail.httpStatus,201);assert.equal(detail.businessOutcome,'UNKNOWN');assert.equal(detail.secondaryPhase,'AFTER_CHECK');assert.equal(detail.secondaryReason,'UNCLASSIFIED');
+ assert.equal(f.api.describeCurrent261LocalLifecycleHttpFailure({cause:first}),detail);
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE_ORIGINAL|PRIVATE_LATER|password|199000|10000000/u);
+});
+
+test('consume diagnostics measure only existing boundaries and inspection201 summary survives actual native receipt projection',async()=>{
+ const payload={sourceRevision:2,hasBillLoop:true,blockingErrors:[],private:'PRIVATE_PAYLOAD'},first=Object.assign(Error('PRIVATE'),{code:'TASK12_GENERATED_MATERIAL_TEMPLATE_INSPECTION'}),f=model(undefined,undefined,undefined,undefined,undefined,payload);
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(2,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[2].phone,password:f.config.passwords[id(3)]}});
+  await b.send(2,{method:'POST',path:'/contract-layout-templates',json:{}});
+  const response=await b.send(2,{method:'POST',path:'/contract-layout-template-versions/'+id(22)+'/inspection'});assert.deepEqual(response.body,payload);f.close();throw first;
+ }),error=>error===first);
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);
+ assert.deepEqual(detail.inspectionSummary,{status:'OBSERVED',sourceRevision:2,hasBillLoop:true,blockingErrorCount:0});
+ for(const name of ['timingAtResponse','timingAtConsumeFailure','timingAfterSecondary']){
+  const t=detail[name];assert.equal(t.status,'OBSERVED');assert.ok(t.guardCalls>0);assert.equal(t.exchangeCalls,3);for(const k of ['guardElapsedMs','exchangeElapsedMs','consumerElapsedMs'])assert.ok(Number.isSafeInteger(t[k])&&t[k]>=0&&t[k]<=3600000);
+ }
+ assert.equal(detail.timingAfterSecondary.guardCalls,f.checks.length);assert.equal(detail.timingAfterSecondary.guardCalls,detail.timingAtConsumeFailure.guardCalls+1);
+ const native=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8'),statement=native.match(/const http=require\('\.\/task12-current261-local-lifecycle-http.cjs'\)\.describeCurrent261LocalLifecycleHttpFailure\(error\);if\(http\)receipt.httpFailure=http;/u);assert.ok(statement);
+ const receipt={};new Function('require','error','receipt',statement[0])(()=>f.api,{cause:first},receipt);assert.equal(receipt.httpFailure,detail);
+ const wire=JSON.stringify(receipt);assert.ok(Buffer.byteLength(wire)<4096);assert.doesNotMatch(wire,/PRIVATE|blockingErrors|password|199000/u);
+});
+
+function actualPrivateProjection(name){
+ const source=fs.readFileSync(path.join(__dirname,'task12-current261-local-lifecycle-http.cjs'),'utf8');
+ return new Function('require','module',source+'\nreturn '+name+';')(require,{exports:{}});
+}
+test('inspection summary and first cause omit private/unknown/accessor/proxy values without executing getters',()=>{
+ const project=actualPrivateProjection('inspectionSummary'),first=actualPrivateProjection('consumeFirstCause');
+ const valid={sourceRevision:2,hasBillLoop:false,blockingErrors:['PRIVATE_ERROR']};assert.deepEqual(project(valid),{status:'OBSERVED',sourceRevision:2,hasBillLoop:false,blockingErrorCount:1});
+ let traps=0;const bad=new Proxy(valid,{get(){traps++;throw Error('PRIVATE');},ownKeys(){traps++;throw Error('PRIVATE');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE');}});
+ for(const value of [null,bad,{...valid,sourceRevision:-1},{...valid,sourceRevision:1000001},{...valid,hasBillLoop:'true'},{...valid,blockingErrors:new Array(1001)},{...valid,blockingErrors:new Proxy([],{get(){traps++;throw Error('PRIVATE');}})}])assert.deepEqual(project(value),{status:'UNKNOWN'});
+ const revoked=Proxy.revocable([],{});revoked.revoke();assert.deepEqual(project({...valid,blockingErrors:revoked.proxy}),{status:'UNKNOWN'});
+ for(const key of ['sourceRevision','hasBillLoop','blockingErrors']){const value={...valid};Object.defineProperty(value,key,{get(){traps++;throw Error('PRIVATE');}});assert.deepEqual(project(value),{status:'UNKNOWN'});}
+ const list=[];Object.defineProperty(list,0,{enumerable:true,get(){traps++;throw Error('PRIVATE');}});assert.deepEqual(project({...valid,blockingErrors:list}),{status:'UNKNOWN'});
+ const error=Object.assign(Error('PRIVATE'),{code:'PRIVATE_UNKNOWN'});assert.deepEqual(first(error),{family:'UNKNOWN',code:'UNKNOWN'});Object.defineProperty(error,'code',{get(){traps++;throw Error('PRIVATE');}});assert.deepEqual(first(error),{family:'UNKNOWN',code:'UNKNOWN'});assert.deepEqual(first(new Proxy(error,{get(){traps++;throw Error('PRIVATE');}})),{family:'UNKNOWN',code:'UNKNOWN'});
+ assert.equal(traps,0);
+});
+test('invalid or throwing diagnostic clock stays UNKNOWN and never replaces the original consumer exception',async()=>{
+ for(const clock of [()=>NaN,()=>Infinity,()=>{throw Error('PRIVATE_CLOCK');}]){
+  const f=model(undefined,undefined,undefined,undefined,undefined,undefined,clock),first=Object.assign(Error('PRIVATE'),{code:'TASK12_OFFICIAL_DOCUMENT_DEADLINE'});
+  await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});throw first;}),value=>value===first);
+  const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);assert.deepEqual(detail.firstCause,{family:'OFFICIAL_DEADLINE',code:'TASK12_OFFICIAL_DOCUMENT_DEADLINE'});assert.deepEqual(detail.timingAtResponse,{status:'UNKNOWN'});assert.deepEqual(detail.timingAtConsumeFailure,{status:'UNKNOWN'});assert.deepEqual(detail.timingAfterSecondary,{status:'UNKNOWN'});
  }
 });
