@@ -38,6 +38,17 @@ async function exerciseCurrent261FirstLogin(key,http){
  const projection=Object.freeze({...result,sourceSha:proof.sourceSha,effectivePlanSha256:proof.effectivePlanSha256,ownerClosed:true,authObservation:observed,storage:'LOCAL_ONLY',executionAllowed:false});
  const outcome=Object.freeze({});outcomes.set(outcome,projection);return outcome;
 }
+// Observation only: the original later projector owns the single delete.
+function describeCurrent261FirstLoginReturnedOutcome(outcome){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'});
+ if(arguments.length!==1||!outcome||typeof outcome!=='object'||types.isProxy(outcome))return unknown();
+ const value=outcomes.get(outcome);if(!value)return unknown();
+ const observation=own(value,'authObservation');
+ if(own(value,'httpStatus')!==201||own(value,'ownerClosed')!==true||own(observation,'authObserved')!==true||
+  ['nativeAdmission','cleanupAccepted','full394Accepted'].some(key=>own(value,key)!==false))return unknown();
+ return Object.freeze({status:'OBSERVED',httpStatus:own(value,'httpStatus'),ownerClosed:own(value,'ownerClosed'),authObserved:own(observation,'authObserved'),
+  nativeAdmission:own(value,'nativeAdmission'),cleanupAccepted:own(value,'cleanupAccepted'),full394Accepted:own(value,'full394Accepted')});
+}
 function projectCurrent261FirstLoginOutcome(outcome){
  need(arguments.length===1&&outcome&&!types.isProxy(outcome)&&outcomes.has(outcome),'OUTCOME');
  const result=outcomes.get(outcome);outcomes.delete(outcome);return result;
@@ -45,4 +56,4 @@ function projectCurrent261FirstLoginOutcome(outcome){
 function describeCurrent261FirstLoginOwnerObservation(error){
  for(let i=0;i<8&&error&&typeof error==='object'&&!types.isProxy(error);i++,error=own(error,'cause'))if(observations.has(error))return observations.get(error);
 }
-module.exports=Object.freeze({exerciseCurrent261FirstLogin,projectCurrent261FirstLoginOutcome,describeCurrent261FirstLoginOwnerObservation});
+module.exports=Object.freeze({describeCurrent261FirstLoginReturnedOutcome,exerciseCurrent261FirstLogin,projectCurrent261FirstLoginOutcome,describeCurrent261FirstLoginOwnerObservation});

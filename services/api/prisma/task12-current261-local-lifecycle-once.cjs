@@ -242,9 +242,102 @@ function captureAuthRoleFailureProjector(namespace,read,checkFile){
  }catch{return unknown();}};
 }
 
+function safeRoleDrainDiagnostic(result){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'});
+ if(!result||typeof result!=='object'||types.isProxy(result)||!Object.isFrozen(result))return unknown();
+ const keys=Reflect.ownKeys(result),status=own(result,'status');
+ if(status==='UNKNOWN')return keys.length===1?Object.freeze({status:'UNKNOWN'}):unknown();
+ const required=['status','resourceCode','relayCode'],optional=['relayFrameStage','relayChildExitCode','relaySysreadExit','relayCloseState'];
+ if(status!=='OBSERVED'||!required.every(k=>keys.includes(k))||keys.some(k=>!required.includes(k)&&!optional.includes(k))||keys.some(k=>!Object.hasOwn(Object.getOwnPropertyDescriptor(result,k),'value'))||own(result,'resourceCode')!=='TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED')return unknown();
+ const code=own(result,'relayCode');if(!documentRelayCodes.has(code))return unknown();
+ const value={status:'OBSERVED',resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode:code};
+ if(keys.includes('relayFrameStage')){const stage=own(result,'relayFrameStage');if(code!=='CURRENT259_LOOPBACK_FORWARD_FRAME'||!documentRelayFrameStages.has(stage))return unknown();value.relayFrameStage=stage;}
+ if(keys.includes('relayChildExitCode')){const exit=own(result,'relayChildExitCode');if(value.relayFrameStage!=='STDOUT_EOF_WITHOUT_FIN'||!Number.isInteger(exit)||!(exit===0||exit>=41&&exit<=48))return unknown();value.relayChildExitCode=exit;}
+ if(keys.includes('relaySysreadExit')){const exit=own(result,'relaySysreadExit');if(value.relayChildExitCode!==47||!Number.isInteger(exit)||exit<70||exit>75)return unknown();value.relaySysreadExit=exit;}
+ if(keys.includes('relayCloseState')){
+  const state=own(result,'relayCloseState');if(!['CURRENT259_LOOPBACK_FORWARD_FRAME','CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'].includes(code)||!state||typeof state!=='object'||types.isProxy(state)||!Object.isFrozen(state))return unknown();
+  const stateKeys=Reflect.ownKeys(state);if(stateKeys.length!==documentRelayCloseFields.length||!documentRelayCloseFields.every(k=>stateKeys.includes(k)&&typeof own(state,k)==='boolean'))return unknown();
+  value.relayCloseState=Object.freeze(Object.fromEntries(documentRelayCloseFields.map(k=>[k,own(state,k)])));
+ }
+ return Object.freeze(value);
+}
+
+function captureAuthDrainFailureProjector(namespace,read,checkFile){
+ const data=(v,k)=>{need(v&&!types.isProxy(v),'DEPENDENCIES');const d=Object.getOwnPropertyDescriptor(v,k);need(d&&Object.hasOwn(d,'value'),'DEPENDENCIES');return Object.freeze({...d});};
+ const same=(v,k,d)=>{const now=data(v,k);need(['value','writable','enumerable','configurable'].every(f=>now[f]===d[f]),'DEPENDENCIES');return now.value;};
+ const cacheSlot=data(require,'cache'),cache=cacheSlot.value,file=path.join(path.dirname(__filename),'task12-current259-document-login.cjs'),slot=data(cache,file),role=slot.value;
+ const metadata=mod=>{const filename=data(mod,'filename'),exports=data(mod,'exports');need(typeof filename.value==='string'&&path.isAbsolute(filename.value),'DEPENDENCIES');const cacheDescriptor=data(cache,filename.value);need(cacheDescriptor.value===mod&&!types.isProxy(exports.value),'DEPENDENCIES');return{mod,filename,exports,cacheDescriptor};};
+ const parentOf=mod=>{need(!types.isProxy(mod)&&Object.getPrototypeOf(mod)===nodeParentPrototype&&!Object.getOwnPropertyDescriptor(mod,'parent'),'DEPENDENCIES');const now=Object.getOwnPropertyDescriptor(nodeParentPrototype,'parent');need(now&&['get','set','enumerable','configurable'].every(k=>now[k]===nodeParentDescriptor[k])&&typeof nodeParentDescriptor.get==='function','DEPENDENCIES');return Reflect.apply(nodeParentDescriptor.get,mod,[]);};
+ const roleMeta=metadata(role),parent=parentOf(role),parentMeta=metadata(parent);
+ need(roleMeta.filename.value===file&&roleMeta.exports.value===namespace&&Object.isFrozen(namespace)&&own(role,'loaded')===true&&
+  [__filename].includes(parentMeta.filename.value),'DEPENDENCIES');
+ const children=data(role,'children'),rows=children.value;need(Array.isArray(rows)&&!types.isProxy(rows),'DEPENDENCIES');
+ const edges=Array.from({length:rows.length},(_,i)=>({slot:data(rows,String(i)),meta:metadata(data(rows,String(i)).value)}));
+ const lazyNames=['task12-official-document-profiles.cjs','task12-current259-document-application.cjs','task12-current261-first-login-exercise.cjs','task16-current259-relay-sysread.cjs'];
+ const lazyMaterials=new Map(lazyNames.map(name=>{const file=path.join(path.dirname(__filename),name);const material=read(file,{maxBytes:512*1024,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_DRAIN_PROJECTOR_SOURCE'});need(SHA.test(material.sha256)&&material.identity,'DEPENDENCIES');return[file,material];}));
+ const helperFile=path.join(path.dirname(__filename),'task16-current259-relay-sysread.cjs'),helper=metadata(data(cache,helperFile).value),decoder=data(helper.exports.value,'decodeRelaySysreadExit'),decoderArity=data(decoder.value,'length');need(typeof decoder.value==='function'&&decoderArity.value===1&&own(helper.mod,'loaded')===true,'DEPENDENCIES');
+ const mainChildren=data(module,'children');need(Array.isArray(mainChildren.value)&&!types.isProxy(mainChildren.value),'DEPENDENCIES');
+ const projector=data(namespace,'describeCurrent261DocumentLoginDrainFailure'),arity=data(projector.value,'length');need(typeof projector.value==='function'&&arity.value===1,'DEPENDENCIES');
+ const provenance=data(namespace,'describeCurrent261DocumentLoginDrainProvenance'),provenanceArity=data(provenance.value,'length');need(typeof provenance.value==='function'&&provenanceArity.value===0,'DEPENDENCIES');
+ const material=read(file,{maxBytes:512*1024,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_DRAIN_PROJECTOR_SOURCE'});need(SHA.test(material.sha256)&&material.identity,'DEPENDENCIES');
+ const verifyMeta=row=>{same(cache,row.filename.value,row.cacheDescriptor);same(row.mod,'filename',row.filename);same(row.mod,'exports',row.exports);};
+ const verify=()=>{
+  same(require,'cache',cacheSlot);verifyMeta(roleMeta);verifyMeta(parentMeta);need(parentOf(role)===parent,'DEPENDENCIES');same(role,'children',children);
+  need(own(role,'loaded')===true&&rows.length>=edges.length&&rows.length<=edges.length+lazyNames.length,'DEPENDENCIES');
+  for(let i=0;i<edges.length;i++){same(rows,String(i),edges[i].slot);verifyMeta(edges[i].meta);}
+  same(namespace,'describeCurrent261DocumentLoginDrainProvenance',provenance);same(provenance.value,'length',provenanceArity);
+  const records=provenance.value();need(Array.isArray(records)&&!types.isProxy(records)&&Object.isFrozen(records)&&records.length<=lazyNames.length,'DEPENDENCIES');
+  const pins=new Map(),recordKeys=['file','cache','module','filenameDescriptor','exportsDescriptor','cacheDescriptor','children','childIndex','childDescriptor','sourceIdentity','sourceSha256'];
+  const fixedDescriptor=(record,key)=>{const descriptor=data(record,key).value;need(descriptor&&!types.isProxy(descriptor)&&Object.isFrozen(descriptor)&&Reflect.ownKeys(descriptor).length===4,'DEPENDENCIES');return Object.freeze(Object.fromEntries(['value','writable','enumerable','configurable'].map(k=>[k,data(descriptor,k).value])));};
+  for(let i=0;i<records.length;i++){
+   const record=data(records,String(i)).value;need(record&&!types.isProxy(record)&&Object.isFrozen(record)&&Reflect.ownKeys(record).length===recordKeys.length&&recordKeys.every(k=>Object.getOwnPropertyDescriptor(record,k)&&Object.hasOwn(Object.getOwnPropertyDescriptor(record,k),'value')),'DEPENDENCIES');
+   const name=own(record,'file'),index=own(record,'childIndex');need(lazyMaterials.has(name)&&!pins.has(name)&&own(record,'cache')===cache&&own(record,'children')===rows&&Number.isSafeInteger(index)&&index>=0&&index<rows.length&&own(record,'sourceSha256')===lazyMaterials.get(name).sha256,'DEPENDENCIES');
+   const mod=own(record,'module');same(cache,name,fixedDescriptor(record,'cacheDescriptor'));same(mod,'filename',fixedDescriptor(record,'filenameDescriptor'));same(mod,'exports',fixedDescriptor(record,'exportsDescriptor'));need(own(mod,'loaded')===true&&own(record,'module')===same(rows,String(index),fixedDescriptor(record,'childDescriptor')),'DEPENDENCIES');
+   checkFile(name,lazyMaterials.get(name).identity);checkFile(name,own(record,'sourceIdentity'));pins.set(name,{mod,index});
+  }
+  const filenames=new Set(edges.map(row=>row.meta.filename.value));
+  for(let i=edges.length;i<rows.length;i++){
+   const edge=metadata(data(rows,String(i)).value),name=edge.filename.value,pinned=pins.get(name);need(pinned&&pinned.mod===edge.mod&&pinned.index===i&&!filenames.has(name),'DEPENDENCIES');filenames.add(name);
+  }
+  verifyMeta(helper);same(helper.exports.value,'decodeRelaySysreadExit',decoder);same(decoder.value,'length',decoderArity);need(own(helper.mod,'loaded')===true,'DEPENDENCIES');checkFile(helperFile,lazyMaterials.get(helperFile).identity);
+  const mainRows=same(module,'children',mainChildren);let count=0;for(let i=0;i<mainRows.length;i++)if(data(mainRows,String(i)).value===role)count++;
+  need(count===1,'DEPENDENCIES');same(namespace,'describeCurrent261DocumentLoginDrainFailure',projector);same(projector.value,'length',arity);checkFile(file,material.identity);
+ };
+ verify();
+ return error=>{try{verify();const result=projector.value(error);verify();return safeRoleDrainDiagnostic(result);}catch{return Object.freeze({status:'UNKNOWN'});}};
+}
+
+function safeConsumerFacts(value){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'});
+ if(!value||typeof value!=='object'||types.isProxy(value)||!Object.isFrozen(value))return unknown();
+ const keys=Reflect.ownKeys(value),status=own(value,'status');if(status==='UNKNOWN')return unknown();
+ const fields=['status','httpStatus','ownerClosed','authObserved','nativeAdmission','cleanupAccepted','full394Accepted'];
+ if(keys.length!==fields.length||!fields.every(k=>keys.includes(k)&&Object.hasOwn(Object.getOwnPropertyDescriptor(value,k),'value'))||status!=='OBSERVED'||own(value,'httpStatus')!==201||own(value,'ownerClosed')!==true||own(value,'authObserved')!==true||['nativeAdmission','cleanupAccepted','full394Accepted'].some(k=>own(value,k)!==false))return unknown();
+ return Object.freeze(Object.fromEntries(fields.map(k=>[k,own(value,k)])));
+}
+// The observer's body uses only its same-module private WeakMap. It never loads
+// or visits the exercise's dynamic producer dependencies.
+function captureAuthConsumerObservation(namespace,read,checkFile){
+ const data=(v,k)=>{need(v&&!types.isProxy(v),'DEPENDENCIES');const d=Object.getOwnPropertyDescriptor(v,k);need(d&&Object.hasOwn(d,'value'),'DEPENDENCIES');return Object.freeze({...d});};
+ const same=(v,k,d)=>{const now=data(v,k);need(['value','writable','enumerable','configurable'].every(f=>now[f]===d[f]),'DEPENDENCIES');return now.value;};
+ const cacheSlot=data(require,'cache'),cache=cacheSlot.value,file=path.join(path.dirname(__filename),'task12-current261-first-login-exercise.cjs'),slot=data(cache,file),registered=slot.value;
+ const filename=data(registered,'filename'),exports=data(registered,'exports'),children=data(registered,'children'),mainChildren=data(module,'children');
+ need(filename.value===file&&exports.value===namespace&&!types.isProxy(namespace)&&Object.isFrozen(namespace)&&Array.isArray(children.value)&&!types.isProxy(children.value)&&Array.isArray(mainChildren.value)&&!types.isProxy(mainChildren.value),'DEPENDENCIES');
+ const parentOf=()=>{need(!types.isProxy(registered)&&Object.getPrototypeOf(registered)===nodeParentPrototype&&!Object.getOwnPropertyDescriptor(registered,'parent'),'DEPENDENCIES');const current=Object.getOwnPropertyDescriptor(nodeParentPrototype,'parent');need(current&&['get','set','enumerable','configurable'].every(k=>current[k]===nodeParentDescriptor[k]),'DEPENDENCIES');return Reflect.apply(nodeParentDescriptor.get,registered,[]);};
+ const observer=data(namespace,'describeCurrent261FirstLoginReturnedOutcome'),consume=data(namespace,'projectCurrent261FirstLoginOutcome'),observerArity=data(observer.value,'length'),consumeArity=data(consume.value,'length');need(typeof observer.value==='function'&&typeof consume.value==='function'&&observerArity.value===1&&consumeArity.value===1,'DEPENDENCIES');
+ const material=read(file,{maxBytes:512*1024,code:'CURRENT261_LOCAL_LIFECYCLE_ONCE_CONSUMER_OBSERVER_SOURCE'});need(SHA.test(material.sha256)&&material.identity,'DEPENDENCIES');
+ const verify=()=>{
+  same(require,'cache',cacheSlot);same(cache,file,slot);same(registered,'filename',filename);same(registered,'exports',exports);same(registered,'children',children);need(own(registered,'loaded')===true&&parentOf()===module,'DEPENDENCIES');
+  const rows=same(module,'children',mainChildren);let count=0;for(let i=0;i<rows.length;i++)if(data(rows,String(i)).value===registered)count++;need(count===1,'DEPENDENCIES');
+  same(namespace,'describeCurrent261FirstLoginReturnedOutcome',observer);same(namespace,'projectCurrent261FirstLoginOutcome',consume);same(observer.value,'length',observerArity);same(consume.value,'length',consumeArity);checkFile(file,material.identity);
+ };
+ verify();return outcome=>{try{verify();const facts=observer.value(outcome);verify();return safeConsumerFacts(facts);}catch{return Object.freeze({status:'UNKNOWN'});}};
+}
+
 async function main(){
  let authOnly=false,attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
- let rememberControllerFirstFailure,recordFirstFailure,firstFailureObservation='UNKNOWN',firstFailureEvidenceWriteFailed=null;
+ let recordConsumerObservation,projectConsumerObservation,consumerObservation='UNKNOWN';
+ let rememberControllerFirstFailure,recordFirstFailure,recordDrainDiagnostic,projectDrainFailure,diagnosticObservation='UNKNOWN',firstFailureObservation='UNKNOWN',firstFailureEvidenceWriteFailed=null;
  let writeReceipt,technicalFailure,failureStage,sevenFailure,firstFailure,receivedSignal=null,signalEvidenceWriteFailed=false,signalsArmed=false,recordSignal,describeOwnedBudget,budgetObservation;
  const observeBudget=value=>{try{return typeof describeOwnedBudget==='function'?describeOwnedBudget(value):undefined;}catch{return undefined;}};
  const controller=new AbortController();
@@ -272,11 +365,24 @@ async function main(){
     need(fs.realpathSync(root)===root&&!now.isSymbolicLink()&&['dev','ino','mode','uid','gid'].every(k=>now[k]===identity[k]),'FIRST_FAILURE');
     writeExclusive(path.join(root,'first-failure.json'),Buffer.from(JSON.stringify({status:'FIRST_FAILURE_OBSERVED',observationBoundary:'CONTROLLER_FIRST_OBSERVED',purpose:plan.purpose,...coordinates,failurePhase:firstFailure.phase,reason:safeReason(firstFailure.cause)??'UNCLASSIFIED'})+'\n'));
    };
+   recordDrainDiagnostic=diagnostic=>{
+    const now=fs.lstatSync(root,{bigint:true});need(fs.realpathSync(root)===root&&!now.isSymbolicLink()&&['dev','ino','mode','uid','gid'].every(k=>now[k]===identity[k]),'FIRST_FAILURE');
+    const bytes=Buffer.from(JSON.stringify({schemaVersion:1,status:diagnostic.status,observationBoundary:'CONTROLLER_OBSERVED_PRODUCER_DRAIN_FAILURE',purpose:plan.purpose,...coordinates,failurePhase:firstFailure.phase,diagnostic})+'\n');
+    need(bytes.length<=4096,'FIRST_FAILURE');writeExclusive(path.join(root,'first-role-drain-diagnostic.json'),bytes);
+   };
+   recordConsumerObservation=facts=>{
+    const now=fs.lstatSync(root,{bigint:true});need(fs.realpathSync(root)===root&&!now.isSymbolicLink()&&['dev','ino','mode','uid','gid'].every(k=>now[k]===identity[k]),'FIRST_FAILURE');
+    const bytes=Buffer.from(JSON.stringify({schemaVersion:1,status:facts.status,observationBoundary:'CONTROLLER_CONSUMER_RETURNED',purpose:plan.purpose,...coordinates,phase:'CONSUMER_RETURNED_BEFORE_ROLE_POSTCHECK_AND_DRAIN',facts})+'\n');
+    need(bytes.length<=4096,'FIRST_FAILURE');writeExclusive(path.join(root,'first-login-consumer-return.json'),bytes);
+   };
   }catch{/* No stable owned empty root: persistence stays UNKNOWN. */}
   const rememberFirstFailure=(cause,observedPhase)=>{
    if(firstFailure)return false;
    firstFailure={cause,phase:observedPhase};
    if(recordFirstFailure){try{recordFirstFailure();firstFailureObservation='DURABLE_EVENT_RECORDED';firstFailureEvidenceWriteFailed=false;}catch{firstFailureEvidenceWriteFailed=true;}}
+   if(authOnly&&observedPhase==='APPLICATION'&&firstFailureObservation==='DURABLE_EVENT_RECORDED'&&recordDrainDiagnostic){
+    try{const diagnostic=projectDrainFailure?projectDrainFailure(cause):Object.freeze({status:'UNKNOWN'});recordDrainDiagnostic(diagnostic);diagnosticObservation=diagnostic.status==='OBSERVED'?'DURABLE_OBSERVED':'DURABLE_UNKNOWN';}catch{/* Diagnostic failure never replaces the latched original cause. */}
+   }
    return true;
   };
   // This closure is available to the outer catch even for initialization or
@@ -298,10 +404,14 @@ async function main(){
   const {provisionCurrent261GeneratedLifecycleDocumentRoles,provisionCurrent261AuthOnlyDiagnosticDocumentRoles}=require('./task12-current259-document-role-provision.cjs');
   const {installCurrent261GeneratedLifecycleDocumentAcl,installCurrent261AuthOnlyDiagnosticDocumentAcl,describeCurrent261DocumentAclFailure}=require('./task12-current259-document-acl-transport.cjs');
   const {withOfficialTask12DocumentRuntime}=require('./task12-current259-generated-document-runtime.cjs');
-  const {withCurrent261LocalLifecyclePublicApplication,withCurrent261FirstLoginPublicApplication}=require('./task12-current259-document-login.cjs');
+  const loginNamespace=require('./task12-current259-document-login.cjs');
+  const {withCurrent261LocalLifecyclePublicApplication,withCurrent261FirstLoginPublicApplication}=loginNamespace;
   const {projectCurrent261LocalLifecycleOutcome}=require('./task12-current261-local-lifecycle-exercise.cjs');
-  const {projectCurrent261FirstLoginOutcome,describeCurrent261FirstLoginOwnerObservation}=authOnly?require('./task12-current261-first-login-exercise.cjs'):{};
+  const firstLoginNamespace=authOnly?require('./task12-current261-first-login-exercise.cjs'):undefined;
+  const {projectCurrent261FirstLoginOutcome,describeCurrent261FirstLoginOwnerObservation}=firstLoginNamespace??{};
+  if(authOnly)try{projectConsumerObservation=captureAuthConsumerObservation(firstLoginNamespace,read,checkCurrent259FileIdentity);}catch{/* Optional observer initialization stays UNKNOWN; mandatory assembly remains outside. */}
   const {describeCurrent261LocalLifecycleHttpFailure}=require('./task12-current261-local-lifecycle-http.cjs');
+  projectDrainFailure=authOnly?captureAuthDrainFailureProjector(loginNamespace,read,checkCurrent259FileIdentity):undefined;
   const migration=authOnly?createCurrent261AuthOnlyDiagnosticBootstrap:createCurrent259TechnicalMigration,rolesProducer=authOnly?provisionCurrent261AuthOnlyDiagnosticRoles:provisionCurrent259Roles,archiveProducer=authOnly?installCurrent261AuthOnlyDiagnosticArchive:installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,ordinaryProducer=authOnly?installCurrent261AuthOnlyDiagnosticOrdinaryAcl:installCurrent261GeneratedLifecycleOrdinaryAcl,documentRolesProducer=authOnly?provisionCurrent261AuthOnlyDiagnosticDocumentRoles:provisionCurrent261GeneratedLifecycleDocumentRoles,aclProducer=authOnly?installCurrent261AuthOnlyDiagnosticDocumentAcl:installCurrent261GeneratedLifecycleDocumentAcl,application=authOnly?withCurrent261FirstLoginPublicApplication:withCurrent261LocalLifecyclePublicApplication,projectOutcome=authOnly?projectCurrent261FirstLoginOutcome:projectCurrent261LocalLifecycleOutcome;
   need([migration,rolesProducer,archiveProducer,ordinaryProducer,documentRolesProducer,aclProducer,application,projectOutcome,...(authOnly?[describeCurrent261FirstLoginOwnerObservation]:[]),read,withCurrent259FirstQ2LoopbackResource,describeCurrent259TechnicalFailure,
    installCurrent259ArchiveAuthoritiesWithRegisteredFileSource,installCurrent261GeneratedLifecycleOrdinaryAcl,
@@ -316,7 +426,7 @@ async function main(){
   const coordinates={planSha256:checked.sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id,runtimeSha256};
   const marker=Buffer.from(JSON.stringify({status:'CONSUMED',...coordinates})+'\n');
   writeReceipt=(status,proof)=>{
-   const receipt={status,phase,...coordinates,firstFailureObservation,firstFailureEvidenceWriteFailed,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
+   const receipt={status,phase,...coordinates,firstFailureObservation,firstFailureEvidenceWriteFailed,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC',diagnosticObservation,consumerObservation}:{}),relationship:'inside',contractTypeKey:'material_purchase',operating:false,storage:'LOCAL_ONLY',cosAccepted:false,storageAccepted:false,browserAccepted:false,full394Accepted:false,cleanup,...proof};
    try{writeExclusive(plan.run.receiptFile,Buffer.from(JSON.stringify(receipt)+'\n'));}
    catch{throw fault('RECEIPT');}
    return receipt;
@@ -410,6 +520,7 @@ async function main(){
       let app;
       try{app=await application(acl,handle,plan.case.id,controller.signal,outcome=>{
        need(!invoked,'RESULT');invoked=true;check();
+       if(authOnly&&recordConsumerObservation){try{const facts=projectConsumerObservation?projectConsumerObservation(outcome):Object.freeze({status:'UNKNOWN'});recordConsumerObservation(facts);consumerObservation=facts.status==='OBSERVED'?'DURABLE_OBSERVED':'DURABLE_UNKNOWN';}catch{/* Observation cannot alter the original opaque callback result. */}}
        return outcome;
       },token);}catch(cause){rememberFirstFailure(cause,'APPLICATION');throw cause;}
       finally{entry.active=false;contractContinuities.delete(token);currentContractContinuity=undefined;}
@@ -452,7 +563,7 @@ async function main(){
    try{return writeReceipt(authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',{attempted,...proof});}
    catch{receiptWriteFailed=true;}
   }
-  return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,firstFailureObservation,firstFailureEvidenceWriteFailed,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...proof,
+  return {status:authOnly?'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED':'CURRENT261_LOCAL_LIFECYCLE_STOPPED',phase,attempted,cleanup,firstFailureObservation,firstFailureEvidenceWriteFailed,receivedSignal,signalEvidenceWriteFailed,signalObservation:signalsArmed?'HANDLERS_INSTALLED':'UNKNOWN',...(budgetObservation??{budgetReason:null,cleanupBudgetReason:null,budgetEvidenceWriteFailed:null,budgetObservation:'UNKNOWN'}),...(authOnly?{diagnosticObservation,consumerObservation}:{}),...proof,
    ...(receiptWriteFailed?{receiptWriteFailed:true}:{})};
  }finally{
   controller.abort();

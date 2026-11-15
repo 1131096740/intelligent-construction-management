@@ -21,9 +21,64 @@ const caseCoordinate=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 const topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
 const consumed=new WeakSet(),active=new WeakMap(),firstLoginScopes=new WeakMap(),nestBridges=new WeakSet(),lifecycleExercises=new WeakMap(),firstLoginExercises=new WeakMap();
-const fixedReasons=new WeakMap();
+const fixedReasons=new WeakMap(),roleDrainFailures=new WeakMap();
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
+// Only the four original lazy requires below may register provenance. Recording
+// is diagnostic-only: a rejected observation never changes a require result.
+const drainModules=new Map();let drainModuleUnknown=false;
+function rememberDrainModule(name,returned){
+ try{
+  const data=(object,key)=>{need(object&&!types.isProxy(object),'ROLE_ENTRY');const descriptor=Object.getOwnPropertyDescriptor(object,key);need(descriptor&&Object.hasOwn(descriptor,'value'),'ROLE_ENTRY');return Object.freeze({...descriptor});};
+  need(['task12-official-document-profiles.cjs','task12-current259-document-application.cjs','task12-current261-first-login-exercise.cjs','task16-current259-relay-sysread.cjs'].includes(name),'ROLE_ENTRY');
+  const file=join(__dirname,name),cache=data(require,'cache').value,cacheDescriptor=data(cache,file),loaded=cacheDescriptor.value;
+  const filenameDescriptor=data(loaded,'filename'),exportsDescriptor=data(loaded,'exports'),children=data(module,'children').value;
+  need(filenameDescriptor.value===file&&exportsDescriptor.value===returned&&!types.isProxy(returned)&&own(loaded,'loaded')===true&&Array.isArray(children)&&!types.isProxy(children),'ROLE_ENTRY');
+  let childIndex=-1;for(let i=0;i<children.length;i++)if(data(children,String(i)).value===loaded){need(childIndex===-1,'ROLE_ENTRY');childIndex=i;}
+  need(childIndex>=0,'ROLE_ENTRY');const childDescriptor=data(children,String(childIndex));
+  const source=readQualifiedTask16File(file,{maxBytes:512*1024,code:CODE+'_DRAIN_PROVENANCE'});need(/^[a-f0-9]{64}$/u.test(source.sha256)&&source.identity&&!types.isProxy(source.identity),'ROLE_ENTRY');
+  const record=Object.freeze({file,cache,module:loaded,filenameDescriptor,exportsDescriptor,cacheDescriptor,children,childIndex,childDescriptor,sourceIdentity:Object.freeze({...source.identity}),sourceSha256:source.sha256});
+  const sameDescriptor=(left,right)=>['value','writable','enumerable','configurable'].every(key=>left[key]===right[key]);
+  const prior=drainModules.get(file);
+  if(prior){need(prior.module===loaded&&prior.cache===cache&&prior.children===children&&prior.childIndex===childIndex&&sameDescriptor(prior.filenameDescriptor,filenameDescriptor)&&sameDescriptor(prior.exportsDescriptor,exportsDescriptor)&&sameDescriptor(prior.cacheDescriptor,cacheDescriptor)&&sameDescriptor(prior.childDescriptor,childDescriptor)&&equal(prior.sourceIdentity,record.sourceIdentity)&&prior.sourceSha256===source.sha256,'ROLE_ENTRY');}
+  else drainModules.set(file,record);
+ }catch{drainModuleUnknown=true;}
+}
+function describeCurrent261DocumentLoginDrainProvenance(){return drainModuleUnknown?undefined:Object.freeze([...drainModules.values()]);}
+function loadDrainOfficialProfile(){const value=require('./task12-official-document-profiles.cjs');rememberDrainModule('task12-official-document-profiles.cjs',value);return value;}
+function loadDrainDocumentApplication(){const value=require('./task12-current259-document-application.cjs');rememberDrainModule('task12-current259-document-application.cjs',value);return value;}
+function loadDrainFirstLoginExercise(){const value=require('./task12-current261-first-login-exercise.cjs');rememberDrainModule('task12-current261-first-login-exercise.cjs',value);return value;}
+function loadDrainSysread(){const value=require('./task16-current259-relay-sysread.cjs');rememberDrainModule('task16-current259-relay-sysread.cjs',value);return value;}
+// Raw drain rejections stay private; this reader cannot grant a scope or expose
+// arbitrary error properties. The same wrapper remains the primary error.
+function describeCurrent261DocumentLoginDrainFailure(error){
+ const seen=new WeakSet();
+ for(let i=0;i<6&&error&&typeof error==='object'&&!types.isProxy(error)&&!seen.has(error);i++,error=own(error,'cause')){
+  seen.add(error);if(!roleDrainFailures.has(error))continue;
+  const cause=roleDrainFailures.get(error),unknown=()=>Object.freeze({status:'UNKNOWN'});
+  if(!cause||typeof cause!=='object'||types.isProxy(cause)||own(cause,'code')!=='TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED')return unknown();
+  const relayCode=own(cause,'relayCode');
+  const codes=['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT','DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(part=>'CURRENT259_LOOPBACK_FORWARD_'+part);
+  if(!codes.includes(relayCode))return unknown();
+  const result={status:'OBSERVED',resourceCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',relayCode};
+  if(relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME'){
+   const stage=own(cause,'relayFrameStage');
+   if(['DATA_AFTER_FIN','OVERSIZED_LENGTH','TRAILING_AFTER_FIN','STDOUT_EOF_WITHOUT_FIN'].includes(stage)){
+    result.relayFrameStage=stage;const exit=own(cause,'relayChildExitCode');
+    if(stage==='STDOUT_EOF_WITHOUT_FIN'&&Number.isInteger(exit)&&(exit===0||exit>=41&&exit<=48)){
+     result.relayChildExitCode=exit;const sysread=own(cause,'relaySysreadExit');
+     if(exit===47&&loadDrainSysread().decodeRelaySysreadExit(sysread))result.relaySysreadExit=sysread;
+    }
+   }
+  }
+  if(['CURRENT259_LOOPBACK_FORWARD_FRAME','CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT','CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'].includes(relayCode)){
+   const source=own(cause,'relayCloseState'),state=Object.fromEntries(['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned'].map(key=>[key,own(source,key)]));
+   if(Object.values(state).every(value=>typeof value==='boolean'))result.relayCloseState=Object.freeze(state);
+  }
+  return Object.freeze(result);
+ }
+ return undefined;
+}
 const fault=part=>{
  const error=Object.assign(Error(CODE+'_'+part),{code:CODE+'_'+part});
  fixedReasons.set(error,part);return error;
@@ -297,7 +352,7 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
  let official;
  if(lifecycle){
   const modules=view.loader.loadCurrent261LocalLifecycleDocumentModules();official=modules.currentOfficialDocumentScope();
-  need(official?.kind==='OFFICIAL_TOOL_RUNTIME'&&require('./task12-official-document-profiles.cjs').officialDocumentProfile(official.profile)&&official.source?.head===view.source.candidateSha,'ROLE_RUNTIME');
+  need(official?.kind==='OFFICIAL_TOOL_RUNTIME'&&loadDrainOfficialProfile().officialDocumentProfile(official.profile)&&official.source?.head===view.source.candidateSha,'ROLE_RUNTIME');
  }
  consumed.add(handle);
  const check=()=>{
@@ -630,7 +685,7 @@ ROLLBACK;`;
        need(http,'ROLE_ENTRY');verify();
        const keys=authOnly?firstLoginExercises:lifecycleExercises;
        const key=Object.freeze({});keys.set(key,Object.freeze({handle,proof,modules,config:publicLifecycle,check(){need(available,'ROLE_ENTRY');verify();}}));
-       try{const result=await (authOnly?require('./task12-current261-first-login-exercise.cjs').exerciseCurrent261FirstLogin:require('./task12-current261-local-lifecycle-exercise.cjs').exerciseCurrent261LocalLifecycle)(key,http);verify();return await use(result);}
+       try{const result=await (authOnly?loadDrainFirstLoginExercise().exerciseCurrent261FirstLogin:require('./task12-current261-local-lifecycle-exercise.cjs').exerciseCurrent261LocalLifecycle)(key,http);verify();return await use(result);}
        finally{keys.delete(key);}
       }
       if(!publicDraft){const result=await use(exposed);verify();return result;}
@@ -677,7 +732,7 @@ ROLLBACK;`;
      if(!nest)return await exercise();
      const bridge=Object.freeze({check:verify,loader,loaded:modules,proof,ordinary:clients[names.length].client,providers,
       queue:exposed.queue.queueDraftPreview,exercise,...(publicDraft?{publicDraft}:{}),...(publicLifecycle?{publicLifecycle}:{})});
-     const {runCurrent259GeneratedDocumentApplication,fixedExerciseCode}=require('./task12-current259-document-application.cjs');
+     const {runCurrent259GeneratedDocumentApplication,fixedExerciseCode}=loadDrainDocumentApplication();
      nestBridges.add(bridge);
      try{return await runCurrent259GeneratedDocumentApplication(bridge);}
      catch(error){
@@ -705,11 +760,12 @@ ROLLBACK;`;
   const closed=await Promise.allSettled(clients.map(entry=>bounded(()=>entry.methods.$disconnect.call(entry.client),'ROLE_CLOSE_TIMEOUT')));
   const disconnectRejected=closed.some(result=>result.status==='rejected');
   if(disconnectRejected)unknown=true;
-  let drainRejected=false;try{await waitDrain();}catch{unknown=true;drainRejected=true;}
+  let drainRejected=false,drainCause;try{await waitDrain();}catch(cause){unknown=true;drainRejected=true;drainCause=cause;}
   if(unknown){
    const cleanup=Object.assign(fault(fixedReasons.get(first)??'ROLE_CLEANUP_UNKNOWN'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+   if(lifecycle&&drainRejected)roleDrainFailures.set(cleanup,drainCause);
    Object.defineProperty(cleanup,'documentRoleFailure',{value:Object.freeze({subphase:roleStage,lastGuardMs,maxGuardMs,boundedTimeout,disconnectRejected,drainRejected})});
-   if(lifecycle&&first!==undefined)Object.defineProperty(cleanup,'cause',{value:first});
+   if(lifecycle&&(failed||drainRejected))Object.defineProperty(cleanup,'cause',{value:failed?first:drainCause});
    const exerciseCode=fixedReasons.has(first)&&own(first,'exerciseCode');
    if(exerciseCode)Object.defineProperty(cleanup,'exerciseCode',{value:exerciseCode});
    throw cleanup;
@@ -741,5 +797,5 @@ function claimCurrent261LocalLifecycleOwnerProof(proof,handle){
  return Object.freeze({identity:Object.freeze({...scope.identity}),continuitySql:scope.continuitySql,continuitySha256:proof.continuitySha256,
   effectivePlanSha256:proof.effectivePlanSha256,installation:proof.installation,check:scope.check});
 }
-module.exports=Object.freeze({withCurrent261FirstLoginPublicApplication,takeCurrent261FirstLoginExerciseBridge,assertCurrent261FirstLoginScope,claimCurrent261FirstLoginOwnerProof,takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
+module.exports=Object.freeze({describeCurrent261DocumentLoginDrainProvenance,describeCurrent261DocumentLoginDrainFailure,withCurrent261FirstLoginPublicApplication,takeCurrent261FirstLoginExerciseBridge,assertCurrent261FirstLoginScope,claimCurrent261FirstLoginOwnerProof,takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
  withCurrent259GeneratedDocumentPublicApplication,takeCurrent259GeneratedDocumentApplicationBridge,assertCurrent259GeneratedDocumentLoginScope});
