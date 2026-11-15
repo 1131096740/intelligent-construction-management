@@ -38,8 +38,9 @@ function rememberDrainModule(name,returned){
   need(childIndex>=0,'ROLE_ENTRY');const childDescriptor=data(children,String(childIndex));
   const source=readQualifiedTask16File(file,{maxBytes:512*1024,code:CODE+'_DRAIN_PROVENANCE'});need(/^[a-f0-9]{64}$/u.test(source.sha256)&&source.identity&&!types.isProxy(source.identity),'ROLE_ENTRY');
   const record=Object.freeze({file,cache,module:loaded,filenameDescriptor,exportsDescriptor,cacheDescriptor,children,childIndex,childDescriptor,sourceIdentity:Object.freeze({...source.identity}),sourceSha256:source.sha256});
+  const sameDescriptor=(left,right)=>['value','writable','enumerable','configurable'].every(key=>left[key]===right[key]);
   const prior=drainModules.get(file);
-  if(prior){need(prior.module===loaded&&prior.cache===cache&&prior.children===children&&prior.childIndex===childIndex&&equal(prior.filenameDescriptor,filenameDescriptor)&&equal(prior.exportsDescriptor,exportsDescriptor)&&equal(prior.cacheDescriptor,cacheDescriptor)&&equal(prior.childDescriptor,childDescriptor)&&equal(prior.sourceIdentity,record.sourceIdentity)&&prior.sourceSha256===source.sha256,'ROLE_ENTRY');}
+  if(prior){need(prior.module===loaded&&prior.cache===cache&&prior.children===children&&prior.childIndex===childIndex&&sameDescriptor(prior.filenameDescriptor,filenameDescriptor)&&sameDescriptor(prior.exportsDescriptor,exportsDescriptor)&&sameDescriptor(prior.cacheDescriptor,cacheDescriptor)&&sameDescriptor(prior.childDescriptor,childDescriptor)&&equal(prior.sourceIdentity,record.sourceIdentity)&&prior.sourceSha256===source.sha256,'ROLE_ENTRY');}
   else drainModules.set(file,record);
  }catch{drainModuleUnknown=true;}
 }
