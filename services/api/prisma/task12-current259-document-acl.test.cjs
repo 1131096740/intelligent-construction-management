@@ -83,7 +83,7 @@ test('explicit 261 lifecycle document roles add only their reached defaults and 
  const previous=new Set(Object.entries(manifest.roles).flatMap(([role,tables])=>Object.entries(tables).flatMap(([relation,ops])=>Object.entries(ops).flatMap(([op,cols])=>cols.map(column=>[role,relation,column,op.toUpperCase()].join('/'))))));
  const added=material.rows.filter(row=>!previous.has([row.role,row.relation,row.column,row.privilege].join('/')));
  assert.equal(added.filter(row=>row.privilege==='INSERT').length,9);
- assert.equal(added.filter(row=>row.privilege==='SELECT').length,72);
+ assert.equal(added.filter(row=>row.privilege==='SELECT').length,77);
  assert.ok(added.every(row=>roles.includes(row.role)&&(['INSERT','SELECT'].includes(row.privilege))));
  for(const role of roles.slice(0,2))assert.ok(added.some(row=>row.role===role&&row.relation==='ContractTakeoverCorrection'&&row.column==='schemaVersion'&&row.privilege==='SELECT'),'invoker correction predicate '+role);
  assert.ok(!added.some(row=>row.role===roles[2]&&row.privilege==='SELECT'));
@@ -176,4 +176,22 @@ test('fixed document ACL source rejects either missing primary key and every add
    id=>id==='node:fs'?files:require(id),mod,__dirname);
   assert.throws(()=>mod.exports.beginCurrent259GeneratedDocumentAcl(),/CURRENT259_DOCUMENT_ACL_SOURCE/u);
  }
+});
+
+test('qualified261 worker upload can evaluate every existing direct-archive retention INSERT predicate without widening other roles',()=>{
+ const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile},api=require('./task12-current259-document-acl.cjs');
+ const material=api.describeCurrent261GeneratedLifecycleDocumentAcl(source);
+ const trigger=fs.readFileSync(path.join(__dirname,'migrations/20261109140000_contract_direct_archive_retention_complete_v1/migration.sql'),'utf8');
+ assert.match(trigger,/SECURITY INVOKER[\s\S]+FROM public\."ContractArchiveEvidenceFile" e[\s\S]+JOIN public\."ContractArchiveFile" a[\s\S]+JOIN public\."FileObject" f/u);
+ const required={ContractArchiveEvidenceFile:['archiveFileId','contractVersionId','fileId'],ContractArchiveFile:['id','contractVersionId','archiveProtocolVersion','archiveSource'],FileObject:['id','objectKey']};
+ const missing=Object.entries(required).flatMap(([relation,columns])=>columns.filter(column=>!material.rows.some(r=>r.role==='jg_c259_doc_worker'&&r.relation===relation&&r.column===column&&r.privilege==='SELECT')).map(column=>relation+'.'+column));
+ assert.deepEqual(missing,[]);
+ const run=api.beginCurrent261GeneratedLifecycleDocumentAcl(source),f=fixture(),writer=run.acceptBefore(f.observation(f.challenge(run.beforeSql),'before'));
+ assert.match(writer.sql,/GRANT SELECT \("archiveFileId", "contractVersionId", "fileId"\) ON TABLE public\."ContractArchiveEvidenceFile" TO "jg_c259_doc_worker"/u);
+ assert.match(writer.sql,/GRANT SELECT \("archiveProtocolVersion", "archiveSource", "contractVersionId", "id"\) ON TABLE public\."ContractArchiveFile" TO "jg_c259_doc_worker"/u);
+ for(const role of ['jg_c259_doc_template','jg_c259_doc_queue'])assert.ok(!material.rows.some(r=>r.role===role&&((r.relation==='ContractArchiveEvidenceFile'&&r.column!=='fileId')||(r.relation==='ContractArchiveFile'&&r.column!=='contractVersionId'))));
+ assert.doesNotMatch(writer.sql,/GRANT SELECT ON TABLE|GRANT (?:ALL|DELETE)|ALTER FUNCTION/u);
 });

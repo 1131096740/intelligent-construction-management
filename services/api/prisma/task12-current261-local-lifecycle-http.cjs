@@ -98,6 +98,20 @@ function inspectionSummary(value){
  for(let i=0;i<size.value;i++)if(!descriptors[i]||!Object.hasOwn(descriptors[i],'value'))return unknown();
  return Object.freeze({status:'OBSERVED',sourceRevision:revision,hasBillLoop:loop,blockingErrorCount:size.value});
 }
+function previewSummary(value,coordinates){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'});
+ if(!value||typeof value!=='object'||types.isProxy(value)||Array.isArray(value)||!coordinates||typeof coordinates!=='object'||types.isProxy(coordinates))return unknown();
+ const expected={};for(const key of ['id','layoutTemplateVersionId','createdByUserId','sourceFileId','templateId']){const v=own(coordinates,key);if(!id(v))return unknown();expected[key]=v;}
+ const revision=own(coordinates,'sourceRevision');if(!Number.isSafeInteger(revision)||revision<0||revision>1000000)return unknown();
+ const observed={};for(const key of ['id','layoutTemplateVersionId','createdByUserId']){const v=own(value,key);if(typeof v!=='string'||v.length>64)return unknown();observed[key]=v;}
+ const sourceRevision=own(value,'sourceRevision'),jobStatus=own(value,'status'),file=own(value,'previewPdfFileId'),error=own(value,'errorMessage'),started=own(value,'startedAt'),completed=own(value,'completedAt');
+ if(!Number.isSafeInteger(sourceRevision)||sourceRevision<0||sourceRevision>1000000||!['queued','processing','succeeded','failed','stale'].includes(jobStatus)||!(file===null||typeof file==='string'&&file.length<=64)||!(error===null||typeof error==='string'&&error.length<=4096)||![started,completed].every(v=>v===null||typeof v==='string'&&v.length<=64))return unknown();
+ const sameJob=observed.id===expected.id,sameLayout=observed.layoutTemplateVersionId===expected.layoutTemplateVersionId,sameRevision=sourceRevision===revision,sameCreator=observed.createdByUserId===expected.createdByUserId;
+ const previewFileIdValid=id(file)&&![expected.id,expected.layoutTemplateVersionId,expected.sourceFileId,expected.templateId].includes(file),errorMessageNull=error===null;
+ const start=typeof started==='string'?Date.parse(started):NaN,end=typeof completed==='string'?Date.parse(completed):NaN,startedAtValid=Number.isFinite(start),completedAfterStarted=startedAtValid&&Number.isFinite(end)&&end>=start;
+ const consumerBranch=!(sameJob&&sameLayout&&sameRevision&&sameCreator)?'COORDINATES_MISMATCH':jobStatus==='succeeded'?(previewFileIdValid&&errorMessageNull&&startedAtValid&&completedAfterStarted?'VALID_SUCCESS':'INVALID_SUCCESS'):jobStatus==='failed'?'FAILED':jobStatus==='stale'?'STALE':file===null?'VALID_PENDING':'INVALID_PENDING';
+ return Object.freeze({status:'OBSERVED',jobStatus,consumerBranch,sameJob,sameLayout,sameRevision,sameCreator,previewFileIdValid,errorMessageNull,startedAtValid,completedAfterStarted});
+}
 const consumeCodes=Object.freeze({
  TEMPLATE_CONSUMER:Object.freeze(['INPUT','UPLOAD','CREATE','POSITIONS','MAPPING','INSPECTION','TIME','QUEUE','PREVIEW','CONFIRM','SUBMIT','PUBLISH'].map(stage=>'TASK12_GENERATED_MATERIAL_TEMPLATE_'+stage)),
  OFFICIAL_DEADLINE:Object.freeze(['TASK12_OFFICIAL_DOCUMENT_DEADLINE']),
@@ -144,7 +158,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
   seed.users.every(u=>id(u.id)&&typeof u.phone==='string'&&typeof passwords[u.id]==='string'&&/^[a-f0-9]{64}$/u.test(passwords[u.id]))&&new Set(Object.values(passwords)).size===8&&
   sourceDocx instanceof Uint8Array&&Array.isArray(originals)&&originals.length===2&&originals.every(b=>b instanceof Uint8Array));
  const address=server.address,port=address.call(server)?.port;
- let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false;
+ let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false,layoutPreviewContext,previewCoordinates,inspectedRevision;
  const tokens=new Map(),active=new Map(),files=new Map(),tickets=new Map(),signatures=new Set();
  // Inclusive observational timings only. They neither gate nor extend work.
  const began=diagnosticNow(),timing={guardCalls:0,guardElapsedMs:0,exchangeCalls:0,exchangeElapsedMs:0};
@@ -165,7 +179,15 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
    observation.phase='EXCHANGE';
    const exchangeStarted=diagnosticNow();timing.exchangeCalls++;let result;
    try{result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});}finally{timing.exchangeElapsedMs+=diagnosticNow()-exchangeStarted;}
-   if(method==='POST'&&observation.routeTemplate==='/contract-layout-template-versions/:versionId/inspection'&&result.status===201)observation.inspectionSummary=inspectionSummary(result.body);
+   if(method==='POST'&&observation.routeTemplate==='/contract-layout-template-versions/:versionId/inspection'&&result.status===201){
+    observation.inspectionSummary=inspectionSummary(result.body);inspectedRevision=observation.inspectionSummary.status==='OBSERVED'?observation.inspectionSummary.sourceRevision:undefined;
+   }
+   if(observation.routeTemplate==='/contract-layout-template-versions/:versionId/preview-generation'){
+    if(method==='POST'){
+     previewCoordinates=undefined;
+     const job=own(result.body,'id');if(result.status===201&&id(job)&&layoutPreviewContext&&Number.isSafeInteger(inspectedRevision))previewCoordinates=Object.freeze({...layoutPreviewContext,id:job,layoutTemplateVersionId:layoutId,sourceRevision:inspectedRevision,createdByUserId:seed.users[2].id});
+    }else if(method==='GET'&&result.status===200)observation.previewSummary=previewSummary(result.body,previewCoordinates);
+   }
    collectAuth(); // Retain the native cause before a later resource guard can fail.
    observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME',timingAtResponse:snapshotTiming()});return result;
   }catch(cause){
@@ -241,7 +263,11 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
      equal(own(user,'roleKeys'),roleKeys(actor))&&equal(own(user,'globalRoleKeys'),globalKeys(actor))&&typeof token==='string'&&token.length<=4096&&/^[\w-]+\.[\w-]+\.[\w-]+$/u.test(token));
     const claims=verifyToken(token);need(own(claims,'sub')===seed.users[actor].id&&own(claims,'phone')===seed.users[actor].phone&&own(claims,'type')==='access'&&own(claims,'ver')===0);tokens.set(actor,token);
    }else if(path==='/contracts'&&result.status===201){contractId=own(own(value,'contract'),'id');versionId=own(own(value,'version'),'id');need(id(contractId)&&id(versionId)&&contractId!==versionId);}
-   else if(path==='/contract-layout-templates'&&result.status===201){layoutId=own(own(value,'version'),'id');need(id(layoutId));}
+   else if(path==='/contract-layout-templates'&&result.status===201){
+    layoutId=own(own(value,'version'),'id');need(id(layoutId));
+    const sourceFileId=own(json,'docxFileId'),templateId=own(own(value,'template'),'id');
+    layoutPreviewContext=id(sourceFileId)&&id(templateId)?Object.freeze({sourceFileId,templateId}):undefined;previewCoordinates=undefined;inspectedRevision=undefined;
+   }
    else if(path==='/files'&&result.status===201){const fileId=own(value,'id');need(id(fileId)&&!files.has(fileId));registerFile(fileId,uploaded.mimeType,uploaded);}
    else if(path==='/contract-drafts/'+versionId+'/edit-lease'&&result.status===201){lease=own(value,'token');need(typeof lease==='string'&&/^[\w-]{43}$/u.test(lease));}
    else if(path==='/contract-drafts/'+versionId+'/workbench'&&result.status===200){const documents=own(value,'documents');need(Array.isArray(documents)&&documents.length<=4);for(const doc of documents)for(const key of ['docxFileId','pdfFileId'])if(id(own(doc,key)))registerFile(own(doc,key),key==='docxFileId'?docxMime:pdfMime);}
