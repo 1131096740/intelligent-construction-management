@@ -488,3 +488,20 @@ test('runtime PK manifest decoder remains closed after a separately rebound file
   }
  }finally{fs.rmSync(temporary,{recursive:true,force:true});}
 });
+
+test('native catalog finite diagnostics reuse the original validator and retain first rejection without row disclosure',()=>{
+ assert.deepEqual(api.describeNativeTask16CatalogFailure(JSON.stringify(observed()),request),{matched:true,family:'MATCHED'});
+ for(const [family,change]of [['GUARDS',r=>{r.guardsVerified=false;}],['ROLE_RUNTIME',r=>{r.roles[2].superuser=true;}],['CAPABILITIES',r=>{r.capabilities.pop();}],['IDENTITY',r=>{r.identity.tls=false;}],['READER_COLUMNS',r=>{r.readerColumns.pop();}],['CORRELATION',r=>{r.nonce='0'.repeat(64);}]]){
+  const row=observed();change(row);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),error=>error.code==='TASK16_CURRENT259_CATALOG');
+  assert.deepEqual(api.describeNativeTask16CatalogFailure(JSON.stringify(row),request),{matched:false,family});
+ }
+ const row=observed();row.guardsVerified=false;row.roles[2].superuser=true;assert.deepEqual(api.describeNativeTask16CatalogFailure(JSON.stringify(row),request),{matched:false,family:'GUARDS'});
+ assert.deepEqual(api.describeNativeTask16CatalogFailure(undefined,request),{matched:false,family:'UNKNOWN'});
+ const {parseNativeTask16CatalogRead}=require('./run-task16-native-direct-once.cjs'),receipt={business:'NOT_ENTERED',cleanup:{status:'UNKNOWN',failures:['SYNTHETIC_CLEANUP']}};
+ let original;try{api.parseCurrent259CatalogRead(JSON.stringify(row),request);}catch(error){original=error.code;}
+ assert.throws(()=>parseNativeTask16CatalogRead(JSON.stringify(row),request,undefined,receipt),error=>error.code===original);
+ assert.deepEqual(receipt,{business:'NOT_ENTERED',cleanup:{status:'UNKNOWN',failures:['SYNTHETIC_CLEANUP']},catalogReadbackFailure:{phase:'before',family:'GUARDS'}});
+ let traps=0;const input={get identity(){traps++;throw Error('private');}};assert.deepEqual(api.describeNativeTask16CatalogFailure(JSON.stringify(row),input),{matched:false,family:'REQUEST'});assert.equal(traps,0);
+ assert.ok(!JSON.stringify(receipt.catalogReadbackFailure).includes('nonce'));
+ assert.throws(()=>parseNativeTask16CatalogRead(JSON.stringify(row),request,undefined,Object.freeze({business:'NOT_ENTERED'})),error=>error.code===original);
+});

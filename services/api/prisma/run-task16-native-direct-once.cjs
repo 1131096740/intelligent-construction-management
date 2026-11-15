@@ -145,7 +145,7 @@ function inspectNativeTask16Interfaces(){
   ['./task16-current259-role-provision.cjs',[['renderNativeTask16RoleRead',2],['renderNativeTask16RoleInstall',3],['parseNativeTask16RoleRead',3]]],
   ['./task16-current259-seven-install.cjs',[['renderNativeTask16Seven',4],['parseNativeTask16Seven',4]]],
   ['./task16-current259-runtime-acl.cjs',[['renderCurrent259RuntimeAcl',3]]],
-  ['./task16-current259-catalog.cjs',[['loadCurrent259CatalogMaterial',2],['renderCurrent259CatalogRead',1],['parseCurrent259CatalogRead',3],['renderCurrent259B7Install',1]]],
+  ['./task16-current259-catalog.cjs',[['loadCurrent259CatalogMaterial',2],['renderCurrent259CatalogRead',1],['parseCurrent259CatalogRead',3],['describeNativeTask16CatalogFailure',3],['renderCurrent259B7Install',1]]],
   ['./task16-current259-session-identity.cjs',[['current259ClientIdentitySql','string']]],
   ['./task16-current261-seed-json.cjs',[['requestCurrent261SeedJson',4]]],
   ['../dist/api-security.js',[['configureApiSecurity',1]]],
@@ -177,6 +177,16 @@ function resolveNativeTask16Interfaces(){
  let output;try{output=execFileSync(process.execPath,['-e',source],{cwd:ROOT,env:{PATH:path.dirname(process.execPath)+':/usr/bin:/bin',LANG:'C',LC_ALL:'C',TZ:'UTC',PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'},encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000,maxBuffer:1048576});}catch{fail('NATIVE_DIRECT_INTERFACE_QUALIFICATION');}
  return JSON.parse(output);
 }
+function parseNativeTask16CatalogRead(stdout,input,prior,receipt){
+ const catalog=require('./task16-current259-catalog.cjs');
+ try{return catalog.parseCurrent259CatalogRead(stdout,input,prior);}
+ catch(error){
+  let family='UNKNOWN';try{const result=catalog.describeNativeTask16CatalogFailure(stdout,input,prior);if(result.matched===false)family=result.family;}catch{}
+  const phase=input&&!types.isProxy(input)?Object.getOwnPropertyDescriptor(input,'phase')?.value:undefined;
+  try{if(receipt&&!types.isProxy(receipt)&&Object.getPrototypeOf(receipt)===Object.prototype)Object.defineProperty(receipt,'catalogReadbackFailure',{value:Object.freeze({phase:['before','staged','committed'].includes(phase)?phase:'UNKNOWN',family}),enumerable:true,configurable:true,writable:true});}catch{}
+  throw error;
+ }
+}
 function renderNativeTask16RuntimeAcl(inputJson,nonce){
  need(typeof inputJson==='string'&&Buffer.byteLength(inputJson)<=512*1024,'NATIVE_DIRECT_ACL_ENDPOINT');const value=JSON.parse(inputJson);
  need(value&&Object.keys(value).sort().join(',')==='provisioned,source','NATIVE_DIRECT_ACL_ENDPOINT');const {source,provisioned}=value,id=provisioned?.databaseIdentity;
@@ -187,7 +197,7 @@ function renderNativeTask16RuntimeAcl(inputJson,nonce){
  need(parts.length===2&&(rendered.sql.match(/inet_server_port\(\)/gu)||[]).length===1&&['readbackSql','witnessSql'].every(field=>typeof rendered[field]==='string'&&!rendered[field].includes('inet_server_port(')),'NATIVE_DIRECT_ACL_ENDPOINT_RENDER');
  return Object.freeze({...rendered,sql:parts.join(original.replace('5432',String(id.serverPort)))});
 }
-module.exports=Object.freeze({renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -269,13 +279,15 @@ async function executeNativeTask16Once(plan,planSha256){
   const sevenRaw=[],sevenRows=[];for(let phase=0;phase<3;phase++){const out=(await sql(seven.renderNativeTask16Seven(sevenInput,phase,nonce,phase===0?null:sevenRaw[phase-1]))).stdout;sevenRaw.push(out);sevenRows.push(seven.parseNativeTask16Seven(sevenInput,phase,nonce,out));}
   need(sevenRows[1].installXid!==provisioned.commitXid&&sevenRows[1].catalogSha256!==sevenRows[0].catalogSha256&&sevenRows[2].installXid===sevenRows[1].installXid&&sevenRows[2].catalogSha256===sevenRows[1].catalogSha256&&new Set(sevenRows.map(row=>row.backendPid)).size===3&&new Set(sevenRows.map(row=>row.backendStart)).size===3,'NATIVE_DIRECT_SEVEN_COMMIT');
   enter('ACL_AND_B7');const acl=renderNativeTask16RuntimeAcl(JSON.stringify({source:plan.source.witness,provisioned}),nonce);
-  await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+acl.sql+'\nCOMMIT;');await sql(acl.readbackSql);
+  enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+acl.sql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
   const catalog=require('./task16-current259-catalog.cjs'),source=plan.source.code;
   const identity={runId,database:db,databaseOid:roleIdentity.databaseOid,namespaceOid:roleIdentity.namespaceOid,ownerOid:'10',systemIdentifier:roleIdentity.systemIdentifier,runtimeOid:provisioned.roles.find(r=>r.name==='jg_task01_runtime').oid,observerOid:provisioned.roles.find(r=>r.name==='jg_task01_observer').oid,paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'};
-  const request={source,identity,nonce,phase:'before'},beforeCatalog=catalog.parseCurrent259CatalogRead((await sql(catalog.renderCurrent259CatalogRead(request))).stdout,request);
-  const b7Sql=catalog.renderCurrent259B7Install({source,identity,nonce,before:beforeCatalog});
-  const stagedCatalog=catalog.parseCurrent259CatalogRead((await sql(b7Sql)).stdout,{...request,phase:'staged'},beforeCatalog);
-  const finalRequest={...request,phase:'committed',installXid:stagedCatalog.raw.writeXid};const finalCatalog=catalog.parseCurrent259CatalogRead((await sql(catalog.renderCurrent259CatalogRead(finalRequest))).stdout,finalRequest,stagedCatalog);
+  const request={source,identity,nonce,phase:'before'};enter('B7_BEFORE_RENDER');const beforeSql=catalog.renderCurrent259CatalogRead(request);
+  enter('B7_BEFORE_QUERY');const beforeRaw=(await sql(beforeSql)).stdout;enter('B7_BEFORE_VALIDATE');const beforeCatalog=parseNativeTask16CatalogRead(beforeRaw,request,undefined,receipt);
+  enter('B7_INSTALL_RENDER');const b7Sql=catalog.renderCurrent259B7Install({source,identity,nonce,before:beforeCatalog});
+  enter('B7_INSTALL_QUERY');const stagedRaw=(await sql(b7Sql)).stdout;enter('B7_STAGED_VALIDATE');const stagedCatalog=parseNativeTask16CatalogRead(stagedRaw,{...request,phase:'staged'},beforeCatalog,receipt);
+  const finalRequest={...request,phase:'committed',installXid:stagedCatalog.raw.writeXid};enter('B7_COMMITTED_RENDER');const finalSql=catalog.renderCurrent259CatalogRead(finalRequest);
+  enter('B7_COMMITTED_QUERY');const finalRaw=(await sql(finalSql)).stdout;enter('B7_COMMITTED_VALIDATE');const finalCatalog=parseNativeTask16CatalogRead(finalRaw,finalRequest,stagedCatalog,receipt);
   receipt.installation={migrations:261,roles:9,sevenCommitXid:sevenRows[2].installXid,b7CommitXid:stagedCatalog.raw.writeXid,catalogSha256:hash(Buffer.from(JSON.stringify(finalCatalog.raw)))};
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');
   receipt.directoryBytesBeforeBusiness=nativeDirectoryBytes(root);
