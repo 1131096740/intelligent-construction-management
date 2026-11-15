@@ -304,3 +304,31 @@ test('native pure role protocol renders the original verified write without issu
  let reads=0;assert.throws(()=>api.renderNativeTask16RoleInstall(scope,before,{get runtime(){reads++;return 'a'.repeat(96);},observer:'b'.repeat(96)}));assert.equal(reads,0);
  assert.throws(()=>api.claimCurrent259ProvisionedRoles({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'},{}));
 });
+
+
+test('native competition role protocol is fixed to two runtime connections and preserves normal rejection',()=>{
+ const api=require('./task16-current259-role-provision.cjs');
+ const scope=JSON.stringify({identity:databaseIdentity,app:application,ledger,competition:true});
+ const before=JSON.stringify(modelRow(0)),credentials={runtime:'a'.repeat(96),observer:'b'.repeat(96)};
+ const sql=api.renderNativeTask16CompetitionRoleInstall(scope,before,credentials);
+ assert.match(sql,/CREATE ROLE jg_task01_runtime LOGIN[^;]+CONNECTION LIMIT 2/u);
+ assert.match(sql,/CREATE ROLE jg_task01_observer LOGIN[^;]+CONNECTION LIMIT 1/u);
+ assert.equal(api.renderNativeTask16CompetitionRoleRead('100',null),api.renderNativeTask16RoleRead('100',null));
+ assert.deepEqual(api.parseNativeTask16CompetitionRoleRead(scope,before,'before'),modelRow(0));
+ assert.throws(()=>api.renderNativeTask16RoleInstall(scope,before,credentials));
+ assert.throws(()=>api.renderNativeTask16CompetitionRoleInstall(JSON.stringify({...JSON.parse(scope),competition:false}),before,credentials));
+ let reads=0;assert.throws(()=>api.renderNativeTask16CompetitionRoleInstall(scope,before,{get runtime(){reads++;return 'a'.repeat(96);},observer:'b'.repeat(96)}));assert.equal(reads,0);
+ assert.throws(()=>api.claimCurrent259ProvisionedRoles(JSON.parse(scope),{}));
+});
+
+
+test('native competition role protocol validates all original commit phases with the fixed runtime limit',()=>{
+ const api=require('./task16-current259-role-provision.cjs'),scope=JSON.stringify({identity:databaseIdentity,app:application,ledger,competition:true});
+ const rows=[0,1,2].map(index=>{const row=structuredClone(modelRow(index));for(const role of row.state.roles)if(role.name==='jg_task01_runtime')role.limit=2;return row;});
+ const raw=rows.map(row=>JSON.stringify(row));
+ assert.deepEqual(api.parseNativeTask16CompetitionRoleRead(scope,raw[1],'install',raw[0]),rows[1]);
+ assert.deepEqual(api.parseNativeTask16CompetitionRoleRead(scope,raw[2],'committed',raw[0],raw[1]),rows[2]);
+ const wrong=structuredClone(rows[2]);wrong.state.roles.find(row=>row.name==='jg_task01_runtime').limit=1;
+ assert.throws(()=>api.parseNativeTask16CompetitionRoleRead(scope,JSON.stringify(wrong),'committed',raw[0],raw[1]));
+ assert.throws(()=>api.parseNativeTask16RoleRead(scope,raw[2],'committed',raw[0],raw[1]));
+});
