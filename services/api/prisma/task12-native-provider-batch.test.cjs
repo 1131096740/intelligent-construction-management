@@ -128,3 +128,10 @@ test('actual override binder accepts only its own consumed native issuer and cle
  for(const row of [{used:false,loader:result,loaded:lifeDocument.exports},{used:true,loader:{},loaded:lifeDocument.exports},{used:true,loader:result,loaded:{}}]){registry.set(client,row);assert.equal(invoke(client),undefined);}
  registry.set(client,{used:true,loader:result,loaded:lifeDocument.exports});assert.equal(invoke(client),client);assert.equal(invoke({},client),undefined);assert.equal(invoke(client,undefined,{}),undefined);assert.equal(traps,0);
 });
+test('already acquired original get never invokes a replaced includes callback on the new warm path',()=>{
+ const f=model();const text=source(),start=text.indexOf('method(key){\n      if(!APP_METHODS'),end=text.indexOf('\n     }};',start),originalMethods=new Map([['get',f.target.get]]);let warmCalls=0;
+ const method=new Function('APP_METHODS','methods','originalMethods','closed','close','check','verifyTarget','guardedOperation','collect','types','target','record','nativeRows','nativeTokens','return ({'+text.slice(start,end)+'}}).method;')(['get'],new Map(),originalMethods,false,()=>{},()=>{},key=>originalMethods.get(key),action=>action(),()=>{},types,f.target,{view:f.target},{warm(){warmCalls++;}},f.tokens);
+ const read=method('get'),d=Object.getOwnPropertyDescriptor(Array.prototype,'includes');let callbacks=0,value,error;
+ try{Object.defineProperty(Array.prototype,'includes',{...d,value(...args){callbacks++;return Reflect.apply(d.value,this,args);}});try{value=read(f.tokens[0]);}catch(cause){error=cause;}}finally{Object.defineProperty(Array.prototype,'includes',d);}
+ assert.equal(error,undefined);assert.equal(value,f.providers[0]);assert.equal(warmCalls,1);assert.equal(callbacks,0);
+});

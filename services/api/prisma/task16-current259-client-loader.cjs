@@ -762,7 +762,9 @@ function loadCurrent259Client(handle){
        check();verifyTarget(key);
        const result=guardedOperation(()=>fn.apply(target,args));
        if(types.isPromise(result))return result.then(value=>{collect();return value===target?record.view:value;});collect();
-       if(nativeRows&&key==='get'&&args.length===1&&nativeTokens.includes(args[0]))nativeRows.warm(args[0],result);
+       if(nativeRows&&key==='get'&&args.length===1){
+        for(let i=0;i<nativeTokens.length;i++)if(nativeTokens[i]===args[0]){nativeRows.warm(args[0],result);break;}
+       }
        return result===target?record.view:result;
       };
       methods.set(key,wrapped);return wrapped;
