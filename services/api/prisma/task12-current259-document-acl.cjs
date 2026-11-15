@@ -46,7 +46,7 @@ function profile(source,migration=false){
     const insert=data.roles[role][table]?.insert;need(insert?.length&&columns.every(column=>!insert.includes(column)),'SOURCE');
     data.roles[role][table].insert=[...insert,...columns].sort();
    }
-   const retentionReads=role==='jg_c259_doc_worker'?[['ContractArchiveEvidenceFile','archiveFileId'],['ContractArchiveEvidenceFile','contractVersionId'],['ContractArchiveFile','id'],['ContractArchiveFile','archiveProtocolVersion'],['ContractArchiveFile','archiveSource']]:[];
+   const retentionReads=role==='jg_c259_doc_worker'?[['ContractArchiveEvidenceFile','archiveFileId'],['ContractArchiveEvidenceFile','contractVersionId'],['ContractArchiveFile','id'],['ContractArchiveFile','archiveProtocolVersion'],['ContractArchiveFile','archiveSource'],['ContractEconomicReviewFileReference','objectKey'],['ContractEconomicReviewFileReference','fileId']]:[];
    for(const [table,column]of retentionReads){
     const ops=data.roles[role][table]??={};const columns=ops.select??=[];
     if(!columns.includes(column))columns.push(column);columns.sort();
