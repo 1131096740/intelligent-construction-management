@@ -154,3 +154,19 @@ test('cash query diagnostic is bounded and refuses unsupported shapes, accessors
  for(let i=0;i<14;i++)record({query:prefix});assert.equal(receipt.cashPartyQueries.events.length,12);assert.equal(receipt.cashPartyQueries.overflow,true);
  for(const purpose of ['TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1','TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1','TASK16_NATIVE_COMPETITION_VOUCHER_V1'])assert.equal(api.nativeTask16CashPartyQueryLogOptions(purpose,'runtime_a'),undefined);
 });
+test('cash close diagnostic captures only whitelisted token shapes with no values',()=>{
+ const api=require('./task16-native-voucher-roster-query.cjs'),stage='CASH_SEED_AND_SETTLEMENT_REPLAY';let traps=0;
+ const query='INSERT INTO "public"."ProjectCloseAggregate" ("projectId","revision","createdAt","updatedAt") VALUES ($1,$2,$3,$4) ON CONFLICT ("projectId") DO UPDATE SET "updatedAt" = $5 WHERE "public"."ProjectCloseAggregate"."projectId" = $6 RETURNING "public"."ProjectCloseAggregate"."projectId"';
+ const event={query,get params(){traps++;throw Error('PRIVATE');}},result=api.projectNativeTask16CashCloseQuery(event,'runtime_a',stage);
+ assert.equal(result.unknownShape,false);assert.equal(result.operation,'INSERT');assert.ok(result.tokens.includes('projectId'));assert.ok(result.tokens.includes('PARAM'));assert.doesNotMatch(JSON.stringify(result),/PRIVATE|\$1|params/u);assert.equal(traps,0);
+ assert.equal(api.projectNativeTask16CashCloseQuery(event,'runtime_b',stage),null);
+ for(const input of [query+' -- PRIVATE',query.replace('$1',"'PRIVATE'"),query.replace('"revision"','"private_unknown"')]){
+  const out=api.projectNativeTask16CashCloseQuery({query:input},'runtime_a',stage);assert.equal(out.unknownShape,true);assert.deepEqual(out.tokens,[]);assert.doesNotMatch(JSON.stringify(out),/PRIVATE|private_unknown/u);
+ }
+});
+test('cash close recorder remains stage-limited, lane-limited and bounded',()=>{
+ const api=require('./task16-native-voucher-roster-query.cjs'),stage='CASH_SEED_AND_SETTLEMENT_REPLAY';let now=stage,receipt={};
+ const record=api.createNativeTask16CashPartyDiagnostic(receipt,()=>now),event={query:'SELECT 1 FROM "ProjectCloseAggregate" WHERE "projectId" = $1 FOR UPDATE'};
+ assert.equal(api.projectNativeTask16CashCloseQuery(event,'runtime_b',stage),null);now='CASH_PAYMENT_AND_OBSERVER';record(event);assert.equal(receipt.cashCloseQueries,undefined);
+ now=stage;for(let i=0;i<14;i++)record(event);assert.equal(receipt.cashCloseQueries.events.length,12);assert.equal(receipt.cashCloseQueries.overflow,true);
+});
