@@ -30,3 +30,10 @@ test('cash close impact lookup reads only the five observed columns',()=>{
  assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
  assert.equal(result.observer.tables.some(value=>value.table==='ProjectCloseImpact'),false);
 });
+
+test('cash close stage runtime reads only narrowed query and predicate columns',()=>{
+ const result=cash.cashAccessPlan(plan),row=result.runtime.tables.find(value=>value.table==='ProjectCloseStageVersion');
+ assert.ok(row);assert.deepEqual(row.select,['amountSnapshot','id','projectId','projectionCutoffAt','projectionFingerprint','projectionReadAt','revision','stageKey','stateSnapshot','status']);
+ assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
+ assert.equal(result.observer.tables.some(value=>value.table==='ProjectCloseStageVersion'),false);
+});
