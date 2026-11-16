@@ -31,6 +31,7 @@ import {
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
   fetchContractDraftWorkbench,
+  fetchContractDraftBody,
   fetchContractWorkbench,
   heartbeatContractDraftEditLease,
   setContractAuthorization,
@@ -277,6 +278,11 @@ function contractBillRemainderInput(
 }
 
 describe("contract workbench API client", () => {
+  it("preserves the actionable warning for a billing-area layout mapping", async () => {
+    const warning="正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。";
+    mockApiFetch.mockReturnValue(makeOkJson({warnings:[warning]}));
+    expect((await fetchContractDraftBody("version-1")).warnings).toEqual([warning]);
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();

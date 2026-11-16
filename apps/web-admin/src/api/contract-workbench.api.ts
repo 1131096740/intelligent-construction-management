@@ -553,7 +553,7 @@ export interface ContractDraftBodyReadModel {
   savePoints: Array<{ id: string; createdAt: string; documentContentRevision: number; layoutTemplateVersionId: string; documentBody: ContractBodyEditPlan | null }>;
 }
 
-const approvedBodyWarnings = new Set(["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。", "正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"]);
+const approvedBodyWarnings = new Set(["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。", "正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。", "正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"]);
 const incompleteBodyWarning = "正文提示暂无法完整读取，请核对当前填写资料后重新读取正文。";
 function normalizeBodyWarnings(value: unknown): string[] {
   if (value === undefined) return [];

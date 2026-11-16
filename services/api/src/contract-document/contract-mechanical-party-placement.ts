@@ -1,10 +1,30 @@
 import { createHash } from "node:crypto";
 import { DOMParser, XMLSerializer, type Element } from "@xmldom/xmldom";
 import PizZip from "pizzip";
-import { builtInPartyPlacementKind } from "./contract-body-document";
+import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, prepareBuiltInRoleParagraph } from "./contract-body-document";
+
+/** Prepare only the two source-qualified body role lines before legacy rendering. */
+export function prepareLegacyPartyRoleBindings(source:Buffer,mapped:Buffer):Buffer {
+  const fail=()=>{throw new Error("合同主体信息位置无法核对，请联系管理员处理");};
+  const kind=builtInPartyPlacementKind(createHash("sha256").update(source).digest("hex"));
+  if(!kind) return fail();
+  assertBuiltInPartyPlacementPlan(source,mapped,"",undefined);
+  const zip=new PizZip(mapped),part=zip.file("word/document.xml");
+  const originalPart=new PizZip(source).file("word/document.xml");
+  if(!part||!originalPart) return fail();
+  const doc=new DOMParser({onError:fail}).parseFromString(part.asText(),"application/xml");
+  const paragraphs=Array.from(doc.getElementsByTagName("w:p"));
+  const original=new DOMParser({onError:fail}).parseFromString(originalPart.asText(),"application/xml");
+  const originals=Array.from(original.getElementsByTagName("w:p"));
+  if(paragraphs.length!==originals.length||![28,29].every((index)=>paragraphs[index]&&originals[index])) return fail();
+  prepareBuiltInRoleParagraph(paragraphs[28],kind==="mechanical"?"甲方":"买方");
+  prepareBuiltInRoleParagraph(paragraphs[29],kind==="mechanical"?"乙方":"卖方");
+  zip.file("word/document.xml",new XMLSerializer().serializeToString(doc));
+  return zip.generate({type:"nodebuffer"});
+}
 
 /** Only the reviewed built-in source may use these fixed mechanical coordinates. */
-export function removeMechanicalPartyDetailsFromLegacyDocx(source:Buffer,bytes:Buffer):Buffer {
+export function removeMechanicalPartyDetailsFromLegacyDocx(source:Buffer,bytes:Buffer,options:{rolesPrepared?:boolean}={}):Buffer {
   const fail=()=>{throw new Error("合同主体信息位置无法核对，请联系管理员处理");};
   const kind=builtInPartyPlacementKind(createHash("sha256").update(source).digest("hex"));
   if(!kind) return fail();
@@ -19,7 +39,7 @@ export function removeMechanicalPartyDetailsFromLegacyDocx(source:Buffer,bytes:B
     if(matches.length!==1||!matches[0].parentNode) return fail();
     matches[0].parentNode.removeChild(matches[0]);
   }
-  for(const role of kind==="mechanical"?["甲方（承租方）","乙方（出租方）"]:["买方：","卖方："]){
+  for(const role of options.rolesPrepared?[]:kind==="mechanical"?["甲方（承租方）","乙方（出租方）"]:["买方：","卖方："]){
     const matches=paragraphs.filter(p=>text(p).includes(role));
     if(matches.length!==1) return fail();
     const nodes=Array.from(matches[0].getElementsByTagName("w:t"));

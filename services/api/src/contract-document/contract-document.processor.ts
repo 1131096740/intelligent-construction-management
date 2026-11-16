@@ -18,7 +18,7 @@ import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { compareContractDocumentSnapshots } from "./contract-document-comparison";
 import { renderContractDocx } from "./contract-docx-renderer";
-import { removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
+import { prepareLegacyPartyRoleBindings, removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
 import { BUILT_IN_PARTY_PLACEMENT_VERSION, builtInPartyPlacementKind, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, finalizeContractBodyLineBoxScope, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, reviewedTypographySourceSha256, isReviewedTypographyVersion, REVIEWED_LABOR_SOURCE_SHA256, REVIEWED_LABOR_TAX_BINDING_VERSION, REVIEWED_LABOR_TYPOGRAPHY_VERSION, isContractBodyTableLayoutVersion, prepareContractBodyTableMargins, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, renderContractBody } from "./contract-body-document";
 import { assertContractBodyPdfRuntimeLock, convertContractBodyDocxToPdf } from "./contract-body-pdf-converter";
 import { createHash } from "node:crypto";
@@ -602,8 +602,9 @@ export class ContractDocumentProcessor
             ...(Object.hasOwn(snapshot.bodyDocument, "pageNumberVersion") ? { pageNumberVersion: snapshot.bodyDocument.pageNumberVersion } : {}),
             ...(snapshot.bodyDocument.partyDetailsVersion ? { partyDetailsVersion: snapshot.bodyDocument.partyDetailsVersion } : {}) })
         : undefined;
-      const legacyDocx = renderedBody ? undefined : renderContractDocx(source, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
-      const docx = renderedBody ? renderedBody.docx : snapshot.partyDetailsVersion ? removeMechanicalPartyDetailsFromLegacyDocx(template.buffer,legacyDocx!) : legacyDocx!;
+      const legacySource = !renderedBody && snapshot.partyDetailsVersion ? prepareLegacyPartyRoleBindings(template.buffer, source) : source;
+      const legacyDocx = renderedBody ? undefined : renderContractDocx(legacySource, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
+      const docx = renderedBody ? renderedBody.docx : snapshot.partyDetailsVersion ? removeMechanicalPartyDetailsFromLegacyDocx(template.buffer,legacyDocx!,{rolesPrepared:true}) : legacyDocx!;
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
         const source = await this.files.getFileBuffer(attachment.id);
