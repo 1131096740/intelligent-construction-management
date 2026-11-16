@@ -822,7 +822,17 @@ export function upgradeReviewedLaborTaxPlan(value: unknown, source: Buffer, mapp
 /** Temporary OOXML controls identify source paragraphs across rendered bill loops.
  * They never become user text or exported metadata; original formatting stays in place.
  */
-export function renderContractBody(source: Buffer, mapped: Buffer, input: ContractDocumentRenderInput, requiredKeys: readonly string[], layoutTemplateVersionId: string, rawPlan?: unknown, options: { allowBlankWatermark?: boolean; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION } = {}) {
+export const BUILT_IN_PARTY_PLACEMENT_VERSION = "built-in-party-placement-v1";
+export function assertMechanicalPartyPlacementPlan(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
+  if(rawPlan===undefined) return;
+  const model=sourceParagraphs(source,mapped);
+  if(model.sourceSha256!==REVIEWED_MECHANICAL_SOURCE_SHA256) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  const plan=normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
+  const roleIds=new Set([model.paragraphs[28].id,model.paragraphs[29].id]);
+  const protectedIds=new Set([...roleIds,...model.paragraphs.slice(93,109).map(item=>item.id)]);
+  if(plan.edits.some(edit=>protectedIds.has(edit.positionId))||plan.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan.deletedPositionIds?.some(id=>roleIds.has(id))) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
+}
+export function renderContractBody(source: Buffer, mapped: Buffer, input: ContractDocumentRenderInput, requiredKeys: readonly string[], layoutTemplateVersionId: string, rawPlan?: unknown, options: { allowBlankWatermark?: boolean; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION; partyDetailsConflictPreview?: boolean } = {}) {
   const values = { ...input.values };
   const hasReviewedTaxVersion = Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion");
   const reviewedLaborTaxBindingVersion = hasReviewedTaxVersion ? values["contract.reviewedLaborTaxBindingVersion"] : undefined;
@@ -860,6 +870,10 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   }
   if (hasPageValue) assertReviewedOriginalMechanicalPageSource(source);
   const model = sourceParagraphs(source, mapped, binding);
+  const placement=options.partyDetailsVersion;
+  if(placement!==undefined&&(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION||model.sourceSha256!==REVIEWED_MECHANICAL_SOURCE_SHA256)) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  const roleIds=new Set(placement?[model.paragraphs[28].id,model.paragraphs[29].id]:[]);
+  const removedPartyIds=new Set(placement?model.paragraphs.slice(93,109).map(item=>item.id):[]);
   if (hasPageValue) prepareReviewedOriginalMechanicalPage(model.zip);
   if (hasDateValue) {
     // Only the two source-qualified, truly empty party-cell paragraphs. Insert
@@ -878,6 +892,18 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     }
   }
   const plan = rawPlan === undefined ? undefined : normalizeContractBodyPlan(rawPlan, source, mapped, layoutTemplateVersionId, binding);
+  let partyDetailsConflict=false;
+  let partyDetailsRecovery: {roleIds:string[];groups:string[][]}|undefined;
+  if(placement){
+    const protectedIds=new Set([...roleIds,...removedPartyIds]);
+    partyDetailsConflict=Boolean(plan?.edits.some(edit=>protectedIds.has(edit.positionId))||plan?.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan?.deletedPositionIds?.some(id=>roleIds.has(id)));
+    if(partyDetailsConflict&&!options.partyDetailsConflictPreview) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
+    if(partyDetailsConflict){
+      const recoveryIds=[...roleIds].filter(id=>plan?.edits.some(edit=>edit.positionId===id)||plan?.deletedPositionIds?.includes(id));
+      if(recoveryIds.length)partyDetailsRecovery={roleIds:recoveryIds,groups:ordinaryParagraphGroups(model).map(group=>group.map(item=>item.id))};
+      roleIds.clear();removedPartyIds.clear();
+    }
+  }
   const groups = ordinaryParagraphGroups(model);
   let orderOffset = 0;
   const paragraphGroups = groups.map(group => {
@@ -981,6 +1007,8 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     const paragraph = control.getElementsByTagNameNS(W, "p").item(0);
     if (!item || !paragraph) throw new BadRequestException("合同正文位置已变化，请重新核对模板");
     if (plan?.deletedPositionIds?.includes(id)) { control.parentNode!.removeChild(control); return []; }
+    if (removedPartyIds.has(id)) { control.parentNode!.removeChild(control); return []; }
+    if (roleIds.has(id)) replaceParagraphText(paragraph,item.sourceText.replace(/\{(?:甲方名称|乙方名称)\}/gu,""),document);
     const edit = plan?.edits.find(edit => edit.positionId === id);
     if (edit) replaceParagraphText(paragraph, edit.text, document);
     const occurrence = occurrences.get(id) ?? 0;
@@ -1052,7 +1080,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   zip.file("word/document.xml", new XMLSerializer().serializeToString(document));
   const renderedDocx = zip.generate({ type: "nodebuffer" });
   const docx = options.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION || options.typographyVersion === REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION ? completeContractPageNumberFields(renderedDocx) : renderedDocx;
-  return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups, ...(lineBoxScope ? { lineBoxScope } : {}) };
+  return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups:paragraphGroups.map(group=>group.filter(id=>!removedPartyIds.has(id))).filter(group=>group.length>0), ...(lineBoxScope ? { lineBoxScope } : {}), ...(partyDetailsConflict?{partyDetailsConflict:true}:{}), ...(partyDetailsRecovery?{partyDetailsRecovery}:{}) };
 }
 
 /** New v2 final Word only: retain logical margins and add equivalent aliases.
