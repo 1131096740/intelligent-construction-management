@@ -135,7 +135,7 @@ const consumeCodes=Object.freeze({
  TEMPLATE_CONSUMER:Object.freeze(['INPUT','UPLOAD','CREATE','POSITIONS','MAPPING','INSPECTION','TIME','QUEUE','PREVIEW','CONFIRM','SUBMIT','PUBLISH'].map(stage=>'TASK12_GENERATED_MATERIAL_TEMPLATE_'+stage)),
  OFFICIAL_DEADLINE:Object.freeze(['TASK12_OFFICIAL_DOCUMENT_DEADLINE']),
  NATIVE_DEADLINE:Object.freeze(['NATIVE_DIRECT_DEADLINE','TASK12_LOCAL_LIFECYCLE_CASE_ABORTED']),
- INTEGRITY:Object.freeze(['CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','NATIVE_DIRECT_SOURCE_CHANGED','NATIVE_DIRECT_OFFICIAL_RUNTIME','NATIVE_DIRECT_HBA_CHANGED','NATIVE_DIRECT_CERT_CONTEXT'])
+ INTEGRITY:Object.freeze(['CURRENT261_NATIVE_PROVIDER_LOOKUP','CURRENT261_LOCAL_LIFECYCLE_HTTP','CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','NATIVE_DIRECT_SOURCE_CHANGED','NATIVE_DIRECT_OFFICIAL_RUNTIME','NATIVE_DIRECT_HBA_CHANGED','NATIVE_DIRECT_CERT_CONTEXT'])
 });
 function consumeFirstCause(cause){
  if(cause&&typeof cause==='object'&&!types.isProxy(cause)&&types.isNativeError(cause)){
@@ -309,6 +309,8 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  catch(cause){
   if(lastObservation&&!parallelObserved&&!describeCurrent261LocalLifecycleHttpFailure(cause)){
    const detail={...lastObservation,firstCause:consumeFirstCause(cause),timingAtConsumeFailure:snapshotTiming()};try{continuity();}catch(later){secondary(detail,later);}detail.timingAfterSecondary=snapshotTiming();remember(cause,detail);
+  }else if(!describeCurrent261LocalLifecycleHttpFailure(cause)){
+   remember(cause,{method:'UNKNOWN',routeTemplate:'UNKNOWN',phase:'CONSUME',observationContext:lastObservation&&parallelObserved?'PARALLEL_RESPONSE_CONTEXT':'NO_HTTP_OBSERVATION',httpStatus:null,businessOutcome:'UNKNOWN',firstCause:consumeFirstCause(cause),timingAtConsumeFailure:snapshotTiming()});
   }
   throw cause;
  }

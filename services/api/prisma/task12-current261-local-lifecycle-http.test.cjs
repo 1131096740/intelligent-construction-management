@@ -106,7 +106,7 @@ test('diagnostics redact dynamic route coordinates and do not borrow a prior res
   await b.send(0,{method:'POST',path:'/auth/login',json:{phone:g.config.fixture.approval.users[0].phone,password:g.config.passwords[id(1)]}});
   g.close();try{await b.send(0,{method:'POST',path:'/contracts',json:{}});}catch(cause){current=cause;throw cause;}
  }));
- assert.equal(g.api.describeCurrent261LocalLifecycleHttpFailure(current),undefined);
+ const missing=g.api.describeCurrent261LocalLifecycleHttpFailure(current);assert.equal(missing.observationContext,'NO_HTTP_OBSERVATION');assert.equal(missing.httpStatus,null);assert.equal(missing.routeTemplate,'UNKNOWN');
 });
 
 test('finite AUTH cause is taken before a failed AFTER_CHECK and cannot change500 or UNKNOWN',async()=>{
@@ -443,4 +443,49 @@ test('document summaries reject unsafe states, arrays and accessors without read
  const row={};Object.defineProperty(row,'status',{get(){traps++;throw Error('PRIVATE');}});assert.deepEqual(project({documents:[row]}),{status:'UNKNOWN'});
  const array=[];Object.defineProperty(array,0,{get(){traps++;throw Error('PRIVATE');},enumerable:true});assert.deepEqual(project({documents:array}),{status:'UNKNOWN'});
  assert.equal(traps,0);assert.deepEqual(project({documents:[]}),{status:'OBSERVED',documentCount:0,states:{queued:0,processing:0,success:0,failed:0,stale:0,cancelled:0}});
+});
+
+
+test('pre-wire guard failure keeps finite cause without borrowing an earlier response or rechecking',async()=>{
+ const first=Object.assign(Error('PRIVATE_GUARD_MESSAGE'),{code:'CURRENT261_NATIVE_PROVIDER_LOOKUP'}),f=model(undefined,first);let checks;
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
+  f.close();checks=f.checks.length;
+  await b.send(0,{method:'POST',path:'/contracts',json:{}});
+ }),cause=>cause===first);
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure({cause:first});assert.ok(detail);
+ assert.equal(detail.phase,'CONSUME');assert.equal(detail.observationContext,'NO_HTTP_OBSERVATION');
+ assert.equal(detail.method,'UNKNOWN');assert.equal(detail.routeTemplate,'UNKNOWN');assert.equal(detail.httpStatus,null);assert.equal(detail.businessOutcome,'UNKNOWN');
+ assert.deepEqual(detail.firstCause,{family:'INTEGRITY',code:'CURRENT261_NATIVE_PROVIDER_LOOKUP'});
+ assert.equal(detail.timingAtConsumeFailure.guardCalls,checks+1);assert.equal(f.checks.length,checks+1);assert.equal(f.calls.length,1);
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|phone|password|stack/u);
+});
+
+
+test('parallel approval consumer failure keeps ambiguous context without attributing a returned route',async()=>{
+ const f=model(),first=Object.assign(Error('PRIVATE_CONSUMER'),{code:'TASK12_GENERATED_DOCUMENT_DOCUMENT'});let checks;
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  for(let actor=0;actor<=5;actor++){const user=f.config.fixture.approval.users[actor];await b.send(actor,{method:'POST',path:'/auth/login',json:{phone:user.phone,password:f.config.passwords[user.id]}});}
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase',amountLimitType:'capped'}});
+  await Promise.all([1,2,3,4,5].map(actor=>b.send(actor,{method:'POST',path:'/contracts/'+id(22)+'/approval',json:{decision:'approve'}})));
+  checks=f.checks.length;throw first;
+ }),cause=>cause===first);
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);assert.ok(detail);
+ assert.equal(detail.observationContext,'PARALLEL_RESPONSE_CONTEXT');assert.equal(detail.method,'UNKNOWN');assert.equal(detail.routeTemplate,'UNKNOWN');assert.equal(detail.httpStatus,null);assert.equal(detail.businessOutcome,'UNKNOWN');
+ assert.deepEqual(detail.firstCause,{family:'GENERATED_DOCUMENT_CONSUMER',code:'TASK12_GENERATED_DOCUMENT_DOCUMENT'});
+ assert.equal(detail.timingAtConsumeFailure.exchangeCalls,12);assert.equal(f.checks.length,checks);assert.equal(detail.timingAtConsumeFailure.guardCalls,checks);assert.equal(f.calls.length,12);
+ const native=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8'),statement=native.match(/const http=require\('\.\/task12-current261-local-lifecycle-http.cjs'\)\.describeCurrent261LocalLifecycleHttpFailure\(error\);if\(http\)receipt.httpFailure=http;/u);assert.ok(statement);
+ const receipt={};new Function('require','error','receipt',statement[0])(()=>f.api,{cause:first},receipt);assert.equal(receipt.httpFailure,detail);assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE|phone|password|stack/u);
+});
+
+
+test('missing observation diagnostic projects only exact guard codes and never executes an error accessor',async()=>{
+ let getters=0;
+ const accessor=Error('PRIVATE_ACCESSOR');Object.defineProperty(accessor,'code',{get(){getters++;throw Error('PRIVATE_GETTER');}});
+ for(const [first,expected]of [[Object.assign(Error('PRIVATE'),{code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}),{family:'INTEGRITY',code:'CURRENT261_LOCAL_LIFECYCLE_HTTP'}],[Object.assign(Error('PRIVATE'),{code:'CURRENT261_NATIVE_PROVIDER_LOOKUP_PRIVATE'}),{family:'UNKNOWN',code:'UNKNOWN'}],[accessor,{family:'UNKNOWN',code:'UNKNOWN'}]]){
+  const f=model();let checks;
+  await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async()=>{checks=f.checks.length;throw first;}),cause=>cause===first);
+  const detail=f.api.describeCurrent261LocalLifecycleHttpFailure({cause:first});assert.deepEqual(detail.firstCause,expected);assert.equal(detail.observationContext,'NO_HTTP_OBSERVATION');assert.equal(detail.httpStatus,null);assert.equal(detail.businessOutcome,'UNKNOWN');assert.equal(f.checks.length,checks);assert.equal(f.calls.length,0);assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|stack/u);
+ }
+ assert.equal(getters,0);
 });
