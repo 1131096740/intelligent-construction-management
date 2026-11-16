@@ -292,7 +292,10 @@ async function openVoucher(item: RecordedPaymentItem) {
   voucherPermissionOwner.value = owner; voucherPermissionRoute.value = routeOwner;
   voucherPermission.value = permission;
   if (permission.canSupplementVoucher !== true) voucherError.value = "原实付暂不能补充凭证，请先核对原记录；当前文件已保留。";
- } catch (failure) { voucherPermission.value = null; voucherError.value = formatUnknownApiError(failure,"后补凭证许可读取失败，当前文件已保留"); }
+ } catch (failure) {
+  if (readSequence !== voucherReadSequence || owner !== auth.user?.id || routeOwner !== route.fullPath || voucher.value?.executionId !== item.executionId) return;
+  voucherPermission.value = null; voucherError.value = formatUnknownApiError(failure,"后补凭证许可读取失败，当前文件已保留");
+ }
 }
 function voucherFileChanged() {
  if (voucherBusy.value) return;
