@@ -309,6 +309,7 @@ test('cash grants and physical readback are bound to its own source and profile'
  assert.match(acl.sql,/appendOperatingFactThroughService.*OperatingLedgerFactWritePayload"/u);
  assert.match(acl.sql,/appendOperatingImpactThroughService.*OperatingLedgerImpactWritePayload"/u);
  assert.match(acl.readbackSql,/TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1/u);
+ assert.match(acl.sql,/GRANT SELECT \("createdAt", "projectId", "revision", "updatedAt"\) ON TABLE public\."ProjectCloseAggregate" TO "jg_task01_runtime";/u);
  assert.match(acl.sql,/GRANT INSERT \("createdAt", "projectId", "revision", "updatedAt"\) ON TABLE public\."ProjectCloseAggregate" TO "jg_task01_runtime";/u);
  assert.doesNotMatch(acl.sql,/GRANT (?:UPDATE|DELETE|REFERENCES)[^\n]*ProjectCloseAggregate/u);
  assert.throws(()=>renderCurrent259RuntimeAcl(witness,roles,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
