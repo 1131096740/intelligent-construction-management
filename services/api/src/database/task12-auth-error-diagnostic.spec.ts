@@ -30,7 +30,11 @@ class TechnicalAuthController {
   }
   @Post("other") other() { throw native(); }
 }
-@Module({controllers:[TechnicalAuthController],providers:[Task12AuthErrorFilter,Task12AuthStageInterceptor,{provide:APP_FILTER,useExisting:Task12AuthErrorFilter},{provide:APP_INTERCEPTOR,useExisting:Task12AuthStageInterceptor}]})
+@Controller("contract-drafts")
+class TechnicalLeaseController {
+  @Post(":contractVersionId/edit-lease/heartbeat") heartbeat() { throw thrown ?? native(); }
+}
+@Module({controllers:[TechnicalAuthController,TechnicalLeaseController],providers:[Task12AuthErrorFilter,Task12AuthStageInterceptor,{provide:APP_FILTER,useExisting:Task12AuthErrorFilter},{provide:APP_INTERCEPTOR,useExisting:Task12AuthStageInterceptor}]})
 class TechnicalAuthModule {}
 describe("Task12 private AUTH diagnostic (technical HTTP only, no business admission)",()=>{
  test("actual native request retains a finite cause while original public500 is unchanged",async()=>{
@@ -44,6 +48,23 @@ describe("Task12 private AUTH diagnostic (technical HTTP only, no business admis
    expect(()=>takeTask12AuthError(filter,server,ticket)).toThrow();
   }finally{await app.close();}
  });
+});
+
+test("heartbeat captures only the owned request and retains no credential or raw error", async () => {
+ const app=await NestFactory.create(TechnicalAuthModule,{logger:false});
+ const version="11111111-1111-4111-8111-111111111111", other="22222222-2222-4222-8222-222222222222";
+ try {
+  await app.listen(0,"127.0.0.1"); const server=app.getHttpServer() as Server, filter=app.get(Task12AuthErrorFilter), address=server.address();
+  if (!address || typeof address === "string") throw Error("NO_PORT");
+  const nonce="a".repeat(32), identity=`${version}:${nonce}`;
+  const send=(id:string, marker=nonce)=>fetch(`http://127.0.0.1:${address.port}/contract-drafts/${id}/edit-lease/heartbeat`, {method:"POST",headers:{"x-contract-draft-lease":"private-token","x-task12-diagnostic":marker}});
+  let ticket=armTask12AuthError(filter,server,identity); expect((await send(other)).status).toBe(500); expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
+  ticket=armTask12AuthError(filter,server,identity); expect((await send(version,"b".repeat(32))).status).toBe(500); expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
+  ticket=armTask12AuthError(filter,server,identity); expect((await send(version)).status).toBe(500); const detail=takeTask12AuthError(filter,server,ticket);
+  expect(detail).toEqual({serverAuthBoundary:"CONTROLLER_MARKER_REACHED",serverErrorKind:"KNOWN_REQUEST_ERROR",serverPrismaCode:"P2010",serverSqlState:"42501"});
+  expect(JSON.stringify(detail)).not.toMatch(/private|11111111/u);
+  ticket=armTask12AuthError(filter,server,identity); await Promise.all([send(version),send(version)]); expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
+ } finally { await app.close(); }
 });
 
 async function scope(use: (filter: Task12AuthErrorFilter, server: Server, send: (body?: object, route?: string) => Promise<Response>, adapter: HttpAdapterHost) => Promise<void>) {

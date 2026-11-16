@@ -12,12 +12,13 @@ import { takeTask12AuthTransactionPhase, type Task12AuthTransactionPhase } from 
 // Reuse the fixed finite decoder only. AUTH owns separate state and tickets.
 const projectError = projectTask16RegistrationError;
 type Detail = ReturnType<typeof projectTask16RegistrationError> & Readonly<{ serverAuthTransactionPhase?: Task12AuthTransactionPhase; serverAuthBoundary: "PRE_CONTROLLER_MARKER" | "CONTROLLER_MARKER_REACHED" }>;
-type Active = { server: Server; phoneHash: string; armedAt: number; expiresAt: number; observed: boolean; captured?: Detail };
+type Active = { server: Server; phoneHash: string; route: "AUTH" | "LEASE"; armedAt: number; expiresAt: number; observed: boolean; captured?: Detail };
 type State = { active?: Active; interceptor?: object };
 const states = new WeakMap<object, State>();
 const interceptorOwners = new WeakMap<object, object>();
 const markers = new WeakMap<IncomingMessage, { filter: object; interceptor: object }>();
 const tickets = new WeakMap<object, { state: State; active: Active }>();
+const readHeaders = Object.getOwnPropertyDescriptor(IncomingMessage.prototype, "headers")?.get;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const fail = () => new Error("TASK12_PRIVATE_AUTH_DIAGNOSTIC");
 function own(value: unknown, key: string): unknown {
@@ -36,10 +37,11 @@ function method(value: unknown, key: string): ((...args: unknown[]) => unknown) 
 }
 export function armTask12AuthError(filter: object, server: object, phone: string, remainingMs = 15000): object {
   const state = filter && !types.isProxy(filter) ? states.get(filter) : undefined;
+  const leaseIdentity = typeof phone === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}:[a-f0-9]{32}$/u.test(phone);
   if (![3, 4].includes(arguments.length) || !state || state.active || types.isProxy(server) || !(server instanceof Server) || !server.listening ||
-    typeof phone !== "string" || phone.length < 1 || phone.length > 32 || Array.from(phone).some(char => char.charCodeAt(0) < 32) ||
+    typeof phone !== "string" || phone.length < 1 || phone.length > (leaseIdentity ? 69 : 32) || Array.from(phone).some(char => char.charCodeAt(0) < 32) ||
     !Number.isFinite(remainingMs) || remainingMs <= 0 || remainingMs > 15000) throw fail();
-  const active: Active = { server, phoneHash: hash(phone), armedAt: performance.now(), expiresAt: performance.now() + remainingMs, observed: false };
+  const active: Active = { server, phoneHash: hash(phone), route: leaseIdentity ? "LEASE" : "AUTH", armedAt: performance.now(), expiresAt: performance.now() + remainingMs, observed: false };
   const ticket = Object.freeze(Object.create(null)) as object;
   state.active = active; tickets.set(ticket, { state, active }); return ticket;
 }
@@ -62,10 +64,11 @@ export class Task12AuthErrorFilter extends ProjectOperatingConstraintFilter {
       if (active && performance.now() <= active.expiresAt && request && response && !types.isProxy(request) && !types.isProxy(response) &&
         request instanceof IncomingMessage && response instanceof ServerResponse && own(response, "req") === request &&
         own(response, "socket") === own(request, "socket") && own(own(request, "socket"), "server") === active.server &&
-        own(request, "method") === "POST" && own(own(request, "route"), "path") === "/auth/login") {
-        // LoginDto serializes phone. Password is never inspected or retained.
-        const phone = own(own(request, "body"), "phone");
-        if (typeof phone === "string" && phone.length <= 32 && hash(phone) === active.phoneHash) {
+        own(request, "method") === "POST" && own(own(request, "route"), "path") === (active.route === "AUTH" ? "/auth/login" : "/contract-drafts/:contractVersionId/edit-lease/heartbeat")) {
+        // Inspect only the fixed request identity; never inspect credentials.
+        const id = active.route === "LEASE" ? own(own(request, "params"), "contractVersionId") : undefined, nonce = active.route === "LEASE" ? own(readHeaders?.call(request), "x-task12-diagnostic") : undefined;
+        const phone = active.route === "AUTH" ? own(own(request, "body"), "phone") : typeof id === "string" && typeof nonce === "string" && nonce.length === 32 ? `${id}:${nonce}` : undefined;
+        if (typeof phone === "string" && phone.length <= 69 && hash(phone) === active.phoneHash) {
           const marker = markers.get(request), state = states.get(this);
           const transactionPhase = takeTask12AuthTransactionPhase(exception, request, active.armedAt);
           active.captured = active.observed ? undefined : Object.freeze({ ...projectError(exception),
@@ -97,9 +100,10 @@ export class Task12AuthStageInterceptor implements NestInterceptor {
       if (filter && active && state?.interceptor === this && performance.now() <= active.expiresAt &&
         request && response && !types.isProxy(request) && !types.isProxy(response) && request instanceof IncomingMessage && response instanceof ServerResponse &&
         own(response, "req") === request && own(response, "socket") === own(request, "socket") && own(own(request, "socket"), "server") === active.server &&
-        own(request, "method") === "POST" && own(own(request, "route"), "path") === "/auth/login") {
-        const phone = own(own(request, "body"), "phone");
-        if (typeof phone === "string" && phone.length <= 32 && hash(phone) === active.phoneHash) markers.set(request, { filter, interceptor: this });
+        own(request, "method") === "POST" && own(own(request, "route"), "path") === (active.route === "AUTH" ? "/auth/login" : "/contract-drafts/:contractVersionId/edit-lease/heartbeat")) {
+        const id = active.route === "LEASE" ? own(own(request, "params"), "contractVersionId") : undefined, nonce = active.route === "LEASE" ? own(readHeaders?.call(request), "x-task12-diagnostic") : undefined;
+        const phone = active.route === "AUTH" ? own(own(request, "body"), "phone") : typeof id === "string" && typeof nonce === "string" && nonce.length === 32 ? `${id}:${nonce}` : undefined;
+        if (typeof phone === "string" && phone.length <= 69 && hash(phone) === active.phoneHash) markers.set(request, { filter, interceptor: this });
       }
     } catch { /* The marker is diagnostic-only; preserve the original next.handle. */ }
     return handle.call(next) as ReturnType<CallHandler["handle"]>;
