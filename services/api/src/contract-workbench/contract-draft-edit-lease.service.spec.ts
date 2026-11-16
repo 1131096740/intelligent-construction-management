@@ -12,6 +12,7 @@ describe("ContractDraftEditLeaseService", () => {
   let lease: Record<string, unknown> | null;
   let now: Date;
   let ownerUserId: string;
+  let voidedAt: Date | null;
   let director: boolean;
   let versionChangeType = "original";
   let versionStatus = "draft";
@@ -27,7 +28,9 @@ describe("ContractDraftEditLeaseService", () => {
         return [{
           id: "cv-1",
           contractId: "contract-1",
+          status: versionStatus,
           changeType: versionChangeType,
+          draftData: {},
           hasHistoricalTakeoverRelation
         }];
       }
@@ -40,7 +43,7 @@ describe("ContractDraftEditLeaseService", () => {
           hasPaymentRequest: false
         }];
       }
-      return [{ id: "contract-1", contractId: "contract-1" }];
+      return [{ id: "contract-1", contractId: "contract-1", ownerUserId, voidedAt }];
     }),
     contractVersion: {
       findUnique: jest.fn().mockImplementation(async () => ({
@@ -54,7 +57,7 @@ describe("ContractDraftEditLeaseService", () => {
       findUnique: jest.fn().mockImplementation(async () => ({
         id: "contract-1",
         ownerUserId,
-        voidedAt: null
+        voidedAt
       }))
     },
     contractDraftEditLease: {
@@ -133,6 +136,7 @@ describe("ContractDraftEditLeaseService", () => {
     lease = null;
     now = new Date("2026-07-28T10:00:00.000Z");
     ownerUserId = "owner-1";
+    voidedAt = null;
     director = false;
     versionChangeType = "original";
     versionStatus = "draft";
@@ -164,6 +168,20 @@ describe("ContractDraftEditLeaseService", () => {
 
     expect(lease?.leaseRevision).toBe(revision);
     expect(lease?.heartbeatAt).toEqual(now);
+  });
+
+  it("renews a valid ordinary lease with at most six database operations", async () => {
+    const acquired = await service().acquire("cv-1", "owner-1");
+    jest.clearAllMocks();
+    now = new Date("2026-07-28T10:00:30.000Z");
+
+    const renewed = await service().heartbeat("cv-1", acquired.token);
+
+    expect(renewed.leaseRevision).toBe(1);
+    const operations = tx.$queryRaw.mock.calls.length +
+      tx.contractVersion.findUnique.mock.calls.length + tx.contract.findUnique.mock.calls.length +
+      tx.contractDraftEditLease.updateMany.mock.calls.length + tx.contractDraftEditLease.findUnique.mock.calls.length;
+    expect(operations).toBeLessThanOrEqual(6);
   });
 
   it("rejects a heartbeat when the lease expires while waiting for the draft lock", async () => {
@@ -260,7 +278,7 @@ describe("ContractDraftEditLeaseService", () => {
 
     await expect(
       service().acquire("cv-1", "owner-1")
-    ).rejects.toThrow("当前不可按草稿办理");
+    ).rejects.toThrow("已结束的合同申请仅可查看历史");
     expect(tx.contractDraftEditLease.upsert).not.toHaveBeenCalled();
   });
 
@@ -271,6 +289,14 @@ describe("ContractDraftEditLeaseService", () => {
     await expect(service().acquire("cv-1", "other-1")).rejects.toBeInstanceOf(
       ForbiddenException
     );
+  });
+
+  it("rejects a heartbeat after the locked contract is voided", async () => {
+    const acquired = await service().acquire("cv-1", "owner-1");
+    voidedAt = new Date("2026-07-28T10:00:10.000Z");
+    await expect(service().heartbeat("cv-1", acquired.token)).rejects.toMatchObject({
+      response: { code: "EDIT_LEASE_LOST" }
+    });
   });
 
   it("lets a contract director take over and invalidates the old token", async () => {

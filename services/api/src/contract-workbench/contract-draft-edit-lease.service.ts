@@ -8,7 +8,7 @@ import {
   NotFoundException,
   Optional
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type Contract, type ContractVersion } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -194,19 +194,14 @@ export class ContractDraftEditLeaseService {
     tx: Prisma.TransactionClient,
     contractVersionId: string
   ) {
-    const mutationBoundary = await lockContractDraftMutationBoundary(
+    const mutationBoundary = await lockContractDraftMutationBoundary<ContractVersion, Contract>(
       tx,
       contractVersionId
     );
     if (!mutationBoundary) {
       throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
     }
-    const version = await tx.contractVersion.findUnique({
-      where: { id: contractVersionId }
-    });
-    if (!version) {
-      throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
-    }
+    const { version, contract } = mutationBoundary;
     if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)) {
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
     }
@@ -217,12 +212,6 @@ export class ContractDraftEditLeaseService {
       throw new BadRequestException(
         "合同已存在正式业务事实，不能继续办理草稿"
       );
-    }
-    const contract = await tx.contract.findUnique({
-      where: { id: mutationBoundary.contractId }
-    });
-    if (!contract) {
-      throw new NotFoundException("未找到合同草稿，请刷新后重试");
     }
     if (contract.voidedAt) {
       throw new BadRequestException("合同草稿已作废，不能继续办理");
