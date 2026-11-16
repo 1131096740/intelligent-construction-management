@@ -127,7 +127,7 @@ BEGIN
   END IF;
 
   INSERT INTO public."Project" ("id","code","name","isActive","operatingLedgerEffectiveDate","updatedAt")
-    VALUES (ids->>'project','T16-'||run_key||'-P','PG合成项目'||run_key,true,CASE WHEN cash THEN instant::date ELSE NULL END,pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
+    VALUES (ids->>'project','T16-'||run_key||'-P','PG合成项目'||run_key,true,NULL,pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
   IF other_project IS NOT NULL THEN
     INSERT INTO public."Project" ("id","code","name","isActive","operatingLedgerEffectiveDate","updatedAt")
       VALUES (other_project,'T16-'||run_key||'-OTHER','PG合成其他项目'||run_key,true,NULL,
@@ -148,6 +148,11 @@ BEGIN
 
   SELECT * INTO STRICT company_a FROM public."CompanyEntity" WHERE "id"=ids->>'companyA';
   SELECT * INTO STRICT company_b FROM public."CompanyEntity" WHERE "id"=ids->>'companyB';
+  IF cash THEN
+    INSERT INTO public."ProjectParticipatingCompany" ("id","projectId","companyEntityId","companyEntityVersionId","companyNameSnapshot","companyCreditCodeSnapshot","effectiveFrom","changeReason","addedByUserId","updatedAt")
+      VALUES (cash_formal->>'participationId',ids->>'project',company_a."id",ids->>'companyVersionA',company_a."name",company_a."unifiedSocialCreditCode",instant::date,'隔离合成前置',ids->>'actor',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
+    UPDATE public."Project" SET "operatingLedgerEffectiveDate"=instant::date WHERE "id"=ids->>'project';
+  END IF;
   INSERT INTO public."Contract" ("id","projectId","code","name","counterparty","contractTypeKey","companyEntityId","companyEntityName","ownerUserId","updatedAt")
     VALUES (ids->>'contract',ids->>'project','T16-'||run_key||'-HT','PG合成材料合同','PG合成供应商','material_purchase',
       company_a."id",company_a."name",ids->>'actor',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
@@ -178,8 +183,6 @@ BEGIN
   IF cash THEN
     INSERT INTO public."ProjectMember" ("id","projectId","userId","positionKey")
       VALUES (cash_formal->>'memberId',ids->>'project',ids->>'actor','finance_staff');
-    INSERT INTO public."ProjectParticipatingCompany" ("id","projectId","companyEntityId","companyEntityVersionId","companyNameSnapshot","companyCreditCodeSnapshot","effectiveFrom","changeReason","addedByUserId","updatedAt")
-      VALUES (cash_formal->>'participationId',ids->>'project',company_a."id",ids->>'companyVersionA',company_a."name",company_a."unifiedSocialCreditCode",instant::date,'隔离合成前置',ids->>'actor',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
     INSERT INTO public."BusinessParty" ("id","type","name","normalizedName","status","createdByUserId","updatedAt")
       VALUES (cash_formal->>'partyId','organization','虚构供应商'||run_key,'虚构供应商'||run_key,'active',ids->>'actor',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
     INSERT INTO public."BusinessPartyVersion" ("id","businessPartyId","versionNo","snapshot","createdByUserId")
