@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 加载器局部修订
+
+准确 `b2d58b89` 的新独占运行在 `DOCUMENT_CURRENT_POOLS` 以 `CURRENT259_LOADER_CHANGED` 停止，业务未进入；原回执 cleanup 完成，独立检查进程、监听和 pidfile 均缺席。[原回执](/private/tmp/jg-native-contract-con18b2-GOspC5/receipt.json) SHA `a6c8381089905c7ca3712ab8655fbddd067311662c9f544546e24d2ce2116471`，[独立清理回执](/private/tmp/jg-con18-b2-runtime-pmq8AO/cleanup-independent.json) SHA `7a121000c1193be8e5dbbb5ddb44c8e0184c0ff578408dad4ee98deb2c8826de`。
+
+加载器候选 `10d5f2af` 经独审合入本地 `6622ec4b`，使 CON-18 函数通过同一受验模块闭包装配；不能证明该差异是 b2 失败的唯一原因。准确补丁 SHA `1f0a24ab343aaa3ff3a945ec2fddc86e5925bf6a435e049c9aa593bd94f7b3fd`；模型 89/89、干净构建后的真实模块加载五场景及其他用途组件回归共 10/10 通过，API build/typecheck/lint 通过。首次在未提交树运行真实加载测试因源码不干净被拒，提交后重新构建验证通过；未连接数据库。新 SHA 须重新资格和 runtime input，旧计划不可复用，不代表 CON-18 或 #394 验收通过。
+
 ## 2026-11-17 机械标题分页局部修订
 
 机械标题分页候选 `d39f3a2e` 已独审并合入本地 `26f36249`，未推送。准确补丁 SHA `c055685f23260a0593485289fd73aee48881b95b49a4313133ee64d160321431`；独立作者树 API 相关测试 146/146、Web 80/80、虚构 HTTP Chromium 1/1，API/Web build、typecheck、lint、Web check:ui 及 e2e typecheck 通过（Web lint 1109 条警告、无错误）。浏览器单例不证明真实 PDF 或业务验收。
