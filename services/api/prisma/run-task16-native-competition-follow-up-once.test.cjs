@@ -368,5 +368,7 @@ test('cash runtime client alone projects bounded query metadata without changing
  assert.equal(receipt.cashCloseQueries.events[0].unknownShape,false);assert.equal(receipt.cashCloseQueries.events[0].operation,'SELECT');assert.equal(params,0);
  clients[1].handler({query:'SELECT "public"."ProjectCloseImpact"."id" FROM "public"."ProjectCloseImpact" WHERE "public"."ProjectCloseImpact"."projectId" = $1 LIMIT $2 OFFSET $3',get params(){params++;throw Error('PRIVATE');}});
  assert.equal(receipt.cashImpactQueries.events[0].unknownShape,false);assert.equal(receipt.cashImpactQueries.events[0].operation,'SELECT');assert.equal(params,0);
+ clients[1].handler({query:'SELECT "public"."ProjectCloseStageVersion"."id" FROM "public"."ProjectCloseStageVersion" WHERE "public"."ProjectCloseStageVersion"."projectId" = $1 OFFSET $2',get params(){params++;throw Error('PRIVATE');}});
+ assert.equal(receipt.cashStageQueries.events[0].unknownShape,false);assert.equal(receipt.cashStageQueries.events[0].operation,'SELECT');assert.equal(params,0);
  assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE|SELECT |params/u);
 });

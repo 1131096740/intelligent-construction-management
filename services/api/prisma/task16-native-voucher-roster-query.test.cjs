@@ -182,3 +182,15 @@ test('cash close impact diagnostic records bounded model columns and no values',
  const receipt={},record=api.createNativeTask16CashPartyDiagnostic(receipt,()=>stage);for(let i=0;i<14;i++)record(event);
  assert.equal(receipt.cashImpactQueries.events.length,12);assert.equal(receipt.cashImpactQueries.overflow,true);
 });
+test('cash close stage diagnostic only records whitelisted shape in bounded runtime lane',()=>{
+ const api=require('./task16-native-voucher-roster-query.cjs'),stage='CASH_SEED_AND_SETTLEMENT_REPLAY';let traps=0;
+ const query='SELECT "public"."ProjectCloseStageVersion"."id", "public"."ProjectCloseStageVersion"."projectId", "public"."ProjectCloseStageVersion"."stageKey", "public"."ProjectCloseStageVersion"."revision", "public"."ProjectCloseStageVersion"."status" FROM "public"."ProjectCloseStageVersion" WHERE ("public"."ProjectCloseStageVersion"."projectId" = $1 AND "public"."ProjectCloseStageVersion"."stageKey" IN ($2,$3)) ORDER BY "public"."ProjectCloseStageVersion"."stageKey" ASC, "public"."ProjectCloseStageVersion"."revision" DESC OFFSET $4';
+ const event={query,get params(){traps++;throw Error('PRIVATE');}},out=api.projectNativeTask16CashStageQuery(event,'runtime_a',stage);
+ assert.equal(out.unknownShape,false);assert.equal(out.operation,'SELECT');assert.ok(out.tokens.includes('stageKey'));assert.equal(traps,0);assert.doesNotMatch(JSON.stringify(out),/PRIVATE|\$1|params/u);
+ assert.equal(api.projectNativeTask16CashStageQuery(event,'runtime_b',stage),null);assert.equal(api.projectNativeTask16CashStageQuery(event,'runtime_a','CASH_PAYMENT_AND_OBSERVER'),null);
+ for(const query2 of [query+' -- PRIVATE',query.replace('$1',"'PRIVATE'"),query.replace('"status"','"private_unknown"')]){
+  const value=api.projectNativeTask16CashStageQuery({query:query2},'runtime_a',stage);assert.equal(value.unknownShape,true);assert.deepEqual(value.tokens,[]);assert.doesNotMatch(JSON.stringify(value),/PRIVATE|private_unknown/u);
+ }
+ const receipt={},record=api.createNativeTask16CashPartyDiagnostic(receipt,()=>stage);for(let i=0;i<14;i++)record(event);
+ assert.equal(receipt.cashStageQueries.events.length,12);assert.equal(receipt.cashStageQueries.overflow,true);
+});
