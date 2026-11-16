@@ -627,6 +627,7 @@ test('cash role plan is bound separately and preserves the competition plan',()=
  const baseline=api.loadCurrent259CatalogMaterial(source261,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
  const cash=api.loadCurrent259CatalogMaterial(source261,require('./task16-current261-competition-profile.cjs').PAYMENT261_CASH_RUNTIME_PROFILE);
  assert.notEqual(cash.effectiveAccessBinding.accessPlanSha256,baseline.effectiveAccessBinding.accessPlanSha256);
+ assert.equal(cash.effectiveAccessBinding.insertAdditionCount,13);
  assert.deepEqual(api.loadCurrent259CatalogMaterial(source261,PAYMENT261_COMPETITION_RUNTIME_PROFILE).accessPlan,baseline.accessPlan);
 });
 test('cash B7 readback rejects missing writer or changed physical column grants',()=>{

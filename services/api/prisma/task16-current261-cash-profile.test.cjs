@@ -6,7 +6,7 @@ test('cash projection adds only explicit select columns and two service function
  const before=JSON.stringify(plan),result=cash.cashAccessPlan(plan);
  assert.equal(JSON.stringify(plan),before);
  assert.deepEqual(result.runtime.functions,cash.CASH_WRITER_FUNCTIONS);
- for(const role of ['runtime','observer'])for(const row of result[role].tables){assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);}
+ for(const role of ['runtime','observer'])for(const row of result[role].tables){assert.deepEqual(row.insert,role==='runtime'&&row.table==='ProjectCloseAggregate'?['createdAt','projectId','revision','updatedAt']:[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);}
  assert.ok(result.observer.tables.find(row=>row.table==='RegisteredFundAccount').select.includes('companyEntityId'));
  assert.ok(result.runtime.tables.find(row=>row.table==='SettlementArchiveFile').select.includes('confirmedAt'));
 });
@@ -21,6 +21,6 @@ test('cash runtime party snapshot read matches the six physically observed colum
 });
 test('cash runtime close aggregate grants only physically observed projectId read',()=>{
  const result=cash.cashAccessPlan(plan),row=result.runtime.tables.find(value=>value.table==='ProjectCloseAggregate');
- assert.ok(row);assert.deepEqual(row.select,['projectId']);assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
+ assert.ok(row);assert.deepEqual(row.select,['projectId']);assert.deepEqual(row.insert,['createdAt','projectId','revision','updatedAt']);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
  assert.equal(result.observer.tables.some(value=>value.table==='ProjectCloseAggregate'),false);
 });
