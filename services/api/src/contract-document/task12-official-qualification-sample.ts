@@ -1,7 +1,7 @@
 import PizZip from "pizzip";
 import { createHash } from "node:crypto";
 import { prepareLayoutSourceMapping, readLayoutSourcePositions, type LayoutFieldBinding } from "../contract-template/layout-field-mapping";
-import { CONTRACT_BODY_MONEY_SEMANTICS_VERSION, CONTRACT_BODY_TABLE_LAYOUT_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION,
+import { CONTRACT_BODY_MONEY_SEMANTICS_VERSION, CONTRACT_BODY_TABLE_LAYOUT_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
   finalizeContractBodyLineBoxScope, prepareContractBodyTableMargins, renderContractBody } from "./contract-body-document";
 import { renderLayoutPreviewDocx } from "./layout-preview-docx";
 import { completeContractDocxFontTableType } from "./contract-docx-package-metadata";
@@ -9,6 +9,10 @@ import { completeContractDocxFontTableType } from "./contract-docx-package-metad
 /** Fixed fictional data only. Uses the production mapping -> renderer -> table
  * margins -> font package -> final scope sequence, without services or a DB. */
 export function createOfficialQualificationSample(source: Buffer) {
+  if(createHash("sha256").update(source).digest("hex") === "b846a2f93a3f118581a58fe137b9a74c0433a7faa271eed1569068da6d5cef89") return createMechanicalSample(source);
+  return createMaterialSample(source);
+}
+function createMaterialSample(source: Buffer) {
   const sourceSha256=createHash("sha256").update(source).digest("hex");
   if(sourceSha256!=="44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd") throw new Error("资格样张原模板无法核对");
   const positions=readLayoutSourcePositions(source).positions;
@@ -44,6 +48,44 @@ export function createOfficialQualificationSample(source: Buffer) {
   return {docx,officeDocx,scope,expectations:{actualPdfQualification:"NOT_EXECUTED",minimumPages:1,maximumPages:100,
     requiredDrawnText:["隔离工具资格材料合同","虚构甲方公司","虚构乙方公司","壹佰壹拾叁元整","资格样张材料","买方","卖方"],
     mainBodyLinePoints:25,bodyFont:"仿宋_GB2312",bodyFontSizePoints:14,
+    exactPageCount:"UNPROVEN_REQUIRES_INDEPENDENT_PHYSICAL_REVIEW",signatureAndPagination:"REQUIRES_INDEPENDENT_PHYSICAL_REVIEW"}} as const;
+}
+
+/** Exact reviewed mechanical source, original roles and legacy Java protocol. */
+function createMechanicalSample(source: Buffer) {
+  const sourceSha256=createHash("sha256").update(source).digest("hex");
+  const positions=readLayoutSourcePositions(source).positions;
+  const bindings: LayoutFieldBinding[]=[];
+  for(const [token,fieldKey,count] of [
+    ["{合同名称}","contract.name",2],["{甲方名称}","party.owner.name",3],["{乙方名称}","party.counterparty.name",3],
+    ["{草稿编号}","contract.temporaryCode",1],["{文档水印}","document.watermark",1]
+  ] as const) {
+    let found=0;
+    for(const position of positions) {
+      let start=position.text.indexOf(token);
+      while(start!==-1) { bindings.push({positionId:position.positionId,start,end:start+token.length,fieldKey});found++;start=position.text.indexOf(token,start+token.length); }
+    }
+    if(found!==count) throw new Error("资格样张固定映射无法核对");
+  }
+  const mapped=prepareLayoutSourceMapping(source,"11111111-1111-4111-8111-111111111111",1,bindings).docx;
+  const values={
+    "contract.name":"隔离工具资格机械合同","contract.temporaryCode":"TOOL-MECHANICAL-QUALIFICATION-ONLY",
+    "party.owner.name":"虚构甲方公司","party.counterparty.name":"虚构乙方公司","document.watermark":"工具资格样张",
+    "contract.amountUppercase":"壹佰壹拾叁元整","contract.taxInclusiveAmountUppercase":"壹佰壹拾叁元整",
+    "contract.taxRateLabel":"0%","contract.amountBasis":"tax_inclusive",
+    "contract.renderSemanticVersion":CONTRACT_BODY_MONEY_SEMANTICS_VERSION,"contract.typographyVersion":REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
+    "field.projectName":"虚构工具资格项目","field.taxRatePercent":"0",
+    "bill.equipmentRentals":[{itemName:"资格样张设备",specification:"M-001",unit:"小时",quantity:"1",taxInclusiveUnitPrice:"113.0000",taxInclusiveAmount:"113.0000",taxRatePercent:"0"}]
+  };
+  const required=["contract.name","contract.temporaryCode","document.watermark"];
+  const rendered=renderContractBody(source,mapped,{values},required,
+    "22222222-2222-4222-8222-222222222222",undefined,{tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION});
+  if(rendered.lineBoxScope) throw new Error("机械资格样张不能使用材料行盒范围");
+  const docx=completeContractDocxFontTableType(prepareContractBodyTableMargins(rendered.docx,CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx;
+  const officeDocx=renderLayoutPreviewDocx(mapped,{values},required);
+  return {docx,officeDocx,scope:null,expectations:{actualPdfQualification:"NOT_EXECUTED",minimumPages:1,maximumPages:100,
+    requiredDrawnText:["隔离工具资格机械合同","虚构甲方公司","虚构乙方公司","资格样张设备","甲方","乙方"],
+    mechanicalRoleHeading:"第一条  租赁机械设备名称、规格型号、数量及金额",roleFont:"黑体",roleFontSizePoints:14,
     exactPageCount:"UNPROVEN_REQUIRES_INDEPENDENT_PHYSICAL_REVIEW",signatureAndPagination:"REQUIRES_INDEPENDENT_PHYSICAL_REVIEW"}} as const;
 }
 

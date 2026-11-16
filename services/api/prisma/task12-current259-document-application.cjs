@@ -2,7 +2,7 @@
 
 const {types}=require('node:util');
 const {isCurrent259OwnedModule,createCurrent259OwnedApplication,current259OwnedApplicationView,
- takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders}=require('./task16-current259-client-loader.cjs');
+ takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders,takeCurrent261NativeOrdinaryClient,inspectCurrent261OwnedNativeEquipmentProviders}=require('./task16-current259-client-loader.cjs');
 const CODE='CURRENT259_GENERATED_DOCUMENT_APP';
 const faults=new WeakMap(),httpBridges=new WeakMap(),lifecycleHttpBridges=new WeakMap();
 const exercisePattern=/^CURRENT259_GENERATED_DOCUMENT_EXERCISE_(?:INPUT|TEMPLATE|OPEN|SAVE|OWNER_BEGIN|GENERATE|PUBLIC_READBACK|OWNER_READBACK|RESULT)$/u;
@@ -61,6 +61,19 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
  need(arguments.length===1,'HANDLE');
  const {takeCurrent259GeneratedDocumentApplicationBridge}=require('./task12-current259-document-login.cjs');
  try{takeCurrent259GeneratedDocumentApplicationBridge(bridge);}catch{throw fault('HANDLE');}
+ return runDocumentApplication(bridge);
+}
+const nativeApplications=new WeakSet();
+async function runNativeTask12DocumentApplication(loginProjection,bridge){
+ need(arguments.length===2&&bridge&&!types.isProxy(bridge)&&loginProjection&&!types.isProxy(loginProjection)&&!nativeApplications.has(loginProjection),'HANDLE');
+ const prior=require('./task12-current259-document-login.cjs').readNativeTask12DocumentLoginProjection(loginProjection);
+ const loader=own(bridge,'loader'),loaded=own(bridge,'loaded'),ordinary=own(bridge,'ordinary'),config=own(bridge,'publicLifecycle');
+ need(loader&&loaded&&config&&own(bridge,'publicDraft')===undefined&&typeof own(loader,'loadCurrent261LocalLifecycleDocumentModules')==='function'&&loader.loadCurrent261LocalLifecycleDocumentModules()===loaded,'HANDLE');
+ const Class=own(loaded,'PrismaService'),isFixture=own(loaded,'isTask12LocalLifecycleFixture');
+ need(typeof Class==='function'&&ordinary&&takeCurrent261NativeOrdinaryClient(loader,loaded,ordinary)===true&&ordinary instanceof Class&&typeof isFixture==='function'&&isFixture(own(config,'fixture'))&&own(own(own(config,'fixture'),'case'),'key')==='inside:equipment_rental'&&prior.source.profile?.profile==='TASK12_ARCHIVE261_SOURCE_V1','HANDLE');
+ nativeApplications.add(loginProjection);return runDocumentApplication(bridge,true);
+}
+async function runDocumentApplication(bridge,nativeEquipment=false){
  const {check,loader,loaded,ordinary,providers,queue,exercise,publicDraft,publicLifecycle}=bridge;
  let testing,view,orphan,closeApp,closeModule,restoreQueue,restoreOrdinary,server;
  let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value,authActive=false;
@@ -94,6 +107,7 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
   need(isCurrent259OwnedModule(testing),'MODULE');closeModule=method(testing,'close');
   check();
   const get=(target,token)=>method(target,'get').call(target,token);
+  const provider=(target,token,pairs)=>{if(!pairs)return get(target,token);for(let i=0;i<pairs.length;i++)if(pairs[i][0]===token)return pairs[i][1];throw fault('PROVIDERS');};
   const documentToken=own(loaded,'ContractDocumentService'),draftToken=own(loaded,'ContractDraftController');
   const fileToken=own(loaded,'FileService'),authorityToken=own(loaded,'CONTRACT_VERSION_FILE_READ_AUTHORITY');
   const document=get(testing,documentToken),file=get(testing,fileToken),draft=get(testing,draftToken),authority=get(testing,authorityToken);
@@ -102,21 +116,37 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
   need(authTokens.every(token=>typeof token==='function'),'PROVIDERS');
   const authObjects=authTokens.map(token=>get(testing,token));
   const authMethods=publicLifecycle?[['AuthService',['login','loadUserRoleScopes','issueTokens']],['AuthRateLimitService',['take']],['AuthController',['login']],['Task12AuthErrorFilter',['catch']],['Task12AuthStageInterceptor',['intercept']]].flatMap(([key,names])=>names.map(name=>({target:own(loaded,key).prototype,receiver:authObjects[authKeys.indexOf(key)],name,value:method(own(loaded,key).prototype,name)}))):[];
-  const authReceivers=target=>{
+  const authReceivers=(target,pairs)=>{
    if(!publicLifecycle)return;
-   need(authTokens.every((token,i)=>get(target,token)===authObjects[i]&&authObjects[i]&&!types.isProxy(authObjects[i])&&Object.getPrototypeOf(authObjects[i])===token.prototype)&&
+   need(authTokens.every((token,i)=>provider(target,token,pairs)===authObjects[i]&&authObjects[i]&&!types.isProxy(authObjects[i])&&Object.getPrototypeOf(authObjects[i])===token.prototype)&&
     own(authObjects[0],'prisma')===ordinary&&own(authObjects[1],'prisma')===ordinary&&own(authObjects[2],'auth')===authObjects[0]&&own(authObjects[4],'filter')===authObjects[3]&&
     authMethods.every(row=>method(row.target,row.name)===row.value&&method(row.receiver,row.name)===row.value),'PROVIDERS');
+  };
+  // The contract ledger must use the genuine narrow Me projection. Optional
+  // provider absence must never turn a missing task into an accepted empty list.
+  const requireTasks=publicLifecycle&&own(publicLifecycle,'executionPurpose')!=='AUTH_ONLY_DIAGNOSTIC';
+  const taskKeys=requireTasks?['ContractReadService','MeService','AuditService']:[];
+  const taskTokens=taskKeys.map(key=>own(loaded,key));need(taskTokens.every(token=>typeof token==='function'),'PROVIDERS');
+  const taskObjects=taskTokens.map(token=>get(testing,token));
+  const taskMethods=requireTasks?[['workbenchLedger'],['getContractPendingWorkItems','contractV2LifecycleWorkItems'],['record']].flatMap((names,i)=>names.map(name=>({receiver:taskObjects[i],prototype:taskTokens[i].prototype,name,value:method(taskTokens[i].prototype,name)}))):[];
+  const taskReceivers=(target,pairs)=>{
+   if(!requireTasks)return;
+   need(taskTokens.every((token,i)=>taskObjects[i]&&!types.isProxy(taskObjects[i])&&Object.getPrototypeOf(taskObjects[i])===token.prototype&&provider(target,token,pairs)===taskObjects[i])&&
+    taskObjects.every(value=>own(value,'prisma')===ordinary)&&own(taskObjects[0],'me')===taskObjects[1]&&
+    own(taskObjects[0],'audit')===taskObjects[2]&&own(taskObjects[1],'audit')===taskObjects[2]&&own(taskObjects[1],'files')===file&&
+    taskMethods.every(row=>method(row.prototype,row.name)===row.value&&method(row.receiver,row.name)===row.value),'PROVIDERS');
   };
   const moduleRef=own(file,'moduleRef'),getModule=method(moduleRef,'get');
   const routeQueue=(...args)=>{check();return queue(...args);};
   const verifyProviders=target=>{
-   check();authReceivers(target);
-   need(tokens.every((token,i)=>get(target,token)===instances[i])&&ordinary.onApplicationShutdown===deferredDisconnect&&
-    get(target,documentToken)===document&&get(target,fileToken)===file&&get(target,draftToken)===draft&&
+   check();const pairs=nativeEquipment&&server&&target===view?inspectCurrent261OwnedNativeEquipmentProviders(application,testing,server):undefined;
+   if(pairs!==undefined)need(!types.isProxy(pairs)&&Array.isArray(pairs)&&pairs.length===16,'PROVIDERS');
+   authReceivers(target,pairs);taskReceivers(target,pairs);
+   need(tokens.every((token,i)=>provider(target,token,pairs)===instances[i])&&ordinary.onApplicationShutdown===deferredDisconnect&&
+    provider(target,documentToken,pairs)===document&&provider(target,fileToken,pairs)===file&&provider(target,draftToken,pairs)===draft&&
     own(document,'prisma')===ordinary&&own(document,'files')===file&&own(draft,'documents')===document&&
     own(file,'prisma')===ordinary&&own(file,'storage')===providers.storage&&own(file,'moduleRef')===moduleRef&&
-    typeof authorityToken==='symbol'&&authority&&get(target,authorityToken)===authority&&
+    typeof authorityToken==='symbol'&&authority&&provider(target,authorityToken,pairs)===authority&&
     getModule.call(moduleRef,authorityToken,{strict:false})===authority&&
     typeof authority.assertCanReadVersionFile==='function','PROVIDERS');
   };
@@ -223,4 +253,4 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
  if(primary)throw primary;
  return value;
 }
-module.exports=Object.freeze({takeCurrent261FirstLoginHttpBridge,takeCurrent261LocalLifecycleHttpBridge,runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});
+module.exports=Object.freeze({runNativeTask12DocumentApplication,takeCurrent261FirstLoginHttpBridge,takeCurrent261LocalLifecycleHttpBridge,runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});

@@ -56,6 +56,7 @@ function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfi
  const lifeRuntime=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:runtimeProfile,source:{head:source.candidateSha}});
  const view={resource,source,runId,check(){},...(lifecycle?{loader:{loadCurrent261LocalLifecycleDocumentModules(){return{currentOfficialDocumentScope(){return lifeRuntime;}};}}}:{})},imports={
   './task12-current259-document-acl-transport.cjs':{
+   readNativeTask12DocumentAclProjection(r){assert.equal(r,completion);return {completion,ordinaryAcl,roles,source,continuitySql,continuitySha256,serverPort:55432};},
    claimCurrent259GeneratedDocumentAcl(r,h){assert.equal(save,false,'HANDLE');return claim(r,h);},
    claimCurrent259GeneratedDocumentSaveAcl(r,h){assert.equal(lifecycle,false,'HANDLE');assert.equal(save,true,'HANDLE');return claim(r,h);},
    claimCurrent261GeneratedLifecycleDocumentAcl(r,h){assert.equal(lifecycle,true,'HANDLE');assert.equal(authOnly,false,'HANDLE');return claim(r,h);},
@@ -67,7 +68,7 @@ function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfi
  if(pool)pool.setup({resource,view,handle,roles:targets,identity:ordinaryAcl.roleCompletion.databaseIdentity,source,imports});
  const mod={exports:{}};
  new Function('require','module','__dirname',readFileSync(filename,'utf8'))(id=>imports[id]??require(id),mod,__dirname);
- return {api:mod.exports,completion,handle,calls,closed:()=>closes,getVerifiers:()=>verifiers};
+ return {api:mod.exports,exec:resource.execOwnerSql,completion,handle,calls,closed:()=>closes,getVerifiers:()=>verifiers};
 }
 
 test('uses the same three OIDs and three fixed owner phases, then exposes only an inert receipt in the scope',async()=>{
@@ -686,4 +687,41 @@ test('private drain projector rejects foreign, proxy, getter, unknown and out-of
   const cycle={};Object.defineProperty(cycle,'cause',{value:cycle});assert.equal(f.api.describeCurrent261DocumentLoginDrainFailure(cycle),undefined);
  }
  assert.equal(traps,0);
+});
+
+test('equipment public application accepts only the closed selected case before the unchanged first owner prestate (model only)',async()=>{
+ const f=fixture(()=>{throw new Error('MODEL_STOP_EQUIPMENT_FIRST_OWNER_SQL');},undefined,undefined,true,true);
+ await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail(),undefined,'inside:equipment_rental'),{message:'CURRENT259_DOCUMENT_LOGIN_PRESTATE_REJECTED'});
+ assert.equal(f.calls.length,1);
+ const wrong=fixture(undefined,undefined,undefined,true,true);
+ await assert.rejects(wrong.api.withCurrent261LocalLifecyclePublicApplication(wrong.completion,wrong.handle,publicCase,new AbortController().signal,()=>assert.fail(),undefined,'inside:unknown'));
+ assert.equal(wrong.calls.length,0);
+});
+
+test('native login protocol keeps fixed role grants and binds actual host HBA rather than a container path',async()=>{
+ const f=fixture(undefined,undefined,undefined,true,true);
+ const verifier='SCRAM-SHA-256$4096:AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+ const first=f.api.beginNativeTask12DocumentLoginProtocol(f.completion,JSON.stringify({runRoot:'/private/tmp/jg-native-contract-model',osUser:'fixture_user'}),JSON.stringify(Array(4).fill(verifier)));
+ assert.match(first.sql,/file_name='\/private\/tmp\/jg-native-contract-model\/data\/pg_hba.conf'/u);
+ assert.doesNotMatch(first.sql,/\/jg-task01\//u);
+ assert.match(first.sql,/inet_server_port\(\)=55432/u);
+ const writer=first.acceptBefore((await f.exec(first.sql,'current259-document-login-before')).stdout);
+ assert.equal((writer.sql.match(/ALTER ROLE /gu)??[]).length,4);
+ assert.match(writer.sql,/CONNECTION LIMIT 2 PASSWORD/u);
+ assert.equal((writer.sql.match(/LOGIN CONNECTION LIMIT 1 PASSWORD/gu)??[]).length,3);
+ const reader=writer.acceptWritten((await f.exec(writer.sql,'current259-document-login-write')).stdout);
+ const result=reader.acceptCommitted((await f.exec(reader.sql,'current259-document-login-committed')).stdout);
+ assert.equal(result.status,'NATIVE_TASK12_DOCUMENT_LOGIN_MATCHED_NOT_ADMISSION');
+ assert.equal(result.executionAllowed,false);assert.equal(result.nativeAdmission,false);
+ assert.equal(f.calls.length,3);assert.throws(()=>reader.acceptCommitted('{}'));
+ assert.throws(()=>f.api.beginNativeTask12DocumentLoginProtocol(f.completion,JSON.stringify({runRoot:'/elsewhere',osUser:'fixture_user'}),JSON.stringify(Array(4).fill(verifier))));
+});
+
+test('native login uses the original SCRAM constructor over four fixed ephemeral secrets',()=>{
+ const api=require('./task12-current259-document-login.cjs');
+ const values=api.nativeTask12DocumentLoginVerifiers(JSON.stringify(['a','b','c','d'].map(value=>value.repeat(96))));
+ assert.equal(values.length,4);assert.equal(new Set(values).size,4);
+ for(const value of values)assert.match(value,/^SCRAM-SHA-256\$4096:[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=:[A-Za-z0-9+/]{43}=$/u);
+ assert.throws(()=>api.nativeTask12DocumentLoginVerifiers(JSON.stringify(['a'.repeat(96)])));
+ let traps=0;assert.throws(()=>api.nativeTask12DocumentLoginVerifiers({get value(){traps++;return 'private';}}));assert.equal(traps,0);
 });

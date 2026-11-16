@@ -1051,7 +1051,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const flow = bodyFlow(body, ids);
   zip.file("word/document.xml", new XMLSerializer().serializeToString(document));
   const renderedDocx = zip.generate({ type: "nodebuffer" });
-  const docx = options.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION ? completeContractPageNumberFields(renderedDocx) : renderedDocx;
+  const docx = options.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION || options.typographyVersion === REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION ? completeContractPageNumberFields(renderedDocx) : renderedDocx;
   return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups, ...(lineBoxScope ? { lineBoxScope } : {}) };
 }
 

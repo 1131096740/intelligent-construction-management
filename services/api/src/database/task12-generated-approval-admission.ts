@@ -14,30 +14,34 @@ const globalRoles = [
 const projectRoles = [["handler", "contract_staff"], ["manager", "project_manager"]] as const;
 const fixtures = new WeakSet<object>();
 
-function coordinate(caseId: string, name: string) {
-  const raw = createHash("sha256").update("task12-generated-inside-material/" + caseId + "/" + name).digest("hex");
+function coordinate(caseId: string, name: string, namespace = "task12-generated-inside-material") {
+  const raw = createHash("sha256").update(namespace + "/" + caseId + "/" + name).digest("hex");
   return [raw.slice(0, 8), raw.slice(8, 12), "4" + raw.slice(13, 16), "a" + raw.slice(17, 20), raw.slice(20, 32)].join("-");
 }
 
-export function buildTask12GeneratedApprovalFixture(caseId: string) {
+export function buildTask12GeneratedApprovalFixture(caseId: string, caseKey = "inside:material_purchase") {
   requireStage(typeof caseId === "string" && UUID.test(caseId), "INPUT");
-  const projectId = coordinate(caseId, "project");
+  requireStage(caseKey === "inside:material_purchase" || caseKey === "inside:equipment_rental", "CASE");
+  const equipment = caseKey === "inside:equipment_rental";
+  const id = (name: string) => coordinate(caseId, name, equipment ? "task12-generated-inside-equipment" : "task12-generated-inside-material");
+  const projectId = id("project");
   const phoneBase = Number.parseInt(projectId.slice(0, 7), 16) % 10_000_000;
   const users = Object.freeze(actors.map(([key, label], index) => Object.freeze({
-    id: coordinate(caseId, key),
+    id: id(key),
     phone: "199" + String(phoneBase).padStart(7, "0") + index,
     name: "隔离验收" + label, isActive: true, mustChangePassword: false, sessionVersion: 0
   })));
   const fixture = Object.freeze({
+    caseKey,
     project: Object.freeze({ id: projectId, code: "T12-GENERATED-" + caseId,
-      name: "隔离表内材料合同项目", isActive: true, operatingLedgerEffectiveDate: null }),
+      name: equipment ? "隔离表内设备租赁合同项目" : "隔离表内材料合同项目", isActive: true, operatingLedgerEffectiveDate: null }),
     users,
     members: Object.freeze(projectRoles.map(([key, positionKey]) => Object.freeze({
-      id: coordinate(caseId, key + "/member"), projectId, userId: coordinate(caseId, key), positionKey
+      id: id(key + "/member"), projectId, userId: id(key), positionKey
     }))),
     globalRoles: Object.freeze(globalRoles.map(([key, roleKey]) => Object.freeze({
-      id: coordinate(caseId, key + "/global"), userId: coordinate(caseId, key), roleKey,
-      positionId: coordinate(caseId, roleKey + "/position"),
+      id: id(key + "/global"), userId: id(key), roleKey,
+      positionId: id(roleKey + "/position"),
       positionName: actors.find(([actor]) => actor === key)![1]
     }))),
     handler: users[0],
@@ -72,7 +76,7 @@ function object(value: unknown): Record<string, unknown> {
 
 /** Fixed public draft protocol. A successful result carries no native authority or credentials. */
 export async function openTask12GeneratedApprovalDraft(fixture: Fixture, password: string, send: Transport) {
-  requireStage(fixtures.has(fixture) && typeof password === "string" && password.length > 0, "INPUT");
+  requireStage(fixtures.has(fixture) && fixture.caseKey === "inside:material_purchase" && typeof password === "string" && password.length > 0, "INPUT");
   const login = await send({ method: "POST", path: "/auth/login", headers: { "content-type": "application/json" },
     json: { phone: fixture.handler.phone, password } });
   const accessToken = object(object(login.body).tokens).accessToken;

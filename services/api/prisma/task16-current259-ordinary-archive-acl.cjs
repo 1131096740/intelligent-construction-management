@@ -171,6 +171,8 @@ function lifecycleProfile(source){
   need(columns.length>0,'SOURCE');for(const column of columns)add(table,column,'SELECT');
  }
  add('BusinessDailySequence','nextSequence','SELECT');
+ // Existing workbenchLedger explicitly projects this discriminator even with no takeover rows.
+ add('ContractTakeover','takeoverStatus','SELECT');
  for(const column of ['correctionType','schemaVersion'])add('ContractTakeoverCorrection',column,'SELECT');
  const rows=[...nextKeys].flatMap(([key,privileges])=>{const [relation,column=null]=key.split('.');return privileges.map(privilege=>({relation,column,privilege}));});
  const fallbackLocks=Object.fromEntries(Object.entries(documentRowLocks).filter(([table,column])=>!lifecycleWrites[table]?.update?.includes(column)));
@@ -284,7 +286,7 @@ function limits(ordinary,profile) {
  ${lockFields}${profile.lifecycle?lifecycleFunctions.map(signature=>`
  OR pg_catalog.has_function_privilege(${app},${quote(signature)}::regprocedure,'EXECUTE') IS DISTINCT FROM true`).join(''):''}${profile!==ordinaryProfile?`
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relnamespace=pg_catalog.to_regnamespace('public')
-  AND c.relname IN (${literalList([...new Set([...Object.keys(generatedDraftReads),...(documentMode(profile)?Object.keys(documentReads):[])])])}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
+  AND c.relname IN (${literalList([...new Set([...Object.keys(generatedDraftReads),...(documentMode(profile)?Object.keys(documentReads):[]),...(profile.nativeEquipmentReadRelations??[])])])}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
  THEN RAISE EXCEPTION '${CODE}_PRIVILEGE_BOUNDARY'; END IF;`;
 }
 
@@ -529,5 +531,72 @@ function claimCurrent261GeneratedLifecycleOrdinaryAcl(completion,handle){
 }
 
 function claimCurrent261AuthOnlyDiagnosticOrdinaryAcl(completion,handle){need(arguments.length===2,'HANDLE');return claim(completion,handle,'lifecycle',true);}
-module.exports=Object.freeze({installCurrent261AuthOnlyDiagnosticOrdinaryAcl,claimCurrent261AuthOnlyDiagnosticOrdinaryAcl,describeCurrent261GeneratedLifecycleOrdinaryAcl,describeMigration261GeneratedLifecycleOrdinaryAcl,installCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
+// Native projections contain validated SQL readbacks only. They confer no
+// legacy resource/admission capability and cannot enter the old claim maps.
+// Fixed native Task12 workbench counts project each model's primary id in 5.22.
+// Keep every public/legacy lifecycle profile unchanged.
+function nativeTask12OrdinaryProfile(source){
+ const prior=lifecycleProfile(source),keys=new Map([...prior.keys].map(([key,ops])=>[key,[...ops]]));
+ for(const relation of ['Settlement','PaymentRequest']){
+  const key=relation+'.id',ops=keys.get(key)??[];need(!ops.includes('SELECT'),'SOURCE');keys.set(key,[...ops,'SELECT'].sort());
+ }
+ const fixedEquipmentReads={
+  ContractDraftCheckpoint:["createdByUserId"],
+  Settlement:["projectId","contractId","paymentTermsVersionId","code","periodLabel","status","amountCents","finalCumulativeAmountCents","processId","periodStart","periodEnd","finalDeclarationVersion","finalDeclarationSnapshot","calculationVersion","sourceSnapshotToken","payableAmountCents","paidAmountCents","sourceType","sourceTakeoverId","settlementTemplateVersionId","isFinal","invoiceTypeSnapshot","taxFactRevisionSnapshot","governanceVersion","fieldReviewerUserId","fieldReviewerRoleKey","preparedByUserId","preparerSignatureSha256","preparerSignatureVersionId","finalScopeCompleted","finalPriorSettlementsIncluded","finalNoOutstandingSettlements","finalWithinContractCap","finalNoFurtherOrdinarySettlements","createdAt","updatedAt"],
+  PaymentRequest:["projectId","settlementId","sourceType","contractId","paymentTermsVersionId","paymentTermsStageId","code","status","requestedAmountCents","approvedAmountCents","paidAmountCents","paymentMatter","amountCalculationExplanation","paymentSubjectType","dueDate","abandonedAt","abandonedByUserId","abandonReason","createdAt","updatedAt"],
+  ContractEconomicReview:["leftSourceRef","rightSourceRef","leftFingerprint","rightFingerprint","supersedesReviewId","relation","coverage","reason","revision","preparedByUserId","contractReviewedById","financeReviewedById","financeRequired","idempotencyKey","requestFingerprint","targetSourceRef","targetVersionId","directSourcePins","createdAt","returnedAt","returnReason"],
+  ContractNumberTombstone:["id","formalCode"],
+  ApprovalDelegation:["fromUserId","toUserId","actionKey","resourceType","resourceId","enabled","startsAt","endsAt"],
+  ContractTakeover:["paymentTermsVersionId","historicalBalanceConfirmedAt","historicalSettledCents","historicalApprovalPendingPaymentCents","historicalApprovedPendingPaymentCents","historicalPaidCents","historicalProxyPaidCents","historicalAdvancePaidCents","historicalAdvanceDeductedCents","historicalRetentionWithheldCents","historicalRetentionReleasedCents","otherConfirmedOccupancyCents"],
+ };
+ for(const [relation,columns]of Object.entries(fixedEquipmentReads))for(const column of columns){
+  const key=relation+'.'+column,ops=keys.get(key)??[];need(!ops.includes('SELECT'),'SOURCE');keys.set(key,[...ops,'SELECT'].sort());
+ }
+ const nativeEquipmentReadRelations=Object.freeze(Object.keys(fixedEquipmentReads).sort());
+ const lockRelations=[...new Set([...prior.lockRelations,...nativeEquipmentReadRelations])].sort();
+ const rows=[...keys].flatMap(([key,privileges])=>{const [relation,column=null]=key.split('.');return privileges.map(privilege=>({relation,column,privilege}));});
+ return {...prior,keys,rows,lockRelations,nativeEquipmentReadRelations,sha256:sha(JSON.stringify(['NATIVE_TASK12_FIXED_EQUIPMENT_READ_CLOSURE_V1',prior.sha256,rows,lockRelations,nativeEquipmentReadRelations]))};
+}
+const nativeOrdinaryProjections=new WeakMap();
+function readNativeTask12OrdinaryAclProjection(result){
+ need(arguments.length===1&&result&&!types.isProxy(result)&&nativeOrdinaryProjections.has(result),'HANDLE');
+ return nativeOrdinaryProjections.get(result);
+}
+function beginNativeTask12OrdinaryAclProtocol(archiveCompletion){
+ need(arguments.length===1,'HANDLE');
+ const lease=require('./task16-current259-archive-install.cjs').readNativeTask12ArchiveProjection(archiveCompletion);
+ const profile=nativeTask12OrdinaryProfile(lease.source),ordinary=archiveCompletion.ordinary;
+ need(ordinary&&oid(ordinary.oid)&&ordinary.login===true,'QUALIFICATION');
+ let state=0;
+ const take=expected=>{need(state===expected,'PHASE');state++;};
+ const challenge=()=>randomBytes(32).toString('hex');
+ const firstChallenge=challenge();
+ return Object.freeze({sql:render(lease,ordinary,phases[0],firstChallenge,undefined,undefined,profile),acceptBefore(stdout){
+  take(0);const before=readResult({stdout},phases[0],firstChallenge,ordinary,profile);
+  need(before.catalogSha256===archiveCompletion.catalogSha256,'ARCHIVE_PREIMAGE');
+  const writeChallenge=challenge();
+  return Object.freeze({sql:render(lease,ordinary,phases[1],writeChallenge,before,undefined,profile),acceptWritten(stdout){
+   take(1);const staged=readResult({stdout},phases[1],writeChallenge,ordinary,profile);
+   need(distinct(before,staged)&&staged.protectedSha256===before.protectedSha256&&staged.installXid!==archiveCompletion.installXid&&
+    (staged.catalogSha256!==before.catalogSha256)===(before.changes.length>0),'STAGED');
+   const committedChallenge=challenge();
+   return Object.freeze({sql:render(lease,ordinary,phases[2],committedChallenge,before,staged,profile),acceptCommitted(stdout){
+    take(2);const committed=readResult({stdout},phases[2],committedChallenge,ordinary,profile);
+    need(distinct(before,committed)&&distinct(staged,committed)&&committed.installXid===staged.installXid&&
+     committed.catalogSha256===staged.catalogSha256&&committed.protectedSha256===before.protectedSha256,'COMMITTED');
+    const result=Object.freeze({status:'NATIVE_TASK12_ORDINARY_ACL_MATCHED_NOT_ADMISSION',sourceSha:archiveCompletion.sourceSha,
+     runId:archiveCompletion.runId,installXid:committed.installXid,archiveInstallXid:archiveCompletion.installXid,
+     catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256:profile.sha256,
+     effectivePlanSha256:profile.effectivePlanSha256,installation:profile.installation,purpose:lifecyclePurpose,
+     executionAllowed:false,nativeAdmission:false});
+    nativeOrdinaryProjections.set(result,Object.freeze({source:lease.source,roleCompletion:lease.roleCompletion,archiveCompletion,
+     completion:result,serverPort:lease.serverPort,generatedLifecycle:true,profile,
+     catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql,
+     protectedSql:protectSeven(normalizedSevenCatalog(lease.ordinaryAclWitness(phases[2]).sevenCatalogSql,before.changes))}));
+    return result;
+   }});
+  }});
+ }});
+}
+module.exports=Object.freeze({beginNativeTask12OrdinaryAclProtocol,readNativeTask12OrdinaryAclProjection,installCurrent261AuthOnlyDiagnosticOrdinaryAcl,claimCurrent261AuthOnlyDiagnosticOrdinaryAcl,describeCurrent261GeneratedLifecycleOrdinaryAcl,describeMigration261GeneratedLifecycleOrdinaryAcl,installCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
  installCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl});

@@ -103,7 +103,7 @@ const stamp="to_char(backend_start AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS
 const namespace="to_regnamespace('public')::oid";
 const schemaOwner=`(SELECT n.nspowner FROM pg_namespace n WHERE n.oid=${namespace})`;
 const scopes=Object.freeze({BEFORE:'current259-document-login-before',WRITE:'current259-document-login-write',COMMITTED:'current259-document-login-committed'});
-const manifestSha='d2dfd0f356152bb7acb41074b9aa39004907dc24c2359b0f2f9dffd8b49b3038';
+const manifestSha='f4614a208b34cfe73ddf7c2472504251b433350d382fa9ec1733f4d8054dbf4f';
 
 function password(){
  const bytes=randomBytes(48),secret=Buffer.alloc(96),digits='0123456789abcdef';
@@ -213,24 +213,25 @@ function catalog(input){
   AND NOT has_schema_privilege(r.oid,${namespace},'CREATE')
   AND NOT EXISTS(SELECT FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid)
   AND NOT EXISTS(SELECT FROM pg_db_role_setting t WHERE t.setrole=r.oid))`;
- const hbaRows=[
+ const hbaRows=input.nativeHba?input.nativeHba.rows:[
   ['local',['all'],['jg_task01_owner'],null,null,'peer',['map=jg_task01_init'],null],
   ['local',['all'],['all'],null,null,'reject',[],null],
   ...['0.0.0.0','::'].map(ip=>['hostnossl',['all'],['all'],ip,ip,'reject',[],null]),
   ...['owner','runtime','observer'].map(role=>['hostssl',[identity.database],['jg_task01_'+role],'127.0.0.1','255.255.255.255','scram-sha-256',[],null]),
   ...['0.0.0.0','::'].map(ip=>['hostssl',['all'],['all'],ip,ip,'reject',[],null])
  ];
+ const hbaFile=input.nativeHba?input.nativeHba.file:'/jg-task01/pg_hba.conf';
  const hba=`(SELECT jsonb_agg(jsonb_build_array(type,database,user_name,address,netmask,auth_method,
   COALESCE(options,ARRAY[]::text[]),error) ORDER BY line_number) FROM pg_catalog.pg_hba_file_rules
-  WHERE file_name='/jg-task01/pg_hba.conf') IS NOT DISTINCT FROM ${json(hbaRows)}
-  AND NOT EXISTS(SELECT FROM pg_catalog.pg_hba_file_rules WHERE file_name IS DISTINCT FROM '/jg-task01/pg_hba.conf')`;
+  WHERE file_name=${quote(hbaFile)}) IS NOT DISTINCT FROM ${json(hbaRows)}
+  AND NOT EXISTS(SELECT FROM pg_catalog.pg_hba_file_rules WHERE file_name IS DISTINCT FROM ${quote(hbaFile)})`;
  const common=`current_database()=${quote(identity.database)} AND current_user::regrole::oid=10 AND session_user=current_user
   AND EXISTS(SELECT FROM pg_database d WHERE d.datname=current_database() AND d.datdba=10 AND d.oid=${quote(identity.databaseOid)}::oid)
   AND ${namespace}=${quote(identity.namespaceOid)}::oid AND ${schemaOwner} IN (10,'pg_database_owner'::regrole::oid)
   AND (SELECT system_identifier::text FROM pg_control_system())=${quote(identity.systemIdentifier)}
   AND current_setting('server_version_num')::int BETWEEN 160000 AND 169999 AND getdatabaseencoding()='UTF8'
   AND current_setting('session_replication_role')='origin'
-  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5432
+  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=${input.nativeServerPort??5432}
   AND EXISTS(SELECT FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
   AND current_setting('max_connections')::int=16
   AND 16-current_setting('superuser_reserved_connections')::int-current_setting('reserved_connections')::int>=10
@@ -320,9 +321,10 @@ function withCurrent259GeneratedDocumentPublicApplication(aclResult,handle,caseI
  if(arguments.length!==4||typeof caseId!=='string'||!caseCoordinate.test(caseId))return Promise.reject(fault('HANDLE'));
  return runLogin(aclResult,handle,use,true,true,true,caseId);
 }
-function withCurrent261LocalLifecyclePublicApplication(aclResult,handle,caseId,signal,use,continuityToken){
- if(![5,6].includes(arguments.length)||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
- return runLogin(aclResult,handle,use,true,true,true,caseId,true,signal,continuityToken);
+function withCurrent261LocalLifecyclePublicApplication(aclResult,handle,caseId,signal,use,continuityToken,caseKey){
+ if(![5,6,7].includes(arguments.length)||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
+ if(caseKey!==undefined){try{require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase(caseKey);}catch{return Promise.reject(fault('HANDLE'));}}
+ return runLogin(aclResult,handle,use,true,true,true,caseId,true,signal,continuityToken,false,caseKey);
 }
 function withCurrent261FirstLoginPublicApplication(aclResult,handle,caseId,signal,use,continuityToken){
  if(![5,6].includes(arguments.length)||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
@@ -339,7 +341,7 @@ function takeCurrent261LocalLifecycleExerciseBridge(key){
 function takeCurrent259GeneratedDocumentApplicationBridge(bridge){
  need(arguments.length===1&&nestBridges.delete(bridge),'HANDLE');
 }
-async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId,lifecycle=false,lifecycleSignal,continuityToken,authOnly=false){
+async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId,lifecycle=false,lifecycleSignal,continuityToken,authOnly=false,caseKey){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&
   typeof use==='function'&&!types.isProxy(use)&&!consumed.has(handle),'HANDLE');
  const loginScopes=authOnly?firstLoginScopes:active;
@@ -400,7 +402,7 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
    ...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),
    roleXmins:Object.freeze(committed.roles.map(role=>role[2])),executionAllowed:false,nativeAdmission:false});
   loginScopes.set(proof,{handle,check,lifecycle,authOnly,identity:input.identity,continuitySql:c.stable});
-  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken,authOnly):use(proof));
+  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken,authOnly,caseKey):use(proof));
   if(loginScopes.get(proof)?.continuityActivated){
    loginScopes.get(proof).continuityActivated=false;
    try{view.deactivateBusinessContinuity(continuityToken);}catch(cause){continuityCleanupUnknown=true;throw cause;}
@@ -455,7 +457,7 @@ const backend=(pid,start)=>Number.isInteger(pid)&&pid>0&&pid<=2147483647&&typeof
 const port=value=>Number.isInteger(value)&&value>0&&value<=65535;
 const project=(row,keys)=>Object.fromEntries(keys.map(key=>[key,own(row,key)]));
 
-async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken,authOnly=false){
+async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId,lifecycleSignal,continuityToken,authOnly=false,caseKey){
  const {resource,loader}=view;
  const lifecycle=proof.purpose===lifecyclePurpose;
  const save=proof.purpose===savePurpose||lifecycle;
@@ -595,7 +597,7 @@ ROLLBACK;`;
    if(lifecycle){
     const build=own(modules,'buildTask12LocalLifecycleFixture'),isFixture=own(modules,'isTask12LocalLifecycleFixture'),hash=own(modules,'hashTask12GeneratedAdmissionPassword');
     need([build,isFixture,hash].every(fn=>typeof fn==='function'),'ROLE_ENTRY');
-    const fixture=build(caseId);need(isFixture(fixture)&&fixture.approval.users.length===8,'ROLE_SEED');
+    const fixture=caseKey===undefined?build(caseId):build(caseId,caseKey);need(isFixture(fixture)&&(!caseKey||fixture.case?.key===caseKey)&&fixture.approval.users.length===8,'ROLE_SEED');
     const passwords=Object.freeze(Object.fromEntries(fixture.approval.users.map(user=>[user.id,randomBytes(32).toString('hex')])));
     need(new Set(Object.values(passwords)).size===8,'ROLE_SEED');
     const hashes=Object.fromEntries(await Promise.all(fixture.approval.users.map(async user=>[user.id,await hash(passwords[user.id])])));
@@ -607,7 +609,7 @@ ROLLBACK;`;
     const observed=seed.finish(await runSeed(seed.committedSql(),'committed'));
     need(observed.seedRows===26&&observed.seedXid!==proof.installXid&&observed.seedXid!==proof.aclInstallXid,'ROLE_SEED');
     roleStage='ORIGINALS';
-    const sourceDocx=modules.readTask12LocalLifecycleSourceDocx(),originals=await modules.createTask12LocalLifecycleOriginals(fixture);verify();
+    const sourceDocx=caseKey===undefined?modules.readTask12LocalLifecycleSourceDocx():modules.readTask12LocalLifecycleSourceDocx(caseKey),originals=await modules.createTask12LocalLifecycleOriginals(fixture);verify();
     publicLifecycle=Object.freeze({fixture,passwords,sourceDocx,originals,signal:lifecycleSignal,...(authOnly?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{})});
    }
    for(const [index,name] of loginNames.entries()){
@@ -797,5 +799,64 @@ function claimCurrent261LocalLifecycleOwnerProof(proof,handle){
  return Object.freeze({identity:Object.freeze({...scope.identity}),continuitySql:scope.continuitySql,continuitySha256:proof.continuitySha256,
   effectivePlanSha256:proof.effectivePlanSha256,installation:proof.installation,check:scope.check});
 }
-module.exports=Object.freeze({describeCurrent261DocumentLoginDrainProvenance,describeCurrent261DocumentLoginDrainFailure,withCurrent261FirstLoginPublicApplication,takeCurrent261FirstLoginExerciseBridge,assertCurrent261FirstLoginScope,claimCurrent261FirstLoginOwnerProof,takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
+function nativeTask12DocumentLoginVerifiers(text){
+ need(arguments.length===1&&typeof text==='string'&&Buffer.byteLength(text)<=1024,'HANDLE');
+ const values=JSON.parse(text);need(Array.isArray(values)&&values.length===4&&values.every(value=>typeof value==='string'&&/^[a-f0-9]{96}$/u.test(value)),'HANDLE');
+ return Object.freeze(values.map(value=>{const bytes=Buffer.from(value,'ascii');try{return verifier(bytes);}finally{bytes.fill(0);}}));
+}
+const nativeLoginProjections=new WeakMap();
+function readNativeTask12DocumentLoginProjection(result){
+ need(arguments.length===1&&result&&!types.isProxy(result)&&nativeLoginProjections.has(result),'HANDLE');
+ return nativeLoginProjections.get(result);
+}
+function beginNativeTask12DocumentLoginProtocol(aclResult,physicalText,verifierText){
+ need(arguments.length===3&&typeof physicalText==='string'&&Buffer.byteLength(physicalText)<=1024&&typeof verifierText==='string'&&Buffer.byteLength(verifierText)<=2048,'HANDLE');
+ const lease=require('./task12-current259-document-acl-transport.cjs').readNativeTask12DocumentAclProjection(aclResult);
+ const physical=JSON.parse(physicalText),verifiers=JSON.parse(verifierText);
+ need(Object.keys(physical).sort().join(',')==='osUser,runRoot'&&/^\/private\/tmp\/jg-native-contract-[a-zA-Z0-9_-]{1,32}$/u.test(physical.runRoot)&&/^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$/u.test(physical.osUser),'HANDLE');
+ need(Array.isArray(verifiers)&&verifiers.length===4&&verifiers.every(value=>typeof value==='string'&&/^SCRAM-SHA-256\$4096:[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=:[A-Za-z0-9+/]{43}=$/u.test(value)),'HANDLE');
+ const {ordinaryAcl,roles,source,continuitySql,continuitySha256,serverPort}=lease;
+ require('./task12-current261-generated-lifecycle-source.cjs').qualifyCurrent261GeneratedLifecycleSource(source);
+ need(Number.isInteger(serverPort)&&serverPort>1024&&serverPort<=65535&&serverPort!==5432,'HANDLE');
+ const ordinary=ordinaryAcl.roleCompletion.ordinary;
+ need(ordinary&&/^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name)&&oid(ordinary.oid)&&ordinary.login===true&&ordinary.limit===0&&ordinary.password==='absent'&&ordinary.unlimitedValidity===true&&
+  ['superuser','inherit','createRole','createDb','replication','bypassRls'].every(key=>ordinary[key]===false),'HANDLE');
+ const identity=ordinaryAcl.roleCompletion.databaseIdentity;
+ const predecessors=[aclResult.roleInstallXid,aclResult.installXid,ordinaryAcl.completion.installXid,ordinaryAcl.completion.archiveInstallXid,ordinaryAcl.roleCompletion.commitXid];
+ need(predecessors.every(xid)&&new Set(predecessors).size===predecessors.length,'HANDLE');
+ const targets=[...roles,ordinary],file=physical.runRoot+'/data/pg_hba.conf';
+ const runtime=['jg_task01_owner','jg_task01_runtime','jg_task01_observer',ordinary.name,...names];
+ const rows=[['local',['all'],['jg_task01_owner'],null,null,'peer',['map=native_owner'],null],
+  ['local',['all'],['all'],null,null,'reject',[],null],
+  ['hostnossl',['all'],['all'],'127.0.0.1','255.255.255.255','reject',[],null],
+  ...runtime.map(role=>['hostssl',[identity.database],[role],'127.0.0.1','255.255.255.255','scram-sha-256',[],null]),
+  ['hostssl',['all'],['all'],'127.0.0.1','255.255.255.255','reject',[],null]];
+ const input={roles,identity,predecessors,continuitySql,continuitySha256,ordinary,targets,
+  lifecycleMaterial:describeCurrent261GeneratedLifecycleDocumentAcl(source),nativeServerPort:serverPort,nativeHba:{file,rows}};
+ const c=catalog(input);
+ c.common+=` AND (SELECT jsonb_agg(jsonb_build_array(map_name,sys_name,pg_username,error) ORDER BY line_number) FROM pg_ident_file_mappings) IS NOT DISTINCT FROM ${json([['native_owner',physical.osUser,'jg_task01_owner',null]])}`;
+ const hba='local all jg_task01_owner peer map=native_owner\nlocal all all reject\nhostnossl all all 127.0.0.1/32 reject\n'+runtime.map(role=>'hostssl '+identity.database+' '+role+' 127.0.0.1/32 scram-sha-256\n').join('')+'hostssl all all 127.0.0.1/32 reject\n';
+ let state=0;const take=expected=>{need(state===expected,'REPLAY');state++;};
+ const firstNonce=randomBytes(32).toString('hex');
+ return Object.freeze({hba,ident:'native_owner '+physical.osUser+' jg_task01_owner\n',sql:render(input,c,'BEFORE',firstNonce),acceptBefore(stdout){
+  take(0);const before=read({stdout},firstNonce),initial=roles.map(role=>[role.oid,role.name,role.xmin,false,0,null]);
+  const old=before.roles?.[names.length];need(Array.isArray(old)&&oid(old[2]),'PREIMAGE');initial.push([ordinary.oid,ordinary.name,old[2],true,0,null]);
+  need(before.xid===null&&before.status===null&&equal(before.access,[])&&equal(before.roles,initial),'PREIMAGE');
+  const writeNonce=randomBytes(32).toString('hex');
+  return Object.freeze({sql:render(input,c,'WRITE',writeNonce,before,verifiers),acceptWritten(stdout){
+   take(1);const staged=read({stdout},writeNonce);
+   need(xid(staged.xid)&&!predecessors.includes(staged.xid)&&staged.status===null&&independent(before,staged)&&staged.stable===before.stable&&staged.schemaOwner===before.schemaOwner&&equal(staged.access,c.expectedAccess(before.schemaOwner))&&equal(staged.roles,targets.map((role,i)=>[role.oid,role.name,xmin(staged.xid),true,role===ordinary?ordinaryLimit:1,sha(verifiers[i])])),'POSTIMAGE');
+   const readNonce=randomBytes(32).toString('hex');
+   return Object.freeze({sql:render(input,c,'COMMITTED',readNonce,before,undefined,staged),acceptCommitted(stdout){
+    take(2);const committed=read({stdout},readNonce);
+    need(committed.xid===staged.xid&&committed.status==='committed'&&independent(staged,committed)&&independent(before,committed)&&committed.stable===before.stable&&committed.schemaOwner===before.schemaOwner&&equal(committed.roles,staged.roles)&&equal(committed.access,staged.access),'READBACK');
+    const result=Object.freeze({status:'NATIVE_TASK12_DOCUMENT_LOGIN_MATCHED_NOT_ADMISSION',sourceSha:aclResult.sourceSha,runId:aclResult.runId,
+     aclInstallXid:aclResult.installXid,installXid:committed.xid,continuitySha256:committed.stable,roleOids:Object.freeze(targets.map(role=>role.oid)),
+     roleXmins:Object.freeze(committed.roles.map(role=>role[2])),executionAllowed:false,nativeAdmission:false});
+    nativeLoginProjections.set(result,Object.freeze({source,identity,serverPort,roles:Object.freeze(targets.map((role,i)=>Object.freeze({name:role.name,oid:role.oid,xmin:committed.roles[i][2]}))),continuitySha256:committed.stable,continuitySql:c.stable}));return result;
+   }});
+  }});
+ }});
+}
+module.exports=Object.freeze({nativeTask12DocumentClientIdentitySql:tlsSql,nativeTask12DocumentLoginVerifiers,beginNativeTask12DocumentLoginProtocol,readNativeTask12DocumentLoginProjection,describeCurrent261DocumentLoginDrainProvenance,describeCurrent261DocumentLoginDrainFailure,withCurrent261FirstLoginPublicApplication,takeCurrent261FirstLoginExerciseBridge,assertCurrent261FirstLoginScope,claimCurrent261FirstLoginOwnerProof,takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
  withCurrent259GeneratedDocumentPublicApplication,takeCurrent259GeneratedDocumentApplicationBridge,assertCurrent259GeneratedDocumentLoginScope});

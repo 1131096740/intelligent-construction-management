@@ -118,7 +118,7 @@ function model(alter = row => row, alterClaim = () => {}, migrationCount = 261, 
   runInThisContext(`(function(require,module,__dirname){${readFileSync(file, 'utf8')}\n})`, { filename: file })(
     name => Object.hasOwn(ports, name) ? ports[name] : require(name), module, __dirname,
   );
-  return { ...module.exports, continuityToken,continuityCalls:()=>continuityCalls, calls, handle, provisionResult, suppliedRoles: completion,
+  return { ...module.exports, source, resource, continuityToken,continuityCalls:()=>continuityCalls, calls, handle, provisionResult, suppliedRoles: completion,
     expire: () => { expired = true; }, closed: () => closed };
 }
 
@@ -460,4 +460,19 @@ test('auth archive executes the registered SQL chain but yields only its separat
  assert.throws(()=>f.claimCurrent259ArchiveInstallation(result,f.handle));assert.throws(()=>f.claimCurrent261AuthOnlyDiagnosticArchive({...result},f.handle));
  const lease=f.claimCurrent261AuthOnlyDiagnosticArchive(result,f.handle);assert.equal(lease.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.equal(typeof lease.ordinaryAclWitness,'function');
  assert.throws(()=>f.claimCurrent261AuthOnlyDiagnosticArchive(result,f.handle));
+});
+
+test('native contract archive pure protocol retains the original registered atomic recipe at the actual owned port',async()=>{
+ const f=model(),completion=JSON.parse(JSON.stringify(f.suppliedRoles));delete completion.containerId;
+ completion.databaseIdentity={...completion.databaseIdentity,actor:'jg_task01_owner',sessionActor:'jg_task01_owner',actorOid:'10',tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:55432};
+ const api=require('./task16-current259-archive-install.cjs'),protocol=api.beginNativeTask12ArchiveProtocol(JSON.stringify({source:f.source,completion,serverPort:55432}));
+ const seven=protocol.acceptBefore((await f.resource.execOwnerSql(protocol.beforeSql,'archive-install-before')).stdout);
+ const writer=seven.acceptBefore((await f.resource.execOwnerSql(seven.beforeSql,'current259-seven-before')).stdout);
+ const reader=writer.acceptWritten((await f.resource.execOwnerSql(writer.sql,'archive-registered-write')).stdout);
+ const result=reader.acceptCommitted((await f.resource.execOwnerSql(reader.sql,'archive-registered-committed')).stdout);
+ assert.equal(result.status,'NATIVE_TASK12_ARCHIVE_SOURCE_MATCHED_NOT_ADMISSION');assert.equal(result.installXid,'702');assert.equal(result.nativeAdmission,false);
+ for(const call of f.calls){assert.ok(!/(?:pg_catalog\.)?inet_server_port\(\)\s*(?:IS DISTINCT FROM|=)\s*5432/u.test(call.sql));assert.ok(call.sql.includes('55432'));}
+ for(const name of expectedInstallers)assert.ok(writer.sql.includes(name));assert.ok(writer.sql.includes('CREATE TABLE public."RegisteredPaymentFunding"'));
+ assert.throws(()=>reader.acceptCommitted('{}'));assert.throws(()=>api.readNativeTask12ArchiveProjection({...result}));
+ assert.throws(()=>api.beginNativeTask12ArchiveProtocol(JSON.stringify({source:f.source,completion,serverPort:55433})));
 });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { REVIEWED_MATERIAL_SOURCE_SHA256 } from "../contract-document/contract-body-document";
+import { REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_MECHANICAL_SOURCE_SHA256 } from "../contract-document/contract-body-document";
 import { confirmedLayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import {
   CONTRACT_DRAFT_LEASE_HEARTBEAT_MS,
@@ -28,9 +28,15 @@ function isId(value: unknown): value is string {
 }
 
 export function verifyTask12MaterialTemplate(source: Uint8Array) {
+  return verifyReviewedTemplate(source, REVIEWED_MATERIAL_SOURCE_SHA256);
+}
+export function verifyTask12EquipmentTemplate(source: Uint8Array) {
+  return verifyReviewedTemplate(source, REVIEWED_MECHANICAL_SOURCE_SHA256);
+}
+function verifyReviewedTemplate(source: Uint8Array, expectedSha256: string) {
   requireStage(source instanceof Uint8Array && source.byteLength > 0, "TEMPLATE");
   const sha256 = createHash("sha256").update(source).digest("hex");
-  requireStage(sha256 === REVIEWED_MATERIAL_SOURCE_SHA256, "TEMPLATE");
+  requireStage(sha256 === expectedSha256, "TEMPLATE");
   const evidence = Object.freeze({ sha256, bytes: source.byteLength });
   templates.add(evidence);
   return evidence;

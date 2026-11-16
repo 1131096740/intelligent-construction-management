@@ -122,10 +122,24 @@ export function withTask12NestDocumentRoleServices<T>(
   return runRoleServices(connections, expected, use, false);
 }
 
+/** Host-native fixed comparison: the owning run supplies its observed PG port. */
+export function withTask12NativeHostDocumentRoleServices<T>(
+  connections: Connections, expected: Expected & Readonly<{ serverPort: number; nativeProfile: "TASK12_NATIVE_HOST_EQUIPMENT_V1" }>,
+  use: (operations: DocumentOperations, providers: DocumentNestProviders) => Promise<T>
+): Promise<T> {
+  requireScope(expected && typeof expected === "object" && !types.isProxy(expected), "INPUT");
+  const port = Object.getOwnPropertyDescriptor(expected, "serverPort");
+  const profile = Object.getOwnPropertyDescriptor(expected, "nativeProfile");
+  requireScope(port && Object.hasOwn(port, "value") && Number.isInteger(port.value) && port.value > 1024 && port.value <= 65535 && port.value !== 5432
+    && profile && Object.hasOwn(profile, "value") && profile.value === "TASK12_NATIVE_HOST_EQUIPMENT_V1", "INPUT");
+  return runRoleServices(connections, expected, use, false, port.value);
+}
+
 async function runRoleServices<T>(
   connections: Connections, expected: Expected,
   use: (operations: DocumentOperations, providers: DocumentNestProviders) => Promise<T>,
-  disconnectInScope: boolean
+  disconnectInScope: boolean,
+  serverPort = 5432
 ): Promise<T> {
   requireScope(connections && typeof connections === "object" && !types.isProxy(connections) &&
     expected && typeof expected === "object" && !types.isProxy(expected) &&
@@ -161,7 +175,7 @@ async function runRoleServices<T>(
         Number.isFinite(Date.parse(row.backendStart)) &&
         row.database === database && row.databaseOid === databaseOid && row.namespaceOid === namespaceOid &&
         row.clientAddress === "127.0.0.1" && row.serverAddress === "127.0.0.1" &&
-        row.serverPort === 5432 && row.ssl === true, "IDENTITY");
+        row.serverPort === serverPort && row.ssl === true, "IDENTITY");
       identities.push([row.roleOid, row.backendPid, row.backendStart] as const);
     }
     requireScope(new Set(identities.map(row => row[0])).size === clients.length &&

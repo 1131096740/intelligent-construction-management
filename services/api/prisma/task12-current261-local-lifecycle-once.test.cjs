@@ -620,3 +620,13 @@ test('optional consumer catch never bypasses existing required source or busines
   const f=model(t,{authOnly:true,consumerObserverInitFailure}),r=await f.result();assert.equal(r.status,'CURRENT261_FIRST_LOGIN_DIAGNOSTIC_STOPPED');assert.equal(r.failurePhase,'PREFLIGHT');assert.equal(f.calls.includes('application'),false);assert.equal(f.calls.includes('resource'),false);assert.equal(fs.existsSync(path.join(f.plan.run.root,consumerEvent)),false);
  }
 });
+
+
+test('equipment selector reaches one verified v2 plan and the same original producer chain (model only)',async t=>{
+ const f=model(t,{caseKey:'inside:equipment_rental'}),r=await f.result();
+ assert.equal(r.status,'CURRENT261_LOCAL_LIFECYCLE_PROTOCOL_COMPLETE');
+ assert.equal(f.calls.filter(value=>value==='application').length,1);assert.equal(r.cleanup,'CLOSED');assert.equal(r.outcome.full394Accepted,false);
+ const spent=model(t,{caseKey:'inside:equipment_rental',used:true}),stop=await spent.result();
+ assert.equal(stop.attempted,false);assert.deepEqual(spent.calls,['verify']);
+ assert.equal(fs.readFileSync(spent.plan.run.attemptFile,'utf8'),'OLD');
+});

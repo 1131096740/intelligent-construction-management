@@ -83,7 +83,7 @@ test('explicit 261 lifecycle document roles add only their reached defaults and 
  const previous=new Set(Object.entries(manifest.roles).flatMap(([role,tables])=>Object.entries(tables).flatMap(([relation,ops])=>Object.entries(ops).flatMap(([op,cols])=>cols.map(column=>[role,relation,column,op.toUpperCase()].join('/'))))));
  const added=material.rows.filter(row=>!previous.has([row.role,row.relation,row.column,row.privilege].join('/')));
  assert.equal(added.filter(row=>row.privilege==='INSERT').length,9);
- assert.equal(added.filter(row=>row.privilege==='SELECT').length,72);
+ assert.equal(added.filter(row=>row.privilege==='SELECT').length,79);
  assert.ok(added.every(row=>roles.includes(row.role)&&(['INSERT','SELECT'].includes(row.privilege))));
  for(const role of roles.slice(0,2))assert.ok(added.some(row=>row.role===role&&row.relation==='ContractTakeoverCorrection'&&row.column==='schemaVersion'&&row.privilege==='SELECT'),'invoker correction predicate '+role);
  assert.ok(!added.some(row=>row.role===roles[2]&&row.privilege==='SELECT'));
@@ -126,4 +126,89 @@ test('explicit 261 lifecycle document roles add only their reached defaults and 
  assert.throws(()=>api.beginCurrent261GeneratedLifecycleDocumentAcl({...source,profile:{...profile,ledger:profile.ledger.slice(0,259)}}));
  const legacy=f.run.acceptBefore(f.observation(f.challenge(f.run.beforeSql),'before'));
  assert.doesNotMatch(legacy.sql,/GRANT INSERT \([^\n]*"createdAt"[^\n]*\) ON TABLE public\."AuditLog"/u);
+});
+
+test('native document ACL requires the genuine native role projection before issuing any SQL',()=>{
+ const api=require('./task12-current259-document-acl.cjs');
+ assert.equal(typeof api.beginNativeTask12DocumentAclProtocol,'function');
+ for(const value of [{},Object.freeze({status:'NATIVE_TASK12_DOCUMENT_ROLES_MATCHED_NOT_ADMISSION'}),new Proxy({},{get(){throw Error('trap');}})]){
+  assert.throws(()=>api.beginNativeTask12DocumentAclProtocol(value),/HANDLE/u);
+ }
+});
+
+test('document roles read only the two native implicit primary keys without widening the original matrix',()=>{
+ const {createHash}=require('node:crypto'),fs=require('node:fs'),path=require('node:path');
+ const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task12-current259-document-acl.json'),'utf8'));
+ const targets=[['jg_c259_doc_template','UserPosition'],['jg_c259_doc_queue','ContractDraftAttachment']];
+ for(const [role,table]of targets){
+  assert.ok(manifest.roles[role][table].select.includes('id'),role+'/'+table+' requires native implicit PK');
+  manifest.roles[role][table].select=manifest.roles[role][table].select.filter(column=>column!=='id');
+ }
+ // Frozen independent pre-change whole manifest: roles, every privilege and all unrelated columns.
+ assert.equal(createHash('sha256').update(JSON.stringify(manifest,null,2)+'\n').digest('hex'),
+  'd2dfd0f356152bb7acb41074b9aa39004907dc24c2359b0f2f9dffd8b49b3038');
+ const f=fixture(),writer=f.run.acceptBefore(f.observation(f.challenge(f.run.beforeSql),'before'));
+ for(const [role,table]of targets){
+  assert.ok(writer.sql.split('\n').some(line=>line.startsWith('GRANT SELECT (')&&line.includes('"id"')&&line.endsWith('ON TABLE public."'+table+'" TO "'+role+'";')));
+ }
+ assert.match(writer.sql,/actual EXCEPT ALL SELECT \* FROM expected/u);
+ assert.match(writer.sql,/expected EXCEPT ALL SELECT \* FROM actual/u);
+});
+
+
+test('fixed document ACL source rejects either missing primary key and every added privilege before SQL issuance',()=>{
+ const fs=require('node:fs'),path=require('node:path');
+ const manifestPath=path.join(__dirname,'task12-current259-document-acl.json');
+ const original=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
+ const changes=[
+  manifest=>{manifest.roles.jg_c259_doc_template.UserPosition.select=manifest.roles.jg_c259_doc_template.UserPosition.select.filter(c=>c!=='id');},
+  manifest=>{manifest.roles.jg_c259_doc_queue.ContractDraftAttachment.select=manifest.roles.jg_c259_doc_queue.ContractDraftAttachment.select.filter(c=>c!=='id');},
+  manifest=>{manifest.roles.jg_c259_doc_template.UserPosition.select.push('createdAt');},
+  manifest=>{manifest.roles.jg_c259_doc_queue.ContractDraftAttachment.insert=['id'];},
+  manifest=>{manifest.roles.jg_c259_doc_worker.ContractFormalFile.select.push('id');}
+ ];
+ for(const change of changes){
+  const manifest=structuredClone(original);change(manifest);
+  const bytes=Buffer.from(JSON.stringify(manifest,null,2)+'\n'),mod={exports:{}};
+  // Filesystem is the public source-material boundary; issue no SQL for altered bytes.
+  const files={...fs,readFileSync(file,...args){return file===manifestPath?bytes:fs.readFileSync(file,...args);}};
+  new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task12-current259-document-acl.cjs'),'utf8'))(
+   id=>id==='node:fs'?files:require(id),mod,__dirname);
+  assert.throws(()=>mod.exports.beginCurrent259GeneratedDocumentAcl(),/CURRENT259_DOCUMENT_ACL_SOURCE/u);
+ }
+});
+
+test('qualified261 worker upload can evaluate every existing direct-archive retention INSERT predicate without widening other roles',()=>{
+ const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile},api=require('./task12-current259-document-acl.cjs');
+ const material=api.describeCurrent261GeneratedLifecycleDocumentAcl(source);
+ const trigger=fs.readFileSync(path.join(__dirname,'migrations/20261109140000_contract_direct_archive_retention_complete_v1/migration.sql'),'utf8');
+ assert.match(trigger,/SECURITY INVOKER[\s\S]+FROM public\."ContractArchiveEvidenceFile" e[\s\S]+JOIN public\."ContractArchiveFile" a[\s\S]+JOIN public\."FileObject" f/u);
+ const required={ContractArchiveEvidenceFile:['archiveFileId','contractVersionId','fileId'],ContractArchiveFile:['id','contractVersionId','archiveProtocolVersion','archiveSource'],FileObject:['id','objectKey']};
+ const missing=Object.entries(required).flatMap(([relation,columns])=>columns.filter(column=>!material.rows.some(r=>r.role==='jg_c259_doc_worker'&&r.relation===relation&&r.column===column&&r.privilege==='SELECT')).map(column=>relation+'.'+column));
+ assert.deepEqual(missing,[]);
+ const run=api.beginCurrent261GeneratedLifecycleDocumentAcl(source),f=fixture(),writer=run.acceptBefore(f.observation(f.challenge(run.beforeSql),'before'));
+ assert.match(writer.sql,/GRANT SELECT \("archiveFileId", "contractVersionId", "fileId"\) ON TABLE public\."ContractArchiveEvidenceFile" TO "jg_c259_doc_worker"/u);
+ assert.match(writer.sql,/GRANT SELECT \("archiveProtocolVersion", "archiveSource", "contractVersionId", "id"\) ON TABLE public\."ContractArchiveFile" TO "jg_c259_doc_worker"/u);
+ for(const role of ['jg_c259_doc_template','jg_c259_doc_queue'])assert.ok(!material.rows.some(r=>r.role===role&&((r.relation==='ContractArchiveEvidenceFile'&&r.column!=='fileId')||(r.relation==='ContractArchiveFile'&&r.column!=='contractVersionId'))));
+ assert.doesNotMatch(writer.sql,/GRANT SELECT ON TABLE|GRANT (?:ALL|DELETE)|ALTER FUNCTION/u);
+});
+
+test('qualified261 worker closes all three original FileObject INSERT paths for a new nonreplacement preview upload',()=>{
+ const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations}),source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile},api=require('./task12-current259-document-acl.cjs'),material=api.describeCurrent261GeneratedLifecycleDocumentAcl(source);
+ const read=name=>fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql'),'utf8'),review=read('20261109110000_contract_direct_review_retention_v1'),unified=read('20260719100000_unified_file_business_binding_guard');
+ assert.match(review,/jg_protect_contract_direct_review_file_v1\(\)[\s\S]+SECURITY INVOKER[\s\S]+IF TG_OP = 'INSERT' THEN[\s\S]+FROM public\."ContractEconomicReviewFileReference" r\s+WHERE r\."objectKey"=NEW\."objectKey" OR r\."fileId"=NEW\."supersedesFileObjectId"[\s\S]+RETURN NEW/u);
+ assert.match(unified,/replacement_file_id := NULLIF\(BTRIM\(NEW\."supersedesFileObjectId"\), ''\);\s+IF replacement_file_id IS NULL THEN\s+RETURN NEW;/u);
+ assert.match(unified,/procedure\.proname IN \([\s\S]+guard_other_binding_from_company_entity_correction[\s\S]+'DROP TRIGGER %I ON %I'[\s\S]+DROP FUNCTION IF EXISTS "guard_other_binding_from_company_entity_correction"/u);
+ assert.match(read('20261109100000_contract_direct_pending_input_v1'),/"jg_direct_pending_file_retained" BEFORE UPDATE OR DELETE ON public\."FileObject"/u);
+ const required={ContractArchiveEvidenceFile:['archiveFileId','contractVersionId','fileId'],ContractArchiveFile:['id','contractVersionId','archiveProtocolVersion','archiveSource'],ContractEconomicReviewFileReference:['objectKey','fileId'],FileObject:['id','objectKey']};
+ const missing=Object.entries(required).flatMap(([relation,columns])=>columns.filter(column=>!material.rows.some(r=>r.role==='jg_c259_doc_worker'&&r.relation===relation&&r.column===column&&r.privilege==='SELECT')).map(column=>relation+'.'+column));assert.deepEqual(missing,[]);
+ const run=api.beginCurrent261GeneratedLifecycleDocumentAcl(source),f=fixture(),writer=run.acceptBefore(f.observation(f.challenge(run.beforeSql),'before'));
+ assert.match(writer.sql,/GRANT SELECT \("fileId", "objectKey"\) ON TABLE public\."ContractEconomicReviewFileReference" TO "jg_c259_doc_worker"/u);
+ assert.ok(!material.rows.some(r=>r.relation==='ContractEconomicReviewFileReference'&&(r.role!=='jg_c259_doc_worker'||r.privilege!=='SELECT')));
+ assert.doesNotMatch(writer.sql,/GRANT SELECT ON TABLE|ALTER FUNCTION|GRANT (?:ALL|DELETE)/u);
 });

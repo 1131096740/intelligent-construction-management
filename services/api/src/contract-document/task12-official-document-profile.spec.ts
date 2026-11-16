@@ -22,6 +22,22 @@ describe("official document qualification lock and snapshot boundary", () => {
     await expect(converter.assertContractBodyPdfRuntimeLock("cfdb0f202e91294db06aa8643be7955be6760a37b97d90c6baf9c261c76f0c45", typography)).rejects.toThrow("运行环境未就绪");
     expect(await converter.contractBodyPdfRuntimeLockFingerprint(typography)).toBe(before);
   });
+  it("keeps original mechanical typography in its own official legacy scope", async () => {
+    const { model } = await import("../../prisma/task12-official-document-model.test-support.cjs");
+    const { api, packet } = model({profile:"TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1"});
+    const input=packet(),proof=api.inspectOfficialDocumentQualification(input.name,input.sha256);
+    jest.doMock("../../prisma/task12-official-document-profile.cjs",()=>api);
+    const converter=await import("./contract-body-pdf-converter");
+    const typography="reviewed-mechanical-primary-secondary-roles-v1";
+    const legacy=await converter.contractBodyPdfRuntimeLockFingerprint(typography);
+    await api.withOfficialDocumentQualification(proof,async()=>{
+      expect(await converter.contractBodyPdfRuntimeLockFingerprint(typography)).toBe("1e68559095badbdc15b18891a4f216fbd780ebf2adbf92c6684c795f9d23eeb6");
+      await expect(converter.assertContractBodyPdfRuntimeLock(legacy,typography)).rejects.toThrow("运行环境未就绪");
+      await expect(converter.contractBodyPdfRuntimeLockFingerprint("reviewed-material-primary-secondary-body25-v4")).rejects.toThrow("运行环境未就绪");
+    });
+    expect(await converter.contractBodyPdfRuntimeLockFingerprint(typography)).toBe(legacy);
+  });
+
 });
 
 describe("official scoped LibreOffice subprocess boundary", () => {

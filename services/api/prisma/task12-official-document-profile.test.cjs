@@ -2,10 +2,11 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const runtime = require('./task12-current259-generated-document-runtime.cjs');
+const registered=require('./task12-official-document-qualification-registry.json').qualification!==null;
 
-test('pending official JDK profile cannot issue runtime evidence or execute a caller', async () => {
+test('missing or stale official input cannot issue runtime evidence or execute a caller', async () => {
   assert.throws(() => runtime.verifyOfficialTask12DocumentRuntime('/private/tmp/no-input', '0'.repeat(64), Object.freeze({})),
-    { code: 'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING' });
+    { code: registered?'TASK12_OFFICIAL_DOCUMENT_REGISTRY':'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING' });
 });
 
 test('an unverified qualification scope cannot select the candidate converter lock', async () => {
@@ -83,13 +84,13 @@ test('scope detects changed bytes even when a modeled filesystem preserves the i
 
 test('pending official runtime scope cannot be entered with JSON or qualification-only evidence', async () => {
   await assert.rejects(runtime.withOfficialTask12DocumentRuntime({profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'},
-    '/private/tmp/no-root',()=>assert.fail('pending must never run')), {code:'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING'});
+    '/private/tmp/no-root',()=>assert.fail('pending must never run')), {code:registered?'TASK12_OFFICIAL_DOCUMENT_SCOPE':'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING'});
 });
 
 
 test('publication preflight rejects pending without loading any application build or dependency',()=>{
   const before=new Set(Object.keys(require.cache));
-  assert.throws(()=>runtime.observeOfficialTask12DocumentPublication('/private/tmp/no-input','0'.repeat(64)),{code:'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING'});
+  assert.throws(()=>runtime.observeOfficialTask12DocumentPublication('/private/tmp/no-input','0'.repeat(64)),{code:registered?'TASK12_OFFICIAL_DOCUMENT_REGISTRY':'TASK12_OFFICIAL_DOCUMENT_QUALIFICATION_PENDING'});
   assert.deepEqual(Object.keys(require.cache).filter(name=>!before.has(name)&&(/\/dist\//u.test(name)||/\/node_modules\//u.test(name))),[]);
 });
 
@@ -226,4 +227,23 @@ test('V2 reviewed publication stays opaque and rebinds only its exact profile',a
  assert.throws(()=>model.api.verifyOfficialTask12DocumentRuntime(input.name,input.sha256,{...model.moduleView}));
  const proof=model.api.verifyOfficialTask12DocumentRuntime(input.name,input.sha256,model.moduleView);
  await model.api.withOfficialTask12DocumentRuntime(proof,input.runRoot,scope=>{assert.equal(scope.profile,profile);assert.equal(scope.lockSha256,'0a2dc0cd644f3a2cbc090daa3377005cf542bdf58c368f97e50417d70930c58f');});
+});
+
+test('mechanical official qualification is a separate closed legacy adapter profile', () => {
+  const { officialDocumentProfile } = require('./task12-official-document-profiles.cjs');
+  const mechanical = officialDocumentProfile('TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1');
+  assert.ok(mechanical, 'the original mechanical typography needs its own qualified adapter');
+  assert.equal(mechanical.lockName, 'runtime-lock-mechanical-temurin17-official-v1.json');
+  assert.equal(officialDocumentProfile('TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V2'), undefined);
+});
+
+test('mechanical qualification keeps its three class bytes and source-bound scope immutable',async()=>{
+ const {api,packet,files}=require('./task12-official-document-model.test-support.cjs').model({profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1'});
+ const input=packet(),proof=api.inspectOfficialDocumentQualification(input.name,input.sha256);
+ assert.equal(proof.profile,'TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1');
+ await assert.rejects(api.withOfficialDocumentQualification(proof,async scope=>{
+  assert.equal(scope.lockSha256,'1e68559095badbdc15b18891a4f216fbd780ebf2adbf92c6684c795f9d23eeb6');
+  files.get('/private/tmp/materials/ContractDocxPdf.class').bytes=Buffer.from('foreign scoped material class');
+  scope.checkMaterials();
+ }),{code:'TASK12_OFFICIAL_DOCUMENT_CONTINUITY'});
 });

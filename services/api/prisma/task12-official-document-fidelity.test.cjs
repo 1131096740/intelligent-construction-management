@@ -52,3 +52,15 @@ test('each page has exactly one correct page label and rejects coexisting duplic
   }
  }
 });
+
+test('mechanical fidelity checks actual mechanical roles without material 25pt claims',()=>{
+ const api=require('./task12-official-document-fidelity.cjs');
+ const report=good();report.pages=['隔离工具资格机械合同 资格样张设备 租赁机械设备名称、规格型号、数量及金额 第1页/共2页','甲方 虚构甲方公司 乙方 虚构乙方公司 第2页/共2页'];
+ report.bodyAnchor={matches:1,lineSpacings:[],fontSizes:[14],fontFamilies:['simhei']};
+ const result=api.validateOfficialMechanicalFidelity(report,report.pdfSha256);
+ assert.equal(result.status,'MECHANICAL_FIDELITY_PASSED_PHYSICAL_REVIEW_PENDING');assert.equal(result.runtimeAuthority,false);
+ for(const change of [r=>{r.bodyAnchor.fontFamilies=['fangsonggb2312'];},r=>{r.bodyAnchor.fontSizes=[12];},r=>{r.badGlyphs=1;},r=>{r.pages[1]='甲方only';},r=>{r.pages[0]='material only';}]){
+  const bad=structuredClone(report);change(bad);assert.throws(()=>api.validateOfficialMechanicalFidelity(bad,bad.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
+ }
+ assert.throws(()=>validateOfficialDocumentFidelity(report,report.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
+});

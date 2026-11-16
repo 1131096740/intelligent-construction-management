@@ -1,5 +1,8 @@
 'use strict';
 const {request}=require('node:http'),{randomBytes,createHash}=require('node:crypto'),{setTimeout:delay}=require('node:timers/promises'),{types,isDeepStrictEqual:equal}=require('node:util');
+const {performance}=require('node:perf_hooks');
+const readMonotonic=performance.now.bind(performance);
+const diagnosticNow=()=>{try{const value=readMonotonic();return typeof value==='number'&&Number.isFinite(value)?value:NaN;}catch{return NaN;}};
 const {decodeRelaySysreadExit}=require('./task16-current259-relay-sysread.cjs');
 const id=x=>typeof x==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(x);
 const issued=new WeakMap(),failures=new WeakMap();
@@ -11,7 +14,7 @@ function describeCurrent261LocalLifecycleHttpFailure(cause){
 }
 const remember=(cause,detail)=>{if(cause&&typeof cause==='object'&&!types.isProxy(cause)&&!failures.has(cause))failures.set(cause,Object.freeze({...detail}));};
 const routeTemplate=path=>{
- const fixed=['/auth/login','/me/signature/canvas','/files','/contract-layout-templates','/contracts'];
+ const fixed=['/auth/login','/me/signature/canvas','/files','/contract-layout-templates','/contracts','/contracts/workbench?view=pending_action&page=1&pageSize=100'];
  if(fixed.includes(path))return path;
  const uuid='[a-f0-9-]{36}',patterns=[
   ['^/contracts/'+uuid+'\\?versionId='+uuid+'$','/contracts/:contractId?versionId=:versionId'],
@@ -83,6 +86,63 @@ function projectPostCheckFailure(cause){
  }
  return Object.freeze(result);
 }
+function inspectionSummary(value){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'});
+ if(!value||typeof value!=='object'||types.isProxy(value)||Array.isArray(value))return unknown();
+ const revision=own(value,'sourceRevision'),loop=own(value,'hasBillLoop'),errors=own(value,'blockingErrors');
+ if(!Number.isSafeInteger(revision)||revision<0||revision>1000000||typeof loop!=='boolean'||types.isProxy(errors)||!Array.isArray(errors))return unknown();
+ const size=Object.getOwnPropertyDescriptor(errors,'length');
+ if(!size||!Object.hasOwn(size,'value')||!Number.isInteger(size.value)||size.value<0||size.value>1000)return unknown();
+ const descriptors=Object.getOwnPropertyDescriptors(errors);
+ if(Reflect.ownKeys(descriptors).length!==size.value+1)return unknown();
+ for(let i=0;i<size.value;i++)if(!descriptors[i]||!Object.hasOwn(descriptors[i],'value'))return unknown();
+ return Object.freeze({status:'OBSERVED',sourceRevision:revision,hasBillLoop:loop,blockingErrorCount:size.value});
+}
+function previewSummary(value,coordinates){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'});
+ if(!value||typeof value!=='object'||types.isProxy(value)||Array.isArray(value)||!coordinates||typeof coordinates!=='object'||types.isProxy(coordinates))return unknown();
+ const expected={};for(const key of ['id','layoutTemplateVersionId','createdByUserId','sourceFileId','templateId']){const v=own(coordinates,key);if(!id(v))return unknown();expected[key]=v;}
+ const revision=own(coordinates,'sourceRevision');if(!Number.isSafeInteger(revision)||revision<0||revision>1000000)return unknown();
+ const observed={};for(const key of ['id','layoutTemplateVersionId','createdByUserId']){const v=own(value,key);if(typeof v!=='string'||v.length>64)return unknown();observed[key]=v;}
+ const sourceRevision=own(value,'sourceRevision'),jobStatus=own(value,'status'),file=own(value,'previewPdfFileId'),error=own(value,'errorMessage'),started=own(value,'startedAt'),completed=own(value,'completedAt');
+ if(!Number.isSafeInteger(sourceRevision)||sourceRevision<0||sourceRevision>1000000||!['queued','processing','succeeded','failed','stale'].includes(jobStatus)||!(file===null||typeof file==='string'&&file.length<=64)||!(error===null||typeof error==='string'&&error.length<=4096)||![started,completed].every(v=>v===null||typeof v==='string'&&v.length<=64))return unknown();
+ const sameJob=observed.id===expected.id,sameLayout=observed.layoutTemplateVersionId===expected.layoutTemplateVersionId,sameRevision=sourceRevision===revision,sameCreator=observed.createdByUserId===expected.createdByUserId;
+ const previewFileIdValid=id(file)&&![expected.id,expected.layoutTemplateVersionId,expected.sourceFileId,expected.templateId].includes(file),errorMessageNull=error===null;
+ const start=typeof started==='string'?Date.parse(started):NaN,end=typeof completed==='string'?Date.parse(completed):NaN,startedAtValid=Number.isFinite(start),completedAfterStarted=startedAtValid&&Number.isFinite(end)&&end>=start;
+ const consumerBranch=!(sameJob&&sameLayout&&sameRevision&&sameCreator)?'COORDINATES_MISMATCH':jobStatus==='succeeded'?(previewFileIdValid&&errorMessageNull&&startedAtValid&&completedAfterStarted?'VALID_SUCCESS':'INVALID_SUCCESS'):jobStatus==='failed'?'FAILED':jobStatus==='stale'?'STALE':file===null?'VALID_PENDING':'INVALID_PENDING';
+ return Object.freeze({status:'OBSERVED',jobStatus,consumerBranch,sameJob,sameLayout,sameRevision,sameCreator,previewFileIdValid,errorMessageNull,startedAtValid,completedAfterStarted});
+}
+// Counts from the returned JSON only; no document identifiers, text or DB-cause inference.
+function documentSummary(value){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'}),documents=own(value,'documents');
+ if(!value||typeof value!=='object'||types.isProxy(value)||Array.isArray(value)||types.isProxy(documents)||!Array.isArray(documents))return unknown();
+ const length=Object.getOwnPropertyDescriptor(documents,'length')?.value;
+ if(!Number.isInteger(length)||length<0||length>100)return unknown();
+ const descriptors=Object.getOwnPropertyDescriptors(documents);
+ if(Reflect.ownKeys(descriptors).length!==length+1)return unknown();
+ const states={queued:0,processing:0,success:0,failed:0,stale:0,cancelled:0};
+ for(let index=0;index<length;index++){
+  const descriptor=descriptors[index];if(!descriptor||!Object.hasOwn(descriptor,'value'))return unknown();
+  const document=descriptor.value,state=own(document,'status');
+  if(!document||typeof document!=='object'||types.isProxy(document)||Array.isArray(document)||typeof state!=='string'||!Object.hasOwn(states,state))return unknown();
+  states[state]++;
+ }
+ return Object.freeze({status:'OBSERVED',documentCount:length,states:Object.freeze(states)});
+}
+const consumeCodes=Object.freeze({
+ GENERATED_DOCUMENT_CONSUMER:Object.freeze(['INPUT','LEASE','QUEUE','WORKBENCH','DOCUMENT','TEMPLATE','TIME'].map(stage=>'TASK12_GENERATED_DOCUMENT_'+stage)),
+ LOCAL_LIFECYCLE_CONSUMER:Object.freeze(['TASK12_LOCAL_LIFECYCLE_CASE_HTTP']),
+ TEMPLATE_CONSUMER:Object.freeze(['INPUT','UPLOAD','CREATE','POSITIONS','MAPPING','INSPECTION','TIME','QUEUE','PREVIEW','CONFIRM','SUBMIT','PUBLISH'].map(stage=>'TASK12_GENERATED_MATERIAL_TEMPLATE_'+stage)),
+ OFFICIAL_DEADLINE:Object.freeze(['TASK12_OFFICIAL_DOCUMENT_DEADLINE']),
+ NATIVE_DEADLINE:Object.freeze(['NATIVE_DIRECT_DEADLINE','TASK12_LOCAL_LIFECYCLE_CASE_ABORTED']),
+ INTEGRITY:Object.freeze(['CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','NATIVE_DIRECT_SOURCE_CHANGED','NATIVE_DIRECT_OFFICIAL_RUNTIME','NATIVE_DIRECT_HBA_CHANGED','NATIVE_DIRECT_CERT_CONTEXT'])
+});
+function consumeFirstCause(cause){
+ if(cause&&typeof cause==='object'&&!types.isProxy(cause)&&types.isNativeError(cause)){
+  const code=own(cause,'code');for(const [family,codes]of Object.entries(consumeCodes))if(codes.includes(code))return Object.freeze({family,code});
+ }
+ return Object.freeze({family:'UNKNOWN',code:'UNKNOWN'});
+}
 const secondary=(detail,cause)=>{detail.secondaryPhase='AFTER_CHECK';const code=own(cause,'code');detail.secondaryReason=['CURRENT259_LOADER_CHANGED','CURRENT261_LOCAL_LIFECYCLE_HTTP'].includes(code)?code:'UNCLASSIFIED';};
 function exchange(port,method,path,headers,wire,binary,observe){
  const signal=AbortSignal.timeout(15000);
@@ -112,13 +172,20 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  need(authDiagnostics&&!types.isProxy(authDiagnostics)&&Object.isFrozen(authDiagnostics));
  const armAuth=own(authDiagnostics,'arm'),takeAuth=own(authDiagnostics,'take');need(typeof armAuth==='function'&&typeof takeAuth==='function');
  const {fixture,passwords,sourceDocx,originals}=config,seed=fixture.approval;
+ let selected;try{selected=require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCaseFromFixture(fixture);}catch{need(false);}
  need(seed.users.length===8&&new Set(seed.users.map(u=>u.id)).size===8&&id(seed.project.id)&&seed.handler===seed.users[0]&&
   seed.users.every(u=>id(u.id)&&typeof u.phone==='string'&&typeof passwords[u.id]==='string'&&/^[a-f0-9]{64}$/u.test(passwords[u.id]))&&new Set(Object.values(passwords)).size===8&&
   sourceDocx instanceof Uint8Array&&Array.isArray(originals)&&originals.length===2&&originals.every(b=>b instanceof Uint8Array));
  const address=server.address,port=address.call(server)?.port;
- let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false;
+ let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false,layoutPreviewContext,previewCoordinates,inspectedRevision;
  const tokens=new Map(),active=new Map(),files=new Map(),tickets=new Map(),signatures=new Set();
- const continuity=()=>{verify();const a=address.call(server);need(available&&server.address===address&&server.listening===true&&a?.address==='127.0.0.1'&&a.family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535&&a.port===port);};
+ // Inclusive observational timings only. They neither gate nor extend work.
+ const began=diagnosticNow(),timing={guardCalls:0,guardElapsedMs:0,exchangeCalls:0,exchangeElapsedMs:0};
+ const snapshotTiming=()=>{
+  const value={guardCalls:timing.guardCalls,exchangeCalls:timing.exchangeCalls,guardElapsedMs:Math.floor(timing.guardElapsedMs),exchangeElapsedMs:Math.floor(timing.exchangeElapsedMs),consumerElapsedMs:Math.floor(diagnosticNow()-began)};
+  return Object.freeze(Object.values(value).every(n=>Number.isSafeInteger(n)&&n>=0)&&value.guardCalls<=1000000&&value.exchangeCalls<=600&&['guardElapsedMs','exchangeElapsedMs','consumerElapsedMs'].every(k=>value[k]<=3600000)?{status:'OBSERVED',...value}:{status:'UNKNOWN'});
+ };
+ const continuity=()=>{const started=diagnosticNow();timing.guardCalls++;try{verify();const a=address.call(server);need(available&&server.address===address&&server.listening===true&&a?.address==='127.0.0.1'&&a.family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535&&a.port===port);}finally{timing.guardElapsedMs+=diagnosticNow()-started;}};
  const check=()=>{continuity();need(!failed);};
  const actorCheck=actor=>{check();need(Number.isInteger(actor)&&actor>=0&&actor<8);};
  const wire=async(method,path,headers,body,binary=false,authPhone)=>{
@@ -129,9 +196,20 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
    check();need(++requests<=600);
    if(authPhone!==undefined){need(method==='POST'&&path==='/auth/login');try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
    observation.phase='EXCHANGE';
-   const result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});
+   const exchangeStarted=diagnosticNow();timing.exchangeCalls++;let result;
+   try{result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});}finally{timing.exchangeElapsedMs+=diagnosticNow()-exchangeStarted;}
+   if(method==='POST'&&observation.routeTemplate==='/contract-layout-template-versions/:versionId/inspection'&&result.status===201){
+    observation.inspectionSummary=inspectionSummary(result.body);inspectedRevision=observation.inspectionSummary.status==='OBSERVED'?observation.inspectionSummary.sourceRevision:undefined;
+   }
+   if(observation.routeTemplate==='/contract-layout-template-versions/:versionId/preview-generation'){
+    if(method==='POST'){
+     previewCoordinates=undefined;
+     const job=own(result.body,'id');if(result.status===201&&id(job)&&layoutPreviewContext&&Number.isSafeInteger(inspectedRevision))previewCoordinates=Object.freeze({...layoutPreviewContext,id:job,layoutTemplateVersionId:layoutId,sourceRevision:inspectedRevision,createdByUserId:seed.users[2].id});
+    }else if(method==='GET'&&result.status===200)observation.previewSummary=previewSummary(result.body,previewCoordinates);
+   }
+   if(method==='GET'&&observation.routeTemplate==='/contract-drafts/:versionId/workbench'&&result.status===200)observation.documentSummary=documentSummary(result.body);
    collectAuth(); // Retain the native cause before a later resource guard can fail.
-   observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME'});return result;
+   observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME',timingAtResponse:snapshotTiming()});return result;
   }catch(cause){
    collectAuth();
    if(observation.phase==='EXCHANGE')try{continuity();}catch(later){secondary(observation,later);}
@@ -156,6 +234,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
     'source-mapping-confirmation':['POST'],submission:['POST'],publication:['POST']})[action]?.includes(method);
   }
   if(path==='/contracts')return actor===0&&method==='POST'&&!contractId;
+  if(contractId&&path==='/contracts/workbench?view=pending_action&page=1&pageSize=100')return method==='GET'&&(actor===0||actor===6);
   if(contractId&&path==='/contracts/'+contractId+'?versionId='+versionId)return method==='GET';
   if(versionId&&path==='/contract-drafts/'+versionId)return actor===0&&method==='PUT';
   if(versionId&&path.startsWith('/contract-drafts/'+versionId+'/')){
@@ -187,14 +266,14 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
    const signature=path==='/me/signature/canvas';
    const expected=signature?Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9e0AAAAASUVORK5CYII=','base64'):upload===0?sourceDocx:originals[upload-1];
    const mime=signature?'image/png':upload===0?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf';
-   const name=signature?'signature.png':upload===0?'material-purchase-real-v1.docx':'signed-original-'+upload+'.pdf';
+   const name=signature?'signature.png':upload===0?(selected.contractTypeKey==='equipment_rental'?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx'):'signed-original-'+upload+'.pdf';
    need(file&&file.name===name&&file.type===mime&&file.size===expected.byteLength);
    const bytes=Buffer.from(await file.arrayBuffer());check();need(equal(bytes,Buffer.from(expected)));uploaded={sizeBytes:bytes.length,sha256:sha(bytes),mimeType:mime};
    const boundary='jg-life-'+randomBytes(24).toString('hex');body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="'+name+'"\r\nContent-Type: '+mime+'\r\n\r\n'),bytes,Buffer.from('\r\n--'+boundary+'--\r\n')]);
    need(body.length<=uploadCap);h['content-type']='multipart/form-data; boundary='+boundary;if(signature)signatures.add(actor);else upload++;
   }else if(json!==undefined){body=Buffer.from(JSON.stringify(json));need(body.length<=cap);}
   if(path==='/auth/login')need(equal(json,{phone:seed.users[actor].phone,password:passwords[seed.users[actor].id]}));
-  if(path==='/contracts')need(equal(json,{projectId:seed.project.id,numericProtocolVersion:2,contractTypeKey:'material_purchase',relationship:'inside',amountLimitType:'capped'}));
+  if(path==='/contracts')need(equal(json,{projectId:seed.project.id,numericProtocolVersion:2,contractTypeKey:selected.contractTypeKey,relationship:selected.relationship,amountLimitType:'capped'}));
   let drained;const pending={parallel,done:new Promise(resolve=>{drained=resolve;})};active.set(actor,pending);
   try{
    const result=await wire(method,path,h,body,false,path==='/auth/login'?seed.users[actor].phone:undefined),value=result.body;
@@ -204,7 +283,11 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
      equal(own(user,'roleKeys'),roleKeys(actor))&&equal(own(user,'globalRoleKeys'),globalKeys(actor))&&typeof token==='string'&&token.length<=4096&&/^[\w-]+\.[\w-]+\.[\w-]+$/u.test(token));
     const claims=verifyToken(token);need(own(claims,'sub')===seed.users[actor].id&&own(claims,'phone')===seed.users[actor].phone&&own(claims,'type')==='access'&&own(claims,'ver')===0);tokens.set(actor,token);
    }else if(path==='/contracts'&&result.status===201){contractId=own(own(value,'contract'),'id');versionId=own(own(value,'version'),'id');need(id(contractId)&&id(versionId)&&contractId!==versionId);}
-   else if(path==='/contract-layout-templates'&&result.status===201){layoutId=own(own(value,'version'),'id');need(id(layoutId));}
+   else if(path==='/contract-layout-templates'&&result.status===201){
+    layoutId=own(own(value,'version'),'id');need(id(layoutId));
+    const sourceFileId=own(json,'docxFileId'),templateId=own(own(value,'template'),'id');
+    layoutPreviewContext=id(sourceFileId)&&id(templateId)?Object.freeze({sourceFileId,templateId}):undefined;previewCoordinates=undefined;inspectedRevision=undefined;
+   }
    else if(path==='/files'&&result.status===201){const fileId=own(value,'id');need(id(fileId)&&!files.has(fileId));registerFile(fileId,uploaded.mimeType,uploaded);}
    else if(path==='/contract-drafts/'+versionId+'/edit-lease'&&result.status===201){lease=own(value,'token');need(typeof lease==='string'&&/^[\w-]{43}$/u.test(lease));}
    else if(path==='/contract-drafts/'+versionId+'/workbench'&&result.status===200){const documents=own(value,'documents');need(Array.isArray(documents)&&documents.length<=4);for(const doc of documents)for(const key of ['docxFileId','pdfFileId'])if(id(own(doc,key)))registerFile(own(doc,key),key==='docxFileId'?docxMime:pdfMime);}
@@ -225,7 +308,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  try{const result=await consume(bridge);check();need(active.size===0&&(!authOnly||requests===1&&tokens.has(0)));return result;}
  catch(cause){
   if(lastObservation&&!parallelObserved&&!describeCurrent261LocalLifecycleHttpFailure(cause)){
-   const detail={...lastObservation};try{continuity();}catch(later){secondary(detail,later);}remember(cause,detail);
+   const detail={...lastObservation,firstCause:consumeFirstCause(cause),timingAtConsumeFailure:snapshotTiming()};try{continuity();}catch(later){secondary(detail,later);}detail.timingAfterSecondary=snapshotTiming();remember(cause,detail);
   }
   throw cause;
  }
