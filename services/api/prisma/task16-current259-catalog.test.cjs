@@ -377,6 +377,35 @@ test('261 two-lane catalog binds exact ledger and runtime limit through independ
   assert.throws(()=>api.renderCurrent259CatalogRead(invalid),/TASK16_CURRENT259_CATALOG/u);
 });
 
+for(const paymentProfile of [PAYMENT261_RUNTIME_PROFILE,PAYMENT261_COMPETITION_RUNTIME_PROFILE])test(paymentProfile+' reads only seven historical receipt discovery columns without extra authority',()=>{
+ const current={...source,migrations:currentMigrations};
+ const effective=api.loadCurrent259CatalogMaterial(current,paymentProfile);
+ const table=effective.accessPlan.runtime.tables.find(row=>row.table==='HistoricalFinancialTakeoverRowMapping');
+ assert.deepEqual(table,{table:'HistoricalFinancialTakeoverRowMapping',select:['evidenceLevel','id','kind','mappingDecision','projectId','targetKind','targetRef'],insert:[],update:[]});
+ assert.equal(effective.accessPlan.observer.tables.some(row=>row.table===table.table),false);
+ const competition=paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE;
+ const r={...request,source:current,identity:{...identity,paymentProfile,...(competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{})}};
+ const row=()=>{const value={...observed('before',{...plan,...effective.accessPlan}),ledger:effective.ledger};
+  if(competition)value.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;return value;};
+ assert.doesNotThrow(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),r));
+ const isDiscovery=c=>c[0]==='jg_task01_runtime'&&c[2]===table.table;
+ for(const column of table.select){
+  const missing=row();missing.capabilities=missing.capabilities.filter(c=>!(isDiscovery(c)&&c[3]===column));
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(missing),r));
+ }
+ for(const added of [['jg_task01_runtime','column',table.table,'amountCents','SELECT',false],
+  ['jg_task01_runtime','column',table.table,'targetSnapshot','SELECT',false],
+  ['jg_task01_runtime','column',table.table,'id','INSERT',false],['jg_task01_runtime','table',table.table,'','SELECT',false],
+  ['jg_task01_observer','column',table.table,'id','SELECT',false]]){
+  const extra=row();extra.capabilities=sort([...extra.capabilities,added]);
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(extra),r));
+ }
+ const grantable=row();grantable.capabilities.find(c=>isDiscovery(c)&&c[3]==='id')[5]=true;
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(grantable),r));
+ for(const other of [undefined,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE])
+  assert.equal(api.loadCurrent259CatalogMaterial(current,other).accessPlan.runtime.tables.some(row=>row.table===table.table),false);
+});
+
 const normal261InsertAdditions=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
  ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
  ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];

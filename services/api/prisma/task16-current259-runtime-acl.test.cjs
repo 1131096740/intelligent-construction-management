@@ -79,7 +79,9 @@ test('payment261 runtime ACL retains the old grants and requires its scoped ordi
   if(row.insert?.length)assert.ok(qualified.sql.includes(`GRANT INSERT (${row.insert.map(c=>'"'+c+'"').join(', ')}) ON TABLE public."${row.table}" TO "jg_task01_runtime";`));
  }
  const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);
- assert.deepEqual(grants(qualified.sql).filter(sql=>!sql.startsWith('GRANT INSERT ')),grants(legacy.sql).filter(sql=>!sql.startsWith('GRANT INSERT ')));
+ const discovery='GRANT SELECT ("evidenceLevel", "id", "kind", "mappingDecision", "projectId", "targetKind", "targetRef") ON TABLE public."HistoricalFinancialTakeoverRowMapping" TO "jg_task01_runtime";';
+ assert.equal(grants(qualified.sql).filter(sql=>sql===discovery).length,1);
+ assert.deepEqual(grants(qualified.sql).filter(sql=>!sql.startsWith('GRANT INSERT ')&&sql!==discovery),grants(legacy.sql).filter(sql=>!sql.startsWith('GRANT INSERT ')));
  assert.match(qualified.witnessSql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
  assert.match(qualified.witnessSql,/jg_upward_archive_recipe_v2\(\)/u);
  assert.equal(qualified.nativeAdmission,false);
@@ -186,6 +188,8 @@ test('261 competition ACL supplies exactly normal default INSERT additions and r
  assert.match(acl.sql,/GRANT INSERT \("action", "actorUserId", "businessId", "businessType", "createdAt", "id", "metadata"\) ON TABLE public\."AuditLog" TO "jg_task01_runtime";/u);
  assert.doesNotMatch(acl.sql,/GRANT INSERT \([^\n]*(?:"ipAddress"|"userAgent")[^\n]*\) ON TABLE public\."AuditLog"/u);
  assert.doesNotMatch(acl.sql,/GRANT (?:INSERT|UPDATE|DELETE)[^\n]+TO "jg_task01_observer"|GRANT INSERT ON TABLE/u);
+ assert.match(acl.sql,/GRANT SELECT \("evidenceLevel", "id", "kind", "mappingDecision", "projectId", "targetKind", "targetRef"\) ON TABLE public\."HistoricalFinancialTakeoverRowMapping" TO "jg_task01_runtime";/u);
+ assert.doesNotMatch(acl.sql,/^GRANT (?:INSERT|UPDATE|REFERENCES)[^\n]+HistoricalFinancialTakeoverRowMapping|^GRANT [^\n]+HistoricalFinancialTakeoverRowMapping[^\n]+jg_task01_observer/mu);
  assert.match(acl.witnessSql,/TASK16_PAYMENT261_COMPETITION_RUNTIME_V1/u);
  assert.match(acl.witnessSql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
  assert.throws(()=>renderCurrent259RuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);

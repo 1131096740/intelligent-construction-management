@@ -60,7 +60,7 @@ export async function registeredOriginalPaymentResults(tx: Prisma.TransactionCli
   if (!request) return [];
   const executions = await tx.paymentExecution.findMany({where:{paymentRequestId:paymentId},select:{id:true}});
   if (!executions.length) return [];
-  const rows = await tx.historicalFinancialTakeoverRowMapping.findMany({where:{projectId:request.projectId,kind:"payment_execution",evidenceLevel:"A",mappingDecision:"LINK",targetKind:"payment_execution",targetRef:{in:executions.map(row=>row.id)}},orderBy:{id:"asc"}});
+  const rows = await tx.historicalFinancialTakeoverRowMapping.findMany({where:{projectId:request.projectId,kind:"payment_execution",evidenceLevel:"A",mappingDecision:"LINK",targetKind:"payment_execution",targetRef:{in:executions.map(row=>row.id)}},orderBy:{id:"asc"},select:{id:true}});
   const results: Array<{executionId:string;resultKey:string;amountCents:string;paidAt:string;source:{type:string;id:string;version:number;fingerprint:string}}> = [];
   for (const row of rows) {
     try {
