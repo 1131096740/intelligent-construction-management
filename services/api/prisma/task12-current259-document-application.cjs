@@ -76,7 +76,7 @@ async function runNativeTask12DocumentApplication(loginProjection,bridge){
 async function runDocumentApplication(bridge,nativeEquipment=false){
  const {check,loader,loaded,ordinary,providers,queue,exercise,publicDraft,publicLifecycle}=bridge;
  let testing,view,orphan,closeApp,closeModule,restoreQueue,restoreOrdinary,server;
- let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value,authActive=false;
+ let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value,authActive=false,httpEntered=false;
  const bounded=async operation=>{
   let timer;
   try{return await Promise.race([Promise.resolve().then(operation),new Promise((_,reject)=>{
@@ -230,13 +230,17 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
     }});
    }
    bridges.set(config,publicLifecycle?Object.freeze({server,authDiagnostics,authOnly:own(publicLifecycle,'executionPurpose')==='AUTH_ONLY_DIAGNOSTIC'}):server);
-   try{value=await withHttp(config,server,checkPublic,verifyToken,exercise);}
+   try{httpEntered=true;value=await withHttp(config,server,checkPublic,verifyToken,exercise);}
    finally{bridges.delete(config);}
   }else{
    stage='USE';value=await exercise();
   }
   verifyProviders(view);need(document.queueDraftPreview===routeQueue,'PROVIDERS');
  }catch(error){
+  if(publicLifecycle&&stage==='HTTP'&&!httpEntered){
+   try{require('./task12-current261-local-lifecycle-http.cjs').rememberCurrent261ApplicationHttpSetupFailure(error);}
+   catch{/* Observational diagnostics must preserve the original failure and cleanup. */}
+  }
   primary=fault(faults.get(error)??stage);
   if(publicLifecycle){Object.defineProperty(primary,'cause',{value:error});if(own(error,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(primary,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
   const exerciseCode=publicDraft&&stage==='HTTP'&&fixedExerciseCode(own(error,'code'));
