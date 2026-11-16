@@ -167,6 +167,11 @@ async function appendProjectCloseInvalidation(
       projectId: source.projectId,
       stageKey: { in: [...source.affectedStages] }
     },
+    select: {
+      id: true, stageKey: true, revision: true, status: true,
+      projectionReadAt: true, projectionCutoffAt: true, projectionFingerprint: true,
+      amountSnapshot: true, stateSnapshot: true
+    },
     orderBy: [{ stageKey: "asc" }, { revision: "desc" }]
   });
   const latest = new Map<ProjectStage, typeof versions[number]>();
