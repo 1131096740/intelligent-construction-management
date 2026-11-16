@@ -24,6 +24,8 @@ describe("fixed fictitious source-only material document qualification sample",(
     for (const docx of [sample.docx,sample.officeDocx]) {
       const zip=new PizZip(docx),body=zip.file("word/document.xml")!.asText();
       for (const name of ["虚构甲方公司","虚构乙方公司"]) expect(body.split(name)).toHaveLength(3);
+      expect(body.includes("待补充")).toBe(false);
+      expect(/\{[^{}]+\}/u.test(body)).toBe(false);
       expectFictionalMetadata(docx);
     }
     if (!sample.scope) throw new Error("material scope required");
@@ -64,6 +66,12 @@ describe("fixed mechanical official qualification sample",()=>{
     }
     const xml=new PizZip(sample.docx).file("word/document.xml")!.asText();
     for(const text of ["隔离工具资格机械合同","虚构甲方公司","虚构乙方公司","资格样张设备","壹佰壹拾叁元整"]) expect(xml).toContain(text);
+    for(const docx of [sample.docx,sample.officeDocx]){
+      const body=new PizZip(docx).file("word/document.xml")!.asText();
+      expect(body.includes("待补充")).toBe(false);
+      expect(/\{[^{}]+\}/u.test(body)).toBe(false);
+      for(const value of ["虚构使用地点","虚构开始日期","虚构结束日期","虚构结算周期","虚构付款约定"])expect(body.includes(value)).toBe(true);
+    }
     expect(sample.expectations).not.toHaveProperty("mainBodyLinePoints");
     expect(sample.expectations.actualPdfQualification).toBe("NOT_EXECUTED");
   });
