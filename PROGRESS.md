@@ -6,6 +6,8 @@
 
 ACL/B7 三阶段、受限连接及清理在本轮通过；独核 PG 进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-revoke-d4be/receipt.json) SHA `227f9e273e5a9eb68c8784e67e28274d8d473e35f63ee0c2222aeaa4de714a16`。旧 `acdf2ffa` 的项目列表失败保留，不能倒填其 HTTP 状态。原现金 b047 仍 UNKNOWN，不因本独立场景成功改变。
 
+CON-18 独立撤回重提候选 `6299eeab` 已独审合入本地 `b733eef2`：专用用途复用公开合同链和受控只读窗口，模型检查旧签名清除、旧坐标拒绝、正文/文书变化及设备租赁五组新并联职责待签。准确合成前 Node20 模型 12/12、Jest 13/13、API build/typecheck/lint 通过；SQL、Nest、PDF 与清理均未在真实隔离资源执行，不能称 CON-18 或 #394 验收通过。
+
 ## 2026-11-17 接续进展
 
 #382 前沿仍为 #394 和 #398；本地集成 `ae764c82`，未推送，PR #428 已发布头仍为 `2907d95d`、Draft。原现金 b047 付款结果仍为 UNKNOWN，未换键重发。[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-b047/receipt.json)。
