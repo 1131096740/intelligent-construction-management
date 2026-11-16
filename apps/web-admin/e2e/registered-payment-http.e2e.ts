@@ -517,6 +517,55 @@ test("a supported payment with no registered accounts keeps its draft and cannot
  await page.screenshot({path:testInfo.outputPath("empty-accounts-preserved-draft.png"),fullPage:true});
 });
 
+test("an older failed voucher permission read cannot revoke a newer successful read",async({page})=>{
+ const fixture=JSON.parse(readFileSync(resolve(process.env.JG_PAYMENT_FIXTURE!,"fixture.json"),"utf8"));
+ await page.addInitScript(session=>localStorage.setItem("jiangkong-web-admin-auth",JSON.stringify(session)),fixture.sessions.keeper);
+ let paymentPosts=0,bindings=0;
+ const uploadPaths:string[]=[];
+ page.on("request",request=>{const path=new URL(request.url()).pathname;if(request.method()!=="POST")return;if(path.endsWith("/registrations"))paymentPosts++;if(path.endsWith("/voucher"))bindings++;if(path.endsWith("/voucher-file-uploads"))uploadPaths.push(path);});
+ await page.goto("/付款管理");
+ const panel=page.getByRole("region",{name:"共享实付待办"});
+ await panel.getByRole("button",{name:"办理实付登记",exact:true}).click();
+ const form=page.getByRole("region",{name:"实际付款登记"});
+ await form.locator('[aria-label="实付金额（元）"] input').fill("100");
+ await form.locator('[aria-label="实际付款日期"] input').fill("2026-11-04");
+ await form.locator('[aria-label="实际付款资金"] .t-select').click();
+ await page.getByRole("listitem",{name:"公共现金",exact:true}).click();
+ await form.getByText("未含期初，需要扣减登记资金",{exact:true}).click();
+ await form.locator('[aria-label="来源分摊金额1"] input').fill("100");
+ await form.locator('[aria-label="期初核对原因"] textarea').fill("现金实付已核对未含期初");
+ await form.locator('[aria-label="期初核对依据"] textarea').fill("合成现金付款核对表");
+ await form.locator('[aria-label="本人当前密码"] input').fill("Synthetic15Password!");
+ await form.getByRole("button",{name:"确认登记这笔实付",exact:true}).click();
+ const payment=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/registrations"));
+ await page.getByRole("button",{name:"已核实并确认登记",exact:true}).click();
+ expect((await payment).status()).toBe(201);
+ await expect(panel.getByText("当前没有待登记的实付。",{exact:true})).toBeVisible();
+ await expect(page.getByRole("button",{name:"已核实并确认登记",exact:true})).not.toBeVisible();
+ await page.reload();
+ const recorded=page.getByRole("region",{name:"已登记实付"});
+ let releaseFirst!:()=>void;
+ let firstSeen!:()=>void;
+ const firstStarted=new Promise<void>(resolve=>{firstSeen=resolve;});
+ const firstHeld=new Promise<void>(resolve=>{releaseFirst=resolve;});
+ let reads=0;
+ await page.route("**/payment-executions/results/**",async route=>{
+  reads++;
+  if(reads===1){firstSeen();await firstHeld;await route.fulfill({status:500,contentType:"application/json",body:JSON.stringify({message:"旧请求失败"})});}
+  else await route.continue();
+ });
+ const action=recorded.getByRole("button",{name:"补充电子凭证",exact:true});
+ await action.click();await firstStarted;await action.click();
+ const voucher=page.getByRole("region",{name:"后补电子付款凭证"});
+ await voucher.locator('input[type="file"]').setInputFiles({name:"合成凭证.png",mimeType:"image/png",buffer:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1gAAAAASUVORK5CYII=","base64")});
+ await expect(voucher.getByRole("button",{name:"上传并关联凭证",exact:true})).toBeEnabled();
+ const staleResponse=page.waitForResponse(response=>new URL(response.url()).pathname.includes("/payment-executions/results/") && response.status()===500);
+ releaseFirst();
+ await staleResponse;
+ await expect(voucher.getByText(/旧请求失败/)).toHaveCount(0);
+ await expect(voucher.getByRole("button",{name:"上传并关联凭证",exact:true})).toBeEnabled();
+});
+
 test("a lost voucher upload response preserves its file and original upload key without repeating the recorded payment",async({page},testInfo)=>{
  const fixture=JSON.parse(readFileSync(resolve(process.env.JG_PAYMENT_FIXTURE!,"fixture.json"),"utf8"));
  await page.addInitScript(session=>localStorage.setItem("jiangkong-web-admin-auth",JSON.stringify(session)),fixture.sessions.keeper);
