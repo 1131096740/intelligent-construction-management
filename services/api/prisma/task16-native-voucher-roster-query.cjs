@@ -116,6 +116,7 @@ function projectNativeTask16CashPartyQuery(event,lane,stage){
 const closeWords=new Set(['SELECT','INSERT','UPDATE','DELETE','INTO','FROM','WHERE','AND','OR','IS','NOT','NULL','VALUES','ON','CONFLICT','DO','SET','RETURNING','AS','DEFAULT','FOR','LIMIT','OFFSET','ASC','DESC','ORDER','BY','IN']);
 const closeIdentifiers=new Set(['public','ProjectCloseAggregate','projectId','revision','createdAt','updatedAt']);
 const impactIdentifiers=new Set(['public','ProjectCloseImpact','id','projectId','sourceType','sourceId','sourceFingerprint','reason','affectedStages','observedAt','projectionFingerprint','idempotencyKey','payloadFingerprint','createdAt']);
+const stageIdentifiers=new Set(['public','ProjectCloseStageVersion','id','projectId','stageKey','revision','status','previousVersionId','prerequisiteStageVersionIds','projectionReadAt','projectionCutoffAt','projectionFingerprint','amountSnapshot','stateSnapshot','basisSnapshot','confirmedByUserId','confirmedAt','idempotencyKey','payloadFingerprint','createdAt']);
 function projectNativeTask16CashNamedQuery(event,lane,stage,relation,identifiers){
  if(lane!=='runtime_a'||stage!=='CASH_SEED_AND_SETTLEMENT_REPLAY'||!event||typeof event!=='object'||types.isProxy(event))return null;
  const d=Object.getOwnPropertyDescriptor(event,'query');if(!d||!Object.hasOwn(d,'value')||typeof d.value!=='string'||Buffer.byteLength(d.value)>32768)return null;
@@ -136,14 +137,16 @@ function projectNativeTask16CashNamedQuery(event,lane,stage,relation,identifiers
 }
 function projectNativeTask16CashCloseQuery(event,lane,stage){return projectNativeTask16CashNamedQuery(event,lane,stage,'ProjectCloseAggregate',closeIdentifiers);}
 function projectNativeTask16CashImpactQuery(event,lane,stage){return projectNativeTask16CashNamedQuery(event,lane,stage,'ProjectCloseImpact',impactIdentifiers);}
+function projectNativeTask16CashStageQuery(event,lane,stage){return projectNativeTask16CashNamedQuery(event,lane,stage,'ProjectCloseStageVersion',stageIdentifiers);}
 function createNativeTask16CashPartyDiagnostic(receipt,getStage){
- const events=[],closeEvents=[],impactEvents=[];return event=>{try{const stage=getStage(),value=projectNativeTask16CashPartyQuery(event,'runtime_a',stage),close=projectNativeTask16CashCloseQuery(event,'runtime_a',stage),impact=projectNativeTask16CashImpactQuery(event,'runtime_a',stage);
+ const events=[],closeEvents=[],impactEvents=[],stageEvents=[];return event=>{try{const stage=getStage(),value=projectNativeTask16CashPartyQuery(event,'runtime_a',stage),close=projectNativeTask16CashCloseQuery(event,'runtime_a',stage),impact=projectNativeTask16CashImpactQuery(event,'runtime_a',stage),stageQuery=projectNativeTask16CashStageQuery(event,'runtime_a',stage);
   if(value){const overflow=events.length===12;if(!overflow)events.push(value);receipt.cashPartyQueries=Object.freeze({events:Object.freeze([...events]),overflow});}
   if(close){const overflow=closeEvents.length===12;if(!overflow)closeEvents.push(close);receipt.cashCloseQueries=Object.freeze({events:Object.freeze([...closeEvents]),overflow});}
   if(impact){const overflow=impactEvents.length===12;if(!overflow)impactEvents.push(impact);receipt.cashImpactQueries=Object.freeze({events:Object.freeze([...impactEvents]),overflow});}
+  if(stageQuery){const overflow=stageEvents.length===12;if(!overflow)stageEvents.push(stageQuery);receipt.cashStageQueries=Object.freeze({events:Object.freeze([...stageEvents]),overflow});}
  }catch{/* Never alter the business outcome. */}};
 }
 function nativeTask16CashPartyQueryLogOptions(purpose,lane){
  return purpose==='TASK16_NATIVE_PUBLIC_CASH_V1'&&lane==='runtime_a'?Object.freeze({log:Object.freeze([Object.freeze({emit:'event',level:'query'})])}):undefined;
 }
-module.exports=Object.freeze({projectNativeTask16CashImpactQuery,projectNativeTask16CashCloseQuery,projectNativeTask16CashPartyQuery,createNativeTask16CashPartyDiagnostic,nativeTask16CashPartyQueryLogOptions,projectNativeTask16RosterQuery,nativeTask16VoucherQueryLogOptions,createNativeTask16RosterQueryDiagnostic});
+module.exports=Object.freeze({projectNativeTask16CashStageQuery,projectNativeTask16CashImpactQuery,projectNativeTask16CashCloseQuery,projectNativeTask16CashPartyQuery,createNativeTask16CashPartyDiagnostic,nativeTask16CashPartyQueryLogOptions,projectNativeTask16RosterQuery,nativeTask16VoucherQueryLogOptions,createNativeTask16RosterQueryDiagnostic});
