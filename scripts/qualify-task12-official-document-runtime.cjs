@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync,execFile } = require('node:child_process');
-const { promisify } = require('node:util');
+const { promisify, types } = require('node:util');
 const { performance } = require('node:perf_hooks');
 const { pathToFileURL } = require('node:url');
 const exec=promisify(execFile);
@@ -97,13 +97,24 @@ function prepare(requestPath, expected, outputPath) {
 }
 
 function fixedWrite(file,bytes) { fs.writeFileSync(file,bytes,{mode:0o600,flag:'wx'}); }
+function projectChildTiming(value){
+  if(!value||typeof value!=='object'||types.isProxy(value))return;
+  const own=key=>Object.getOwnPropertyDescriptor(value,key)?.value;
+  if(own('status')!=='OBSERVED')return;
+  const costs=Object.fromEntries(['setupMs','precheckMs','childMs','postcheckMs','elapsedMs'].map(key=>[key,own(key)]));
+  if(!Object.values(costs).every(number=>Number.isSafeInteger(number)&&number>=0&&number<=3600000))return;
+  const firstFailurePhase=own('firstFailurePhase'),childOutcome=own('childOutcome'),postcheckOutcome=own('postcheckOutcome');
+  if(![null,'PRECHECK','CHILD','POSTCHECK'].includes(firstFailurePhase)||!['NOT_STARTED','RETURNED','THREW'].includes(childOutcome)||!['NOT_STARTED','RETURNED','THREW'].includes(postcheckOutcome))return;
+  return {status:'OBSERVED',...costs,firstFailurePhase,childOutcome,postcheckOutcome};
+}
 function firstFailure(error) {
   const chain=[];let current=error;
   for(let n=0;n<8&&current;n++,current=current.cause)chain.push(current);
   const original=chain[chain.length-1]??error;
+  let childTiming;for(const item of chain){if(item&&typeof item==='object'&&!types.isProxy(item)){childTiming=projectChildTiming(Object.getOwnPropertyDescriptor(item,'officialChildTiming')?.value);if(childTiming)break;}}
   return {name:original?.name??'Error',code:original?.code??null,signal:original?.signal??null,killed:original?.killed===true,
     message:typeof original?.message==='string'?original.message.slice(0,2000):'UNKNOWN',
-    postcheckFailed:chain.some(item=>Object.hasOwn(item,'postcheckFailure'))};
+    postcheckFailed:chain.some(item=>Object.hasOwn(item,'postcheckFailure')),...(childTiming?{childTiming}:{})};
 }
 function errorLogs(error,root,label) {
   let value=error;
@@ -120,13 +131,18 @@ async function inspectPdf(scope,plan,label,pdfPath,docxPath,docxSha256) {
   const request={version:1,profile:plan.profile,pythonSite:scope.pythonSite,pdfPath,pdfSha256,docxPath,docxSha256,
     outputDirectory:root,fonts:scope.inspectionFonts};
   const file=path.join(root,'REQUEST.json'),bytes=Buffer.from(JSON.stringify(request,null,2)+'\n');fixedWrite(file,bytes);
-  const result=await budget.run(timeout=>exec(scope.pythonExecutable,['-I','-S','-B',scope.inspectorPath,file,sha(bytes)],{
+  let result;try{result=await budget.run(timeout=>exec(scope.pythonExecutable,['-I','-S','-B',scope.inspectorPath,file,sha(bytes)],{
     cwd:root,env:{PATH:'/usr/bin:/bin',HOME:scope.libreOfficeEnv.HOME,TMPDIR:scope.libreOfficeEnv.TMPDIR,
       PYTHONDONTWRITEBYTECODE:'1',LANG:'en_US.UTF-8',LC_ALL:'en_US.UTF-8'},timeout,maxBuffer:4*1024*1024}));
   fixedWrite(path.join(root,'STDOUT.log'),result.stdout);fixedWrite(path.join(root,'STDERR.log'),result.stderr);
   need(result.stderr.length===0);const report=JSON.parse(result.stdout);need(report.pdfSha256===pdfSha256);
   const reportPath=path.join(root,'REPORT.json');fixedWrite(reportPath,JSON.stringify(report,null,2)+'\n');
-  budget.remaining();return {report,path:reportPath,sha256:sha(fs.readFileSync(reportPath))};
+  budget.remaining();return {report,path:reportPath,sha256:sha(fs.readFileSync(reportPath)),childTiming:budget.timing()};
+  }catch(error){
+    // Observational costs only: retain the same first error and every full material check.
+    try{if(error&&typeof error==='object'&&!types.isProxy(error)&&Object.isExtensible(error)&&!Object.hasOwn(error,'officialChildTiming'))Object.defineProperty(error,'officialChildTiming',{value:budget.timing()});}catch{/* Diagnostics cannot replace the original failure. */}
+    throw error;
+  }
 }
 async function rejectionBoundaries(converter,scope,bytes,lineBoxScope) {
   const before=fs.readdirSync(scope.javaScratchDirectory).sort();
@@ -155,7 +171,7 @@ async function once(planPath,expected) {
     current.dev===rootIdentity.dev&&current.ino===rootIdentity.ino&&current.uid===rootIdentity.uid&&current.mode===rootIdentity.mode);};
   const stage=async(name,operation)=>{
     active=name;owned();const tick=performance.now();fixedWrite(path.join(plan.runRoot,name+'-STARTED.json'),JSON.stringify({name,startedAt:new Date().toISOString()}));
-    try {const result=await operation();owned();fixedWrite(path.join(plan.runRoot,name+'-COMPLETED.json'),JSON.stringify({name,status:'COMPLETED',exitCode:0,elapsedMs:performance.now()-tick}));return result;}
+    try {const result=await operation();owned();const childTiming=projectChildTiming(result&&typeof result==='object'&&!types.isProxy(result)?Object.getOwnPropertyDescriptor(result,'childTiming')?.value:undefined);fixedWrite(path.join(plan.runRoot,name+'-COMPLETED.json'),JSON.stringify({name,status:'COMPLETED',exitCode:0,elapsedMs:performance.now()-tick,...(childTiming?{childTiming}:{})}));return result;}
     catch(error){try{owned();errorLogs(error,plan.runRoot,name);fixedWrite(path.join(plan.runRoot,name+'-FAILED.json'),JSON.stringify({name,status:'STOPPED',elapsedMs:performance.now()-tick,firstFailure:firstFailure(error)}));}catch(logError){throw attachPostcheck(error,logError);}throw error;}
   };
   try {
