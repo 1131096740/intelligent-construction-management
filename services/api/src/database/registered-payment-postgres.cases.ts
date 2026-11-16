@@ -861,7 +861,9 @@ export async function runRegisteredPublicCashPayment(
     openingTreatment:"not_included",openingReason:"本次付款未计入合成期初",openingEvidence:"隔离合成公共现金付款依据",
     sourceAllocations:[{sourceBatchId:fixture.cashSourceId,amountCents:"4000"}],confirmationPassword:contender.password};
   const post = () => registeredPgHttp(contender, `${endpoint}/registrations`, "POST", command, fixture.contender.accessToken, lanes[1]);
-  check((await checked(post)).status === 201, "PG_CASH_REGISTRATION");
+  const initialPost = await checked(post);
+  lanes[1].recordCashRegistrationStatus?.(initialPost.status);
+  check(initialPost.status === 201, "PG_CASH_REGISTRATION");
   const after = await checked(() => observe(primary, cashFixture, lanes[0], true));
   const execution = after.executions[0], funding = after.funding[0], allocation = after.allocations[0];
   check(after.executions.length===1 && after.funding.length===1 && after.allocations.length===1 && after.events.length===1 && after.audits.length===1 &&

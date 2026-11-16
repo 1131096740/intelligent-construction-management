@@ -75,6 +75,8 @@ export interface RegisteredPgSeedContinuity {
   markCaseGate?: (gate: RegisteredPgCaseGate) => void;
   /** Fixed observer timings only; no resource, client, query or authority is supplied. */
   recordObserverDiagnostic?: (detail: RegisteredPgObserverDiagnostic) => void;
+  /** Cash-case response status only; absence is unknown and is not a retry permit. */
+  recordCashRegistrationStatus?: (status: number) => void;
   markAttributionGapStage?: (stage: "OBSERVER_BEFORE" | "OWNER_BEFORE" | "BEFORE_STATE" | "PUBLIC_ACCOUNT" |
     "PUBLIC_OPTIONS" | "REGISTRATION" | "ORIGINAL_RESULT" | "OBSERVER_AFTER" | "OWNER_AFTER" |
     "FINANCIAL_COMPARISON") => void;

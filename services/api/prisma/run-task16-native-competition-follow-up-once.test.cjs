@@ -356,6 +356,64 @@ test('cash caller preserves results, immutable failures, and reports a pending d
  release();await new Promise(resolve=>setImmediate(resolve));
  api.recordNativeTask16CashSecretCleanup(receipt,state,0);assert.equal(receipt.cashSecretCleanup,'UNKNOWN');
 });
+test('cash identity stores only key hashes and cannot reconstruct an old request',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const root=fs.mkdtempSync('/private/tmp/task16-cash-recovery-');
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const runId='7d8bb2ac-4179-4bcc-86ab-f4b31d1ef504',candidateSha='a'.repeat(40),planSha256='b'.repeat(64);
+ const identity={databaseOid:'16384',systemIdentifier:'987654321'};
+ const projectId='11111111-1111-4111-8111-111111111111',paymentId='22222222-2222-4222-8222-222222222222';
+ const key='33333333-3333-4333-8333-333333333333';
+ const stored=api.writeNativeTask16CashRecoveryIdentity(root,{runId,candidateSha,planSha256,identity,projectId,paymentId,requestKey:key});
+ const raw=fs.readFileSync(stored.file,'utf8'),record=JSON.parse(raw);
+ assert.equal(fs.statSync(stored.file).mode&0o777,0o600);
+ assert.equal(raw.includes(key),false);
+ assert.equal(record.requestKeySha256,require('node:crypto').createHash('sha256').update(key).digest('hex'));
+ assert.equal(record.systemIdentifier,'987654321');assert.equal(record.databaseOid,'16384');
+ assert.equal(record.projectIdSha256,require('node:crypto').createHash('sha256').update(projectId).digest('hex'));
+ assert.equal(record.paymentIdSha256,require('node:crypto').createHash('sha256').update(paymentId).digest('hex'));
+ assert.equal(record.runId,runId);assert.equal(record.candidateSha,candidateSha);assert.equal(record.planSha256,planSha256);
+ assert.equal(api.recoverNativeTask16CashRequestKey,undefined);
+ assert.throws(()=>api.writeNativeTask16CashRecoveryIdentity(root,{runId,candidateSha,planSha256,identity,projectId,paymentId,requestKey:key}),{code:'EEXIST'});
+ assert.equal(fs.readFileSync(stored.file,'utf8'),raw);
+});
+test('actual cash preparation barrier never enters payment on open, fsync or later abort failure',async t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const root=fs.mkdtempSync('/private/tmp/task16-cash-barrier-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const plan={runId:'7d8bb2ac-4179-4bcc-86ab-f4b31d1ef504',source:{head:'a'.repeat(40)}};
+ const identity={databaseOid:'16384',systemIdentifier:'987654321'},fixturePlan={ids:{project:'11111111-1111-4111-8111-111111111111',payment:'22222222-2222-4222-8222-222222222222'}};
+ const prepared={contender:{requestKey:'33333333-3333-4333-8333-333333333333'}};
+ const execute=(dir,needLive,runCase)=>api.runNativeTask16CashPreparedCase(dir,plan,identity,fixturePlan,prepared,{planSha256:'b'.repeat(64)},async()=>{},needLive,()=>{},runCase);
+ let posts=0;
+ const existing=path.join(root,'existing');fs.mkdirSync(existing,{mode:0o700});fs.writeFileSync(path.join(existing,'cash-recovery-identity.json'),'preexisting',{mode:0o600});
+ await assert.rejects(execute(existing,()=>{},()=>{posts++;}),{code:'EEXIST'});assert.equal(posts,0);
+ const symlink=path.join(root,'symlink');fs.mkdirSync(symlink,{mode:0o700});fs.symlinkSync(path.join(existing,'cash-recovery-identity.json'),path.join(symlink,'cash-recovery-identity.json'));
+ await assert.rejects(execute(symlink,()=>{},()=>{posts++;}),{code:'EEXIST'});assert.equal(posts,0);
+ const failed=path.join(root,'fsync');fs.mkdirSync(failed,{mode:0o700});
+ const originalFsync=fs.fsyncSync;fs.fsyncSync=()=>{throw Error('synthetic fsync failure');};
+ try{await assert.rejects(execute(failed,()=>{},()=>{posts++;}),/synthetic fsync failure/u);}finally{fs.fsyncSync=originalFsync;}
+ assert.equal(posts,0);
+ const aborted=path.join(root,'aborted');fs.mkdirSync(aborted,{mode:0o700});let checks=0;
+ await assert.rejects(execute(aborted,()=>{if(++checks===2)throw Error('synthetic abort');},()=>{posts++;}),/synthetic abort/u);
+ assert.equal(posts,0);assert.ok(fs.existsSync(path.join(aborted,'cash-recovery-identity.json')));
+ const ready=path.join(root,'ready');fs.mkdirSync(ready,{mode:0o700});
+ assert.equal(await execute(ready,()=>{},()=>{posts++;return 'case';}),'case');assert.equal(posts,1);
+});
+test('cash registration response is durably bounded and cannot overwrite the first observation',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const root=fs.mkdtempSync('/private/tmp/task16-cash-response-');t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const receipt={cashRegistrationHttp:{status:'UNKNOWN'},cashRecoveryIdentity:{sha256:'c'.repeat(64)}};
+ api.recordNativeTask16CashRegistrationStatus(root,receipt,500);
+ const saved=JSON.parse(fs.readFileSync(path.join(root,'cash-registration-response.json'),'utf8'));
+ assert.deepEqual(saved,{schemaVersion:1,recoveryIdentitySha256:'c'.repeat(64),httpStatus:500});
+ api.recordNativeTask16CashRegistrationStatus(root,receipt,201);
+ assert.equal(receipt.cashRegistrationHttp.status,500);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(root,'cash-registration-response.json'),'utf8')).httpStatus,500);
+ const failed={cashRegistrationHttp:{status:'UNKNOWN'},cashRecoveryIdentity:{sha256:'c'.repeat(64)}};
+ api.recordNativeTask16CashRegistrationStatus(root,failed,409);
+ assert.equal(failed.cashRegistrationHttp.status,409);
+ assert.equal(failed.cashRegistrationResponsePublication,'UNKNOWN');
+});
 test('cash runtime client alone projects bounded query metadata without changing failures',async()=>{
  const api=require('./run-task16-native-competition-follow-up-once.cjs'),receipt={stages:[{stage:'CASH_SEED_AND_SETTLEMENT_REPLAY'}]},original=Error('synthetic error');let params=0;
  class Client{constructor(options){this.options=options;} $on(kind,handler){this.handler=handler;}}

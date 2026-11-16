@@ -32,6 +32,27 @@ function capture(file,max=16*1024*1024){
 }
 function directory(file,empty=false){need(typeof file==='string'&&file.startsWith('/private/tmp/')&&file.length<70&&fs.realpathSync(file)===file);const s=fs.lstatSync(file);need(s.isDirectory()&&!s.isSymbolicLink()&&s.uid===process.getuid()&&(s.mode&0o777)===0o700&&(!empty||fs.readdirSync(file).length===0));return Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,s[k]]));}
 function writeNew(root,name,value){need(path.basename(name)===name);const file=path.join(root,name),bytes=Buffer.isBuffer(value)?value:Buffer.from(typeof value==='string'?value:JSON.stringify(value)+'\n');const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}const d=fs.openSync(root,fs.constants.O_RDONLY);try{fs.fsyncSync(d);}finally{fs.closeSync(d);}return {file,sha256:hash(bytes),bytes:bytes.length};}
+function writeNativeTask16CashRecoveryIdentity(root,input){
+ const {runId,candidateSha,planSha256,identity,projectId,paymentId,requestKey}=fixed(input,['runId','candidateSha','planSha256','identity','projectId','paymentId','requestKey']);
+ const db=fixed(identity,['databaseOid','systemIdentifier']);
+ const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(value);
+ need(uuid(runId)&&uuid(projectId)&&uuid(paymentId)&&uuid(requestKey)&&hex(candidateSha,40)&&hex(planSha256,64)&&/^[1-9][0-9]{0,9}$/u.test(db.databaseOid)&&/^[1-9][0-9]{0,19}$/u.test(db.systemIdentifier),'NATIVE_DIRECT_CASH_RECOVERY_IDENTITY');
+ return writeNew(root,'cash-recovery-identity.json',{schemaVersion:1,purpose:CASH_PURPOSE,caseId:'registered.public-cash.payment',candidateSha,planSha256,runId,databaseOid:db.databaseOid,systemIdentifier:db.systemIdentifier,requestKeySha256:hash(Buffer.from(requestKey)),projectIdSha256:hash(Buffer.from(projectId)),paymentIdSha256:hash(Buffer.from(paymentId))});
+}
+// Production runner uses this same ordered barrier: no cash case can begin
+// until the same-run, hash-only observation has been durably published.
+async function runNativeTask16CashPreparedCase(root,plan,identity,fixturePlan,prepared,receipt,verifyIdentity,needLive,enter,runCase){
+ await verifyIdentity();needLive();
+ receipt.cashRecoveryIdentity=writeNativeTask16CashRecoveryIdentity(root,{runId:plan.runId,candidateSha:plan.source.head,planSha256:receipt.planSha256,identity:{databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier},projectId:fixturePlan.ids.project,paymentId:fixturePlan.ids.payment,requestKey:prepared.contender.requestKey});
+ needLive();receipt.cashRegistrationHttp={status:'UNKNOWN'};enter('CASH_PAYMENT_AND_OBSERVER');
+ return await runCase();
+}
+function recordNativeTask16CashRegistrationStatus(root,receipt,status){
+ if(receipt.cashRegistrationHttp?.status!=='UNKNOWN'||!Number.isInteger(status)||status<100||status>599)return;
+ receipt.cashRegistrationHttp={status};
+ try{receipt.cashRegistrationResponse=writeNew(root,'cash-registration-response.json',{schemaVersion:1,recoveryIdentitySha256:receipt.cashRecoveryIdentity.sha256,httpStatus:status});}
+ catch{receipt.cashRegistrationResponsePublication='UNKNOWN';}
+}
 function git(args){return execFileSync('/usr/bin/git',args,{cwd:ROOT,encoding:'utf8',env:{PATH:'/usr/bin:/bin'},timeout:10000,maxBuffer:4*1024*1024}).trim();}
 function sourceCapture(){
  need(git(['status','--porcelain'])==='','NATIVE_DIRECT_SOURCE_DIRTY');
@@ -299,7 +320,7 @@ function assertNativeTask16CompetitionLoopbackListeners(text,postmasterPid,port)
  need(addresses.length===2&&addresses.includes('127.0.0.1')&&addresses.includes('::1'),code);
  return Object.freeze({postmasterPid,port,addresses:Object.freeze(['127.0.0.1','::1']),ownedStartupListeners:true});
 }
-module.exports=Object.freeze({runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({runNativeTask16CashPreparedCase,writeNativeTask16CashRecoveryIdentity,recordNativeTask16CashRegistrationStatus,runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options,request.purpose)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256,request.purpose);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -602,7 +623,7 @@ async function runNativeTask16Business(plan,state){
     const key=index===0?fixturePlan.ids.requestKey:prepared.contender.requestKey;
     need(['/payment-executions/work-items','/payment-executions/'+fixturePlan.ids.payment+'/registration-options','/payment-executions/results/'+key,...(followUpLane!==undefined?['/payment-executions/results/'+prepared.followUpRequestKey,'/payment-executions/results/'+(index===0?prepared.contender.requestKey:fixturePlan.ids.requestKey),'/payment-executions/recorded-items?paymentId='+fixturePlan.ids.payment]:[])].includes(route),'NATIVE_DIRECT_CASE_ROUTE_PHASE');
    };
-   return {seedProfile:selection.cash?'TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1':selection.paymentProfile,checkLight:needLive,assertHttpRequest:assertRequest,fetch:async(target,init)=>{checkCommand(target,init);return fetch(target,init);},requestJson:async(target,init,timeout)=>{checkCommand(target,init);need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestCurrent261SeedJson(target,init,timeout);},recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
+   return {seedProfile:selection.cash?'TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1':selection.paymentProfile,checkLight:needLive,assertHttpRequest:assertRequest,fetch:async(target,init)=>{checkCommand(target,init);return fetch(target,init);},requestJson:async(target,init,timeout)=>{checkCommand(target,init);need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestCurrent261SeedJson(target,init,timeout);},...(selection.cash&&index===1?{recordCashRegistrationStatus:status=>recordNativeTask16CashRegistrationStatus(root,receipt,status)}:{}),recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
   });
   if(selection.cash){
    await wait(()=>fixture.assertRegisteredPgCompetitionRoles(context,contender,lanes[0]));
@@ -612,8 +633,7 @@ async function runNativeTask16Business(plan,state){
     prepared=await wait(()=>fixture.seedRegisteredPgPublicCashFormalFixture(context,contender,fixturePlan,...lanes));
     need(equal(seedPosts.map(rows=>rows.length),[3,2])&&prepared.accessToken!==prepared.contender.accessToken,'NATIVE_DIRECT_CASH_SEED');
     resultKeys.push(prepared.contender.requestKey);
-    await verifyIdentity();enter('CASH_PAYMENT_AND_OBSERVER');
-    const result=await wait(()=>cases.runRegisteredPublicCashPayment(context,contender,prepared,lanes));
+    const result=await runNativeTask16CashPreparedCase(root,plan,identity,fixturePlan,prepared,receipt,verifyIdentity,needLive,enter,()=>wait(()=>cases.runRegisteredPublicCashPayment(context,contender,prepared,lanes)));
     need(result.passed===true&&result.caseId===selection.caseId&&result.cashBalanceYuan4==='60.0000'&&result.paidCents==='4000'&&result.costCents==='4000'&&result.rootCount===0&&result.replayUnchanged===true&&equal(posts,[0,2]),'NATIVE_DIRECT_CASH_RESULT');
     const accounting=validateNativeTask16CashAccounting(JSON.stringify(result.accountingEvidence));
     receipt.accounting=writeNew(root,'accounting-evidence.json',{schemaVersion:1,purpose:CASH_PURPOSE,candidateSha:plan.source.head,runId,caseId:result.caseId,accountingEvidence:accounting});
