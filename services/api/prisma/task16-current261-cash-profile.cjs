@@ -36,6 +36,10 @@ function cashAccessPlan(plan){
    const inserts=['createdAt','projectId','revision','updatedAt'];
    if(!aggregate||inserts.some(column=>aggregate.insert.includes(column)))throw Error('TASK16_CASH_ACL');
    aggregate.insert=[...aggregate.insert,...inserts].sort();
+   // PostgreSQL requires UPDATE on one column for SELECT FOR UPDATE. This
+   // also grants actual timestamp writes, so it is confined to this isolated profile.
+   if(aggregate.update.includes('updatedAt'))throw Error('TASK16_CASH_ACL');
+   aggregate.update=[...aggregate.update,'updatedAt'].sort();
   }
   const functions=[...previous.functions];
   if(role==='runtime')for(const signature of CASH_WRITER_FUNCTIONS){if(functions.includes(signature))throw Error('TASK16_CASH_ACL');functions.push(signature);}
