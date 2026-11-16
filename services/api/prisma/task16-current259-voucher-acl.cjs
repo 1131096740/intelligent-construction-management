@@ -7,14 +7,14 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { functionProofSql } = require('./task16-registered-access-check.cjs');
 
-const requirementsSha256='8ba477f31e388b13955c4050eabaee00eb600a7f8bcb15c21803fd55181a2c66';
+const requirementsSha256='6bf7f109848195ddb653d68827990a97bccd549afee3ab30eb02834fb8c7148a';
 const bytes=readFileSync(join(__dirname,'task16-current259-voucher-acl.requirements.json'));
 const code='CURRENT259_VOUCHER_ACL';
 const need=condition=>{if(!condition)throw new Error(code);};
 need(createHash('sha256').update(bytes).digest('hex')===requirementsSha256);
 const {readDelta,insertDelta,lockOnlyUpdate,routineSources,native261InsertDefaults,native261ReadDelta}=JSON.parse(bytes);
 need(JSON.stringify(native261InsertDefaults)===JSON.stringify([['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']]));
-need(JSON.stringify(native261ReadDelta)===JSON.stringify({ContractArchiveEvidenceFile:['contentSha256','createdAt','displayOrder','id','mimeType','sizeBytes'],ProjectRosterMember:['id','projectId','userId']}));
+need(JSON.stringify(native261ReadDelta)===JSON.stringify({ContractArchiveEvidenceFile:['contentSha256','createdAt','displayOrder','id','mimeType','sizeBytes'],ProjectRosterMember:['id','projectId','userId'],WageApprovedSourceVersion:['id']}));
 const profileName='CURRENT259_PAYMENT_VOUCHER_V1';
 const owner='jg_task01_owner', runtime='jg_task01_runtime', observer='jg_task01_observer';
 const insertRoutine='jg_task16_runtime_voucher_file_insert_only';
@@ -110,6 +110,9 @@ function voucherNative261AccessPlan(plan){
   const evidence=qualified.runtime.tables.filter(row=>row.table==='ContractArchiveEvidenceFile');
   need(evidence.length===1&&native261ReadDelta.ContractArchiveEvidenceFile.every(column=>!evidence[0].select.includes(column)));
   evidence[0].select=[...evidence[0].select,...native261ReadDelta.ContractArchiveEvidenceFile].sort();
+  const wage=qualified.runtime.tables.filter(row=>row.table==='WageApprovedSourceVersion');
+  need(wage.length===1&&native261ReadDelta.WageApprovedSourceVersion.every(column=>!wage[0].select.includes(column)));
+  wage[0].select=[...wage[0].select,...native261ReadDelta.WageApprovedSourceVersion].sort();
   need(!qualified.runtime.tables.some(row=>row.table==='ProjectRosterMember'));
   qualified.runtime.tables.push({table:'ProjectRosterMember',select:[...native261ReadDelta.ProjectRosterMember],insert:[],update:[],references:[]});
   return qualified;
