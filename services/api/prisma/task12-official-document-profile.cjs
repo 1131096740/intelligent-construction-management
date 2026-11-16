@@ -79,8 +79,9 @@ const CONTROL_FILES=Object.freeze([
  'services/api/src/contract-document/contract-body-pdf-converter.ts','services/api/src/contract-document/libreoffice-converter.ts',
  'services/api/src/contract-document/task12-official-qualification-sample.ts',
  'services/api/test-support/task12-official-document-fidelity.py','services/api/test-support/task12-read-drawn-pdf.py',
- 'services/api/assets/templates/material-purchase-real-v1.docx',
- ...['runtime-lock.json','runtime-lock-material-body25-v4.json',LOCK_NAME,'runtime-lock-material-body25-v4-temurin17-official-v2.json'].map(name=>'services/api/assets/document-converter/'+name),REGISTRY_PATH
+ 'services/api/assets/templates/material-purchase-real-v1.docx','services/api/assets/templates/equipment-rental-real-v1.docx',
+ 'services/api/assets/document-converter/ContractDocxPdf.java',
+ ...['runtime-lock.json','runtime-lock-material-body25-v4.json',LOCK_NAME,'runtime-lock-material-body25-v4-temurin17-official-v2.json','runtime-lock-mechanical-temurin17-official-v1.json'].map(name=>'services/api/assets/document-converter/'+name),REGISTRY_PATH
 ]);
 function sourceSnapshot() {
   need(git(['status','--porcelain','--untracked-files=all'])==='','SOURCE');
@@ -298,8 +299,9 @@ function inspectMaterials(file, expectedSha256, activation) {
     const expectations=capture(plan.document.expectationsPath,plan.document.expectationsSha256,'DOCUMENT',128*1024);all.push(metadata(expectations));
     // Reproduce the public source renderer from the already sealed build. ZIP
     // transport timestamps may vary; every uncompressed package part must match.
-    const template=capture(path.join(SOURCE_ROOT,'services/api/assets/templates/material-purchase-real-v1.docx'),
-      '44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd','DOCUMENT');all.push(metadata(template));
+    const mechanical=descriptor.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
+    const template=capture(path.join(SOURCE_ROOT,'services/api/assets/templates/'+(mechanical?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx')),
+      mechanical?'b846a2f93a3f118581a58fe137b9a74c0433a7faa271eed1569068da6d5cef89':'44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd','DOCUMENT');all.push(metadata(template));
     if(!activation?.publicationOnly){
       const renderer=activation?.lease??require(path.join(SOURCE_ROOT,'services/api/dist/contract-document/task12-official-qualification-sample.js'));
       const canonical=activation?.lease?.canonicalDocx??renderer.canonicalOfficialQualificationDocx;
@@ -308,7 +310,7 @@ function inspectMaterials(file, expectedSha256, activation) {
       const sample=renderer.createOfficialQualificationSample(template.bytes);
       need(canonical(document.bytes)===canonical(sample.docx)&&canonical(office.bytes)===canonical(sample.officeDocx),'DOCUMENT_RENDERER');
       const {isDeepStrictEqual}=require('node:util');
-      need(isDeepStrictEqual(JSON.parse(scope.bytes.toString('utf8')),JSON.parse(JSON.stringify({...sample.scope,docxSha256:document.sha256})))&&
+      need(isDeepStrictEqual(JSON.parse(scope.bytes.toString('utf8')),JSON.parse(JSON.stringify(sample.scope===null?null:{...sample.scope,docxSha256:document.sha256})))&&
         isDeepStrictEqual(JSON.parse(expectations.bytes.toString('utf8')),JSON.parse(JSON.stringify(sample.expectations))),'DOCUMENT_RENDERER');
       activation?.lease.verifyFull();
     }

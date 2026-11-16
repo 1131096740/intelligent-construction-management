@@ -17,6 +17,7 @@ function model(options={}) {
   };
   const hash = bytes => aliases.get(sha(bytes)) ?? sha(bytes);
   const descriptor=require('./task12-official-document-profiles.cjs').officialDocumentProfile(options.profile??'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1');
+  const mechanical=descriptor.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
   const lockPath=path.join(SOURCE,'services/api/assets/document-converter',descriptor.lockName);
   const lock=JSON.parse(fs.readFileSync(lockPath));
   put(lockPath,fs.readFileSync(lockPath));
@@ -26,8 +27,8 @@ function model(options={}) {
    ...['task16-current259-client-loader.cjs','task16-current259-build.cjs','task16-current259-business-continuity.cjs'].map(name=>'services/api/prisma/'+name),
    ...['task12-document-context.cjs','task12-official-document-child.cjs','task12-official-document-profiles.cjs','task12-official-document-registry.cjs','task12-official-document-fidelity.cjs','task12-official-document-profile.cjs','task12-official-qualification-actions.cjs'].map(name=>'services/api/prisma/'+name),
    'services/api/src/contract-document/contract-body-pdf-converter.ts','services/api/src/contract-document/libreoffice-converter.ts','services/api/src/contract-document/task12-official-qualification-sample.ts',
-   'services/api/test-support/task12-official-document-fidelity.py','services/api/test-support/task12-read-drawn-pdf.py','services/api/assets/templates/material-purchase-real-v1.docx',
-   ...['runtime-lock.json','runtime-lock-material-body25-v4.json','runtime-lock-material-body25-v4-temurin17-official-v1.json','runtime-lock-material-body25-v4-temurin17-official-v2.json'].map(name=>'services/api/assets/document-converter/'+name),registryPath].sort();
+   'services/api/test-support/task12-official-document-fidelity.py','services/api/test-support/task12-read-drawn-pdf.py','services/api/assets/templates/material-purchase-real-v1.docx','services/api/assets/templates/equipment-rental-real-v1.docx','services/api/assets/document-converter/ContractDocxPdf.java',
+   ...['runtime-lock.json','runtime-lock-material-body25-v4.json','runtime-lock-material-body25-v4-temurin17-official-v1.json','runtime-lock-material-body25-v4-temurin17-official-v2.json','runtime-lock-mechanical-temurin17-official-v1.json'].map(name=>'services/api/assets/document-converter/'+name),registryPath].sort();
   for(const name of tracked)if(!files.has(path.join(SOURCE,name)))put(path.join(SOURCE,name),'fixed source '+name);
   put(path.join(SOURCE,registryPath),JSON.stringify({version:1,profile:lock.qualification.profile,qualification:null}));
   const source={head:'a'.repeat(40),tree:'b'.repeat(40),sha256:'0'.repeat(64),files:tracked.length};
@@ -68,10 +69,10 @@ function model(options={}) {
   put('/private/tmp/archive',Buffer.alloc(185617580),lock.qualification.archiveSha256);
   const PizZip=require('pizzip'),zip=new PizZip();zip.file('word/document.xml','<model>fixed formal renderer output</model>');
   const documentBytes=zip.generate({type:'nodebuffer'});
-  const scopeValue={version:1,sourceSha256:'44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd',typographyVersion:'reviewed-material-primary-secondary-body25-v4',paragraphs:[],docxSha256:sha(documentBytes)};
+  const scopeValue=mechanical?null:{version:1,sourceSha256:'44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd',typographyVersion:'reviewed-material-primary-secondary-body25-v4',paragraphs:[],docxSha256:sha(documentBytes)};
   const sample={docx:documentBytes,officeDocx:documentBytes,scope:scopeValue,expectations:{actualPdfQualification:'NOT_EXECUTED'}};
   put('/private/tmp/input.docx',documentBytes);put('/private/tmp/scope.json',JSON.stringify(scopeValue));put('/private/tmp/expected.json',JSON.stringify(sample.expectations));
-  put(path.join(SOURCE,'services/api/assets/templates/material-purchase-real-v1.docx'),'fixed template','44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd');
+  put(path.join(SOURCE,'services/api/assets/templates/'+(mechanical?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx')),'fixed template',mechanical?'b846a2f93a3f118581a58fe137b9a74c0433a7faa271eed1569068da6d5cef89':'44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd');
   let seq=0;
   function packet() {
     source.sha256=sha(JSON.stringify(tracked.map(name=>[name,hash(files.get(path.join(SOURCE,name)).bytes),files.get(path.join(SOURCE,name)).mode & 0o7777])));

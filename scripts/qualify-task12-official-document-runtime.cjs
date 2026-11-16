@@ -13,7 +13,7 @@ const exec=promisify(execFile);
 const { createOfficialDocumentChildBudget,attachPostcheck } = require('../services/api/prisma/task12-official-document-child.cjs');
 const { runOfficialQualificationActions } = require('../services/api/prisma/task12-official-qualification-actions.cjs');
 const {officialDocumentProfile}=require('../services/api/prisma/task12-official-document-profiles.cjs');
-const { validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity } = require('../services/api/prisma/task12-official-document-fidelity.cjs');
+const { validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalMergedFidelity } = require('../services/api/prisma/task12-official-document-fidelity.cjs');
 const {
   PROFILE, sourceWitness, buildWitness, buildToolWitness, toolControlWitness, inspectOfficialDocumentQualification, withOfficialDocumentQualification, hostBoundary
 } = require('../services/api/prisma/task12-official-document-profile.cjs');
@@ -80,7 +80,8 @@ function prepare(requestPath, expected, outputPath) {
     JSON.stringify(buildRecord.toolchain)===JSON.stringify(buildToolWitness()));
   const sampleDirectory=fs.mkdtempSync(path.join(path.dirname(outputPath),'formal-sample-'));fs.chmodSync(sampleDirectory,0o700);
   const producer=require('../services/api/dist/contract-document/task12-official-qualification-sample.js');
-  const sample=producer.createOfficialQualificationSample(fs.readFileSync(path.resolve(__dirname,'../services/api/assets/templates/material-purchase-real-v1.docx')));
+  const mechanical=request.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
+  const sample=producer.createOfficialQualificationSample(fs.readFileSync(path.resolve(__dirname,'../services/api/assets/templates/'+(mechanical?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx'))));
   const office=path.join(sampleDirectory,'office-preview.docx'),docx=path.join(sampleDirectory,'material.docx'),scope=path.join(sampleDirectory,'line-box-scope.json'),expectations=path.join(sampleDirectory,'EXPECTED.json');
   const scopeBytes=Buffer.from(JSON.stringify(sample.scope,null,2)+'\n'),expectationBytes=Buffer.from(JSON.stringify(sample.expectations,null,2)+'\n');
   for(const [name,bytes] of [[docx,sample.docx],[office,sample.officeDocx],[scope,scopeBytes],[expectations,expectationBytes]])fs.writeFileSync(name,bytes,{mode:0o600,flag:'wx'});
@@ -131,9 +132,11 @@ async function rejectionBoundaries(converter,scope,bytes,lineBoxScope) {
   const before=fs.readdirSync(scope.javaScratchDirectory).sort();
   const unchanged=()=>need(JSON.stringify(fs.readdirSync(scope.javaScratchDirectory).sort())===JSON.stringify(before));
   const reject=async(operation,message)=>{let rejected=false;try{await operation();}catch(error){need(error.message===message);rejected=true;}need(rejected);unchanged();};
-  const typographyVersion='reviewed-material-primary-secondary-body25-v4';
+  const mechanical=scope.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
+  const typographyVersion=mechanical?'reviewed-mechanical-primary-secondary-roles-v1':'reviewed-material-primary-secondary-body25-v4';
+  if(mechanical) await reject(()=>converter.contractBodyPdfRuntimeLockFingerprint('reviewed-material-primary-secondary-body25-v4'),'合同正文转换运行环境未就绪，请联系管理员');
   await reject(()=>converter.assertContractBodyPdfRuntimeLock('0'.repeat(64),typographyVersion),'合同正文转换运行环境未就绪，请联系管理员');
-  const options={typographyVersion,lineBoxScope};
+  const options={typographyVersion,...(mechanical?{}:{lineBoxScope})};
   await reject(()=>converter.convertContractBodyDocxToPdf(Buffer.from('not a DOCX'),scope.lockSha256,options),'合同正文文件无法安全转换，请核对文件内容');
   const PizZip=require('../services/api/node_modules/pizzip');
   const external=new PizZip(bytes),relations='word/_rels/document.xml.rels';
@@ -162,18 +165,19 @@ async function once(planPath,expected) {
       const officeConverter=require('../services/api/dist/contract-document/libreoffice-converter.js');
       const normalizer=require('../services/api/dist/contract-document/pdf-normalizer.js');
       scope.checkMaterials();
+      const mechanical=plan.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
       const bytes=fs.readFileSync(plan.document.path),officeBytes=fs.readFileSync(plan.document.officePath),lineBoxScope=JSON.parse(fs.readFileSync(plan.document.scopePath,'utf8'));
       const savePdf=(label,pdf)=>{need(Buffer.isBuffer(pdf)&&pdf.subarray(0,5).equals(Buffer.from('%PDF-'))&&pdf.length<=100000000);const file=path.join(plan.runRoot,label+'.pdf');fixedWrite(file,pdf);return {bytes:pdf,path:file,sha256:sha(pdf)};};
       return runOfficialQualificationActions({
         negative:()=>stage('01-NEGATIVE',()=>rejectionBoundaries(converter,scope,bytes,lineBoxScope)),
         java:()=>stage('02-JAVA',async()=>{
-          const typographyVersion='reviewed-material-primary-secondary-body25-v4',fingerprint=await converter.contractBodyPdfRuntimeLockFingerprint(typographyVersion);need(fingerprint===scope.lockSha256);
-          const output=await converter.convertContractBodyDocxToPdf(bytes,fingerprint,{typographyVersion,lineBoxScope});
+          const typographyVersion=mechanical?'reviewed-mechanical-primary-secondary-roles-v1':'reviewed-material-primary-secondary-body25-v4',fingerprint=await converter.contractBodyPdfRuntimeLockFingerprint(typographyVersion);need(fingerprint===scope.lockSha256);
+          const output=await converter.convertContractBodyDocxToPdf(bytes,fingerprint,{typographyVersion,...(mechanical?{}:{lineBoxScope})});
           need(output.provenance.conversionCalls===1&&output.provenance.boundaryDenials===3);return {...savePdf('java',output.pdf),provenance:output.provenance};
         }),
         inspectJava:java=>stage('03-JAVA-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'java',java.path,plan.document.path,plan.document.sha256);
-          return {...report,verdict:validateOfficialDocumentFidelity(report.report,java.sha256)};
+          return {...report,verdict:(mechanical?validateOfficialMechanicalFidelity:validateOfficialDocumentFidelity)(report.report,java.sha256)};
         }),
         office:()=>stage('04-OFFICE',async()=>{
           const runner=async(command,args,options)=>{
@@ -188,7 +192,7 @@ async function once(planPath,expected) {
         }),
         inspectOffice:office=>stage('05-OFFICE-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'office',office.path,plan.document.officePath,plan.document.officeSha256);
-          return {...report,verdict:validateOfficialOfficeFidelity(report.report,office.sha256)};
+          return {...report,verdict:(mechanical?validateOfficialMechanicalOfficeFidelity:validateOfficialOfficeFidelity)(report.report,office.sha256)};
         }),
         normalize:(java,office)=>stage('06-NORMALIZE',async()=>{
           // Existing public PDF adapter only, not an LO merge or a business write.
@@ -197,7 +201,7 @@ async function once(planPath,expected) {
         }),
         inspectNormalized:(normalized,javaPhysical,officePhysical)=>stage('07-NORMALIZED-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'normalized',normalized.path,plan.document.path,plan.document.sha256);
-          return {...report,verdict:validateOfficialMergedFidelity(report.report,javaPhysical.report,officePhysical.report,normalized.sha256)};
+          return {...report,verdict:(mechanical?validateOfficialMechanicalMergedFidelity:validateOfficialMergedFidelity)(report.report,javaPhysical.report,officePhysical.report,normalized.sha256)};
         })
       });
     });

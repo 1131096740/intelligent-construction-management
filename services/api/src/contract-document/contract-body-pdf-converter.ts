@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { DOMParser, XMLSerializer, type Element } from "@xmldom/xmldom";
 import PizZip from "pizzip";
 import { extractContractDocx } from "./contract-docx-extractor";
-import { finalizeContractBodyLineBoxScope, isReviewedTypographyVersion, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION,
+import { finalizeContractBodyLineBoxScope, isReviewedTypographyVersion, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
   type ContractBodyLineBoxScope, type ReviewedTypographyVersion } from "./contract-body-document";
 
 import { currentOfficialDocumentScope } from "../../prisma/task12-official-document-profile.cjs";
@@ -77,8 +77,9 @@ function runtimeDescriptor(typographyVersion?: ReviewedTypographyVersion) {
 
 async function lockFile(typographyVersion?: ReviewedTypographyVersion) {
   const official = currentOfficialDocumentScope();
-  if (official && typographyVersion !== REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION) throw new Error(RUNTIME_ERROR);
-  const descriptor = official ? { ...MATERIAL_BODY25_RUNTIME, lockName: official.lockName } : runtimeDescriptor(typographyVersion);
+  const mechanicalOfficial = official?.profile === "TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1";
+  if (official && typographyVersion !== (mechanicalOfficial ? REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION : REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION)) throw new Error(RUNTIME_ERROR);
+  const descriptor = official ? { ...(mechanicalOfficial ? LEGACY_RUNTIME : MATERIAL_BODY25_RUNTIME), lockName: official.lockName } : runtimeDescriptor(typographyVersion);
   const loaded = await jsonFile(join(ASSETS, descriptor.lockName));
   const lock = loaded.value as unknown as RuntimeLock;
   if (lock.schemaVersion !== 1 || lock.engine !== ENGINE || !HASH.test(lock.adapterSourceSha256) || !HASH.test(lock.jdkTreeSha256) || lock.jdkTreeEntries !== 456) throw new Error(RUNTIME_ERROR);

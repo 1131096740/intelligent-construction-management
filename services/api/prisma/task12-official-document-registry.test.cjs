@@ -53,3 +53,21 @@ test('fixed V2 registration remains source-bound and rejects mixed-profile evide
   const value=structuredClone(input);change(value);assert.throws(()=>validateOfficialQualificationRegistration(value),{code:'TASK12_OFFICIAL_DOCUMENT_REGISTRY'});
  }
 });
+
+test('mechanical-only registration binds independent mechanical evidence and refuses material cross-profile reuse',()=>{
+ const api=require('./task12-official-document-fidelity.cjs'),input=registered(),profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
+ for(const item of [input.registry,input.machine,input.physical,input.qualifiedPlan,input.runtimeInput])item.profile=profile;
+ input.machine.candidateLockSha256='1e68559095badbdc15b18891a4f216fbd780ebf2adbf92c6684c795f9d23eeb6';
+ for(const name of ['java','office']){
+  const r=input.reports[name];r.pages=['隔离工具资格机械合同 资格样张设备 第1页/共2页','甲方 虚构甲方公司 乙方 虚构乙方公司 第2页/共2页'];
+  r.bodyAnchor={matches:1,lineSpacings:[],fontSizes:[14],fontFamilies:['simhei']};
+ }
+ input.reports.normalized.pages=[...input.reports.java.pages,...input.reports.office.pages];
+ input.machine.actions.java.verdict=api.validateOfficialMechanicalFidelity(input.reports.java,input.reports.java.pdfSha256);
+ input.machine.actions.office.verdict=api.validateOfficialMechanicalOfficeFidelity(input.reports.office,input.reports.office.pdfSha256);
+ input.machine.actions.normalized.verdict=api.validateOfficialMechanicalMergedFidelity(input.reports.normalized,input.reports.java,input.reports.office,input.reports.normalized.pdfSha256);
+ assert.equal(validateOfficialQualificationRegistration(input).runtimeAuthority,false);
+ for(const change of [v=>{v.machine.profile='TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2';},v=>{v.reports.java.bodyAnchor.fontFamilies=['fangsonggb2312'];},v=>{v.machine.candidateLockSha256='0a2dc0cd644f3a2cbc090daa3377005cf542bdf58c368f97e50417d70930c58f';}]){
+  const bad=structuredClone(input);change(bad);assert.throws(()=>validateOfficialQualificationRegistration(bad));
+ }
+});

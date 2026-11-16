@@ -8,6 +8,7 @@ describe("fixed fictitious source-only material document qualification sample",(
   it("binds the final DOCX to the renderer scope and preserves literal party, money and spacing requirements",async()=>{
     const source=await readFile(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx"));
     const sample=createOfficialQualificationSample(source);
+    if (!sample.scope) throw new Error("material scope required");
     expect(sample.scope.docxSha256).toBe(createHash("sha256").update(sample.docx).digest("hex"));
     expect(sample.scope.sourceSha256).toBe("44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd");
     expect(sample.scope.paragraphs).toHaveLength(154);
@@ -31,5 +32,18 @@ describe("fixed fictitious source-only material document qualification sample",(
   });
   it("rejects a changed original template instead of inventing a new body25 scope",()=>{
     expect(()=>createOfficialQualificationSample(Buffer.from("not the reviewed template"))).toThrow();
+  });
+});
+
+// Same public source renderer; no tools, services or database.
+describe("fixed mechanical official qualification sample",()=>{
+  it("keeps reviewed mechanical roles without inventing material 25pt scope",async()=>{
+    const source=await readFile(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
+    const sample=createOfficialQualificationSample(source);
+    expect(sample.scope).toBeNull();
+    const xml=new PizZip(sample.docx).file("word/document.xml")!.asText();
+    for(const text of ["隔离工具资格机械合同","虚构甲方公司","虚构乙方公司","资格样张设备","壹佰壹拾叁元整"]) expect(xml).toContain(text);
+    expect(sample.expectations).not.toHaveProperty("mainBodyLinePoints");
+    expect(sample.expectations.actualPdfQualification).toBe("NOT_EXECUTED");
   });
 });

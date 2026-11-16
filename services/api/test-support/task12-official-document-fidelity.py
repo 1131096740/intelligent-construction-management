@@ -16,7 +16,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 ANCHOR = "2.本合同的数量为暂估，以实际交货并经验收合格的数量为准，当合同执行数量不能达到合同签订量时，以合同执行数量结算，卖方自愿承担合同签订量未发生部分的风险。"
-PROFILES = frozenset(("TASK12_OFFICIAL_TEMURIN17_0_17_10_V1", "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2"))
+PROFILES = frozenset(("TASK12_OFFICIAL_TEMURIN17_0_17_10_V1", "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2", "TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1"))
 MAX_PDF = 100_000_000
 MAX_GLYPHS = 500_000
 
@@ -344,18 +344,20 @@ def main():
                 raise ValueError("OUTPUT_EXISTS")
             page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5)).save(image)
     all_text = "".join(value["character"] for value in ordered)
-    starts = [match.start() for match in re.finditer(re.escape(ANCHOR), all_text)]
+    mechanical = request["profile"] == "TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1"
+    anchor_text = "第一条租赁机械设备名称、规格型号、数量及金额" if mechanical else ANCHOR
+    starts = [match.start() for match in re.finditer(re.escape(anchor_text), all_text)]
     anchor = report["bodyAnchor"]
     anchor["matches"] = len(starts)
     if len(starts) == 1:
-        values = ordered[starts[0]:starts[0] + len(ANCHOR)]
+        values = ordered[starts[0]:starts[0] + len(anchor_text)]
         origins = sorted({(value["page"], round(value["y"], 2)) for value in values})
         anchor["lineSpacings"] = [round(right[1] - left[1], 2) for left, right in zip(origins, origins[1:]) if left[0] == right[0]]
         cjk = [value for value in values if 0x3400 <= ord(value["character"]) <= 0x9fff]
         anchor["fontSizes"] = sorted({round(value["size"], 2) for value in cjk})
         # Embedded name tables may list full and PostScript names for one face.
         # Require the fixed body face, not a union of every approved CJK family.
-        anchor["fontFamilies"] = sorted({"fangsonggb2312" if "fangsonggb2312" in value["families"] else "/".join(value["families"]) for value in cjk})
+        anchor["fontFamilies"] = sorted({"simhei" if mechanical and "simhei" in value["families"] else "fangsonggb2312" if "fangsonggb2312" in value["families"] else "/".join(value["families"]) for value in cjk})
     report["fontProgramWarnings"] = diagnostics.rows
     print(json.dumps(report, ensure_ascii=False))
 
