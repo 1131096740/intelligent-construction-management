@@ -10,6 +10,8 @@
 
 凭证撤权专用入口 `acdf2ffa` 已独审合入 `ae764c82`，限定新独占用途、无付款登记 HTTP POST；其合成 fixture 会直接通过服务创建虚构付款事实，签票、下载和撤权也会写隔离资源。专用 observer 权限进入同轮 ACL/B7，票据超期不能误判撤权，首因使用固定脱敏码。独立合成树模型 222/222、API build/typecheck/lint 通过；尚未运行真实隔离 PG、Nest 或存储，不构成撤权验收。
 
+准确 `acdf2ffa` 的新独占 native 运行通过 ACL/B7、虚构付款和凭证前置（`FIXTURE_RETURNED`），经理登录后在撤权前项目列表检查 `PROJECTS_BEFORE/HTTP_STATUS` 停止；撤权尚未执行，真实撤权链未通过。cleanup 完成，独核进程、监听及 pidfile 缺席；[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-revoke-acdf/receipt.json) SHA `3f7abdc04d23164205312733e3993fd2476cc036846de2b862fc46b89635b8f5`，当前定位 GET 状态。
+
 ## 2026-11-16 后续接续
 
 已发布 PR #428 指向 `2907d95d` 且仍为 Draft；本地代码集成为 `3c327120`，尚未推送。#394、#398 仍开放，本轮未新增整票关闭。下面旧检查点中“正在运行”以本条终态为准。
