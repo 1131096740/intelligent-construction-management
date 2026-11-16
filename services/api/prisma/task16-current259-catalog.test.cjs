@@ -646,3 +646,29 @@ test('cash B7 readback rejects missing writer or changed physical column grants'
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(extra),req));
  assert.throws(()=>api.renderCurrent259CatalogRead({...req,identity:{...id,paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE,voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}}));
 });
+
+test('revocation profile binds only six source SELECT columns and rejects ACL drift',()=>{
+ const profiles=require('./task16-current261-competition-profile.cjs'),profile=profiles.PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE;
+ assert.equal(profile,'TASK16_PAYMENT261_VOUCHER_REVOCATION_RUNTIME_V1');
+ const src={...source,migrations:currentMigrations};const old=api.loadCurrent259CatalogMaterial(src,PAYMENT261_VOUCHER_RUNTIME_PROFILE),material=api.loadCurrent259CatalogMaterial(src,profile);
+ const target=material.accessPlan.observer.tables.find(x=>x.table==='FundAccountSourceBatch');
+ assert.deepEqual(target,{table:'FundAccountSourceBatch',select:['amountYuan','id','projectId','projectStatus','registrationId','sourceStatus'],insert:[],update:[],references:[]});
+ assert.equal(old.accessPlan.observer.tables.some(x=>x.table==='FundAccountSourceBatch'),false);
+ assert.notEqual(material.effectiveAccessBinding.accessPlanSha256,old.effectiveAccessBinding.accessPlanSha256);
+ const req={...request,source:src,identity:{...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1',paymentProfile:profile}};
+ const row=observed('before',{...plan,...material.accessPlan});row.voucherBindingSha256='7'.repeat(64);row.ledger=api.loadCurrent259CatalogMaterial(src).ledger;row.roles.find(r=>r.name==='jg_task01_runtime').connectionLimit=2;
+ assert.equal(api.parseCurrent259CatalogRead(JSON.stringify(row),req).nativeAdmission,false);
+ const changes=[r=>{r.capabilities=r.capabilities.filter(x=>!(x[0]==='jg_task01_observer'&&x[2]==='FundAccountSourceBatch'&&x[3]==='amountYuan'));},r=>r.capabilities.push(['jg_task01_observer','column','FundAccountSourceBatch','sourceName','SELECT',false]),r=>{r.capabilities.find(x=>x[0]==='jg_task01_observer'&&x[2]==='FundAccountSourceBatch')[5]=true;}];
+ for(const change of changes){const tampered=structuredClone(row);change(tampered);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(tampered),req));}
+});
+
+test('revocation six-column binding survives B7 before staged and committed reads',()=>{
+ const profile=require('./task16-current261-competition-profile.cjs').PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE;
+ const src={...source,migrations:currentMigrations},material=api.loadCurrent259CatalogMaterial(src,profile);
+ const id={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1',paymentProfile:profile};const base={...request,source:src,identity:id};
+ function row(phase){const r=observed(phase,{...plan,...material.accessPlan});r.ledger=material.ledger;r.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;r.voucherBindingSha256='7'.repeat(64);return r;}
+ function parse(value,phase,prior){return api.parseCurrent259CatalogRead(JSON.stringify(value),{...base,phase,...(phase==='committed'?{installXid:'1000'}:{})},prior);}
+ const before=parse(row('before'),'before'),staged=parse(row('staged'),'staged',before);assert.equal(parse(row('committed'),'committed',staged).nativeAdmission,false);
+ for(const [phase,prior]of [['before',undefined],['staged',before],['committed',staged]]){const changed=row(phase);changed.capabilities=changed.capabilities.filter(x=>!(x[0]==='jg_task01_observer'&&x[2]==='FundAccountSourceBatch'&&x[3]==='amountYuan'));assert.throws(()=>parse(changed,phase,prior));}
+ const sql=api.renderCurrent259B7Install({source:src,identity:id,nonce:request.nonce,before});assert.match(sql,/FundAccountSourceBatch/u);
+});

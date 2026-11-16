@@ -5,7 +5,7 @@ const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
 const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
 const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
-const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_CASH_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
+const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_CASH_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
 const MANIFEST_SHA='0c9037bd1cd5329ebdf1d946829a081f59e1adcfcb73807b130fcb12efed2cef';
@@ -99,14 +99,19 @@ function material(source,paymentProfile){
   }
   effectiveAccessBinding={paymentProfile,insertAdditionCount:columns.length,accessPlanSha256:hash(JSON.stringify({runtime:plan.runtime,observer:plan.observer}))};
  }
- if(paymentProfile===PAYMENT261_VOUCHER_RUNTIME_PROFILE){
+ if([PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE].includes(paymentProfile)){
   const columns=[...required,['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']];
-  need(equal(manifest.voucher261RuntimeInsertDefaults,{paymentProfile,columns}));
+  need(equal(manifest.voucher261RuntimeInsertDefaults,{paymentProfile:PAYMENT261_VOUCHER_RUNTIME_PROFILE,columns}));
   for(const [table,column]of required){
    const rows=plan.runtime.tables.filter(row=>row.table===table);need(rows.length===1&&rows[0].insert.length>0&&!rows[0].insert.includes(column));
    rows[0].insert=[...rows[0].insert,column].sort();
   }
   plan=require('./task16-current259-voucher-acl.cjs').voucherNative261AccessPlan(plan);
+  if(paymentProfile===PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE){
+   need(!plan.observer.tables.some(row=>row.table==='FundAccountSourceBatch'));
+   plan.observer.tables.push({table:'FundAccountSourceBatch',select:['amountYuan','id','projectId','projectStatus','registrationId','sourceStatus'],insert:[],update:[],references:[]});
+   plan.observer.tables.sort((a,b)=>a.table<b.table?-1:a.table>b.table?1:0);
+  }
   effectiveAccessBinding={paymentProfile,insertAdditionCount:columns.length,accessPlanSha256:hash(JSON.stringify({runtime:plan.runtime,observer:plan.observer}))};
  }
  return{p,manifest,files,sql,plan,effectiveAccessBinding};
@@ -127,7 +132,7 @@ function materialForRequest(r){
  if(r.identity.voucherProfile){
   const {current259VoucherAcl,voucherAccessPlan}=require('./task16-current259-voucher-acl.cjs');
   m.voucher=current259VoucherAcl();
-  if(r.identity.paymentProfile!==PAYMENT261_VOUCHER_RUNTIME_PROFILE)m.plan=voucherAccessPlan(m.plan);
+  if(![PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE].includes(r.identity.paymentProfile))m.plan=voucherAccessPlan(m.plan);
  }
  return m;
 }

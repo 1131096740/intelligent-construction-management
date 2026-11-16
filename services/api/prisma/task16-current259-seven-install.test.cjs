@@ -438,3 +438,32 @@ test('native cash261 seven protocol preserves all three original SQL stages with
  assert.throws(()=>api.parseNativeTask16CashSeven(JSON.stringify(input),1,nonce,raw(1).replace(nonce,'e'.repeat(64))));
  assert.throws(()=>api.renderNativeTask16CashSeven(JSON.stringify({...input,arbitraryProfile:paymentProfile}),0,nonce,null));
 });
+
+test('native revocation261 seven protocol preserves all three original SQL stages with exactly two runtime lanes',async()=>{
+ const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations),paymentProfile='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
+ const f=fixture(undefined,true,undefined,{witness,paymentProfile});f.suppliedRoles.paymentProfile=paymentProfile;
+ await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
+ const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,
+  roleCommitXid:f.suppliedRoles.commitXid,databaseAclAfter:f.suppliedRoles.databaseAcl.after,runtime:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_runtime'),observer:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_observer')};
+ const raw=phase=>JSON.stringify({nonce,phase:['current259-seven-before','current259-seven-install','current259-seven-committed'][phase],backendPid:11+phase,backendStart:`2026-11-11T04:00:0${phase}.000000Z`,pre:phase===0?model():null,registry:phase===0?registry:null,fileRoles:phase===0?['10','100']:null,catalogSha256:(phase?'6':'5').repeat(64),installXid:phase?'202':null,commitStatus:phase===2?'committed':null})+'\n';
+ const preimage=api.renderNativeTask16RevocationSevenPreimage(JSON.stringify(input),nonce,raw(2));
+ assert.match(preimage,/CREATE TEMP TABLE pg_temp.jg_c259_voucher_preimage/u);
+ assert.match(preimage,/catalog_sha256='6666666666666666666666666666666666666666666666666666666666666666'/u);
+ for(const phase of [0,1])assert.throws(()=>api.renderNativeTask16RevocationSevenPreimage(JSON.stringify(input),nonce,raw(phase)));
+ assert.throws(()=>api.renderNativeTask16RevocationSevenPreimage(JSON.stringify(input),'e'.repeat(64),raw(2)));
+ assert.equal(api.renderNativeTask16RevocationSeven.length,4);assert.equal(api.parseNativeTask16RevocationSeven.length,4);
+ for(const phase of [0,1,2]){
+  const sql=api.renderNativeTask16RevocationSeven(JSON.stringify(input),phase,nonce,phase===0?null:raw(phase-1));
+  assert.equal(sql.replaceAll('inet_server_port() IS DISTINCT FROM 54204','inet_server_port() IS DISTINCT FROM 5432'),f.calls[phase].sql);
+  assert.match(sql,/inet_server_port\(\) IS DISTINCT FROM 54204/u);assert.doesNotMatch(sql,/inet_server_port\(\) IS DISTINCT FROM 5432/u);
+  assert.equal(api.parseNativeTask16RevocationSeven(JSON.stringify(input),phase,nonce,raw(phase)).catalogSha256,(phase?'6':'5').repeat(64));
+ }
+ for(const patch of [{runtime:{...input.runtime,limit:1}},{runtime:{...input.runtime,limit:3}},{observer:{...input.observer,limit:2}},...[
+  {serverPort:5432},{serverPort:'54204'},{serverPort:65536},{serverPort:1024},{tls:false},{clientAddress:'127.0.0.2'},{serverAddress:'0.0.0.0'}].map(id=>({id:{...input.id,...id}}))]){
+  for(const fn of ['renderNativeTask16RevocationSeven','parseNativeTask16RevocationSeven'])assert.throws(()=>api[fn](JSON.stringify({...input,...patch}),0,nonce,fn.startsWith('render')?null:raw(0)),error=>error.code==='CURRENT259_SEVEN_INSTALL_NATIVE_INPUT');
+ }
+ assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify(input),0,nonce,null));
+ assert.throws(()=>api.renderNativeTask16RevocationSeven(JSON.stringify({...input,source:{...witness,candidateSha:'0'.repeat(40)}}),0,nonce,null));
+ assert.throws(()=>api.parseNativeTask16RevocationSeven(JSON.stringify(input),1,nonce,raw(1).replace(nonce,'e'.repeat(64))));
+ assert.throws(()=>api.renderNativeTask16RevocationSeven(JSON.stringify({...input,arbitraryProfile:paymentProfile}),0,nonce,null));
+});
