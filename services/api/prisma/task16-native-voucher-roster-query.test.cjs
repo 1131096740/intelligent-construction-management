@@ -77,3 +77,39 @@ test('escaped identifiers never turn arbitrary quoted contents into allowed colu
  const query='SELECT "projectId""SECRET" FROM "public"."ProjectRosterMember" WHERE "userId" = $1';
  assert.deepEqual(api.projectNativeTask16RosterQuery({query},'runtime_a',phase),{lane:'runtime_a',stage:phase,relation:'ProjectRosterMember',operation:'UNKNOWN',columns:[],unknownShape:true});
 });
+
+test('fixed archive discovery query emits only its nine allowed scalar references and fileId predicate',()=>{
+ const columns=['id','archiveFileId','contractVersionId','fileId','displayOrder','mimeType','sizeBytes','contentSha256','createdAt'];
+ const query='SELECT '+columns.map(c=>'"public"."ContractArchiveEvidenceFile"."'+c+'"').join(', ')+' FROM "public"."ContractArchiveEvidenceFile" WHERE "public"."ContractArchiveEvidenceFile"."fileId" = $1 LIMIT $2 OFFSET $3';
+ assert.deepEqual(api.projectNativeTask16RosterQuery({query},'runtime_b',phase),{lane:'runtime_b',stage:phase,relation:'ContractArchiveEvidenceFile',operation:'SELECT',columns,unknownShape:false});
+});
+
+for(const tail of [
+ 'WHERE "public"."ContractArchiveEvidenceFile"."fileId" = $1',
+ 'WHERE "public"."ContractArchiveEvidenceFile"."fileId" = $1 LIMIT 1 OFFSET $2',
+ 'WHERE "public"."ContractArchiveEvidenceFile"."userId" = $1 LIMIT $2 OFFSET $3',
+ 'AS evidence WHERE evidence."fileId" = $1 LIMIT $2 OFFSET $3',
+ 'WHERE "public"."ContractArchiveEvidenceFile"."fileId" = $1 LIMIT $2 OFFSET $3; SELECT 1',
+ 'WHERE "public"."ContractArchiveEvidenceFile"."fileId" = \'SECRET_VALUE\' LIMIT $2 OFFSET $3',
+ 'WHERE "public"."ContractArchiveEvidenceFile"."fileId" = $1 LIMIT $2 OFFSET $3 /* SECRET */'
+])test('archive discovery accepts no aliases, literal values, multi-statements or non-source pagination '+tail.slice(0,25),()=>{
+ const query='SELECT "public"."ContractArchiveEvidenceFile"."id" FROM "public"."ContractArchiveEvidenceFile" '+tail;
+ assert.deepEqual(api.projectNativeTask16RosterQuery({query},'runtime_a',phase),{lane:'runtime_a',stage:phase,relation:'ContractArchiveEvidenceFile',operation:'UNKNOWN',columns:[],unknownShape:true});
+});
+test('archive relation and roster relation cannot borrow each other\'s allowed fields',()=>{
+ for(const [relation,column,predicate,limit]of [['ProjectRosterMember','archiveFileId','userId',''],['ContractArchiveEvidenceFile','projectId','fileId',' LIMIT $2']]){
+  const query=`SELECT "public"."${relation}"."${column}" FROM "public"."${relation}" WHERE "public"."${relation}"."${predicate}" = $1${limit}`;
+  assert.deepEqual(api.projectNativeTask16RosterQuery({query},'runtime_a',phase),{lane:'runtime_a',stage:phase,relation,operation:'UNKNOWN',columns:[],unknownShape:true});
+ }
+});
+test('both fixed relations share the same twelve-event cap and never read SDK params or return their data',()=>{
+ const receipt={},collector=api.createNativeTask16RosterQueryDiagnostic(receipt,()=>phase),a=collector.forLane('runtime_a'),b=collector.forLane('runtime_b');let params=0;
+ const archive='SELECT "public"."ContractArchiveEvidenceFile"."id" FROM "public"."ContractArchiveEvidenceFile" WHERE "public"."ContractArchiveEvidenceFile"."fileId" = $1 LIMIT $2 OFFSET $3';
+ for(let i=0;i<14;i++)assert.doesNotThrow(()=>(i%2?a:b)({query:i%2?sql:archive,get params(){params++;throw Error('SECRET_UUID_HASH_TOKEN');}}));
+ assert.equal(params,0);assert.equal(receipt.voucherRosterQueries.events.length,12);assert.equal(receipt.voucherRosterQueries.overflow,true);
+ assert.deepEqual([...new Set(receipt.voucherRosterQueries.events.map(e=>e.relation))].sort(),['ContractArchiveEvidenceFile','ProjectRosterMember']);
+ assert.doesNotMatch(JSON.stringify(receipt),/SECRET|SELECT "|params|OFFSET/u);
+});
+test('archive quoted text cannot impersonate the second fixed relation',()=>{
+ for(const query of ['SELECT \'FROM "ContractArchiveEvidenceFile"\' FROM "User"','SELECT "id" FROM "User" /* FROM "ContractArchiveEvidenceFile" */'])assert.equal(api.projectNativeTask16RosterQuery({query},'runtime_a',phase),null);
+});
