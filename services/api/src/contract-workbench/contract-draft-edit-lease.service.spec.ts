@@ -166,6 +166,43 @@ describe("ContractDraftEditLeaseService", () => {
     expect(lease?.heartbeatAt).toEqual(now);
   });
 
+  it("rejects a heartbeat when the lease expires while waiting for the draft lock", async () => {
+    const acquired = await service().acquire("cv-1", "owner-1");
+    const originalLease = { ...lease };
+    now = new Date("2026-07-28T10:01:59.999Z");
+    const originalQuery = tx.$queryRaw.getMockImplementation()!;
+    tx.$queryRaw.mockImplementationOnce(async (query) => {
+      now = new Date("2026-07-28T10:02:00.000Z");
+      return originalQuery(query);
+    });
+
+    await expect(service().heartbeat("cv-1", acquired.token)).rejects.toMatchObject({
+      response: { code: "EDIT_LEASE_LOST" }
+    });
+    expect(lease).toEqual(originalLease);
+  });
+
+  it("rejects a heartbeat when the lease expires while waiting for the lease lock", async () => {
+    const acquired = await service().acquire("cv-1", "owner-1");
+    const originalLease = { ...lease };
+    now = new Date("2026-07-28T10:01:59.999Z");
+    const originalQuery = tx.$queryRaw.getMockImplementation()!;
+    tx.$queryRaw.mockImplementation(async (query) => {
+      if ((query.strings?.join(" ") ?? "").includes('FROM "ContractDraftEditLease"')) {
+        now = new Date("2026-07-28T10:02:00.000Z");
+      }
+      return originalQuery(query);
+    });
+    try {
+      await expect(service().heartbeat("cv-1", acquired.token)).rejects.toMatchObject({
+        response: { code: "EDIT_LEASE_LOST" }
+      });
+      expect(lease).toEqual(originalLease);
+    } finally {
+      tx.$queryRaw.mockImplementation(originalQuery);
+    }
+  });
+
   it("does not acquire or continue a generic lease for a historical takeover", async () => {
     versionChangeType = "historical_takeover";
     await expect(

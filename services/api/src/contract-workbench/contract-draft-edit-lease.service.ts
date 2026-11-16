@@ -84,12 +84,16 @@ export class ContractDraftEditLeaseService {
   }
 
   async heartbeat(contractVersionId: string, rawToken: string) {
-    const now = this.currentTime();
-    const expiresAt = new Date(now.getTime() + CONTRACT_DRAFT_LEASE_TTL_MS);
     try {
       return await this.prisma.$transaction(async (tx) => {
         const { version } = await this.lockEditableDraft(tx, contractVersionId);
         if (isUpwardDirectPendingDraft(version.draftData)) await qualifyUpwardPendingSave(tx);
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "contractVersionId" FROM "ContractDraftEditLease"
+          WHERE "contractVersionId" = ${contractVersionId} FOR UPDATE
+        `);
+        const now = this.currentTime();
+        const expiresAt = new Date(now.getTime() + CONTRACT_DRAFT_LEASE_TTL_MS);
         const result = await tx.contractDraftEditLease.updateMany({
           where: {
             contractVersionId,
