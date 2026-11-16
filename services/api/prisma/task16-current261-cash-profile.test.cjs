@@ -13,3 +13,9 @@ test('cash projection adds only explicit select columns and two service function
 test('cash profile rejects duplicate grants in its own delta',()=>{
  assert.throws(()=>cash.cashAccessPlan({...plan,runtime:{...plan.runtime,functions:[...cash.CASH_WRITER_FUNCTIONS]}}));
 });
+test('cash runtime party snapshot read matches the six physically observed columns',()=>{
+ const result=cash.cashAccessPlan(plan),row=result.runtime.tables.find(value=>value.table==='ContractPartySnapshot');
+ assert.deepEqual(row.select,['businessPartyVersionId','contractVersionId','displayOrder','id','roleKey','snapshot']);
+ assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
+ assert.equal(result.observer.tables.some(value=>value.table==='ContractPartySnapshot'),false);
+});

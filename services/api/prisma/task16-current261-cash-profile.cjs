@@ -2,7 +2,7 @@
 // Fixed source-derived cash scenario grants. This is a plan only, not authority
 // or evidence that a physical role has these privileges.
 const CASH_RUNTIME_READS=Object.freeze({
- ContractPartySnapshot:['businessPartyVersionId','contractVersionId','displayOrder','roleKey','snapshot'],
+ ContractPartySnapshot:['businessPartyVersionId','contractVersionId','displayOrder','id','roleKey','snapshot'],
  SettlementArchiveFile:['confirmedAt','confirmedByUserId','id','settlementId','status'],
  ProjectAffiliateAssignment:['affiliateCreditCodeSnapshot','affiliateNameSnapshot','businessPartyId','businessPartyVersionId','effectiveFrom','endedAt','id','projectId'],
  ProjectParticipatingCompany:['companyCreditCodeSnapshot','companyEntityId','companyEntityVersionId','companyNameSnapshot','effectiveFrom','endedAt','id','projectId'],
