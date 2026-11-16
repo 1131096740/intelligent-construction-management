@@ -2,7 +2,7 @@
 const {randomBytes,createHash}=require('node:crypto'),{types}=require('node:util');
 const {assertCurrent261GeneratedLifecycleLoginScope,claimCurrent261LocalLifecycleOwnerProof}=require('./task12-current259-document-login.cjs');
 const {claimCurrent259TechnicalResource}=require('./task16-current259-owned-resource.cjs');
-const active=new WeakMap(),attempted=new WeakSet();
+const active=new WeakMap(),attempted=new WeakSet(),nativeAttempted=new WeakSet();
 const need=(ok,part)=>{if(!ok){const code='CURRENT261_LOCAL_LIFECYCLE_OWNER_'+part;throw Object.assign(new Error(code),{code});}};
 function unknown(error){
  if(error&&typeof error==='object'&&!types.isProxy(error)){
@@ -27,12 +27,14 @@ function owner(scope){
   AND (SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database() AND datdba=10)=${quote(identity.databaseOid)}
   AND pg_catalog.to_regnamespace('public')::oid::text=${quote(identity.namespaceOid)}
   AND (SELECT system_identifier::text FROM pg_catalog.pg_control_system())=${quote(identity.systemIdentifier)}
-  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5432
+  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=${scope.native?.serverPort??5432}
   AND EXISTS(SELECT FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
   AND current_setting('session_replication_role')='origin' AND current_setting('server_version_num')::int BETWEEN 160000 AND 169999`;
 }
 function check(scope,cleanup=false){
- need(scope.available&&(cleanup||!scope.failed),'CLOSED');assertCurrent261GeneratedLifecycleLoginScope(scope.proof,scope.handle);
+ need(scope.available&&(cleanup||!scope.failed),'CLOSED');
+ if(scope.native){scope.native.modules.check();need(scope.exec===scope.native.exec&&scope.resource===scope.native.resource,'CONTINUITY');return;}
+ assertCurrent261GeneratedLifecycleLoginScope(scope.proof,scope.handle);
  scope.lease.check();scope.view.check();
  need(claimCurrent259TechnicalResource(scope.handle)===scope.view&&scope.view.resource===scope.resource&&own(scope.resource,'execOwnerSql')===scope.exec,'CONTINUITY');
  const hba=own(scope.resource,'getReceipt').call(scope.resource).documentHba;
@@ -146,7 +148,7 @@ const freeze=v=>{if(v&&typeof v==='object'){Object.values(v).forEach(freeze);Obj
 function checkpoint(scope,token){
  const claim=own(scope.modules,'claimTask12LocalLifecycleCheckpoint');need(typeof claim==='function','CHECKPOINT');
  const e=claim(token);need(e&&stages[scope.stage]===e.stage&&e.projectId===scope.fixture.approval.project.id&&e.handlerId===scope.fixture.approval.handler.id&&
-  e.fixtureIdentity===e.projectId&&uuid(e.contractId)&&uuid(e.versionId)&&e.contractId!==e.versionId,'PHASE');
+  e.fixtureIdentity===e.projectId&&(e.caseKey??'inside:material_purchase')===(scope.fixture.case?.key??'inside:material_purchase')&&uuid(e.contractId)&&uuid(e.versionId)&&e.contractId!==e.versionId,'PHASE');
  need(e.roundIds&&['withdrawn','rejected','approved'].every(k=>uuid(e.roundIds[k]))&&new Set(Object.values(e.roundIds)).size===3&&
   e.generationIds&&['first','second','final'].every(k=>uuid(e.generationIds[k]))&&e.generationIds.first!==e.generationIds.second&&
   Number.isInteger(e.final?.documentContentRevision)&&e.final.documentContentRevision>0&&hex(e.final?.documentContentFingerprint)&&
@@ -159,7 +161,7 @@ function checkpoint(scope,token){
  else scope.coordinates=JSON.stringify({...e,stage:undefined,archive:undefined});
  return e;
 }
-function matches(facts,e){
+function matches(facts,e,fixture){
  need(facts&&facts.firstSignatureVersionCount===1&&Array.isArray(facts.counts)&&facts.counts.length===5&&facts.counts.every(Number.isInteger),'FACTS');
  const complete=e.stage==='COMPLETE',generations=[...new Set(Object.values(e.generationIds))].sort(),ids=rows=>rows.map(r=>r.id).sort();
  need(JSON.stringify(facts.counts)===JSON.stringify([generations.length,3,1,complete?1:0,complete?2:0])&&
@@ -171,10 +173,11 @@ function matches(facts,e){
   r.approves===(status==='withdrawn'?1:status==='approved'?5:0)&&r.unsigned===(status==='withdrawn'?1:0))),'FACTS');
  need(Array.isArray(facts.approvedRoles)&&facts.approvedRoles.length===5&&JSON.stringify(facts.approvedRoles.map(r=>r.role).sort())===JSON.stringify(approvalRoles)&&
   facts.approvedRoles.every(r=>r.count===1&&r.signed===true),'FACTS');
- need(Array.isArray(facts.sealTasks)&&facts.sealTasks.length===1&&uuid(facts.sealTasks[0].id)&&facts.sealTasks[0].status==='completed'&&facts.sealTasks[0].approvalInstanceId===e.roundIds.approved,'FACTS');
+ need(Array.isArray(facts.sealTasks)&&facts.sealTasks.length===1&&uuid(facts.sealTasks[0].id)&&facts.sealTasks[0].status==='completed'&&facts.sealTasks[0].approvalInstanceId===e.roundIds.approved&&facts.sealTasks[0].handlerUserId===e.handlerId&&
+  fixture.approval.users.slice(1,6).some(user=>user.id===facts.sealTasks[0].approvedByUserId)&&facts.sealTasks[0].completedByUserId===fixture.approval.users[6].id,'FACTS');
  need(Array.isArray(facts.originals)&&facts.originals.length===2&&e.originals.every(o=>facts.originals.some(f=>f.id===o.id&&f.sha256===o.sha256&&f.sizeBytes===o.sizeBytes&&f.private===true)),'FACTS');
  const audits=new Map((facts.audit??[]).map(r=>[r.action,r.count]));
- need(audits.size===(complete?3:2)&&audits.get('contract.seal.complete')===1&&audits.get('contract.archive_task.create')===1&&
+ need(audits.size===(complete?4:3)&&facts.audit.length===audits.size&&facts.audit.every(row=>row.scoped===true)&&audits.get('contract.seal_task.create')===1&&audits.get('contract.seal.complete')===1&&audits.get('contract.archive_task.create')===1&&
   (complete?audits.get('contract.archive.complete')===1:!audits.has('contract.archive.complete')),'FACTS');
  need(Array.isArray(facts.archives)&&facts.archives.length===(complete?1:0)&&Array.isArray(facts.evidence)&&facts.evidence.length===(complete?2:0),'FACTS');
  if(complete){
@@ -182,19 +185,30 @@ function matches(facts,e){
    hex(facts.archives[0].authoritySha256)&&hex(facts.archives[0].fileManifestSha256)&&e.originals.every((o,i)=>facts.evidence.some(f=>f.fileId===o.id&&f.displayOrder===i&&f.contentSha256===o.sha256&&f.sizeBytes===o.sizeBytes&&f.private===true)),'FACTS');
  }
 }
+function matchesSigningSubjects(facts,e,fixture){
+ const master=fixture.master,entity=master?.CompanyEntity?.[0],company=master?.CompanyEntityVersion?.[0],party=master?.BusinessPartyVersion?.[0],participant=master?.ProjectParticipatingCompany?.[0];
+ need(entity&&company&&party&&participant&&[entity.id,company.id,party.id,participant.id].every(uuid)&&company.companyEntityId===entity.id&&Number.isSafeInteger(company.versionNo),'FACTS');
+ const companyBinding=[entity.id,'our_company',entity.id,company.id,company.name,company.unifiedSocialCreditCode,company.registeredAddress,entity.id,company.id,company.versionNo];
+ need(facts&&JSON.stringify(facts.companyBinding)===JSON.stringify(companyBinding)&&Array.isArray(facts.parties)&&facts.parties.length===2&&new Set(facts.parties.map(p=>p.id)).size===2,'FACTS');
+ const expectedParties=[['party_a',0,null,company.name],['party_b',0,party.id,party.snapshot.name]];
+ for(const expected of expectedParties){const rows=facts.parties.filter(p=>p.roleKey===expected[0]);need(rows.length===1&&uuid(rows[0].id)&&rows[0].contractVersionId===e.versionId&&JSON.stringify([rows[0].roleKey,rows[0].displayOrder,rows[0].businessPartyVersionId,rows[0].name])===JSON.stringify(expected),'FACTS');}
+ const binding=[e.versionId,'our_company',entity.id,company.id,entity.id,company.id,company.versionNo,1,'inside','document_company_selection_party_a','company_entity_version',company.id,entity.id,'party_a',0,participant.id,expectedParties];
+ need(Array.isArray(facts.rounds)&&facts.rounds.length===3&&Object.entries(e.roundIds).every(([status,id])=>facts.rounds.some(r=>r.id===id&&r.status===status&&JSON.stringify(r.subjectBinding)===JSON.stringify(binding))),'FACTS');
+}
 async function observeCurrent261LocalLifecycleOwner(key,token){
  need(arguments.length===2&&key&&!types.isProxy(key)&&active.has(key),'SCOPE');const scope=active.get(key);check(scope);
  try{
   const e=checkpoint(scope,token);
   need(e.stage==='ORIGINALS'?!scope.fault:e.stage==='AUDIT_ROLLBACK'?scope.fault?.state==='INSTALLED':scope.fault?.state==='REMOVED','FAULT_PHASE');
-  const {current261LocalLifecycleFacts,current261LocalLifecycleFileFacts}=require('./task12-current261-local-lifecycle-facts.cjs');
+  const {current261LocalLifecycleFacts,current261LocalLifecycleFileFacts,current261LocalLifecycleSigningFacts}=require('./task12-current261-local-lifecycle-facts.cjs');
   const facts=await read(scope,e.stage,current261LocalLifecycleFacts(scope.fixture,e.contractId,e.versionId,e.originals.map(f=>f.id)));
-  matches(facts,e);
+  matches(facts,e,scope.fixture);
+  const subjects=await read(scope,e.stage+'_SUBJECTS',current261LocalLifecycleSigningFacts(scope.fixture,e.contractId,e.versionId));matchesSigningSubjects(subjects,e,scope.fixture);
   const files=await read(scope,e.stage+'_FILES',current261LocalLifecycleFileFacts(scope.fixture,e.contractId,e.versionId,e.generatedFiles.map(g=>g.generationId)));
   need(Array.isArray(files)&&files.length===e.generatedFiles.length&&new Set(files.map(f=>f.generationId)).size===files.length&&e.generatedFiles.every(expected=>files.some(actual=>actual.generationId===expected.generationId&&['docx','pdf'].every(kind=>{
    const f=actual[kind],wanted=expected[kind];return f?.private===true&&f.id===wanted.id&&f.sha256===wanted.sha256&&f.sizeBytes===wanted.sizeBytes&&f.mimeType===wanted.mimeType;
   }))),'FACTS');
-  scope.stage++;scope.checkpoint=e;return freeze({...facts,generatedFiles:files});
+  scope.stage++;scope.checkpoint=e;return freeze({...facts,signingSubjects:subjects,generatedFiles:files});
  }catch(error){scope.failed=true;throw error;}
 }
 async function beginCurrent261LocalLifecycleOwnerWindow(handle,proof,fixture){
@@ -208,4 +222,17 @@ async function beginCurrent261LocalLifecycleOwnerWindow(handle,proof,fixture){
  const scope={handle,proof,fixture,view,resource,exec,lease,modules,available:true,failed:false,pending:false,stage:0};attempted.add(handle);
  await read(scope,'BEGIN');const key=Object.freeze({});active.set(key,scope);return key;
 }
-module.exports=Object.freeze({beginCurrent261LocalLifecycleOwnerWindow,observeCurrent261LocalLifecycleOwner,installCurrent261LocalLifecycleAuditFault,removeCurrent261LocalLifecycleAuditFault,closeCurrent261LocalLifecycleOwnerWindow});
+async function beginNativeTask12LifecycleOwnerWindow(loginProjection,moduleView,fixture,exec){
+ need(arguments.length===4&&typeof exec==='function'&&!types.isProxy(exec)&&loginProjection&&!types.isProxy(loginProjection)&&!nativeAttempted.has(loginProjection),'HANDLE');
+ const prior=require('./task12-current259-document-login.cjs').readNativeTask12DocumentLoginProjection(loginProjection);
+ const modules=require('./task16-current259-client-loader.cjs').claimCurrent261OfficialDocumentModules(moduleView);
+ need(['candidateSha','tree','sourceSealSha256'].every(key=>modules.source[key]===prior.source[key])&&/^[a-f0-9]{40}$/u.test(prior.source.candidateSha)&&/^[a-f0-9]{40}$/u.test(prior.source.tree)&&hex(prior.source.sourceSealSha256)&&modules.source.profile.profile==='TASK12_ARCHIVE261_SOURCE_V1'&&prior.source.profile.profile===modules.source.profile.profile&&prior.source.profile.ledgerSha256===modules.source.profile.ledgerSha256&&prior.source.profile.schemaSha256===modules.source.profile.schemaSha256&&Number.isInteger(prior.serverPort)&&prior.serverPort>1024&&prior.serverPort<=65535&&prior.serverPort!==5432,'HANDLE');
+ need(fixture&&Object.isFrozen(fixture)&&typeof own(moduleView,'isTask12LocalLifecycleFixture')==='function'&&moduleView.isTask12LocalLifecycleFixture(fixture)&&
+  own(own(fixture,'case'),'key')==='inside:equipment_rental','FIXTURE');
+ modules.verifyFull();nativeAttempted.add(loginProjection);
+ const resource=Object.freeze({execOwnerSql:exec});
+ const scope={proof:loginProjection,fixture,resource,exec,lease:prior,modules:moduleView,
+  native:Object.freeze({modules,serverPort:prior.serverPort,exec,resource}),available:true,failed:false,pending:false,stage:0};
+ await read(scope,'BEGIN');const key=Object.freeze({});active.set(key,scope);return key;
+}
+module.exports=Object.freeze({beginNativeTask12LifecycleOwnerWindow,beginCurrent261LocalLifecycleOwnerWindow,observeCurrent261LocalLifecycleOwner,installCurrent261LocalLifecycleAuditFault,removeCurrent261LocalLifecycleAuditFault,closeCurrent261LocalLifecycleOwnerWindow});

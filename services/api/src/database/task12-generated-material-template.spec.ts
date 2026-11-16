@@ -5,7 +5,7 @@ import { declaredBillKeys, requiredPlaceholderKeys } from "../contract-document/
 import { renderLayoutPreviewDocx } from "../contract-document/layout-preview-docx";
 import { layoutPreviewValues } from "../contract-document/layout-preview-values";
 import { prepareLayoutSourceMapping, readLayoutSourcePositions } from "../contract-template/layout-field-mapping";
-import { publishTask12GeneratedMaterialTemplate } from "./task12-generated-material-template";
+import { publishTask12GeneratedMaterialTemplate, publishTask12GeneratedEquipmentTemplate } from "./task12-generated-material-template";
 
 const source = readFileSync(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
 const hash = "44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd";
@@ -18,7 +18,10 @@ const base = "/contract-layout-template-versions/" + layoutId;
 const directorId = "10000000-0000-4000-8000-000000000006";
 type Request = Parameters<Parameters<typeof publishTask12GeneratedMaterialTemplate>[2]["send"]>[0];
 
-function publicTemplatePort(alter?: (request: Request, value: unknown) => unknown) {
+function publicTemplatePort(alter?: (request: Request, value: unknown) => unknown, equipment = false) {
+  const source = equipment ? readFileSync(resolve(__dirname, "../../assets/templates/equipment-rental-real-v1.docx")) : readFileSync(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
+  const hash = equipment ? "b846a2f93a3f118581a58fe137b9a74c0433a7faa271eed1569068da6d5cef89" : "44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd";
+  const contractTypeKey = equipment ? "equipment_rental" : "material_purchase", billKey = equipment ? "equipmentRentals" : "materials";
   const calls: string[] = [];
   let now = 1000, previewReads = 0;
   let mapping: ReturnType<typeof prepareLayoutSourceMapping>["mapping"] | undefined;
@@ -40,10 +43,10 @@ function publicTemplatePort(alter?: (request: Request, value: unknown) => unknow
           if (!(file instanceof Blob)) throw new Error("DOCX missing");
           expect(Buffer.from(await file.arrayBuffer())).toEqual(source);
           expect(file.type).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-          return respond(201, { id: sourceFileId, contentSha256: hash, sizeBytes: 29389, uploadedByUserId: directorId });
+          return respond(201, { id: sourceFileId, contentSha256: hash, sizeBytes: source.length, uploadedByUserId: directorId });
         }
         case "POST /contract-layout-templates":
-          expect(request).toMatchObject({ json: { contractTypeKey: "material_purchase", docxFileId: sourceFileId, placeholderSchema: { bills: [{ key: "materials" }] } } });
+          expect(request).toMatchObject({ json: { contractTypeKey, docxFileId: sourceFileId, placeholderSchema: { bills: [{ key: billKey }] } } });
           return respond(201, { template: { id: templateId }, version: { ...version, status: "draft", draftRevision: 1 } });
         case "GET " + base + "/source-positions":
           return respond(200, { ...readLayoutSourcePositions(source), versionId: layoutId, sourceFileId, draftRevision: 1, confirmed: false, mappingFingerprint: null, bindings: [] });
@@ -72,7 +75,7 @@ function publicTemplatePort(alter?: (request: Request, value: unknown) => unknow
           return respond(201, { ...version, status: "submitted", draftRevision: 2, submittedByUserId: directorId });
         case "POST " + base + "/publication":
           return respond(201, { ...version, status: "published", draftRevision: 2, previewPdfFileId, publishedByUserId: directorId, placeholderSchema: {
-            bills: [{ key: "materials" }], sourceMapping: { ...mapping, confirmation: {
+            bills: [{ key: billKey }], sourceMapping: { ...mapping, confirmation: {
               sourceFileId, sourceSha256: hash, draftRevision: 2, mappingFingerprint: mapping?.fingerprint, previewJobId, previewPdfFileId, actorUserId: directorId
             } }
           } });
@@ -170,4 +173,17 @@ describe("Task12 reviewed material template public lifecycle", () => {
     expect(calls.filter(call => call === "GET " + base + "/preview-generation")).toHaveLength(130);
     expect(calls.some(call => call.endsWith("/source-mapping-confirmation"))).toBe(false);
   });
+});
+
+
+it("publishes the reviewed equipment master with the equipment bill instead of material facts", async () => {
+  const equipment = readFileSync(resolve(__dirname, "../../assets/templates/equipment-rental-real-v1.docx"));
+  const { port, calls } = publicTemplatePort(undefined, true);
+  await expect(publishTask12GeneratedEquipmentTemplate(equipment, directorId, port)).resolves.toMatchObject({ sourceSha256: "b846a2f93a3f118581a58fe137b9a74c0433a7faa271eed1569068da6d5cef89" });
+  expect(calls.at(-1)).toBe("POST " + base + "/publication");
+  const wrong = publicTemplatePort(undefined, true);
+  await expect(publishTask12GeneratedEquipmentTemplate(source, directorId, wrong.port)).rejects.toThrow("TASK12_GENERATED_DOCUMENT_TEMPLATE");
+  expect(wrong.calls).toEqual([]);
+  await expect(publishTask12GeneratedMaterialTemplate(equipment, directorId, wrong.port)).rejects.toThrow("TASK12_GENERATED_DOCUMENT_TEMPLATE");
+  expect(wrong.calls).toEqual([]);
 });

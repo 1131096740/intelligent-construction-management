@@ -33,3 +33,18 @@ test('fixed auth-only description preserves exact source/ACL and budgets but adm
  assert.equal(auth.purpose,'CURRENT261_FIRST_LOGIN_AUTH_ONLY_DIAGNOSTIC');assert.equal(auth.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.equal(auth.httpRequests,1);assert.equal(auth.resourceMs,full.resourceMs);assert.equal(auth.httpMs,full.httpMs);assert.equal(auth.effectivePlanSha256,full.effectivePlanSha256);
  assert.ok(auth.stages.includes('firstActor0Login'));assert.ok(!auth.stages.includes('archiveIdempotency'));assert.equal(auth.full394Accepted,false);assert.equal(auth.nativeAdmission,false);
 });
+
+// Source-flow model: this description does not issue runtime admission.
+test('equipment case scope binds a distinct case key while retaining original authority and budgets',()=>{
+ const api=require('./task12-current261-local-lifecycle-scope.cjs'),s=source();
+ const legacy=api.describeCurrent261LocalLifecycle(s);
+ const selected=api.describeCurrent261LocalLifecycleCase(s,'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1','inside:equipment_rental');
+ assert.equal(selected.caseKey,'inside:equipment_rental');assert.equal(selected.contractTypeKey,'equipment_rental');
+ assert.equal(selected.relationship,'inside');assert.equal(selected.purpose,'CURRENT261_GENERATED_LIFECYCLE_LOCAL');
+ for(const key of ['resourceMs','httpMs','httpRequests','httpPdfBytes','effectivePlanSha256','documentProfileSha256'])assert.equal(selected[key],legacy[key]);
+ assert.equal(selected.nativeAdmission,false);assert.equal(selected.full394Accepted,false);
+ assert.ok(selected.stages.includes('publicEquipmentTemplate'));assert.ok(!selected.stages.includes('publicMaterialTemplate'));
+ assert.throws(()=>api.describeCurrent261LocalLifecycleCase(s,'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1','inside:unknown'),/CASE_UNKNOWN/u);
+ assert.throws(()=>api.describeCurrent261LocalLifecycleCase(s,'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',new Proxy({},{get(){throw Error('TRAP');}})),/CASE_UNKNOWN/u);
+ assert.equal(legacy.contractTypeKey,'material_purchase');assert.equal(Object.hasOwn(legacy,'caseKey'),false);
+});

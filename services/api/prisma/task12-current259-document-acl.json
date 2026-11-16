@@ -119,6 +119,7 @@
       },
       "UserPosition": {
         "select": [
+          "id",
           "positionId",
           "projectId",
           "userId"
@@ -591,6 +592,7 @@
           "contractVersionId",
           "displayOrder",
           "fileId",
+          "id",
           "slotKey"
         ]
       },

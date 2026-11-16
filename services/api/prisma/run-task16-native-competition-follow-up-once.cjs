@@ -243,6 +243,7 @@ function renderNativeTask16RuntimeAcl(inputJson,nonce){
  need(value&&Object.keys(value).sort().join(',')==='provisioned,source','NATIVE_DIRECT_ACL_ENDPOINT');const {source,provisioned}=value,id=provisioned?.databaseIdentity;
  const competition=provisioned?.paymentProfile==='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
  need((competition||provisioned?.paymentProfile==='TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1')&&id?.tls===true&&id.clientAddress==='127.0.0.1'&&id.serverAddress==='127.0.0.1'&&Number.isInteger(id.serverPort)&&id.serverPort>1024&&id.serverPort<=65535&&id.serverPort!==5432,'NATIVE_DIRECT_ACL_ENDPOINT');
+ if(!competition)need(Array.isArray(provisioned.roles)&&provisioned.roles.find(role=>role.name==='jg_task01_runtime')?.limit===1&&provisioned.roles.find(role=>role.name==='jg_task01_observer')?.limit===1,'NATIVE_DIRECT_GAP_ROLE_LIMIT');
  const acl=require('./task16-current259-runtime-acl.cjs'),rendered=(competition?acl.renderCurrent259CompetitionRuntimeAcl:acl.renderCurrent259RuntimeAcl)(source,provisioned,nonce);
  const original="pg_catalog.host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR pg_catalog.host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR inet_server_port() IS DISTINCT FROM 5432";
  const parts=rendered.sql.split(original);
@@ -373,6 +374,11 @@ async function executeNativeTask16Once(plan,planSha256){
   const finalRequest={...request,phase:'committed',installXid:stagedCatalog.raw.writeXid};enter('B7_COMMITTED_RENDER');const finalSql=catalog.renderCurrent259CatalogRead(finalRequest);
   enter('B7_COMMITTED_QUERY');const finalRaw=(await sql(finalSql)).stdout;enter('B7_COMMITTED_VALIDATE');const finalCatalog=parseNativeTask16CatalogRead(finalRaw,finalRequest,stagedCatalog,receipt);
   receipt.installation={migrations:261,roles:9,sevenCommitXid:sevenRows[2].installXid,b7CommitXid:stagedCatalog.raw.writeXid,catalogSha256:hash(Buffer.from(JSON.stringify(finalCatalog.raw)))};
+  if(!selection.competition){
+   const material=catalog.loadCurrent259CatalogMaterial(source,selection.paymentProfile),binding=material.effectiveAccessBinding;
+   need(binding?.paymentProfile===selection.paymentProfile&&binding.insertAdditionCount===selection.insertAdditionCount&&hex(binding.accessPlanSha256,64)&&finalCatalog.raw.roles.find(role=>role.name==='jg_task01_runtime')?.connectionLimit===selection.runtimeLimit,'NATIVE_DIRECT_GAP_CATALOG_BINDING');
+   receipt.effectiveAccessBinding=binding;
+  }
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');
   receipt.directoryBytesBeforeBusiness=nativeDirectoryBytes(root);
   enter('REAL_CLIENTS_NEST_AND_CASE');await wait(()=>runNativeTask16Business(plan,{root,port,credentials,identity,finalCatalog,sql,jsonSql,needLive,wait,cleanupWait,enter,receipt,checkPublicCertificateContext,command,logIdentity:pgLogIdentity,setRestoreEnvironment:value=>{restoreEnvironment=value;},setClients:value=>{clients=value;},setApplication:(a,m)=>{if(a&&!apps.includes(a))apps.push(a);if(m&&!moduleRefs.includes(m))moduleRefs.push(m);}}));

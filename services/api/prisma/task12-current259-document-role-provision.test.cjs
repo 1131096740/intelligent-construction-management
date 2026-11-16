@@ -35,7 +35,7 @@ function fixture(options={}){
  const checkContinuity=token=>{assert.equal(token,continuityToken);continuityCalls++;};
  const view={resource,runId,source,check(){},checkContinuity};
  const imports={
-  './task16-current259-ordinary-archive-acl.cjs':{claimCurrent259OrdinaryArchiveAcl(r,h){
+  './task16-current259-ordinary-archive-acl.cjs':{readNativeTask12OrdinaryAclProjection(r){assert.equal(r,completion);return {source,completion,archiveCompletion,roleCompletion,serverPort:55432,generatedLifecycle:true,catalogSql:"(SELECT pg_catalog.to_jsonb(p),a.attacl::text FROM pg_catalog.pg_proc p CROSS JOIN pg_catalog.pg_attribute a LIMIT 1)",protectedSql:`jsonb_build_array(${require('./task16-current259-catalog.cjs').current259Schema205WitnessSql()},(SELECT jsonb_agg(jsonb_build_array(a.attnum,a.attacl) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=to_regclass('public."RegisteredPaymentVoucher"') AND a.attnum>0 AND NOT a.attisdropped))`};},claimCurrent259OrdinaryArchiveAcl(r,h){
    if(options.document)throw Error('HANDLE');
    assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
    return {source,completion,archiveCompletion,roleCompletion,generatedDraft:!options.oldProfile,
@@ -157,4 +157,64 @@ test('diagnostic SQL chain grants only its separate one-use purpose and refuses 
  const f=fixture({source,lifecycle:true,authOnly:true}),result=await f.api.provisionCurrent261AuthOnlyDiagnosticDocumentRoles(f.completion,f.handle);assert.equal(f.calls.length,3);
  assert.throws(()=>f.api.claimCurrent261GeneratedLifecycleDocumentRoles(result,f.handle));assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticDocumentRoles({...result},f.handle));
  const lease=f.api.claimCurrent261AuthOnlyDiagnosticDocumentRoles(result,f.handle);assert.equal(lease.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticDocumentRoles(result,f.handle));
+});
+
+test('native full lifecycle roles preserve inert role creation and actual endpoint through three readbacks',async()=>{
+ const {createHash}=require('node:crypto'),hash=value=>createHash('sha256').update(value).digest('hex');
+ const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const f=fixture({source,lifecycle:true});
+ const first=f.api.beginNativeTask12DocumentRolesProtocol(f.completion);
+ const writer=first.acceptBefore((await f.resource.execOwnerSql(first.sql,phases[0])).stdout);
+ const reader=writer.acceptWritten((await f.resource.execOwnerSql(writer.sql,phases[1])).stdout);
+ const result=reader.acceptCommitted((await f.resource.execOwnerSql(reader.sql,phases[2])).stdout);
+ assert.equal(result.status,'NATIVE_TASK12_DOCUMENT_ROLES_MATCHED_NOT_ADMISSION');
+ assert.equal(result.executionAllowed,false);assert.equal(result.nativeAdmission,false);
+ assert.equal(f.calls.length,3);
+ for(const call of f.calls){assert.match(call.sql,/inet_server_port\(\)=55432/u);assert.doesNotMatch(call.sql,/inet_server_port\(\)=5432/u);}
+ assert.equal((writer.sql.match(/CREATE ROLE .* NOLOGIN PASSWORD NULL/gmu)??[]).length,3);
+ assert.equal(f.api.readNativeTask12DocumentRolesProjection(result).roles.length,3);
+ const docModule={exports:{}};
+ new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task12-current259-document-acl.cjs'),'utf8'))(
+  name=>name==='./task12-current259-document-role-provision.cjs'?f.api:require(name),docModule,__dirname);
+ const run=docModule.exports.beginNativeTask12DocumentAclProtocol(result);
+ const roleProjection=f.api.readNativeTask12DocumentRolesProjection(result);
+ const identity=roleProjection.ordinaryAcl.roleCompletion.databaseIdentity;
+ const read=(sql,phase,index,patch={})=>JSON.stringify({challenge:sql.match(/'challenge','([a-f0-9]{64})'/u)[1],phase,
+  backendPid:510+index,backendStart:`2026-11-12T01:00:00.00000${index+1}Z`,databaseOid:identity.databaseOid,
+  namespaceOid:identity.namespaceOid,systemIdentifier:identity.systemIdentifier,coordinatesSha256:'a'.repeat(64),
+  roleOids:roleProjection.roles.map(role=>role.oid),roleXmins:roleProjection.roles.map(role=>role.xmin),
+  installXid:index?'910':null,commitStatus:index===2?'committed':null,...patch});
+ const wrong=docModule.exports.beginNativeTask12DocumentAclProtocol(result);
+ assert.throws(()=>wrong.acceptBefore(read(wrong.beforeSql,'before',0,{roleOids:['17000','17002','17001']})),/BEFORE/u);
+ const aclWriter=run.acceptBefore(read(run.beforeSql,'before',0));
+ const aclReader=aclWriter.acceptStaged(read(aclWriter.sql,'staged',1));
+ const aclResult=aclReader.acceptCommitted(read(aclReader.sql,'committed',2));
+ for(const sql of [run.beforeSql,aclWriter.sql,aclReader.sql]){
+  assert.match(sql,/inet_server_port\(\) IS DISTINCT FROM 55432/u);
+  assert.doesNotMatch(sql,/inet_server_port\(\) IS DISTINCT FROM 5432/u);
+ }
+ assert.equal(aclResult.nativeAdmission,false);assert.equal(aclResult.executionAllowed,false);
+ assert.match(aclWriter.sql,/GRANT INSERT .*ContractLayoutTemplateVersion/u);
+ const transportModule={exports:{}};
+ new Function('require','module',fs.readFileSync(path.join(__dirname,'task12-current259-document-acl-transport.cjs'),'utf8'))(
+  name=>name==='./task12-current259-document-role-provision.cjs'?f.api:name==='./task12-current259-document-acl.cjs'?docModule.exports:require(name),transportModule);
+ const transport=transportModule.exports.beginNativeTask12DocumentAclInstallation(result);
+ const output=(sql,phase,index)=>JSON.stringify({continuitySha256:'b'.repeat(64)})+'\n'+read(sql,phase,index);
+ assert.match(transport.beforeSql,/document_acl_transport_preimage/u);
+ const guardedWriter=transport.acceptBefore(output(transport.beforeSql,'before',0));
+ assert.match(guardedWriter.sql,/document_acl_transport_postimage/u);
+ const guardedReader=guardedWriter.acceptStaged(output(guardedWriter.sql,'staged',1));
+ const guardedResult=guardedReader.acceptCommitted(output(guardedReader.sql,'committed',2));
+ const lease=transportModule.exports.readNativeTask12DocumentAclProjection(guardedResult);
+ assert.equal(guardedResult.status,'NATIVE_TASK12_DOCUMENT_ACL_MATCHED_NOT_ADMISSION');
+ assert.equal(lease.continuitySha256,'b'.repeat(64));
+ assert.match(lease.continuitySql,/pg_authid/u);
+ assert.throws(()=>transportModule.exports.readNativeTask12DocumentAclProjection({...guardedResult}));
+
+
+ assert.throws(()=>f.api.readNativeTask12DocumentRolesProjection({...result}));
+ assert.throws(()=>reader.acceptCommitted('{}'));
 });

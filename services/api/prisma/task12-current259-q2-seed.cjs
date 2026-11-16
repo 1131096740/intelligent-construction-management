@@ -56,7 +56,7 @@ function need(ok,stage) {
   if(!ok)throw Object.assign(new Error('CURRENT259_FIRST_Q2_SEED_'+stage),{code:'CURRENT259_FIRST_Q2_SEED_'+stage});
 }
 
-function qualifyIdentity(input) {
+function qualifyIdentity(input,serverPort=5432) {
   need(input && !types.isProxy(input) && Object.getPrototypeOf(input)===Object.prototype,'INPUT');
   const slots=Object.getOwnPropertyDescriptors(input);
   const keys=['database','databaseOid','namespaceOid','ownerOid','actorOid','actor','sessionActor','systemIdentifier',
@@ -66,7 +66,7 @@ function qualifyIdentity(input) {
   need(typeof row.database==='string' && /^jg_task01_[a-f0-9]{32}$/u.test(row.database) &&
     [row.databaseOid,row.namespaceOid].every(oid) && xid(row.systemIdentifier) && row.ownerOid==='10' && row.actorOid==='10' &&
     row.actor==='jg_task01_owner' && row.sessionActor===row.actor && row.tls===true && row.clientAddress==='127.0.0.1' &&
-    row.serverAddress==='127.0.0.1' && row.serverPort===5432,'INPUT');
+    row.serverAddress==='127.0.0.1' && row.serverPort===serverPort,'INPUT');
   return Object.freeze(row);
 }
 function valuesFor(name,source) {
@@ -199,7 +199,16 @@ function createCurrent259GeneratedDocumentSeed(fixture,identity,handlerHash,dire
 }
 
 function createCurrent261LocalLifecycleSeed(fixture,identity,hashes) {
-  need(arguments.length===3 && fixture&&!types.isProxy(fixture)&&Object.isFrozen(fixture)&&
+  need(arguments.length===3,'INPUT');return lifecycleSeed(fixture,identity,hashes,5432);
+}
+function createNativeCurrent261EquipmentSeed(fixture,identity,hashes) {
+  need(arguments.length===3&&identity&&!types.isProxy(identity),'INPUT');const descriptor=Object.getOwnPropertyDescriptor(identity,'serverPort');
+  need(descriptor&&Object.hasOwn(descriptor,'value')&&Number.isInteger(descriptor.value)&&descriptor.value>1024&&descriptor.value<=65535&&descriptor.value!==5432,'INPUT');
+  need(require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCaseFromFixture(fixture).key==='inside:equipment_rental','INPUT');
+  return lifecycleSeed(fixture,identity,hashes,descriptor.value);
+}
+function lifecycleSeed(fixture,identity,hashes,serverPort) {
+  need(fixture&&!types.isProxy(fixture)&&Object.isFrozen(fixture)&&
     fixture.approval&&Object.isFrozen(fixture.approval)&&fixture.approval.users.length===8&&fixture.approval.members.length===2&&fixture.approval.globalRoles.length===5,'INPUT');
   const master=fixture.master,keys=['BusinessParty','BusinessPartyVersion','CompanyEntity','CompanyEntityVersion','ProjectParticipatingCompany'];
   need(master&&!types.isProxy(master)&&Object.isFrozen(master)&&equal(Object.keys(master).sort(),keys)&&keys.every(key=>
@@ -214,11 +223,11 @@ function createCurrent261LocalLifecycleSeed(fixture,identity,hashes) {
     master.ProjectParticipatingCompany[0].companyEntityId===master.CompanyEntity[0].id&&
     master.ProjectParticipatingCompany[0].companyEntityVersionId===master.CompanyEntityVersion[0].id&&
     master.BusinessPartyVersion[0].businessPartyId===master.BusinessParty[0].id,'INPUT');
-  return generatedDraftSeed(fixture.approval,identity,new Map(users.map((user,i)=>[user.id,values[i]])),master);
+  return generatedDraftSeed(fixture.approval,identity,new Map(users.map((user,i)=>[user.id,values[i]])),master,serverPort);
 }
 
-function generatedDraftSeed(fixture,identity,passwords,master) {
-  const owner=qualifyIdentity(identity);
+function generatedDraftSeed(fixture,identity,passwords,master,serverPort=5432) {
+  const owner=qualifyIdentity(identity,serverPort);
   const groups={
     User:fixture.users.map(row=>({...row,passwordHash:passwords.get(row.id)??null})),
     Project:[fixture.project],
@@ -448,4 +457,4 @@ function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
   }});
 }
 
-module.exports=Object.freeze({createCurrent261LocalLifecycleSeed,createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259GeneratedDocumentSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});
+module.exports=Object.freeze({createNativeCurrent261EquipmentSeed,createCurrent261LocalLifecycleSeed,createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259GeneratedDocumentSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});

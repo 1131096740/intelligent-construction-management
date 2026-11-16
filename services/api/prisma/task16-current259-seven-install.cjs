@@ -476,6 +476,9 @@ function archiveSevenMaterial(lease,view,nonce){need(arguments.length===3);retur
 function archiveSevenAuthOnlyDiagnosticMaterial(lease,view,nonce){need(arguments.length===3&&lease&&!types.isProxy(lease)&&Object.getOwnPropertyDescriptor(lease,'executionPurpose')?.value==='AUTH_ONLY_DIAGNOSTIC');return archiveMaterial(lease,view,nonce,true);}
 function archiveMaterial(lease,view,nonce,authOnly){
  const input=inputOf(lease,view,true,authOnly);
+ return archiveInputMaterial(input,nonce);
+}
+function archiveInputMaterial(input,nonce){
  need(!input.competition,'ARCHIVE_EXECUTOR');
  const executor=input.roleCompletion.roles.find(role=>role.name==='jg_c259_outside_executor_owner');
  need(hex(nonce,64)&&executor?.login===false&&oid(executor.oid)&&![input.ordinary.oid,input.runtime.oid,input.observer.oid,'10'].includes(executor.oid));
@@ -663,6 +666,31 @@ function renderNativeTask16Seven(inputJson,phase,nonce,priorStdout){
  const parts=sql.split(original);need(parts.length>1,'NATIVE_ENDPOINT_RENDER');
  return parts.join(original.replace('5432',String(input.id.serverPort)));
 }
+function bindNativeTask12ArchiveEndpointSql(sql,port,required=true){
+ need(typeof sql==='string'&&Number.isInteger(port)&&port>1024&&port<=65535&&port!==5432,'NATIVE_ENDPOINT');
+ const patterns=[
+  "host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port() IS DISTINCT FROM 5432",
+  "pg_catalog.host(pg_catalog.inet_client_addr()) IS DISTINCT FROM '127.0.0.1'\n OR pg_catalog.host(pg_catalog.inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR pg_catalog.inet_server_port() IS DISTINCT FROM 5432"
+ ];
+ let count=0;for(const original of patterns){const parts=sql.split(original);count+=parts.length-1;sql=parts.join(original.replace('5432',String(port)));}
+ need((!required||count>0)&&!/(?:pg_catalog\.)?inet_server_port\(\)\s*(?:IS DISTINCT FROM|=|<>)\s*5432/u.test(sql),'NATIVE_ENDPOINT_RENDER');return sql;
+}
+function createNativeTask12ArchiveSevenMaterial(text,nonce){
+ need(arguments.length===2&&typeof text==='string'&&Buffer.byteLength(text)<=1024*1024,'NATIVE_INPUT');const value=JSON.parse(text);
+ need(equal(Object.keys(value).sort(),['source','completion','serverPort'].sort()),'NATIVE_INPUT');
+ const {source,completion,serverPort}=value,id=completion.databaseIdentity;
+ need(id&&id.serverPort===serverPort&&id.actorOid==='10'&&id.actor==='jg_task01_owner'&&id.sessionActor===id.actor&&Array.isArray(completion.roles)&&completion.roles.length===9,'NATIVE_INPUT');
+ const role=name=>{const rows=completion.roles.filter(row=>row.name===name);need(rows.length===1,'NATIVE_INPUT');return rows[0];};
+ const input=nativeSevenInput(JSON.stringify({source,id,ordinary:completion.ordinary,runtime:role('jg_task01_runtime'),observer:role('jg_task01_observer'),roleCommitXid:completion.commitXid,databaseAclAfter:completion.databaseAcl.after}));
+ input.paymentProfile=undefined;input.material=material(input.source,true,undefined);input.roleCompletion={...input.roleCompletion,roles:completion.roles};
+ const original=archiveInputMaterial(input,nonce);
+ return Object.freeze({beforeSql:bindNativeTask12ArchiveEndpointSql(original.beforeSql,serverPort),readBefore(result){
+  const found=original.readBefore(result);return Object.freeze({...found,
+   writerBefore:bindNativeTask12ArchiveEndpointSql(found.writerBefore,serverPort),
+   writerMiddle:bindNativeTask12ArchiveEndpointSql(found.writerMiddle,serverPort),
+   committedCheck:installXid=>bindNativeTask12ArchiveEndpointSql(found.committedCheck(installXid),serverPort,false)});
+ }});
+}
 function parseNativeTask16Seven(inputJson,phase,nonce,stdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeSevenInput(inputJson),phase,nonce);
 }
@@ -703,5 +731,5 @@ function renderNativeTask16CompetitionSeven(inputJson,phase,nonce,priorStdout){
 function parseNativeTask16CompetitionSeven(inputJson,phase,nonce,stdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeCompetitionSevenInput(inputJson),phase,nonce);
 }
-module.exports=Object.freeze({renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
+module.exports=Object.freeze({bindNativeTask12ArchiveEndpointSql,createNativeTask12ArchiveSevenMaterial,renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
  claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure,describeCurrent259SevenPrestateReadbackFailure});

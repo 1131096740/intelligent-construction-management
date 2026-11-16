@@ -174,3 +174,21 @@ test('gap interface qualification loads only original seed/case and one-lane pro
  for(const name of ['seedRegisteredPgAttributionGapFixture','runRegisteredProjectAttributionGap','assertRegisteredPgConnectedRoles','renderNativeTask16GapSeven','parseNativeTask16GapSeven','renderNativeTask16RoleInstall','renderCurrent259RuntimeAcl'])assert.ok(names.includes(name),name);
  for(const name of ['seedRegisteredPgCompetitionFollowUpFixture','runRegisteredTwoActorPaymentCompetitionFollowUp','assertRegisteredPgCompetitionRoles','renderNativeTask16CompetitionMonitor','renderNativeTask16CompetitionRoleInstall'])assert.equal(names.includes(name),false,name);
 });
+
+test('native gap ACL binds the original single-lane matrix, five defaults and actual native endpoint',()=>{
+ const donor=path.join(__dirname,'task16-current259-runtime-acl.test.cjs');
+ const f=new Function('require','__dirname',fs.readFileSync(donor,'utf8')+'\nreturn {material,receipt};')(name=>name==='node:test'?{test:()=>{}}:require(name),__dirname);
+ const H=bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:H(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const source={candidateSha:f.material.candidateSha,sourceSealSha256:f.material.sealSha256,profile:require('./task16-current259-profile.cjs').qualifyCurrent259Source({...f.material,migrations})};
+ const provisioned={...f.receipt(),commitXid:'1234',paymentProfile:'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1'};
+ provisioned.roles=provisioned.roles.map(role=>({...role,limit:1}));
+ provisioned.databaseIdentity={...provisioned.databaseIdentity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:55432};
+ const rendered=require('./run-task16-native-competition-follow-up-once.cjs').renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned}),'d'.repeat(64));
+ assert.match(rendered.sql,/inet_server_port\(\) IS DISTINCT FROM 55432/u);assert.doesNotMatch(rendered.sql,/inet_server_port\(\) IS DISTINCT FROM 5432/u);
+ assert.match(rendered.sql,/GRANT INSERT \("action", "actorUserId", "businessId", "businessType", "createdAt", "id", "metadata"\) ON TABLE public\."AuditLog"/u);
+ assert.doesNotMatch(rendered.sql,/^GRANT SELECT [^\n]+HistoricalFinancialTakeoverRowMapping/mu);
+ assert.equal(rendered.writeSql,rendered.sql+'\n'+rendered.publicSql);
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ for(const patch of [{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}, {roles:provisioned.roles.map(role=>({...role,limit:role.name==='jg_task01_runtime'?2:1}))}, {databaseIdentity:{...provisioned.databaseIdentity,serverPort:5432}}])assert.throws(()=>api.renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned:{...provisioned,...patch}}),'d'.repeat(64)));
+});

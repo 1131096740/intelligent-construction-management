@@ -670,4 +670,43 @@ function claimArchive(completion,handle,authOnly){
     ...(receipt.ordinaryAclWitness ? { ordinaryAclWitness: receipt.ordinaryAclWitness } : {}) });
 }
 
-module.exports = Object.freeze({ installCurrent261AuthOnlyDiagnosticArchive,claimCurrent261AuthOnlyDiagnosticArchive,installCurrent259ArchiveAuthorities, installCurrent259ArchiveAuthoritiesWithRegisteredFileSource, claimCurrent259ArchiveInstallation });
+const nativeArchiveProjections=new WeakMap();
+function readNativeTask12ArchiveProjection(result){
+ need(arguments.length===1&&result&&!types.isProxy(result)&&nativeArchiveProjections.has(result));return nativeArchiveProjections.get(result);
+}
+function beginNativeTask12ArchiveProtocol(text){
+ need(arguments.length===1&&typeof text==='string'&&Buffer.byteLength(text)<=1024*1024);
+ const value=JSON.parse(text);need(Object.keys(value).sort().join(',')==='completion,serverPort,source');
+ const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};freeze(value);
+ const {source,completion,serverPort}=value,{databaseIdentity:identity,ordinary,roles,commitXid,databaseAcl}=completion;
+ need(!Object.hasOwn(completion,'containerId')&&completion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&completion.executionAllowed===false&&completion.nativeAdmission===false);
+ need(source.candidateSha===completion.sourceSha&&hex(source.candidateSha,40)&&hex(source.tree,40)&&hex(source.sourceSealSha256,64)&&isExactCurrentArchiveProfile(source.profile)&&source.profile.candidateSha===source.candidateSha&&source.profile.sealSha256===source.sourceSealSha256&&sha(JSON.stringify(source.profile.ledger))===source.profile.ledgerSha256);
+ need(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(completion.runId)&&identity.database==='jg_task01_'+completion.runId.replaceAll('-','')&&oid(identity.databaseOid)&&oid(identity.namespaceOid)&&identity.ownerOid==='10'&&xid(identity.systemIdentifier)&&xid(commitXid));
+ need(identity.actorOid==='10'&&identity.actor===OWNER&&identity.sessionActor===OWNER&&identity.tls===true&&identity.clientAddress==='127.0.0.1'&&identity.serverAddress==='127.0.0.1'&&identity.serverPort===serverPort&&Number.isInteger(serverPort)&&serverPort>1024&&serverPort<=65535&&serverPort!==5432);
+ need(ordinary&&ordinary.login===true&&/^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name)&&oid(ordinary.oid)&&Array.isArray(roles)&&roles.length===ROLE_NAMES.length&&databaseAcl&&Array.isArray(databaseAcl.before)&&Array.isArray(databaseAcl.after)&&databaseAcl.after.length>0);
+ const qualified=roles.map((role,index)=>{need(role.name===ROLE_NAMES[index]&&oid(role.oid)&&role.login===!role.name.endsWith('_owner')&&role.xmin===String(BigInt(commitXid)%4294967296n)&&role.unlimitedValidity===true);return Object.freeze({name:role.name,oid:role.oid,login:role.login,xmin:role.xmin,unlimitedValidity:true});});
+ need(new Set(['10',ordinary.oid,...qualified.map(role=>role.oid)]).size===qualified.length+2);
+ const input={source,completion,database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,ownerOid:'10',systemIdentifier:identity.systemIdentifier,ledger:source.profile.ledger,commitXid,ordinary:Object.freeze({name:ordinary.name,oid:ordinary.oid,login:true}),roles:qualified,databaseAcl,collision:collisionRecipe()};
+ const {bindNativeTask12ArchiveEndpointSql:bind,createNativeTask12ArchiveSevenMaterial}=require('./task16-current259-seven-install.cjs');
+ const challenge=randomBytes(32).toString('hex');let stage=0;
+ const take=expected=>{need(stage===expected);stage++;};
+ const distinct=(a,b)=>a.backendPid!==b.backendPid&&a.backendStart!==b.backendStart;
+ return Object.freeze({beforeSql:bind(render(input,STAGES[0],challenge),serverPort),acceptBefore(stdout){
+  take(0);const before=readResult({stdout},STAGES[0],challenge),seven=createNativeTask12ArchiveSevenMaterial(text,randomBytes(32).toString('hex'));
+  return Object.freeze({beforeSql:seven.beforeSql,acceptBefore(stdout){
+   take(1);const material=seven.readBefore({stdout});need(distinct(before,material));const writeChallenge=randomBytes(32).toString('hex');
+   return Object.freeze({sql:bind(renderRegistered(input,REGISTERED_STAGES[0],writeChallenge,before,material),serverPort),acceptWritten(stdout){
+    take(2);const staged=readResult({stdout},REGISTERED_STAGES[0],writeChallenge);
+    need(staged.originalRegistrySha256===before.registrySha256&&staged.registrySha256!==before.registrySha256&&staged.pendingSha256===before.pendingSha256&&staged.catalogSha256!==before.catalogSha256&&staged.installXid!==input.commitXid&&distinct(staged,before)&&distinct(staged,material));
+    const readChallenge=randomBytes(32).toString('hex');
+    return Object.freeze({sql:bind(renderRegistered(input,REGISTERED_STAGES[1],readChallenge,before,material,staged),serverPort),acceptCommitted(stdout){
+     take(3);const committed=readResult({stdout},REGISTERED_STAGES[1],readChallenge);
+     need(committed.originalRegistrySha256===staged.originalRegistrySha256&&committed.sevenCatalogSha256===staged.sevenCatalogSha256&&distinct(committed,before)&&distinct(committed,material)&&distinct(committed,staged)&&['installXid','bindingSha256','closureSha256','registrySha256','pendingSha256','catalogSha256'].every(key=>committed[key]===staged[key]));
+     const result=Object.freeze({status:'NATIVE_TASK12_ARCHIVE_SOURCE_MATCHED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:completion.runId,databaseIdentity:identity,ordinary:input.ordinary,roles:input.roles,installXid:committed.installXid,upwardClosureSha256:committed.closureSha256,bindingSha256:committed.bindingSha256,registrySha256:committed.registrySha256,pendingSha256:committed.pendingSha256,catalogSha256:committed.catalogSha256,originalRegistrySha256:committed.originalRegistrySha256,sevenCatalogSha256:committed.sevenCatalogSha256,registeredFileSource:true,nativeAdmission:false,executionAllowed:false});
+     nativeArchiveProjections.set(result,Object.freeze({source,completion:result,roleCompletion:completion,serverPort,ordinaryAclWitness(phase){const witness=ordinaryAclWitness(input,result,material.finalCatalog)(phase);return Object.freeze({...witness,guardSql:bind(witness.guardSql,serverPort)});}}));return result;
+    }});
+   }});
+  }});
+ }});
+}
+module.exports = Object.freeze({ beginNativeTask12ArchiveProtocol,readNativeTask12ArchiveProjection,installCurrent261AuthOnlyDiagnosticArchive,claimCurrent261AuthOnlyDiagnosticArchive,installCurrent259ArchiveAuthorities, installCurrent259ArchiveAuthoritiesWithRegisteredFileSource, claimCurrent259ArchiveInstallation });

@@ -6,14 +6,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync,execFile } = require('node:child_process');
-const { promisify } = require('node:util');
+const { promisify, types } = require('node:util');
 const { performance } = require('node:perf_hooks');
 const { pathToFileURL } = require('node:url');
 const exec=promisify(execFile);
 const { createOfficialDocumentChildBudget,attachPostcheck } = require('../services/api/prisma/task12-official-document-child.cjs');
 const { runOfficialQualificationActions } = require('../services/api/prisma/task12-official-qualification-actions.cjs');
 const {officialDocumentProfile}=require('../services/api/prisma/task12-official-document-profiles.cjs');
-const { validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity } = require('../services/api/prisma/task12-official-document-fidelity.cjs');
+const { validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalMergedFidelity } = require('../services/api/prisma/task12-official-document-fidelity.cjs');
 const {
   PROFILE, sourceWitness, buildWitness, buildToolWitness, toolControlWitness, inspectOfficialDocumentQualification, withOfficialDocumentQualification, hostBoundary
 } = require('../services/api/prisma/task12-official-document-profile.cjs');
@@ -80,7 +80,8 @@ function prepare(requestPath, expected, outputPath) {
     JSON.stringify(buildRecord.toolchain)===JSON.stringify(buildToolWitness()));
   const sampleDirectory=fs.mkdtempSync(path.join(path.dirname(outputPath),'formal-sample-'));fs.chmodSync(sampleDirectory,0o700);
   const producer=require('../services/api/dist/contract-document/task12-official-qualification-sample.js');
-  const sample=producer.createOfficialQualificationSample(fs.readFileSync(path.resolve(__dirname,'../services/api/assets/templates/material-purchase-real-v1.docx')));
+  const mechanical=request.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
+  const sample=producer.createOfficialQualificationSample(fs.readFileSync(path.resolve(__dirname,'../services/api/assets/templates/'+(mechanical?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx'))));
   const office=path.join(sampleDirectory,'office-preview.docx'),docx=path.join(sampleDirectory,'material.docx'),scope=path.join(sampleDirectory,'line-box-scope.json'),expectations=path.join(sampleDirectory,'EXPECTED.json');
   const scopeBytes=Buffer.from(JSON.stringify(sample.scope,null,2)+'\n'),expectationBytes=Buffer.from(JSON.stringify(sample.expectations,null,2)+'\n');
   for(const [name,bytes] of [[docx,sample.docx],[office,sample.officeDocx],[scope,scopeBytes],[expectations,expectationBytes]])fs.writeFileSync(name,bytes,{mode:0o600,flag:'wx'});
@@ -96,13 +97,24 @@ function prepare(requestPath, expected, outputPath) {
 }
 
 function fixedWrite(file,bytes) { fs.writeFileSync(file,bytes,{mode:0o600,flag:'wx'}); }
+function projectChildTiming(value){
+  if(!value||typeof value!=='object'||types.isProxy(value))return;
+  const own=key=>Object.getOwnPropertyDescriptor(value,key)?.value;
+  if(own('status')!=='OBSERVED')return;
+  const costs=Object.fromEntries(['setupMs','precheckMs','childMs','postcheckMs','elapsedMs'].map(key=>[key,own(key)]));
+  if(!Object.values(costs).every(number=>Number.isSafeInteger(number)&&number>=0&&number<=3600000))return;
+  const firstFailurePhase=own('firstFailurePhase'),childOutcome=own('childOutcome'),postcheckOutcome=own('postcheckOutcome');
+  if(![null,'PRECHECK','CHILD','POSTCHECK'].includes(firstFailurePhase)||!['NOT_STARTED','RETURNED','THREW'].includes(childOutcome)||!['NOT_STARTED','RETURNED','THREW'].includes(postcheckOutcome))return;
+  return {status:'OBSERVED',...costs,firstFailurePhase,childOutcome,postcheckOutcome};
+}
 function firstFailure(error) {
   const chain=[];let current=error;
   for(let n=0;n<8&&current;n++,current=current.cause)chain.push(current);
   const original=chain[chain.length-1]??error;
+  let childTiming;for(const item of chain){if(item&&typeof item==='object'&&!types.isProxy(item)){childTiming=projectChildTiming(Object.getOwnPropertyDescriptor(item,'officialChildTiming')?.value);if(childTiming)break;}}
   return {name:original?.name??'Error',code:original?.code??null,signal:original?.signal??null,killed:original?.killed===true,
     message:typeof original?.message==='string'?original.message.slice(0,2000):'UNKNOWN',
-    postcheckFailed:chain.some(item=>Object.hasOwn(item,'postcheckFailure'))};
+    postcheckFailed:chain.some(item=>Object.hasOwn(item,'postcheckFailure')),...(childTiming?{childTiming}:{})};
 }
 function errorLogs(error,root,label) {
   let value=error;
@@ -119,21 +131,28 @@ async function inspectPdf(scope,plan,label,pdfPath,docxPath,docxSha256) {
   const request={version:1,profile:plan.profile,pythonSite:scope.pythonSite,pdfPath,pdfSha256,docxPath,docxSha256,
     outputDirectory:root,fonts:scope.inspectionFonts};
   const file=path.join(root,'REQUEST.json'),bytes=Buffer.from(JSON.stringify(request,null,2)+'\n');fixedWrite(file,bytes);
-  const result=await budget.run(timeout=>exec(scope.pythonExecutable,['-I','-S','-B',scope.inspectorPath,file,sha(bytes)],{
+  let result;try{result=await budget.run(timeout=>exec(scope.pythonExecutable,['-I','-S','-B',scope.inspectorPath,file,sha(bytes)],{
     cwd:root,env:{PATH:'/usr/bin:/bin',HOME:scope.libreOfficeEnv.HOME,TMPDIR:scope.libreOfficeEnv.TMPDIR,
       PYTHONDONTWRITEBYTECODE:'1',LANG:'en_US.UTF-8',LC_ALL:'en_US.UTF-8'},timeout,maxBuffer:4*1024*1024}));
   fixedWrite(path.join(root,'STDOUT.log'),result.stdout);fixedWrite(path.join(root,'STDERR.log'),result.stderr);
   need(result.stderr.length===0);const report=JSON.parse(result.stdout);need(report.pdfSha256===pdfSha256);
   const reportPath=path.join(root,'REPORT.json');fixedWrite(reportPath,JSON.stringify(report,null,2)+'\n');
-  budget.remaining();return {report,path:reportPath,sha256:sha(fs.readFileSync(reportPath))};
+  budget.remaining();return {report,path:reportPath,sha256:sha(fs.readFileSync(reportPath)),childTiming:budget.timing()};
+  }catch(error){
+    // Observational costs only: retain the same first error and every full material check.
+    try{if(error&&typeof error==='object'&&!types.isProxy(error)&&Object.isExtensible(error)&&!Object.hasOwn(error,'officialChildTiming'))Object.defineProperty(error,'officialChildTiming',{value:budget.timing()});}catch{/* Diagnostics cannot replace the original failure. */}
+    throw error;
+  }
 }
 async function rejectionBoundaries(converter,scope,bytes,lineBoxScope) {
   const before=fs.readdirSync(scope.javaScratchDirectory).sort();
   const unchanged=()=>need(JSON.stringify(fs.readdirSync(scope.javaScratchDirectory).sort())===JSON.stringify(before));
   const reject=async(operation,message)=>{let rejected=false;try{await operation();}catch(error){need(error.message===message);rejected=true;}need(rejected);unchanged();};
-  const typographyVersion='reviewed-material-primary-secondary-body25-v4';
+  const mechanical=scope.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
+  const typographyVersion=mechanical?'reviewed-mechanical-primary-secondary-roles-v1':'reviewed-material-primary-secondary-body25-v4';
+  if(mechanical) await reject(()=>converter.contractBodyPdfRuntimeLockFingerprint('reviewed-material-primary-secondary-body25-v4'),'合同正文转换运行环境未就绪，请联系管理员');
   await reject(()=>converter.assertContractBodyPdfRuntimeLock('0'.repeat(64),typographyVersion),'合同正文转换运行环境未就绪，请联系管理员');
-  const options={typographyVersion,lineBoxScope};
+  const options={typographyVersion,...(mechanical?{}:{lineBoxScope})};
   await reject(()=>converter.convertContractBodyDocxToPdf(Buffer.from('not a DOCX'),scope.lockSha256,options),'合同正文文件无法安全转换，请核对文件内容');
   const PizZip=require('../services/api/node_modules/pizzip');
   const external=new PizZip(bytes),relations='word/_rels/document.xml.rels';
@@ -152,7 +171,7 @@ async function once(planPath,expected) {
     current.dev===rootIdentity.dev&&current.ino===rootIdentity.ino&&current.uid===rootIdentity.uid&&current.mode===rootIdentity.mode);};
   const stage=async(name,operation)=>{
     active=name;owned();const tick=performance.now();fixedWrite(path.join(plan.runRoot,name+'-STARTED.json'),JSON.stringify({name,startedAt:new Date().toISOString()}));
-    try {const result=await operation();owned();fixedWrite(path.join(plan.runRoot,name+'-COMPLETED.json'),JSON.stringify({name,status:'COMPLETED',exitCode:0,elapsedMs:performance.now()-tick}));return result;}
+    try {const result=await operation();owned();const childTiming=projectChildTiming(result&&typeof result==='object'&&!types.isProxy(result)?Object.getOwnPropertyDescriptor(result,'childTiming')?.value:undefined);fixedWrite(path.join(plan.runRoot,name+'-COMPLETED.json'),JSON.stringify({name,status:'COMPLETED',exitCode:0,elapsedMs:performance.now()-tick,...(childTiming?{childTiming}:{})}));return result;}
     catch(error){try{owned();errorLogs(error,plan.runRoot,name);fixedWrite(path.join(plan.runRoot,name+'-FAILED.json'),JSON.stringify({name,status:'STOPPED',elapsedMs:performance.now()-tick,firstFailure:firstFailure(error)}));}catch(logError){throw attachPostcheck(error,logError);}throw error;}
   };
   try {
@@ -162,18 +181,19 @@ async function once(planPath,expected) {
       const officeConverter=require('../services/api/dist/contract-document/libreoffice-converter.js');
       const normalizer=require('../services/api/dist/contract-document/pdf-normalizer.js');
       scope.checkMaterials();
+      const mechanical=plan.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
       const bytes=fs.readFileSync(plan.document.path),officeBytes=fs.readFileSync(plan.document.officePath),lineBoxScope=JSON.parse(fs.readFileSync(plan.document.scopePath,'utf8'));
       const savePdf=(label,pdf)=>{need(Buffer.isBuffer(pdf)&&pdf.subarray(0,5).equals(Buffer.from('%PDF-'))&&pdf.length<=100000000);const file=path.join(plan.runRoot,label+'.pdf');fixedWrite(file,pdf);return {bytes:pdf,path:file,sha256:sha(pdf)};};
       return runOfficialQualificationActions({
         negative:()=>stage('01-NEGATIVE',()=>rejectionBoundaries(converter,scope,bytes,lineBoxScope)),
         java:()=>stage('02-JAVA',async()=>{
-          const typographyVersion='reviewed-material-primary-secondary-body25-v4',fingerprint=await converter.contractBodyPdfRuntimeLockFingerprint(typographyVersion);need(fingerprint===scope.lockSha256);
-          const output=await converter.convertContractBodyDocxToPdf(bytes,fingerprint,{typographyVersion,lineBoxScope});
+          const typographyVersion=mechanical?'reviewed-mechanical-primary-secondary-roles-v1':'reviewed-material-primary-secondary-body25-v4',fingerprint=await converter.contractBodyPdfRuntimeLockFingerprint(typographyVersion);need(fingerprint===scope.lockSha256);
+          const output=await converter.convertContractBodyDocxToPdf(bytes,fingerprint,{typographyVersion,...(mechanical?{}:{lineBoxScope})});
           need(output.provenance.conversionCalls===1&&output.provenance.boundaryDenials===3);return {...savePdf('java',output.pdf),provenance:output.provenance};
         }),
         inspectJava:java=>stage('03-JAVA-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'java',java.path,plan.document.path,plan.document.sha256);
-          return {...report,verdict:validateOfficialDocumentFidelity(report.report,java.sha256)};
+          return {...report,verdict:(mechanical?validateOfficialMechanicalFidelity:validateOfficialDocumentFidelity)(report.report,java.sha256)};
         }),
         office:()=>stage('04-OFFICE',async()=>{
           const runner=async(command,args,options)=>{
@@ -188,7 +208,7 @@ async function once(planPath,expected) {
         }),
         inspectOffice:office=>stage('05-OFFICE-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'office',office.path,plan.document.officePath,plan.document.officeSha256);
-          return {...report,verdict:validateOfficialOfficeFidelity(report.report,office.sha256)};
+          return {...report,verdict:(mechanical?validateOfficialMechanicalOfficeFidelity:validateOfficialOfficeFidelity)(report.report,office.sha256)};
         }),
         normalize:(java,office)=>stage('06-NORMALIZE',async()=>{
           // Existing public PDF adapter only, not an LO merge or a business write.
@@ -197,7 +217,7 @@ async function once(planPath,expected) {
         }),
         inspectNormalized:(normalized,javaPhysical,officePhysical)=>stage('07-NORMALIZED-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'normalized',normalized.path,plan.document.path,plan.document.sha256);
-          return {...report,verdict:validateOfficialMergedFidelity(report.report,javaPhysical.report,officePhysical.report,normalized.sha256)};
+          return {...report,verdict:(mechanical?validateOfficialMechanicalMergedFidelity:validateOfficialMergedFidelity)(report.report,javaPhysical.report,officePhysical.report,normalized.sha256)};
         })
       });
     });

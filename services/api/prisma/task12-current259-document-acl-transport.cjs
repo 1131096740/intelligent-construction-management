@@ -266,4 +266,39 @@ function claimCurrent261GeneratedLifecycleDocumentAcl(result,handle){
  need(arguments.length===2,'HANDLE');return claim(result,handle,'lifecycle');
 }
 function claimCurrent261AuthOnlyDiagnosticDocumentAcl(result,handle){need(arguments.length===2,'HANDLE');return claim(result,handle,'lifecycle',true);}
-module.exports=Object.freeze({installCurrent261AuthOnlyDiagnosticDocumentAcl,claimCurrent261AuthOnlyDiagnosticDocumentAcl,describeCurrent261DocumentAclFailure,installCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261GeneratedLifecycleDocumentAcl,installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});
+const nativeAclProjections=new WeakMap();
+function readNativeTask12DocumentAclProjection(result){
+ need(arguments.length===1&&result&&!types.isProxy(result)&&nativeAclProjections.has(result),'HANDLE');
+ return nativeAclProjections.get(result);
+}
+function beginNativeTask12DocumentAclInstallation(roleResult){
+ need(arguments.length===1,'HANDLE');
+ const rolesLease=require('./task12-current259-document-role-provision.cjs').readNativeTask12DocumentRolesProjection(roleResult);
+ const {ordinaryAcl,source,roles}=rolesLease,identity=ordinaryAcl.roleCompletion.databaseIdentity;
+ const predecessors=[roleResult.installXid,ordinaryAcl.completion.installXid,ordinaryAcl.completion.archiveInstallXid];
+ need(predecessors.every(xid)&&new Set(predecessors).size===predecessors.length,'HANDLE');
+ const input={completion:roleResult,ordinaryAcl,roles,identity,predecessors,ledger:source.profile.ledger,source};
+ const renderer=require('./task12-current259-document-acl.cjs').beginNativeTask12DocumentAclProtocol(roleResult);
+ const proof=lineage(input,true);let state=0;
+ const take=expected=>{need(state===expected,'REPLAY');state++;};
+ return Object.freeze({beforeSql:guarded(renderer.beforeSql,'BEFORE',proof),acceptBefore(stdout){
+  take(0);const before=readOwner({stdout},input),writer=renderer.acceptBefore(before.row);
+  return Object.freeze({sql:guarded(writer.sql,'WRITE',proof,before.continuitySha256),acceptStaged(stdout){
+   take(1);const staged=readOwner({stdout},input);
+   need(staged.continuitySha256===before.continuitySha256,'CONTINUITY');
+   need(xid(staged.installXid)&&!predecessors.includes(staged.installXid),'XID');
+   const reader=writer.acceptStaged(staged.row);
+   return Object.freeze({sql:guarded(reader.sql,'COMMITTED',proof,before.continuitySha256),acceptCommitted(stdout){
+    take(2);const committed=readOwner({stdout},input);
+    need(committed.continuitySha256===before.continuitySha256,'CONTINUITY');
+    const matched=reader.acceptCommitted(committed.row);
+    const result=Object.freeze({status:'NATIVE_TASK12_DOCUMENT_ACL_MATCHED_NOT_ADMISSION',sourceSha:roleResult.sourceSha,
+     runId:roleResult.runId,roleInstallXid:roleResult.installXid,installXid:committed.installXid,profileSha256:matched.profileSha256,
+     effectivePlanSha256:matched.effectivePlanSha256,installation:matched.installation,executionAllowed:false,nativeAdmission:false});
+    nativeAclProjections.set(result,Object.freeze({completion:result,roles,source,ordinaryAcl,rolesLease,serverPort:rolesLease.serverPort,
+     continuitySha256:committed.continuitySha256,continuitySql:proof.continuity}));return result;
+   }});
+  }});
+ }});
+}
+module.exports=Object.freeze({beginNativeTask12DocumentAclInstallation,readNativeTask12DocumentAclProjection,installCurrent261AuthOnlyDiagnosticDocumentAcl,claimCurrent261AuthOnlyDiagnosticDocumentAcl,describeCurrent261DocumentAclFailure,installCurrent261GeneratedLifecycleDocumentAcl,claimCurrent261GeneratedLifecycleDocumentAcl,installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});
