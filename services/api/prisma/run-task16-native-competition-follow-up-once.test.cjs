@@ -295,3 +295,64 @@ test('actual native client constructor wiring records only query metadata and pr
  assert.deepEqual(receipt.voucherRosterQueries,{events:[{lane:'runtime_a',stage:'VOUCHER_AUTHORIZED_TICKET',relation:'ProjectRosterMember',operation:'SELECT',columns:['id','projectId','userId'],unknownShape:false}],overflow:false});
  assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE|TOKEN|SELECT "|params/u);
 });
+
+test('cash purpose is isolated from all existing purposes and has its own command verbs',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const cash=api.nativeTask16CaseSelection('TASK16_NATIVE_PUBLIC_CASH_V1');
+ assert.equal(cash.caseId,'registered.public-cash.payment');assert.equal(cash.cash,true);assert.equal(cash.competition,true);
+ const input=['--prepare-cash','--run-root','/private/tmp/example','--binary-manifest','/private/tmp/binary','--expected-binary-sha256','a'.repeat(64),'--output','/private/tmp/example/plan.json'];
+ assert.equal(api.parseNativeTask16Args(input).purpose,'TASK16_NATIVE_PUBLIC_CASH_V1');
+ assert.equal(api.parseNativeTask16Args(['--verify-cash','--plan','/private/tmp/example/plan.json','--expected-plan-sha256','a'.repeat(64)]).purpose,'TASK16_NATIVE_PUBLIC_CASH_V1');
+ assert.equal(api.parseNativeTask16Args(['--once-cash','--plan','/private/tmp/example/plan.json','--expected-plan-sha256','a'.repeat(64)]).mode,'once');
+});
+
+test('cash accounting refuses an invented company debt and replay drift before publication',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const row=(phase,done)=>({phase,balanceAYuan4:'100.0000',balanceBYuan4:done?'60.0000':'100.0000',paidAmountCents:done?'4000':'0',settlementPaidAmountCents:done?'4000':'0',executionCount:done?1:0,rootCount:0,fundingCount:done?1:0,allocationCount:done?1:0,eventCount:done?1:0,auditCount:done?1:0,projectFactCount:done?1:0,projectImpactCount:done?2:0});
+ const ids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','44444444-4444-4444-8444-444444444444'];
+ const evidence={origin:'INDEPENDENT_OBSERVER_REPEATABLE_READ',currency:'CNY',before:row('BEFORE',false),after:row('AFTER',true),replay:row('REPLAY',true),cashAccountId:ids[0],paymentFactId:ids[1],executionId:ids[2],settlementFactId:ids[3],costCents:'4000'};
+ assert.equal(api.validateNativeTask16CashAccounting(JSON.stringify(evidence)).costCents,'4000');
+ for(const changed of [{...evidence,after:{...evidence.after,rootCount:1}},{...evidence,replay:{...evidence.replay,balanceBYuan4:'20.0000'}},{...evidence,cashAccountId:'not-id'}])assert.throws(()=>api.validateNativeTask16CashAccounting(JSON.stringify(changed)));
+});
+
+for(const [purpose,verb]of [
+ ['TASK16_NATIVE_PUBLIC_CASH_V1','--once'],
+ ['TASK16_NATIVE_PUBLIC_CASH_V1','--once-gap'],
+ ['TASK16_NATIVE_PUBLIC_CASH_V1','--once-voucher'],
+ ['TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1','--once-cash'],
+ ['TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1','--once-cash'],
+ ['TASK16_NATIVE_COMPETITION_VOUCHER_V1','--once-cash']
+])test('cash plan and other purposes cannot be interchanged '+purpose+' '+verb,t=>{
+ const p=planModel(t);p.purpose=purpose;const target=path.join(p.runRoot,'plan.json'),bytes=JSON.stringify(p)+'\n';fs.writeFileSync(target,bytes,{mode:0o600});
+ const result=spawnSync(process.execPath,[path.join(__dirname,'run-task16-native-competition-follow-up-once.cjs'),verb,'--plan',target,'--expected-plan-sha256',require('node:crypto').createHash('sha256').update(bytes).digest('hex')],{encoding:'utf8',env:{PATH:path.dirname(process.execPath)},timeout:10000,maxBuffer:8192});
+ assert.equal(result.status,1);assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_CASE_PURPOSE'});assert.equal(result.stderr,'');assert.deepEqual(fs.readdirSync(p.runRoot),['plan.json']);
+});
+test('cash caller preserves results, immutable failures, and reports a pending deadline',async()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const scope=require('../dist/database/registered-payment-public-cash-secret.js').withCashLedgerSecret;
+ const identity={database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'123',systemIdentifier:'987',ownerPid:1234};
+ const tx={$queryRaw:async()=>[{owner:true,tls:true,empty:true,protected:true,writer:true}],$executeRaw:async()=>1};
+ const owner={$transaction:async fn=>fn(tx)};
+ for(const original of [undefined,new Error('failure'),Object.freeze(new Error('frozen'))]){
+  const state={cleanup:'NOT_STARTED',complete:false},receipt={};
+  const execute=()=>api.runNativeTask16CashScope(scope,owner,identity,()=>{},state,async()=>{if(original)throw original;return 'ok';});
+  if(original)await assert.rejects(execute(),error=>error===original);else assert.equal(await execute(),'ok');
+  api.recordNativeTask16CashSecretCleanup(receipt,state,0);
+  assert.equal(receipt.cashSecretCleanup,'CLEARED');assert.equal(state.complete,true);
+ }
+ for(const original of [Object.freeze(new Error('frozen cleanup')), 'primitive']){
+  const state={cleanup:'NOT_STARTED',complete:false},receipt={},remove=Reflect.deleteProperty;
+  Reflect.deleteProperty=(target,key)=>target===process.env&&key==='OPERATING_LEDGER_DB_WRITE_SECRET'?false:remove(target,key);
+  try{
+   await assert.rejects(api.runNativeTask16CashScope(scope,owner,identity,()=>{},state,async()=>{throw original;}),error=>error===original);
+   api.recordNativeTask16CashSecretCleanup(receipt,state,0);assert.equal(receipt.cashSecretCleanup,'UNKNOWN');
+  }finally{Reflect.deleteProperty=remove;delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET;}
+ }
+ const state={cleanup:'NOT_STARTED',complete:false},receipt={},controller=new AbortController();
+ let release;const pending=new Promise(resolve=>{release=resolve;});
+ const operation=api.waitNativeTask16Operation(()=>api.runNativeTask16CashScope(scope,owner,identity,()=>{},state,()=>pending),controller.signal);
+ await new Promise(resolve=>setImmediate(resolve));controller.abort();await assert.rejects(operation,/NATIVE_DIRECT_DEADLINE/u);
+ api.recordNativeTask16CashSecretCleanup(receipt,state,1);assert.equal(receipt.cashSecretCleanup,'UNKNOWN');
+ release();await new Promise(resolve=>setImmediate(resolve));
+ api.recordNativeTask16CashSecretCleanup(receipt,state,0);assert.equal(receipt.cashSecretCleanup,'UNKNOWN');
+});

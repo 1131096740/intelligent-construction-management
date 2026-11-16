@@ -1,0 +1,15 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const cash=require('./task16-current261-cash-profile.cjs');
+const plan={runtime:{role:'jg_task01_runtime',tables:[{table:'OperatingFact',select:['id'],insert:[],update:[],references:[]}],functions:[]},observer:{role:'jg_task01_observer',tables:[],functions:[]}};
+test('cash projection adds only explicit select columns and two service function executions without mutating the baseline',()=>{
+ const before=JSON.stringify(plan),result=cash.cashAccessPlan(plan);
+ assert.equal(JSON.stringify(plan),before);
+ assert.deepEqual(result.runtime.functions,cash.CASH_WRITER_FUNCTIONS);
+ for(const role of ['runtime','observer'])for(const row of result[role].tables){assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);}
+ assert.ok(result.observer.tables.find(row=>row.table==='RegisteredFundAccount').select.includes('companyEntityId'));
+ assert.ok(result.runtime.tables.find(row=>row.table==='SettlementArchiveFile').select.includes('confirmedAt'));
+});
+test('cash profile rejects duplicate grants in its own delta',()=>{
+ assert.throws(()=>cash.cashAccessPlan({...plan,runtime:{...plan.runtime,functions:[...cash.CASH_WRITER_FUNCTIONS]}}));
+});

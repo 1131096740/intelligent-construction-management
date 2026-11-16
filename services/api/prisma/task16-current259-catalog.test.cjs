@@ -622,3 +622,26 @@ test('native catalog finite diagnostics reuse the original validator and retain 
  assert.ok(!JSON.stringify(receipt.catalogReadbackFailure).includes('nonce'));
  assert.throws(()=>parseNativeTask16CatalogRead(JSON.stringify(row),request,undefined,Object.freeze({business:'NOT_ENTERED'})),error=>error.code===original);
 });
+test('cash role plan is bound separately and preserves the competition plan',()=>{
+ const source261={...source,migrations:currentMigrations};
+ const baseline=api.loadCurrent259CatalogMaterial(source261,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+ const cash=api.loadCurrent259CatalogMaterial(source261,require('./task16-current261-competition-profile.cjs').PAYMENT261_CASH_RUNTIME_PROFILE);
+ assert.notEqual(cash.effectiveAccessBinding.accessPlanSha256,baseline.effectiveAccessBinding.accessPlanSha256);
+ assert.deepEqual(api.loadCurrent259CatalogMaterial(source261,PAYMENT261_COMPETITION_RUNTIME_PROFILE).accessPlan,baseline.accessPlan);
+});
+test('cash B7 readback rejects missing writer or changed physical column grants',()=>{
+ const profile=require('./task16-current261-competition-profile.cjs').PAYMENT261_CASH_RUNTIME_PROFILE;
+ const cashSource={...source,migrations:currentMigrations};
+ const access=api.loadCurrent259CatalogMaterial(cashSource,profile).accessPlan;
+ const id={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',paymentProfile:profile};
+ const req={...request,source:cashSource,identity:id};
+ const row=observed('before',{...plan,...access});
+ row.ledger=api.loadCurrent259CatalogMaterial(cashSource).ledger;
+ row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;
+ assert.equal(api.parseCurrent259CatalogRead(JSON.stringify(row),req).nativeAdmission,false);
+ const noWriter=structuredClone(row);noWriter.functions=noWriter.functions.filter(f=>!f[1].includes('OperatingLedgerFactWritePayload"'));
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(noWriter),req));
+ const extra=structuredClone(row);extra.capabilities.push(['jg_task01_observer','column','OperatingFact','id','UPDATE',false]);
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(extra),req));
+ assert.throws(()=>api.renderCurrent259CatalogRead({...req,identity:{...id,paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE,voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}}));
+});

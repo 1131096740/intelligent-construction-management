@@ -831,3 +831,78 @@ export async function runRegisteredTwoActorPaymentCompetitionFollowUp(primary: R
   return {...race,caseId:"registered.two-actor.payment-competition-follow-up",secondExecutionId:second.id,fullyPaid:true as const,accountingEvidence};
   });
 }
+
+/** One explicitly synthetic public-cash payment through the actual API.
+ * The enclosing owned driver must establish the cash runtime/observer grants,
+ * source provenance, secret lifetime and resource cleanup before invoking it. */
+export async function runRegisteredPublicCashPayment(
+  primary: RegisteredPgExecutionContext,
+  contender: RegisteredPgExecutionContext,
+  fixture: Awaited<ReturnType<typeof import("./registered-payment-postgres.fixture").seedRegisteredPgPublicCashFormalFixture>>,
+  lanes: readonly [RegisteredPgSeedContinuity, RegisteredPgSeedContinuity]
+) {
+  const { plan } = fixture, { ids } = plan;
+  const checkLight = () => { lanes[0].checkLight(); lanes[1].checkLight(); fixture.cashSourceDocument?.verify(); };
+  const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { checkLight(); const value = await operation(); checkLight(); return value; };
+  const identity = await checked(() => assertRegisteredPgCompetitionRoles(primary, contender, lanes[0]));
+  const cashFixture = { ...fixture, companyBRegistrationId: fixture.cashRegistrationId, companyBSourceId: fixture.cashSourceId };
+  const before = await checked(() => observe(primary, cashFixture, lanes[0], true));
+  check(before.request.approvedAmountCents === 4000n && before.request.paidAmountCents === 0n && before.settlement.paidAmountCents === 0n &&
+    before.balanceA === "100.0000" && before.balanceB === "100.0000" &&
+    [before.executions,before.funding,before.allocations,before.events,before.roots,before.facts,before.impacts,before.audits].every(rows=>rows.length===0), "PG_CASH_BEFORE");
+  const endpoint = `/payment-executions/${ids.payment}`;
+  const options = await checked(() => registeredPgHttp(contender, `${endpoint}/registration-options`, "GET", undefined, fixture.contender.accessToken, lanes[1]));
+  const optionBody = options.body as {paymentId?:unknown;projectId?:unknown;expectedPaymentUpdatedAt?:unknown;remainingAmountCents?:unknown;accounts?:Array<{scopeKey:string;eligible:boolean;currentRegistrationId:string}>} | null;
+  check(options.status === 200 && optionBody?.paymentId === ids.payment && optionBody.projectId === ids.project &&
+    typeof optionBody.expectedPaymentUpdatedAt === "string" && optionBody.remainingAmountCents === "4000" &&
+    optionBody.accounts?.some(account=>account.scopeKey === "public_cash" && account.eligible && account.currentRegistrationId === fixture.cashRegistrationId), "PG_CASH_OPTIONS");
+  const command = {idempotencyKey:fixture.contender.requestKey, expectedPaymentUpdatedAt:optionBody.expectedPaymentUpdatedAt,
+    amountCents:"4000",paidAt:plan.paidAt,scopeKey:"public_cash",expectedRegistrationId:fixture.cashRegistrationId,
+    openingTreatment:"not_included",openingReason:"本次付款未计入合成期初",openingEvidence:"隔离合成公共现金付款依据",
+    sourceAllocations:[{sourceBatchId:fixture.cashSourceId,amountCents:"4000"}],confirmationPassword:contender.password};
+  const post = () => registeredPgHttp(contender, `${endpoint}/registrations`, "POST", command, fixture.contender.accessToken, lanes[1]);
+  check((await checked(post)).status === 201, "PG_CASH_REGISTRATION");
+  const after = await checked(() => observe(primary, cashFixture, lanes[0], true));
+  const execution = after.executions[0], funding = after.funding[0], allocation = after.allocations[0];
+  check(after.executions.length===1 && after.funding.length===1 && after.allocations.length===1 && after.events.length===1 && after.audits.length===1 &&
+    after.roots.length===0 && after.facts.length===1 && after.impacts.length===2 && execution?.idempotencyKey===fixture.contender.requestKey &&
+    execution.amountCents===4000n && execution.paymentRequestId===ids.payment && execution.voucherFileId===null &&
+    funding?.executionId===execution.id && funding.actualPayerKind==="public_cash" && funding.actualPayerId==="public_cash" &&
+    allocation?.executionId===execution.id && allocation.sourceBatchId===fixture.cashSourceId && allocation.amountCents===4000n &&
+    after.events[0]?.executionId===execution.id && after.audits[0]?.actorUserId===fixture.contender.actorId &&
+    after.request.paidAmountCents===4000n && after.request.status==="paid" && after.settlement.paidAmountCents===4000n &&
+    after.balanceA==="100.0000" && after.balanceB==="60.0000", "PG_CASH_AFTER");
+  const observeCashIdentity = async () => checked(() => primary.observer.$transaction(async tx => {
+    await checked(() => tx.$executeRawUnsafe("SET TRANSACTION READ ONLY"));
+    const opening = await checked(() => tx.fundAccountBalanceRegistration.findUnique({where:{id:fixture.cashRegistrationId},select:{accountId:true}}));
+    check(opening, "PG_CASH_OPENING");
+    const account = await checked(() => tx.registeredFundAccount.findUnique({where:{id:opening.accountId},select:{id:true,scopeKey:true,kind:true,companyEntityId:true}}));
+    const facts = await checked(() => tx.operatingFact.findMany({where:{sourceType:"payment_execution",sourceBusinessId:execution.id},select:{id:true,projectId:true,actualPayerSubjectKind:true,actualPayerSubjectId:true}}));
+    const impacts = await checked(() => tx.operatingImpactEntry.findMany({where:{sourceType:"payment_execution",sourceBusinessId:execution.id},select:{factId:true,projectId:true,impactKind:true,direction:true,subjectKind:true,subjectId:true,amountCents:true,numericProtocolVersion:true}}));
+    check(account?.scopeKey==="public_cash" && account.kind==="public_cash" && account.companyEntityId===null && account.id===allocation.accountId &&
+      facts.length===1 && facts[0]?.id===after.facts[0]?.id && facts[0].projectId===ids.project && facts[0].actualPayerSubjectKind==="public_cash" && facts[0].actualPayerSubjectId==="public_cash" &&
+      impacts.length===2 && impacts.every(item=>item.factId===facts[0]!.id && item.projectId===ids.project && item.direction==="decrease" && item.amountCents===4000n && item.numericProtocolVersion===1) &&
+      impacts.some(item=>item.impactKind==="public_cash_funds_decrease" && item.subjectKind==="public_cash" && item.subjectId==="public_cash") &&
+      impacts.some(item=>item.impactKind==="payable_decrease"), "PG_CASH_CANONICAL_IMPACTS");
+    return {accountId:account.id, paymentFactId:facts[0]!.id};
+  }, {isolationLevel:"RepeatableRead"}));
+  const cashIdentity = await observeCashIdentity();
+  const { readCashSettlementPrerequisite } = await import("./registered-payment-public-cash-prerequisite");
+  const baseline = await checked(() => readCashSettlementPrerequisite(primary.observer, {projectId:ids.project,settlementId:ids.settlement}, checkLight, 4000n));
+  check(baseline.factId===fixture.settlementFactId && baseline.costCents===fixture.settlementBaseline.costCents && baseline.payableCents===fixture.settlementBaseline.payableCents, "PG_CASH_NO_COST_DUPLICATION");
+  check((await checked(post)).status===201, "PG_CASH_REPLAY_HTTP");
+  const replay = await checked(() => observe(primary, cashFixture, lanes[0], true));
+  check(isDeepStrictEqual(after,replay), "PG_CASH_REPLAY_DRIFT");
+  const replayIdentity = await observeCashIdentity();
+  check(isDeepStrictEqual(cashIdentity,replayIdentity), "PG_CASH_IDENTITY_DRIFT");
+  const replayBaseline = await checked(() => readCashSettlementPrerequisite(primary.observer, {projectId:ids.project,settlementId:ids.settlement}, checkLight, 4000n));
+  check(isDeepStrictEqual(baseline,replayBaseline), "PG_CASH_COST_REPLAY_DRIFT");
+  const result = await checked(() => registeredPgHttp(contender, `/payment-executions/results/${fixture.contender.requestKey}`, "GET", undefined, fixture.contender.accessToken, lanes[1]));
+  const resultBody = result.body as {status?:string;execution?:{executionId?:string;amountCents?:string};intercompany?:unknown[]} | null;
+  check(result.status===200 && resultBody?.status==="recorded" && resultBody.execution?.executionId===execution.id && resultBody.execution.amountCents==="4000" && resultBody.intercompany?.length===0, "PG_CASH_RESULT");
+  return {caseId:"registered.public-cash.payment",passed:true as const,database:identity.primary.database,observerPid:identity.primary.observerPid,
+    executionId:execution.id,settlementFactId:baseline.factId,cashBalanceYuan4:after.balanceB,paidCents:"4000",costCents:baseline.costCents,rootCount:0,replayUnchanged:true as const,
+    accountingEvidence:{origin:"INDEPENDENT_OBSERVER_REPEATABLE_READ" as const,currency:"CNY" as const,
+      before:projectCompetitionAccounting("BEFORE",before),after:projectCompetitionAccounting("AFTER",after),replay:projectCompetitionAccounting("REPLAY",replay),
+      cashAccountId:cashIdentity.accountId,paymentFactId:cashIdentity.paymentFactId,executionId:execution.id,settlementFactId:baseline.factId,costCents:baseline.costCents}};
+}

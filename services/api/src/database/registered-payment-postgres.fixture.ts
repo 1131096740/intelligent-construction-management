@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { Payment261SeedProfile } from "./registered-payment-postgres.seed261";
 import { randomUUID } from "node:crypto";
 import { types } from "node:util";
-import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
+import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, cash261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
 // A pure, source-owned diagnostic projection; importing it opens no clients.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { describePaymentDiagnostic, paymentErrorKind }: { describePaymentDiagnostic(error: unknown): Readonly<{ guardPhase?: string; originCode?: string }> | undefined; paymentErrorKind(error: unknown): string } = require("../../prisma/task16-current259-payment-diagnostics.cjs");
@@ -51,7 +51,7 @@ export interface RegisteredPgExecutionContext {
 /** Production-only continuity supplied by the source-bound executor. Tests
  * continue to enter through the original public run and owned fetch boundary. */
 type SeedOpeningGate = "OPENING_A_REQUEST" | "OPENING_A_ASSERTION" | "OPENING_B_REQUEST" | "OPENING_B_ASSERTION";
-type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTION" | "SEED_LOGIN" | "SEED_OPENING";
+type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTION" | "SEED_LOGIN" | "SEED_OPENING" | "SEED_CASH_REPLAY" | "SEED_CASH_OBSERVER";
 export type RegisteredPgCaseGate = "CONNECTED_ROLES" | "OBSERVER_BEFORE" | "BEFORE_STATE" | "OPTIONS_REQUEST" | "OPTIONS_ASSERTION" |
   "REGISTRATION_REQUEST" | "OBSERVER_AFTER" | "COMMITTED_ASSERTION" | "RESULT_REQUEST" | "RESULT_ASSERTION" |
   "REPLAY_REQUEST" | "OBSERVER_REPLAY" | "REPLAY_ASSERTION";
@@ -101,6 +101,8 @@ export interface PreparedRegisteredPgFixture {
   companyARegistrationId: string;
   companyBRegistrationId: string;
   companyBSourceId: string;
+  /** Private bound fixture document, present only for the dedicated cash source profile. */
+  cashSourceDocument?: Awaited<ReturnType<typeof seedPayment261>>;
 }
 
 export interface PreparedRegisteredPgAttributionGap extends PreparedRegisteredPgFixture {
@@ -401,6 +403,39 @@ export async function seedRegisteredPgPublicCashFixture(primary: RegisteredPgExe
   }
 }
 
+/** Isolated, pre-approved synthetic source only. This invokes the real settlement
+ * replay on the existing restricted runtime; no permissions are provisioned here. */
+export async function seedRegisteredPgPublicCashFormalFixture(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
+  primaryContinuity: RegisteredPgSeedContinuity, contenderContinuity: RegisteredPgSeedContinuity) {
+  requireCondition(primaryContinuity.seedProfile === cash261SeedProfile && contenderContinuity.seedProfile === cash261SeedProfile, "PG_CASH_PROFILE_REQUIRED");
+  const prepared = await seedRegisteredPgPublicCashFixture(primary, contender, plan, primaryContinuity, contenderContinuity);
+  const document = prepared.cashSourceDocument;
+  requireCondition(document, "PG_CASH_DOCUMENT_REQUIRED");
+  let stage: SeedFailureStage = "SEED_CASH_REPLAY";
+  try {
+    primaryContinuity.checkLight(); document.verify();
+    const { OperatingLedgerService } = await import("../operating-ledger/operating-ledger.service");
+    const { OperatingSourceReplayService } = await import("../operating-ledger/operating-source-replay.service");
+    const { createOperatingSourceRegistry } = await import("../operating-ledger/operating-ledger.module");
+    const replay = new OperatingSourceReplayService(primary.runtime as never, new OperatingLedgerService(primary.runtime as never), createOperatingSourceRegistry());
+    const result = await replay.replaySource({ projectId: prepared.plan.ids.project, sourceType: "settlement", sourceBusinessId: prepared.plan.ids.settlement }, prepared.plan.ids.actor);
+    primaryContinuity.checkLight(); document.verify();
+    requireCondition(result.created === true && result.projectId === prepared.plan.ids.project && result.sourceType === "settlement" &&
+      result.sourceBusinessId === prepared.plan.ids.settlement && typeof result.id === "string" && result.impactIds.length === 2, "PG_CASH_SETTLEMENT_REPLAY");
+    stage = "SEED_CASH_OBSERVER";
+    const { readCashSettlementPrerequisite } = await import("./registered-payment-public-cash-prerequisite");
+    await assertRegisteredPgCompetitionRoles(primary, contender, primaryContinuity);
+    primaryContinuity.checkLight(); document.verify();
+    const witness = await readCashSettlementPrerequisite(primary.observer, { projectId: prepared.plan.ids.project, settlementId: prepared.plan.ids.settlement }, () => { primaryContinuity.checkLight(); document.verify(); });
+    primaryContinuity.checkLight(); document.verify();
+    requireCondition(witness.factId === result.id, "PG_CASH_SETTLEMENT_OBSERVER");
+    return { ...prepared, settlementFactId: result.id, settlementBaseline: witness };
+  } catch (error) {
+    try { primaryContinuity.recordSeedFailure?.(stage, seedFailureCode(error)); } catch { /* Preserve the source failure. */ }
+    throw Object.assign(new Error("TASK16_FIXTURE_FAILED_CLOSED"), { code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+  }
+}
+
 export async function seedRegisteredPgCompetitionFollowUpFixture(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
   primaryContinuity: RegisteredPgSeedContinuity, contenderContinuity: RegisteredPgSeedContinuity): Promise<PreparedRegisteredPgCompetitionFollowUp> {
   const result = await seedFixture(primary, plan, primaryContinuity, { context: contender, continuity: contenderContinuity }, false, true);
@@ -449,7 +484,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     const otherProjectId = attributionGap ? randomUUID() : undefined;
     const approved = second ? 4000n : 10000n;
     const profile = continuity?.seedProfile;
-    const dualProfile = profile === competition261SeedProfile || profile === voucher261SeedProfile;
+    const dualProfile = profile === competition261SeedProfile || profile === voucher261SeedProfile || profile === cash261SeedProfile;
     requireCondition((profile === undefined && contender?.continuity.seedProfile === undefined)
       || (profile === payment261SeedProfile && !contender && !attributionGap)
       || (profile === gap261SeedProfile && !contender && attributionGap)
@@ -459,11 +494,12 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
       : undefined;
     failureStage = "SEED_OWNER_TRANSACTION";
     ownerAttempted = true;
+    let cashSourceDocument: Awaited<ReturnType<typeof seedPayment261>>;
     if (credits) {
       const variant = profile === gap261SeedProfile && otherProjectId
         ? { profile, otherProjectId } as const
         : dualProfile && second ? { profile, contender: { actorId: second.actorId, phone: second.phone, passwordHash: second.passwordHash } } : undefined;
-      await seedPayment261(context.owner, context.proof.databaseName, plan, passwordHash, ...credits, light, variant);
+      cashSourceDocument = await seedPayment261(context.owner, context.proof.databaseName, plan, passwordHash, ...credits, light, variant);
     } else await checked(() => context.owner.$transaction(async tx => {
       await checked(() => tx.user.create({ data: { id: ids.actor, phone: plan.phone, name: `PG合成财务${plan.runId}`, passwordHash, isActive: true, mustChangePassword: false } }));
       const position = await checked(() => tx.position.findUnique({ where: { key: "finance_staff" } })) ?? await checked(() => tx.position.create({ data: { key: "finance_staff", name: "财务人员" } }));
@@ -558,7 +594,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
         registration.sources[1].id !== registration.sources[0].id, "PG_FIXTURE_ATTRIBUTION_GAP_SOURCES");
       registrations.push({ id: registration.id, sources: registration.sources });
     }
-    const prepared = { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id };
+    const prepared = { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id, ...(cashSourceDocument ? { cashSourceDocument } : {}) };
     if (otherProjectId) return { ...prepared, attributionGap: { otherProjectId, otherSourceId: registrations[1]!.sources[1]!.id } };
     if (!contender || !second) return prepared;
     failureStage = "SEED_LOGIN";

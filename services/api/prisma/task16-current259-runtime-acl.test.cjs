@@ -300,3 +300,15 @@ test('native fixed ACL renderer changes only the fully verified endpoint and aud
 
  for(const delta of [{serverPort:5432},{serverPort:'54968'},{serverPort:undefined},{serverPort:1024},{serverPort:65536},{tls:false},{clientAddress:'127.0.0.2'},{serverAddress:'0.0.0.0'}])assert.throws(()=>renderNativeTask16RuntimeAcl(JSON.stringify({source:witness,provisioned:{...provisioned,databaseIdentity:{...provisioned.databaseIdentity,...delta}}}),nonce),error=>error.code==='NATIVE_DIRECT_ACL_ENDPOINT');
 });
+test('cash grants and physical readback are bound to its own source and profile',()=>{
+ const {PAYMENT261_CASH_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
+ const roles={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}],paymentProfile:PAYMENT261_CASH_RUNTIME_PROFILE};
+ const acl=renderCurrent259CompetitionRuntimeAcl(witness,roles,nonce);
+ assert.match(acl.sql,/appendOperatingFactThroughService.*OperatingLedgerFactWritePayload"/u);
+ assert.match(acl.sql,/appendOperatingImpactThroughService.*OperatingLedgerImpactWritePayload"/u);
+ assert.match(acl.readbackSql,/TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1/u);
+ assert.throws(()=>renderCurrent259RuntimeAcl(witness,roles,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,roles,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+});

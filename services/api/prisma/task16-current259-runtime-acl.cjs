@@ -132,7 +132,27 @@ function proofSql(plan,legacy,baseline,ledger){
   parallel:'u',returnType:'void',returnsSet:false,searchPath:null,
   interface:{argumentNames:['p_settlement_case_id','p_payment_execution_id'],inputArgumentTypes:['text','text'],
    allArgumentTypes:null,argumentModes:null,defaultArgumentCount:0,variadicType:null,kind:'f',leakproof:false,support:null}};
- const proofs=[...legacy.functionProofs,lineageProof].filter(row=>signatures.has(row.signature.toLowerCase()));
+ const cash=require('./task16-current261-cash-profile.cjs');
+ const cashRequested=cash.CASH_WRITER_FUNCTIONS.some(signature=>signatures.has(signature.toLowerCase()));
+ let cashProofs=[];
+ if(cashRequested){
+  need(cash.CASH_WRITER_FUNCTIONS.every(signature=>signatures.has(signature.toLowerCase())));
+  const name='20260831120000_pol13d_fund_execution_v7',expected='a166b7105343f6a19b629de1ba64073a167106731e114eb273db2a848dc22378';
+  const source=readFileSync(path.join(__dirname,'migrations',name,'migration.sql'),'utf8');
+  need(hash(source)===expected&&ledger.find(row=>row.name===name)?.sha256===expected);
+  cashProofs=cash.CASH_WRITER_FUNCTIONS.map((signature,index)=>{
+   const label=index?'Impact':'Fact',marker=`CREATE OR REPLACE FUNCTION "appendOperating${label}ThroughService"(`;
+   const start=source.indexOf(marker);need(start>=0&&source.indexOf(marker,start+1)<0);
+   const bodyStart=source.indexOf('AS $$',start)+5,bodyEnd=source.indexOf('$$',bodyStart);need(bodyStart>=5&&bodyEnd>bodyStart);
+   const body=source.slice(bodyStart,bodyEnd),bodySha256=index?'85b88d6caa787a8d8d713d056dece09de28b35c67d6814e913f09809151c395b':'3e5dd3e95bdb3d54242e72d2a5d77c1a92adac107d306604356530accf268051';
+   need(hash(body)===bodySha256);
+   const template=legacy.functionProofs.find(row=>row.signature.includes(`appendOperating${label}ThroughService`)&&row.signature.includes('PayloadV2'));
+   need(template);const convert=value=>typeof value==='string'?value.replace('PayloadV2','Payload'):value;
+   const iface={...template.interface,inputArgumentTypes:template.interface.inputArgumentTypes.map(convert),allArgumentTypes:template.interface.allArgumentTypes.map(convert)};
+   return {...template,signature,body,bodySha256,interface:iface};
+  });
+ }
+ const proofs=[...legacy.functionProofs,lineageProof,...cashProofs].filter(row=>signatures.has(row.signature.toLowerCase()));
  need(proofs.length===plan.runtime.functions.length-2);
  return proofs.map(row=>[plan.runtime.functions.findIndex(signature=>signature.toLowerCase()===row.signature.toLowerCase()),
   functionProofSql({functionProofs:[row]})]);

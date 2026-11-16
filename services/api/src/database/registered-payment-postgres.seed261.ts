@@ -1,13 +1,15 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { createCashFixtureDocument } from "./registered-payment-public-cash-document";
 import type { RegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
 
 export const payment261SeedProfile = "TASK16_PAYMENT261_RUNTIME_V1" as const;
 export const gap261SeedProfile = "TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1" as const;
 export const competition261SeedProfile = "TASK16_PAYMENT261_COMPETITION_RUNTIME_V1" as const;
+export const cash261SeedProfile = "TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1" as const;
 export const voucher261SeedProfile = "TASK16_PAYMENT261_VOUCHER_RUNTIME_V1" as const;
 
-type DualSeedProfile = typeof competition261SeedProfile | typeof voucher261SeedProfile;
+type DualSeedProfile = typeof competition261SeedProfile | typeof voucher261SeedProfile | typeof cash261SeedProfile;
 export type Payment261SeedProfile = typeof payment261SeedProfile | typeof gap261SeedProfile | DualSeedProfile;
 type SeedVariant =
   | { profile: typeof gap261SeedProfile; otherProjectId: string }
@@ -38,7 +40,10 @@ DECLARE
   profile text := seed->>'profile';
   second_actor jsonb := seed->'contender';
   other_project text := seed->>'otherProjectId';
-  dual boolean := profile IN ('TASK16_PAYMENT261_COMPETITION_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_RUNTIME_V1');
+  cash boolean := profile = 'TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1';
+  cash_formal jsonb := seed->'cashFormal';
+  cash_document jsonb := seed->'cashDocument';
+  dual boolean := profile IN ('TASK16_PAYMENT261_COMPETITION_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_RUNTIME_V1','TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1');
   approved bigint := CASE WHEN dual THEN 4000 ELSE 10000 END;
   instant timestamp(3) := (seed->>'openingDate')::date::timestamp;
   party_name text := 'T16施工企业' || run_key;
@@ -59,7 +64,10 @@ BEGIN
     RAISE EXCEPTION 'PG_FIXTURE_SEED_BINDING';
   END IF;
   IF profile IS NULL OR profile NOT IN ('TASK16_PAYMENT261_RUNTIME_V1','TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1',
-      'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_RUNTIME_V1')
+      'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_RUNTIME_V1','TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1')
+    OR cash IS DISTINCT FROM (cash_formal IS NOT NULL AND cash_document IS NOT NULL)
+    OR (cash AND (cash_document->>'objectKey' IS DISTINCT FROM 'cash-settlement-'||run_key||'.pdf' OR (cash_document->>'contentSha256' ~ '^[a-f0-9]{64}$') IS DISTINCT FROM true OR (cash_document->>'sizeBytes')::integer <= 0))
+    OR (cash AND (SELECT pg_catalog.count(DISTINCT v) FROM pg_catalog.jsonb_each_text(cash_formal) AS e(k,v) WHERE v ~ '^[a-f0-9-]{36}$') <> 7)
     OR (profile='TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1') IS DISTINCT FROM (other_project IS NOT NULL)
     OR dual IS DISTINCT FROM (second_actor IS NOT NULL)
     OR (dual AND (second_actor->>'actorId' IS NULL OR second_actor->>'actorId'=ids->>'actor'
@@ -119,7 +127,7 @@ BEGIN
   END IF;
 
   INSERT INTO public."Project" ("id","code","name","isActive","operatingLedgerEffectiveDate","updatedAt")
-    VALUES (ids->>'project','T16-'||run_key||'-P','PG合成项目'||run_key,true,NULL,pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
+    VALUES (ids->>'project','T16-'||run_key||'-P','PG合成项目'||run_key,true,CASE WHEN cash THEN instant::date ELSE NULL END,pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
   IF other_project IS NOT NULL THEN
     INSERT INTO public."Project" ("id","code","name","isActive","operatingLedgerEffectiveDate","updatedAt")
       VALUES (other_project,'T16-'||run_key||'-OTHER','PG合成其他项目'||run_key,true,NULL,
@@ -147,9 +155,10 @@ BEGIN
   IF marker IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED'; END IF;
   INSERT INTO public."ContractVersion" ("id","contractId","versionNo","changeType","status","effectiveAt","amountCents",
       "signingSubjectType","companyEntityIdSnapshot","companyEntityVersionId","companyEntityNameSnapshot",
-      "companyEntityCreditCodeSnapshot","draftData","templateSnapshot","clauseSnapshot","updatedAt")
+      "companyEntityCreditCodeSnapshot","affiliateAssignmentId","affiliateBusinessPartyVersionId","draftData","templateSnapshot","clauseSnapshot","updatedAt")
     VALUES (ids->>'version',ids->>'contract',1,'original','effective',instant,10000,'our_company',
       company_a."id",ids->>'companyVersionA',company_a."name",company_a."unifiedSocialCreditCode",
+      CASE WHEN cash THEN assignment."id" ELSE NULL END,CASE WHEN cash THEN party_version."id" ELSE NULL END,
       '{}'::jsonb,'{}'::jsonb,'{}'::jsonb,pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
   INSERT INTO public."PaymentTermsVersion" ("id","contractId","contractVersionId","versionNo","status","originalText","updatedAt")
     VALUES (ids->>'terms',ids->>'contract',ids->>'version',1,'effective','按已确认结算分次付款',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
@@ -163,6 +172,25 @@ BEGIN
       ids->>'terms','T16-'||run_key||'-FK','approved_pending_payment',approved,approved,0,'our_company',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
   INSERT INTO public."ApprovalInstance" ("id","flowType","businessType","businessId","status","currentNodeIndex","frozenNodes","applicantUserId","updatedAt")
     VALUES (ids->>'approvedRound','payment.approve','payment_request',ids->>'payment','approved',0,'[]'::jsonb,ids->>'actor',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
+
+  -- These are explicitly synthetic, already-confirmed source fixtures. They do
+  -- not claim that contract or settlement approval/archiving has been tested.
+  IF cash THEN
+    INSERT INTO public."ProjectMember" ("id","projectId","userId","positionKey")
+      VALUES (cash_formal->>'memberId',ids->>'project',ids->>'actor','finance_staff');
+    INSERT INTO public."ProjectParticipatingCompany" ("id","projectId","companyEntityId","companyEntityVersionId","companyNameSnapshot","companyCreditCodeSnapshot","effectiveFrom","changeReason","addedByUserId","updatedAt")
+      VALUES (cash_formal->>'participationId',ids->>'project',company_a."id",ids->>'companyVersionA',company_a."name",company_a."unifiedSocialCreditCode",instant::date,'隔离合成前置',ids->>'actor',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
+    INSERT INTO public."BusinessParty" ("id","type","name","normalizedName","status","createdByUserId","updatedAt")
+      VALUES (cash_formal->>'partyId','organization','虚构供应商'||run_key,'虚构供应商'||run_key,'active',ids->>'actor',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
+    INSERT INTO public."BusinessPartyVersion" ("id","businessPartyId","versionNo","snapshot","createdByUserId")
+      VALUES (cash_formal->>'partyVersionId',cash_formal->>'partyId',1,pg_catalog.jsonb_build_object('type','organization','name','虚构供应商'||run_key,'attachments','[]'::jsonb),ids->>'actor');
+    INSERT INTO public."ContractPartySnapshot" ("id","contractVersionId","roleKey","displayOrder","businessPartyVersionId","snapshot")
+      VALUES (cash_formal->>'partySnapshotId',ids->>'version','party_b',0,cash_formal->>'partyVersionId',pg_catalog.jsonb_build_object('name','虚构供应商'||run_key));
+    INSERT INTO public."FileObject" ("id","bucket","objectKey","originalName","mimeType","sizeBytes","uploadedByUserId","contentSha256")
+      VALUES (cash_formal->>'fileId','private-local',cash_document->>'objectKey','虚构结算凭证.pdf','application/pdf',(cash_document->>'sizeBytes')::integer,ids->>'actor',cash_document->>'contentSha256');
+    INSERT INTO public."SettlementArchiveFile" ("id","settlementId","fileId","uploadedByUserId","confirmedByUserId","confirmedAt","status")
+      VALUES (cash_formal->>'archiveId',ids->>'settlement',cash_formal->>'fileId',ids->>'actor',ids->>'actor',instant,'confirmed');
+  END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM public."User" u JOIN public."UserPosition" up ON up."userId"=u."id"
@@ -193,7 +221,7 @@ BEGIN
       AND va."companyEntityId"=ca."id" AND vb."companyEntityId"=cb."id" AND va."versionNo"=1 AND vb."versionNo"=1
       AND va."unifiedSocialCreditCode"=seed->>'creditA' AND vb."unifiedSocialCreditCode"=seed->>'creditB'
       AND va."action"='create' AND vb."action"='create' AND va."isActive" AND vb."isActive"
-      AND va."actorUserId"=u."id" AND vb."actorUserId"=u."id" AND p."isActive" AND p."operatingLedgerEffectiveDate" IS NULL
+      AND va."actorUserId"=u."id" AND vb."actorUserId"=u."id" AND p."isActive" AND p."operatingLedgerEffectiveDate" IS NOT DISTINCT FROM CASE WHEN cash THEN instant::date ELSE NULL END
       AND p."constructionEnterpriseLockedAt" IS NOT NULL AND pa."effectiveFrom"=instant AND pa."assignedByUserId"=u."id"
       AND pa."affiliateNameSnapshot"=party_name AND pa."affiliateCreditCodeSnapshot" IS NULL
       AND bp."type"='organization' AND bp."status"='active' AND bp."name"=party_name AND bp."normalizedName"=party_name
@@ -225,6 +253,20 @@ BEGIN
       AND u."isActive" AND NOT u."mustChangePassword" AND pos."id"=director_id AND pos."key"='comprehensive_director'
   ) THEN RAISE EXCEPTION 'PG_FIXTURE_SEED_READBACK'; END IF;
 
+  IF cash AND NOT EXISTS (
+    SELECT FROM public."ProjectMember" pm
+    JOIN public."ProjectParticipatingCompany" pc ON pc."projectId"=pm."projectId" AND pc."companyEntityId"=company_a."id"
+    JOIN public."ContractVersion" v ON v."id"=ids->>'version' AND v."affiliateAssignmentId"=assignment."id" AND v."affiliateBusinessPartyVersionId"=party_version."id"
+    JOIN public."BusinessParty" bp ON bp."id"=cash_formal->>'partyId' AND bp."status"='active'
+    JOIN public."BusinessPartyVersion" pv ON pv."id"=cash_formal->>'partyVersionId' AND pv."businessPartyId"=bp."id"
+    JOIN public."ContractPartySnapshot" ps ON ps."id"=cash_formal->>'partySnapshotId' AND ps."contractVersionId"=v."id" AND ps."roleKey"='party_b' AND ps."businessPartyVersionId"=pv."id"
+    JOIN public."SettlementArchiveFile" sa ON sa."id"=cash_formal->>'archiveId' AND sa."settlementId"=ids->>'settlement' AND sa."status"='confirmed' AND sa."confirmedByUserId"=ids->>'actor' AND sa."confirmedAt"=instant
+    JOIN public."FileObject" fo ON fo."id"=sa."fileId" AND fo."id"=cash_formal->>'fileId' AND fo."bucket"='private-local'
+    WHERE pm."id"=cash_formal->>'memberId' AND pm."projectId"=ids->>'project' AND pm."userId"=ids->>'actor' AND pm."positionKey"='finance_staff'
+      AND pc."id"=cash_formal->>'participationId' AND pc."companyEntityVersionId"=ids->>'companyVersionA' AND pc."effectiveFrom"=instant::date AND pc."endedAt" IS NULL
+      AND fo."objectKey"=cash_document->>'objectKey' AND fo."sizeBytes"=(cash_document->>'sizeBytes')::integer AND fo."contentSha256"=cash_document->>'contentSha256' AND fo."storageStatus"='active'
+  ) THEN RAISE EXCEPTION 'PG_FIXTURE_CASH_SOURCE_READBACK'; END IF;
+
   PERFORM pg_catalog.set_config('jg_task16.payment_seed_v1', '', true);
 END;
 $jg_task16_seed$`;
@@ -239,22 +281,35 @@ export async function seedPayment261(
   check: () => void,
   variant?: SeedVariant
 ) {
+  const root = process.env.FILE_STORAGE_ROOT;
+  if (variant?.profile === cash261SeedProfile) check();
+  const cashDocument = variant?.profile === cash261SeedProfile
+    ? await createCashFixtureDocument(root ?? "", plan.runId)
+    : undefined;
+  if (cashDocument) check();
   const payload = JSON.stringify({
     runId: plan.runId, phone: plan.phone, openingDate: plan.openingDate, ids: plan.ids,
     passwordHash, creditA, creditB, positionId: randomUUID(), userPositionId: randomUUID(),
     profile: variant?.profile ?? payment261SeedProfile,
+    ...(cashDocument ? { cashDocument: { objectKey: cashDocument.objectKey, sizeBytes: cashDocument.sizeBytes, contentSha256: cashDocument.contentSha256 } } : {}),
+    ...(variant?.profile === cash261SeedProfile ? { cashFormal: Object.fromEntries(["partyId","partyVersionId","partySnapshotId","participationId","memberId","fileId","archiveId"].map(key => [key, randomUUID()])) } : {}),
     ...(variant?.profile === gap261SeedProfile ? { otherProjectId: variant.otherProjectId } :
       variant ? { contender: { ...variant.contender, positionId: randomUUID(), userPositionId: randomUUID() } } : {})
   });
   const checked = async <T>(operation: () => PromiseLike<T>): Promise<T> => {
     check();
+    cashDocument?.verify();
     const result = await operation();
+    cashDocument?.verify();
     check();
     return result;
   };
+  cashDocument?.verify();
   await checked(() => owner.$transaction(async (tx: Prisma.TransactionClient) => {
     const rows = await checked(() => tx.$queryRawUnsafe<Array<{ bound: boolean }>>(bindSeed, payload, databaseName));
     if (rows.length !== 1 || rows[0]?.bound !== true) throw new Error("隔离付款种子参数绑定未通过");
     await checked(() => tx.$executeRawUnsafe(applySeed));
   }, { isolationLevel: "Serializable" }));
+  cashDocument?.verify();
+  return cashDocument;
 }
