@@ -194,10 +194,10 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  const wire=async(method,path,headers,body,binary=false,authPhone)=>{
   const observation={method,routeTemplate:routeTemplate(path),phase:'BEFORE_CHECK',httpStatus:null,businessOutcome:'UNKNOWN'};
   lastObservation=undefined;let ticket;
-  const collectAuth=()=>{if(ticket===undefined)return;const current=ticket;ticket=undefined;try{Object.assign(observation,closedAuthDetail(takeAuth.call(authDiagnostics,current)));}catch{/* Preserve the original HTTP failure and UNKNOWN. */}};
+  const collectAuth=()=>{if(ticket===undefined)return;const current=ticket;ticket=undefined;try{const detail=closedAuthDetail(takeAuth.call(authDiagnostics,current));if(observation.routeTemplate==='/contract-drafts/:versionId/edit-lease/heartbeat'){const {serverAuthBoundary,serverAuthTransactionPhase,...finite}=detail;Object.assign(observation,finite,...(serverAuthBoundary?[{serverLeaseBoundary:serverAuthBoundary}]:[]));}else Object.assign(observation,detail);}catch{/* Preserve the original HTTP failure and UNKNOWN. */}};
   try{
    check();need(++requests<=600);
-   if(authPhone!==undefined){need(method==='POST'&&path==='/auth/login');try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
+   if(authPhone!==undefined){need(method==='POST'&&(path==='/auth/login'||require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&routeTemplate(path)==='/contract-drafts/:versionId/edit-lease/heartbeat'));try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
    observation.phase='EXCHANGE';
    const exchangeStarted=diagnosticNow();timing.exchangeCalls++;let result;
    try{result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});}finally{timing.exchangeElapsedMs+=diagnosticNow()-exchangeStarted;}
@@ -279,7 +279,9 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
   if(path==='/contracts')need(equal(json,{projectId:seed.project.id,numericProtocolVersion:2,contractTypeKey:selected.contractTypeKey,relationship:selected.relationship,amountLimitType:'capped'}));
   let drained;const pending={parallel,done:new Promise(resolve=>{drained=resolve;})};active.set(actor,pending);
   try{
-   const result=await wire(method,path,h,body,false,path==='/auth/login'?seed.users[actor].phone:undefined),value=result.body;
+   let diagnosticIdentity=path==='/auth/login'?seed.users[actor].phone:undefined;
+   if(require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&method==='POST'&&actor===0&&routeTemplate(path)==='/contract-drafts/:versionId/edit-lease/heartbeat'){try{const nonce=randomBytes(16).toString('hex');h['x-task12-diagnostic']=nonce;diagnosticIdentity=versionId+':'+nonce;}catch{/* An unavailable diagnostic must not prevent the request. */}}
+   const result=await wire(method,path,h,body,false,diagnosticIdentity),value=result.body;
    if(path==='/auth/login'){
     const user=own(value,'user'),token=own(own(value,'tokens'),'accessToken');
     need(result.status===201&&own(user,'id')===seed.users[actor].id&&own(user,'phone')===seed.users[actor].phone&&own(user,'mustChangePassword')===false&&
