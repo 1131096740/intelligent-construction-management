@@ -198,7 +198,7 @@ test('261 competition ACL supplies exactly normal default INSERT additions and r
  assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
 });
 
-test('261 gap adds five opening defaults while voucher retains historical grants and lane limits',()=>{
+test('261 gap adds five opening defaults and voucher eleven with unchanged nonINSERT grants and lane limits',()=>{
  const {PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
  const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
   path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
@@ -216,7 +216,9 @@ test('261 gap adds five opening defaults while voucher retains historical grants
  assert.equal(inserts(gap261.sql).filter(row=>!inserts(legacy.sql).includes(row)).length,4);
  assert.doesNotMatch(gap261.sql,/^GRANT SELECT [^\n]+HistoricalFinancialTakeoverRowMapping/mu);
  for(const table of ['PaymentExecution','RegisteredPaymentEvent','InterEntityRelationshipEntry'])assert.deepEqual(inserts(gap261.sql).filter(row=>row.includes('public."'+table+'"')),inserts(legacy.sql).filter(row=>row.includes('public."'+table+'"')));
- assert.deepEqual(grants(voucher261.sql),grants(historicalVoucher.sql));
+ assert.deepEqual(grants(voucher261.sql).filter(row=>!row.startsWith('GRANT INSERT ')),grants(historicalVoucher.sql).filter(row=>!row.startsWith('GRANT INSERT ')));
+ assert.equal(inserts(voucher261.sql).filter(row=>!inserts(historicalVoucher.sql).includes(row)).length,9);
+ for(const table of ['FileObject','RegisteredPaymentVoucher'])assert.match(inserts(voucher261.sql).find(row=>row.includes('public.\"'+table+'\"')),/createdAt/u);
  assert.equal(voucher261.lockSql,historicalVoucher.lockSql);
  assert.match(voucher261.witnessSql,/voucherBindingSha256/u);
  assert.doesNotMatch(gap261.witnessSql,/voucherBindingSha256/u);

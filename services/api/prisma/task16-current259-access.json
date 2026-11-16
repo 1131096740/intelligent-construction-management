@@ -464,5 +464,54 @@
         "coveredExecutionIds"
       ]
     ]
+  },
+  "voucher261RuntimeInsertDefaults": {
+    "paymentProfile": "TASK16_PAYMENT261_VOUCHER_RUNTIME_V1",
+    "columns": [
+      [
+        "AuditLog",
+        "createdAt"
+      ],
+      [
+        "RefreshToken",
+        "createdAt"
+      ],
+      [
+        "RegisteredFundAccount",
+        "createdAt"
+      ],
+      [
+        "FundAccountBalanceRegistration",
+        "createdAt"
+      ],
+      [
+        "FundAccountBalanceRegistration",
+        "coveredExecutionIds"
+      ],
+      [
+        "PaymentExecution",
+        "createdAt"
+      ],
+      [
+        "RegisteredPaymentEvent",
+        "createdAt"
+      ],
+      [
+        "RegisteredPaymentEvent",
+        "eventType"
+      ],
+      [
+        "InterEntityRelationshipEntry",
+        "createdAt"
+      ],
+      [
+        "FileObject",
+        "createdAt"
+      ],
+      [
+        "RegisteredPaymentVoucher",
+        "createdAt"
+      ]
+    ]
   }
 }

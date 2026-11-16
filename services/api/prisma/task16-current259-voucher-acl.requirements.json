@@ -513,5 +513,15 @@
       "parallel": "s",
       "strict": false
     }
+  ],
+  "native261InsertDefaults": [
+    [
+      "FileObject",
+      "createdAt"
+    ],
+    [
+      "RegisteredPaymentVoucher",
+      "createdAt"
+    ]
   ]
 }

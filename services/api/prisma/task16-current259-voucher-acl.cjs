@@ -7,12 +7,13 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { functionProofSql } = require('./task16-registered-access-check.cjs');
 
-const requirementsSha256='5c5a3d9eedc61880e44f4594a53e0c9daf830aed19b014cfbde9440a15eead26';
+const requirementsSha256='e39b13a33d900096fd5c9d151f2e3937e4347f8af8e548ab8fd2f88636c2908d';
 const bytes=readFileSync(join(__dirname,'task16-current259-voucher-acl.requirements.json'));
 const code='CURRENT259_VOUCHER_ACL';
 const need=condition=>{if(!condition)throw new Error(code);};
 need(createHash('sha256').update(bytes).digest('hex')===requirementsSha256);
-const {readDelta,insertDelta,lockOnlyUpdate,routineSources}=JSON.parse(bytes);
+const {readDelta,insertDelta,lockOnlyUpdate,routineSources,native261InsertDefaults}=JSON.parse(bytes);
+need(JSON.stringify(native261InsertDefaults)===JSON.stringify([['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']]));
 const profileName='CURRENT259_PAYMENT_VOUCHER_V1';
 const owner='jg_task01_owner', runtime='jg_task01_runtime', observer='jg_task01_observer';
 const insertRoutine='jg_task16_runtime_voucher_file_insert_only';
@@ -97,6 +98,16 @@ function voucherAccessPlan(plan){
   need(functions.every(signature=>!runtime.functions.includes(signature)));
   return {...plan,runtime:{...runtime,tables:[...relations.values()],functions:[...runtime.functions,...functions]}};
 }
+function voucherNative261AccessPlan(plan){
+  need(arguments.length===1);
+  const qualified=voucherAccessPlan(plan);
+  for(const [table,column]of native261InsertDefaults){
+    const rows=qualified.runtime.tables.filter(row=>row.table===table);
+    need(rows.length===1&&!rows[0].insert.includes(column));
+    rows[0].insert=[...rows[0].insert,column].sort();
+  }
+  return qualified;
+}
 const columnTargets=tables.flatMap(row=>['select','insert','update'].flatMap(op=>row[op].map(column=>({table:row.table,column,privilege:op.toUpperCase()}))));
 const columnsSql=`SELECT e.*,c.oid,a.attnum,a.attacl FROM
  pg_catalog.jsonb_to_recordset(${json(columnTargets)}) e("table" text,"column" text,privilege text)
@@ -148,4 +159,4 @@ function current259VoucherAcl(){
   need(arguments.length===0);
   return profile;
 }
-module.exports=Object.freeze({profileName,current259VoucherAcl,voucherAccessPlan});
+module.exports=Object.freeze({profileName,current259VoucherAcl,voucherAccessPlan,voucherNative261AccessPlan});

@@ -5,15 +5,16 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {createHash,randomBytes,randomUUID}=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
-const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',GAP_PURPOSE='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1';
+const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',GAP_PURPOSE='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1',VOUCHER_PURPOSE='TASK16_NATIVE_COMPETITION_VOUCHER_V1';
 // Root's independently reviewed official16.15/pgcrypto93-file qualification.
 const BINARY_QUALIFICATION_SHA='26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1';
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const need=(value,code='NATIVE_DIRECT_INPUT')=>{if(!value)fail(code);};
 function nativeTask16CaseSelection(purpose){
- need(purpose===PURPOSE||purpose===GAP_PURPOSE,'NATIVE_DIRECT_CASE_PURPOSE');
- const competition=purpose===PURPOSE;
+ need(purpose===PURPOSE||purpose===GAP_PURPOSE||purpose===VOUCHER_PURPOSE,'NATIVE_DIRECT_CASE_PURPOSE');
+ const competition=purpose!==GAP_PURPOSE;
+ if(purpose===VOUCHER_PURPOSE)return Object.freeze({purpose,caseId:'registered.two-actor.payment-voucher',paymentProfile:'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:11,voucher:true});
  return Object.freeze({purpose,caseId:competition?'registered.two-actor.payment-competition-follow-up':'registered.project-attribution-gap',
   paymentProfile:competition?'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1':'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1',
   competition,runtimeLimit:competition?2:1,insertAdditionCount:competition?9:5});
@@ -54,7 +55,7 @@ function compiledMaterials(){return [...treeFiles(path.join(ROOT,'services/api/d
 
 function validateNativePlan(value){
  const p=fixed(value,['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','prismaTools','interfaces','binaryManifest','binaries','openssl','externalLibraries','node','security','limits','differences']);
- need(p.schemaVersion===2&&[PURPOSE,GAP_PURPOSE].includes(p.purpose)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
+ need(p.schemaVersion===2&&[PURPOSE,GAP_PURPOSE,VOUCHER_PURPOSE].includes(p.purpose)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
  need(equal(fixed(p.limits,['resourceMs','migrationMs','ownerSqlMs','httpMs','commandBytes','ownerSqlBytes']),{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216}));
  need(equal(directory(p.runRoot),p.rootIdentity));return p;
 }
@@ -91,8 +92,8 @@ function verifyNativeTask16Plan(file,expected,purpose=PURPOSE){
 }
 function parse(args){
  need(Array.isArray(args)&&args.every(x=>typeof x==='string'),'NATIVE_DIRECT_ARGUMENTS');
- if(['--prepare','--prepare-gap'].includes(args[0])&&args.length===9&&args[1]==='--run-root'&&args[3]==='--binary-manifest'&&args[5]==='--expected-binary-sha256'&&args[7]==='--output')return {mode:'prepare',purpose:args[0]==='--prepare-gap'?GAP_PURPOSE:PURPOSE,options:{runRoot:args[2],binaryManifest:args[4],binaryManifestSha256:args[6],output:args[8]}};
- if(['--verify','--once','--verify-gap','--once-gap'].includes(args[0])&&args.length===5&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256')return {mode:args[0].slice(2).replace(/-gap$/u,''),purpose:args[0].endsWith('-gap')?GAP_PURPOSE:PURPOSE,file:args[2],sha256:args[4]};
+ if(['--prepare','--prepare-gap','--prepare-voucher'].includes(args[0])&&args.length===9&&args[1]==='--run-root'&&args[3]==='--binary-manifest'&&args[5]==='--expected-binary-sha256'&&args[7]==='--output')return {mode:'prepare',purpose:args[0]==='--prepare-gap'?GAP_PURPOSE:args[0]==='--prepare-voucher'?VOUCHER_PURPOSE:PURPOSE,options:{runRoot:args[2],binaryManifest:args[4],binaryManifestSha256:args[6],output:args[8]}};
+ if(['--verify','--once','--verify-gap','--once-gap','--verify-voucher','--once-voucher'].includes(args[0])&&args.length===5&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256')return {mode:args[0].slice(2).replace(/-(?:gap|voucher)$/u,''),purpose:args[0].endsWith('-gap')?GAP_PURPOSE:args[0].endsWith('-voucher')?VOUCHER_PURPOSE:PURPOSE,file:args[2],sha256:args[4]};
  fail('NATIVE_DIRECT_ARGUMENTS');
 }
 function waitNativeTask16Operation(operation,signal,onLate){
@@ -201,6 +202,16 @@ function inspectNativeTask16Interfaces(purpose=PURPOSE){
   ['@nestjs/testing/test.js',[['Test',0]]],
   ['@nestjs/testing',[['Test',0]]]
  ];
+ if(selected.voucher){
+  const replacements={
+   './task16-current259-seven-install.cjs':[['renderNativeTask16VoucherSeven',4],['parseNativeTask16VoucherSeven',4],['renderNativeTask16VoucherSevenPreimage',3]],
+   './task16-current259-runtime-acl.cjs':[['renderCurrent259VoucherRuntimeAcl',3]],
+   './task16-current259-payment-competition.cjs':[['renderNativeTask16CompetitionHold',0],['renderNativeTask16CompetitionMonitor',1],['supplementNativeTask16CompetitionVoucher',1]],
+   '../dist/database/registered-payment-postgres.fixture.js':[['buildRegisteredPgFixturePlan',3],['seedRegisteredPgCompetitionFixture',5],['assertRegisteredPgCompetitionRoles',3]],
+   '../dist/database/registered-payment-postgres.cases.js':[['runRegisteredTwoActorPaymentCompetition',4],['observeRegisteredPaymentVoucherLedger',3]]
+  };
+  for(let i=0;i<specs.length;i++)if(replacements[specs[i][0]])specs[i]=[specs[i][0],replacements[specs[i][0]]];
+ }
  if(!selected.competition){
   const replacements={
    './task16-current259-role-provision.cjs':[['renderNativeTask16RoleRead',2],['renderNativeTask16RoleInstall',3],['parseNativeTask16RoleRead',3]],
@@ -241,10 +252,10 @@ function parseNativeTask16CatalogRead(stdout,input,prior,receipt){
 function renderNativeTask16RuntimeAcl(inputJson,nonce){
  need(typeof inputJson==='string'&&Buffer.byteLength(inputJson)<=512*1024,'NATIVE_DIRECT_ACL_ENDPOINT');const value=JSON.parse(inputJson);
  need(value&&Object.keys(value).sort().join(',')==='provisioned,source','NATIVE_DIRECT_ACL_ENDPOINT');const {source,provisioned}=value,id=provisioned?.databaseIdentity;
- const competition=provisioned?.paymentProfile==='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
+ const voucher=provisioned?.paymentProfile==='TASK16_PAYMENT261_VOUCHER_RUNTIME_V1',competition=voucher||provisioned?.paymentProfile==='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
  need((competition||provisioned?.paymentProfile==='TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1')&&id?.tls===true&&id.clientAddress==='127.0.0.1'&&id.serverAddress==='127.0.0.1'&&Number.isInteger(id.serverPort)&&id.serverPort>1024&&id.serverPort<=65535&&id.serverPort!==5432,'NATIVE_DIRECT_ACL_ENDPOINT');
  if(!competition)need(Array.isArray(provisioned.roles)&&provisioned.roles.find(role=>role.name==='jg_task01_runtime')?.limit===1&&provisioned.roles.find(role=>role.name==='jg_task01_observer')?.limit===1,'NATIVE_DIRECT_GAP_ROLE_LIMIT');
- const acl=require('./task16-current259-runtime-acl.cjs'),rendered=(competition?acl.renderCurrent259CompetitionRuntimeAcl:acl.renderCurrent259RuntimeAcl)(source,provisioned,nonce);
+ const acl=require('./task16-current259-runtime-acl.cjs'),rendered=(voucher?acl.renderCurrent259VoucherRuntimeAcl:competition?acl.renderCurrent259CompetitionRuntimeAcl:acl.renderCurrent259RuntimeAcl)(source,provisioned,nonce);
  const original="pg_catalog.host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR pg_catalog.host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR inet_server_port() IS DISTINCT FROM 5432";
  const parts=rendered.sql.split(original);
  need(parts.length===2&&(rendered.sql.match(/inet_server_port\(\)/gu)||[]).length===1&&['readbackSql','witnessSql'].every(field=>typeof rendered[field]==='string'&&!rendered[field].includes('inet_server_port(')),'NATIVE_DIRECT_ACL_ENDPOINT_RENDER');
@@ -268,11 +279,11 @@ function assertNativeTask16CompetitionLoopbackListeners(text,postmasterPid,port)
  need(addresses.length===2&&addresses.includes('127.0.0.1')&&addresses.includes('::1'),code);
  return Object.freeze({postmasterPid,port,addresses:Object.freeze(['127.0.0.1','::1']),ownedStartupListeners:true});
 }
-module.exports=Object.freeze({nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options,request.purpose)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256,request.purpose);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
-})().then(result=>{process.exitCode=result.status==='STOPPED'?1:0;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--once-gap'].includes(process.argv[2]))process.exit(process.exitCode);});},error=>{const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:typeof code==='string'&&/^NATIVE_DIRECT_[A-Z_]+$/u.test(code)?code:'NATIVE_DIRECT_INPUT'})+'\n');process.exitCode=1;});}
+})().then(result=>{process.exitCode=result.status==='STOPPED'?1:0;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--once-gap','--once-voucher'].includes(process.argv[2]))process.exit(process.exitCode);});},error=>{const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:typeof code==='string'&&/^NATIVE_DIRECT_[A-Z_]+$/u.test(code)?code:'NATIVE_DIRECT_INPUT'})+'\n');process.exitCode=1;});}
 
 async function executeNativeTask16Once(plan,planSha256){
  need(require.main===module&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH'),'NATIVE_DIRECT_FRESH_MAIN');
@@ -313,7 +324,7 @@ async function executeNativeTask16Once(plan,planSha256){
  const quote=value=>"'"+value.replaceAll("'","''")+"'";
  async function connectPort(){return new Promise((resolve,reject)=>{const server=require('node:net').createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const value=server.address().port;server.close(error=>error?reject(error):resolve(value));});});}
  try{
-  enter('TLS_AND_INITDB');for(const dir of ['socket','storage','prefixes'])fs.mkdirSync(path.join(root,dir),{mode:0o700});
+  enter('TLS_AND_INITDB');for(const dir of ['socket','storage','prefixes',...(selection.voucher?['application-private-voucher']:[])])fs.mkdirSync(path.join(root,dir),{mode:0o700});
   for(const name of ['ca','wrong-ca']){await openssl(['req','-new','-newkey','rsa:2048','-nodes','-x509','-sha256','-days','2','-subj','/CN=native-'+name+'-'+runId,'-keyout',path.join(root,name+'.key'),'-out',path.join(root,name+'.crt')]);fs.chmodSync(path.join(root,name+'.key'),0o600);fs.chmodSync(path.join(root,name+'.crt'),0o600);}
   writeNew(root,'server.ext','subjectAltName=IP:127.0.0.1\nextendedKeyUsage=serverAuth\n');
   await openssl(['req','-new','-newkey','rsa:2048','-nodes','-subj','/CN=native-'+runId,'-keyout',path.join(root,'server.key'),'-out',path.join(root,'server.csr')]);fs.chmodSync(path.join(root,'server.key'),0o600);
@@ -359,14 +370,14 @@ async function executeNativeTask16Once(plan,planSha256){
   const committed=(await sql(roleRead(migration.setup.appOid,stagedRow.writeXid))).stdout;const roleRow=roleParse(roleScope,committed,'committed',before,staged);
   need(roleRow.state.roles.length===9,'NATIVE_DIRECT_NINE_ROLES');
   const provisioned={status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:plan.source.head,runId,databaseIdentity:roleIdentity,ordinary:roleRow.state.app,roles:roleRow.state.roles,commitXid:stagedRow.writeXid,databaseAcl:{before:JSON.parse(before).state.databases,after:roleRow.state.databases},paymentProfile:selection.paymentProfile};
-  enter('SEVEN_FRAGMENTS');const seven=require('./task16-current259-seven-install.cjs'),renderSeven=selection.competition?seven.renderNativeTask16CompetitionSeven:seven.renderNativeTask16GapSeven,parseSeven=selection.competition?seven.parseNativeTask16CompetitionSeven:seven.parseNativeTask16GapSeven;
+  enter('SEVEN_FRAGMENTS');const seven=require('./task16-current259-seven-install.cjs'),renderSeven=selection.voucher?seven.renderNativeTask16VoucherSeven:selection.competition?seven.renderNativeTask16CompetitionSeven:seven.renderNativeTask16GapSeven,parseSeven=selection.voucher?seven.parseNativeTask16VoucherSeven:selection.competition?seven.parseNativeTask16CompetitionSeven:seven.parseNativeTask16GapSeven;
   const sevenInput=JSON.stringify({source:plan.source.witness,id:roleIdentity,ordinary:provisioned.ordinary,runtime:provisioned.roles.find(r=>r.name==='jg_task01_runtime'),observer:provisioned.roles.find(r=>r.name==='jg_task01_observer'),roleCommitXid:provisioned.commitXid,databaseAclAfter:provisioned.databaseAcl.after});
   const sevenRaw=[],sevenRows=[];for(let phase=0;phase<3;phase++){const out=(await sql(renderSeven(sevenInput,phase,nonce,phase===0?null:sevenRaw[phase-1]))).stdout;sevenRaw.push(out);sevenRows.push(parseSeven(sevenInput,phase,nonce,out));}
   need(sevenRows[1].installXid!==provisioned.commitXid&&sevenRows[1].catalogSha256!==sevenRows[0].catalogSha256&&sevenRows[2].installXid===sevenRows[1].installXid&&sevenRows[2].catalogSha256===sevenRows[1].catalogSha256&&new Set(sevenRows.map(row=>row.backendPid)).size===3&&new Set(sevenRows.map(row=>row.backendStart)).size===3,'NATIVE_DIRECT_SEVEN_COMMIT');
   enter('ACL_AND_B7');const acl=renderNativeTask16RuntimeAcl(JSON.stringify({source:plan.source.witness,provisioned}),nonce);
-  enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+acl.writeSql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
+  enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+(selection.voucher?acl.lockSql+'\n'+seven.renderNativeTask16VoucherSevenPreimage(sevenInput,nonce,sevenRaw[2])+'\n':'')+acl.writeSql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
   const catalog=require('./task16-current259-catalog.cjs'),source=plan.source.code;
-  const identity={runId,database:db,databaseOid:roleIdentity.databaseOid,namespaceOid:roleIdentity.namespaceOid,ownerOid:'10',systemIdentifier:roleIdentity.systemIdentifier,runtimeOid:provisioned.roles.find(r=>r.name==='jg_task01_runtime').oid,observerOid:provisioned.roles.find(r=>r.name==='jg_task01_observer').oid,...(selection.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),paymentProfile:selection.paymentProfile};
+  const identity={runId,database:db,databaseOid:roleIdentity.databaseOid,namespaceOid:roleIdentity.namespaceOid,ownerOid:'10',systemIdentifier:roleIdentity.systemIdentifier,runtimeOid:provisioned.roles.find(r=>r.name==='jg_task01_runtime').oid,observerOid:provisioned.roles.find(r=>r.name==='jg_task01_observer').oid,...(selection.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),...(selection.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{}),paymentProfile:selection.paymentProfile};
   const request={source,identity,nonce,phase:'before'};enter('B7_BEFORE_RENDER');const beforeSql=catalog.renderCurrent259CatalogRead(request);
   enter('B7_BEFORE_QUERY');const beforeRaw=(await sql(beforeSql)).stdout;enter('B7_BEFORE_VALIDATE');const beforeCatalog=parseNativeTask16CatalogRead(beforeRaw,request,undefined,receipt);
   enter('B7_INSTALL_RENDER');const b7Sql=catalog.renderCurrent259B7Install({source,identity,nonce,before:beforeCatalog});
@@ -374,7 +385,7 @@ async function executeNativeTask16Once(plan,planSha256){
   const finalRequest={...request,phase:'committed',installXid:stagedCatalog.raw.writeXid};enter('B7_COMMITTED_RENDER');const finalSql=catalog.renderCurrent259CatalogRead(finalRequest);
   enter('B7_COMMITTED_QUERY');const finalRaw=(await sql(finalSql)).stdout;enter('B7_COMMITTED_VALIDATE');const finalCatalog=parseNativeTask16CatalogRead(finalRaw,finalRequest,stagedCatalog,receipt);
   receipt.installation={migrations:261,roles:9,sevenCommitXid:sevenRows[2].installXid,b7CommitXid:stagedCatalog.raw.writeXid,catalogSha256:hash(Buffer.from(JSON.stringify(finalCatalog.raw)))};
-  if(!selection.competition){
+  if(!selection.competition||selection.voucher){
    const material=catalog.loadCurrent259CatalogMaterial(source,selection.paymentProfile),binding=material.effectiveAccessBinding;
    need(binding?.paymentProfile===selection.paymentProfile&&binding.insertAdditionCount===selection.insertAdditionCount&&hex(binding.accessPlanSha256,64)&&finalCatalog.raw.roles.find(role=>role.name==='jg_task01_runtime')?.connectionLimit===selection.runtimeLimit,'NATIVE_DIRECT_GAP_CATALOG_BINDING');
    receipt.effectiveAccessBinding=binding;
@@ -448,7 +459,7 @@ async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,e
 async function runNativeTask16Business(plan,state){
  const {root,port,credentials,identity,finalCatalog,needLive,wait,cleanupWait,enter,receipt}=state;
  const selection=nativeTask16CaseSelection(plan.purpose),clientLanes=selection.competition?['owner','runtime_a','runtime_b','observer']:['owner','runtime','observer'];
- const env={NODE_ENV:'test',SMS_ENABLED:'false',APPROVAL_SMS_ENABLED:'false',FILE_STORAGE_DRIVER:'local',FILE_STORAGE_ROOT:path.join(root,'storage'),JWT_ACCESS_SECRET:randomBytes(32).toString('hex'),JWT_REFRESH_SECRET:randomBytes(32).toString('hex'),FILE_DOWNLOAD_SECRET:randomBytes(32).toString('hex')};
+ const env={NODE_ENV:'test',SMS_ENABLED:'false',APPROVAL_SMS_ENABLED:'false',FILE_STORAGE_DRIVER:'local',FILE_STORAGE_ROOT:path.join(root,selection.voucher?'application-private-voucher':'storage'),JWT_ACCESS_SECRET:randomBytes(32).toString('hex'),JWT_REFRESH_SECRET:randomBytes(32).toString('hex'),FILE_DOWNLOAD_SECRET:randomBytes(32).toString('hex')};
  const previous=Object.fromEntries(Object.keys(env).map(k=>[k,process.env[k]]));state.setRestoreEnvironment(()=>{for(const [key,value]of Object.entries(previous))if(value===undefined)delete process.env[key];else process.env[key]=value;});for(const [k,v]of Object.entries(env))process.env[k]=v;
  try{
   const {PrismaClient}=require('@prisma/client');
@@ -563,11 +574,11 @@ async function runNativeTask16Business(plan,state){
     const key=index===0?fixturePlan.ids.requestKey:prepared.contender.requestKey;
     need(['/payment-executions/work-items','/payment-executions/'+fixturePlan.ids.payment+'/registration-options','/payment-executions/results/'+key,...(followUpLane!==undefined?['/payment-executions/results/'+prepared.followUpRequestKey,'/payment-executions/results/'+(index===0?prepared.contender.requestKey:fixturePlan.ids.requestKey),'/payment-executions/recorded-items?paymentId='+fixturePlan.ids.payment]:[])].includes(route),'NATIVE_DIRECT_CASE_ROUTE_PHASE');
    };
-   return {seedProfile:'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1',checkLight:needLive,assertHttpRequest:assertRequest,fetch:async(target,init)=>{checkCommand(target,init);return fetch(target,init);},requestJson:async(target,init,timeout)=>{checkCommand(target,init);need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestCurrent261SeedJson(target,init,timeout);},recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
+   return {seedProfile:selection.paymentProfile,checkLight:needLive,assertHttpRequest:assertRequest,fetch:async(target,init)=>{checkCommand(target,init);return fetch(target,init);},requestJson:async(target,init,timeout)=>{checkCommand(target,init);need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestCurrent261SeedJson(target,init,timeout);},recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
   });
   await wait(()=>fixture.assertRegisteredPgCompetitionRoles(context,contender,lanes[0]));enter('SEED_TWO_LOGINS_AND_OPENINGS');receipt.business='ENTERED';
-  prepared=await wait(()=>fixture.seedRegisteredPgCompetitionFollowUpFixture(context,contender,fixturePlan,...lanes));receipt.loginAndOpenings='ORIGINAL_COMPETITION_FIXTURE_RETURNED';
-  need(equal(seedPosts.map(rows=>rows.length),[3,1])&&prepared.accessToken!==prepared.contender.accessToken,'NATIVE_DIRECT_SEED_ACTORS');resultKeys.push(prepared.contender.requestKey,prepared.followUpRequestKey);
+  prepared=await wait(()=>(selection.voucher?fixture.seedRegisteredPgCompetitionFixture:fixture.seedRegisteredPgCompetitionFollowUpFixture)(context,contender,fixturePlan,...lanes));receipt.loginAndOpenings='ORIGINAL_COMPETITION_FIXTURE_RETURNED';
+  need(equal(seedPosts.map(rows=>rows.length),[3,1])&&prepared.accessToken!==prepared.contender.accessToken,'NATIVE_DIRECT_SEED_ACTORS');resultKeys.push(prepared.contender.requestKey,...(selection.voucher?[]:[prepared.followUpRequestKey]));
   await verifyIdentity();enter('COMPETITION_FOLLOW_UP_REPLAY_GET');
   const controls={lanes,
    async withSamePaymentLock(paymentId,pids,submissions){
@@ -582,6 +593,20 @@ async function runNativeTask16Business(plan,state){
     needLive();need(used&&!armed&&equal(posts,[1,1])&&followUpLane===undefined&&index===raceLoser&&key===prepared.followUpRequestKey&&typeof consume==='function','NATIVE_DIRECT_FOLLOW_UP_INTENT');followUpLane=index;return consume();
    }
   };
+  if(selection.voucher){
+   enter('ORIGINAL_THIRTY_YUAN_COMPETITION');
+   const race=await wait(()=>cases.runRegisteredTwoActorPaymentCompetition(context,contender,prepared,controls));
+   need(used&&!armed&&equal(posts,[1,1])&&equal(followUpPosts,[0,0])&&followUpLane===undefined&&race.passed===true&&race.competitionObserved===true&&race.caseId==='registered.two-actor.payment-competition','NATIVE_DIRECT_VOUCHER_ORIGINAL_RACE');
+   const certificate=state.checkPublicCertificateContext();
+   const voucher=await wait(()=>require('./task16-current259-payment-competition.cjs').supplementNativeTask16CompetitionVoucher({result:race,prepared,contexts,lanes,
+    root,storageRoot:env.FILE_STORAGE_ROOT,resource:{caPath:path.join(root,'ca.crt')},caSha256:certificate.caSha256,
+    observe:(text,label)=>{needLive();state.checkPublicCertificateContext();return state.sql(text);},known:retained,
+    readLedger:cases.observeRegisteredPaymentVoucherLedger,check:needLive,full:async()=>{needLive();state.checkPublicCertificateContext();await verifyIdentity();},markFailureStage:phase=>enter('VOUCHER_'+phase)}));
+   receipt.voucher=voucher;receipt.accounting=writeNativeTask16VoucherAccounting(root,plan.source.head,plan.runId,JSON.stringify({accountingEvidence:race.accountingEvidence,voucher}));
+   receipt.business='ORIGINAL_THIRTY_YUAN_COMPETITION_VOUCHER_CASE_RETURNED';await verifyIdentity();await wait(()=>fixture.assertRegisteredPgCompetitionRoles(context,contender,lanes[0]));
+   receipt.clients=retained.map(row=>({role:row.loginRole,pid:row.pid,startedAt:row.start,tls:row.tls,clientAddress:row.clientAddress,serverAddress:row.serverAddress,serverPort:row.serverPort}));
+   need(finalCatalog.status==='CURRENT259_CATALOG_COMMITTED'||finalCatalog.raw?.reader,'NATIVE_DIRECT_B7_CURRENT');return;
+  }
   const result=await wait(()=>cases.runRegisteredTwoActorPaymentCompetitionFollowUp(context,contender,prepared,controls));
   need(used&&!armed&&equal(posts,[1,1])&&equal(followUpPosts,raceLoser===0?[2,0]:[0,2])&&followUpLane===raceLoser&&result.passed===true&&result.competitionObserved===true&&result.fullyPaid===true&&result.caseId==='registered.two-actor.payment-competition-follow-up'&&result.accountingEvidence?.origin==='INDEPENDENT_OBSERVER_REPEATABLE_READ','NATIVE_DIRECT_CASE_RESULT');
   try{receipt.accounting=writeNativeTask16CompetitionAccounting(root,plan.source.head,plan.runId,JSON.stringify(result.accountingEvidence));}catch{receipt.accounting={status:'UNKNOWN_DO_NOT_RETRY'};fail('NATIVE_DIRECT_ACCOUNTING_UNKNOWN');}
@@ -668,4 +693,19 @@ function writeNativeTask16GapAccounting(root,candidateSha,runId,accountingJson){
   need(equal(row,{phase,balanceAYuan4:'100.0000',balanceBYuan4:'8.0000',paidAmountCents:'0',settlementPaidAmountCents:'0',executionCount:0,rootCount:0,fundingCount:0,allocationCount:0,eventCount:0,auditCount:0,projectFactCount:0,projectImpactCount:0}),'NATIVE_DIRECT_ACCOUNTING_COUNTS');
  }
  const bytes=Buffer.from(JSON.stringify({schemaVersion:1,purpose:GAP_PURPOSE,candidateSha,runId,caseId:'registered.project-attribution-gap',accountingEvidence:evidence})+'\n');need(bytes.length<=8192,'NATIVE_DIRECT_ACCOUNTING_BYTES');return writeNew(root,'accounting-evidence.json',bytes);
+}
+
+function writeNativeTask16VoucherAccounting(root,candidateSha,runId,accountingJson){
+ need(arguments.length===4&&hex(candidateSha,40)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(runId)&&typeof accountingJson==='string'&&Buffer.byteLength(accountingJson)<=8192,'NATIVE_DIRECT_ACCOUNTING_INPUT');directory(root);
+ const value=fixed(JSON.parse(accountingJson),['accountingEvidence','voucher']),evidence=fixed(value.accountingEvidence,['origin','currency','before','after','executionId','rootId','debtorCompanyId','creditorCompanyId','debtAmountCents']);
+ need(evidence.origin==='INDEPENDENT_OBSERVER_REPEATABLE_READ'&&evidence.currency==='CNY'&&evidence.debtAmountCents==='3000','NATIVE_DIRECT_ACCOUNTING_ORIGIN');
+ for(const key of ['executionId','rootId','debtorCompanyId','creditorCompanyId'])need(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(evidence[key]),'NATIVE_DIRECT_ACCOUNTING_ID');
+ need(evidence.debtorCompanyId!==evidence.creditorCompanyId,'NATIVE_DIRECT_ACCOUNTING_ID');
+ for(const [key,phase,n,b,paid]of [['before','BEFORE',0,'100.0000','0'],['after','AFTER',1,'70.0000','3000']]){
+  const row=fixed(evidence[key],['phase','balanceAYuan4','balanceBYuan4','paidAmountCents','settlementPaidAmountCents','executionCount','rootCount','fundingCount','allocationCount','eventCount','auditCount','projectFactCount','projectImpactCount']);
+  need(equal(row,{phase,balanceAYuan4:'100.0000',balanceBYuan4:b,paidAmountCents:paid,settlementPaidAmountCents:paid,executionCount:n,rootCount:n,fundingCount:n,allocationCount:n,eventCount:n,auditCount:n,projectFactCount:0,projectImpactCount:0}),'NATIVE_DIRECT_ACCOUNTING_COUNTS');
+ }
+ const voucher=fixed(value.voucher,['voucherVerified','amountCents','uploadCount','attachCount','fileCount','voucherCount','attachAuditCount','uploadAuditCount','ticketAuditCount','downloadAuditCount','downloadSha256','financialStateUnchanged']);
+ need(equal(voucher,{voucherVerified:true,amountCents:'3000',uploadCount:2,attachCount:2,fileCount:1,voucherCount:1,attachAuditCount:1,uploadAuditCount:1,ticketAuditCount:1,downloadAuditCount:1,downloadSha256:'2cd8199aadfabd393418573074b0c3b1671ec159fbea6a3ddb3f0a6e54072041',financialStateUnchanged:true}),'NATIVE_DIRECT_VOUCHER_COUNTS');
+ return writeNew(root,'accounting-evidence.json',{schemaVersion:1,purpose:VOUCHER_PURPOSE,candidateSha,runId,caseId:'registered.two-actor.payment-voucher',accountingEvidence:evidence,voucher});
 }

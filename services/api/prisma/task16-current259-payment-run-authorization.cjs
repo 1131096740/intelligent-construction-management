@@ -623,7 +623,7 @@ async function run(args){
    if(request.payment261)checkPayment261Source(checked.loader.witness().source);
    receipt.sourceMaterialVerified=true;
    const effectiveAccessBinding=plan.material.installation.effectiveAccessBinding;
-   const insertAdditionCount=paymentProfile===PAYMENT261_RUNTIME_PROFILE||paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE?9:paymentProfile===PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE?5:undefined;
+   const insertAdditionCount=paymentProfile===PAYMENT261_RUNTIME_PROFILE||paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE?9:paymentProfile===PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE?5:paymentProfile===PAYMENT261_VOUCHER_RUNTIME_PROFILE?11:undefined;
    need(insertAdditionCount!==undefined?effectiveAccessBinding?.paymentProfile===paymentProfile&&effectiveAccessBinding.insertAdditionCount===insertAdditionCount&&hex(effectiveAccessBinding.accessPlanSha256,64):effectiveAccessBinding===undefined,'EFFECTIVE_ACCESS_BINDING');
    if(effectiveAccessBinding)receipt.effectiveAccessBinding=effectiveAccessBinding;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');

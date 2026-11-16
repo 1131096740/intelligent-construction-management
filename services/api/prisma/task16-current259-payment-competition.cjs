@@ -115,7 +115,7 @@ const voucherType='image/png';
 const voucherBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgCF0FAAFYAQDfZmccAAAAAElFTkSuQmCC','base64');
 const voucherHash=createHash('sha256').update(voucherBytes).digest('hex');
 
-function voucherObservationSql({paymentId,settlementId,executionId,fileId,actorId}){
+function voucherObservationSql({paymentId,settlementId,executionId,fileId,actorId,download=false}){
  need([paymentId,settlementId,executionId,fileId,actorId].every(uuid));
  const financialRelations=[
   ['RegisteredPaymentFunding','executionId'],['RegisteredFundPaymentAllocation','executionId'],
@@ -144,11 +144,13 @@ SELECT pg_catalog.jsonb_build_object(
    FROM public."FileObject" f WHERE f.id='${fileId}' OR f."uploadedByUserId"='${actorId}'),
  'vouchers',(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(v)-'createdAt'),'[]'::jsonb)
    FROM public."RegisteredPaymentVoucher" v WHERE v."executionId"='${executionId}' OR v."fileId"='${fileId}'),
+ ${download?`'fileAudits',(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('action',a.action,'actorUserId',a."actorUserId",'reason',a.metadata->>'downloadReason') ORDER BY a.action),'[]'::jsonb)
+   FROM public."AuditLog" a WHERE a."businessType"='file_object' AND a."businessId"='${fileId}' AND a.action IN ('file.upload','file.download.ticket','file.download')),`:''}
  'audits',(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('actorUserId',a."actorUserId",'metadata',a.metadata)),'[]'::jsonb)
    FROM public."AuditLog" a WHERE a.action='payment.execution.voucher.attach' AND a."businessType"='payment_request' AND a."businessId"='${paymentId}'));
 ROLLBACK;`;
 }
-async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lanes,storageRoot,resource,observe,known,readLedger,check,full,markFailureStage}){
+async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lanes,storageRoot,resource,observe,known,readLedger,check,full,markFailureStage,native=false}){
  const winner=result.winner==='finance_staff'?0:1;
  const {plan,accessToken,contender}=prepared,{ids}=plan,{executionId}=result;
  const {token,key,actorId}=winner===0?{token:accessToken,key:ids.requestKey,actorId:ids.actor}:
@@ -157,10 +159,10 @@ async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lane
  need([key,actorId,fileId].every(uuid)&&typeof storageRoot==='string'&&path.isAbsolute(storageRoot)&&
   path.normalize(storageRoot)===storageRoot&&storageRoot.startsWith('/private/tmp/')&&
   storageRoot===process.env.FILE_STORAGE_ROOT&&process.env.FILE_STORAGE_DRIVER==='local'&&
-  path.dirname(storageRoot)===path.dirname(path.dirname(resource.caPath))&&path.basename(storageRoot).startsWith('application-private-'));
+  (native?path.dirname(storageRoot)===path.dirname(resource.caPath):path.dirname(storageRoot)===path.dirname(path.dirname(resource.caPath)))&&path.basename(storageRoot).startsWith('application-private-'));
  const expectedFile={id:fileId,contentSha256:voucherHash,sizeBytes:voucherBytes.length,uploadedByUserId:actorId,
   originalName:voucherName,mimeType:voucherType,bucket:'private-local',storageStatus:'active',purgeReceiptId:null,supersedesFileObjectId:null};
- const sql=voucherObservationSql({paymentId:ids.payment,settlementId:ids.settlement,executionId,fileId,actorId});
+ const sql=voucherObservationSql({paymentId:ids.payment,settlementId:ids.settlement,executionId,fileId,actorId,download:native});
  need(base.protocol==='http:'&&base.hostname==='127.0.0.1'&&base.port!==''&&!base.username&&!base.password);
  const [owner]=known;
  async function observeVoucher(label){
@@ -186,7 +188,7 @@ async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lane
  const ledgerBefore=await readLedger(contexts[0],prepared,lanes[0]);
  markFailureStage('OWNER_BEFORE');
  const before=await observeVoucher('current259-voucher-before');
- need(equal(before.files,[])&&equal(before.vouchers,[])&&equal(before.audits,[]));
+ need(equal(before.files,[])&&equal(before.vouchers,[])&&equal(before.audits,[])&&(!native||equal(before.fileAudits,[])));
  await full();
  markFailureStage('MULTIPART_UPLOAD');
  const form=new FormData();
@@ -197,6 +199,29 @@ async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lane
  markFailureStage('ATTACH');
  const attached=await request(`/payment-executions/${executionId}/voucher`,'POST',JSON.stringify({fileId}),201);
  need(equal(attached,{executionId,voucherPending:false}));
+ if(native){
+  markFailureStage('REPEAT_UPLOAD');
+  const repeatedForm=new FormData();repeatedForm.set('idempotencyKey',fileId);repeatedForm.set('file',new Blob([voucherBytes],{type:voucherType}),voucherName);
+  need(equal(await request(`/payment-executions/${executionId}/voucher-file-uploads`,'POST',repeatedForm,201),uploaded));
+  markFailureStage('REPEAT_ATTACH');
+  need(equal(await request(`/payment-executions/${executionId}/voucher`,'POST',JSON.stringify({fileId}),201),attached));
+  markFailureStage('AUTHORIZED_TICKET');
+  const now=Date.now(),ticket=await request(`/payment-executions/${executionId}/voucher-ticket`,'GET',undefined,200);
+  need(ticket?.fileId===fileId&&ticket.fileName===voucherName&&ticket.mimeType===voucherType&&ticket.sizeBytes===voucherBytes.length&&
+   typeof ticket.expiresAt==='string'&&Date.parse(ticket.expiresAt)>Date.now()&&Date.parse(ticket.expiresAt)<=now+300000&&
+   typeof ticket.downloadUrl==='string'&&ticket.downloadUrl.startsWith(`/files/${fileId}/download?`));
+  const target=new URL(ticket.downloadUrl,base),query=target.searchParams;
+  need(target.origin===base.origin&&target.pathname===`/files/${fileId}/download`&&!target.username&&!target.password&&!target.hash&&
+   equal([...query.keys()].sort(),['accessMode','actorUserId','downloadReason','expiresAt','token'])&&
+   query.get('actorUserId')===actorId&&query.get('expiresAt')===ticket.expiresAt&&query.get('downloadReason')==='实际付款凭证下载'&&query.get('accessMode')==='download'&&/^[A-Za-z0-9_-]{43}$/u.test(query.get('token')));
+  markFailureStage('HTTP_DOWNLOAD');check();
+  const response=await fetch(target,{method:'GET',redirect:'error',signal:AbortSignal.timeout(5000)});
+  check();need(response.url===target.href&&response.redirected===false&&response.status===200&&response.headers.get('content-type')===voucherType&&response.headers.get('content-length')===String(voucherBytes.length));
+  const reader=response.body.getReader(),chunks=[];let size=0;
+  try{while(true){const part=await reader.read();check();if(part.done)break;size+=part.value.byteLength;need(size<=voucherBytes.length);chunks.push(Buffer.from(part.value));}}
+  finally{await reader.cancel();reader.releaseLock();}
+  need(size===voucherBytes.length&&createHash('sha256').update(Buffer.concat(chunks)).digest('hex')===voucherHash);
+ }
  markFailureStage('ORIGINAL_RESULT');
  const recorded=await request(`/payment-executions/results/${key}`,'GET',undefined,200);
  need(recorded?.status==='recorded'&&recorded.canSupplementVoucher===false&&
@@ -213,7 +238,7 @@ async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lane
   Object.entries(expectedFile).every(([key,value])=>own(after.files[0],key)===value)&&
   equal(after.vouchers,[{executionId,fileId,uploadedByUserId:actorId,contentSha256:voucherHash}])&&
   equal(after.audits,[{actorUserId:actorId,metadata:{executionId,fileId,contentSha256:voucherHash}}])&&
-  ['paymentSha','settlementSha','executionSha','effectsSha'].every(key=>before[key]===after[key]));
+  ['paymentSha','settlementSha','executionSha','effectsSha'].every(key=>before[key]===after[key])&&(!native||equal(after.fileAudits,[{action:'file.download',actorUserId:actorId,reason:'实际付款凭证下载'},{action:'file.download.ticket',actorUserId:actorId,reason:'实际付款凭证下载'},{action:'file.upload',actorUserId:actorId,reason:null}])));
  markFailureStage('STORAGE_BYTES');
  const objectKey=own(after.files[0],'objectKey');
  const parts=typeof objectKey==='string'?objectKey.split('/'):[];
@@ -226,6 +251,16 @@ async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lane
  markFailureStage('LEDGER_AFTER');
  const ledgerAfter=await readLedger(contexts[0],prepared,lanes[0]);
  check();need(equal(ledgerBefore,ledgerAfter));
+ if(native)return Object.freeze({voucherVerified:true,amountCents:'3000',uploadCount:2,attachCount:2,fileCount:1,voucherCount:1,attachAuditCount:1,uploadAuditCount:1,ticketAuditCount:1,downloadAuditCount:1,downloadSha256:voucherHash,financialStateUnchanged:true});
+}
+async function supplementNativeTask16CompetitionVoucher(input){
+ need(arguments.length===1&&qualifiedFetch&&input&&Object.getPrototypeOf(input)===Object.prototype&&
+  equal(Object.keys(input).sort(),['result','prepared','contexts','lanes','storageRoot','resource','root','caSha256','observe','known','readLedger','check','full','markFailureStage'].sort()));
+ const {root,storageRoot,resource,caSha256,result}=input;
+ need(typeof root==='string'&&root.startsWith('/private/tmp/')&&path.normalize(root)===root&&storageRoot===path.join(root,'application-private-voucher')&&resource?.caPath===path.join(root,'ca.crt')&&/^[a-f0-9]{64}$/u.test(caSha256)&&
+  result?.caseId===competitionCase&&result.passed===true&&result.competitionObserved===true&&['finance_staff','comprehensive_director'].includes(result.winner)&&uuid(result.executionId)&&uuid(result.rootId)&&!Object.hasOwn(result,'secondExecutionId')&&!Object.hasOwn(result,'fullyPaid'));
+ input.check();const ca=readQualifiedTask16File(resource.caPath,{privateFile:true,maxBytes:16384,code:'NATIVE_TASK16_VOUCHER_CA'});need(ca.sha256===caSha256);input.check();
+ return supplementCompetitionWinnerVoucher({...input,native:true});
 }
 
 async function executeCurrent259PaymentCompetition(applications, leases, permit){
@@ -390,4 +425,4 @@ function renderNativeTask16CompetitionMonitor(inputJson){
  need(input.owner&&Array.isArray(input.lanes)&&input.lanes.length===2&&input.lanes.every(row=>row&&typeof row==='object'));
  return renderMonitor(input.owner,input.lanes,input.runId);
 }
-module.exports=Object.freeze({renderNativeTask16CompetitionHold,renderNativeTask16CompetitionMonitor,executeCurrent259PaymentCompetition});
+module.exports=Object.freeze({supplementNativeTask16CompetitionVoucher,renderNativeTask16CompetitionHold,renderNativeTask16CompetitionMonitor,executeCurrent259PaymentCompetition});
