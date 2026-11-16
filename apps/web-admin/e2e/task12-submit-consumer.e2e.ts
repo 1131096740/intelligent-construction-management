@@ -13,7 +13,7 @@ async function openWorkbench(page: Page, options: {
   code?: string | null;
   recoveryRevision?: number;
   relationship?: "outside" | "upward";
-  paperVersion?: "mechanical-contact-layout-v1";
+  paperVersion?: "mechanical-contact-layout-v2";
 } = {}) {
   if (options.recoveryRevision !== undefined) {
     await page.addInitScript(({ revision, versionId, plan }) => {
@@ -40,7 +40,7 @@ async function openWorkbench(page: Page, options: {
     layoutTemplateVersionId: "layout-submit", documentContentRevision: 7, documentContentFingerprint: fingerprint,
     docxFileId: "word-submit", pdfFileId: "pdf-submit", inputSnapshot: { documentContentRevision: 7,
       documentContentFingerprint: fingerprint, layoutSourceMapping: { sourceSha256: sourceSha } } };
-  if(options.paperVersion) Object.assign(document,{purpose:"draft",inputSnapshot:{...document.inputSnapshot,bodyDocument:{sourceSha256:sourceSha}}});
+  if(options.paperVersion) Object.assign(document,{purpose:"draft",inputSnapshot:{...document.inputSnapshot,bodyDocument:{sourceSha256:sourceSha},mechanicalContactLayoutVersion:"mechanical-contact-layout-v1"}});
   const documents = [document];
   const paperCapabilities:string[]=[];
   const workbench = {
@@ -109,12 +109,12 @@ async function openWorkbench(page: Page, options: {
 }
 
 test("纸面检查不复用同正文旧排版，并选择新版PDF", async ({ page }) => {
-  const fixture=await openWorkbench(page,{paperVersion:"mechanical-contact-layout-v1"});
+  const fixture=await openWorkbench(page,{paperVersion:"mechanical-contact-layout-v2"});
   await fixture.editor.getByRole("button",{name:"A4纸面检查",exact:true}).click();
   await expect(fixture.editor.getByRole("button",{name:"生成当前草稿PDF",exact:true})).toBeVisible();
   expect(fixture.paperCapabilities).toEqual([]);
   const current={...fixture.document,id:"current-layout",pdfFileId:"pdf-current",inputSnapshot:{...fixture.document.inputSnapshot}};
-  Object.assign(current.inputSnapshot,{mechanicalContactLayoutVersion:"mechanical-contact-layout-v1"});
+  Object.assign(current.inputSnapshot,{mechanicalContactLayoutVersion:"mechanical-contact-layout-v2"});
   fixture.documents.push(current);
   await fixture.editor.getByRole("button",{name:"重新检查",exact:true}).click();
   await expect(page.getByRole("dialog",{name:"预览合同正文",exact:true})).toBeVisible();

@@ -1,4 +1,4 @@
-import { applyMechanicalContactLayout, MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
+import { applyMechanicalContactLayout, MECHANICAL_CONTACT_LAYOUT_V1, MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
 import { mappedLayoutSourceForVersion } from "../contract-template/layout-field-mapping";
 import { renderLayoutPreviewDocx } from "./layout-preview-docx";
 import { layoutPreviewValues } from "./layout-preview-values";
@@ -606,7 +606,7 @@ export class ContractDocumentProcessor
       const legacySource = !renderedBody && snapshot.partyDetailsVersion ? prepareLegacyPartyRoleBindings(template.buffer, source) : source;
       const legacyDocx = renderedBody ? undefined : renderContractDocx(legacySource, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
       const docx = renderedBody ? renderedBody.docx : snapshot.partyDetailsVersion ? removeMechanicalPartyDetailsFromLegacyDocx(template.buffer,legacyDocx!,{rolesPrepared:true}) : legacyDocx!;
-      const contactLayoutDocx=snapshot.mechanicalContactLayoutVersion ? applyMechanicalContactLayout(template.buffer,docx) : docx;
+      const contactLayoutDocx=snapshot.mechanicalContactLayoutVersion ? applyMechanicalContactLayout(template.buffer,docx,snapshot.mechanicalContactLayoutVersion) : docx;
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
         const source = await this.files.getFileBuffer(attachment.id);
@@ -1033,7 +1033,7 @@ export class ContractDocumentProcessor
     }
     if (snapshot.bodyDocument !== undefined && (!snapshot.bodyDocument || typeof snapshot.bodyDocument !== "object" || Array.isArray(snapshot.bodyDocument) || snapshot.bodyDocument.protocolVersion !== 1 || typeof snapshot.bodyDocument.layoutTemplateVersionId !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.sourceSha256))) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.partyDetailsVersion !== undefined && (snapshot.partyDetailsVersion !== BUILT_IN_PARTY_PLACEMENT_VERSION || snapshot.bodyDocument !== undefined)) throw new Error("合同文档输入快照格式不正确");
-    if (snapshot.mechanicalContactLayoutVersion !== undefined && snapshot.mechanicalContactLayoutVersion !== MECHANICAL_CONTACT_LAYOUT_VERSION) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.mechanicalContactLayoutVersion !== undefined && snapshot.mechanicalContactLayoutVersion !== MECHANICAL_CONTACT_LAYOUT_VERSION && snapshot.mechanicalContactLayoutVersion !== MECHANICAL_CONTACT_LAYOUT_V1) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.genericFontTableVersion !== undefined && snapshot.genericFontTableVersion !== BUILT_IN_GENERIC_FONT_VERSION) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.bodyDocument?.partyDetailsVersion !== undefined && (snapshot.bodyDocument.partyDetailsVersion !== BUILT_IN_PARTY_PLACEMENT_VERSION || !builtInPartyPlacementKind(snapshot.bodyDocument.sourceSha256))) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.bodyDocument?.pdfEngine !== undefined && (snapshot.bodyDocument.pdfEngine !== "docx4j-17.3.5" || typeof snapshot.bodyDocument.runtimeLockSha256 !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.runtimeLockSha256))) throw new Error("合同文档输入快照格式不正确");

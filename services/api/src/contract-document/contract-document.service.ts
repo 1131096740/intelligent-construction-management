@@ -1,4 +1,4 @@
-import { MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
+import { MECHANICAL_CONTACT_LAYOUT_VERSION, type MechanicalContactLayoutVersion } from "./mechanical-contact-layout";
 import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
 import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
@@ -70,7 +70,7 @@ export interface ContractDocumentInputSnapshot {
   layoutSourceMapping?: LayoutSourceMapping;
   partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION;
   genericFontTableVersion?: typeof BUILT_IN_GENERIC_FONT_VERSION;
-  mechanicalContactLayoutVersion?: typeof MECHANICAL_CONTACT_LAYOUT_VERSION;
+  mechanicalContactLayoutVersion?: MechanicalContactLayoutVersion;
   bodyDocument?: { protocolVersion: 1; layoutTemplateVersionId: string; sourceSha256: string; editPlan?: ContractBodyEditPlan;
     pdfEngine?: "docx4j-17.3.5"; runtimeLockSha256?: string; renderSemanticVersion?: typeof CONTRACT_BODY_MONEY_SEMANTICS_VERSION; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION };
   outputBaseName: string;

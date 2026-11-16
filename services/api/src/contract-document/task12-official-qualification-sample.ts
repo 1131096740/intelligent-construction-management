@@ -1,4 +1,4 @@
-import { applyMechanicalContactLayout } from "./mechanical-contact-layout";
+import { applyMechanicalContactLayout, MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
 import PizZip from "pizzip";
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import { createHash } from "node:crypto";
@@ -99,8 +99,8 @@ function createMechanicalSample(source: Buffer) {
   const rendered=renderContractBody(source,mapped,{values},required,
     "22222222-2222-4222-8222-222222222222",undefined,{tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,partyDetailsVersion:BUILT_IN_PARTY_PLACEMENT_VERSION});
   if(rendered.lineBoxScope) throw new Error("机械资格样张不能使用材料行盒范围");
-  const docx=anonymizeQualificationMetadata(completeContractDocxFontTableType(prepareContractBodyTableMargins(applyMechanicalContactLayout(source,rendered.docx),CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx);
-  const officeDocx=anonymizeQualificationMetadata(applyMechanicalContactLayout(source,removeMechanicalPartyDetailsFromLegacyDocx(source,renderLayoutPreviewDocx(mapped,{values},required))));
+  const docx=anonymizeQualificationMetadata(completeContractDocxFontTableType(prepareContractBodyTableMargins(applyMechanicalContactLayout(source,rendered.docx,MECHANICAL_CONTACT_LAYOUT_VERSION),CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx);
+  const officeDocx=anonymizeQualificationMetadata(applyMechanicalContactLayout(source,removeMechanicalPartyDetailsFromLegacyDocx(source,renderLayoutPreviewDocx(mapped,{values},required)),MECHANICAL_CONTACT_LAYOUT_VERSION));
   return {docx,officeDocx,scope:null,expectations:{actualPdfQualification:"NOT_EXECUTED",minimumPages:1,maximumPages:100,
     requiredDrawnText:["隔离工具资格机械合同","虚构甲方公司","虚构乙方公司","资格样张设备","甲方","乙方"],
     mechanicalRoleHeading:"第一条  租赁机械设备名称、规格型号、数量及金额",roleFont:"黑体",roleFontSizePoints:14,

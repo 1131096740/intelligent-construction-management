@@ -528,7 +528,7 @@ describe("ContractDocumentProcessor", () => {
     );
   });
 
-  it.each([undefined,"mechanical-contact-layout-v1"] as const)("renders and uploads with frozen contact layout %s", async (contactLayoutVersion) => {
+  it.each([undefined,"mechanical-contact-layout-v1","mechanical-contact-layout-v2"] as const)("renders and uploads with frozen contact layout %s", async (contactLayoutVersion) => {
     const prisma = makePrisma();
     prisma.tx.$queryRaw.mockResolvedValue([
       {
@@ -601,7 +601,7 @@ describe("ContractDocumentProcessor", () => {
       [],
       { allowBlankWatermark: false }
     );
-    if(contactLayoutVersion) expect(applyMechanicalContactLayout).toHaveBeenCalledWith(Buffer.from("template"),Buffer.from("rendered-docx"));
+    if(contactLayoutVersion) expect(applyMechanicalContactLayout).toHaveBeenCalledWith(Buffer.from("template"),Buffer.from("rendered-docx"),contactLayoutVersion);
     else expect(applyMechanicalContactLayout).not.toHaveBeenCalled();
     expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(Buffer.from("rendered-docx"), [
       {
