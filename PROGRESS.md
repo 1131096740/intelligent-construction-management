@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 机械标题分页局部修订
+
+机械标题分页候选 `d39f3a2e` 已独审并合入本地 `26f36249`，未推送。准确补丁 SHA `c055685f23260a0593485289fd73aee48881b95b49a4313133ee64d160321431`；独立作者树 API 相关测试 146/146、Web 80/80、虚构 HTTP Chromium 1/1，API/Web build、typecheck、lint、Web check:ui 及 e2e typecheck 通过（Web lint 1109 条警告、无错误）。浏览器单例不证明真实 PDF 或业务验收。
+
+基线 `990e2d24` 的[机器资格回执](/private/tmp/jg-mech990-qual-CBTZAP/run/MACHINE-RECEIPT.json) SHA `c7056b85240bc4156e1b5fecbb398e6b88a591c8161161342529fb5edcbb9a07`；[人工审阅](/private/tmp/jg-mech990-independent-review/physical-review-needs-work.json)为 NEEDS_WORK，详见[问题记录](/private/tmp/jg-mech990-independent-review/findings.md)。这些证据只绑定 990；新版须重新执行资格并逐页人工审阅，用户要求的模板首末页内容仍未完成。
+
 ## 2026-11-17 机械合同纸面布局局部修订
 
 机械联系信息与纸面预览局部候选 `5247fc64` 已独审并合入本地 `f28a4971`，未推送。准确补丁 SHA `12f93ba8dfe3e4ffd5b7cc39595fb379285830c8f36ee72edc1e82e56c9a511e`；独立作者树 API 相关测试 138/138、Web 80/80、虚构 HTTP Chromium 1/1，API/Web build、typecheck、lint、Web check:ui 和 e2e typecheck 通过（Web lint 有 1109 条警告、无错误）。浏览器检查不证明真实 PDF 或业务验收。
