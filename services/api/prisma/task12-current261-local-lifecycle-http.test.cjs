@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events');
 const id=n=>'10000000-0000-4000-8000-'+String(n).padStart(12,'0');
-function model(mode,postcheckError,transactionPhase,caseKey,mainConfig,inspectionBody,clock,previewBody){
+function model(mode,postcheckError,transactionPhase,caseKey,mainConfig,inspectionBody,clock,previewBody,workbenchBody){
  const users=Array.from({length:8},(_,i)=>({id:id(i+1),phone:'1990000000'+i})),passwords=Object.fromEntries(users.map((u,i)=>[u.id,String(i).repeat(64)]));
  const fixture={...(caseKey?{case:require('./task12-current261-lifecycle-cases.cjs').current261LifecycleCase(caseKey)}:{}),approval:{users,handler:users[0],project:{id:id(20)},members:[{userId:users[0].id,positionKey:'contract_staff'},{userId:users[3].id,positionKey:'project_manager'}],globalRoles:[[1,'material_director'],[2,'contract_director'],[4,'finance_director'],[5,'general_manager'],[6,'comprehensive_director']].map(([actor,roleKey])=>({userId:users[actor].id,roleKey}))}};
  const config=mainConfig??Object.freeze({...(mode==='auth-only'?{executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}:{}),fixture,passwords,sourceDocx:Buffer.from('model-docx'),originals:[Buffer.from('%PDF-original1'),Buffer.from('%PDF-original2')]}),calls=[];
@@ -9,6 +9,7 @@ function model(mode,postcheckError,transactionPhase,caseKey,mainConfig,inspectio
  const imports={...(clock?{'node:perf_hooks':{performance:{now:clock}}}:{}),'./task12-current259-document-application.cjs':{takeCurrent261FirstLoginHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;},takeCurrent261LocalLifecycleHttpBridge(c,s){assert.equal(c,config);assert.equal(s,server);assert.equal(claimed,false);claimed=true;return authDiagnostics;}},'node:http':{request(options,consume){const outgoing=new EventEmitter();outgoing.end=wire=>{calls.push({options,wire});queueMicrotask(()=>{if(mode==='transport-and-postcheck'){live=false;outgoing.emit('error',Error('PRIVATE_TRANSPORT'));return;}const response=new EventEmitter();response.complete=true;response.socket={remoteAddress:mode==='foreign-peer'?'127.0.0.2':'127.0.0.1',remotePort:24080};response.headers=mode==='redirect'?{location:'https://invalid.example'}:{};response.statusCode=201;response.destroy=()=>{};const actor=options.path==='/auth/login'?users.findIndex(u=>u.phone===JSON.parse(wire).phone):0,roles=[...fixture.approval.members.filter(r=>r.userId===users[actor].id).map(r=>r.positionKey),...fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)];let body=options.path==='/auth/login'?{user:{id:users[actor].id,phone:users[actor].phone,mustChangePassword:false,roleKeys:roles,globalRoleKeys:fixture.approval.globalRoles.filter(r=>r.userId===users[actor].id).map(r=>r.roleKey)},tokens:{accessToken:actor?'model'+actor+'.access.token':'model.access.token'}}:{contract:{id:id(21)},version:{id:id(22)}};if(options.path.endsWith('/workbench')){body={documents:[{docxFileId:id(50),pdfFileId:id(51)}]};response.statusCode=200;}
  if(previewBody!==undefined&&options.path==='/contract-layout-templates')body={template:{id:id(21)},version:{id:id(22)}};
  if(previewBody!==undefined&&options.path.endsWith('/preview-generation')){body=options.method==='POST'?{id:id(30),layoutTemplateVersionId:id(22),sourceRevision:2,createdByUserId:id(3),status:'queued',previewPdfFileId:null}:previewBody;response.statusCode=options.method==='POST'?201:200;}
+ if(workbenchBody!==undefined&&options.path.endsWith('/workbench'))body=workbenchBody;
  if(mode==='workbench500'&&options.path.endsWith('/workbench')){response.statusCode=500;body={statusCode:500,message:'Internal server error'};}
  if(options.path.endsWith('/inspection')&&inspectionBody!==undefined)body=inspectionBody;
  if(options.path.endsWith('/download-ticket'))body={downloadUrl:'/files/'+id(51)+'/download?token=model',mimeType:'application/pdf',sizeBytes:1024*1024};
@@ -400,4 +401,46 @@ test('exact local lifecycle HTTP consumer code survives first-error and later-ch
  const project=actualPrivateProjection('consumeFirstCause');let traps=0;
  for(const error of [Object.assign(Error('PRIVATE'),{code:'TASK12_LOCAL_LIFECYCLE_CASE_UNKNOWN'}),{code:'TASK12_LOCAL_LIFECYCLE_CASE_HTTP'},new Proxy(first,{get(){traps++;throw Error('PRIVATE');}})])assert.deepEqual(project(error),{family:'UNKNOWN',code:'UNKNOWN'});
  const accessor=Error('PRIVATE');Object.defineProperty(accessor,'code',{get(){traps++;throw Error('PRIVATE');}});assert.deepEqual(project(accessor),{family:'UNKNOWN',code:'UNKNOWN'});assert.equal(traps,0);
+});
+
+
+test('generated document consumer failure preserves the exact finite stage after a200 response',async()=>{
+ const first=Object.assign(Error('PRIVATE_ORIGINAL'),{code:'TASK12_GENERATED_DOCUMENT_TIME'}),f=model();
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase',amountLimitType:'capped'}});
+  assert.equal((await b.send(0,{method:'GET',path:'/contract-drafts/'+id(22)+'/workbench'})).status,200);f.close();throw first;
+ }),error=>error===first);
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);
+ assert.deepEqual(detail.firstCause,{family:'GENERATED_DOCUMENT_CONSUMER',code:'TASK12_GENERATED_DOCUMENT_TIME'});
+ assert.equal(detail.httpStatus,200);assert.equal(detail.businessOutcome,'UNKNOWN');assert.equal(detail.secondaryPhase,'AFTER_CHECK');
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE_ORIGINAL|password|199000|10000000/u);
+ const project=actualPrivateProjection('consumeFirstCause');
+ for(const stage of ['INPUT','LEASE','QUEUE','WORKBENCH','DOCUMENT','TEMPLATE','TIME'])assert.deepEqual(project(Object.assign(Error('PRIVATE'),{code:'TASK12_GENERATED_DOCUMENT_'+stage})),{family:'GENERATED_DOCUMENT_CONSUMER',code:'TASK12_GENERATED_DOCUMENT_'+stage});
+ assert.deepEqual(project(Object.assign(Error('PRIVATE'),{code:'TASK12_GENERATED_DOCUMENT_PRIVATE'})),{family:'UNKNOWN',code:'UNKNOWN'});
+});
+
+
+test('workbench200 retains only bounded document states before a later consume failure',async()=>{
+ const payload={documents:[{status:'failed',errorMessage:'PRIVATE_ERROR'},{status:'processing',file:'PRIVATE_FILE'}]},first=Object.assign(Error('PRIVATE'),{code:'TASK12_GENERATED_DOCUMENT_DOCUMENT'}),f=model(undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,payload);
+ await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async b=>{
+  await b.send(0,{method:'POST',path:'/auth/login',json:{phone:f.config.fixture.approval.users[0].phone,password:f.config.passwords[id(1)]}});
+  await b.send(0,{method:'POST',path:'/contracts',json:{projectId:id(20),numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase',amountLimitType:'capped'}});
+  assert.deepEqual((await b.send(0,{method:'GET',path:'/contract-drafts/'+id(22)+'/workbench'})).body,payload);f.close();throw first;
+ }),error=>error===first);
+ const detail=f.api.describeCurrent261LocalLifecycleHttpFailure(first);
+ assert.deepEqual(detail.documentSummary,{status:'OBSERVED',documentCount:2,states:{queued:0,processing:1,success:0,failed:1,stale:0,cancelled:0}});
+ assert.equal(detail.httpStatus,200);assert.equal(detail.firstCause.code,'TASK12_GENERATED_DOCUMENT_DOCUMENT');assert.equal(detail.businessOutcome,'UNKNOWN');
+ assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|errorMessage|password|10000000/u);
+});
+
+
+test('document summaries reject unsafe states, arrays and accessors without reading private payloads',()=>{
+ const project=actualPrivateProjection('documentSummary');let traps=0;
+ const proxy=new Proxy({}, {get(){traps++;throw Error('PRIVATE');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE');},ownKeys(){traps++;throw Error('PRIVATE');}}),revoked=Proxy.revocable([],{});revoked.revoke();
+ for(const value of [null,undefined,proxy,{documents:proxy},{documents:revoked.proxy},{documents:new Array(101)},{documents:[{status:'PRIVATE'}]},{documents:[proxy]}])assert.deepEqual(project(value),{status:'UNKNOWN'});
+ const body={};Object.defineProperty(body,'documents',{get(){traps++;throw Error('PRIVATE');}});assert.deepEqual(project(body),{status:'UNKNOWN'});
+ const row={};Object.defineProperty(row,'status',{get(){traps++;throw Error('PRIVATE');}});assert.deepEqual(project({documents:[row]}),{status:'UNKNOWN'});
+ const array=[];Object.defineProperty(array,0,{get(){traps++;throw Error('PRIVATE');},enumerable:true});assert.deepEqual(project({documents:array}),{status:'UNKNOWN'});
+ assert.equal(traps,0);assert.deepEqual(project({documents:[]}),{status:'OBSERVED',documentCount:0,states:{queued:0,processing:0,success:0,failed:0,stale:0,cancelled:0}});
 });

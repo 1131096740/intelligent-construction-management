@@ -112,7 +112,25 @@ function previewSummary(value,coordinates){
  const consumerBranch=!(sameJob&&sameLayout&&sameRevision&&sameCreator)?'COORDINATES_MISMATCH':jobStatus==='succeeded'?(previewFileIdValid&&errorMessageNull&&startedAtValid&&completedAfterStarted?'VALID_SUCCESS':'INVALID_SUCCESS'):jobStatus==='failed'?'FAILED':jobStatus==='stale'?'STALE':file===null?'VALID_PENDING':'INVALID_PENDING';
  return Object.freeze({status:'OBSERVED',jobStatus,consumerBranch,sameJob,sameLayout,sameRevision,sameCreator,previewFileIdValid,errorMessageNull,startedAtValid,completedAfterStarted});
 }
+// Counts from the returned JSON only; no document identifiers, text or DB-cause inference.
+function documentSummary(value){
+ const unknown=()=>Object.freeze({status:'UNKNOWN'}),documents=own(value,'documents');
+ if(!value||typeof value!=='object'||types.isProxy(value)||Array.isArray(value)||types.isProxy(documents)||!Array.isArray(documents))return unknown();
+ const length=Object.getOwnPropertyDescriptor(documents,'length')?.value;
+ if(!Number.isInteger(length)||length<0||length>100)return unknown();
+ const descriptors=Object.getOwnPropertyDescriptors(documents);
+ if(Reflect.ownKeys(descriptors).length!==length+1)return unknown();
+ const states={queued:0,processing:0,success:0,failed:0,stale:0,cancelled:0};
+ for(let index=0;index<length;index++){
+  const descriptor=descriptors[index];if(!descriptor||!Object.hasOwn(descriptor,'value'))return unknown();
+  const document=descriptor.value,state=own(document,'status');
+  if(!document||typeof document!=='object'||types.isProxy(document)||Array.isArray(document)||typeof state!=='string'||!Object.hasOwn(states,state))return unknown();
+  states[state]++;
+ }
+ return Object.freeze({status:'OBSERVED',documentCount:length,states:Object.freeze(states)});
+}
 const consumeCodes=Object.freeze({
+ GENERATED_DOCUMENT_CONSUMER:Object.freeze(['INPUT','LEASE','QUEUE','WORKBENCH','DOCUMENT','TEMPLATE','TIME'].map(stage=>'TASK12_GENERATED_DOCUMENT_'+stage)),
  LOCAL_LIFECYCLE_CONSUMER:Object.freeze(['TASK12_LOCAL_LIFECYCLE_CASE_HTTP']),
  TEMPLATE_CONSUMER:Object.freeze(['INPUT','UPLOAD','CREATE','POSITIONS','MAPPING','INSPECTION','TIME','QUEUE','PREVIEW','CONFIRM','SUBMIT','PUBLISH'].map(stage=>'TASK12_GENERATED_MATERIAL_TEMPLATE_'+stage)),
  OFFICIAL_DEADLINE:Object.freeze(['TASK12_OFFICIAL_DOCUMENT_DEADLINE']),
@@ -189,6 +207,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
      const job=own(result.body,'id');if(result.status===201&&id(job)&&layoutPreviewContext&&Number.isSafeInteger(inspectedRevision))previewCoordinates=Object.freeze({...layoutPreviewContext,id:job,layoutTemplateVersionId:layoutId,sourceRevision:inspectedRevision,createdByUserId:seed.users[2].id});
     }else if(method==='GET'&&result.status===200)observation.previewSummary=previewSummary(result.body,previewCoordinates);
    }
+   if(method==='GET'&&observation.routeTemplate==='/contract-drafts/:versionId/workbench'&&result.status===200)observation.documentSummary=documentSummary(result.body);
    collectAuth(); // Retain the native cause before a later resource guard can fail.
    observation.phase='AFTER_CHECK';check();lastObservation=Object.freeze({...observation,phase:'CONSUME',timingAtResponse:snapshotTiming()});return result;
   }catch(cause){
