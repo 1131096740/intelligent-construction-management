@@ -1,4 +1,5 @@
 import PizZip from "pizzip";
+import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import { createHash } from "node:crypto";
 import { removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
 import { prepareLayoutSourceMapping, readLayoutSourcePositions, type LayoutFieldBinding } from "../contract-template/layout-field-mapping";
@@ -6,6 +7,19 @@ import { BUILT_IN_PARTY_PLACEMENT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION
   finalizeContractBodyLineBoxScope, prepareContractBodyTableMargins, renderContractBody } from "./contract-body-document";
 import { renderLayoutPreviewDocx } from "./layout-preview-docx";
 import { completeContractDocxFontTableType } from "./contract-docx-package-metadata";
+
+function anonymizeQualificationMetadata(bytes:Buffer):Buffer {
+  const zip=new PizZip(bytes);
+  if(!zip.file("docProps/core.xml")||!zip.file("docProps/app.xml")||Object.values(zip.files).some(entry=>!entry.dir&&entry.name.startsWith("docProps/")&&!['docProps/core.xml','docProps/app.xml'].includes(entry.name))) throw new Error("资格样张元数据无法核对");
+  zip.file("docProps/core.xml",'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>虚构资格样张</dc:title><dc:creator>虚构资格样张</dc:creator><cp:lastModifiedBy>虚构资格样张</cp:lastModifiedBy></cp:coreProperties>');
+  zip.file("docProps/app.xml",'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>资格样张</Application></Properties>');
+  const settingsPart=zip.file("word/settings.xml");
+  if(!settingsPart||Object.values(zip.files).some(entry=>!entry.dir&&entry.name.startsWith("word/")&&entry.name.endsWith(".xml")&&/DOCVARIABLE/iu.test(entry.asText()))) throw new Error("资格样张隐藏变量无法核对");
+  const settings=new DOMParser({onError:()=>{throw new Error("资格样张设置无法核对");}}).parseFromString(settingsPart.asText(),"application/xml");
+  for(const node of Array.from(settings.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","docVars"))) node.parentNode?.removeChild(node);
+  zip.file("word/settings.xml",new XMLSerializer().serializeToString(settings));
+  return zip.generate({type:"nodebuffer"});
+}
 
 /** Fixed fictional data only. Uses the production mapping -> renderer -> table
  * margins -> font package -> final scope sequence, without services or a DB. */
@@ -41,11 +55,11 @@ function createMaterialSample(source: Buffer) {
     "bill.materials":[{itemName:"资格样张材料",specification:"虚构规格",unit:"件",quantity:"1",taxInclusiveUnitPrice:"113.0000",taxInclusiveAmount:"113.0000",taxRatePercent:"0"}]
   };
   const rendered=renderContractBody(source,mapped,{values},["contract.name","contract.temporaryCode","document.watermark"],
-    "22222222-2222-4222-8222-222222222222",undefined,{tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION});
+    "22222222-2222-4222-8222-222222222222",undefined,{tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION,partyDetailsVersion:BUILT_IN_PARTY_PLACEMENT_VERSION});
   if(!rendered.lineBoxScope) throw new Error("资格样张纸面范围缺失");
-  const docx=completeContractDocxFontTableType(prepareContractBodyTableMargins(rendered.docx,CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx;
+  const docx=anonymizeQualificationMetadata(completeContractDocxFontTableType(prepareContractBodyTableMargins(rendered.docx,CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx);
   const scope=finalizeContractBodyLineBoxScope(docx,rendered.lineBoxScope);
-  const officeDocx=renderLayoutPreviewDocx(mapped,{values},["contract.name","contract.temporaryCode","document.watermark"]);
+  const officeDocx=anonymizeQualificationMetadata(removeMechanicalPartyDetailsFromLegacyDocx(source,renderLayoutPreviewDocx(mapped,{values},["contract.name","contract.temporaryCode","document.watermark"])));
   return {docx,officeDocx,scope,expectations:{actualPdfQualification:"NOT_EXECUTED",minimumPages:1,maximumPages:100,
     requiredDrawnText:["隔离工具资格材料合同","虚构甲方公司","虚构乙方公司","壹佰壹拾叁元整","资格样张材料","买方","卖方"],
     mainBodyLinePoints:25,bodyFont:"仿宋_GB2312",bodyFontSizePoints:14,
@@ -82,8 +96,8 @@ function createMechanicalSample(source: Buffer) {
   const rendered=renderContractBody(source,mapped,{values},required,
     "22222222-2222-4222-8222-222222222222",undefined,{tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,partyDetailsVersion:BUILT_IN_PARTY_PLACEMENT_VERSION});
   if(rendered.lineBoxScope) throw new Error("机械资格样张不能使用材料行盒范围");
-  const docx=completeContractDocxFontTableType(prepareContractBodyTableMargins(rendered.docx,CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx;
-  const officeDocx=removeMechanicalPartyDetailsFromLegacyDocx(source,renderLayoutPreviewDocx(mapped,{values},required));
+  const docx=anonymizeQualificationMetadata(completeContractDocxFontTableType(prepareContractBodyTableMargins(rendered.docx,CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx);
+  const officeDocx=anonymizeQualificationMetadata(removeMechanicalPartyDetailsFromLegacyDocx(source,renderLayoutPreviewDocx(mapped,{values},required)));
   return {docx,officeDocx,scope:null,expectations:{actualPdfQualification:"NOT_EXECUTED",minimumPages:1,maximumPages:100,
     requiredDrawnText:["隔离工具资格机械合同","虚构甲方公司","虚构乙方公司","资格样张设备","甲方","乙方"],
     mechanicalRoleHeading:"第一条  租赁机械设备名称、规格型号、数量及金额",roleFont:"黑体",roleFontSizePoints:14,

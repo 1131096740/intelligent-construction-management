@@ -3,7 +3,7 @@ import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/cont
 import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
 import { readSelectableLayoutSource } from "../contract-template/layout-selection-policy";
 import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
-import { assertMechanicalPartyPlacementPlan, BUILT_IN_PARTY_PLACEMENT_VERSION, REVIEWED_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
+import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, BUILT_IN_PARTY_PLACEMENT_VERSION, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
 import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
 import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
 import {
@@ -151,7 +151,7 @@ export class ContractDocumentService {
     const rendered = renderContractBody(source.buffer, mapped, { values: this.renderValues(contract, version, parties,
       bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION) }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
         ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}),
-        ...(createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_MECHANICAL_SOURCE_SHA256 ? {partyDetailsVersion: BUILT_IN_PARTY_PLACEMENT_VERSION,partyDetailsConflictPreview:true} : {}) });
+        ...(builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) ? {partyDetailsVersion: BUILT_IN_PARTY_PLACEMENT_VERSION,partyDetailsConflictPreview:true} : {}) });
     const savePoints = checkpoints.flatMap(checkpoint => {
       const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
       return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
@@ -284,7 +284,7 @@ export class ContractDocumentService {
 
         const useBodyRenderer = version.numericProtocolVersion === 2 || draftData.documentBody !== undefined;
         const bodySource = useBodyRenderer ? selectedSource : undefined;
-        const partyDetailsVersion = createHash("sha256").update(selectedSource.buffer).digest("hex") === REVIEWED_MECHANICAL_SOURCE_SHA256 ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
+        const partyDetailsVersion = builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex")) ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
         const engineVersion = useBodyRenderer ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION;
         const renderSemanticVersion = this.moneyRenderSemanticVersion(version);
         const tableLayoutVersion = useBodyRenderer ? CONTRACT_BODY_TABLE_LAYOUT_VERSION : undefined;
@@ -374,7 +374,7 @@ export class ContractDocumentService {
             ...(pageNumberVersion ? { pageNumberVersion } : {}),
             ...(partyDetailsVersion ? { partyDetailsVersion } : {}),
             ...(draftData.documentBody === undefined ? {} : { editPlan: normalizeContractBodyPlan(draftData.documentBody, source.buffer, mappedLayoutSourceForVersion(source.buffer, layout), layout.id, reviewedLaborTaxBindingVersion) }) };
-          if(partyDetailsVersion&&bodyDocument.editPlan) assertMechanicalPartyPlacementPlan(source.buffer,mappedLayoutSourceForVersion(source.buffer,layout),layout.id,bodyDocument.editPlan);
+          if(partyDetailsVersion&&bodyDocument.editPlan) assertBuiltInPartyPlacementPlan(source.buffer,mappedLayoutSourceForVersion(source.buffer,layout),layout.id,bodyDocument.editPlan);
         }
         const inputSnapshot: ContractDocumentInputSnapshot = {
           documentContentRevision: documentContent.revision,

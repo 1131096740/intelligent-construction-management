@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DOMParser } from "@xmldom/xmldom";
+import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import PizZip from "pizzip";
-import { assertMechanicalPartyPlacementPlan, renderContractBody } from "./contract-body-document";
+import { assertBuiltInPartyPlacementPlan, renderContractBody } from "./contract-body-document";
 import { createOfficialQualificationSample } from "./task12-official-qualification-sample";
 import { renderContractDocx } from "./contract-docx-renderer";
 import { removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
@@ -20,13 +20,13 @@ describe("mechanical contract party placement",()=>{
     const positions=readLayoutSourcePositions(source);
     const target=positions.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===94)!;
     const edit={protocolVersion:1,layoutTemplateVersionId:"test-layout",sourceSha256:positions.sourceSha256,edits:[{positionId:target.positionId,text:"原有需用户核对的内容"}]};
-    expect(()=>assertMechanicalPartyPlacementPlan(source,source,"test-layout",edit)).toThrow();
+    expect(()=>assertBuiltInPartyPlacementPlan(source,source,"test-layout",edit)).toThrow();
     expect(()=>renderContractBody(source,source,{values},[],"test-layout",edit,{partyDetailsVersion:"built-in-party-placement-v1"})).toThrow();
     const view=renderContractBody(source,source,{values},[],"test-layout",edit,{partyDetailsVersion:"built-in-party-placement-v1",partyDetailsConflictPreview:true} as never);
     expect(view.partyDetailsConflict).toBe(true);
     expect(view.blocks.some(block=>block.text.includes("原有需用户核对的内容"))).toBe(true);
     const resolved={...edit,edits:[],deletedPositionIds:[target.positionId]};
-    expect(()=>assertMechanicalPartyPlacementPlan(source,source,"test-layout",resolved)).not.toThrow();
+    expect(()=>assertBuiltInPartyPlacementPlan(source,source,"test-layout",resolved)).not.toThrow();
     const generated=renderContractBody(source,source,{values},[],"test-layout",resolved,{partyDetailsVersion:"built-in-party-placement-v1"});
     expect(generated.blocks.some(block=>block.text.includes("原有需用户核对的内容"))).toBe(false);
   });
@@ -36,7 +36,7 @@ describe("mechanical contract party placement",()=>{
     const mapped=zip.generate({type:"nodebuffer"}),positions=readLayoutSourcePositions(source);
     const target=positions.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===28)!;
     const deleted={protocolVersion:1,layoutTemplateVersionId:"test-layout",sourceSha256:positions.sourceSha256,edits:[],deletedPositionIds:[target.positionId]};
-    expect(()=>assertMechanicalPartyPlacementPlan(source,mapped,"test-layout",deleted)).toThrow();
+    expect(()=>assertBuiltInPartyPlacementPlan(source,mapped,"test-layout",deleted)).toThrow();
     const preview=renderContractBody(source,mapped,{values},[],"test-layout",deleted,{partyDetailsVersion:"built-in-party-placement-v1",partyDetailsConflictPreview:true});
     expect(preview.partyDetailsRecovery?.roleIds).toEqual([target.positionId]);
     expect(preview.partyDetailsRecovery?.groups.flat()).toContain(target.positionId);
@@ -80,4 +80,45 @@ describe("mechanical contract party placement",()=>{
     expect(rows.filter(row=>row.includes("虚构乙方公司"))).toHaveLength(2);
     expect(()=>removeMechanicalPartyDetailsFromLegacyDocx(Buffer.from("unknown"),rendered)).toThrow();
   });
+});
+
+describe("other built-in contract party placement",()=>{
+  it("requires recovery of a deleted material body role before generation",()=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx"));
+    const zip=new PizZip(input),xml=zip.file("word/document.xml")!.asText();
+    zip.file("word/document.xml",xml.replace(/\{甲方名称\}/gu,"原甲方名称"));
+    const mapped=zip.generate({type:"nodebuffer"});
+    const positions=readLayoutSourcePositions(input);
+    const target=positions.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===28)!;
+    const plan={protocolVersion:1,layoutTemplateVersionId:"test-layout",sourceSha256:positions.sourceSha256,edits:[],deletedPositionIds:[target.positionId]};
+    expect(()=>assertBuiltInPartyPlacementPlan(input,mapped,"test-layout",plan)).toThrow();
+    const preview=renderContractBody(input,mapped,{values},[],"test-layout",plan,{partyDetailsVersion:"built-in-party-placement-v1",partyDetailsConflictPreview:true});
+    expect(preview.partyDetailsRecovery?.roleIds).toEqual([target.positionId]);
+    expect(preview.partyDetailsRecovery?.groups.flat()).toContain(target.positionId);
+  });
+  it("applies the material party rule to new legacy documents without altering the cover or signature names",()=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx"));
+    const rendered=renderContractDocx(input,{values},[]);
+    const rows=paragraphs(removeMechanicalPartyDetailsFromLegacyDocx(input,rendered));
+    expect(rows.filter(row=>row.includes("虚构甲方公司"))).toHaveLength(2);
+    expect(rows.filter(row=>row.includes("虚构乙方公司"))).toHaveLength(2);
+    const parse=(bytes:Buffer)=>new DOMParser().parseFromString(new PizZip(bytes).file("word/document.xml")!.asText(),"application/xml");
+    const original=parse(rendered),actual=parse(removeMechanicalPartyDetailsFromLegacyDocx(input,rendered));
+    for(const tag of ["w:drawing","w:pict","w:bookmarkStart","w:bookmarkEnd"]){
+      const serialize=(doc:typeof original)=>Array.from(doc.getElementsByTagName(tag)).map(node=>new XMLSerializer().serializeToString(node));
+      expect(serialize(actual)).toEqual(serialize(original));
+    }
+  });
+  it.each([
+    ["material-purchase-real-v1.docx","买方","卖方"]
+  ])("keeps %s role labels while limiting names to the cover and final signature area",(name,firstRole,secondRole)=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates",name));
+    const {docx}=renderContractBody(input,input,{values},[],"test-layout",undefined,{partyDetailsVersion:"built-in-party-placement-v1"});
+    const rows=paragraphs(docx);
+    expect(rows.filter(row=>row.includes("虚构甲方公司"))).toHaveLength(2);
+    expect(rows.filter(row=>row.includes("虚构乙方公司"))).toHaveLength(2);
+    expect(rows.some(row=>row.includes(firstRole)&&!row.includes("虚构甲方公司"))).toBe(true);
+    expect(rows.some(row=>row.includes(secondRole)&&!row.includes("虚构乙方公司"))).toBe(true);
+  });
+
 });
