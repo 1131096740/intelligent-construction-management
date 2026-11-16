@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 工作台诊断局部修订
+
+准确 `a1e09112` 独占运行在首次生成轮询的工作台 GET 返回 500 后停止，业务结果 UNKNOWN；运行器自报清理完成，独立检查 PG 进程、监听及 pidfile 缺席，均不证明业务终态。[原回执](/private/tmp/jg-native-contract-c18a1-iyyoMN/receipt.json) SHA `2acbf64b9e27528bf89de2f26f1aff64fe05294b0d26373509c66ed02d4eb78d`，[PG 检查](/private/tmp/jg-con18-a1e0-runtime-X04Pzn/cleanup-independent.json) SHA `164a9c9dd9d2d50867248db61c24343fc80d9d593b1fa0776e0c315be36e5dfb`。38 次 exchange 的[独审](/private/tmp/jg-con18-a1-exchange-review-cs8y79t4/receipt.json) SHA `f2c2cf5a80eb9d3209f15aebc1ae5244a9dd2d12d4af98d7df4f8c9347dc416e`：该 case 尚未发提交、撤回或重提请求。
+
+未来工作台诊断候选 `7d76653c` 经独审合入本地 `1bd5b26f`，准确补丁 SHA `e7872b9d77796410c5dfb56f25abcd4228ab4d0c7fc41aa6598064cc55a59fa5`。入队后 actor0 的所有工作台请求均有诊断开销，可能影响时限；诊断只用于未来运行，不能补写原轮。Node HTTP、应用/once 模型 243/243、本地 Nest/AUTH/心跳 15/15、API build/typecheck/lint 通过；未执行真实资源，新 SHA 须重新资格，不代表 CON-18 或 #394 验收通过。
+
 ## 2026-11-17 CON-18 心跳诊断局部修订
 
 `34960288` 原轮的 36 次 HTTP exchange 经独立计数和代码路径审查，少于第二轮心跳之前至少 50 次的要求，case 未发提交、撤回或重提请求；心跳本身的副作用及应用清理仍为 UNKNOWN。[独审回执](/private/tmp/jg-con18-3496-exchange-review-3y1ss2pc/receipt.json) SHA `daac161469bafc09d5d15168e6a195a7ef7b8e2e5e98113c07d73cf8c2dee3c1`；[原回执](/private/tmp/jg-native-contract-c18r3496-QcZ8UV/receipt.json) SHA `bb65bd83f97ad55c5c118d8f58119afbf6f86d314af4ae72b614cc82bf155cfd`。
