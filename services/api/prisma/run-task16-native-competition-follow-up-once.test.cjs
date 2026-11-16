@@ -364,5 +364,7 @@ test('cash runtime client alone projects bounded query metadata without changing
  const query='SELECT "public"."ContractPartySnapshot"."businessPartyVersionId", "public"."ContractPartySnapshot"."snapshot" FROM "public"."ContractPartySnapshot" WHERE ("public"."ContractPartySnapshot"."contractVersionId" = $1 AND "public"."ContractPartySnapshot"."roleKey" = $2) ORDER BY "public"."ContractPartySnapshot"."displayOrder" ASC LIMIT $3 OFFSET $4';
  async function rejected(){clients[1].handler({query,get params(){params++;throw Error('PRIVATE');}});throw original;}
  await assert.rejects(rejected(),e=>e===original);assert.equal(params,0);assert.equal(receipt.cashPartyQueries.events[0].unknownShape,false);
+ clients[1].handler({query:'SELECT 1 FROM "ProjectCloseAggregate" WHERE "projectId" = $1 FOR UPDATE',get params(){params++;throw Error('PRIVATE');}});
+ assert.equal(receipt.cashCloseQueries.events[0].unknownShape,false);assert.equal(receipt.cashCloseQueries.events[0].operation,'SELECT');assert.equal(params,0);
  assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE|SELECT |params/u);
 });
