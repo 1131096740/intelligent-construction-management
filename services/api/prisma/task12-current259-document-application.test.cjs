@@ -79,7 +79,11 @@ function model(failure){
   './task12-current259-document-login.cjs':{readNativeTask12DocumentLoginProjection(value){assert.equal(value,nativeProof);return {source:{candidateSha:'a'.repeat(40),profile:{profile:'TASK12_ARCHIVE261_SOURCE_V1'}}};},takeCurrent259GeneratedDocumentApplicationBridge(candidate){
    assert.equal(candidate,bridge);assert.equal(claimed,false);claimed=true;
   }},
-  './task16-current259-client-loader.cjs':{inspectCurrent261OwnedNativeEquipmentProviders(value,module,live){
+  './task16-current259-client-loader.cjs':{inspectCurrent261OwnedNativeEquipmentPublicGuard(value,module,live){
+    const pairs=imports['./task16-current259-client-loader.cjs'].inspectCurrent261OwnedNativeEquipmentProviders(value,module,live);
+    if(pairs===undefined||!nativeWarm.has(token.JwtTokenService))return undefined;
+    const jwtService=objects.get(token.JwtTokenService);trace.push('native-public-guard-batch');return Object.freeze({providers:pairs,server,jwtService,verifyAccessToken:jwtService.verifyAccessToken});
+   },inspectCurrent261OwnedNativeEquipmentProviders(value,module,live){
     assert.equal(value,app);assert.equal(module,testing);assert.equal(live,server);assert.equal(live.listening,true);const required=['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController'].map(key=>token[key]).concat([authorityToken]);if(!required.every(key=>nativeWarm.has(key))){trace.push('native-batch-unwarmed-original');return undefined;}trace.push('native-provider-batch');
     return Object.freeze(['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController'].map(key=>Object.freeze([token[key],get(token[key])])).concat([Object.freeze([authorityToken,get(authorityToken)])]));
    },takeCurrent261NativeOrdinaryClient(actualLoader,actualLoaded,client){assert.equal(actualLoader,loader);assert.equal(actualLoaded,loaded);assert.equal(client,ordinary);return true;},

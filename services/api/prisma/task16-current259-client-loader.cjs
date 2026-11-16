@@ -20,10 +20,10 @@ function takeCurrent261NativeOrdinaryClient(loader,loaded,client){
  entry.verify();entry.used=true;return true;
 }
 
-// Fixed sixteen-token native equipment lookup witness. This is not a cache of
+// Fixed seventeen-token native equipment lookup witness (sixteen providers plus JWT). This is not a cache of
 // validation results: every batch re-reads every mutable edge before and after.
 function nativeEquipmentLookupRows(target,container,tokens,pins){
- const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',rows=[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];let warmed=0;
+ const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',rows=[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];let warmed=0;
  const descriptor=pins.descriptor,prototype=pins.prototype,apply=pins.apply,isProxy=pins.isProxy;
  const data=(object,key,edges)=>{
   need(object&&(typeof object==='object'||typeof object==='function')&&!isProxy(object),code);
@@ -38,7 +38,7 @@ function nativeEquipmentLookupRows(target,container,tokens,pins){
   absent(pins.objectPrototype,'each');absent(pins.objectPrototype,'moduleId');
   for(let i=0;i<pins.edges.length;i++){const edge=pins.edges[i];same(edge[0],edge[1],edge[2]);}
   need(prototype(target)===pins.appPrototype&&prototype(pins.appPrototype)===pins.contextPrototype&&prototype(pins.contextPrototype)===pins.resolverPrototype,code);
-  const absentKeys=['get','find','instanceLinksHost','getHttpAdapter'];for(let i=0;i<absentKeys.length;i++)absent(target,absentKeys[i]);
+  const absentKeys=['get','find','instanceLinksHost','getHttpAdapter','getHttpServer'];for(let i=0;i<absentKeys.length;i++)absent(target,absentKeys[i]);
   absent(pins.appPrototype,'get');absent(pins.appPrototype,'find');absent(pins.appPrototype,'instanceLinksHost');absent(pins.contextPrototype,'find');
  };
  const currentWithInstance=(token,instance,edges,prior)=>{
@@ -73,9 +73,9 @@ function nativeEquipmentLookupRows(target,container,tokens,pins){
  return pins.freeze({warm(token,instance){
   canonical();const i=index(token),prior=rows[i];if(prior){need(prior.instance===instance,code);verify(token,prior);}else{rows[i]=read(token,instance);warmed++;}
  },assert(){
-  canonical();need(data(target,'isInitialized')===true&&tokens.length===16&&warmed===16,code);
+  canonical();need(data(target,'isInitialized')===true&&tokens.length===17&&warmed===17,code);
   for(let i=0;i<tokens.length;i++){need(rows[i],code);verify(tokens[i],rows[i]);}
- },ready(){return warmed===16;},expected(token){const row=rows[index(token)];need(row,code);return row.instance;}});
+ },ready(){return warmed===17;},expected(token){const row=rows[index(token)];need(row,code);return row.instance;}});
 }
 
 function claimCurrent261OfficialDocumentModules(view){
@@ -90,6 +90,11 @@ function inspectCurrent261OwnedNativeEquipmentProviders(value,module,server){
  const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',d=nativeProviderDescriptor(nativeProviderWeakPrototype,'get');
  need(arguments.length===3&&d&&nativeProviderDescriptor(d,'value')?.value===nativeProviderWeakGet&&d.writable===nativeProviderWeakDescriptor.writable&&d.enumerable===nativeProviderWeakDescriptor.enumerable&&d.configurable===nativeProviderWeakDescriptor.configurable,code);
  const record=nativeProviderApply(nativeProviderWeakGet,ownedApps,[value]);need(record&&typeof record.inspectNativeEquipmentProviders==='function',code);return record.inspectNativeEquipmentProviders(module,server);
+}
+function inspectCurrent261OwnedNativeEquipmentPublicGuard(value,module,server){
+ const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',d=nativeProviderDescriptor(nativeProviderWeakPrototype,'get');
+ need(arguments.length===3&&d&&nativeProviderDescriptor(d,'value')?.value===nativeProviderWeakGet&&d.writable===nativeProviderWeakDescriptor.writable&&d.enumerable===nativeProviderWeakDescriptor.enumerable&&d.configurable===nativeProviderWeakDescriptor.configurable,code);
+ const record=nativeProviderApply(nativeProviderWeakGet,ownedApps,[value]);need(record&&typeof record.inspectNativeEquipmentProviders==='function',code);return record.inspectNativeEquipmentProviders(module,server,true);
 }
 function current259OwnedApplicationMethod(value,key){return ownedApps.get(value)?.method(key);}
 function current259OwnedApplicationView(value){return ownedApps.get(value)?.view;}
@@ -593,7 +598,7 @@ function loadCurrent259Client(handle){
   need(pin(scope,'DEFAULT')===0&&pin(scope,'TRANSIENT')===1&&pin(scope,'REQUEST')===2,code);
   const staticContext=pin(namespaces[3],'STATIC_CONTEXT');need(staticContext&&!types.isProxy(staticContext)&&pin(staticContext,'id')===1,code);
   const appPrototype=framework.NestApplication.prototype,contextPrototype=framework.NestApplicationContext.prototype,resolverPrototype=framework.AbstractInstanceResolver.prototype,linksPrototype=framework.InstanceLinksHost.prototype,wrapperPrototype=framework.InstanceWrapper.prototype;
-  for(const [object,key]of [[appPrototype,'getHttpAdapter'],[contextPrototype,'get'],[resolverPrototype,'find'],[contextPrototype,'instanceLinksHost'],[linksPrototype,'get'],[wrapperPrototype,'instance'],[wrapperPrototype,'getInstanceByContextId'],[Map.prototype,'get'],[WeakMap.prototype,'get'],[Array,'isArray'],[types,'isProxy'],[Object,'getOwnPropertyDescriptor'],[Object,'getPrototypeOf'],[Reflect,'apply'],[globalThis,'Map'],[globalThis,'WeakMap'],[globalThis,'Array']])pin(object,key);
+  for(const [object,key]of [[appPrototype,'getHttpAdapter'],[appPrototype,'getHttpServer'],[contextPrototype,'get'],[resolverPrototype,'find'],[contextPrototype,'instanceLinksHost'],[linksPrototype,'get'],[wrapperPrototype,'instance'],[wrapperPrototype,'getInstanceByContextId'],[Map.prototype,'get'],[WeakMap.prototype,'get'],[Array,'isArray'],[types,'isProxy'],[Object,'getOwnPropertyDescriptor'],[Object,'getPrototypeOf'],[Reflect,'apply'],[globalThis,'Map'],[globalThis,'WeakMap'],[globalThis,'Array']])pin(object,key);
   nativeLookupPins=Object.freeze({Map,WeakMap,Array,objectPrototype:Object.prototype,appPrototype,contextPrototype,resolverPrototype,linksPrototype,wrapperPrototype,staticContext,mapGet:Map.prototype.get,weakGet:WeakMap.prototype.get,descriptor:nativeProviderDescriptor,prototype:Object.getPrototypeOf,apply:nativeProviderApply,isProxy:types.isProxy,hasOwn:nativeProviderHasOwn,define:nativeProviderDefine,freeze:nativeProviderFreeze,arrayIsArray:Array.isArray,edges:Object.freeze(edges)});
   collect();return nativeLookupPins;
  }
@@ -653,17 +658,19 @@ function loadCurrent259Client(handle){
      collect();need(target&&adapter&&types.isProxy(proxy)&&globalThis.Proxy===nativeProxy,'CURRENT259_FRAMEWORK_PROXY');
      const originalMethods=new Map(APP_METHODS.map(key=>[key,dataMethod(target,key)]));
      let closed=false;const methods=new Map();
-     const nativeTokens=nativePins?Object.freeze(['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController','CONTRACT_VERSION_FILE_READ_AUTHORITY'].map(key=>document.exports[key])):undefined;
+     const nativeTokens=nativePins?Object.freeze(['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController','CONTRACT_VERSION_FILE_READ_AUTHORITY','JwtTokenService'].map(key=>document.exports[key])):undefined;
      const nativeRows=nativePins?nativeEquipmentLookupRows(target,container,nativeTokens,nativePins):undefined;
+     const nativeJwtVerify=nativePins?dataMethod(document.exports.JwtTokenService.prototype,'verifyAccessToken'):undefined;
+     const nativeJwtPins=nativePins?nativeProviderFreeze({prototype:document.exports.JwtTokenService.prototype,method:nativeProviderFreeze({...nativeProviderDescriptor(document.exports.JwtTokenService.prototype,'verifyAccessToken')}),constructor:nativeProviderFreeze({...nativeProviderDescriptor(document.exports.JwtTokenService,'prototype')})}):undefined;
      function verifyTarget(key){
       const fn=originalMethods.get(key),getAdapter=originalMethods.get('getHttpAdapter');
       need(!closed&&dataMethod(target,key)===fn&&dataMethod(target,'getHttpAdapter')===getAdapter&&
        getAdapter.call(target)===adapter,'CURRENT259_FRAMEWORK_CHANGED');
       return fn;
      }
-     const record={inspectNativeEquipmentProviders(module,expectedServer){
+     const record={inspectNativeEquipmentProviders(module,expectedServer,publicGuard=false){
       const code='CURRENT261_NATIVE_PROVIDER_LOOKUP';
-      need(!closed&&nativeRows&&nativeOrdinary&&module===testing&&contractMode===document,code);
+      need((arguments.length===2||arguments.length===3&&publicGuard===true)&&!closed&&nativeRows&&nativeOrdinary&&module===testing&&contractMode===document,code);
       // Validate every finite mutable lookup edge before invoking any original
       // getter or the existing full gate. No lazy registration at this entry.
       const issued=nativeProviderApply(nativeProviderWeakGet,nativeTask12OrdinaryClients,[nativeOrdinary]);need(issued&&issued.used&&issued.loader===result&&issued.loaded===lifeDocument?.exports,code);
@@ -671,14 +678,32 @@ function loadCurrent259Client(handle){
       nativeRows.assert();need(nativeRows.expected(values.PrismaService)===nativeOrdinary,code);
       const server=Object.getOwnPropertyDescriptor(target,'httpServer'),adapterData=Object.getOwnPropertyDescriptor(target,'httpAdapter');
       need(server&&nativeProviderHasOwn(server,'value')&&server.value===expectedServer&&adapterData&&nativeProviderHasOwn(adapterData,'value')&&adapterData.value===adapter,code);
+      const publicEdges=()=>{
+       const server=Object.getOwnPropertyDescriptor(target,'httpServer'),adapterData=Object.getOwnPropertyDescriptor(target,'httpAdapter');
+       need(server&&nativeProviderHasOwn(server,'value')&&server.value===expectedServer&&adapterData&&nativeProviderHasOwn(adapterData,'value')&&adapterData.value===adapter&&
+        dataMethod(target,'getHttpServer')===originalMethods.get('getHttpServer')&&dataMethod(target,'getHttpAdapter')===originalMethods.get('getHttpAdapter'),code);
+       const jwt=nativeRows.expected(nativeTokens[16]);
+       need(jwt&&!types.isProxy(jwt)&&Object.getPrototypeOf(jwt)===nativeJwtPins.prototype,code);
+       const same=(object,key,expected)=>{const current=nativeProviderDescriptor(object,key),fields=['value','get','set','writable','enumerable','configurable'];need(current,code);for(let i=0;i<fields.length;i++)need(nativeProviderDescriptor(current,fields[i])?.value===nativeProviderDescriptor(expected,fields[i])?.value,code);};
+       same(nativeTokens[16],'prototype',nativeJwtPins.constructor);same(nativeJwtPins.prototype,'verifyAccessToken',nativeJwtPins.method);
+       need(nativeProviderDescriptor(jwt,'verifyAccessToken')===undefined,code);
+       need(jwt&&!types.isProxy(jwt)&&Object.getPrototypeOf(jwt)===nativeJwtPins.prototype&&dataMethod(nativeTokens[16].prototype,'verifyAccessToken')===nativeJwtVerify&&dataMethod(jwt,'verifyAccessToken')===nativeJwtVerify,code);
+       return jwt;
+      };
+      if(publicGuard)publicEdges();
       check();let first,value;
       try{value=guardedOperation(()=>{
        nativeRows.assert();const pairs=[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];
        const read=dataMethod(target,'get');need(read===originalMethods.get('get')&&dataMethod(target,'getHttpAdapter')===originalMethods.get('getHttpAdapter'),code);
-       for(let i=0;i<nativeTokens.length;i++){const token=nativeTokens[i],instance=nativeProviderApply(read,target,[token]);need(instance===nativeRows.expected(token),code);pairs[i]=nativeProviderFreeze([token,instance]);}
+       for(let i=0;i<16;i++){const token=nativeTokens[i],instance=nativeProviderApply(read,target,[token]);need(instance===nativeRows.expected(token),code);pairs[i]=nativeProviderFreeze([token,instance]);}
+       if(publicGuard){
+        const jwt=publicEdges(),server=nativeProviderApply(originalMethods.get('getHttpServer'),target,[]),jwtService=nativeProviderApply(read,target,[nativeTokens[16]]);
+        need(server===expectedServer&&jwtService===jwt,code);nativeRows.assert();publicEdges();
+        return nativeProviderFreeze({providers:nativeProviderFreeze(pairs),server,jwtService,verifyAccessToken:nativeJwtVerify});
+       }
        nativeRows.assert();return nativeProviderFreeze(pairs);
       });}catch(error){first=error;}
-      try{collect();}catch(error){if(!first)first=error;}
+      try{collect();if(publicGuard){nativeRows.assert();publicEdges();}}catch(error){if(!first)first=error;}
       if(first)throw first;return value;
      },inspectDocumentAuthProviders(module,expectedServer){
       need(document&&contractMode===document&&module===testing,'CURRENT259_FRAMEWORK_CHANGED');
@@ -797,5 +822,5 @@ function loadCurrent259Client(handle){
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;
 }
-module.exports=Object.freeze({inspectCurrent261OwnedNativeEquipmentProviders,takeCurrent261NativeOrdinaryClient,loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
+module.exports=Object.freeze({inspectCurrent261OwnedNativeEquipmentProviders,inspectCurrent261OwnedNativeEquipmentPublicGuard,takeCurrent261NativeOrdinaryClient,loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
  inspectCurrent259OwnedDocumentAuthProviders,inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});
