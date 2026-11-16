@@ -137,19 +137,23 @@ function proofSql(plan,legacy,baseline,ledger){
  let cashProofs=[];
  if(cashRequested){
   need(cash.CASH_WRITER_FUNCTIONS.every(signature=>signatures.has(signature.toLowerCase())));
-  const name='20260831120000_pol13d_fund_execution_v7',expected='a166b7105343f6a19b629de1ba64073a167106731e114eb273db2a848dc22378';
-  const source=readFileSync(path.join(__dirname,'migrations',name,'migration.sql'),'utf8');
-  need(hash(source)===expected&&ledger.find(row=>row.name===name)?.sha256===expected);
+  const definitions=[
+   {name:'20260831120000_pol13d_fund_execution_v7',sourceSha:'a166b7105343f6a19b629de1ba64073a167106731e114eb273db2a848dc22378',marker:'CREATE OR REPLACE FUNCTION "appendOperatingFactThroughService"(',bodySha:'3e5dd3e95bdb3d54242e72d2a5d77c1a92adac107d306604356530accf268051'},
+   {name:'20261019120000_operating_impact_created_at_return',sourceSha:'fd8fe068e6301b39bd004dda88092d9d1279682cd45794652182e1b778a22ff7',marker:'CREATE FUNCTION public."appendOperatingImpactThroughService"(',bodySha:'242fde7700f1e9d612a79e256e1897133c54fb606cc6a51bbc541402e6291cb6'}
+  ];
   cashProofs=cash.CASH_WRITER_FUNCTIONS.map((signature,index)=>{
-   const label=index?'Impact':'Fact',marker=`CREATE OR REPLACE FUNCTION "appendOperating${label}ThroughService"(`;
+   const {name,sourceSha,marker,bodySha}=definitions[index];
+   const source=readFileSync(path.join(__dirname,'migrations',name,'migration.sql'),'utf8');
+   need(hash(source)===sourceSha&&ledger.find(row=>row.name===name)?.sha256===sourceSha);
    const start=source.indexOf(marker);need(start>=0&&source.indexOf(marker,start+1)<0);
    const bodyStart=source.indexOf('AS $$',start)+5,bodyEnd=source.indexOf('$$',bodyStart);need(bodyStart>=5&&bodyEnd>bodyStart);
-   const body=source.slice(bodyStart,bodyEnd),bodySha256=index?'85b88d6caa787a8d8d713d056dece09de28b35c67d6814e913f09809151c395b':'3e5dd3e95bdb3d54242e72d2a5d77c1a92adac107d306604356530accf268051';
-   need(hash(body)===bodySha256);
+   const body=source.slice(bodyStart,bodyEnd);need(hash(body)===bodySha);
+   const label=index?'Impact':'Fact';
    const template=legacy.functionProofs.find(row=>row.signature.includes(`appendOperating${label}ThroughService`)&&row.signature.includes('PayloadV2'));
    need(template);const convert=value=>typeof value==='string'?value.replace('PayloadV2','Payload'):value;
    const iface={...template.interface,inputArgumentTypes:template.interface.inputArgumentTypes.map(convert),allArgumentTypes:template.interface.allArgumentTypes.map(convert)};
-   return {...template,signature,body,bodySha256,interface:iface};
+   if(index){iface.argumentNames=[...iface.argumentNames,'createdAt'];iface.allArgumentTypes=[...iface.allArgumentTypes,'pg_catalog.timestamp'];iface.argumentModes=[...iface.argumentModes,'t'];}
+   return {...template,signature,body,bodySha256:bodySha,...(index?{returnType:'record'}:{}),interface:iface};
   });
  }
  const proofs=[...legacy.functionProofs,lineageProof,...cashProofs].filter(row=>signatures.has(row.signature.toLowerCase()));

@@ -312,3 +312,16 @@ test('cash grants and physical readback are bound to its own source and profile'
  assert.throws(()=>renderCurrent259RuntimeAcl(witness,roles,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
  assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,roles,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
 });
+test('cash impact writer proof follows the later stored-watermark migration exactly',()=>{
+ const {PAYMENT261_CASH_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
+ const roles={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}],paymentProfile:PAYMENT261_CASH_RUNTIME_PROFILE};
+ const sql=renderCurrent259CompetitionRuntimeAcl(witness,roles,nonce).sql;
+ const proof=[...sql.matchAll(/jsonb_array_elements\('((?:[^']|'')+)'::jsonb\) proof/gu)].map(m=>JSON.parse(m[1].replaceAll("''","'"))[0]).find(p=>p.signature.includes('OperatingLedgerImpactWritePayload"'));
+ assert.ok(proof);assert.equal(proof.bodySha256,'242fde7700f1e9d612a79e256e1897133c54fb606cc6a51bbc541402e6291cb6');
+ assert.equal(proof.returnType,'record');assert.deepEqual(proof.interface.argumentNames,['p_payload','p_actor_user_id','p_secret','id','createdAt']);
+ assert.deepEqual(proof.interface.allArgumentTypes,['public."OperatingLedgerImpactWritePayload"','pg_catalog.text','pg_catalog.text','pg_catalog.text','pg_catalog.timestamp']);
+ assert.deepEqual(proof.interface.argumentModes,['i','i','i','t','t']);
+ assert.match(sql,/WRITER_FUNCTION_PROOF_14/u);
+});
