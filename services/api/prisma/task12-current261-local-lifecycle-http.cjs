@@ -143,6 +143,9 @@ function consumeFirstCause(cause){
  }
  return Object.freeze({family:'UNKNOWN',code:'UNKNOWN'});
 }
+function rememberCurrent261ApplicationHttpSetupFailure(cause){
+ if(!describeCurrent261LocalLifecycleHttpFailure(cause))remember(cause,{method:'UNKNOWN',routeTemplate:'UNKNOWN',phase:'APPLICATION_HTTP_SETUP',observationContext:'NO_HTTP_OBSERVATION',httpStatus:null,businessOutcome:'UNKNOWN',firstCause:consumeFirstCause(cause),timingAtConsumeFailure:Object.freeze({status:'UNKNOWN'})});
+}
 const secondary=(detail,cause)=>{detail.secondaryPhase='AFTER_CHECK';const code=own(cause,'code');detail.secondaryReason=['CURRENT259_LOADER_CHANGED','CURRENT261_LOCAL_LIFECYCLE_HTTP'].includes(code)?code:'UNCLASSIFIED';};
 function exchange(port,method,path,headers,wire,binary,observe){
  const signal=AbortSignal.timeout(15000);
@@ -316,4 +319,4 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  }
  finally{available=false;issued.delete(bridge);await Promise.allSettled([...active.values()].map(item=>item.done));tokens.clear();tickets.clear();}
 }
-module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp,withCurrent261FirstLoginHttp,assertCurrent261FirstLoginHttp,describeCurrent261LocalLifecycleHttpFailure});
+module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp,withCurrent261FirstLoginHttp,assertCurrent261FirstLoginHttp,describeCurrent261LocalLifecycleHttpFailure,rememberCurrent261ApplicationHttpSetupFailure});

@@ -486,6 +486,7 @@ test('missing observation diagnostic projects only exact guard codes and never e
   const f=model();let checks;
   await assert.rejects(f.api.withCurrent261LocalLifecycleHttp(f.config,f.server,f.verify,f.verifyToken,async()=>{checks=f.checks.length;throw first;}),cause=>cause===first);
   const detail=f.api.describeCurrent261LocalLifecycleHttpFailure({cause:first});assert.deepEqual(detail.firstCause,expected);assert.equal(detail.observationContext,'NO_HTTP_OBSERVATION');assert.equal(detail.httpStatus,null);assert.equal(detail.businessOutcome,'UNKNOWN');assert.equal(f.checks.length,checks);assert.equal(f.calls.length,0);assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|stack/u);
+  const wrapped={cause:first};f.api.rememberCurrent261ApplicationHttpSetupFailure(wrapped);assert.equal(f.api.describeCurrent261LocalLifecycleHttpFailure(wrapped),detail);
  }
  assert.equal(getters,0);
 });
