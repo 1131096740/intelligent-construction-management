@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture, seedRegisteredPgPublicCashFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext, RegisteredPgObserverDiagnostic } from "./registered-payment-postgres.fixture";
 import * as registeredCases from "./registered-payment-postgres.cases";
 import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
@@ -204,7 +204,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each([gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, "follow-up" as const])(
+  it.each([gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, "follow-up" as const, "public-cash" as const])(
     "retains the original login and opening protocol for %s after exactly two owner statements", async profile => {
       const f = fixture();
       const contender = fixture();
@@ -213,7 +213,8 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
         password: "synthetic-distinct-second-credential",
         proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: "http://127.0.0.1:15434/" } } };
       const followUp = profile === "follow-up";
-      const effectiveProfile = followUp ? competition261SeedProfile : profile;
+      const cash = profile === "public-cash";
+      const effectiveProfile = followUp || cash ? competition261SeedProfile : profile;
       const gap = profile === gap261SeedProfile;
       const tx = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ bound: true }]), $executeRawUnsafe: jest.fn().mockResolvedValue(0) };
       const transaction = jest.fn(async (run: (client: unknown) => Promise<void>) => run(tx));
@@ -223,6 +224,11 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
         routes.push(target.port + target.pathname);
         expect(init?.method).toBe("POST");
         const body = JSON.parse(String(init?.body));
+        if (body.scopeKey === "public_cash") {
+          expect(target.port).toBe("15434");
+          expect(body).toMatchObject({ balanceYuan: "100", sources: [{ amountYuan: "100", sourceStatus: "known", projectStatus: "project", projectId: plan.ids.project }] });
+          expect(body).not.toHaveProperty("companyEntityId");
+        }
         const response = new Response(JSON.stringify(target.pathname === "/auth/login"
           ? { tokens: { accessToken: target.port === "15433" ? "synthetic-primary" : "synthetic-contender" } }
           : { id: body.scopeKey, sources: body.sources.map((source: { projectId: string }, index: number) =>
@@ -236,9 +242,11 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
       const lane = { checkLight() {}, fetch: fetch as typeof globalThis.fetch, seedProfile: effectiveProfile };
       const result = gap
         ? await seedRegisteredPgAttributionGapFixture(f.context, plan, lane)
+        : cash ? await seedRegisteredPgPublicCashFixture(f.context, second, plan, lane, lane)
         : followUp ? await seedRegisteredPgCompetitionFollowUpFixture(f.context, second, plan, lane, lane) : await seedRegisteredPgCompetitionFixture(f.context, second, plan, lane, lane);
       const payload = JSON.parse(tx.$queryRawUnsafe.mock.calls[0]![1]);
       expect(payload.profile).toBe(effectiveProfile);
+      if (cash) expect(result).toMatchObject({cashRegistrationId:"public_cash",cashSourceId:"public_cash0"});
       if (followUp) {
         expect(result).toMatchObject({companyASourceId:`company:${plan.ids.companyA}0`});
         expect("followUpRequestKey" in result && result.followUpRequestKey).toMatch(/^[a-f0-9-]{36}$/u);
@@ -247,7 +255,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
       expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(1);
       expect(payload.passwordHash).not.toBe(f.context.password);
       expect(routes).toEqual(["15433/auth/login", "15433/fund-accounts/openings", "15433/fund-accounts/openings",
-        ...(!gap ? ["15434/auth/login"] : [])]);
+        ...(!gap ? ["15434/auth/login"] : []), ...(cash ? ["15434/fund-accounts/openings"] : [])]);
       if ("attributionGap" in result) expect(result.attributionGap.otherProjectId).toBe(payload.otherProjectId);
       if ("contender" in result) {
         expect(result.contender.actorId).toBe(payload.contender.actorId);
