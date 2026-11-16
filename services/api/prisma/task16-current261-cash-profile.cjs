@@ -31,6 +31,12 @@ function cashAccessPlan(plan){
    if(columns.some(column=>row.select.includes(column)))throw Error('TASK16_CASH_ACL');
    row.select=[...row.select,...columns].sort();
   }
+  if(role==='runtime'){
+   const aggregate=tables.find(row=>row.table==='ProjectCloseAggregate');
+   const inserts=['createdAt','projectId','revision','updatedAt'];
+   if(!aggregate||inserts.some(column=>aggregate.insert.includes(column)))throw Error('TASK16_CASH_ACL');
+   aggregate.insert=[...aggregate.insert,...inserts].sort();
+  }
   const functions=[...previous.functions];
   if(role==='runtime')for(const signature of CASH_WRITER_FUNCTIONS){if(functions.includes(signature))throw Error('TASK16_CASH_ACL');functions.push(signature);}
   result[role]={...previous,tables,functions};

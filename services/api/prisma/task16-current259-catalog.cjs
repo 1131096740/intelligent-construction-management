@@ -87,7 +87,7 @@ function material(source,paymentProfile){
   plan.runtime.tables.push({table:discovery.table,select:discovery.select,insert:[],update:[]});
   plan.runtime.tables.sort((a,b)=>a.table<b.table?-1:a.table>b.table?1:0);
   if(paymentProfile===PAYMENT261_CASH_RUNTIME_PROFILE)plan=require('./task16-current261-cash-profile.cjs').cashAccessPlan(plan);
-  effectiveAccessBinding={paymentProfile,insertAdditionCount:required.length,accessPlanSha256:hash(JSON.stringify({runtime:plan.runtime,observer:plan.observer}))};
+  effectiveAccessBinding={paymentProfile,insertAdditionCount:required.length+(paymentProfile===PAYMENT261_CASH_RUNTIME_PROFILE?4:0),accessPlanSha256:hash(JSON.stringify({runtime:plan.runtime,observer:plan.observer}))};
  }
  if(paymentProfile===PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE){
   const columns=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
