@@ -525,6 +525,14 @@
     ]
   ],
   "native261ReadDelta": {
+    "ContractArchiveEvidenceFile": [
+      "contentSha256",
+      "createdAt",
+      "displayOrder",
+      "id",
+      "mimeType",
+      "sizeBytes"
+    ],
     "ProjectRosterMember": [
       "id",
       "projectId",
