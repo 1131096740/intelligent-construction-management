@@ -48,6 +48,8 @@
 
 现金专用入口 v3 代码候选 `584e1542` 经独审后合入 `8fde2600`，固定独立用途和 ACL/B7，串联合成文件、同轮随机密钥、来源重放、付款、重放及独立观察；源码层修复秘密清理次因和超时回执。独立合成树 API 模型 154/154、Node 联合 194/194 与 build 通过，作者候选 typecheck/lint 通过；尚无真实隔离 PG、物理权限、业务核账或资源清理证据。上段为此前检查点，不代表 v3 尚未接线。
 
+后继 `b746414f` 修正现金 impact writer 为后续迁移的实际函数体及返回签名，不扩大权限；独审与 138 项模型通过。新独占 native 运行已通过 ACL 物理读回及 B7 before/staged/committed，进入 `CASH_SEED_AND_SETTLEMENT_REPLAY` 后被数据库的“经营账生效日必须在项目创建后通过项目设置启用”约束拒绝，尚未付款或核账；secret 清理报告 CLEARED，资源 cleanup 完成，独核进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-b746/receipt.json) SHA `fb68c0c7c7af1cc6b1bc73729130b59264b80a83af9ca769cf4f25906ba84235`。正在修正虚构种子建账顺序，保留数据库约束。
+
 准确 `8fde2600` 新独占 cash 原生运行 prepare、verify 和材料核对通过；原 once 在 `ACL_APPLY` 停止，PG 日志首因 `WRITER_FUNCTION_PROOF_14`，业务未进入，secret 未开始。原 cleanup 完成，独核进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-8fde/receipt.json) SHA `9870b623492d1005cc371a5fb78ac191b78d59fbb46ab824013a0056b19f0ac5`；正在诊断函数定义证明差异，不以模型替代物理通过。
 
 本地合成 `21dec58d` 补足机械资格样张五项虚构输入，目标测试 19/19；新文书转换和逐页审阅仍待。`4e5ed568` 单独修正既有 voucher 权限测试的陈旧期望，仅纳入此前实际观测并已合入的七列读取差量，其余非 INSERT 权限继续严格比较，目标测试 14/14；没有新增生产权限。
