@@ -18,6 +18,17 @@ describe("cash source file binding during owner seed (simulated transaction)",()
   const project=sql.indexOf('INSERT INTO public."Project"'),assignment=sql.indexOf('INSERT INTO public."ProjectAffiliateAssignment"');
   const participation=sql.indexOf('INSERT INTO public."ProjectParticipatingCompany"'),activation=sql.indexOf('UPDATE public."Project" SET "operatingLedgerEffectiveDate"');
   const contract=sql.indexOf('INSERT INTO public."Contract"');
+  const version=sql.slice(sql.indexOf('INSERT INTO public."ContractVersion"'),sql.indexOf('INSERT INTO public."PaymentTermsVersion"'));
+  expect(version).toMatch(/'our_company',[\s\S]*company_a\."unifiedSocialCreditCode",\s*NULL,NULL,/);
+  const sourceReadback=sql.slice(sql.indexOf('IF cash AND NOT EXISTS ('),sql.indexOf("PG_FIXTURE_CASH_SOURCE_READBACK"));
+  for(const column of ["affiliateAssignmentId","affiliateBusinessPartyVersionId","affiliateNameSnapshot","affiliateCreditCodeSnapshot"]){
+   expect(sourceReadback).toContain(`v."${column}" IS NULL`);
+  }
+  expect(sourceReadback).not.toMatch(/v\."affiliate(?:AssignmentId|BusinessPartyVersionId)"\s*=/);
+  const commonReadback=sql.slice(sql.indexOf('IF NOT EXISTS (\n    SELECT 1 FROM public."User"'),sql.indexOf("PG_FIXTURE_SEED_READBACK"));
+  expect(commonReadback).toContain('pa."id"=assignment."id"');
+  expect(commonReadback).toContain('pa."businessPartyVersionId"');
+  expect(commonReadback).toContain('pa."projectId"=p."id"');
   expect(sql.slice(project,assignment)).toMatch(/true,NULL,/);
   expect(project).toBeLessThan(assignment);expect(assignment).toBeLessThan(participation);
   expect(participation).toBeLessThan(activation);expect(activation).toBeLessThan(contract);

@@ -163,7 +163,7 @@ BEGIN
       "companyEntityCreditCodeSnapshot","affiliateAssignmentId","affiliateBusinessPartyVersionId","draftData","templateSnapshot","clauseSnapshot","updatedAt")
     VALUES (ids->>'version',ids->>'contract',1,'original','effective',instant,10000,'our_company',
       company_a."id",ids->>'companyVersionA',company_a."name",company_a."unifiedSocialCreditCode",
-      CASE WHEN cash THEN assignment."id" ELSE NULL END,CASE WHEN cash THEN party_version."id" ELSE NULL END,
+      NULL,NULL,
       '{}'::jsonb,'{}'::jsonb,'{}'::jsonb,pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
   INSERT INTO public."PaymentTermsVersion" ("id","contractId","contractVersionId","versionNo","status","originalText","updatedAt")
     VALUES (ids->>'terms',ids->>'contract',ids->>'version',1,'effective','按已确认结算分次付款',pg_catalog.timezone('UTC', pg_catalog.clock_timestamp()));
@@ -259,7 +259,8 @@ BEGIN
   IF cash AND NOT EXISTS (
     SELECT FROM public."ProjectMember" pm
     JOIN public."ProjectParticipatingCompany" pc ON pc."projectId"=pm."projectId" AND pc."companyEntityId"=company_a."id"
-    JOIN public."ContractVersion" v ON v."id"=ids->>'version' AND v."affiliateAssignmentId"=assignment."id" AND v."affiliateBusinessPartyVersionId"=party_version."id"
+    JOIN public."ContractVersion" v ON v."id"=ids->>'version' AND v."affiliateAssignmentId" IS NULL
+      AND v."affiliateBusinessPartyVersionId" IS NULL AND v."affiliateNameSnapshot" IS NULL AND v."affiliateCreditCodeSnapshot" IS NULL
     JOIN public."BusinessParty" bp ON bp."id"=cash_formal->>'partyId' AND bp."status"='active'
     JOIN public."BusinessPartyVersion" pv ON pv."id"=cash_formal->>'partyVersionId' AND pv."businessPartyId"=bp."id"
     JOIN public."ContractPartySnapshot" ps ON ps."id"=cash_formal->>'partySnapshotId' AND ps."contractVersionId"=v."id" AND ps."roleKey"='party_b' AND ps."businessPartyVersionId"=pv."id"
