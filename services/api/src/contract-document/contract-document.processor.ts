@@ -18,7 +18,8 @@ import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { compareContractDocumentSnapshots } from "./contract-document-comparison";
 import { renderContractDocx } from "./contract-docx-renderer";
-import { REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, finalizeContractBodyLineBoxScope, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, reviewedTypographySourceSha256, isReviewedTypographyVersion, REVIEWED_LABOR_SOURCE_SHA256, REVIEWED_LABOR_TAX_BINDING_VERSION, REVIEWED_LABOR_TYPOGRAPHY_VERSION, isContractBodyTableLayoutVersion, prepareContractBodyTableMargins, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, renderContractBody } from "./contract-body-document";
+import { removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
+import { BUILT_IN_PARTY_PLACEMENT_VERSION, REVIEWED_MECHANICAL_SOURCE_SHA256, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, finalizeContractBodyLineBoxScope, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, reviewedTypographySourceSha256, isReviewedTypographyVersion, REVIEWED_LABOR_SOURCE_SHA256, REVIEWED_LABOR_TAX_BINDING_VERSION, REVIEWED_LABOR_TYPOGRAPHY_VERSION, isContractBodyTableLayoutVersion, prepareContractBodyTableMargins, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, renderContractBody } from "./contract-body-document";
 import { assertContractBodyPdfRuntimeLock, convertContractBodyDocxToPdf } from "./contract-body-pdf-converter";
 import { createHash } from "node:crypto";
 import {
@@ -598,9 +599,11 @@ export class ContractDocumentProcessor
           { allowBlankWatermark: job.purpose === "external", tableLayoutVersion: snapshot.bodyDocument.tableLayoutVersion,
             ...(Object.hasOwn(snapshot.bodyDocument, "typographyVersion") ? { typographyVersion: snapshot.bodyDocument.typographyVersion } : {}),
             ...(Object.hasOwn(snapshot.bodyDocument, "signatureDateVersion") ? { signatureDateVersion: snapshot.bodyDocument.signatureDateVersion } : {}),
-            ...(Object.hasOwn(snapshot.bodyDocument, "pageNumberVersion") ? { pageNumberVersion: snapshot.bodyDocument.pageNumberVersion } : {}) })
+            ...(Object.hasOwn(snapshot.bodyDocument, "pageNumberVersion") ? { pageNumberVersion: snapshot.bodyDocument.pageNumberVersion } : {}),
+            ...(snapshot.bodyDocument.partyDetailsVersion ? { partyDetailsVersion: snapshot.bodyDocument.partyDetailsVersion } : {}) })
         : undefined;
-      const docx = renderedBody ? renderedBody.docx : renderContractDocx(source, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
+      const legacyDocx = renderedBody ? undefined : renderContractDocx(source, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
+      const docx = renderedBody ? renderedBody.docx : snapshot.partyDetailsVersion ? removeMechanicalPartyDetailsFromLegacyDocx(template.buffer,legacyDocx!) : legacyDocx!;
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
         const source = await this.files.getFileBuffer(attachment.id);
@@ -1025,6 +1028,8 @@ export class ContractDocumentProcessor
       throw new Error("合同文档输入快照格式不正确");
     }
     if (snapshot.bodyDocument !== undefined && (!snapshot.bodyDocument || typeof snapshot.bodyDocument !== "object" || Array.isArray(snapshot.bodyDocument) || snapshot.bodyDocument.protocolVersion !== 1 || typeof snapshot.bodyDocument.layoutTemplateVersionId !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.sourceSha256))) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.partyDetailsVersion !== undefined && (snapshot.partyDetailsVersion !== BUILT_IN_PARTY_PLACEMENT_VERSION || snapshot.bodyDocument !== undefined)) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.bodyDocument?.partyDetailsVersion !== undefined && (snapshot.bodyDocument.partyDetailsVersion !== BUILT_IN_PARTY_PLACEMENT_VERSION || snapshot.bodyDocument.sourceSha256 !== REVIEWED_MECHANICAL_SOURCE_SHA256)) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.bodyDocument?.pdfEngine !== undefined && (snapshot.bodyDocument.pdfEngine !== "docx4j-17.3.5" || typeof snapshot.bodyDocument.runtimeLockSha256 !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.runtimeLockSha256))) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.bodyDocument?.pdfEngine === undefined && snapshot.bodyDocument?.runtimeLockSha256 !== undefined) throw new Error("合同文档输入快照格式不正确");
     const values = snapshot.renderInput.values;

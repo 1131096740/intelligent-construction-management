@@ -1,6 +1,8 @@
 import { syntheticWordSource } from "../contract-template/template-management.test-support";
 import { readLayoutSourcePositions, prepareLayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Prisma } from "@prisma/client";
 import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
@@ -307,6 +309,26 @@ describe("ContractDocumentService", () => {
       "attachment-a",
       "owner-1"
     );
+  });
+
+  it("freezes the party-placement version for a newly queued legacy mechanical document", async () => {
+    const mechanical=readFileSync(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
+    const sourcePositions=readLayoutSourcePositions(mechanical);
+    const bindings=sourcePositions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],
+      ["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{
+      const start=position.text.indexOf(token);
+      return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];
+    }));
+    const mechanicalMapping=prepareLayoutSourceMapping(mechanical,"layout-file-1",2,bindings).mapping;
+    const tx=makeTx();
+    const layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mechanicalMapping,confirmation:{sourceFileId:mechanicalMapping.sourceFileId,sourceSha256:mechanicalMapping.sourceSha256,draftRevision:2,mappingFingerprint:mechanicalMapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    files.getFileBuffer.mockResolvedValueOnce({buffer:mechanical,file:{id:"layout-file-1",storageStatus:"active",contentSha256:sourcePositions.sourceSha256}});
+    const {service}=makeService(tx);
+    await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe("built-in-party-placement-v1");
   });
 
   function makeSingleConnectionService(current: { storageStatus?: string; objectKey?: string } = {}, bytes = source) {

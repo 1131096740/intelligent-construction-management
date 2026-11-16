@@ -57,6 +57,10 @@
           {{ message }}
         </li>
       </ul>
+      <template v-if="body?.partyDetailsRecovery">
+        <p>恢复将清除主体称谓行的旧编辑；请先复制需要保留的内容。其他正文编辑和排序保留。</p>
+        <t-button :disabled="disabled || loading || saving" variant="outline" @click="restorePartyRolePositions">恢复主体称谓</t-button>
+      </template>
     </section>
     <p v-if="additionNotice" class="body-editor-note" role="status">{{ additionNotice }}</p>
     <p
@@ -161,6 +165,7 @@ import { fetchContractDraftBody, type ContractBodyDeleteSavedAdditionContext, ty
 import { formatUnknownApiError } from "../../../api/error-message";
 import ContractBodyFlow from "./ContractBodyFlow.vue";
 import ContractBodyPaperPreview from "./ContractBodyPaperPreview.vue";
+import { restorePartyRoles } from "./contract-party-recovery";
 
 type BodyBlankReviewContext = {
   contractVersionId: string;
@@ -312,6 +317,16 @@ function currentPlan(): ContractBodyEditPlan | null {
   const plan = value as ContractBodyEditPlan;
   return plan.protocolVersion === 1 && plan.layoutTemplateVersionId === body.value.layoutTemplateVersionId &&
     plan.sourceSha256 === body.value.sourceSha256 && Array.isArray(plan.edits) ? plan : null;
+}
+
+function restorePartyRolePositions() {
+  const current=body.value,plan=currentPlan();
+  if(!current||!plan||props.disabled||loading.value||props.saving||current.contractVersionId!==props.contractVersionId||
+    current.draftRevision!==props.draftRevision||current.layoutTemplateVersionId!==props.layoutTemplateVersionId||!current.partyDetailsRecovery)return;
+  const restored=restorePartyRoles(plan,current.partyDetailsRecovery);
+  if(!restored){additionNotice.value="正文已变化，请重新读取后再恢复主体称谓。";return;}
+  emit("update",restored);
+  additionNotice.value="已恢复主体称谓，请保存正文；其他相关开票资料编辑仍需自行核对。";
 }
 
 const removableAdditionIds = computed(() => {

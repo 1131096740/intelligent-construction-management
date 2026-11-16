@@ -49,15 +49,14 @@ describe("fixed mechanical official qualification sample",()=>{
   });
 });
 
-it("restores real mechanical PAGE/NUMPAGES fields while preserving the reviewed non-footer package",async()=>{
+it("restores mechanical PAGE/NUMPAGES fields while preserving unrelated package parts",async()=>{
   const source=await readFile(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
   const sample=createOfficialQualificationSample(source),zip=new PizZip(sample.docx);
-  // Independent baseline: original CB80 real qualification Java input DOCX,
-  // a8f9ef...e6830. Only fixed fictional words; no private runtime input is read.
-  const rows=Object.values(zip.files).filter(entry=>!entry.dir&&!entry.name.startsWith("word/footer")).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)
+  // Independent reviewed baseline, excluding the deliberately changed document body.
+  const rows=Object.values(zip.files).filter(entry=>!entry.dir&&!entry.name.startsWith("word/footer")&&entry.name!=="word/document.xml").sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)
     .map(entry=>[entry.name,createHash("sha256").update(entry.asNodeBuffer()).digest("hex")]);
-  expect(rows).toHaveLength(12);
-  expect(createHash("sha256").update(JSON.stringify(rows)).digest("hex")).toBe("455f9116fa9f74994988eb95ad6cf0de81714cdff72be221e5004ebec8067186");
+  expect(rows).toHaveLength(11);
+  expect(createHash("sha256").update(JSON.stringify(rows)).digest("hex")).toBe("7bc14d42a5331caa3543dda34d015113025fa80695ce39c8034ba863bb24ca4c");
   const footer=zip.file("word/footer1.xml")!.asText();
   expect(footer.match(/w:instr="PAGE"/gu)).toHaveLength(1);
   expect(footer.match(/w:instr="NUMPAGES"/gu)).toHaveLength(1);

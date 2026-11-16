@@ -1,7 +1,8 @@
 import PizZip from "pizzip";
 import { createHash } from "node:crypto";
+import { removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
 import { prepareLayoutSourceMapping, readLayoutSourcePositions, type LayoutFieldBinding } from "../contract-template/layout-field-mapping";
-import { CONTRACT_BODY_MONEY_SEMANTICS_VERSION, CONTRACT_BODY_TABLE_LAYOUT_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
+import { BUILT_IN_PARTY_PLACEMENT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, CONTRACT_BODY_TABLE_LAYOUT_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
   finalizeContractBodyLineBoxScope, prepareContractBodyTableMargins, renderContractBody } from "./contract-body-document";
 import { renderLayoutPreviewDocx } from "./layout-preview-docx";
 import { completeContractDocxFontTableType } from "./contract-docx-package-metadata";
@@ -79,10 +80,10 @@ function createMechanicalSample(source: Buffer) {
   };
   const required=["contract.name","contract.temporaryCode","document.watermark"];
   const rendered=renderContractBody(source,mapped,{values},required,
-    "22222222-2222-4222-8222-222222222222",undefined,{tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION});
+    "22222222-2222-4222-8222-222222222222",undefined,{tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,partyDetailsVersion:BUILT_IN_PARTY_PLACEMENT_VERSION});
   if(rendered.lineBoxScope) throw new Error("机械资格样张不能使用材料行盒范围");
   const docx=completeContractDocxFontTableType(prepareContractBodyTableMargins(rendered.docx,CONTRACT_BODY_TABLE_LAYOUT_VERSION),sourceSha256).docx;
-  const officeDocx=renderLayoutPreviewDocx(mapped,{values},required);
+  const officeDocx=removeMechanicalPartyDetailsFromLegacyDocx(source,renderLayoutPreviewDocx(mapped,{values},required));
   return {docx,officeDocx,scope:null,expectations:{actualPdfQualification:"NOT_EXECUTED",minimumPages:1,maximumPages:100,
     requiredDrawnText:["隔离工具资格机械合同","虚构甲方公司","虚构乙方公司","资格样张设备","甲方","乙方"],
     mechanicalRoleHeading:"第一条  租赁机械设备名称、规格型号、数量及金额",roleFont:"黑体",roleFontSizePoints:14,

@@ -1,9 +1,9 @@
 import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
 import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
-import { assertSelectableLayoutVersion, readSelectableLayoutSource } from "../contract-template/layout-selection-policy";
+import { readSelectableLayoutSource } from "../contract-template/layout-selection-policy";
 import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
-import { REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
+import { assertMechanicalPartyPlacementPlan, BUILT_IN_PARTY_PLACEMENT_VERSION, REVIEWED_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
 import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
 import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
 import {
@@ -66,8 +66,9 @@ export interface ContractDocumentInputSnapshot {
   documentContentFingerprint: string;
   templateFileId: string;
   layoutSourceMapping?: LayoutSourceMapping;
+  partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION;
   bodyDocument?: { protocolVersion: 1; layoutTemplateVersionId: string; sourceSha256: string; editPlan?: ContractBodyEditPlan;
-    pdfEngine?: "docx4j-17.3.5"; runtimeLockSha256?: string; renderSemanticVersion?: typeof CONTRACT_BODY_MONEY_SEMANTICS_VERSION; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION };
+    pdfEngine?: "docx4j-17.3.5"; runtimeLockSha256?: string; renderSemanticVersion?: typeof CONTRACT_BODY_MONEY_SEMANTICS_VERSION; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION };
   outputBaseName: string;
   renderInput: { values: Record<string, unknown> };
   requiredKeys: string[];
@@ -149,7 +150,8 @@ export class ContractDocumentService {
     const pageNumberVersion = bodyRenderProfile?.pageNumberVersion;
     const rendered = renderContractBody(source.buffer, mapped, { values: this.renderValues(contract, version, parties,
       bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION) }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
-        ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}) });
+        ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}),
+        ...(createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_MECHANICAL_SOURCE_SHA256 ? {partyDetailsVersion: BUILT_IN_PARTY_PLACEMENT_VERSION,partyDetailsConflictPreview:true} : {}) });
     const savePoints = checkpoints.flatMap(checkpoint => {
       const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
       return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
@@ -160,8 +162,12 @@ export class ContractDocumentService {
       documentContentRevision: version.documentContentRevision,
       layoutTemplateVersionId: layout.id, sourceSha256: rendered.sourceSha256,
       blocks: rendered.blocks, flow: rendered.flow, paragraphGroups: rendered.paragraphGroups, savePoints,
-      warnings: createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
-        ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []
+      ...(rendered.partyDetailsRecovery ? {partyDetailsRecovery:rendered.partyDetailsRecovery} : {}),
+      warnings: [
+        ...(createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
+          ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []),
+        ...(rendered.partyDetailsConflict ? ["正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"] : [])
+      ]
     };
   }
 
@@ -251,7 +257,7 @@ export class ContractDocumentService {
         if (!command && version.layoutTemplateVersionId !== layoutTemplateVersionId) {
           throw new ConflictException("请先保存当前选择的合同版式，再生成文档");
         }
-        const layout = await assertSelectableLayoutVersion(tx, this.files, layoutTemplateVersionId, version.status === "draft"
+        const { layout, source: selectedSource } = await readSelectableLayoutSource(tx, this.files, layoutTemplateVersionId, version.status === "draft"
           ? resolveContractDraftBusinessType(version.draftData, contract.contractTypeKey, version.signingSubjectType)
           : contract.contractTypeKey);
         this.assertInternalReviewReady(
@@ -277,6 +283,8 @@ export class ContractDocumentService {
         }
 
         const useBodyRenderer = version.numericProtocolVersion === 2 || draftData.documentBody !== undefined;
+        const bodySource = useBodyRenderer ? selectedSource : undefined;
+        const partyDetailsVersion = createHash("sha256").update(selectedSource.buffer).digest("hex") === REVIEWED_MECHANICAL_SOURCE_SHA256 ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
         const engineVersion = useBodyRenderer ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION;
         const renderSemanticVersion = this.moneyRenderSemanticVersion(version);
         const tableLayoutVersion = useBodyRenderer ? CONTRACT_BODY_TABLE_LAYOUT_VERSION : undefined;
@@ -303,7 +311,8 @@ export class ContractDocumentService {
           reviewedLaborTaxBindingVersion,
           typographyVersion,
           signatureDateVersion,
-          pageNumberVersion
+          pageNumberVersion,
+          partyDetailsVersion
         );
         const existing = await tx.contractGeneratedDocument.findUnique({
           where: { idempotencyKey: contestedKey }
@@ -353,7 +362,7 @@ export class ContractDocumentService {
         const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
         let bodyDocument: ContractDocumentInputSnapshot["bodyDocument"];
         if (useBodyRenderer) {
-          const source = await this.files.getFileBuffer(layout.docxFileId, tx);
+          const source = bodySource!;
           if (typographyVersion) assertReviewedTypographySource(source.buffer, typographyVersion);
           if (pageNumberVersion) assertReviewedOriginalMechanicalPageSource(source.buffer);
           bodyDocument = { protocolVersion: 1, layoutTemplateVersionId: layout.id, sourceSha256: createHash("sha256").update(source.buffer).digest("hex"),
@@ -363,13 +372,16 @@ export class ContractDocumentService {
             ...(typographyVersion ? { typographyVersion } : {}),
             ...(signatureDateVersion ? { signatureDateVersion } : {}),
             ...(pageNumberVersion ? { pageNumberVersion } : {}),
+            ...(partyDetailsVersion ? { partyDetailsVersion } : {}),
             ...(draftData.documentBody === undefined ? {} : { editPlan: normalizeContractBodyPlan(draftData.documentBody, source.buffer, mappedLayoutSourceForVersion(source.buffer, layout), layout.id, reviewedLaborTaxBindingVersion) }) };
+          if(partyDetailsVersion&&bodyDocument.editPlan) assertMechanicalPartyPlacementPlan(source.buffer,mappedLayoutSourceForVersion(source.buffer,layout),layout.id,bodyDocument.editPlan);
         }
         const inputSnapshot: ContractDocumentInputSnapshot = {
           documentContentRevision: documentContent.revision,
           documentContentFingerprint: documentContent.fingerprint,
           templateFileId: layout.docxFileId,
           ...(layoutSourceMapping ? { layoutSourceMapping } : {}),
+          ...(!useBodyRenderer && partyDetailsVersion ? { partyDetailsVersion } : {}),
           ...(bodyDocument ? { bodyDocument } : {}),
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
           renderInput: {
@@ -1106,7 +1118,8 @@ export class ContractDocumentService {
     reviewedLaborTaxBindingVersion?: string,
     typographyVersion?: string,
     signatureDateVersion?: string,
-    pageNumberVersion?: string
+    pageNumberVersion?: string,
+    partyDetailsVersion?: string
   ) {
     return createHash("sha256")
       .update(
@@ -1123,7 +1136,8 @@ export class ContractDocumentService {
           ...(reviewedLaborTaxBindingVersion ? [reviewedLaborTaxBindingVersion] : []),
           ...(typographyVersion ? [typographyVersion] : []),
           ...(signatureDateVersion ? [signatureDateVersion] : []),
-          ...(pageNumberVersion ? [pageNumberVersion] : [])
+          ...(pageNumberVersion ? [pageNumberVersion] : []),
+          ...(partyDetailsVersion ? [partyDetailsVersion] : [])
         ])
       )
       .digest("hex");

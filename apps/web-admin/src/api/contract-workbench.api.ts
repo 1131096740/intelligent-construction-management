@@ -546,13 +546,14 @@ export interface ContractDraftBodyReadModel {
   layoutTemplateVersionId: string;
   sourceSha256: string;
   warnings?: readonly string[];
+  partyDetailsRecovery?: {roleIds:string[];groups:string[][]};
   blocks: ContractBodyParagraph[];
   flow: ContractBodyFlowNode[];
   paragraphGroups: string[][];
   savePoints: Array<{ id: string; createdAt: string; documentContentRevision: number; layoutTemplateVersionId: string; documentBody: ContractBodyEditPlan | null }>;
 }
 
-const approvedBodyWarnings = new Set(["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"]);
+const approvedBodyWarnings = new Set(["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。", "正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"]);
 const incompleteBodyWarning = "正文提示暂无法完整读取，请核对当前填写资料后重新读取正文。";
 function normalizeBodyWarnings(value: unknown): string[] {
   if (value === undefined) return [];
@@ -564,7 +565,13 @@ export async function fetchContractDraftBody(contractVersionId: string) {
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/document-body`, true,
     { "x-contract-numeric-protocol": "2" }
   );
-  return { ...body, warnings: normalizeBodyWarnings(body.warnings) };
+  const recovery=body.partyDetailsRecovery;
+  const groups=recovery?.groups,roles=recovery?.roleIds;
+  const valid=Array.isArray(groups)&&groups.length<=3000&&groups.every(group=>Array.isArray(group)&&group.length<=3000&&group.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/u.test(id)))&&
+    Array.isArray(roles)&&roles.length>0&&roles.length<=2&&roles.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/u.test(id));
+  const flat=valid?groups.flat():[];
+  const accepted=valid&&flat.length<=3000&&new Set(flat).size===flat.length&&new Set(roles).size===roles.length&&roles.every(id=>flat.includes(id));
+  return { ...body, warnings: normalizeBodyWarnings(body.warnings),partyDetailsRecovery:accepted?{roleIds:roles,groups}:undefined };
 }
 
 export function fetchContractDraftOperationCapabilities(
