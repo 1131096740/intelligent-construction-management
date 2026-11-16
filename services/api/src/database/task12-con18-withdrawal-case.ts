@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual, types } from "node:util";
 import { current261LifecycleCaseFromFixture } from "../../prisma/task12-current261-lifecycle-cases.cjs";
 import { publishTask12GeneratedMaterialTemplate, publishTask12GeneratedEquipmentTemplate } from "./task12-generated-material-template";
-import { runTask12GeneratedDocument } from "./task12-generated-document-seam";
+import { runTask12GeneratedDocument, type Task12QueuedDocumentCoordinates } from "./task12-generated-document-seam";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
 import { PDFDocument } from "pdf-lib";
 import type { Task12LocalLifecycleCaseInput, Task12LocalLifecycleRequest, Task12LocalLifecycleDownloadedFile } from "./task12-local-lifecycle-case";
@@ -16,7 +16,7 @@ export interface Task12Con18Proof {
   newApproveCount: number; newAllUnsigned: boolean; newPendingCount: number;
 }
 export type Task12Con18Input = Task12LocalLifecycleCaseInput & {
-  observer: { signed(versionId: string, roundId: string, actorId: string): Promise<boolean>; rounds(versionId: string, withdrawnRoundId: string, newRoundId: string): Promise<Task12Con18Proof> };
+  observer: { queued?(coordinates: Task12QueuedDocumentCoordinates): void; signed(versionId: string, roundId: string, actorId: string): Promise<boolean>; rounds(versionId: string, withdrawnRoundId: string, newRoundId: string): Promise<Task12Con18Proof> };
 };
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const object = (v: unknown): Body => v && typeof v === "object" && !Array.isArray(v) && !types.isProxy(v) ? v as Body : {};
@@ -95,7 +95,7 @@ export async function runTask12Con18Withdrawal(input: Task12Con18Input) {
     const current = await workbench(), version = object(current.version);
     const generated = await runTask12GeneratedDocument({ template: published, versionId, sourceRevision: version.draftRevision,
       documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint,
-      lease: { token: lease.token, leaseRevision: lease.leaseRevision, expiresAt: current.lease.expiresAt } }, port(0));
+      lease: { token: lease.token, leaseRevision: lease.leaseRevision, expiresAt: current.lease.expiresAt } }, { ...port(0), onQueued: input.observer.queued });
     const word = await download(generated.docxFileId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), pdf = await download(generated.pdfFileId, "application/pdf");
     const downloaded = Object.freeze({ generationId: generated.generationId, docx: word.evidence, pdf: pdf.evidence });
     const previous = generatedFiles.get(generated.generationId);

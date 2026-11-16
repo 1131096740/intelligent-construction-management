@@ -120,3 +120,16 @@ it.each([
 it("the separate document fixture exposes its actual AUTH filter instance through useExisting",()=>{
  expect(Reflect.getMetadata(MODULE_METADATA.PROVIDERS,Task12GeneratedDocumentApplicationModule)).toEqual([Task12AuthErrorFilter,Task12AuthStageInterceptor,{provide:APP_FILTER,useExisting:Task12AuthErrorFilter},{provide:APP_INTERCEPTOR,useExisting:Task12AuthStageInterceptor}]);
 });
+
+it("captures only validated queue coordinates and preserves the generated document result when diagnostics fail", async () => {
+  const f=fixture();const observed: unknown[]=[];
+  await expect(runTask12GeneratedDocument(f.input,{...f.port,onQueued(coordinates: unknown){observed.push(coordinates);throw Error("PRIVATE_DIAGNOSTIC");}})).resolves.toMatchObject({generationId});
+  expect(observed).toEqual([{versionId,generationId,sourceRevision:4,documentContentRevision:3,documentContentFingerprint:fp}]);
+});
+it("does not expose queue coordinates when the returned lineage is invalid",async()=>{
+ const f=fixture(), observed:unknown[]=[];
+ await expect(runTask12GeneratedDocument(f.input,{...f.port,onQueued:value=>observed.push(value),async send(request){
+  if(request.path.endsWith("/preview-generation"))return {status:201,body:{generationId,status:"queued",sourceRevision:4,documentContentRevision:3,documentContentFingerprint:"c".repeat(64)}};
+  return f.port.send(request);
+ }})).rejects.toThrow("TASK12_GENERATED_DOCUMENT_QUEUE");expect(observed).toEqual([]);
+});

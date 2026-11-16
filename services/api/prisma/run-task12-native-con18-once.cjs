@@ -117,7 +117,7 @@ function inspectNativeTask16Interfaces(){
   ['./task12-current259-document-login.cjs',[['beginNativeTask12DocumentLoginProtocol',3],['nativeTask12DocumentLoginVerifiers',1],['nativeTask12DocumentClientIdentitySql','string']]],
   ['./task12-current259-q2-seed.cjs',[['createNativeCurrent261EquipmentSeed',3]]],
   ['./task12-con18-native-capability.cjs',[['issueTask12Con18OwnerCapability',1],['claimTask12Con18OwnerCapability',5]]],
-  ['./task12-con18-native-owner-window.cjs',[['beginTask12Con18OwnerWindow',5],['observeTask12Con18Signed',4],['observeTask12Con18Rounds',4],['closeTask12Con18OwnerWindow',1]]],
+  ['./task12-con18-native-owner-window.cjs',[['beginTask12Con18OwnerWindow',5],['observeTask12Con18Signed',4],['observeTask12Con18Rounds',4],['observeTask12Con18Document',2],['closeTask12Con18OwnerWindow',1]]],
   ['../dist/database/task12-con18-withdrawal-case.js',[['runTask12Con18Withdrawal',1]]],
   ['./task12-current259-document-application.cjs',[['runNativeTask12DocumentApplication',2]]],
   ['./task12-official-document-profile.cjs',[['observeOfficialTask12DocumentPublication',2],['verifyOfficialTask12DocumentRuntime',3],['withOfficialTask12DocumentRuntime',3]]],
@@ -212,12 +212,19 @@ function assertNativeTask12DocumentPools(rowText,contextText){
  }
  return Object.freeze(row.rows.map(value=>Object.freeze({...value})));
 }
+async function observeTask12Con18Failure(api,window,queued,error,receipt){
+ try{
+  if(window&&queued&&error&&typeof error==='object'&&!types.isProxy(error)&&Object.getOwnPropertyDescriptor(error,'code')?.value==='TASK12_GENERATED_DOCUMENT_DOCUMENT'){
+   receipt.documentDiagnostic=await api.observeTask12Con18Document(window,queued);
+  }
+ }catch{try{receipt.documentDiagnostic=Object.freeze({match:'UNAVAILABLE'});}catch{/* Preserve the original failure. */}}
+}
 async function closeTask12Con18WithPrimary(api,window,outcome,receipt){
  let closed;try{if(window)closed=await api.closeTask12Con18OwnerWindow(window);}catch(error){if(outcome.failed){try{receipt.ownerCleanup='UNKNOWN_DO_NOT_CONTINUE';}catch{}throw outcome.error;}throw error;}
  if(outcome.failed)throw outcome.error;
  need(closed?.matched===true,'NATIVE_DIRECT_CONTRACT_OWNER_CLOSE');return closed;
 }
-module.exports=Object.freeze({closeTask12Con18WithPrimary,nativeTask12BootstrapIdentitySql,assertNativeTask12BootstrapPools,assertNativeTask12DocumentPools,assertNativeTask12LoopbackListeners,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask12EquipmentPlan,verifyNativeTask12EquipmentPlan,validateNativeTask12EquipmentPlan});
+module.exports=Object.freeze({observeTask12Con18Failure,closeTask12Con18WithPrimary,nativeTask12BootstrapIdentitySql,assertNativeTask12BootstrapPools,assertNativeTask12DocumentPools,assertNativeTask12LoopbackListeners,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask12EquipmentPlan,verifyNativeTask12EquipmentPlan,validateNativeTask12EquipmentPlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask12EquipmentPlan(request.options)};
  const plan=verifyNativeTask12EquipmentPlan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -500,7 +507,7 @@ async function runNativeTask16Business(plan,state){
   const passwordsByUser=Object.freeze(Object.fromEntries(fixture.approval.users.map((user,index)=>[user.id,passwords[index]])));
   const hashes=Object.fromEntries(await wait(()=>Promise.all(fixture.approval.users.map(async(user,i)=>[user.id,await modules.hashTask12GeneratedAdmissionPassword(passwords[i])]))));
   const seed=require('./task12-current259-q2-seed.cjs').createNativeCurrent261EquipmentSeed(fixture,identity,hashes);
-  const ownerSql=async(sql,label)=>{check();enter(label);const result=await state.sql(sql);check();return result;};
+  const ownerSql=async(sql,label)=>{check();if(label!=='task12-con18-owner-document')enter(label);const result=await state.sql(sql);check();return result;};
   seed.verifyBefore((await ownerSql(seed.beforeSql(),'CONTRACT_SEED_BEFORE')).stdout);
   seed.verifyWritten((await ownerSql(seed.writeSql(),'CONTRACT_SEED_WRITE')).stdout);
   const seeded=seed.finish((await ownerSql(seed.committedSql(),'CONTRACT_SEED_COMMITTED')).stdout);need(seeded.seedRows===26,'NATIVE_DIRECT_CONTRACT_SEED');
@@ -531,17 +538,21 @@ async function runNativeTask16Business(plan,state){
    const config=Object.freeze({fixture,passwords:passwordsByUser,sourceDocx,originals,signal});
    const bridge=Object.freeze({check,loader,loaded:modules,ordinary,providers,queue:operations.queue.queueDraftPreview,publicLifecycle:config,
     async exercise(http){
-     let window,result;const outcome={failed:false,error:undefined};
+     let window,result,queued;const outcome={failed:false,error:undefined};
      try{
       official.checkMaterials();check();
       const permit=capability.issueTask12Con18OwnerCapability({purpose:PURPOSE,candidateSha:plan.source.head,planSha256:receipt.planSha256,runId:plan.runId,loginProjection:contract.loginResult,moduleView:modules,fixture,exec:ownerSql});
       window=await ownerApi.beginTask12Con18OwnerWindow(permit,contract.loginResult,modules,fixture,ownerSql);check();receipt.business='ENTERED';
-      const observer=Object.freeze({signed:(version,round,actor)=>ownerApi.observeTask12Con18Signed(window,version,round,actor),rounds:(version,old,current)=>ownerApi.observeTask12Con18Rounds(window,version,old,current)});
+      const observer=Object.freeze({queued:coordinates=>{queued=coordinates;},signed:(version,round,actor)=>ownerApi.observeTask12Con18Signed(window,version,round,actor),rounds:(version,old,current)=>ownerApi.observeTask12Con18Rounds(window,version,old,current)});
       const input=Object.freeze({fixture,passwords:Object.freeze(passwords),sourceDocx,originals,bridge:http,signal,observer,readPdfDrawnText:async(bytes,abort)=>{check();const pages=await official.readPdfDrawnText(bytes,abort);check();return pages;}});
       enter('CONTRACT_CON18_WITHDRAW_RESUBMIT');result=await modules.runTask12Con18Withdrawal(input);check();official.checkMaterials();
       need(result?.oldCoordinateRejected===true&&result.changedGeneration===true&&result.newRoundPending===5&&result.oldApprovalsVisible===false&&result.full394Accepted===false,'NATIVE_DIRECT_CON18_RESULT');
       receipt.contractCase={status:'CON18_WITHDRAW_RESUBMIT_OBSERVED_NOT_FULL394_ACCEPTANCE',caseKey:fixture.case.key,...result};
-     }catch(error){outcome.failed=true;outcome.error=error;}
+     }catch(error){
+      outcome.failed=true;outcome.error=error;
+      // This optional read is after the original failure and never replaces it.
+      await observeTask12Con18Failure(ownerApi,window,queued,error,receipt);
+     }
      receipt.ownerClosed=await closeTask12Con18WithPrimary(ownerApi,window,outcome,receipt);return result;
     }});
    return require('./task12-current259-document-application.cjs').runNativeTask12DocumentApplication(contract.loginResult,bridge);
