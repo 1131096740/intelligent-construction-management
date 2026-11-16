@@ -525,7 +525,6 @@ async function runNativeTask16Business(plan,state){
   const expected={database:plan.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,storageRoot:env.FILE_STORAGE_ROOT,
    roleOids:Object.fromEntries(['template','worker','queue'].map((slot,i)=>[slot,login.roles[i].oid])),serverPort:port,nativeProfile:'TASK12_NATIVE_HOST_EQUIPMENT_V1'};
   const ownerApi=require('./task12-con18-native-owner-window.cjs'),capability=require('./task12-con18-native-capability.cjs');
-  const con18=require('../dist/database/task12-con18-withdrawal-case.js');
   const final=await wait(()=>modules.withTask12NativeHostDocumentRoleServices({template:templateClient,worker:workerClient,queue:queueClient},expected,async(operations,providers)=>{
    const config=Object.freeze({fixture,passwords:passwordsByUser,sourceDocx,originals,signal});
    const bridge=Object.freeze({check,loader,loaded:modules,ordinary,providers,queue:operations.queue.queueDraftPreview,publicLifecycle:config,
@@ -537,7 +536,7 @@ async function runNativeTask16Business(plan,state){
       window=await ownerApi.beginTask12Con18OwnerWindow(permit,contract.loginResult,modules,fixture,ownerSql);check();receipt.business='ENTERED';
       const observer=Object.freeze({signed:(version,round,actor)=>ownerApi.observeTask12Con18Signed(window,version,round,actor),rounds:(version,old,current)=>ownerApi.observeTask12Con18Rounds(window,version,old,current)});
       const input=Object.freeze({fixture,passwords:Object.freeze(passwords),sourceDocx,originals,bridge:http,signal,observer,readPdfDrawnText:async(bytes,abort)=>{check();const pages=await official.readPdfDrawnText(bytes,abort);check();return pages;}});
-      enter('CONTRACT_CON18_WITHDRAW_RESUBMIT');result=await con18.runTask12Con18Withdrawal(input);check();official.checkMaterials();
+      enter('CONTRACT_CON18_WITHDRAW_RESUBMIT');result=await modules.runTask12Con18Withdrawal(input);check();official.checkMaterials();
       need(result?.oldCoordinateRejected===true&&result.changedGeneration===true&&result.newRoundPending===5&&result.oldApprovalsVisible===false&&result.full394Accepted===false,'NATIVE_DIRECT_CON18_RESULT');
       receipt.contractCase={status:'CON18_WITHDRAW_RESUBMIT_OBSERVED_NOT_FULL394_ACCEPTANCE',caseKey:fixture.case.key,...result};
      }catch(error){outcome.failed=true;outcome.error=error;}

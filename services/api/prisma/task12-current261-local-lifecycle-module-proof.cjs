@@ -4,10 +4,10 @@
 const path=require('node:path'),{types}=require('node:util');
 const need=ok=>{if(!ok)throw new Error('CURRENT261_LOCAL_LIFECYCLE_MODULE_SOURCE');};
 const own=(v,k)=>{need(v&&typeof v==='object'&&!types.isProxy(v));const d=Object.getOwnPropertyDescriptor(v,k);need(d&&Object.hasOwn(d,'value'));return d.value;};
-const entries=Object.freeze({sample:'services/api/dist/contract-document/task12-official-qualification-sample.js',profile:'services/api/prisma/task12-official-document-profile.cjs',child:'services/api/prisma/task12-official-document-child.cjs',
+const entries=Object.freeze({con18:'services/api/dist/database/task12-con18-withdrawal-case.js',sample:'services/api/dist/contract-document/task12-official-qualification-sample.js',profile:'services/api/prisma/task12-official-document-profile.cjs',child:'services/api/prisma/task12-official-document-child.cjs',
  context:'services/api/prisma/task12-document-context.cjs',runtime:'services/api/prisma/task12-current259-generated-document-runtime.cjs',
  converter:'services/api/dist/contract-document/contract-body-pdf-converter.js',lo:'services/api/dist/contract-document/libreoffice-converter.js'});
-const functions=Object.freeze({sample:['createOfficialQualificationSample','canonicalOfficialQualificationDocx'],profile:['currentOfficialDocumentScope'],child:['createOfficialDocumentChildBudget','attachPostcheck'],
+const functions=Object.freeze({con18:['runTask12Con18Withdrawal'],sample:['createOfficialQualificationSample','canonicalOfficialQualificationDocx'],profile:['currentOfficialDocumentScope'],child:['createOfficialDocumentChildBudget','attachPostcheck'],
  context:['createDocumentContextAuthority'],runtime:['verifyOfficialTask12DocumentRuntime','withOfficialTask12DocumentRuntime']});
 function assertCurrent261LocalLifecycleToolClosure(root,modules,cache){
  need(arguments.length===3&&typeof root==='string'&&path.isAbsolute(root)&&path.normalize(root)===root);

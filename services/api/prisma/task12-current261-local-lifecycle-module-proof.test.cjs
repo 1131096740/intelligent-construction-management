@@ -3,8 +3,9 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),path=requ
 function model(){
  const root='/private/tmp/local-lifecycle-model-source',cache=Object.create(null),names={
   profile:'services/api/prisma/task12-official-document-profile.cjs',child:'services/api/prisma/task12-official-document-child.cjs',context:'services/api/prisma/task12-document-context.cjs',
-  sample:'services/api/dist/contract-document/task12-official-qualification-sample.js',runtime:'services/api/prisma/task12-current259-generated-document-runtime.cjs',converter:'services/api/dist/contract-document/contract-body-pdf-converter.js',lo:'services/api/dist/contract-document/libreoffice-converter.js'};
+  con18:'services/api/dist/database/task12-con18-withdrawal-case.js',sample:'services/api/dist/contract-document/task12-official-qualification-sample.js',runtime:'services/api/prisma/task12-current259-generated-document-runtime.cjs',converter:'services/api/dist/contract-document/contract-body-pdf-converter.js',lo:'services/api/dist/contract-document/libreoffice-converter.js'};
  const modules=Object.fromEntries(Object.entries(names).map(([key,name])=>{const m={filename:path.join(root,name),loaded:true,exports:{},children:[]};cache[m.filename]=m;return[key,m];}));
+ modules.con18.exports.runTask12Con18Withdrawal=()=>{};
  modules.sample.exports.createOfficialQualificationSample=()=>{};modules.sample.exports.canonicalOfficialQualificationDocx=()=>{};
  modules.profile.exports.currentOfficialDocumentScope=()=>{};modules.child.exports.createOfficialDocumentChildBudget=()=>{};modules.child.exports.attachPostcheck=()=>{};modules.context.exports.createDocumentContextAuthority=()=>{};
  modules.runtime.exports.verifyOfficialTask12DocumentRuntime=()=>{};modules.runtime.exports.withOfficialTask12DocumentRuntime=()=>{};
@@ -15,7 +16,7 @@ function model(){
 test('life module closure requires the actual converter and LO to share the same host context and official issuer',()=>{
  const {assertCurrent261LocalLifecycleToolClosure:check}=require('./task12-current261-local-lifecycle-module-proof.cjs');
  const f=model();assert.equal(check(f.root,f.modules,f.cache),undefined);
- for(const patch of [g=>{delete g.modules.sample.exports.canonicalOfficialQualificationDocx;},g=>{g.modules.sample.filename='/foreign/sample.js';},g=>{g.modules.converter.children=[];},g=>{g.modules.lo.children=[{...g.modules.profile},g.modules.child];},
+ for(const patch of [g=>{delete g.modules.con18.exports.runTask12Con18Withdrawal;},g=>{delete g.cache[g.modules.con18.filename];},g=>{delete g.modules.sample.exports.canonicalOfficialQualificationDocx;},g=>{g.modules.sample.filename='/foreign/sample.js';},g=>{g.modules.converter.children=[];},g=>{g.modules.lo.children=[{...g.modules.profile},g.modules.child];},
   g=>{g.modules.runtime.children=[];},g=>{g.modules.context.filename=g.modules.context.filename.replace('model-source','foreign-source');},
   g=>{g.modules.child.exports.createOfficialDocumentChildBudget=true;},g=>{g.cache[g.modules.profile.filename]={...g.modules.profile};}]){
   const g=model();patch(g);assert.throws(()=>check(g.root,g.modules,g.cache),/LIFECYCLE_MODULE_SOURCE/u);
