@@ -1,3 +1,4 @@
+import { MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
 import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
 import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
@@ -69,6 +70,7 @@ export interface ContractDocumentInputSnapshot {
   layoutSourceMapping?: LayoutSourceMapping;
   partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION;
   genericFontTableVersion?: typeof BUILT_IN_GENERIC_FONT_VERSION;
+  mechanicalContactLayoutVersion?: typeof MECHANICAL_CONTACT_LAYOUT_VERSION;
   bodyDocument?: { protocolVersion: 1; layoutTemplateVersionId: string; sourceSha256: string; editPlan?: ContractBodyEditPlan;
     pdfEngine?: "docx4j-17.3.5"; runtimeLockSha256?: string; renderSemanticVersion?: typeof CONTRACT_BODY_MONEY_SEMANTICS_VERSION; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION };
   outputBaseName: string;
@@ -163,6 +165,7 @@ export class ContractDocumentService {
       contractVersionId, draftRevision: version.draftRevision,
       documentContentRevision: version.documentContentRevision,
       layoutTemplateVersionId: layout.id, sourceSha256: rendered.sourceSha256,
+      mechanicalContactLayoutVersion:builtInPartyPlacementKind(rendered.sourceSha256)==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:null,
       blocks: rendered.blocks, flow: rendered.flow, paragraphGroups: rendered.paragraphGroups, savePoints,
       ...(rendered.partyDetailsRecovery ? {partyDetailsRecovery:rendered.partyDetailsRecovery} : {}),
       warnings: [
@@ -288,6 +291,7 @@ export class ContractDocumentService {
         const useBodyRenderer = version.numericProtocolVersion === 2 || draftData.documentBody !== undefined;
         const bodySource = useBodyRenderer ? selectedSource : undefined;
         const partyDetailsVersion = builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex")) ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
+        const mechanicalContactLayoutVersion=builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex"))==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:undefined;
         const genericFontTableVersion=createHash("sha256").update(selectedSource.buffer).digest("hex")===BUILT_IN_GENERIC_SOURCE_SHA256?BUILT_IN_GENERIC_FONT_VERSION:undefined;
         const engineVersion = useBodyRenderer ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION;
         const renderSemanticVersion = this.moneyRenderSemanticVersion(version);
@@ -317,7 +321,8 @@ export class ContractDocumentService {
           signatureDateVersion,
           pageNumberVersion,
           partyDetailsVersion,
-          genericFontTableVersion
+          genericFontTableVersion,
+          mechanicalContactLayoutVersion
         );
         const existing = await tx.contractGeneratedDocument.findUnique({
           where: { idempotencyKey: contestedKey }
@@ -388,6 +393,7 @@ export class ContractDocumentService {
           templateFileId: layout.docxFileId,
           ...(layoutSourceMapping ? { layoutSourceMapping } : {}),
           ...(genericFontTableVersion ? {genericFontTableVersion} : {}),
+          ...(mechanicalContactLayoutVersion ? {mechanicalContactLayoutVersion} : {}),
           ...(!useBodyRenderer && partyDetailsVersion ? { partyDetailsVersion } : {}),
           ...(bodyDocument ? { bodyDocument } : {}),
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
@@ -1127,7 +1133,8 @@ export class ContractDocumentService {
     signatureDateVersion?: string,
     pageNumberVersion?: string,
     partyDetailsVersion?: string,
-    genericFontTableVersion?: string
+    genericFontTableVersion?: string,
+    mechanicalContactLayoutVersion?: string
   ) {
     return createHash("sha256")
       .update(
@@ -1146,7 +1153,8 @@ export class ContractDocumentService {
           ...(signatureDateVersion ? [signatureDateVersion] : []),
           ...(pageNumberVersion ? [pageNumberVersion] : []),
           ...(partyDetailsVersion ? [partyDetailsVersion] : []),
-          ...(genericFontTableVersion ? [genericFontTableVersion] : [])
+          ...(genericFontTableVersion ? [genericFontTableVersion] : []),
+          ...(mechanicalContactLayoutVersion ? [mechanicalContactLayoutVersion] : [])
         ])
       )
       .digest("hex");

@@ -545,6 +545,7 @@ export interface ContractDraftBodyReadModel {
   documentContentRevision: number;
   layoutTemplateVersionId: string;
   sourceSha256: string;
+  mechanicalContactLayoutVersion: "mechanical-contact-layout-v1" | null;
   warnings?: readonly string[];
   partyDetailsRecovery?: {roleIds:string[];groups:string[][]};
   blocks: ContractBodyParagraph[];
@@ -565,6 +566,7 @@ export async function fetchContractDraftBody(contractVersionId: string) {
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/document-body`, true,
     { "x-contract-numeric-protocol": "2" }
   );
+  if(body.mechanicalContactLayoutVersion!==null && body.mechanicalContactLayoutVersion!=="mechanical-contact-layout-v1") throw new Error("正文呈现版本无法核对，请重新读取正文");
   const recovery=body.partyDetailsRecovery;
   const groups=recovery?.groups,roles=recovery?.roleIds;
   const valid=Array.isArray(groups)&&groups.length<=3000&&groups.every(group=>Array.isArray(group)&&group.length<=3000&&group.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/u.test(id)))&&
@@ -2504,7 +2506,7 @@ export interface ContractGeneratedSubmissionDocument {
   documentContentFingerprint: string | null;
   docxFileId: string | null;
   pdfFileId: string | null;
-  inputSnapshot: { layoutSourceMapping?: { sourceSha256?: string } };
+  inputSnapshot: { layoutSourceMapping?: { sourceSha256?: string }; mechanicalContactLayoutVersion?: "mechanical-contact-layout-v1" };
 }
 
 export function listContractDocuments(contractVersionId: string) {

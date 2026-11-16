@@ -13,6 +13,7 @@ async function openWorkbench(page: Page, options: {
   code?: string | null;
   recoveryRevision?: number;
   relationship?: "outside" | "upward";
+  paperVersion?: "mechanical-contact-layout-v1";
 } = {}) {
   if (options.recoveryRevision !== undefined) {
     await page.addInitScript(({ revision, versionId, plan }) => {
@@ -39,7 +40,9 @@ async function openWorkbench(page: Page, options: {
     layoutTemplateVersionId: "layout-submit", documentContentRevision: 7, documentContentFingerprint: fingerprint,
     docxFileId: "word-submit", pdfFileId: "pdf-submit", inputSnapshot: { documentContentRevision: 7,
       documentContentFingerprint: fingerprint, layoutSourceMapping: { sourceSha256: sourceSha } } };
+  if(options.paperVersion) Object.assign(document,{purpose:"draft",inputSnapshot:{...document.inputSnapshot,bodyDocument:{sourceSha256:sourceSha}}});
   const documents = [document];
+  const paperCapabilities:string[]=[];
   const workbench = {
     contract: { id: "contract-submit", code: options.code === undefined ? "HT-20261109-001" : options.code, temporaryCode: null, projectId: "project-submit",
       contractTypeKey: "material_purchase", ownerUserId: "staff-submit", name: "当前正文提交合同" },
@@ -66,9 +69,13 @@ async function openWorkbench(page: Page, options: {
       return json(req.method() === "DELETE" ? { released: true } : { token: "synthetic-lease", leaseRevision: 1, expiresAt: new Date(Date.now() + 600_000).toISOString(), heartbeatIntervalMs: 60_000 });
     }
     if (path === `/contract-drafts/${versionId}/workbench`) return json(workbench);
-    if (path === `/contract-drafts/${versionId}/document-body`) return json({ contractVersionId: versionId, draftRevision: 3, documentContentRevision: 7, layoutTemplateVersionId: "layout-submit", sourceSha256: sourceSha,
+    if (path === `/contract-drafts/${versionId}/document-body`) return json({ contractVersionId: versionId, draftRevision: 3, documentContentRevision: 7, layoutTemplateVersionId: "layout-submit", sourceSha256: sourceSha, mechanicalContactLayoutVersion: options.paperVersion ?? null,
       blocks: [{ id: "delivery", kind: "paragraph", text: "交货地点：【待补充：交货地点】", editable: true, format: { align: "left" }, blankFields: ["交货地点"] }], flow: [{ kind: "paragraph", paragraphId: "delivery" }], paragraphGroups: [["delivery"]], savePoints: [] });
     if (path === `/contract-workbench/${versionId}/documents`) return json(documents);
+    if (path.startsWith("/files/") && path.endsWith("/download-ticket-capability")) {
+      paperCapabilities.push(path);
+      return json({availableActions:["create_private_file_download_ticket"],action:{key:"create_private_file_download_ticket",enabled:true}});
+    }
     if (path === `/contracts/${versionId}/readiness`) return json(workbench.readiness);
     if (path === `/contract-drafts/${versionId}/submission`) {
       submissions.push(req.postDataJSON());
@@ -98,8 +105,21 @@ async function openWorkbench(page: Page, options: {
   await page.getByText("合同正文", { exact: true }).click();
   const editor = page.getByRole("region", { name: "完整合同正文", exact: true });
   await expect(editor).toBeVisible();
-  return { submissions, editor, workbench, document, documents, outcome };
+  return { submissions, editor, workbench, document, documents, outcome, paperCapabilities };
 }
+
+test("纸面检查不复用同正文旧排版，并选择新版PDF", async ({ page }) => {
+  const fixture=await openWorkbench(page,{paperVersion:"mechanical-contact-layout-v1"});
+  await fixture.editor.getByRole("button",{name:"A4纸面检查",exact:true}).click();
+  await expect(fixture.editor.getByRole("button",{name:"生成当前草稿PDF",exact:true})).toBeVisible();
+  expect(fixture.paperCapabilities).toEqual([]);
+  const current={...fixture.document,id:"current-layout",pdfFileId:"pdf-current",inputSnapshot:{...fixture.document.inputSnapshot}};
+  Object.assign(current.inputSnapshot,{mechanicalContactLayoutVersion:"mechanical-contact-layout-v1"});
+  fixture.documents.push(current);
+  await fixture.editor.getByRole("button",{name:"重新检查",exact:true}).click();
+  await expect(page.getByRole("dialog",{name:"预览合同正文",exact:true})).toBeVisible();
+  expect(fixture.paperCapabilities).toEqual(["/files/pdf-current/download-ticket-capability"]);
+});
 
 test("确认当前正文后，剩余普通空位仍可按真实V2坐标提交", async ({ page }) => {
   const fixture = await openWorkbench(page);
