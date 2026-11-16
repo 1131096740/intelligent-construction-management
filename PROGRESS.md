@@ -2,19 +2,21 @@
 
 ## 2026-11-16 接续进展
 
-#382本轮未新增整票关闭，可执行前沿仍为#394/任务12与#398/任务16。11月15日完整任务盘点为14关闭/31开放；11月16日12:26Z只读确认父票、两前沿票仍OPEN，PR428仍Draft。持续独占隔离开发仅使用虚构本地资源；未main合并、部署、生产、真实数据、真实云写或新增费用，旧网络故障/SDK-close/idle停止边界保持。
+#382本轮未新增整票关闭，可执行前沿仍为#394/任务12与#398/任务16。11月15日完整盘点14关闭/31开放；11月16日已只读确认父票与两前沿仍OPEN、PR428 Draft。持续授权仅推进独占隔离开发与虚构资源；未main合并、部署、生产、真实数据、真实云写或新增费用。旧网络故障/SDK-close/idle停止边界保持。
 
-任务16准确`e08f7de81fc528ef025a725040431c7d06a655ff`已在新PG16.15、261迁移、真实Nest/受限SDK通过双人竞争→30+10元实付→同键重放/GET→独立RepeatableRead核账；两身份共享付款待办真实随余额变化至付清清空。准确`6db0310ecc752263990bec32da726d3bcd6bcf03`又通过账户余额8元、项目来源5元、差额3元的409拒绝及完整前后无写入核账，原once自然0/23.814秒。两次自然cleanup完成并独核进程、监听、pidfile缺席。批准仍来自fixture，financialAcceptance=false，不等完整任务16；不覆盖首页、/me、Web或通知。
+任务16准确e08f7de8的真实双身份30+10元实付、重放/GET、共享付款待办至清空及独立RepeatableRead核账已过；准确6db0310e的账户8元/项目来源5元/差额3元拒绝和完整前后无写核账已过。两片原cleanup完成且Root独核进程/监听/pidfile缺席。批准仍来自fixture、financialAcceptance=false，不能关闭完整#398或冒真实审批/首页/Web通过。
 
-凭证链已接入本地私有上传、同一执行补凭证、重放、授权ticket及下载字节核验，但准确6e8dcf75与523355e8两次实际运行均停在VOUCHER_AUTHORIZED_TICKET/ProjectRosterMember读取拒绝。523仅缩小visibility查询返回列，并在voucher runtime授projectId/userId精确SELECT，未解决实跑；active plan与编译物确实匹配该修正。两次原进程自然cleanup且Root独核缺席，失败保持。诊断后继`f9a98c7edd067477ae7d4eaba972ff734856d3b4`相关CJS139/API门/串行loader2及双审通过，并在新独占资源实际捕获ticket查询引用id/projectId/userId（unknownShape=false），仍权限拒绝；原once自然exit1/22.598秒，cleanup及Root缺席核对完成。正核实际ACL后仅补已观测id，不加createdAt/整表。诊断已无冲突合本地f01c3efd，尚未发布；完整凭证、公共现金、页面/非空历史等仍待。
+凭证链连续收敛：原两列Roster权限失败，经真实受限SDK事件确认SQL实际引用id/projectId/userId，只补voucher runtime已观测id；另修客户端票据期限比较时刻的确定误拒，保原5分钟与HTTP5秒。合成941a0de9在新资源原once自然exit1/17.976秒，Roster拒绝消失，下一拒绝是ContractArchiveEvidenceFile；ticket/下载/最终核账仍未通过，原失败封存，cleanup与Root独核缺席完成。该关系用于既有归档generation/旧票据保护，findFirst读取完整model，下游确消费8字段，故未跳过/改顺序或猜授6个预计缺列。20d43d34仅扩固定关系的脱敏列名诊断，38窄CJS及generate/typecheck/lint、双审通过，未改service/Schema/权限，尚无该关系实际known SQL事件。
 
-任务12的完整物料检查syscall去重`34da37f0`保留逐次完整读取/SHA、身份与前后边界，准确新official资格原once自然0/170.517秒，三个inspector均在原25秒内；Root逐页实际检查本轮60PNG，机器/物理资格通过。Office仅transport，保留页眉页脚尾页，不称最终全业务排版或15格验收。registry-only后继`cd3366b8`的真实合同链自然exit1/632.852秒，首因POST编辑租约heartbeat/500/UNKNOWN，实际互动事务原5000ms在14156ms时过期；尚不证明守卫扫描是唯一原因。
+任务12原cd3366心跳HTTP500确认5000ms事务在14156ms过期；后继a7a98虽缩减完整guard扫描模型10→5，真实once仍通用HTTP失败且无具体观察，不能倒填旧首因。6d37dc27已补无HTTP观察/并发上下文/应用HTTP装配阶段诊断，并修“诊断自身抛错跳过清理”的P2；98相关、已有native witness21、typecheck/lint及修订双审通过，不改原错误、保护、预算或业务请求。
 
-新本地候选`22d3acff7903fc224f368a95f76635e2c87ce2b2`将公开操作完整模块图扫描模型10→5，保留完整前后检查，并以一次性私有proof重验moduleRef读取后的17个lookup/server/JWT实例。固定Node20 CJS162/162、Jest41/41、API typecheck/lint/build和修订双审通过；原宿主Node22诊断模型失败及888c遗漏receiver边界保留。merger无冲突合成本地`bc0c97124d0026d969678938bd576b1d17a1b517`，完整tree与22d3一致；模型计数不外推实际性能或合同通过。新22d3资格首prepare因Root漏建空run目录停止，未转换；已另建新包，build20.341/prepare11.810/verify8.086秒均0，新原once自然exit1/334.636秒，仍通用文书HTTP失败；本轮stderr0且无httpFailure/有限首因，不用cd33旧过期原因倒填。cleanup完成且Root独核进程、监听、pidfile缺席；正在最小修补pre-wire guard/并发上下文的诊断盲区，旧计划封存，预算不变。
+Root准确941a0de9正式build自然0/22.252秒，随后两项真实material loader串行2/2。复用该构建的新文书资格prepare8.369/verify9.393秒0，原once自然0/121.540秒；Root实际逐页审本轮60PNG，15/15/30页、三个report无failure，477文件镜像逐项字节一致。签框Java15、Office14、合并15/29，Office15及合并30仅页眉页脚尾页保留；Office仅transport，不冒15类型/岗位矩阵或最终全业务排版。机器SHA5e94a0b32020d96fff2c9c808378234abc8c901fbb218a1e210b3d734b95f3d5；物理SHAce826b3da7624cdec521c35c60e528bab3512c6e6399f6b7b2933b7b0971b2ff。
 
-最新已发布`15c43c195c7ab00ff7f1d15e2a7a750a1ff7c323`（含bc0c代码和进度文档），PR428仍Draft；CI43867960753自然成功32/32，Root逐job head匹配。旧ce59 CI及本地后继f01c3/本次文档各自分列，不外推后继SHA或真实业务通过。任务12完整提交→并联审批→盖章→签署归档→授权下载、15类型/岗位/撤回/直签/Web/PDF矩阵仍未通过。193规格/45任务全量复审及完成关票仍待。
+Registry-only本地子7c4b0c7b除registry外3970条mode/blob同941；新helper9.736秒0、新native prepare14.448/verify17.062秒0，Root3971source/4220FD/93PG材料核对。run283a59b2、planf1740ca5的原合同once正在独占运行，暂无终态，其他重编译已结束。完整提交→审批→盖章→签署归档/下载与矩阵仍未通过。
 
-本轮持久[主回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e38a-2308-7fb0-b98a-c672003f7522/382-continuation/CURRENT.md)记录准确source、plan、核账与cleanup及分阶段原件；原聊天和根混合变更保留。下方为11月15日发布源历史快照，不据旧SHA推断后继通过。
+当前本地代码合成839db9723e2962aae3caaf6df1929be1fb574b3b，tree371fa045526a55a92e1885678040364fd8615548，与20d43完整tree相同；各片窄门、真实资源和本合成SHA分开记录。最新已发布15c43c195c7ab00ff7f1d15e2a7a750a1ff7c323的CI43867960753自然成功32/32且Root逐job head匹配，不能外推后继SHA。此文档提交的新发布/CI以GitHub和主回执为准。公共现金与页面等仍待；合同容量/更正退款按#399/#400后续依赖边承接，不越界开工。193规格/45任务全量复审与交付仍待。
+
+准确source/plan/核账/清理及未通过项见[持续主回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e38a-2308-7fb0-b98a-c672003f7522/382-continuation/CURRENT.md)。根混合变更、旧候选和已消费计划保留；下方为11月15日历史快照，不据旧SHA推断后继通过。
 
 更新：2026-11-15 23:50（北京时间）。#382共193条规格、45项依赖任务；23:29:48完整读取GitHub仍14关闭、31开放，前沿#394/任务12、#398/任务16。本轮无新增整票关闭，完整关单时间仍未知。
 
