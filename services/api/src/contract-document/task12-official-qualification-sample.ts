@@ -90,6 +90,8 @@ function createMechanicalSample(source: Buffer) {
     "contract.taxRateLabel":"0%","contract.amountBasis":"tax_inclusive",
     "contract.renderSemanticVersion":CONTRACT_BODY_MONEY_SEMANTICS_VERSION,"contract.typographyVersion":REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
     "field.projectName":"虚构工具资格项目","field.taxRatePercent":"0",
+    "field.useLocation":"虚构使用地点","field.rentalStartDate":"虚构开始日期","field.rentalEndDate":"虚构结束日期",
+    "field.settlementCycle":"虚构结算周期","field.paymentRatioPercent":"30","clause.payment.text":"虚构付款约定",
     "bill.equipmentRentals":[{itemName:"资格样张设备",specification:"M-001",unit:"小时",quantity:"1",taxInclusiveUnitPrice:"113.0000",taxInclusiveAmount:"113.0000",taxRatePercent:"0"}]
   };
   const required=["contract.name","contract.temporaryCode","document.watermark"];
