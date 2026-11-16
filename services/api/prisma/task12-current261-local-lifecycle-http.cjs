@@ -180,7 +180,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
   seed.users.every(u=>id(u.id)&&typeof u.phone==='string'&&typeof passwords[u.id]==='string'&&/^[a-f0-9]{64}$/u.test(passwords[u.id]))&&new Set(Object.values(passwords)).size===8&&
   sourceDocx instanceof Uint8Array&&Array.isArray(originals)&&originals.length===2&&originals.every(b=>b instanceof Uint8Array));
  const address=server.address,port=address.call(server)?.port;
- let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false,layoutPreviewContext,previewCoordinates,inspectedRevision;
+ let available=true,failed=false,requests=0,upload=0,contractId,versionId,layoutId,lease,lastObservation,parallelObserved=false,draftPreviewQueued=false,layoutPreviewContext,previewCoordinates,inspectedRevision;
  const tokens=new Map(),active=new Map(),files=new Map(),tickets=new Map(),signatures=new Set();
  // Inclusive observational timings only. They neither gate nor extend work.
  const began=diagnosticNow(),timing={guardCalls:0,guardElapsedMs:0,exchangeCalls:0,exchangeElapsedMs:0};
@@ -194,10 +194,10 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  const wire=async(method,path,headers,body,binary=false,authPhone)=>{
   const observation={method,routeTemplate:routeTemplate(path),phase:'BEFORE_CHECK',httpStatus:null,businessOutcome:'UNKNOWN'};
   lastObservation=undefined;let ticket;
-  const collectAuth=()=>{if(ticket===undefined)return;const current=ticket;ticket=undefined;try{const detail=closedAuthDetail(takeAuth.call(authDiagnostics,current));if(observation.routeTemplate==='/contract-drafts/:versionId/edit-lease/heartbeat'){const {serverAuthBoundary,serverAuthTransactionPhase,...finite}=detail;Object.assign(observation,finite,...(serverAuthBoundary?[{serverLeaseBoundary:serverAuthBoundary}]:[]));}else Object.assign(observation,detail);}catch{/* Preserve the original HTTP failure and UNKNOWN. */}};
+  const collectAuth=()=>{if(ticket===undefined)return;const current=ticket;ticket=undefined;try{const detail=closedAuthDetail(takeAuth.call(authDiagnostics,current));if(['/contract-drafts/:versionId/edit-lease/heartbeat','/contract-drafts/:versionId/workbench'].includes(observation.routeTemplate)){const {serverAuthBoundary,serverAuthTransactionPhase,...finite}=detail;const boundaryKey=observation.routeTemplate.endsWith('/workbench')?'serverWorkbenchBoundary':'serverLeaseBoundary';Object.assign(observation,finite,...(serverAuthBoundary?[{[boundaryKey]:serverAuthBoundary}]:[]));}else Object.assign(observation,detail);}catch{/* Preserve the original HTTP failure and UNKNOWN. */}};
   try{
    check();need(++requests<=600);
-   if(authPhone!==undefined){need(method==='POST'&&(path==='/auth/login'||require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&routeTemplate(path)==='/contract-drafts/:versionId/edit-lease/heartbeat'));try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
+   if(authPhone!==undefined){need(method==='POST'&&path==='/auth/login'||require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&(method==='POST'&&routeTemplate(path)==='/contract-drafts/:versionId/edit-lease/heartbeat'||method==='GET'&&routeTemplate(path)==='/contract-drafts/:versionId/workbench'));try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
    observation.phase='EXCHANGE';
    const exchangeStarted=diagnosticNow();timing.exchangeCalls++;let result;
    try{result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});}finally{timing.exchangeElapsedMs+=diagnosticNow()-exchangeStarted;}
@@ -280,14 +280,15 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
   let drained;const pending={parallel,done:new Promise(resolve=>{drained=resolve;})};active.set(actor,pending);
   try{
    let diagnosticIdentity=path==='/auth/login'?seed.users[actor].phone:undefined;
-   if(require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&method==='POST'&&actor===0&&routeTemplate(path)==='/contract-drafts/:versionId/edit-lease/heartbeat'){try{const nonce=randomBytes(16).toString('hex');h['x-task12-diagnostic']=nonce;diagnosticIdentity=versionId+':'+nonce;}catch{/* An unavailable diagnostic must not prevent the request. */}}
+   if(require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&actor===0&&(method==='POST'&&routeTemplate(path)==='/contract-drafts/:versionId/edit-lease/heartbeat'||method==='GET'&&draftPreviewQueued&&routeTemplate(path)==='/contract-drafts/:versionId/workbench')){try{const nonce=randomBytes(16).toString('hex');h['x-task12-diagnostic']=nonce;diagnosticIdentity=versionId+':'+nonce+(method==='GET'?':workbench':'');}catch{/* An unavailable diagnostic must not prevent the request. */}}
    const result=await wire(method,path,h,body,false,diagnosticIdentity),value=result.body;
    if(path==='/auth/login'){
     const user=own(value,'user'),token=own(own(value,'tokens'),'accessToken');
     need(result.status===201&&own(user,'id')===seed.users[actor].id&&own(user,'phone')===seed.users[actor].phone&&own(user,'mustChangePassword')===false&&
      equal(own(user,'roleKeys'),roleKeys(actor))&&equal(own(user,'globalRoleKeys'),globalKeys(actor))&&typeof token==='string'&&token.length<=4096&&/^[\w-]+\.[\w-]+\.[\w-]+$/u.test(token));
     const claims=verifyToken(token);need(own(claims,'sub')===seed.users[actor].id&&own(claims,'phone')===seed.users[actor].phone&&own(claims,'type')==='access'&&own(claims,'ver')===0);tokens.set(actor,token);
-   }else if(path==='/contracts'&&result.status===201){contractId=own(own(value,'contract'),'id');versionId=own(own(value,'version'),'id');need(id(contractId)&&id(versionId)&&contractId!==versionId);}
+   }else if(path==='/contract-drafts/'+versionId+'/preview-generation'&&method==='POST'&&result.status===201){draftPreviewQueued=true;}
+   else if(path==='/contracts'&&result.status===201){contractId=own(own(value,'contract'),'id');versionId=own(own(value,'version'),'id');need(id(contractId)&&id(versionId)&&contractId!==versionId);}
    else if(path==='/contract-layout-templates'&&result.status===201){
     layoutId=own(own(value,'version'),'id');need(id(layoutId));
     const sourceFileId=own(json,'docxFileId'),templateId=own(own(value,'template'),'id');
