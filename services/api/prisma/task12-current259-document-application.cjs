@@ -237,7 +237,10 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
   }
   verifyProviders(view);need(document.queueDraftPreview===routeQueue,'PROVIDERS');
  }catch(error){
-  if(publicLifecycle&&stage==='HTTP'&&!httpEntered)require('./task12-current261-local-lifecycle-http.cjs').rememberCurrent261ApplicationHttpSetupFailure(error);
+  if(publicLifecycle&&stage==='HTTP'&&!httpEntered){
+   try{require('./task12-current261-local-lifecycle-http.cjs').rememberCurrent261ApplicationHttpSetupFailure(error);}
+   catch{/* Observational diagnostics must preserve the original failure and cleanup. */}
+  }
   primary=fault(faults.get(error)??stage);
   if(publicLifecycle){Object.defineProperty(primary,'cause',{value:error});if(own(error,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(primary,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
   const exerciseCode=publicDraft&&stage==='HTTP'&&fixedExerciseCode(own(error,'code'));

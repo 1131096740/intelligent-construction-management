@@ -6,9 +6,9 @@ test('a caller-supplied ordinary pool cannot enter the fixed document applicatio
  await assert.rejects(runCurrent259GeneratedDocumentApplication(Object.freeze({ordinary:{}})),/HANDLE/u);
 });
 
-function model(failure,setupError){
+function model(failure,setupError,diagnosticFailure){
  const fs=require('node:fs'),path=require('node:path');
- const trace=[],bindings=new Map(),authTickets=new Set();let escapedAuth,remainingMs=900000,sourceOwned=true,traps=0;const abort=new AbortController();
+ const trace=[],bindings=new Map(),authTickets=new Set();let escapedAuth,remainingMs=900000,sourceOwned=true,traps=0,setupThrown=false;const abort=new AbortController();
  const token=Object.fromEntries(['PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor',
   'ContractReadService','MeService','AuditService','ContractDocumentService','ContractDraftController','FileService','JwtTokenService','AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor'].map(key=>[key,class {}]));
  for(const [key,methods]of Object.entries({ContractReadService:['workbenchLedger'],MeService:['getContractPendingWorkItems','contractV2LifecycleWorkItems'],AuditService:['record'],AuthService:['login','loadUserRoleScopes','issueTokens'],AuthRateLimitService:['take'],AuthController:['login'],Task12AuthErrorFilter:['catch'],Task12AuthStageInterceptor:['intercept']}))for(const name of methods)token[key].prototype[name]=function(){};
@@ -39,7 +39,7 @@ function model(failure,setupError){
  const get=key=>bindings.has(key)?bindings.get(key):objects.get(key);
  const testing={get,async close(){trace.push('module-close');await ordinary.onApplicationShutdown();}};
  const server={listening:false,address(){return {address:'127.0.0.1',family:'IPv4',port:24080};}};
- const nativeWarm=new Set(),nativeReads=[],nativePublicProofs=new WeakSet();const appGet=key=>{if(setupError&&server.listening&&key===token.JwtTokenService){trace.push('setup-jwt-get');throw setupError;}nativeWarm.add(key);nativeReads.push(key);return get(key);};
+ const nativeWarm=new Set(),nativeReads=[],nativePublicProofs=new WeakSet();const appGet=key=>{if(setupError&&server.listening&&key===token.JwtTokenService){trace.push('setup-jwt-get');setupThrown=true;throw setupError;}nativeWarm.add(key);nativeReads.push(key);return get(key);};
  const app={get:appGet,getHttpServer(){return server;},async close(){
   if(!['stuck-listener','public-fixed-error'].includes(failure))server.listening=false;
   trace.push('app-close');await Promise.resolve();trace.push('worker-drained');
@@ -69,7 +69,7 @@ function model(failure,setupError){
   }});
  let claimed=false;
  const imports={
-  './task12-current261-local-lifecycle-http.cjs':{rememberCurrent261ApplicationHttpSetupFailure:require('./task12-current261-local-lifecycle-http.cjs').rememberCurrent261ApplicationHttpSetupFailure,async withCurrent261LocalLifecycleHttp(config,live,check,verifyToken,consume){
+  './task12-current261-local-lifecycle-http.cjs':{rememberCurrent261ApplicationHttpSetupFailure(error){if(diagnosticFailure==='call'){trace.push('diagnostic-call-failure');throw Error('PRIVATE_DIAGNOSTIC');}return require('./task12-current261-local-lifecycle-http.cjs').rememberCurrent261ApplicationHttpSetupFailure(error);},async withCurrent261LocalLifecycleHttp(config,live,check,verifyToken,consume){
    assert.equal(config,bridge.publicLifecycle);assert.equal(live,server);check();assert.throws(()=>mod.exports.takeCurrent259GeneratedDocumentHttpBridge(config,live),/HANDLE/u);
    const diagnostics=mod.exports.takeCurrent261LocalLifecycleHttpBridge(config,live);escapedAuth=diagnostics;if(failure?.startsWith('lifecycle-diagnostic')){const ticket=diagnostics.arm('19900000000');if(failure==='lifecycle-diagnostic-expired')remainingMs=0;if(failure==='lifecycle-diagnostic-aborted')abort.abort();if(failure==='lifecycle-diagnostic-unowned')sourceOwned=false;const detail=diagnostics.take(ticket);assert.equal(trace.filter(v=>v==='auth-full-inspect').length,1);assert.equal(trace.filter(v=>v==='auth-native-take').length,1);if(failure==='lifecycle-diagnostic-aftercheck'){assert.deepEqual(detail,{serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2028'});sourceOwned=false;trace.push('original-after-check');assert.throws(()=>check(),/PROVIDERS/u);throw Object.assign(Error('original AFTER_CHECK rejected'),{code:'AFTER_CHECK_REJECTED'});}if(failure==='lifecycle-diagnostic')assert.deepEqual(detail,{serverErrorKind:'KNOWN_REQUEST_ERROR',serverPrismaCode:'P2028'});else assert.equal(detail,undefined);}assert.throws(()=>mod.exports.takeCurrent261LocalLifecycleHttpBridge(config,live),/HANDLE/u);trace.push('lifecycle-http');return consume({fixed:true});
   }},
@@ -95,7 +95,7 @@ function model(failure,setupError){
   }
  };
  const filename=path.join(__dirname,'task12-current259-document-application.cjs'),mod={exports:{}};
- new Function('require','module',fs.readFileSync(filename,'utf8'))(id=>imports[id]??require(id),mod);
+ new Function('require','module',fs.readFileSync(filename,'utf8'))(id=>{if(id==='./task12-current261-local-lifecycle-http.cjs'&&setupThrown&&diagnosticFailure==='require'){trace.push('diagnostic-require-failure');throw Error('PRIVATE_DIAGNOSTIC_REQUIRE');}return imports[id]??require(id);},mod);
  return {api:mod.exports,nativeProof,bridge,token,bindings,trace,server,ordinary,originalShutdown,document,originalQueue,providers,authTickets,nativeWarm,nativeReads,get escapedAuth(){return escapedAuth;},traps:()=>traps};
 }
 test('the same application resolves original file authority, routes only queue to its role and drains before returning',async()=>{
@@ -252,4 +252,12 @@ test('HTTP setup wrapped JWT lookup failure retains a finite diagnostic before e
   assert.deepEqual(detail.firstCause,code==='CURRENT261_NATIVE_PROVIDER_LOOKUP'?{family:'INTEGRITY',code}:{family:'UNKNOWN',code:'UNKNOWN'});assert.deepEqual(detail.timingAtConsumeFailure,{status:'UNKNOWN'});
   assert.equal(f.trace.filter(item=>item==='setup-jwt-get').length,1);assert.equal(f.trace.includes('lifecycle-http'),false);assert.equal(f.trace.includes('exercise-public'),false);assert.equal(f.trace.includes('app-close'),true);assert.doesNotMatch(JSON.stringify(detail),/PRIVATE|stack/u);
  }
+});
+
+
+for(const mode of ['require','call'])test('HTTP setup diagnostic '+mode+' failure preserves original cause and app cleanup',async()=>{
+  const first=Object.assign(Error('PRIVATE_SETUP_ORIGINAL'),{code:'CURRENT261_NATIVE_PROVIDER_LOOKUP'}),f=model('lifecycle',first,mode);
+  await assert.rejects(f.api.runCurrent259GeneratedDocumentApplication(f.bridge),error=>error.code==='CURRENT259_GENERATED_DOCUMENT_APP_HTTP'&&error.cause===first);
+  assert.equal(f.trace.filter(item=>item==='diagnostic-'+mode+'-failure').length,1);assert.equal(f.trace.filter(item=>item==='setup-jwt-get').length,1);
+  assert.equal(f.trace.includes('lifecycle-http'),false);assert.equal(f.trace.includes('exercise-public'),false);assert.equal(f.trace.includes('app-close'),true);assert.equal(f.trace.includes('worker-drained'),true);assert.equal(f.server.listening,false);assert.equal(f.document.queueDraftPreview,f.originalQueue);assert.equal(f.ordinary.onApplicationShutdown,f.originalShutdown);
 });
