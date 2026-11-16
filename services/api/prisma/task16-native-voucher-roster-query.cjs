@@ -92,4 +92,33 @@ function createNativeTask16RosterQueryDiagnostic(receipt,getStage){
   };
  }});
 }
-module.exports=Object.freeze({projectNativeTask16RosterQuery,nativeTask16VoucherQueryLogOptions,createNativeTask16RosterQueryDiagnostic});
+const cashPartyColumns=Object.freeze(['businessPartyVersionId','contractVersionId','createdAt','displayOrder','id','roleKey','snapshot']);
+function projectNativeTask16CashPartyQuery(event,lane,stage){
+ if(lane!=='runtime_a'||stage!=='CASH_SEED_AND_SETTLEMENT_REPLAY'||!event||typeof event!=='object'||types.isProxy(event))return null;
+ const d=Object.getOwnPropertyDescriptor(event,'query');if(!d||!Object.hasOwn(d,'value')||typeof d.value!=='string'||Buffer.byteLength(d.value)>32768)return null;
+ const {tokens,unsafe}=tokenize(d.value);if(!tokens.some((t,i)=>word(t,'FROM')&&relationEnd(tokens,i+1,'ContractPartySnapshot')))return null;
+ let shape={operation:'UNKNOWN',columns:[],unknownShape:true};
+ try{
+  if(unsafe)throw Error('UNKNOWN');let p=0;const found=new Set();const bad=()=>{throw Error('UNKNOWN');};
+  const take=k=>{if(tokens[p]?.kind!==k)bad();p++;};const keyword=k=>{if(!word(tokens[p],k))bad();p++;};
+  const ref=()=>{if(!['word','quoted'].includes(tokens[p]?.kind)||tokens[p]?.value!=='public')bad();p++;take('.');if(tokens[p]?.kind!=='quoted'||tokens[p]?.value!=='ContractPartySnapshot')bad();p++;take('.');const c=tokens[p];if(c?.kind!=='quoted'||!cashPartyColumns.includes(c.value))bad();found.add(c.value);p++;return c.value;};
+  keyword('SELECT');ref();while(tokens[p]?.kind===','){p++;ref();}
+  keyword('FROM');if(tokens[p]?.value!=='public')bad();p++;take('.');if(tokens[p]?.kind!=='quoted'||tokens[p]?.value!=='ContractPartySnapshot')bad();p++;
+  keyword('WHERE');const grouped=tokens[p]?.kind==='(';if(grouped)p++;
+  if(ref()!=='contractVersionId'||tokens[p]?.value!=='=')bad();p++;take('parameter');keyword('AND');
+  if(ref()!=='roleKey'||tokens[p]?.value!=='=')bad();p++;take('parameter');if(grouped)take(')');
+  keyword('ORDER');keyword('BY');if(ref()!=='displayOrder')bad();keyword('ASC');keyword('LIMIT');take('parameter');
+  if(word(tokens[p],'OFFSET')){p++;take('parameter');}if(tokens[p]?.kind===';')p++;if(p!==tokens.length)bad();
+  shape={operation:'SELECT',columns:cashPartyColumns.filter(c=>found.has(c)),unknownShape:false};
+ }catch{/* Unexpected SQL shapes cannot justify permissions. */}
+ return Object.freeze({lane,stage,relation:'ContractPartySnapshot',...shape,columns:Object.freeze(shape.columns)});
+}
+function createNativeTask16CashPartyDiagnostic(receipt,getStage){
+ const events=[];return event=>{try{const value=projectNativeTask16CashPartyQuery(event,'runtime_a',getStage());if(!value)return;
+  const overflow=events.length===12;if(!overflow)events.push(value);receipt.cashPartyQueries=Object.freeze({events:Object.freeze([...events]),overflow});
+ }catch{/* Never alter the business outcome. */}};
+}
+function nativeTask16CashPartyQueryLogOptions(purpose,lane){
+ return purpose==='TASK16_NATIVE_PUBLIC_CASH_V1'&&lane==='runtime_a'?Object.freeze({log:Object.freeze([Object.freeze({emit:'event',level:'query'})])}):undefined;
+}
+module.exports=Object.freeze({projectNativeTask16CashPartyQuery,createNativeTask16CashPartyDiagnostic,nativeTask16CashPartyQueryLogOptions,projectNativeTask16RosterQuery,nativeTask16VoucherQueryLogOptions,createNativeTask16RosterQueryDiagnostic});

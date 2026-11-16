@@ -356,3 +356,13 @@ test('cash caller preserves results, immutable failures, and reports a pending d
  release();await new Promise(resolve=>setImmediate(resolve));
  api.recordNativeTask16CashSecretCleanup(receipt,state,0);assert.equal(receipt.cashSecretCleanup,'UNKNOWN');
 });
+test('cash runtime client alone projects bounded query metadata without changing failures',async()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),receipt={stages:[{stage:'CASH_SEED_AND_SETTLEMENT_REPLAY'}]},original=Error('synthetic error');let params=0;
+ class Client{constructor(options){this.options=options;} $on(kind,handler){this.handler=handler;}}
+ const clients=api.createNativeTask16BusinessClients(Client,'TASK16_NATIVE_PUBLIC_CASH_V1',()=> 'MODEL',receipt);
+ assert.ok(clients[1].handler);assert.equal(clients[0].handler,undefined);assert.equal(clients[2].handler,undefined);assert.equal(clients[3].handler,undefined);
+ const query='SELECT "public"."ContractPartySnapshot"."businessPartyVersionId", "public"."ContractPartySnapshot"."snapshot" FROM "public"."ContractPartySnapshot" WHERE ("public"."ContractPartySnapshot"."contractVersionId" = $1 AND "public"."ContractPartySnapshot"."roleKey" = $2) ORDER BY "public"."ContractPartySnapshot"."displayOrder" ASC LIMIT $3 OFFSET $4';
+ async function rejected(){clients[1].handler({query,get params(){params++;throw Error('PRIVATE');}});throw original;}
+ await assert.rejects(rejected(),e=>e===original);assert.equal(params,0);assert.equal(receipt.cashPartyQueries.events[0].unknownShape,false);
+ assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE|SELECT |params/u);
+});
