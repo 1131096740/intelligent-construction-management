@@ -217,7 +217,15 @@ test('261 gap adds five opening defaults and voucher eleven with unchanged nonIN
  assert.doesNotMatch(gap261.sql,/^GRANT SELECT [^\n]+HistoricalFinancialTakeoverRowMapping/mu);
  for(const table of ['PaymentExecution','RegisteredPaymentEvent','InterEntityRelationshipEntry'])assert.deepEqual(inserts(gap261.sql).filter(row=>row.includes('public."'+table+'"')),inserts(legacy.sql).filter(row=>row.includes('public."'+table+'"')));
  const rosterGrant='GRANT SELECT ("id", "projectId", "userId") ON TABLE public."ProjectRosterMember" TO "jg_task01_runtime";';
- assert.deepEqual(grants(voucher261.sql).filter(row=>!row.startsWith('GRANT INSERT ')&&row!==rosterGrant),grants(historicalVoucher.sql).filter(row=>!row.startsWith('GRANT INSERT ')));
+ const approvedReadChanges=new Map([
+  ['GRANT SELECT ("archiveFileId", "contractVersionId", "fileId") ON TABLE public."ContractArchiveEvidenceFile" TO "jg_task01_runtime";',
+   'GRANT SELECT ("archiveFileId", "contentSha256", "contractVersionId", "createdAt", "displayOrder", "fileId", "id", "mimeType", "sizeBytes") ON TABLE public."ContractArchiveEvidenceFile" TO "jg_task01_runtime";'],
+  ['GRANT SELECT ("evidenceFileId") ON TABLE public."WageApprovedSourceVersion" TO "jg_task01_runtime";',
+   'GRANT SELECT ("evidenceFileId", "id") ON TABLE public."WageApprovedSourceVersion" TO "jg_task01_runtime";']
+ ]);
+ const historicalNonInsert=grants(historicalVoucher.sql).filter(row=>!row.startsWith('GRANT INSERT '));
+ for(const oldGrant of approvedReadChanges.keys())assert.equal(historicalNonInsert.filter(row=>row===oldGrant).length,1);
+ assert.deepEqual(grants(voucher261.sql).filter(row=>!row.startsWith('GRANT INSERT ')&&row!==rosterGrant),historicalNonInsert.map(row=>approvedReadChanges.get(row)??row));
  assert.deepEqual(grants(voucher261.sql).filter(row=>row.includes('public."ProjectRosterMember"')),[rosterGrant]);
  assert.equal(inserts(voucher261.sql).filter(row=>!inserts(historicalVoucher.sql).includes(row)).length,9);
  for(const table of ['FileObject','RegisteredPaymentVoucher'])assert.match(inserts(voucher261.sql).find(row=>row.includes('public.\"'+table+'\"')),/createdAt/u);
