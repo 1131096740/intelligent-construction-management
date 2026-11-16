@@ -261,3 +261,14 @@ for(const mode of ['require','call'])test('HTTP setup diagnostic '+mode+' failur
   assert.equal(f.trace.filter(item=>item==='diagnostic-'+mode+'-failure').length,1);assert.equal(f.trace.filter(item=>item==='setup-jwt-get').length,1);
   assert.equal(f.trace.includes('lifecycle-http'),false);assert.equal(f.trace.includes('exercise-public'),false);assert.equal(f.trace.includes('app-close'),true);assert.equal(f.trace.includes('worker-drained'),true);assert.equal(f.server.listening,false);assert.equal(f.document.queueDraftPreview,f.originalQueue);assert.equal(f.ordinary.onApplicationShutdown,f.originalShutdown);
 });
+
+test('application cleanup distinguishes a close error from a listening server without exposing details',async()=>{
+ for(const [mode,expected] of [['close',['CLOSE_FAILED']],['stuck-listener',['SERVER_LISTENING']]]){
+  const f=model(mode);
+  await assert.rejects(f.api.runCurrent259GeneratedDocumentApplication(f.bridge),error=>{
+   assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+   assert.deepEqual(error.appCleanupDiagnostics,expected);
+   assert.doesNotMatch(JSON.stringify(error.appCleanupDiagnostics),/private/);return true;
+  });
+ }
+});

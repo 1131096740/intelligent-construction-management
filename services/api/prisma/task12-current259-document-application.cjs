@@ -77,6 +77,7 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
  const {check,loader,loaded,ordinary,providers,queue,exercise,publicDraft,publicLifecycle}=bridge;
  let testing,view,orphan,closeApp,closeModule,restoreQueue,restoreOrdinary,server;
  let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value,authActive=false,httpEntered=false;
+ const cleanupDiagnostics=[];
  const bounded=async operation=>{
   let timer;
   try{return await Promise.race([Promise.resolve().then(operation),new Promise((_,reject)=>{
@@ -245,22 +246,22 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
   if(publicLifecycle){Object.defineProperty(primary,'cause',{value:error});if(own(error,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(primary,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
   const exerciseCode=publicDraft&&stage==='HTTP'&&fixedExerciseCode(own(error,'code'));
   if(exerciseCode)Object.defineProperty(primary,'exerciseCode',{value:exerciseCode,enumerable:true});
-  if(own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')cleanupUnknown=true;
+  if(own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE'){cleanupUnknown=true;cleanupDiagnostics.push('INHERITED_UNKNOWN');}
  }
  authActive=false;
  try{
   if(closeApp)await bounded(()=>closeApp.call(view));
   else if(orphan)await bounded(()=>orphan.close());
   else if(closeModule)await bounded(()=>closeModule.call(testing));
-  else if(compilationStarted)cleanupUnknown=true;
-  if(server&&server.listening!==false)cleanupUnknown=true;
- }catch{cleanupUnknown=true;}
+  else if(compilationStarted){cleanupUnknown=true;cleanupDiagnostics.push('CLOSE_HANDLE_MISSING');}
+  if(server&&server.listening!==false){cleanupUnknown=true;cleanupDiagnostics.push('SERVER_LISTENING');}
+ }catch{cleanupUnknown=true;cleanupDiagnostics.push('CLOSE_FAILED');}
  finally{
   for(const restore of [restoreQueue,restoreOrdinary])if(restore){
-   try{restore();}catch{cleanupUnknown=true;}
+   try{restore();}catch{cleanupUnknown=true;cleanupDiagnostics.push(restore===restoreQueue?'QUEUE_RESTORE_FAILED':'ORDINARY_RESTORE_FAILED');}
   }
  }
- if(cleanupUnknown||pending)throw Object.assign(primary??fault('CLOSE'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+ if(cleanupUnknown||pending){if(pending)cleanupDiagnostics.push('BOUNDED_TIMEOUT_OBSERVED');throw Object.assign(primary??fault('CLOSE'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE',appCleanupDiagnostics:Object.freeze(cleanupDiagnostics)});}
  if(primary)throw primary;
  return value;
 }

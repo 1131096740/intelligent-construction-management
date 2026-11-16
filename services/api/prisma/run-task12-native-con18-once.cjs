@@ -5,6 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {createHash,randomBytes,randomUUID}=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
+const {projectCleanupDiagnostics}=require('./task12-cleanup-diagnostic.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK12_NATIVE_CON18_WITHDRAWAL_V1';
 // Root's independently reviewed official16.15/pgcrypto93-file qualification.
 const BINARY_QUALIFICATION_SHA='26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1';
@@ -313,6 +314,7 @@ async function executeNativeTask16Once(plan,planSha256){
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');receipt.status='NATIVE_TASK12_CON18_RETURNED_NOT_FULL394_ACCEPTANCE';
  }catch(error){const code=error&&!types.isProxy(error)?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;receipt.failure={stage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',elapsedMs:Date.now()-started};receipt.status='STOPPED';
   const http=require('./task12-current261-local-lifecycle-http.cjs').describeCurrent261LocalLifecycleHttpFailure(error);if(http)receipt.httpFailure=http;
+  const appCleanupDiagnostics=projectCleanupDiagnostics(error);if(appCleanupDiagnostics)receipt.appCleanupDiagnostics=appCleanupDiagnostics;
   for(let n=0,value=error;n<8&&value&&typeof value==='object'&&!types.isProxy(value);n++,value=Object.getOwnPropertyDescriptor(value,'cause')?.value){
    if(Object.getOwnPropertyDescriptor(value,'ownerCleanupOutcome')?.value==='UNKNOWN_DO_NOT_CONTINUE')receipt.ownerCleanup='UNKNOWN_DO_NOT_CONTINUE';
    if(Object.getOwnPropertyDescriptor(value,'appCleanupOutcome')?.value==='UNKNOWN_DO_NOT_CONTINUE')receipt.applicationCleanup='UNKNOWN_DO_NOT_CONTINUE';
