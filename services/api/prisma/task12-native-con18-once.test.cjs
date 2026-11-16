@@ -1,0 +1,26 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const runner=require('./run-task12-native-con18-once.cjs');
+test('equipment and CON18 plans reject the other purpose before accessing resources',()=>{
+ const old=require('./run-task12-native-equipment-once.cjs');
+ const plan=Object.fromEntries(['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','prismaTools','interfaces','binaryManifest','binaries','openssl','externalLibraries','node','security','limits','differences','officialRuntime'].map(key=>[key,null]));
+ plan.schemaVersion=3;
+ plan.purpose='TASK12_NATIVE_EQUIPMENT_FULL261_V1';
+ assert.throws(()=>runner.validateNativeTask12EquipmentPlan(plan));
+ plan.purpose='TASK12_NATIVE_CON18_WITHDRAWAL_V1';
+ assert.throws(()=>old.validateNativeTask12EquipmentPlan(plan));
+});
+test('CON18 runner binds its dedicated purpose and qualifies case/capability/window interfaces',()=>{
+ const text=fs.readFileSync(path.join(__dirname,'run-task12-native-con18-once.cjs'),'utf8');
+ assert.match(text,/PURPOSE='TASK12_NATIVE_CON18_WITHDRAWAL_V1'/u);assert.match(text,/sourceCapture\(\)/u);assert.match(text,/official\.readPdfDrawnText\(bytes,abort\)/u);
+ const specs=runner.inspectNativeTask16Interfaces();for(const file of ['task12-con18-native-capability.cjs','task12-con18-native-owner-window.cjs','task12-con18-withdrawal-case.js'])assert.ok(specs.some(row=>row.file.endsWith('/'+file)));
+ const old=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8');assert.match(old,/PURPOSE='TASK12_NATIVE_EQUIPMENT_FULL261_V1'/u);assert.doesNotMatch(old,/TASK12_NATIVE_CON18_WITHDRAWAL_V1/u);
+});
+test('cleanup failure is secondary and never replaces the first business exception',async()=>{
+ const primary=Error('primary'),receipt={};let attempts=0;
+ await assert.rejects(runner.closeTask12Con18WithPrimary({closeTask12Con18OwnerWindow:async()=>{attempts++;throw Error('cleanup');}},{},{failed:true,error:primary},receipt),error=>error===primary);
+ assert.equal(attempts,1);assert.deepEqual(receipt,{ownerCleanup:'UNKNOWN_DO_NOT_CONTINUE'});
+});
+test('unmatched owner close cannot yield success and consumes only one close',async()=>{
+ let attempts=0;await assert.rejects(runner.closeTask12Con18WithPrimary({closeTask12Con18OwnerWindow:async()=>{attempts++;return {matched:false};}},{},{failed:false},{}));assert.equal(attempts,1);
+});
