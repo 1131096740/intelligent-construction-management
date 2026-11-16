@@ -330,6 +330,20 @@ describe("ContractDocumentService", () => {
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe("built-in-party-placement-v1");
   });
+  it("freezes the source-bound font-table version only for a newly queued built-in generic document",async()=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates/generic-contract-v1.docx")),sourcePositions=readLayoutSourcePositions(input);
+    const bindings=sourcePositions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    const owner=sourcePositions.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===13)!;
+    bindings.push({positionId:owner.positionId,start:0,end:1,fieldKey:"party.owner.name"});
+    const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:sourcePositions.sourceSha256}});
+    const {service}=makeService(tx);
+    await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.genericFontTableVersion).toBe("built-in-generic-font-v1");
+  });
 
   function makeSingleConnectionService(current: { storageStatus?: string; objectKey?: string } = {}, bytes = source) {
     const file = { id: "layout-file-1", objectKey: "private/layout.docx", storageStatus: "active",

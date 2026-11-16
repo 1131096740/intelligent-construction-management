@@ -32,7 +32,7 @@ import {
 } from "./contract-document.service";
 import { convertDocxToPdf } from "./libreoffice-converter";
 import { assertContractPreviewFontOutput } from "./contract-preview-font-output";
-import { completeContractDocxFontTableType } from "./contract-docx-package-metadata";
+import { BUILT_IN_GENERIC_FONT_VERSION, completeContractDocxFontTableType } from "./contract-docx-package-metadata";
 import { normalizeContractPdf, type PdfAttachment } from "./pdf-normalizer";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
@@ -615,7 +615,8 @@ export class ContractDocumentProcessor
       }
       const completedPackage = completeContractDocxFontTableType(
         prepareContractBodyTableMargins(appendDocxImageAttachments(docx, attachments), snapshot.bodyDocument?.tableLayoutVersion),
-        createHash("sha256").update(template.buffer).digest("hex")
+        createHash("sha256").update(template.buffer).digest("hex"),
+        snapshot.genericFontTableVersion
       );
       const finalDocx = completedPackage.docx;
       const finalLineBoxScope = renderedBody?.lineBoxScope ? finalizeContractBodyLineBoxScope(finalDocx, renderedBody.lineBoxScope) : undefined;
@@ -1029,6 +1030,7 @@ export class ContractDocumentProcessor
     }
     if (snapshot.bodyDocument !== undefined && (!snapshot.bodyDocument || typeof snapshot.bodyDocument !== "object" || Array.isArray(snapshot.bodyDocument) || snapshot.bodyDocument.protocolVersion !== 1 || typeof snapshot.bodyDocument.layoutTemplateVersionId !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.sourceSha256))) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.partyDetailsVersion !== undefined && (snapshot.partyDetailsVersion !== BUILT_IN_PARTY_PLACEMENT_VERSION || snapshot.bodyDocument !== undefined)) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.genericFontTableVersion !== undefined && snapshot.genericFontTableVersion !== BUILT_IN_GENERIC_FONT_VERSION) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.bodyDocument?.partyDetailsVersion !== undefined && (snapshot.bodyDocument.partyDetailsVersion !== BUILT_IN_PARTY_PLACEMENT_VERSION || !builtInPartyPlacementKind(snapshot.bodyDocument.sourceSha256))) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.bodyDocument?.pdfEngine !== undefined && (snapshot.bodyDocument.pdfEngine !== "docx4j-17.3.5" || typeof snapshot.bodyDocument.runtimeLockSha256 !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.runtimeLockSha256))) throw new Error("合同文档输入快照格式不正确");
     if (snapshot.bodyDocument?.pdfEngine === undefined && snapshot.bodyDocument?.runtimeLockSha256 !== undefined) throw new Error("合同文档输入快照格式不正确");
