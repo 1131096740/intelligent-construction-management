@@ -52,6 +52,8 @@
 
 后继 `f1c45d85` 修正项目启用顺序，新独占 native 已通过 ACL/B7 并越过原项目启用失败；随后 `CASH_SEED_AND_SETTLEMENT_REPLAY` 在 `ContractVersion_signing_subject_check` 停止，尚未付款或核账。secret CLEARED，cleanup 完成，独核进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-f1c4/receipt.json) SHA `5d6d0134736a6d82802d7985bfc5e6bd29cae195eeae7126a97dddc918793720`；正在按实际数据库约束修正种子。
 
+后继 `01b9b28b` 修正我方签约版本及种子回读，新独占运行通过 ACL/B7 并越过前述约束，在 `CASH_SEED_AND_SETTLEMENT_REPLAY` 遇 `ContractPartySnapshot` 权限拒绝；付款和核账未到达。secret CLEARED、cleanup 完成，独核进程、监听及 pidfile 缺席。[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-01b9/receipt.json) SHA `c4b20ce6f2ee3b1afc7291c343769167d14810a61c7559cd08d3a7e604bd418d`；实际查询列仍待定位，不猜测扩权。
+
 准确 `8fde2600` 新独占 cash 原生运行 prepare、verify 和材料核对通过；原 once 在 `ACL_APPLY` 停止，PG 日志首因 `WRITER_FUNCTION_PROOF_14`，业务未进入，secret 未开始。原 cleanup 完成，独核进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-8fde/receipt.json) SHA `9870b623492d1005cc371a5fb78ac191b78d59fbb46ab824013a0056b19f0ac5`；正在诊断函数定义证明差异，不以模型替代物理通过。
 
 本地合成 `21dec58d` 补足机械资格样张五项虚构输入，目标测试 19/19；新文书转换和逐页审阅仍待。`4e5ed568` 单独修正既有 voucher 权限测试的陈旧期望，仅纳入此前实际观测并已合入的七列读取差量，其余非 INSERT 权限继续严格比较，目标测试 14/14；没有新增生产权限。
