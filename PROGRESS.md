@@ -2,15 +2,19 @@
 
 ## 2026-11-16 接续进展
 
-#382仍为14项关闭、31项开放；可执行前沿为#394/任务12与#398/任务16。按持续独占隔离开发授权推进，生产、真实数据、真实云写及部署未操作；PR428保持Draft，未合入main。
+#382本轮未新增整票关闭，可执行前沿仍为#394/任务12与#398/任务16。11月15日完整任务盘点为14关闭/31开放；11月16日12:26Z只读确认父票、两前沿票仍OPEN，PR428仍Draft。持续独占隔离开发仅使用虚构本地资源；未main合并、部署、生产、真实数据、真实云写或新增费用，旧网络故障/SDK-close/idle停止边界保持。
 
-任务16准确本地`e08f7de81fc528ef025a725040431c7d06a655ff`在新独占PG16.15、261迁移、真实Nest/受限SDK上通过双人竞争→补付→同键重放/GET→独立RepeatableRead核账。竞争后仅B付30元生效，补付A10元后余额A90/B70、累计4000分，实付/分摊/事件/审计各2、往来root1，重放不变，项目fact/impact0。原once自然exit0/33.398秒，原cleanup完成，独核进程/监听/pidfile缺席。核账SHA `b2caaed5bcb484e77b0c3812e8a907a876cc510f30fa850cdf583f348f3f6c17`；批准仍来自fixture、financialAcceptance=false，不等完整任务16通过。此前0223登录500及ac0a后续options失败保持；修复为明确profile默认INSERT列、历史发现查询select id及精确七列读取，不授整表或历史证明写权。项目来源差额、凭证、公共现金、待办/UI和非空历史等仍待；旧网络故障/SDK-close/idle停止边界保持。
+任务16准确`e08f7de81fc528ef025a725040431c7d06a655ff`已在新PG16.15、261迁移、真实Nest/受限SDK通过双人竞争→30+10元实付→同键重放/GET→独立RepeatableRead核账；两身份共享付款待办真实随余额变化至付清清空。准确`6db0310ecc752263990bec32da726d3bcd6bcf03`又通过账户余额8元、项目来源5元、差额3元的409拒绝及完整前后无写入核账，原once自然0/23.814秒。两次自然cleanup完成并独核进程、监听、pidfile缺席。批准仍来自fixture，financialAcceptance=false，不等完整任务16；不覆盖首页、/me、Web或通知。
 
-任务12诊断`2675c06d`补有限生成阶段首因与文书状态计数，141项相关CJS、API gates及双审通过。准确新official文书资格Java转换成功，但03-JAVA-INSPECT超原25秒预算，once自然exit1/203.102秒；未到Office或原生合同业务，无新机器/视觉资格。旧合同失败保持UNKNOWN，正在分段计时定位，不扩大预算或补猜测权限。
+凭证链已接入本地私有上传、同一执行补凭证、重放、授权ticket及下载字节核验，但准确6e8dcf75与523355e8两次实际运行均停在VOUCHER_AUTHORIZED_TICKET/ProjectRosterMember读取拒绝。523仅缩小visibility查询返回列，并在voucher runtime授projectId/userId精确SELECT，未解决实跑；active plan与编译物确实匹配该修正。两次原进程自然cleanup且Root独核缺席，失败保持。正按同失败两轮规则做限定查询列诊断，不猜测增权；完整凭证、公共现金、页面/非空历史等仍待。
 
-本地合成产品候选`a73601bb45ea230994d9107de8b4100642e77aea`，tree `51814a1796001ccac602510dc3ece738e2a30748`。唯一seven-install冲突同时保留两线功能与exports；独占依赖/SDK、945项交叉及补齐CJS、8套275项后端模型及API typecheck/lint/build全部通过，无失败或跳过。以上资源实跑仅绑定e08，不能外推a736或本进度文档后继SHA；准确远端CI仍另核。
+任务12的完整物料检查syscall去重`34da37f0`保留逐次完整读取/SHA、身份与前后边界，准确新official资格原once自然0/170.517秒，三个inspector均在原25秒内；Root逐页实际检查本轮60PNG，机器/物理资格通过。Office仅transport，保留页眉页脚尾页，不称最终全业务排版或15格验收。registry-only后继`cd3366b8`的真实合同链自然exit1/632.852秒，首因POST编辑租约heartbeat/500/UNKNOWN，实际互动事务原5000ms在14156ms时过期；尚不证明守卫扫描是唯一原因。
 
-本轮持久[主回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e38a-2308-7fb0-b98a-c672003f7522/382-continuation/CURRENT.md)，准确运行/核账/清理在其task16-e08目录，集成门在integration-evidence。原聊天和根混合变更保留。下方为11月15日发布源历史快照，不据其旧SHA推断后继通过。
+新本地候选`22d3acff7903fc224f368a95f76635e2c87ce2b2`将公开操作完整模块图扫描模型10→5，保留完整前后检查，并以一次性私有proof重验moduleRef读取后的17个lookup/server/JWT实例。固定Node20 CJS162/162、Jest41/41、API typecheck/lint/build和修订双审通过；原宿主Node22诊断模型失败及888c遗漏receiver边界保留。merger无冲突合成本地`bc0c97124d0026d969678938bd576b1d17a1b517`，完整tree与22d3一致；模型计数不外推实际性能或合同通过。新22d3资格首prepare因Root漏建空run目录停止，未转换；已另建新包，build20.341/prepare11.810/verify8.086秒均0，原once进行中，旧计划封存，预算不变。
+
+已发布CI证据仍绑定`ce59e171460677e1716432bb48f0c70f7b182a29`：run43838861775自然成功32/32且逐job head匹配，不能外推后继集成。当前文档提交包含本地bc0c代码，准确发布SHA/新CI须看GitHub及主回执。任务12完整提交→并联审批→盖章→签署归档→授权下载、15类型/岗位/撤回/直签/Web/PDF矩阵仍未通过。193规格/45任务全量复审及完成关票仍待。
+
+本轮持久[主回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e38a-2308-7fb0-b98a-c672003f7522/382-continuation/CURRENT.md)记录准确source、plan、核账与cleanup及分阶段原件；原聊天和根混合变更保留。下方为11月15日发布源历史快照，不据旧SHA推断后继通过。
 
 更新：2026-11-15 23:50（北京时间）。#382共193条规格、45项依赖任务；23:29:48完整读取GitHub仍14关闭、31开放，前沿#394/任务12、#398/任务16。本轮无新增整票关闭，完整关单时间仍未知。
 
