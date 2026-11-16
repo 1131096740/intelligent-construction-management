@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 机械合同纸面布局局部修订
+
+机械联系信息与纸面预览局部候选 `5247fc64` 已独审并合入本地 `f28a4971`，未推送。准确补丁 SHA `12f93ba8dfe3e4ffd5b7cc39595fb379285830c8f36ee72edc1e82e56c9a511e`；独立作者树 API 相关测试 138/138、Web 80/80、虚构 HTTP Chromium 1/1，API/Web build、typecheck、lint、Web check:ui 和 e2e typecheck 通过（Web lint 有 1109 条警告、无错误）。浏览器检查不证明真实 PDF 或业务验收。
+
+基线 `e62de390` 资格机器回执通过，但人工物理审阅为 needs work：[机器回执](/private/tmp/jg-con18-e62-qual-21jKHE/run/MACHINE-RECEIPT.json) SHA `3589ef2c68e7845babc975a3913508aa84f5cc22f516eb583e5348b96823d321`， [人工审阅](/private/tmp/jg-con18-review-sheets/physical-review-needs-work.json)及[问题记录](/private/tmp/jg-con18-review-sheets/findings.md)。该证据只绑定 e62；新候选须重新执行资格和人工复审，模板首末页要求仍未完成。
+
 ## 2026-11-17 凭证撤权隔离结果
 
 准确作者候选 `d4befe41`（与本地集成 `ef4752ff` 同 tree）新独占 native once 自然成功：合成公司付款与凭证前置通过，撤权前两个项目可见、凭证可签票及下载；移除目标项目唯一成员关系后，能力、新票和未过期旧票访问均被拒，另一个项目仍在项目列表可见，所观察资金及文件事实未变。独立只读源码复核确认这些布尔与成功路径断言对应；另一项目的凭证下载未验证，回执未保存逐次 HTTP 状态及可供独立重算的快照。该前置通过真实服务创建虚构付款，不发送付款登记 HTTP POST；`financialAcceptance=false`，不等 #398 整票或生产验收。
