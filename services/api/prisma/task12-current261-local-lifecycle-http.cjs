@@ -135,13 +135,16 @@ const consumeCodes=Object.freeze({
  TEMPLATE_CONSUMER:Object.freeze(['INPUT','UPLOAD','CREATE','POSITIONS','MAPPING','INSPECTION','TIME','QUEUE','PREVIEW','CONFIRM','SUBMIT','PUBLISH'].map(stage=>'TASK12_GENERATED_MATERIAL_TEMPLATE_'+stage)),
  OFFICIAL_DEADLINE:Object.freeze(['TASK12_OFFICIAL_DOCUMENT_DEADLINE']),
  NATIVE_DEADLINE:Object.freeze(['NATIVE_DIRECT_DEADLINE','TASK12_LOCAL_LIFECYCLE_CASE_ABORTED']),
- INTEGRITY:Object.freeze(['CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','NATIVE_DIRECT_SOURCE_CHANGED','NATIVE_DIRECT_OFFICIAL_RUNTIME','NATIVE_DIRECT_HBA_CHANGED','NATIVE_DIRECT_CERT_CONTEXT'])
+ INTEGRITY:Object.freeze(['CURRENT261_NATIVE_PROVIDER_LOOKUP','CURRENT261_LOCAL_LIFECYCLE_HTTP','CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','NATIVE_DIRECT_SOURCE_CHANGED','NATIVE_DIRECT_OFFICIAL_RUNTIME','NATIVE_DIRECT_HBA_CHANGED','NATIVE_DIRECT_CERT_CONTEXT'])
 });
 function consumeFirstCause(cause){
  if(cause&&typeof cause==='object'&&!types.isProxy(cause)&&types.isNativeError(cause)){
   const code=own(cause,'code');for(const [family,codes]of Object.entries(consumeCodes))if(codes.includes(code))return Object.freeze({family,code});
  }
  return Object.freeze({family:'UNKNOWN',code:'UNKNOWN'});
+}
+function rememberCurrent261ApplicationHttpSetupFailure(cause){
+ if(!describeCurrent261LocalLifecycleHttpFailure(cause))remember(cause,{method:'UNKNOWN',routeTemplate:'UNKNOWN',phase:'APPLICATION_HTTP_SETUP',observationContext:'NO_HTTP_OBSERVATION',httpStatus:null,businessOutcome:'UNKNOWN',firstCause:consumeFirstCause(cause),timingAtConsumeFailure:Object.freeze({status:'UNKNOWN'})});
 }
 const secondary=(detail,cause)=>{detail.secondaryPhase='AFTER_CHECK';const code=own(cause,'code');detail.secondaryReason=['CURRENT259_LOADER_CHANGED','CURRENT261_LOCAL_LIFECYCLE_HTTP'].includes(code)?code:'UNCLASSIFIED';};
 function exchange(port,method,path,headers,wire,binary,observe){
@@ -309,9 +312,11 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  catch(cause){
   if(lastObservation&&!parallelObserved&&!describeCurrent261LocalLifecycleHttpFailure(cause)){
    const detail={...lastObservation,firstCause:consumeFirstCause(cause),timingAtConsumeFailure:snapshotTiming()};try{continuity();}catch(later){secondary(detail,later);}detail.timingAfterSecondary=snapshotTiming();remember(cause,detail);
+  }else if(!describeCurrent261LocalLifecycleHttpFailure(cause)){
+   remember(cause,{method:'UNKNOWN',routeTemplate:'UNKNOWN',phase:'CONSUME',observationContext:lastObservation&&parallelObserved?'PARALLEL_RESPONSE_CONTEXT':'NO_HTTP_OBSERVATION',httpStatus:null,businessOutcome:'UNKNOWN',firstCause:consumeFirstCause(cause),timingAtConsumeFailure:snapshotTiming()});
   }
   throw cause;
  }
  finally{available=false;issued.delete(bridge);await Promise.allSettled([...active.values()].map(item=>item.done));tokens.clear();tickets.clear();}
 }
-module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp,withCurrent261FirstLoginHttp,assertCurrent261FirstLoginHttp,describeCurrent261LocalLifecycleHttpFailure});
+module.exports=Object.freeze({withCurrent261LocalLifecycleHttp,assertCurrent261LocalLifecycleHttp,withCurrent261FirstLoginHttp,assertCurrent261FirstLoginHttp,describeCurrent261LocalLifecycleHttpFailure,rememberCurrent261ApplicationHttpSetupFailure});
