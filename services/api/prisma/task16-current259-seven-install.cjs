@@ -730,6 +730,18 @@ function renderNativeTask16CompetitionSeven(inputJson,phase,nonce,priorStdout){
 function parseNativeTask16CompetitionSeven(inputJson,phase,nonce,stdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeCompetitionSevenInput(inputJson),phase,nonce);
 }
+function renderNativeTask16CashSeven(inputJson,phase,nonce,priorStdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
+ const input=nativeCompetitionSevenInput(inputJson,require('./task16-current261-competition-profile.cjs').PAYMENT261_CASH_RUNTIME_PROFILE),prior=phase===0?undefined:readResult({stdout:priorStdout},input,phase-1,nonce);
+ const sql=render(input,phase,nonce,prior);
+ // Native-only endpoint binding; the original private-runner guard stays byte-identical.
+ const original="host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port() IS DISTINCT FROM 5432";
+ const parts=sql.split(original);need(parts.length>1,'NATIVE_ENDPOINT_RENDER');
+ return parts.join(original.replace('5432',String(input.id.serverPort)));
+}
+function parseNativeTask16CashSeven(inputJson,phase,nonce,stdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeCompetitionSevenInput(inputJson,require('./task16-current261-competition-profile.cjs').PAYMENT261_CASH_RUNTIME_PROFILE),phase,nonce);
+}
 function renderNativeTask16VoucherSeven(inputJson,phase,nonce,priorStdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
  const input=nativeCompetitionSevenInput(inputJson,require('./task16-current261-competition-profile.cjs').PAYMENT261_VOUCHER_RUNTIME_PROFILE),prior=phase===0?undefined:readResult({stdout:priorStdout},input,phase-1,nonce);
@@ -748,5 +760,5 @@ function renderNativeTask16VoucherSevenPreimage(inputJson,nonce,committedStdout)
  const committed=readResult({stdout:committedStdout},input,2,nonce);
  return voucherSevenPreimageSql(input,committed.catalogSha256);
 }
-module.exports=Object.freeze({renderNativeTask16VoucherSeven,parseNativeTask16VoucherSeven,renderNativeTask16VoucherSevenPreimage,bindNativeTask12ArchiveEndpointSql,createNativeTask12ArchiveSevenMaterial,renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
+module.exports=Object.freeze({renderNativeTask16CashSeven,parseNativeTask16CashSeven,renderNativeTask16VoucherSeven,parseNativeTask16VoucherSeven,renderNativeTask16VoucherSevenPreimage,bindNativeTask12ArchiveEndpointSql,createNativeTask12ArchiveSevenMaterial,renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
  claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure,describeCurrent259SevenPrestateReadbackFailure});

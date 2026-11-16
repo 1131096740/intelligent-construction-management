@@ -1,11 +1,15 @@
+import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import { mkdtempSync, realpathSync, readdirSync, unlinkSync, rmdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture, seedRegisteredPgPublicCashFixture } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture, seedRegisteredPgPublicCashFixture, seedRegisteredPgPublicCashFormalFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext, RegisteredPgObserverDiagnostic } from "./registered-payment-postgres.fixture";
 import * as registeredCases from "./registered-payment-postgres.cases";
-import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
+import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, cash261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
 
 function fixture() {
   const runId = "da49e313-e3da-407f-b279-3d09caecfc3e";
@@ -204,7 +208,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each([gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, "follow-up" as const, "public-cash" as const])(
+  it.each([gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, "follow-up" as const, "public-cash" as const, "public-cash-replay-fail" as const, "public-cash-observer-fail" as const])(
     "retains the original login and opening protocol for %s after exactly two owner statements", async profile => {
       const f = fixture();
       const contender = fixture();
@@ -213,8 +217,10 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
         password: "synthetic-distinct-second-credential",
         proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: "http://127.0.0.1:15434/" } } };
       const followUp = profile === "follow-up";
-      const cash = profile === "public-cash";
-      const effectiveProfile = followUp || cash ? competition261SeedProfile : profile;
+      const cash = profile === "public-cash" || profile === "public-cash-replay-fail" || profile === "public-cash-observer-fail";
+      const replayFails = profile === "public-cash-replay-fail";
+      const observerFails = profile === "public-cash-observer-fail";
+      const effectiveProfile = cash ? cash261SeedProfile : followUp ? competition261SeedProfile : profile;
       const gap = profile === gap261SeedProfile;
       const tx = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ bound: true }]), $executeRawUnsafe: jest.fn().mockResolvedValue(0) };
       const transaction = jest.fn(async (run: (client: unknown) => Promise<void>) => run(tx));
@@ -240,13 +246,35 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
       });
       const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
       const lane = { checkLight() {}, fetch: fetch as typeof globalThis.fetch, seedProfile: effectiveProfile };
+      if (cash) {
+        const impact = (impactKind:string) => ({factId:"fact",projectId:plan.ids.project,sourceType:"settlement",sourceBusinessId:plan.ids.settlement,impactKind,direction:"increase",numericProtocolVersion:1,amountCents:observerFails && impactKind === "confirmed_cost" ? 3999n : 4000n});
+        const observerTx = { $executeRawUnsafe:jest.fn().mockResolvedValue(0), settlement:{findUnique:jest.fn().mockResolvedValue({id:plan.ids.settlement,projectId:plan.ids.project,status:"effective",amountCents:4000n,payableAmountCents:4000n,paidAmountCents:0n})}, operatingFact:{findMany:jest.fn().mockResolvedValue([{id:"fact",projectId:plan.ids.project,sourceType:"settlement",sourceBusinessId:plan.ids.settlement,status:"confirmed"}])}, operatingImpactEntry:{findMany:jest.fn().mockResolvedValue([impact("confirmed_cost"),impact("payable_increase")])} };
+        Object.assign(f.context.observer, {$transaction:jest.fn(async(fn:(value:typeof observerTx)=>Promise<unknown>)=>fn(observerTx))});
+      }
+      const priorStorage = process.env.FILE_STORAGE_ROOT;
+      const cashRoot = cash ? realpathSync(mkdtempSync(join(tmpdir(), "jg-cash-seed-"))) : undefined;
+      if (cashRoot) process.env.FILE_STORAGE_ROOT = cashRoot;
+      const replay = cash ? jest.spyOn(OperatingSourceReplayService.prototype, "replaySource").mockImplementation(async locator => { if (replayFails) throw new Error("synthetic replay result lost"); return ({id:"fact",projectId:locator.projectId,sourceType:locator.sourceType,sourceBusinessId:locator.sourceBusinessId,created:true,impactIds:["cost","payable"]}); }) : undefined;
+      try {
+      if (replayFails || observerFails) {
+        await expect(seedRegisteredPgPublicCashFormalFixture(f.context, second, plan, lane, lane)).rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+        expect(replay).toHaveBeenCalledTimes(1);
+        expect(routes.filter(route => route === "15434/fund-accounts/openings")).toHaveLength(1);
+        return;
+      }
       const result = gap
         ? await seedRegisteredPgAttributionGapFixture(f.context, plan, lane)
-        : cash ? await seedRegisteredPgPublicCashFixture(f.context, second, plan, lane, lane)
+        : cash ? await seedRegisteredPgPublicCashFormalFixture(f.context, second, plan, lane, lane)
         : followUp ? await seedRegisteredPgCompetitionFollowUpFixture(f.context, second, plan, lane, lane) : await seedRegisteredPgCompetitionFixture(f.context, second, plan, lane, lane);
       const payload = JSON.parse(tx.$queryRawUnsafe.mock.calls[0]![1]);
       expect(payload.profile).toBe(effectiveProfile);
-      if (cash) expect(result).toMatchObject({cashRegistrationId:"public_cash",cashSourceId:"public_cash0"});
+      if (cash) {
+        expect(result).toMatchObject({cashRegistrationId:"public_cash",cashSourceId:"public_cash0",settlementFactId:"fact",settlementBaseline:{factId:"fact",costCents:"4000",payableCents:"4000"}});
+        expect(replay).toHaveBeenCalledTimes(1);
+        expect(replay).toHaveBeenCalledWith({projectId:plan.ids.project,sourceType:"settlement",sourceBusinessId:plan.ids.settlement},plan.ids.actor);
+        expect(payload.cashDocument).toEqual(expect.objectContaining({objectKey: `cash-settlement-${plan.runId}.pdf`,sizeBytes:expect.any(Number),contentSha256:expect.stringMatching(/^[a-f0-9]{64}$/)}));
+        expect(payload.cashFormal).toEqual(expect.objectContaining({partyId:expect.any(String),partyVersionId:expect.any(String),partySnapshotId:expect.any(String),participationId:expect.any(String),memberId:expect.any(String),fileId:expect.any(String),archiveId:expect.any(String)}));
+      }
       if (followUp) {
         expect(result).toMatchObject({companyASourceId:`company:${plan.ids.companyA}0`});
         expect("followUpRequestKey" in result && result.followUpRequestKey).toMatch(/^[a-f0-9-]{36}$/u);
@@ -264,6 +292,11 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
         await expect(seedRegisteredPgCompetitionFixture(f.context, second, plan, lane, { ...lane, seedProfile: payment261SeedProfile }))
           .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "NOT_ATTEMPTED" });
         expect(transaction).toHaveBeenCalledTimes(1);
+      }
+      } finally {
+        replay?.mockRestore();
+        if (priorStorage === undefined) delete process.env.FILE_STORAGE_ROOT; else process.env.FILE_STORAGE_ROOT = priorStorage;
+        if (cashRoot) { for (const entry of readdirSync(cashRoot)) unlinkSync(join(cashRoot, entry)); rmdirSync(cashRoot); }
       }
     });
 
