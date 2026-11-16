@@ -173,3 +173,10 @@ test('out of range status is never recorded',async()=>{
  input.transport=async(target,init)=>{const response=await original(target,init);return new URL(target).pathname==='/projects'?{...response,status:999}:response;};
  await assert.rejects(runNativeVoucherRevocation(input));assert.deepEqual(events,[]);
 });
+
+test('records each completed request as a fixed stage and status without ticket or response data',async()=>{
+ const {input}=scenario(),observed=[];input.httpObservation=value=>observed.push(value);
+ await runNativeVoucherRevocation(input);
+ assert.deepEqual(observed,[{stage:'PROJECTS_BEFORE',status:200},{stage:'CAPABILITY_BEFORE',status:200},{stage:'TICKET_ISSUE',status:200},{stage:'DOWNLOAD_BEFORE',status:200},{stage:'PROJECTS_AFTER',status:200},{stage:'CAPABILITY_AFTER',status:403},{stage:'TICKET_AFTER',status:403},{stage:'OLD_TICKET',status:403}]);
+ assert.doesNotMatch(JSON.stringify(observed),/token|127\.0\.0\.1|00000000/);
+});
