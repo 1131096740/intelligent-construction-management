@@ -87,7 +87,7 @@ function networkModel(mode = "normal", equipment = false) {
           if(document) {const next=document.edits[0].text;if(next!==clause){contentRevision++;fingerprint=contentRevision.toString().repeat(64);clause=next;}}
           revision++;return ok();
         }
-        if(path===draft+"/workbench")return ok({version:checkpointVersion(),draft:{},bills:[],lease:{state:"held_by_me",expiresAt:expiry},documents:activeGeneration?[{...activeGeneration,purpose:"draft",status:"success",sourceRevision:revision,documentContentRevision:contentRevision,documentContentFingerprint:fingerprint}]:[]});
+        if(path===draft+"/workbench")return ok({version:checkpointVersion(),draft:{},bills:[],lease:{state:"held_by_me",expiresAt:expiry},documents:activeGeneration?[{...activeGeneration,purpose:"draft",status:mode==="failed-first"?"failed":"success",sourceRevision:revision,documentContentRevision:contentRevision,documentContentFingerprint:fingerprint}]:[]});
         if(path===draft+"/preview-generation") {
           generation++;
           if(generation===3 && mode.startsWith("reuse")) {
@@ -188,4 +188,10 @@ it("rejects a new PDF that also carries the withdrawn body",async()=>{
  const model=networkModel(),read=model.input.readPdfDrawnText;
  model.input.readPdfDrawnText=async(bytes,signal)=>{const pages=[...await read(bytes,signal)];pages[pages.length-1]+="4.若卖方违背原约定双方补充约定第一版。";return pages;};
  await expect(runTask12Con18Withdrawal({...model.input,observer:observerModel()})).rejects.toThrow("_PDF");
+});
+
+it("retains the first accepted queue coordinates when a document later fails, without submitting",async()=>{
+ const model=networkModel("failed-first"), captured:unknown[]=[];const observer={...observerModel(),queued:(value:unknown)=>captured.push(value)};
+ await expect(runTask12Con18Withdrawal({...model.input,observer})).rejects.toThrow("TASK12_GENERATED_DOCUMENT_DOCUMENT");
+ expect(captured).toHaveLength(1);expect(captured[0]).toMatchObject({versionId:uid(31),generationId:uid(41)});expect(model.calls.every(call=>!call.request.path.endsWith("/submission")||call.request.path.includes("layout"))).toBe(true);
 });

@@ -83,7 +83,9 @@ export interface GeneratedDocumentRequest {
 }
 
 type Response = { status: number; body: unknown };
+export type Task12QueuedDocumentCoordinates = Readonly<{versionId: string; generationId: string; sourceRevision: number; documentContentRevision: number; documentContentFingerprint: string}>;
 interface Port {
+  onQueued?(coordinates: Task12QueuedDocumentCoordinates): void;
   now(): number;
   wait(ms: number): Promise<void>;
   send(request: GeneratedDocumentRequest): Promise<Response>;
@@ -147,6 +149,7 @@ export async function runTask12GeneratedDocument(input: Input, port: Port) {
   const queued = await port.send({ method: "POST", path: path + "/preview-generation", json: { sourceRevision } });
   const preview = object(queued.body), generationId = preview.generationId;
   requireStage(queued.status === 201 && preview.status === "queued" && isId(generationId) && hasTrace(preview), "QUEUE");
+  try { port.onQueued?.(Object.freeze({versionId,generationId,sourceRevision,documentContentRevision,documentContentFingerprint})); } catch { /* Diagnostics never replace the document result. */ }
 
   for (let attempt = 0; attempt < DOCUMENT_TIMEOUT_MS / POLL_MS; attempt++) {
     await keepLease();

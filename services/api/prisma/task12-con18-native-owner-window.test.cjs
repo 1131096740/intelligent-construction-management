@@ -44,3 +44,24 @@ for(const [label,mutate] of [
  await f.api.observeTask12Con18Signed(key,id(3),id(4),id(22));await assert.rejects(f.api.observeTask12Con18Rounds(key,id(3),id(4),id(5)));
  assert.equal((await f.api.closeTask12Con18OwnerWindow(key)).matched,false);
 });
+test('document diagnosis uses exact coordinates, emits only a bounded classification, and does not finish the approval window',async()=>{
+ const f=model((phase,facts)=>phase==='document'?{match:'MATCHED',status:'FAILED',reason:'PDF_TIMEOUT'}:facts), key=await f.begin();
+ const result=await f.api.observeTask12Con18Document(key,{versionId:id(3),generationId:id(4),sourceRevision:3,documentContentRevision:4,documentContentFingerprint:'a'.repeat(64)});
+ assert.deepEqual(result,{match:'MATCHED',status:'FAILED',reason:'PDF_TIMEOUT'});
+ const sql=f.calls.find(x=>x.phase.endsWith('-document')).sql;
+ for(const marker of ['REPEATABLE READ READ ONLY','"contractVersionId"','"sourceRevision"','documentContentRevision','documentContentFingerprint','"projectId"','LIMIT 2'])assert.ok(sql.includes(marker),marker);
+ assert.equal((await f.api.closeTask12Con18OwnerWindow(key)).matched,false);await assert.rejects(f.api.observeTask12Con18Document(key,{}));
+});
+test('document diagnosis rejects invalid coordinates and unexpected results without emitting raw detail',async()=>{
+ const f=model(), key=await f.begin();await assert.rejects(f.api.observeTask12Con18Document(key,{versionId:id(3),generationId:id(4),sourceRevision:3,documentContentRevision:4,documentContentFingerprint:'private'}));assert.equal(f.calls.length,1);
+ const g=model((phase,facts)=>phase==='document'?{match:'MATCHED',status:'FAILED',reason:'PRIVATE'}:facts),other=await g.begin();await assert.rejects(g.api.observeTask12Con18Document(other,{versionId:id(3),generationId:id(4),sourceRevision:3,documentContentRevision:4,documentContentFingerprint:'a'.repeat(64)}));
+});
+test('missing or mismatched document yields only UNAVAILABLE and cannot be read twice',async()=>{
+ const f=model((phase,facts)=>phase==='document'?{match:'UNAVAILABLE'}:facts), key=await f.begin();const coordinates={versionId:id(3),generationId:id(4),sourceRevision:3,documentContentRevision:4,documentContentFingerprint:'a'.repeat(64)};
+ assert.deepEqual(await f.api.observeTask12Con18Document(key,coordinates),{match:'UNAVAILABLE'});await assert.rejects(f.api.observeTask12Con18Document(key,coordinates));assert.equal((await f.api.closeTask12Con18OwnerWindow(key)).matched,false);
+});
+test('oversized diagnostic results fail closed before a classification escapes',async()=>{
+ const f=model((phase,facts)=>phase==='document'?{match:'MATCHED',status:'FAILED',reason:'x'.repeat(5000)}:facts),key=await f.begin();
+ await assert.rejects(f.api.observeTask12Con18Document(key,{versionId:id(3),generationId:id(4),sourceRevision:3,documentContentRevision:4,documentContentFingerprint:'a'.repeat(64)}),/TASK12_CON18_OWNER_WINDOW/u);
+ assert.equal((await f.api.closeTask12Con18OwnerWindow(key)).matched,false);
+});

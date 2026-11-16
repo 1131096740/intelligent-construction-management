@@ -24,3 +24,10 @@ test('cleanup failure is secondary and never replaces the first business excepti
 test('unmatched owner close cannot yield success and consumes only one close',async()=>{
  let attempts=0;await assert.rejects(runner.closeTask12Con18WithPrimary({closeTask12Con18OwnerWindow:async()=>{attempts++;return {matched:false};}},{},{failed:false},{}));assert.equal(attempts,1);
 });
+test('document observation never replaces the original failure or exposes read errors',async()=>{
+ const api=require('./run-task12-native-con18-once.cjs'),first=Object.assign(Error('PRIVATE_FIRST'),{code:'TASK12_GENERATED_DOCUMENT_DOCUMENT'}),receipt={};let reads=0;
+ const observer={async observeTask12Con18Document(){reads++;throw Error('PRIVATE_SQL');},async closeTask12Con18OwnerWindow(){return{matched:false};}};
+ await api.observeTask12Con18Failure(observer,{},Object.freeze({}),first,receipt);assert.deepEqual(receipt.documentDiagnostic,{match:'UNAVAILABLE'});assert.equal(reads,1);assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE/u);
+ await assert.rejects(api.closeTask12Con18WithPrimary(observer,{}, {failed:true,error:first},receipt),e=>e===first);
+ await api.observeTask12Con18Failure(observer,{},Object.freeze({}),Object.assign(Error('x'),{code:'OTHER'}),{});assert.equal(reads,1);
+});
