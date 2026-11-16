@@ -6,13 +6,13 @@
 
 任务16准确`e08f7de81fc528ef025a725040431c7d06a655ff`已在新PG16.15、261迁移、真实Nest/受限SDK通过双人竞争→30+10元实付→同键重放/GET→独立RepeatableRead核账；两身份共享付款待办真实随余额变化至付清清空。准确`6db0310ecc752263990bec32da726d3bcd6bcf03`又通过账户余额8元、项目来源5元、差额3元的409拒绝及完整前后无写入核账，原once自然0/23.814秒。两次自然cleanup完成并独核进程、监听、pidfile缺席。批准仍来自fixture，financialAcceptance=false，不等完整任务16；不覆盖首页、/me、Web或通知。
 
-凭证链已接入本地私有上传、同一执行补凭证、重放、授权ticket及下载字节核验，但准确6e8dcf75与523355e8两次实际运行均停在VOUCHER_AUTHORIZED_TICKET/ProjectRosterMember读取拒绝。523仅缩小visibility查询返回列，并在voucher runtime授projectId/userId精确SELECT，未解决实跑；active plan与编译物确实匹配该修正。两次原进程自然cleanup且Root独核缺席，失败保持。正按同失败两轮规则做限定查询列诊断，不猜测增权；完整凭证、公共现金、页面/非空历史等仍待。
+凭证链已接入本地私有上传、同一执行补凭证、重放、授权ticket及下载字节核验，但准确6e8dcf75与523355e8两次实际运行均停在VOUCHER_AUTHORIZED_TICKET/ProjectRosterMember读取拒绝。523仅缩小visibility查询返回列，并在voucher runtime授projectId/userId精确SELECT，未解决实跑；active plan与编译物确实匹配该修正。两次原进程自然cleanup且Root独核缺席，失败保持。诊断后继`f9a98c7edd067477ae7d4eaba972ff734856d3b4`相关CJS139/API门/串行loader2及双审通过，并在新独占资源实际捕获ticket查询引用id/projectId/userId（unknownShape=false），仍权限拒绝；原once自然exit1/22.598秒，cleanup及Root缺席核对完成。正核实际ACL后仅补已观测id，不加createdAt/整表。诊断已无冲突合本地f01c3efd，尚未发布；完整凭证、公共现金、页面/非空历史等仍待。
 
 任务12的完整物料检查syscall去重`34da37f0`保留逐次完整读取/SHA、身份与前后边界，准确新official资格原once自然0/170.517秒，三个inspector均在原25秒内；Root逐页实际检查本轮60PNG，机器/物理资格通过。Office仅transport，保留页眉页脚尾页，不称最终全业务排版或15格验收。registry-only后继`cd3366b8`的真实合同链自然exit1/632.852秒，首因POST编辑租约heartbeat/500/UNKNOWN，实际互动事务原5000ms在14156ms时过期；尚不证明守卫扫描是唯一原因。
 
-新本地候选`22d3acff7903fc224f368a95f76635e2c87ce2b2`将公开操作完整模块图扫描模型10→5，保留完整前后检查，并以一次性私有proof重验moduleRef读取后的17个lookup/server/JWT实例。固定Node20 CJS162/162、Jest41/41、API typecheck/lint/build和修订双审通过；原宿主Node22诊断模型失败及888c遗漏receiver边界保留。merger无冲突合成本地`bc0c97124d0026d969678938bd576b1d17a1b517`，完整tree与22d3一致；模型计数不外推实际性能或合同通过。新22d3资格首prepare因Root漏建空run目录停止，未转换；已另建新包，build20.341/prepare11.810/verify8.086秒均0，原once进行中，旧计划封存，预算不变。
+新本地候选`22d3acff7903fc224f368a95f76635e2c87ce2b2`将公开操作完整模块图扫描模型10→5，保留完整前后检查，并以一次性私有proof重验moduleRef读取后的17个lookup/server/JWT实例。固定Node20 CJS162/162、Jest41/41、API typecheck/lint/build和修订双审通过；原宿主Node22诊断模型失败及888c遗漏receiver边界保留。merger无冲突合成本地`bc0c97124d0026d969678938bd576b1d17a1b517`，完整tree与22d3一致；模型计数不外推实际性能或合同通过。新22d3资格首prepare因Root漏建空run目录停止，未转换；已另建新包，build20.341/prepare11.810/verify8.086秒均0，新原once自然exit1/334.636秒，仍通用文书HTTP失败；本轮stderr0且无httpFailure/有限首因，不用cd33旧过期原因倒填。cleanup完成且Root独核进程、监听、pidfile缺席；正在最小修补pre-wire guard/并发上下文的诊断盲区，旧计划封存，预算不变。
 
-已发布CI证据仍绑定`ce59e171460677e1716432bb48f0c70f7b182a29`：run43838861775自然成功32/32且逐job head匹配，不能外推后继集成。当前文档提交包含本地bc0c代码，准确发布SHA/新CI须看GitHub及主回执。任务12完整提交→并联审批→盖章→签署归档→授权下载、15类型/岗位/撤回/直签/Web/PDF矩阵仍未通过。193规格/45任务全量复审及完成关票仍待。
+最新已发布`15c43c195c7ab00ff7f1d15e2a7a750a1ff7c323`（含bc0c代码和进度文档），PR428仍Draft；CI43867960753自然成功32/32，Root逐job head匹配。旧ce59 CI及本地后继f01c3/本次文档各自分列，不外推后继SHA或真实业务通过。任务12完整提交→并联审批→盖章→签署归档→授权下载、15类型/岗位/撤回/直签/Web/PDF矩阵仍未通过。193规格/45任务全量复审及完成关票仍待。
 
 本轮持久[主回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e38a-2308-7fb0-b98a-c672003f7522/382-continuation/CURRENT.md)记录准确source、plan、核账与cleanup及分阶段原件；原聊天和根混合变更保留。下方为11月15日发布源历史快照，不据旧SHA推断后继通过。
 
