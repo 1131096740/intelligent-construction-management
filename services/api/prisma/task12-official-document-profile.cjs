@@ -35,11 +35,13 @@ function canonicalProfile(){
   if(require.cache?.[__filename]!==module||module.exports!==published)canonicalBroken=true;
   need(!canonicalBroken,'MODULES');
 }
-function capture(file, expected, part, max = 512 * 1024 * 1024) {
+function capture(file, expected, part, max = 512 * 1024 * 1024, expectedIdentity) {
   need(typeof file === 'string' && path.isAbsolute(file) && path.normalize(file) === file && !/[\u0000-\u001f]/u.test(file), part);
   const stat = fs.lstatSync(file);
   need(stat.isFile() && !stat.isSymbolicLink() && fs.realpathSync(file) === file && stat.size <= max &&
     [0, process.getuid()].includes(stat.uid) && (stat.mode & 0o022) === 0 && (stat.mode & 0o7000)===0, part);
+  // A full continuity read must reject an unexpected file before reading it.
+  if(expectedIdentity)need(Object.entries(expectedIdentity).every(([key,value])=>stat[key]===value),part);
   const bytes = fs.readFileSync(file), digest = sha(bytes), after = fs.lstatSync(file);
   need(bytes.length === stat.size && ['dev','ino','mode','uid','gid','size','mtimeMs','ctimeMs','nlink'].every(key => after[key] === stat[key]) &&
     (!expected || digest === expected), part);
@@ -47,16 +49,16 @@ function capture(file, expected, part, max = 512 * 1024 * 1024) {
 }
 const metadata = item => Object.fromEntries(Object.entries(item).filter(([key])=>key!=='bytes'));
 function continuity(item, contents = false) {
+  if(contents && item.sha256 && item.kind !== 'link') {
+    capture(item.path,item.sha256,'CONTINUITY',undefined,item.identity);
+    return;
+  }
   const stat = fs.lstatSync(item.path);
   need(Object.entries(item.identity).every(([key,value]) => stat[key] === value), 'CONTINUITY');
   if (item.kind === 'link') need(stat.isSymbolicLink() && fs.readlinkSync(item.path) === item.target &&
     fs.realpathSync(item.path) === item.realpath, 'CONTINUITY');
   else {
     need(!stat.isSymbolicLink() && fs.realpathSync(item.path) === item.path, 'CONTINUITY');
-    if (contents && item.sha256) {
-      const verified=capture(item.path,item.sha256,'CONTINUITY');
-      need(Object.entries(item.identity).every(([key,value])=>verified.identity[key]===value),'CONTINUITY');
-    }
   }
 }
 function privateDirectory(file) {

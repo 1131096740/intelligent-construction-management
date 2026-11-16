@@ -247,3 +247,67 @@ test('mechanical qualification keeps its three class bytes and source-bound scop
   scope.checkMaterials();
  }),{code:'TASK12_OFFICIAL_DOCUMENT_CONTINUITY'});
 });
+
+
+test('full scope byte verification preserves each read and hash while avoiding adjacent path probes',async()=>{
+ const options={},m=require('./task12-official-document-model.test-support.cjs').model(options),target='/private/tmp/jdk/000';
+ const packet=m.packet(),proof=m.api.inspectOfficialDocumentQualification(packet.name,packet.sha256);
+ const count={lstat:0,realpath:0,read:0,hash:0};
+ for(const [name,key]of [['lstatSync','lstat'],['realpathSync','realpath'],['readFileSync','read']]){const original=m.filesystem[name];m.filesystem[name]=function(file,...args){if(file===target)count[key]++;return original(file,...args);};}
+ options.onHash=(algorithm,bytes)=>{if(algorithm==='sha256'&&bytes===m.files.get(target).bytes)count.hash++;};
+ await m.api.withOfficialDocumentQualification(proof,async scope=>{
+  for(const key of Object.keys(count))count[key]=0;
+  scope.checkMaterials();scope.checkMaterials();
+  assert.equal(count.read,2);assert.equal(count.hash,2);
+  assert.equal(count.lstat,8);assert.equal(count.realpath,6);
+ });
+});
+
+
+for(const mode of ['inode','owner','mode','symlink'])test('full scope rejects '+mode+' replacement before reading the unexpected file',async()=>{
+ const m=require('./task12-official-document-model.test-support.cjs').model(),target='/private/tmp/jdk/000';
+ const packet=m.packet(),proof=m.api.inspectOfficialDocumentQualification(packet.name,packet.sha256);
+ let reads=0,stats=0,armed=false;const stat=m.filesystem.lstatSync,read=m.filesystem.readFileSync;
+ m.filesystem.lstatSync=function(file){
+  if(armed&&file===target&&++stats===3){const current=m.files.get(target);if(mode==='inode')current.ino++;if(mode==='owner')current.uid=process.getuid()+100;if(mode==='mode')current.mode=0o100666;if(mode==='symlink'){current.mode=0o120777;current.bytes=Buffer.from('001');}}
+  return stat(file);
+ };
+ m.filesystem.readFileSync=function(file,...args){if(armed&&file===target)reads++;return read(file,...args);};
+ await assert.rejects(m.api.withOfficialDocumentQualification(proof,async scope=>{armed=true;scope.checkMaterials();}),{code:'TASK12_OFFICIAL_DOCUMENT_CONTINUITY'});
+ assert.equal(reads,0);
+});
+test('full scope verifies bytes again across boundaries even with identical metadata',async()=>{
+ const m=require('./task12-official-document-model.test-support.cjs').model(),target='/private/tmp/jdk/000';
+ const packet=m.packet(),proof=m.api.inspectOfficialDocumentQualification(packet.name,packet.sha256);
+ await assert.rejects(m.api.withOfficialDocumentQualification(proof,async scope=>{
+  scope.checkMaterials();const original=m.files.get(target),before=m.filesystem.lstatSync(target);original.bytes=Buffer.from('bad');
+  for(const key of ['dev','ino','mode','uid','gid','size','mtimeMs','ctimeMs','nlink'])assert.equal(m.filesystem.lstatSync(target)[key],before[key]);
+  scope.checkMaterials();
+ }),{code:'TASK12_OFFICIAL_DOCUMENT_CONTINUITY'});
+});
+test('full scope refuses a named file replaced during its complete byte read',async()=>{
+ const m=require('./task12-official-document-model.test-support.cjs').model(),target='/private/tmp/jdk/000';
+ const packet=m.packet(),proof=m.api.inspectOfficialDocumentQualification(packet.name,packet.sha256);
+ let armed=false,reads=0;const read=m.filesystem.readFileSync;
+ m.filesystem.readFileSync=function(file,...args){const bytes=read(file,...args);if(armed&&file===target){reads++;m.files.set(target,{...m.files.get(target),ino:m.files.get(target).ino+100});}return bytes;};
+ await assert.rejects(m.api.withOfficialDocumentQualification(proof,async scope=>{armed=true;scope.checkMaterials();}),{code:'TASK12_OFFICIAL_DOCUMENT_CONTINUITY'});
+ assert.equal(reads,1);
+});
+
+
+for(const phase of ['before-read','during-read'])test('public scope rejects an actual filesystem replacement '+phase+' through the file boundary',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),directory=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'task12-owned-continuity-')));
+ const actual=path.join(directory,'current'),replacement=path.join(directory,'replacement'),target='/private/tmp/jdk/000';
+ fs.writeFileSync(actual,'000',{mode:0o644});fs.writeFileSync(replacement,'000',{mode:0o644});
+ try{
+  const m=require('./task12-official-document-model.test-support.cjs').model();
+  const stat=m.filesystem.lstatSync,realpath=m.filesystem.realpathSync,read=m.filesystem.readFileSync;
+  let armed=false,stats=0,reads=0,replaced=false;
+  m.filesystem.lstatSync=function(file){if(file!==target)return stat(file);if(armed&&++stats===3&&phase==='before-read'){fs.renameSync(replacement,actual);replaced=true;}return fs.lstatSync(actual);};
+  m.filesystem.realpathSync=function(file){if(file!==target)return realpath(file);const resolved=fs.realpathSync(actual);return resolved===actual?target:resolved;};
+  m.filesystem.readFileSync=function(file,...args){if(file!==target)return read(file,...args);const bytes=fs.readFileSync(actual);if(armed){reads++;if(phase==='during-read'&&!replaced){fs.renameSync(replacement,actual);replaced=true;}}return bytes;};
+  const packet=m.packet(),proof=m.api.inspectOfficialDocumentQualification(packet.name,packet.sha256);
+  await assert.rejects(m.api.withOfficialDocumentQualification(proof,async scope=>{armed=true;scope.checkMaterials();}),{code:'TASK12_OFFICIAL_DOCUMENT_CONTINUITY'});
+  assert.equal(replaced,true);assert.equal(reads,phase==='before-read'?0:1);
+ }finally{fs.rmSync(directory,{recursive:true,force:true});assert.equal(fs.existsSync(directory),false);}
+});
