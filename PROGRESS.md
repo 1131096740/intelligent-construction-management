@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 文书只读诊断局部修订
+
+准确 `d9832465` 原轮文书列表含 failed 项，但不能确定该项与入队任务为同一任务；业务结果 UNKNOWN。42 次 exchange 的[独审](/private/tmp/jg-con18-d983-document-review-wjuz_m4y/receipt.json) SHA `382bd9057a9d79a07ab4e6ed90c4d19810468226fce0a15e50f3235e8fb02c2a` 确认 case 尚未发送提交、撤回或重提。运行器自报 cleanup 完成，独立 PG 检查仅证进程、监听及 pidfile 缺席；[原回执](/private/tmp/jg-native-contract-c18d983-cvp6yw/receipt.json) SHA `da42fe3f62e8c6f873f121ca2db201d11770fb237396c92f7d9203b2a0e9aa68`，[PG 检查](/private/tmp/jg-con18-d983-runtime-ZR7elO/cleanup-independent.json) SHA `2fcff4926f5fe064b833dd406760d9ede66981238decff9169cf00261087f4a7`。
+
+未来文书只读诊断 `fef5816d` 经独审合入本地 `f8d4e1b2`，准确补丁 SHA `5a15e0b0cbc8cdd8eb349e9b0a9cf879dc8fdad583101642727594bef5faf5bd`。生成/case Jest 22/22，owner/runner 与共享模型初次 207/208，唯一失败因 dist 未构建；构建后 runner 5/5 通过。API build/typecheck/lint 通过。新增 SQL 尚未真实验证，新版须新资格，不代表 CON-18 或 #394 验收通过，旧回执不补写。
+
 ## 2026-11-17 CON-18 工作台诊断局部修订
 
 准确 `a1e09112` 独占运行在首次生成轮询的工作台 GET 返回 500 后停止，业务结果 UNKNOWN；运行器自报清理完成，独立检查 PG 进程、监听及 pidfile 缺席，均不证明业务终态。[原回执](/private/tmp/jg-native-contract-c18a1-iyyoMN/receipt.json) SHA `2acbf64b9e27528bf89de2f26f1aff64fe05294b0d26373509c66ed02d4eb78d`，[PG 检查](/private/tmp/jg-con18-a1e0-runtime-X04Pzn/cleanup-independent.json) SHA `164a9c9dd9d2d50867248db61c24343fc80d9d593b1fa0776e0c315be36e5dfb`。38 次 exchange 的[独审](/private/tmp/jg-con18-a1-exchange-review-cs8y79t4/receipt.json) SHA `f2c2cf5a80eb9d3209f15aebc1ae5244a9dd2d12d4af98d7df4f8c9347dc416e`：该 case 尚未发提交、撤回或重提请求。
