@@ -168,6 +168,7 @@ export class ContractDocumentService {
       warnings: [
         ...(createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
           ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []),
+        ...(rendered.partyDetailsMappingConflict ? ["正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"] : []),
         ...(rendered.partyDetailsConflict ? ["正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"] : [])
       ]
     };
@@ -328,6 +329,8 @@ export class ContractDocumentService {
           throw new BadRequestException("上一次文档生成失败，请先重试失败记录");
         }
 
+        if (partyDetailsVersion) assertBuiltInPartyPlacementPlan(selectedSource.buffer, mappedLayoutSourceForVersion(selectedSource.buffer, layout), layout.id, draftData.documentBody);
+
         if (input.purpose === "external" && contract.code == null) {
           if (!this.businessNumbers) {
             throw new Error("外发合同文件生成需要正式编号服务");
@@ -378,7 +381,6 @@ export class ContractDocumentService {
             ...(pageNumberVersion ? { pageNumberVersion } : {}),
             ...(partyDetailsVersion ? { partyDetailsVersion } : {}),
             ...(draftData.documentBody === undefined ? {} : { editPlan: normalizeContractBodyPlan(draftData.documentBody, source.buffer, mappedLayoutSourceForVersion(source.buffer, layout), layout.id, reviewedLaborTaxBindingVersion) }) };
-          if(partyDetailsVersion&&bodyDocument.editPlan) assertBuiltInPartyPlacementPlan(source.buffer,mappedLayoutSourceForVersion(source.buffer,layout),layout.id,bodyDocument.editPlan);
         }
         const inputSnapshot: ContractDocumentInputSnapshot = {
           documentContentRevision: documentContent.revision,
