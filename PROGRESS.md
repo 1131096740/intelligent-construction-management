@@ -8,7 +8,7 @@
 
 合同模板按用户要求仅在封面及模板末页保留甲乙公司、银行信息；机械与材料已有局部修改，长编辑跨页、劳务/通用、真实 PDF 和签章仍未完成。版式映射保护修订 `8d071162` 已独审合入 `9159112e`：保留角色行的非主体映射与角色标签，机械开票区已有映射时保留内容并在生成前提示联系合同管理员，不自动切版；API 85 项、Web 75 项和两包类型/lint、check:ui 通过。这是冲突保护，不等完整无损迁移。
 
-凭证撤权专用入口 `acdf2ffa` 已独审合入 `ae764c82`，限定新独占用途、无付款登记 HTTP POST；其合成 fixture 会直接通过服务创建虚构付款事实，签票、下载和撤权也会写隔离资源。专用 observer 权限进入同轮 ACL/B7，票据超期不能误判撤权，首因使用固定脱敏码。独立合成树模型 222/222、API build/typecheck/lint 通过；尚未运行真实隔离 PG、Nest 或存储，不构成撤权验收。
+凭证撤权专用入口 `acdf2ffa` 已独审合入 `ae764c82`，限定新独占用途、无付款登记 HTTP POST；其合成 fixture 会直接通过服务创建虚构付款事实，签票、下载和撤权也会写隔离资源。专用 observer 权限进入同轮 ACL/B7，票据超期不能误判撤权，首因使用固定脱敏码。独立合成树模型 222/222、API build/typecheck/lint 通过；真实隔离运行结果见下，不构成撤权验收。
 
 准确 `acdf2ffa` 的新独占 native 运行通过 ACL/B7、虚构付款和凭证前置（`FIXTURE_RETURNED`），经理登录后在撤权前项目列表检查 `PROJECTS_BEFORE/HTTP_STATUS` 停止；撤权尚未执行，真实撤权链未通过。cleanup 完成，独核进程、监听及 pidfile 缺席；[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-revoke-acdf/receipt.json) SHA `3f7abdc04d23164205312733e3993fd2476cc036846de2b862fc46b89635b8f5`，当前定位 GET 状态。
 
