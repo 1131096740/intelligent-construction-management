@@ -5,16 +5,23 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {createHash,randomBytes,randomUUID}=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
-const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',GAP_PURPOSE='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1',VOUCHER_PURPOSE='TASK16_NATIVE_COMPETITION_VOUCHER_V1',CASH_PURPOSE='TASK16_NATIVE_PUBLIC_CASH_V1';
+const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',GAP_PURPOSE='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1',VOUCHER_PURPOSE='TASK16_NATIVE_COMPETITION_VOUCHER_V1',CASH_PURPOSE='TASK16_NATIVE_PUBLIC_CASH_V1',REVOCATION_PURPOSE='TASK16_NATIVE_VOUCHER_REVOCATION_V1';
 // Root's independently reviewed official16.15/pgcrypto93-file qualification.
 const BINARY_QUALIFICATION_SHA='26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1';
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const need=(value,code='NATIVE_DIRECT_INPUT')=>{if(!value)fail(code);};
+function assertNativeTask16RevocationTarget(origin,ids,target,method){
+ const base=new URL(origin),url=new URL(target);const uuid=x=>typeof x==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(x);
+ need(base.protocol==='http:'&&base.hostname==='127.0.0.1'&&base.port&&url.origin===base.origin&&!url.username&&!url.password&&!url.hash&&uuid(ids?.file)&&uuid(ids?.execution)&&method==='GET','NATIVE_DIRECT_REVOCATION_ROUTE');
+ const isDownload=url.pathname===`/files/${ids.file}/download`;
+ need((isDownload||!url.search)&&[ '/projects',`/files/${ids.file}/download-ticket-capability`,`/payment-executions/${ids.execution}/voucher-ticket`,`/files/${ids.file}/download`].includes(url.pathname),'NATIVE_DIRECT_REVOCATION_ROUTE');
+}
 function nativeTask16CaseSelection(purpose){
- need(purpose===PURPOSE||purpose===GAP_PURPOSE||purpose===VOUCHER_PURPOSE||purpose===CASH_PURPOSE,'NATIVE_DIRECT_CASE_PURPOSE');
+ need(purpose===PURPOSE||purpose===GAP_PURPOSE||purpose===VOUCHER_PURPOSE||purpose===CASH_PURPOSE||purpose===REVOCATION_PURPOSE,'NATIVE_DIRECT_CASE_PURPOSE');
  const competition=purpose!==GAP_PURPOSE;
  if(purpose===CASH_PURPOSE)return Object.freeze({purpose,caseId:'registered.public-cash.payment',paymentProfile:'TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:13,cash:true});
+ if(purpose===REVOCATION_PURPOSE)return Object.freeze({purpose,caseId:'registered.voucher.project-revocation',paymentProfile:'TASK16_PAYMENT261_VOUCHER_REVOCATION_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:11,voucher:true,revocation:true});
  if(purpose===VOUCHER_PURPOSE)return Object.freeze({purpose,caseId:'registered.two-actor.payment-voucher',paymentProfile:'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:11,voucher:true});
  return Object.freeze({purpose,caseId:competition?'registered.two-actor.payment-competition-follow-up':'registered.project-attribution-gap',
   paymentProfile:competition?'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1':'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1',
@@ -77,7 +84,7 @@ function compiledMaterials(){return [...treeFiles(path.join(ROOT,'services/api/d
 
 function validateNativePlan(value){
  const p=fixed(value,['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','prismaTools','interfaces','binaryManifest','binaries','openssl','externalLibraries','node','security','limits','differences']);
- need(p.schemaVersion===2&&[PURPOSE,GAP_PURPOSE,VOUCHER_PURPOSE,CASH_PURPOSE].includes(p.purpose)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
+ need(p.schemaVersion===2&&[PURPOSE,GAP_PURPOSE,VOUCHER_PURPOSE,CASH_PURPOSE,REVOCATION_PURPOSE].includes(p.purpose)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
  need(equal(fixed(p.limits,['resourceMs','migrationMs','ownerSqlMs','httpMs','commandBytes','ownerSqlBytes']),{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216}));
  need(equal(directory(p.runRoot),p.rootIdentity));return p;
 }
@@ -114,8 +121,8 @@ function verifyNativeTask16Plan(file,expected,purpose=PURPOSE){
 }
 function parse(args){
  need(Array.isArray(args)&&args.every(x=>typeof x==='string'),'NATIVE_DIRECT_ARGUMENTS');
- if(['--prepare','--prepare-gap','--prepare-voucher','--prepare-cash'].includes(args[0])&&args.length===9&&args[1]==='--run-root'&&args[3]==='--binary-manifest'&&args[5]==='--expected-binary-sha256'&&args[7]==='--output')return {mode:'prepare',purpose:args[0]==='--prepare-gap'?GAP_PURPOSE:args[0]==='--prepare-voucher'?VOUCHER_PURPOSE:args[0]==='--prepare-cash'?CASH_PURPOSE:PURPOSE,options:{runRoot:args[2],binaryManifest:args[4],binaryManifestSha256:args[6],output:args[8]}};
- if(['--verify','--once','--verify-gap','--once-gap','--verify-voucher','--once-voucher','--verify-cash','--once-cash'].includes(args[0])&&args.length===5&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256')return {mode:args[0].slice(2).replace(/-(?:gap|voucher|cash)$/u,''),purpose:args[0].endsWith('-gap')?GAP_PURPOSE:args[0].endsWith('-voucher')?VOUCHER_PURPOSE:args[0].endsWith('-cash')?CASH_PURPOSE:PURPOSE,file:args[2],sha256:args[4]};
+ if(['--prepare','--prepare-gap','--prepare-voucher','--prepare-cash','--prepare-revocation'].includes(args[0])&&args.length===9&&args[1]==='--run-root'&&args[3]==='--binary-manifest'&&args[5]==='--expected-binary-sha256'&&args[7]==='--output')return {mode:'prepare',purpose:args[0]==='--prepare-revocation'?REVOCATION_PURPOSE:args[0]==='--prepare-gap'?GAP_PURPOSE:args[0]==='--prepare-voucher'?VOUCHER_PURPOSE:args[0]==='--prepare-cash'?CASH_PURPOSE:PURPOSE,options:{runRoot:args[2],binaryManifest:args[4],binaryManifestSha256:args[6],output:args[8]}};
+ if(['--verify','--once','--verify-gap','--once-gap','--verify-voucher','--once-voucher','--verify-cash','--once-cash','--verify-revocation','--once-revocation'].includes(args[0])&&args.length===5&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256')return {mode:args[0].slice(2).replace(/-(?:gap|voucher|cash|revocation)$/u,''),purpose:args[0].endsWith('-revocation')?REVOCATION_PURPOSE:args[0].endsWith('-gap')?GAP_PURPOSE:args[0].endsWith('-voucher')?VOUCHER_PURPOSE:args[0].endsWith('-cash')?CASH_PURPOSE:PURPOSE,file:args[2],sha256:args[4]};
  fail('NATIVE_DIRECT_ARGUMENTS');
 }
 function recordNativeTask16CashSecretCleanup(receipt,state,pending){
@@ -242,6 +249,7 @@ function inspectNativeTask16Interfaces(purpose=PURPOSE){
   specs.push(['../dist/database/registered-payment-public-cash-secret.js',[['withCashLedgerSecret',4]]]);
   specs.push(['../dist/database/registered-payment-public-cash-prerequisite.js',[['readCashSettlementPrerequisite',2]]]);
  }
+ if(selected.revocation)specs.push(['./task16-native-voucher-revocation.cjs',[['readVoucherFundingSnapshot',1],['seedNativeVoucherRevocationReader',1],['prepareNativeVoucherForRevocation',1],['runNativeVoucherRevocation',1]]],['../dist/payment/payment-request.service.js',[['PaymentRequestService','function']]],['../dist/file/file.service.js',[['FileService','function']]]);
  if(selected.voucher){
   specs.push(['./task16-native-voucher-roster-query.cjs',[['projectNativeTask16RosterQuery',3],['nativeTask16VoucherQueryLogOptions',2],['createNativeTask16RosterQueryDiagnostic',2]]]);
   const replacements={
@@ -251,6 +259,7 @@ function inspectNativeTask16Interfaces(purpose=PURPOSE){
    '../dist/database/registered-payment-postgres.fixture.js':[['buildRegisteredPgFixturePlan',3],['seedRegisteredPgCompetitionFixture',5],['assertRegisteredPgCompetitionRoles',3]],
    '../dist/database/registered-payment-postgres.cases.js':[['runRegisteredTwoActorPaymentCompetition',4],['observeRegisteredPaymentVoucherLedger',3]]
   };
+  if(selected.revocation)replacements['./task16-current259-seven-install.cjs']=[['renderNativeTask16RevocationSeven',4],['parseNativeTask16RevocationSeven',4],['renderNativeTask16RevocationSevenPreimage',3]];
   for(let i=0;i<specs.length;i++)if(replacements[specs[i][0]])specs[i]=[specs[i][0],replacements[specs[i][0]]];
  }
  if(!selected.competition){
@@ -293,7 +302,7 @@ function parseNativeTask16CatalogRead(stdout,input,prior,receipt){
 function renderNativeTask16RuntimeAcl(inputJson,nonce){
  need(typeof inputJson==='string'&&Buffer.byteLength(inputJson)<=512*1024,'NATIVE_DIRECT_ACL_ENDPOINT');const value=JSON.parse(inputJson);
  need(value&&Object.keys(value).sort().join(',')==='provisioned,source','NATIVE_DIRECT_ACL_ENDPOINT');const {source,provisioned}=value,id=provisioned?.databaseIdentity;
- const voucher=provisioned?.paymentProfile==='TASK16_PAYMENT261_VOUCHER_RUNTIME_V1',competition=voucher||provisioned?.paymentProfile==='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1'||provisioned?.paymentProfile==='TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1';
+ const voucher=['TASK16_PAYMENT261_VOUCHER_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_REVOCATION_RUNTIME_V1'].includes(provisioned?.paymentProfile),competition=voucher||provisioned?.paymentProfile==='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1'||provisioned?.paymentProfile==='TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1';
  need((competition||provisioned?.paymentProfile==='TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1')&&id?.tls===true&&id.clientAddress==='127.0.0.1'&&id.serverAddress==='127.0.0.1'&&Number.isInteger(id.serverPort)&&id.serverPort>1024&&id.serverPort<=65535&&id.serverPort!==5432,'NATIVE_DIRECT_ACL_ENDPOINT');
  if(!competition)need(Array.isArray(provisioned.roles)&&provisioned.roles.find(role=>role.name==='jg_task01_runtime')?.limit===1&&provisioned.roles.find(role=>role.name==='jg_task01_observer')?.limit===1,'NATIVE_DIRECT_GAP_ROLE_LIMIT');
  const acl=require('./task16-current259-runtime-acl.cjs'),rendered=(voucher?acl.renderCurrent259VoucherRuntimeAcl:competition?acl.renderCurrent259CompetitionRuntimeAcl:acl.renderCurrent259RuntimeAcl)(source,provisioned,nonce);
@@ -320,11 +329,11 @@ function assertNativeTask16CompetitionLoopbackListeners(text,postmasterPid,port)
  need(addresses.length===2&&addresses.includes('127.0.0.1')&&addresses.includes('::1'),code);
  return Object.freeze({postmasterPid,port,addresses:Object.freeze(['127.0.0.1','::1']),ownedStartupListeners:true});
 }
-module.exports=Object.freeze({runNativeTask16CashPreparedCase,writeNativeTask16CashRecoveryIdentity,recordNativeTask16CashRegistrationStatus,runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({assertNativeTask16RevocationTarget,runNativeTask16CashPreparedCase,writeNativeTask16CashRecoveryIdentity,recordNativeTask16CashRegistrationStatus,runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options,request.purpose)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256,request.purpose);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
-})().then(result=>{process.exitCode=result.status==='STOPPED'?1:0;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--once-gap','--once-voucher','--once-cash'].includes(process.argv[2]))process.exit(process.exitCode);});},error=>{const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:typeof code==='string'&&/^NATIVE_DIRECT_[A-Z_]+$/u.test(code)?code:'NATIVE_DIRECT_INPUT'})+'\n');process.exitCode=1;});}
+})().then(result=>{process.exitCode=result.status==='STOPPED'?1:0;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--once-gap','--once-voucher','--once-cash','--once-revocation'].includes(process.argv[2]))process.exit(process.exitCode);});},error=>{const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:typeof code==='string'&&/^NATIVE_DIRECT_[A-Z_]+$/u.test(code)?code:'NATIVE_DIRECT_INPUT'})+'\n');process.exitCode=1;});}
 
 async function executeNativeTask16Once(plan,planSha256){
  need(require.main===module&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH'),'NATIVE_DIRECT_FRESH_MAIN');
@@ -412,12 +421,12 @@ async function executeNativeTask16Once(plan,planSha256){
   const committed=(await sql(roleRead(migration.setup.appOid,stagedRow.writeXid))).stdout;const roleRow=roleParse(roleScope,committed,'committed',before,staged);
   need(roleRow.state.roles.length===9,'NATIVE_DIRECT_NINE_ROLES');
   const provisioned={status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:plan.source.head,runId,databaseIdentity:roleIdentity,ordinary:roleRow.state.app,roles:roleRow.state.roles,commitXid:stagedRow.writeXid,databaseAcl:{before:JSON.parse(before).state.databases,after:roleRow.state.databases},paymentProfile:selection.paymentProfile};
-  enter('SEVEN_FRAGMENTS');const seven=require('./task16-current259-seven-install.cjs'),renderSeven=selection.cash?seven.renderNativeTask16CashSeven:selection.voucher?seven.renderNativeTask16VoucherSeven:selection.competition?seven.renderNativeTask16CompetitionSeven:seven.renderNativeTask16GapSeven,parseSeven=selection.cash?seven.parseNativeTask16CashSeven:selection.voucher?seven.parseNativeTask16VoucherSeven:selection.competition?seven.parseNativeTask16CompetitionSeven:seven.parseNativeTask16GapSeven;
+  enter('SEVEN_FRAGMENTS');const seven=require('./task16-current259-seven-install.cjs'),renderSeven=selection.cash?seven.renderNativeTask16CashSeven:selection.revocation?seven.renderNativeTask16RevocationSeven:selection.voucher?seven.renderNativeTask16VoucherSeven:selection.competition?seven.renderNativeTask16CompetitionSeven:seven.renderNativeTask16GapSeven,parseSeven=selection.cash?seven.parseNativeTask16CashSeven:selection.revocation?seven.parseNativeTask16RevocationSeven:selection.voucher?seven.parseNativeTask16VoucherSeven:selection.competition?seven.parseNativeTask16CompetitionSeven:seven.parseNativeTask16GapSeven;
   const sevenInput=JSON.stringify({source:plan.source.witness,id:roleIdentity,ordinary:provisioned.ordinary,runtime:provisioned.roles.find(r=>r.name==='jg_task01_runtime'),observer:provisioned.roles.find(r=>r.name==='jg_task01_observer'),roleCommitXid:provisioned.commitXid,databaseAclAfter:provisioned.databaseAcl.after});
   const sevenRaw=[],sevenRows=[];for(let phase=0;phase<3;phase++){const out=(await sql(renderSeven(sevenInput,phase,nonce,phase===0?null:sevenRaw[phase-1]))).stdout;sevenRaw.push(out);sevenRows.push(parseSeven(sevenInput,phase,nonce,out));}
   need(sevenRows[1].installXid!==provisioned.commitXid&&sevenRows[1].catalogSha256!==sevenRows[0].catalogSha256&&sevenRows[2].installXid===sevenRows[1].installXid&&sevenRows[2].catalogSha256===sevenRows[1].catalogSha256&&new Set(sevenRows.map(row=>row.backendPid)).size===3&&new Set(sevenRows.map(row=>row.backendStart)).size===3,'NATIVE_DIRECT_SEVEN_COMMIT');
   enter('ACL_AND_B7');const acl=renderNativeTask16RuntimeAcl(JSON.stringify({source:plan.source.witness,provisioned}),nonce);
-  enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+(selection.voucher?acl.lockSql+'\n'+seven.renderNativeTask16VoucherSevenPreimage(sevenInput,nonce,sevenRaw[2])+'\n':'')+acl.writeSql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
+  enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+(selection.voucher?acl.lockSql+'\n'+(selection.revocation?seven.renderNativeTask16RevocationSevenPreimage:seven.renderNativeTask16VoucherSevenPreimage)(sevenInput,nonce,sevenRaw[2])+'\n':'')+acl.writeSql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
   const catalog=require('./task16-current259-catalog.cjs'),source=plan.source.code;
   const identity={runId,database:db,databaseOid:roleIdentity.databaseOid,namespaceOid:roleIdentity.namespaceOid,ownerOid:'10',systemIdentifier:roleIdentity.systemIdentifier,runtimeOid:provisioned.roles.find(r=>r.name==='jg_task01_runtime').oid,observerOid:provisioned.roles.find(r=>r.name==='jg_task01_observer').oid,...(selection.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),...(selection.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{}),paymentProfile:selection.paymentProfile};
   const request={source,identity,nonce,phase:'before'};enter('B7_BEFORE_RENDER');const beforeSql=catalog.renderCurrent259CatalogRead(request);
@@ -553,7 +562,7 @@ async function runNativeTask16Business(plan,state){
   const {Task16RegisteredApplicationModule,Task16ImpactReaderToken}=require('../dist/database/task16-registered-application.module.js');
   const {readTask16RegisteredPaymentImpacts}=require('../dist/payment/registered-payment-impact-reader.js');
   const selectedRuntimes=selection.competition?[runtime,runtimeB]:[runtime];
-  const origins=[];for(const selectedRuntime of selectedRuntimes){
+  const origins=[],applicationHandles=[];for(const selectedRuntime of selectedRuntimes){
    const module=await wait(()=>Test.createTestingModule({imports:[Task16RegisteredApplicationModule]}).overrideProvider(PrismaService).useValue(selectedRuntime).overrideProvider(Task16ImpactReaderToken).useValue(readTask16RegisteredPaymentImpacts).compile(),late=>cleanupWait(()=>late.close()));state.setApplication(undefined,module);
   const app=module.createNestApplication();state.setApplication(app,module);
   need(module.get(PrismaService)===selectedRuntime&&module.get(Task16ImpactReaderToken)===readTask16RegisteredPaymentImpacts&&app.get(PrismaService)===selectedRuntime&&app.get(Task16ImpactReaderToken)===readTask16RegisteredPaymentImpacts,'NATIVE_DIRECT_REAL_PROVIDERS');
@@ -561,7 +570,7 @@ async function runNativeTask16Business(plan,state){
   app.getHttpAdapter().getInstance().set('json replacer',require('../dist/api-json-replacer.js').apiJsonReplacer);app.enableCors({origin:[],credentials:false});app.useGlobalPipes(require('../dist/validation/api-validation.js').createApiValidationPipe());
   await wait(()=>app.init());await wait(()=>require('../dist/api-listen.js').listenApi(app,0,'127.0.0.1'));
   const address=app.getHttpServer().address();need(address.address==='127.0.0.1'&&address.family==='IPv4'&&address.port>1024,'NATIVE_DIRECT_HTTP_ENDPOINT');
-  origins.push('http://127.0.0.1:'+address.port);
+  origins.push('http://127.0.0.1:'+address.port);applicationHandles.push(app);
   }
   need(selection.competition?origins.length===2&&origins[0]!==origins[1]:origins.length===1,'NATIVE_DIRECT_TWO_APPLICATIONS');const origin=origins[0];
   const catalog=require('./task16-current259-catalog.cjs'),material=catalog.loadCurrent259CatalogMaterial(plan.source.code,selection.paymentProfile);
@@ -614,6 +623,7 @@ async function runNativeTask16Business(plan,state){
     assertTarget(route,method);
     if(!prepared){const routes=index===0?['/auth/login','/fund-accounts/openings','/fund-accounts/openings']:selection.cash?['/auth/login','/fund-accounts/openings']:['/auth/login'];need(method==='POST'&&route===routes[seedPosts[index].length],'NATIVE_DIRECT_SEED_ROUTE');seedPosts[index].push(route);return;}
     if(method==='POST'){
+     need(!selection.revocation,'NATIVE_DIRECT_REVOCATION_PAYMENT_POST_FORBIDDEN');
      if(selection.cash){need(index===1&&route==='/payment-executions/'+fixturePlan.ids.payment+'/registrations'&&posts[index]<2,'NATIVE_DIRECT_CASH_POST');posts[index]++;return;}
      need(route==='/payment-executions/'+fixturePlan.ids.payment+'/registrations','NATIVE_DIRECT_REGISTRATION_ROUTE');
      if(followUpLane===index){need(!armed&&used&&followUpPosts[index]<2,'NATIVE_DIRECT_FOLLOW_UP_COUNT');followUpPosts[index]++;}
@@ -623,7 +633,7 @@ async function runNativeTask16Business(plan,state){
     const key=index===0?fixturePlan.ids.requestKey:prepared.contender.requestKey;
     need(['/payment-executions/work-items','/payment-executions/'+fixturePlan.ids.payment+'/registration-options','/payment-executions/results/'+key,...(followUpLane!==undefined?['/payment-executions/results/'+prepared.followUpRequestKey,'/payment-executions/results/'+(index===0?prepared.contender.requestKey:fixturePlan.ids.requestKey),'/payment-executions/recorded-items?paymentId='+fixturePlan.ids.payment]:[])].includes(route),'NATIVE_DIRECT_CASE_ROUTE_PHASE');
    };
-   return {seedProfile:selection.cash?'TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1':selection.paymentProfile,checkLight:needLive,assertHttpRequest:assertRequest,fetch:async(target,init)=>{checkCommand(target,init);return fetch(target,init);},requestJson:async(target,init,timeout)=>{checkCommand(target,init);need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestCurrent261SeedJson(target,init,timeout);},...(selection.cash&&index===1?{recordCashRegistrationStatus:status=>recordNativeTask16CashRegistrationStatus(root,receipt,status)}:{}),recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
+   return {seedProfile:selection.cash?'TASK16_PAYMENT261_PUBLIC_CASH_FIXTURE_V1':selection.revocation?'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1':selection.paymentProfile,checkLight:needLive,assertHttpRequest:assertRequest,fetch:async(target,init)=>{checkCommand(target,init);return fetch(target,init);},requestJson:async(target,init,timeout)=>{checkCommand(target,init);need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestCurrent261SeedJson(target,init,timeout);},...(selection.cash&&index===1?{recordCashRegistrationStatus:status=>recordNativeTask16CashRegistrationStatus(root,receipt,status)}:{}),recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
   });
   if(selection.cash){
    await wait(()=>fixture.assertRegisteredPgCompetitionRoles(context,contender,lanes[0]));
@@ -644,6 +654,35 @@ async function runNativeTask16Business(plan,state){
   await wait(()=>fixture.assertRegisteredPgCompetitionRoles(context,contender,lanes[0]));enter('SEED_TWO_LOGINS_AND_OPENINGS');receipt.business='ENTERED';
   prepared=await wait(()=>(selection.voucher?fixture.seedRegisteredPgCompetitionFixture:fixture.seedRegisteredPgCompetitionFollowUpFixture)(context,contender,fixturePlan,...lanes));receipt.loginAndOpenings='ORIGINAL_COMPETITION_FIXTURE_RETURNED';
   need(equal(seedPosts.map(rows=>rows.length),[3,1])&&prepared.accessToken!==prepared.contender.accessToken,'NATIVE_DIRECT_SEED_ACTORS');resultKeys.push(prepared.contender.requestKey,...(selection.voucher?[]:[prepared.followUpRequestKey]));
+  if(selection.revocation){
+   await verifyIdentity();state.checkPublicCertificateContext();enter('REVOCATION_SYNTHETIC_PREPARE');
+   const {PaymentRequestService}=require('../dist/payment/payment-request.service.js');
+   const {FileService}=require('../dist/file/file.service.js');
+   const service=applicationHandles[0].get(PaymentRequestService),files=applicationHandles[0].get(FileService);
+   need(service&&applicationHandles[0].get(PrismaService)===runtime&&applicationHandles[0].get(PaymentRequestService)===service&&service.prisma===runtime&&service.files===files&&files.prisma===runtime,'NATIVE_DIRECT_REVOCATION_PROVIDER');
+   const providerCheck=()=>{needLive();state.checkPublicCertificateContext();need(applicationHandles[0].get(PrismaService)===runtime&&applicationHandles[0].get(PaymentRequestService)===service&&service.prisma===runtime&&service.files===files&&files.prisma===runtime,'NATIVE_DIRECT_REVOCATION_PROVIDER');};
+   const revocation=require('./task16-native-voucher-revocation.cjs');
+   const diagnose=value=>{if(!receipt.revocationFailure)receipt.revocationFailure=value;};
+   const cleanupDiagnostic=value=>{if(!receipt.revocationCleanup)receipt.revocationCleanup=value;};
+   const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgCF0FAAFYAQDfZmccAAAAAElFTkSuQmCC','base64');
+   receipt.revocationPreparation='ENTERED_UNKNOWN_DO_NOT_RETRY';
+   const voucher=await wait(()=>revocation.prepareNativeVoucherForRevocation({service,fixture:prepared,password:context.password,voucherBytes:png,diagnose,snapshot:()=>revocation.readVoucherFundingSnapshot({observer,fixture:prepared,known:{observerPid:retained.at(-1).pid,databaseOid:identity.databaseOid,observerOid:retained.at(-1).loginOid},check:providerCheck}),check:providerCheck}));
+   const ids={actor:randomUUID(),project:fixturePlan.ids.project,other:randomUUID(),member:randomUUID(),execution:voucher.executionId,file:voucher.fileId,payment:fixturePlan.ids.payment};
+   const managerPassword=randomBytes(32).toString('hex'),phone='197'+(BigInt('0x'+randomBytes(8).toString('hex'))%100000000n).toString().padStart(8,'0');
+   const passwordHash=await wait(()=>require('bcryptjs').hash(managerPassword,12));
+   await verifyIdentity();enter('REVOCATION_READER_SEED');await wait(()=>revocation.seedNativeVoucherRevocationReader({owner,ids,phone,passwordHash,check:providerCheck}));
+   receipt.revocationPreparation='FIXTURE_RETURNED';enter('REVOCATION_MANAGER_LOGIN');
+   const loginUrl=new URL('/auth/login',origin);need(loginUrl.origin===origin,'NATIVE_DIRECT_REVOCATION_LOGIN_ORIGIN');
+   const login=await wait(()=>fetch(loginUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone,password:managerPassword}),redirect:'error',signal:AbortSignal.timeout(5000)}));
+   need(login.url===loginUrl.href&&!login.redirected&&login.status===201,'NATIVE_DIRECT_REVOCATION_LOGIN');
+   const loginBody=await wait(()=>login.json());const token=loginBody?.tokens?.accessToken;need(typeof token==='string'&&token.length>0,'NATIVE_DIRECT_REVOCATION_LOGIN');
+   await verifyIdentity();enter('REVOCATION_BEFORE_AFTER_AND_ACCOUNTING');
+   const observe=async(sql)=>{needLive();state.checkPublicCertificateContext();return await state.sql(sql);};
+   const check=providerCheck;
+   const result=await wait(()=>revocation.runNativeVoucherRevocation({ids,origin,token,fileSha256:voucher.fileSha256,fileSize:voucher.fileSize,diagnose,cleanupDiagnostic,known:{databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:identity.ownerOid,sessionPids:retained.map(row=>row.pid)},observe,revoke:observe,transport:(target,init)=>{assertNativeTask16RevocationTarget(origin,ids,target,init.method);return fetch(target,init);},check}));
+   need(result.authorizedBefore&&result.capabilityDenied&&result.newTicketDenied&&result.oldTicketDenied&&result.otherProjectReadable&&result.observedFactsUnchanged&&equal(posts,[0,0]),'NATIVE_DIRECT_REVOCATION_RESULT');
+   receipt.voucherRevocation=result;receipt.business='SYNTHETIC_VOUCHER_REVOCATION_RETURNED';await verifyIdentity();return;
+  }
   await verifyIdentity();enter('COMPETITION_FOLLOW_UP_REPLAY_GET');
   const controls={lanes,
    async withSamePaymentLock(paymentId,pids,submissions){

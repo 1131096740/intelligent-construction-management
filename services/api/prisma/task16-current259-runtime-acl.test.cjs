@@ -333,3 +333,15 @@ test('cash impact writer proof follows the later stored-watermark migration exac
  assert.deepEqual(proof.interface.argumentModes,['i','i','i','t','t']);
  assert.match(sql,/WRITER_FUNCTION_PROOF_14/u);
 });
+
+test('revocation writer and readback bind only the six source columns to observer',()=>{
+ const profiles=require('./task16-current261-competition-profile.cjs');
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
+ const paired={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}]};
+ const old=renderCurrent259VoucherRuntimeAcl(witness,{...paired,paymentProfile:profiles.PAYMENT261_VOUCHER_RUNTIME_PROFILE},nonce);
+ const added=renderCurrent259VoucherRuntimeAcl(witness,{...paired,paymentProfile:profiles.PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE},nonce);
+ const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);const difference=grants(added.sql).filter(x=>!grants(old.sql).includes(x));
+ assert.deepEqual(difference,['GRANT SELECT ("amountYuan", "id", "projectId", "projectStatus", "registrationId", "sourceStatus") ON TABLE public."FundAccountSourceBatch" TO "jg_task01_observer";']);
+ for(const sql of [added.sql,added.readbackSql]){const caps=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(sql)[1]);const rows=caps.filter(r=>r[0]==='jg_task01_observer'&&r[2]==='FundAccountSourceBatch');assert.deepEqual(rows.map(r=>r[3]).sort(),['amountYuan','id','projectId','projectStatus','registrationId','sourceStatus']);assert.ok(rows.every(r=>r[1]==='column'&&r[4]==='SELECT'&&r[5]===false));}
+});

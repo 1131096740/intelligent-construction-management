@@ -430,3 +430,37 @@ test('cash runtime client alone projects bounded query metadata without changing
  assert.equal(receipt.cashStageQueries.events[0].unknownShape,false);assert.equal(receipt.cashStageQueries.events[0].operation,'SELECT');assert.equal(params,0);
  assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE|SELECT |params/u);
 });
+
+test('voucher revocation has its own native purpose and one-shot CLI',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const purpose='TASK16_NATIVE_VOUCHER_REVOCATION_V1';
+ const selected=api.nativeTask16CaseSelection(purpose);
+ assert.equal(selected.purpose,purpose);assert.equal(selected.revocation,true);assert.equal(selected.competition,true);
+ const common=['--plan','/private/tmp/example/plan.json','--expected-plan-sha256','a'.repeat(64)];
+ assert.equal(api.parseNativeTask16Args(['--verify-revocation',...common]).purpose,purpose);
+ assert.equal(api.parseNativeTask16Args(['--once-revocation',...common]).purpose,purpose);
+ assert.equal(api.parseNativeTask16Args(['--prepare-revocation','--run-root','/private/tmp/example','--binary-manifest','/private/tmp/m','--expected-binary-sha256','b'.repeat(64),'--output','/private/tmp/example/plan.json']).purpose,purpose);
+});
+
+test('revocation route fence rejects every payment POST and foreign origin',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const origin='http://127.0.0.1:24567',file='00000000-0000-4000-8000-000000000001',execution='00000000-0000-4000-8000-000000000002';
+ api.assertNativeTask16RevocationTarget(origin,{file,execution},new URL(`/payment-executions/${execution}/voucher-ticket`,origin),'GET');
+ assert.throws(()=>api.assertNativeTask16RevocationTarget(origin,{file,execution},new URL(`/payment-executions/${execution}/registrations`,origin),'POST'));
+ assert.throws(()=>api.assertNativeTask16RevocationTarget(origin,{file,execution},new URL('http://127.0.0.1:24568/projects'),'GET'));
+ assert.throws(()=>api.assertNativeTask16RevocationTarget(origin,{file,execution},new URL('/auth/login',origin),'POST'));
+});
+
+test('revocation source interface qualifies actual voucher case and Nest provider',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const rows=api.resolveNativeTask16Interfaces('TASK16_NATIVE_VOUCHER_REVOCATION_V1');
+ assert.ok(rows.some(row=>row.file.endsWith('/task16-native-voucher-revocation.cjs')&&row.exports.some(x=>x.name==='runNativeVoucherRevocation')));
+ assert.ok(rows.some(row=>row.file.endsWith('/payment-request.service.js')&&row.exports.some(x=>x.name==='PaymentRequestService')));
+});
+
+test('revocation profile goes through ACL install, physical readback and B7 before business',()=>{
+ const fs=require('node:fs'),path=require('node:path');const text=fs.readFileSync(path.join(__dirname,'run-task16-native-competition-follow-up-once.cjs'),'utf8');
+ const acl=text.indexOf("enter('ACL_APPLY')"),readback=text.indexOf("enter('ACL_READBACK')",acl),b7=text.indexOf("enter('B7_BEFORE_RENDER')",readback),business=text.indexOf("enter('REAL_CLIENTS_NEST_AND_CASE')",b7);
+ assert.ok(acl>=0&&acl<readback&&readback<b7&&b7<business);assert.doesNotMatch(text,/GRANT SELECT \([^)]*\) ON TABLE public\."FundAccountSourceBatch"/u);
+ assert.equal(require('./run-task16-native-competition-follow-up-once.cjs').nativeTask16CaseSelection('TASK16_NATIVE_VOUCHER_REVOCATION_V1').paymentProfile,'TASK16_PAYMENT261_VOUCHER_REVOCATION_RUNTIME_V1');
+});
