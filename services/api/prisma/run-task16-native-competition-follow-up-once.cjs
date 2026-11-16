@@ -17,6 +17,16 @@ function assertNativeTask16RevocationTarget(origin,ids,target,method){
  const isDownload=url.pathname===`/files/${ids.file}/download`;
  need((isDownload||!url.search)&&[ '/projects',`/files/${ids.file}/download-ticket-capability`,`/payment-executions/${ids.execution}/voucher-ticket`,`/files/${ids.file}/download`].includes(url.pathname),'NATIVE_DIRECT_REVOCATION_ROUTE');
 }
+// This additional ingress fence is installed only in the revocation app.
+// Normal seed openings end before any voucher-read routes become reachable.
+function nativeTask16RevocationInboundAllowed(method,raw,ids){
+ if(typeof raw!=='string'||!raw.startsWith('/')||raw.startsWith('//'))return false;
+ let url;try{url=new URL(raw,'http://127.0.0.1:1025');}catch{return false;}
+ if(url.origin!=='http://127.0.0.1:1025'||url.hash)return false;
+ if(method==='POST'&&!url.search&&(url.pathname==='/auth/login'||!ids&&url.pathname==='/fund-accounts/openings'))return true;
+ if(method!=='GET'||!ids)return false;
+ try{assertNativeTask16RevocationTarget('http://127.0.0.1:1025',ids,url,method);return true;}catch{return false;}
+}
 function nativeTask16CaseSelection(purpose){
  need(purpose===PURPOSE||purpose===GAP_PURPOSE||purpose===VOUCHER_PURPOSE||purpose===CASH_PURPOSE||purpose===REVOCATION_PURPOSE,'NATIVE_DIRECT_CASE_PURPOSE');
  const competition=purpose!==GAP_PURPOSE;
@@ -249,7 +259,7 @@ function inspectNativeTask16Interfaces(purpose=PURPOSE){
   specs.push(['../dist/database/registered-payment-public-cash-secret.js',[['withCashLedgerSecret',4]]]);
   specs.push(['../dist/database/registered-payment-public-cash-prerequisite.js',[['readCashSettlementPrerequisite',2]]]);
  }
- if(selected.revocation)specs.push(['./task16-native-voucher-revocation.cjs',[['readVoucherFundingSnapshot',1],['seedNativeVoucherRevocationReader',1],['prepareNativeVoucherForRevocation',1],['runNativeVoucherRevocation',1]]],['../dist/payment/payment-request.service.js',[['PaymentRequestService','function']]],['../dist/file/file.service.js',[['FileService','function']]]);
+ if(selected.revocation)specs.push(['../dist/database/task16-revocation-application.module.js',[['Task16RevocationApplicationModule',0]]],['./task16-native-voucher-revocation.cjs',[['readVoucherFundingSnapshot',1],['seedNativeVoucherRevocationReader',1],['prepareNativeVoucherForRevocation',1],['runNativeVoucherRevocation',1]]],['../dist/payment/payment-request.service.js',[['PaymentRequestService','function']]],['../dist/file/file.service.js',[['FileService','function']]]);
  if(selected.voucher){
   specs.push(['./task16-native-voucher-roster-query.cjs',[['projectNativeTask16RosterQuery',3],['nativeTask16VoucherQueryLogOptions',2],['createNativeTask16RosterQueryDiagnostic',2]]]);
   const replacements={
@@ -329,7 +339,7 @@ function assertNativeTask16CompetitionLoopbackListeners(text,postmasterPid,port)
  need(addresses.length===2&&addresses.includes('127.0.0.1')&&addresses.includes('::1'),code);
  return Object.freeze({postmasterPid,port,addresses:Object.freeze(['127.0.0.1','::1']),ownedStartupListeners:true});
 }
-module.exports=Object.freeze({assertNativeTask16RevocationTarget,runNativeTask16CashPreparedCase,writeNativeTask16CashRecoveryIdentity,recordNativeTask16CashRegistrationStatus,runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({nativeTask16RevocationInboundAllowed,assertNativeTask16RevocationTarget,runNativeTask16CashPreparedCase,writeNativeTask16CashRecoveryIdentity,recordNativeTask16CashRegistrationStatus,runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options,request.purpose)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256,request.purpose);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -562,9 +572,12 @@ async function runNativeTask16Business(plan,state){
   const {Task16RegisteredApplicationModule,Task16ImpactReaderToken}=require('../dist/database/task16-registered-application.module.js');
   const {readTask16RegisteredPaymentImpacts}=require('../dist/payment/registered-payment-impact-reader.js');
   const selectedRuntimes=selection.competition?[runtime,runtimeB]:[runtime];
-  const origins=[],applicationHandles=[];for(const selectedRuntime of selectedRuntimes){
-   const module=await wait(()=>Test.createTestingModule({imports:[Task16RegisteredApplicationModule]}).overrideProvider(PrismaService).useValue(selectedRuntime).overrideProvider(Task16ImpactReaderToken).useValue(readTask16RegisteredPaymentImpacts).compile(),late=>cleanupWait(()=>late.close()));state.setApplication(undefined,module);
+  const origins=[],applicationHandles=[];let revocationRouteIds;
+  const ApplicationModule=selection.revocation?require('../dist/database/task16-revocation-application.module.js').Task16RevocationApplicationModule:Task16RegisteredApplicationModule;
+  for(const selectedRuntime of selectedRuntimes){
+   const module=await wait(()=>Test.createTestingModule({imports:[ApplicationModule]}).overrideProvider(PrismaService).useValue(selectedRuntime).overrideProvider(Task16ImpactReaderToken).useValue(readTask16RegisteredPaymentImpacts).compile(),late=>cleanupWait(()=>late.close()));state.setApplication(undefined,module);
   const app=module.createNestApplication();state.setApplication(app,module);
+  if(selection.revocation)app.use((req,res,next)=>{if(!nativeTask16RevocationInboundAllowed(req.method,req.originalUrl,revocationRouteIds))return res.status(404).end();return next();});
   need(module.get(PrismaService)===selectedRuntime&&module.get(Task16ImpactReaderToken)===readTask16RegisteredPaymentImpacts&&app.get(PrismaService)===selectedRuntime&&app.get(Task16ImpactReaderToken)===readTask16RegisteredPaymentImpacts,'NATIVE_DIRECT_REAL_PROVIDERS');
   require('../dist/api-security.js').configureApiSecurity(app);require('../dist/operating-projection/projection-export-json.js').configureProjectionExportJson(app);
   app.getHttpAdapter().getInstance().set('json replacer',require('../dist/api-json-replacer.js').apiJsonReplacer);app.enableCors({origin:[],credentials:false});app.useGlobalPipes(require('../dist/validation/api-validation.js').createApiValidationPipe());
@@ -664,10 +677,11 @@ async function runNativeTask16Business(plan,state){
    const revocation=require('./task16-native-voucher-revocation.cjs');
    const diagnose=value=>{if(!receipt.revocationFailure)receipt.revocationFailure=value;};
    const cleanupDiagnostic=value=>{if(!receipt.revocationCleanup)receipt.revocationCleanup=value;};
+   const httpDiagnostic=value=>{if(!receipt.revocationHttpFailure)receipt.revocationHttpFailure=value;};
    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgCF0FAAFYAQDfZmccAAAAAElFTkSuQmCC','base64');
    receipt.revocationPreparation='ENTERED_UNKNOWN_DO_NOT_RETRY';
    const voucher=await wait(()=>revocation.prepareNativeVoucherForRevocation({service,fixture:prepared,password:context.password,voucherBytes:png,diagnose,snapshot:()=>revocation.readVoucherFundingSnapshot({observer,fixture:prepared,known:{observerPid:retained.at(-1).pid,databaseOid:identity.databaseOid,observerOid:retained.at(-1).loginOid},check:providerCheck}),check:providerCheck}));
-   const ids={actor:randomUUID(),project:fixturePlan.ids.project,other:randomUUID(),member:randomUUID(),execution:voucher.executionId,file:voucher.fileId,payment:fixturePlan.ids.payment};
+   const ids={actor:randomUUID(),project:fixturePlan.ids.project,other:randomUUID(),member:randomUUID(),execution:voucher.executionId,file:voucher.fileId,payment:fixturePlan.ids.payment};revocationRouteIds=Object.freeze({execution:ids.execution,file:ids.file});
    const managerPassword=randomBytes(32).toString('hex'),phone='197'+(BigInt('0x'+randomBytes(8).toString('hex'))%100000000n).toString().padStart(8,'0');
    const passwordHash=await wait(()=>require('bcryptjs').hash(managerPassword,12));
    await verifyIdentity();enter('REVOCATION_READER_SEED');await wait(()=>revocation.seedNativeVoucherRevocationReader({owner,ids,phone,passwordHash,check:providerCheck}));
@@ -679,7 +693,7 @@ async function runNativeTask16Business(plan,state){
    await verifyIdentity();enter('REVOCATION_BEFORE_AFTER_AND_ACCOUNTING');
    const observe=async(sql)=>{needLive();state.checkPublicCertificateContext();return await state.sql(sql);};
    const check=providerCheck;
-   const result=await wait(()=>revocation.runNativeVoucherRevocation({ids,origin,token,fileSha256:voucher.fileSha256,fileSize:voucher.fileSize,diagnose,cleanupDiagnostic,known:{databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:identity.ownerOid,sessionPids:retained.map(row=>row.pid)},observe,revoke:observe,transport:(target,init)=>{assertNativeTask16RevocationTarget(origin,ids,target,init.method);return fetch(target,init);},check}));
+   const result=await wait(()=>revocation.runNativeVoucherRevocation({ids,origin,token,fileSha256:voucher.fileSha256,fileSize:voucher.fileSize,diagnose,cleanupDiagnostic,httpDiagnostic,known:{databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:identity.ownerOid,sessionPids:retained.map(row=>row.pid)},observe,revoke:observe,transport:(target,init)=>{assertNativeTask16RevocationTarget(origin,ids,target,init.method);return fetch(target,init);},check}));
    need(result.authorizedBefore&&result.capabilityDenied&&result.newTicketDenied&&result.oldTicketDenied&&result.otherProjectReadable&&result.observedFactsUnchanged&&equal(posts,[0,0]),'NATIVE_DIRECT_REVOCATION_RESULT');
    receipt.voucherRevocation=result;receipt.business='SYNTHETIC_VOUCHER_REVOCATION_RETURNED';await verifyIdentity();return;
   }

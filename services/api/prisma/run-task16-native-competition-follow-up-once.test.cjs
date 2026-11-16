@@ -464,3 +464,12 @@ test('revocation profile goes through ACL install, physical readback and B7 befo
  assert.ok(acl>=0&&acl<readback&&readback<b7&&b7<business);assert.doesNotMatch(text,/GRANT SELECT \([^)]*\) ON TABLE public\."FundAccountSourceBatch"/u);
  assert.equal(require('./run-task16-native-competition-follow-up-once.cjs').nativeTask16CaseSelection('TASK16_NATIVE_VOUCHER_REVOCATION_V1').paymentProfile,'TASK16_PAYMENT261_VOUCHER_REVOCATION_RUNTIME_V1');
 });
+
+test('revocation inbound fence rejects unrelated routes and every payment POST',()=>{
+ const {nativeTask16RevocationInboundAllowed:allowed}=require('./run-task16-native-competition-follow-up-once.cjs');
+ const ids={file:'00000000-0000-4000-8000-000000000001',execution:'00000000-0000-4000-8000-000000000002'};
+ assert.equal(allowed('POST','/auth/login',null),true);assert.equal(allowed('POST','/fund-accounts/openings',null),true);
+ assert.equal(allowed('GET','/projects',ids),true);assert.equal(allowed('GET',`/files/${ids.file}/download?token=synthetic`,ids),true);
+ for(const [method,route] of [['POST',`/payment-executions/${ids.execution}/registrations`],['POST','/projects'],['GET','/projects/management'],['GET','/projects?foo=1'],['GET','/audit-logs'],['POST','/files']])assert.equal(allowed(method,route,ids),false);
+ assert.equal(allowed('GET','/projects',null),false);
+});
