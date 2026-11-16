@@ -54,6 +54,8 @@
 
 后继 `01b9b28b` 修正我方签约版本及种子回读，新独占运行通过 ACL/B7 并越过前述约束，在 `CASH_SEED_AND_SETTLEMENT_REPLAY` 遇 `ContractPartySnapshot` 权限拒绝；付款和核账未到达。secret CLEARED、cleanup 完成，独核进程、监听及 pidfile 缺席。[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-01b9/receipt.json) SHA `c4b20ce6f2ee3b1afc7291c343769167d14810a61c7559cd08d3a7e604bd418d`；实际查询列仍待定位，不猜测扩权。
 
+后续独立运行逐步观察并核对实际查询，隔离现金角色增加主体快照、关闭汇总及行锁所需权限，均不构成生产授权；期间各轮停在准备阶段，secret CLEARED、cleanup 完成并独核进程/监听/pidfile 缺席。最新 `5f81cc38` 实际捕获 `ProjectCloseImpact` 的五列读取并在该表权限拒绝；[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-5f81/receipt.json) SHA `802a704571858f4786641ff82b4273ee502e5896a7e3fa87fd3b60e472732ce1`。现金隔离专用五列读取修订 `eb4e2b0c` 已独审并合入 `12331c4b`，141 项模型通过；真实新权限、付款和核账仍待验证，权限无项目行过滤。
+
 诊断 `904a6a51` 在新资源实际捕获该表查询六列，现金角色缺 `id`；`78c5f0bc` 只补该只读列并经独审。新独占运行越过该表，随后同阶段因 `ProjectCloseAggregate` 权限拒绝停止，付款和核账仍未到达。secret CLEARED、cleanup 完成，独核进程、监听及 pidfile 缺席。[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-78c5/receipt.json) SHA `a7f4b7b255caf69c325398e52cfd3a4877404c1e2c80e37017ec076047a57865`；新表实际查询列待诊断。
 
 准确 `8fde2600` 新独占 cash 原生运行 prepare、verify 和材料核对通过；原 once 在 `ACL_APPLY` 停止，PG 日志首因 `WRITER_FUNCTION_PROOF_14`，业务未进入，secret 未开始。原 cleanup 完成，独核进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-8fde/receipt.json) SHA `9870b623492d1005cc371a5fb78ac191b78d59fbb46ab824013a0056b19f0ac5`；正在诊断函数定义证明差异，不以模型替代物理通过。
