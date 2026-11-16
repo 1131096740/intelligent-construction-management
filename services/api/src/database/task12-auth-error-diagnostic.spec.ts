@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { Controller, Module, Post, Req } from "@nestjs/common";
+import { Controller, Get, Module, Post, Req } from "@nestjs/common";
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, HttpAdapterHost, NestFactory } from "@nestjs/core";
 import { Prisma } from "@prisma/client";
 import { Server } from "node:http";
@@ -33,6 +33,7 @@ class TechnicalAuthController {
 @Controller("contract-drafts")
 class TechnicalLeaseController {
   @Post(":contractVersionId/edit-lease/heartbeat") heartbeat() { throw thrown ?? native(); }
+  @Get(":contractVersionId/workbench") workbench() { throw thrown ?? native(); }
 }
 @Module({controllers:[TechnicalAuthController,TechnicalLeaseController],providers:[Task12AuthErrorFilter,Task12AuthStageInterceptor,{provide:APP_FILTER,useExisting:Task12AuthErrorFilter},{provide:APP_INTERCEPTOR,useExisting:Task12AuthStageInterceptor}]})
 class TechnicalAuthModule {}
@@ -64,6 +65,19 @@ test("heartbeat captures only the owned request and retains no credential or raw
   expect(detail).toEqual({serverAuthBoundary:"CONTROLLER_MARKER_REACHED",serverErrorKind:"KNOWN_REQUEST_ERROR",serverPrismaCode:"P2010",serverSqlState:"42501"});
   expect(JSON.stringify(detail)).not.toMatch(/private|11111111/u);
   ticket=armTask12AuthError(filter,server,identity); await Promise.all([send(version),send(version)]); expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
+ } finally { await app.close(); }
+});
+
+test("workbench GET diagnostic distinguishes concurrent heartbeat and nonce", async () => {
+ const app=await NestFactory.create(TechnicalAuthModule,{logger:false});
+ const version="11111111-1111-4111-8111-111111111111", nonce="a".repeat(32), identity=`${version}:${nonce}:workbench`;
+ try {
+  await app.listen(0,"127.0.0.1");const server=app.getHttpServer() as Server, filter=app.get(Task12AuthErrorFilter), address=server.address();if(!address||typeof address==="string")throw Error("NO_PORT");
+  const send=(suffix:string,method:string,marker=nonce)=>fetch(`http://127.0.0.1:${address.port}/contract-drafts/${version}/${suffix}`,{method,headers:{"x-task12-diagnostic":marker,"x-contract-draft-lease":"fictional-private-token"}});
+  let ticket=armTask12AuthError(filter,server,identity);await send("edit-lease/heartbeat","POST");await send("workbench","GET","b".repeat(32));expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
+  ticket=armTask12AuthError(filter,server,identity);const response=await send("workbench","GET");expect(response.status).toBe(500);const detail=takeTask12AuthError(filter,server,ticket);
+  expect(detail).toEqual({serverAuthBoundary:"CONTROLLER_MARKER_REACHED",serverErrorKind:"KNOWN_REQUEST_ERROR",serverPrismaCode:"P2010",serverSqlState:"42501"});expect(JSON.stringify(detail)).not.toMatch(/private|11111111|aaaaaaaa/u);
+  ticket=armTask12AuthError(filter,server,identity);await Promise.all([send("workbench","GET"),send("workbench","GET")]);expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
  } finally { await app.close(); }
 });
 
