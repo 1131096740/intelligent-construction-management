@@ -111,6 +111,11 @@ export interface PreparedRegisteredPgCompetition extends PreparedRegisteredPgFix
   contender: { actorId: string; requestKey: string; accessToken: string };
 }
 
+export interface PreparedRegisteredPgPublicCash extends PreparedRegisteredPgCompetition {
+  cashRegistrationId: string;
+  cashSourceId: string;
+}
+
 export interface PreparedRegisteredPgCompetitionFollowUp extends PreparedRegisteredPgCompetition {
   companyASourceId: string;
   followUpRequestKey: string;
@@ -366,6 +371,34 @@ export async function seedRegisteredPgCompetitionFixture(primary: RegisteredPgEx
   const result = await seedFixture(primary, plan, primaryContinuity, { context: contender, continuity: contenderContinuity });
   requireCondition("contender" in result, "PG_COMPETITION_FIXTURE");
   return result;
+}
+
+/** Prepares a companyless cash opening through the current comprehensive director.
+ * This is fixture preparation only: it does not activate a project ledger or run a payment. */
+export async function seedRegisteredPgPublicCashFixture(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
+  primaryContinuity: RegisteredPgSeedContinuity, contenderContinuity: RegisteredPgSeedContinuity): Promise<PreparedRegisteredPgPublicCash> {
+  const prepared = await seedRegisteredPgCompetitionFixture(primary, contender, plan, primaryContinuity, contenderContinuity);
+  let status: number | undefined;
+  try {
+    contenderContinuity.checkLight();
+    const response = await registeredPgHttp(contender, "/fund-accounts/openings", "POST", {
+      scopeKey: "public_cash", balanceYuan: "100", asOfDate: prepared.plan.openingDate,
+      evidenceReference: "隔离PG合成公共现金期初核对", reconciliationNote: "公共现金项目来源明确", reason: "合成公共现金期初",
+      idempotencyKey: `opening-${prepared.plan.runId}-public-cash`,
+      sources: [{ amountYuan: "100", sourceStatus: "known", sourceName: "合成已知项目资金", projectStatus: "project", projectId: prepared.plan.ids.project }]
+    }, prepared.contender.accessToken, contenderContinuity);
+    status = response.status;
+    contenderContinuity.checkLight();
+    const opening = response.body as { id?: unknown; sources?: Array<{ id?: unknown; projectId?: unknown }> } | null;
+    requireCondition(response.status === 201 && typeof opening?.id === "string" && opening.id !== prepared.companyARegistrationId &&
+      opening.id !== prepared.companyBRegistrationId && Array.isArray(opening.sources) && opening.sources.length === 1 &&
+      typeof opening.sources[0]?.id === "string" && opening.sources[0].id !== prepared.companyBSourceId &&
+      opening.sources[0].projectId === prepared.plan.ids.project, "PG_FIXTURE_PUBLIC_CASH_OPENING");
+    return { ...prepared, cashRegistrationId: opening.id, cashSourceId: opening.sources[0].id };
+  } catch (error) {
+    try { contenderContinuity.recordSeedFailure?.("SEED_OPENING", seedFailureCode(error), status); } catch { /* Preserve the original failure. */ }
+    throw Object.assign(new Error("TASK16_FIXTURE_FAILED_CLOSED"), { code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+  }
 }
 
 export async function seedRegisteredPgCompetitionFollowUpFixture(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
