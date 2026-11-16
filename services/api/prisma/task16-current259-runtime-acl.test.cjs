@@ -169,7 +169,7 @@ test('voucher runtime takes the original shared locks and installs only the addi
  assert.throws(()=>renderCurrent259VoucherRuntimeAcl(source,receipt(),nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
 });
 
-test('261 competition ACL keeps the historical grant set and rejects ordinary, legacy and voucher pairings',()=>{
+test('261 competition ACL supplies exactly normal default INSERT additions and rejects mismatched pairings',()=>{
  const {PAYMENT261_COMPETITION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
  const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
   path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
@@ -180,7 +180,12 @@ test('261 competition ACL keeps the historical grant set and rejects ordinary, l
  const acl=renderCurrent259CompetitionRuntimeAcl(witness,provisioned,nonce);
  const legacy=renderCurrent259CompetitionRuntimeAcl(source,paired,nonce);
  const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);
- assert.deepEqual(grants(acl.sql),grants(legacy.sql));
+ const normal=renderCurrent259RuntimeAcl(witness,{...receipt(),paymentProfile:PAYMENT261_RUNTIME_PROFILE},nonce);
+ assert.deepEqual(grants(acl.sql),grants(normal.sql));
+ assert.notDeepEqual(grants(acl.sql),grants(legacy.sql));
+ assert.match(acl.sql,/GRANT INSERT \("action", "actorUserId", "businessId", "businessType", "createdAt", "id", "metadata"\) ON TABLE public\."AuditLog" TO "jg_task01_runtime";/u);
+ assert.doesNotMatch(acl.sql,/GRANT INSERT \([^\n]*(?:"ipAddress"|"userAgent")[^\n]*\) ON TABLE public\."AuditLog"/u);
+ assert.doesNotMatch(acl.sql,/GRANT (?:INSERT|UPDATE|DELETE)[^\n]+TO "jg_task01_observer"|GRANT INSERT ON TABLE/u);
  assert.match(acl.witnessSql,/TASK16_PAYMENT261_COMPETITION_RUNTIME_V1/u);
  assert.match(acl.witnessSql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
  assert.throws(()=>renderCurrent259RuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);

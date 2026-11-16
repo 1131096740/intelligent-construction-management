@@ -2,6 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{createHash}=require('node:crypto');
 const file=path.join(__dirname,'task16-current259-payment-run-authorization.cjs'),ROOT=path.resolve(__dirname,'../../..');
 const noop=()=>{};
+const {PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 function planFixture(t,options){
  const p=path.join(ROOT,'scripts/prepare-task16-current259-payment-install.test.cjs'),module={exports:{}},rq=Module.createRequire(p);
@@ -233,7 +234,7 @@ function fixture(t,options={}){
 
  if(options.competition){
   const pair=Object.freeze([Object.freeze({}),Object.freeze({})]);
-  const applications=Object.freeze(pair.map(()=>Object.freeze({runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}})));
+  const applications=Object.freeze(pair.map(()=>Object.freeze({sourceBinding,runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}})));
   const roleProvision=options.voucher261?'provisionCurrent259Payment261VoucherRoles':options.competition261?'provisionCurrent259Payment261CompetitionRoles':'provisionCurrent259CompetitionRoles';
   const roleClaim=options.voucher261?'claimCurrent259Payment261VoucherRolePermit':options.competition261?'claimCurrent259Payment261CompetitionRolePermit':'claimCurrent259CompetitionRolePermit';
   ports['./task16-current259-role-provision.cjs'][roleProvision]=async(value,h,permit)=>{
@@ -259,6 +260,8 @@ function fixture(t,options={}){
    assert.equal(lease.paymentProfile,paymentProfile);assert.equal(Object.hasOwn(lease,"paymentProfile"),paymentProfile!==undefined);
    assert.equal(lease.scope.scenario,options.followUp261?'competition-follow-up':options.voucher?'competition-voucher':'competition');
    assert.equal(lease.scope.paymentProfile,paymentProfile);
+   assert.deepEqual(lease.effectiveAccessBinding,effectiveAccessBinding);
+   if(effectiveAccessBinding)assert.ok(Object.isFrozen(lease.effectiveAccessBinding));
    if(options.voucher){
     assert.equal(permit.kind,'CURRENT259_PRIVATE_VOUCHER_CASE');
     assert.equal(lease.scope.voucherStorageRoot,'/private/tmp/model-resource/application-private-voucher');
@@ -973,9 +976,22 @@ test('261 competition verification and one-shot use only their exact two-lane au
  assert.deepEqual(run.state.calls,['start-competition','technical259','roles9-cap2','seven','acl','b7','live-two','env','app-two','competition','app-two-close','env-close','pools-two-close']);
  const receipt=JSON.parse(fs.readFileSync(path.join(run.s.runRoot,'receipt.json'),'utf8'));
  assert.equal(receipt.scope.paymentProfile,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+ assert.equal(receipt.effectiveAccessBinding.paymentProfile,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+ assert.equal(receipt.effectiveAccessBinding.insertAdditionCount,9);
+ assert.match(receipt.effectiveAccessBinding.accessPlanSha256,/^[a-f0-9]{64}$/u);
  assert.equal(receipt.stages[0].stage,'technical261');
  assert.equal(receipt.b7Binding.identity.paymentProfile,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
  assert.equal(receipt.business.competitionObserved,true);assert.equal(receipt.financialAcceptance,false);
+});
+
+for(const mode of ['missing','hash','profile','count'])test('competition261 issuer rejects '+mode+' application binding before competition entry',async t=>{
+ const f=competitionFixture(t,{competition261:true,applicationBinding(binding){return mode==='missing'?undefined:{...binding,
+  ...(mode==='hash'?{accessPlanSha256:'0'.repeat(64)}:mode==='profile'?{paymentProfile:PAYMENT261_RUNTIME_PROFILE}:{insertAdditionCount:8})};}});
+ const result=await f.done;
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_APPLICATION',JSON.stringify(result));
+ assert.equal(f.state.calls.includes('competition'),false);
+ assert.equal(f.state.calls.includes('app-two-close'),true);
+ assert.equal(f.state.calls.includes('pools-two-close'),true);
 });
 
 test('261 competition rejects 259, ordinary and voucher entrypoint cross-use before attempt',async t=>{

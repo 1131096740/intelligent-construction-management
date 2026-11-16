@@ -5,7 +5,7 @@ const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
 const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
 const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
-const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
+const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
 const MANIFEST_SHA='87fd3228b8cd83676e604b26e7e536265435d1cbe5bb337c12594e0a4d9f74aa';
@@ -74,7 +74,7 @@ function material(source,paymentProfile){
   ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];
  need(equal(manifest.normal261RuntimeInsertAdditions,{paymentProfile:PAYMENT261_RUNTIME_PROFILE,columns:required}));
  let effectiveAccessBinding;
- if(paymentProfile===PAYMENT261_RUNTIME_PROFILE){
+ if(paymentProfile===PAYMENT261_RUNTIME_PROFILE||paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE){
   for(const [table,column]of required){
    const rows=plan.runtime.tables.filter(row=>row.table===table);need(rows.length===1&&rows[0].insert.length>0&&!rows[0].insert.includes(column));
    rows[0].insert=[...rows[0].insert,column].sort();
