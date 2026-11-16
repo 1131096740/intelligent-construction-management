@@ -215,12 +215,12 @@ const paperContext = computed(() => {
   return {
     contractVersionId: current.contractVersionId, draftRevision: current.draftRevision,
     documentContentRevision: current.documentContentRevision, layoutTemplateVersionId: current.layoutTemplateVersionId,
-    sourceSha256: current.sourceSha256
+    sourceSha256: current.sourceSha256, mechanicalContactLayoutVersion: current.mechanicalContactLayoutVersion
   };
 });
 const canOpenPaper = computed(() => Boolean(paperContext.value && !additionVisible.value && !regenerationVisible.value && !tableEditorVisible.value));
 function openPaper() { if (canOpenPaper.value) paperMode.value = "paper"; }
-watch(() => [props.contractVersionId, props.draftRevision, props.layoutTemplateVersionId, body.value?.sourceSha256,
+watch(() => [props.contractVersionId, props.draftRevision, props.layoutTemplateVersionId, body.value?.sourceSha256, body.value?.mechanicalContactLayoutVersion,
   props.paperDisabled, props.saving, props.editPlan, loading.value] as const, () => { paperMode.value = "edit"; });
 const regenerationVisible = ref(false);
 const regenerationConfirmation = ref<(Omit<ContractBodyUpdateContext, "action"> & { editPlanJson: string }) | null>(null);

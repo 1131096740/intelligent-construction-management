@@ -1,3 +1,7 @@
+jest.mock("./mechanical-contact-layout",()=>({
+  ...jest.requireActual("./mechanical-contact-layout"),
+  applyMechanicalContactLayout:jest.fn((_source:Buffer,docx:Buffer)=>docx)
+}));
 jest.mock("./layout-preview-docx", () => ({
   renderLayoutPreviewDocx: (...args: unknown[]) => jest.requireMock("./contract-docx-renderer").renderContractDocx(...args)
 }));
@@ -62,6 +66,7 @@ import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
 import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { ContractDocumentProcessor } from "./contract-document.processor";
+import { applyMechanicalContactLayout } from "./mechanical-contact-layout";
 import { convertDocxToPdf } from "./libreoffice-converter";
 import { normalizeContractPdf } from "./pdf-normalizer";
 
@@ -523,7 +528,7 @@ describe("ContractDocumentProcessor", () => {
     );
   });
 
-  it("renders DOCX, converts PDF, normalizes attachments, uploads both files, and marks success", async () => {
+  it.each([undefined,"mechanical-contact-layout-v1"] as const)("renders and uploads with frozen contact layout %s", async (contactLayoutVersion) => {
     const prisma = makePrisma();
     prisma.tx.$queryRaw.mockResolvedValue([
       {
@@ -541,6 +546,7 @@ describe("ContractDocumentProcessor", () => {
       inputSnapshot: {
         ...documentContentCoordinates,
         templateFileId: "layout-file",
+        ...(contactLayoutVersion ? {mechanicalContactLayoutVersion:contactLayoutVersion} : {}),
         outputBaseName: "草稿-001-对外磋商稿-修订8",
         renderInput: { values: { "contract.name": "合同" } },
         attachmentFiles: [
@@ -595,6 +601,8 @@ describe("ContractDocumentProcessor", () => {
       [],
       { allowBlankWatermark: false }
     );
+    if(contactLayoutVersion) expect(applyMechanicalContactLayout).toHaveBeenCalledWith(Buffer.from("template"),Buffer.from("rendered-docx"));
+    else expect(applyMechanicalContactLayout).not.toHaveBeenCalled();
     expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(Buffer.from("rendered-docx"), [
       {
         name: "清单.pdf",

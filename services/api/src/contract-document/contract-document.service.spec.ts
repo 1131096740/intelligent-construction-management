@@ -329,6 +329,7 @@ describe("ContractDocumentService", () => {
     const {service}=makeService(tx);
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe("built-in-party-placement-v1");
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.mechanicalContactLayoutVersion).toBe(filename.startsWith("equipment") ? "mechanical-contact-layout-v1" : undefined);
   });
   it("rejects queuing before creating a document when a confirmed layout maps the removed billing block", async () => {
     const input=readFileSync(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
@@ -409,10 +410,20 @@ describe("ContractDocumentService", () => {
     const { service, file, fileObject, poolLookup, read } = makeSingleConnectionService(current);
     const body = service.getDraftBody("version-1", "owner-1");
     if (error) await expect(body).rejects.toThrow(error);
-    else await expect(body).resolves.toMatchObject({ sourceSha256: file.contentSha256 });
+    else await expect(body).resolves.toMatchObject({ sourceSha256: file.contentSha256, mechanicalContactLayoutVersion:null });
     expect(fileObject.findUnique).toHaveBeenCalledTimes(1);
     expect(read).toHaveBeenCalledTimes(1);
     expect(poolLookup).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes the mechanical presentation version with the current draft body",async()=>{
+    const bytes=readFileSync(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
+    const {service,file,tx}=makeSingleConnectionService({},bytes);file.contentSha256=createHash("sha256").update(bytes).digest("hex");
+    const positions=readLayoutSourcePositions(bytes).positions;
+    const bindings=positions.flatMap(p=>[["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]].flatMap(([token,fieldKey])=>{const start=p.text.indexOf(token);return start<0?[]:[{positionId:p.positionId,start,end:start+token.length,fieldKey}];}));
+    const mapping=prepareLayoutSourceMapping(bytes,"layout-file-1",2,bindings).mapping,layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    await expect(service.getDraftBody("version-1","owner-1")).resolves.toMatchObject({sourceSha256:file.contentSha256,mechanicalContactLayoutVersion:"mechanical-contact-layout-v1"});
   });
 
   it("allocates and locks a formal contract code on first external-file generation", async () => {

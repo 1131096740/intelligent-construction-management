@@ -100,13 +100,14 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, shallowRef, watch } from "vue";
+import { matchingPaperDocuments } from "./contract-paper-document-match";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "../../../auth/auth.store";
 import { fetchContractDraftWorkbench, fetchContractDraftBody, listContractDocuments, queueContractDraftPreview, type ContractDraftBodyReadModel } from "../../../api/contract-workbench.api";
 import { getPrivateFileDownloadTicketCapability, downloadPrivateFileByTicket } from "../../../api/core-flow-read.api";
 
 const LayoutPdfPreview = defineAsyncComponent(() => import("../../../components/files/LayoutPdfPreview.vue"));
-type PaperContext = Pick<ContractDraftBodyReadModel, "contractVersionId" | "draftRevision" | "documentContentRevision" | "layoutTemplateVersionId" | "sourceSha256">;
+type PaperContext = Pick<ContractDraftBodyReadModel, "contractVersionId" | "draftRevision" | "documentContentRevision" | "layoutTemplateVersionId" | "sourceSha256" | "mechanicalContactLayoutVersion">;
 type Reader = Readonly<{ generation: number; ownerKey: string; actorUserId: string; routeContractId: string; context: Readonly<PaperContext> }>;
 type ReadyPdf = Readonly<{ documentId: string; fileId: string; contentRevision: number; fingerprint: string; layoutId: string; sourceSha256: string }>;
 type FileCapability = Awaited<ReturnType<typeof getPrivateFileDownloadTicketCapability>>;
@@ -145,7 +146,7 @@ function ownerKey() {
   const actor = auth.user?.id, contract = route.params.contractId, version = route.query.versionId;
   if (!actor || typeof contract !== "string" || !contract || (version != null && (typeof version !== "string" || version !== props.context.contractVersionId))) return "";
   return JSON.stringify([actor, contract, version ?? null, props.context.contractVersionId, props.context.draftRevision,
-    props.context.documentContentRevision, props.context.layoutTemplateVersionId, props.context.sourceSha256]);
+    props.context.documentContentRevision, props.context.layoutTemplateVersionId, props.context.sourceSha256, props.context.mechanicalContactLayoutVersion]);
 }
 function takeReader(): Reader | null {
   const owner = ownerKey();
@@ -209,10 +210,7 @@ async function readCurrentState(owner: Reader): Promise<PaperState | null> {
     actions: Object.freeze(Array.isArray(actions) && actions.every(action => typeof action === "string") ? [...actions] : []) });
 }
 function matchingDocuments(owner: Reader, state: PaperState) {
-  return state.documents.filter((item): item is Record<string, unknown> => isRecord(item) &&
-    typeof item.id === "string" && Boolean(item.id) && item.purpose === "draft" && item.layoutTemplateVersionId === owner.context.layoutTemplateVersionId &&
-    item.documentContentRevision === owner.context.documentContentRevision && item.documentContentFingerprint === state.fingerprint &&
-    isRecord(item.inputSnapshot) && isRecord(item.inputSnapshot.bodyDocument) && item.inputSnapshot.bodyDocument.sourceSha256 === owner.context.sourceSha256);
+  return matchingPaperDocuments(state.documents,owner.context,state.fingerprint);
 }
 function readyFile(owner: Reader, state: PaperState, item: Record<string, unknown>): ReadyPdf | null {
   if (item.status !== "success" || typeof item.id !== "string" || typeof item.pdfFileId !== "string" || !item.pdfFileId) return null;
@@ -242,7 +240,7 @@ async function refreshGenerationGrant(owner: Reader, state: PaperState) {
   const body = await fetchContractDraftBody(owner.context.contractVersionId);
   if (!isCurrent(owner)) return false;
   if (body.contractVersionId !== owner.context.contractVersionId || body.draftRevision !== owner.context.draftRevision ||
-    body.documentContentRevision !== owner.context.documentContentRevision || body.layoutTemplateVersionId !== owner.context.layoutTemplateVersionId || body.sourceSha256 !== owner.context.sourceSha256) {
+    body.documentContentRevision !== owner.context.documentContentRevision || body.layoutTemplateVersionId !== owner.context.layoutTemplateVersionId || body.sourceSha256 !== owner.context.sourceSha256 || body.mechanicalContactLayoutVersion !== owner.context.mechanicalContactLayoutVersion) {
     throw new Error("当前正文来源已变化，请重新读取并核对保存结果");
   }
   generationGrant.value = Object.freeze({ ownerKey: owner.ownerKey, readGeneration: owner.generation, sourceRevision: body.draftRevision,
@@ -403,7 +401,7 @@ async function confirmPreview() {
   } finally { if (isCurrent(owner)) busy.value = false; }
 }
 watch(() => [props.context.contractVersionId, props.context.draftRevision, props.context.documentContentRevision, props.context.layoutTemplateVersionId,
-  props.context.sourceSha256, props.blocked, auth.user?.id, route.params.contractId, route.query.versionId] as const, () => { void readReadyPdf(); }, { immediate: true, flush: "sync" });
+  props.context.sourceSha256, props.context.mechanicalContactLayoutVersion, props.blocked, auth.user?.id, route.params.contractId, route.query.versionId] as const, () => { void readReadyPdf(); }, { immediate: true, flush: "sync" });
 onBeforeUnmount(invalidate);
 </script>
 
