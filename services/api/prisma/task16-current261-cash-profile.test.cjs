@@ -19,8 +19,8 @@ test('cash runtime party snapshot read matches the six physically observed colum
  assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
  assert.equal(result.observer.tables.some(value=>value.table==='ContractPartySnapshot'),false);
 });
-test('cash runtime close aggregate grants only physically observed projectId read',()=>{
+test('cash runtime close aggregate grants only physically observed four-column read and insert',()=>{
  const result=cash.cashAccessPlan(plan),row=result.runtime.tables.find(value=>value.table==='ProjectCloseAggregate');
- assert.ok(row);assert.deepEqual(row.select,['projectId']);assert.deepEqual(row.insert,['createdAt','projectId','revision','updatedAt']);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
+ assert.ok(row);assert.deepEqual(row.select,['createdAt','projectId','revision','updatedAt']);assert.deepEqual(row.insert,['createdAt','projectId','revision','updatedAt']);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
  assert.equal(result.observer.tables.some(value=>value.table==='ProjectCloseAggregate'),false);
 });
