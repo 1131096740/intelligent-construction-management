@@ -231,7 +231,20 @@ function renderNativeTask16RuntimeAcl(inputJson,nonce){
  const publicSql=publicParts.join(original.replace('5432',String(id.serverPort)));
  return Object.freeze({...rendered,sql,publicSql,writeSql:sql+'\n'+publicSql});
 }
-module.exports=Object.freeze({withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+function assertNativeTask16CompetitionLoopbackListeners(text,postmasterPid,port){
+ const code='NATIVE_DIRECT_LOOPBACK_LISTENERS';
+ need(arguments.length===3&&typeof text==='string'&&Buffer.byteLength(text)<=1048576&&Number.isSafeInteger(postmasterPid)&&postmasterPid>0&&postmasterPid<=2147483647&&Number.isInteger(port)&&port>1024&&port<=65535&&port!==5432,code);
+ const addresses=[];
+ for(const line of text.split('\n')){
+  const match=/^NATIVE_TASK16 \[([1-9][0-9]{0,9})\] LOG:  listening on (IPv4|IPv6) address "([^"]+)", port ([1-9][0-9]{0,4})$/u.exec(line);
+  if(!match)continue;
+  need(Number(match[1])===postmasterPid&&Number(match[4])===port&&((match[2]==='IPv4'&&match[3]==='127.0.0.1')||(match[2]==='IPv6'&&match[3]==='::1'))&&!addresses.includes(match[3]),code);
+  addresses.push(match[3]);
+ }
+ need(addresses.length===2&&addresses.includes('127.0.0.1')&&addresses.includes('::1'),code);
+ return Object.freeze({postmasterPid,port,addresses:Object.freeze(['127.0.0.1','::1']),ownedStartupListeners:true});
+}
+module.exports=Object.freeze({assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -285,7 +298,7 @@ async function executeNativeTask16Once(plan,planSha256){
   port=await connectPort();need(port>1024&&port!==5432,'NATIVE_DIRECT_PORT');
   const hba=`local all ${owner} peer map=native_owner\nlocal all all reject\nhostnossl all all 127.0.0.1/32 reject\nhostssl all ${owner} 127.0.0.1/32 scram-sha-256\nhostssl ${db} jg_task01_runtime,jg_task01_observer 127.0.0.1/32 scram-sha-256\nhostssl all all 127.0.0.1/32 reject\n`;
   fs.writeFileSync(path.join(root,'data/pg_hba.conf'),hba,{mode:0o600});fs.writeFileSync(path.join(root,'data/pg_ident.conf'),`native_owner ${os.userInfo().username} ${owner}\n`,{mode:0o600});
-  const config=`listen_addresses='127.0.0.1'\nport=${port}\nunix_socket_directories='${root}/socket'\nssl=on\nssl_min_protocol_version='TLSv1.2'\nssl_cert_file='${root}/server.crt'\nssl_key_file='${root}/server.key'\npassword_encryption='scram-sha-256'\nmax_connections=16\nshared_buffers='64MB'\nmax_wal_size='64MB'\nmin_wal_size='32MB'\nlog_statement='none'\nlog_min_error_statement='panic'\nlog_parameter_max_length_on_error=0\nlog_error_verbosity='terse'\nlog_duration=off\nlog_min_duration_statement=-1\nlog_min_duration_sample=-1\nlog_transaction_sample_rate=0\nlogging_collector=off\nlog_destination='stderr'\nlog_line_prefix='NATIVE_TASK16 [%p] '\nlc_messages='C'\nstatement_timeout='60s'\n`;
+  const config=`listen_addresses='127.0.0.1,::1'\nport=${port}\nunix_socket_directories='${root}/socket'\nssl=on\nssl_min_protocol_version='TLSv1.2'\nssl_cert_file='${root}/server.crt'\nssl_key_file='${root}/server.key'\npassword_encryption='scram-sha-256'\nmax_connections=16\nshared_buffers='64MB'\nmax_wal_size='64MB'\nmin_wal_size='32MB'\nlog_statement='none'\nlog_min_error_statement='panic'\nlog_parameter_max_length_on_error=0\nlog_error_verbosity='terse'\nlog_duration=off\nlog_min_duration_statement=-1\nlog_min_duration_sample=-1\nlog_transaction_sample_rate=0\nlogging_collector=off\nlog_destination='stderr'\nlog_line_prefix='NATIVE_TASK16 [%p] '\nlc_messages='C'\nstatement_timeout='60s'\n`;
   fs.writeFileSync(path.join(root,'data/postgresql.conf'),config,{mode:0o600});writeNew(root,'postgres.log','');
   const publicRows=()=>['ca.crt','server.crt','data/postgresql.conf'].map(name=>{const row=capture(path.join(root,name),1048576);return {file:path.join(root,name),sha256:row.sha256,identity:row.identity};});
   publicCertificateBinding=publicRows();
@@ -297,6 +310,15 @@ async function executeNativeTask16Once(plan,planSha256){
   while(Date.now()<readyBy){needLive();const result=await command(bin('pg_isready'),['--host','127.0.0.1','--port',String(port),'--username',owner,'--dbname','postgres'],{timeoutMs:5000,allowFailure:true});if(result.code===0){ready=true;break;}await wait(()=>new Promise(resolve=>setTimeout(resolve,250)));}
   need(ready&&childOwnedAndRunning(),'NATIVE_DIRECT_PG_READINESS');const pidRows=capture(path.join(root,'data/postmaster.pid'),8192).bytes.toString('utf8').split('\n');
   need(Number(pidRows[0])===pgPid&&pidRows[1]===path.join(root,'data')&&Number(pidRows[3])===port&&Number(pidRows[2])>=Math.floor(started/1000),'NATIVE_DIRECT_PG_IDENTITY');pgStart=pidRows[2];pgStarted=true;receipt.resource={pid:pgPid,startEpoch:pgStart,host:'127.0.0.1',port,database:db};writeNew(root,'resource-ready.json',{purpose:PURPOSE,candidateSha:plan.source.head,planSha256,runId,pid:pgPid,startEpoch:pgStart,host:'127.0.0.1',port,database:db,status:'POSTGRES_READY_NOT_BUSINESS_ADMISSION'});
+  // Startup-only evidence from the original child's existing append-only log.
+  // IPv4 readiness alone cannot attest that localhost's IPv6 endpoint is owned.
+  let startupLogFd;try{
+   const startupLogPath=path.join(root,'postgres.log');startupLogFd=fs.openSync(startupLogPath,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+   assertNativeTask16LogIdentity(startupLogFd,pgLogIdentity,startupLogPath);const before=fs.fstatSync(startupLogFd,{bigint:true});need(before.size<=1048576n,'NATIVE_DIRECT_LOG_BYTES');
+   const bytes=Buffer.alloc(Number(before.size));need(fs.readSync(startupLogFd,bytes,0,bytes.length,0)===bytes.length,'NATIVE_DIRECT_LOG_WINDOW');
+   assertNativeTask16LogIdentity(startupLogFd,pgLogIdentity,startupLogPath);const after=fs.fstatSync(startupLogFd,{bigint:true});need(after.size>=before.size&&after.size<=1048576n,'NATIVE_DIRECT_LOG_WINDOW');needLive();
+   receipt.loopbackListeners=assertNativeTask16CompetitionLoopbackListeners(bytes.toString('utf8'),pgPid,port);
+  }finally{if(startupLogFd!==undefined)fs.closeSync(startupLogFd);}
   enter('TLS_NEGATIVES');const positive=await jsonSql("SELECT jsonb_build_object('version',current_setting('server_version_num'),'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),'client',host(inet_client_addr()),'server',host(inet_server_addr()),'port',inet_server_port());",{database:'postgres'});need(positive.version==='160015'&&positive.tls===true&&positive.client==='127.0.0.1'&&positive.server==='127.0.0.1'&&positive.port===port,'NATIVE_DIRECT_TLS');
   for(const extra of [{PGSSLROOTCERT:path.join(root,'wrong-ca.crt')},{PGHOST:'127.0.0.2',PGHOSTADDR:'127.0.0.1'},{PGSSLMODE:'disable'}])need((await sql('SELECT 1;',{database:'postgres',extra,allowFailure:true})).code!==0,'NATIVE_DIRECT_TLS_NEGATIVE');receipt.tls={correct:true,wrongCaRejected:true,wrongSanRejected:true,noTlsRejected:true};
   await sql(`CREATE DATABASE ${db} OWNER ${owner} ENCODING 'UTF8' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C';`,{database:'postgres'});dbReady=true;
