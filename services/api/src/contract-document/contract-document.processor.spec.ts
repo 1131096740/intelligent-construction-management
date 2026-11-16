@@ -48,6 +48,8 @@ jest.mock("./contract-document-comparison", () => ({
 }));
 
 import PizZip from "pizzip";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PDFDocument } from "pdf-lib";
 function previewWordSource() {
   const zip = new PizZip();
@@ -238,6 +240,29 @@ describe("ContractDocumentProcessor", () => {
       discardUnlinkedGeneratedFiles: jest.fn().mockResolvedValue(undefined)
     };
   }
+
+  it.each([undefined,"built-in-generic-font-v1"] as const)("binds generic font-table completion to the frozen version %s",async(version)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/generic-contract-v1.docx"));
+    const prisma=makePrisma(),job=queuedDocument();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,...(version?{genericFontTableVersion:version}:{})}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    mockedRender.mockReturnValue(source);mockedAppendDocxAttachments.mockReturnValue(source);
+    const processor=new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never);
+    await processor.processNext();
+    expect(mockedConvert).toHaveBeenCalledTimes(1);
+    const zip=new PizZip(mockedConvert.mock.calls[0][0]);
+    const type=zip.file("[Content_Types].xml")!.asText();
+    expect(type.includes('PartName="/word/fontTable.xml"')).toBe(Boolean(version));
+  });
+  it("does not render a generic-font version with a different source",async()=>{
+    const prisma=makePrisma(),job=queuedDocument();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,genericFontTableVersion:"built-in-generic-font-v1"}});
+    const files=generatedDocumentFiles(),processor=new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never);
+    await processor.processNext();
+    expect(mockedConvert).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:"failed"})}));
+  });
 
   it("claims one queued job atomically and marks it processing", async () => {
     const prisma = makePrisma();

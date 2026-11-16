@@ -5,6 +5,8 @@ import { extractContractDocx } from "./contract-docx-extractor";
 
 const PROFESSIONAL_SOURCE = "6ae812af212498638036a24fbc7ce793497a82894a76b28b087b51a1cef366f4";
 const GENERIC_SOURCE = "3a3d0fb5e9b5e49798f3773f213296b9cfa224874d14bda6aa89006b63bd366a";
+export const BUILT_IN_GENERIC_SOURCE_SHA256 = "ef9b75b39a487903d33bfc239f7c9754b8172ff1a1f6c6b6b3ba20178e098e5d";
+export const BUILT_IN_GENERIC_FONT_VERSION = "built-in-generic-font-v1";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const REL = "http://schemas.openxmlformats.org/package/2006/relationships";
 const CT = "http://schemas.openxmlformats.org/package/2006/content-types";
@@ -28,9 +30,10 @@ export interface ContractDocxPackageNormalization {
   changedParts: ["[Content_Types].xml"];
 }
 
-export function completeContractDocxFontTableType(docx: Buffer, originalSourceSha256: string): { docx: Buffer; normalization?: ContractDocxPackageNormalization } {
+export function completeContractDocxFontTableType(docx: Buffer, originalSourceSha256: string, version?: typeof BUILT_IN_GENERIC_FONT_VERSION): { docx: Buffer; normalization?: ContractDocxPackageNormalization } {
+  if(version!==undefined&&(version!==BUILT_IN_GENERIC_FONT_VERSION||originalSourceSha256!==BUILT_IN_GENERIC_SOURCE_SHA256))throw new Error(ERROR);
   const normalizationId = originalSourceSha256 === PROFESSIONAL_SOURCE ? "professional-font-table-content-type-v1"
-    : originalSourceSha256 === GENERIC_SOURCE ? "generic-font-table-content-type-v1" : undefined;
+    : originalSourceSha256 === GENERIC_SOURCE || (version===BUILT_IN_GENERIC_FONT_VERSION&&originalSourceSha256===BUILT_IN_GENERIC_SOURCE_SHA256) ? "generic-font-table-content-type-v1" : undefined;
   if (!normalizationId) return { docx };
   try {
     extractContractDocx(docx); // Existing bounded package/XML validation.
