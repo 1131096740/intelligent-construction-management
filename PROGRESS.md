@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 清理诊断局部修订
+
+准确 `34960288` 新独占运行已进入业务，在撤回重提链心跳失败后停止；业务结果和应用清理均为 UNKNOWN，不得重发或倒填结论。[原回执](/private/tmp/jg-native-contract-c18r3496-QcZ8UV/receipt.json) SHA `bb65bd83f97ad55c5c118d8f58119afbf6f86d314af4ae72b614cc82bf155cfd`。独立 PG 检查仅确认进程、监听与 pidfile 缺席，不证明应用清理或业务结果；[检查回执](/private/tmp/jg-con18-3496-runtime-6S4k9T/cleanup-independent.json) SHA `cf2a418ccf8ad47a23f375393f7373ddaaf8914a14161f407986d228a2608045`。
+
+未来运行清理诊断候选 `3797b705` 经独审合入本地 `55619abb`，仅投影固定脱敏诊断，不补写旧回执；准确补丁 SHA `b487c753056b5ba39559652a8f45f85b7cbba79561d9680160cb9aa5b36e97ab`。诊断及共享用途模型 77/77，API build/typecheck/lint 通过；未执行真实资源。新版本须重新资格和绑定，不能将这些模型检查视为 CON-18 或 #394 通过。
+
 ## 2026-11-17 CON-18 加载器局部修订
 
 准确 `b2d58b89` 的新独占运行在 `DOCUMENT_CURRENT_POOLS` 以 `CURRENT259_LOADER_CHANGED` 停止，业务未进入；原回执 cleanup 完成，独立检查进程、监听和 pidfile 均缺席。[原回执](/private/tmp/jg-native-contract-con18b2-GOspC5/receipt.json) SHA `a6c8381089905c7ca3712ab8655fbddd067311662c9f544546e24d2ce2116471`，[独立清理回执](/private/tmp/jg-con18-b2-runtime-pmq8AO/cleanup-independent.json) SHA `7a121000c1193be8e5dbbb5ddb44c8e0184c0ff578408dad4ee98deb2c8826de`。
