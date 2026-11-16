@@ -185,7 +185,11 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
    need(typeof jwtToken==='function'&&get(testing,jwtToken)===jwtService,'HTTP');
    const checkPublic=()=>{
     const probe=verifyProviders(view,true);
-    if(probe!==undefined)need(own(probe,'server')===server&&own(probe,'jwtService')===jwtService&&own(probe,'verifyAccessToken')===verifyAccess&&method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
+    if(probe!==undefined){
+     need(own(probe,'server')===server&&own(probe,'jwtService')===jwtService&&own(probe,'verifyAccessToken')===verifyAccess,'HTTP');
+     // Keep the full source guard after the original moduleRef authority read.
+     check();need(method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
+    }
     else need(method(view,'getHttpServer').call(view)===server&&get(view,jwtToken)===jwtService&&
      method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
    };

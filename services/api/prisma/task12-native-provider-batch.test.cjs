@@ -155,22 +155,29 @@ function fullGuardGraph(options={}){
  const api=factory((ok,code)=>{if(!ok)throw Object.assign(Error(code),{code});},material,visitRoots);
  return {...api,counts:()=>({checks,graphPasses})};
 }
-test('one public native guard observes full source graph before and after server JWT and providers in one synchronous batch',()=>{
- const f=model(false,true);f.warm();const owned=inspection(f,{graph:true});
+function observedPublicGuard(f,owned,options={}){
  const jwtToken=f.tokens.at(-1),jwtService=f.providers.at(-1),verifyAccess=jwtService.verifyAccessToken;
  const text=source(),start=text.indexOf('method(key){\n      if(!APP_METHODS'),end=text.indexOf('\n     }};',start);
  const originalMethods=new Map([...owned.originalMethods,['get',f.target.get]]);
  const method=new Function('APP_METHODS','methods','originalMethods','closed','close','check','verifyTarget','guardedOperation','collect','types','target','record','nativeRows','nativeTokens','return ({'+text.slice(start,end)+'}}).method;')(['get','getHttpServer'],new Map(),originalMethods,false,()=>{},owned.graph.check,key=>originalMethods.get(key),action=>action(),owned.graph.collect,types,f.target,{view:f.target},undefined,undefined);
  const view={get:method('get'),getHttpServer:method('getHttpServer')};
  const app=fs.readFileSync(path.join(__dirname,'task12-current259-document-application.cjs'),'utf8'),begin=app.indexOf('   const checkPublic=()=>{'),finish=app.indexOf('   const verifyToken=',begin);
- const verifyProviders=(_view,publicGuard)=>{owned.graph.check();return owned.run(owned.testing,publicGuard);};
+ const verifyProviders=(_view,publicGuard)=>{owned.graph.check();const proof=owned.run(owned.testing,publicGuard);options.afterProviders?.();return proof;};
  const own=(object,key)=>Object.getOwnPropertyDescriptor(object,key)?.value;
- const checkPublic=new Function('verifyProviders','view','method','get','server','jwtToken','jwtService','verifyAccess','need','own',app.slice(begin,finish)+';return checkPublic;')(
-  verifyProviders,view,(object,key)=>object[key],(object,key)=>object.get(key),owned.server,jwtToken,jwtService,verifyAccess,(ok)=>assert.equal(ok,true),own);
- checkPublic();assert.equal(owned.counts().graphPasses,4);assert.equal(owned.counts().reads,17);assert.equal(owned.counts().collects,1);
- checkPublic();assert.equal(owned.counts().graphPasses,8);assert.equal(owned.counts().reads,34);assert.equal(owned.counts().collects,2);
+ const checkPublic=new Function('verifyProviders','view','method','get','server','jwtToken','jwtService','verifyAccess','need','own','check',app.slice(begin,finish)+';return checkPublic;')(
+  verifyProviders,view,(object,key)=>object[key],(object,key)=>object.get(key),owned.server,jwtToken,jwtService,verifyAccess,(ok)=>assert.equal(ok,true),own,owned.graph.check);
+ return checkPublic;
+}
+test('one public native guard observes full source graph before and after server JWT and providers in one synchronous batch',()=>{
+ const f=model(false,true);f.warm();const owned=inspection(f,{graph:true}),checkPublic=observedPublicGuard(f,owned);
+ checkPublic();assert.equal(owned.counts().graphPasses,5);assert.equal(owned.counts().reads,17);assert.equal(owned.counts().collects,1);
+ checkPublic();assert.equal(owned.counts().graphPasses,10);assert.equal(owned.counts().reads,34);assert.equal(owned.counts().collects,2);
 });
-
+test('source drift after original moduleRef authority validation is still rejected by a complete final guard',()=>{
+ const f=model(false,true);f.warm();let changed=false;const owned=inspection(f,{graph:true,onGraph(){if(changed)throw Error('MODEL_POST_AUTHORITY_SOURCE_CHANGED');}});
+ const checkPublic=observedPublicGuard(f,owned,{afterProviders(){changed=true;}});
+ assert.throws(checkPublic);assert.equal(owned.counts().graphPasses,5);assert.equal(owned.counts().reads,17);
+});
 
 test('native public guard returns a fresh fixed proof and rejects JWT server and metadata changes before reads',()=>{
  const changes=[
