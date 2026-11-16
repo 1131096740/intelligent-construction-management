@@ -523,5 +523,11 @@
       "RegisteredPaymentVoucher",
       "createdAt"
     ]
-  ]
+  ],
+  "native261ReadDelta": {
+    "ProjectRosterMember": [
+      "projectId",
+      "userId"
+    ]
+  }
 }

@@ -7,13 +7,14 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { functionProofSql } = require('./task16-registered-access-check.cjs');
 
-const requirementsSha256='e39b13a33d900096fd5c9d151f2e3937e4347f8af8e548ab8fd2f88636c2908d';
+const requirementsSha256='1f29dc119ab5cfa43c4d9af486da6c88f870fcba819e724a117ea58e868d21ee';
 const bytes=readFileSync(join(__dirname,'task16-current259-voucher-acl.requirements.json'));
 const code='CURRENT259_VOUCHER_ACL';
 const need=condition=>{if(!condition)throw new Error(code);};
 need(createHash('sha256').update(bytes).digest('hex')===requirementsSha256);
-const {readDelta,insertDelta,lockOnlyUpdate,routineSources,native261InsertDefaults}=JSON.parse(bytes);
+const {readDelta,insertDelta,lockOnlyUpdate,routineSources,native261InsertDefaults,native261ReadDelta}=JSON.parse(bytes);
 need(JSON.stringify(native261InsertDefaults)===JSON.stringify([['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']]));
+need(JSON.stringify(native261ReadDelta)===JSON.stringify({ProjectRosterMember:['projectId','userId']}));
 const profileName='CURRENT259_PAYMENT_VOUCHER_V1';
 const owner='jg_task01_owner', runtime='jg_task01_runtime', observer='jg_task01_observer';
 const insertRoutine='jg_task16_runtime_voucher_file_insert_only';
@@ -106,6 +107,8 @@ function voucherNative261AccessPlan(plan){
     need(rows.length===1&&!rows[0].insert.includes(column));
     rows[0].insert=[...rows[0].insert,column].sort();
   }
+  need(!qualified.runtime.tables.some(row=>row.table==='ProjectRosterMember'));
+  qualified.runtime.tables.push({table:'ProjectRosterMember',select:[...native261ReadDelta.ProjectRosterMember],insert:[],update:[],references:[]});
   return qualified;
 }
 const columnTargets=tables.flatMap(row=>['select','insert','update'].flatMap(op=>row[op].map(column=>({table:row.table,column,privilege:op.toUpperCase()}))));

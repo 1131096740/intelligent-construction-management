@@ -444,6 +444,9 @@ test('voucher261 binds the combined voucher matrix and only eleven SDK default I
   ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt'],
   ['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']].sort());
  assert.deepEqual(voucher.accessPlan.runtime.functions,historical.runtime.functions);
+ assert.deepEqual(voucher.accessPlan.runtime.tables.find(row=>row.table==='ProjectRosterMember'),{table:'ProjectRosterMember',select:['projectId','userId'],insert:[],update:[],references:[]});
+ assert.equal(historical.runtime.tables.some(row=>row.table==='ProjectRosterMember'),false);
+
  assert.deepEqual(voucher.accessPlan.observer,historical.observer);
  assert.equal(voucher.accessPlan.runtime.tables.some(row=>row.table==='HistoricalFinancialTakeoverRowMapping'),false);
  assert.deepEqual(voucher.effectiveAccessBinding,{paymentProfile:PAYMENT261_VOUCHER_RUNTIME_PROFILE,insertAdditionCount:11,accessPlanSha256:hash(JSON.stringify(voucher.accessPlan))});
@@ -457,6 +460,16 @@ test('voucher261 binds the combined voucher matrix and only eleven SDK default I
  for(const capability of [['jg_task01_runtime','table','FileObject','','INSERT',false],['jg_task01_runtime','column','FileObject','purgeReceiptId','INSERT',false],['jg_task01_observer','column','FileObject','id','SELECT',false]]){
   const value=row();value.capabilities=sort([...value.capabilities,capability]);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
  }
+ for(const column of ['projectId','userId']){
+  const value=row();value.capabilities=value.capabilities.filter(c=>!(c[0]==='jg_task01_runtime'&&c[2]==='ProjectRosterMember'&&c[3]===column&&c[4]==='SELECT'));
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ for(const capability of [['jg_task01_runtime','column','ProjectRosterMember','id','SELECT',false],['jg_task01_runtime','column','ProjectRosterMember','createdAt','SELECT',false],['jg_task01_runtime','table','ProjectRosterMember','','SELECT',false],['jg_task01_runtime','column','ProjectRosterMember','userId','INSERT',false],['jg_task01_observer','column','ProjectRosterMember','projectId','SELECT',false]]){
+  const value=row();value.capabilities=sort([...value.capabilities,capability]);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ const rosterGrantable=row();rosterGrantable.capabilities.find(c=>c[0]==='jg_task01_runtime'&&c[2]==='ProjectRosterMember'&&c[3]==='projectId'&&c[4]==='SELECT')[5]=true;
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(rosterGrantable),r));
+ for(const profile of [undefined,PAYMENT261_RUNTIME_PROFILE,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE])assert.equal(api.loadCurrent259CatalogMaterial(current,profile).accessPlan.runtime.tables.some(t=>t.table==='ProjectRosterMember'),false);
  for(const patch of [{paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE},{voucherProfile:undefined},{runtimeProfile:undefined}])assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),{...r,identity:{...r.identity,...patch}}));
  const grantable=row();grantable.capabilities.find(c=>c[0]==='jg_task01_runtime'&&c[2]==='FileObject'&&c[3]==='createdAt'&&c[4]==='INSERT')[5]=true;
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(grantable),r));

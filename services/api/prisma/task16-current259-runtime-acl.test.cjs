@@ -216,7 +216,9 @@ test('261 gap adds five opening defaults and voucher eleven with unchanged nonIN
  assert.equal(inserts(gap261.sql).filter(row=>!inserts(legacy.sql).includes(row)).length,4);
  assert.doesNotMatch(gap261.sql,/^GRANT SELECT [^\n]+HistoricalFinancialTakeoverRowMapping/mu);
  for(const table of ['PaymentExecution','RegisteredPaymentEvent','InterEntityRelationshipEntry'])assert.deepEqual(inserts(gap261.sql).filter(row=>row.includes('public."'+table+'"')),inserts(legacy.sql).filter(row=>row.includes('public."'+table+'"')));
- assert.deepEqual(grants(voucher261.sql).filter(row=>!row.startsWith('GRANT INSERT ')),grants(historicalVoucher.sql).filter(row=>!row.startsWith('GRANT INSERT ')));
+ const rosterGrant='GRANT SELECT ("projectId", "userId") ON TABLE public."ProjectRosterMember" TO "jg_task01_runtime";';
+ assert.deepEqual(grants(voucher261.sql).filter(row=>!row.startsWith('GRANT INSERT ')&&row!==rosterGrant),grants(historicalVoucher.sql).filter(row=>!row.startsWith('GRANT INSERT ')));
+ assert.deepEqual(grants(voucher261.sql).filter(row=>row.includes('public."ProjectRosterMember"')),[rosterGrant]);
  assert.equal(inserts(voucher261.sql).filter(row=>!inserts(historicalVoucher.sql).includes(row)).length,9);
  for(const table of ['FileObject','RegisteredPaymentVoucher'])assert.match(inserts(voucher261.sql).find(row=>row.includes('public.\"'+table+'\"')),/createdAt/u);
  assert.equal(voucher261.lockSql,historicalVoucher.lockSql);
