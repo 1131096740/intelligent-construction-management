@@ -529,6 +529,7 @@ function loadCurrent259Client(handle){
    for(const [slot,relative,names]of [
     ['fixture','services/api/dist/database/task12-local-lifecycle-fixture.js',['buildTask12LocalLifecycleFixture','isTask12LocalLifecycleFixture','createTask12LocalLifecycleOriginals']],
     ['case','services/api/dist/database/task12-local-lifecycle-case.js',['runTask12LocalLifecycleCase','expectTask12LocalLifecycleAuditRollback','finishTask12LocalLifecycleCase','claimTask12LocalLifecycleCheckpoint']],
+    ['con18','services/api/dist/database/task12-con18-withdrawal-case.js',['runTask12Con18Withdrawal']],
     ['sample','services/api/dist/contract-document/task12-official-qualification-sample.js',['createOfficialQualificationSample','canonicalOfficialQualificationDocx']],
     ['profile','services/api/prisma/task12-official-document-profile.cjs',['currentOfficialDocumentScope']],
     ['child','services/api/prisma/task12-official-document-child.cjs',['createOfficialDocumentChildBudget','attachPostcheck']],
@@ -541,7 +542,7 @@ function loadCurrent259Client(handle){
     need(mod?.loaded===true&&mod.exports===exports&&mod.filename===file,code);modules[slot]=mod;roots.push(mod);
     for(const key of names){const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',code);
      records.push({module:mod,key,value:descriptor.value,descriptor});
-     if(['fixture','case','profile'].includes(slot))published[key]=descriptor.value;
+     if(['fixture','case','con18','profile'].includes(slot))published[key]=descriptor.value;
     }
    }
    const {assertCurrent261LocalLifecycleToolClosure}=require('./task12-current261-local-lifecycle-module-proof.cjs');
