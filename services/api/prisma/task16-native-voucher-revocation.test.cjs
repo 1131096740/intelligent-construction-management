@@ -155,3 +155,21 @@ test('download cleanup failure remains secondary to original read error',async()
  await assert.rejects(runNativeVoucherRevocation(input),error=>error===original);
  assert.deepEqual(events,[{stage:'DOWNLOAD_BEFORE',field:'READER_RELEASE'},{stage:'DOWNLOAD_BEFORE',field:'OPERATION'}]);assert.ok(!JSON.stringify(events).includes('private'));
 });
+
+test('unexpected HTTP status is recorded with fixed stage only and no response data',async()=>{
+ const {input}=scenario(),events=[],original=input.transport;input.httpDiagnostic=value=>events.push(value);
+ input.transport=async(target,init)=>{const response=await original(target,init);if(new URL(target).pathname==='/projects')return {...response,status:404,json:async()=>{throw Error('response body must not be read');}};return response;};
+ await assert.rejects(runNativeVoucherRevocation(input));assert.deepEqual(events,[{stage:'PROJECTS_BEFORE',status:404}]);
+});
+
+test('HTTP diagnostic recording failure does not replace original assertion',async()=>{
+ const {input}=scenario(),original=input.transport;let recorded=0;input.httpDiagnostic=()=>{recorded++;throw Error('private recording error');};
+ input.transport=async(target,init)=>{const response=await original(target,init);return new URL(target).pathname==='/projects'?{...response,status:403}:response;};
+ await assert.rejects(runNativeVoucherRevocation(input),error=>error.code==='NATIVE_VOUCHER_REVOCATION_FAILED_CLOSED');assert.equal(recorded,1);
+});
+
+test('out of range status is never recorded',async()=>{
+ const {input}=scenario(),events=[],original=input.transport;input.httpDiagnostic=value=>events.push(value);
+ input.transport=async(target,init)=>{const response=await original(target,init);return new URL(target).pathname==='/projects'?{...response,status:999}:response;};
+ await assert.rejects(runNativeVoucherRevocation(input));assert.deepEqual(events,[]);
+});
