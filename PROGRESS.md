@@ -2,7 +2,7 @@
 
 ## 2026-11-16 后续接续
 
-已发布 PR #428 指向 `2907d95d` 且仍为 Draft；本地代码集成为 `1820554e`，尚未推送。#394、#398 仍开放，本轮未新增整票关闭。下面旧检查点中“正在运行”以本条终态为准。
+已发布 PR #428 指向 `2907d95d` 且仍为 Draft；本地代码集成为 `2456f690`，尚未推送。#394、#398 仍开放，本轮未新增整票关闭。下面旧检查点中“正在运行”以本条终态为准。
 
 任务12的 `7c4b0c7b` 原合同 once 已停止，业务进入提交审批阶段，心跳请求 HTTP 500，原日志显示事务提交超过 5000ms 限额；cleanup 报告完成。完整合同链仍未通过，正在准备限定的耗时诊断，不延长原预算。
 
@@ -15,6 +15,8 @@
 后续准确 `9d87fcb9` 新独占凭证运行的 prepare、verify、材料核对通过，原 once 已进入 `VOUCHER_HTTP_DOWNLOAD`，在 `WageApprovedSourceVersion` 读取权限拒绝后停止；此前归档关联表查询已通过票据签发阶段。cleanup 完成，独核进程、监听及 pidfile 缺席。下载与核账未通过，正在追查实际查询；[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-voucher-9d87/receipt.json) SHA `fa6b6234fdd6ac54685d68827e75a459628610b6da522737b13e1fe8a65ef725`。
 
 准确 `5fe5a890` 新独占凭证原 once 自然成功：30元付款后，两次上传和关联收敛为一份文件和凭证，授权票据与 HTTP 下载成功，上传、关联、票据、下载审计各一条，凭证操作前后财务状态不变。独立 Repeatable Read 核账为 A 100 元不变、B 100→70 元，付款及结算已付 3000 分，execution/root/funding/allocation/event/audit 各一笔，项目事实及影响均为零；原 cleanup 完成，独核进程、监听及 pidfile 缺席。[业务回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-voucher-5fe5/receipt.json) SHA `a1870bf1006fb5ad6b750c6c71dc3d1868366c216919e830eaf45a7403d81053`，核账 SHA `ad88f1040dcc1d75c69c563d7014d8e75a479031ef3b9c1b6e614b3f760c8348`。这是准确候选的虚构隔离业务片，`financialAcceptance=false`；真实审批、Web、公共现金及 #398 全部矩阵仍待，不能外推至合成 SHA。`5fc7e976` 诊断确认工资依据查询两列后，`5fe5a890` 只为凭证运行角色补 `id` 读取，相关 119 项及包检查通过；中间失败回执保留。
+
+合同心跳 `aec4406b` 复用已锁定的合同和版本行，省去两次重复读取，保留锁顺序及业务检查；定向测试 14 项、API 类型和 lint 通过。准确候选在独占 PG16.15 空库 owner 身份下实际验证正常租约取得、心跳以及锁等待跨到期后的拒绝和数据不变；清理通过，[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/394-heartbeat-perf/receipt.json)。不证明完整迁移或受限角色，不认定原超时已解决；真实合同全链待重新验证。
 
 ## 2026-11-16 接续进展
 
