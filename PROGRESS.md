@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 心跳诊断局部修订
+
+`34960288` 原轮的 36 次 HTTP exchange 经独立计数和代码路径审查，少于第二轮心跳之前至少 50 次的要求，case 未发提交、撤回或重提请求；心跳本身的副作用及应用清理仍为 UNKNOWN。[独审回执](/private/tmp/jg-con18-3496-exchange-review-3y1ss2pc/receipt.json) SHA `daac161469bafc09d5d15168e6a195a7ef7b8e2e5e98113c07d73cf8c2dee3c1`；[原回执](/private/tmp/jg-native-contract-c18r3496-QcZ8UV/receipt.json) SHA `bb65bd83f97ad55c5c118d8f58119afbf6f86d314af4ae72b614cc82bf155cfd`。
+
+未来心跳诊断候选 `9aca6bc2` 经独审合入本地 `db5e962b`；它仅投影有限诊断并统计重复异常，不是所有请求计数，不补写原轮。准确补丁 SHA `874b3ed48c6940650fb58bde41dc86866be7d08aa9f4ed1374f66120345bb399`；Node HTTP、应用/once 及旧用途模型 240/240、本地 Nest 诊断和 AUTH 回归 14/14、API build/typecheck/lint 通过。首次 typecheck 与 Prisma 生成并行导致生成客户端缺失而失败，生成完成后顺序重跑通过；未运行真实资源。新候选须重新资格，不代表 CON-18 或 #394 验收通过。
+
 ## 2026-11-17 CON-18 清理诊断局部修订
 
 准确 `34960288` 新独占运行已进入业务，在撤回重提链心跳失败后停止；业务结果和应用清理均为 UNKNOWN，不得重发或倒填结论。[原回执](/private/tmp/jg-native-contract-c18r3496-QcZ8UV/receipt.json) SHA `bb65bd83f97ad55c5c118d8f58119afbf6f86d314af4ae72b614cc82bf155cfd`。独立 PG 检查仅确认进程、监听与 pidfile 缺席，不证明应用清理或业务结果；[检查回执](/private/tmp/jg-con18-3496-runtime-6S4k9T/cleanup-independent.json) SHA `cf2a418ccf8ad47a23f375393f7373ddaaf8914a14161f407986d228a2608045`。
