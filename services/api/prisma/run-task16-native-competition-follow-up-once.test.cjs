@@ -256,3 +256,42 @@ test('native voucher cleanup recorder accepts only own-data failure booleans and
  record('HTTP_DOWNLOAD',{cancelFailed:true,releaseFailed:false});assert.deepEqual(receipt,{voucherDownloadCleanup:{cancelFailed:true,releaseFailed:false}});assert.ok(Object.isFrozen(receipt.voucherDownloadCleanup));
  assert.throws(()=>record('HTTP_DOWNLOAD',{cancelFailed:false,releaseFailed:true}));assert.equal(receipt.voucherDownloadCleanup.cancelFailed,true);
 });
+
+test('voucher query diagnostic constructor contract leaves every other client shape and normal logs unchanged',()=>{
+ for(const purpose of ['TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1','TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1','TASK16_NATIVE_COMPETITION_VOUCHER_V1']){
+  const record=[],receipt={stages:[{stage:'VOUCHER_AUTHORIZED_TICKET'}]};
+  // Construction model only: no SDK connection, Nest, SQL or PostgreSQL.
+  class Client{constructor(options){this.options=options;record.push(this);} $on(kind,handler){this.registration={kind,handler};}}
+  const lanes=purpose==='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1'?['owner','runtime','observer']:['owner','runtime_a','runtime_b','observer'];
+  const clients=require('./run-task16-native-competition-follow-up-once.cjs').createNativeTask16BusinessClients(Client,purpose,lane=>{assert.ok(lanes.includes(lane));return 'MODEL_FIXED_ENDPOINT';},receipt);assert.deepEqual(clients,record);
+  record.forEach((client,i)=>{
+   const logged=purpose==='TASK16_NATIVE_COMPETITION_VOUCHER_V1'&&lanes[i].startsWith('runtime_');
+   assert.deepEqual(client.options,{datasources:{db:{url:'MODEL_FIXED_ENDPOINT'}},...(logged?{log:[{emit:'event',level:'query'}]}:{})});
+   if(logged){assert.equal(client.registration.kind,'query');assert.equal(typeof client.registration.handler,'function');}else assert.equal(client.registration,undefined);
+  });
+ }
+});
+
+test('voucher constructor never drops an unsupported event option or substitutes a missing query API',()=>{
+ const create=require('./run-task16-native-competition-follow-up-once.cjs').createNativeTask16BusinessClients,receipt={stages:[]},primary=Error('MODEL SDK REJECTED LOG OPTIONS');let emitted=0;
+ class Rejecting{constructor(options){if(options.log)throw primary;emitted++;}}
+ assert.throws(()=>create(Rejecting,'TASK16_NATIVE_COMPETITION_VOUCHER_V1',()=> 'MODEL',receipt),error=>error===primary);assert.equal(emitted,1);
+ assert.doesNotThrow(()=>create(Rejecting,'TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',()=> 'MODEL',receipt));
+ class MissingOn{constructor(){}}
+ assert.throws(()=>create(MissingOn,'TASK16_NATIVE_COMPETITION_VOUCHER_V1',()=> 'MODEL',receipt),TypeError);
+ let constructed=0;class Never{constructor(){constructed++;}}
+ assert.throws(()=>create(Never,'UNKNOWN',()=> 'MODEL',receipt));assert.equal(constructed,0);
+});
+
+test('actual native client constructor wiring records only query metadata and preserves an SDK rejection identity in the model',async()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),receipt={stages:[{stage:'VOUCHER_AUTHORIZED_TICKET'}]},primary=Error('PRIVATE BUSINESS ERROR');let params=0;
+ class Client{
+  constructor(options){this.options=options;}
+  $on(kind,handler){assert.equal(kind,'query');this.handler=handler;}
+  async modeledRejectedOperation(){this.handler({query:'SELECT "public"."ProjectRosterMember"."projectId", "public"."ProjectRosterMember"."id" FROM "public"."ProjectRosterMember" WHERE "public"."ProjectRosterMember"."userId" = $1 OFFSET $2',get params(){params++;throw Error('PRIVATE TOKEN');}});throw primary;}
+ }
+ const clients=api.createNativeTask16BusinessClients(Client,'TASK16_NATIVE_COMPETITION_VOUCHER_V1',()=> 'MODEL_FIXED_ENDPOINT',receipt);
+ await assert.rejects(clients[1].modeledRejectedOperation(),error=>error===primary);assert.equal(params,0);
+ assert.deepEqual(receipt.voucherRosterQueries,{events:[{lane:'runtime_a',stage:'VOUCHER_AUTHORIZED_TICKET',relation:'ProjectRosterMember',operation:'SELECT',columns:['id','projectId','userId'],unknownShape:false}],overflow:false});
+ assert.doesNotMatch(JSON.stringify(receipt),/PRIVATE|TOKEN|SELECT "|params/u);
+});
