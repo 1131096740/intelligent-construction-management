@@ -39,7 +39,7 @@ function model(failure){
  const get=key=>bindings.has(key)?bindings.get(key):objects.get(key);
  const testing={get,async close(){trace.push('module-close');await ordinary.onApplicationShutdown();}};
  const server={listening:false,address(){return {address:'127.0.0.1',family:'IPv4',port:24080};}};
- const nativeWarm=new Set(),nativeReads=[];const appGet=key=>{nativeWarm.add(key);nativeReads.push(key);return get(key);};
+ const nativeWarm=new Set(),nativeReads=[],nativePublicProofs=new WeakSet();const appGet=key=>{nativeWarm.add(key);nativeReads.push(key);return get(key);};
  const app={get:appGet,getHttpServer(){return server;},async close(){
   if(!['stuck-listener','public-fixed-error'].includes(failure))server.listening=false;
   trace.push('app-close');await Promise.resolve();trace.push('worker-drained');
@@ -82,8 +82,8 @@ function model(failure){
   './task16-current259-client-loader.cjs':{inspectCurrent261OwnedNativeEquipmentPublicGuard(value,module,live){
     const pairs=imports['./task16-current259-client-loader.cjs'].inspectCurrent261OwnedNativeEquipmentProviders(value,module,live);
     if(pairs===undefined||!nativeWarm.has(token.JwtTokenService))return undefined;
-    const jwtService=objects.get(token.JwtTokenService);trace.push('native-public-guard-batch');return Object.freeze({providers:pairs,server,jwtService,verifyAccessToken:jwtService.verifyAccessToken});
-   },inspectCurrent261OwnedNativeEquipmentProviders(value,module,live){
+    const jwtService=objects.get(token.JwtTokenService);trace.push('native-public-guard-batch');const proof=Object.freeze({providers:pairs,server,jwtService,verifyAccessToken:jwtService.verifyAccessToken});nativePublicProofs.add(proof);return proof;
+   },consumeCurrent261OwnedNativeEquipmentPublicGuard(proof,value,module,live){assert.equal(value,app);assert.equal(module,testing);assert.equal(live,server);assert.equal(nativePublicProofs.delete(proof),true);trace.push('native-public-guard-consumed');return true;},inspectCurrent261OwnedNativeEquipmentProviders(value,module,live){
     assert.equal(value,app);assert.equal(module,testing);assert.equal(live,server);assert.equal(live.listening,true);const required=['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController'].map(key=>token[key]).concat([authorityToken]);if(!required.every(key=>nativeWarm.has(key))){trace.push('native-batch-unwarmed-original');return undefined;}trace.push('native-provider-batch');
     return Object.freeze(['AuthService','AuthRateLimitService','AuthController','Task12AuthErrorFilter','Task12AuthStageInterceptor','ContractReadService','MeService','AuditService','PrismaService','PrivateFileStorage','LayoutTemplateService','ContractDocumentProcessor','ContractDocumentService','FileService','ContractDraftController'].map(key=>Object.freeze([token[key],get(token[key])])).concat([Object.freeze([authorityToken,get(authorityToken)])]));
    },takeCurrent261NativeOrdinaryClient(actualLoader,actualLoaded,client){assert.equal(actualLoader,loader);assert.equal(actualLoaded,loaded);assert.equal(client,ordinary);return true;},

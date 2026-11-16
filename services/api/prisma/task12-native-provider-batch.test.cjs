@@ -63,7 +63,7 @@ test('the issued Prisma composite Proxy is opaque identity; unknown wrapping or 
 });
 function inspection(f,options={}){
  const text=source(),start=text.indexOf('inspectNativeEquipmentProviders(module,expectedServer'),end=text.indexOf('},inspectDocumentAuthProviders(',start);assert.ok(start>=0&&end>start);
- const testing={},document={},result={},lifeDocument={exports:{}},server={},adapter={},registry=new WeakMap(),ordinary=f.providers[8];registry.set(ordinary,{used:true,loader:result,loaded:lifeDocument.exports});Object.assign(f.target,{httpServer:server,httpAdapter:adapter});
+ const testing={},document={},result={},lifeDocument={exports:{}},server={},adapter={},registry=new WeakMap(),proofs=new WeakMap(),application={},ordinary=f.providers[8];registry.set(ordinary,{used:true,loader:result,loaded:lifeDocument.exports});Object.assign(f.target,{httpServer:server,httpAdapter:adapter});
  let checks=0,collects=0,reads=0;const first=Object.assign(Error('MODEL_ORIGINAL'),{code:'MODEL_ORIGINAL'}),secondary=Object.assign(Error('MODEL_SECONDARY'),{code:'MODEL_SECONDARY'});
  const originalMethods=new Map([['get',f.target.get],['getHttpServer',function(){return this.httpServer;}],['getHttpAdapter',function(){return this.httpAdapter;}]]);Object.defineProperty(f.pins.appPrototype,'getHttpAdapter',{value:originalMethods.get('getHttpAdapter'),configurable:true});Object.defineProperty(f.pins.appPrototype,'getHttpServer',{value:originalMethods.get('getHttpServer'),configurable:true});f.pins.edges.push([f.pins.appPrototype,'getHttpServer',Object.getOwnPropertyDescriptor(f.pins.appPrototype,'getHttpServer')]);
  const need=(ok,code)=>{if(!ok)throw Object.assign(Error(code),{code});},dataMethod=(object,key)=>{let next=object;while(next){assert.equal(types.isProxy(next),false);const d=Object.getOwnPropertyDescriptor(next,key);if(d){assert.equal(typeof d.value,'function');return d.value;}next=Object.getPrototypeOf(next);}assert.fail();};
@@ -71,9 +71,11 @@ function inspection(f,options={}){
  const check=()=>{checks++;if(options.sourceFailure)throw first;graph?.check();},collect=()=>{collects++;if(graph)graph.collect();else check();if(options.postFailure)throw secondary;};
  const guarded=action=>{if(options.firstFailure)throw first;const value=action();options.afterReads?.();return value;};
 
- const object=new Function('need','closed','nativeRows','nativeOrdinary','testing','contractMode','document','values','nativeProviderApply','nativeProviderWeakGet','nativeTask12OrdinaryClients','result','lifeDocument','target','adapter','check','guardedOperation','collect','dataMethod','originalMethods','nativeTokens','nativeProviderFreeze','nativeProviderHasOwn','types','nativeJwtVerify','nativeJwtPins','nativeProviderDescriptor',
-  'return ({'+text.slice(start,end)+'}});')(need,!!options.closed,options.noRows?undefined:f.proof,options.noIssuer?undefined:ordinary,testing,options.foreignPurpose?{}:document,document,{PrismaService:f.tokens[8]},(fn,receiver,args)=>{if(fn===f.target.get&&receiver===f.target)reads++;return Reflect.apply(fn,receiver,args);},WeakMap.prototype.get,registry,result,lifeDocument,f.target,adapter,check,guarded,collect,dataMethod,originalMethods,f.tokens,Object.freeze,Object.hasOwn,types,f.JwtClass.prototype.verifyAccessToken,{prototype:f.JwtClass.prototype,method:Object.getOwnPropertyDescriptor(f.JwtClass.prototype,'verifyAccessToken'),constructor:Object.getOwnPropertyDescriptor(f.JwtClass,'prototype')},Object.getOwnPropertyDescriptor);
- return {testing,server,first,secondary,record:object,run:(module=testing,publicGuard=false)=>publicGuard?object.inspectNativeEquipmentProviders(module,server,true):object.inspectNativeEquipmentProviders(module,server),counts:()=>({checks:graph?graph.counts().checks:checks,collects,reads,...(graph?{graphPasses:graph.counts().graphPasses}: {})}),graph,originalMethods,registry,ordinary};
+ const object=new Function('need','closed','nativeRows','nativeOrdinary','testing','contractMode','document','values','nativeProviderApply','nativeProviderWeakGet','nativeTask12OrdinaryClients','result','lifeDocument','target','adapter','check','guardedOperation','collect','dataMethod','originalMethods','nativeTokens','nativeProviderFreeze','nativeProviderHasOwn','types','nativeJwtVerify','nativeJwtPins','nativeProviderDescriptor','proxy','nativePublicGuardProofs','nativePublicGuardSet','nativePublicGuardMapsValid',
+  'return ({'+text.slice(start,end)+'}});')(need,!!options.closed,options.noRows?undefined:f.proof,options.noIssuer?undefined:ordinary,testing,options.foreignPurpose?{}:document,document,{PrismaService:f.tokens[8]},(fn,receiver,args)=>{if(fn===f.target.get&&receiver===f.target)reads++;return Reflect.apply(fn,receiver,args);},WeakMap.prototype.get,registry,result,lifeDocument,f.target,adapter,check,guarded,collect,dataMethod,originalMethods,f.tokens,Object.freeze,Object.hasOwn,types,f.JwtClass.prototype.verifyAccessToken,{prototype:f.JwtClass.prototype,method:Object.getOwnPropertyDescriptor(f.JwtClass.prototype,'verifyAccessToken'),constructor:Object.getOwnPropertyDescriptor(f.JwtClass,'prototype')},Object.getOwnPropertyDescriptor,application,proofs,WeakMap.prototype.set,()=>true);
+ const consumeStart=text.indexOf('function consumeCurrent261OwnedNativeEquipmentPublicGuard('),consumeEnd=text.indexOf('\nfunction current259OwnedApplicationMethod(',consumeStart);
+ const consume=new Function('need','nativePublicGuardMapsValid','nativeProviderApply','nativeProviderWeakGet','nativePublicGuardProofs','nativePublicGuardDelete',text.slice(consumeStart,consumeEnd)+';return consumeCurrent261OwnedNativeEquipmentPublicGuard;')(need,()=>true,Reflect.apply,WeakMap.prototype.get,proofs,WeakMap.prototype.delete);
+ return {application,rawConsume:consume,consume:(proof,app=application,module=testing,expected=server)=>consume(proof,app,module,expected),testing,server,first,secondary,record:object,run:(module=testing,publicGuard=false)=>publicGuard?object.inspectNativeEquipmentProviders(module,server,true):object.inspectNativeEquipmentProviders(module,server),counts:()=>({checks:graph?graph.counts().checks:checks,collects,reads,...(graph?{graphPasses:graph.counts().graphPasses}: {})}),graph,originalMethods,registry,ordinary};
 }
 test('actual fixed owned-inspector body keeps two full boundaries and all sixteen original lookup identities',()=>{
  const f=model(true);f.warm();const owned=inspection(f),pairs=owned.run();assert.equal(pairs.length,16);for(let i=0;i<16;i++){assert.equal(pairs[i][0],f.tokens[i]);assert.equal(pairs[i][1],f.providers[i]);}assert.deepEqual(owned.counts(),{checks:2,collects:1,reads:16});assert.equal(f.opaqueTraps(),0);
@@ -164,8 +166,8 @@ function observedPublicGuard(f,owned,options={}){
  const app=fs.readFileSync(path.join(__dirname,'task12-current259-document-application.cjs'),'utf8'),begin=app.indexOf('   const checkPublic=()=>{'),finish=app.indexOf('   const verifyToken=',begin);
  const verifyProviders=(_view,publicGuard)=>{owned.graph.check();const proof=owned.run(owned.testing,publicGuard);options.afterProviders?.();return proof;};
  const own=(object,key)=>Object.getOwnPropertyDescriptor(object,key)?.value;
- const checkPublic=new Function('verifyProviders','view','method','get','server','jwtToken','jwtService','verifyAccess','need','own','check',app.slice(begin,finish)+';return checkPublic;')(
-  verifyProviders,view,(object,key)=>object[key],(object,key)=>object.get(key),owned.server,jwtToken,jwtService,verifyAccess,(ok)=>assert.equal(ok,true),own,owned.graph.check);
+ const checkPublic=new Function('verifyProviders','view','method','get','server','jwtToken','jwtService','verifyAccess','need','own','check','consumeCurrent261OwnedNativeEquipmentPublicGuard','application','testing',app.slice(begin,finish)+';return checkPublic;')(
+  verifyProviders,view,(object,key)=>object[key],(object,key)=>object.get(key),owned.server,jwtToken,jwtService,verifyAccess,(ok)=>assert.equal(ok,true),own,owned.graph.check,(...args)=>owned.consume(...args),owned.application,owned.testing);
  return checkPublic;
 }
 test('one public native guard observes full source graph before and after server JWT and providers in one synchronous batch',()=>{
@@ -214,4 +216,30 @@ test('public guard cannot warm JWT state or accept a foreign caller callback',()
  const text=source(),start=text.indexOf('function inspectCurrent261OwnedNativeEquipmentProviders('),end=text.indexOf('\nfunction current259OwnedApplicationMethod(',start),ownedApps=new WeakMap();
  const dispatch=new Function('need','nativeProviderDescriptor','nativeProviderWeakPrototype','nativeProviderWeakDescriptor','nativeProviderWeakGet','nativeProviderApply','ownedApps',text.slice(start,end)+';return inspectCurrent261OwnedNativeEquipmentPublicGuard;')((ok)=>assert.equal(ok,true),Object.getOwnPropertyDescriptor,WeakMap.prototype,Object.getOwnPropertyDescriptor(WeakMap.prototype,'get'),WeakMap.prototype.get,Reflect.apply,ownedApps);
  let traps=0;const foreign=new Proxy({},{get(){traps++;throw Error('PRIVATE');},getPrototypeOf(){traps++;throw Error('PRIVATE');}});assert.throws(()=>dispatch(foreign,{},{}));assert.throws(()=>dispatch({}, {},{},()=>traps++));assert.equal(traps,0);
+});
+
+
+test('mutable provider server or JWT drift after authority validation cannot survive the final public guard',()=>{
+ for(const change of [f=>{f.states[16].instance=new f.JwtClass();},f=>{f.target.httpServer={};},f=>Object.defineProperty(f.JwtClass.prototype,'verifyAccessToken',{writable:false})]){
+  const f=model(false,true);f.warm();const owned=inspection(f,{graph:true});const checkPublic=observedPublicGuard(f,owned,{afterProviders(){change(f);}});
+  assert.throws(checkPublic);assert.equal(owned.counts().graphPasses,5);assert.equal(owned.counts().reads,17);
+ }
+});
+
+
+test('public proof exposes no revalidation callback and only its exact owner can consume it once',()=>{
+ const f=model(false,true);f.warm();const owned=inspection(f),proof=owned.run(owned.testing,true);
+ assert.deepEqual(Object.keys(proof).sort(),['jwtService','providers','server','verifyAccessToken'].sort());
+ let traps=0;const unknown=new Proxy({},{get(){traps++;throw Error('PRIVATE');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE');},getPrototypeOf(){traps++;throw Error('PRIVATE');}});
+ for(const candidate of [unknown,{...proof},Object.freeze({})])assert.throws(()=>owned.consume(candidate));
+ assert.throws(()=>owned.rawConsume(proof,owned.application,owned.testing,owned.server,()=>traps++));
+ assert.throws(()=>owned.consume(proof,{}));assert.throws(()=>owned.consume(proof,owned.application,{}));assert.throws(()=>owned.consume(proof,owned.application,owned.testing,{}));
+ assert.equal(owned.consume(proof),true);assert.throws(()=>owned.consume(proof));assert.equal(traps,0);
+ const failed=owned.run(owned.testing,true);f.states[16].instance=new f.JwtClass();assert.throws(()=>owned.consume(failed));assert.throws(()=>owned.consume(failed));
+});
+test('proof map intrinsic substitutions are rejected without invoking replacement callbacks',()=>{
+ const text=source(),start=text.indexOf('function nativePublicGuardMapsValid('),end=text.indexOf('\nfunction takeCurrent261NativeOrdinaryClient(',start);
+ const valid=new Function('nativeProviderDescriptor','nativeProviderWeakPrototype','nativeProviderWeakDescriptor','nativePublicGuardSetDescriptor','nativePublicGuardDeleteDescriptor',text.slice(start,end)+';return nativePublicGuardMapsValid;')(Object.getOwnPropertyDescriptor,WeakMap.prototype,Object.getOwnPropertyDescriptor(WeakMap.prototype,'get'),Object.getOwnPropertyDescriptor(WeakMap.prototype,'set'),Object.getOwnPropertyDescriptor(WeakMap.prototype,'delete'));
+ assert.equal(valid(),true);
+ for(const key of ['get','set','delete']){const descriptor=Object.getOwnPropertyDescriptor(WeakMap.prototype,key);let calls=0,result;try{Object.defineProperty(WeakMap.prototype,key,{...descriptor,value(){calls++;throw Error('PRIVATE');}});result=valid();}finally{Object.defineProperty(WeakMap.prototype,key,descriptor);}assert.equal(result,false);assert.equal(calls,0);}
 });

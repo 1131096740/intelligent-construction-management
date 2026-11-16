@@ -2,7 +2,7 @@
 
 const {types}=require('node:util');
 const {isCurrent259OwnedModule,createCurrent259OwnedApplication,current259OwnedApplicationView,
- takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders,takeCurrent261NativeOrdinaryClient,inspectCurrent261OwnedNativeEquipmentProviders,inspectCurrent261OwnedNativeEquipmentPublicGuard}=require('./task16-current259-client-loader.cjs');
+ takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders,takeCurrent261NativeOrdinaryClient,inspectCurrent261OwnedNativeEquipmentProviders,inspectCurrent261OwnedNativeEquipmentPublicGuard,consumeCurrent261OwnedNativeEquipmentPublicGuard}=require('./task16-current259-client-loader.cjs');
 const CODE='CURRENT259_GENERATED_DOCUMENT_APP';
 const faults=new WeakMap(),httpBridges=new WeakMap(),lifecycleHttpBridges=new WeakMap();
 const exercisePattern=/^CURRENT259_GENERATED_DOCUMENT_EXERCISE_(?:INPUT|TEMPLATE|OPEN|SAVE|OWNER_BEGIN|GENERATE|PUBLIC_READBACK|OWNER_READBACK|RESULT)$/u;
@@ -188,7 +188,7 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
     if(probe!==undefined){
      need(own(probe,'server')===server&&own(probe,'jwtService')===jwtService&&own(probe,'verifyAccessToken')===verifyAccess,'HTTP');
      // Keep the full source guard after the original moduleRef authority read.
-     check();need(method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
+     check();need(consumeCurrent261OwnedNativeEquipmentPublicGuard(probe,application,testing,server)===true&&method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
     }
     else need(method(view,'getHttpServer').call(view)===server&&get(view,jwtToken)===jwtService&&
      method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');

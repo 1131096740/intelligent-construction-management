@@ -12,6 +12,17 @@ const own=(value,key)=>{need(value&&!types.isProxy(value),'CURRENT259_LOADER_DES
 const officialDocumentModuleViews=new WeakMap();
 const nativeTask12OrdinaryClients=new WeakMap();
 const nativeProviderWeakGet=WeakMap.prototype.get,nativeProviderWeakDescriptor=Object.getOwnPropertyDescriptor(WeakMap.prototype,'get'),nativeProviderWeakPrototype=WeakMap.prototype,nativeProviderDescriptor=Object.getOwnPropertyDescriptor,nativeProviderApply=Reflect.apply,nativeProviderFreeze=Object.freeze,nativeProviderDefine=Object.defineProperty,nativeProviderHasOwn=Object.hasOwn;
+const nativePublicGuardProofs=new WeakMap(),nativePublicGuardSet=WeakMap.prototype.set,nativePublicGuardDelete=WeakMap.prototype.delete;
+const nativePublicGuardSetDescriptor=nativeProviderDescriptor(WeakMap.prototype,'set'),nativePublicGuardDeleteDescriptor=nativeProviderDescriptor(WeakMap.prototype,'delete');
+function nativePublicGuardMapsValid(){
+ const names=['get','set','delete'],expected=[nativeProviderWeakDescriptor,nativePublicGuardSetDescriptor,nativePublicGuardDeleteDescriptor],fields=['value','writable','enumerable','configurable'];
+ for(let i=0;i<names.length;i++){
+  const current=nativeProviderDescriptor(nativeProviderWeakPrototype,names[i]);if(!current)return false;
+  for(let j=0;j<fields.length;j++)if(nativeProviderDescriptor(current,fields[j])?.value!==nativeProviderDescriptor(expected[i],fields[j])?.value)return false;
+ }
+ return true;
+}
+
 function takeCurrent261NativeOrdinaryClient(loader,loaded,client){
  need(arguments.length===3&&client&&(typeof client==='object'||typeof client==='function'),'CURRENT261_NATIVE_ORDINARY_HANDLE');
  const entry=nativeTask12OrdinaryClients.get(client);
@@ -95,6 +106,13 @@ function inspectCurrent261OwnedNativeEquipmentPublicGuard(value,module,server){
  const code='CURRENT261_NATIVE_PROVIDER_LOOKUP',d=nativeProviderDescriptor(nativeProviderWeakPrototype,'get');
  need(arguments.length===3&&d&&nativeProviderDescriptor(d,'value')?.value===nativeProviderWeakGet&&d.writable===nativeProviderWeakDescriptor.writable&&d.enumerable===nativeProviderWeakDescriptor.enumerable&&d.configurable===nativeProviderWeakDescriptor.configurable,code);
  const record=nativeProviderApply(nativeProviderWeakGet,ownedApps,[value]);need(record&&typeof record.inspectNativeEquipmentProviders==='function',code);return record.inspectNativeEquipmentProviders(module,server,true);
+}
+function consumeCurrent261OwnedNativeEquipmentPublicGuard(proof,value,module,server){
+ const code='CURRENT261_NATIVE_PROVIDER_LOOKUP';need(arguments.length===4&&nativePublicGuardMapsValid(),code);
+ const entry=nativeProviderApply(nativeProviderWeakGet,nativePublicGuardProofs,[proof]);
+ need(entry&&entry.application===value&&entry.module===module&&entry.server===server,code);
+ need(nativeProviderApply(nativePublicGuardDelete,nativePublicGuardProofs,[proof])===true,code);
+ return entry.verify();
 }
 function current259OwnedApplicationMethod(value,key){return ownedApps.get(value)?.method(key);}
 function current259OwnedApplicationView(value){return ownedApps.get(value)?.view;}
@@ -699,7 +717,14 @@ function loadCurrent259Client(handle){
        if(publicGuard){
         const jwt=publicEdges(),server=nativeProviderApply(originalMethods.get('getHttpServer'),target,[]),jwtService=nativeProviderApply(read,target,[nativeTokens[16]]);
         need(server===expectedServer&&jwtService===jwt,code);nativeRows.assert();publicEdges();
-        return nativeProviderFreeze({providers:nativeProviderFreeze(pairs),server,jwtService,verifyAccessToken:nativeJwtVerify});
+        const proof=nativeProviderFreeze({providers:nativeProviderFreeze(pairs),server,jwtService,verifyAccessToken:nativeJwtVerify});
+        need(nativePublicGuardMapsValid(),code);
+        nativeProviderApply(nativePublicGuardSet,nativePublicGuardProofs,[proof,nativeProviderFreeze({application:proxy,module:testing,server:expectedServer,verify(){
+         need(!closed&&nativePublicGuardMapsValid(),code);
+         const current=nativeProviderApply(nativeProviderWeakGet,nativeTask12OrdinaryClients,[nativeOrdinary]);need(current===issued&&current.used&&current.loader===result&&current.loaded===lifeDocument?.exports,code);
+         nativeRows.assert();publicEdges();return true;
+        }})]);
+        return proof;
        }
        nativeRows.assert();return nativeProviderFreeze(pairs);
       });}catch(error){first=error;}
@@ -822,5 +847,5 @@ function loadCurrent259Client(handle){
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;
 }
-module.exports=Object.freeze({inspectCurrent261OwnedNativeEquipmentProviders,inspectCurrent261OwnedNativeEquipmentPublicGuard,takeCurrent261NativeOrdinaryClient,loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
+module.exports=Object.freeze({inspectCurrent261OwnedNativeEquipmentProviders,inspectCurrent261OwnedNativeEquipmentPublicGuard,consumeCurrent261OwnedNativeEquipmentPublicGuard,takeCurrent261NativeOrdinaryClient,loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
  inspectCurrent259OwnedDocumentAuthProviders,inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});
