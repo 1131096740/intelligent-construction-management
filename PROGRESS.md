@@ -1,5 +1,21 @@
 # 建工智管当前状态
 
+## 2026-11-16 后续接续
+
+已发布 PR #428 指向 `2907d95d` 且仍为 Draft；本地代码集成为 `1820554e`，尚未推送。#394、#398 仍开放，本轮未新增整票关闭。下面旧检查点中“正在运行”以本条终态为准。
+
+任务12的 `7c4b0c7b` 原合同 once 已停止，业务进入提交审批阶段，心跳请求 HTTP 500，原日志显示事务提交超过 5000ms 限额；cleanup 报告完成。完整合同链仍未通过，正在准备限定的耗时诊断，不延长原预算。
+
+任务16的 `20d43d34` 新独占凭证诊断 prepare、verify 和材料核对通过，原 once 在授权票据阶段失败，cleanup 完成；独立检查确认该次 PostgreSQL 进程、监听与 pidfile 缺席。实际受限查询已观察到 ContractArchiveEvidenceFile 的九列，正核对本轮 ACL 差量；票据、下载和核账尚未通过。原回执 SHA `d946dbc2a137c373f696ca0c7c6533404b61790d5712228963d3230f664404d4`，详见[本轮隔离回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-voucher-20d/receipt.json)。
+
+本轮使用虚构隔离资源；未进行生产、真实数据或真实云写入。旧运行和失败回执保留，不以诊断结果代替业务验收。
+
+两项本地候选已独审并在独立工作树合成为 `d41a5e9b`，尚未推送：`9d87fcb9` 按实际查询为凭证专用角色补充六个读取列，119 项相关检查与 API 类型、lint 通过，新资源结果见下；`7c5f8309` 修正心跳等待行锁跨越租约到期后仍可续期的问题，模拟回归先红后绿、12 项定向及 API 类型、lint 通过。准确 `7c5f8309` 在独占 PG16.15 空库、真实 Prisma 服务和 owner 身份下观察到行锁等待，过期后返回 `EDIT_LEASE_LOST` 且租约字段未变；进程正常退出，监听和 pidfile 缺席。详见[并发回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/394-lease-pg/receipt.json)。这是 schema-only 窄验证，不证明完整迁移、受限角色、合成 SHA 或整票验收；该缺陷尚未证明是原合同超时的原因。
+
+后续准确 `9d87fcb9` 新独占凭证运行的 prepare、verify、材料核对通过，原 once 已进入 `VOUCHER_HTTP_DOWNLOAD`，在 `WageApprovedSourceVersion` 读取权限拒绝后停止；此前归档关联表查询已通过票据签发阶段。cleanup 完成，独核进程、监听及 pidfile 缺席。下载与核账未通过，正在追查实际查询；[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-voucher-9d87/receipt.json) SHA `fa6b6234fdd6ac54685d68827e75a459628610b6da522737b13e1fe8a65ef725`。
+
+准确 `5fe5a890` 新独占凭证原 once 自然成功：30元付款后，两次上传和关联收敛为一份文件和凭证，授权票据与 HTTP 下载成功，上传、关联、票据、下载审计各一条，凭证操作前后财务状态不变。独立 Repeatable Read 核账为 A 100 元不变、B 100→70 元，付款及结算已付 3000 分，execution/root/funding/allocation/event/audit 各一笔，项目事实及影响均为零；原 cleanup 完成，独核进程、监听及 pidfile 缺席。[业务回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-voucher-5fe5/receipt.json) SHA `a1870bf1006fb5ad6b750c6c71dc3d1868366c216919e830eaf45a7403d81053`，核账 SHA `ad88f1040dcc1d75c69c563d7014d8e75a479031ef3b9c1b6e614b3f760c8348`。这是准确候选的虚构隔离业务片，`financialAcceptance=false`；真实审批、Web、公共现金及 #398 全部矩阵仍待，不能外推至合成 SHA。`5fc7e976` 诊断确认工资依据查询两列后，`5fe5a890` 只为凭证运行角色补 `id` 读取，相关 119 项及包检查通过；中间失败回执保留。
+
 ## 2026-11-16 接续进展
 
 #382本轮未新增整票关闭，可执行前沿仍为#394/任务12与#398/任务16。11月15日完整盘点14关闭/31开放；11月16日已只读确认父票与两前沿仍OPEN、PR428 Draft。持续授权仅推进独占隔离开发与虚构资源；未main合并、部署、生产、真实数据、真实云写或新增费用。旧网络故障/SDK-close/idle停止边界保持。
