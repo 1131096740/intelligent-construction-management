@@ -86,7 +86,7 @@ function model(options={}) {
   const stat = name => {
     const file=files.get(name); if (!file && !dirs.has(name)) { const e=new Error('missing');e.code='ENOENT';throw e; }
     const mode=file?.mode??0o40700;
-    return {dev:1,ino:file?.ino??name.length,mode,uid:process.getuid(),gid:process.getgid(),size:file?.bytes.length??0,mtimeMs:file?.mtimeMs??1,ctimeMs:file?.ctimeMs??1,nlink:1,isFile:()=>Boolean(file) && (mode & 0o170000) !== 0o120000,isDirectory:()=>dirs.has(name),isSymbolicLink:()=>(mode & 0o170000) === 0o120000};
+    return {dev:1,ino:file?.ino??name.length,mode,uid:file?.uid??process.getuid(),gid:file?.gid??process.getgid(),size:file?.bytes.length??0,mtimeMs:file?.mtimeMs??1,ctimeMs:file?.ctimeMs??1,nlink:1,isFile:()=>Boolean(file) && (mode & 0o170000) !== 0o120000,isDirectory:()=>dirs.has(name),isSymbolicLink:()=>(mode & 0o170000) === 0o120000};
   };
   const fakeFs={
     lstatSync:stat, realpathSync:name=>{stat(name);const f=files.get(name);return (f?.mode & 0o170000) === 0o120000 ? path.resolve(path.dirname(name),f.bytes.toString()) : name;},
@@ -114,7 +114,7 @@ function model(options={}) {
   }
   const fakeCrypto={createHash:algorithm=>{
     if(algorithm==='sha1')return crypto.createHash('sha1');
-    const chunks=[];const value={update:bytes=>{chunks.push(Buffer.isBuffer(bytes)?bytes:Buffer.from(bytes));return value;},digest:()=>hash(Buffer.concat(chunks))};return value;
+    const chunks=[];const value={update:bytes=>{options.onHash?.(algorithm,bytes);chunks.push(Buffer.isBuffer(bytes)?bytes:Buffer.from(bytes));return value;},digest:()=>hash(Buffer.concat(chunks))};return value;
   }};
   const module={exports:{}};
   const loaded=[],moduleView=Object.freeze({}),leaseState={active:true};
@@ -158,6 +158,6 @@ function model(options={}) {
     const name='/private/tmp/qualification/runtime.json',bytes=JSON.stringify(runtimeInput);put(name,bytes,undefined,0o100600);
     return {name,sha256:sha(bytes),runRoot,runtimeInput,machine,physical,registry};
   }
-  return {api:module.exports,packet,files,publish,moduleView,leaseState,loaded,moduleCache:fakeRequire.cache};
+  return {api:module.exports,packet,files,publish,moduleView,leaseState,loaded,moduleCache:fakeRequire.cache,filesystem:fakeFs};
 }
 module.exports={model};
