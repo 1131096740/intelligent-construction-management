@@ -246,3 +246,13 @@ test('native voucher ACL binds two lanes, original voucher matrix, eleven defaul
  const api=require('./run-task16-native-competition-follow-up-once.cjs');
  for(const patch of [{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}, {roles:provisioned.roles.map(role=>({...role,limit:1}))}, {databaseIdentity:{...provisioned.databaseIdentity,serverPort:5432}}])assert.throws(()=>api.renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned:{...provisioned,...patch}}),'d'.repeat(64)));
 });
+
+test('native voucher cleanup recorder accepts only own-data failure booleans and keeps normal stages compatible',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),receipt={},stages=[];
+ const record=api.createNativeTask16VoucherStageRecorder(receipt,s=>stages.push(s));record('HTTP_DOWNLOAD');assert.deepEqual(receipt,{});assert.deepEqual(stages,['VOUCHER_HTTP_DOWNLOAD']);
+ let traps=0;const getter={get cancelFailed(){traps++;throw Error('SECRET');},releaseFailed:true},proxy=new Proxy({},{getPrototypeOf(){traps++;throw Error('SECRET');}});
+ for(const value of [getter,proxy,{cancelFailed:1,releaseFailed:false},{cancelFailed:false,releaseFailed:false},{cancelFailed:true,releaseFailed:false,url:'SECRET'},null])assert.throws(()=>record('HTTP_DOWNLOAD',value));
+ assert.equal(traps,0);assert.deepEqual(receipt,{});assert.throws(()=>record('UNKNOWN',{cancelFailed:true,releaseFailed:false}));
+ record('HTTP_DOWNLOAD',{cancelFailed:true,releaseFailed:false});assert.deepEqual(receipt,{voucherDownloadCleanup:{cancelFailed:true,releaseFailed:false}});assert.ok(Object.isFrozen(receipt.voucherDownloadCleanup));
+ assert.throws(()=>record('HTTP_DOWNLOAD',{cancelFailed:false,releaseFailed:true}));assert.equal(receipt.voucherDownloadCleanup.cancelFailed,true);
+});

@@ -215,12 +215,26 @@ async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lane
    equal([...query.keys()].sort(),['accessMode','actorUserId','downloadReason','expiresAt','token'])&&
    query.get('actorUserId')===actorId&&query.get('expiresAt')===ticket.expiresAt&&query.get('downloadReason')==='实际付款凭证下载'&&query.get('accessMode')==='download'&&/^[A-Za-z0-9_-]{43}$/u.test(query.get('token')));
   markFailureStage('HTTP_DOWNLOAD');check();
+  const downloadDeadline=performance.now()+5000;
   const response=await fetch(target,{method:'GET',redirect:'error',signal:AbortSignal.timeout(5000)});
   check();need(response.url===target.href&&response.redirected===false&&response.status===200&&response.headers.get('content-type')===voucherType&&response.headers.get('content-length')===String(voucherBytes.length));
-  const reader=response.body.getReader(),chunks=[];let size=0;
-  try{while(true){const part=await reader.read();check();if(part.done)break;size+=part.value.byteLength;need(size<=voucherBytes.length);chunks.push(Buffer.from(part.value));}}
-  finally{await reader.cancel();reader.releaseLock();}
-  need(size===voucherBytes.length&&createHash('sha256').update(Buffer.concat(chunks)).digest('hex')===voucherHash);
+  const reader=response.body.getReader(),chunks=[];let size=0,primary,hasPrimary=false,cancelFailed=false,releaseFailed=false,timer;
+  try{
+   while(true){const part=await reader.read();check();if(part.done)break;size+=part.value.byteLength;need(size<=voucherBytes.length);chunks.push(Buffer.from(part.value));}
+   need(size===voucherBytes.length&&createHash('sha256').update(Buffer.concat(chunks)).digest('hex')===voucherHash);
+  }catch(error){primary=error;hasPrimary=true;}
+  try{await Promise.race([Promise.resolve().then(()=>reader.cancel()),new Promise((_,reject)=>{timer=setTimeout(()=>reject(safe()),Math.max(0,Math.ceil(downloadDeadline-performance.now())));})]);}
+  catch{cancelFailed=true;}
+  finally{
+   clearTimeout(timer);
+   try{reader.releaseLock();}catch{releaseFailed=true;}
+  }
+  if(cancelFailed||releaseFailed){
+   // Only fixed booleans cross this diagnostic boundary; never cleanup errors.
+   try{markFailureStage('HTTP_DOWNLOAD',Object.freeze({cancelFailed,releaseFailed}));}catch{/* Diagnostics must not replace the primary failure. */}
+  }
+  if(hasPrimary)throw primary;
+  need(!cancelFailed&&!releaseFailed);
  }
  markFailureStage('ORIGINAL_RESULT');
  const recorded=await request(`/payment-executions/results/${key}`,'GET',undefined,200);

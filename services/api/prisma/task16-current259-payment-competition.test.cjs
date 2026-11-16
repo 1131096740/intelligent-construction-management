@@ -10,7 +10,7 @@ const paymentId='eeff0011-1234-4bcd-8f12-0123456789ab';
 const keyA='10101010-1234-4bcd-8f12-0123456789ab';
 const keyB='20202020-1234-4bcd-8f12-0123456789ab';
 function model(options={}){
- const events=[],failures=[],handle={},permit={},token={},source={sealSha256:'a'.repeat(64)},applicationPair=[{},{}];
+ const events=[],failures=[],cleanupDiagnostics=[],handle={},permit={},token={},source={sealSha256:'a'.repeat(64)},applicationPair=[{},{}];
  const winner=options.directorWins?1:0,actorId=winner===0?keyA:keyB;
  const storageRoot='/private/tmp/model-resource/application-private-voucher',fileName='payment-voucher.png';
  let storedFile,fileId;
@@ -144,7 +144,7 @@ function model(options={}){
    events.push('voucher-download');assert.equal(init.headers,undefined);
    const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgCF0FAAFYAQDfZmccAAAAAElFTkSuQmCC','base64');
    if(options.wrongDownloadedBytes)bytes[0]^=1;
-   return {...respond(200),headers:new Headers({'content-type':'image/png','content-length':String(bytes.length)}),body:new ReadableStream({start(c){c.enqueue(bytes);c.close();}})};
+   return {...respond(200),headers:new Headers({'content-type':'image/png','content-length':String(bytes.length)}),body:options.downloadReader?{getReader:()=>options.downloadReader}:new ReadableStream({start(c){c.enqueue(bytes);c.close();}})};
   }
   if(url.pathname===`/payment-executions/${keyA}/voucher-file-uploads`){
    events.push('voucher-upload');
@@ -191,17 +191,17 @@ function model(options={}){
   }},
   './task16-current259-application-factory.cjs':{isCurrent259PaymentLease(lease){return !options.forged&&leases.includes(lease);}}
  };
- new Function('require','module','process','globalThis',fs.readFileSync(path.join(__dirname,'task16-current259-payment-competition.cjs'),'utf8'))(
-  name=>ports[name]??require(name),module,options.voucher||options.followUp?fixtureProcess:process,options.voucher||options.followUp?{fetch:fixtureFetch}:globalThis
+ new Function('require','module','process','globalThis','setTimeout','clearTimeout',fs.readFileSync(path.join(__dirname,'task16-current259-payment-competition.cjs'),'utf8'))(
+  name=>ports[name]??require(name),module,options.voucher||options.followUp?fixtureProcess:process,options.voucher||options.followUp?{fetch:fixtureFetch}:globalThis,options.cleanupTimer??setTimeout,options.clearCleanupTimer??clearTimeout
  );
- return {events,failures,run:()=>module.exports.executeCurrent259PaymentCompetition(applicationPair,leases,permit),
+ return {events,failures,cleanupDiagnostics,run:()=>module.exports.executeCurrent259PaymentCompetition(applicationPair,leases,permit),
   native:()=>module.exports.supplementNativeTask16CompetitionVoucher({
    result:{caseId:'registered.two-actor.payment-competition',passed:true,winner:winner===0?'finance_staff':'comprehensive_director',executionId:keyA,rootId:keyB,competitionObserved:true},
    prepared:{plan,accessToken:'one',contender:{requestKey:keyB,accessToken:'two',actorId:keyB}},
    contexts:leases.map(lease=>({proof:{application:{origin:lease.application.origin}}})),lanes:[{},{}],
    storageRoot,resource:{caPath:'/private/tmp/model-resource/ca.crt'},root:'/private/tmp/model-resource',caSha256:'c'.repeat(64),
    observe:view.resource.execOwnerSql,known:leases[0].session.identity.concat(leases[1].session.identity.slice(1,2)),
-   readLedger:modules.observeRegisteredPaymentVoucherLedger,check(){},async full(){},markFailureStage(stage){failures.push(stage);}
+   readLedger:modules.observeRegisteredPaymentVoucherLedger,check(){options.nativeCheck?.();},async full(){},markFailureStage(stage,cleanup){if(cleanup!==undefined)cleanupDiagnostics.push(cleanup);else failures.push(stage);options.stageReceiver?.(stage,cleanup);}
   })};
 }
 test('fixed competition releases the owner only after independently observing both actual lane identities in the model',async()=>{
@@ -333,4 +333,32 @@ for(const directorWins of [false,true])test('native voucher adapter completes th
 for(const [mode,last]of [['changedCa','voucher-ca'],['foreignTicket','voucher-ticket'],['wrongDownloadedBytes','voucher-download'],['changedLedger','voucher-ledger'],['changedPayment','voucher-after'],['duplicateFiles','voucher-after'],['missingDownloadAudit','voucher-after']])test('native voucher adapter fails closed for '+mode,async()=>{
  const f=model({voucher:true,nativeVoucher:true,[mode]:true});await assert.rejects(f.native(),/CURRENT259_PAYMENT_COMPETITION_FAILED_CLOSED/u);
  assert.equal(f.events.at(-1),last);
+});
+
+for(const failure of ['read','check','size','cancel','release'])test('native voucher stream retains the first '+failure+' failure and independently releases its reader',async()=>{
+ const calls=[],readError=Object.assign(Error('private signed URL/token read failure'),{code:'MODEL_READ_FAILURE'}),cancelError=Error('private cancellation token'),releaseError=Error('private release token');let reads=0,checkFailureReady=false;
+ const reader={async read(){calls.push('read');if(failure==='read')throw readError;if(failure==='check')checkFailureReady=true;if(reads++)return {done:true};return {done:false,value:failure==='size'?Buffer.alloc(100):Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgCF0FAAFYAQDfZmccAAAAAElFTkSuQmCC','base64')};},
+  async cancel(){calls.push('cancel');if(failure!=='release')throw cancelError;},releaseLock(){calls.push('release');if(failure==='release')throw releaseError;}};
+ const f=model({voucher:true,nativeVoucher:true,downloadReader:reader,nativeCheck(){if(checkFailureReady)throw readError;}});let caught;
+ try{await f.native();assert.fail('invalid stream was accepted');}catch(error){caught=error;}
+ if(failure==='read'||failure==='check')assert.equal(caught,readError);else assert.equal(caught.code,'CURRENT259_PAYMENT_COMPETITION_FAILED_CLOSED');
+ assert.deepEqual(calls.slice(-2),['cancel','release']);assert.equal(calls.filter(x=>x==='release').length,1);
+ assert.equal(f.failures.at(-1),'HTTP_DOWNLOAD');
+ assert.deepEqual(f.cleanupDiagnostics,[{cancelFailed:failure!=='release',releaseFailed:failure==='release'}]);
+});
+
+test('native voucher compound failure reaches the runner receipt as fixed cleanup flags without replacing the primary',async()=>{
+ const stages=[],receipt={},record=require('./run-task16-native-competition-follow-up-once.cjs').createNativeTask16VoucherStageRecorder(receipt,stage=>stages.push(stage));
+ const primary=Object.assign(Error('SECRET signed URL token'),{code:'MODEL_READ_PRIMARY'}),secondary=Error('SECRET cleanup URL token');
+ const reader={async read(){throw primary;},async cancel(){throw secondary;},releaseLock(){throw secondary;}};
+ const f=model({voucher:true,nativeVoucher:true,downloadReader:reader,stageReceiver:record});
+ await assert.rejects(f.native(),error=>error===primary);
+ assert.equal(stages.at(-1),'VOUCHER_HTTP_DOWNLOAD');assert.equal(stages.filter(stage=>stage==='VOUCHER_HTTP_DOWNLOAD').length,1);
+ assert.deepEqual(receipt,{voucherDownloadCleanup:{cancelFailed:true,releaseFailed:true}});assert.doesNotMatch(JSON.stringify(receipt),/SECRET|token|URL/u);
+});
+test('native voucher cancellation has only the remaining original HTTP budget and releases a stalled reader',async()=>{
+ const calls=[],primary=Error('primary'),reader={async read(){throw primary;},cancel(){calls.push('cancel');return new Promise(()=>{});},releaseLock(){calls.push('release');}};
+ const f=model({voucher:true,nativeVoucher:true,downloadReader:reader,cleanupTimer(fn,ms){assert.ok(ms>=0&&ms<=5000);calls.push('bounded-timer');queueMicrotask(fn);return 1;},clearCleanupTimer(id){assert.equal(id,1);calls.push('clear');}});
+ await assert.rejects(f.native(),error=>error===primary);assert.deepEqual(calls,['bounded-timer','cancel','clear','release']);
+ assert.deepEqual(f.cleanupDiagnostics,[{cancelFailed:true,releaseFailed:false}]);
 });
