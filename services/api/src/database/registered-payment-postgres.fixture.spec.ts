@@ -267,6 +267,43 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
       }
     });
 
+  it.each(["lost-response", "post-response-guard"] as const)("never retries a cash opening after %s", async mode => {
+    const f = fixture();
+    const contender = fixture();
+    contender.sessions[1]!.pid = 201;
+    const second = { ...contender.context, owner: f.context.owner, observer: f.context.observer,
+      password: "synthetic-distinct-second-credential",
+      proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: "http://127.0.0.1:15434/" } } };
+    const tx = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ bound: true }]), $executeRawUnsafe: jest.fn().mockResolvedValue(0) };
+    Object.assign(f.context.owner, { $transaction: jest.fn(async (run: (client: unknown) => Promise<void>) => run(tx)) });
+    let cashPosts = 0, cashWritten = false;
+    const recordSeedFailure = jest.fn();
+    const fetch = jest.fn(async (target: URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.scopeKey === "public_cash") {
+        cashPosts++; cashWritten = true;
+        if (mode === "lost-response") throw new Error("synthetic response lost after write");
+      }
+      const response = new Response(JSON.stringify(target.pathname === "/auth/login"
+        ? { tokens: { accessToken: target.port === "15433" ? "primary" : "contender" } }
+        : { id: body.scopeKey, sources: body.sources.map((source: { projectId: string }, index: number) =>
+          ({ id: body.scopeKey + index, projectId: source.projectId })) }), { status: 201 });
+      Object.defineProperty(response, "url", { value: target.href });
+      return response;
+    });
+    const primaryLane = { checkLight() {}, fetch: fetch as typeof globalThis.fetch, seedProfile: competition261SeedProfile };
+    const contenderLane = { ...primaryLane, recordSeedFailure, checkLight() {
+      if (cashWritten && mode === "post-response-guard") throw new Error("synthetic guard failure");
+    } };
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgPublicCashFixture(f.context, second, plan, primaryLane, contenderLane))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(cashWritten).toBe(true);
+    expect(cashPosts).toBe(1);
+    expect(recordSeedFailure).toHaveBeenCalledTimes(1);
+    expect(recordSeedFailure.mock.calls[0]![0]).toBe("SEED_OPENING");
+  });
+
   it("accepts three independent resource-bound TLS roles, with a separate read-only observer", async () => {
     const f = fixture();
     await expect(assertRegisteredPgConnectedRoles(f.context)).resolves.toEqual({ database: f.proof.databaseName, ownerPid: 100, runtimePid: 101, observerPid: 102 });
