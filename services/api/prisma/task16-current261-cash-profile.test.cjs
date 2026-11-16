@@ -24,3 +24,9 @@ test('cash runtime close aggregate grants only physically observed four-column r
  assert.ok(row);assert.deepEqual(row.select,['createdAt','projectId','revision','updatedAt']);assert.deepEqual(row.insert,['createdAt','projectId','revision','updatedAt']);assert.deepEqual(row.update,['updatedAt']);assert.deepEqual(row.references,[]);
  assert.equal(result.observer.tables.some(value=>value.table==='ProjectCloseAggregate'),false);
 });
+test('cash close impact lookup reads only the five observed columns',()=>{
+ const result=cash.cashAccessPlan(plan),row=result.runtime.tables.find(value=>value.table==='ProjectCloseImpact');
+ assert.ok(row);assert.deepEqual(row.select,['id','projectId','sourceFingerprint','sourceId','sourceType']);
+ assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);assert.deepEqual(row.references,[]);
+ assert.equal(result.observer.tables.some(value=>value.table==='ProjectCloseImpact'),false);
+});
