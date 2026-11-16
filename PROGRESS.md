@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 凭证撤权隔离结果
+
+准确作者候选 `d4befe41`（与本地集成 `ef4752ff` 同 tree）新独占 native once 自然成功：合成公司付款与凭证前置通过，撤权前两个项目可见、凭证可签票及下载；移除目标项目唯一成员关系后，能力、新票和未过期旧票访问均被拒，另一个项目仍在项目列表可见，所观察资金及文件事实未变。独立只读源码复核确认这些布尔与成功路径断言对应；另一项目的凭证下载未验证，回执未保存逐次 HTTP 状态及可供独立重算的快照。该前置通过真实服务创建虚构付款，不发送付款登记 HTTP POST；`financialAcceptance=false`，不等 #398 整票或生产验收。
+
+ACL/B7 三阶段、受限连接及清理在本轮通过；独核 PG 进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-revoke-d4be/receipt.json) SHA `227f9e273e5a9eb68c8784e67e28274d8d473e35f63ee0c2222aeaa4de714a16`。旧 `acdf2ffa` 的项目列表失败保留，不能倒填其 HTTP 状态。原现金 b047 仍 UNKNOWN，不因本独立场景成功改变。
+
 ## 2026-11-17 接续进展
 
 #382 前沿仍为 #394 和 #398；本地集成 `ae764c82`，未推送，PR #428 已发布头仍为 `2907d95d`、Draft。原现金 b047 付款结果仍为 UNKNOWN，未换键重发。[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-b047/receipt.json)。
