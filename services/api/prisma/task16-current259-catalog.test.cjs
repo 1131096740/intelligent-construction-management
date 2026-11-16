@@ -406,6 +406,32 @@ for(const paymentProfile of [PAYMENT261_RUNTIME_PROFILE,PAYMENT261_COMPETITION_R
   assert.equal(api.loadCurrent259CatalogMaterial(current,other).accessPlan.runtime.tables.some(row=>row.table===table.table),false);
 });
 
+test('gap261 grants only five login/opening INSERT defaults with its own bound matrix',()=>{
+ const current={...source,migrations:currentMigrations},base=api.loadCurrent259CatalogMaterial(current);
+ const gap=api.loadCurrent259CatalogMaterial(current,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE);
+ const inserts=role=>role.tables.flatMap(t=>t.insert.map(c=>[t.table,c]));
+ const original=new Set(inserts(base.accessPlan.runtime).map(JSON.stringify));
+ assert.deepEqual(inserts(gap.accessPlan.runtime).filter(row=>!original.has(JSON.stringify(row))).sort(),[
+  ['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds']].sort());
+ assert.deepEqual(gap.accessPlan.observer,base.accessPlan.observer);
+ assert.equal(gap.accessPlan.runtime.tables.some(row=>row.table==='HistoricalFinancialTakeoverRowMapping'),false);
+ assert.deepEqual(gap.effectiveAccessBinding,{paymentProfile:PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE,insertAdditionCount:5,accessPlanSha256:hash(JSON.stringify(gap.accessPlan))});
+ const r={...request,source:current,identity:{...identity,paymentProfile:PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}};
+ const row=()=>({...observed('before',{...plan,...gap.accessPlan}),ledger:gap.ledger});
+ assert.doesNotThrow(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),r));
+ for(const [table,column]of [['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds']]){
+  const value=row();value.capabilities=value.capabilities.filter(c=>!(c[0]==='jg_task01_runtime'&&c[2]===table&&c[3]===column&&c[4]==='INSERT'));
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ for(const [table,column]of [['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']]){
+  const value=row();value.capabilities=sort([...value.capabilities,['jg_task01_runtime','column',table,column,'INSERT',false]]);
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ const grantable=row();grantable.capabilities.find(c=>c[0]==='jg_task01_runtime'&&c[2]==='AuditLog'&&c[3]==='createdAt'&&c[4]==='INSERT')[5]=true;
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(grantable),r));
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),{...r,identity:{...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE}}));
+});
+
 const normal261InsertAdditions=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
  ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
  ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];
@@ -433,7 +459,7 @@ test('normal261 explicit payment mode supplies exactly the nine source-required 
  assert.deepEqual(payment.effectiveAccessBinding,{paymentProfile:PAYMENT261_RUNTIME_PROFILE,insertAdditionCount:9,
   accessPlanSha256:hash(JSON.stringify(payment.accessPlan))});
  assert.equal(Object.isFrozen(payment.effectiveAccessBinding),true);
- for(const other of [undefined,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE]){
+ for(const other of [undefined,PAYMENT261_VOUCHER_RUNTIME_PROFILE]){
   const actual=api.loadCurrent259CatalogMaterial(current,other);
   assert.deepEqual(actual.accessPlan,base.accessPlan);assert.equal(actual.effectiveAccessBinding,undefined);
  }

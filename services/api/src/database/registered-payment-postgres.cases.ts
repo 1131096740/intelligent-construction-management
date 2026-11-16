@@ -399,8 +399,14 @@ export async function runRegisteredProjectAttributionGap(context: RegisteredPgEx
   const ownerAfter = await observeOwner(fixture, identity.ownerPid, checked);
   continuity.markAttributionGapStage?.("FINANCIAL_COMPARISON");
   check(isDeepStrictEqual(before, after) && isDeepStrictEqual(ownerBefore, ownerAfter), "PG_CASE_ATTRIBUTION_GAP_LEDGER_CHANGED");
+  const accountingEvidence=Object.freeze({origin:"INDEPENDENT_OBSERVER_AND_OWNER_REPEATABLE_READ" as const,currency:"CNY" as const,
+    before:projectCompetitionAccounting("BEFORE",before),after:projectCompetitionAccounting("AFTER",after),
+    // Both retained owner reads require these exact source amounts and no
+    // source/registration revision, movement, allocation or relationship write.
+    sourceAllocation:Object.freeze({basis:"EXACT_OWNER_SOURCE_PREDICATES" as const,balanceCents:"800",projectCents:"500",gapCents:"300"}),
+    ownerUnchanged:true as const,originalKeyAbsent:true as const});
   return { caseId: "registered.project-attribution-gap", database: identity.database, observerPid: identity.observerPid,
-    passed: true as const, registrationStatus: response.status, projectAmountCents: "500", gapAmountCents: "300", originalResultUnconfirmed: true as const };
+    passed: true as const, registrationStatus: response.status, projectAmountCents: "500", gapAmountCents: "300", originalResultUnconfirmed: true as const,accountingEvidence };
 }
 
 async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,

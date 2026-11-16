@@ -439,5 +439,30 @@
       "targetKind",
       "targetRef"
     ]
+  },
+  "gap261RuntimeInsertAdditions": {
+    "paymentProfile": "TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1",
+    "columns": [
+      [
+        "AuditLog",
+        "createdAt"
+      ],
+      [
+        "RefreshToken",
+        "createdAt"
+      ],
+      [
+        "RegisteredFundAccount",
+        "createdAt"
+      ],
+      [
+        "FundAccountBalanceRegistration",
+        "createdAt"
+      ],
+      [
+        "FundAccountBalanceRegistration",
+        "coveredExecutionIds"
+      ]
+    ]
   }
 }
