@@ -2,13 +2,30 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import PizZip from "pizzip";
+import { DOMParser } from "@xmldom/xmldom";
 import { renderContractBody, REVIEWED_MATERIAL_TYPOGRAPHY_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V2_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V3_VERSION } from "./contract-body-document";
 import { canonicalOfficialQualificationDocx, createOfficialQualificationSample } from "./task12-official-qualification-sample";
+
+function expectFictionalMetadata(docx:Buffer) {
+  const zip=new PizZip(docx),parser=new DOMParser();
+  const core=parser.parseFromString(zip.file("docProps/core.xml")!.asText(),"application/xml");
+  const app=parser.parseFromString(zip.file("docProps/app.xml")!.asText(),"application/xml");
+  expect(core.documentElement?.textContent==="虚构资格样张虚构资格样张虚构资格样张").toBe(true);
+  expect(app.documentElement?.textContent==="资格样张").toBe(true);
+  expect(Object.values(zip.files).filter(entry=>!entry.dir&&entry.name.startsWith("docProps/")).map(entry=>entry.name).sort()).toEqual(["docProps/app.xml","docProps/core.xml"]);
+  const settings=parser.parseFromString(zip.file("word/settings.xml")!.asText(),"application/xml");
+  expect(settings.getElementsByTagName("w:docVar").length).toBe(0);
+}
 
 describe("fixed fictitious source-only material document qualification sample",()=>{
   it("binds the final DOCX to the renderer scope and preserves literal party, money and spacing requirements",async()=>{
     const source=await readFile(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx"));
     const sample=createOfficialQualificationSample(source);
+    for (const docx of [sample.docx,sample.officeDocx]) {
+      const zip=new PizZip(docx),body=zip.file("word/document.xml")!.asText();
+      for (const name of ["虚构甲方公司","虚构乙方公司"]) expect(body.split(name)).toHaveLength(3);
+      expectFictionalMetadata(docx);
+    }
     if (!sample.scope) throw new Error("material scope required");
     expect(sample.scope.docxSha256).toBe(createHash("sha256").update(sample.docx).digest("hex"));
     expect(sample.scope.sourceSha256).toBe("44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd");
@@ -42,6 +59,9 @@ describe("fixed mechanical official qualification sample",()=>{
     const source=await readFile(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
     const sample=createOfficialQualificationSample(source);
     expect(sample.scope).toBeNull();
+    for(const docx of [sample.docx,sample.officeDocx]) {
+      expectFictionalMetadata(docx);
+    }
     const xml=new PizZip(sample.docx).file("word/document.xml")!.asText();
     for(const text of ["隔离工具资格机械合同","虚构甲方公司","虚构乙方公司","资格样张设备","壹佰壹拾叁元整"]) expect(xml).toContain(text);
     expect(sample.expectations).not.toHaveProperty("mainBodyLinePoints");
@@ -53,10 +73,10 @@ it("restores mechanical PAGE/NUMPAGES fields while preserving unrelated package 
   const source=await readFile(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
   const sample=createOfficialQualificationSample(source),zip=new PizZip(sample.docx);
   // Independent reviewed baseline, excluding the deliberately changed document body.
-  const rows=Object.values(zip.files).filter(entry=>!entry.dir&&!entry.name.startsWith("word/footer")&&entry.name!=="word/document.xml").sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)
+  const rows=Object.values(zip.files).filter(entry=>!entry.dir&&!entry.name.startsWith("docProps/")&&!entry.name.startsWith("word/footer")&&entry.name!=="word/document.xml"&&entry.name!=="word/settings.xml").sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)
     .map(entry=>[entry.name,createHash("sha256").update(entry.asNodeBuffer()).digest("hex")]);
-  expect(rows).toHaveLength(11);
-  expect(createHash("sha256").update(JSON.stringify(rows)).digest("hex")).toBe("7bc14d42a5331caa3543dda34d015113025fa80695ce39c8034ba863bb24ca4c");
+  expect(rows).toHaveLength(8);
+  expect(createHash("sha256").update(JSON.stringify(rows)).digest("hex")).toBe("7f188a030c5eb89a21336b85ca9a3460f7375e440a3a5850fcbb76d3f483f678");
   const footer=zip.file("word/footer1.xml")!.asText();
   expect(footer.match(/w:instr="PAGE"/gu)).toHaveLength(1);
   expect(footer.match(/w:instr="NUMPAGES"/gu)).toHaveLength(1);

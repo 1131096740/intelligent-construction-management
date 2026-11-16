@@ -311,8 +311,8 @@ describe("ContractDocumentService", () => {
     );
   });
 
-  it("freezes the party-placement version for a newly queued legacy mechanical document", async () => {
-    const mechanical=readFileSync(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
+  it.each(["equipment-rental-real-v1.docx","material-purchase-real-v1.docx"])("freezes the party-placement version for a newly queued legacy %s document", async (filename) => {
+    const mechanical=readFileSync(join(__dirname,"../../assets/templates",filename));
     const sourcePositions=readLayoutSourcePositions(mechanical);
     const bindings=sourcePositions.positions.flatMap(position=>[
       ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],

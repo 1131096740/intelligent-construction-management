@@ -823,13 +823,17 @@ export function upgradeReviewedLaborTaxPlan(value: unknown, source: Buffer, mapp
  * They never become user text or exported metadata; original formatting stays in place.
  */
 export const BUILT_IN_PARTY_PLACEMENT_VERSION = "built-in-party-placement-v1";
-export function assertMechanicalPartyPlacementPlan(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
+export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|undefined {
+  return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":undefined;
+}
+export function assertBuiltInPartyPlacementPlan(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
   if(rawPlan===undefined) return;
   const model=sourceParagraphs(source,mapped);
-  if(model.sourceSha256!==REVIEWED_MECHANICAL_SOURCE_SHA256) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  const kind=builtInPartyPlacementKind(model.sourceSha256);
+  if(!kind) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
   const plan=normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
   const roleIds=new Set([model.paragraphs[28].id,model.paragraphs[29].id]);
-  const protectedIds=new Set([...roleIds,...model.paragraphs.slice(93,109).map(item=>item.id)]);
+  const protectedIds=new Set([...roleIds,...(kind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[])]);
   if(plan.edits.some(edit=>protectedIds.has(edit.positionId))||plan.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan.deletedPositionIds?.some(id=>roleIds.has(id))) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
 }
 export function renderContractBody(source: Buffer, mapped: Buffer, input: ContractDocumentRenderInput, requiredKeys: readonly string[], layoutTemplateVersionId: string, rawPlan?: unknown, options: { allowBlankWatermark?: boolean; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION; partyDetailsConflictPreview?: boolean } = {}) {
@@ -871,9 +875,10 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   if (hasPageValue) assertReviewedOriginalMechanicalPageSource(source);
   const model = sourceParagraphs(source, mapped, binding);
   const placement=options.partyDetailsVersion;
-  if(placement!==undefined&&(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION||model.sourceSha256!==REVIEWED_MECHANICAL_SOURCE_SHA256)) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  const placementKind=builtInPartyPlacementKind(model.sourceSha256);
+  if(placement!==undefined&&(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION||!placementKind)) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
   const roleIds=new Set(placement?[model.paragraphs[28].id,model.paragraphs[29].id]:[]);
-  const removedPartyIds=new Set(placement?model.paragraphs.slice(93,109).map(item=>item.id):[]);
+  const removedPartyIds=new Set(placement&&placementKind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[]);
   if (hasPageValue) prepareReviewedOriginalMechanicalPage(model.zip);
   if (hasDateValue) {
     // Only the two source-qualified, truly empty party-cell paragraphs. Insert
