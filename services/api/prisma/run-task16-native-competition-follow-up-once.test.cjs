@@ -129,3 +129,66 @@ for(const [name,change]of [['root erroneously repeated',e=>{e.after.rootCount=2;
  const api=require('./run-task16-native-competition-follow-up-once.cjs'),root=fs.mkdtempSync('/private/tmp/jg-comp-artifact-');fs.chmodSync(root,0o700);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const evidence=accounting();change(evidence);
  assert.throws(()=>api.writeNativeTask16CompetitionAccounting(root,'a'.repeat(40),randomUUID(),JSON.stringify(evidence)));assert.deepEqual(fs.readdirSync(root),[]);
 });
+
+test('native closed case selector admits only original competition and fixed single-runtime attribution gap',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const gap=api.nativeTask16CaseSelection('TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1');
+ assert.deepEqual(gap,{purpose:'TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1',caseId:'registered.project-attribution-gap',paymentProfile:'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1',competition:false,runtimeLimit:1,insertAdditionCount:5});
+ assert.equal(Object.isFrozen(gap),true);
+ assert.deepEqual(api.nativeTask16CaseSelection('TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1'),{purpose:'TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',caseId:'registered.two-actor.payment-competition-follow-up',paymentProfile:'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:9});
+ for(const value of ['normal','response-loss','cancel-commit','disconnect','idle',undefined,{purpose:gap.purpose}])assert.throws(()=>api.nativeTask16CaseSelection(value));
+});
+
+function gapAccountingModel(){
+ const phase=phase=>({phase,balanceAYuan4:'100.0000',balanceBYuan4:'8.0000',paidAmountCents:'0',settlementPaidAmountCents:'0',executionCount:0,rootCount:0,fundingCount:0,allocationCount:0,eventCount:0,auditCount:0,projectFactCount:0,projectImpactCount:0});
+ return {origin:'INDEPENDENT_OBSERVER_AND_OWNER_REPEATABLE_READ',currency:'CNY',before:phase('BEFORE'),after:phase('AFTER'),sourceAllocation:{basis:'EXACT_OWNER_SOURCE_PREDICATES',balanceCents:'800',projectCents:'500',gapCents:'300'},ownerUnchanged:true,originalKeyAbsent:true};
+}
+test('fixed gap accounting publishes only original no-write evidence bound to source run and gap purpose',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),p=planModel(t),evidence=gapAccountingModel();
+ const result=api.writeNativeTask16GapAccounting(p.runRoot,'a'.repeat(40),p.runId,JSON.stringify(evidence));
+ const decoded=JSON.parse(fs.readFileSync(result.file));
+ assert.deepEqual(decoded,{schemaVersion:1,purpose:'TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1',candidateSha:'a'.repeat(40),runId:p.runId,caseId:'registered.project-attribution-gap',accountingEvidence:evidence});
+ assert.equal(result.bytes,fs.statSync(result.file).size);assert.ok(result.bytes<=8192);
+ assert.throws(()=>api.writeNativeTask16GapAccounting(p.runRoot,'a'.repeat(40),p.runId,JSON.stringify(evidence)));
+});
+
+for(const mutation of ['paid','execution','root','event','audit','project-fact','balance','source-gap','owner-changed','key-seen','extra'])test('gap accounting rejects '+mutation+' before publishing evidence',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),p=planModel(t),e=gapAccountingModel();
+ if(mutation==='paid')e.after.paidAmountCents='800';else if(mutation==='execution')e.after.executionCount=1;
+ else if(mutation==='root')e.after.rootCount=1;else if(mutation==='event')e.after.eventCount=1;
+ else if(mutation==='audit')e.after.auditCount=1;else if(mutation==='project-fact')e.after.projectFactCount=1;
+ else if(mutation==='balance')e.after.balanceBYuan4='0.0000';else if(mutation==='source-gap')e.sourceAllocation.gapCents='0';
+ else if(mutation==='owner-changed')e.ownerUnchanged=false;else if(mutation==='key-seen')e.originalKeyAbsent=false;else e.executionId=randomUUID();
+ assert.throws(()=>api.writeNativeTask16GapAccounting(p.runRoot,'a'.repeat(40),p.runId,JSON.stringify(e)));
+ assert.deepEqual(fs.readdirSync(p.runRoot),[]);
+});
+for(const gap of [true,false])test('native original and gap launch purposes cannot consume each other '+gap,t=>{
+ const p=planModel(t);if(gap)p.purpose='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1';
+ const target=path.join(p.runRoot,'plan.json'),bytes=JSON.stringify(p)+'\n';fs.writeFileSync(target,bytes,{mode:0o600});
+ const result=spawnSync(process.execPath,[path.join(__dirname,'run-task16-native-competition-follow-up-once.cjs'),gap?'--once':'--once-gap','--plan',target,'--expected-plan-sha256',require('node:crypto').createHash('sha256').update(bytes).digest('hex')],{encoding:'utf8',env:{PATH:path.dirname(process.execPath)},timeout:10000,maxBuffer:8192});
+ assert.equal(result.status,1);assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_CASE_PURPOSE'});assert.equal(result.stderr,'');assert.deepEqual(fs.readdirSync(p.runRoot),['plan.json']);
+});
+test('gap interface qualification loads only original seed/case and one-lane protocols without clients',()=>{
+ const rows=require('./run-task16-native-competition-follow-up-once.cjs').resolveNativeTask16Interfaces('TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1');
+ const names=rows.flatMap(row=>row.exports.map(e=>e.name));
+ for(const name of ['seedRegisteredPgAttributionGapFixture','runRegisteredProjectAttributionGap','assertRegisteredPgConnectedRoles','renderNativeTask16GapSeven','parseNativeTask16GapSeven','renderNativeTask16RoleInstall','renderCurrent259RuntimeAcl'])assert.ok(names.includes(name),name);
+ for(const name of ['seedRegisteredPgCompetitionFollowUpFixture','runRegisteredTwoActorPaymentCompetitionFollowUp','assertRegisteredPgCompetitionRoles','renderNativeTask16CompetitionMonitor','renderNativeTask16CompetitionRoleInstall'])assert.equal(names.includes(name),false,name);
+});
+
+test('native gap ACL binds the original single-lane matrix, five defaults and actual native endpoint',()=>{
+ const donor=path.join(__dirname,'task16-current259-runtime-acl.test.cjs');
+ const f=new Function('require','__dirname',fs.readFileSync(donor,'utf8')+'\nreturn {material,receipt};')(name=>name==='node:test'?{test:()=>{}}:require(name),__dirname);
+ const H=bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:H(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const source={candidateSha:f.material.candidateSha,sourceSealSha256:f.material.sealSha256,profile:require('./task16-current259-profile.cjs').qualifyCurrent259Source({...f.material,migrations})};
+ const provisioned={...f.receipt(),commitXid:'1234',paymentProfile:'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1'};
+ provisioned.roles=provisioned.roles.map(role=>({...role,limit:1}));
+ provisioned.databaseIdentity={...provisioned.databaseIdentity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:55432};
+ const rendered=require('./run-task16-native-competition-follow-up-once.cjs').renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned}),'d'.repeat(64));
+ assert.match(rendered.sql,/inet_server_port\(\) IS DISTINCT FROM 55432/u);assert.doesNotMatch(rendered.sql,/inet_server_port\(\) IS DISTINCT FROM 5432/u);
+ assert.match(rendered.sql,/GRANT INSERT \("action", "actorUserId", "businessId", "businessType", "createdAt", "id", "metadata"\) ON TABLE public\."AuditLog"/u);
+ assert.doesNotMatch(rendered.sql,/^GRANT SELECT [^\n]+HistoricalFinancialTakeoverRowMapping/mu);
+ assert.equal(rendered.writeSql,rendered.sql+'\n'+rendered.publicSql);
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ for(const patch of [{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}, {roles:provisioned.roles.map(role=>({...role,limit:role.name==='jg_task01_runtime'?2:1}))}, {databaseIdentity:{...provisioned.databaseIdentity,serverPort:5432}}])assert.throws(()=>api.renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned:{...provisioned,...patch}}),'d'.repeat(64)));
+});

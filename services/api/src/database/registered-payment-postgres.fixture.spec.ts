@@ -326,7 +326,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 });
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
-  it.each(["normal-null-balance-after-guard", "normal-negative-spent-after-guard", "normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
+  it.each(["attribution-gap", "attribution-gap-owner-drift", "attribution-gap-ledger-drift", "attribution-gap-accepted", "attribution-gap-source-mismatch", "attribution-gap-recorded-key", "normal-null-balance-after-guard", "normal-negative-spent-after-guard", "normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
       "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
       "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
       "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
@@ -344,6 +344,7 @@ describe("registered PG original case: explicit observer projection protocol (no
     const { ids } = plan;
     const prepared = { plan, accessToken: "synthetic-only", companyARegistrationId: "registration-a", companyBRegistrationId: "registration-b", companyBSourceId: "source-b" };
     const competition = scenario.startsWith("competition");
+    const gap = scenario.startsWith("attribution-gap"), otherProjectId=randomUUID();
     const disconnect = scenario.startsWith("disconnect");
     const equivalentOrigin = scenario === "disconnect-equivalent-origin" || scenario === "disconnect-ip-alias";
     const followUp = scenario.startsWith("competition-follow-up");
@@ -367,8 +368,8 @@ describe("registered PG original case: explicit observer projection protocol (no
         $queryRawUnsafe: async (sql: string, ...values: unknown[]) => {
           expect(readOnly).toBe(true);
           expect(sql).toContain('s."status"');
-          const cancellation = scenario.startsWith("cancel-");
-          expect(values).toEqual([ids.settlement, ids.payment, ...(cancellation ? [ids.requestKey] : [])]);
+          const cancellation = scenario.startsWith("cancel-") || gap;
+          expect(values).toEqual([ids.settlement, ids.payment, ...(cancellation ? [ids.requestKey] : []), ...(gap ? ["registration-b",ids.project,otherProjectId,"source-b","source-other"] : [])]);
           if (cancellation) expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM public."PaymentExecution" e WHERE e."idempotencyKey"=$3)');
           ownerReads++;
           if (submittedCancellation && scenario === "cancel-orphan-key") return [];
@@ -379,7 +380,7 @@ describe("registered PG original case: explicit observer projection protocol (no
             loginRole: f.proof.ownerRole, ownerOid: "10", pid: after("cancel-owner-pid") ? 999 : 100,
             startedAt: after("cancel-owner-start") ? "2026-11-07T00:00:00.000002Z" : "2026-11-07T00:00:00.000001Z",
             tls: true, readOnly: "on", isolation: "repeatable read",
-            settlementStatus: after("cancel-settlement-status") ? "paid" : "approved",
+            settlementStatus: after("cancel-settlement-status") || (gap && posts>0 && scenario==="attribution-gap-owner-drift") ? "paid" : "approved",
             settlementUpdatedAt: after("cancel-settlement-updated-at") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z",
             requestUpdatedAt: after("cancel-request-updated-at") || after("disconnect-ledger-drift") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z"
           }];
@@ -402,7 +403,7 @@ describe("registered PG original case: explicit observer projection protocol (no
     function rows(model: string, where: Record<string, unknown>) {
       if (model === "paymentRequest") return [{ approvedAmountCents: total, paidAmountCents: completed ? total : recorded ? paid : 0n, status: completed ? "paid" : recorded ? "partially_paid" : "approved_pending_payment" }];
       if (model === "settlement") return [{ payableAmountCents: total, paidAmountCents: completed ? total : recorded ? paid : 0n }];
-      if (model === "fundAccountBalanceRegistration") return [{ accountId: where.id === "registration-a" ? "account-a" : "account-b", balanceYuan: new Prisma.Decimal("100"), coveredExecutionIds: [] }];
+      if (model === "fundAccountBalanceRegistration") return [{ accountId: where.id === "registration-a" ? "account-a" : "account-b", balanceYuan: new Prisma.Decimal(gap && where.id === "registration-b" ? "8" : "100"), coveredExecutionIds: [] }];
       if (model === "operatingImpactEntry" && orphanImpact && where.sourceBusinessId === undefined) return [{ id: "orphan-impact" }];
       if (!recorded) return [];
       if (completed) {
@@ -464,6 +465,13 @@ describe("registered PG original case: explicit observer projection protocol (no
         Object.defineProperty(response, "url", { value: String(input) });
         return response;
       };
+      if (gap) {
+        if(route===`/fund-accounts/company:${ids.companyB}`)return respond(200,{scopeKey:`company:${ids.companyB}`,balanceYuan:"8.0000",currentRegistrationId:"registration-b",projectBalances:[{projectId:ids.project,projectStatus:"project",amountYuan:"5.0000"},{projectId:otherProjectId,projectStatus:"project",amountYuan:scenario==="attribution-gap-source-mismatch"?"4.0000":"3.0000"}]});
+        if(route.endsWith("/registration-options"))return respond(200,{paymentId:ids.payment,projectId:ids.project,expectedPaymentUpdatedAt:"2026-11-07T00:00:00.000Z",remainingAmountCents:"10000",accounts:[{scopeKey:`company:${ids.companyB}`,eligible:true,currentRegistrationId:"registration-b"}]});
+        if(init?.method==="POST"){posts++;orphanImpact=scenario==="attribution-gap-ledger-drift";return respond(scenario==="attribution-gap-accepted"?201:409,{message:"所选来源的项目归属不足，差额须先由业务确认，不能自动形成垫资到账"});}
+        if(route===`/payment-executions/results/${ids.requestKey}`)return respond(200,scenario==="attribution-gap-recorded-key"?{status:"recorded",execution:{executionId:"unexpected"}}:{status:"unconfirmed"});
+        throw new Error("Unexpected fixed attribution-gap route");
+      }
       if (competition) {
         const laneB = new URL(String(input)).port === "15434";
         const token = laneB ? contender.accessToken : prepared.accessToken;
@@ -553,6 +561,23 @@ describe("registered PG original case: explicit observer projection protocol (no
           return { response, body };
         } } : {})
       };
+      if(gap){
+        const run=registeredCases.runRegisteredProjectAttributionGap(f.context,{...prepared,attributionGap:{otherProjectId,otherSourceId:"source-other"}},continuity);
+        if(scenario!=="attribution-gap"){
+          const expected=scenario==="attribution-gap-accepted"?"PG_CASE_ATTRIBUTION_GAP_EXPECTED_CONFLICT":scenario==="attribution-gap-source-mismatch"?"PG_CASE_ATTRIBUTION_GAP_PUBLIC_BALANCES":scenario==="attribution-gap-recorded-key"?"PG_CASE_ATTRIBUTION_GAP_ORIGINAL_RESULT":"PG_CASE_ATTRIBUTION_GAP_LEDGER_CHANGED";
+          await expect(run).rejects.toThrow(expected);expect(posts).toBe(scenario==="attribution-gap-source-mismatch"?0:1);return;
+        }
+        const result=await run;
+        expect(result).toMatchObject({caseId:"registered.project-attribution-gap",passed:true,registrationStatus:409,originalResultUnconfirmed:true,
+          accountingEvidence:{origin:"INDEPENDENT_OBSERVER_AND_OWNER_REPEATABLE_READ",currency:"CNY",
+            before:{phase:"BEFORE",balanceAYuan4:"100.0000",balanceBYuan4:"8.0000",paidAmountCents:"0",settlementPaidAmountCents:"0",executionCount:0,rootCount:0,fundingCount:0,allocationCount:0,eventCount:0,auditCount:0,projectFactCount:0,projectImpactCount:0},
+            after:{phase:"AFTER",balanceAYuan4:"100.0000",balanceBYuan4:"8.0000",paidAmountCents:"0",settlementPaidAmountCents:"0",executionCount:0,rootCount:0,fundingCount:0,allocationCount:0,eventCount:0,auditCount:0,projectFactCount:0,projectImpactCount:0},
+            sourceAllocation:{basis:"EXACT_OWNER_SOURCE_PREDICATES",balanceCents:"800",projectCents:"500",gapCents:"300"},ownerUnchanged:true,originalKeyAbsent:true}});
+        expect(ownerReads).toBe(2);expect(posts).toBe(1);expect(fetch).toHaveBeenCalledTimes(4);
+        const evidence=(result as unknown as {accountingEvidence:object}).accountingEvidence;
+        expect(Object.isFrozen(evidence)).toBe(true);expect(Buffer.byteLength(JSON.stringify(evidence))).toBeLessThan(8192);
+        return;
+      }
       if (disconnect) {
         const fault = async (submit: () => Promise<void>) => {
           await submit();

@@ -5,10 +5,10 @@ const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
 const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
 const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
-const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
+const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='e21dbe6d5ad45f243fe86b680fd6e853b8d09e857ef5606d14f56d0f2b9b3bc8';
+const MANIFEST_SHA='59e2778f9d6832c4232e1f7dd86a025478b82111a3ca45b332d6e1793d41bb17';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -87,6 +87,16 @@ function material(source,paymentProfile){
   plan.runtime.tables.push({table:discovery.table,select:discovery.select,insert:[],update:[]});
   plan.runtime.tables.sort((a,b)=>a.table<b.table?-1:a.table>b.table?1:0);
   effectiveAccessBinding={paymentProfile,insertAdditionCount:required.length,accessPlanSha256:hash(JSON.stringify({runtime:plan.runtime,observer:plan.observer}))};
+ }
+ if(paymentProfile===PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE){
+  const columns=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
+   ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds']];
+  need(equal(manifest.gap261RuntimeInsertAdditions,{paymentProfile,columns}));
+  for(const [table,column]of columns){
+   const rows=plan.runtime.tables.filter(row=>row.table===table);need(rows.length===1&&rows[0].insert.length>0&&!rows[0].insert.includes(column));
+   rows[0].insert=[...rows[0].insert,column].sort();
+  }
+  effectiveAccessBinding={paymentProfile,insertAdditionCount:columns.length,accessPlanSha256:hash(JSON.stringify({runtime:plan.runtime,observer:plan.observer}))};
  }
  return{p,manifest,files,sql,plan,effectiveAccessBinding};
 }

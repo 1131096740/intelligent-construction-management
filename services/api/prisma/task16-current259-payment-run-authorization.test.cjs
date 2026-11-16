@@ -1051,11 +1051,20 @@ test('261 attribution gap uses only its one-lane authority and one original 409 
  assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
  assert.deepEqual(run.state.calls,['start-attribution-gap','technical259','payment261-gap-roles','seven','acl','b7','live','env','app','case','app-close','env-close','pools-close']);
  const receipt=JSON.parse(fs.readFileSync(path.join(run.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.effectiveAccessBinding.paymentProfile,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE);assert.equal(receipt.effectiveAccessBinding.insertAdditionCount,5);assert.match(receipt.effectiveAccessBinding.accessPlanSha256,/^[a-f0-9]{64}$/u);
  assert.equal(receipt.scope.paymentProfile,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE);
  assert.equal(receipt.b7Binding.identity.paymentProfile,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE);
  assert.equal(receipt.business.attributionGapEvidence.registrationStatus,409);
  assert.equal(receipt.business.attributionGapEvidence.originalResultUnconfirmed,true);
  assert.equal(receipt.financialAcceptance,false);
+});
+
+for(const mode of ['missing','hash','profile','count'])test('gap261 issuer rejects '+mode+' application binding before case entry',async t=>{
+ const f=attributionGapFixture(t,{attributionGap261:true,applicationBinding(binding){return mode==='missing'?undefined:{...binding,
+  ...(mode==='hash'?{accessPlanSha256:'0'.repeat(64)}:mode==='profile'?{paymentProfile:PAYMENT261_RUNTIME_PROFILE}:{insertAdditionCount:9})};}});
+ const result=await f.done;
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_APPLICATION',JSON.stringify(result));
+ assert.equal(f.state.calls.includes('case'),false);assert.equal(f.state.calls.includes('app-close'),true);assert.equal(f.state.calls.includes('pools-close'),true);
 });
 
 test('261 voucher and attribution gap reject other launch, role and B7 authority',async t=>{
