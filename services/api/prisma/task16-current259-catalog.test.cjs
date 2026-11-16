@@ -447,6 +447,8 @@ test('voucher261 binds the combined voucher matrix and only eleven SDK default I
  assert.deepEqual(voucher.accessPlan.runtime.tables.find(row=>row.table==='ProjectRosterMember'),{table:'ProjectRosterMember',select:['id','projectId','userId'],insert:[],update:[],references:[]});
  assert.deepEqual(voucher.accessPlan.runtime.tables.find(row=>row.table==='ContractArchiveEvidenceFile'),{table:'ContractArchiveEvidenceFile',select:['archiveFileId','contentSha256','contractVersionId','createdAt','displayOrder','fileId','id','mimeType','sizeBytes'],insert:[],update:[],references:[]});
  assert.deepEqual(historical.runtime.tables.find(row=>row.table==='ContractArchiveEvidenceFile').select,['archiveFileId','contractVersionId','fileId']);
+ assert.deepEqual(voucher.accessPlan.runtime.tables.find(row=>row.table==='WageApprovedSourceVersion'),{table:'WageApprovedSourceVersion',select:['evidenceFileId','id'],insert:[],update:[],references:[]});
+ assert.deepEqual(historical.runtime.tables.find(row=>row.table==='WageApprovedSourceVersion').select,['evidenceFileId']);
  assert.equal(historical.runtime.tables.some(row=>row.table==='ProjectRosterMember'),false);
 
  assert.deepEqual(voucher.accessPlan.observer,historical.observer);

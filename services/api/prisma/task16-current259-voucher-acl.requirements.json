@@ -537,6 +537,9 @@
       "id",
       "projectId",
       "userId"
+    ],
+    "WageApprovedSourceVersion": [
+      "id"
     ]
   }
 }
