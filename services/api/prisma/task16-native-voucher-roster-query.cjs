@@ -1,6 +1,7 @@
 'use strict';
 const {types}=require('node:util');
 const rosterColumns=Object.freeze(['id','projectId','userId','createdAt']);
+const wageColumns=Object.freeze(['id','evidenceFileId']);
 const archiveColumns=Object.freeze(['id','archiveFileId','contractVersionId','fileId','displayOrder','mimeType','sizeBytes','contentSha256','createdAt']);
 const stages=new Set(['LEDGER_BEFORE','OWNER_BEFORE','MULTIPART_UPLOAD','ATTACH','REPEAT_UPLOAD','REPEAT_ATTACH','AUTHORIZED_TICKET','HTTP_DOWNLOAD','ORIGINAL_RESULT','RECORDED_ITEMS','OWNER_AFTER','STORAGE_BYTES','LEDGER_AFTER'].map(x=>'VOUCHER_'+x));
 const lanes=new Set(['runtime_a','runtime_b']);
@@ -34,14 +35,15 @@ function relationEnd(tokens,start,relation){
 }
 function targetRelation(tokens){
  for(let i=0;i<tokens.length;i++)if(['FROM','JOIN','UPDATE','INTO','TRUNCATE','TABLE'].some(k=>word(tokens[i],k))){
+  if(relationEnd(tokens,i+1,'WageApprovedSourceVersion'))return 'WageApprovedSourceVersion';
   if(relationEnd(tokens,i+1,'ProjectRosterMember'))return 'ProjectRosterMember';
   if(relationEnd(tokens,i+1,'ContractArchiveEvidenceFile'))return 'ContractArchiveEvidenceFile';
  }
 }
-// Only roster findMany(where:userId) and archive discovery findFirst(where:fileId) are in scope.
+// Only roster, archive discovery, and download-time wage evidence lookups are in scope.
 // Aliases, COUNT, joins, nested queries and other syntax remain UNKNOWN.
 function classify(tokens,relation){
- const archive=relation==='ContractArchiveEvidenceFile',columns=archive?archiveColumns:rosterColumns;
+ const archive=relation==='ContractArchiveEvidenceFile',wage=relation==='WageApprovedSourceVersion',columns=archive?archiveColumns:wage?wageColumns:rosterColumns;
  let p=0;const found=new Set(),bad=()=>{throw new Error('UNKNOWN');};
  const take=kind=>{if(tokens[p]?.kind!==kind)bad();p++;};
  const keyword=k=>{if(!word(tokens[p],k))bad();p++;};
@@ -52,12 +54,13 @@ function classify(tokens,relation){
   const t=tokens[p];if(t?.kind!=='quoted'||!columns.includes(t.value))bad();found.add(t.value);p++;
  };
  keyword('SELECT');ref();while(tokens[p]?.kind===','){p++;ref();}
+ if(wage&&(found.size!==1||!found.has('id')))bad();
  keyword('FROM');publicName();tableName();keyword('WHERE');
  const parenthesized=tokens[p]?.kind==='(';if(parenthesized)p++;
- ref();if(tokens[p-1].value!==(archive?'fileId':'userId'))bad();
+ ref();if(tokens[p-1].value!==(archive?'fileId':wage?'evidenceFileId':'userId'))bad();
  if(tokens[p]?.kind!=='op'||tokens[p]?.value!=='=')bad();p++;take('parameter');
  if(parenthesized)take(')');
- if(archive){keyword('LIMIT');take('parameter');}
+ if(archive||wage){keyword('LIMIT');take('parameter');}
  if(word(tokens[p],'OFFSET')){p++;take('parameter');}
  if(tokens[p]?.kind===';')p++;if(p!==tokens.length)bad();
  return {operation:'SELECT',columns:columns.filter(c=>found.has(c))};
@@ -66,7 +69,7 @@ function projectNativeTask16RosterQuery(event,lane,stage){
  if(!lanes.has(lane)||!stages.has(stage)||!event||typeof event!=='object'||types.isProxy(event))return null;
  const d=Object.getOwnPropertyDescriptor(event,'query');
  if(!d||!Object.hasOwn(d,'value')||typeof d.value!=='string'||Buffer.byteLength(d.value)>32768)return null;
- const {tokens,unsafe}=tokenize(d.value),relation=targetRelation(tokens);if(!relation)return null;
+ const {tokens,unsafe}=tokenize(d.value),relation=targetRelation(tokens);if(!relation||(relation==='WageApprovedSourceVersion'&&stage!=='VOUCHER_HTTP_DOWNLOAD'))return null;
  let shape={operation:'UNKNOWN',columns:[],unknownShape:true};
  try{if(!unsafe)shape={...classify(tokens,relation),unknownShape:false};}catch{/* Unknown query shapes never justify extra authority. */}
  return Object.freeze({lane,stage,relation,...shape,columns:Object.freeze(shape.columns)});

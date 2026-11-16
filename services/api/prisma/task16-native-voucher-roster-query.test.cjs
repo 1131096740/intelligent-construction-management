@@ -113,3 +113,24 @@ test('both fixed relations share the same twelve-event cap and never read SDK pa
 test('archive quoted text cannot impersonate the second fixed relation',()=>{
  for(const query of ['SELECT \'FROM "ContractArchiveEvidenceFile"\' FROM "User"','SELECT "id" FROM "User" /* FROM "ContractArchiveEvidenceFile" */'])assert.equal(api.projectNativeTask16RosterQuery({query},'runtime_a',phase),null);
 });
+
+test('voucher download wage evidence lookup projects only the selected and predicate column names',()=>{
+ const query='SELECT "public"."WageApprovedSourceVersion"."id" FROM "public"."WageApprovedSourceVersion" WHERE "public"."WageApprovedSourceVersion"."evidenceFileId" = $1 LIMIT $2 OFFSET $3';
+ assert.deepEqual(api.projectNativeTask16RosterQuery({query},'runtime_a','VOUCHER_HTTP_DOWNLOAD'),{lane:'runtime_a',stage:'VOUCHER_HTTP_DOWNLOAD',relation:'WageApprovedSourceVersion',operation:'SELECT',columns:['id','evidenceFileId'],unknownShape:false});
+});
+
+test('wage diagnostic is download-only and closes on non-source shapes without exposing values',()=>{
+ const prefix='SELECT "public"."WageApprovedSourceVersion"."id" FROM "public"."WageApprovedSourceVersion" WHERE ';
+ const valid=prefix+'"public"."WageApprovedSourceVersion"."evidenceFileId" = $1 LIMIT $2 OFFSET $3';
+ assert.equal(api.projectNativeTask16RosterQuery({query:valid},'runtime_a','VOUCHER_AUTHORIZED_TICKET'),null);
+ for(const query of [
+  prefix+'"public"."WageApprovedSourceVersion"."evidenceFileId" = \'SECRET\' LIMIT $2 OFFSET $3',
+  prefix+'"public"."WageApprovedSourceVersion"."id" = $1 LIMIT $2 OFFSET $3',
+  valid+'; SELECT 1', valid+' /* SECRET */',
+  valid.replace('."id" FROM','."evidenceFileId" FROM'),
+  valid.replace(' LIMIT $2',' LIMIT 1')
+ ]) assert.deepEqual(api.projectNativeTask16RosterQuery({query},'runtime_b','VOUCHER_HTTP_DOWNLOAD'),{lane:'runtime_b',stage:'VOUCHER_HTTP_DOWNLOAD',relation:'WageApprovedSourceVersion',operation:'UNKNOWN',columns:[],unknownShape:true});
+ const receipt={},handler=api.createNativeTask16RosterQueryDiagnostic(receipt,()=> 'VOUCHER_HTTP_DOWNLOAD').forLane('runtime_a');
+ handler({query:valid,get params(){throw Error('SECRET');}});
+ assert.doesNotMatch(JSON.stringify(receipt),/SECRET|SELECT "|params/u);
+});
