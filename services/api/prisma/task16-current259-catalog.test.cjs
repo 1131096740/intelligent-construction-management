@@ -303,7 +303,7 @@ test('application manifest binding is the fixed qualified registered file bytes'
 
 for(const payment261 of [false,true])test('voucher catalog keeps the exact C0 binding and guards through B7 staged and independent committed read ('+payment261+')',()=>{
  const manifest=require('./task16-current259-voucher-acl.requirements.json');
- const extra=structuredClone(plan);
+ let extra=structuredClone(plan);
  const tables=new Map(extra.runtime.tables.map(row=>[row.table,row]));
  for(const [privilege,delta] of [['select',manifest.readDelta],['insert',manifest.insertDelta],['update',manifest.lockOnlyUpdate]]){
   for(const [table,columns] of Object.entries(delta)){
@@ -317,6 +317,7 @@ for(const payment261 of [false,true])test('voucher catalog keeps the exact C0 bi
  const id={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1',
   ...(payment261?{paymentProfile:PAYMENT261_VOUCHER_RUNTIME_PROFILE}:{})};
  const voucherSource=payment261?{...source,migrations:currentMigrations}:source;
+ if(payment261)extra={...plan,...api.loadCurrent259CatalogMaterial(voucherSource,PAYMENT261_VOUCHER_RUNTIME_PROFILE).accessPlan};
  const base={...request,source:voucherSource,identity:id};
  function row(phase){
   const r=observed(phase,extra);
@@ -432,6 +433,49 @@ test('gap261 grants only five login/opening INSERT defaults with its own bound m
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),{...r,identity:{...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE}}));
 });
 
+test('voucher261 binds the combined voucher matrix and only eleven SDK default INSERT columns',()=>{
+ const current={...source,migrations:currentMigrations};
+ const historical=require('./task16-current259-voucher-acl.cjs').voucherAccessPlan(api.loadCurrent259CatalogMaterial(current).accessPlan);
+ const voucher=api.loadCurrent259CatalogMaterial(current,PAYMENT261_VOUCHER_RUNTIME_PROFILE);
+ const inserts=role=>role.tables.flatMap(t=>t.insert.map(c=>[t.table,c]));
+ const original=new Set(inserts(historical.runtime).map(JSON.stringify));
+ assert.deepEqual(inserts(voucher.accessPlan.runtime).filter(row=>!original.has(JSON.stringify(row))).sort(),[
+  ['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
+  ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt'],
+  ['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']].sort());
+ assert.deepEqual(voucher.accessPlan.runtime.functions,historical.runtime.functions);
+ assert.deepEqual(voucher.accessPlan.runtime.tables.find(row=>row.table==='ProjectRosterMember'),{table:'ProjectRosterMember',select:['projectId','userId'],insert:[],update:[],references:[]});
+ assert.equal(historical.runtime.tables.some(row=>row.table==='ProjectRosterMember'),false);
+
+ assert.deepEqual(voucher.accessPlan.observer,historical.observer);
+ assert.equal(voucher.accessPlan.runtime.tables.some(row=>row.table==='HistoricalFinancialTakeoverRowMapping'),false);
+ assert.deepEqual(voucher.effectiveAccessBinding,{paymentProfile:PAYMENT261_VOUCHER_RUNTIME_PROFILE,insertAdditionCount:11,accessPlanSha256:hash(JSON.stringify(voucher.accessPlan))});
+ const r={...request,source:current,identity:{...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1',paymentProfile:PAYMENT261_VOUCHER_RUNTIME_PROFILE}};
+ const row=()=>{const value={...observed('before',{...plan,...voucher.accessPlan}),ledger:voucher.ledger,voucherBindingSha256:'7'.repeat(64)};value.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;return value;};
+ assert.doesNotThrow(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),r));
+ for(const [table,column]of [...normal261InsertAdditions,['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']]){
+  const value=row();value.capabilities=value.capabilities.filter(c=>!(c[0]==='jg_task01_runtime'&&c[2]===table&&c[3]===column&&c[4]==='INSERT'));
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ for(const capability of [['jg_task01_runtime','table','FileObject','','INSERT',false],['jg_task01_runtime','column','FileObject','purgeReceiptId','INSERT',false],['jg_task01_observer','column','FileObject','id','SELECT',false]]){
+  const value=row();value.capabilities=sort([...value.capabilities,capability]);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ for(const column of ['projectId','userId']){
+  const value=row();value.capabilities=value.capabilities.filter(c=>!(c[0]==='jg_task01_runtime'&&c[2]==='ProjectRosterMember'&&c[3]===column&&c[4]==='SELECT'));
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ for(const capability of [['jg_task01_runtime','column','ProjectRosterMember','id','SELECT',false],['jg_task01_runtime','column','ProjectRosterMember','createdAt','SELECT',false],['jg_task01_runtime','table','ProjectRosterMember','','SELECT',false],['jg_task01_runtime','column','ProjectRosterMember','userId','INSERT',false],['jg_task01_observer','column','ProjectRosterMember','projectId','SELECT',false]]){
+  const value=row();value.capabilities=sort([...value.capabilities,capability]);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(value),r));
+ }
+ const rosterGrantable=row();rosterGrantable.capabilities.find(c=>c[0]==='jg_task01_runtime'&&c[2]==='ProjectRosterMember'&&c[3]==='projectId'&&c[4]==='SELECT')[5]=true;
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(rosterGrantable),r));
+ for(const profile of [undefined,PAYMENT261_RUNTIME_PROFILE,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE])assert.equal(api.loadCurrent259CatalogMaterial(current,profile).accessPlan.runtime.tables.some(t=>t.table==='ProjectRosterMember'),false);
+ for(const patch of [{paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE},{voucherProfile:undefined},{runtimeProfile:undefined}])assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),{...r,identity:{...r.identity,...patch}}));
+ const grantable=row();grantable.capabilities.find(c=>c[0]==='jg_task01_runtime'&&c[2]==='FileObject'&&c[3]==='createdAt'&&c[4]==='INSERT')[5]=true;
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(grantable),r));
+
+});
+
 const normal261InsertAdditions=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
  ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
  ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];
@@ -459,7 +503,7 @@ test('normal261 explicit payment mode supplies exactly the nine source-required 
  assert.deepEqual(payment.effectiveAccessBinding,{paymentProfile:PAYMENT261_RUNTIME_PROFILE,insertAdditionCount:9,
   accessPlanSha256:hash(JSON.stringify(payment.accessPlan))});
  assert.equal(Object.isFrozen(payment.effectiveAccessBinding),true);
- for(const other of [undefined,PAYMENT261_VOUCHER_RUNTIME_PROFILE]){
+ for(const other of [undefined]){
   const actual=api.loadCurrent259CatalogMaterial(current,other);
   assert.deepEqual(actual.accessPlan,base.accessPlan);assert.equal(actual.effectiveAccessBinding,undefined);
  }

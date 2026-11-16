@@ -5,7 +5,7 @@ const {readFileSync} = require('node:fs');
 const path = require('node:path');
 const {types} = require('node:util');
 const {loadCurrent259CatalogMaterial,renderCurrent259CatalogRead} = require('./task16-current259-catalog.cjs');
-const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode} = require('./task16-current261-competition-profile.cjs');
+const {PAYMENT261_VOUCHER_RUNTIME_PROFILE,isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode} = require('./task16-current261-competition-profile.cjs');
 const {renderCurrent259DatabasePrivileges} = require('./task16-current259-database-privileges.cjs');
 const {identityBody,versionGuardBody,referenceGuardBody,functionProofSql,referenceAbsentSql} = require('./task16-registered-access-check.cjs');
 
@@ -240,7 +240,7 @@ function renderRuntimeAcl(witness,provisioned,nonce,competition,voucher){
   migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))};
  const material=loadCurrent259CatalogMaterial(source,paymentProfile);
  need(provisioned.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&provisioned.sourceSha===material.sourceSha&&Array.isArray(provisioned.roles));
- const plan=voucher?voucher.voucherAccessPlan(material.accessPlan):material.accessPlan;
+ const plan=voucher&&paymentProfile!==PAYMENT261_VOUCHER_RUNTIME_PROFILE?voucher.voucherAccessPlan(material.accessPlan):material.accessPlan;
  const findRole=name=>{const matches=provisioned.roles.filter(role=>role.name===name);need(matches.length===1&&oid(matches[0].oid));return matches[0];};
  const runtime=findRole(plan.runtime.role),observer=findRole(plan.observer.role);
  if(competition)need(runtime.limit===2&&observer.limit===1);
