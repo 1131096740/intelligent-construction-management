@@ -7,14 +7,14 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { functionProofSql } = require('./task16-registered-access-check.cjs');
 
-const requirementsSha256='1f29dc119ab5cfa43c4d9af486da6c88f870fcba819e724a117ea58e868d21ee';
+const requirementsSha256='b209e9c9991e2cec7280a66fd71e59d78f5d45c05fdccf9e1b4c89f4ab697cf1';
 const bytes=readFileSync(join(__dirname,'task16-current259-voucher-acl.requirements.json'));
 const code='CURRENT259_VOUCHER_ACL';
 const need=condition=>{if(!condition)throw new Error(code);};
 need(createHash('sha256').update(bytes).digest('hex')===requirementsSha256);
 const {readDelta,insertDelta,lockOnlyUpdate,routineSources,native261InsertDefaults,native261ReadDelta}=JSON.parse(bytes);
 need(JSON.stringify(native261InsertDefaults)===JSON.stringify([['FileObject','createdAt'],['RegisteredPaymentVoucher','createdAt']]));
-need(JSON.stringify(native261ReadDelta)===JSON.stringify({ProjectRosterMember:['projectId','userId']}));
+need(JSON.stringify(native261ReadDelta)===JSON.stringify({ProjectRosterMember:['id','projectId','userId']}));
 const profileName='CURRENT259_PAYMENT_VOUCHER_V1';
 const owner='jg_task01_owner', runtime='jg_task01_runtime', observer='jg_task01_observer';
 const insertRoutine='jg_task16_runtime_voucher_file_insert_only';

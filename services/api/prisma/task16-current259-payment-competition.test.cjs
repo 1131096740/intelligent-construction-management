@@ -136,8 +136,8 @@ function model(options={}){
   assert.equal(init.redirect,'error');assert.ok(init.signal instanceof AbortSignal);
   const respond=(status,value)=>({url:url.href,redirected:false,status,async json(){return value;}});
   if(url.pathname===`/payment-executions/${keyA}/voucher-ticket`){
-   events.push('voucher-ticket');const expiresAt=new Date(Date.now()+299900).toISOString();
-   return respond(200,{fileId,fileName,mimeType:'image/png',sizeBytes:storedFile.sizeBytes,expiresAt,
+   events.push('voucher-ticket');if(options.ticketProcessingMs)await new Promise(resolve=>setTimeout(resolve,options.ticketProcessingMs));const expiresAt=new Date(Date.now()+(options.ticketLifetimeMs??300000)).toISOString();
+   return respond(200,{fileId:options.wrongTicketFile?keyB:fileId,fileName,mimeType:'image/png',sizeBytes:storedFile.sizeBytes,expiresAt,
     downloadUrl:options.foreignTicket?'https://foreign.invalid/files/'+fileId+'/download':`/files/${fileId}/download?actorUserId=${actorId}&expiresAt=${encodeURIComponent(expiresAt)}&downloadReason=${encodeURIComponent('实际付款凭证下载')}&accessMode=download&token=${'a'.repeat(43)}`});
   }
   if(url.pathname===`/files/${fileId}/download`){
@@ -361,4 +361,14 @@ test('native voucher cancellation has only the remaining original HTTP budget an
  const f=model({voucher:true,nativeVoucher:true,downloadReader:reader,cleanupTimer(fn,ms){assert.ok(ms>=0&&ms<=5000);calls.push('bounded-timer');queueMicrotask(fn);return 1;},clearCleanupTimer(id){assert.equal(id,1);calls.push('clear');}});
  await assert.rejects(f.native(),error=>error===primary);assert.deepEqual(calls,['bounded-timer','cancel','clear','release']);
  assert.deepEqual(f.cleanupDiagnostics,[{cancelFailed:true,releaseFailed:false}]);
+});
+
+test('native voucher accepts the actual five-minute server ticket after elapsed request processing time',async()=>{
+ const f=model({voucher:true,nativeVoucher:true,ticketProcessingMs:15});
+ const result=await f.native();assert.equal(result.voucherVerified,true);assert.ok(f.events.includes('voucher-download'));
+});
+
+for(const [name,options]of [['expired',{ticketLifetimeMs:-1}],['over five minutes at receipt',{ticketLifetimeMs:301000}],['wrong file identity',{wrongTicketFile:true}]])test('native voucher rejects a ticket with '+name+' before downloading',async()=>{
+ const f=model({voucher:true,nativeVoucher:true,ticketProcessingMs:15,...options});await assert.rejects(f.native(),/CURRENT259_PAYMENT_COMPETITION_FAILED_CLOSED/u);
+ assert.equal(f.failures.at(-1),'AUTHORIZED_TICKET');assert.equal(f.events.includes('voucher-download'),false);
 });

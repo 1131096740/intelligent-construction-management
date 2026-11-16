@@ -206,9 +206,9 @@ async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lane
   markFailureStage('REPEAT_ATTACH');
   need(equal(await request(`/payment-executions/${executionId}/voucher`,'POST',JSON.stringify({fileId}),201),attached));
   markFailureStage('AUTHORIZED_TICKET');
-  const now=Date.now(),ticket=await request(`/payment-executions/${executionId}/voucher-ticket`,'GET',undefined,200);
+  const ticket=await request(`/payment-executions/${executionId}/voucher-ticket`,'GET',undefined,200),receivedAt=Date.now();
   need(ticket?.fileId===fileId&&ticket.fileName===voucherName&&ticket.mimeType===voucherType&&ticket.sizeBytes===voucherBytes.length&&
-   typeof ticket.expiresAt==='string'&&Date.parse(ticket.expiresAt)>Date.now()&&Date.parse(ticket.expiresAt)<=now+300000&&
+   typeof ticket.expiresAt==='string'&&Date.parse(ticket.expiresAt)>receivedAt&&Date.parse(ticket.expiresAt)<=receivedAt+300000&&
    typeof ticket.downloadUrl==='string'&&ticket.downloadUrl.startsWith(`/files/${fileId}/download?`));
   const target=new URL(ticket.downloadUrl,base),query=target.searchParams;
   need(target.origin===base.origin&&target.pathname===`/files/${fileId}/download`&&!target.username&&!target.password&&!target.hash&&

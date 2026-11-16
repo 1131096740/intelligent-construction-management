@@ -526,6 +526,7 @@
   ],
   "native261ReadDelta": {
     "ProjectRosterMember": [
+      "id",
       "projectId",
       "userId"
     ]
