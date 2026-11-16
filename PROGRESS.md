@@ -60,6 +60,8 @@
 
 后续 `8033c8d5` 观测阶段版本查询 18 列；共享 invalidator 已按实际消费缩为九列，现金角色含条件列共十列，不增加写权，模型检查 54/54 和 142/142，合入 `3c327120`。准确作者候选 `b047623f` 新独占运行越过种子及来源重放，进入 `CASH_PAYMENT_AND_OBSERVER` 后以 `PG_CASH_REGISTRATION` 停止，PG 报 `PaymentExecutionPayerAttestation` 权限拒绝；付款结果按未知处理，不重发旧计划。secret CLEARED、cleanup 完成，独核进程/监听/pidfile 缺席。[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-b047/receipt.json) SHA `8de9b1537809a1944b2acce1349f74c43372c42feba7464e3ec0e90daa999fee`；同键或核账能否确认未写正在核查。
 
+`b047` 原随机付款键未存于回执，实例已停止。副本恢复与只读核账草案经两轮独审，仍缺独立绑定原运行的 cluster system ID、完整账务与副作用覆盖及可验证的冷停副本流程；同轮连接可证数据库 OID，但不能单独证明实例身份。[草案](/private/tmp/jg-b047-readonly-review/RECOVERY-PLAN.md)未执行，不能据此声称未写或换键重发，原轮结果继续 UNKNOWN。
+
 诊断 `904a6a51` 在新资源实际捕获该表查询六列，现金角色缺 `id`；`78c5f0bc` 只补该只读列并经独审。新独占运行越过该表，随后同阶段因 `ProjectCloseAggregate` 权限拒绝停止，付款和核账仍未到达。secret CLEARED、cleanup 完成，独核进程、监听及 pidfile 缺席。[回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-78c5/receipt.json) SHA `a7f4b7b255caf69c325398e52cfd3a4877404c1e2c80e37017ec076047a57865`；新表实际查询列待诊断。
 
 准确 `8fde2600` 新独占 cash 原生运行 prepare、verify 和材料核对通过；原 once 在 `ACL_APPLY` 停止，PG 日志首因 `WRITER_FUNCTION_PROOF_14`，业务未进入，secret 未开始。原 cleanup 完成，独核进程、监听及 pidfile 缺席。[原回执](/Users/leoyang/.codex/visualizations/2026/11/16/01a1e4a4-81d8-7f90-89b8-d4cd08560326/task16-cash-8fde/receipt.json) SHA `9870b623492d1005cc371a5fb78ac191b78d59fbb46ab824013a0056b19f0ac5`；正在诊断函数定义证明差异，不以模型替代物理通过。
