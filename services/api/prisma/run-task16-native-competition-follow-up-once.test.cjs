@@ -192,3 +192,67 @@ test('native gap ACL binds the original single-lane matrix, five defaults and ac
  const api=require('./run-task16-native-competition-follow-up-once.cjs');
  for(const patch of [{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}, {roles:provisioned.roles.map(role=>({...role,limit:role.name==='jg_task01_runtime'?2:1}))}, {databaseIdentity:{...provisioned.databaseIdentity,serverPort:5432}}])assert.throws(()=>api.renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned:{...provisioned,...patch}}),'d'.repeat(64)));
 });
+
+test('voucher purpose selects only the original thirty-yuan competition and eleven precise defaults',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ assert.deepEqual(api.nativeTask16CaseSelection('TASK16_NATIVE_COMPETITION_VOUCHER_V1'),{purpose:'TASK16_NATIVE_COMPETITION_VOUCHER_V1',caseId:'registered.two-actor.payment-voucher',paymentProfile:'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:11,voucher:true});
+ for(const purpose of ['voucher','TASK16_NATIVE_VOUCHER_V1'])assert.throws(()=>api.nativeTask16CaseSelection(purpose));
+});
+
+function voucherAccountingModel(){
+ const full=accounting(),{afterCompetition,after,replay,followUpExecutionId,...race}=full;
+ return {accountingEvidence:{...race,after:{...afterCompetition,phase:'AFTER'}},voucher:{voucherVerified:true,amountCents:'3000',uploadCount:2,attachCount:2,fileCount:1,voucherCount:1,attachAuditCount:1,uploadAuditCount:1,ticketAuditCount:1,downloadAuditCount:1,downloadSha256:'2cd8199aadfabd393418573074b0c3b1671ec159fbea6a3ddb3f0a6e54072041',financialStateUnchanged:true}};
+}
+test('voucher accounting publishes only original thirty-yuan independent race and unchanged post-voucher state',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),root=fs.mkdtempSync('/private/tmp/jg-voucher-model-');fs.chmodSync(root,0o700);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const value=voucherAccountingModel(),runId=randomUUID(),sha='a'.repeat(40);
+ for(const change of [v=>{v.signedUrl='SECRET';},v=>{v.voucher.token='SECRET';},v=>{v.accountingEvidence.after.paidAmountCents='4000';},v=>{v.accountingEvidence.after.executionCount=2;},v=>{v.voucher.ticketAuditCount=0;},v=>{v.voucher.downloadSha256='0'.repeat(64);},v=>{v.voucher.financialStateUnchanged=false;}]){
+  const altered=structuredClone(value);change(altered);assert.throws(()=>api.writeNativeTask16VoucherAccounting(root,sha,runId,JSON.stringify(altered)));assert.deepEqual(fs.readdirSync(root),[]);
+ }
+ const result=api.writeNativeTask16VoucherAccounting(root,sha,runId,JSON.stringify(value)),bytes=fs.readFileSync(result.file);
+ assert.deepEqual(JSON.parse(bytes),{schemaVersion:1,purpose:'TASK16_NATIVE_COMPETITION_VOUCHER_V1',candidateSha:sha,runId,caseId:'registered.two-actor.payment-voucher',...value});
+ assert.equal(fs.statSync(result.file).mode&0o777,0o600);assert.doesNotMatch(bytes.toString(),/token|password|downloadUrl|SECRET/u);
+ assert.throws(()=>api.writeNativeTask16VoucherAccounting(root,sha,runId,JSON.stringify(value)));assert.deepEqual(fs.readFileSync(result.file),bytes);
+});
+test('voucher interface qualification admits original competition without follow-up and fixed private-file adapter',()=>{
+ const rows=require('./run-task16-native-competition-follow-up-once.cjs').resolveNativeTask16Interfaces('TASK16_NATIVE_COMPETITION_VOUCHER_V1');
+ const shapes=rows.flatMap(row=>row.exports);
+ for(const [name,arity]of [['seedRegisteredPgCompetitionFixture',5],['runRegisteredTwoActorPaymentCompetition',4],['observeRegisteredPaymentVoucherLedger',3],['supplementNativeTask16CompetitionVoucher',1],['renderNativeTask16VoucherSeven',4],['renderNativeTask16VoucherSevenPreimage',3],['renderCurrent259VoucherRuntimeAcl',3]])assert.ok(shapes.some(row=>row.name===name&&row.arity===arity));
+ for(const name of ['runRegisteredTwoActorPaymentCompetitionFollowUp','seedRegisteredPgCompetitionFollowUpFixture','runRegisteredProjectAttributionGap'])assert.equal(shapes.some(row=>row.name===name),false);
+});
+for(const [purpose,flag]of [['TASK16_NATIVE_COMPETITION_VOUCHER_V1','--once'],['TASK16_NATIVE_COMPETITION_VOUCHER_V1','--once-gap'],['TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1','--once-voucher'],['TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1','--once-voucher']])test('voucher CLI refuses cross-purpose plan '+purpose+' '+flag,t=>{
+ const p=planModel(t);p.purpose=purpose;const target=path.join(p.runRoot,'plan.json'),bytes=JSON.stringify(p)+'\n';fs.writeFileSync(target,bytes,{mode:0o600});
+ const result=spawnSync(process.execPath,[path.join(__dirname,'run-task16-native-competition-follow-up-once.cjs'),flag,'--plan',target,'--expected-plan-sha256',require('node:crypto').createHash('sha256').update(bytes).digest('hex')],{encoding:'utf8',env:{PATH:path.dirname(process.execPath)},timeout:10000,maxBuffer:8192});
+ assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_CASE_PURPOSE'});assert.equal(result.status,1);assert.deepEqual(fs.readdirSync(p.runRoot),['plan.json']);
+});
+
+test('native voucher ACL binds two lanes, original voucher matrix, eleven defaults and actual endpoint',()=>{
+ const donor=path.join(__dirname,'task16-current259-runtime-acl.test.cjs');
+ const f=new Function('require','__dirname',fs.readFileSync(donor,'utf8')+'\nreturn {material,receipt};')(name=>name==='node:test'?{test:()=>{}}:require(name),__dirname);
+ const H=bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:H(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const source={candidateSha:f.material.candidateSha,sourceSealSha256:f.material.sealSha256,profile:require('./task16-current259-profile.cjs').qualifyCurrent259Source({...f.material,migrations})};
+ const provisioned={...f.receipt(),commitXid:'1234',paymentProfile:'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1'};
+ provisioned.roles=provisioned.roles.map(role=>({...role,limit:role.name==='jg_task01_runtime'?2:1}));
+ provisioned.databaseIdentity={...provisioned.databaseIdentity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:55432};
+ const rendered=require('./run-task16-native-competition-follow-up-once.cjs').renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned}),'d'.repeat(64));
+ assert.match(rendered.sql,/inet_server_port\(\) IS DISTINCT FROM 55432/u);assert.doesNotMatch(rendered.sql,/inet_server_port\(\) IS DISTINCT FROM 5432/u);
+ assert.match(rendered.sql,/GRANT INSERT \("action", "actorUserId", "businessId", "businessType", "createdAt", "id", "metadata"\) ON TABLE public\."AuditLog"/u);
+ assert.doesNotMatch(rendered.sql,/^GRANT SELECT [^\n]+HistoricalFinancialTakeoverRowMapping/mu);
+ assert.match(rendered.sql,/GRANT INSERT \([^\n]+createdAt[^\n]+ ON TABLE public\."FileObject"/u);
+ assert.match(rendered.witnessSql,/voucherBindingSha256/u);
+ assert.match(rendered.lockSql,/IN SHARE MODE NOWAIT/u);
+ assert.equal(rendered.writeSql,rendered.sql+'\n'+rendered.publicSql);
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ for(const patch of [{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}, {roles:provisioned.roles.map(role=>({...role,limit:1}))}, {databaseIdentity:{...provisioned.databaseIdentity,serverPort:5432}}])assert.throws(()=>api.renderNativeTask16RuntimeAcl(JSON.stringify({source,provisioned:{...provisioned,...patch}}),'d'.repeat(64)));
+});
+
+test('native voucher cleanup recorder accepts only own-data failure booleans and keeps normal stages compatible',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),receipt={},stages=[];
+ const record=api.createNativeTask16VoucherStageRecorder(receipt,s=>stages.push(s));record('HTTP_DOWNLOAD');assert.deepEqual(receipt,{});assert.deepEqual(stages,['VOUCHER_HTTP_DOWNLOAD']);
+ let traps=0;const getter={get cancelFailed(){traps++;throw Error('SECRET');},releaseFailed:true},proxy=new Proxy({},{getPrototypeOf(){traps++;throw Error('SECRET');}});
+ for(const value of [getter,proxy,{cancelFailed:1,releaseFailed:false},{cancelFailed:false,releaseFailed:false},{cancelFailed:true,releaseFailed:false,url:'SECRET'},null])assert.throws(()=>record('HTTP_DOWNLOAD',value));
+ assert.equal(traps,0);assert.deepEqual(receipt,{});assert.throws(()=>record('UNKNOWN',{cancelFailed:true,releaseFailed:false}));
+ record('HTTP_DOWNLOAD',{cancelFailed:true,releaseFailed:false});assert.deepEqual(receipt,{voucherDownloadCleanup:{cancelFailed:true,releaseFailed:false}});assert.ok(Object.isFrozen(receipt.voucherDownloadCleanup));
+ assert.throws(()=>record('HTTP_DOWNLOAD',{cancelFailed:false,releaseFailed:true}));assert.equal(receipt.voucherDownloadCleanup.cancelFailed,true);
+});

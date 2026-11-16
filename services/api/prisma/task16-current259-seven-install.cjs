@@ -706,7 +706,7 @@ function renderNativeTask16GapSeven(inputJson,phase,nonce,priorStdout){
 function parseNativeTask16GapSeven(inputJson,phase,nonce,stdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeSevenInput(inputJson,require('./task16-current261-competition-profile.cjs').PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE),phase,nonce);
 }
-function nativeCompetitionSevenInput(text){
+function nativeCompetitionSevenInput(text,paymentProfile=require('./task16-current261-competition-profile.cjs').PAYMENT261_COMPETITION_RUNTIME_PROFILE){
  need(typeof text==='string'&&Buffer.byteLength(text)<=512*1024,'NATIVE_INPUT');const value=JSON.parse(text);
  need(value&&Object.getPrototypeOf(value)===Object.prototype&&equal(Object.keys(value).sort(),['source','id','ordinary','runtime','observer','roleCommitXid','databaseAclAfter'].sort()),'NATIVE_INPUT');
  const {source,id,ordinary,runtime,observer}=value;
@@ -716,8 +716,7 @@ function nativeCompetitionSevenInput(text){
   runtime.name==='jg_task01_runtime'&&observer.name==='jg_task01_observer'&&[runtime,observer].every(r=>oid(r.oid)&&r.limit===(r===runtime?2:1)&&r.login===true&&r.password==='scram')&&
   new Set(['10',ordinary.oid,runtime.oid,observer.oid]).size===4,'NATIVE_INPUT');
  need(xid(value.roleCommitXid)&&Array.isArray(value.databaseAclAfter)&&value.databaseAclAfter.length>=1&&value.databaseAclAfter.length<=4,'NATIVE_INPUT');
- return {...value,roleCompletion:{commitXid:value.roleCommitXid,databaseAcl:{after:value.databaseAclAfter}},competition:true,paymentProfile:require('./task16-current261-competition-profile.cjs').PAYMENT261_COMPETITION_RUNTIME_PROFILE,
-  material:material(source,false,require('./task16-current261-competition-profile.cjs').PAYMENT261_COMPETITION_RUNTIME_PROFILE)};
+ return {...value,roleCompletion:{commitXid:value.roleCommitXid,databaseAcl:{after:value.databaseAclAfter}},competition:true,paymentProfile,material:material(source,false,paymentProfile)};
 }
 function renderNativeTask16CompetitionSeven(inputJson,phase,nonce,priorStdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
@@ -731,5 +730,23 @@ function renderNativeTask16CompetitionSeven(inputJson,phase,nonce,priorStdout){
 function parseNativeTask16CompetitionSeven(inputJson,phase,nonce,stdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeCompetitionSevenInput(inputJson),phase,nonce);
 }
-module.exports=Object.freeze({bindNativeTask12ArchiveEndpointSql,createNativeTask12ArchiveSevenMaterial,renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
+function renderNativeTask16VoucherSeven(inputJson,phase,nonce,priorStdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
+ const input=nativeCompetitionSevenInput(inputJson,require('./task16-current261-competition-profile.cjs').PAYMENT261_VOUCHER_RUNTIME_PROFILE),prior=phase===0?undefined:readResult({stdout:priorStdout},input,phase-1,nonce);
+ const sql=render(input,phase,nonce,prior);
+ // Native-only endpoint binding; the original private-runner guard stays byte-identical.
+ const original="host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port() IS DISTINCT FROM 5432";
+ const parts=sql.split(original);need(parts.length>1,'NATIVE_ENDPOINT_RENDER');
+ return parts.join(original.replace('5432',String(input.id.serverPort)));
+}
+function parseNativeTask16VoucherSeven(inputJson,phase,nonce,stdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeCompetitionSevenInput(inputJson,require('./task16-current261-competition-profile.cjs').PAYMENT261_VOUCHER_RUNTIME_PROFILE),phase,nonce);
+}
+function renderNativeTask16VoucherSevenPreimage(inputJson,nonce,committedStdout){
+ need(arguments.length===3&&hex(nonce,64),'NATIVE_INPUT');
+ const input=nativeCompetitionSevenInput(inputJson,require('./task16-current261-competition-profile.cjs').PAYMENT261_VOUCHER_RUNTIME_PROFILE);
+ const committed=readResult({stdout:committedStdout},input,2,nonce);
+ return voucherSevenPreimageSql(input,committed.catalogSha256);
+}
+module.exports=Object.freeze({renderNativeTask16VoucherSeven,parseNativeTask16VoucherSeven,renderNativeTask16VoucherSevenPreimage,bindNativeTask12ArchiveEndpointSql,createNativeTask12ArchiveSevenMaterial,renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
  claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure,describeCurrent259SevenPrestateReadbackFailure});

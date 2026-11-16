@@ -4,6 +4,25 @@ import {
 } from "./project-visibility.service";
 
 describe("ProjectVisibilityService", () => {
+  it.each(["finance_staff", "comprehensive_director", "employee"])("keeps %s visibility through the transaction boundary with only the roster project projection", async (role) => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValueOnce([{positionId:"global-position",projectId:null}]).mockResolvedValueOnce([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: {
+        findMany: jest.fn(async (query: unknown) => {
+          expect(query).toEqual({where:{userId:"actor"},select:{projectId:true}});
+          return [{projectId:"project-1"}, {projectId:"project-1"}];
+        })
+      },
+      project: { findMany: jest.fn().mockResolvedValue([{id:"project-1"},{id:"project-2"}]) },
+      position: { findMany: jest.fn().mockResolvedValue([{id:"global-position",key:role}]) }
+    };
+    const service = new ProjectVisibilityService({} as never);
+    await expect(service.visibleProjectIdsInTransaction(tx as never,"actor")).resolves.toEqual(
+      role === "employee" ? ["project-1"] : ["project-1","project-2"]
+    );
+  });
+
   it("limits project-only users to their active project memberships", async () => {
     const prisma = {
       userPosition: {

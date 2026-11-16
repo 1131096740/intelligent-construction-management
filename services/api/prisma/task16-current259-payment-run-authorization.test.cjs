@@ -1034,6 +1034,7 @@ test('261 voucher uses only its owned directory and exact competition, voucher A
  assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
  assert.deepEqual(run.state.calls,['start-competition-voucher','technical259','roles9-cap2','seven','voucher-acl','b7','live-two','env','app-two','competition','app-two-close','env-close','pools-two-close']);
  const receipt=JSON.parse(fs.readFileSync(path.join(run.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.effectiveAccessBinding.paymentProfile,PAYMENT261_VOUCHER_RUNTIME_PROFILE);assert.equal(receipt.effectiveAccessBinding.insertAdditionCount,11);assert.match(receipt.effectiveAccessBinding.accessPlanSha256,/^[a-f0-9]{64}$/u);
  assert.equal(receipt.scope.paymentProfile,PAYMENT261_VOUCHER_RUNTIME_PROFILE);
  assert.equal(receipt.b7Binding.identity.paymentProfile,PAYMENT261_VOUCHER_RUNTIME_PROFILE);
  assert.equal(receipt.b7Binding.identity.voucherProfile,'CURRENT259_PAYMENT_VOUCHER_V1');
@@ -1764,4 +1765,9 @@ test('direct entry cannot consume the old normal purpose or a consumed direct on
  const again=fixture(t,{payment261:true,business:true,launchOption:'--direct-diagnostic261-once',planFixture:first.s,saved:first.saved,businessApi:first.s.business,selectedPlanSha:hash(fs.readFileSync(first.s.output))});
  assert.equal((await again.done).status,'STOPPED');assert.deepEqual(again.state.calls,[]);
  assert.deepEqual(fs.readFileSync(path.join(first.s.runRoot,'direct-accounting-evidence.json')),original);
+});
+
+for(const mode of ['missing','hash','profile','count'])test('voucher261 issuer rejects '+mode+' application matrix before original voucher business',async t=>{
+ const f=competitionFixture(t,{voucher261:true,applicationBinding(binding){return mode==='missing'?undefined:{...binding,...(mode==='hash'?{accessPlanSha256:'0'.repeat(64)}:mode==='profile'?{paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE}:{insertAdditionCount:9})};}});
+ const result=await f.done;assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_APPLICATION',JSON.stringify(result));assert.equal(f.state.calls.includes('competition'),false);
 });
