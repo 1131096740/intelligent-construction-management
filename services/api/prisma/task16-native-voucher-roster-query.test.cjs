@@ -134,3 +134,23 @@ test('wage diagnostic is download-only and closes on non-source shapes without e
  handler({query:valid,get params(){throw Error('SECRET');}});
  assert.doesNotMatch(JSON.stringify(receipt),/SECRET|SELECT "|params/u);
 });
+test('cash replay projects only bounded ContractPartySnapshot query shape without values',()=>{
+ const api=require('./task16-native-voucher-roster-query.cjs');
+ const query='SELECT "public"."ContractPartySnapshot"."businessPartyVersionId", "public"."ContractPartySnapshot"."snapshot" FROM "public"."ContractPartySnapshot" WHERE ("public"."ContractPartySnapshot"."contractVersionId" = $1 AND "public"."ContractPartySnapshot"."roleKey" = $2) ORDER BY "public"."ContractPartySnapshot"."displayOrder" ASC LIMIT $3 OFFSET $4';
+ let readParams=0;const event={query,get params(){readParams++;throw Error('PRIVATE');}};
+ assert.deepEqual(api.projectNativeTask16CashPartyQuery(event,'runtime_a','CASH_SEED_AND_SETTLEMENT_REPLAY'),{lane:'runtime_a',stage:'CASH_SEED_AND_SETTLEMENT_REPLAY',relation:'ContractPartySnapshot',operation:'SELECT',columns:['businessPartyVersionId','contractVersionId','displayOrder','roleKey','snapshot'],unknownShape:false});
+ assert.equal(readParams,0);assert.equal(api.projectNativeTask16CashPartyQuery(event,'runtime_b','CASH_SEED_AND_SETTLEMENT_REPLAY'),null);
+ assert.equal(api.projectNativeTask16CashPartyQuery(event,'runtime_a','CASH_PAYMENT_AND_OBSERVER'),null);
+ const unknown=api.projectNativeTask16CashPartyQuery({query:query.replace('"snapshot"','*')},'runtime_a','CASH_SEED_AND_SETTLEMENT_REPLAY');
+ assert.equal(unknown.unknownShape,true);assert.deepEqual(unknown.columns,[]);
+});
+test('cash query diagnostic is bounded and refuses unsupported shapes, accessors and unrelated purposes',()=>{
+ const api=require('./task16-native-voucher-roster-query.cjs'),stage='CASH_SEED_AND_SETTLEMENT_REPLAY',prefix='SELECT * FROM "public"."ContractPartySnapshot"';let traps=0;
+ assert.equal(api.projectNativeTask16CashPartyQuery({get query(){traps++;throw Error('PRIVATE');}},'runtime_a',stage),null);assert.equal(traps,0);
+ for(const query of [prefix,prefix+' -- private',prefix+' WHERE secret=\'PRIVATE\'',prefix+' JOIN "public"."User" u ON true']){
+  const result=api.projectNativeTask16CashPartyQuery({query},'runtime_a',stage);assert.equal(result.unknownShape,true);assert.deepEqual(result.columns,[]);assert.doesNotMatch(JSON.stringify(result),/PRIVATE|SELECT |secret/u);
+ }
+ const receipt={},record=api.createNativeTask16CashPartyDiagnostic(receipt,()=>stage);
+ for(let i=0;i<14;i++)record({query:prefix});assert.equal(receipt.cashPartyQueries.events.length,12);assert.equal(receipt.cashPartyQueries.overflow,true);
+ for(const purpose of ['TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1','TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1','TASK16_NATIVE_COMPETITION_VOUCHER_V1'])assert.equal(api.nativeTask16CashPartyQueryLogOptions(purpose,'runtime_a'),undefined);
+});

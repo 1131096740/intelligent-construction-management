@@ -785,10 +785,11 @@ function createNativeTask16BusinessClients(Client,purpose,urlFor,receipt){
  const selection=nativeTask16CaseSelection(purpose);
  const queryProjection=require('./task16-native-voucher-roster-query.cjs');
  const diagnostic=selection.voucher?queryProjection.createNativeTask16RosterQueryDiagnostic(receipt,()=>receipt.stages.at(-1)?.stage):undefined;
+ const cashDiagnostic=selection.cash?queryProjection.createNativeTask16CashPartyDiagnostic(receipt,()=>receipt.stages.at(-1)?.stage):undefined;
  return (selection.competition?['owner','runtime_a','runtime_b','observer']:['owner','runtime','observer']).map(lane=>{
-  const logging=queryProjection.nativeTask16VoucherQueryLogOptions(purpose,lane);
+  const logging=selection.cash?queryProjection.nativeTask16CashPartyQueryLogOptions(purpose,lane):queryProjection.nativeTask16VoucherQueryLogOptions(purpose,lane);
   const client=new Client({datasources:{db:{url:urlFor(lane)}},...logging});
-  if(logging)client.$on('query',diagnostic.forLane(lane));
+  if(logging)client.$on('query',selection.cash?cashDiagnostic:diagnostic.forLane(lane));
   return client;
  });
 }
