@@ -361,8 +361,8 @@ test('261 two-lane catalog binds exact ledger and runtime limit through independ
  const source261={...source,migrations:currentMigrations};
  const identity261={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE};
  const r={...request,source:source261,identity:identity261};
- const material=api.loadCurrent259CatalogMaterial(source261);
- const parse=(phase,limit,prior)=>{const row=observed(phase);row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=limit;
+ const material=api.loadCurrent259CatalogMaterial(source261,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+ const parse=(phase,limit,prior)=>{const row=observed(phase,{...plan,...material.accessPlan});row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=limit;
   return api.parseCurrent259CatalogRead(JSON.stringify({...row,ledger:material.ledger}),{...r,phase,...(phase==='committed'?{installXid:'1000'}:{})},prior);};
  assert.throws(()=>parse('before',1),/TASK16_CURRENT259_CATALOG/u);
  const before=parse('before',2);
@@ -377,9 +377,50 @@ test('261 two-lane catalog binds exact ledger and runtime limit through independ
   assert.throws(()=>api.renderCurrent259CatalogRead(invalid),/TASK16_CURRENT259_CATALOG/u);
 });
 
+for(const paymentProfile of [PAYMENT261_RUNTIME_PROFILE,PAYMENT261_COMPETITION_RUNTIME_PROFILE])test(paymentProfile+' reads only seven historical receipt discovery columns without extra authority',()=>{
+ const current={...source,migrations:currentMigrations};
+ const effective=api.loadCurrent259CatalogMaterial(current,paymentProfile);
+ const table=effective.accessPlan.runtime.tables.find(row=>row.table==='HistoricalFinancialTakeoverRowMapping');
+ assert.deepEqual(table,{table:'HistoricalFinancialTakeoverRowMapping',select:['evidenceLevel','id','kind','mappingDecision','projectId','targetKind','targetRef'],insert:[],update:[]});
+ assert.equal(effective.accessPlan.observer.tables.some(row=>row.table===table.table),false);
+ const competition=paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE;
+ const r={...request,source:current,identity:{...identity,paymentProfile,...(competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{})}};
+ const row=()=>{const value={...observed('before',{...plan,...effective.accessPlan}),ledger:effective.ledger};
+  if(competition)value.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;return value;};
+ assert.doesNotThrow(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),r));
+ const isDiscovery=c=>c[0]==='jg_task01_runtime'&&c[2]===table.table;
+ for(const column of table.select){
+  const missing=row();missing.capabilities=missing.capabilities.filter(c=>!(isDiscovery(c)&&c[3]===column));
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(missing),r));
+ }
+ for(const added of [['jg_task01_runtime','column',table.table,'amountCents','SELECT',false],
+  ['jg_task01_runtime','column',table.table,'targetSnapshot','SELECT',false],
+  ['jg_task01_runtime','column',table.table,'id','INSERT',false],['jg_task01_runtime','table',table.table,'','SELECT',false],
+  ['jg_task01_observer','column',table.table,'id','SELECT',false]]){
+  const extra=row();extra.capabilities=sort([...extra.capabilities,added]);
+  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(extra),r));
+ }
+ const grantable=row();grantable.capabilities.find(c=>isDiscovery(c)&&c[3]==='id')[5]=true;
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(grantable),r));
+ for(const other of [undefined,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE])
+  assert.equal(api.loadCurrent259CatalogMaterial(current,other).accessPlan.runtime.tables.some(row=>row.table===table.table),false);
+});
+
 const normal261InsertAdditions=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
  ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
  ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];
+test('competition261 supplies the same nine bounded default INSERT columns with its own active binding',()=>{
+ const current={...source,migrations:currentMigrations};
+ const base=api.loadCurrent259CatalogMaterial(current);
+ const competition=api.loadCurrent259CatalogMaterial(current,PAYMENT261_COMPETITION_RUNTIME_PROFILE);
+ const inserts=plan=>plan.runtime.tables.flatMap(t=>(t.insert??[]).map(c=>[t.table,c]));
+ const original=new Set(inserts(base.accessPlan).map(JSON.stringify));
+ assert.deepEqual(inserts(competition.accessPlan).filter(row=>!original.has(JSON.stringify(row))).sort(),[...normal261InsertAdditions].sort());
+ assert.deepEqual(competition.accessPlan.observer,base.accessPlan.observer);
+ assert.deepEqual(competition.effectiveAccessBinding,{paymentProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE,insertAdditionCount:9,
+  accessPlanSha256:hash(JSON.stringify(competition.accessPlan))});
+ assert.equal(Object.isFrozen(competition.effectiveAccessBinding),true);
+});
 test('normal261 explicit payment mode supplies exactly the nine source-required INSERT columns and a distinct bound plan',()=>{
  const current={...source,migrations:currentMigrations};
  const base=api.loadCurrent259CatalogMaterial(current);
@@ -392,17 +433,19 @@ test('normal261 explicit payment mode supplies exactly the nine source-required 
  assert.deepEqual(payment.effectiveAccessBinding,{paymentProfile:PAYMENT261_RUNTIME_PROFILE,insertAdditionCount:9,
   accessPlanSha256:hash(JSON.stringify(payment.accessPlan))});
  assert.equal(Object.isFrozen(payment.effectiveAccessBinding),true);
- for(const other of [undefined,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE]){
+ for(const other of [undefined,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE]){
   const actual=api.loadCurrent259CatalogMaterial(current,other);
   assert.deepEqual(actual.accessPlan,base.accessPlan);assert.equal(actual.effectiveAccessBinding,undefined);
  }
  assert.throws(()=>api.loadCurrent259CatalogMaterial(source,PAYMENT261_RUNTIME_PROFILE));
 });
-test('normal261 physical readback rejects each missing addition, any expanded authority and a profile swap',()=>{
+for(const paymentProfile of [PAYMENT261_RUNTIME_PROFILE,PAYMENT261_COMPETITION_RUNTIME_PROFILE])test(paymentProfile+' physical readback rejects each missing addition, expanded authority and profile swap',()=>{
  const current={...source,migrations:currentMigrations};
- const effective=api.loadCurrent259CatalogMaterial(current,PAYMENT261_RUNTIME_PROFILE).accessPlan;
- const r={...request,source:current,identity:{...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE}};
- const row=()=>({...observed('before',{...plan,...effective}),ledger:api.loadCurrent259CatalogMaterial(current).ledger});
+ const competition=paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE;
+ const effective=api.loadCurrent259CatalogMaterial(current,paymentProfile).accessPlan;
+ const r={...request,source:current,identity:{...identity,paymentProfile,...(competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{})}};
+ const row=()=>{const value={...observed('before',{...plan,...effective}),ledger:api.loadCurrent259CatalogMaterial(current).ledger};
+  if(competition)value.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;return value;};
  const parse=value=>api.parseCurrent259CatalogRead(JSON.stringify(value),r);
  assert.doesNotThrow(()=>parse(row()));
  for(const [table,column]of normal261InsertAdditions){

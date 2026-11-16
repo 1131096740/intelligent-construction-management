@@ -288,3 +288,18 @@ for(const mode of ['wrongFollowUpLane','wrongFollowUpAmount','followUpExtraPost'
  assert.ok(f.events.filter(v=>v==='owned-json').length<=2);
  if(mode==='changedFollowUpReplay')assert.equal(f.events.filter(v=>v==='owned-json').length,1);
 });
+
+
+test('fixed native competition SQL protocol exposes holder and both exact runtime waits as data only',()=>{
+ const api=require('./task16-current259-payment-competition.cjs');
+ const owner={pid:812,loginOid:'10',databaseOid:'83',start:'2026-11-11T00:00:00.000001Z',systemIdentifier:'5556789'};
+ const lanes=[0,1].map(i=>({...owner,pid:813+i,loginOid:'92',start:'2026-11-11T00:00:00.00000'+(i+2)+'Z',clientAddress:'127.0.0.1',clientPort:40001+i}));
+ const input={owner,lanes,runId:'12345678-1234-4234-8234-123456789012'};
+ const sql=api.renderNativeTask16CompetitionMonitor(JSON.stringify(input));
+ assert.match(api.renderNativeTask16CompetitionHold(),/WHERE p.id=\$1 AND a.pid=pg_catalog.pg_backend_pid\(\) FOR UPDATE OF p/u);
+ assert.match(sql,/task16_live_12345678123442348234123456789012_runtime_a/u);assert.match(sql,/task16_live_12345678123442348234123456789012_runtime_b/u);
+ assert.match(sql,/count\(\*\) FROM waiters\)=2/u);assert.match(sql,/pg_catalog.pg_blocking_pids/u);
+ assert.match(sql,/payment."requestedAmountCents"/u);assert.match(sql,/readerTls/u);
+ for(const bad of [{...input,extra:true},{...input,lanes:[lanes[0],lanes[0]]},{...input,runId:'bad'},{...input,lanes:[{...lanes[0],clientAddress:"127.0.0.1';SELECT 1;--"},lanes[1]]}])assert.throws(()=>api.renderNativeTask16CompetitionMonitor(JSON.stringify(bad)));
+ assert.throws(()=>api.renderNativeTask16CompetitionHold('extra'));
+});

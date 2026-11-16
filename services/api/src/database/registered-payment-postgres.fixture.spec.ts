@@ -615,7 +615,28 @@ describe("registered PG original case: explicit observer projection protocol (no
           lanes: [continuity, continuity], withSamePaymentLock, withFollowUp: async <T>(_lane:number,_key:string,consume:()=>Promise<T>) => consume()
         });
         if (followUp) {
-          if (scenario === "competition-follow-up" || directorWins) {await expect(run).resolves.toMatchObject({fullyPaid:true,secondExecutionId:"execution-two",passed:true}); expect(followUpPosts).toBe(2);}
+          if (scenario === "competition-follow-up" || directorWins) {
+            const result = await run;
+            expect(result).toMatchObject({fullyPaid:true,secondExecutionId:"execution-two",passed:true,accountingEvidence:{
+              origin:"INDEPENDENT_OBSERVER_REPEATABLE_READ",currency:"CNY",
+              before:{phase:"BEFORE",balanceAYuan4:"100.0000",balanceBYuan4:"100.0000",paidAmountCents:"0",settlementPaidAmountCents:"0",executionCount:0,rootCount:0,fundingCount:0,allocationCount:0,eventCount:0,auditCount:0,projectFactCount:0,projectImpactCount:0},
+              afterCompetition:{phase:"AFTER_COMPETITION",balanceAYuan4:"100.0000",balanceBYuan4:"70.0000",paidAmountCents:"3000",settlementPaidAmountCents:"3000",executionCount:1,rootCount:1,fundingCount:1,allocationCount:1,eventCount:1,auditCount:1,projectFactCount:0,projectImpactCount:0},
+              after:{phase:"AFTER",balanceAYuan4:"90.0000",balanceBYuan4:"70.0000",paidAmountCents:"4000",settlementPaidAmountCents:"4000",executionCount:2,rootCount:1,fundingCount:2,allocationCount:2,eventCount:2,auditCount:2,projectFactCount:0,projectImpactCount:0},
+              replay:{phase:"REPLAY",balanceAYuan4:"90.0000",balanceBYuan4:"70.0000",paidAmountCents:"4000",settlementPaidAmountCents:"4000",executionCount:2,rootCount:1,fundingCount:2,allocationCount:2,eventCount:2,auditCount:2,projectFactCount:0,projectImpactCount:0},
+              executionId:"execution-one",followUpExecutionId:"execution-two",rootId:"root-one",debtorCompanyId:ids.companyA,creditorCompanyId:ids.companyB,debtAmountCents:"3000"
+            }});
+            const evidence = result.accountingEvidence;
+            const serialized = JSON.stringify(evidence);
+            expect(Buffer.byteLength(serialized)).toBeLessThanOrEqual(8192);
+            expect(serialized).not.toContain(f.context.password);
+            expect(serialized).not.toContain(second.password);
+            expect(serialized).not.toContain(prepared.accessToken);
+            expect(Object.keys(evidence).sort()).toEqual(["origin","currency","before","afterCompetition","after","replay","executionId","followUpExecutionId","rootId","debtorCompanyId","creditorCompanyId","debtAmountCents"].sort());
+            expect(Reflect.set(evidence,"debtAmountCents","0")).toBe(false);
+            expect(Reflect.set(evidence.after,"paidAmountCents","0")).toBe(false);
+            expect(continuity.recordObserverDiagnostic).toHaveBeenCalledTimes(5);
+            expect(followUpPosts).toBe(2);
+          }
           else await expect(run).rejects.toThrow(/PG_COMPETITION_FOLLOW_UP/u);
         } else if (scenario === "competition") await expect(run).resolves.toMatchObject({ competitionObserved: true, winner: "finance_staff", passed: true });
         else await expect(run).rejects.toThrow(scenario === "competition-stale-todo" ? "PG_COMPETITION_SHARED_WORK" : "PG_COMPETITION_ONE_HTTP_WINNER");

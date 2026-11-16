@@ -15,7 +15,7 @@ function fixture(options={}){
  const handle=Object.freeze({}),completion=Object.freeze({installXid:'1000'}),calls=[],clients=[];
  const paymentProfile=options.payment261===true?PAYMENT261_RUNTIME_PROFILE:options.payment261;
  const requestedSource=paymentProfile?{...source,migrations:catalog.currentMigrations}:source;
- let plan=paymentProfile===PAYMENT261_RUNTIME_PROFILE?{...catalog.plan,...catalog.api.loadCurrent259CatalogMaterial(requestedSource,paymentProfile).accessPlan}:catalog.plan;
+ let plan=(paymentProfile===PAYMENT261_RUNTIME_PROFILE||paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE)?{...catalog.plan,...catalog.api.loadCurrent259CatalogMaterial(requestedSource,paymentProfile).accessPlan}:catalog.plan;
  if(options.voucher)plan=require('./task16-current259-voucher-acl.cjs').voucherAccessPlan(plan);
  const proofRow=observed('committed',plan),staged=observed('staged',plan),parser=catalog.api.parseCurrent259CatalogRead;
  const initial=observed('before',plan);

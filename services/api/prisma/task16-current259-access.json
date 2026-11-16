@@ -423,5 +423,21 @@
         "createdAt"
       ]
     ]
+  },
+  "payment261OriginalResultDiscovery": {
+    "paymentProfiles": [
+      "TASK16_PAYMENT261_RUNTIME_V1",
+      "TASK16_PAYMENT261_COMPETITION_RUNTIME_V1"
+    ],
+    "table": "HistoricalFinancialTakeoverRowMapping",
+    "select": [
+      "evidenceLevel",
+      "id",
+      "kind",
+      "mappingDecision",
+      "projectId",
+      "targetKind",
+      "targetRef"
+    ]
   }
 }
