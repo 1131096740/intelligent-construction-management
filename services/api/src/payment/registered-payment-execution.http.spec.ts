@@ -149,6 +149,26 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
       sourceAllocations:[{sourceBatchId:opening.body.sources[0].id,amountCents}], confirmationPassword:"Synthetic15Password!"
     });
   }
+  it("keeps partial-payment options available with only bounded historical receipt discovery columns", async () => {
+    const opening = await prepareApprovedPayment();
+    expect((await recordSourcePayment(opening,"4000","ed5bc6cd-fb22-488d-9245-a54fe2d6e391")).status).toBe(201);
+    const mappings = (database.prisma as unknown as Prisma.TransactionClient).historicalFinancialTakeoverRowMapping;
+    const original = mappings.findMany;
+    // Models a restricted read role, not PostgreSQL or a live ACL proof. The
+    // discovery permission cannot read amounts, source snapshots or batch data.
+    const columns = new Set(["id","projectId","kind","evidenceLevel","mappingDecision","targetKind","targetRef"]);
+    jest.spyOn(mappings,"findMany").mockImplementation(args => {
+      const selected = args?.select && Object.entries(args.select).filter(([,enabled])=>enabled).map(([field])=>field);
+      const queried = [...Object.keys(args?.where??{}),...Object.keys(args?.orderBy??{})];
+      if (!selected || [...selected,...queried].some(field=>!columns.has(field))) {
+        throw Object.assign(new Error("Synthetic restricted history discovery denied"),{code:"42501"});
+      }
+      return original(args);
+    });
+    const options = await get("keeper","/payment-executions/payment-a/registration-options");
+    expect(options).toMatchObject({status:200,body:{paymentId:"payment-a",remainingAmountCents:"6000",originalResults:[]}});
+    expect((await get("keeper","/payment-executions/recorded-items")).body.total).toBe(1);
+  });
   async function prepareConfirmedHistoricalPayment() {
     const opening = await prepareApprovedPayment();
     const seed = database.prisma as unknown as Record<string, {

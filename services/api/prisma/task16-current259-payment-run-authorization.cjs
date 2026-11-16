@@ -623,7 +623,7 @@ async function run(args){
    if(request.payment261)checkPayment261Source(checked.loader.witness().source);
    receipt.sourceMaterialVerified=true;
    const effectiveAccessBinding=plan.material.installation.effectiveAccessBinding;
-   need(paymentProfile===PAYMENT261_RUNTIME_PROFILE?effectiveAccessBinding?.paymentProfile===paymentProfile&&effectiveAccessBinding.insertAdditionCount===9&&hex(effectiveAccessBinding.accessPlanSha256,64):effectiveAccessBinding===undefined,'EFFECTIVE_ACCESS_BINDING');
+   need((paymentProfile===PAYMENT261_RUNTIME_PROFILE||paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE)?effectiveAccessBinding?.paymentProfile===paymentProfile&&effectiveAccessBinding.insertAdditionCount===9&&hex(effectiveAccessBinding.accessPlanSha256,64):effectiveAccessBinding===undefined,'EFFECTIVE_ACCESS_BINDING');
    if(effectiveAccessBinding)receipt.effectiveAccessBinding=effectiveAccessBinding;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
    controller=new AbortController();resourceStartedAt=performance.now();endAt=Date.now()+plan.limits.resourceMs;

@@ -382,4 +382,12 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   throw safe();
  }
 }
-module.exports=Object.freeze({executeCurrent259PaymentCompetition});
+// Pure, bounded SQL data protocol. No private resource/lease continuation is issued.
+function renderNativeTask16CompetitionHold(){need(arguments.length===0);return holdSql;}
+function renderNativeTask16CompetitionMonitor(inputJson){
+ need(arguments.length===1&&typeof inputJson==='string'&&Buffer.byteLength(inputJson)<=8192);
+ const input=JSON.parse(inputJson);need(input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).sort().join(',')==='lanes,owner,runId');
+ need(input.owner&&Array.isArray(input.lanes)&&input.lanes.length===2&&input.lanes.every(row=>row&&typeof row==='object'));
+ return renderMonitor(input.owner,input.lanes,input.runId);
+}
+module.exports=Object.freeze({renderNativeTask16CompetitionHold,renderNativeTask16CompetitionMonitor,executeCurrent259PaymentCompetition});

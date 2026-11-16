@@ -98,6 +98,20 @@ async function observe(context: RegisteredPgExecutionContext, fixture: PreparedR
   }
 }
 
+
+/** Fixed receipt fields from the already checked observer snapshots. No extra
+ * query or HTTP response field is used to construct this accounting evidence. */
+function projectCompetitionAccounting(phase: "BEFORE" | "AFTER" | "AFTER_COMPETITION" | "REPLAY", value: Awaited<ReturnType<typeof observe>>) {
+  return Object.freeze({
+    phase, balanceAYuan4: value.balanceA, balanceBYuan4: value.balanceB,
+    paidAmountCents: value.request.paidAmountCents.toString(), settlementPaidAmountCents: value.settlement.paidAmountCents.toString(),
+    executionCount: value.executions.length, rootCount: value.roots.length,
+    fundingCount: value.funding.length, allocationCount: value.allocations.length,
+    eventCount: value.events.length, auditCount: value.audits.length,
+    projectFactCount: value.facts.length, projectImpactCount: value.impacts.length
+  });
+}
+
 /** Never called on import. The future executor owns authorization, installation,
  * application startup, client connection and cleanup. This is one case only. */
 export function runRegisteredNullCrossCompanyCommit(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity) {
@@ -693,8 +707,14 @@ export async function runRegisteredTwoActorPaymentCompetition(primary: Registere
   }
   const finalVersion = await work(actors[0], "3000", "1000");
   check(finalVersion !== initialVersion && await work(actors[1], "3000", "1000") === finalVersion, "PG_COMPETITION_SHARED_AFTER_COMMIT");
+  const accountingEvidence = Object.freeze({
+    origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ" as const, currency: "CNY" as const,
+    before: projectCompetitionAccounting("BEFORE", before), after: projectCompetitionAccounting("AFTER", after),
+    executionId: execution.id, rootId: root.id, debtorCompanyId: root.originalDebtorCompanyId,
+    creditorCompanyId: root.creditorCompanyId, debtAmountCents: root.amountCents.toString()
+  });
   return { caseId: "registered.two-actor.payment-competition", passed: true, executionId: execution.id, rootId: root.id,
-    winner: winner === 0 ? "finance_staff" : "comprehensive_director", competitionObserved: true } as const;
+    winner: winner === 0 ? "finance_staff" : "comprehensive_director", competitionObserved: true, accountingEvidence } as const;
 }
 
 /** A17 uses the original independent canonical snapshot on the existing observer. */
@@ -766,7 +786,8 @@ export async function runRegisteredTwoActorPaymentCompetitionFollowUp(primary: R
     !Array.isArray(audit.metadata.actualPayer) && audit.metadata.actualPayer.id === ids.companyA && audit.metadata.actualPayer.kind === "participating_company" &&
     !JSON.stringify(audit.metadata).includes(contexts[loser]!.password), "PG_COMPETITION_FOLLOW_UP_ACTOR");
   check((await request(loser,`${endpoint}/registrations`,"POST",command)).status === 201,"PG_COMPETITION_FOLLOW_UP_REPLAY");
-  check(isDeepStrictEqual(after,await checked(() => observe(primary, fixture, controls.lanes[0], true))),"PG_COMPETITION_FOLLOW_UP_REPLAY_LEDGER");
+  const replayed = await checked(() => observe(primary, fixture, controls.lanes[0], true));
+  check(isDeepStrictEqual(after,replayed),"PG_COMPETITION_FOLLOW_UP_REPLAY_LEDGER");
   const recorded = await request(loser,`/payment-executions/results/${key}`);
   const body = recorded.body as {status?: unknown;execution?: {executionId?: unknown;paymentId?: unknown;amountCents?: unknown;paidAt?: unknown;voucherPending?: unknown};effects?:unknown[];intercompany?:unknown[]};
   check(recorded.status === 200 && body.status === "recorded" && body.execution?.executionId === second.id && body.execution.paymentId === ids.payment &&
@@ -791,6 +812,16 @@ export async function runRegisteredTwoActorPaymentCompetitionFollowUp(primary: R
       itemBody.items.some(row => row.executionId === race.executionId && row.resultKey === original.idempotencyKey && row.amountCents === "3000" && row.paidAt === plan.paidAt) &&
       itemBody.items.some(row => row.executionId === second.id && row.resultKey === key && row.amountCents === "1000" && row.paidAt === plan.paidAt),"PG_COMPETITION_FOLLOW_UP_RECORDED_ITEMS");
   }
-  return {...race,caseId:"registered.two-actor.payment-competition-follow-up",secondExecutionId:second.id,fullyPaid:true as const};
+  const root = after.roots[0]!;
+  const accountingEvidence = Object.freeze({
+    origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ" as const, currency: "CNY" as const,
+    before: race.accountingEvidence.before,
+    afterCompetition: Object.freeze({...race.accountingEvidence.after,phase:"AFTER_COMPETITION" as const}),
+    after: projectCompetitionAccounting("AFTER",after), replay: projectCompetitionAccounting("REPLAY",replayed),
+    executionId: race.executionId, followUpExecutionId: second.id, rootId: root.id,
+    debtorCompanyId: root.originalDebtorCompanyId, creditorCompanyId: root.creditorCompanyId,
+    debtAmountCents: root.amountCents.toString()
+  });
+  return {...race,caseId:"registered.two-actor.payment-competition-follow-up",secondExecutionId:second.id,fullyPaid:true as const,accountingEvidence};
   });
 }

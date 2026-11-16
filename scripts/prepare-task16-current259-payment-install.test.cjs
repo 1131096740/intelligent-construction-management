@@ -119,15 +119,18 @@ test('261 normal and other named modes cache and verify distinct effective plan 
  const checked=f.api.verifyCurrent261PaymentInstallPlan(normal.file,normal.sha256);
  assert.deepEqual(Object.keys(checked.plan.material.installation.effectiveAccessBinding).sort(),['accessPlanSha256','insertAdditionCount','paymentProfile']);
  assert.equal(checked.plan.material.installation.effectiveAccessBinding.insertAdditionCount,9);
- assert.equal(f.api.verifyCurrent261PaymentInstallPlan(other.file,other.sha256,mode).plan.material.installation.effectiveAccessBinding,undefined);
+ const paired=f.api.verifyCurrent261PaymentInstallPlan(other.file,other.sha256,mode).plan.material.installation.effectiveAccessBinding;
+ assert.deepEqual(paired,{...checked.plan.material.installation.effectiveAccessBinding,paymentProfile:mode});
  assert.equal(f.state.captures,2,'different modes cannot reuse the first observed mode cache');
  assert.throws(()=>f.api.verifyCurrent261PaymentInstallPlan(other.file,other.sha256));
  assert.throws(()=>f.api.verifyCurrent261PaymentInstallPlan(normal.file,normal.sha256,mode));
- const original=fs.readFileSync(normal.file);
+ for(const [selected,profile]of [[normal,undefined],[other,mode]]){
+ const original=fs.readFileSync(selected.file);
  for(const field of ['paymentProfile','accessPlanSha256','insertAdditionCount']){
   const raw=JSON.parse(original);raw.material.installation.effectiveAccessBinding[field]=field==='insertAdditionCount'?8:'tampered';
-  const bytes=Buffer.from(JSON.stringify(raw));fs.writeFileSync(normal.file,bytes);
-  assert.throws(()=>f.api.verifyCurrent261PaymentInstallPlan(normal.file,createHash('sha256').update(bytes).digest('hex')));
+  const bytes=Buffer.from(JSON.stringify(raw));fs.writeFileSync(selected.file,bytes);
+  assert.throws(()=>f.api.verifyCurrent261PaymentInstallPlan(selected.file,createHash('sha256').update(bytes).digest('hex'),profile));
+ }
  }
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
