@@ -170,3 +170,15 @@ test('cash close recorder remains stage-limited, lane-limited and bounded',()=>{
  assert.equal(api.projectNativeTask16CashCloseQuery(event,'runtime_b',stage),null);now='CASH_PAYMENT_AND_OBSERVER';record(event);assert.equal(receipt.cashCloseQueries,undefined);
  now=stage;for(let i=0;i<14;i++)record(event);assert.equal(receipt.cashCloseQueries.events.length,12);assert.equal(receipt.cashCloseQueries.overflow,true);
 });
+test('cash close impact diagnostic records bounded model columns and no values',()=>{
+ const api=require('./task16-native-voucher-roster-query.cjs'),stage='CASH_SEED_AND_SETTLEMENT_REPLAY';let traps=0;
+ const query='SELECT "public"."ProjectCloseImpact"."id" FROM "public"."ProjectCloseImpact" WHERE ("public"."ProjectCloseImpact"."projectId" = $1 AND "public"."ProjectCloseImpact"."sourceType" = $2 AND "public"."ProjectCloseImpact"."sourceId" = $3 AND "public"."ProjectCloseImpact"."sourceFingerprint" = $4) LIMIT $5 OFFSET $6';
+ const event={query,get params(){traps++;throw Error('PRIVATE');}},out=api.projectNativeTask16CashImpactQuery(event,'runtime_a',stage);
+ assert.equal(out.unknownShape,false);assert.equal(out.operation,'SELECT');assert.ok(out.tokens.includes('id'));assert.ok(out.tokens.includes('sourceFingerprint'));assert.equal(traps,0);
+ assert.doesNotMatch(JSON.stringify(out),/PRIVATE|\$1|params/u);assert.equal(api.projectNativeTask16CashImpactQuery(event,'runtime_b',stage),null);
+ for(const query2 of [query+' -- PRIVATE',query.replace('$1',"'PRIVATE'"),query.replace('"sourceType"','"private_unknown"')]){
+  const value=api.projectNativeTask16CashImpactQuery({query:query2},'runtime_a',stage);assert.equal(value.unknownShape,true);assert.deepEqual(value.tokens,[]);assert.doesNotMatch(JSON.stringify(value),/PRIVATE|private_unknown/u);
+ }
+ const receipt={},record=api.createNativeTask16CashPartyDiagnostic(receipt,()=>stage);for(let i=0;i<14;i++)record(event);
+ assert.equal(receipt.cashImpactQueries.events.length,12);assert.equal(receipt.cashImpactQueries.overflow,true);
+});
