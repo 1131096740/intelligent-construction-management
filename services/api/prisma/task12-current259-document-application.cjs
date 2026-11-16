@@ -2,7 +2,7 @@
 
 const {types}=require('node:util');
 const {isCurrent259OwnedModule,createCurrent259OwnedApplication,current259OwnedApplicationView,
- takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders,takeCurrent261NativeOrdinaryClient,inspectCurrent261OwnedNativeEquipmentProviders}=require('./task16-current259-client-loader.cjs');
+ takeCurrent259CreationFailure,inspectCurrent259OwnedDocumentAuthProviders,takeCurrent261NativeOrdinaryClient,inspectCurrent261OwnedNativeEquipmentProviders,inspectCurrent261OwnedNativeEquipmentPublicGuard,consumeCurrent261OwnedNativeEquipmentPublicGuard}=require('./task16-current259-client-loader.cjs');
 const CODE='CURRENT259_GENERATED_DOCUMENT_APP';
 const faults=new WeakMap(),httpBridges=new WeakMap(),lifecycleHttpBridges=new WeakMap();
 const exercisePattern=/^CURRENT259_GENERATED_DOCUMENT_EXERCISE_(?:INPUT|TEMPLATE|OPEN|SAVE|OWNER_BEGIN|GENERATE|PUBLIC_READBACK|OWNER_READBACK|RESULT)$/u;
@@ -138,8 +138,9 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
   };
   const moduleRef=own(file,'moduleRef'),getModule=method(moduleRef,'get');
   const routeQueue=(...args)=>{check();return queue(...args);};
-  const verifyProviders=target=>{
-   check();const pairs=nativeEquipment&&server&&target===view?inspectCurrent261OwnedNativeEquipmentProviders(application,testing,server):undefined;
+  const verifyProviders=(target,publicGuard=false)=>{
+   check();const probe=nativeEquipment&&server&&target===view?(publicGuard?inspectCurrent261OwnedNativeEquipmentPublicGuard(application,testing,server):inspectCurrent261OwnedNativeEquipmentProviders(application,testing,server)):undefined;
+   const pairs=publicGuard&&probe!==undefined?own(probe,'providers'):probe;
    if(pairs!==undefined)need(!types.isProxy(pairs)&&Array.isArray(pairs)&&pairs.length===16,'PROVIDERS');
    authReceivers(target,pairs);taskReceivers(target,pairs);
    need(tokens.every((token,i)=>provider(target,token,pairs)===instances[i])&&ordinary.onApplicationShutdown===deferredDisconnect&&
@@ -149,6 +150,7 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
     typeof authorityToken==='symbol'&&authority&&provider(target,authorityToken,pairs)===authority&&
     getModule.call(moduleRef,authorityToken,{strict:false})===authority&&
     typeof authority.assertCanReadVersionFile==='function','PROVIDERS');
+   return probe;
   };
   verifyProviders(testing);
   restoreQueue=shadow(document,'queueDraftPreview',routeQueue,method(document,'queueDraftPreview'));
@@ -182,8 +184,13 @@ async function runDocumentApplication(bridge,nativeEquipment=false){
    const jwtToken=own(loaded,'JwtTokenService'),jwtService=get(view,jwtToken),verifyAccess=method(jwtService,'verifyAccessToken');
    need(typeof jwtToken==='function'&&get(testing,jwtToken)===jwtService,'HTTP');
    const checkPublic=()=>{
-    verifyProviders(view);
-    need(method(view,'getHttpServer').call(view)===server&&get(view,jwtToken)===jwtService&&
+    const probe=verifyProviders(view,true);
+    if(probe!==undefined){
+     need(own(probe,'server')===server&&own(probe,'jwtService')===jwtService&&own(probe,'verifyAccessToken')===verifyAccess,'HTTP');
+     // Keep the full source guard after the original moduleRef authority read.
+     check();need(consumeCurrent261OwnedNativeEquipmentPublicGuard(probe,application,testing,server)===true&&method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
+    }
+    else need(method(view,'getHttpServer').call(view)===server&&get(view,jwtToken)===jwtService&&
      method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
    };
    const verifyToken=token=>{checkPublic();return verifyAccess.call(jwtService,token);};
