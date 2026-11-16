@@ -203,6 +203,7 @@ function inspectNativeTask16Interfaces(purpose=PURPOSE){
   ['@nestjs/testing',[['Test',0]]]
  ];
  if(selected.voucher){
+  specs.push(['./task16-native-voucher-roster-query.cjs',[['projectNativeTask16RosterQuery',3],['nativeTask16VoucherQueryLogOptions',2],['createNativeTask16RosterQueryDiagnostic',2]]]);
   const replacements={
    './task16-current259-seven-install.cjs':[['renderNativeTask16VoucherSeven',4],['parseNativeTask16VoucherSeven',4],['renderNativeTask16VoucherSevenPreimage',3]],
    './task16-current259-runtime-acl.cjs':[['renderCurrent259VoucherRuntimeAcl',3]],
@@ -279,7 +280,7 @@ function assertNativeTask16CompetitionLoopbackListeners(text,postmasterPid,port)
  need(addresses.length===2&&addresses.includes('127.0.0.1')&&addresses.includes('::1'),code);
  return Object.freeze({postmasterPid,port,addresses:Object.freeze(['127.0.0.1','::1']),ownedStartupListeners:true});
 }
-module.exports=Object.freeze({createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options,request.purpose)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256,request.purpose);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -465,7 +466,7 @@ async function runNativeTask16Business(plan,state){
   const {PrismaClient}=require('@prisma/client');
   const controllerAborted=error=>Object.getOwnPropertyDescriptor(error??{},'code')?.value==='NATIVE_DIRECT_DEADLINE';
   const urlFor=lane=>{const kind=lane==='runtime_a'||lane==='runtime_b'?'runtime':lane;const url=new URL('postgresql://jg_task01_'+kind+'@127.0.0.1:'+port+'/'+plan.database);url.password=credentials[kind];for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5',application_name:'task16_live_'+plan.runId.replaceAll('-','')+'_'+lane}))url.searchParams.set(key,value);return url.toString();};
-  const clients=clientLanes.map(kind=>new PrismaClient({datasources:{db:{url:urlFor(kind)}}}));state.setClients(clients);
+  const clients=createNativeTask16BusinessClients(PrismaClient,plan.purpose,urlFor,receipt);state.setClients(clients);
   await wait(()=>Promise.all(clients.map(client=>client.$connect())));
   const owner=clients[0],runtime=clients[1],runtimeB=selection.competition?clients[2]:undefined,observer=clients.at(-1),identitySql=require('./task16-current259-session-identity.cjs').current259ClientIdentitySql;
   let retained;
@@ -720,4 +721,16 @@ function createNativeTask16VoucherStageRecorder(receipt,enter){
   need(typeof flags.cancelFailed==='boolean'&&typeof flags.releaseFailed==='boolean'&&(flags.cancelFailed||flags.releaseFailed)&&Object.getOwnPropertyDescriptor(receipt,'voucherDownloadCleanup')===undefined,'NATIVE_DIRECT_VOUCHER_DIAGNOSTIC');
   Object.defineProperty(receipt,'voucherDownloadCleanup',{value:Object.freeze(flags),enumerable:true});
  };
+}
+
+function createNativeTask16BusinessClients(Client,purpose,urlFor,receipt){
+ const selection=nativeTask16CaseSelection(purpose);
+ const queryProjection=require('./task16-native-voucher-roster-query.cjs');
+ const diagnostic=selection.voucher?queryProjection.createNativeTask16RosterQueryDiagnostic(receipt,()=>receipt.stages.at(-1)?.stage):undefined;
+ return (selection.competition?['owner','runtime_a','runtime_b','observer']:['owner','runtime','observer']).map(lane=>{
+  const logging=queryProjection.nativeTask16VoucherQueryLogOptions(purpose,lane);
+  const client=new Client({datasources:{db:{url:urlFor(lane)}},...logging});
+  if(logging)client.$on('query',diagnostic.forLane(lane));
+  return client;
+ });
 }
