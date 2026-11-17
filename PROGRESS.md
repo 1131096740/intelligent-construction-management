@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 虚构账号停用旧票隔离结果
+
+准确 `fc8e991ec93a5652863d2b37b53b83ede84557cc` 的虚构真实 PG 场景中，账号停用前旧票访问为 200；停用后未过期旧票返回 403，存储未读取，成员及账务观察不变。[回执](/private/tmp/jg-disabled-fc8-5f7a26yy/receipt.json) SHA `b640a1060a8565ba6cd8be0135f3bab1c962c1363e0dee253f5fae6a45a08180`，[日志](/private/tmp/jg-disabled-fc8-once.log) SHA `74be93e7a2c5130a55a2c548fa8dc47dcfa1443840b3d490f4613788d90c0103`，[清理](/private/tmp/jg-disabled-fc8-cleanup.json) SHA `4b17ab58c1e90b504d354d2d7b9fbedacc3555c59c59ae8fc0cb9fac215b5bf9`。
+
+该场景使用虚构服务前置，未覆盖付款登记 HTTP；清理检查受采样 PID 范围限制。仅限该场景和准确 SHA，不代表 #398 整体验收，b047 仍 UNKNOWN；本次未碰生产或推送。
+
 ## 2026-11-17 虚构账号停用凭证候选
 
 虚构账号停用用途 `641920b8` 经独审合入本地 `12fe3552`，补丁 SHA `898b4fad2e3a2ab9b52a7f9be64e52a8485b08e0ee0bf5d73bd7f2dcb1c87c60`，四文件差异与封存补丁一致；Node20 定向 110/110、API build/typecheck/lint 通过。首次在未构建 API dist 的独立树运行时 9 项装配失败，构建后重跑全部通过。
