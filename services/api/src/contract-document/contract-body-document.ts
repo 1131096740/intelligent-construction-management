@@ -2,9 +2,10 @@ import { BadRequestException, ConflictException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { DOMParser, XMLSerializer, type Document, type Element } from "@xmldom/xmldom";
 import PizZip from "pizzip";
-import { readLayoutSourcePositions } from "../contract-template/layout-field-mapping";
+import { readLayoutSourcePositions, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
+import { BUILT_IN_GENERIC_SOURCE_SHA256 } from "./contract-docx-package-metadata";
 import { completeContractPageNumberFields } from "./layout-preview-docx";
 import type { ContractDocumentRenderInput } from "./contract-document.types";
 import { canonicalContractPlaceholder, CONTRACT_VALUE_PLACEHOLDER_ALIASES, isContractBillReadonlyRowPlaceholder } from "./contract-placeholder-registry";
@@ -823,11 +824,73 @@ export function upgradeReviewedLaborTaxPlan(value: unknown, source: Buffer, mapp
  * They never become user text or exported metadata; original formatting stays in place.
  */
 export const BUILT_IN_PARTY_PLACEMENT_VERSION = "built-in-party-placement-v1";
-export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|undefined {
-  return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":undefined;
+export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|"generic"|undefined {
+  return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":sourceSha256===BUILT_IN_GENERIC_SOURCE_SHA256?"generic":undefined;
 }
 function hasBillingMappingConflict(model:ReturnType<typeof sourceParagraphs>):boolean {
+  if(builtInPartyPlacementKind(model.sourceSha256)==="generic") {
+    try { for(const index of [13,14,53,58]) prepareGenericPartyParagraph(model.paragraphs[index].paragraph.cloneNode(true) as Element,model.paragraphs[index].sourceText,index); return false; }
+    catch { return true; }
+  }
   return builtInPartyPlacementKind(model.sourceSha256)==="mechanical"&&model.paragraphs.slice(93,109).some(item=>textOf(item.paragraph)!==item.sourceText);
+}
+/** Other confirmed bindings may replace nonempty text outside the party span. */
+function matchesMappedPartySurroundings(sourceText:string,literal:string,current:string,binding:string):boolean {
+  const sourceStart=sourceText.indexOf(literal),tag=`{${binding}}`,mappedStart=current.indexOf(tag);
+  if(sourceStart<0||mappedStart<0||mappedStart!==current.lastIndexOf(tag)) return false;
+  const matches=(source:string,mapped:string):boolean=>{
+    const memo=new Map<string,boolean>();
+    const visit=(s:number,m:number):boolean=>{
+      const key=`${s}:${m}`,known=memo.get(key);
+      if(known!==undefined) return known;
+      let result=false;
+      if(m===mapped.length) result=s===source.length;
+      else if(mapped[m]==="{") {
+        const end=mapped.indexOf("}",m+1);
+        if(end>m+1&&!mapped.slice(m+1,end).includes("{")) for(let next=s+1;next<=source.length&&!result;next++) result=visit(next,end+1);
+      } else if(s<source.length&&source[s]===mapped[m]) result=visit(s+1,m+1);
+      memo.set(key,result);
+      return result;
+    };
+    return visit(0,0);
+  };
+  return matches(sourceText.slice(0,sourceStart),current.slice(0,mappedStart))&&matches(sourceText.slice(sourceStart+literal.length),current.slice(mappedStart+tag.length));
+}
+export function prepareGenericOwnerParagraph(paragraph:Element,sourceText:string):void {
+  const literal="建工智管建设有限公司", current=textOf(paragraph);
+  if(sourceText.indexOf(literal)<0 || sourceText.indexOf(literal)!==sourceText.lastIndexOf(literal)) throw new ConflictException("通用合同主体位置无法核对，请联系合同管理员处理");
+  const first=current.indexOf(literal);
+  const bindings=placeholderTags(current).filter(tag=>canonicalContractPlaceholder(tag)==="party.owner.name");
+  if(first>=0 && current.indexOf(literal,first+literal.length)<0 && bindings.length===0) {
+    replaceParagraphRange(paragraph,first,first+literal.length,"{party.owner.name}");
+    return;
+  }
+  if(first<0 && bindings.length===1 && matchesMappedPartySurroundings(sourceText,literal,current,bindings[0])) return;
+  throw new ConflictException("通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+}
+export function prepareGenericPartyParagraph(paragraph:Element,sourceText:string,index:number):void {
+  if(index===13||index===53) return prepareGenericOwnerParagraph(paragraph,sourceText);
+  const literal="{相对方名称}",current=textOf(paragraph),first=current.indexOf(literal);
+  if(![14,58].includes(index)||sourceText.indexOf(literal)<0||sourceText.indexOf(literal)!==sourceText.lastIndexOf(literal)) throw new ConflictException("通用合同主体位置无法核对，请联系合同管理员处理");
+  const bindings=placeholderTags(current).filter(tag=>canonicalContractPlaceholder(tag)==="party.counterparty.name");
+  if(first>=0 && current.indexOf(literal,first+literal.length)<0 && bindings.length===0) {
+    replaceParagraphRange(paragraph,first,first+literal.length,"{party.counterparty.name}");
+    return;
+  }
+  if(first<0 && bindings.length===1 && matchesMappedPartySurroundings(sourceText,literal,current,bindings[0])) return;
+  throw new ConflictException("通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+}
+export function assertGenericPartySourceMapping(source:Buffer,mapping:LayoutSourceMapping|undefined):void {
+  if(!mapping||builtInPartyPlacementKind(createHash("sha256").update(source).digest("hex"))!=="generic") return;
+  const positions=readLayoutSourcePositions(source).positions;
+  for(const index of [13,14,53,58]) {
+    const item=positions.find(position=>position.part==="word/document.xml"&&position.paragraphIndex===index);
+    const literal=index===13||index===53?"建工智管建设有限公司":"{相对方名称}";
+    const start=item?.text.indexOf(literal)??-1;
+    if(!item||start<0) throw new ConflictException("通用合同主体位置无法核对，请联系合同管理员处理");
+    const end=start+literal.length,target=index===13||index===53?"party.owner.name":"party.counterparty.name";
+    if(mapping.bindings.some(binding=>binding.positionId===item.positionId&&binding.start<end&&binding.end>start&&(binding.start!==start||binding.end!==end||binding.fieldKey!==target))) throw new ConflictException("通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+  }
 }
 export function prepareBuiltInRoleParagraph(paragraph:Element,label:string):void {
   const ranges=Array.from(textOf(paragraph).matchAll(/\{([^{}]+)\}/gu))
@@ -845,14 +908,14 @@ export function assertBuiltInPartyPlacementPlan(source:Buffer,mapped:Buffer,layo
   const model=sourceParagraphs(source,mapped);
   const kind=builtInPartyPlacementKind(model.sourceSha256);
   if(!kind) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
-  if(hasBillingMappingConflict(model)) throw new ConflictException("正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+  if(hasBillingMappingConflict(model)) throw new ConflictException(kind==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
   if(rawPlan===undefined) return;
   const plan=normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
-  const roleIds=new Set([model.paragraphs[28].id,model.paragraphs[29].id]);
+  const roleIds=new Set((kind==="generic"?[13,14,53,58]:[28,29]).map(index=>model.paragraphs[index].id));
   const protectedIds=new Set([...roleIds,...(kind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[])]);
   if(plan.edits.some(edit=>protectedIds.has(edit.positionId))||plan.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan.deletedPositionIds?.some(id=>roleIds.has(id))) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
 }
-export function renderContractBody(source: Buffer, mapped: Buffer, input: ContractDocumentRenderInput, requiredKeys: readonly string[], layoutTemplateVersionId: string, rawPlan?: unknown, options: { allowBlankWatermark?: boolean; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION; partyDetailsConflictPreview?: boolean } = {}) {
+export function renderContractBody(source: Buffer, mapped: Buffer, input: ContractDocumentRenderInput, requiredKeys: readonly string[], layoutTemplateVersionId: string, rawPlan?: unknown, options: { allowBlankWatermark?: boolean; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION; partyDetailsConflictPreview?: boolean; partyDetailsExternalMappingConflict?: boolean } = {}) {
   const values = { ...input.values };
   const hasReviewedTaxVersion = Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion");
   const reviewedLaborTaxBindingVersion = hasReviewedTaxVersion ? values["contract.reviewedLaborTaxBindingVersion"] : undefined;
@@ -893,7 +956,8 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const placement=options.partyDetailsVersion;
   const placementKind=builtInPartyPlacementKind(model.sourceSha256);
   if(placement!==undefined&&(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION||!placementKind)) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
-  const roleIds=new Set(placement?[model.paragraphs[28].id,model.paragraphs[29].id]:[]);
+  const roleIndexes=placementKind==="generic"?[13,14,53,58]:[28,29];
+  const roleIds=new Set(placement?roleIndexes.map(index=>model.paragraphs[index].id):[]);
   const removedPartyIds=new Set(placement&&placementKind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[]);
   if (hasPageValue) prepareReviewedOriginalMechanicalPage(model.zip);
   if (hasDateValue) {
@@ -914,12 +978,12 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   }
   const plan = rawPlan === undefined ? undefined : normalizeContractBodyPlan(rawPlan, source, mapped, layoutTemplateVersionId, binding);
   let partyDetailsConflict=false;
-  const partyDetailsMappingConflict=Boolean(placement&&hasBillingMappingConflict(model));
+  const partyDetailsMappingConflict=Boolean(placement&&(hasBillingMappingConflict(model)||options.partyDetailsExternalMappingConflict));
   let partyDetailsRecovery: {roleIds:string[];groups:string[][]}|undefined;
   if(placement){
     const protectedIds=new Set([...roleIds,...removedPartyIds]);
     partyDetailsConflict=Boolean(plan?.edits.some(edit=>protectedIds.has(edit.positionId))||plan?.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan?.deletedPositionIds?.some(id=>roleIds.has(id)));
-    if(partyDetailsMappingConflict&&!options.partyDetailsConflictPreview) throw new ConflictException("正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+    if(partyDetailsMappingConflict&&!options.partyDetailsConflictPreview) throw new ConflictException(placementKind==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
     if(partyDetailsConflict&&!options.partyDetailsConflictPreview) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
     if(partyDetailsConflict||partyDetailsMappingConflict){
       const recoveryIds=[...roleIds].filter(id=>plan?.edits.some(edit=>edit.positionId===id)||plan?.deletedPositionIds?.includes(id));
@@ -974,7 +1038,11 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   // Remove only party-name bindings from the mapped role line. Replacing the
   // rendered paragraph with the original source text would silently discard
   // other confirmed mappings on that same line.
-  for (const [index,label] of (placementKind==="mechanical"?[[28,"甲方"],[29,"乙方"]]:[[28,"买方"],[29,"卖方"]]) as Array<[number,string]>) {
+  if(placementKind==="generic") for(const index of roleIndexes) {
+    const item=model.paragraphs[index];
+    if(item&&roleIds.has(item.id))prepareGenericPartyParagraph(item.paragraph,item.sourceText,index);
+  }
+  for (const [index,label] of (placementKind==="mechanical"?[[28,"甲方"],[29,"乙方"]]:placementKind==="generic"?[]:[[28,"买方"],[29,"卖方"]]) as Array<[number,string]>) {
     const item=model.paragraphs[index];
     if(item&&roleIds.has(item.id))prepareBuiltInRoleParagraph(item.paragraph,label);
   }

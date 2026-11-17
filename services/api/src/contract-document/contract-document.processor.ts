@@ -1,5 +1,6 @@
 import { applyMechanicalContactLayout, MECHANICAL_CONTACT_LAYOUT_V1, MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
 import { mappedLayoutSourceForVersion } from "../contract-template/layout-field-mapping";
+import { assertGenericPartySourceMapping } from "./contract-body-document";
 import { renderLayoutPreviewDocx } from "./layout-preview-docx";
 import { layoutPreviewValues } from "./layout-preview-values";
 import {
@@ -591,6 +592,7 @@ export class ContractDocumentProcessor
       stage("TEMPLATE");
       if (snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5") await assertContractBodyPdfRuntimeLock(snapshot.bodyDocument.runtimeLockSha256!, snapshot.bodyDocument.typographyVersion);
       const template = await this.files.getFileBuffer(snapshot.templateFileId);
+      if (snapshot.partyDetailsVersion || snapshot.bodyDocument?.partyDetailsVersion) assertGenericPartySourceMapping(template.buffer,snapshot.layoutSourceMapping);
       // Old queued jobs keep their original bytes. New jobs use only the exact
       // confirmed coordinates captured when queued, never a current template.
       const source = snapshot.layoutSourceMapping === undefined ? template.buffer : mappedLayoutSourceForVersion(template.buffer, {
