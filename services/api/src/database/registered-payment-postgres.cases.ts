@@ -756,6 +756,42 @@ export async function runRegisteredLedgerPaymentCompetition(primary: RegisteredP
   fixture: Awaited<ReturnType<typeof import("./registered-payment-postgres.fixture").seedRegisteredPgPublicCashFormalFixture>>, controls: CompetitionControls) {
   return runRegisteredCompetition(primary,contender,fixture,controls,true);
 }
+/** Test-only owned fault boundary; never retries before the independent ledger witness. */
+export async function runRegisteredLedgerResponseLoss(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
+  fixture: Awaited<ReturnType<typeof import("./registered-payment-postgres.fixture").seedRegisteredPgPublicCashFormalFixture>>,
+  controls: {lanes: readonly [RegisteredPgSeedContinuity,RegisteredPgSeedContinuity]; loss: RegisteredPgSeedContinuity}) {
+  const {plan,settlementFactId,settlementBaseline}=fixture,{ids}=plan;
+  const light=()=>{controls.lanes.forEach(lane=>lane.checkLight());const document=fixture.cashSourceDocument;check(document,"PG_LEDGER_LOSS_DOCUMENT");document.verify();controls.loss.checkLight();};
+  const checked=async <T>(operation:()=>T|PromiseLike<T>):Promise<T>=>{light();const result=await operation();light();return result;};
+  await checked(()=>assertRegisteredPgCompetitionRoles(primary,contender,controls.lanes[0]));
+  const {readCashSettlementPrerequisite,readCashSettlementPrerequisiteInTransaction}=await import("./registered-payment-public-cash-prerequisite");
+  const prerequisite=await checked(()=>readCashSettlementPrerequisite(primary.observer,{projectId:ids.project,settlementId:ids.settlement},light));
+  check(settlementFactId===settlementBaseline.factId&&isDeepStrictEqual(prerequisite,settlementBaseline),"PG_LEDGER_LOSS_PREREQUISITE");
+  const before=await checked(()=>observe(primary,fixture,controls.lanes[0],true));
+  check(before.request.approvedAmountCents===4000n&&before.request.paidAmountCents===0n&&before.settlement.payableAmountCents===4000n&&before.settlement.paidAmountCents===0n&&before.balanceA==="100.0000"&&before.balanceB==="100.0000"&&[before.executions,before.funding,before.allocations,before.events,before.audits,before.roots,before.facts,before.impacts].every(rows=>rows.length===0),"PG_LEDGER_LOSS_BEFORE");
+  const options=await checked(()=>registeredPgHttp(primary,`/payment-executions/${ids.payment}/registration-options`,"GET",undefined,fixture.accessToken,controls.lanes[0]));
+  const body=options.body as {expectedPaymentUpdatedAt?:string;remainingAmountCents?:string;accounts?:Array<{scopeKey:string;eligible:boolean}>};
+  check(options.status===200&&typeof body.expectedPaymentUpdatedAt==="string"&&body.remainingAmountCents==="4000"&&body.accounts?.some(row=>row.scopeKey===`company:${ids.companyB}`&&row.eligible),"PG_LEDGER_LOSS_OPTIONS");
+  const command={idempotencyKey:ids.requestKey,expectedPaymentUpdatedAt:body.expectedPaymentUpdatedAt,amountCents:"3000",paidAt:plan.paidAt,scopeKey:`company:${ids.companyB}`,expectedRegistrationId:fixture.companyBRegistrationId,openingTreatment:"not_included",openingReason:"本次实付未计入核对期初",openingEvidence:"隔离PG响应丢失及期初依据",sourceAllocations:[{sourceBatchId:fixture.companyBSourceId,amountCents:"3000"}],confirmationPassword:primary.password};
+  const submit=()=>registeredPgHttp(primary,`/payment-executions/${ids.payment}/registrations`,"POST",command,fixture.accessToken,{...controls.loss,requestJson:undefined});
+  const {readLedgerCompetitionPaymentInTransaction}=await import("./registered-payment-ledger-competition-observer");
+  const read=()=>observe(primary,fixture,controls.lanes[0],true,false,false,async(tx,rows)=>{check(rows.executions.length===1,"PG_LEDGER_LOSS_EXECUTION");const currentSettlement=await readCashSettlementPrerequisiteInTransaction(tx,{projectId:ids.project,settlementId:ids.settlement},light);check(isDeepStrictEqual(currentSettlement,settlementBaseline),"PG_LEDGER_LOSS_SETTLEMENT_DRIFT");return readLedgerCompetitionPaymentInTransaction(tx,{projectId:ids.project,settlementId:ids.settlement,settlementFactId,executionId:rows.executions[0]!.id,payerId:ids.companyB},light);});
+  let after:Awaited<ReturnType<typeof read>>|undefined,finalSnapshot:Awaited<ReturnType<typeof read>>|undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const {runLedgerLossFlow}:{runLedgerLossFlow:(input:Record<string,()=>Promise<unknown>>)=>Promise<void>}=require("../../prisma/task16-ledger-loss-flow.cjs");
+  check(controls.loss.loseRegistrationResponse&&controls.loss.authorizeResponseLossReplay,"PG_LEDGER_LOSS_TRANSPORT");
+  await runLedgerLossFlow({
+    lose:()=>controls.loss.loseRegistrationResponse!(()=>checked(submit)),
+    observeCommitted:async()=>{after=await checked(read);const x=after.executions[0],f=after.funding[0],a=after.allocations[0],r=after.roots[0];
+      check(after.executions.length===1&&after.funding.length===1&&after.allocations.length===1&&after.events.length===1&&after.audits.length===1&&after.roots.length===1&&after.facts.length===1&&after.impacts.length===3&&x?.idempotencyKey===ids.requestKey&&x.paymentRequestId===ids.payment&&x.voucherFileId===null&&x.amountCents===3000n&&f?.executionId===x.id&&f.operatingLedgerEffectiveDateAtRegistration?.toISOString().slice(0,10)===plan.openingDate&&f.actualPayerId===ids.companyB&&f.actualPayerKind==="participating_company"&&after.events[0]?.executionId===x.id&&after.audits[0]?.actorUserId===ids.actor&&a?.executionId===x.id&&a.sourceBatchId===fixture.companyBSourceId&&a.amountCents===3000n&&r?.paymentExecutionId===x.id&&r.sourceType==="registered_payment_execution"&&r.entryKind==="proxy_payment"&&r.direction==="increase"&&r.status==="confirmed"&&r.projectId===ids.project&&r.originalDebtorCompanyId===ids.companyA&&r.creditorCompanyId===ids.companyB&&r.amountCents===3000n&&after.request.status==="partially_paid"&&after.request.approvedAmountCents===4000n&&after.request.paidAmountCents===3000n&&after.settlement.payableAmountCents===4000n&&after.settlement.paidAmountCents===3000n&&after.balanceA==="100.0000"&&after.balanceB==="70.0000","PG_LEDGER_LOSS_GRAPH");},
+    readOriginal:async()=>{const result=await checked(()=>registeredPgHttp(primary,`/payment-executions/results/${ids.requestKey}`,"GET",undefined,fixture.accessToken,controls.lanes[0]));const value=result.body as {status?:string;execution?:{executionId?:string}};check(result.status===200&&value.status==="recorded"&&value.execution?.executionId===after?.executions[0]?.id,"PG_LEDGER_LOSS_RESULT");},
+    authorizeReplay:async()=>{await checked(()=>controls.loss.authorizeResponseLossReplay!());},
+    replay:async()=>{const result=await checked(submit),value=result.body as {id?:string};check(result.status===201&&value.id===after?.executions[0]?.id,"PG_LEDGER_LOSS_REPLAY");},
+    observeReplay:async()=>{finalSnapshot=await checked(read);check(isDeepStrictEqual(finalSnapshot,after),"PG_LEDGER_LOSS_REPLAY_DRIFT");}
+  });
+  check(after&&finalSnapshot,"PG_LEDGER_LOSS_GRAPH");
+  return {caseId:"registered.ledger-payment.response-loss",passed:true as const,accountingEvidence:{origin:"INDEPENDENT_OBSERVER_REPEATABLE_READ",before:projectCompetitionAccounting("BEFORE",before),after:projectCompetitionAccounting("AFTER",after),replay:projectCompetitionAccounting("REPLAY",finalSnapshot),executionId:after.executions[0]!.id,rootId:after.roots[0]!.id,debtorCompanyId:after.roots[0]!.originalDebtorCompanyId,creditorCompanyId:after.roots[0]!.creditorCompanyId,debtAmountCents:after.roots[0]!.amountCents.toString()},ledgerWitness:"ledgerWitness" in after?after.ledgerWitness:undefined};
+}
 async function runRegisteredCompetition(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
   fixture: PreparedRegisteredPgCompetition, controls: CompetitionControls, ledger: boolean) {
   const { plan, accessToken, contender: other } = fixture;

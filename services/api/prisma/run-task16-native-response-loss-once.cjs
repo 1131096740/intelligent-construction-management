@@ -25,7 +25,8 @@ function directory(file,empty=false){need(typeof file==='string'&&file.startsWit
 function writeNew(root,name,value){need(path.basename(name)===name);const file=path.join(root,name),bytes=Buffer.isBuffer(value)?value:Buffer.from(typeof value==='string'?value:JSON.stringify(value)+'\n');const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}const d=fs.openSync(root,fs.constants.O_RDONLY);try{fs.fsyncSync(d);}finally{fs.closeSync(d);}return {file,sha256:hash(bytes),bytes:bytes.length};}
 // Only the current synthetic run is admitted. This hash-only sidecar is not a
 // key recovery mechanism and never authorizes another payment attempt.
-async function runNativeTask16ResponseLossPreparedCase(root,plan,identity,fixture,receipt,verifyIdentity,needLive,runCase){
+async function runNativeTask16ResponseLossPreparedCase(root,plan,identity,fixture,receipt,verifyIdentity,needLive,runCase,purpose=PURPOSE){
+ need([PURPOSE,'TASK16_NATIVE_LEDGER_RESPONSE_LOSS_V1'].includes(purpose)&&(purpose===PURPOSE||plan?.purpose===purpose),'NATIVE_RESPONSE_LOSS_IDENTITY');
  const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value);
  need(plan&&uuid(plan.runId)&&hex(plan.source?.head,40)&&hex(plan.source?.code?.sealSha256,64)&&hex(receipt?.planSha256,64)&&
   identity&&/^[1-9][0-9]{0,9}$/u.test(identity.databaseOid)&&/^[1-9][0-9]{0,19}$/u.test(identity.systemIdentifier)&&
@@ -33,9 +34,9 @@ async function runNativeTask16ResponseLossPreparedCase(root,plan,identity,fixtur
   [verifyIdentity,needLive,runCase].every(value=>typeof value==='function'),'NATIVE_RESPONSE_LOSS_IDENTITY');
  const bound={runId:plan.runId,candidateSha:plan.source.head,sourceSealSha256:plan.source.code.sealSha256,planSha256:receipt.planSha256,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,project:fixture.ids.project,payment:fixture.ids.payment,requestKey:fixture.ids.requestKey,rootIdentity:{...plan.rootIdentity}};
  let sidecarProof;
- const binding=()=>{needLive();need(plan.runId===bound.runId&&plan.source.head===bound.candidateSha&&plan.source.code.sealSha256===bound.sourceSealSha256&&receipt.planSha256===bound.planSha256&&identity.databaseOid===bound.databaseOid&&identity.systemIdentifier===bound.systemIdentifier&&fixture.ids.project===bound.project&&fixture.ids.payment===bound.payment&&fixture.ids.requestKey===bound.requestKey&&equal(plan.rootIdentity,bound.rootIdentity)&&equal(directory(root),bound.rootIdentity),'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');let observed;try{observed=capture(receipt.responseLossIdentity.file);}catch{need(false,'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');}need(sidecarProof&&receipt.responseLossIdentity.sha256===sidecarProof.sha256&&observed.sha256===sidecarProof.sha256&&equal(observed.identity,sidecarProof.identity),'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');};
+ const binding=()=>{needLive();need((purpose===PURPOSE||plan.purpose===purpose)&&plan.runId===bound.runId&&plan.source.head===bound.candidateSha&&plan.source.code.sealSha256===bound.sourceSealSha256&&receipt.planSha256===bound.planSha256&&identity.databaseOid===bound.databaseOid&&identity.systemIdentifier===bound.systemIdentifier&&fixture.ids.project===bound.project&&fixture.ids.payment===bound.payment&&fixture.ids.requestKey===bound.requestKey&&equal(plan.rootIdentity,bound.rootIdentity)&&equal(directory(root),bound.rootIdentity),'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');let observed;try{observed=capture(receipt.responseLossIdentity.file);}catch{need(false,'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');}need(sidecarProof&&receipt.responseLossIdentity.sha256===sidecarProof.sha256&&observed.sha256===sidecarProof.sha256&&equal(observed.identity,sidecarProof.identity),'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');};
  await verifyIdentity();needLive();need(equal(directory(root),plan.rootIdentity),'NATIVE_RESPONSE_LOSS_ROOT_IDENTITY');
- receipt.responseLossIdentity=writeNew(root,'response-loss-identity.json',{schemaVersion:1,purpose:PURPOSE,caseId:'registered.null-cross-company.response-loss',
+ receipt.responseLossIdentity=writeNew(root,'response-loss-identity.json',{schemaVersion:1,purpose,caseId:purpose===PURPOSE?'registered.null-cross-company.response-loss':'registered.ledger-payment.response-loss',
   candidateSha:plan.source.head,sourceSealSha256:plan.source.code.sealSha256,planSha256:receipt.planSha256,runId:plan.runId,
   databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,requestKeySha256:hash(Buffer.from(fixture.ids.requestKey)),
   projectIdSha256:hash(Buffer.from(fixture.ids.project)),paymentIdSha256:hash(Buffer.from(fixture.ids.payment))});
@@ -44,14 +45,15 @@ async function runNativeTask16ResponseLossPreparedCase(root,plan,identity,fixtur
 }
 // Private per-run HMAC key stays in memory; the published digest cannot reveal
 // low-entropy fields or reconstruct a request after a restart.
-function createNativeResponseLossBodyBinding(root,receipt,binding){
+function createNativeResponseLossBodyBinding(root,receipt,binding,purpose=PURPOSE){
+ need([PURPOSE,'TASK16_NATIVE_LEDGER_RESPONSE_LOSS_V1'].includes(purpose),'NATIVE_RESPONSE_LOSS_BODY_BINDING');
  need(typeof binding==='function'&&receipt&&hex(receipt.responseLossIdentity?.sha256,64),'NATIVE_RESPONSE_LOSS_BODY_BINDING');
  const secret=randomBytes(32);let used=false;
  const digest=body=>createHmac('sha256',secret).update('TASK16_NATIVE_RESPONSE_LOSS_BODY_V1\0').update(body,'utf8').digest('hex');
  return body=>{
   binding();need(!used&&typeof body==='string'&&Buffer.byteLength(body)<=1048576,'NATIVE_RESPONSE_LOSS_BODY_BINDING');used=true;
   const bodyDigest=digest(body);
-  receipt.responseLossBody=writeNew(root,'response-loss-body.json',{schemaVersion:1,purpose:PURPOSE,identitySha256:receipt.responseLossIdentity.sha256,bodyHmacSha256:bodyDigest});
+  receipt.responseLossBody=writeNew(root,'response-loss-body.json',{schemaVersion:1,purpose,identitySha256:receipt.responseLossIdentity.sha256,bodyHmacSha256:bodyDigest});
   const proof=capture(receipt.responseLossBody.file);need(proof.sha256===receipt.responseLossBody.sha256,'NATIVE_RESPONSE_LOSS_BODY_BINDING');
   return candidate=>{binding();let current;try{current=capture(receipt.responseLossBody.file);}catch{need(false,'NATIVE_RESPONSE_LOSS_BODY_BINDING');}
    need(typeof candidate==='string'&&digest(candidate)===bodyDigest&&receipt.responseLossBody.sha256===proof.sha256&&current.sha256===proof.sha256&&equal(current.identity,proof.identity),'NATIVE_RESPONSE_LOSS_BODY_BINDING');};
