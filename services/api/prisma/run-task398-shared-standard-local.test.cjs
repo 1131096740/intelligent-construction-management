@@ -124,3 +124,15 @@ test("private log write failure is unknown and never emits raw text",()=>{
  const {finish}=require("./task398-approval-postgres-error.cjs");
  assert.equal(finish("before\n","before\nprivate data\n",{TASK398_LOG_FILE:"/nonexistent/task398-log"}),"UNKNOWN");
 });
+
+test("approval guard project lookup has only required spot payment reads",()=>{
+ const {spotGuardCheckSql}=require("./run-task398-shared-standard-local.cjs");
+ const row=runtimePlan().runtime.tables.find(item=>item.table==="SpotProcurementPayment");
+ for(const column of ["id","projectId"])assert.ok(row.select.includes(column));
+ assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);
+ const guard=fs.readFileSync(path.join(__dirname,"../src/auth/guards/permission.guard.ts"),"utf8");
+ assert.match(guard,/request\.params\?\.paymentId;[\s\S]*?spotAccess\.findPaymentProjectId\(paymentId\)/u);
+ const access=fs.readFileSync(path.join(__dirname,"../src/spot-procurement/spot-procurement-access.service.ts"),"utf8");
+ assert.match(access,/async findPaymentProjectId\(paymentId: string\)[\s\S]*?spotProcurementPayment\.findUnique\(\{\s*where: \{ id: paymentId \},\s*select: \{ projectId: true \}/u);
+ const sql=spotGuardCheckSql();for(const part of ["'id','SELECT'","'projectId','SELECT'","SELECT WITH GRANT OPTION","NOT has_table_privilege","NOT has_any_column_privilege"])assert.ok(sql.includes(part));
+});
