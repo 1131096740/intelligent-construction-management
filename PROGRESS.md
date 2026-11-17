@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 付款页面 b7aa 真实隔离复验
+
+准确 `b7aa14e613400d1b8aef5e3c7cf1d077422cf393` 的虚构真实 PG/Chromium 部分付款复验通过：30 元后剩余 70 元，页面汇总、关系台账及应付投影更新，独立 observer RR 核账余额 100→70、已付及结算已付 3000 分，执行/资金/分配/事件/审计各一、事实一及影响二。[回执](/private/tmp/jg398-browser-evidence-xjSmOv/receipt.json) SHA `89a869a885bc6a7d96b5057fda0eb4c7e237caa9603a4cbf34ca148e608b5006`，[运行日志](/private/tmp/jg-browser-b7aa-run2.log) SHA `84143c89816117f260de0e44511faaf4ec2da23293ffd705ff6b4b319312da81`，[财务截图](/private/tmp/jg398-browser-evidence-xjSmOv/finance-partial.png) SHA `99ef39a1e7a34050a4b6a699a4569ec6830449d3c0eea4e867c765ca4f834f83`。
+
+此前一次因依赖未构建而执行 0 测试、未付款，构建后重新运行；本次使用 token 注入。[独立清理](/private/tmp/jg-browser-b7aa-run2-cleanup.json) SHA `c7ab354e4325a706e6e6762b88aa2a510e84df3cac0c77a159a7acd1fb008202` 对采样到的 PID 和端口查询缺席，但采样可能遗漏短生命周期进程或监听且 PID 可能复用。仅限该虚构部分付款，不代表完整 #398 验收。
+
 ## 2026-11-17 付款页面刷新与原轮结果
 
 准确 `56f563f7` 虚构真实隔离运行中，两岗位 30 元付款链通过，但截图显示子区 404、汇总仍为旧的 0，页面整体未通过；使用 token 注入，Chromium PID/端口未封存。[原回执](/private/tmp/jg398-browser-evidence-MZ67G9/receipt.json) SHA `cb01e939c3bc278c0350c54dc454de60597ac0800fef8d035a9f9cf20786e23b`，[日志](/private/tmp/jg-browser-56f-run.log) SHA `10bc075d6581d66d3829a8db8086899dc42319e88955c30464b39fb7a12067c1`，[独立清理](/private/tmp/jg-browser-56f-independent-cleanup.json) SHA `33774e22f94a4424498e58398ffbf3420598eecadf885b0c679b39a3f0427b67`。
