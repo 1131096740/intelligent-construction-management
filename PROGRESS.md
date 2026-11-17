@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 机械空白签署页修订
+
+准确 `8a1bd501` 的机器资格通过，但物理审阅发现 Office current 第 14 页为空白，结论 NEEDS_WORK；[物理审阅](/private/tmp/jg-mech8a1-needs-work-xtk9p44f/physical-review-needs-work.json) SHA `5f4247a5b59e93ac03c9287fafba7dd96ebb0095084c682e8e1d84a3f837f710`。旧三份 PDF 的逐页审阅可按对应内容复用，不能将未通过的该份视为通过。
+
+空白页修订 v3 `73b79cea` 经独审合入本地 `1e54fcf7`，补丁 SHA `604fa98450d91431a5da0fd18a68226dc3f62eacedf9a748159ead15408bf52f`，七文件差异逐项一致；API 定向 194/194、typecheck/lint 通过。v3 定向样张不是新 SHA 正式资格；部署需先升级 worker。合同完整要求仍未验收，本次未碰生产或推送。
+
 ## 2026-11-17 机械资格样张扩展候选
 
 机械资格样张扩展 `b4f0e538` 经独审合入本地 `d262da24`，补丁 SHA `70e8e81525be1902e917fc873e597359d7dc30bbe09dae85489cfee41d1cebc3`，15 文件差异逐项一致；Node20 定向 58/58、样张模型 11/11、API typecheck/lint 通过。
