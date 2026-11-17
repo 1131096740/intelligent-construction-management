@@ -1558,6 +1558,54 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           expect(download.status).toBe(200);
           expect(Buffer.from(await download.arrayBuffer())).toEqual(bytes);
         }
+        if (contractType === "material_purchase" && !operatingEnabled && handlerRole === "project_staff" && scenario === "lifecycle") {
+          // Revoke the already-authorized actor after issuing both archive tickets.
+          // A still-valid URL must recheck current project/file authorization.
+          const issued: Array<{ url: string; bytes: Buffer }> = [];
+          for (const [file, bytes] of [[signedFile, signedBytes], [appendixFile, appendixBytes]] as const) {
+            const response = await fetch(`${serverUrl}/files/${file.id}/download-ticket`, { method: "POST", headers: financeHeaders, body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对合同归档原件" }) });
+            expect(response.status).toBe(201);
+            const payload = await response.json() as { downloadUrl: string };
+            expect(Buffer.from(await (await fetch(`${serverUrl}${payload.downloadUrl}`)).arrayBuffer())).toEqual(bytes);
+            issued.push({ url: payload.downloadUrl, bytes });
+          }
+          const modelUser = await server.store.prisma.user.findUniqueOrThrow({ where: { id: "finance" } });
+          const outsiderPhone = "13890001234";
+          await server.store.prisma.user.create({ data: { ...modelUser, id: randomUUID(), phone: outsiderPhone, role: "employee" } });
+          const outsiderLogin = await fetch(`${serverUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: outsiderPhone, password: server.password }) });
+          expect(outsiderLogin.status).toBe(201);
+          const outsider = await outsiderLogin.json() as { tokens: { accessToken: string } };
+          const outsiderHeaders = { ...draft.headers, authorization: `Bearer ${outsider.tokens.accessToken}` };
+          const beforeOutsider = server.store.privateStorageReads;
+          for (const file of [signedFile, appendixFile]) {
+            const denied = await fetch(`${serverUrl}/files/${file.id}/download-ticket`, { method: "POST", headers: outsiderHeaders, body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对合同归档原件" }) });
+            expect(denied.status).toBe(403);
+          }
+          expect(server.store.privateStorageReads).toBe(beforeOutsider);
+          const whereMember = { userId: "finance" }, wherePosition = { userId: "finance" };
+          const members = await server.store.prisma.projectMember.findMany({ where: whereMember });
+          const positions = await server.store.prisma.userPosition.findMany({ where: wherePosition });
+          expect(positions.length + members.length).toBeGreaterThan(0);
+          await server.store.prisma.projectMember.deleteMany({ where: whereMember });
+          await server.store.prisma.userPosition.deleteMany({ where: wherePosition });
+          try {
+            const reads = server.store.privateStorageReads;
+            for (const [index, file] of [signedFile, appendixFile].entries()) {
+              const denied = await fetch(`${serverUrl}/files/${file.id}/download-ticket`, { method: "POST", headers: financeHeaders, body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对合同归档原件" }) });
+              expect(denied.status).toBe(403);
+              expect((await fetch(`${serverUrl}${issued[index].url}`)).status).toBe(403);
+            }
+            expect(server.store.privateStorageReads).toBe(reads);
+          } finally {
+            await server.store.prisma.projectMember.createMany({ data: members });
+            await server.store.prisma.userPosition.createMany({ data: positions });
+          }
+          for (const item of issued) {
+            const response = await fetch(`${serverUrl}${item.url}`);
+            expect(response.status).toBe(200);
+            expect(Buffer.from(await response.arrayBuffer())).toEqual(item.bytes);
+          }
+        }
         if (contractType === "material_purchase" && !operatingEnabled && handlerRole === "project_staff") {
           await server.store.prisma.project.update({ where: { id: draft.projectId }, data: { operatingLedgerEffectiveDate: new Date("2026-11-01T00:00:00.000Z") } });
           const lateResult = await readArchiveResult();
