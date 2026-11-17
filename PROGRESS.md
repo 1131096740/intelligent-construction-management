@@ -1,5 +1,9 @@
 # 建工智管当前状态
 
+## 2026-11-17 queue-only 草稿有限诊断候选
+
+测试侧草稿阶段有限诊断 `21ad9895` 经独审合入本地 `6671737f`，准确补丁 SHA `0f375f071e25b124828ad3f2469e590655ae2d89aa781df20a31051fc4e8e000`；Node20 fixture 22/22、API typecheck/lint、CJS 语法及 diff 检查通过。该候选仅为后续虚构隔离运行提供阶段和有限状态线索，尚未真实运行，不能补写 f8 原轮或证明 d57 根因；合同链与 #394 仍未验收。本次未操作资源或推送。
+
 ## 2026-11-17 项目来源不足虚构隔离结果
 
 准确 `461ddc374299b4d7afd2f359f12ea6631ce03bc7` 的新独占虚构项目来源不足运行返回 409，`financialAcceptance=false`；独立 observer/owner RR 核账显示前后 A 100 元、B 8 元、已付为零，执行、根、资金、分配、事件、审计及项目事实影响均为零，owner 不变且原键无记录。来源余额 8 元中本项目 5 元、缺口 3 元。[原回执](/private/tmp/jg-src461d-evidence-wbpekN2p/receipt.json) SHA `c9a1fedc34e153137a3424051507400495a78bbf57ebf85b9a2916449829aa3e`，[核账](/private/tmp/jg-src461d-evidence-wbpekN2p/accounting-evidence.json) SHA `70731b6354b471b19cd4835430746e30f3cefa97a70d5be16aa4d9d099195d34`；[独立清理](/private/tmp/jg-src461d-evidence-wbpekN2p/independent-cleanup.json)记录 runner/PG 进程、监听和 pidfile 缺席。此为该虚构场景，不代表完整 #398 验收；b047 仍 UNKNOWN。
