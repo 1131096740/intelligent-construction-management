@@ -19,7 +19,8 @@ function containerName(id){
 const root=path.resolve(__dirname,"../../.."),db="jiangkong_payment_execution_concurrency",runId=randomUUID(),short=runId.replaceAll("-",""),name=containerName(runId);
 const password=randomUUID(),secret=randomBytes(32).toString("hex");
 let containerId,endpoint,storage,launchAttempted=false;
-const approvalReadDependencies=Object.freeze({ApprovalDelegation:["toUserId","actionKey","resourceType","resourceId","enabled","startsAt","endsAt","fromUserId"],FundExecutionCase:["approvalInstanceId","auditAction"],PaymentExecutionPayerAttestation:["reauthorizationApprovalInstanceId"],ProjectFinancingQuotaUsage:["amountCents","paymentRequestId","status"]});
+// Prisma findMany selects id internally even with the fromUserId-only projection.
+const approvalReadDependencies=Object.freeze({ApprovalDelegation:["id","toUserId","actionKey","resourceType","resourceId","enabled","startsAt","endsAt","fromUserId"],FundExecutionCase:["approvalInstanceId","auditAction"],PaymentExecutionPayerAttestation:["reauthorizationApprovalInstanceId"],ProjectFinancingQuotaUsage:["amountCents","paymentRequestId","status"]});
 function command(bin,args,{env=process.env,input,quiet=false,timeout=180000}={}){
  const result=spawnSync(bin,args,{cwd:root,env,input,encoding:"utf8",timeout,maxBuffer:32*1024*1024});
  const output=String(result.stdout??"")+String(result.stderr??"");
