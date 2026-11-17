@@ -267,7 +267,7 @@ describe("ContractDocumentProcessor", () => {
     } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
   });
 
-  it.each(["built-in-labor-party-glyph-v1","built-in-labor-party-glyph-banks-v2","built-in-labor-party-v1"])("keeps docx4j font checking bound to the frozen labor version %s",async(version)=>{
+  it.each(["built-in-labor-party-glyph-v1","built-in-labor-party-glyph-banks-v2","built-in-labor-signature-review-v3","built-in-labor-party-v1"])("keeps docx4j font checking bound to the frozen labor version %s",async(version)=>{
     const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx"));
     const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
     const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方","party.owner.openingBank":"虚构银行","party.counterparty.bankAccount":"虚构账号"};
@@ -278,8 +278,8 @@ describe("ContractDocumentProcessor", () => {
     const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
     try {
       await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
-      expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),version.includes("glyph")?expect.objectContaining({laborPartyNames:["虚构甲方","虚构乙方"]}):expect.not.objectContaining({laborPartyNames:expect.anything()}));
-      if(version==="built-in-labor-party-glyph-banks-v2") expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),expect.objectContaining({laborBankValues:["虚构银行","虚构账号"]}));
+      expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),version.includes("glyph")||version==="built-in-labor-signature-review-v3"?expect.objectContaining({laborPartyNames:["虚构甲方","虚构乙方"]}):expect.not.objectContaining({laborPartyNames:expect.anything()}));
+      if(version==="built-in-labor-party-glyph-banks-v2"||version==="built-in-labor-signature-review-v3") expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),expect.objectContaining({laborBankValues:["虚构银行","虚构账号"]}));
       else expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),expect.not.objectContaining({laborBankValues:expect.anything()}));
       expect(mockedConvert).not.toHaveBeenCalled();
     } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}

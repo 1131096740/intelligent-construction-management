@@ -838,9 +838,11 @@ export const LABOR_PARTY_PLACEMENT_VERSION = "built-in-labor-party-v1";
 export const LABOR_GLYPH_PLACEMENT_VERSION = "built-in-labor-party-glyph-v1";
 export const GENERIC_SIGNATURE_REVIEW_VERSION = "built-in-generic-signature-review-v3";
 export const GENERIC_BANK_VALUES_VERSION = "built-in-generic-bank-values-v2";
+export const LABOR_SIGNATURE_REVIEW_VERSION = "built-in-labor-signature-legacy-v3";
+export const LABOR_GLYPH_SIGNATURE_REVIEW_VERSION = "built-in-labor-signature-review-v3";
 export const LABOR_BANK_VALUES_VERSION = "built-in-labor-party-banks-v2";
 export const LABOR_GLYPH_BANK_VALUES_VERSION = "built-in-labor-party-glyph-banks-v2";
-export type PartyPlacementVersion = typeof GENERIC_SIGNATURE_REVIEW_VERSION | typeof GENERIC_BANK_VALUES_VERSION | typeof LABOR_BANK_VALUES_VERSION | typeof LABOR_GLYPH_BANK_VALUES_VERSION | typeof SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION | typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION | typeof LABOR_GLYPH_PLACEMENT_VERSION;
+export type PartyPlacementVersion = typeof LABOR_SIGNATURE_REVIEW_VERSION | typeof LABOR_GLYPH_SIGNATURE_REVIEW_VERSION | typeof GENERIC_SIGNATURE_REVIEW_VERSION | typeof GENERIC_BANK_VALUES_VERSION | typeof LABOR_BANK_VALUES_VERSION | typeof LABOR_GLYPH_BANK_VALUES_VERSION | typeof SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION | typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION | typeof LABOR_GLYPH_PLACEMENT_VERSION;
 export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|"generic"|"labor"|undefined {
   return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":sourceSha256===BUILT_IN_GENERIC_SOURCE_SHA256?"generic":sourceSha256===REVIEWED_LABOR_SOURCE_SHA256?"labor":undefined;
 }
@@ -939,28 +941,30 @@ export function prepareBuiltInRoleParagraph(paragraph:Element,label:string):void
     paragraph.insertBefore(run,properties?properties.nextSibling:paragraph.firstChild);
   }
 }
-function signatureSupplementReview(model:ReturnType<typeof sourceParagraphs>,plan:ContractBodyEditPlan|undefined) {
+function signatureSupplementReview(model:ReturnType<typeof sourceParagraphs>,plan:ContractBodyEditPlan|undefined):{digest:string;entries:Array<{role:"party_a"|"party_b";id:string;text:string}>;confirmed:boolean;scope?:"company-and-bank"|"labor-company-and-bank"}|undefined {
   if(!plan)return undefined;
   const kind=builtInPartyPlacementKind(model.sourceSha256);
   const ranges=kind==="material"?[[205,211],[212,218]]:kind==="mechanical"?[[187,192],[193,198]]:kind==="generic"?[[54,57],[59,62]]:[];
-  const entries=ranges.flatMap(([start,end],role)=>model.paragraphs.slice(start,end+1).flatMap(item=>{
+  const roleItems=kind==="labor"?[[145,148,151,154],[146,149,152,155]].map(indices=>indices.map(index=>model.paragraphs[index])):ranges.map(([start,end])=>model.paragraphs.slice(start,end+1));
+  const entries=roleItems.flatMap((items,role)=>items.flatMap(item=>{
     const edit=plan.edits.find(value=>value.positionId===item.id);
     return edit?[{role:role===0?"party_a" as const:"party_b" as const,id:item.id,text:edit.text}]:[];
   }));
   if(!entries.length)return undefined;
   // Bind the reviewed declaration to mapped content, not ZIP metadata such as timestamps.
   const mappedParts=Object.keys(model.zip.files).filter(name=>/^word\/(document|header\d*|footer\d*)\.xml$/u.test(name)).sort().map(name=>[name,createHash("sha256").update(model.zip.file(name)!.asNodeBuffer()).digest("hex")]);
-  const digest=createHash("sha256").update(JSON.stringify([kind==="generic"?"generic-signature-review-v3":"signature-supplement-review-v2",model.sourceSha256,plan.layoutTemplateVersionId,mappedParts,entries])).digest("hex");
-  return {digest,entries,confirmed:plan.signatureSupplementReviewDigest===digest,...(kind==="generic"?{scope:"company-and-bank" as const}:{})};
+  const digest=createHash("sha256").update(JSON.stringify([kind==="generic"?"generic-signature-review-v3":kind==="labor"?"labor-signature-review-v3":"signature-supplement-review-v2",model.sourceSha256,plan.layoutTemplateVersionId,mappedParts,entries])).digest("hex");
+  return {digest,entries,confirmed:plan.signatureSupplementReviewDigest===digest,...(kind==="generic"?{scope:"company-and-bank" as const}:kind==="labor"?{scope:"labor-company-and-bank" as const}:{})};
 }
 export function assertSignatureSupplementReview(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
   if(rawPlan===undefined)return;
   const model=sourceParagraphs(source,mapped),plan=normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
   const review=signatureSupplementReview(model,plan);
-  if(review&&!review.confirmed)throw new ConflictException(review.scope==="company-and-bank"?"请先核对签署页前的甲乙方补充内容不含公司及银行信息，并保存核对结果；原内容已保留。":"请先核对签署页前的甲乙方补充内容不含银行资料，并保存核对结果；原内容已保留。");
+  if(review&&!review.confirmed)throw new ConflictException(review.scope==="labor-company-and-bank"?"请先核对劳务主合同签署栏内容不含公司及银行信息，并保存核对结果；原内容已保留。":review.scope==="company-and-bank"?"请先核对签署页前的甲乙方补充内容不含公司及银行信息，并保存核对结果；原内容已保留。":"请先核对签署页前的甲乙方补充内容不含银行资料，并保存核对结果；原内容已保留。");
 }
 function signatureSupplementMappingConflict(model:ReturnType<typeof sourceParagraphs>, plan:ContractBodyEditPlan | undefined):boolean {
   const kind=builtInPartyPlacementKind(model.sourceSha256);
+  if(kind==="labor")return [...Array.from({length:26},(_,i)=>138+i),184,185,199,200,201,202,203,204,205,231,232,233,234].some(index=>{const item=model.paragraphs[index];return !item||textOf(item.paragraph)!==item.sourceText;});
   if(kind==="generic")return [54,55,56,57,59,60,61,62].some(index=>{const item=model.paragraphs[index];return !item||textOf(item.paragraph)!==item.sourceText;});
   if (!plan) return false;
   const range=kind==="material"?[205,218]:kind==="mechanical"?[187,198]:undefined;
@@ -968,9 +972,17 @@ function signatureSupplementMappingConflict(model:ReturnType<typeof sourceParagr
   return model.paragraphs.slice(range[0],range[1]+1).some(item=>plan.edits.some(edit=>edit.positionId===item.id)&&textOf(item.paragraph)!==item.sourceText);
 }
 export function assertSignatureSupplementMapping(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
-  const model=sourceParagraphs(source,mapped);
+  const model=sourceParagraphs(source,mapped,undefined,true);
   const plan=rawPlan===undefined?undefined:normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
   if(signatureSupplementMappingConflict(model,plan)) throw new ConflictException("签署区已有编辑与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+}
+const laborReviewableSignatureIndexes=[145,146,148,149,151,152,154,155];
+const laborProtectedSignatureIndexes=[...Array.from({length:26},(_,i)=>138+i).filter(index=>!laborReviewableSignatureIndexes.includes(index)),184,185,199,200,201,202,203,204,205,231,232,233,234];
+export function assertLaborProtectedSignatureEdits(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
+  if(rawPlan===undefined)return;
+  const model=sourceParagraphs(source,mapped,undefined,true),plan=normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
+  const protectedIds=new Set(laborProtectedSignatureIndexes.map(index=>model.paragraphs[index].id));
+  if(plan.edits.some(edit=>protectedIds.has(edit.positionId))||plan.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan.deletedPositionIds?.some(id=>protectedIds.has(id))) throw new ConflictException("劳务合同签署栏已有编辑，请先复制并核对原内容，再联系合同管理员处理；草稿内容已保留。");
 }
 export function assertBuiltInPartyPlacementPlan(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
   const model=sourceParagraphs(source,mapped,undefined,true);
@@ -1024,7 +1036,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const model = sourceParagraphs(source, mapped, binding, Boolean(options.partyDetailsVersion));
   const placement=options.partyDetailsVersion;
   const placementKind=builtInPartyPlacementKind(model.sourceSha256);
-  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION||!["mechanical","material"].includes(placementKind))&&(![GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(version=>version===placement)||placementKind!=="generic")&&((![LABOR_PARTY_PLACEMENT_VERSION,LABOR_GLYPH_PLACEMENT_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION].some(version=>version===placement))||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION||!["mechanical","material"].includes(placementKind))&&(![GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(version=>version===placement)||placementKind!=="generic")&&((![LABOR_PARTY_PLACEMENT_VERSION,LABOR_GLYPH_PLACEMENT_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===placement))||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
   const roleIndexes=placementKind==="generic"?[13,14,53,58]:placementKind==="labor"?[27,28]:[28,29];
   const roleIds=new Set(placement?roleIndexes.map(index=>model.paragraphs[index].id):[]);
   const removedPartyIds=new Set(placement&&placementKind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[]);
@@ -1049,15 +1061,21 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   }
   const plan = rawPlan === undefined ? undefined : normalizeContractBodyPlan(rawPlan, source, mapped, layoutTemplateVersionId, binding);
   let partyDetailsConflict=false;
-  const supplementReview=[SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(version=>version===placement)?signatureSupplementReview(model,plan):undefined;
-  const signatureMappingConflict=[SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(version=>version===placement)&&signatureSupplementMappingConflict(model,plan);
+  const supplementReview=[SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===placement)?signatureSupplementReview(model,plan):undefined;
+  const signatureMappingConflict=[SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===placement)&&signatureSupplementMappingConflict(model,plan);
   const partyDetailsMappingConflict=Boolean(placement&&(hasBillingMappingConflict(model)||options.partyDetailsExternalMappingConflict||signatureMappingConflict));
   let partyDetailsRecovery: {roleIds:string[];groups:string[][]}|undefined;
+  let laborSignatureRecovery: {entries:Array<{id:string;text:string;kind:"edit"|"deletion"}>;groups:string[][]}|undefined;
   if(placement){
-    const protectedIds=new Set([...roleIds,...removedPartyIds,...clearedPartyIds,...protectedBankIds]);
-    partyDetailsConflict=Boolean(plan?.edits.some(edit=>protectedIds.has(edit.positionId))||plan?.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan?.deletedPositionIds?.some(id=>roleIds.has(id)));
+    const laborBlocked=placement===LABOR_GLYPH_SIGNATURE_REVIEW_VERSION?laborProtectedSignatureIndexes.map(index=>model.paragraphs[index].id):[];
+    const protectedIds=new Set([...roleIds,...removedPartyIds,...clearedPartyIds,...protectedBankIds,...laborBlocked]);
+    if(laborBlocked.length&&plan) {
+      const entries=laborBlocked.flatMap<{id:string;text:string;kind:"edit"|"deletion"}>(id=>{const edit=plan.edits.find(item=>item.positionId===id);if(edit)return [{id,text:edit.text,kind:"edit"}];if(plan.deletedPositionIds?.includes(id))return [{id,text:model.paragraphs.find(item=>item.id===id)!.sourceText,kind:"deletion"}];return [];});
+      if(entries.length)laborSignatureRecovery={entries,groups:ordinaryParagraphGroups(model).map(group=>group.map(item=>item.id))};
+    }
+    partyDetailsConflict=Boolean(plan?.edits.some(edit=>protectedIds.has(edit.positionId))||plan?.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan?.deletedPositionIds?.some(id=>roleIds.has(id)||laborBlocked.includes(id)));
     if(partyDetailsMappingConflict&&!options.partyDetailsConflictPreview) throw new ConflictException(signatureMappingConflict?"签署区已有编辑与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":placementKind==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
-    if(supplementReview&&!supplementReview.confirmed&&!options.partyDetailsConflictPreview)throw new ConflictException(supplementReview.scope==="company-and-bank"?"请先核对签署页前的甲乙方补充内容不含公司及银行信息，并保存核对结果；原内容已保留。":"请先核对签署页前的甲乙方补充内容不含银行资料，并保存核对结果；原内容已保留。");
+    if(supplementReview&&!supplementReview.confirmed&&!options.partyDetailsConflictPreview)throw new ConflictException(supplementReview.scope==="labor-company-and-bank"?"请先核对劳务主合同签署栏内容不含公司及银行信息，并保存核对结果；原内容已保留。":supplementReview.scope==="company-and-bank"?"请先核对签署页前的甲乙方补充内容不含公司及银行信息，并保存核对结果；原内容已保留。":"请先核对签署页前的甲乙方补充内容不含银行资料，并保存核对结果；原内容已保留。");
     if(partyDetailsConflict&&!options.partyDetailsConflictPreview) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
     if(partyDetailsConflict||partyDetailsMappingConflict){
       const recoveryIds=[...roleIds].filter(id=>plan?.edits.some(edit=>edit.positionId===id)||plan?.deletedPositionIds?.includes(id));
@@ -1245,7 +1263,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
       partyDetailsConflict=true;
     }
   }
-  if (placement && placementKind === "labor" && !partyDetailsConflict && !partyDetailsMappingConflict) appendLaborFinalPartyPage(document, values,placement===LABOR_BANK_VALUES_VERSION||placement===LABOR_GLYPH_BANK_VALUES_VERSION);
+  if (placement && placementKind === "labor" && !partyDetailsConflict && !partyDetailsMappingConflict) appendLaborFinalPartyPage(document, values,[LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===placement),[LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===placement));
   for (const paragraph of Array.from(document.getElementsByTagNameNS(W, "p"))) {
     if (ids.has(paragraph)) continue;
     const id = `generated:${blocks.length}`;
@@ -1296,7 +1314,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   zip.file("word/document.xml", new XMLSerializer().serializeToString(document));
   const renderedDocx = zip.generate({ type: "nodebuffer" });
   const docx = options.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION || options.typographyVersion === REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION ? completeContractPageNumberFields(renderedDocx) : renderedDocx;
-  return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups:paragraphGroups.map(group=>group.filter(id=>!removedPartyIds.has(id))).filter(group=>group.length>0), ...(lineBoxScope ? { lineBoxScope } : {}), ...(partyDetailsConflict?{partyDetailsConflict:true}:{}), ...(partyDetailsMappingConflict?{partyDetailsMappingConflict:true}:{}), ...(partyDetailsRecovery?{partyDetailsRecovery}:{}), ...(supplementReview?{signatureSupplementReview:supplementReview}:{}) };
+  return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups:paragraphGroups.map(group=>group.filter(id=>!removedPartyIds.has(id))).filter(group=>group.length>0), ...(lineBoxScope ? { lineBoxScope } : {}), ...(partyDetailsConflict?{partyDetailsConflict:true}:{}), ...(partyDetailsMappingConflict?{partyDetailsMappingConflict:true}:{}), ...(partyDetailsRecovery?{partyDetailsRecovery}:{}), ...(laborSignatureRecovery?{laborSignatureRecovery}:{}), ...(supplementReview?{signatureSupplementReview:supplementReview}:{}) };
 }
 
 /** New v2 final Word only: retain logical margins and add equivalent aliases.

@@ -303,6 +303,15 @@ describe("contract workbench API client", () => {
     mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,signatureSupplementReview:{...review,scope:"unknown"}}));
     expect((await fetchContractDraftBody("version-1")).signatureSupplementReview).toBeUndefined();
   });
+  it("retains labor recovery content and review scope for the current response",async()=>{
+    const id="b".repeat(64),review={digest:"a".repeat(64),confirmed:false,scope:"labor-company-and-bank",entries:[{role:"party_a",id,text:"虚构说明"}]};
+    const recovery={entries:[{id,text:"保留原文",kind:"edit"}],groups:[]};
+    const warning="请核对劳务主合同签署栏内容，确保不含公司及银行信息；如有请先转填主体资料。";
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review,laborSignatureRecovery:recovery}));
+    expect(await fetchContractDraftBody("version-1")).toMatchObject({signatureSupplementReview:review,laborSignatureRecovery:recovery,warnings:[warning]});
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,laborSignatureRecovery:{...recovery,entries:[{id:"bad",text:"原文",kind:"edit"}]}}));
+    expect((await fetchContractDraftBody("version-1")).laborSignatureRecovery).toBeUndefined();
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
