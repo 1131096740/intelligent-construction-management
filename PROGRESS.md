@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 劳务模板隔离试验
+
+劳务候选[补丁](/private/tmp/jg-labor-generic-party-1117/experiment/labor-reviewed-f3cc8c81.patch) SHA `d9d9f4b573d15939cd84690b57fbd6c70fc410865e23f6caceae18c4848e69a3` 仅保留在隔离试验，未合入。两种 PDF 引擎的虚构中文 80 字长正文试验局部通过；emoji 反例中 docx4j 转换成功但未绘制 emoji。[docx4j PDF](/private/tmp/jg-labor-generic-party-1117/experiment/emoji/labor-docx4j.pdf) SHA `6254819a796489eb0849a4ccd13312edec4c6d7b5aedfbac9006ee4962bed2e9`，[LO PDF](/private/tmp/jg-labor-generic-party-1117/experiment/emoji/labor-long.pdf) SHA `d98e6bdf5e33669eb118b5239cfee318dd424b1897c4597616f88c2a5e5ddde5`。原输入后来重建，不能以其当前 SHA 作为两个 PDF 的精确输入证明。
+
+生产路径缺可靠的跨引擎及 Word 字形溢出核验，末页银行栏未由系统持久化；通用模板等要求仍未完成，故本候选不合入，不视为模板验收通过。未推送。
+
 ## 2026-11-17 CON-18 原轮及材料核验探针
 
 准确 `34288c73` 原轮工作台返回 500/P2028，业务未通过；同次交换仅一个进程级 ≥5 秒延迟样本，不能证明因果。[原回执](/private/tmp/jg-native-contract-c18342-mZnNd9/receipt.json) SHA `7d7bcd3d4a786987bacc5e92c9a7df261d7c3c313c6f9e1759df6fc57803e839`。运行器自报清理完成；[独立 PG 检查](/private/tmp/jg-con18-3428-runtime-xL3c6x/cleanup-independent.json) SHA `47c05fb5c26f0a350ec0948bf0b125c8e4a493dfff2b8c411dab1db63ebce919` 确认进程、监听及 pidfile 缺席，不证明业务终态。
