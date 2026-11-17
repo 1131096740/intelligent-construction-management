@@ -330,12 +330,13 @@ async function materialBody25Proof(path: string, expected: ReturnType<typeof mat
 }
 
 export async function convertContractBodyDocxToPdf(bytes: Buffer, expectedRuntimeLockSha256: string,
-  options: { typographyVersion?: ReviewedTypographyVersion; lineBoxScope?: ContractBodyLineBoxScope; laborPartyNames?: readonly string[] } = {}) {
+  options: { typographyVersion?: ReviewedTypographyVersion; lineBoxScope?: ContractBodyLineBoxScope; laborPartyNames?: readonly string[]; laborBankValues?: readonly string[] } = {}) {
   const started=performance.now();
   const official=currentOfficialDocumentScope();
   const child=official?createOfficialDocumentChildBudget(official,TIMEOUT_MS,started):undefined;
-  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some(key => !["typographyVersion", "lineBoxScope", "laborPartyNames"].includes(key))) throw new Error(RUNTIME_ERROR);
+  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some(key => !["typographyVersion", "lineBoxScope", "laborPartyNames", "laborBankValues"].includes(key))) throw new Error(RUNTIME_ERROR);
   if(options.laborPartyNames!==undefined&&(!Array.isArray(options.laborPartyNames)||options.laborPartyNames.length!==2||options.laborPartyNames.some(name=>typeof name!=="string"||!name.trim()))) throw new Error(LABOR_FONT_CHECK_ERROR);
+  if(options.laborBankValues!==undefined&&(!options.laborPartyNames||!Array.isArray(options.laborBankValues)||options.laborBankValues.length>8||options.laborBankValues.some(value=>typeof value!=="string"))) throw new Error(LABOR_FONT_CHECK_ERROR);
   let runtime:Awaited<ReturnType<typeof loadRuntime>>;
   try { runtime=await loadRuntime(expectedRuntimeLockSha256, options.typographyVersion); }
   catch(error) { if(options.laborPartyNames) throw new Error(LABOR_FONT_CHECK_ERROR); throw error; }
@@ -351,7 +352,7 @@ export async function convertContractBodyDocxToPdf(bytes: Buffer, expectedRuntim
         fontBytes.push(bytes);
       }
     } catch { throw new Error(LABOR_FONT_CHECK_ERROR); }
-    assertLaborNameFontCoverage(options.laborPartyNames,fontBytes[0],fontBytes[1]);
+    assertLaborNameFontCoverage(options.laborPartyNames,fontBytes[0],fontBytes[1],options.laborBankValues);
   }
   validateWord(bytes);
   if (runtime.descriptor.scopedBody25 !== Boolean(options.lineBoxScope)) throw new Error(RUNTIME_ERROR);

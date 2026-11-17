@@ -1,6 +1,17 @@
 import { ConflictException } from "@nestjs/common";
 const fields=["openingBank","bankAccount","paymentBank","paymentAccount"] as const;
 const fail=()=>{throw new ConflictException("合同主体与银行资料无法对应，请保留当前内容并核对主体信息后重试");};
+/** The new generic and labor layouts reserve space for single-line field inputs. */
+export function assertBankFieldCapacity(values:Record<string,unknown>):void {
+ const labels={openingBank:"开户行",bankAccount:"开户账号",paymentBank:"实际收款开户行",paymentAccount:"实际收款账号"} as const;
+ for(const [alias,role] of [["party.owner","甲方"],["party.counterparty","乙方"]] as const) for(const field of fields) {
+  const value=values[`${alias}.${field}`];
+  if(value===undefined||value===null||value==="")continue;
+  if(typeof value!=="string"){fail();continue;}
+  const characters=Array.from(value);
+  if(characters.length>40||characters.some(character=>{const code=character.codePointAt(0)!;return code<32||(code>=127&&code<=159)||(code>=0xd800&&code<=0xdfff)||code===0xfffe||code===0xffff||code===0x2028||code===0x2029;})) throw new ConflictException(`${role}${labels[field]}请改为单行且不超过40个字，并删除不支持的字符；原资料已保留`);
+ }
+}
 /** Copies only saved fields whose party identity can be tied to the selected party. */
 export function projectSignatureBankValues(values:Record<string,unknown>,parties:ReadonlyArray<{roleKey:string;snapshot:unknown}>):Record<string,unknown>{
  const result={...values};
@@ -26,15 +37,19 @@ export function projectSignatureBankValues(values:Record<string,unknown>,parties
 
 import type { Document, Element } from "@xmldom/xmldom";
 const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+export function signatureBankLines(values:Record<string,unknown>,alias:string):string[] {
+ const read=(key:string)=>{const value=values[`${alias}.${key}`];if(value===undefined||value===null||value==="")return "________________";if(typeof value!=="string")fail();return value;};
+ const lines=[`开户行：${read("openingBank")}`,`银行账号：${read("bankAccount")}`];
+ if(values[`${alias}.paymentBank`]||values[`${alias}.paymentAccount`])lines.push(`实际收款开户行：${read("paymentBank")}`,`实际收款账号：${read("paymentAccount")}`);
+ return lines;
+}
 /** Only called for the source-qualified new signature layout. */
 export function appendSignatureBankFields(document:Document,table:Element,values:Record<string,unknown>):void {
  const rows=Array.from(table.childNodes).filter(node=>node.nodeType===1&&(node as Element).namespaceURI===W&&(node as Element).localName==="tr") as Element[];
  const cells=rows.length===1?Array.from(rows[0].childNodes).filter(node=>node.nodeType===1&&(node as Element).namespaceURI===W&&(node as Element).localName==="tc") as Element[]:[];
  if(cells.length!==2)throw new ConflictException("合同签署区位置无法核对，请联系合同管理员处理");
  for(const [index,alias] of ["party.owner","party.counterparty"].entries()){
-  const read=(key:string)=>{const value=values[`${alias}.${key}`];if(value===undefined||value===null||value==="")return "________________";if(typeof value!=="string")fail();return value;};
-  const lines=[`开户行：${read("openingBank")}`,`银行账号：${read("bankAccount")}`];
-  if(values[`${alias}.paymentBank`]||values[`${alias}.paymentAccount`])lines.push(`实际收款开户行：${read("paymentBank")}`,`实际收款账号：${read("paymentAccount")}`);
+  const lines=signatureBankLines(values,alias);
   for(const value of lines){
    const p=document.createElementNS(W,"w:p"),r=document.createElementNS(W,"w:r"),properties=document.createElementNS(W,"w:rPr"),size=document.createElementNS(W,"w:sz"),t=document.createElementNS(W,"w:t");
    size.setAttributeNS(W,"w:val","18");properties.appendChild(size);r.appendChild(properties);t.appendChild(document.createTextNode(value));r.appendChild(t);p.appendChild(r);cells[index].appendChild(p);
