@@ -331,6 +331,18 @@ describe("ContractDocumentService", () => {
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe(filename.startsWith("labor")?"built-in-labor-party-v1":"built-in-party-placement-v1");
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.mechanicalContactLayoutVersion).toBe(filename.startsWith("equipment") ? "mechanical-contact-layout-v2" : undefined);
   });
+  it("freezes a distinct glyph-check version for a new labor docx4j job",async()=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null});
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.bodyDocument.partyDetailsVersion).toBe("built-in-labor-party-glyph-v1");
+  });
   it.each([
     ["   ", "请先填写合同甲乙双方名称"],
     ["甲".repeat(81), "合同主体名称过长或含不支持的字符"],
