@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 标准隔离付款组合链候选
+
+#398 标准隔离组合链候选 `978f795f` 经独审合入本地 `b124f471`，封存补丁 SHA `54835c6e22742f4608f718c519701046baac4648156566d7d6270a699d30ed52`，逐文件补丁字节一致。相关合成测试 86/86、角色及清理模型 2/2，API typecheck/lint 通过；真实 PostgreSQL 测试按约跳过。
+
+本轮只有模型和权限计划检查，未执行真实 PG 或容器，不能据此认定组合业务或 #398 验收通过；原现金 b047 仍 UNKNOWN。本次未重跑无关文书资格，未推送或操作资源。
+
 ## 2026-11-17 A16 提交断连虚构隔离运行
 
 准确候选 `b88b94a6b59ba8e1778d1a19ca0968713de650b6` 的单次虚构 COMMIT_DISCONNECT 运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE` 与 `DISCONNECTED_ROLLBACK_CONFIRMED`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-d-b88-6aaOxI/receipt.json) SHA `a6c2942e4b69999eaf40b325e40052a6f83a4251c3b72ed857b760ec97b7fc79`；[核账证据](/private/tmp/jg-a16-d-b88-6aaOxI/accounting-evidence.json) SHA `a38eb9665e4741eeba5123ad00e32f0316c5bfb326f980070e51864332589f60`。
