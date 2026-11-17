@@ -251,7 +251,7 @@ describe("ContractDocumentProcessor", () => {
     };
   }
 
-  it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"].flatMap(filename=>["built-in-signature-supplement-v1","built-in-signature-supplement-company-v2"].map(version=>[filename,version])))("uses the frozen supplement version for %s (%s)",async(filename,version)=>{
+  it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"].flatMap(filename=>["built-in-signature-supplement-v1","built-in-signature-supplement-company-v2","built-in-signature-supplement-company-v3"].map(version=>[filename,version])))("uses the frozen supplement version for %s (%s)",async(filename,version)=>{
     const source=readFileSync(join(__dirname,"../../assets/templates",filename));
     const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
     const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};

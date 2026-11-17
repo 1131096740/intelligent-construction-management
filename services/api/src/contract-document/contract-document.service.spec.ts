@@ -344,7 +344,7 @@ describe("ContractDocumentService", () => {
     files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
     await makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     const snapshot=tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot;
-    expect(snapshot.bodyDocument.partyDetailsVersion).toBe("built-in-signature-supplement-company-v2");
+    expect(snapshot.bodyDocument.partyDetailsVersion).toBe("built-in-signature-supplement-company-v3");
     expect(snapshot.renderInput.values).toMatchObject({"party.owner.openingBank":"甲开户","party.owner.bankAccount":"A001","party.owner.paymentBank":"甲收款","party.owner.paymentAccount":"A002","party.counterparty.openingBank":"乙开户","party.counterparty.bankAccount":"B001"});
   });
   it.each(["generic-contract-v1.docx","labor-subcontract-real-v1.docx"])("freezes trusted bank values for new %s body jobs",async(filename)=>{
