@@ -4,7 +4,7 @@ const id=n=>'10000000-0000-4000-8000-'+String(n).padStart(12,'0');
 function model(change){
  const holder={exports:{}},cap=Object.freeze({}),login=Object.freeze({}),view=Object.freeze({}),calls=[];
  const fixture=Object.freeze({case:Object.freeze({key:'inside:equipment_rental'}),approval:Object.freeze({project:{id:id(1)},users:Array.from({length:8},(_,i)=>({id:id(20+i)}))})});
- const exec=async(sql,phase)=>{calls.push({sql,phase});const which=phase.replace('task12-con18-owner-','');let facts=which==='signed'?{signed:true}:which==='rounds'?{withdrawnRoundId:id(4),newRoundId:id(5),withdrawnStatus:'withdrawn',newStatus:'in_progress',oldApproveCount:1,oldSignatureSnapshotsCleared:true,newApproveCount:0,newAllUnsigned:true,newPendingCount:5}:null;facts=change?.(which,facts)??facts;return{stdout:JSON.stringify({nonce:sql.match(/'nonce','([a-f0-9]{64})'/u)[1],phase:sql.match(/'phase','([^']+)'/u)[1],pid:100+calls.length,start:`2026-11-17T01:00:00.${String(calls.length).padStart(6,'0')}Z`,facts})};};
+ const exec=async(sql,phase)=>{calls.push({sql,phase});const which=phase.replace('task12-con18-owner-','');let facts=which==='signed'?{signed:true}:which==='rounds'?{withdrawnRoundId:id(4),newRoundId:id(5),withdrawnStatus:'withdrawn',newStatus:'in_progress',oldApproveCount:1,oldSignatureSnapshotsCleared:true,newApproveCount:0,newAllUnsigned:true,newPendingCount:5}:which==='archived'?{valid:true}:null;facts=change?.(which,facts)??facts;return{stdout:JSON.stringify({nonce:sql.match(/'nonce','([a-f0-9]{64})'/u)[1],phase:sql.match(/'phase','([^']+)'/u)[1],pid:100+calls.length,start:`2026-11-17T01:00:00.${String(calls.length).padStart(6,'0')}Z`,facts})};};
  const prior={identity:{database:'isolated',databaseOid:'12',namespaceOid:'2200',systemIdentifier:'123'},continuitySql:'MODEL_GUARD',continuitySha256:'a'.repeat(64),serverPort:54321};
  let consumed=false;const modules={check(){},verifyFull(){}};
  const imports={'./task12-con18-native-capability.cjs':{claimTask12Con18OwnerCapability(token,p,v,f,e){assert.equal(token,cap);assert.equal(p,login);assert.equal(v,view);assert.equal(f,fixture);assert.equal(e,exec);if(consumed)throw Error('consumed');consumed=true;return{prior,modules};}}};
@@ -14,8 +14,14 @@ function model(change){
 test('fixed read-only signed and resubmitted snapshots require exact monotonic coordinates',async()=>{
  const f=model(),key=await f.begin();assert.equal(await f.api.observeTask12Con18Signed(key,id(3),id(4),id(22)),true);
  const proof=await f.api.observeTask12Con18Rounds(key,id(3),id(4),id(5));assert.equal(proof.newPendingCount,5);
+ assert.equal(await f.api.observeTask12Con18Archived(key,id(3),id(5),id(6)),true);
  assert.equal((await f.api.closeTask12Con18OwnerWindow(key)).matched,true);
  assert.ok(f.calls.every(x=>x.sql.includes('REPEATABLE READ READ ONLY')&&!/\b(?:INSERT|UPDATE|DELETE|GRANT)\b/u.test(x.sql)));
+});
+test('archive proof requires the exact round and complete independent facts',async()=>{
+ const f=model((phase,facts)=>phase==='archived'?{valid:false}:facts),key=await f.begin();await f.api.observeTask12Con18Signed(key,id(3),id(4),id(22));await f.api.observeTask12Con18Rounds(key,id(3),id(4),id(5));
+ await assert.rejects(f.api.observeTask12Con18Archived(key,id(3),id(5),id(6)));assert.equal((await f.api.closeTask12Con18OwnerWindow(key)).matched,false);
+ const g=model(),k=await g.begin();await g.api.observeTask12Con18Signed(k,id(3),id(4),id(22));await g.api.observeTask12Con18Rounds(k,id(3),id(4),id(5));await assert.rejects(g.api.observeTask12Con18Archived(k,id(3),id(7),id(6)));
 });
 test('wrong actor, cross-round, repeated use, missing facts and old window fail closed',async()=>{
  const a=model(),key=await a.begin();await assert.rejects(a.api.observeTask12Con18Signed(key,id(3),id(4),id(21)));

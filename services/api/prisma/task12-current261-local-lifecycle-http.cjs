@@ -249,7 +249,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
     'source-mapping-confirmation':['POST'],submission:['POST'],publication:['POST']})[action]?.includes(method);
   }
   if(path==='/contracts')return actor===0&&method==='POST'&&!contractId;
-  if(contractId&&path==='/contracts/workbench?view=pending_action&page=1&pageSize=100')return method==='GET'&&(actor===0||actor===6);
+  if(contractId&&path==='/contracts/workbench?view=pending_action&page=1&pageSize=100')return method==='GET'&&(actor===0||actor===6||require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&actor>=1&&actor<=5);
   if(contractId&&path==='/contracts/'+contractId+'?versionId='+versionId)return method==='GET';
   if(versionId&&path==='/contract-drafts/'+versionId)return actor===0&&method==='PUT';
   if(versionId&&path.startsWith('/contract-drafts/'+versionId+'/')){

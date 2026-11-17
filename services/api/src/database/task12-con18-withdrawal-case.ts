@@ -16,7 +16,7 @@ export interface Task12Con18Proof {
   newApproveCount: number; newAllUnsigned: boolean; newPendingCount: number;
 }
 export type Task12Con18Input = Task12LocalLifecycleCaseInput & {
-  observer: { queued?(coordinates: Task12QueuedDocumentCoordinates): void; signed(versionId: string, roundId: string, actorId: string): Promise<boolean>; rounds(versionId: string, withdrawnRoundId: string, newRoundId: string): Promise<Task12Con18Proof> };
+  observer: { queued?(coordinates: Task12QueuedDocumentCoordinates): void; signed(versionId: string, roundId: string, actorId: string): Promise<boolean>; rounds(versionId: string, withdrawnRoundId: string, newRoundId: string): Promise<Task12Con18Proof>; archived(versionId: string, roundId: string, archiveId: string): Promise<boolean> };
 };
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const object = (v: unknown): Body => v && typeof v === "object" && !Array.isArray(v) && !types.isProxy(v) ? v as Body : {};
@@ -45,7 +45,7 @@ export async function runTask12Con18Withdrawal(input: Task12Con18Input) {
   need(seed && seed.users.length === 8 && seed.users.every(user => id(user.id) && typeof user.phone === "string") &&
     new Set(seed.users.map(user => user.id)).size === 8 && id(seed.project.id) && seed.handler.id === seed.users[0].id &&
     company && id(company.id) && partyVersion && id(partyVersion.id) && passwords.length === 8 &&
-    passwords.every(value => /^[a-f0-9]{64}$/u.test(value)) && new Set(passwords).size === 8 && input.observer && typeof input.observer.signed === "function" && typeof input.observer.rounds === "function", "INPUT");
+    passwords.every(value => /^[a-f0-9]{64}$/u.test(value)) && new Set(passwords).size === 8 && input.originals.length === 2 && input.observer && typeof input.observer.signed === "function" && typeof input.observer.rounds === "function" && typeof input.observer.archived === "function", "INPUT");
   const selected = current261LifecycleCaseFromFixture(fixture);
   need(selected.relationship === "inside" && ["material_purchase", "equipment_rental"].includes(selected.contractTypeKey), "CASE");
   const equipment = selected.contractTypeKey === "equipment_rental", contractName = equipment ? "本轮隔离V2设备租赁合同" : "本轮隔离V2材料合同";
@@ -123,12 +123,13 @@ export async function runTask12Con18Withdrawal(input: Task12Con18Input) {
   clause = "撤回修改后的第二版，所有职责重新签署。"; edit(); await save(); const second = await generate();
   need(second.submission.documentContentFingerprint !== first.submission.documentContentFingerprint && second.generated.generationId !== first.generated.generationId, "BODY_CHANGED");
   const round2 = await submit(second.submission); need(id(round2.approvalInstanceId) && round2.approvalInstanceId !== round1.approvalInstanceId, "ROUND");
-  const views = await Promise.all([1,2,3,4,5].map(actor => detail(actor)));
+  const views = [];
+  for (const actor of [1,2,3,4,5]) views.push(await detail(actor));
   const contexts = views.map(view => object(view.reviewApprovalContext));
   need(contexts.every(context => context.expectedApprovalInstanceId === round2.approvalInstanceId && Number.isSafeInteger(context.expectedNodeIndex) && typeof context.expectedParallelApprovalEpoch === "string" && /^[a-f0-9]{64}$/u.test(context.expectedParallelApprovalEpoch)) && new Set(contexts.map(context => context.expectedNodeIndex)).size === 5 && new Set(contexts.map(context => context.expectedParallelApprovalEpoch)).size === 1, "NEW_REVIEW_COORDINATES");
   const latest = await detail();
   need(Array.isArray(latest.approvalTimeline) && !latest.approvalTimeline.some((entry: Body) => entry.action === "approve"), "NEW_TIMELINE");
-  await Promise.all([1,2,3,4,5].map(actor => pendingTask(input, actor, versionId, 1)));
+  for (const actor of [1,2,3,4,5]) await pendingTask(input, actor, versionId, 1);
   check(input); const proof = await input.observer.rounds(versionId, round1.approvalInstanceId, round2.approvalInstanceId); check(input);
   need(proof.withdrawnRoundId === round1.approvalInstanceId && proof.newRoundId === round2.approvalInstanceId && proof.withdrawnStatus === "withdrawn" && proof.newStatus === "in_progress" && proof.oldApproveCount === 1 && proof.oldSignatureSnapshotsCleared === true && proof.newApproveCount === 0 && proof.newAllUnsigned === true && proof.newPendingCount === 5, "ROUND_PROOF");
   const merged = await PDFDocument.create(), pages: Array<{first: number; count: number; body: string}> = [];
@@ -144,5 +145,30 @@ export async function runTask12Con18Withdrawal(input: Task12Con18Input) {
   need(Array.isArray(pdfText) && pdfText.length === merged.getPageCount() && pdfText.every(page => typeof page === "string") && pdfText.reduce((n,page) => n + page.length, 0) <= 500000, "PDF");
   const compact = (text:string) => text.normalize("NFKC").replace(/\s/gu, "");
   for (const page of pages) { const text = compact(pdfText.slice(page.first,page.first+page.count).join("")); need(text.includes(compact(contractName)) && text.includes(compact(page.body)) && pages.every(other => other === page || !text.includes(compact(other.body))), "PDF"); }
-  return Object.freeze({ oldCoordinateRejected:true, changedGeneration:true, newRoundPending:5, oldApprovalsVisible:false, storage:"LOCAL_ONLY", full394Accepted:false });
+  const approvals = await Promise.all(contexts.map((context, index) => review(index + 1, context)));
+  need(approvals.every(response => response.status === 201), "APPROVAL");
+  const lifecycle = object((await detail(6)).v2Lifecycle);
+  need(lifecycle.status === "ready" && lifecycle.state === "pending_seal" && lifecycle.approvalInstanceId === round2.approvalInstanceId && id(lifecycle.sealTaskId) && lifecycle.documentContentFingerprint === second.submission.documentContentFingerprint && lifecycle.documentContentRevision === second.submission.documentContentRevision, "SEAL");
+  const seal = { expectedApprovalInstanceId: round2.approvalInstanceId, expectedSealTaskId: lifecycle.sealTaskId, documentContentRevision: second.submission.documentContentRevision, documentContentFingerprint: second.submission.documentContentFingerprint, confirmed: true };
+  need((await send(input, 0, contract + "/seal-confirmation", "POST", seal)).status === 403, "SEAL_ACTOR");
+  await accepted(input, 6, contract + "/seal-confirmation", "POST", seal);
+  const originals = [];
+  for (const [index, original] of input.originals.entries()) {
+    const bytes = Buffer.from(original), upload = await accepted(input, 0, "/files", "POST", undefined, form(bytes, "application/pdf", `signed-original-${index + 1}.pdf`));
+    need(id(upload.id) && upload.contentSha256 === hash(bytes) && upload.sizeBytes === bytes.length, "ORIGINAL");
+    originals.push({id:upload.id,bytes});
+  }
+  need(originals[0].id !== originals[1].id, "ORIGINAL");
+  const archive = { expectedApprovalInstanceId: seal.expectedApprovalInstanceId, expectedSealTaskId: seal.expectedSealTaskId, documentContentRevision: seal.documentContentRevision, documentContentFingerprint: seal.documentContentFingerprint, archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: randomUUID(), fileIds: originals.map(original => original.id), confirmedMatchingSignedDocument: true };
+  need((await send(input, 7, contract + "/signed-archive", "POST", archive)).status === 403, "OUTSIDER");
+  const archived = await accepted(input, 0, contract + "/signed-archive", "POST", archive);
+  need(archived.status === "effective" && archived.contractVersionId === versionId && id(archived.archiveId) && isDeepStrictEqual(archived.fileIds, archive.fileIds), "ARCHIVE");
+  need(isDeepStrictEqual(await accepted(input, 0, contract + "/signed-archive", "POST", archive), archived), "ARCHIVE_REPLAY");
+  need((await send(input, 0, contract + "/signed-archive", "POST", {...archive,idempotencyKey:randomUUID(),fileIds:[...archive.fileIds].reverse()})).status === 409, "ARCHIVE_REPLACEMENT");
+  for (const original of originals) {
+    const saved = await download(original.id, "application/pdf"); need(Buffer.from(saved.bytes).equals(original.bytes), "DOWNLOAD");
+    need((await send(input, 7, "/files/" + original.id + "/download-ticket", "POST", {confirmationPassword:passwords[7],downloadReason:"越权负控"})).status === 403, "OUTSIDER_DOWNLOAD");
+  }
+  check(input); need(await input.observer.archived(versionId, round2.approvalInstanceId, archived.archiveId), "ARCHIVE_PROOF"); check(input);
+  return Object.freeze({ oldCoordinateRejected:true, changedGeneration:true, newRoundPending:5, oldApprovalsVisible:false, archived:true, storage:"LOCAL_ONLY", full394Accepted:false });
 }

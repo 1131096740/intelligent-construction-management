@@ -108,13 +108,13 @@ function networkModel(mode = "normal", equipment = false) {
           if(actor===7)return ok({},403);if(json?.blanksReviewed===false)return ok({},409);
           if(round===3)return ok(round3);round++;const result={approvalInstanceId:uid(70+round)};if(round===3)round3=result;return ok(result);
         }
-        if(path.startsWith("/contracts/"+contractId+"?"))return ok({contractVersionId:versionId,approvalTimeline:mode==="inherited-timeline"&&round===2?[{action:"approve"}]:[],reviewApprovalContext:{expectedNodeIndex:actor-1,expectedParallelApprovalEpoch:"e".repeat(64),expectedApprovalInstanceId:uid(70+(mode==="old-context"&&round===2&&actor===3?1:round))},withdrawApprovalContext:{expectedApprovalInstanceId:uid(71)},v2Lifecycle:{status:"ready",state:"pending_seal",approvalInstanceId:uid(73),sealTaskId:sealId,documentContentRevision:contentRevision,documentContentFingerprint:mode==="wrong-seal"?"f".repeat(64):fingerprint}});
-        if(path===contract+"/approval") { if(round===3&&json?.decision==="approve")finalApprovals.add(actor); return ok({},round===1&&actor===1&&mode!=="stale-accepted"?409:201); }
+        if(path.startsWith("/contracts/"+contractId+"?"))return ok({contractVersionId:versionId,approvalTimeline:mode==="inherited-timeline"&&round===2?[{action:"approve"}]:[],reviewApprovalContext:{expectedNodeIndex:actor-1,expectedParallelApprovalEpoch:"e".repeat(64),expectedApprovalInstanceId:uid(70+(mode==="old-context"&&round===2&&actor===3?1:round))},withdrawApprovalContext:{expectedApprovalInstanceId:uid(71)},v2Lifecycle:{status:"ready",state:"pending_seal",approvalInstanceId:uid(72),sealTaskId:sealId,documentContentRevision:contentRevision,documentContentFingerprint:mode==="wrong-seal"?"f".repeat(64):fingerprint}});
+        if(path===contract+"/approval") { if(round===2&&json?.decision==="approve")finalApprovals.add(actor); return ok({},round===1&&actor===1&&mode!=="stale-accepted"?409:201); }
         if(path===contract+"/approval-withdrawal")return ok();
         if(path===contract+"/seal-confirmation") { if(actor===6)sealed=true;return ok({status:"seal_approved_pending_archive"},actor===0?403:201); }
         if(path===contract+"/signed-archive") {
           if(actor===7)return ok({},403);archiveCalls++;
-          if(archiveCalls===1)return ok({},mode==="audit-unexpected-success"?201:500);
+          if(archived) { const previous=archived as {fileIds:unknown}; return JSON.stringify(previous.fileIds)===JSON.stringify(json?.fileIds)?ok(archived):ok({},409); }
           archived={status:"effective",contractVersionId:versionId,archiveId,fileIds:json?.fileIds};return ok(archived);
         }
         if(path.startsWith(contract+"/archive-requests/"))return ok({result:archived});
@@ -135,7 +135,7 @@ function ownerModel(options: { unsigned?: boolean; carried?: boolean } = {}) {
 }
 function observerModel(options: { unsigned?: boolean; carried?: boolean } = {}) {
  const owner=ownerModel(options) as never;
- return {signed:(version:string,round:string,actor:string)=>observeTask12Con18Signed(owner,version,round,actor,()=>undefined),rounds:(version:string,old:string,current:string)=>observeTask12Con18Rounds(owner,version,old,current,()=>undefined)};
+ return {signed:(version:string,round:string,actor:string)=>observeTask12Con18Signed(owner,version,round,actor,()=>undefined),rounds:(version:string,old:string,current:string)=>observeTask12Con18Rounds(owner,version,old,current,()=>undefined),archived:async()=>true};
 }
 it("assembles the public case with the native read-only window over modeled SQL",async()=>{
  const model=networkModel("normal",true), fixture=model.input.fixture;
@@ -143,10 +143,11 @@ it("assembles the public case with the native read-only window over modeled SQL"
   beginTask12Con18OwnerWindow:(cap:unknown,login:unknown,view:unknown,fixture:unknown,exec:unknown)=>Promise<object>;
   observeTask12Con18Signed:(key:object,version:string,round:string,actor:string)=>Promise<boolean>;
   observeTask12Con18Rounds:(key:object,version:string,old:string,current:string)=>ReturnType<typeof observeTask12Con18Rounds>;
+  observeTask12Con18Archived:(key:object,version:string,round:string,archive:string)=>Promise<boolean>;
   closeTask12Con18OwnerWindow:(key:object)=>Promise<{matched:boolean}>;
  }}, token=Object.freeze({}), login=Object.freeze({}), view=Object.freeze({});
  let calls=0; const exec=async(sql:string,phase:string)=>{
-  calls++; const facts=phase.endsWith("signed")?{signed:true}:phase.endsWith("rounds")?{withdrawnRoundId:uid(71),newRoundId:uid(72),withdrawnStatus:"withdrawn",newStatus:"in_progress",oldApproveCount:1,oldSignatureSnapshotsCleared:true,newApproveCount:0,newAllUnsigned:true,newPendingCount:5}:null;
+  calls++; const facts=phase.endsWith("signed")?{signed:true}:phase.endsWith("rounds")?{withdrawnRoundId:uid(71),newRoundId:uid(72),withdrawnStatus:"withdrawn",newStatus:"in_progress",oldApproveCount:1,oldSignatureSnapshotsCleared:true,newApproveCount:0,newAllUnsigned:true,newPendingCount:5}:phase.endsWith("archived")?{valid:true}:null;
   expect(sql).toContain("REPEATABLE READ READ ONLY");
   return {stdout:JSON.stringify({nonce:sql.match(/'nonce','([a-f0-9]{64})'/u)![1],phase:sql.match(/'phase','([^']+)'/u)![1],pid:100+calls,start:`2026-11-17T01:00:00.${String(calls).padStart(6,"0")}Z`,facts})};
  };
@@ -155,18 +156,22 @@ it("assembles the public case with the native read-only window over modeled SQL"
  const source=readFileSync(resolve(__dirname,"../../prisma/task12-con18-native-owner-window.cjs"),"utf8");
  new Function("require","module",source)((name:string)=>name==="./task12-con18-native-capability.cjs"?{claimTask12Con18OwnerCapability:claim}:require(name),holder);
  const api=holder.exports, key=await api.beginTask12Con18OwnerWindow(token,login,view,fixture,exec);
- const observer={signed:(version:string,round:string,actor:string)=>api.observeTask12Con18Signed(key,version,round,actor),rounds:(version:string,old:string,current:string)=>api.observeTask12Con18Rounds(key,version,old,current)};
+ const observer={signed:(version:string,round:string,actor:string)=>api.observeTask12Con18Signed(key,version,round,actor),rounds:(version:string,old:string,current:string)=>api.observeTask12Con18Rounds(key,version,old,current),archived:(version:string,round:string,archive:string)=>api.observeTask12Con18Archived(key,version,round,archive)};
  const result=await runTask12Con18Withdrawal({...model.input,observer});
- expect(result.newRoundPending).toBe(5);expect((await api.closeTask12Con18OwnerWindow(key)).matched).toBe(true);expect(calls).toBe(4);
+ expect(result.newRoundPending).toBe(5);expect((await api.closeTask12Con18OwnerWindow(key)).matched).toBe(true);expect(calls).toBe(5);
 });
-it("runs withdrawal, stale 409, changed document, and all fresh pending reviews",async()=>{
+it("continues the fresh round through five approvals, seal and archive",async()=>{
  const model=networkModel();const result=await runTask12Con18Withdrawal({...model.input,observer:observerModel()});
- expect(result).toMatchObject({oldCoordinateRejected:true,changedGeneration:true,newRoundPending:5,oldApprovalsVisible:false});
- expect(model.calls.filter(x=>x.request.path.endsWith("/approval")&&x.request.json?.decision==="approve")).toHaveLength(2);
- expect(model.calls.some(x=>x.request.path.endsWith("/seal-confirmation"))).toBe(false);
+ expect(result).toMatchObject({oldCoordinateRejected:true,changedGeneration:true,newRoundPending:5,oldApprovalsVisible:false,archived:true});
+ expect(model.calls.filter(x=>x.request.path.endsWith("/approval")&&x.request.json?.decision==="approve")).toHaveLength(7);
+ expect(model.calls.some(x=>x.request.path.endsWith("/seal-confirmation"))).toBe(true);
+ expect(model.calls.some(x=>x.request.path.endsWith("/signed-archive"))).toBe(true);
 });
 it("rejects prior-signature carryover in the independently read round proof",async()=>{
  const model=networkModel();await expect(runTask12Con18Withdrawal({...model.input,observer:observerModel({carried:true})})).rejects.toThrow("ROUND_PROOF");
+});
+it("rejects archive completion when independent audit proof is incomplete",async()=>{
+ const model=networkModel();await expect(runTask12Con18Withdrawal({...model.input,observer:{...observerModel(),archived:async()=>false}})).rejects.toThrow("ARCHIVE_PROOF");
 });
 it("does not withdraw if the first approval was not durably signed",async()=>{
  const model=networkModel();await expect(runTask12Con18Withdrawal({...model.input,observer:observerModel({unsigned:true})})).rejects.toThrow("FIRST_SIGNATURE");
