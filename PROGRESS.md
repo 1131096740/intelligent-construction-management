@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 worker 诊断局部修订
+
+准确 `d8d6f99b` 原轮失败后只读匹配同轮文书为 FAILED/GENERIC，业务结果仍 UNKNOWN；一个低于 100 毫秒的事件循环采样不足以归因。[原回执](/private/tmp/jg-native-contract-c18d8-GeMr22/receipt.json) SHA `e8ab4fd0a9fb7b47aba4a2f6a48e6fb81880ead1c826a8931a39817376e490fe`；[独立 PG 检查](/private/tmp/jg-con18-d8d6-runtime-qqbHtP/cleanup-independent.json) SHA `9ad2ef7c5552407ac30f5405f2805ac8fce67e46778a46881f3bb2d7b53236d7` 确认进程、监听和 pidfile 缺席，不证明业务结果。
+
+未来 worker 诊断 `3521d52b` 经独审合入本地 `2949381c`，准确补丁 SHA `958cd0e0fd04684bd11b64572df18d769418e1313e50aafb47b89cba2ba1257f`。worker 阶段仅为最后标记，不等于根因；未武装时共享路径仍有轻微开销。worker/processor 61/61、owner/共享模型 204/204、构建后 runner 7/7、API build/typecheck/lint 通过；未执行真实资源，新 SHA 须重新资格，不代表 CON-18 或 #394 验收通过。
+
 ## 2026-11-17 CON-18 延迟诊断局部修订
 
 准确 `6d3f50df` 原轮工作台返回 500，业务结果 UNKNOWN；P2028 只表明事务错误类别，未确定根因，实验性 5.3 秒假设不能当作事实。[原回执](/private/tmp/jg-native-contract-c186d-VBxNlt/receipt.json) SHA `d236247ea14a3f5ad18c080f299413b73a28d867bab857a3ee90da9672ea37ce`；[独立 PG 检查](/private/tmp/jg-con18-6d3f-runtime-ajBMQ5/cleanup-independent.json) SHA `0bd73f6ded69473ade7d1f960ae35dfe9055bbc18e920f8dd313b5579fadfa0d` 确认进程、监听和 pidfile 缺席，不证明业务结果。
