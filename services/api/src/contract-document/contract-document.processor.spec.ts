@@ -66,6 +66,7 @@ import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
 import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { ContractDocumentProcessor } from "./contract-document.processor";
+import { armCon18WorkerDiagnostic, takeCon18WorkerDiagnostic, closeCon18WorkerDiagnostic } from "./task12-con18-worker-diagnostic";
 import { applyMechanicalContactLayout } from "./mechanical-contact-layout";
 import { convertDocxToPdf } from "./libreoffice-converter";
 import { normalizeContractPdf } from "./pdf-normalizer";
@@ -1345,6 +1346,15 @@ describe("ContractDocumentProcessor", () => {
         metadata: expect.objectContaining({ orphanFileIds: ["orphan-docx"] })
       })
     );
+  });
+
+  it("observes the exact failed worker stage without changing persisted failure", async () => {
+    const prisma=makePrisma(),generationId="10000000-0000-4000-8000-000000000002",versionId="10000000-0000-4000-8000-000000000001";
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({id:generationId,contractVersionId:versionId,status:"queued",purpose:"draft",sourceRevision:2,inputSnapshot:{...documentContentCoordinates,templateFileId:"layout-file",outputBaseName:"虚构",renderInput:{values:{}},requiredKeys:[],attachmentFiles:[]},createdByUserId:"owner-1",createdAt:new Date()});
+    const files={getFileBuffer:jest.fn().mockRejectedValue(new Error("PRIVATE_TEMPLATE")),discardUnlinkedGeneratedFiles:jest.fn().mockResolvedValue(undefined)};
+    const processor=new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never), token=armCon18WorkerDiagnostic(processor);
+    try {await processor.processNext();const result=takeCon18WorkerDiagnostic(processor,token,{generationId,versionId,sourceRevision:2,...documentContentCoordinates});expect(result).toEqual({status:"OBSERVED",stage:"TEMPLATE",errorKind:"ERROR"});expect(JSON.stringify(result)).not.toMatch(/PRIVATE|10000000/u);expect(prisma.tx.contractGeneratedDocument.updateMany.mock.calls[0][0].data.status).toBe("failed");}
+    finally {closeCon18WorkerDiagnostic(processor,token);}
   });
 
   it("requeues expired processing leases before claiming work", async () => {

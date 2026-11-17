@@ -119,6 +119,7 @@ function inspectNativeTask16Interfaces(){
   ['./task12-con18-native-capability.cjs',[['issueTask12Con18OwnerCapability',1],['claimTask12Con18OwnerCapability',5]]],
   ['./task12-con18-native-owner-window.cjs',[['beginTask12Con18OwnerWindow',5],['observeTask12Con18Signed',4],['observeTask12Con18Rounds',4],['observeTask12Con18Document',2],['closeTask12Con18OwnerWindow',1]]],
   ['./task12-con18-loop-delay.cjs',[['beginCon18LoopDelay',0]]],
+  ['../dist/contract-document/task12-con18-worker-diagnostic.js',[['armCon18WorkerDiagnostic',1],['takeCon18WorkerDiagnostic',3],['closeCon18WorkerDiagnostic',2]]],
   ['../dist/database/task12-con18-withdrawal-case.js',[['runTask12Con18Withdrawal',1]]],
   ['./task12-current259-document-application.cjs',[['runNativeTask12DocumentApplication',2]]],
   ['./task12-official-document-profile.cjs',[['observeOfficialTask12DocumentPublication',2],['verifyOfficialTask12DocumentRuntime',3],['withOfficialTask12DocumentRuntime',3]]],
@@ -213,6 +214,13 @@ function assertNativeTask12DocumentPools(rowText,contextText){
  }
  return Object.freeze(row.rows.map(value=>Object.freeze({...value})));
 }
+async function withCon18WorkerDiagnostic(api,worker,signal,run){
+ let token,closed=false;
+ try{if(api)token=api.armCon18WorkerDiagnostic(worker);}catch{/* Diagnostic only. */}
+ const close=()=>{if(closed)return;closed=true;try{if(api&&token)api.closeCon18WorkerDiagnostic(worker,token);}catch{/* Diagnostic only. */}};
+ try{if(signal.aborted)close();else signal.addEventListener('abort',close,{once:true});return await run(token);}
+ finally{signal.removeEventListener('abort',close);close();}
+}
 async function observeTask12Con18Failure(api,window,queued,error,receipt){
  try{
   if(window&&queued&&error&&typeof error==='object'&&!types.isProxy(error)&&Object.getOwnPropertyDescriptor(error,'code')?.value==='TASK12_GENERATED_DOCUMENT_DOCUMENT'){
@@ -225,7 +233,7 @@ async function closeTask12Con18WithPrimary(api,window,outcome,receipt){
  if(outcome.failed)throw outcome.error;
  need(closed?.matched===true,'NATIVE_DIRECT_CONTRACT_OWNER_CLOSE');return closed;
 }
-module.exports=Object.freeze({observeTask12Con18Failure,closeTask12Con18WithPrimary,nativeTask12BootstrapIdentitySql,assertNativeTask12BootstrapPools,assertNativeTask12DocumentPools,assertNativeTask12LoopbackListeners,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask12EquipmentPlan,verifyNativeTask12EquipmentPlan,validateNativeTask12EquipmentPlan});
+module.exports=Object.freeze({withCon18WorkerDiagnostic,observeTask12Con18Failure,closeTask12Con18WithPrimary,nativeTask12BootstrapIdentitySql,assertNativeTask12BootstrapPools,assertNativeTask12DocumentPools,assertNativeTask12LoopbackListeners,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask12EquipmentPlan,verifyNativeTask12EquipmentPlan,validateNativeTask12EquipmentPlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask12EquipmentPlan(request.options)};
  const plan=verifyNativeTask12EquipmentPlan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -539,8 +547,9 @@ async function runNativeTask16Business(plan,state){
    const config=Object.freeze({fixture,passwords:passwordsByUser,sourceDocx,originals,signal});
    const bridge=Object.freeze({check,loader,loaded:modules,ordinary,providers,queue:operations.queue.queueDraftPreview,publicLifecycle:config,
     async exercise(http){
-     let window,result,queued;const outcome={failed:false,error:undefined};
-     try{
+     let window,result,queued,workerDiagnostic;const outcome={failed:false,error:undefined};
+     try{if(providers.worker instanceof modules.ContractDocumentProcessor)workerDiagnostic=require('../dist/contract-document/task12-con18-worker-diagnostic.js');}catch{/* An unavailable diagnostic must not stop the case. */}
+     return withCon18WorkerDiagnostic(workerDiagnostic,providers.worker,signal,async workerToken=>{try{
       official.checkMaterials();check();
       const permit=capability.issueTask12Con18OwnerCapability({purpose:PURPOSE,candidateSha:plan.source.head,planSha256:receipt.planSha256,runId:plan.runId,loginProjection:contract.loginResult,moduleView:modules,fixture,exec:ownerSql});
       window=await ownerApi.beginTask12Con18OwnerWindow(permit,contract.loginResult,modules,fixture,ownerSql);check();receipt.business='ENTERED';
@@ -551,10 +560,12 @@ async function runNativeTask16Business(plan,state){
       receipt.contractCase={status:'CON18_WITHDRAW_RESUBMIT_OBSERVED_NOT_FULL394_ACCEPTANCE',caseKey:fixture.case.key,...result};
      }catch(error){
       outcome.failed=true;outcome.error=error;
-      // This optional read is after the original failure and never replaces it.
+      // This optional observation never replaces the original failure.
+      try{if(queued&&error&&typeof error==='object'&&!types.isProxy(error)&&Object.getOwnPropertyDescriptor(error,'code')?.value==='TASK12_GENERATED_DOCUMENT_DOCUMENT')receipt.workerDiagnostic=workerDiagnostic&&workerToken?workerDiagnostic.takeCon18WorkerDiagnostic(providers.worker,workerToken,queued):Object.freeze({status:'UNAVAILABLE'});}catch{try{receipt.workerDiagnostic=Object.freeze({status:'UNAVAILABLE'});}catch{/* Diagnostic only. */}}
       await observeTask12Con18Failure(ownerApi,window,queued,error,receipt);
      }
      receipt.ownerClosed=await closeTask12Con18WithPrimary(ownerApi,window,outcome,receipt);return result;
+     });
     }});
    return require('./task12-current259-document-application.cjs').runNativeTask12DocumentApplication(contract.loginResult,bridge);
   }));
