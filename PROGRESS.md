@@ -1,5 +1,9 @@
 # 建工智管当前状态
 
+## 2026-11-17 草稿保存私有异常候选
+
+测试侧 PUT 私有异常捕获 `29508b74` 经独审合入本地 `0c4c5cb4`，准确补丁 SHA `2d5c73914c87e947c8a7a3fc47b256b932e09d02d95ccafe5711a644a129bfcb`；Node20 本地 Nest 与认证诊断 27/27、API typecheck/lint 通过。捕获的原始异常可能含敏感内容，必须受控保存并在诊断后受控清理；新候选尚未真实运行，不能补写旧轮或认定合同链通过。本次未操作资源或推送。
+
 ## 2026-11-17 经营账并发虚构隔离结果
 
 准确 `9f8ca5848bcaba27ae104518bf0ce66fa503a219` 的虚构隔离经营账并发运行完成，`financialAcceptance=false`。[原回执](/private/tmp/jg-ledger-9f8-run-OsrUJ3jj/receipt.json) SHA `6f53e364429c181b43f8350fec58d03cff8557bcbb60269df5cf4166de1d0f4d`，[独立 RR 核账](/private/tmp/jg-ledger-9f8-run-OsrUJ3jj/accounting-evidence.json) SHA `fad19e2fe5f3d3f1dbaf84da5f44655cf1e6472965ec556dd95f129a130ad6e0`：一笔 30 元，A 100 元不变、B 100→70 元，已付及结算已付各 3000 分，执行、根、资金、分配、事件、审计各一，项目事实一及影响三。
