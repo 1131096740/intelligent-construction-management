@@ -2,7 +2,7 @@
 'use strict';
 // Dedicated response-loss purpose; fresh synthetic isolated resources only.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {createHash,randomBytes,randomUUID}=require('node:crypto');
+const {createHash,createHmac,randomBytes,randomUUID}=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
 const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_RESPONSE_LOSS_V1';
@@ -23,6 +23,40 @@ function capture(file,max=16*1024*1024){
 }
 function directory(file,empty=false){need(typeof file==='string'&&file.startsWith('/private/tmp/')&&file.length<70&&fs.realpathSync(file)===file);const s=fs.lstatSync(file);need(s.isDirectory()&&!s.isSymbolicLink()&&s.uid===process.getuid()&&(s.mode&0o777)===0o700&&(!empty||fs.readdirSync(file).length===0));return Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,s[k]]));}
 function writeNew(root,name,value){need(path.basename(name)===name);const file=path.join(root,name),bytes=Buffer.isBuffer(value)?value:Buffer.from(typeof value==='string'?value:JSON.stringify(value)+'\n');const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}const d=fs.openSync(root,fs.constants.O_RDONLY);try{fs.fsyncSync(d);}finally{fs.closeSync(d);}return {file,sha256:hash(bytes),bytes:bytes.length};}
+// Only the current synthetic run is admitted. This hash-only sidecar is not a
+// key recovery mechanism and never authorizes another payment attempt.
+async function runNativeTask16ResponseLossPreparedCase(root,plan,identity,fixture,receipt,verifyIdentity,needLive,runCase){
+ const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value);
+ need(plan&&uuid(plan.runId)&&hex(plan.source?.head,40)&&hex(plan.source?.code?.sealSha256,64)&&hex(receipt?.planSha256,64)&&
+  identity&&/^[1-9][0-9]{0,9}$/u.test(identity.databaseOid)&&/^[1-9][0-9]{0,19}$/u.test(identity.systemIdentifier)&&
+  fixture?.ids&&[fixture.ids.project,fixture.ids.payment,fixture.ids.requestKey].every(uuid)&&
+  [verifyIdentity,needLive,runCase].every(value=>typeof value==='function'),'NATIVE_RESPONSE_LOSS_IDENTITY');
+ const bound={runId:plan.runId,candidateSha:plan.source.head,sourceSealSha256:plan.source.code.sealSha256,planSha256:receipt.planSha256,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,project:fixture.ids.project,payment:fixture.ids.payment,requestKey:fixture.ids.requestKey,rootIdentity:{...plan.rootIdentity}};
+ let sidecarProof;
+ const binding=()=>{needLive();need(plan.runId===bound.runId&&plan.source.head===bound.candidateSha&&plan.source.code.sealSha256===bound.sourceSealSha256&&receipt.planSha256===bound.planSha256&&identity.databaseOid===bound.databaseOid&&identity.systemIdentifier===bound.systemIdentifier&&fixture.ids.project===bound.project&&fixture.ids.payment===bound.payment&&fixture.ids.requestKey===bound.requestKey&&equal(plan.rootIdentity,bound.rootIdentity)&&equal(directory(root),bound.rootIdentity),'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');let observed;try{observed=capture(receipt.responseLossIdentity.file);}catch{need(false,'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');}need(sidecarProof&&receipt.responseLossIdentity.sha256===sidecarProof.sha256&&observed.sha256===sidecarProof.sha256&&equal(observed.identity,sidecarProof.identity),'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');};
+ await verifyIdentity();needLive();need(equal(directory(root),plan.rootIdentity),'NATIVE_RESPONSE_LOSS_ROOT_IDENTITY');
+ receipt.responseLossIdentity=writeNew(root,'response-loss-identity.json',{schemaVersion:1,purpose:PURPOSE,caseId:'registered.null-cross-company.response-loss',
+  candidateSha:plan.source.head,sourceSealSha256:plan.source.code.sealSha256,planSha256:receipt.planSha256,runId:plan.runId,
+  databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,requestKeySha256:hash(Buffer.from(fixture.ids.requestKey)),
+  projectIdSha256:hash(Buffer.from(fixture.ids.project)),paymentIdSha256:hash(Buffer.from(fixture.ids.payment))});
+ sidecarProof=capture(receipt.responseLossIdentity.file);need(sidecarProof.sha256===receipt.responseLossIdentity.sha256,'NATIVE_RESPONSE_LOSS_BINDING_CHANGED');
+ needLive();binding();return await runCase(binding);
+}
+// Private per-run HMAC key stays in memory; the published digest cannot reveal
+// low-entropy fields or reconstruct a request after a restart.
+function createNativeResponseLossBodyBinding(root,receipt,binding){
+ need(typeof binding==='function'&&receipt&&hex(receipt.responseLossIdentity?.sha256,64),'NATIVE_RESPONSE_LOSS_BODY_BINDING');
+ const secret=randomBytes(32);let used=false;
+ const digest=body=>createHmac('sha256',secret).update('TASK16_NATIVE_RESPONSE_LOSS_BODY_V1\0').update(body,'utf8').digest('hex');
+ return body=>{
+  binding();need(!used&&typeof body==='string'&&Buffer.byteLength(body)<=1048576,'NATIVE_RESPONSE_LOSS_BODY_BINDING');used=true;
+  const bodyDigest=digest(body);
+  receipt.responseLossBody=writeNew(root,'response-loss-body.json',{schemaVersion:1,purpose:PURPOSE,identitySha256:receipt.responseLossIdentity.sha256,bodyHmacSha256:bodyDigest});
+  const proof=capture(receipt.responseLossBody.file);need(proof.sha256===receipt.responseLossBody.sha256,'NATIVE_RESPONSE_LOSS_BODY_BINDING');
+  return candidate=>{binding();let current;try{current=capture(receipt.responseLossBody.file);}catch{need(false,'NATIVE_RESPONSE_LOSS_BODY_BINDING');}
+   need(typeof candidate==='string'&&digest(candidate)===bodyDigest&&receipt.responseLossBody.sha256===proof.sha256&&current.sha256===proof.sha256&&equal(current.identity,proof.identity),'NATIVE_RESPONSE_LOSS_BODY_BINDING');};
+ };
+}
 function git(args){return execFileSync('/usr/bin/git',args,{cwd:ROOT,encoding:'utf8',env:{PATH:'/usr/bin:/bin'},timeout:10000,maxBuffer:4*1024*1024}).trim();}
 function sourceCapture(){
  need(git(['status','--porcelain'])==='','NATIVE_DIRECT_SOURCE_DIRTY');
@@ -231,7 +265,7 @@ function renderNativeTask16RuntimeAcl(inputJson,nonce){
  const publicSql=publicParts.join(original.replace('5432',String(id.serverPort)));
  return Object.freeze({...rendered,sql,publicSql,writeSql:sql+'\n'+publicSql});
 }
-module.exports=Object.freeze({captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({createNativeResponseLossBodyBinding,runNativeTask16ResponseLossPreparedCase,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
@@ -463,15 +497,18 @@ async function runNativeTask16Business(plan,state){
   const continuity={seedProfile:'TASK16_PAYMENT261_RUNTIME_V1',checkLight:needLive,assertHttpRequest:(route,method)=>assertTarget(route,method),fetch:async(target,init)=>{assertTarget(target,init.method??'GET');return fetch(target,init);},requestJson:async(target,init,timeout)=>{assertTarget(target,init.method??'GET');need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestCurrent261SeedJson(target,init,timeout);},recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
   await wait(()=>fixture.assertRegisteredPgConnectedRoles(context,continuity));enter('SEED_LOGIN_AND_OPENINGS');receipt.business='ENTERED';
   const prepared=await wait(()=>fixture.seedRegisteredPgFixture(context,fixturePlan,continuity));receipt.loginAndOpenings='ORIGINAL_FIXTURE_RETURNED';
-  await verifyIdentity();enter('RESPONSE_LOSS_RESULT_OBSERVE_REPLAY');
-  const transport=await wait(()=>require('./task16-native-response-loss-transport.cjs').createNativeResponseLossTransport({origin,payment:fixturePlan.ids.payment,key:fixturePlan.ids.requestKey,check:needLive}),late=>cleanupWait(()=>late.close()));
-  const lossContinuity={...continuity,requestJson:undefined,fetch:async(target,init)=>{assertTarget(target,init.method??'GET');return transport.fetch(target,init);},
-   loseRegistrationResponse:async submit=>{await verifyIdentity();return transport.lose(submit);},
-   authorizeResponseLossReplay:async()=>{await verifyIdentity();transport.authorizeReplay();}};
+  enter('RESPONSE_LOSS_RESULT_OBSERVE_REPLAY');
+  const result=await runNativeTask16ResponseLossPreparedCase(root,plan,identity,fixturePlan,receipt,verifyIdentity,needLive,async binding=>{
+  const prepareBody=createNativeResponseLossBodyBinding(root,receipt,binding);
+  const transport=await wait(()=>require('./task16-native-response-loss-transport.cjs').createNativeResponseLossTransport({origin,payment:fixturePlan.ids.payment,key:fixturePlan.ids.requestKey,check:binding,prepareBody}),late=>cleanupWait(()=>late.close()));
+  const lossContinuity={...continuity,checkLight:binding,requestJson:undefined,fetch:async(target,init)=>{assertTarget(target,init.method??'GET');return transport.fetch(target,init);},
+   loseRegistrationResponse:async submit=>{binding();await verifyIdentity();binding();return transport.lose(submit);},
+   authorizeResponseLossReplay:async()=>{binding();await verifyIdentity();binding();transport.authorizeReplay();}};
   let result,primary;try{result=await wait(()=>cases.runRegisteredNullCrossCompanyNativeResponseLoss(context,prepared,lossContinuity));}
   catch(error){primary=error;throw error;}
   finally{try{await cleanupWait(()=>transport.close());}catch(error){receipt.responseLossProxyCleanup='UNKNOWN';if(!primary)throw error;}}
-  transport.assertCompleted();
+  transport.assertCompleted();return result;
+  });
   need(result.passed===true&&result.caseId==='registered.null-cross-company.response-loss'&&result.accountingEvidence?.origin==='INDEPENDENT_OBSERVER_REPEATABLE_READ','NATIVE_DIRECT_CASE_RESULT');
   const bytes=Buffer.from(JSON.stringify({schemaVersion:1,purpose:PURPOSE,candidateSha:plan.source.head,runId:plan.runId,accountingEvidence:result.accountingEvidence})+'\n');need(bytes.length<=8192,'NATIVE_DIRECT_ACCOUNTING_BYTES');
   try{receipt.accounting=writeNew(root,'accounting-evidence.json',bytes);}catch{receipt.accounting={status:'UNKNOWN_DO_NOT_RETRY'};fail('NATIVE_DIRECT_ACCOUNTING_UNKNOWN');}
