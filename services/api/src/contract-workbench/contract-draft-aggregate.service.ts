@@ -1127,7 +1127,7 @@ export class ContractDraftAggregateService {
           }
         });
         return response;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
     } catch (error) {
       if (error instanceof ConflictException) {
         throw new ConflictException(
