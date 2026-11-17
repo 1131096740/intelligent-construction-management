@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { DOMParser, XMLSerializer, type Element } from "@xmldom/xmldom";
 import PizZip from "pizzip";
-import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, prepareBuiltInRoleParagraph } from "./contract-body-document";
+import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, prepareBuiltInRoleParagraph, prepareGenericPartyParagraph } from "./contract-body-document";
 
 /** Prepare only the two source-qualified body role lines before legacy rendering. */
 export function prepareLegacyPartyRoleBindings(source:Buffer,mapped:Buffer):Buffer {
@@ -16,9 +16,14 @@ export function prepareLegacyPartyRoleBindings(source:Buffer,mapped:Buffer):Buff
   const paragraphs=Array.from(doc.getElementsByTagName("w:p"));
   const original=new DOMParser({onError:fail}).parseFromString(originalPart.asText(),"application/xml");
   const originals=Array.from(original.getElementsByTagName("w:p"));
-  if(paragraphs.length!==originals.length||![28,29].every((index)=>paragraphs[index]&&originals[index])) return fail();
-  prepareBuiltInRoleParagraph(paragraphs[28],kind==="mechanical"?"甲方":"买方");
-  prepareBuiltInRoleParagraph(paragraphs[29],kind==="mechanical"?"乙方":"卖方");
+  const roles=kind==="generic"?[]:kind==="mechanical"?[[28,"甲方"],[29,"乙方"]] as const:[[28,"买方"],[29,"卖方"]] as const;
+  if(paragraphs.length!==originals.length||!roles.every(([index])=>paragraphs[index]&&originals[index])) return fail();
+  for(const [index,label] of roles) prepareBuiltInRoleParagraph(paragraphs[index],label);
+  if(kind==="generic") for(const index of [13,14,53,58]) {
+    if(!paragraphs[index]||!originals[index]) return fail();
+    const sourceText=Array.from(originals[index].getElementsByTagName("w:t")).map(node=>node.textContent??"").join("");
+    prepareGenericPartyParagraph(paragraphs[index],sourceText,index);
+  }
   zip.file("word/document.xml",new XMLSerializer().serializeToString(doc));
   return zip.generate({type:"nodebuffer"});
 }

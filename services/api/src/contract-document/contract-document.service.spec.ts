@@ -354,7 +354,8 @@ describe("ContractDocumentService", () => {
       ["{合同名称}","contract.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
     ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
     const owner=sourcePositions.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===13)!;
-    bindings.push({positionId:owner.positionId,start:0,end:1,fieldKey:"party.owner.name"});
+    const ownerStart=owner.text.indexOf("建工智管建设有限公司");
+    bindings.push({positionId:owner.positionId,start:ownerStart,end:ownerStart+"建工智管建设有限公司".length,fieldKey:"party.owner.name"});
     const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
     layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
     files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:sourcePositions.sourceSha256}});
@@ -362,6 +363,23 @@ describe("ContractDocumentService", () => {
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.genericFontTableVersion).toBe("built-in-generic-font-v1");
   });
+
+  it.each(["party_a","party_b"])("requires %s before queueing a generic contract",async missing=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates/generic-contract-v1.docx")),positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    const owner=positions.positions.find(position=>position.part==="word/document.xml"&&position.paragraphIndex===13)!;
+    const start=owner.text.indexOf("建工智管建设有限公司");
+    bindings.push({positionId:owner.positionId,start,end:start+"建工智管建设有限公司".length,fieldKey:"party.owner.name"});
+    const sourceMapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...sourceMapping,confirmation:{sourceFileId:sourceMapping.sourceFileId,sourceSha256:sourceMapping.sourceSha256,draftRevision:2,mappingFingerprint:sourceMapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{roleKey:missing==="party_a"?"party_b":"party_a",displayOrder:0,snapshot:{name:"虚构主体"}}]);
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await expect(makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("请先填写合同甲乙双方名称");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+  });
+
 
   function makeSingleConnectionService(current: { storageStatus?: string; objectKey?: string } = {}, bytes = source) {
     const file = { id: "layout-file-1", objectKey: "private/layout.docx", storageStatus: "active",

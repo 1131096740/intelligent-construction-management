@@ -5,6 +5,7 @@ import { resolveContractDraftBusinessType } from "../contract-workbench/contract
 import { readSelectableLayoutSource } from "../contract-template/layout-selection-policy";
 import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { BUILT_IN_GENERIC_FONT_VERSION, BUILT_IN_GENERIC_SOURCE_SHA256 } from "./contract-docx-package-metadata";
+import { assertGenericPartySourceMapping } from "./contract-body-document";
 import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, BUILT_IN_PARTY_PLACEMENT_VERSION, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
 import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
 import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
@@ -152,10 +153,17 @@ export class ContractDocumentService {
     const typographyVersion = bodyRenderProfile?.typographyVersion;
     const signatureDateVersion = bodyRenderProfile?.signatureDateVersion;
     const pageNumberVersion = bodyRenderProfile?.pageNumberVersion;
+    let partyDetailsExternalMappingConflict=false;
+    const schema=this.isObject(layout.placeholderSchema)?layout.placeholderSchema:{};
+    const mapping=this.isObject(schema.sourceMapping)?schema.sourceMapping:undefined;
+    if(mapping) {
+      try { assertGenericPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); }
+      catch (error) { if (!(error instanceof ConflictException)) throw error; partyDetailsExternalMappingConflict=true; }
+    }
     const rendered = renderContractBody(source.buffer, mapped, { values: this.renderValues(contract, version, parties,
       bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION) }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
         ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}),
-        ...(builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) ? {partyDetailsVersion: BUILT_IN_PARTY_PLACEMENT_VERSION,partyDetailsConflictPreview:true} : {}) });
+        ...(builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) ? {partyDetailsVersion: BUILT_IN_PARTY_PLACEMENT_VERSION,partyDetailsConflictPreview:true,partyDetailsExternalMappingConflict} : {}) });
     const savePoints = checkpoints.flatMap(checkpoint => {
       const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
       return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
@@ -171,7 +179,7 @@ export class ContractDocumentService {
       warnings: [
         ...(createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
           ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []),
-        ...(rendered.partyDetailsMappingConflict ? ["正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"] : []),
+        ...(rendered.partyDetailsMappingConflict ? [builtInPartyPlacementKind(rendered.sourceSha256)==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"] : []),
         ...(rendered.partyDetailsConflict ? ["正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"] : [])
       ]
     };
@@ -372,6 +380,7 @@ export class ContractDocumentService {
           : [];
         for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
         const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
+        if (partyDetailsVersion) assertGenericPartySourceMapping(selectedSource.buffer,layoutSourceMapping);
         let bodyDocument: ContractDocumentInputSnapshot["bodyDocument"];
         if (useBodyRenderer) {
           const source = bodySource!;
@@ -421,6 +430,9 @@ export class ContractDocumentService {
             mimeType
           }))
         };
+        if (partyDetailsVersion && builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex")) === "generic" && ["party.owner.name","party.counterparty.name"].some(key=>typeof inputSnapshot.renderInput.values[key] !== "string" || !(inputSnapshot.renderInput.values[key] as string).trim())) {
+          throw new BadRequestException("请先填写合同甲乙双方名称，再生成合同");
+        }
         const document = await tx.contractGeneratedDocument.create({
           data: {
             contractVersionId: version.id,
