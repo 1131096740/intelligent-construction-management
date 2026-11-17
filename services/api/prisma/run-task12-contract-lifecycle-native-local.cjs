@@ -26,6 +26,7 @@ function command(bin, args, options = {}) {
 function nativeLifecycleContainerName(runId) { return 'jiangkong-task12-native-' + runId; }
 function parseArgs(args) {
   if (!args.length) return undefined;
+  if (args.length === 5 && args[0] === '--queue-only' && args[1] === '--candidate-sha' && /^[a-f0-9]{40}$/u.test(args[2]) && args[3] === '--confirm' && args[4] === 'LOCAL_TASK12_QUEUE_ONLY') return { sha: args[2], queueOnly: true };
   if (args.length !== 8 || args[0] !== '--candidate-sha' || !/^[a-f0-9]{40}$/u.test(args[1]) ||
     args[2] !== '--runtime-input' || !path.isAbsolute(args[3]) || args[4] !== '--runtime-sha256' ||
     !/^[a-f0-9]{64}$/u.test(args[5]) || args[6] !== '--confirm' || args[7] !== 'LOCAL_TASK12_NATIVE_LIFECYCLE') {
@@ -46,7 +47,7 @@ async function run(args,enter,capture) {
   const input = parseArgs(args);
   if (!input) return { status: 'TASK12_NATIVE_LIFECYCLE_NOT_EXECUTED', scope: 'local_current261_real_pg_http_native_documents' };
   if (process.env.NODE_ENV === 'production' || process.env.DATABASE_URL ||
-    ['NODE_OPTIONS','NODE_PATH','DOC_CONVERTER_COMMAND','DOC_ALLOWED_FONTS','CONTRACT_MATERIAL_BODY25_DOCX4J_RUNTIME_MANIFEST'].some(key => process.env[key])) {
+    ['NODE_OPTIONS','NODE_PATH','DOC_CONVERTER_COMMAND','DOC_ALLOWED_FONTS','CONTRACT_MATERIAL_BODY25_DOCX4J_RUNTIME_MANIFEST','TASK12_NATIVE_QUEUE_ONLY'].some(key => process.env[key])) {
     throw new Error('TASK12_NATIVE_GATE_ENVIRONMENT');
   }
   enter('SOURCE');
@@ -55,7 +56,7 @@ async function run(args,enter,capture) {
   }
   // Mandatory original native runtime qualification precedes all PG resources.
   enter('RUNTIME');
-  verifyCurrent259GeneratedDocumentRuntime(input.runtime, input.runtimeSha);
+  if (!input.queueOnly) verifyCurrent259GeneratedDocumentRuntime(input.runtime, input.runtimeSha);
   enter('DOCKER_ENDPOINT');
   const endpoint = process.env.DOCKER_HOST || command('docker', ['context','inspect','--format','{{.Endpoints.docker.Host}}']);
   if (!endpoint.startsWith('unix://')) throw new Error('TASK12_NATIVE_GATE_DOCKER');
@@ -121,7 +122,7 @@ async function run(args,enter,capture) {
     enter('PACKET');
     const packet = path.join(directory, 'test-input.json');
     const files = path.join(directory, 'files');fs.mkdirSync(files, { mode: 0o700 });
-    fs.writeFileSync(packet, JSON.stringify({ version: 1, candidateSha: input.sha, scope, lifecyclePlan:nativeLifecyclePlanBinding(scope), ownerUrl, urls, directory, runtime: input.runtime, runtimeSha: input.runtimeSha }), { mode: 0o600, flag: 'wx' });
+    fs.writeFileSync(packet, JSON.stringify({ version: 1, candidateSha: input.sha, scope, lifecyclePlan:nativeLifecyclePlanBinding(scope), ownerUrl, urls, directory, runtime: input.runtime, runtimeSha: input.runtimeSha, ...(input.queueOnly ? {queueOnly:true} : {}) }), { mode: 0o600, flag: 'wx' });
     enter('NATIVE_SUITE');
     build.check();
     command(pnpm, ['--filter','@jiangkong/api','exec','jest','--runInBand','--testRegex','task12-contract-lifecycle\\.native\\.spec\\.ts$','--runTestsByPath','src/database/task12-contract-lifecycle.native.spec.ts','--testPathIgnorePatterns',
@@ -129,7 +130,7 @@ async function run(args,enter,capture) {
       { env: { ...env, DATABASE_URL: urls.application, FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: files,
         FILE_DOWNLOAD_SECRET: randomBytes(32).toString('hex'), TASK12_NATIVE_LIFECYCLE_INPUT: packet }, stdio: 'inherit', timeout: 900_000 });
     build.check();
-    return { status: 'TASK12_NATIVE_LIFECYCLE_PG_HTTP_PASSED', candidateSha: input.sha, migrationCount: 261 };
+    return { status: input.queueOnly ? 'TASK12_QUEUE_ONLY_SYNTHETIC_PG_HTTP_PASSED_NO_DOCUMENT_ACCEPTANCE' : 'TASK12_NATIVE_LIFECYCLE_PG_HTTP_PASSED', candidateSha: input.sha, migrationCount: 261 };
   }, [
     ['CONTAINER_REMOVE', () => {
       enter('CLEANUP_CONTAINER');

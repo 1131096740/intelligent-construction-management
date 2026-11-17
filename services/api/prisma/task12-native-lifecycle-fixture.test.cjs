@@ -62,6 +62,11 @@ test('native entry rejects partial and misleading inputs before any child proces
   assert.match(source, /--testRegex.*task12-contract-lifecycle/);
   assert.doesNotMatch(source, /task12-contract-lifecycle\.pg\.spec\.ts/);
 });
+test('queue-only has a distinct explicit local purpose and does not accept runtime bypass for lifecycle', () => {
+  const {parseArgs}=require('./run-task12-contract-lifecycle-native-local.cjs');
+  assert.deepEqual(parseArgs(['--queue-only','--candidate-sha','a'.repeat(40),'--confirm','LOCAL_TASK12_QUEUE_ONLY']),{sha:'a'.repeat(40),queueOnly:true});
+  assert.throws(()=>parseArgs(['--queue-only','--candidate-sha','a'.repeat(40),'--confirm','LOCAL_TASK12_NATIVE_LIFECYCLE']),/TASK12_NATIVE_GATE_ARGUMENTS/u);
+});
 
 test('outer and audit cleanup preserve the exact private primary while attempting every cleanup',async()=>{
  const { withNativeLifecycleCleanup, createNativeLifecycleDiagnostics }=require('./task12-native-lifecycle-fixture.cjs');
