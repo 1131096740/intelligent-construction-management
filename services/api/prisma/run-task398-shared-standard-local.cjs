@@ -39,6 +39,8 @@ function runtimePlan(){
  plan=require("./task16-current259-voucher-acl.cjs").voucherNative261AccessPlan(plan);
  // The migrated exclusive-file guard reads both fields for retained originals.
  add("ContractDraftAttachment","select",["slotKey"]);
+ // The same invoker guard checks the correction schema version for exclusivity.
+ add("ContractTakeoverCorrection","select",["schemaVersion"]);
  add("User","update",["signatureFileId"]);add("PaymentRequest","update",["approvedAmountCents"]);add("ApprovalInstance","update",["currentNodeIndex","frozenNodes","status"]);
  delete plan.runtime.tables.find(row=>row.table==="ApprovalInstance").lockOnlyUpdate;
  const full={ApprovalActionLog:["id","approvalInstanceId","action","actorUserId","comment","metadata","approvedRoleKey","signatureFileIdSnapshot","signatureSha256Snapshot","signatureVersionIdSnapshot","representedUserId","createdAt"],HandwrittenSignatureVersion:["id","userId","fileId","contentSha256","source","createdAt"],BusinessEntrySubmissionSnapshot:["id","projectId","sceneKey","entityType","entityId","revision","definitionVersion","definitionSnapshot","valuesSnapshot","frozenAt","frozenByUserId","createdAt"]};
@@ -70,7 +72,15 @@ function signatureBindingCheckSql(){
  AND NOT has_column_privilege('jg_task01_runtime','public."ContractDraftAttachment"','fileId','SELECT WITH GRANT OPTION')
  AND NOT has_column_privilege('jg_task01_runtime','public."ContractDraftAttachment"','slotKey','SELECT WITH GRANT OPTION')
  AND NOT has_table_privilege('jg_task01_runtime','public."ContractDraftAttachment"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
- AND NOT has_any_column_privilege('jg_task01_runtime','public."ContractDraftAttachment"','INSERT,UPDATE,REFERENCES')`;
+ AND NOT has_any_column_privilege('jg_task01_runtime','public."ContractDraftAttachment"','INSERT,UPDATE,REFERENCES')
+ AND has_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','attachmentFileId','SELECT')
+ AND has_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','correctionType','SELECT')
+ AND has_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','schemaVersion','SELECT')
+ AND NOT has_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','attachmentFileId','SELECT WITH GRANT OPTION')
+ AND NOT has_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','correctionType','SELECT WITH GRANT OPTION')
+ AND NOT has_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','schemaVersion','SELECT WITH GRANT OPTION')
+ AND NOT has_table_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+ AND NOT has_any_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','INSERT,UPDATE,REFERENCES')`;
 }
 function cleanupOwnedContainer({id,name,runId,list,inspect,remove,confirmAbsent}){
  try{
