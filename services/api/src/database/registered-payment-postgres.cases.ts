@@ -65,7 +65,8 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
   return { request, settlement, executions, funding, allocations, events, roots, facts, impacts, audits, balanceA: accountAmount(openingA), balanceB: accountAmount(openingB) };
 }
 
-async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false, consolidatedNormal = false, fullAudit = false) {
+async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false, consolidatedNormal = false, fullAudit = false,
+  ledgerExtra?: (tx: Prisma.TransactionClient, rows: Awaited<ReturnType<typeof snapshot>>) => Promise<{factId:string;impactCount:3}>) {
   const start = performance.now();
   let phase: RegisteredPgObserverPhase = "TX_START", txStart: number | undefined, lightCalls = 0, lightElapsedMs = 0, queryElapsedMs = 0;
   const elapsed = (value: number) => Math.min(3600000, Math.max(0, Math.round(value)));
@@ -86,7 +87,9 @@ async function observe(context: RegisteredPgExecutionContext, fixture: PreparedR
       txStart = performance.now();
       const setReadOnly = tx.$executeRawUnsafe;
       await checked("SET_READ_ONLY", () => setReadOnly.call(tx, "SET TRANSACTION READ ONLY"));
-      return snapshot(tx, fixture, { light, checked, phase(next) { phase = next; } }, isolatedPaymentScope, consolidatedNormal, fullAudit);
+      const rows=await snapshot(tx, fixture, { light, checked, phase(next) { phase = next; } }, isolatedPaymentScope, consolidatedNormal, fullAudit);
+      if (!ledgerExtra) return rows;
+      return {...rows,ledgerWitness:await checked("IMPACTS",()=>ledgerExtra(tx,rows))};
     }, { isolationLevel: "RepeatableRead" });
     phase = "TX_RETURN"; return result;
   } finally {
@@ -703,17 +706,39 @@ export async function runRegisteredNullCrossCompanyDisconnectRecovery(receipt: o
 
 type CompetitionSubmission = () => ReturnType<typeof registeredPgHttp>;
 
+type CompetitionControls = {
+  lanes: readonly [RegisteredPgSeedContinuity, RegisteredPgSeedContinuity];
+  withSamePaymentLock: (paymentId: string, pids: readonly [number, number], submissions: readonly [CompetitionSubmission, CompetitionSubmission]) =>
+    Promise<readonly [Awaited<ReturnType<CompetitionSubmission>>, Awaited<ReturnType<CompetitionSubmission>>]>;
+};
 export async function runRegisteredTwoActorPaymentCompetition(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
-  fixture: PreparedRegisteredPgCompetition, controls: {
-    lanes: readonly [RegisteredPgSeedContinuity, RegisteredPgSeedContinuity];
-    withSamePaymentLock: (paymentId: string, pids: readonly [number, number], submissions: readonly [CompetitionSubmission, CompetitionSubmission]) =>
-      Promise<readonly [Awaited<ReturnType<CompetitionSubmission>>, Awaited<ReturnType<CompetitionSubmission>>]>;
-  }) {
+  fixture: PreparedRegisteredPgCompetition, controls: CompetitionControls) {
+  return runRegisteredCompetition(primary,contender,fixture,controls,false);
+}
+export async function runRegisteredLedgerPaymentCompetition(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
+  fixture: Awaited<ReturnType<typeof import("./registered-payment-postgres.fixture").seedRegisteredPgPublicCashFormalFixture>>, controls: CompetitionControls) {
+  return runRegisteredCompetition(primary,contender,fixture,controls,true);
+}
+async function runRegisteredCompetition(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgCompetition, controls: CompetitionControls, ledger: boolean) {
   const { plan, accessToken, contender: other } = fixture;
   const { ids } = plan;
-  const checkLight = () => controls.lanes.forEach(lane => lane.checkLight());
+  const checkLight = () => {
+    controls.lanes.forEach(lane => lane.checkLight());
+    if (ledger) {
+      const document=(fixture as Awaited<ReturnType<typeof import("./registered-payment-postgres.fixture").seedRegisteredPgPublicCashFormalFixture>>).cashSourceDocument;
+      check(document,"PG_COMPETITION_LEDGER_DOCUMENT");document.verify();
+    }
+  };
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { checkLight(); const value = await operation(); checkLight(); return value; };
   const identity = await checked(() => assertRegisteredPgCompetitionRoles(primary, contender, controls.lanes[0]));
+  const formal=ledger ? fixture as Awaited<ReturnType<typeof import("./registered-payment-postgres.fixture").seedRegisteredPgPublicCashFormalFixture>> : undefined;
+  if (ledger) {
+    check(formal?.settlementFactId && formal.settlementBaseline && formal.settlementBaseline.factId===formal.settlementFactId, "PG_COMPETITION_LEDGER_PREREQUISITE");
+    const {readCashSettlementPrerequisite}=await import("./registered-payment-public-cash-prerequisite");
+    const baseline=await checked(()=>readCashSettlementPrerequisite(primary.observer,{projectId:ids.project,settlementId:ids.settlement},checkLight));
+    check(isDeepStrictEqual(baseline,formal.settlementBaseline),"PG_COMPETITION_LEDGER_PREREQUISITE");
+  }
   const before = await checked(() => observe(primary, fixture, controls.lanes[0], true));
   check(before.request.approvedAmountCents === 4000n && before.request.paidAmountCents === 0n &&
     before.settlement.payableAmountCents === 4000n && before.settlement.paidAmountCents === 0n &&
@@ -754,12 +779,16 @@ export async function runRegisteredTwoActorPaymentCompetition(primary: Registere
     [identity.primary.runtimePid, identity.contender.runtimePid], [submit(actors[0]), submit(actors[1])]));
   const winner = responses[0].status === 201 ? 0 : 1, loser = winner === 0 ? 1 : 0;
   check(responses[winner].status === 201 && responses[loser].status === 409, "PG_COMPETITION_ONE_HTTP_WINNER");
-  const after = await checked(() => observe(primary, fixture, controls.lanes[0], true));
+  const ledgerReader=ledger ? await import("./registered-payment-ledger-competition-observer") : undefined;
+  const after = await checked(() => observe(primary, fixture, controls.lanes[0], true, false, false, ledger ? async (tx,rows) => {
+    check(rows.executions.length===1,"PG_COMPETITION_LEDGER_EXECUTION");
+    return ledgerReader!.readLedgerCompetitionPaymentInTransaction(tx,{projectId:ids.project,settlementId:ids.settlement,settlementFactId:formal!.settlementFactId,executionId:rows.executions[0]!.id,payerId:ids.companyB},checkLight);
+  } : undefined));
   check(after.executions.length === 1 && after.funding.length === 1 && after.allocations.length === 1 && after.events.length === 1 &&
-    after.audits.length === 1 && after.roots.length === 1 && after.facts.length === 0 && after.impacts.length === 0, "PG_COMPETITION_ONE_COMMIT");
+    after.audits.length === 1 && after.roots.length === 1 && after.facts.length === (ledger ? 1 : 0) && after.impacts.length === (ledger ? 3 : 0), "PG_COMPETITION_ONE_COMMIT");
   const execution = after.executions[0]!, funding = after.funding[0]!, root = after.roots[0]!, allocation = after.allocations[0]!, audit = after.audits[0]!;
   check(execution.idempotencyKey === actors[winner].key && execution.amountCents === 3000n && execution.paymentRequestId === ids.payment && execution.voucherFileId === null &&
-    funding.executionId === execution.id && funding.operatingLedgerEffectiveDateAtRegistration === null && funding.actualPayerId === ids.companyB && funding.actualPayerKind === "participating_company" &&
+    funding.executionId === execution.id && (ledger ? funding.operatingLedgerEffectiveDateAtRegistration?.toISOString().slice(0,10) === plan.openingDate : funding.operatingLedgerEffectiveDateAtRegistration === null) && funding.actualPayerId === ids.companyB && funding.actualPayerKind === "participating_company" &&
     allocation.executionId === execution.id && allocation.sourceBatchId === fixture.companyBSourceId && allocation.amountCents === 3000n &&
     after.events[0]?.executionId === execution.id && audit.actorUserId === actors[winner].actorId, "PG_COMPETITION_COMMIT_GRAPH");
   check(root.paymentExecutionId === execution.id && root.sourceType === "registered_payment_execution" && root.entryKind === "proxy_payment" && root.direction === "increase" &&
@@ -771,19 +800,21 @@ export async function runRegisteredTwoActorPaymentCompetition(primary: Registere
     const response = await checked(() => get(actor, `/payment-executions/results/${actor.key}`));
     const body = response.body as { status?: string; execution?: {executionId?: string; amountCents?: string; paidAt?: string}; effects?: unknown[]; intercompany?: unknown[] };
     check(response.status === 200 && (index === winner ? body.status === "recorded" && body.execution?.executionId === execution.id &&
-      body.execution.amountCents === "3000" && body.execution.paidAt === plan.paidAt && body.effects?.length === 0 && body.intercompany?.length === 1 :
+      body.execution.amountCents === "3000" && body.execution.paidAt === plan.paidAt && body.effects?.length === (ledger ? 1 : 0) && body.intercompany?.length === 1 :
       body.status === "unconfirmed" && body.execution === undefined), "PG_COMPETITION_ORIGINAL_KEY_RESULT");
   }
   const finalVersion = await work(actors[0], "3000", "1000");
   check(finalVersion !== initialVersion && await work(actors[1], "3000", "1000") === finalVersion, "PG_COMPETITION_SHARED_AFTER_COMMIT");
+  const ledgerWitness="ledgerWitness" in after ? after.ledgerWitness : undefined;
+  if(ledger) check(ledgerWitness && after.facts[0]?.id===ledgerWitness.factId,"PG_COMPETITION_LEDGER_FACT_BINDING");
   const accountingEvidence = Object.freeze({
     origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ" as const, currency: "CNY" as const,
     before: projectCompetitionAccounting("BEFORE", before), after: projectCompetitionAccounting("AFTER", after),
     executionId: execution.id, rootId: root.id, debtorCompanyId: root.originalDebtorCompanyId,
     creditorCompanyId: root.creditorCompanyId, debtAmountCents: root.amountCents.toString()
   });
-  return { caseId: "registered.two-actor.payment-competition", passed: true, executionId: execution.id, rootId: root.id,
-    winner: winner === 0 ? "finance_staff" : "comprehensive_director", competitionObserved: true, accountingEvidence } as const;
+  return { caseId: ledger ? "registered.ledger-payment-competition" : "registered.two-actor.payment-competition", passed: true, executionId: execution.id, rootId: root.id,
+    winner: winner === 0 ? "finance_staff" : "comprehensive_director", competitionObserved: true, accountingEvidence, ...(ledgerWitness?{ledgerWitness}: {}) } as const;
 }
 
 /** A17 uses the original independent canonical snapshot on the existing observer. */
