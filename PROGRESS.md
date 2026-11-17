@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 合同签署区补充条款候选
+
+用户已确认长短甲乙补充内容前置，公司、银行及签署内容留在末页。签署区修订 `885f2cfd` 经独审合入本地 `6ef91275`，封存补丁 SHA `ce42048a9b41d3d3affe441070148f08fbf4ccc4bdc0262c5e6e734adea80ecf`，13 个文件的差异与补丁逐项一致；API 定向 211/211、Web 定向 80/80，API/Web typecheck、lint 和 Web check:ui 通过（Web lint 1110 条警告、无错误）。身份无法明确映射时阻断并保留草稿。
+
+[旧 WIP 双引擎样张观察](/private/tmp/jg-sign-reviewed-final-HuJLFm/observation.json) SHA `f524f930c67211a829dbe0792dda36e76af8ebf223b9b63ad3e3b300bf7fe1eb` 不绑定本次候选；人工确认不证明页面确认按钮的实际点击。本次候选尚未完成实际渲染及精确 SHA 资格，不能据此认定物理分页或 #394 整体验收通过。付款 b7aa 结果仍仅属于其原 SHA；本次未操作生产或推送。
+
 ## 2026-11-17 付款页面 b7aa 真实隔离复验
 
 准确 `b7aa14e613400d1b8aef5e3c7cf1d077422cf393` 的虚构真实 PG/Chromium 部分付款复验通过：30 元后剩余 70 元，页面汇总、关系台账及应付投影更新，独立 observer RR 核账余额 100→70、已付及结算已付 3000 分，执行/资金/分配/事件/审计各一、事实一及影响二。[回执](/private/tmp/jg398-browser-evidence-xjSmOv/receipt.json) SHA `89a869a885bc6a7d96b5057fda0eb4c7e237caa9603a4cbf34ca148e608b5006`，[运行日志](/private/tmp/jg-browser-b7aa-run2.log) SHA `84143c89816117f260de0e44511faaf4ec2da23293ffd705ff6b4b319312da81`，[财务截图](/private/tmp/jg398-browser-evidence-xjSmOv/finance-partial.png) SHA `99ef39a1e7a34050a4b6a699a4569ec6830449d3c0eea4e867c765ca4f834f83`。
