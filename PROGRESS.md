@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 A16 响应丢失虚构隔离运行
+
+准确候选 `513b4088d57ae4fd5adafdf6e94d05539eb79297` 与计划 SHA `5e5df5cf2feef612be3c2ab50428df7989f3b1128ce9dcf63e3d31fd1a8114d5` 的单次虚构运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-513-BCmQlq/receipt.json) SHA `45cb1bba61483428358b62ffdf737348590f9ec1a011d5ad762b9012f7deeeaa`；[核账证据](/private/tmp/jg-a16-513-BCmQlq/accounting-evidence.json) SHA `219f71721e0f201f3195d928969325b12ad35162a7d85fec0e0ff8292e44ab43`。独审确认首次到重放的计数与余额一致；代理丢弃完整上游 201 响应及先核后重放的顺序依封存源码成功路径推论，并非独立 HTTP 事件记录。HMAC 密钥未保存，不能事后独立重算。
+
+运行器自报 cleanup 完成；[独立检查](/private/tmp/jg-a16-513-receipt-t1rlFh/cleanup-independent.json) SHA `fc3142ce97eb7c239b4e9bb4a384806dd3f15795657dda0de0296f32700d01a2` 确认 runner/PG 进程、PG 监听及 pidfile 缺席，未独立检查代理端口。本次只覆盖虚构 null-project 跨公司 40 元；提交中断、断连和真实审批仍未验，#398 尚未验收，原现金 b047 仍 UNKNOWN。
+
 ## 2026-11-17 A16 身份与正文保护
 
 A16 新虚构场景身份及正文保护候选 `c364bfcc` 经独审合入本地 `00eb6e9d`，准确补丁 SHA `02bbda2566c4998c35f817f6827cf1aa2ffaa2f33802e31f796fbcc33b59c8fd`。Node20 相关 87/87（含真实本地 HTTP 装配）、现金及旧代理 21/21、API build/typecheck/lint 通过。真实隔离业务尚未运行，不代表 #398 验收通过。
