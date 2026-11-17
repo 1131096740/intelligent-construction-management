@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离工作项响应诊断
+
+准确 `cc39d4d8` 真实隔离运行三次登录、签名、审批 201 及签名快照核对通过；Me 响应结构检查前发生 TypeError，HTTP 状态未知，付款未进入，容器已清理。[原私有日志](/private/tmp/jg398-standard-run-9iegucqt/run.log) SHA `e8169d564758e6d88abff4078222efe273fca2abae06bbd4ade2cbc935d0093a`。
+
+测试侧 Me 状态及 500 捕获 `c8cb7065` 经独审合入本地 `02543d8d`，准确补丁 SHA `71569a6542a4c7cc03cb83fed9bf754abc98f37881e88a90a45d31e0a7557aee`；Node20 定向 Jest 6/6、API typecheck/lint 通过，真实 PG 测试按约跳过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重跑文书资格或推送。
+
 ## 2026-11-17 隔离额度用量标识读取
 
 准确 `8d1e6c0a` 隔离运行审批返回 500/42501，服务端窗口指向 `ProjectFinancingQuotaUsage`；付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-ok6b58kz/run.log) SHA `5e371e2de664af4e2fe68ad554e5d761b4fe868ee67a37606a9a7b518913cbf5`。同模型虚构只读探针确认 Prisma 查询隐式取得 `id`，仅授原三列会被拒；这不证明原错误唯一原因。
