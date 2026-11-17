@@ -4,6 +4,9 @@ it("admits only the fixed payment page query and existing scoped routes",()=>{
  expect(task16RealBrowserRequestAllowed("GET","/payments?view=formal_ledger&page=1&pageSize=20",scope)).toBe(true);
  expect(task16RealBrowserRequestAllowed("GET","/payment-executions/work-items",scope)).toBe(true);
  expect(task16RealBrowserRequestAllowed("GET","/projects",scope)).toBe(true);
+ expect(task16RealBrowserRequestAllowed("GET","/operating-projections/as-of?asOf=2026-11-17&scopeKind=projects",scope)).toBe(true);
+ expect(task16RealBrowserRequestAllowed("GET","/operating-projections/as-of?asOf=2026-11-17&scopeKind=projects&x=1",scope)).toBe(false);
+ expect(task16RealBrowserRequestAllowed("POST","/operating-projections/as-of?asOf=2026-11-17&scopeKind=projects",scope)).toBe(false);
  expect(task16RealBrowserRequestAllowed("GET","/projects",{...scope,paymentId:"bad"})).toBe(false);
  expect(task16RealBrowserRequestAllowed("GET","/contract-relationship-ledger?section=payments&asOf=2026-11-17",scope)).toBe(true);
  expect(task16RealBrowserRequestAllowed("GET","/contract-relationship-ledger?section=contracts&asOf=2026-11-17",scope)).toBe(false);

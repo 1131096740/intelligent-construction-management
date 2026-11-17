@@ -14,7 +14,7 @@ test("shared approved payment offers actual payment registration without requiri
 
 test("partial 40 remains a shared 60 payable for a second current role",async({page,browser},testInfo)=>{
  const fixture = JSON.parse(readFileSync(resolve(process.env.JG_PAYMENT_FIXTURE!,"fixture.json"),"utf8"));
- await page.addInitScript(session=>localStorage.setItem("jiangkong-web-admin-auth",JSON.stringify(session)),fixture.sessions.keeper);
+ await page.addInitScript(session=>localStorage.setItem("jiangkong-web-admin-auth",JSON.stringify(session)),fixture.sessions.finance);
  await page.goto("/付款管理");
  const panel=page.getByRole("region",{name:"共享实付待办"});
  await panel.getByRole("button",{name:"办理实付登记",exact:true}).click();
@@ -28,12 +28,28 @@ test("partial 40 remains a shared 60 payable for a second current role",async({p
  await form.locator('[aria-label="期初核对原因"] textarea').fill("实际支付发生在原核对之后，逐笔查明未含期初");
  await form.locator('[aria-label="期初核对依据"] textarea').fill("合成纸质付款登记第四号及期初核对表");
  await form.locator('[aria-label="本人当前密码"] input').fill("Synthetic15Password!");
+ let releaseOld=()=>{};let markOldReady=()=>{};
+ const holdOld=new Promise<void>(resolve=>{releaseOld=resolve;});
+ const oldReady=new Promise<void>(resolve=>{markOldReady=resolve;});let held=false;
+ await page.route(/\/api\/payments\?/u,async route=>{
+  if(held)return route.continue();
+  held=true;const response=await route.fetch();markOldReady();await holdOld;await route.fulfill({response});
+ });
+ await page.getByRole("button",{name:"刷新",exact:true}).first().click();await oldReady;
  await form.getByRole("button",{name:"确认登记这笔实付",exact:true}).click();
  await expect(page.getByText("实际付款日期：2026-11-04",{exact:true})).toBeVisible();
+ const ledgerRefresh = page.waitForResponse(response=>response.request().method() === "GET" && new URL(response.url()).pathname === "/api/payments");
+ const relationRefresh=page.waitForResponse(response=>response.request().method()==="GET" && new URL(response.url()).pathname==="/api/contract-relationship-ledger");
+ const projectionRefresh=page.waitForResponse(response=>response.request().method()==="GET" && new URL(response.url()).pathname==="/api/operating-projections/as-of");
  const sent = page.waitForResponse(response=>response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/payment-executions/payment-a/registrations"));
  await page.getByRole("button",{name:"已核实并确认登记",exact:true}).click();
  const postResponse = await sent;
  expect(postResponse.status()).toBe(201);
+ expect((await ledgerRefresh).status()).toBe(200);
+ await relationRefresh;await projectionRefresh;
+ await expect(page.locator(".business-status-summary__item").filter({hasText:"已实付金额"})).toContainText("¥40.00");
+ const oldDelivered=page.waitForResponse(response=>response.request().method()==="GET" && new URL(response.url()).pathname==="/api/payments");releaseOld();await oldDelivered;await page.waitForTimeout(100);
+ await expect(page.locator(".business-status-summary__item").filter({hasText:"已实付金额"})).toContainText("¥40.00");
  const postBody = postResponse.request().postDataJSON() as {amountCents:string;paidAt:string;idempotencyKey:string};
  expect(postBody.paidAt).toBe("2026-11-04");
  const publicResult = await fetch(`${fixture.url}/payment-executions/results/${postBody.idempotencyKey}`,{headers:{authorization:`Bearer ${fixture.sessions.keeper.accessToken}`}});
@@ -48,7 +64,7 @@ test("partial 40 remains a shared 60 payable for a second current role",async({p
  await expect(form.getByText("甲公司：登记余额 ¥60.0000",{exact:true})).toBeVisible();
  const context=await browser.newContext({viewport:testInfo.project.use.viewport});
  try {
-  await context.addInitScript(session=>localStorage.setItem("jiangkong-web-admin-auth",JSON.stringify(session)),fixture.sessions.finance);
+  await context.addInitScript(session=>localStorage.setItem("jiangkong-web-admin-auth",JSON.stringify(session)),fixture.sessions.keeper);
   const second=await context.newPage();
   await second.goto("/付款管理");
   await expect(second.getByRole("region",{name:"共享实付待办"}).getByText("已付 ¥40.00 · 剩余待付 ¥60.00",{exact:true}).first()).toBeVisible();

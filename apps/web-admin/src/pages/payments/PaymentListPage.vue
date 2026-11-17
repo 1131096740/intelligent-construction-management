@@ -20,8 +20,8 @@
         </t-button>
       </template>
     </BusinessPageHeader>
-    <RegisteredPaymentExecutionPanel />
-    <ContractRelationshipLedger initial-section="payments" />
+    <RegisteredPaymentExecutionPanel @recorded="refreshPaymentViews" />
+    <ContractRelationshipLedger ref="relationshipLedger" initial-section="payments" />
 
 
     <t-tabs v-model="activeView">
@@ -231,7 +231,7 @@ import RegisteredPaymentExecutionPanel from "./RegisteredPaymentExecutionPanel.v
 import { formatUnknownApiError } from "../../api/error-message";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   fetchPaymentLifecycleLedger,
@@ -272,6 +272,8 @@ const errorMessage = ref("");
 const paymentLedgerRows = ref<(PaymentLedgerRow & PaymentLifecycleLedgerRow)[]>([]);
 const paymentFilters = reactive(emptyPaymentLedgerFilters());
 const ledgerLoading = ref(false);
+let ledgerGeneration = 0;
+const relationshipLedger = ref<{ refresh: () => Promise<void> } | null>(null);
 const showColumnSettings = ref(false);
 const showPaymentRules = ref(false);
 const lifecycleViews = new Set<DraftLedgerView>([
@@ -403,6 +405,7 @@ function applyRouteProjectFilter(value: unknown) {
 }
 
 async function loadPaymentLedger() {
+  const request = ++ledgerGeneration;
   ledgerLoading.value = true;
   errorMessage.value = "";
   try {
@@ -411,16 +414,25 @@ async function loadPaymentLedger() {
       lifecycleMeta.value.page,
       lifecycleMeta.value.pageSize
     );
+    if (request !== ledgerGeneration) return;
     paymentLedgerRows.value = result.rows;
     ledgerSummary.value = result.statistics;
     lifecycleSummary.value = result.viewCounts;
     lifecycleMeta.value = result.pagination;
   } catch (error) {
+    if (request !== ledgerGeneration) return;
     const reason = formatUnknownApiError(error, "未知错误");
     errorMessage.value = `付款记录读取失败：${reason}。这不代表当前没有付款记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
-    ledgerLoading.value = false;
+    if (request === ledgerGeneration) ledgerLoading.value = false;
   }
+}
+
+onBeforeUnmount(() => { ledgerGeneration++; });
+
+function refreshPaymentViews() {
+  void loadPaymentLedger();
+  void relationshipLedger.value?.refresh();
 }
 
 function changeLifecyclePage(page: number) {
