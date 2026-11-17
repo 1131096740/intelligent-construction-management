@@ -64,24 +64,27 @@ export class PaymentExecutionOperatingSourceAdapter
     locator: OperatingSourceLocator
   ): Promise<OperatingSourceSnapshot | null> {
     const row = await tx.paymentExecution.findUnique({
-      where: { id: locator.sourceBusinessId },
-      include: {
-        payerAttestation: {
-          select: {
-            holderCompanyEntityId: true,
-            holderNameSnapshot: true,
-            holderCreditCodeSnapshot: true,
-            verificationEvidenceContentSha256: true
-          }
-        }
-      }
+      where: { id: locator.sourceBusinessId }
     });
     if (!row) return null;
     const request = await tx.paymentRequest.findUnique({
       where: { id: row.paymentRequestId }
     });
     if (!request || request.projectId !== locator.projectId) return null;
-    return this.snapshot(tx, row, await registeredPaymentInstalled(tx), request);
+    const installed = await registeredPaymentInstalled(tx);
+    const funding = installed
+      ? await tx.registeredPaymentFunding.findUnique({ where: { executionId: row.id } })
+      : null;
+    const payerAttestation = funding ? null : await tx.paymentExecutionPayerAttestation.findUnique({
+      where: { paymentExecutionId: row.id },
+      select: {
+        holderCompanyEntityId: true,
+        holderNameSnapshot: true,
+        holderCreditCodeSnapshot: true,
+        verificationEvidenceContentSha256: true
+      }
+    });
+    return this.snapshot(tx, { ...row, payerAttestation }, installed, request, funding);
   }
 
   toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
@@ -212,7 +215,8 @@ export class PaymentExecutionOperatingSourceAdapter
     tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
     row: PaymentExecutionRow,
     readRegisteredFunding: boolean,
-    loadedRequest?: PaymentRequestRow
+    loadedRequest?: PaymentRequestRow,
+    loadedFunding?: Prisma.RegisteredPaymentFundingGetPayload<Record<string, never>> | null
   ): Promise<OperatingSourceSnapshot> {
     const request =
       loadedRequest ??
@@ -271,7 +275,7 @@ export class PaymentExecutionOperatingSourceAdapter
     });
     const debtor = approvedPayerIdentity(version, { paymentSubjectType: version.signingSubjectType });
     const approvedPayer = approvedPayerIdentity(version, request);
-    const registeredFunding = readRegisteredFunding
+    const registeredFunding = loadedFunding !== undefined ? loadedFunding : readRegisteredFunding
       ? await tx.registeredPaymentFunding.findUnique({where:{executionId:row.id}})
       : null;
     const actualPayer = registeredFunding
