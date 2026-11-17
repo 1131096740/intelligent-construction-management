@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 原轮及材料核验探针
+
+准确 `34288c73` 原轮工作台返回 500/P2028，业务未通过；同次交换仅一个进程级 ≥5 秒延迟样本，不能证明因果。[原回执](/private/tmp/jg-native-contract-c18342-mZnNd9/receipt.json) SHA `7d7bcd3d4a786987bacc5e92c9a7df261d7c3c313c6f9e1759df6fc57803e839`。运行器自报清理完成；[独立 PG 检查](/private/tmp/jg-con18-3428-runtime-xL3c6x/cleanup-independent.json) SHA `47c05fb5c26f0a350ec0948bf0b125c8e4a493dfff2b8c411dab1db63ebce919` 确认进程、监听及 pidfile 缺席，不证明业务终态。
+
+新干净构建的真实 lease 与虚构材料探针中，原 `checkMaterials` 主体耗时 5645 毫秒，根依赖树哈希为主要耗时；材料主体中的 canonical guard 为替身。这是单机新样本，非原轮时序证据。异步核验仍有 A→B→A 与排空自锁风险，尚未修改实现；[探针摘要](/private/tmp/jg342-verifier-evaluation.json) SHA `b77950697ffa54b7a4c5982c087cf742fc1571c2fed9abe506f221a0cfcb4224`。用户要求的模板首末页内容仍未完成，原现金 b047 仍 UNKNOWN；本地未推送。
+
 ## 2026-11-17 CON-18 worker 诊断局部修订
 
 准确 `d8d6f99b` 原轮失败后只读匹配同轮文书为 FAILED/GENERIC，业务结果仍 UNKNOWN；一个低于 100 毫秒的事件循环采样不足以归因。[原回执](/private/tmp/jg-native-contract-c18d8-GeMr22/receipt.json) SHA `e8ab4fd0a9fb7b47aba4a2f6a48e6fb81880ead1c826a8931a39817376e490fe`；[独立 PG 检查](/private/tmp/jg-con18-d8d6-runtime-qqbHtP/cleanup-independent.json) SHA `9ad2ef7c5552407ac30f5405f2805ac8fce67e46778a46881f3bb2d7b53236d7` 确认进程、监听和 pidfile 缺席，不证明业务结果。
