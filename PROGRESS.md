@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 准确 219 两个隔离结果
+
+准确 `21944951` 合同 queue-only 隔离运行已越过先前工作台读取处，随后保存返回 500/P2028，原因及业务结果未知；不能推断事务超时或旧轮原因。[私有日志](/private/tmp/jg-queue-219449-run-1117/run.log) SHA `b78b9146384e54f674a0c2c5aa491d4741b29d381384ef8f20e649e84ab301f4`，[独立清理](/private/tmp/jg-queue-219449-run-1117/cleanup-independent.json) SHA `8bbf352f5250d1294c89111e2f32e95f64444c7f2862742d5cf836a7630fd522`。
+
+同 SHA 的虚构经营账并发运行遇 Allocation 42501 后停止，付款结果 UNKNOWN，不能推断实际写入或重放。[原回执](/private/tmp/jg-ledger-219-run-bdap90sY/receipt.json) SHA `6931dbee3a8aba5e5412c66066200dee56756ba1eb05da2f53395a5cf9b97835`，[独立清理](/private/tmp/jg-ledger-219-independent-cleanup.json) SHA `84637eab0c127afd4bc92c1d0e2b47af6e899e02749d2d1197e8bf9d9648371b` 记录 PG 进程、监听和 pidfile 缺席。两轮均不代表 #394 或 #398 验收；b047 仍 UNKNOWN。
+
 ## 2026-11-17 隔离工作台计数读取
 
 准确 `e2cf9869` 的 queue-only 运行在工作台 `settlement.count` 遇 42501；旧轮因果未知，不能证明该列是唯一根因。私有异常原文已清理；[日志](/private/tmp/jg-queue-e2cf-run-1117/run.log) SHA `de2782b536d825ad526dee18ae6c2b6e66309ec0e1249c8dafe0e3fa2efb7d0c`，[独立清理](/private/tmp/jg-queue-e2cf-run-1117/cleanup-independent.json) SHA `57b83a3aba6d667a01f9f528398e3e6aa6bf9286288cd31a795a7c91309e7c5e`。
