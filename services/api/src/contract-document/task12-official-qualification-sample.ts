@@ -4,7 +4,7 @@ import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import { createHash } from "node:crypto";
 import { removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
 import { prepareLayoutSourceMapping, readLayoutSourcePositions, type LayoutFieldBinding } from "../contract-template/layout-field-mapping";
-import { BUILT_IN_PARTY_PLACEMENT_VERSION, SIGNATURE_SUPPLEMENT_COMPANY_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, CONTRACT_BODY_TABLE_LAYOUT_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
+import { BUILT_IN_PARTY_PLACEMENT_VERSION, SIGNATURE_SUPPLEMENT_PAGE_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, CONTRACT_BODY_TABLE_LAYOUT_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
   finalizeContractBodyLineBoxScope, prepareContractBodyTableMargins, renderContractBody } from "./contract-body-document";
 import { renderLayoutPreviewDocx } from "./layout-preview-docx";
 import { completeContractDocxFontTableType } from "./contract-docx-package-metadata";
@@ -103,7 +103,7 @@ function createMechanicalSample(source: Buffer,current=false) {
   const required=["contract.name","contract.temporaryCode","document.watermark"];
   const layoutId="22222222-2222-4222-8222-222222222222";
   const plan=current?{protocolVersion:1,layoutTemplateVersionId:layoutId,sourceSha256,edits:[{positionId:positions.find(position=>position.part==="word/document.xml"&&position.paragraphIndex===189)!.positionId,text:"虚构甲方补充说明"},{positionId:positions.find(position=>position.part==="word/document.xml"&&position.paragraphIndex===195)?.positionId??createHash("sha256").update(JSON.stringify([sourceSha256,195])).digest("hex"),text:"虚构乙方补充说明"}]}:undefined;
-  const options={tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,partyDetailsVersion:current?SIGNATURE_SUPPLEMENT_COMPANY_VERSION:BUILT_IN_PARTY_PLACEMENT_VERSION} as const;
+  const options={tableLayoutVersion:CONTRACT_BODY_TABLE_LAYOUT_VERSION,typographyVersion:REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,partyDetailsVersion:current?SIGNATURE_SUPPLEMENT_PAGE_VERSION:BUILT_IN_PARTY_PLACEMENT_VERSION} as const;
   const preview=plan?renderContractBody(source,mapped,{values},required,layoutId,plan,{...options,partyDetailsConflictPreview:true}):undefined;
   if(plan&&(!preview?.signatureSupplementReview||preview.signatureSupplementReview.scope!=="company-and-bank"))throw new Error("资格样张签署核对无法确认");
   const rendered=renderContractBody(source,mapped,{values},required,layoutId,plan?{...plan,signatureSupplementReviewDigest:preview!.signatureSupplementReview!.digest}:undefined,options);
