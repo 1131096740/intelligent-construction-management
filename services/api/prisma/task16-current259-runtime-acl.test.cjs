@@ -320,6 +320,20 @@ test('cash grants and physical readback are bound to its own source and profile'
  assert.throws(()=>renderCurrent259RuntimeAcl(witness,roles,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
  assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,roles,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
 });
+test('cash allocation readback adds only observed ordering column to runtime',()=>{
+ const profiles=require('./task16-current261-competition-profile.cjs');
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
+ const paired={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}]};
+ const render=profile=>renderCurrent259CompetitionRuntimeAcl(witness,{...paired,paymentProfile:profile},nonce);
+ const baseline=render(profiles.PAYMENT261_COMPETITION_RUNTIME_PROFILE),cash=render(profiles.PAYMENT261_CASH_RUNTIME_PROFILE);
+ const caps=sql=>JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(sql)[1]).filter(row=>row[2]==='PaymentExecutionAllocation');
+ const before=caps(baseline.sql),after=caps(cash.sql);
+ assert.deepEqual(after.filter(row=>!before.some(old=>JSON.stringify(old)===JSON.stringify(row))),[['jg_task01_runtime','column','PaymentExecutionAllocation','allocationOrder','SELECT',false]]);
+ assert.deepEqual(before.filter(row=>!after.some(now=>JSON.stringify(now)===JSON.stringify(row))),[]);
+ assert.deepEqual(caps(cash.readbackSql),after);
+});
+
 test('cash impact writer proof follows the later stored-watermark migration exactly',()=>{
  const {PAYMENT261_CASH_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
  const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
