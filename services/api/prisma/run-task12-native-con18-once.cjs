@@ -553,10 +553,10 @@ async function runNativeTask16Business(plan,state){
       official.checkMaterials();check();
       const permit=capability.issueTask12Con18OwnerCapability({purpose:PURPOSE,candidateSha:plan.source.head,planSha256:receipt.planSha256,runId:plan.runId,loginProjection:contract.loginResult,moduleView:modules,fixture,exec:ownerSql});
       window=await ownerApi.beginTask12Con18OwnerWindow(permit,contract.loginResult,modules,fixture,ownerSql);check();receipt.business='ENTERED';
-      const observer=Object.freeze({queued:coordinates=>{queued=coordinates;},signed:(version,round,actor)=>ownerApi.observeTask12Con18Signed(window,version,round,actor),rounds:(version,old,current)=>ownerApi.observeTask12Con18Rounds(window,version,old,current)});
+      const observer=Object.freeze({queued:coordinates=>{queued=coordinates;},signed:(version,round,actor)=>ownerApi.observeTask12Con18Signed(window,version,round,actor),rounds:(version,old,current)=>ownerApi.observeTask12Con18Rounds(window,version,old,current),archived:(version,round,archive)=>ownerApi.observeTask12Con18Archived(window,version,round,archive)});
       const input=Object.freeze({fixture,passwords:Object.freeze(passwords),sourceDocx,originals,bridge:http,signal,observer,readPdfDrawnText:async(bytes,abort)=>{check();const pages=await official.readPdfDrawnText(bytes,abort);check();return pages;}});
       enter('CONTRACT_CON18_WITHDRAW_RESUBMIT');result=await modules.runTask12Con18Withdrawal(input);check();official.checkMaterials();
-      need(result?.oldCoordinateRejected===true&&result.changedGeneration===true&&result.newRoundPending===5&&result.oldApprovalsVisible===false&&result.full394Accepted===false,'NATIVE_DIRECT_CON18_RESULT');
+      need(result?.oldCoordinateRejected===true&&result.changedGeneration===true&&result.newRoundPending===5&&result.oldApprovalsVisible===false&&result.archived===true&&result.full394Accepted===false,'NATIVE_DIRECT_CON18_RESULT');
       receipt.contractCase={status:'CON18_WITHDRAW_RESUBMIT_OBSERVED_NOT_FULL394_ACCEPTANCE',caseKey:fixture.case.key,...result};
      }catch(error){
       outcome.failed=true;outcome.error=error;
@@ -569,7 +569,7 @@ async function runNativeTask16Business(plan,state){
     }});
    return require('./task12-current259-document-application.cjs').runNativeTask12DocumentApplication(contract.loginResult,bridge);
   }));
-  check();official.checkMaterials();need(final?.oldCoordinateRejected===true&&final.newRoundPending===5,'NATIVE_DIRECT_CONTRACT_RESULT');
+  check();official.checkMaterials();need(final?.oldCoordinateRejected===true&&final.newRoundPending===5&&final.archived===true,'NATIVE_DIRECT_CONTRACT_RESULT');
   receipt.business='CON18_WITHDRAW_RESUBMIT_RETURNED';await observeDocumentPools();receipt.bootstrapRoleScope='TLS_CONTROLS_BEFORE_TASK12_ONLY';
   receipt.full394Accepted=false;receipt.cosAccepted=false;receipt.browserAccepted=false;
   return final;
