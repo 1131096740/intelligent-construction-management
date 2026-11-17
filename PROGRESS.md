@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 通用及劳务银行字段候选
+
+通用及劳务银行字段修订 `38035e94` 经独审合入本地 `893031bf`，补丁 SHA `1192ce4d71207e3ad3d36e9ade165de89921691758a5f96c1805117f6fea0048`，13 文件差异逐项一致；API 定向 195/195、typecheck 与 lint 通过。身份不明时阻断并保留草稿；单字段限制 40 个 Unicode 码点和单行，并校验 XML 字符；旧版保持原有行为。
+
+定向样张不构成本候选精确 SHA 的资格证明，也不证明任意自由文本、字体或 Word 渲染；合同模板物理版式和 #394 全部要求仍待验收。付款证据保留原准确 SHA；本次未触碰生产或推送。
+
 ## 2026-11-17 双阶段付款真实浏览器隔离结果
 
 准确 `b012cafa00ced718ffab1eeda22862d69a0e1a5d` 的虚构真实浏览器与 PG 双阶段场景完成：财务岗位分别提交 30 元和 70 元，另一岗位观察；付清后待办消失，授权凭证下载及账实核对通过。使用 token 注入；未覆盖无权下载负例。最终[回执](/private/tmp/jg398-browser-evidence-IyF7zM/receipt-complete.json) SHA `7310c9eae84007ceebd1772b7a8c537c6623326773fa77da0fe57d8fe6b21707`；首阶段[回执](/private/tmp/jg398-browser-evidence-IyF7zM/receipt.json) SHA `2a02d8e0750bf42fad26b537afaf5fd1d7dbb62015c58c5be5e6d0e86ea57e8f`、次阶段[回执](/private/tmp/jg398-browser-evidence-IyF7zM/receipt-stage2.json) SHA `fac2117e37943d9836748798a1a0970034391d53723876fe04f2dffdf7a2bc52` 各自为 UNKNOWN，应结合最终成功结果理解，不能单独视为阶段成功证明。
