@@ -580,3 +580,10 @@ test('disabled voucher purpose is separate and inherits only the existing isolat
  assert.equal(api.parseNativeTask16Args(['--prepare-disabled','--run-root','/private/tmp/x','--binary-manifest','/private/tmp/m','--expected-binary-sha256','b'.repeat(64),'--output','/private/tmp/x/plan.json']).purpose,purpose);
  assert.equal(api.nativeTask16CaseSelection('TASK16_NATIVE_VOUCHER_REVOCATION_V1').disabled,undefined);
 });
+
+test('ledger response-loss is a distinct owned purpose with existing ledger profile',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),purpose='TASK16_NATIVE_LEDGER_RESPONSE_LOSS_V1';
+ assert.deepEqual(api.nativeTask16CaseSelection(purpose),{purpose,caseId:'registered.ledger-payment.response-loss',paymentProfile:'TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:13,ledgerCompetition:true,ledgerLoss:true});
+ for(const mode of ['verify','once'])assert.deepEqual(api.parseNativeTask16Args([`--${mode}-ledger-loss`,'--plan','/private/tmp/p','--expected-plan-sha256','a'.repeat(64)]),{mode,purpose,file:'/private/tmp/p',sha256:'a'.repeat(64)});
+ assert.equal(api.parseNativeTask16Args(['--prepare-ledger-loss','--run-root','/private/tmp/x','--binary-manifest','/private/tmp/m','--expected-binary-sha256','b'.repeat(64),'--output','/private/tmp/x/plan.json']).purpose,purpose);
+});

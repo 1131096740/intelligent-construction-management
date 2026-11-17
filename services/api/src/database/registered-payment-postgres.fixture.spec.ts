@@ -405,7 +405,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
   it.each(["attribution-gap", "attribution-gap-source-insufficient", "attribution-gap-source-insufficient-accepted", "attribution-gap-source-insufficient-recorded-key", "attribution-gap-source-insufficient-ledger-drift", "attribution-gap-owner-drift", "attribution-gap-ledger-drift", "attribution-gap-accepted", "attribution-gap-source-mismatch", "attribution-gap-recorded-key", "normal-null-balance-after-guard", "normal-negative-spent-after-guard", "normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "native-response-loss", "native-response-loss-absent", "native-response-loss-drift", "native-response-loss-orphan", "native-response-loss-audit-orphan", "native-response-loss-foreign-audit", "response-loss", "upstream-failure", "absent-db-fact", "native-cancel-commit", "native-cancel-audit-orphan", "cancel-commit", "cancel-ledger", "cancel-ledger-settlement-drift", "cancel-ledger-orphan-impact", "cancel-ledger-fake-success", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
-      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-ledger", "competition-ledger-prereq-drift", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "native-disconnect", "native-disconnect-survivor-error", "native-disconnect-orphan-key", "native-disconnect-audit-orphan", "native-disconnect-ledger-drift", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-ledger", "competition-ledger-prereq-drift", "competition-ledger-loss", "competition-ledger-loss-bad-result", "competition-ledger-loss-no-fact", "competition-ledger-loss-wrong-replay", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "native-disconnect", "native-disconnect-survivor-error", "native-disconnect-orphan-key", "native-disconnect-audit-orphan", "native-disconnect-ledger-drift", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
       "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
       "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
       "competition-owned-json", "competition-follow-up-owned-json", "competition-follow-up-director-wins-owned-json",
@@ -425,6 +425,7 @@ describe("registered PG original case: explicit observer projection protocol (no
     const ledgerCancel = scenario.startsWith("cancel-ledger");
     const competition = scenario.startsWith("competition");
     const ledgerCompetition = scenario.startsWith("competition-ledger");
+    const ledgerLoss = scenario.startsWith("competition-ledger-loss");
     const ledgerMocks: Array<{mockRestore:()=>void}> = [];
     const gap = scenario.startsWith("attribution-gap"), otherProjectId=randomUUID();
     const disconnect = scenario.startsWith("disconnect");
@@ -434,6 +435,7 @@ describe("registered PG original case: explicit observer projection protocol (no
     const followUpKey = randomUUID();
     let completed = false;
     let followUpPosts = 0;
+    let ledgerLossPosts = 0;
     let posts = 0;
     const total = competition || ledgerCancel ? 4000n : 10000n, paid = competition ? 3000n : 4000n;
     const contender = { actorId: randomUUID(), requestKey: randomUUID(), accessToken: "synthetic-contender-only" };
@@ -501,7 +503,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       }
       if (model === "paymentExecution") return [{ id: "execution-one", idempotencyKey: directorWins?contender.requestKey:ids.requestKey, amountCents: paid, paymentRequestId: ids.payment, voucherFileId: null }];
       if (model === "registeredPaymentFunding") return [{ executionId: "execution-one", operatingLedgerEffectiveDateAtRegistration: ledgerCompetition ? new Date(`${plan.openingDate}T00:00:00.000Z`) : null, actualPayerId: ids.companyB, actualPayerKind: "participating_company" }];
-      if (ledgerCompetition && model === "operatingFact") return [{id:"ledger-fact"}];
+      if (ledgerCompetition && model === "operatingFact") return scenario.endsWith("no-fact") ? [] : [{id:"ledger-fact"}];
       if (ledgerCompetition && model === "operatingImpactEntry") return [{id:"impact-1"},{id:"impact-2"},{id:"impact-3"}];
       if (model === "registeredFundPaymentAllocation") return [{ executionId: "execution-one", accountId: "account-b", sourceBatchId: "source-b", amountCents: paid }];
       if (model === "registeredPaymentEvent") return [{ executionId: "execution-one" }];
@@ -583,14 +585,16 @@ describe("registered PG original case: explicit observer projection protocol (no
           remainingAmountCents: "4000", accounts: [{ scopeKey: `company:${ids.companyB}`, eligible: true }] });
         if (route === `/payment-executions/${ids.payment}/registrations` && init?.method === "POST") {
           const command = JSON.parse(String(init.body));
+          if(ledgerLoss)ledgerLossPosts++;
           expect(command.idempotencyKey).toBe(laneB ? contender.requestKey : ids.requestKey);
           expect(command.amountCents).toBe("3000");
           expect(command.expectedPaymentUpdatedAt).toBe(initial);
           expect(command.confirmationPassword).toBe(laneB ? "synthetic-second-credential" : f.context.password);
           if (laneB === directorWins) recorded = true;
-          return respond(laneB === directorWins || scenario === "competition-second-win" ? 201 : 409, {});
+          return respond(laneB === directorWins || scenario === "competition-second-win" ? 201 : 409, ledgerLoss ? {id:scenario.endsWith("wrong-replay")&&ledgerLossPosts>1?"wrong-execution":"execution-one"} : {});
         }
         if (route === `/payment-executions/results/${laneB ? contender.requestKey : ids.requestKey}`) {
+          if(ledgerLoss && scenario.endsWith("bad-result"))return respond(200,{status:"unconfirmed"});
           return respond(200, laneB !== directorWins ? { status: "unconfirmed" } : { status: "recorded",
             execution: { executionId: "execution-one", amountCents: "3000", paidAt: plan.paidAt }, effects: ledgerCompetition ? [{}] : [], intercompany: [{entryId:"root-one"}] });
         }
@@ -738,7 +742,17 @@ describe("registered PG original case: explicit observer projection protocol (no
         if(ledgerCompetition){
           const witness=await import("./registered-payment-ledger-competition-observer"),baseline=await import("./registered-payment-public-cash-prerequisite");
           ledgerMocks.push(jest.spyOn(witness,"readLedgerCompetitionPaymentInTransaction").mockImplementation(async()=>{expect(inObserverTx).toBe(true);return {factId:"ledger-fact",impactCount:3};}));
+          if(ledgerLoss)ledgerMocks.push(jest.spyOn(baseline,"readCashSettlementPrerequisiteInTransaction").mockImplementation(async()=>{expect(inObserverTx).toBe(true);return {settlementId:ids.settlement,factId:"settlement-fact",costCents:"4000",payableCents:"4000"};}));
           ledgerMocks.push(jest.spyOn(baseline,"readCashSettlementPrerequisite").mockResolvedValue({settlementId:ids.settlement,factId:scenario === "competition-ledger-prereq-drift" ? "changed-fact" : "settlement-fact",costCents:"4000",payableCents:"4000"}));
+        }
+        if(ledgerLoss){
+          const formal={...prepared,contender,companyASourceId:"source-a",cashRegistrationId:"cash-registration",cashSourceId:"cash-source",cashSourceDocument:{verify:jest.fn()} as never,settlementFactId:"settlement-fact",settlementBaseline:{settlementId:ids.settlement,factId:"settlement-fact",costCents:"4000",payableCents:"4000"}};
+          const authorize=jest.fn(async()=>{}),lose=jest.fn(async(submit:()=>Promise<unknown>)=>{await submit();return {faultState:"dropped",upstreamStatusCode:201};});
+          const result=registeredCases.runRegisteredLedgerResponseLoss(f.context,second,formal,{lanes:[continuity,continuity],loss:{...continuity,loseRegistrationResponse:lose,authorizeResponseLossReplay:authorize}});
+          if(scenario.endsWith("bad-result")||scenario.endsWith("no-fact")){await expect(result).rejects.toThrow(scenario.endsWith("no-fact")?"PG_LEDGER_LOSS_GRAPH":"PG_LEDGER_LOSS_RESULT");expect(authorize).not.toHaveBeenCalled();expect(fetch.mock.calls.filter(([,init])=>init?.method==="POST")).toHaveLength(1);}
+          else if(scenario.endsWith("wrong-replay")){await expect(result).rejects.toThrow("PG_LEDGER_LOSS_REPLAY");expect(authorize).toHaveBeenCalledTimes(1);expect(fetch.mock.calls.filter(([,init])=>init?.method==="POST")).toHaveLength(2);}
+          else{await expect(result).resolves.toMatchObject({caseId:"registered.ledger-payment.response-loss",passed:true,ledgerWitness:{factId:"ledger-fact",impactCount:3},accountingEvidence:{before:{paidAmountCents:"0"},after:{paidAmountCents:"3000"},replay:{paidAmountCents:"3000"}}});expect(authorize).toHaveBeenCalledTimes(1);expect(fetch.mock.calls.filter(([,init])=>init?.method==="POST")).toHaveLength(2);}
+          return;
         }
         const run = (ledgerCompetition ? registeredCases.runRegisteredLedgerPaymentCompetition : followUp ? registeredCases.runRegisteredTwoActorPaymentCompetitionFollowUp : registeredCases.runRegisteredTwoActorPaymentCompetition)(f.context, second, { ...prepared, contender, companyASourceId:"source-a",followUpRequestKey:followUpKey, cashRegistrationId:"cash-registration",cashSourceId:"cash-source",cashSourceDocument:{verify:jest.fn()} as never,settlementFactId:"settlement-fact",settlementBaseline:{settlementId:ids.settlement,factId:"settlement-fact",costCents:"4000",payableCents:"4000"} }, {
           lanes: [continuity, continuity], withSamePaymentLock, withFollowUp: async <T>(_lane:number,_key:string,consume:()=>Promise<T>) => consume()
