@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 CON-18 延迟诊断局部修订
+
+准确 `6d3f50df` 原轮工作台返回 500，业务结果 UNKNOWN；P2028 只表明事务错误类别，未确定根因，实验性 5.3 秒假设不能当作事实。[原回执](/private/tmp/jg-native-contract-c186d-VBxNlt/receipt.json) SHA `d236247ea14a3f5ad18c080f299413b73a28d867bab857a3ee90da9672ea37ce`；[独立 PG 检查](/private/tmp/jg-con18-6d3f-runtime-ajBMQ5/cleanup-independent.json) SHA `0bd73f6ded69473ade7d1f960ae35dfe9055bbc18e920f8dd313b5579fadfa0d` 确认进程、监听和 pidfile 缺席，不证明业务结果。
+
+未来延迟诊断 v2 `064e26b3` 经独审合入本地 `a2df4340`，准确补丁 SHA `e72dbc18f175e1bbeb0d5388650b949ed49b8ffde16da03b345f5c0c39f70f39`。采样覆盖一次 HTTP 期间整个进程，不能归因到请求或事务；采样可能漏掉起止区间，低桶不能证明无长停顿。桶及 HTTP/共享模型 208/208、本地 Nest 和 AUTH 17/17、构建后 runner 5/5、API build/typecheck/lint 通过；未执行真实资源，新 SHA 须重新资格，不代表 CON-18 或 #394 验收通过。
+
 ## 2026-11-17 CON-18 文书只读诊断局部修订
 
 准确 `d9832465` 原轮文书列表含 failed 项，但不能确定该项与入队任务为同一任务；业务结果 UNKNOWN。42 次 exchange 的[独审](/private/tmp/jg-con18-d983-document-review-wjuz_m4y/receipt.json) SHA `382bd9057a9d79a07ab4e6ed90c4d19810468226fce0a15e50f3235e8fb02c2a` 确认 case 尚未发送提交、撤回或重提。运行器自报 cleanup 完成，独立 PG 检查仅证进程、监听及 pidfile 缺席；[原回执](/private/tmp/jg-native-contract-c18d983-cvp6yw/receipt.json) SHA `da42fe3f62e8c6f873f121ca2db201d11770fb237396c92f7d9203b2a0e9aa68`，[PG 检查](/private/tmp/jg-con18-d983-runtime-ZR7elO/cleanup-independent.json) SHA `2fcff4926f5fe064b833dd406760d9ede66981238decff9169cf00261087f4a7`。
