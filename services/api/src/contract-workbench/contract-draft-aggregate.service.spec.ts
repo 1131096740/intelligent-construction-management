@@ -1279,6 +1279,26 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
   });
 
+  it("runs aggregate save with a bounded Serializable transaction", async () => {
+    const { service, prisma } = makeSaveService();
+    await service.saveAggregate("cv-1", "owner-1", leaseToken, aggregateInput() as never);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      timeout: 10_000
+    });
+  });
+
+  it("preserves a transaction timeout so the caller can reconcile its original intent", async () => {
+    const { service, prisma, tx } = makeSaveService();
+    const input = aggregateInput();
+    const timeout = new Prisma.PrismaClientKnownRequestError("synthetic transaction expired", { code: "P2028", clientVersion: "5.22.0" });
+    prisma.$transaction.mockRejectedValueOnce(timeout);
+    await expect(service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)).rejects.toBe(timeout);
+    expect(tx.contractDraftSaveRequest.create).not.toHaveBeenCalled();
+    await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the original authoritative receipt for an identical retry", async () => {
     const { service, tx } = makeSaveService();
     const input = aggregateInput();
