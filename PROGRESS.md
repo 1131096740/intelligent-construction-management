@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离采购付款守卫读取
+
+准确 `a5b235d6` 的隔离运行登录和签名通过，审批返回 500/42501，窗口出现 `TABLE_070` 但未精确绑定请求；付款未进入，容器已移除。[私有日志](/private/tmp/jg398-standard-run-jod82pbu/run.log) SHA `358d4ee485f05d5d3e3859d84b2388549c73251b8877b13317be20244a3caf73`。独立源码审查确认 PermissionGuard 需要读取 `SpotProcurementPayment.id/projectId`，这不证明原错误唯一原因。
+
+隔离守卫读取修订 `e3810121` 经独审合入本地 `8dcd4fb4`，准确补丁 SHA `2cb8d37d3be4f1241617eadb9781b93178aff6fa0943365eb2f4df7438e97283`；Node20 定向 8/8、CJS 语法和 diff 检查通过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重复文书资格或推送。
+
 ## 2026-11-17 私有 PG 日志差量
 
 准确 `228cbe9e` 隔离运行审批返回 500/42501，窗口中的 `TABLE_070` 不能确定归因到该请求，业务未通过；本轮容器已移除；[原私有日志](/private/tmp/jg398-standard-run-8gx3yb3z/run.log) SHA `6e0317b872c075639c2a1170c6547e255c9aead570480ae08460f9eb8ba71b2f`。测试侧私有 PG 日志差量候选 `ae0e9878` 经独审合入本地 `cfd34871`，准确补丁 SHA `22c48c05ec60fc31bd1af5e2f7ff3429be5dbf22eafbc28fc0bc50d60dbcea62`；Node20 定向 7/7、CJS 语法和 diff 检查通过。
