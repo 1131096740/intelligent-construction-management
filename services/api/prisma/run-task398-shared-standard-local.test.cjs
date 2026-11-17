@@ -1,7 +1,7 @@
 "use strict";
 const {test}=require("node:test");
 const assert=require("node:assert/strict");
-const {runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,cleanupOwnedContainer,containerName}=require("./run-task398-shared-standard-local.cjs");
+const {runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,cleanupOwnedContainer,containerName}=require("./run-task398-shared-standard-local.cjs");
 const {createCiDynamicMigrationFixture}=require("./local-staged-ci-dynamic.cjs");
 
 test("names the uniquely labelled container within the existing staged migration policy",()=>{
@@ -20,6 +20,13 @@ test("the isolated shared role composes existing cash and voucher plans without 
  assert.ok(row("User").update.includes("signatureFileId"));
  assert.ok(row("RegisteredPaymentVoucher").insert.includes("executionId"));
  assert.ok(row("BusinessEntrySubmissionSnapshot").insert.includes("sceneKey"));
+ assert.deepEqual(row("ContractDraftAttachment").select,["fileId","slotKey"]);
+ assert.deepEqual(row("ContractDraftAttachment").insert,[]);assert.deepEqual(row("ContractDraftAttachment").update,[]);
+ const signatureCheck=signatureBindingCheckSql();
+ assert.match(signatureCheck,/has_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','fileId','SELECT'\)/u);
+ assert.match(signatureCheck,/has_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','slotKey','SELECT'\)/u);
+ assert.match(signatureCheck,/NOT has_table_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'\)/u);
+ assert.match(signatureCheck,/NOT has_any_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','INSERT,UPDATE,REFERENCES'\)/u);
  const sql=columnGrants(plan);assert.doesNotMatch(sql,/GRANT (?:SELECT|INSERT|UPDATE) ON ALL TABLES/u);assert.doesNotMatch(sql,/\bxmin\b/u);
  assert.equal(technicalDeleteGrant(plan),'GRANT DELETE ON public."AuthRateLimit" TO jg_task01_runtime;');
  const missing=structuredClone(plan);delete missing.runtime.technicalAuthRateLimitDelete;assert.throws(()=>technicalDeleteGrant(missing),/TASK398_AUTH_RATE_DELETE/u);
