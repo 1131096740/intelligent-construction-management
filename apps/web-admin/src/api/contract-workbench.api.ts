@@ -549,14 +549,14 @@ export interface ContractDraftBodyReadModel {
   mechanicalContactLayoutVersion: "mechanical-contact-layout-v2" | null;
   warnings?: readonly string[];
   partyDetailsRecovery?: {roleIds:string[];groups:string[][]};
-  signatureSupplementReview?: {digest:string;confirmed:boolean;entries:Array<{role:"party_a"|"party_b";id:string;text:string}>};
+  signatureSupplementReview?: {digest:string;confirmed:boolean;scope?:"company-and-bank";entries:Array<{role:"party_a"|"party_b";id:string;text:string}>};
   blocks: ContractBodyParagraph[];
   flow: ContractBodyFlowNode[];
   paragraphGroups: string[][];
   savePoints: Array<{ id: string; createdAt: string; documentContentRevision: number; layoutTemplateVersionId: string; documentBody: ContractBodyEditPlan | null }>;
 }
 
-const approvedBodyWarnings = new Set(["请核对签署页前的甲乙方补充内容，确保不含银行资料；如有请先转填主体银行资料。", "主体、银行资料或版式映射需要核对，请保留内容并联系合同管理员处理。", "当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。", "正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。", "正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"]);
+const approvedBodyWarnings = new Set(["请核对签署页前的甲乙方补充内容，确保不含公司及银行信息；如有请先转填主体资料。","请核对签署页前的甲乙方补充内容，确保不含银行资料；如有请先转填主体银行资料。", "主体、银行资料或版式映射需要核对，请保留内容并联系合同管理员处理。", "当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。", "正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。", "正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"]);
 const incompleteBodyWarning = "正文提示暂无法完整读取，请核对当前填写资料后重新读取正文。";
 function normalizeBodyWarnings(value: unknown): string[] {
   if (value === undefined) return [];
@@ -576,7 +576,7 @@ export async function fetchContractDraftBody(contractVersionId: string) {
   const flat=valid?groups.flat():[];
   const accepted=valid&&flat.length<=3000&&new Set(flat).size===flat.length&&new Set(roles).size===roles.length&&roles.every(id=>flat.includes(id));
   const review=body.signatureSupplementReview;
-  const validReview=review&&typeof review.digest==="string"&&/^[a-f0-9]{64}$/u.test(review.digest)&&typeof review.confirmed==="boolean"&&Array.isArray(review.entries)&&review.entries.length>0&&review.entries.length<=32&&review.entries.every(entry=>entry&&(entry.role==="party_a"||entry.role==="party_b")&&typeof entry.id==="string"&&/^[a-f0-9]{64}$/u.test(entry.id)&&typeof entry.text==="string"&&entry.text.length<=20000)&&review.entries.reduce((sum,entry)=>sum+entry.text.length,0)<=500000;
+  const validReview=review&&typeof review.digest==="string"&&/^[a-f0-9]{64}$/u.test(review.digest)&&typeof review.confirmed==="boolean"&&(review.scope===undefined||review.scope==="company-and-bank")&&Array.isArray(review.entries)&&review.entries.length>0&&review.entries.length<=32&&review.entries.every(entry=>entry&&(entry.role==="party_a"||entry.role==="party_b")&&typeof entry.id==="string"&&/^[a-f0-9]{64}$/u.test(entry.id)&&typeof entry.text==="string"&&entry.text.length<=20000)&&review.entries.reduce((sum,entry)=>sum+entry.text.length,0)<=500000;
   return { ...body, warnings: normalizeBodyWarnings(body.warnings),partyDetailsRecovery:accepted?{roleIds:roles,groups}:undefined,signatureSupplementReview:validReview?review:undefined };
 }
 

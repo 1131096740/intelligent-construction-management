@@ -58,7 +58,8 @@
         </li>
       </ul>
       <template v-if="body?.signatureSupplementReview && !body.signatureSupplementReview.confirmed">
-        <p>请逐项核对以下签署页前的补充内容。银行信息应填写在主体银行资料中，不能放在补充内容里。</p>
+        <p v-if="body.signatureSupplementReview.scope === 'company-and-bank'">请逐项核对以下签署页前的补充内容。公司及银行信息应填写在主体资料中，不能放在补充内容里。</p>
+        <p v-else>请逐项核对以下签署页前的补充内容。银行信息应填写在主体银行资料中，不能放在补充内容里。</p>
         <div
           v-for="entry in body.signatureSupplementReview.entries"
           :key="entry.id"
@@ -71,7 +72,7 @@
           variant="outline"
           @click="confirmSignatureSupplementReview"
         >
-          已核对，补充内容不含银行资料
+          {{ body.signatureSupplementReview.scope === "company-and-bank" ? "已核对，补充内容不含公司及银行信息" : "已核对，补充内容不含银行资料" }}
         </t-button>
       </template>
       <template v-if="body?.partyDetailsRecovery">
