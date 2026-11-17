@@ -35,6 +35,7 @@ import { convertDocxToPdf } from "./libreoffice-converter";
 import { assertContractPreviewFontOutput } from "./contract-preview-font-output";
 import { BUILT_IN_GENERIC_FONT_VERSION, completeContractDocxFontTableType } from "./contract-docx-package-metadata";
 import { normalizeContractPdf, type PdfAttachment } from "./pdf-normalizer";
+import { beginCon18WorkerJob } from "./task12-con18-worker-diagnostic";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
 const PROCESSING_LEASE_MS = 10 * 60 * 1_000;
@@ -583,8 +584,11 @@ export class ContractDocumentProcessor
     createdByUserId: string;
   }) {
     const uploadedFileIds: string[] = [];
+    const diagnostic = beginCon18WorkerJob(this, job);
+    const stage = (name: "TEMPLATE" | "DOCX_RENDER" | "ATTACHMENTS" | "PDF_CONVERT" | "UPLOAD_DOCX" | "UPLOAD_PDF" | "PUBLISH" | "CLEANUP") => { try { diagnostic?.step(name); } catch { /* Diagnostic only. */ } };
     try {
       const snapshot = this.documentSnapshot(job.inputSnapshot);
+      stage("TEMPLATE");
       if (snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5") await assertContractBodyPdfRuntimeLock(snapshot.bodyDocument.runtimeLockSha256!, snapshot.bodyDocument.typographyVersion);
       const template = await this.files.getFileBuffer(snapshot.templateFileId);
       // Old queued jobs keep their original bytes. New jobs use only the exact
@@ -595,6 +599,7 @@ export class ContractDocumentProcessor
         placeholderSchema: { sourceMapping: snapshot.layoutSourceMapping }
       });
       if (snapshot.bodyDocument && createHash("sha256").update(template.buffer).digest("hex") !== snapshot.bodyDocument.sourceSha256) throw new Error("正文所用模板已变化，请重新核对后生成");
+      stage("DOCX_RENDER");
       const renderedBody = snapshot.bodyDocument
         ? renderContractBody(template.buffer, source, snapshot.renderInput, snapshot.requiredKeys, snapshot.bodyDocument.layoutTemplateVersionId, snapshot.bodyDocument.editPlan,
           { allowBlankWatermark: job.purpose === "external", tableLayoutVersion: snapshot.bodyDocument.tableLayoutVersion,
@@ -607,6 +612,7 @@ export class ContractDocumentProcessor
       const legacyDocx = renderedBody ? undefined : renderContractDocx(legacySource, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
       const docx = renderedBody ? renderedBody.docx : snapshot.partyDetailsVersion ? removeMechanicalPartyDetailsFromLegacyDocx(template.buffer,legacyDocx!,{rolesPrepared:true}) : legacyDocx!;
       const contactLayoutDocx=snapshot.mechanicalContactLayoutVersion ? applyMechanicalContactLayout(template.buffer,docx,snapshot.mechanicalContactLayoutVersion) : docx;
+      stage("ATTACHMENTS");
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
         const source = await this.files.getFileBuffer(attachment.id);
@@ -623,6 +629,7 @@ export class ContractDocumentProcessor
       );
       const finalDocx = completedPackage.docx;
       const finalLineBoxScope = renderedBody?.lineBoxScope ? finalizeContractBodyLineBoxScope(finalDocx, renderedBody.lineBoxScope) : undefined;
+      stage("PDF_CONVERT");
       const useDocx4j = snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5";
       const bodyConversion = useDocx4j
         ? await convertContractBodyDocxToPdf(finalDocx, snapshot.bodyDocument!.runtimeLockSha256!, {
@@ -634,6 +641,7 @@ export class ContractDocumentProcessor
       if (legacyPdf) await assertContractPreviewFontOutput(legacyPdf);
       const normalized = useDocx4j ? bodyNormalized! : await normalizeContractPdf(legacyPdf!, pdfAttachments);
       // Both frozen engines finish conversion and output checks before either upload.
+      stage("UPLOAD_DOCX");
       const docxFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.docx`,
         mimeType:
@@ -643,6 +651,7 @@ export class ContractDocumentProcessor
         buffer: finalDocx
       });
       uploadedFileIds.push(docxFile.id);
+      stage("UPLOAD_PDF");
       const pdfFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.pdf`,
         mimeType: "application/pdf",
@@ -652,6 +661,7 @@ export class ContractDocumentProcessor
       });
       uploadedFileIds.push(pdfFile.id);
       const completedAt = new Date();
+      stage("PUBLISH");
       const outcome = await this.prisma.$transaction(async (tx) => {
         const mutationBoundary = await lockContractDraftMutationBoundary<{
           id: string;
@@ -909,11 +919,14 @@ export class ContractDocumentProcessor
               : []
         };
       });
+      stage("CLEANUP");
       await this.files.discardUnlinkedGeneratedFiles(
         outcome.discardFileIds,
         job.createdByUserId
       );
+      try { diagnostic?.success(); } catch { /* Diagnostic only. */ }
     } catch (cause) {
+      try { diagnostic?.fail(cause); } catch { /* Preserve the original failure. */ }
       await this.failDocument(job, cause, uploadedFileIds);
       await this.files.discardUnlinkedGeneratedFiles(
         uploadedFileIds,

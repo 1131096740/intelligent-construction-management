@@ -31,3 +31,18 @@ test('document observation never replaces the original failure or exposes read e
  await assert.rejects(api.closeTask12Con18WithPrimary(observer,{}, {failed:true,error:first},receipt),e=>e===first);
  await api.observeTask12Con18Failure(observer,{},Object.freeze({}),Object.assign(Error('x'),{code:'OTHER'}),{});assert.equal(reads,1);
 });
+test('worker observation is released on success, failure and abort without replacing the outcome',async()=>{
+ const {withCon18WorkerDiagnostic}=require('./run-task12-native-con18-once.cjs');
+ for(const mode of ['success','failure','abort']){const controller=new AbortController(),worker={},token={},calls=[],error=Error('PRIVATE_FIRST');
+  const api={armCon18WorkerDiagnostic(value){assert.equal(value,worker);calls.push('arm');return token;},closeCon18WorkerDiagnostic(value,actual){assert.equal(value,worker);assert.equal(actual,token);calls.push('close');}};
+  const run=async actual=>{assert.equal(actual,token);if(mode==='abort')controller.abort();if(mode==='failure')throw error;return 'done';};
+  if(mode==='failure')await assert.rejects(withCon18WorkerDiagnostic(api,worker,controller.signal,run),e=>e===error);else assert.equal(await withCon18WorkerDiagnostic(api,worker,controller.signal,run),'done');
+  assert.deepEqual(calls,['arm','close']);
+ }
+});
+test('worker observer arm and close errors cannot change the case result',async()=>{
+ const {withCon18WorkerDiagnostic}=require('./run-task12-native-con18-once.cjs'),signal=new AbortController().signal;
+ assert.equal(await withCon18WorkerDiagnostic({armCon18WorkerDiagnostic(){throw Error('private');}}, {},signal,async token=>token===undefined?'done':'bad'),'done');
+ const failure=Error('first'),api={armCon18WorkerDiagnostic(){return{};},closeCon18WorkerDiagnostic(){throw Error('private');}};
+ await assert.rejects(withCon18WorkerDiagnostic(api,{},signal,async()=>{throw failure;}),e=>e===failure);
+});
