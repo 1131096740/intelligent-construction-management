@@ -815,6 +815,9 @@ describe("MeService", () => {
     expect(prisma.contract.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ source: { not: "historical_takeover" } })
     }));
+    expect(prisma.settlementDraft.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: { id: true, projectId: true, periodLabel: true, code: true, updatedAt: true }
+    }));
     expect(prisma.settlementDraft.count).toHaveBeenCalled();
     expect(prisma.contractBusinessTemplateVersion.count).toHaveBeenCalled();
   });

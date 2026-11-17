@@ -1140,7 +1140,8 @@ export class MeService {
       visibleProjectIds.length
         ? this.prisma.settlementDraft.findMany({
             where: { projectId: { in: visibleProjectIds }, ownerUserId: userId, status: "draft" },
-            orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            select: { id: true, projectId: true, periodLabel: true, code: true, updatedAt: true }
           })
         : Promise.resolve([]),
       contractProjectIds.length
