@@ -50,6 +50,18 @@ function columnGrants(plan){
   const columns=row[operation].filter(column=>column!=="xmin");return columns.length?[`GRANT ${operation.toUpperCase()} (${columns.map(identifier).join(",")}) ON public.${identifier(row.table)} TO jg_task01_runtime;`]:[];
  })).join("\n");
 }
+function technicalDeleteGrant(plan){
+ if(plan?.runtime?.technicalAuthRateLimitDelete!==true)throw new Error("TASK398_AUTH_RATE_DELETE");
+ return 'GRANT DELETE ON public."AuthRateLimit" TO jg_task01_runtime;';
+}
+function technicalDeleteCheckSql(){
+ return `has_table_privilege('jg_task01_runtime','public."AuthRateLimit"','DELETE')
+ AND NOT EXISTS(SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='public' AND c.relkind IN ('r','p') AND c.oid<>'public."AuthRateLimit"'::regclass
+   AND has_table_privilege('jg_task01_runtime',c.oid,'DELETE'))
+ AND NOT EXISTS(SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='public' AND c.relkind IN ('r','p') AND has_table_privilege('jg_task01_observer',c.oid,'DELETE'))`;
+}
 function cleanupOwnedContainer({id,name,runId,list,inspect,remove,confirmAbsent}){
  try{
   if(id!==undefined&&!/^[a-f0-9]{64}$/u.test(id))return "UNKNOWN";
@@ -90,8 +102,8 @@ async function run(){
  const plan=runtimePlan();
  const routines=[...plan.runtime.functions.filter(name=>!name.includes("jg_task01_connection_identity")),...CASH_WRITER_FUNCTIONS,...requirements.routineSources.map(row=>row.signature),"public.jg_read_registered_payment_impacts(text,text,text,text,text)"];
  if(routines.some(name=>typeof name!=="string"||!/^[a-zA-Z0-9_.,()" ]+$/u.test(name)))throw new Error("TASK398_ROUTINE_LIST");
- sql("jiangkong",`${columnGrants(plan)}\nGRANT SELECT ON ALL TABLES IN SCHEMA public TO jg_task01_observer;\nREVOKE ALL ON public."OperatingLedgerWriteSecret",public."OperatingLedgerWriteContext" FROM jg_task01_runtime,jg_task01_observer;\n${[...new Set(routines)].map(name=>`GRANT EXECUTE ON FUNCTION ${name} TO jg_task01_runtime;`).join("\n")}\nINSERT INTO public."OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,public.crypt('${secret}',public.gen_salt('bf')));`);
- const check=sql("jiangkong",`SELECT CASE WHEN NOT EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer') AND (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)) AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.member OR r.oid=m.roleid WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer')) AND NOT has_table_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,DELETE') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingImpactEntry"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_observer','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_schema_privilege('jg_task01_runtime','public','CREATE') AND NOT has_schema_privilege('jg_task01_observer','public','CREATE') THEN 'TASK398_ROLE_CHECK_OK' ELSE 'TASK398_ROLE_CHECK_FAILED' END;`);
+ sql("jiangkong",`${columnGrants(plan)}\n${technicalDeleteGrant(plan)}\nGRANT SELECT ON ALL TABLES IN SCHEMA public TO jg_task01_observer;\nREVOKE ALL ON public."OperatingLedgerWriteSecret",public."OperatingLedgerWriteContext" FROM jg_task01_runtime,jg_task01_observer;\n${[...new Set(routines)].map(name=>`GRANT EXECUTE ON FUNCTION ${name} TO jg_task01_runtime;`).join("\n")}\nINSERT INTO public."OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,public.crypt('${secret}',public.gen_salt('bf')));`);
+ const check=sql("jiangkong",`SELECT CASE WHEN NOT EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer') AND (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)) AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.member OR r.oid=m.roleid WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer')) AND NOT has_table_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,DELETE') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingImpactEntry"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_observer','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_schema_privilege('jg_task01_runtime','public','CREATE') AND NOT has_schema_privilege('jg_task01_observer','public','CREATE') AND (${technicalDeleteCheckSql()}) THEN 'TASK398_ROLE_CHECK_OK' ELSE 'TASK398_ROLE_CHECK_FAILED' END;`);
  if(!check.includes("TASK398_ROLE_CHECK_OK"))throw new Error("TASK398_ROLE_CHECK");
  env.DATABASE_URL=url("jg_task01_runtime");env.TASK398_OWNER_URL=url("jg_task01_owner");env.TASK398_OBSERVER_URL=url("jg_task01_observer");
  command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand","src/database/task16-shared-standard.http.pg.spec.ts"],{env,timeout:300000});
@@ -108,4 +120,4 @@ if(require.main===module)run().then(()=>{businessPassed=true;},error=>{console.e
  if(storage&&containerClean)try{rmSync(storage,{recursive:true,force:true});}catch{console.error("TASK398_STORAGE_CLEANUP_FAILED");process.exitCode=1;}
  if(businessPassed&&!process.exitCode)console.log(`TASK398_STANDARD_PASS candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
 });
-module.exports={runtimePlan,columnGrants,cleanupOwnedContainer,containerName};
+module.exports={runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,cleanupOwnedContainer,containerName};
