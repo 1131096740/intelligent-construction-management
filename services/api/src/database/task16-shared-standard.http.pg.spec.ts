@@ -12,6 +12,7 @@ import { projectOperatingConstraintMessage, PROJECT_OPERATING_CONSTRAINT_MESSAGE
 import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts } from "../payment/registered-payment-impact-reader";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { PrismaService } from "./prisma.service";
+import { registeredPaymentInstalled } from "./registered-payment-catalog";
 import { Task16SharedPaymentApplicationModule } from "./task16-shared-payment-application";
 import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
@@ -177,6 +178,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const identity=async(client:PrismaClient)=>client.$queryRaw<Array<{database:string;role:string;superuser:boolean;runId:string;app:string}>>`SELECT current_database() AS database,current_user::text AS role,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS superuser,current_setting('jg.task398_run_id',true) AS "runId",current_setting('application_name') AS app`;
    const [o,r,v]=await Promise.all([identity(owner),identity(runtime),identity(observer)]);
    expect(o[0]).toMatchObject({database:db.slice(1),role:"jg_task01_owner",runId});expect(r[0]).toMatchObject({database:db.slice(1),role:"jg_task01_runtime",superuser:false,runId,app:"jg398_runtime"});expect(v[0]).toMatchObject({database:db.slice(1),role:"jg_task01_observer",superuser:false,runId});
+   expect(await runtime.$transaction(tx=>registeredPaymentInstalled(tx))).toBe(true);
    const plan=buildRegisteredPgFixturePlan(runId.slice(0,12),"2026-11-07","2026-11-01"),passwords=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];
    const hashes=await Promise.all(passwords.map(value=>hash(value,10)));
    const seeded=await seedSharedPaymentPredecessors(owner,plan,{financeHash:hashes[0],keeperHash:hashes[1],directorHash:hashes[2]},process.env.FILE_STORAGE_ROOT??"");

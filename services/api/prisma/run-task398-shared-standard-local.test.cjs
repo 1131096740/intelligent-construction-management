@@ -177,3 +177,13 @@ test("personal work items read only required settlement fields without tokens",(
  }
  const sql=meSensitiveReadCheckSql();for(const text of ["sourceSnapshotToken","claimToken","businessSnapshotToken","SELECT WITH GRANT OPTION","has_any_column_privilege"])assert.ok(sql.includes(text));
 });
+
+test("registered catalog uses migration owner while impact reader keeps its qualified owner",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"run-task398-shared-standard-local.cjs"),"utf8");
+ assert.match(source,/sql\("jiangkong",`BEGIN;\\nSET LOCAL jg\.task16_runtime_role=[\s\S]*?\$\{files\.join/u);
+ assert.match(source,/sql\("jg_task01_owner",`BEGIN;\\n\$\{impactReader\}/u);
+ const impact=fs.readFileSync(path.join(__dirname,"prepared/task16-current259/registered-impact-reader.sql"),"utf8");
+ assert.match(impact,/current_user <> 'jg_task01_owner' OR session_user <> 'jg_task01_owner'/u);
+ const spec=fs.readFileSync(path.join(__dirname,"../src/database/task16-shared-standard.http.pg.spec.ts"),"utf8");
+ assert.match(spec,/runtime\.\$transaction\(tx=>registeredPaymentInstalled\(tx\)\)/u);
+});
