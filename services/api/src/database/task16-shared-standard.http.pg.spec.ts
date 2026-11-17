@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { types } from "node:util";
 import { hash } from "bcryptjs";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { Test } from "@nestjs/testing";
@@ -16,13 +17,24 @@ import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture"
 
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 
+type SignatureFailureDetail=ReturnType<typeof projectTask16RegistrationError> & {signatureFailureClass?:"PERMISSION"|"CONSTRAINT"|"TRIGGER"|"OTHER"};
+function signatureFailureDetail(error:unknown):SignatureFailureDetail {
+ const safe=projectTask16RegistrationError(error);
+ if(safe.serverErrorKind!=="UNKNOWN_REQUEST_ERROR"||!error||typeof error!=="object"||types.isProxy(error))return safe;
+ const descriptor=Object.getOwnPropertyDescriptor(error,"message"),message=typeof descriptor?.value==="string"?descriptor.value.slice(0,16384):"";
+ const match=/(?:SQLSTATE\s*[:=]?\s*|SqlState\s*\(\s*E?|code\s*:\s*["']?)(42501|23502|23503|23505|23514|42P01|42703|P0001)\b/iu.exec(message);
+ const signatureFailureClass=/permission denied|not authorized|insufficient privilege/iu.test(message)?"PERMISSION":
+  /violat(?:es|ion)[\s\S]{0,200}constraint|constraint[\s\S]{0,200}violat/iu.test(message)?"CONSTRAINT":/\btrigger\b/iu.test(message)?"TRIGGER":"OTHER";
+ return {...safe,...(match?{serverSqlState:match[1].toUpperCase()}:{}),signatureFailureClass};
+}
+
 @Catch()
 class SignatureFailureCapture extends Task16RegistrationErrorFilter {
- constructor(adapter:HttpAdapterHost,private readonly report:(detail:ReturnType<typeof projectTask16RegistrationError>)=>void){super(adapter);}
+ constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void){super(adapter);}
  override catch(exception:unknown,host:ArgumentsHost){
   try{
    const request=host.switchToHttp().getRequest<{method?:string;originalUrl?:string}>();
-   if(request.method==="POST"&&request.originalUrl==="/me/signature/canvas")this.report(projectTask16RegistrationError(exception));
+   if(request.method==="POST"&&request.originalUrl==="/me/signature/canvas")this.report(signatureFailureDetail(exception));
   }catch{ /* Diagnostic failure must not change the original HTTP response. */ }
   super.catch(exception,host);
  }
@@ -40,6 +52,29 @@ it("captures only a safe signature error and always preserves the original excep
   report.mockClear();filter.catch(error,host("/unrelated"));expect(report).not.toHaveBeenCalled();
   report.mockImplementation(()=>{throw new Error("recording failed");});filter.catch(error,host("/me/signature/canvas"));
   expect(parent).toHaveBeenCalledTimes(3);
+ }finally{parent.mockRestore();}
+});
+
+it("reduces unknown signature database errors to fixed categories without leaking their text",()=>{
+ const report=jest.fn(),parent=jest.spyOn(Task16RegistrationErrorFilter.prototype,"catch").mockImplementation(()=>{});
+ const filter=new SignatureFailureCapture({} as HttpAdapterHost,report);
+ const host={switchToHttp:()=>({getRequest:()=>({method:"POST",originalUrl:"/me/signature/canvas"})})} as ArgumentsHost;
+ try{
+  const unknown=(message:string)=>new Prisma.PrismaClientUnknownRequestError(message,{clientVersion:"test"});
+  filter.catch(unknown('private account X table Y: code: "42501", permission denied for table Y'),host);
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"42501",signatureFailureClass:"PERMISSION"});
+  filter.catch(unknown('private value Z code: "23514", violates check constraint secret_constraint'),host);
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"23514",signatureFailureClass:"CONSTRAINT"});
+  filter.catch(unknown("private value Z trigger failed"),host);
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",signatureFailureClass:"TRIGGER"});
+  filter.catch(unknown("private value Z 42501 without a database code"),host);
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",signatureFailureClass:"OTHER"});
+  filter.catch(unknown('private value Z code: "99999"'),host);
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",signatureFailureClass:"OTHER"});
+  const getter=unknown("synthetic");Object.defineProperty(getter,"message",{get(){throw new Error("private getter");}});
+  filter.catch(getter,host);expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",signatureFailureClass:"OTHER"});
+  expect(JSON.stringify(report.mock.calls)).not.toMatch(/private|account|table|secret_constraint|value Z/iu);
+  expect(parent).toHaveBeenCalledTimes(6);
  }finally{parent.mockRestore();}
 });
 
