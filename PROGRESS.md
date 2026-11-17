@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 虚构标准链业务读取范围
+
+准确 `bbfedf5a` 真实隔离运行登录、签名、审批及签名快照通过，Me 返回 500/42501，付款未进入，容器已清理。[原私有日志](/private/tmp/jg398-standard-run-ts0f24fk/run.log) SHA `eebe4ccb7141e4426b943183f30b01e591df27ba144ffd7ead78ea064b627665`。
+
+一次性虚构库非敏感表读取范围 v3 `be0ae5f0` 经独审合入本地 `68c14d33`，准确补丁 SHA `bf82771a7c5f1ade996c5e2b42ee545305d14e569af2ca53bee38a4cd2c0ce8e`；Node20 runner 定向 11/11、CJS 语法及 diff 检查通过，作者侧目标测试 6 项及 API typecheck/lint 通过。敏感列排除；资金写保护及无权 403 尚待真实实证，此权限范围不代表生产 ACL。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重复文书资格或推送。
+
 ## 2026-11-17 隔离工作项响应诊断
 
 准确 `cc39d4d8` 真实隔离运行三次登录、签名、审批 201 及签名快照核对通过；Me 响应结构检查前发生 TypeError，HTTP 状态未知，付款未进入，容器已清理。[原私有日志](/private/tmp/jg398-standard-run-9iegucqt/run.log) SHA `e8169d564758e6d88abff4078222efe273fca2abae06bbd4ade2cbc935d0093a`。
