@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 审批 PostgreSQL 私有诊断窗口
+
+准确付款前沿 `df85aef3` 的真实隔离运行审批失败为 42501；`TABLE_070` 仅宽匹配线索，不能归因到该表或证明唯一原因，原业务未通过。本轮容器报告 REMOVED，按唯一名称独立查询无容器；[原私有日志](/private/tmp/jg398-standard-run-00p6p7hw/run.log) SHA `13e7b28a57f4f1e0185fa7d246371c8f184bdc43d22d127ce4c8c6dc1c730aed`。
+
+测试侧私有错误窗口 `1ad32e10` 经独审合入本地 `26a90296`，封存补丁 SHA `7fef4da9a66f29e296c9dec3acddfb84c735d4aa5b8adedbd0631f1b54bc11ca`，逐文件补丁字节一致；Node20 runner 7/7、Jest 5/5、API typecheck/lint 通过，真实 PG 测试按约跳过。新增仅提供私有窗口和闭集线索，不能证明属于单个请求；原始 Docker/私有日志未必脱敏，清理状态未知时须保留，不应当作公开输出。新候选未真实运行，不代表 #398 验收；未重跑文书资格、启动资源或推送。
+
 ## 2026-11-17 隔离审批闭集诊断
 
 准确 `13141fe1` 真实隔离运行登录和签名通过，审批返回 500，结果 UNKNOWN 且首因未得；付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-bqqh6ilz/run.log) SHA `4ea25caf96948c856e201583e4d38c8562df0b9304ea138283964d30a9409dff`。
