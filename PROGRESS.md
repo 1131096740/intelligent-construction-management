@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 经营账并发隔离候选
+
+经营账并发 v2 候选 `a514f9fb` 经独审合入本地 `deab2d0c`，封存补丁 SHA `7532ab7033908ac68d6a0bc0f0852be05e5bd3ecbaa6b27f7bc3032adb542a29`，逐文件补丁字节一致；付款 fixture/observer 模型 160/160、构建后 runner 81/81、API build/typecheck/lint 通过。
+
+候选为虚构隔离用途，包含双键摘要先封存、现金 secret 作用域及同一 observer RR 核账；helper 和装配模型不证明完整 PostgreSQL 事务或并发。真实隔离资源尚未运行，不代表 #398 验收；原现金 b047 仍 UNKNOWN，本次未操作资源或推送。
+
 ## 2026-11-17 queue-only 草稿有限诊断候选
 
 测试侧草稿阶段有限诊断 `21ad9895` 经独审合入本地 `6671737f`，准确补丁 SHA `0f375f071e25b124828ad3f2469e590655ae2d89aa781df20a31051fc4e8e000`；Node20 fixture 22/22、API typecheck/lint、CJS 语法及 diff 检查通过。该候选仅为后续虚构隔离运行提供阶段和有限状态线索，尚未真实运行，不能补写 f8 原轮或证明 d57 根因；合同链与 #394 仍未验收。本次未操作资源或推送。
