@@ -66,7 +66,8 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
 }
 
 async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false, consolidatedNormal = false, fullAudit = false,
-  ledgerExtra?: (tx: Prisma.TransactionClient, rows: Awaited<ReturnType<typeof snapshot>>) => Promise<{factId:string;impactCount:3}>) {
+  ledgerExtra?: (tx: Prisma.TransactionClient, rows: Awaited<ReturnType<typeof snapshot>>) => Promise<{factId:string;impactCount:3}>,
+  settlementExtra?: (tx: Prisma.TransactionClient) => Promise<{settlementId:string;factId:string;costCents:string;payableCents:string}>) {
   const start = performance.now();
   let phase: RegisteredPgObserverPhase = "TX_START", txStart: number | undefined, lightCalls = 0, lightElapsedMs = 0, queryElapsedMs = 0;
   const elapsed = (value: number) => Math.min(3600000, Math.max(0, Math.round(value)));
@@ -88,8 +89,9 @@ async function observe(context: RegisteredPgExecutionContext, fixture: PreparedR
       const setReadOnly = tx.$executeRawUnsafe;
       await checked("SET_READ_ONLY", () => setReadOnly.call(tx, "SET TRANSACTION READ ONLY"));
       const rows=await snapshot(tx, fixture, { light, checked, phase(next) { phase = next; } }, isolatedPaymentScope, consolidatedNormal, fullAudit);
-      if (!ledgerExtra) return rows;
-      return {...rows,ledgerWitness:await checked("IMPACTS",()=>ledgerExtra(tx,rows))};
+      if (ledgerExtra) return {...rows,ledgerWitness:await checked("IMPACTS",()=>ledgerExtra(tx,rows))};
+      if (settlementExtra) return {...rows,settlementWitness:await checked("IMPACTS",()=>settlementExtra(tx))};
+      return rows;
     }, { isolationLevel: "RepeatableRead" });
     phase = "TX_RETURN"; return result;
   } finally {
@@ -294,6 +296,41 @@ export function runRegisteredNullCrossCompanyNativeCancellation(context: Registe
   cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
   return runCancellationCase(context, fixture, continuity, cancelCommit, true);
 }
+/** Ledger-enabled synthetic cancellation; settlement evidence and payment graph share each observer snapshot. */
+export async function runRegisteredLedgerPaymentCancellation(context: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
+  fixture: Awaited<ReturnType<typeof import("./registered-payment-postgres.fixture").seedRegisteredPgPublicCashFormalFixture>>,
+  continuity: RegisteredPgSeedContinuity, cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  const { plan, settlementBaseline, settlementFactId, cashSourceDocument } = fixture;
+  const { ids } = plan;
+  const light = () => { continuity.checkLight(); check(cashSourceDocument,"PG_LEDGER_CANCEL_DOCUMENT"); cashSourceDocument.verify(); };
+  const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value=await operation(); light(); return value; };
+  check(settlementBaseline && settlementFactId === settlementBaseline.factId, "PG_LEDGER_CANCEL_PREREQUISITE");
+  const identity = (await checked(() => assertRegisteredPgCompetitionRoles(context, contender, continuity))).primary;
+  const {readCashSettlementPrerequisiteInTransaction} = await import("./registered-payment-public-cash-prerequisite");
+  const observeLedger = () => observe(context, fixture, continuity, true, false, true, undefined,
+    tx => readCashSettlementPrerequisiteInTransaction(tx, {projectId:ids.project,settlementId:ids.settlement},light,0n,true));
+  const observeOwner = captureOwnerRead(context,true);
+  const before=await checked(observeLedger);
+  check("settlementWitness" in before && isDeepStrictEqual(before.settlementWitness,settlementBaseline),"PG_LEDGER_CANCEL_PREREQUISITE");
+  check(before.request.approvedAmountCents===4000n && before.request.paidAmountCents===0n && before.settlement.payableAmountCents===4000n && before.settlement.paidAmountCents===0n && before.balanceA==="100.0000" && before.balanceB==="100.0000" && [before.executions,before.roots,before.funding,before.allocations,before.events,before.audits,before.facts,before.impacts].every(rows=>rows.length===0),"PG_LEDGER_CANCEL_BEFORE");
+  const ownerBefore=await observeOwner(fixture,identity.ownerPid,checked);
+  const optionsResponse=await checked(()=>registeredPgHttp(context,`/payment-executions/${ids.payment}/registration-options`,"GET",undefined,fixture.accessToken,continuity));
+  const options=optionsResponse.body as {expectedPaymentUpdatedAt?:unknown;remainingAmountCents?:unknown;accounts?:Array<{scopeKey:string;eligible:boolean}>};
+  check(optionsResponse.status===200 && typeof options.expectedPaymentUpdatedAt==="string" && options.remainingAmountCents==="4000" && options.accounts?.some(account=>account.scopeKey===`company:${ids.companyB}` && account.eligible),"PG_LEDGER_CANCEL_OPTIONS");
+  const command={idempotencyKey:ids.requestKey,expectedPaymentUpdatedAt:options.expectedPaymentUpdatedAt,amountCents:"3000",paidAt:plan.paidAt,scopeKey:`company:${ids.companyB}`,expectedRegistrationId:fixture.companyBRegistrationId,openingTreatment:"not_included",openingReason:"本次实付未计入核对期初",openingEvidence:"隔离PG合成付款及期初依据",sourceAllocations:[{sourceBatchId:fixture.companyBSourceId,amountCents:"3000"}],confirmationPassword:context.password};
+  let submitted=false,status:number|undefined;
+  await checked(()=>cancelCommit(async()=>{check(!submitted,"PG_CASE_CANCEL_DUPLICATE_POST");submitted=true;status=(await checked(()=>registeredPgHttp(context,`/payment-executions/${ids.payment}/registrations`,"POST",command,fixture.accessToken,continuity))).status;}));
+  const after=await checked(observeLedger), ownerAfter=await observeOwner(fixture,identity.ownerPid,checked);
+  check("settlementWitness" in after && isDeepStrictEqual(after.settlementWitness,settlementBaseline),"PG_LEDGER_CANCEL_SETTLEMENT_CHANGED");
+  check(submitted && (status===409 || (status!==undefined && status>=500 && status<=599)),"PG_CASE_CANCEL_HTTP_STATUS");
+  check(isDeepStrictEqual(after,before) && isDeepStrictEqual(ownerAfter,ownerBefore),"PG_CASE_CANCEL_LEDGER_CHANGED");
+  const result=await checked(()=>registeredPgHttp(context,`/payment-executions/results/${ids.requestKey}`,"GET",undefined,fixture.accessToken,continuity));
+  const body=result.body as {status?:unknown}|null;
+  check(result.status===200 && body?.status==="unconfirmed" && !Object.hasOwn(body,"execution"),"PG_CASE_CANCEL_ORIGINAL_RESULT");
+  return {caseId:"registered.ledger-payment.cancel-commit",passed:true as const,rollbackObserved:true as const,originalResultUnconfirmed:true as const,settlementWitness:settlementBaseline,
+    accountingEvidence:Object.freeze({origin:"INDEPENDENT_OBSERVER_REPEATABLE_READ" as const,currency:"CNY" as const,before:projectCompetitionAccounting("BEFORE",before),after:projectCompetitionAccounting("AFTER",after),ownerBefore:Object.freeze({...ownerBefore}),ownerAfter:Object.freeze({...ownerAfter}),ownerStable:true as const,originalKeyAbsent:true as const})};
+}
+
 async function runCancellationCase(context: RegisteredPgExecutionContext,
   fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
   cancelCommit: (submit: () => Promise<void>) => Promise<void>, fullAudit: boolean) {

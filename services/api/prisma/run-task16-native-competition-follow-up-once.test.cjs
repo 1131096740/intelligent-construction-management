@@ -556,3 +556,19 @@ test('actual ledger competition accounting publisher binds plan and rejects drif
  const other=planModel(t),bad=structuredClone(evidence);bad.after.projectFactCount=0;
  assert.throws(()=>api.writeNativeTask16LedgerCompetitionAccounting(other.runRoot,{runId:other.runId,source:{head:'a'.repeat(40)}},{caseId:'registered.ledger-payment-competition',ledgerWitness:{factId:'fact',impactCount:3},accountingEvidence:bad},{settlementFactId:'settlement'},ids));assert.deepEqual(fs.readdirSync(other.runRoot),[]);
 });
+test('ledger cancellation has an independent purpose and cannot cross competition or cash plans',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');
+ const selection=api.nativeTask16CaseSelection('TASK16_NATIVE_LEDGER_CANCEL_V1');
+ assert.equal(selection.ledgerCancel,true);assert.equal(selection.caseId,'registered.ledger-payment.cancel-commit');assert.equal(selection.paymentProfile,'TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1');
+ for(const verb of ['--verify-ledger-cancel','--once-ledger-cancel'])assert.equal(api.parseNativeTask16Args([verb,'--plan','/private/tmp/example/plan.json','--expected-plan-sha256','a'.repeat(64)]).purpose,'TASK16_NATIVE_LEDGER_CANCEL_V1');
+});
+for(const [purpose,flag] of [['TASK16_NATIVE_LEDGER_CANCEL_V1','--once-ledger-competition'],['TASK16_NATIVE_LEDGER_COMPETITION_V1','--once-ledger-cancel']])test('ledger cancel and competition plans cannot cross '+purpose,t=>{
+ const p=planModel(t);p.purpose=purpose;const target=path.join(p.runRoot,'plan.json'),bytes=JSON.stringify(p)+'\n';fs.writeFileSync(target,bytes,{mode:0o600});
+ const result=spawnSync(process.execPath,[path.join(__dirname,'run-task16-native-competition-follow-up-once.cjs'),flag,'--plan',target,'--expected-plan-sha256',require('node:crypto').createHash('sha256').update(bytes).digest('hex')],{encoding:'utf8',env:{PATH:path.dirname(process.execPath)},timeout:10000,maxBuffer:8192});
+ assert.equal(result.status,1);assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_CASE_PURPOSE'});assert.deepEqual(fs.readdirSync(p.runRoot),['plan.json']);
+});
+test('ledger cancellation qualifies actual case and cancellation fault interfaces',()=>{
+ const rows=require('./run-task16-native-competition-follow-up-once.cjs').resolveNativeTask16Interfaces('TASK16_NATIVE_LEDGER_CANCEL_V1');
+ const names=rows.flatMap(row=>row.exports.map(entry=>entry.name));
+ for(const name of ['runRegisteredLedgerPaymentCancellation','readCashSettlementPrerequisiteInTransaction','runNativeTask16CancelPreparedCase','createNativeA16CancelTransport','runNativeA16Cancellation'])assert.ok(names.includes(name));
+});
