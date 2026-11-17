@@ -572,3 +572,11 @@ test('ledger cancellation qualifies actual case and cancellation fault interface
  const names=rows.flatMap(row=>row.exports.map(entry=>entry.name));
  for(const name of ['runRegisteredLedgerPaymentCancellation','readCashSettlementPrerequisiteInTransaction','runNativeTask16CancelPreparedCase','createNativeA16CancelTransport','runNativeA16Cancellation'])assert.ok(names.includes(name));
 });
+
+test('disabled voucher purpose is separate and inherits only the existing isolated revocation profile',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),purpose='TASK16_NATIVE_VOUCHER_DISABLED_ACCOUNT_V1';
+ assert.deepEqual(api.nativeTask16CaseSelection(purpose),{purpose,caseId:'registered.voucher.disabled-account',paymentProfile:'TASK16_PAYMENT261_VOUCHER_REVOCATION_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:11,voucher:true,revocation:true,disabled:true});
+ for(const mode of ['verify','once'])assert.deepEqual(api.parseNativeTask16Args([`--${mode}-disabled`,'--plan','/private/tmp/p','--expected-plan-sha256','a'.repeat(64)]),{mode,purpose,file:'/private/tmp/p',sha256:'a'.repeat(64)});
+ assert.equal(api.parseNativeTask16Args(['--prepare-disabled','--run-root','/private/tmp/x','--binary-manifest','/private/tmp/m','--expected-binary-sha256','b'.repeat(64),'--output','/private/tmp/x/plan.json']).purpose,purpose);
+ assert.equal(api.nativeTask16CaseSelection('TASK16_NATIVE_VOUCHER_REVOCATION_V1').disabled,undefined);
+});
