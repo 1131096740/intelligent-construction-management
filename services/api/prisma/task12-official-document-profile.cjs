@@ -295,10 +295,14 @@ function inspectMaterials(file, expectedSha256, activation) {
       }
     }
     const document = capture(plan.document.path,plan.document.sha256,'DOCUMENT',20_000_000);
-    need(keys(plan.document,['path','sha256','scopePath','scopeSha256','expectationsPath','expectationsSha256','officePath','officeSha256']) && hash(plan.document.sha256) && hash(plan.document.scopeSha256),'DOCUMENT');
+    const baseDocumentKeys=['path','sha256','scopePath','scopeSha256','expectationsPath','expectationsSha256','officePath','officeSha256'];
+    const hasCurrent=keys(plan.document,[...baseDocumentKeys,'currentPath','currentSha256','currentOfficePath','currentOfficeSha256']);
+    need((hasCurrent||keys(plan.document,baseDocumentKeys))&&(!hasCurrent||descriptor.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1')&&(activation||descriptor.profile!=='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1'||hasCurrent)&&hash(plan.document.sha256)&&hash(plan.document.scopeSha256),'DOCUMENT');
     const scope = capture(plan.document.scopePath,plan.document.scopeSha256,'DOCUMENT',256_000); all.push(metadata(document),metadata(scope));
     const office=capture(plan.document.officePath,plan.document.officeSha256,'DOCUMENT',20000000);all.push(metadata(office));
     const expectations=capture(plan.document.expectationsPath,plan.document.expectationsSha256,'DOCUMENT',128*1024);all.push(metadata(expectations));
+    let current,currentOffice;
+    if(hasCurrent){need(hash(plan.document.currentSha256)&&hash(plan.document.currentOfficeSha256),'DOCUMENT');current=capture(plan.document.currentPath,plan.document.currentSha256,'DOCUMENT',20_000_000);currentOffice=capture(plan.document.currentOfficePath,plan.document.currentOfficeSha256,'DOCUMENT',20_000_000);all.push(metadata(current),metadata(currentOffice));}
     // Reproduce the public source renderer from the already sealed build. ZIP
     // transport timestamps may vary; every uncompressed package part must match.
     const mechanical=descriptor.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
@@ -311,6 +315,7 @@ function inspectMaterials(file, expectedSha256, activation) {
       activation?.lease.verifyFull();
       const sample=renderer.createOfficialQualificationSample(template.bytes);
       need(canonical(document.bytes)===canonical(sample.docx)&&canonical(office.bytes)===canonical(sample.officeDocx),'DOCUMENT_RENDERER');
+      if(hasCurrent){need(typeof renderer.createMechanicalCurrentQualificationSample==='function','DOCUMENT_RENDERER');const next=renderer.createMechanicalCurrentQualificationSample(template.bytes);need(canonical(current.bytes)===canonical(next.docx)&&canonical(currentOffice.bytes)===canonical(next.officeDocx),'DOCUMENT_RENDERER');}
       const {isDeepStrictEqual}=require('node:util');
       need(isDeepStrictEqual(JSON.parse(scope.bytes.toString('utf8')),JSON.parse(JSON.stringify(sample.scope===null?null:{...sample.scope,docxSha256:document.sha256})))&&
         isDeepStrictEqual(JSON.parse(expectations.bytes.toString('utf8')),JSON.parse(JSON.stringify(sample.expectations))),'DOCUMENT_RENDERER');
@@ -480,8 +485,9 @@ function inspectPublishedRuntime(file,expectedSha256,moduleView,publicationOnly)
     const machine=privateJson(registered.machineReceipt.path,registered.machineReceipt.sha256,'REGISTRY',2*1024*1024),physical=privateJson(registered.physicalReview.path,registered.physicalReview.sha256,'REGISTRY');
     need(machine.data.profile===registration.registry.profile&&machine.data.status==='MACHINE_QUALIFICATION_PASSED_PHYSICAL_REVIEW_PENDING'&&keys(machine.data.plan,['path','sha256'])&&machine.data.plan.sha256===runtimeInput.qualificationPlanSha256&&hash(machine.data.plan.sha256),'REGISTRY');
     const files=[input.item,registration.file,machine.item,physical.item],reports={};
-    need(keys(machine.data.actions,['java','office','normalized']),'REGISTRY');
-    for(const name of ['java','office','normalized']) {
+    const currentActions=keys(machine.data.actions,['java','office','normalized','javaCurrent','officeCurrent']);
+    need(currentActions||keys(machine.data.actions,['java','office','normalized']),'REGISTRY');
+    for(const name of currentActions?['java','office','normalized','javaCurrent','officeCurrent']:['java','office','normalized']) {
       const action=machine.data.actions[name];need(action&&hash(action.pdfSha256)&&hash(action.physicalSha256),'REGISTRY');
       const pdf=capture(action.pdfPath,action.pdfSha256,'REGISTRY',100000000);need(pdf.bytes.subarray(0,5).equals(Buffer.from('%PDF-')),'REGISTRY');files.push(metadata(pdf));
       const report=privateJson(action.physicalPath,action.physicalSha256,'REGISTRY',4*1024*1024);files.push(report.item);reports[name]=report.data;

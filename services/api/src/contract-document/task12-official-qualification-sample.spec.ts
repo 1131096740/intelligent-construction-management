@@ -4,7 +4,7 @@ import { join } from "node:path";
 import PizZip from "pizzip";
 import { DOMParser } from "@xmldom/xmldom";
 import { renderContractBody, REVIEWED_MATERIAL_TYPOGRAPHY_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V2_VERSION, REVIEWED_MATERIAL_TYPOGRAPHY_V3_VERSION } from "./contract-body-document";
-import { canonicalOfficialQualificationDocx, createOfficialQualificationSample } from "./task12-official-qualification-sample";
+import { canonicalOfficialQualificationDocx, createOfficialQualificationSample, createMechanicalCurrentQualificationSample } from "./task12-official-qualification-sample";
 
 function expectFictionalMetadata(docx:Buffer) {
   const zip=new PizZip(docx),parser=new DOMParser();
@@ -57,6 +57,16 @@ describe("fixed fictitious source-only material document qualification sample",(
 
 // Same public source renderer; no tools, services or database.
 describe("fixed mechanical official qualification sample",()=>{
+  it("produces separate current-v2 body documents with reviewed synthetic supplements and bank fields",async()=>{
+    const source=await readFile(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
+    const current=createMechanicalCurrentQualificationSample(source);
+    for(const docx of [current.docx,current.officeDocx]){
+      expectFictionalMetadata(docx);
+      const body=new PizZip(docx).file("word/document.xml")!.asText();
+      for(const text of ["虚构甲方补充说明","虚构乙方补充说明","虚构甲方开户行","虚构乙方开户行","TESTACCOUNT-A","TESTACCOUNT-B"])expect(body).toContain(text);
+    }
+    expect(current.scope).toBeNull();
+  });
   it("keeps reviewed mechanical roles without inventing material 25pt scope",async()=>{
     const source=await readFile(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
     const sample=createOfficialQualificationSample(source);

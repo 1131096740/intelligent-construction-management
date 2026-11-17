@@ -311,3 +311,19 @@ for(const phase of ['before-read','during-read'])test('public scope rejects an a
   assert.equal(replaced,true);assert.equal(reads,phase==='before-read'?0:1);
  }finally{fs.rmSync(directory,{recursive:true,force:true});assert.equal(fs.existsSync(directory),false);}
 });
+test('new mechanical packet requires both sealed current-v2 document inputs',()=>{
+ for(const name of ['/private/tmp/current.docx','/private/tmp/current-office.docx']){
+  const m=require('./task12-official-document-model.test-support.cjs').model({profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1'}),input=m.packet();
+  m.files.get(name).bytes=Buffer.from('tampered current document');
+  assert.throws(()=>m.api.inspectOfficialDocumentQualification(input.name,input.sha256),{code:'TASK12_OFFICIAL_DOCUMENT_DOCUMENT'});
+ }
+ for(const key of ['currentSha256','currentOfficeSha256']){
+  const m=require('./task12-official-document-model.test-support.cjs').model({profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1'}),input=m.packet(),plan=structuredClone(input.plan);plan.document[key]=null;
+  const bytes=Buffer.from(JSON.stringify(plan)),sha=require('node:crypto').createHash('sha256').update(bytes).digest('hex');m.files.get(input.name).bytes=bytes;
+  assert.throws(()=>m.api.inspectOfficialDocumentQualification(input.name,sha),{code:'TASK12_OFFICIAL_DOCUMENT_DOCUMENT'});
+ }
+ const m=require('./task12-official-document-model.test-support.cjs').model({profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1'}),input=m.packet(),plan=structuredClone(input.plan);
+ for(const key of ['currentPath','currentSha256','currentOfficePath','currentOfficeSha256'])delete plan.document[key];
+ const bytes=Buffer.from(JSON.stringify(plan)),sha=require('node:crypto').createHash('sha256').update(bytes).digest('hex');m.files.get(input.name).bytes=bytes;
+ assert.throws(()=>m.api.inspectOfficialDocumentQualification(input.name,sha),{code:'TASK12_OFFICIAL_DOCUMENT_DOCUMENT'});
+});

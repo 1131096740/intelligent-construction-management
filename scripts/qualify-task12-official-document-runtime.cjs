@@ -13,7 +13,7 @@ const exec=promisify(execFile);
 const { createOfficialDocumentChildBudget,attachPostcheck } = require('../services/api/prisma/task12-official-document-child.cjs');
 const { runOfficialQualificationActions } = require('../services/api/prisma/task12-official-qualification-actions.cjs');
 const {officialDocumentProfile}=require('../services/api/prisma/task12-official-document-profiles.cjs');
-const { validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalMergedFidelity } = require('../services/api/prisma/task12-official-document-fidelity.cjs');
+const { validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalCurrentFidelity,validateOfficialMechanicalMergedFidelity } = require('../services/api/prisma/task12-official-document-fidelity.cjs');
 const {
   PROFILE, sourceWitness, buildWitness, buildToolWitness, toolControlWitness, inspectOfficialDocumentQualification, withOfficialDocumentQualification, hostBoundary
 } = require('../services/api/prisma/task12-official-document-profile.cjs');
@@ -86,6 +86,12 @@ function prepare(requestPath, expected, outputPath) {
   const scopeBytes=Buffer.from(JSON.stringify(sample.scope,null,2)+'\n'),expectationBytes=Buffer.from(JSON.stringify(sample.expectations,null,2)+'\n');
   for(const [name,bytes] of [[docx,sample.docx],[office,sample.officeDocx],[scope,scopeBytes],[expectations,expectationBytes]])fs.writeFileSync(name,bytes,{mode:0o600,flag:'wx'});
   const document={path:docx,sha256:sha(sample.docx),scopePath:scope,scopeSha256:sha(scopeBytes),expectationsPath:expectations,expectationsSha256:sha(expectationBytes),officePath:office,officeSha256:sha(sample.officeDocx)};
+  if(mechanical) {
+    const current=producer.createMechanicalCurrentQualificationSample(fs.readFileSync(path.resolve(__dirname,'../services/api/assets/templates/equipment-rental-real-v1.docx')));
+    const currentPath=path.join(sampleDirectory,'current-v2.docx'),currentOfficePath=path.join(sampleDirectory,'current-v2-office.docx');
+    fixedWrite(currentPath,current.docx);fixedWrite(currentOfficePath,current.officeDocx);
+    Object.assign(document,{currentPath,currentSha256:sha(current.docx),currentOfficePath,currentOfficeSha256:sha(current.officeDocx)});
+  }
   const plan = { version:1, profile:PROFILE, source, ...request,document };
   need(path.isAbsolute(outputPath) && fs.realpathSync(path.dirname(outputPath)) === path.dirname(outputPath));
   const parent = fs.lstatSync(path.dirname(outputPath));
@@ -184,6 +190,14 @@ async function once(planPath,expected) {
       const mechanical=plan.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
       const bytes=fs.readFileSync(plan.document.path),officeBytes=fs.readFileSync(plan.document.officePath),lineBoxScope=JSON.parse(fs.readFileSync(plan.document.scopePath,'utf8'));
       const savePdf=(label,pdf)=>{need(Buffer.isBuffer(pdf)&&pdf.subarray(0,5).equals(Buffer.from('%PDF-'))&&pdf.length<=100000000);const file=path.join(plan.runRoot,label+'.pdf');fixedWrite(file,pdf);return {bytes:pdf,path:file,sha256:sha(pdf)};};
+      const convertOffice=async(input,label,logPrefix)=>{
+        const runner=async(command,args,options)=>{
+          need(command===scope.libreOfficeCommand&&options.cwd.startsWith(scope.temporaryDirectory+path.sep)&&JSON.stringify(options.env)===JSON.stringify(scope.libreOfficeEnv)&&options.timeout>0&&options.timeout<=120000);
+          need(args.length===7&&args[0]==='-env:UserInstallation='+pathToFileURL(path.join(options.cwd,'profile')).href&&JSON.stringify(args.slice(1,5))===JSON.stringify(['--headless','--convert-to','pdf','--outdir'])&&args[5]===options.cwd&&args[6]===path.join(options.cwd,'input.docx'));
+          const output=await exec(command,args,{...options,maxBuffer:4*1024*1024});fixedWrite(path.join(plan.runRoot,logPrefix+'-STDOUT.log'),output.stdout);fixedWrite(path.join(plan.runRoot,logPrefix+'-STDERR.log'),output.stderr);return output;
+        };
+        return savePdf(label,await officeConverter.convertDocxToPdf(input,[],{runner}));
+      };
       return runOfficialQualificationActions({
         negative:()=>stage('01-NEGATIVE',()=>rejectionBoundaries(converter,scope,bytes,lineBoxScope)),
         java:()=>stage('02-JAVA',async()=>{
@@ -195,17 +209,7 @@ async function once(planPath,expected) {
           const report=await inspectPdf(scope,plan,'java',java.path,plan.document.path,plan.document.sha256);
           return {...report,verdict:(mechanical?validateOfficialMechanicalFidelity:validateOfficialDocumentFidelity)(report.report,java.sha256)};
         }),
-        office:()=>stage('04-OFFICE',async()=>{
-          const runner=async(command,args,options)=>{
-            need(command===scope.libreOfficeCommand&&options.cwd.startsWith(scope.temporaryDirectory+path.sep)&&
-              JSON.stringify(options.env)===JSON.stringify(scope.libreOfficeEnv)&&options.timeout>0&&options.timeout<=120000);
-            need(args.length===7&&args[0]==='-env:UserInstallation='+pathToFileURL(path.join(options.cwd,'profile')).href&&
-              JSON.stringify(args.slice(1,5))===JSON.stringify(['--headless','--convert-to','pdf','--outdir'])&&args[5]===options.cwd&&args[6]===path.join(options.cwd,'input.docx'));
-            const output=await exec(command,args,{...options,maxBuffer:4*1024*1024});
-            fixedWrite(path.join(plan.runRoot,'OFFICE-STDOUT.log'),output.stdout);fixedWrite(path.join(plan.runRoot,'OFFICE-STDERR.log'),output.stderr);return output;
-          };
-          return savePdf('office',await officeConverter.convertDocxToPdf(officeBytes,[],{runner}));
-        }),
+        office:()=>stage('04-OFFICE',()=>convertOffice(officeBytes,'office','OFFICE')),
         inspectOffice:office=>stage('05-OFFICE-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'office',office.path,plan.document.officePath,plan.document.officeSha256);
           return {...report,verdict:(mechanical?validateOfficialMechanicalOfficeFidelity:validateOfficialOfficeFidelity)(report.report,office.sha256)};
@@ -218,14 +222,20 @@ async function once(planPath,expected) {
         inspectNormalized:(normalized,javaPhysical,officePhysical)=>stage('07-NORMALIZED-INSPECT',async()=>{
           const report=await inspectPdf(scope,plan,'normalized',normalized.path,plan.document.path,plan.document.sha256);
           return {...report,verdict:(mechanical?validateOfficialMechanicalMergedFidelity:validateOfficialMergedFidelity)(report.report,javaPhysical.report,officePhysical.report,normalized.sha256)};
-        })
+        }),
+        ...(mechanical?{
+          javaCurrent:()=>stage('08-CURRENT-JAVA',async()=>{const typographyVersion='reviewed-mechanical-primary-secondary-roles-v1',fingerprint=await converter.contractBodyPdfRuntimeLockFingerprint(typographyVersion);need(fingerprint===scope.lockSha256);const output=await converter.convertContractBodyDocxToPdf(fs.readFileSync(plan.document.currentPath),fingerprint,{typographyVersion});need(output.provenance.conversionCalls===1&&output.provenance.boundaryDenials===3);return {...savePdf('java-current',output.pdf),provenance:output.provenance};}),
+          inspectJavaCurrent:java=>stage('09-CURRENT-JAVA-INSPECT',async()=>{const report=await inspectPdf(scope,plan,'java-current',java.path,plan.document.currentPath,plan.document.currentSha256);return {...report,verdict:validateOfficialMechanicalCurrentFidelity(report.report,java.sha256,true)};}),
+          officeCurrent:()=>stage('10-CURRENT-OFFICE',()=>convertOffice(fs.readFileSync(plan.document.currentOfficePath),'office-current','OFFICE-CURRENT')),
+          inspectOfficeCurrent:office=>stage('11-CURRENT-OFFICE-INSPECT',async()=>{const report=await inspectPdf(scope,plan,'office-current',office.path,plan.document.currentOfficePath,plan.document.currentOfficeSha256);return {...report,verdict:validateOfficialMechanicalCurrentFidelity(report.report,office.sha256)};})
+        }:{})
       });
     });
     const controls=toolControlWitness();need(JSON.stringify(controls.source)===JSON.stringify(proof.source));
     const action=(pdf,physical)=>({pdfPath:pdf.path,pdfSha256:pdf.sha256,physicalPath:physical.path,physicalSha256:physical.sha256,pageCount:physical.report.pageCount,verdict:physical.verdict});
     const receipt={version:1,status:result.status,profile:plan.profile,runtimeAuthority:false,plan:{path:planPath,sha256:expected},source:proof.source,hostBoundary:hostBoundary(),
       toolControls:{sha256:controls.sha256,files:controls.files},candidateLockSha256:proof.candidateLockSha256,buildSha256:proof.buildSha256,materialSha256:proof.materialSha256,
-      boundaries:result.negative,actions:{java:action(result.java,result.javaPhysical),office:action(result.office,result.officePhysical),normalized:action(result.normalized,result.normalizedPhysical)},
+      boundaries:result.negative,actions:{java:action(result.java,result.javaPhysical),office:action(result.office,result.officePhysical),normalized:action(result.normalized,result.normalizedPhysical),...(plan.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1'?{javaCurrent:action(result.javaCurrent,result.javaCurrentPhysical),officeCurrent:action(result.officeCurrent,result.officeCurrentPhysical)}:{})},
       physicalReview:{status:'PENDING',exactPageCountsReviewed:false,signatureAndPaginationReviewed:false},elapsedMs:performance.now()-started};
     need(receipt.elapsedMs<=315000);owned();fixedWrite(path.join(plan.runRoot,'MACHINE-RECEIPT.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
   } catch(error) {

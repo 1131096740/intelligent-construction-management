@@ -530,7 +530,7 @@ function loadCurrent259Client(handle){
     ['fixture','services/api/dist/database/task12-local-lifecycle-fixture.js',['buildTask12LocalLifecycleFixture','isTask12LocalLifecycleFixture','createTask12LocalLifecycleOriginals']],
     ['case','services/api/dist/database/task12-local-lifecycle-case.js',['runTask12LocalLifecycleCase','expectTask12LocalLifecycleAuditRollback','finishTask12LocalLifecycleCase','claimTask12LocalLifecycleCheckpoint']],
     ['con18','services/api/dist/database/task12-con18-withdrawal-case.js',['runTask12Con18Withdrawal']],
-    ['sample','services/api/dist/contract-document/task12-official-qualification-sample.js',['createOfficialQualificationSample','canonicalOfficialQualificationDocx']],
+    ['sample','services/api/dist/contract-document/task12-official-qualification-sample.js',['createOfficialQualificationSample','createMechanicalCurrentQualificationSample','canonicalOfficialQualificationDocx']],
     ['profile','services/api/prisma/task12-official-document-profile.cjs',['currentOfficialDocumentScope']],
     ['child','services/api/prisma/task12-official-document-child.cjs',['createOfficialDocumentChildBudget','attachPostcheck']],
     ['context','services/api/prisma/task12-document-context.cjs',['createDocumentContextAuthority']],
@@ -570,6 +570,7 @@ function loadCurrent259Client(handle){
    const lease=Object.freeze({root,source:material.source,build:material.summary,
     check:()=>check(),verifyFull:()=>{check();material.check();},
     createOfficialQualificationSample:own(modules.sample.exports,'createOfficialQualificationSample'),
+    createMechanicalCurrentQualificationSample:own(modules.sample.exports,'createMechanicalCurrentQualificationSample'),
     canonicalDocx:own(modules.sample.exports,'canonicalOfficialQualificationDocx')});
    officialDocumentModuleViews.set(lifeDocument.exports,lease);
    return lifeDocument.exports;
