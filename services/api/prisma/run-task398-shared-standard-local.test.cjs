@@ -2,7 +2,7 @@
 const {test}=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs"),path=require("node:path"),{createHash}=require("node:crypto");
-const {runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,cleanupOwnedContainer,containerName}=require("./run-task398-shared-standard-local.cjs");
+const {runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,approvalDependencyCheckSql,cleanupOwnedContainer,containerName}=require("./run-task398-shared-standard-local.cjs");
 const {createCiDynamicMigrationFixture}=require("./local-staged-ci-dynamic.cjs");
 
 test("names the uniquely labelled container within the existing staged migration policy",()=>{
@@ -25,6 +25,14 @@ test("the isolated shared role composes existing cash and voucher plans without 
  assert.deepEqual(row("ContractDraftAttachment").insert,[]);assert.deepEqual(row("ContractDraftAttachment").update,[]);
  assert.deepEqual(row("ContractTakeoverCorrection").select,["attachmentFileId","correctionType","schemaVersion"]);
  assert.deepEqual(row("ContractTakeoverCorrection").insert,[]);assert.deepEqual(row("ContractTakeoverCorrection").update,[]);
+ for(const [table,columns] of [["FundExecutionCase",["approvalInstanceId","auditAction"]],["PaymentExecutionPayerAttestation",["reauthorizationApprovalInstanceId"]],["ProjectFinancingQuotaUsage",["amountCents","paymentRequestId","status"]]]){
+  for(const column of columns)assert.ok(row(table)?.select.includes(column),`${table}.${column}`);
+  assert.deepEqual(row(table).insert,[]);assert.deepEqual(row(table).update,[]);
+  const physicalApproval=approvalDependencyCheckSql();
+  for(const column of columns)assert.ok(physicalApproval.includes(`has_column_privilege('jg_task01_runtime','public."${table}"','${column}','SELECT')`));
+  assert.ok(physicalApproval.includes(`NOT has_table_privilege('jg_task01_runtime','public."${table}"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')`));
+  assert.ok(physicalApproval.includes(`NOT has_any_column_privilege('jg_task01_runtime','public."${table}"','INSERT,UPDATE,REFERENCES')`));
+ }
  const signatureCheck=signatureBindingCheckSql();
  assert.match(signatureCheck,/has_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','fileId','SELECT'\)/u);
  assert.match(signatureCheck,/has_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','slotKey','SELECT'\)/u);
@@ -66,6 +74,25 @@ test("the signature guard can read each schema-backed candidate in the migration
  const requirements=require("./task16-current259-voucher-acl.requirements.json");
  for(const routine of requirements.routineSources)assert.ok(plan.runtime.functions.includes(routine.signature));
  assert.match(require("./contract-bank-runtime-fixture.cjs").renderTask398FileGuardGrant(),/jg_has_exclusive_file_business_binding/u);
+});
+
+test("approval trigger and quota lookup dependencies match the restricted read plan",()=>{
+ const plan=runtimePlan(),migrations=path.join(__dirname,"migrations"),fields=(table,columns)=>{
+  const row=plan.runtime.tables.find(item=>item.table===table);for(const column of columns)assert.ok(row?.select.includes(column),`${table}.${column}`);
+ };
+ const fund=fs.readFileSync(path.join(migrations,"20260831120000_pol13d_fund_execution_v7","migration.sql"),"utf8");
+ for(const name of ["guard_fund_execution_approval_instance_freeze_immutable","guard_fund_execution_approval_action_freeze_immutable"]){
+  const start=fund.indexOf(`CREATE FUNCTION ${name}()`),end=fund.indexOf("$$ LANGUAGE plpgsql;",start);assert.ok(start>=0&&end>start);
+  const body=fund.slice(start,end);for(const column of ["approvalInstanceId","auditAction"])assert.ok(body.includes(`"${column}"`));
+ }
+ fields("FundExecutionCase",["approvalInstanceId","auditAction"]);
+ const payer=fs.readFileSync(path.join(migrations,"20260828080000_pol13b_payer_authority_and_relation_guards","migration.sql"),"utf8");
+ assert.match(payer,/TG_TABLE_NAME = 'ApprovalInstance'[\s\S]*?"reauthorizationApprovalInstanceId" = OLD\."id"/u);
+ fields("PaymentExecutionPayerAttestation",["reauthorizationApprovalInstanceId"]);
+ const service=fs.readFileSync(path.join(__dirname,"../src/payment/payment-request.service.ts"),"utf8");
+ const start=service.indexOf("private async financingUsageTotals("),end=service.indexOf("\n  private ",start+1);assert.ok(start>=0&&end>start);
+ const lookup=service.slice(start,end);for(const column of ["paymentRequestId","status","amountCents"])assert.ok(lookup.includes(column));
+ fields("ProjectFinancingQuotaUsage",["paymentRequestId","status","amountCents"]);
 });
 
 test("resolves a lost launch ID by exact name and run label, without touching other containers",()=>{
