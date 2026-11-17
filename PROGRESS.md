@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离额度用量标识读取
+
+准确 `8d1e6c0a` 隔离运行审批返回 500/42501，服务端窗口指向 `ProjectFinancingQuotaUsage`；付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-ok6b58kz/run.log) SHA `5e371e2de664af4e2fe68ad554e5d761b4fe868ee67a37606a9a7b518913cbf5`。同模型虚构只读探针确认 Prisma 查询隐式取得 `id`，仅授原三列会被拒；这不证明原错误唯一原因。
+
+隔离 `id` 读取修订 `b8525a2e` 经独审合入本地 `6a0f79e8`，准确补丁 SHA `ad3babd4af3ee62016d054ebe3cbfe801490b800e6191ed4744165d55b86f021`；Node20 定向 9/9、CJS 语法及 diff 检查通过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重复文书资格或推送。
+
 ## 2026-11-17 隔离审批委托标识读取
 
 准确 `6ab153df` 隔离运行审批返回 500/42501，日志指向 `ApprovalDelegation` 表但无 SQL context；同版虚构只读探针确认实际查询包含 `id`。缺少该列不能单独证明是原错误唯一原因；付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-zr94di24/run.log) SHA `8b92d7d5cc27cd9a300acae3f3da61f82e72ce0ca5e021693b16d0d86cad0045`。
