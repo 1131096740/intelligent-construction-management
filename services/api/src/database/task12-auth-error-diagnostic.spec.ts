@@ -34,6 +34,7 @@ class TechnicalAuthController {
 class TechnicalLeaseController {
   @Post(":contractVersionId/edit-lease/heartbeat") heartbeat() { throw thrown ?? native(); }
   @Get(":contractVersionId/workbench") workbench() { throw thrown ?? native(); }
+  @Post(":contractVersionId/preview-generation") queue() { throw thrown ?? native(); }
 }
 @Module({controllers:[TechnicalAuthController,TechnicalLeaseController],providers:[Task12AuthErrorFilter,Task12AuthStageInterceptor,{provide:APP_FILTER,useExisting:Task12AuthErrorFilter},{provide:APP_INTERCEPTOR,useExisting:Task12AuthStageInterceptor}]})
 class TechnicalAuthModule {}
@@ -79,6 +80,19 @@ test("workbench GET diagnostic distinguishes concurrent heartbeat and nonce", as
   expect(detail).toEqual({serverAuthBoundary:"CONTROLLER_MARKER_REACHED",serverErrorKind:"KNOWN_REQUEST_ERROR",serverPrismaCode:"P2010",serverSqlState:"42501"});expect(JSON.stringify(detail)).not.toMatch(/private|11111111|aaaaaaaa/u);
   ticket=armTask12AuthError(filter,server,identity);await Promise.all([send("workbench","GET"),send("workbench","GET")]);expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
  } finally { await app.close(); }
+});
+
+test("preview queue diagnostic binds route, version and nonce without changing the public error", async () => {
+ const app=await NestFactory.create(TechnicalAuthModule,{logger:false});
+ const version="11111111-1111-4111-8111-111111111111",other="22222222-2222-4222-8222-222222222222",nonce="a".repeat(32);
+ try {
+  await app.listen(0,"127.0.0.1");const server=app.getHttpServer() as Server,filter=app.get(Task12AuthErrorFilter),address=server.address();if(!address||typeof address==="string")throw Error("NO_PORT");
+  const send=(id:string,marker=nonce,suffix="preview-generation")=>fetch(`http://127.0.0.1:${address.port}/contract-drafts/${id}/${suffix}`,{method:"POST",headers:{"x-task12-diagnostic":marker}});
+  for(const [id,marker,suffix] of [[other,nonce,"preview-generation"],[version,"b".repeat(32),"preview-generation"],[version,nonce,"edit-lease/heartbeat"]]){const ticket=armTask12AuthError(filter,server,`${version}:${nonce}:queue`);await send(id,marker,suffix);expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();}
+  let ticket=armTask12AuthError(filter,server,`${version}:${nonce}:queue`);const response=await send(version);expect(response.status).toBe(500);expect(await response.json()).toEqual({statusCode:500,message:"Internal server error"});
+  const detail=takeTask12AuthError(filter,server,ticket);expect(detail).toEqual({serverAuthBoundary:"CONTROLLER_MARKER_REACHED",serverErrorKind:"KNOWN_REQUEST_ERROR",serverPrismaCode:"P2010",serverSqlState:"42501"});expect(JSON.stringify(detail)).not.toMatch(/private|11111111|aaaaaaaa/u);
+  ticket=armTask12AuthError(filter,server,`${version}:${nonce}:queue`);await Promise.all([send(version),send(version)]);expect(takeTask12AuthError(filter,server,ticket)).toBeUndefined();
+ }finally{await app.close();}
 });
 
 async function scope(use: (filter: Task12AuthErrorFilter, server: Server, send: (body?: object, route?: string) => Promise<Response>, adapter: HttpAdapterHost) => Promise<void>) {
