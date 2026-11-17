@@ -3,11 +3,12 @@ import { types } from "node:util";
 import { hash } from "bcryptjs";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { Test } from "@nestjs/testing";
-import { Catch, ConflictException, Controller, Post, type ArgumentsHost, type INestApplication } from "@nestjs/common";
+import { Catch, ConflictException, Controller, HttpException, Post, type ArgumentsHost, type INestApplication } from "@nestjs/common";
 import { APP_FILTER, HttpAdapterHost } from "@nestjs/core";
 import { Task16RegistrationErrorFilter, projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { apiJsonReplacer } from "../api-json-replacer";
+import { projectOperatingConstraintMessage, PROJECT_OPERATING_CONSTRAINT_MESSAGES } from "../project/project-operating-constraint";
 import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts } from "../payment/registered-payment-impact-reader";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { PrismaService } from "./prisma.service";
@@ -45,12 +46,13 @@ function signatureFailureDetail(error:unknown):SignatureFailureDetail {
 
 @Catch()
 class SignatureFailureCapture extends Task16RegistrationErrorFilter {
- constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void,private readonly approval?:{path:string;report:(detail:SignatureFailureDetail)=>void}){super(adapter);}
+ constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void,private readonly approval?:{path:string;report:(detail:SignatureFailureDetail)=>void},private readonly workItemsReport?:(detail:SignatureFailureDetail)=>void){super(adapter);}
  override catch(exception:unknown,host:ArgumentsHost){
   try{
    const request=host.switchToHttp().getRequest<{method?:string;originalUrl?:string}>();
    if(request.method==="POST"&&request.originalUrl==="/me/signature/canvas")this.report(signatureFailureDetail(exception));
    else if(request.method==="POST"&&this.approval&&request.originalUrl===this.approval.path)this.approval.report(signatureFailureDetail(exception));
+   else if(request.method==="GET"&&request.originalUrl==="/me/work-items"&&this.workItemsReport&&(!(exception instanceof HttpException)||exception.getStatus()===500)&&!projectOperatingConstraintMessage(exception))this.workItemsReport(signatureFailureDetail(exception));
   }catch{ /* Diagnostic failure must not change the original HTTP response. */ }
   super.catch(exception,host);
  }
@@ -68,6 +70,19 @@ it("captures only a safe signature error and always preserves the original excep
   report.mockClear();filter.catch(error,host("/unrelated"));expect(report).not.toHaveBeenCalled();
   report.mockImplementation(()=>{throw new Error("recording failed");});filter.catch(error,host("/me/signature/canvas"));
   expect(parent).toHaveBeenCalledTimes(3);
+ }finally{parent.mockRestore();}
+});
+
+it("captures only work-items 500 errors without leaking error text",()=>{
+ const report=jest.fn(),parent=jest.spyOn(Task16RegistrationErrorFilter.prototype,"catch").mockImplementation(()=>{});
+ const filter=new SignatureFailureCapture({} as HttpAdapterHost,()=>{},undefined,report);
+ const host=(method:string,url:string)=>({switchToHttp:()=>({getRequest:()=>({method,originalUrl:url})})}) as ArgumentsHost;
+ const error=new Prisma.PrismaClientUnknownRequestError('private data code: "42501", permission denied for table "FileObject"',{clientVersion:"test"});
+ try{filter.catch(error,host("GET","/me/work-items"));expect(report).toHaveBeenCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"42501",signatureFailureClass:"PERMISSION",signatureResource:"TABLE_030"});
+  expect(JSON.stringify(report.mock.calls)).not.toMatch(/private|FileObject/u);report.mockClear();
+  filter.catch(error,host("GET","/me/work-items?x=1"));filter.catch(error,host("POST","/me/work-items"));filter.catch(new ConflictException(),host("GET","/me/work-items"));
+  const mapped=new Prisma.PrismaClientUnknownRequestError(`PostgresError { code: "23514", message: ${JSON.stringify(PROJECT_OPERATING_CONSTRAINT_MESSAGES[0])}, severity:`,{clientVersion:"test"});
+  filter.catch(mapped,host("GET","/me/work-items"));expect(report).not.toHaveBeenCalled();expect(parent).toHaveBeenCalledTimes(5);
  }finally{parent.mockRestore();}
 });
 
@@ -151,7 +166,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const hashes=await Promise.all(passwords.map(value=>hash(value,10)));
    const seeded=await seedSharedPaymentPredecessors(owner,plan,{financeHash:hashes[0],keeperHash:hashes[1],directorHash:hashes[2]},process.env.FILE_STORAGE_ROOT??"");
    const module=await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
-   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)}));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());await app.listen(0,"127.0.0.1");
+   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());await app.listen(0,"127.0.0.1");
    const origin=await app.getUrl();
    const json=async(path:string,method:string,body?:unknown,token?:string)=>{const response=await fetch(origin+path,{method,headers:{...(body!==undefined?{"content-type":"application/json"}:{}),...(token?{authorization:`Bearer ${token}`}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};};
    const login=async(phone:string,password:string)=>{const response=await json("/auth/login","POST",{phone,password});expect(response.status).toBe(201);return response.body.tokens.accessToken as string;};
@@ -169,7 +184,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const actions=await observer.approvalActionLog.findMany({where:{approvalInstanceId:round.id,action:"approve"},select:{actorUserId:true,signatureFileIdSnapshot:true,signatureVersionIdSnapshot:true,signatureSha256Snapshot:true}});
    expect(actions).toEqual([{actorUserId:seeded.director,signatureFileIdSnapshot:signatureReceipt.signatureFileId,signatureVersionIdSnapshot:signatureReceipt.signatureVersionId,signatureSha256Snapshot:signatureHash}]);
    expect(await observer.handwrittenSignatureVersion.findUnique({where:{id:signatureReceipt.signatureVersionId},select:{userId:true,fileId:true,contentSha256:true,source:true}})).toEqual({userId:seeded.director,fileId:signatureReceipt.signatureFileId,contentSha256:signatureHash,source:"canvas"});
-   for(const token of [finance,keeper]){const list=await json("/payment-executions/work-items","GET",undefined,token);expect(list.body.items).toContainEqual(expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"0",remainingAmountCents:"10000"}));const me=await json("/me/work-items","GET",undefined,token);expect(me.body.queues.pending).toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));const notifications=await json("/payment-executions/notifications","GET",undefined,token);expect(notifications.body.items).toContainEqual(expect.objectContaining({businessCode:payment.code,status:"queued"}));}
+   for(const token of [finance,keeper]){const list=await json("/payment-executions/work-items","GET",undefined,token);expect(list.body.items).toContainEqual(expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"0",remainingAmountCents:"10000"}));const me=await json("/me/work-items","GET",undefined,token);expect(me.status).toBe(200);expect(me.body.queues.pending).toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));const notifications=await json("/payment-executions/notifications","GET",undefined,token);expect(notifications.body.items).toContainEqual(expect.objectContaining({businessCode:payment.code,status:"queued"}));}
    await app.get(OperatingSourceReplayService).replaySource({projectId:plan.ids.project,sourceType:"settlement",sourceBusinessId:plan.ids.settlement},plan.ids.actor);
    const open=async(token:string,scopeKey:string)=>{const response=await json("/fund-accounts/openings","POST",{scopeKey,balanceYuan:"100",asOfDate:plan.openingDate,evidenceReference:"虚构期初",reconciliationNote:"虚构项目来源",reason:"隔离测试",idempotencyKey:randomUUID(),sources:[{amountYuan:"100",sourceStatus:"known",sourceName:"虚构项目资金",projectStatus:"project",projectId:plan.ids.project}]},token);expect(response.status).toBe(201);return response.body as {id:string;sources:Array<{id:string}>};};
    const a=await open(finance,`company:${plan.ids.companyA}`),b=await open(finance,`company:${plan.ids.companyB}`),cash=await open(keeper,"public_cash");
@@ -180,7 +195,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const final=await pay(keeper,"public_cash",cash,"4000");
    const accountView=await json("/fund-accounts","GET",undefined,finance);expect(accountView.status).toBe(200);
    for(const [scopeKey,balanceYuan] of [[`company:${plan.ids.companyA}`,"70.0000"],[`company:${plan.ids.companyB}`,"70.0000"],["public_cash","60.0000"]])expect(accountView.body.accounts).toContainEqual(expect.objectContaining({scopeKey,balanceYuan}));
-   for(const token of [finance,keeper]){expect((await json("/payment-executions/work-items","GET",undefined,token)).body.items).not.toContainEqual(expect.objectContaining({paymentId:plan.ids.payment}));expect((await json("/me/work-items","GET",undefined,token)).body.queues.pending).not.toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));}
+   for(const token of [finance,keeper]){expect((await json("/payment-executions/work-items","GET",undefined,token)).body.items).not.toContainEqual(expect.objectContaining({paymentId:plan.ids.payment}));const me=await json("/me/work-items","GET",undefined,token);expect(me.status).toBe(200);expect(me.body.queues.pending).not.toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));}
    const before=await json(`/payment-executions/results/${final.key}`,"GET",undefined,keeper);expect(before.body.execution).toMatchObject({executionId:final.id,voucherPending:true});
    const voucher=new FormData();voucher.append("file",new Blob([png],{type:"image/png"}),"voucher.png");voucher.append("idempotencyKey",randomUUID());
    const uploaded=await fetch(`${origin}/payment-executions/${final.id}/voucher-file-uploads`,{method:"POST",headers:{authorization:`Bearer ${keeper}`},body:voucher});expect(uploaded.status).toBe(201);const file=await uploaded.json();
