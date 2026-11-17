@@ -191,6 +191,7 @@ test('browser mode is explicit and preserves standard selection',()=>{
  const {selectTask398Scenario}=require('./run-task398-shared-standard-local.cjs');
  assert.equal(selectTask398Scenario([]),'src/database/task16-shared-standard.http.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--browser-real']),'src/database/task16-real-browser.pg.spec.ts');
+ assert.equal(selectTask398Scenario(['--browser-completion-real']),'src/database/task16-real-browser-completion.pg.spec.ts');
  assert.throws(()=>selectTask398Scenario(['--browser-real','--other']));
  assert.throws(()=>selectTask398Scenario(['--unknown']));
 });
