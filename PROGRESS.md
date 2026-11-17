@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离审批委托读取
+
+准确 `59f31857` 的隔离运行登录和签名通过，审批返回 500/42501，服务端窗口出现 `ApprovalDelegation`，但请求绑定并非绝对；守卫查询需要的八个读取列缺失。付款未进入，容器已移除。[私有日志](/private/tmp/jg398-standard-run-xk2zbkec/run.log) SHA `28c2a2a8650de22fb975fe6ccbdf729834c8e952378516e51438fdac5255e112`。
+
+隔离委托读取修订 `80c5cf7a` 经独审合入本地 `8548ed43`，准确补丁 SHA `5db5207fe042d74f4c61b213b78d81103a0dd0705d3ca9371968e2a566ad7043`；Node20 定向 9/9、CJS 语法及 diff 检查通过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重跑文书资格或推送。
+
 ## 2026-11-17 隔离采购付款守卫读取
 
 准确 `a5b235d6` 的隔离运行登录和签名通过，审批返回 500/42501，窗口出现 `TABLE_070` 但未精确绑定请求；付款未进入，容器已移除。[私有日志](/private/tmp/jg398-standard-run-jod82pbu/run.log) SHA `358d4ee485f05d5d3e3859d84b2388549c73251b8877b13317be20244a3caf73`。独立源码审查确认 PermissionGuard 需要读取 `SpotProcurementPayment.id/projectId`，这不证明原错误唯一原因。
