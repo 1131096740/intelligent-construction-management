@@ -86,6 +86,9 @@ ROLLBACK;`;
 
 function ownerSql(scope) {
   const { db, target, mode } = scope;
+  const peer=scope.peer;
+  const session = row => `a.pid=${row.pid} AND a.datid=${db.oid}::oid AND a.usesysid=${target.oid}::oid AND a.usename='${RUNTIME}' AND a.backend_type='client backend' AND ${sqlTime('a.backend_start')}='${row.startedAt}' AND pg_catalog.host(a.client_addr)='${row.clientAddress}' AND a.client_port=${row.clientPort} AND a.state='idle' AND a.xact_start IS NULL AND EXISTS(SELECT FROM pg_catalog.pg_stat_ssl s WHERE s.pid=a.pid AND s.ssl)`;
+  const peerGuard=peer ? ` OR (SELECT count(*) FROM pg_catalog.pg_stat_activity a WHERE a.usesysid=${target.oid}::oid AND a.backend_type='client backend')<>2 OR NOT EXISTS(SELECT FROM pg_catalog.pg_stat_activity a WHERE ${session(target)}) OR NOT EXISTS(SELECT FROM pg_catalog.pg_stat_activity a WHERE ${session(peer)})` : '';
   const knownTarget = `a.pid=${target.pid} AND a.datid=${db.oid}::oid AND a.usesysid=${target.oid}::oid
  AND a.usename='${RUNTIME}' AND a.backend_type='client backend' AND ${sqlTime('a.backend_start')}='${target.startedAt}'
  AND pg_catalog.host(a.client_addr)='${target.clientAddress}' AND a.client_port=${target.clientPort}
@@ -100,10 +103,10 @@ SET LOCAL lock_timeout='1s';
 DO $a16_scope$ BEGIN
  IF NOT coalesce((${identity(scope, false)}),false) OR NOT EXISTS(
    SELECT FROM pg_catalog.pg_roles r WHERE r.oid=${target.oid}::oid AND r.rolname='${RUNTIME}'
-     AND r.rolcanlogin AND r.rolconnlimit=1
+     AND r.rolcanlogin AND r.rolconnlimit=${peer ? 2 : 1}
      AND NOT (r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
      AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m WHERE r.oid IN (m.roleid,m.member))
- ) THEN RAISE EXCEPTION '${CODE}_OWNER'; END IF;
+ )${peerGuard} THEN RAISE EXCEPTION '${CODE}_OWNER'; END IF;
 END $a16_scope$;
 LOCK TABLE ${TABLE} IN ACCESS EXCLUSIVE MODE NOWAIT;
 SET LOCAL application_name='${scope.app}';
@@ -171,7 +174,16 @@ function parse(stdout, keys) {
 // SQL and observation checks only. The caller must separately own the
 // actual resource, runtime session, and fault authorization.
 function createNativeA16CancelFault(input) {
-  const scope = snapshot(input);
+  return createFault(snapshot(input));
+}
+function createNativeLedgerA16CancelFault(input) {
+  const {nonce,runId,candidateSha,planSha256,database,runtime,peer}=data(input,['nonce','runId','candidateSha','planSha256','database','runtime','peer']);
+  const scope=snapshot({nonce,runId,candidateSha,planSha256,database,runtime});
+  const other=data(peer,['oid','pid','startedAt','clientAddress','clientPort']);
+  need(other.oid===scope.target.oid&&integer(other.pid,0x7fffffff)&&other.pid!==scope.target.pid&&stamp(other.startedAt)&&other.clientAddress==='127.0.0.1'&&integer(other.clientPort,65535)&&other.clientPort!==scope.target.clientPort&&other.startedAt!==scope.target.startedAt);
+  return createFault({...scope,peer:other});
+}
+function createFault(scope) {
   let ready, stopped = false;
   return Object.freeze({
     ownerSql: ownerSql(scope), readySql: readySql(scope),
@@ -227,4 +239,4 @@ async function runNativeA16Cancellation(fault, sql, check, submit) {
   const [,outcome]=await Promise.all([request,owner.then(out=>fault.parseOutcome(out.stdout,witness))]);check();return outcome;
  }catch(error){await Promise.allSettled([owner,...(request?[request]:[])]);throw error;}
 }
-module.exports = Object.freeze({ createNativeA16CancelFault, runNativeA16Cancellation });
+module.exports = Object.freeze({ createNativeA16CancelFault, createNativeLedgerA16CancelFault, runNativeA16Cancellation });

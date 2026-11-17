@@ -28,3 +28,12 @@ test('successful fault evidence retains source-bound instance and observed sessi
  const p=f.parseOutcome(JSON.stringify({nonce:input.nonce,mode:'cancel-commit',state:'commit-cancelled',owner:{pid:456,startedAt:w.startedAt},runtimePid:321,runtimeStartedAt:input.runtime.startedAt,transactionId:'12',commitStartedAt:'2026-11-17T00:00:02.123456Z'}),w);
  assert.equal(p.databaseOid,input.database.oid);assert.equal(p.systemIdentifier,input.database.systemIdentifier);assert.equal(p.serverPort,55001);assert.equal(p.runtimePid,321);assert.equal(p.ownerPid,456);assert.equal(p.commitStartedAt,'2026-11-17T00:00:02.123456Z');assert.equal(p.planSha256,input.planSha256);
 });
+test('ledger cancellation binds exactly two distinct runtime sessions and signals only the target',()=>{
+ const {createNativeLedgerA16CancelFault}=require('./task16-native-a16-cancel-fault.cjs');
+ const peer={oid:input.runtime.oid,pid:322,startedAt:'2026-11-17T00:00:01.123456Z',clientAddress:'127.0.0.1',clientPort:55003};
+ const fault=createNativeLedgerA16CancelFault({...input,peer});
+ assert.match(fault.ownerSql,/rolconnlimit=2/u);assert.match(fault.ownerSql,/a\.pid=321/u);assert.match(fault.ownerSql,/a\.pid=322/u);assert.match(fault.ownerSql,/count\(\*\).*2/us);
+ assert.equal((fault.ownerSql.match(/pg_cancel_backend\(/gu)||[]).length,1);assert.match(fault.ownerSql,/pg_cancel_backend\(321\)/u);assert.doesNotMatch(fault.ownerSql,/pg_cancel_backend\(322\)/u);
+ for(const bad of [{...peer,pid:321},{...peer,oid:'16387'},{...peer,clientPort:input.runtime.clientPort},{...peer,clientAddress:'10.0.0.1'}])assert.throws(()=>createNativeLedgerA16CancelFault({...input,peer:bad}));
+ assert.match(createNativeA16CancelFault(input).ownerSql,/rolconnlimit=1/u);
+});

@@ -1,4 +1,4 @@
-import { readCashSettlementPrerequisite } from "./registered-payment-public-cash-prerequisite";
+import { readCashSettlementPrerequisite, readCashSettlementPrerequisiteInTransaction } from "./registered-payment-public-cash-prerequisite";
 
 describe("public cash settlement prerequisite (synthetic observer, no PG)", () => {
   const identity = { projectId: "project-1", settlementId: "settlement-1" };
@@ -18,6 +18,17 @@ describe("public cash settlement prerequisite (synthetic observer, no PG)", () =
     await expect(readCashSettlementPrerequisite(f.observer as never, identity)).resolves.toEqual({ settlementId: identity.settlementId, factId: "fact-1", costCents: "4000", payableCents: "4000" });
     expect(f.observer.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "RepeatableRead" });
     expect(f.tx.$executeRawUnsafe).toHaveBeenCalledWith("SET TRANSACTION READ ONLY");
+  });
+  it("validates settlement inside the caller's existing observer transaction", async () => {
+    const f = setup();
+    await expect(readCashSettlementPrerequisiteInTransaction(f.tx as never, identity)).resolves.toEqual({ settlementId: identity.settlementId, factId: "fact-1", costCents: "4000", payableCents: "4000" });
+    expect(f.tx.$executeRawUnsafe).not.toHaveBeenCalled();
+    expect(f.observer.$transaction).not.toHaveBeenCalled();
+  });
+  it("checks the entire settlement source scope for orphan impacts when requested", async () => {
+    const f = setup();
+    await readCashSettlementPrerequisiteInTransaction(f.tx as never, identity, () => undefined, 0n, true);
+    expect(f.tx.operatingImpactEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({where:{projectId:identity.projectId,sourceType:"settlement",sourceBusinessId:identity.settlementId}}));
   });
   it.each(["wrong project", "missing cost", "wrong payable", "duplicate fact", "already paid", "wrong fact source", "extra impact", "wrong protocol"])("rejects %s", async failure => {
     const f = setup();
