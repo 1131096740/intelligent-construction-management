@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { createHash } from "node:crypto";
-import { DOMParser, XMLSerializer, type Document, type Element } from "@xmldom/xmldom";
+import { DOMParser, XMLSerializer, type Document, type Element, type Node as XmlNode } from "@xmldom/xmldom";
 import PizZip from "pizzip";
 import { readLayoutSourcePositions, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
+import { appendSignatureBankFields } from "./contract-signature-bank-fields";
 import { addGenericBankBlanks } from "./generic-bank-blanks";
 import { BUILT_IN_GENERIC_SOURCE_SHA256 } from "./contract-docx-package-metadata";
 import { appendLaborFinalPartyPage } from "./contract-labor-final-party-page";
@@ -504,6 +505,7 @@ export interface ContractBodyEditPlan {
   additions?: Array<{ id: string; afterPositionId: string; text: string }>;
   deletedPositionIds?: string[];
   paragraphOrder?: string[];
+  signatureSupplementReviewDigest?: string;
 }
 
 function xml(xmlText: string): Document {
@@ -746,7 +748,7 @@ export function normalizeContractBodyPlan(value: unknown, source: Buffer, mapped
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new BadRequestException("合同正文保存内容不正确");
   const input = value as Record<string, unknown>;
   if (input.protocolVersion !== 1 || input.layoutTemplateVersionId !== layoutTemplateVersionId || input.sourceSha256 !== model.sourceSha256) throw new ConflictException("正文所用模板已变化，请保留当前内容并刷新后核对");
-  if (Object.keys(input).some(key => !["protocolVersion", "layoutTemplateVersionId", "sourceSha256", "edits", "additions", "deletedPositionIds", "paragraphOrder"].includes(key)) || !Array.isArray(input.edits) || input.edits.length > 3_000) throw new BadRequestException("合同正文编辑内容不正确");
+  if (Object.keys(input).some(key => !["protocolVersion", "layoutTemplateVersionId", "sourceSha256", "edits", "additions", "deletedPositionIds", "paragraphOrder", "signatureSupplementReviewDigest"].includes(key)) || !Array.isArray(input.edits) || input.edits.length > 3_000) throw new BadRequestException("合同正文编辑内容不正确");
   if (input.deletedPositionIds !== undefined && (!Array.isArray(input.deletedPositionIds) || input.deletedPositionIds.length > 3_000)) throw new BadRequestException("删除条款内容不正确");
   const deletedPositionIds = ((input.deletedPositionIds ?? []) as unknown[]).map(id => {
     const position = model.paragraphs.find(paragraph => paragraph.id === id);
@@ -790,8 +792,9 @@ export function normalizeContractBodyPlan(value: unknown, source: Buffer, mapped
     additionIds.add(addition.id);
     return { id: addition.id, afterPositionId: anchor.id, text: addition.text };
   }).sort((left, right) => model.paragraphs.findIndex(paragraph => paragraph.id === left.afterPositionId) - model.paragraphs.findIndex(paragraph => paragraph.id === right.afterPositionId));
+  if (input.signatureSupplementReviewDigest !== undefined && (typeof input.signatureSupplementReviewDigest !== "string" || !/^[a-f0-9]{64}$/u.test(input.signatureSupplementReviewDigest))) throw new BadRequestException("签署补充内容核对信息不正确，请重新核对");
   return { protocolVersion: 1, layoutTemplateVersionId, sourceSha256: model.sourceSha256, edits, ...(additions.length ? { additions } : {}), ...(deletedPositionIds.length ? { deletedPositionIds } : {}),
-    ...(paragraphOrder.join() === defaultOrder.join() ? {} : { paragraphOrder: paragraphOrder as string[] }) };
+    ...(paragraphOrder.join() === defaultOrder.join() ? {} : { paragraphOrder: paragraphOrder as string[] }), ...(input.signatureSupplementReviewDigest ? {signatureSupplementReviewDigest: input.signatureSupplementReviewDigest as string} : {}) };
 }
 
 /** Lossless upgrade of legacy ordering metadata, never of edited tax text.
@@ -829,10 +832,11 @@ export function upgradeReviewedLaborTaxPlan(value: unknown, source: Buffer, mapp
  * They never become user text or exported metadata; original formatting stays in place.
  */
 export const BUILT_IN_PARTY_PLACEMENT_VERSION = "built-in-party-placement-v1";
+export const SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION = "built-in-signature-supplement-v1";
 export const GENERIC_BANK_BLANKS_PLACEMENT_VERSION = "built-in-generic-bank-blanks-v1";
 export const LABOR_PARTY_PLACEMENT_VERSION = "built-in-labor-party-v1";
 export const LABOR_GLYPH_PLACEMENT_VERSION = "built-in-labor-party-glyph-v1";
-export type PartyPlacementVersion = typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION | typeof LABOR_GLYPH_PLACEMENT_VERSION;
+export type PartyPlacementVersion = typeof SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION | typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION | typeof LABOR_GLYPH_PLACEMENT_VERSION;
 export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|"generic"|"labor"|undefined {
   return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":sourceSha256===BUILT_IN_GENERIC_SOURCE_SHA256?"generic":sourceSha256===REVIEWED_LABOR_SOURCE_SHA256?"labor":undefined;
 }
@@ -931,6 +935,39 @@ export function prepareBuiltInRoleParagraph(paragraph:Element,label:string):void
     paragraph.insertBefore(run,properties?properties.nextSibling:paragraph.firstChild);
   }
 }
+function signatureSupplementReview(model:ReturnType<typeof sourceParagraphs>,plan:ContractBodyEditPlan|undefined) {
+  if(!plan)return undefined;
+  const kind=builtInPartyPlacementKind(model.sourceSha256);
+  const ranges=kind==="material"?[[205,211],[212,218]]:kind==="mechanical"?[[187,192],[193,198]]:[];
+  const entries=ranges.flatMap(([start,end],role)=>model.paragraphs.slice(start,end+1).flatMap(item=>{
+    const edit=plan.edits.find(value=>value.positionId===item.id);
+    return edit?[{role:role===0?"party_a" as const:"party_b" as const,id:item.id,text:edit.text}]:[];
+  }));
+  if(!entries.length)return undefined;
+  // Bind the reviewed declaration to mapped content, not ZIP metadata such as timestamps.
+  const mappedParts=Object.keys(model.zip.files).filter(name=>/^word\/(document|header\d*|footer\d*)\.xml$/u.test(name)).sort().map(name=>[name,createHash("sha256").update(model.zip.file(name)!.asNodeBuffer()).digest("hex")]);
+  const digest=createHash("sha256").update(JSON.stringify(["signature-supplement-review-v2",model.sourceSha256,plan.layoutTemplateVersionId,mappedParts,entries])).digest("hex");
+  return {digest,entries,confirmed:plan.signatureSupplementReviewDigest===digest};
+}
+export function assertSignatureSupplementReview(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
+  if(rawPlan===undefined)return;
+  const model=sourceParagraphs(source,mapped),plan=normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
+  const review=signatureSupplementReview(model,plan);
+  if(review&&!review.confirmed)throw new ConflictException("请先核对签署页前的甲乙方补充内容不含银行资料，并保存核对结果；原内容已保留。");
+}
+function signatureSupplementMappingConflict(model:ReturnType<typeof sourceParagraphs>, plan:ContractBodyEditPlan | undefined):boolean {
+  if (!plan) return false;
+  const kind=builtInPartyPlacementKind(model.sourceSha256);
+  const range=kind==="material"?[205,218]:kind==="mechanical"?[187,198]:undefined;
+  if (!range) return false;
+  return model.paragraphs.slice(range[0],range[1]+1).some(item=>plan.edits.some(edit=>edit.positionId===item.id)&&textOf(item.paragraph)!==item.sourceText);
+}
+export function assertSignatureSupplementMapping(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
+  if (rawPlan===undefined) return;
+  const model=sourceParagraphs(source,mapped);
+  const plan=normalizeContractBodyPlan(rawPlan,source,mapped,layoutTemplateVersionId);
+  if(signatureSupplementMappingConflict(model,plan)) throw new ConflictException("签署区已有编辑与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+}
 export function assertBuiltInPartyPlacementPlan(source:Buffer,mapped:Buffer,layoutTemplateVersionId:string,rawPlan:unknown):void {
   const model=sourceParagraphs(source,mapped,undefined,true);
   const kind=builtInPartyPlacementKind(model.sourceSha256);
@@ -983,7 +1020,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const model = sourceParagraphs(source, mapped, binding, Boolean(options.partyDetailsVersion));
   const placement=options.partyDetailsVersion;
   const placementKind=builtInPartyPlacementKind(model.sourceSha256);
-  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==GENERIC_BANK_BLANKS_PLACEMENT_VERSION||placementKind!=="generic")&&((placement!==LABOR_PARTY_PLACEMENT_VERSION&&placement!==LABOR_GLYPH_PLACEMENT_VERSION)||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION||!["mechanical","material"].includes(placementKind))&&(placement!==GENERIC_BANK_BLANKS_PLACEMENT_VERSION||placementKind!=="generic")&&((placement!==LABOR_PARTY_PLACEMENT_VERSION&&placement!==LABOR_GLYPH_PLACEMENT_VERSION)||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
   const roleIndexes=placementKind==="generic"?[13,14,53,58]:placementKind==="labor"?[27,28]:[28,29];
   const roleIds=new Set(placement?roleIndexes.map(index=>model.paragraphs[index].id):[]);
   const removedPartyIds=new Set(placement&&placementKind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[]);
@@ -1008,12 +1045,15 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   }
   const plan = rawPlan === undefined ? undefined : normalizeContractBodyPlan(rawPlan, source, mapped, layoutTemplateVersionId, binding);
   let partyDetailsConflict=false;
-  const partyDetailsMappingConflict=Boolean(placement&&(hasBillingMappingConflict(model)||options.partyDetailsExternalMappingConflict));
+  const supplementReview=placement===SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION?signatureSupplementReview(model,plan):undefined;
+  const signatureMappingConflict=placement===SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION&&signatureSupplementMappingConflict(model,plan);
+  const partyDetailsMappingConflict=Boolean(placement&&(hasBillingMappingConflict(model)||options.partyDetailsExternalMappingConflict||signatureMappingConflict));
   let partyDetailsRecovery: {roleIds:string[];groups:string[][]}|undefined;
   if(placement){
     const protectedIds=new Set([...roleIds,...removedPartyIds,...clearedPartyIds,...protectedBankIds]);
     partyDetailsConflict=Boolean(plan?.edits.some(edit=>protectedIds.has(edit.positionId))||plan?.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan?.deletedPositionIds?.some(id=>roleIds.has(id)));
-    if(partyDetailsMappingConflict&&!options.partyDetailsConflictPreview) throw new ConflictException(placementKind==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+    if(partyDetailsMappingConflict&&!options.partyDetailsConflictPreview) throw new ConflictException(signatureMappingConflict?"签署区已有编辑与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":placementKind==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。");
+    if(supplementReview&&!supplementReview.confirmed&&!options.partyDetailsConflictPreview)throw new ConflictException("请先核对签署页前的甲乙方补充内容不含银行资料，并保存核对结果；原内容已保留。");
     if(partyDetailsConflict&&!options.partyDetailsConflictPreview) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
     if(partyDetailsConflict||partyDetailsMappingConflict){
       const recoveryIds=[...roleIds].filter(id=>plan?.edits.some(edit=>edit.positionId===id)||plan?.deletedPositionIds?.includes(id));
@@ -1126,6 +1166,15 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const stylesPart = zip.file("word/styles.xml");
   const styles = stylesPart ? xml(stylesPart.asText()) : undefined;
   const ids = new WeakMap<Element, string>();
+  const signatureSupplement = placement === SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION && !partyDetailsConflict && !partyDetailsMappingConflict;
+  const signatureRanges = placementKind === "material" ? [[205,211],[212,218]] : [[187,192],[193,198]];
+  const signatureRoles = new Map<string,number>();
+  if (signatureSupplement) for (const [role,[start,end]] of signatureRanges.entries()) for (let index=start;index<=end;index++) {
+    const item=model.paragraphs[index]; if (!item) throw new BadRequestException("合同签署区位置无法核对，请联系管理员处理");
+    signatureRoles.set(item.id,role);
+  }
+  const supplements: Element[][] = [[],[]];
+  const signatureOriginals: Array<{id:string;paragraph:Element}> = [];
   const occurrences = new Map<string, number>();
   const controls = Array.from(document.getElementsByTagNameNS(W, "sdt")).filter(control => (control.getElementsByTagNameNS(W, "tag").item(0)?.getAttributeNS(W, "val") ?? "").startsWith(MARKER));
   let additionNumber = 0;
@@ -1138,12 +1187,19 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     if (removedPartyIds.has(id)) { control.parentNode!.removeChild(control); return []; }
     if (clearedPartyIds.has(id)) replaceParagraphText(paragraph, "", document);
     const edit = plan?.edits.find(edit => edit.positionId === id);
-    if (edit) replaceParagraphText(paragraph, edit.text, document);
+    const supplementRole = signatureRoles.get(id);
+    if (supplementRole !== undefined) signatureOriginals.push({id,paragraph});
+    let editableParagraph = paragraph;
+    if (edit && supplementRole !== undefined) {
+      editableParagraph = paragraph.cloneNode(true) as Element;
+      replaceParagraphText(editableParagraph, edit.text, document);
+      supplements[supplementRole].push(editableParagraph);
+    } else if (edit) replaceParagraphText(paragraph, edit.text, document);
     const occurrence = occurrences.get(id) ?? 0;
     occurrences.set(id, occurrence + 1);
     const renderedId = occurrence ? `${id}:${occurrence}` : id;
-    ids.set(paragraph, renderedId);
-    const block = { id: renderedId, kind: "paragraph" as const, text: textOf(paragraph), editable: item.editable, format: paragraphFormat(paragraph, styles), blankFields: blankFields(textOf(paragraph)) };
+    ids.set(editableParagraph, renderedId);
+    const block = { id: renderedId, kind: "paragraph" as const, text: textOf(editableParagraph), editable: item.editable, format: paragraphFormat(editableParagraph, styles), blankFields: blankFields(textOf(editableParagraph)) };
     control.parentNode!.replaceChild(paragraph, control);
     const addedBlocks: ContractBodyParagraph[] = [];
     let cursor = paragraph;
@@ -1158,6 +1214,26 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     }
     return [block, ...addedBlocks];
   });
+  if (signatureSupplement) {
+    const signatureBody = document.getElementsByTagNameNS(W, "body").item(0);
+    const originalInTable=(item:{id:string;paragraph:Element})=>{
+      let node: XmlNode | null=item.paragraph;
+      while (node && node.parentNode !== signatureBody) node=node.parentNode;
+      return node?.nodeType===1 && (node as Element).namespaceURI===W && (node as Element).localName==="tbl";
+    };
+    const anchor = signatureOriginals.find(item=>plan?.edits.some(edit=>edit.positionId===item.id)&&originalInTable(item)) ?? signatureOriginals.find(originalInTable);
+    let table: XmlNode | null = anchor?.paragraph ?? null;
+    while (table && table.parentNode !== signatureBody) table=table.parentNode;
+    if (!signatureBody || !table || table.nodeType !== 1 || (table as Element).namespaceURI !== W || (table as Element).localName !== "tbl") throw new BadRequestException("合同签署区位置无法核对，请联系管理员处理");
+    for (const [role,items] of supplements.entries()) if (items.length) {
+      const heading=document.createElementNS(W,"w:p");replaceParagraphText(heading,role===0?"甲方补充信息":"乙方补充信息",document);
+      signatureBody.insertBefore(heading,table);
+      for (const paragraph of items) signatureBody.insertBefore(paragraph,table);
+    }
+    appendSignatureBankFields(document,table as Element,values);
+    const pageBreak=document.createElementNS(W,"w:p"),run=document.createElementNS(W,"w:r"),br=document.createElementNS(W,"w:br");
+    br.setAttributeNS(W,"w:type","page");run.appendChild(br);pageBreak.appendChild(run);signatureBody.insertBefore(pageBreak,table);
+  }
   if(placement===GENERIC_BANK_BLANKS_PLACEMENT_VERSION&&!partyDetailsConflict&&!partyDetailsMappingConflict) {
     try { addGenericBankBlanks(document); }
     catch(error) {
@@ -1216,7 +1292,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   zip.file("word/document.xml", new XMLSerializer().serializeToString(document));
   const renderedDocx = zip.generate({ type: "nodebuffer" });
   const docx = options.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION || options.typographyVersion === REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION ? completeContractPageNumberFields(renderedDocx) : renderedDocx;
-  return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups:paragraphGroups.map(group=>group.filter(id=>!removedPartyIds.has(id))).filter(group=>group.length>0), ...(lineBoxScope ? { lineBoxScope } : {}), ...(partyDetailsConflict?{partyDetailsConflict:true}:{}), ...(partyDetailsMappingConflict?{partyDetailsMappingConflict:true}:{}), ...(partyDetailsRecovery?{partyDetailsRecovery}:{}) };
+  return { docx, sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups:paragraphGroups.map(group=>group.filter(id=>!removedPartyIds.has(id))).filter(group=>group.length>0), ...(lineBoxScope ? { lineBoxScope } : {}), ...(partyDetailsConflict?{partyDetailsConflict:true}:{}), ...(partyDetailsMappingConflict?{partyDetailsMappingConflict:true}:{}), ...(partyDetailsRecovery?{partyDetailsRecovery}:{}), ...(supplementReview?{signatureSupplementReview:supplementReview}:{}) };
 }
 
 /** New v2 final Word only: retain logical margins and add equivalent aliases.

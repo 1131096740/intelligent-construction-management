@@ -57,6 +57,23 @@
           {{ message }}
         </li>
       </ul>
+      <template v-if="body?.signatureSupplementReview && !body.signatureSupplementReview.confirmed">
+        <p>请逐项核对以下签署页前的补充内容。银行信息应填写在主体银行资料中，不能放在补充内容里。</p>
+        <div
+          v-for="entry in body.signatureSupplementReview.entries"
+          :key="entry.id"
+        >
+          <strong>{{ entry.role === "party_a" ? "甲方补充信息" : "乙方补充信息" }}</strong>
+          <pre class="signature-review-text">{{ entry.text }}</pre>
+        </div>
+        <t-button
+          :disabled="disabled || loading || saving"
+          variant="outline"
+          @click="confirmSignatureSupplementReview"
+        >
+          已核对，补充内容不含银行资料
+        </t-button>
+      </template>
       <template v-if="body?.partyDetailsRecovery">
         <p>恢复将清除主体称谓行的旧编辑；请先复制需要保留的内容。其他正文编辑和排序保留。</p>
         <t-button :disabled="disabled || loading || saving" variant="outline" @click="restorePartyRolePositions">恢复主体称谓</t-button>
@@ -165,6 +182,7 @@ import { fetchContractDraftBody, type ContractBodyDeleteSavedAdditionContext, ty
 import { formatUnknownApiError } from "../../../api/error-message";
 import ContractBodyFlow from "./ContractBodyFlow.vue";
 import ContractBodyPaperPreview from "./ContractBodyPaperPreview.vue";
+import { confirmSignatureSupplementPlan } from "./contract-signature-supplement-review";
 import { restorePartyRoles } from "./contract-party-recovery";
 
 type BodyBlankReviewContext = {
@@ -317,6 +335,18 @@ function currentPlan(): ContractBodyEditPlan | null {
   const plan = value as ContractBodyEditPlan;
   return plan.protocolVersion === 1 && plan.layoutTemplateVersionId === body.value.layoutTemplateVersionId &&
     plan.sourceSha256 === body.value.sourceSha256 && Array.isArray(plan.edits) ? plan : null;
+}
+
+function confirmSignatureSupplementReview() {
+  const current=body.value,plan=currentPlan(),review=current?.signatureSupplementReview;
+  if(!current||!plan||!review||props.disabled||loading.value||props.saving||current.contractVersionId!==props.contractVersionId||
+    current.draftRevision!==props.draftRevision||current.layoutTemplateVersionId!==props.layoutTemplateVersionId) {
+    additionNotice.value="补充内容已变化，请保存并重新读取后再核对。";return;
+  }
+  const confirmed=confirmSignatureSupplementPlan(plan,review);
+  if(!confirmed){additionNotice.value="补充内容已变化，请保存并重新读取后再核对。";return;}
+  emit("update",confirmed);
+  additionNotice.value="已核对补充内容，请保存后再生成合同；修改补充内容后需重新核对。";
 }
 
 function restorePartyRolePositions() {
@@ -554,6 +584,7 @@ onBeforeUnmount(() => { requestId++; });
 </script>
 
 <style scoped>
+.signature-review-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .body-editor { min-width: 0; border: 1px solid var(--jg-border); border-radius: var(--jg-radius-sm); background: var(--jg-bg-panel); }
 .body-editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--jg-space-md); padding: var(--jg-space-lg); border-bottom: 1px solid var(--jg-border); }
 .body-editor-toolbar h2 { margin: 0 0 var(--jg-space-sm); font-size: var(--jg-font-section-title); color: var(--jg-text-strong); }
