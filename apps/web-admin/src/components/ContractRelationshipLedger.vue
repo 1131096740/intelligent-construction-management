@@ -33,6 +33,7 @@ const page = ref(1);
 const relationship = ref<ContractRelationship | "">("");
 const projects = ref<Array<{ label: string; value: string }>>([]);
 const data = ref<ContractRelationshipLedger | null>(null);
+const financialBalances = ref<{ refresh: () => Promise<void> } | null>(null);
 const busy = ref(false);
 const error = ref("");
 const showHandling = ref(false);
@@ -68,8 +69,14 @@ async function load() {
     if (alive && generation === request) data.value = result;
   } catch (cause) {
     if (alive && generation === request) error.value = formatUnknownApiError(cause, "分类台账读取失败，请重试");
-  } finally { if (alive && generation === request) busy.value = false; }
+  } finally {
+    if (alive && generation === request) {
+      busy.value = false;
+      await financialBalances.value?.refresh();
+    }
+  }
 }
+defineExpose({ refresh: load });
 async function download() {
   exporting.value = true;
   try {
@@ -164,7 +171,7 @@ onBeforeUnmount(() => { alive = false; generation += 1; });
     />
     <ContractFinancialBalances
       v-if="canReadReceipts"
-      :key="data?.readAt"
+      ref="financialBalances"
       :project-id="selectedProject"
       :company-entity-id="selectedCompany"
       :as-of="asOf"

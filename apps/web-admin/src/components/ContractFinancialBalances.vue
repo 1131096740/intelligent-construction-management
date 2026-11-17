@@ -18,6 +18,7 @@ async function load() {
  catch(cause) { if(request === generation) error.value = formatUnknownApiError(cause,"财务余额读取失败，请重试"); }
  finally { if(request === generation) busy.value = false; }
 }
+defineExpose({ refresh: load });
 watch(() => [props.projectId,props.companyEntityId,props.asOf],load,{immediate:true});
 onBeforeUnmount(() => { generation++; });
 async function exportTransfers(){try{await exportCompanyTransfers({projectsOnly:"true",...props.projectId?{projectId:props.projectId}:{},...props.companyEntityId?{companyId:props.companyEntityId}:{},...props.asOf?{asOf:props.asOf}:{}});}catch(e){error.value=formatUnknownApiError(e,"互转余额导出失败");}}
