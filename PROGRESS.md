@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离工作台计数读取
+
+准确 `e2cf9869` 的 queue-only 运行在工作台 `settlement.count` 遇 42501；旧轮因果未知，不能证明该列是唯一根因。私有异常原文已清理；[日志](/private/tmp/jg-queue-e2cf-run-1117/run.log) SHA `de2782b536d825ad526dee18ae6c2b6e66309ec0e1249c8dafe0e3fa2efb7d0c`，[独立清理](/private/tmp/jg-queue-e2cf-run-1117/cleanup-independent.json) SHA `57b83a3aba6d667a01f9f528398e3e6aa6bf9286288cd31a795a7c91309e7c5e`。
+
+测试角色计数标识读取修订 `8c3bd26a` 经独审合入本地 `cf1d81db`，准确补丁 SHA `31e5a557349c2426f5b786d94815db45b916b0ce3fb5fb71e360c27532d44c28`；Node20 两组模型 60/60、CJS 语法及 diff 通过。该测试角色使用共享 profile，新增读取并非生产授权；新候选尚未真实运行，不代表合同链或 #394 验收。本次未操作资源或推送。
+
 ## 2026-11-17 付款来源证明窄读取
 
 准确 `d745d861` 虚构经营账并发运行进入业务，在竞争及观察阶段遇 42501 后停止，业务结果 UNKNOWN；运行器自报 cleanup 完成，[独立清理](/private/tmp/jg-ledger-d745-independent-cleanup.json) SHA `76ee7d4e1848304a515f149700483eaed2753778441eef3f82e102bb501d92e8` 记录 PG 进程、监听及 pidfile 缺席。[原回执](/private/tmp/jg-ledger-d745-run-BEVmltkt/receipt.json) SHA `c2d15f5c4e2fc3893205c1e0918164ca54be39936e041b0bdf24f1e49b496939`；不得据失败重放。
