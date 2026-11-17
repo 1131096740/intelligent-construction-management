@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 机械资格与 CON-18 结果
+
+准确 `fa23989db447e46d618d1c7239523b670f18c9e0` 的机械机器资格与物理审阅通过；[机器回执](/private/tmp/jg-mechqual-fa239-iUiWG8/run/MACHINE-RECEIPT.json) SHA `8b304a2ed6290b1f6a0e5f893b222416133c06ffe71824f3227c1bd138f0e047`，[物理审阅](/private/tmp/jg-mechfa239-physical-review-ze1wzle1/physical-review.json) SHA `db245eb6d75d8d11117875051240e7091534e01484a3e5e167a2a414677a05a4`。资格登记提交 `072cc394dc98e0e9c5a209019ed7aae1dd0e578f`，登记及 loader 检查通过；此结论限于对应版本和固定样张。
+
+[CON-18 回执](/private/tmp/jg-native-contract-c18fa-U2uYLh/receipt.json) SHA `f3031a6479b0aeff26ca8d308776c32f554a1e805312370c6338990ec5019c55` 显示文书 PUBLISH FAILED，业务结果 UNKNOWN；权限拒绝日志的候选 PID 未严格绑定，不能认定为根因。临时私钥已清除，受控数据保留。合同链尚未通过，不能认定 #394 或 #382 完成；本次未推送或碰生产。
+
 ## 2026-11-17 机械空白签署页修订
 
 准确 `8a1bd501` 的机器资格通过，但物理审阅发现 Office current 第 14 页为空白，结论 NEEDS_WORK；[物理审阅](/private/tmp/jg-mech8a1-needs-work-xtk9p44f/physical-review-needs-work.json) SHA `5f4247a5b59e93ac03c9287fafba7dd96ebb0095084c682e8e1d84a3f837f710`。旧三份 PDF 的逐页审阅可按对应内容复用，不能将未通过的该份视为通过。
