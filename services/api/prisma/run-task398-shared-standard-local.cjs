@@ -12,7 +12,11 @@ const {CI_DYNAMIC_MIGRATION_LABEL,createCiDynamicMigrationFixture}=require("./lo
 const {renderTask398FileGuardGrant}=require("./contract-bank-runtime-fixture.cjs");
 const {CASH_WRITER_FUNCTIONS}=require("./task16-current261-cash-profile.cjs");
 const {referenceGuardBody,versionGuardBody}=require("./task16-registered-access-check.cjs");
-const root=path.resolve(__dirname,"../../.."),db="jiangkong_payment_execution_concurrency",runId=randomUUID(),short=runId.replaceAll("-",""),name=`jg398-shared-${short}`;
+function containerName(id){
+ if(typeof id!=="string"||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(id))throw new Error("TASK398_RUN_ID");
+ return `jiangkong-task398-shared-${id.replaceAll("-","")}`;
+}
+const root=path.resolve(__dirname,"../../.."),db="jiangkong_payment_execution_concurrency",runId=randomUUID(),short=runId.replaceAll("-",""),name=containerName(runId);
 const password=randomUUID(),secret=randomBytes(32).toString("hex");
 let containerId,endpoint,storage,launchAttempted=false;
 function command(bin,args,{env=process.env,input,quiet=false,timeout=180000}={}){
@@ -104,4 +108,4 @@ if(require.main===module)run().then(()=>{businessPassed=true;},error=>{console.e
  if(storage&&containerClean)try{rmSync(storage,{recursive:true,force:true});}catch{console.error("TASK398_STORAGE_CLEANUP_FAILED");process.exitCode=1;}
  if(businessPassed&&!process.exitCode)console.log(`TASK398_STANDARD_PASS candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
 });
-module.exports={runtimePlan,columnGrants,cleanupOwnedContainer};
+module.exports={runtimePlan,columnGrants,cleanupOwnedContainer,containerName};

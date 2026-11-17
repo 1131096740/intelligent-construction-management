@@ -1,7 +1,16 @@
 "use strict";
 const {test}=require("node:test");
 const assert=require("node:assert/strict");
-const {runtimePlan,columnGrants,cleanupOwnedContainer}=require("./run-task398-shared-standard-local.cjs");
+const {runtimePlan,columnGrants,cleanupOwnedContainer,containerName}=require("./run-task398-shared-standard-local.cjs");
+const {createCiDynamicMigrationFixture}=require("./local-staged-ci-dynamic.cjs");
+
+test("names the uniquely labelled container within the existing staged migration policy",()=>{
+ const runId="11111111-2222-4333-8444-555555555555",name=containerName(runId);
+ assert.equal(name,"jiangkong-task398-shared-11111111222243338444555555555555");
+ assert.match(name,/^jiangkong-[a-z0-9-]+$/u);
+ assert.doesNotThrow(()=>createCiDynamicMigrationFixture({ciFixture:"DYNAMIC_PAYMENT_EXECUTION_V1",container:{id:"a".repeat(64),name,runId},databaseNames:["jiangkong_payment_execution_concurrency"],temporaryRoot:"/private/tmp/task398-synthetic",dockerCommand:()=>{},deploy:()=>{}}));
+ assert.throws(()=>containerName("not-a-run-id"),/TASK398_RUN_ID/u);
+});
 
 test("the isolated shared role composes existing cash and voucher plans without granting direct ledger writes",()=>{
  const plan=runtimePlan(),row=name=>plan.runtime.tables.find(item=>item.table===name);
