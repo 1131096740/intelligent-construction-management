@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 经营账取消隔离候选
+
+经营账取消 v2 候选 `129c48d1` 经独审合入本地 `e7ae5f56`，封存补丁 SHA `942ca8ee7985a631a4bd3ff029c465c55633e6062042116a6e8f5a2b86aa02bd`，逐文件补丁字节一致；付款 fixture/现金前置 166/166、Node20 故障及旧用途模型 100/100、API build/typecheck/lint 通过。
+
+候选使用独立虚构用途和受限两会话故障，尚未真实 PG 验证，模型不保证真实锁及取消时序，不能视为 #398 验收。原 b047 仍 UNKNOWN；本次未操作资源或推送。
+
 ## 2026-11-17 草稿保存事务时限修订
 
 准确 `159bcfc7` 的虚构隔离运行捕获 P2028 明确报告 5 秒事务期限及 5005 毫秒，原具体耗时分布未知；私密异常原文已清除。[日志](/private/tmp/jg-queue-159bc-run-1117/run.log) SHA `bc9097205dac67a5b2d727dd565cc1e5fe6c49fefbb433586fb9b8df07b24891`，[独立清理](/private/tmp/jg-queue-159bc-run-1117/cleanup-independent.json) SHA `65bfc41d2a48bff9e3cd0ff699452b0706b3b98c5104421087e63f2e11617682`。
