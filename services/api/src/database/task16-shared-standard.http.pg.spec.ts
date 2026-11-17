@@ -18,6 +18,13 @@ import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture"
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const approvalPgLog:{capture:(env:NodeJS.ProcessEnv)=>string|null;finish:(before:string|null,after:string|null,env:NodeJS.ProcessEnv)=>string}=require("../../prisma/task398-approval-postgres-error.cjs");
+async function observedMeRequest<T>(request:()=>Promise<T>,index:number,env:NodeJS.ProcessEnv=process.env):Promise<T>{
+ const logEnv={...env,TASK398_LOG_FILE:env.TASK398_LOG_FILE?`${env.TASK398_LOG_FILE}.me-${index}`:undefined};
+ const before=approvalPgLog.capture(logEnv);
+ try{return await request();}
+ finally{const result=approvalPgLog.finish(before,approvalPgLog.capture(logEnv),logEnv);console.error(`TASK398_ME_PG_OBJECT ${result}`);}
+}
+
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
@@ -71,6 +78,14 @@ it("captures only a safe signature error and always preserves the original excep
   report.mockImplementation(()=>{throw new Error("recording failed");});filter.catch(error,host("/me/signature/canvas"));
   expect(parent).toHaveBeenCalledTimes(3);
  }finally{parent.mockRestore();}
+});
+
+it("keeps each work-item log window distinct and preserves request outcomes",async()=>{
+ const capture=jest.spyOn(approvalPgLog,"capture").mockReturnValue("before\n"),finish=jest.spyOn(approvalPgLog,"finish").mockReturnValue("UNKNOWN"),log=jest.spyOn(console,"error").mockImplementation(()=>{});
+ try{const env={TASK398_LOG_FILE:"/private/synthetic"};expect(await observedMeRequest(async()=>({status:200}),1,env)).toEqual({status:200});
+  await expect(observedMeRequest(async()=>{throw new Error("synthetic");},2,env)).rejects.toThrow("synthetic");
+  expect(finish.mock.calls.map(call=>call[2].TASK398_LOG_FILE)).toEqual(["/private/synthetic.me-1","/private/synthetic.me-2"]);
+ }finally{capture.mockRestore();finish.mockRestore();log.mockRestore();}
 });
 
 it("captures only work-items 500 errors without leaking error text",()=>{
@@ -187,7 +202,8 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const actions=await observer.approvalActionLog.findMany({where:{approvalInstanceId:round.id,action:"approve"},select:{actorUserId:true,signatureFileIdSnapshot:true,signatureVersionIdSnapshot:true,signatureSha256Snapshot:true}});
    expect(actions).toEqual([{actorUserId:seeded.director,signatureFileIdSnapshot:signatureReceipt.signatureFileId,signatureVersionIdSnapshot:signatureReceipt.signatureVersionId,signatureSha256Snapshot:signatureHash}]);
    expect(await observer.handwrittenSignatureVersion.findUnique({where:{id:signatureReceipt.signatureVersionId},select:{userId:true,fileId:true,contentSha256:true,source:true}})).toEqual({userId:seeded.director,fileId:signatureReceipt.signatureFileId,contentSha256:signatureHash,source:"canvas"});
-   for(const token of [finance,keeper]){const list=await json("/payment-executions/work-items","GET",undefined,token);expect(list.body.items).toContainEqual(expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"0",remainingAmountCents:"10000"}));const me=await json("/me/work-items","GET",undefined,token);expect(me.status).toBe(200);expect(me.body.queues.pending).toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));const notifications=await json("/payment-executions/notifications","GET",undefined,token);expect(notifications.body.items).toContainEqual(expect.objectContaining({businessCode:payment.code,status:"queued"}));}
+   let meWindowIndex=0;
+   for(const token of [finance,keeper]){const list=await json("/payment-executions/work-items","GET",undefined,token);expect(list.body.items).toContainEqual(expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"0",remainingAmountCents:"10000"}));const me=await observedMeRequest(()=>json("/me/work-items","GET",undefined,token),++meWindowIndex);expect(me.status).toBe(200);expect(me.body.queues.pending).toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));const notifications=await json("/payment-executions/notifications","GET",undefined,token);expect(notifications.body.items).toContainEqual(expect.objectContaining({businessCode:payment.code,status:"queued"}));}
    await app.get(OperatingSourceReplayService).replaySource({projectId:plan.ids.project,sourceType:"settlement",sourceBusinessId:plan.ids.settlement},plan.ids.actor);
    const open=async(token:string,scopeKey:string)=>{const response=await json("/fund-accounts/openings","POST",{scopeKey,balanceYuan:"100",asOfDate:plan.openingDate,evidenceReference:"虚构期初",reconciliationNote:"虚构项目来源",reason:"隔离测试",idempotencyKey:randomUUID(),sources:[{amountYuan:"100",sourceStatus:"known",sourceName:"虚构项目资金",projectStatus:"project",projectId:plan.ids.project}]},token);expect(response.status).toBe(201);return response.body as {id:string;sources:Array<{id:string}>};};
    const a=await open(finance,`company:${plan.ids.companyA}`),b=await open(finance,`company:${plan.ids.companyB}`),cash=await open(keeper,"public_cash");
@@ -198,7 +214,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const final=await pay(keeper,"public_cash",cash,"4000");
    const accountView=await json("/fund-accounts","GET",undefined,finance);expect(accountView.status).toBe(200);
    for(const [scopeKey,balanceYuan] of [[`company:${plan.ids.companyA}`,"70.0000"],[`company:${plan.ids.companyB}`,"70.0000"],["public_cash","60.0000"]])expect(accountView.body.accounts).toContainEqual(expect.objectContaining({scopeKey,balanceYuan}));
-   for(const token of [finance,keeper]){expect((await json("/payment-executions/work-items","GET",undefined,token)).body.items).not.toContainEqual(expect.objectContaining({paymentId:plan.ids.payment}));const me=await json("/me/work-items","GET",undefined,token);expect(me.status).toBe(200);expect(me.body.queues.pending).not.toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));}
+   for(const token of [finance,keeper]){expect((await json("/payment-executions/work-items","GET",undefined,token)).body.items).not.toContainEqual(expect.objectContaining({paymentId:plan.ids.payment}));const me=await observedMeRequest(()=>json("/me/work-items","GET",undefined,token),++meWindowIndex);expect(me.status).toBe(200);expect(me.body.queues.pending).not.toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));}
    const before=await json(`/payment-executions/results/${final.key}`,"GET",undefined,keeper);expect(before.body.execution).toMatchObject({executionId:final.id,voucherPending:true});
    const voucher=new FormData();voucher.append("file",new Blob([png],{type:"image/png"}),"voucher.png");voucher.append("idempotencyKey",randomUUID());
    const uploaded=await fetch(`${origin}/payment-executions/${final.id}/voucher-file-uploads`,{method:"POST",headers:{authorization:`Bearer ${keeper}`},body:voucher});expect(uploaded.status).toBe(201);const file=await uploaded.json();
