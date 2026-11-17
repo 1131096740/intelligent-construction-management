@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 付款页面刷新与原轮结果
+
+准确 `56f563f7` 虚构真实隔离运行中，两岗位 30 元付款链通过，但截图显示子区 404、汇总仍为旧的 0，页面整体未通过；使用 token 注入，Chromium PID/端口未封存。[原回执](/private/tmp/jg398-browser-evidence-MZ67G9/receipt.json) SHA `cb01e939c3bc278c0350c54dc454de60597ac0800fef8d035a9f9cf20786e23b`，[日志](/private/tmp/jg-browser-56f-run.log) SHA `10bc075d6581d66d3829a8db8086899dc42319e88955c30464b39fb7a12067c1`，[独立清理](/private/tmp/jg-browser-56f-independent-cleanup.json) SHA `33774e22f94a4424498e58398ffbf3420598eecadf885b0c679b39a3f0427b67`。
+
+刷新修订 v2 `5a21ab0e` 经独审合入本地 `86e2b890`，准确补丁 SHA `8893fdc85b0a312c441af588420e0768d2561a8239e332803911dbd61815d25f`。虚构内存服务 Chromium 旧响应竞争用例 1/1、Web 测试 70/70、API 定向 2/2、API/Web typecheck/lint 与 check:ui 通过（Web lint 1110 条警告、无错误）；首次浏览器启动因测试输出目录覆盖虚构 fixture 失败，分离目录后通过、服务已停止。新候选真实 PG/浏览器链尚未复验，不代表 #398 整体验收；本次未操作生产或推送。
+
 ## 2026-11-17 真实页面付款隔离候选
 
 虚构真实页面付款 v2 候选 `2a370406` 经独审合入本地 `699abc8e`，封存补丁 SHA `993fd21aa8015f57f8860664b12cf2f823358d09a55336f09560f14da838c21e`，逐文件补丁字节一致；Node20 runner 15/15、页面装配模型 8/8、API typecheck/lint 通过，真实浏览器/PG 测试按约跳过。
