@@ -1,5 +1,13 @@
 # 建工智管当前状态
 
+## 2026-11-17 A16 提交断连虚构隔离运行
+
+准确候选 `b88b94a6b59ba8e1778d1a19ca0968713de650b6` 的单次虚构 COMMIT_DISCONNECT 运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE` 与 `DISCONNECTED_ROLLBACK_CONFIRMED`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-d-b88-6aaOxI/receipt.json) SHA `a6c2942e4b69999eaf40b325e40052a6f83a4251c3b72ed857b760ec97b7fc79`；[核账证据](/private/tmp/jg-a16-d-b88-6aaOxI/accounting-evidence.json) SHA `a38eb9665e4741eeba5123ad00e32f0316c5bfb326f980070e51864332589f60`。
+
+独审确认 lockout NOLOGIN 和唯一原会话、fault XID 与时间，三次 survivor 观察原会话消失且 runtime 零连接、owner/observer 身份稳定；RR 核账前后 A/B 各 100 元、已付为零，付款、资金、审计和项目记录为零，owner 前后相同。逐刻锁和信号、HTTP 次数及原键 SQL 依准确源码成功路径推论，非独立原始抓包；HMAC 不留密钥，不能事后独立重算。
+
+运行器自报 cleanup 完成；[独立检查](/private/tmp/jg-a16-d-b88-receipt-JRlRqe/cleanup-independent.json) SHA `05835fc51f6f08506e5236adde5f33e4b858f361459e354063c85d7de2eea740` 确认 PG/runner 进程、PG 监听及 pidfile 缺席，应用端口未独核。本次仅虚构 null-scope 服务端终止单会话，不覆盖网络分区、PG 进程崩溃或整票验收；b047 仍 UNKNOWN。
+
 ## 2026-11-17 A16 断连隔离候选
 
 新虚构 terminate-only 断连候选 `6ae3138d` 经独审合入本地 `c72f7593`，准确补丁 SHA `fc8ba7663a2056684b6a18f11f95b8905ecea7160fb2a145109f4de9174d1664`。付款 fixture 145/145、Node20 断连及旧场景回归 110/110，API build/typecheck/lint 通过。首次联合测试使用链式命令时 Node20 PATH 未传给后续 node，98/110；明确 Node20 后 110/110，非真实资源结果。
