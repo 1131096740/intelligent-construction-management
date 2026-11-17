@@ -15,6 +15,8 @@ import { Task16SharedPaymentApplicationModule } from "./task16-shared-payment-ap
 import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const approvalPgLog:{capture:(env:NodeJS.ProcessEnv)=>string|null;finish:(before:string|null,after:string|null,env:NodeJS.ProcessEnv)=>string}=require("../../prisma/task398-approval-postgres-error.cjs");
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
@@ -142,9 +144,9 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
   const owner=new PrismaClient({datasources:{db:{url:ownerUrl.href}}}),runtime=new PrismaClient({datasources:{db:{url:runtimeUrl.href}}}),observer=new PrismaClient({datasources:{db:{url:observerUrl.href}}});
   let app:INestApplication | undefined;
   try{
-   const identity=async(client:PrismaClient)=>client.$queryRaw<Array<{database:string;role:string;superuser:boolean;runId:string}>>`SELECT current_database() AS database,current_user::text AS role,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS superuser,current_setting('jg.task398_run_id',true) AS "runId"`;
+   const identity=async(client:PrismaClient)=>client.$queryRaw<Array<{database:string;role:string;superuser:boolean;runId:string;app:string}>>`SELECT current_database() AS database,current_user::text AS role,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS superuser,current_setting('jg.task398_run_id',true) AS "runId",current_setting('application_name') AS app`;
    const [o,r,v]=await Promise.all([identity(owner),identity(runtime),identity(observer)]);
-   expect(o[0]).toMatchObject({database:db.slice(1),role:"jg_task01_owner",runId});expect(r[0]).toMatchObject({database:db.slice(1),role:"jg_task01_runtime",superuser:false,runId});expect(v[0]).toMatchObject({database:db.slice(1),role:"jg_task01_observer",superuser:false,runId});
+   expect(o[0]).toMatchObject({database:db.slice(1),role:"jg_task01_owner",runId});expect(r[0]).toMatchObject({database:db.slice(1),role:"jg_task01_runtime",superuser:false,runId,app:"jg398_runtime"});expect(v[0]).toMatchObject({database:db.slice(1),role:"jg_task01_observer",superuser:false,runId});
    const plan=buildRegisteredPgFixturePlan(runId.slice(0,12),"2026-11-07","2026-11-01"),passwords=[randomUUID(),randomUUID(),randomUUID()];
    const hashes=await Promise.all(passwords.map(value=>hash(value,10)));
    const seeded=await seedSharedPaymentPredecessors(owner,plan,{financeHash:hashes[0],keeperHash:hashes[1],directorHash:hashes[2]},process.env.FILE_STORAGE_ROOT??"");
@@ -158,7 +160,11 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const signatureResponse=await fetch(origin+"/me/signature/canvas",{method:"POST",headers:{authorization:`Bearer ${director}`},body:signature});expect(signatureResponse.status).toBe(201);
    const signatureReceipt=await signatureResponse.json() as {signatureFileId:string;signatureVersionId:string};
    const payment=await observer.paymentRequest.findUniqueOrThrow({where:{id:plan.ids.payment}}),round=await observer.approvalInstance.findUniqueOrThrow({where:{id:plan.ids.approvedRound}});
-   const approved=await json(`/payments/${plan.ids.payment}/approval`,"POST",{decision:"approve",expectedPaymentUpdatedAt:payment.updatedAt.toISOString(),expectedApprovalInstanceId:round.id,expectedNodeIndex:0,expectedApprovalUpdatedAt:round.updatedAt.toISOString()},director);expect(approved.status).toBe(201);
+   const logBefore=approvalPgLog.capture(process.env);
+   let approved:Awaited<ReturnType<typeof json>>;
+   try{approved=await json(`/payments/${plan.ids.payment}/approval`,"POST",{decision:"approve",expectedPaymentUpdatedAt:payment.updatedAt.toISOString(),expectedApprovalInstanceId:round.id,expectedNodeIndex:0,expectedApprovalUpdatedAt:round.updatedAt.toISOString()},director);}
+   finally{const object=approvalPgLog.finish(logBefore,approvalPgLog.capture(process.env),process.env);console.error(`TASK398_APPROVAL_PG_OBJECT ${object}`);}
+   expect(approved.status).toBe(201);
    const signatureHash=createHash("sha256").update(png).digest("hex");
    const actions=await observer.approvalActionLog.findMany({where:{approvalInstanceId:round.id,action:"approve"},select:{actorUserId:true,signatureFileIdSnapshot:true,signatureVersionIdSnapshot:true,signatureSha256Snapshot:true}});
    expect(actions).toEqual([{actorUserId:seeded.director,signatureFileIdSnapshot:signatureReceipt.signatureFileId,signatureVersionIdSnapshot:signatureReceipt.signatureVersionId,signatureSha256Snapshot:signatureHash}]);
