@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 A16 提交取消隔离候选
+
+新虚构付款提交取消候选 `7a36711a` 经独审合入本地 `79c814af`，准确补丁 SHA `25d6605dca1b32ec2cbd4afe60472f5d7f1924852e822fb83a4eb8e24e910e43`。付款 fixture 140/140、取消及原协议/响应丢失回归 26/26，API build/typecheck/lint 通过；这些是本地模型和组件检查。
+
+真实隔离 PostgreSQL 锁、权限和时序尚未验证；5 秒 HTTP 时限与 12 秒锁等待可能使场景安全关闭，不能据模型认定业务通过或 #398 验收完成。原现金 b047 仍 UNKNOWN，不触碰或重放；未推送或操作生产。
+
 ## 2026-11-17 A16 响应丢失虚构隔离运行
 
 准确候选 `513b4088d57ae4fd5adafdf6e94d05539eb79297` 与计划 SHA `5e5df5cf2feef612be3c2ab50428df7989f3b1128ce9dcf63e3d31fd1a8114d5` 的单次虚构运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-513-BCmQlq/receipt.json) SHA `45cb1bba61483428358b62ffdf737348590f9ec1a011d5ad762b9012f7deeeaa`；[核账证据](/private/tmp/jg-a16-513-BCmQlq/accounting-evidence.json) SHA `219f71721e0f201f3195d928969325b12ad35162a7d85fec0e0ff8292e44ab43`。独审确认首次到重放的计数与余额一致；代理丢弃完整上游 201 响应及先核后重放的顺序依封存源码成功路径推论，并非独立 HTTP 事件记录。HMAC 密钥未保存，不能事后独立重算。
