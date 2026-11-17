@@ -94,3 +94,18 @@ it("invalidates the review when the same layout maps different content",()=>{
  const changed=renderContractBody(source,second,{values},[],"layout",reviewed,{...options,partyDetailsConflictPreview:true});
  expect(changed.signatureSupplementReview?.confirmed).toBe(false);expect(changed.signatureSupplementReview?.digest).not.toBe(reviewed.signatureSupplementReviewDigest);
 });
+it.each([["material-purchase-real-v1.docx",206],["equipment-rental-real-v1.docx",189]])("requires a new company-and-bank declaration without changing old %s snapshots",(name,index)=>{
+ const source=readFileSync(join(__dirname,"../../assets/templates",name)),parsed=readLayoutSourcePositions(source);
+ const positionId=parsed.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===index)?.positionId??createHash("sha256").update(JSON.stringify([parsed.sourceSha256,index])).digest("hex");
+ const plan={protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256:parsed.sourceSha256,edits:[{positionId,text:"虚构补充原文"}]};
+ const old={partyDetailsVersion:"built-in-signature-supplement-v1" as never},current={partyDetailsVersion:"built-in-signature-supplement-company-v2" as never};
+ const prior=renderContractBody(source,source,{values},[],"layout",plan,{...old,partyDetailsConflictPreview:true});
+ const oldConfirmed={...plan,signatureSupplementReviewDigest:prior.signatureSupplementReview!.digest};
+ expect(()=>renderContractBody(source,source,{values},[],"layout",oldConfirmed,old)).not.toThrow();
+ const fresh=renderContractBody(source,source,{values},[],"layout",oldConfirmed,{...current,partyDetailsConflictPreview:true});
+ expect(fresh.signatureSupplementReview?.scope).toBe("company-and-bank");expect(fresh.signatureSupplementReview?.confirmed).toBe(false);
+ expect(()=>renderContractBody(source,source,{values},[],"layout",oldConfirmed,current)).toThrow("公司及银行信息");
+ const confirmed={...plan,signatureSupplementReviewDigest:fresh.signatureSupplementReview!.digest};
+ expect(renderContractBody(source,source,{values},[],"layout",confirmed,current).signatureSupplementReview?.confirmed).toBe(true);
+ expect(plan.edits[0].text).toBe("虚构补充原文");
+});

@@ -251,18 +251,18 @@ describe("ContractDocumentProcessor", () => {
     };
   }
 
-  it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"])("uses the frozen supplement version for %s",async(filename)=>{
+  it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"].flatMap(filename=>["built-in-signature-supplement-v1","built-in-signature-supplement-company-v2"].map(version=>[filename,version])))("uses the frozen supplement version for %s (%s)",async(filename,version)=>{
     const source=readFileSync(join(__dirname,"../../assets/templates",filename));
     const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
     const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
-    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:"built-in-signature-supplement-v1"}}});
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:version}}});
     const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
     const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
     const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
     const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
     try {
       await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
-      expect(body).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.objectContaining({partyDetailsVersion:"built-in-signature-supplement-v1"}));
+      expect(body).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.objectContaining({partyDetailsVersion:version}));
       expect(convert).toHaveBeenCalled();
     } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
   });
