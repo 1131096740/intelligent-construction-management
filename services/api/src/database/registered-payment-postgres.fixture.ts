@@ -75,6 +75,8 @@ export interface RegisteredPgSeedContinuity {
   markCaseGate?: (gate: RegisteredPgCaseGate) => void;
   /** Fixed observer timings only; no resource, client, query or authority is supplied. */
   recordObserverDiagnostic?: (detail: RegisteredPgObserverDiagnostic) => void;
+  authorizeResponseLossReplay?: () => void | Promise<void>;
+  loseRegistrationResponse?: (submit: () => Promise<unknown>) => Promise<{ faultState: string; upstreamStatusCode: number | null }>;
   /** Cash-case response status only; absence is unknown and is not a retry permit. */
   recordCashRegistrationStatus?: (status: number) => void;
   markAttributionGapStage?: (stage: "OBSERVER_BEFORE" | "OWNER_BEFORE" | "BEFORE_STATE" | "PUBLIC_ACCOUNT" |
