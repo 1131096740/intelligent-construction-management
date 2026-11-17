@@ -23,6 +23,15 @@ test('native lifecycle grants retain the original staged app and three separate 
   assert.doesNotMatch(sql, /TO PUBLIC|GRANT ALL|GRANT [^;]* TO jiangkong|ALTER TABLE|DISABLE TRIGGER|SET ROLE|row_security=off/iu);
 });
 
+test('workbench lifecycle count can read only the two required primary IDs', () => {
+  const sql = renderNativeLifecycleFixture(scope, secrets);
+  for (const table of ['Settlement', 'PaymentRequest']) {
+    assert.ok(sql.includes(`GRANT SELECT ("id") ON public."${table}" TO "${scope.appName}";`));
+  }
+  assert.ok(!sql.includes(`GRANT SELECT ("sourceSnapshotToken") ON public."Settlement" TO "${scope.appName}";`));
+  assert.ok(!sql.includes(`GRANT SELECT ON public."Settlement" TO "${scope.appName}";`));
+});
+
 test('native lifecycle refuses another database, owner identity, malformed role or stale ledger', () => {
   for (const change of [{ database: 'postgres' }, { appOid: '10' }, { appName: 'jiangkong' },
     { appName: scope.appName + '";SELECT' }, { migrationCount: 260 }, { terminal: 'other' }]) {
