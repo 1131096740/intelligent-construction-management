@@ -58,7 +58,8 @@
         </li>
       </ul>
       <template v-if="body?.signatureSupplementReview && !body.signatureSupplementReview.confirmed">
-        <p v-if="body.signatureSupplementReview.scope === 'company-and-bank'">请逐项核对以下签署页前的补充内容。公司及银行信息应填写在主体资料中，不能放在补充内容里。</p>
+        <p v-if="body.signatureSupplementReview.scope === 'labor-company-and-bank'">请逐项核对劳务主合同签署栏内容。公司及银行信息应填写在主体资料中。</p>
+        <p v-else-if="body.signatureSupplementReview.scope === 'company-and-bank'">请逐项核对以下签署页前的补充内容。公司及银行信息应填写在主体资料中，不能放在补充内容里。</p>
         <p v-else>请逐项核对以下签署页前的补充内容。银行信息应填写在主体银行资料中，不能放在补充内容里。</p>
         <div
           v-for="entry in body.signatureSupplementReview.entries"
@@ -72,12 +73,20 @@
           variant="outline"
           @click="confirmSignatureSupplementReview"
         >
-          {{ body.signatureSupplementReview.scope === "company-and-bank" ? "已核对，补充内容不含公司及银行信息" : "已核对，补充内容不含银行资料" }}
+          {{ body.signatureSupplementReview.scope === "labor-company-and-bank" ? "已核对，签署栏内容不含公司及银行信息" : body.signatureSupplementReview.scope === "company-and-bank" ? "已核对，补充内容不含公司及银行信息" : "已核对，补充内容不含银行资料" }}
         </t-button>
       </template>
       <template v-if="body?.partyDetailsRecovery">
         <p>恢复将清除主体称谓行的旧编辑；请先复制需要保留的内容。其他正文编辑和排序保留。</p>
         <t-button :disabled="disabled || loading || saving" variant="outline" @click="restorePartyRolePositions">恢复主体称谓</t-button>
+      </template>
+      <template v-if="body?.laborSignatureRecovery">
+        <p>以下签署位置需要核对。请先复制要保留的内容，再逐项选择恢复原签署栏；其他正文不会被清除。</p>
+        <div v-for="entry in body.laborSignatureRecovery.entries" :key="entry.id">
+          <strong>{{ entry.kind === "edit" ? "当前编辑原文" : "已删除的原签署栏" }}</strong>
+          <pre class="signature-review-text">{{ entry.text }}</pre>
+          <t-button :disabled="disabled || loading || saving" variant="outline" @click="laborRecoveryId = entry.id">恢复此签署栏</t-button>
+        </div>
       </template>
     </section>
     <p v-if="additionNotice" class="body-editor-note" role="status">{{ additionNotice }}</p>
@@ -123,6 +132,11 @@
       :context="paperContext"
       :blocked="paperDisabled === true || saving"
     />
+    <t-dialog :visible="Boolean(laborRecoveryId)" role="dialog" aria-label="恢复此签署栏" aria-modal="true" header="恢复此签署栏" :footer="false" :close-on-overlay-click="false" @close="laborRecoveryId = ''">
+      <p>此操作会移除所选位置的手工编辑或撤销删除。请确认已复制需要保留的内容；其他位置保持不变。</p>
+      <t-button variant="outline" @click="laborRecoveryId = ''">取消</t-button>
+      <t-button @click="confirmLaborSignatureRecovery">确认恢复此处</t-button>
+    </t-dialog>
     <t-dialog
       v-model:visible="regenerationVisible"
       role="dialog"
@@ -185,6 +199,7 @@ import ContractBodyFlow from "./ContractBodyFlow.vue";
 import ContractBodyPaperPreview from "./ContractBodyPaperPreview.vue";
 import { confirmSignatureSupplementPlan } from "./contract-signature-supplement-review";
 import { restorePartyRoles } from "./contract-party-recovery";
+import { restoreLaborSignaturePosition } from "./contract-labor-signature-recovery";
 
 type BodyBlankReviewContext = {
   contractVersionId: string;
@@ -348,6 +363,17 @@ function confirmSignatureSupplementReview() {
   if(!confirmed){additionNotice.value="补充内容已变化，请保存并重新读取后再核对。";return;}
   emit("update",confirmed);
   additionNotice.value="已核对补充内容，请保存后再生成合同；修改补充内容后需重新核对。";
+}
+
+const laborRecoveryId=ref("");
+function confirmLaborSignatureRecovery() {
+  const current=body.value,plan=currentPlan(),recovery=current?.laborSignatureRecovery,id=laborRecoveryId.value;
+  if(!current||!plan||!recovery||!id||props.disabled||loading.value||props.saving||current.contractVersionId!==props.contractVersionId||current.draftRevision!==props.draftRevision||current.layoutTemplateVersionId!==props.layoutTemplateVersionId) {laborRecoveryId.value="";additionNotice.value="正文已变化，请重新读取后核对。";return;}
+  const restored=restoreLaborSignaturePosition(plan,recovery,id);
+  laborRecoveryId.value="";
+  if(!restored){additionNotice.value="正文已变化，请重新读取后核对。";return;}
+  emit("update",restored);
+  additionNotice.value="已恢复所选签署栏，请保存正文；其他编辑仍保留。";
 }
 
 function restorePartyRolePositions() {

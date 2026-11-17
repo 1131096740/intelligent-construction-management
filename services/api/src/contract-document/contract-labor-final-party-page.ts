@@ -24,12 +24,12 @@ export function laborFinalPartyNames(values: Record<string, unknown>, required =
 }
 
 /** Adds information only; the existing contract and attachment signatures stay in place. */
-export function appendLaborFinalPartyPage(document: Document, values: Record<string, unknown>, includeBanks = false): void {
+export function appendLaborFinalPartyPage(document: Document, values: Record<string, unknown>, includeBanks = false, includeSigning = false): void {
   const [owner, counterparty] = laborFinalPartyNames(values, false);
   const body = document.getElementsByTagNameNS(W, "body").item(0);
   if (!body) throw new BadRequestException("合同正文缺少主体内容");
   const section = Array.from(body.childNodes).find(node => node.nodeType === 1 && (node as Element).namespaceURI === W && (node as Element).localName === "sectPr") ?? null;
-  const lines = ["双方主体及银行信息", `甲方：${owner}`, ...(includeBanks?signatureBankLines(values,"party.owner"):["开户行：________________________", "银行账号：______________________"]), `乙方：${counterparty}`, ...(includeBanks?signatureBankLines(values,"party.counterparty"):["开户行：________________________", "银行账号：______________________"])];
+  const lines = ["双方主体及银行信息", `甲方：${owner}`, ...(includeBanks?signatureBankLines(values,"party.owner"):["开户行：________________________", "银行账号：______________________"]), ...(includeSigning?["甲方签署（盖章）：____________ 日期：____________"]:[]), `乙方：${counterparty}`, ...(includeBanks?signatureBankLines(values,"party.counterparty"):["开户行：________________________", "银行账号：______________________"]), ...(includeSigning?["乙方签署（盖章）：____________ 日期：____________"]:[])];
   for (const [index, line] of lines.entries()) {
     const paragraph = document.createElementNS(W, "w:p"), properties = document.createElementNS(W, "w:pPr");
     if (index === 0) properties.appendChild(document.createElementNS(W, "w:pageBreakBefore"));
@@ -42,11 +42,11 @@ export function appendLaborFinalPartyPage(document: Document, values: Record<str
   }
 }
 
-export function appendLaborFinalPartyPageToDocx(bytes: Buffer, values: Record<string, unknown>, includeBanks = false): Buffer {
+export function appendLaborFinalPartyPageToDocx(bytes: Buffer, values: Record<string, unknown>, includeBanks = false, includeSigning = false): Buffer {
   const zip = new PizZip(bytes), part = zip.file("word/document.xml");
   if (!part) throw new BadRequestException("合同正文缺少主体内容");
   const document = new DOMParser().parseFromString(part.asText(), "application/xml");
-  appendLaborFinalPartyPage(document, values, includeBanks);
+  appendLaborFinalPartyPage(document, values, includeBanks, includeSigning);
   zip.file("word/document.xml", new XMLSerializer().serializeToString(document));
   return zip.generate({ type: "nodebuffer" });
 }

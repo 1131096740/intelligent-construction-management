@@ -329,7 +329,7 @@ describe("ContractDocumentService", () => {
     files.getFileBuffer.mockResolvedValueOnce({buffer:mechanical,file:{id:"layout-file-1",storageStatus:"active",contentSha256:sourcePositions.sourceSha256}});
     const {service}=makeService(tx);
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
-    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe(filename.startsWith("labor")?"built-in-labor-party-banks-v2":"built-in-party-placement-v1");
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe(filename.startsWith("labor")?"built-in-labor-signature-legacy-v3":"built-in-party-placement-v1");
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.mechanicalContactLayoutVersion).toBe(filename.startsWith("equipment") ? "mechanical-contact-layout-v2" : undefined);
   });
   it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"])("freezes the signature supplement version for new %s body jobs",async(filename)=>{
@@ -360,7 +360,7 @@ describe("ContractDocumentService", () => {
     files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
     await makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     const snapshot=tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot;
-    expect(snapshot.bodyDocument.partyDetailsVersion).toBe(filename.startsWith("generic")?"built-in-generic-signature-review-v3":"built-in-labor-party-glyph-banks-v2");
+    expect(snapshot.bodyDocument.partyDetailsVersion).toBe(filename.startsWith("generic")?"built-in-generic-signature-review-v3":"built-in-labor-signature-review-v3");
     expect(snapshot.renderInput.values).toMatchObject({"party.owner.openingBank":"甲开户","party.owner.bankAccount":"A001","party.owner.paymentBank":"甲收款","party.owner.paymentAccount":"A002","party.counterparty.openingBank":"乙开户","party.counterparty.bankAccount":"B001"});
   });
   it.each(["generic-contract-v1.docx","labor-subcontract-real-v1.docx"])("rejects bank values without an authoritative party binding in %s",async(filename)=>{
@@ -448,6 +448,24 @@ describe("ContractDocumentService", () => {
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     expect(tx.contractGeneratedDocument.create).toHaveBeenCalledTimes(1);expect(plan.edits[0].text).toBe("虚构补充");
   });
+  it("requires review for a labor main signature edit before queueing",async()=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),positions=readLayoutSourcePositions(input);
+    const positionId=createHash("sha256").update(JSON.stringify([positions.sourceSha256,145])).digest("hex");
+    const bindings=positions.positions.flatMap(position=>[["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    const prepared=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings),mapping=prepared.mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    const plan={protocolVersion:1,layoutTemplateVersionId:"layout-1",sourceSha256:positions.sourceSha256,edits:[{positionId,text:"虚构签署说明"}]};
+    const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null,draftData:{documentBody:plan}});
+    const sourceFile={buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}};
+    files.getFileBuffer.mockResolvedValueOnce(sourceFile).mockResolvedValueOnce(sourceFile);
+    const service=makeService(tx).service;
+    await expect(service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("不含公司及银行信息");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    const preview=renderContractBody(input,prepared.docx,{values:{"contract.name":"虚构合同","party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方","contract.temporaryCode":"TEST","document.watermark":"草稿"}},[],"layout-1",plan,{partyDetailsVersion:"built-in-labor-signature-review-v3" as never,partyDetailsConflictPreview:true});
+    Object.assign(plan,{signatureSupplementReviewDigest:preview.signatureSupplementReview!.digest});
+    await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
+    expect(tx.contractGeneratedDocument.create).toHaveBeenCalledTimes(1);expect(plan.edits[0].text).toBe("虚构签署说明");
+  });
   it("does not attach a legacy party bank account to an independent authoritative company",async()=>{
     const input=readFileSync(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx")),positions=readLayoutSourcePositions(input);
     const bindings=positions.positions.flatMap(position=>[
@@ -487,7 +505,7 @@ describe("ContractDocumentService", () => {
     const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null});
     files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
     await makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
-    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.bodyDocument.partyDetailsVersion).toBe("built-in-labor-party-glyph-banks-v2");
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.bodyDocument.partyDetailsVersion).toBe("built-in-labor-signature-review-v3");
   });
   it.each([
     ["   ", "请先填写合同甲乙双方名称"],
