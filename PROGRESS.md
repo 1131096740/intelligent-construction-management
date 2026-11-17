@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 虚构现金分配顺序读取
+
+针对准确 `21944951` 的 Allocation 42501，独立探针[私有日志](/private/tmp/jg-allocation-query-probe-7TI51uk5/postgres.log) SHA `04712321c8c22d4916b91015eb498c37b46b825181f701ded2d7e9ab6762019e`；探针整体 UNKNOWN，不能称列读取已成功，也不能据此确定原轮实际付款结果。
+
+只限虚构 cash profile 的 `PaymentExecutionAllocation.allocationOrder` SELECT 修订 `9bf63de4` 经独审合入本地 `666a0424`，准确补丁 SHA `15f1d8e26416f43ebcfaf949bd3c83f02289fd926989e3352e6fd05eaa36fef0`；Node20 角色模型 24/24、CJS 语法及 diff 检查通过。新候选未真实运行，不代表生产授权或 #398 验收；本次未操作资源或推送，b047 仍 UNKNOWN。
+
 ## 2026-11-17 准确 219 两个隔离结果
 
 准确 `21944951` 合同 queue-only 隔离运行已越过先前工作台读取处，随后保存返回 500/P2028，原因及业务结果未知；不能推断事务超时或旧轮原因。[私有日志](/private/tmp/jg-queue-219449-run-1117/run.log) SHA `b78b9146384e54f674a0c2c5aa491d4741b29d381384ef8f20e649e84ab301f4`，[独立清理](/private/tmp/jg-queue-219449-run-1117/cleanup-independent.json) SHA `8bbf352f5250d1294c89111e2f32e95f64444c7f2862742d5cf836a7630fd522`。
