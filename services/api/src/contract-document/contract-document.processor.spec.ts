@@ -251,6 +251,22 @@ describe("ContractDocumentProcessor", () => {
     };
   }
 
+  it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"])("uses the frozen supplement version for %s",async(filename)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates",filename));
+    const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:"built-in-signature-supplement-v1"}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
+    const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+      expect(body).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.objectContaining({partyDetailsVersion:"built-in-signature-supplement-v1"}));
+      expect(convert).toHaveBeenCalled();
+    } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
+  });
+
   it.each(["built-in-labor-party-glyph-v1","built-in-labor-party-v1"])("keeps docx4j font checking bound to the frozen labor version %s",async(version)=>{
     const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx"));
     const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();

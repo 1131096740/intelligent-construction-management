@@ -287,6 +287,14 @@ describe("contract workbench API client", () => {
     mockApiFetch.mockReturnValue(makeOkJson({warnings:[warning],mechanicalContactLayoutVersion:null}));
     expect((await fetchContractDraftBody("version-1")).warnings).toEqual([warning]);
   });
+  it("preserves the bounded signature review and its actionable warning",async()=>{
+    const warning="请核对签署页前的甲乙方补充内容，确保不含银行资料；如有请先转填主体银行资料。";
+    const review={digest:"a".repeat(64),confirmed:false,entries:[{role:"party_a",id:"b".repeat(64),text:"虚构原文"}]};
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review}));
+    const body=await fetchContractDraftBody("version-1");expect(body.signatureSupplementReview).toEqual(review);expect(body.warnings).toEqual([warning]);
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,signatureSupplementReview:{...review,digest:"invalid"}}));
+    expect((await fetchContractDraftBody("version-1")).signatureSupplementReview).toBeUndefined();
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
