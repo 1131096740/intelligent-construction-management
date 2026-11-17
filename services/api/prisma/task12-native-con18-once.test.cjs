@@ -13,7 +13,7 @@ test('equipment and CON18 plans reject the other purpose before accessing resour
 test('CON18 runner binds its dedicated purpose and qualifies case/capability/window interfaces',()=>{
  const text=fs.readFileSync(path.join(__dirname,'run-task12-native-con18-once.cjs'),'utf8');
  assert.match(text,/PURPOSE='TASK12_NATIVE_CON18_WITHDRAWAL_V1'/u);assert.match(text,/sourceCapture\(\)/u);assert.match(text,/official\.readPdfDrawnText\(bytes,abort\)/u);
- const specs=runner.inspectNativeTask16Interfaces();for(const file of ['task12-con18-native-capability.cjs','task12-con18-native-owner-window.cjs','task12-con18-withdrawal-case.js'])assert.ok(specs.some(row=>row.file.endsWith('/'+file)));
+ const specs=runner.inspectNativeTask16Interfaces();for(const file of ['task12-con18-native-capability.cjs','task12-con18-native-owner-window.cjs','task12-con18-loop-delay.cjs','task12-con18-withdrawal-case.js'])assert.ok(specs.some(row=>row.file.endsWith('/'+file)));
  const old=fs.readFileSync(path.join(__dirname,'run-task12-native-equipment-once.cjs'),'utf8');assert.match(old,/PURPOSE='TASK12_NATIVE_EQUIPMENT_FULL261_V1'/u);assert.doesNotMatch(old,/TASK12_NATIVE_CON18_WITHDRAWAL_V1/u);
 });
 test('cleanup failure is secondary and never replaces the first business exception',async()=>{

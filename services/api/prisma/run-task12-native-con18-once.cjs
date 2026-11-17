@@ -118,6 +118,7 @@ function inspectNativeTask16Interfaces(){
   ['./task12-current259-q2-seed.cjs',[['createNativeCurrent261EquipmentSeed',3]]],
   ['./task12-con18-native-capability.cjs',[['issueTask12Con18OwnerCapability',1],['claimTask12Con18OwnerCapability',5]]],
   ['./task12-con18-native-owner-window.cjs',[['beginTask12Con18OwnerWindow',5],['observeTask12Con18Signed',4],['observeTask12Con18Rounds',4],['observeTask12Con18Document',2],['closeTask12Con18OwnerWindow',1]]],
+  ['./task12-con18-loop-delay.cjs',[['beginCon18LoopDelay',0]]],
   ['../dist/database/task12-con18-withdrawal-case.js',[['runTask12Con18Withdrawal',1]]],
   ['./task12-current259-document-application.cjs',[['runNativeTask12DocumentApplication',2]]],
   ['./task12-official-document-profile.cjs',[['observeOfficialTask12DocumentPublication',2],['verifyOfficialTask12DocumentRuntime',3],['withOfficialTask12DocumentRuntime',3]]],

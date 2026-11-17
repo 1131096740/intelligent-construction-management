@@ -41,6 +41,12 @@ const own=(v,k)=>v&&!types.isProxy(v)?Object.getOwnPropertyDescriptor(v,k)?.valu
 const authKinds=new Set(['ERROR','TYPE_ERROR','RANGE_ERROR','KNOWN_REQUEST_ERROR','UNKNOWN_REQUEST_ERROR','VALIDATION_ERROR','INITIALIZATION_ERROR','OTHER_NATIVE_ERROR','NON_NATIVE_THROWN','UNINSPECTED']);
 const authCodes=new Set(['P1000','P1001','P1002','P1003','P1008','P1010','P1011','P1017','P2000','P2002','P2003','P2004','P2010','P2011','P2021','P2022','P2024','P2025','P2028','P2034']);
 const authStates=new Set(['23502','23503','23505','42501','25006','25P02','40001','40P01','42P01','42703','57014']);
+function closedCon18LoopDelay(value){
+ const status=own(value,'status'),maxBucket=own(value,'maxBucket'),samples=own(value,'samples');
+ if(status==='UNSAMPLED'||status==='UNAVAILABLE')return Object.freeze({status});
+ if(status==='OBSERVED'&&['UNDER_100_MS','100_TO_499_MS','500_TO_999_MS','1000_TO_4999_MS','5000_MS_OR_MORE'].includes(maxBucket)&&Number.isSafeInteger(samples)&&samples>0&&samples<=1000000)return Object.freeze({status,maxBucket,samples});
+ return Object.freeze({status:'UNAVAILABLE'});
+}
 function closedAuthTransactionPhase(value){
  const operation=own(value,'operation'),phase=own(value,'phase'),upsertOrdinal=own(value,'upsertOrdinal'),callbackEntered=own(value,'callbackEntered'),callbackReturned=own(value,'callbackReturned'),elapsedMs=own(value,'elapsedMs'),phaseElapsedMs=own(value,'phaseElapsedMs');
  if(operation!=='ACCOUNT_RATE_LIMIT'||![0,1,2].includes(upsertOrdinal)||typeof callbackEntered!=='boolean'||typeof callbackReturned!=='boolean'||
@@ -199,8 +205,14 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
    check();need(++requests<=600);
    if(authPhone!==undefined){need(method==='POST'&&path==='/auth/login'||require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&(method==='POST'&&routeTemplate(path)==='/contract-drafts/:versionId/edit-lease/heartbeat'||method==='GET'&&routeTemplate(path)==='/contract-drafts/:versionId/workbench'));try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}
    observation.phase='EXCHANGE';
-   const exchangeStarted=diagnosticNow();timing.exchangeCalls++;let result;
-   try{result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});}finally{timing.exchangeElapsedMs+=diagnosticNow()-exchangeStarted;}
+   const exchangeStarted=diagnosticNow();timing.exchangeCalls++;let result,finishLoopDelay;
+   if(require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&draftPreviewQueued&&method==='GET'&&observation.routeTemplate==='/contract-drafts/:versionId/workbench'){
+    try{finishLoopDelay=require('./task12-con18-loop-delay.cjs').beginCon18LoopDelay();}catch{/* Observation cannot affect the request. */}
+   }
+   try{result=await exchange(port,method,path,headers,body,binary,status=>{observation.httpStatus=status;});}finally{
+    timing.exchangeElapsedMs+=diagnosticNow()-exchangeStarted;
+    if(finishLoopDelay)try{observation.eventLoopDelay=closedCon18LoopDelay(finishLoopDelay());}catch{/* Preserve the exchange result. */}
+   }
    if(method==='POST'&&observation.routeTemplate==='/contract-layout-template-versions/:versionId/inspection'&&result.status===201){
     observation.inspectionSummary=inspectionSummary(result.body);inspectedRevision=observation.inspectionSummary.status==='OBSERVED'?observation.inspectionSummary.sourceRevision:undefined;
    }
