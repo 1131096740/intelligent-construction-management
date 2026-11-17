@@ -666,6 +666,10 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
     ["other", "comprehensive_director", false, null, "project_staff", null, "lifecycle"],
     ["other", "comprehensive_director", true, null, "project_staff", null, "lifecycle"],
     ["material_purchase", "material_director", false, null, "project_staff", null, "allRoles"],
+    ["equipment_rental", "material_director", false, null, "project_staff", null, "allRoles"],
+    ["labor_subcontract", "engineering_director", false, null, "project_staff", null, "allRoles"],
+    ["professional_subcontract", "engineering_director", false, null, "project_staff", null, "allRoles"],
+    ["other", "comprehensive_director", false, null, "project_staff", null, "allRoles"],
     ["material_purchase", "material_director", false, null, "project_staff", null, "rotatedDuty"],
     ["material_purchase", "material_director", false, null, "project_staff", null, "scopedDuty"],
     ["material_purchase", "material_director", false, null, "project_staff", null, "sameDuty"],
@@ -716,7 +720,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const submit = () => fetch(`${draft.base}/submission`, { method: "POST", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify(input) });
       const signatureBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9e0AAAAASUVORK5CYII=", "base64");
       const duties = [
-          { index: 0, actor: "employee", role: "material_director", projectId: null },
+          { index: 0, actor: "employee", role: firstDutyRole, projectId: firstDutyRole === "engineering_director" ? draft.projectId : null },
           { index: 1, actor: "director", role: "contract_director", projectId: null },
           { index: 2, actor: "manager", role: "project_manager", projectId: draft.projectId },
           { index: 3, actor: "finance", role: "finance_director", projectId: null },
@@ -963,6 +967,9 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           expect(actions.every(action => action.action === "approve" && action.signatureFileIdSnapshot)).toBe(true);
           expect(await readVersion()).toMatchObject({ status: "approved_pending_seal" });
           expect(await countSealTasks()).toBe(1);
+          expect(await server.store.prisma.contractSealTask.findMany({ where: { contractVersionId: draft.version.id } })).toEqual([
+            expect.objectContaining({ approvalInstanceId: rounds[0].id, handlerUserId: "staff", status: "in_seal" })
+          ]);
         }
         expect(await server.store.prisma.operatingImpactEntry.count()).toBe(0);
         return;
