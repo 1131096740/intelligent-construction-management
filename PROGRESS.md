@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 经营账并发虚构隔离结果
+
+准确 `9f8ca5848bcaba27ae104518bf0ce66fa503a219` 的虚构隔离经营账并发运行完成，`financialAcceptance=false`。[原回执](/private/tmp/jg-ledger-9f8-run-OsrUJ3jj/receipt.json) SHA `6f53e364429c181b43f8350fec58d03cff8557bcbb60269df5cf4166de1d0f4d`，[独立 RR 核账](/private/tmp/jg-ledger-9f8-run-OsrUJ3jj/accounting-evidence.json) SHA `fad19e2fe5f3d3f1dbaf84da5f44655cf1e6472965ec556dd95f129a130ad6e0`：一笔 30 元，A 100 元不变、B 100→70 元，已付及结算已付各 3000 分，执行、根、资金、分配、事件、审计各一，项目事实一及影响三。
+
+[独立清理](/private/tmp/jg-ledger-9f8-independent-cleanup.json) SHA `1543bbe06fa61c02b9f5413837f9f8e6f4051ac4e80cdff54fd3a18fd4c044d1` 记录 runner/PG 进程、监听及 pidfile 缺席。本轮未覆盖同键 POST 重放，不代表完整 #398 验收；历史轮付款结果和 b047 仍 UNKNOWN，不能据此改写或重放。
+
 ## 2026-11-17 虚构现金分配顺序读取
 
 针对准确 `21944951` 的 Allocation 42501，独立探针[私有日志](/private/tmp/jg-allocation-query-probe-7TI51uk5/postgres.log) SHA `04712321c8c22d4916b91015eb498c37b46b825181f701ded2d7e9ab6762019e`；探针整体 UNKNOWN，不能称列读取已成功，也不能据此确定原轮实际付款结果。
