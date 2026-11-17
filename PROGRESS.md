@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 工作项结算草稿窄投影
+
+准确 `ef6d91bd` 隔离运行无角色访问返回 403，签名及审批通过；Me 返回 500/42501，窗口指向 `SettlementDraft`，付款未进入，容器已清理。[原私有日志](/private/tmp/jg398-standard-run-_tjo7to3/run.log) SHA `77c62ac2f6613df2d905c0e126b3e4d280fb31a2bef4172a24a176ad0ee84315`。
+
+Me 窄投影修订 `3ac5e993` 经独审合入本地 `a1bfeab2`，准确补丁 SHA `e1cec188e95e9f35ec50650ff243d2269dba90c16a8cde5574a50311a60a6749`；Me 定向 39/39、Node20 runner 12/12、API typecheck/lint 通过。该 Me 投影避免读取结算草稿 token，既有付款 Settlement 部分 token 权限未改，不能泛称所有 token 不可读。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重复文书资格或推送。
+
 ## 2026-11-17 工作项 PostgreSQL 私有窗口
 
 准确 `af8eb7c7` 的隔离运行受限角色和资金保护检查通过、无角色访问返回 403，登录、签名、审批及快照核对通过；Me 返回 500/42501，权限对象未知，付款未进入，容器已移除。[原私有日志](/private/tmp/jg398-standard-run-mlxkbbv3/run.log) SHA `a06384618820a9c05605ee4a3021ee613c1bfb31372526167fccf900879d5ac8`。
