@@ -405,7 +405,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
   it.each(["attribution-gap", "attribution-gap-owner-drift", "attribution-gap-ledger-drift", "attribution-gap-accepted", "attribution-gap-source-mismatch", "attribution-gap-recorded-key", "normal-null-balance-after-guard", "normal-negative-spent-after-guard", "normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "native-response-loss", "native-response-loss-absent", "native-response-loss-drift", "native-response-loss-orphan", "native-response-loss-audit-orphan", "native-response-loss-foreign-audit", "response-loss", "upstream-failure", "absent-db-fact", "native-cancel-commit", "native-cancel-audit-orphan", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
-      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "native-disconnect", "native-disconnect-survivor-error", "native-disconnect-orphan-key", "native-disconnect-audit-orphan", "native-disconnect-ledger-drift", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
       "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
       "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
       "competition-owned-json", "competition-follow-up-owned-json", "competition-follow-up-director-wins-owned-json",
@@ -416,8 +416,8 @@ describe("registered PG original case: explicit observer projection protocol (no
     const registrationFailureStatus = /^normal-http-(500|400|403|409)$/u.exec(rawScenario)?.[1];
     const snapshotFailureMode=/^normal-(?:snapshot-|extra-graph|missing-required|null-balance|negative-spent)/u.test(rawScenario)?rawScenario:undefined;
     const originalSnapshotError=new Error("owned snapshot failure");
-    const nativeLoss=rawScenario.startsWith("native-response-loss"), nativeCancel=rawScenario.startsWith("native-cancel-");
-    const scenario = nativeCancel ? "cancel-commit" : registrationFailureStatus||snapshotFailureMode ? "normal" : nativeLoss ? rawScenario.endsWith("-absent") ? "absent-db-fact" : "response-loss" : rawScenario;
+    const nativeLoss=rawScenario.startsWith("native-response-loss"), nativeCancel=rawScenario.startsWith("native-cancel-"), nativeDisconnect=rawScenario.startsWith("native-disconnect");
+    const scenario = nativeDisconnect ? "disconnect-recovery" : nativeCancel ? "cancel-commit" : registrationFailureStatus||snapshotFailureMode ? "normal" : nativeLoss ? rawScenario.endsWith("-absent") ? "absent-db-fact" : "response-loss" : rawScenario;
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
@@ -447,11 +447,11 @@ describe("registered PG original case: explicit observer projection protocol (no
         $queryRawUnsafe: async (sql: string, ...values: unknown[]) => {
           expect(readOnly).toBe(true);
           expect(sql).toContain('s."status"');
-          const cancellation = scenario.startsWith("cancel-") || gap;
+          const cancellation = scenario.startsWith("cancel-") || gap || nativeDisconnect;
           expect(values).toEqual([ids.settlement, ids.payment, ...(cancellation ? [ids.requestKey] : []), ...(gap ? ["registration-b",ids.project,otherProjectId,"source-b","source-other"] : [])]);
           if (cancellation) expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM public."PaymentExecution" e WHERE e."idempotencyKey"=$3)');
           ownerReads++;
-          if (submittedCancellation && scenario === "cancel-orphan-key") return [];
+          if (submittedCancellation && (scenario === "cancel-orphan-key" || rawScenario === "native-disconnect-orphan-key")) return [];
           const after = (name: string) => submittedCancellation && scenario === name;
           return [{
             database: f.proof.databaseName, databaseOid: f.proof.databaseOid, systemIdentifier: f.proof.systemIdentifier,
@@ -461,7 +461,7 @@ describe("registered PG original case: explicit observer projection protocol (no
             tls: true, readOnly: "on", isolation: "repeatable read",
             settlementStatus: after("cancel-settlement-status") || (gap && posts>0 && scenario==="attribution-gap-owner-drift") ? "paid" : "approved",
             settlementUpdatedAt: after("cancel-settlement-updated-at") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z",
-            requestUpdatedAt: after("cancel-request-updated-at") || after("disconnect-ledger-drift") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z"
+            requestUpdatedAt: after("cancel-request-updated-at") || (after("disconnect-ledger-drift") || submittedCancellation && rawScenario === "native-disconnect-ledger-drift") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z"
           }];
         }
       });
@@ -476,7 +476,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       registeredPaymentEvent: ["executionId"],
       interEntityRelationshipEntry: ["id", "paymentExecutionId", "sourceType", "entryKind", "direction", "status", "originalDebtorCompanyId", "creditorCompanyId", "amountCents", "projectId"],
       operatingFact: ["id"], operatingImpactEntry: ["id"],
-      auditLog: ["actorUserId", "metadata", ...(nativeLoss || nativeCancel ? ["businessId"] : [])],
+      auditLog: ["actorUserId", "metadata", ...(nativeLoss || nativeCancel || nativeDisconnect ? ["businessId"] : [])],
       fundAccountBalanceRegistration: ["accountId", "balanceYuan", "coveredExecutionIds"]
     };
     function rows(model: string, where: Record<string, unknown>) {
@@ -486,7 +486,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       if (model === "operatingImpactEntry" && (orphanImpact || rawScenario === "native-response-loss-orphan" && recorded) && where.sourceBusinessId === undefined) return [{ id: "orphan-impact" }];
       if (model === "auditLog" && rawScenario === "native-response-loss-audit-orphan" && recorded && where.businessId === undefined) return [{ actorUserId: ids.actor, metadata: {} }, { actorUserId: ids.actor, metadata: {} }];
       if (model === "auditLog" && rawScenario === "native-response-loss-foreign-audit" && recorded && where.businessId === undefined) return [{ businessId: "foreign", actorUserId: ids.actor, metadata: { voucherFileId: null, voucherPending: true, actualPayer: { kind: "participating_company", id: ids.companyB } } }];
-      if (model === "auditLog" && rawScenario === "native-cancel-audit-orphan" && submittedCancellation && where.businessId === undefined) return [{actorUserId:ids.actor,businessId:"foreign",metadata:{}}];
+      if (model === "auditLog" && (rawScenario === "native-cancel-audit-orphan" || rawScenario === "native-disconnect-audit-orphan") && submittedCancellation && where.businessId === undefined) return [{actorUserId:ids.actor,businessId:"foreign",metadata:{}}];
       if (!recorded) return [];
       if (completed) {
         const secondAmount = scenario === "competition-follow-up-double-debit" ? 2000n : 1000n;
@@ -659,6 +659,16 @@ describe("registered PG original case: explicit observer projection protocol (no
         const evidence=(result as unknown as {accountingEvidence:object}).accountingEvidence;
         expect(Object.isFrozen(evidence)).toBe(true);expect(Buffer.byteLength(JSON.stringify(evidence))).toBeLessThan(8192);
         return;
+      }
+      if (nativeDisconnect) {
+        const retire=jest.fn(async()=>{if(rawScenario==='native-disconnect-survivor-error')throw Error('survivors');});
+        const fault=async(submit:()=>Promise<void>)=>{await submit();return {mode:'disconnect-commit',state:'commit-disconnected',transactionId:'407',executionAllowed:false,nativeAdmission:false} as const;};
+        const verify=jest.fn(async()=>{});const run=registeredCases.runRegisteredNullCrossCompanyNativeDisconnect(f.context,prepared,continuity,fault,retire,verify);
+        if(rawScenario==='native-disconnect-survivor-error')await expect(run).rejects.toThrow('survivors');
+        else if(rawScenario==='native-disconnect-orphan-key')await expect(run).rejects.toThrow('PG_CASE_CANCEL_OWNER_PROOF');
+        else if(rawScenario==='native-disconnect-audit-orphan'||rawScenario==='native-disconnect-ledger-drift')await expect(run).rejects.toThrow('PG_CASE_DISCONNECT_LEDGER_CHANGED');
+        else await expect(run).resolves.toMatchObject({passed:true,rollbackObserved:true,originalKeyAbsent:true,accountingEvidence:{origin:'INDEPENDENT_OBSERVER_REPEATABLE_READ',before:{paidAmountCents:'0'},after:{paidAmountCents:'0'}}});
+        expect(retire).toHaveBeenCalledTimes(1);expect(verify).toHaveBeenCalledTimes(rawScenario==='native-disconnect-survivor-error'?0:rawScenario==='native-disconnect-orphan-key'?1:2);expect(posts).toBe(1);expect(fetch.mock.calls.map(([,request])=>request?.method)).toEqual(['GET','POST']);return;
       }
       if (disconnect) {
         const fault = async (submit: () => Promise<void>) => {

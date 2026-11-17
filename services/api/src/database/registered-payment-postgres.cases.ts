@@ -518,6 +518,35 @@ type DisconnectOutcome = Readonly<{
   nativeAdmission: false;
 }>;
 
+/** Native terminate-only case: no replacement application and no replay. */
+export async function runRegisteredNullCrossCompanyNativeDisconnect(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  disconnectCommit: (submit: () => Promise<void>) => Promise<DisconnectOutcome>,
+  retireRuntime: () => Promise<void>, verifySurvivors: () => Promise<void>) {
+  const observeOwner = captureOwnerRead(context, true);
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true, false, true);
+  const ownerBefore = await observeOwner(fixture, identity.ownerPid, checked);
+  let submitted = false, status: number | undefined;
+  const outcome = await checked(() => disconnectCommit(async () => {
+    check(!submitted, "PG_CASE_DISCONNECT_DUPLICATE_POST");submitted = true;
+    status = (await checked(() => submit())).status;
+  }));
+  check(outcome?.mode === "disconnect-commit" && outcome.state === "commit-disconnected" &&
+    typeof outcome.transactionId === "string" && /^[1-9][0-9]{0,9}$/u.test(outcome.transactionId) &&
+    Number(outcome.transactionId) <= 0xffffffff && outcome.executionAllowed === false && outcome.nativeAdmission === false,
+    "PG_CASE_DISCONNECT_FAULT_OUTCOME");
+  check(submitted && (status === 409 || (status !== undefined && status >= 500 && status <= 599)), "PG_CASE_DISCONNECT_HTTP_STATUS");
+  await checked(retireRuntime);await checked(verifySurvivors);
+  const after = await checked(() => observe(context, fixture, continuity, true, false, true));
+  const ownerAfter = await observeOwner(fixture, identity.ownerPid, checked);
+  await checked(verifySurvivors);
+  check(isDeepStrictEqual(after,before)&&isDeepStrictEqual(ownerAfter,ownerBefore), "PG_CASE_DISCONNECT_LEDGER_CHANGED");
+  return Object.freeze({caseId:"registered.null-cross-company.disconnect-commit-native",passed:true as const,rollbackObserved:true as const,
+    originalKeyAbsent:true as const,accountingEvidence:Object.freeze({origin:"INDEPENDENT_OBSERVER_REPEATABLE_READ" as const,currency:"CNY" as const,
+      before:projectCompetitionAccounting("BEFORE",before),after:projectCompetitionAccounting("AFTER",after),ownerBefore:Object.freeze({...ownerBefore}),
+      ownerAfter:Object.freeze({...ownerAfter}),ownerStable:true as const,originalKeyAbsent:true as const})});
+}
+
 type DisconnectAttempt = Readonly<{
   context: RegisteredPgExecutionContext;
   originalProof: RegisteredPgExecutionContext["proof"];
