@@ -1,5 +1,113 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离审批闭集诊断
+
+准确 `13141fe1` 真实隔离运行登录和签名通过，审批返回 500，结果 UNKNOWN 且首因未得；付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-bqqh6ilz/run.log) SHA `4ea25caf96948c856e201583e4d38c8562df0b9304ea138283964d30a9409dff`。
+
+测试侧审批闭集捕获 `446cf048` 经独审合入本地 `df06bdd0`，准确补丁 SHA `108ac42535bc36f6a67d00684cc1c19a2f3686fc25e450d7d15757416ccaf8c9`；Node20 定向测试 5/5、API typecheck/lint 通过，真实 PG 测试按约跳过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重复无关文书资格或推送。
+
+## 2026-11-17 隔离审批依赖读取修订
+
+准确 `b813ebde` 真实隔离运行登录及签名通过，审批返回 500、结果 UNKNOWN，付款未进入；容器已清理。[私有日志](/private/tmp/jg398-standard-run-_1fmwc2w/run.log) SHA `06231a76b64be45689007ac48fa2522ed587cb9d5925826bd34fcdc3f71a0b25`。
+
+隔离审批已知列只读修订 `f8815f3f` 经独审合入本地 `a2f12b56`，准确补丁 SHA `d0a811bda4bf84f264e986cc86afd187a94c9789d79f37feb10a4562eecbf19d`；Node20 定向 5/5、CJS 语法及 diff 检查通过。三组列为本次全额批准已知依赖，不证明驳回等全部分支或原错误唯一原因；新候选尚未真实运行，不代表 #398 验收。本次未启动资源、重跑文书资格或推送。
+
+## 2026-11-17 隔离修订版本读取修订
+
+准确 `85771ce1` 的真实隔离运行三次登录通过，签名 500/42501 定位到缺少 `ContractTakeoverCorrection.schemaVersion` SELECT；审批及付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-8pcv1n_m/run.log) SHA `500cec786a38b1bdc5484e49f539ff3cb255065336e1f7fcf226fbdf2f26474c`。
+
+隔离列读取修订 `07ed5307` 经独审合入本地 `c07cfaa6`，准确补丁 SHA `b5724dbdf658c5228eb31e5ef5d1e6a82d5c17729ab8d9c65c4d16dc8eff1584`；Node20 定向 4/4、CJS 语法及 diff 检查通过。静态全链检查只覆盖字面注册表，不证明其他动态权限；新候选尚未真实运行，不代表 #398 验收。本次未启动资源、重复文书资格或推送。
+
+## 2026-11-17 隔离附件槽位读取修订
+
+准确 `4cd2adc1` 的真实隔离运行三次登录通过，签名 500/42501 定位到缺少 `ContractDraftAttachment.slotKey` SELECT，但尚未证明这是唯一缺口；审批和付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-qu3bv18f/run.log) SHA `c0e9f1b926489a65e8d42a3e5032dd9245c2ec79f8f247175ff7b0a2a9820c14`。
+
+隔离列读取修订 `70a19a39` 经独审合入本地 `45cca3b9`，准确补丁 SHA `9ccf6013fa78a38e12f4d3d1f7274fcf067da1fffa95de5ac66b0c78b2894084`；Node20 定向 3/3、CJS 语法及 diff 检查通过。新候选尚未真实运行，不代表 #398 验收；本次未运行资源、重跑无关资格或推送。
+
+## 2026-11-17 隔离签名权限对象诊断
+
+准确 `48f0cdd6` 的真实隔离运行三次登录通过，签名返回 500，Prisma unknown 错误分类为 SQLSTATE 42501/PERMISSION，但权限对象未知；审批和付款未进入，容器独立检查已移除。[原日志](/private/tmp/jg398-standard-run-r2ud5a58/run.log) SHA `ba66629a69878bf806f91470cc4dadbe2cc4041c3b24ad7020b20024630b1419`。签名可能已有写入，不能据此认定根因。
+
+测试侧固定权限对象枚举 `99624174` 经独审合入本地 `99e0263a`，准确补丁 SHA `40f3682048b19456d4b6c2676740f4ea5ae8695a6fbec38275d81b83f409ee42`；Node20 定向测试 3/3、API typecheck/lint 通过，真实 PG 测试按约跳过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重跑文书资格或推送。
+
+## 2026-11-17 隔离签名错误分类
+
+准确 `b5f7ce10` 的真实隔离运行三次登录通过，签名返回 500，Prisma 分类为 unknown，未取得 code 或 SQLSTATE；审批及付款未进入，容器已删除。[私有日志](/private/tmp/jg398-standard-run-37myl1vh/run.log) SHA `3bd798f20fa933ccf4f56afdf6b86f56a8d1216d73f496579f4d27ac4d152cb9`。签名可能已有写入，根因未确定。
+
+测试侧固定错误分类 `a685cfc6` 经独审合入本地 `1c392209`，准确补丁 SHA `ac181b4891d3f408101367b53509f819bf8ecd0695b34c8ff582778ec9cce3a3`；Node20 定向分类 3/3、API typecheck/lint 通过，真实 PG 测试按约跳过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重复文书资格或推送。
+
+## 2026-11-17 标准隔离签名诊断
+
+准确 `d41585cd` 真实隔离运行三次登录通过，签名返回 500，可能已有写入；审批和付款未进入，本轮容器已清理。[私有日志](/private/tmp/jg398-standard-run-l_4dc71u/run.log) SHA `92272d4b6fc49f8c5667ef7a3f6d5a852066f5d9a0408b3a2f28f09c0603505b`。不能将签名 500 等同无写入或认定根因。
+
+测试侧签名错误捕获 `3248fa7d` 经独审合入本地 `b3466947`，准确补丁 SHA `1e02b9ed40c3dfab761b04e2971f3ae5bbce3f5a9d9abc8bc4271e10b273c80a`；本地 Nest 过滤测试 2/2、API typecheck/lint 通过，真实 PG 测试按约跳过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重跑文书资格或推送。
+
+## 2026-11-17 标准隔离登录权限修订
+
+准确 `642207a8` 的真实隔离运行登录返回 500，签名、审批和付款均未进入；本轮容器已删除。[原日志](/private/tmp/jg398-standard-run-4oz7bj4g/run.log) SHA `404dffdf936fc4de7e1294645b8ba4ed87d4d495c749a5d7728e8f0c12657351`。已确认隔离角色缺少 AuthRateLimit DELETE，但日志不能证明它是登录失败的唯一根因。
+
+隔离权限修订 `e15f4d11` 经独审合入本地 `47329ff6`，准确补丁 SHA `ac5e2ed736a11200eb47414f8587b3d2f18ca916784bf1d37f85634c8e4c2623`；两个 CJS 语法和差异检查、Node20 定向 3/3 通过。新候选尚未执行真实隔离运行，不代表 #398 验收；本次未启动资源、重跑无关资格或推送。
+
+## 2026-11-17 标准隔离 runner 名称修订
+
+准确 `3723a237` 的标准隔离运行在 `LOCAL_MIGRATION_INPUT` 停止，尚未进入迁移或业务；[原私有日志](/private/tmp/jg398-standard-run-57osdjxi/run.log) SHA `ff5f116d219f02c36ac1ea7f6dff2df9b001b38407818a7efcfe2ebe55477858`。独立按本轮唯一容器名称和标签分别查询均为零，未发现该轮容器残留。
+
+runner 名称修复 `5311511c` 经独审合入本地 `e475a76d`，准确补丁 SHA `96d21ffc6d71cce11fa39d0c0c299006e6ac38cd0b0703efd9296494dd0621c8`；Node20 模型 3/3、API typecheck/lint 通过。新候选未执行真实隔离运行，不代表 #398 业务验收；本次未启动容器、未重跑无关文书资格，未推送。
+
+## 2026-11-17 标准隔离付款组合链候选
+
+#398 标准隔离组合链候选 `978f795f` 经独审合入本地 `b124f471`，封存补丁 SHA `54835c6e22742f4608f718c519701046baac4648156566d7d6270a699d30ed52`，逐文件补丁字节一致。相关合成测试 86/86、角色及清理模型 2/2，API typecheck/lint 通过；真实 PostgreSQL 测试按约跳过。
+
+本轮只有模型和权限计划检查，未执行真实 PG 或容器，不能据此认定组合业务或 #398 验收通过；原现金 b047 仍 UNKNOWN。本次未重跑无关文书资格，未推送或操作资源。
+
+## 2026-11-17 A16 提交断连虚构隔离运行
+
+准确候选 `b88b94a6b59ba8e1778d1a19ca0968713de650b6` 的单次虚构 COMMIT_DISCONNECT 运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE` 与 `DISCONNECTED_ROLLBACK_CONFIRMED`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-d-b88-6aaOxI/receipt.json) SHA `a6c2942e4b69999eaf40b325e40052a6f83a4251c3b72ed857b760ec97b7fc79`；[核账证据](/private/tmp/jg-a16-d-b88-6aaOxI/accounting-evidence.json) SHA `a38eb9665e4741eeba5123ad00e32f0316c5bfb326f980070e51864332589f60`。
+
+独审确认 lockout NOLOGIN 和唯一原会话、fault XID 与时间，三次 survivor 观察原会话消失且 runtime 零连接、owner/observer 身份稳定；RR 核账前后 A/B 各 100 元、已付为零，付款、资金、审计和项目记录为零，owner 前后相同。逐刻锁和信号、HTTP 次数及原键 SQL 依准确源码成功路径推论，非独立原始抓包；HMAC 不留密钥，不能事后独立重算。
+
+运行器自报 cleanup 完成；[独立检查](/private/tmp/jg-a16-d-b88-receipt-JRlRqe/cleanup-independent.json) SHA `05835fc51f6f08506e5236adde5f33e4b858f361459e354063c85d7de2eea740` 确认 PG/runner 进程、PG 监听及 pidfile 缺席，应用端口未独核。本次仅虚构 null-scope 服务端终止单会话，不覆盖网络分区、PG 进程崩溃或整票验收；b047 仍 UNKNOWN。
+
+## 2026-11-17 A16 断连隔离候选
+
+新虚构 terminate-only 断连候选 `6ae3138d` 经独审合入本地 `c72f7593`，准确补丁 SHA `fc8ba7663a2056684b6a18f11f95b8905ecea7160fb2a145109f4de9174d1664`。付款 fixture 145/145、Node20 断连及旧场景回归 110/110，API build/typecheck/lint 通过。首次联合测试使用链式命令时 Node20 PATH 未传给后续 node，98/110；明确 Node20 后 110/110，非真实资源结果。
+
+NOLOGIN、真实隔离 PostgreSQL、应用关闭及时序尚未验证；5 秒 HTTP 与 12 秒锁等待可能使结果 UNKNOWN。角色变更仅限新隔离集群，失败处理依赖清理。原现金 b047 仍 UNKNOWN，不触碰或重放；本候选不代表 #398 验收完成，未推送或操作生产。
+
+## 2026-11-17 A16 提交取消虚构隔离运行
+
+准确候选 `f6d57640d8991f41ba3c9572f559797ee0215306` 单次虚构运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE` 与 `CANCELLED_ROLLBACK_CONFIRMED`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-can-f6-XIqGOM/receipt.json) SHA `c213d57567a883da39d2594f99df09bdd9aa4cfaf0948b780300049542d2ced2`；[核账证据](/private/tmp/jg-a16-can-f6-XIqGOM/accounting-evidence.json) SHA `ec9f1efb32dcdb0a5ae152de9d180630c500e8932232e30d1289f1711a86a4b6`。独审确认前后两个账户各 100 元、申请及结算已付为零，execution/root/funding/allocation/event/audit/fact/impact 均为零，owner 前后相同。
+
+fault 记录 cancel-commit/commit-cancelled、XID、owner/runtime/commit 时间及数据库身份；唯一 blocker、逐刻锁状态、实际信号、单次 POST 和原键查询依封存源码成功路径推论，非独立原始轨迹。HMAC 无密钥，不能事后重算。原 cleanup 自报完成；[独立检查](/private/tmp/jg-a16-can-f6-receipt-AFJ3ZI/cleanup-independent.json) SHA `957316a8355589362e695f3acaddaeeb7e7f0fac8f77eb87b7a35249caf44870` 记录当时 PG/runner 进程、PG 监听及 pidfile 缺席，应用端口未独核。本次仅虚构跨公司 null scope 取消，断连及整票仍未验收；b047 仍 UNKNOWN。
+
+## 2026-11-17 A16 提交取消隔离候选
+
+新虚构付款提交取消候选 `7a36711a` 经独审合入本地 `79c814af`，准确补丁 SHA `25d6605dca1b32ec2cbd4afe60472f5d7f1924852e822fb83a4eb8e24e910e43`。付款 fixture 140/140、取消及原协议/响应丢失回归 26/26，API build/typecheck/lint 通过；这些是本地模型和组件检查。
+
+真实隔离 PostgreSQL 锁、权限和时序尚未验证；5 秒 HTTP 时限与 12 秒锁等待可能使场景安全关闭，不能据模型认定业务通过或 #398 验收完成。原现金 b047 仍 UNKNOWN，不触碰或重放；未推送或操作生产。
+
+## 2026-11-17 A16 响应丢失虚构隔离运行
+
+准确候选 `513b4088d57ae4fd5adafdf6e94d05539eb79297` 与计划 SHA `5e5df5cf2feef612be3c2ab50428df7989f3b1128ce9dcf63e3d31fd1a8114d5` 的单次虚构运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-513-BCmQlq/receipt.json) SHA `45cb1bba61483428358b62ffdf737348590f9ec1a011d5ad762b9012f7deeeaa`；[核账证据](/private/tmp/jg-a16-513-BCmQlq/accounting-evidence.json) SHA `219f71721e0f201f3195d928969325b12ad35162a7d85fec0e0ff8292e44ab43`。独审确认首次到重放的计数与余额一致；代理丢弃完整上游 201 响应及先核后重放的顺序依封存源码成功路径推论，并非独立 HTTP 事件记录。HMAC 密钥未保存，不能事后独立重算。
+
+运行器自报 cleanup 完成；[独立检查](/private/tmp/jg-a16-513-receipt-t1rlFh/cleanup-independent.json) SHA `fc3142ce97eb7c239b4e9bb4a384806dd3f15795657dda0de0296f32700d01a2` 确认 runner/PG 进程、PG 监听及 pidfile 缺席，未独立检查代理端口。本次只覆盖虚构 null-project 跨公司 40 元；提交中断、断连和真实审批仍未验，#398 尚未验收，原现金 b047 仍 UNKNOWN。
+
+## 2026-11-17 A16 身份与正文保护
+
+A16 新虚构场景身份及正文保护候选 `c364bfcc` 经独审合入本地 `00eb6e9d`，准确补丁 SHA `02bbda2566c4998c35f817f6827cf1aa2ffaa2f33802e31f796fbcc33b59c8fd`。Node20 相关 87/87（含真实本地 HTTP 装配）、现金及旧代理 21/21、API build/typecheck/lint 通过。真实隔离业务尚未运行，不代表 #398 验收通过。
+
+两个证据文件依次 fsync，整体不是原子操作：后一个文件失败可能留下前一个文件，但付款 POST 不会发送。正文 HMAC 密钥不落盘，因此不能事后独立重算或恢复请求；原现金 b047 仍为 UNKNOWN，不可重放或换键重发。未推送或操作生产。
+
+## 2026-11-17 付款响应丢失隔离候选
+
+新虚构 A16 响应丢失候选 `6088b512` 已独审并合入本地 `bcbd2ac5`，准确补丁 SHA `0afb1960d594bfc600b7ea3efde4ada83061a91d4ee462d63f853d3241eb15f1`。付款 fixture 模型 138/138、构建后代理与 runner 3/3，API build/typecheck/lint 通过；runner 首次在 dist 尚未构建时失败，构建后通过。此候选尚未真实隔离闭环，不代表 #398 完成。
+
+原现金 b047 仍为 UNKNOWN，不可重放或换键重发；此新场景不改变其结果。合同文书支线另存于独立工作树，未纳入本次集成；未推送、未操作生产。
+
+## 2026-11-17 撤权状态证据准备
+
+本地集成 `9befdf6a` 增加凭证撤权逐次 HTTP 阶段及状态的脱敏记录，仅适用于未来新运行的回执；模型回归、API build/typecheck/lint 通过，未启动新的隔离资源。旧 `d4befe41` 回执不含逐次状态，不能补写或倒推；原现金 `b047` 付款结果仍为 UNKNOWN。此前通过的撤权业务片与该后继本地代码的实际运行证据分别记录。
+
 ## 2026-11-17 撤回重提直接归档测试切片
 
 真实链测试窄化候选 `9d3e43f2` 经独审合入本地 `5079d3e6`，准确补丁 SHA `42d15272e91031add9d73e28d22167f35495599d414f99cfec9c0109dbbb7d73`。生命周期网络及审批服务模型 40/40、CON-18 短链模型 12/12、API typecheck/lint 通过；默认 Jest 配置未执行 native spec。

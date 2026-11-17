@@ -678,6 +678,8 @@ async function runNativeTask16Business(plan,state){
    const diagnose=value=>{if(!receipt.revocationFailure)receipt.revocationFailure=value;};
    const cleanupDiagnostic=value=>{if(!receipt.revocationCleanup)receipt.revocationCleanup=value;};
    const httpDiagnostic=value=>{if(!receipt.revocationHttpFailure)receipt.revocationHttpFailure=value;};
+   receipt.revocationHttpObservations=[];
+   const httpObservation=value=>{receipt.revocationHttpObservations.push(value);};
    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgCF0FAAFYAQDfZmccAAAAAElFTkSuQmCC','base64');
    receipt.revocationPreparation='ENTERED_UNKNOWN_DO_NOT_RETRY';
    const voucher=await wait(()=>revocation.prepareNativeVoucherForRevocation({service,fixture:prepared,password:context.password,voucherBytes:png,diagnose,snapshot:()=>revocation.readVoucherFundingSnapshot({observer,fixture:prepared,known:{observerPid:retained.at(-1).pid,databaseOid:identity.databaseOid,observerOid:retained.at(-1).loginOid},check:providerCheck}),check:providerCheck}));
@@ -693,7 +695,7 @@ async function runNativeTask16Business(plan,state){
    await verifyIdentity();enter('REVOCATION_BEFORE_AFTER_AND_ACCOUNTING');
    const observe=async(sql)=>{needLive();state.checkPublicCertificateContext();return await state.sql(sql);};
    const check=providerCheck;
-   const result=await wait(()=>revocation.runNativeVoucherRevocation({ids,origin,token,fileSha256:voucher.fileSha256,fileSize:voucher.fileSize,diagnose,cleanupDiagnostic,httpDiagnostic,known:{databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:identity.ownerOid,sessionPids:retained.map(row=>row.pid)},observe,revoke:observe,transport:(target,init)=>{assertNativeTask16RevocationTarget(origin,ids,target,init.method);return fetch(target,init);},check}));
+   const result=await wait(()=>revocation.runNativeVoucherRevocation({ids,origin,token,fileSha256:voucher.fileSha256,fileSize:voucher.fileSize,diagnose,cleanupDiagnostic,httpDiagnostic,httpObservation,known:{databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:identity.ownerOid,sessionPids:retained.map(row=>row.pid)},observe,revoke:observe,transport:(target,init)=>{assertNativeTask16RevocationTarget(origin,ids,target,init.method);return fetch(target,init);},check}));
    need(result.authorizedBefore&&result.capabilityDenied&&result.newTicketDenied&&result.oldTicketDenied&&result.otherProjectReadable&&result.observedFactsUnchanged&&equal(posts,[0,0]),'NATIVE_DIRECT_REVOCATION_RESULT');
    receipt.voucherRevocation=result;receipt.business='SYNTHETIC_VOUCHER_REVOCATION_RETURNED';await verifyIdentity();return;
   }

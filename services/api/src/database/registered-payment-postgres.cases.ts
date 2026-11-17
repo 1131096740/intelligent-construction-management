@@ -29,7 +29,7 @@ function check(condition: unknown, code: string): asserts condition {
 
 type ObserverClock = { light: () => void; checked: <T>(phase: RegisteredPgObserverPhase, operation: () => T | PromiseLike<T>) => Promise<T>; phase: (phase: RegisteredPgObserverPhase) => void };
 
-async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture, clock: ObserverClock, isolatedPaymentScope = false, consolidatedNormal = false) {
+async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture, clock: ObserverClock, isolatedPaymentScope = false, consolidatedNormal = false, fullAudit = false) {
   const { light, checked } = clock;
   clock.phase("SNAPSHOT_ENTER");
   light();
@@ -49,7 +49,7 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
   const projection = { sourceType: "payment_execution", ...(isolatedPaymentScope ? {} : { sourceBusinessId: { in: executionIds } }) };
   const facts = await checked("FACTS", () => tx.operatingFact.findMany({ where: projection, select: { id: true } }));
   const impacts = await checked("IMPACTS", () => tx.operatingImpactEntry.findMany({ where: projection, select: { id: true } }));
-  const audits = await checked("AUDITS", () => tx.auditLog.findMany({ where: { businessType: "payment_request", businessId: ids.payment, action: "payment.execution.record" }, select: { actorUserId: true, metadata: true } }));
+  const audits = await checked("AUDITS", () => tx.auditLog.findMany({ where: { businessType: "payment_request", ...(fullAudit ? {} : { businessId: ids.payment }), action: "payment.execution.record" }, select: { actorUserId: true, metadata: true, ...(fullAudit ? { businessId: true } : {}) } }));
   // Independent amounts come from the real immutable opening + canonical
   // postings, never the response or the application balance helper.
   const [openingA, openingB] = await checked("OPENINGS", () => Promise.all([fixture.companyARegistrationId, fixture.companyBRegistrationId].map(id => tx.fundAccountBalanceRegistration.findUniqueOrThrow({ where: { id }, select: { accountId: true, balanceYuan: true, coveredExecutionIds: true } }))));
@@ -65,7 +65,7 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
   return { request, settlement, executions, funding, allocations, events, roots, facts, impacts, audits, balanceA: accountAmount(openingA), balanceB: accountAmount(openingB) };
 }
 
-async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false, consolidatedNormal = false) {
+async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false, consolidatedNormal = false, fullAudit = false) {
   const start = performance.now();
   let phase: RegisteredPgObserverPhase = "TX_START", txStart: number | undefined, lightCalls = 0, lightElapsedMs = 0, queryElapsedMs = 0;
   const elapsed = (value: number) => Math.min(3600000, Math.max(0, Math.round(value)));
@@ -86,7 +86,7 @@ async function observe(context: RegisteredPgExecutionContext, fixture: PreparedR
       txStart = performance.now();
       const setReadOnly = tx.$executeRawUnsafe;
       await checked("SET_READ_ONLY", () => setReadOnly.call(tx, "SET TRANSACTION READ ONLY"));
-      return snapshot(tx, fixture, { light, checked, phase(next) { phase = next; } }, isolatedPaymentScope, consolidatedNormal);
+      return snapshot(tx, fixture, { light, checked, phase(next) { phase = next; } }, isolatedPaymentScope, consolidatedNormal, fullAudit);
     }, { isolationLevel: "RepeatableRead" });
     phase = "TX_RETURN"; return result;
   } finally {
@@ -123,8 +123,12 @@ export function runRegisteredNullCrossCompanyResponseLoss(context: RegisteredPgE
   return runCrossCompanyCase(context, fixture, continuity, "response-loss");
 }
 
+export function runRegisteredNullCrossCompanyNativeResponseLoss(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity) {
+  return runCrossCompanyCase(context, fixture, continuity, "native-response-loss");
+}
+
 async function prepareCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
-  continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false, consolidatedNormal = false) {
+  continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false, consolidatedNormal = false, fullAudit = false) {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   light();
@@ -133,7 +137,7 @@ async function prepareCrossCompanyCase(context: RegisteredPgExecutionContext, fi
   const { plan } = fixture;
   const { ids } = plan;
   continuity?.markCaseGate?.("OBSERVER_BEFORE");
-  const before = await checked(() => observe(context, fixture, continuity, isolatedPaymentScope, consolidatedNormal));
+  const before = await checked(() => observe(context, fixture, continuity, isolatedPaymentScope, consolidatedNormal, fullAudit));
   continuity?.markCaseGate?.("BEFORE_STATE");
   check(before.executions.length === 0 && before.roots.length === 0 && before.request.approvedAmountCents === 10000n && before.request.paidAmountCents === 0n && before.settlement.payableAmountCents === 10000n && before.settlement.paidAmountCents === 0n && before.balanceA === "100.0000" && before.balanceB === "100.0000", "PG_CASE_BEFORE_STATE");
   if (isolatedPaymentScope) {
@@ -277,11 +281,21 @@ function captureOwnerRead(context: RegisteredPgExecutionContext, originalKeyMust
 }
 
 /** The owned case executor provides the one-use commit cancellation gate. */
-export async function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
+export function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
   fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
   cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  return runCancellationCase(context, fixture, continuity, cancelCommit, false);
+}
+export function runRegisteredNullCrossCompanyNativeCancellation(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  return runCancellationCase(context, fixture, continuity, cancelCommit, true);
+}
+async function runCancellationCase(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  cancelCommit: (submit: () => Promise<void>) => Promise<void>, fullAudit: boolean) {
   const observeOwner = captureOwnerRead(context, true);
-  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true);
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true, false, fullAudit);
   const ownerBefore = await observeOwner(fixture, identity.ownerPid, checked);
   let submitted = false;
   let status: number | undefined;
@@ -290,7 +304,7 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
     submitted = true;
     status = (await checked(() => submit())).status;
   }));
-  const after = await checked(() => observe(context, fixture, continuity, true));
+  const after = await checked(() => observe(context, fixture, continuity, true, false, fullAudit));
   const ownerAfter = await observeOwner(fixture, identity.ownerPid, checked);
   check(status === 409 || (status !== undefined && status >= 500 && status <= 599), "PG_CASE_CANCEL_HTTP_STATUS");
   check(isDeepStrictEqual(after, before) && isDeepStrictEqual(ownerAfter, ownerBefore), "PG_CASE_CANCEL_LEDGER_CHANGED");
@@ -299,7 +313,10 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
   const body = result.body as { status?: unknown } | null;
   check(result.status === 200 && body?.status === "unconfirmed" && !Object.hasOwn(body, "execution"), "PG_CASE_CANCEL_ORIGINAL_RESULT");
   return { caseId: "registered.null-cross-company.cancel-commit", database: identity.database,
-    observerPid: identity.observerPid, passed: true as const, rollbackObserved: true as const, originalResultUnconfirmed: true as const };
+    observerPid: identity.observerPid, passed: true as const, rollbackObserved: true as const, originalResultUnconfirmed: true as const,
+    accountingEvidence: Object.freeze({ origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ" as const, currency: "CNY" as const,
+      before: projectCompetitionAccounting("BEFORE", before), after: projectCompetitionAccounting("AFTER", after),
+      ownerBefore: Object.freeze({...ownerBefore}), ownerAfter: Object.freeze({...ownerAfter}), ownerStable: true as const, originalKeyAbsent: true as const }) };
 }
 
 function assertCommittedCrossCompany(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
@@ -314,6 +331,7 @@ function assertCommittedCrossCompany(context: RegisteredPgExecutionContext, fixt
   check(after.allocations[0]?.amountCents === 4000n && after.allocations[0]?.sourceBatchId === fixture.companyBSourceId && after.request.paidAmountCents === 4000n && after.settlement.paidAmountCents === 4000n && after.request.status === "partially_paid" && after.balanceA === "100.0000" && after.balanceB === "60.0000", "PG_CASE_COMMITTED_CAPACITY_BALANCE");
   const audit = after.audits[0]!;
   const metadata = audit.metadata;
+  if ("businessId" in audit) check(audit.businessId === ids.payment, "PG_CASE_COMMITTED_AUDIT_BUSINESS");
   check(audit.actorUserId === ids.actor && metadata !== null && typeof metadata === "object" && !Array.isArray(metadata), "PG_CASE_COMMITTED_AUDIT_ACTOR");
   const actualPayer = metadata.actualPayer;
   check(metadata.voucherFileId === null && metadata.voucherPending === true && actualPayer !== null && typeof actualPayer === "object" && !Array.isArray(actualPayer) && actualPayer.kind === "participating_company" && actualPayer.id === ids.companyB && !JSON.stringify(metadata).includes(context.password), "PG_CASE_COMMITTED_AUDIT_FACTS");
@@ -410,10 +428,14 @@ export async function runRegisteredProjectAttributionGap(context: RegisteredPgEx
 }
 
 async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
-  continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss") {
-  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, false, scenario === "commit");
+  continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss" | "native-response-loss") {
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, scenario === "native-response-loss", scenario === "commit", scenario === "native-response-loss");
   continuity?.markCaseGate?.("REGISTRATION_REQUEST");
-  if (scenario === "response-loss") {
+  if (scenario === "native-response-loss") {
+    check(continuity?.assertHttpRequest && continuity.loseRegistrationResponse && continuity.authorizeResponseLossReplay, "PG_CASE_RESPONSE_LOSS_REQUIRES_OWNED_TRANSPORT");
+    const proof = await checked(() => continuity.loseRegistrationResponse!(() => submit({ ...continuity, requestJson: undefined })));
+    check(proof.faultState === "dropped" && proof.upstreamStatusCode === 201, "PG_CASE_RESPONSE_LOSS_BOUNDARY");
+  } else if (scenario === "response-loss") {
     check(continuity?.assertHttpRequest, "PG_CASE_RESPONSE_LOSS_REQUIRES_OWNED_TRANSPORT");
     const dropped = new Error("PG_CASE_RESPONSE_LOST_AFTER_UPSTREAM_HEADERS");
     const fetchWithoutDelivery: typeof fetch = async (target, init) => {
@@ -447,19 +469,21 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
     }
   }
   continuity?.markCaseGate?.("OBSERVER_AFTER");
-  const after = await checked(() => observe(context, fixture, continuity, false, scenario === "commit"));
+  const after = await checked(() => observe(context, fixture, continuity, scenario === "native-response-loss", scenario === "commit", scenario === "native-response-loss"));
   continuity?.markCaseGate?.("COMMITTED_ASSERTION");
   const { execution, root } = assertCommittedCrossCompany(context, fixture, after);
   const verifyOriginalResult = async () => {
     await assertRecordedOriginalResult(context, fixture, continuity, checked, execution.id);
   };
-  if (scenario === "response-loss") await verifyOriginalResult();
+  if (scenario !== "commit") await verifyOriginalResult();
+  if (scenario === "native-response-loss") await checked(() => continuity!.authorizeResponseLossReplay!());
   continuity?.markCaseGate?.("REPLAY_REQUEST");
   const replay = await checked(() => submit());
   check(replay.status === 201, "PG_CASE_ORIGINAL_KEY_REPLAY_HTTP");
   continuity?.markCaseGate?.("OBSERVER_REPLAY");
-  const final = await checked(() => observe(context, fixture, continuity, false, scenario === "commit"));
+  const final = await checked(() => observe(context, fixture, continuity, scenario === "native-response-loss", scenario === "commit", scenario === "native-response-loss"));
   continuity?.markCaseGate?.("REPLAY_ASSERTION");
+  if (scenario === "native-response-loss") assertCommittedCrossCompany(context, fixture, final);
   check(final.executions.length === 1 && final.executions[0]?.id === execution.id && final.roots.length === 1 && final.roots[0]?.id === root.id && final.events.length === 1 && final.audits.length === 1 && final.allocations.length === 1 && final.request.paidAmountCents === 4000n && final.settlement.paidAmountCents === 4000n && final.balanceA === "100.0000" && final.balanceB === "60.0000", "PG_CASE_REPLAY_NO_SECOND_FINANCIAL_EFFECT");
   check(final.funding.length === 1 && final.funding[0]?.executionId === execution.id && final.funding[0]?.operatingLedgerEffectiveDateAtRegistration === null && final.funding[0]?.actualPayerId === fixture.plan.ids.companyB && final.funding[0]?.actualPayerKind === "participating_company" && final.facts.length === 0 && final.impacts.length === 0, "PG_CASE_REPLAY_CANONICAL_SCOPE");
   if (scenario === "commit") await verifyOriginalResult();
@@ -473,12 +497,12 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
     eventCount: value.events.length, auditCount: value.audits.length,
     projectFactCount: value.facts.length, projectImpactCount: value.impacts.length
   });
-  const accountingEvidence = scenario === "commit" ? Object.freeze({
+  const accountingEvidence = Object.freeze({
     origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ" as const, currency: "CNY" as const,
     before: projectAccounting("BEFORE", before), after: projectAccounting("AFTER", after), replay: projectAccounting("REPLAY", final),
     executionId: execution.id, rootId: root.id, debtorCompanyId: root.originalDebtorCompanyId,
     creditorCompanyId: root.creditorCompanyId, debtAmountCents: root.amountCents.toString()
-  }) : undefined;
+  });
   return { caseId: scenario === "commit" ? registeredPaymentPostgresCases()[0]!.id : "registered.null-cross-company.response-loss",
     executed: true, database: identity.database, observerPid: identity.observerPid, executionId: execution.id, rootId: root.id, passed: true, ...(accountingEvidence ? { accountingEvidence } : {}),
     limits: scenario === "commit" ? ["Only the normal NULL-project commit/replay case", "No fault, concurrency, approval-path, TLS or deployment acceptance"]
@@ -493,6 +517,35 @@ type DisconnectOutcome = Readonly<{
   executionAllowed: false;
   nativeAdmission: false;
 }>;
+
+/** Native terminate-only case: no replacement application and no replay. */
+export async function runRegisteredNullCrossCompanyNativeDisconnect(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  disconnectCommit: (submit: () => Promise<void>) => Promise<DisconnectOutcome>,
+  retireRuntime: () => Promise<void>, verifySurvivors: () => Promise<void>) {
+  const observeOwner = captureOwnerRead(context, true);
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true, false, true);
+  const ownerBefore = await observeOwner(fixture, identity.ownerPid, checked);
+  let submitted = false, status: number | undefined;
+  const outcome = await checked(() => disconnectCommit(async () => {
+    check(!submitted, "PG_CASE_DISCONNECT_DUPLICATE_POST");submitted = true;
+    status = (await checked(() => submit())).status;
+  }));
+  check(outcome?.mode === "disconnect-commit" && outcome.state === "commit-disconnected" &&
+    typeof outcome.transactionId === "string" && /^[1-9][0-9]{0,9}$/u.test(outcome.transactionId) &&
+    Number(outcome.transactionId) <= 0xffffffff && outcome.executionAllowed === false && outcome.nativeAdmission === false,
+    "PG_CASE_DISCONNECT_FAULT_OUTCOME");
+  check(submitted && (status === 409 || (status !== undefined && status >= 500 && status <= 599)), "PG_CASE_DISCONNECT_HTTP_STATUS");
+  await checked(retireRuntime);await checked(verifySurvivors);
+  const after = await checked(() => observe(context, fixture, continuity, true, false, true));
+  const ownerAfter = await observeOwner(fixture, identity.ownerPid, checked);
+  await checked(verifySurvivors);
+  check(isDeepStrictEqual(after,before)&&isDeepStrictEqual(ownerAfter,ownerBefore), "PG_CASE_DISCONNECT_LEDGER_CHANGED");
+  return Object.freeze({caseId:"registered.null-cross-company.disconnect-commit-native",passed:true as const,rollbackObserved:true as const,
+    originalKeyAbsent:true as const,accountingEvidence:Object.freeze({origin:"INDEPENDENT_OBSERVER_REPEATABLE_READ" as const,currency:"CNY" as const,
+      before:projectCompetitionAccounting("BEFORE",before),after:projectCompetitionAccounting("AFTER",after),ownerBefore:Object.freeze({...ownerBefore}),
+      ownerAfter:Object.freeze({...ownerAfter}),ownerStable:true as const,originalKeyAbsent:true as const})});
+}
 
 type DisconnectAttempt = Readonly<{
   context: RegisteredPgExecutionContext;
