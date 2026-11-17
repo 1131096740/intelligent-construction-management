@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 经营账响应丢失隔离结果
+
+准确 `210898f008e1250dc18cdab4adfeae99ed4c05fe` 的虚构真实隔离运行停在 `LEDGER_LOSS_RESULT_OBSERVE_REPLAY`，结果 UNKNOWN，未产生 accounting 证据，无法判断是否提交或重放；原键禁止重试，secret 已清除。[回执](/private/tmp/jg-ledger-loss210-qj2bpsf5/receipt.json) SHA `b3ca396fa5f658ba9ea3dbd60be21f06f89e97e3b6685582082704217abc64b8`，[日志](/private/tmp/jg-ledger-loss-210-once.log) SHA `e1c5fc5a86bb9d2d412ce243cf3fba79ef65bd834e3967690c5d992836506eff`，[清理](/private/tmp/jg-ledger-loss-210-cleanup.json) SHA `2fdee853a5417da651b428b575e747375a3aa7953bee05613506e82c18bc29d3`，清理核查仅覆盖已记录对象。
+
+此结果不能视为该交叉场景或 #398 验收通过；历史 b047 仍 UNKNOWN。本次仅登记，未碰生产或推送。
+
 ## 2026-11-17 经营账响应丢失候选
 
 经营账响应丢失交叉场景 `615278e9` 经独审合入本地 `a8eb8066`，补丁 SHA `fa0c87baa50c88eac5f565735a1bc54e28b3885c49e51d57dd260376ce0e9853`，七文件差异逐项一致；Node20 定向 95/95、付款 fixture 159/159、API build/typecheck/lint 通过。
