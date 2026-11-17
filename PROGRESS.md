@@ -1,5 +1,15 @@
 # 建工智管当前状态
 
+## 2026-11-17 项目来源不足虚构隔离结果
+
+准确 `461ddc374299b4d7afd2f359f12ea6631ce03bc7` 的新独占虚构项目来源不足运行返回 409，`financialAcceptance=false`；独立 observer/owner RR 核账显示前后 A 100 元、B 8 元、已付为零，执行、根、资金、分配、事件、审计及项目事实影响均为零，owner 不变且原键无记录。来源余额 8 元中本项目 5 元、缺口 3 元。[原回执](/private/tmp/jg-src461d-evidence-wbpekN2p/receipt.json) SHA `c9a1fedc34e153137a3424051507400495a78bbf57ebf85b9a2916449829aa3e`，[核账](/private/tmp/jg-src461d-evidence-wbpekN2p/accounting-evidence.json) SHA `70731b6354b471b19cd4835430746e30f3cefa97a70d5be16aa4d9d099195d34`；[独立清理](/private/tmp/jg-src461d-evidence-wbpekN2p/independent-cleanup.json)记录 runner/PG 进程、监听和 pidfile 缺席。此为该虚构场景，不代表完整 #398 验收；b047 仍 UNKNOWN。
+
+## 2026-11-17 queue-only f8 隔离结果
+
+准确 `f8b7ef48` queue-only 虚构隔离运行迁移 261 成功，随后 `DRAFT/REJECTED`；草稿创建、保存或预览 POST 的具体失败阶段未知，业务结果 UNKNOWN，不能证明 d57 正式链的根因。本轮禁用文书 worker，未运行文书资格。[私有日志](/private/tmp/jg-queue-f8-log-FvLSaH/run.log) SHA `409168c8a93b028b3628d3d398c980a58e58c18b14d79e2ce696970e67214858`；[独立清理](/private/tmp/jg-queue-f8-log-FvLSaH/cleanup-independent.json) SHA `61108a640d8de99d306220963522c16d46825184807779faf3b0e93d46b24e68` 记录本轮容器、监听及私有目录缺席。
+
+5ac 真实虚构付款正常、并发及三种 A16 异常的历史证据保持原 SHA，不改写为本候选结果；d57 正式合同链仍 UNKNOWN，#394 和 #398 均未完成。
+
 ## 2026-11-17 项目来源不足隔离候选
 
 新虚构项目来源不足候选 `817b5423` 经独审合入本地 `4b898944`，准确补丁 SHA `4ecf0fe26445e0e93fdf2f10274ca4d361b973fa0ab910e18b93a8e3ab17455f`；同项目来源 5 元而申请 8 元，目标为精确 409、原键未确认及 observer/owner 前后不变，旧 gap 用途保持。付款 fixture 模型 149/149、构建后 runner 71/71、API build/typecheck/lint 通过；首次未构建直接运行 runner 的 6 项接口资格失败，构建后通过。
