@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离审批依赖读取修订
+
+准确 `b813ebde` 真实隔离运行登录及签名通过，审批返回 500、结果 UNKNOWN，付款未进入；容器已清理。[私有日志](/private/tmp/jg398-standard-run-_1fmwc2w/run.log) SHA `06231a76b64be45689007ac48fa2522ed587cb9d5925826bd34fcdc3f71a0b25`。
+
+隔离审批已知列只读修订 `f8815f3f` 经独审合入本地 `a2f12b56`，准确补丁 SHA `d0a811bda4bf84f264e986cc86afd187a94c9789d79f37feb10a4562eecbf19d`；Node20 定向 5/5、CJS 语法及 diff 检查通过。三组列为本次全额批准已知依赖，不证明驳回等全部分支或原错误唯一原因；新候选尚未真实运行，不代表 #398 验收。本次未启动资源、重跑文书资格或推送。
+
 ## 2026-11-17 隔离修订版本读取修订
 
 准确 `85771ce1` 的真实隔离运行三次登录通过，签名 500/42501 定位到缺少 `ContractTakeoverCorrection.schemaVersion` SELECT；审批及付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-8pcv1n_m/run.log) SHA `500cec786a38b1bdc5484e49f539ff3cb255065336e1f7fcf226fbdf2f26474c`。
