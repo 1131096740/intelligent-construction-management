@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 双阶段付款真实浏览器隔离结果
+
+准确 `b012cafa00ced718ffab1eeda22862d69a0e1a5d` 的虚构真实浏览器与 PG 双阶段场景完成：财务岗位分别提交 30 元和 70 元，另一岗位观察；付清后待办消失，授权凭证下载及账实核对通过。使用 token 注入；未覆盖无权下载负例。最终[回执](/private/tmp/jg398-browser-evidence-IyF7zM/receipt-complete.json) SHA `7310c9eae84007ceebd1772b7a8c537c6623326773fa77da0fe57d8fe6b21707`；首阶段[回执](/private/tmp/jg398-browser-evidence-IyF7zM/receipt.json) SHA `2a02d8e0750bf42fad26b537afaf5fd1d7dbb62015c58c5be5e6d0e86ea57e8f`、次阶段[回执](/private/tmp/jg398-browser-evidence-IyF7zM/receipt-stage2.json) SHA `fac2117e37943d9836748798a1a0970034391d53723876fe04f2dffdf7a2bc52` 各自为 UNKNOWN，应结合最终成功结果理解，不能单独视为阶段成功证明。
+
+[运行日志](/private/tmp/jg-browser-b012-run.log) SHA `f03335fcca6644bc96768d23469dca6917f81dffe654e678d040f7a356980542`；[独立清理](/private/tmp/jg-browser-b012-cleanup.json) SHA `bf5c790d578699c35916a095e404ffd9c99a750f42816573349f24ac8689d027`，PID 与端口检查受采样边界限制。仅证明该 SHA 的虚构场景，不代表 #398 完整验收；b047 仍 UNKNOWN。
+
 ## 2026-11-17 双阶段付款浏览器候选
 
 虚构双阶段浏览器候选 `441440e6` 经独审合入本地 `84114191`，补丁 SHA `38dbf8e4564a765157a36a6afed559665180f61ed27505ba61e3d753f6f36a76`，八文件差异逐项一致；Node runner 15/15、范围与证据模型 10/10，API typecheck/lint 通过，真实 PG 浏览器用例 1 项按约跳过。
