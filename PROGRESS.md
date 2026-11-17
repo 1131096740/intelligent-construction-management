@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 A16 断连隔离候选
+
+新虚构 terminate-only 断连候选 `6ae3138d` 经独审合入本地 `c72f7593`，准确补丁 SHA `fc8ba7663a2056684b6a18f11f95b8905ecea7160fb2a145109f4de9174d1664`。付款 fixture 145/145、Node20 断连及旧场景回归 110/110，API build/typecheck/lint 通过。首次联合测试使用链式命令时 Node20 PATH 未传给后续 node，98/110；明确 Node20 后 110/110，非真实资源结果。
+
+NOLOGIN、真实隔离 PostgreSQL、应用关闭及时序尚未验证；5 秒 HTTP 与 12 秒锁等待可能使结果 UNKNOWN。角色变更仅限新隔离集群，失败处理依赖清理。原现金 b047 仍 UNKNOWN，不触碰或重放；本候选不代表 #398 验收完成，未推送或操作生产。
+
 ## 2026-11-17 A16 提交取消虚构隔离运行
 
 准确候选 `f6d57640d8991f41ba3c9572f559797ee0215306` 单次虚构运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE` 与 `CANCELLED_ROLLBACK_CONFIRMED`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-can-f6-XIqGOM/receipt.json) SHA `c213d57567a883da39d2594f99df09bdd9aa4cfaf0948b780300049542d2ced2`；[核账证据](/private/tmp/jg-a16-can-f6-XIqGOM/accounting-evidence.json) SHA `ec9f1efb32dcdb0a5ae152de9d180630c500e8932232e30d1289f1711a86a4b6`。独审确认前后两个账户各 100 元、申请及结算已付为零，execution/root/funding/allocation/event/audit/fact/impact 均为零，owner 前后相同。
