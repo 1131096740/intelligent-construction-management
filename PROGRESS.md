@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 预览入队隔离探针候选
+
+queue-only 最小入队测试 `b3de0ace` 经独审合入本地 `13e14b51`，封存补丁 SHA `0cf7c16683301fc540ec810e4fd55d13c31b6179b68c82d61e9ff52f77c91ded`，逐文件补丁字节一致；Node20 runner 18/18、虚构映射 1/1、API typecheck/lint 通过。
+
+该候选使用虚构 owner 发布 fixture 并禁用 worker，目标仅验证真实隔离 PG/Nest 入队，尚未执行；不证明真实发布文书，也不修改正式路径资格。合同链仍未验收；本次未重跑文书资格、运行资源或推送。
+
 ## 2026-11-17 预览队列有限诊断
 
 准确 `d57fe25b` 原轮在有效 queued 前的 preview-generation 请求返回 500/`TASK12_GENERATED_DOCUMENT_QUEUE`，业务结果 UNKNOWN，服务端可能已有写入；PG 已清理，不能从其他轮次推断本轮首因。[原回执](/private/tmp/jg-native-contract-d57-yfnu_xpc/receipt.json) SHA `11735803bbc33223338e8478c7a89cbd347a0d3c8d5b46eecf11a46ccabff107`，[独立清理](/private/tmp/jg-con18-d57-log-vs_57axy/cleanup-independent.json) SHA `30bdc5009bf11a6f5c0f78bd94f6f8ec07edba873845206a3daa6d0335554fc3`。
