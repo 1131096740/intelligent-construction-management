@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离修订版本读取修订
+
+准确 `85771ce1` 的真实隔离运行三次登录通过，签名 500/42501 定位到缺少 `ContractTakeoverCorrection.schemaVersion` SELECT；审批及付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-8pcv1n_m/run.log) SHA `500cec786a38b1bdc5484e49f539ff3cb255065336e1f7fcf226fbdf2f26474c`。
+
+隔离列读取修订 `07ed5307` 经独审合入本地 `c07cfaa6`，准确补丁 SHA `b5724dbdf658c5228eb31e5ef5d1e6a82d5c17729ab8d9c65c4d16dc8eff1584`；Node20 定向 4/4、CJS 语法及 diff 检查通过。静态全链检查只覆盖字面注册表，不证明其他动态权限；新候选尚未真实运行，不代表 #398 验收。本次未启动资源、重复文书资格或推送。
+
 ## 2026-11-17 隔离附件槽位读取修订
 
 准确 `4cd2adc1` 的真实隔离运行三次登录通过，签名 500/42501 定位到缺少 `ContractDraftAttachment.slotKey` SELECT，但尚未证明这是唯一缺口；审批和付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-qu3bv18f/run.log) SHA `c0e9f1b926489a65e8d42a3e5032dd9245c2ec79f8f247175ff7b0a2a9820c14`。
