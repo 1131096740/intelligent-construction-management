@@ -110,3 +110,17 @@ test("resolves a lost launch ID by exact name and run label, without touching ot
  assert.equal(cleanupOwnedContainer({...scope,id,remove:()=>{},confirmAbsent:()=>false}),"UNKNOWN");
  assert.deepEqual(calls,[id]);
 });
+
+test("approval server log extracts only one directly attributed permission object",()=>{
+ const {classify}=require("./task398-approval-postgres-error.cjs");
+ const before="old private value\n",prefix="JG398|jg398_runtime|jiangkong_payment_execution_concurrency|123|";
+ const line=prefix+'42501|ERROR:  permission denied for table "SpotProcurementPayment"\n';
+ assert.equal(classify(before,before+line),"TABLE_070");
+ for(const after of [before,before+line+line,before+line.trimEnd(),before+prefix+'23505|ERROR:  permission denied for table "SpotProcurementPayment"\n',before+'SQL: permission denied for table "SpotProcurementPayment"\n',before+prefix+'42501|ERROR:  permission denied for table "SecretPrivate"\n',before+prefix+'42501|ERROR:  permission denied for table "SpotProcurementPayment" private value\n'])assert.equal(classify(before,after),"UNKNOWN");
+ assert.equal(classify("unrelated\n",before+line),"UNKNOWN");
+});
+
+test("private log write failure is unknown and never emits raw text",()=>{
+ const {finish}=require("./task398-approval-postgres-error.cjs");
+ assert.equal(finish("before\n","before\nprivate data\n",{TASK398_LOG_FILE:"/nonexistent/task398-log"}),"UNKNOWN");
+});
