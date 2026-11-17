@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离注册 owner 安装修订
+
+准确 `4b485803` 隔离运行无权访问 403、签名与审批、两端待办通知及三笔期初通过；registration-options 返回 503，付款未发送，容器已清理。[原私有日志](/private/tmp/jg398-standard-run-kdh0pyay/run.log) SHA `fadd19f222b40e4133ebf83651df634cc6600e9af5c553f52263cae06e2ee9b4`。已发现七片 SQL owner 与迁移不一致，但尚未实证其为唯一根因。
+
+隔离 owner 安装修订 `8fc89949` 经独审合入本地 `ddeb6af9`，准确补丁 SHA `3ae17f91dfcbdba79a6524eedaa2af9b7bc18fb0e12a9aa20f4561600b6b93b1`；Node20 runner 13/13、Jest 7/7、API typecheck/lint 通过，真实 PG 测试按约跳过。七片与 reader 分两事务安装并非原子操作，后段失败依赖容器清理；新候选尚未真实运行，不代表 #398 验收。本次未启动资源、重复文书资格或推送。
+
 ## 2026-11-17 工作项结算草稿窄投影
 
 准确 `ef6d91bd` 隔离运行无角色访问返回 403，签名及审批通过；Me 返回 500/42501，窗口指向 `SettlementDraft`，付款未进入，容器已清理。[原私有日志](/private/tmp/jg398-standard-run-_tjo7to3/run.log) SHA `77c62ac2f6613df2d905c0e126b3e4d280fb31a2bef4172a24a176ad0ee84315`。
