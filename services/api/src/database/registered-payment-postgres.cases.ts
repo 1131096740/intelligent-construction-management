@@ -352,6 +352,16 @@ async function assertRecordedOriginalResult(context: RegisteredPgExecutionContex
 /** Only the fixed attribution-gap executor may admit this case on its own fresh database. */
 export async function runRegisteredProjectAttributionGap(context: RegisteredPgExecutionContext,
   fixture: PreparedRegisteredPgAttributionGap, continuity: RegisteredPgSeedContinuity) {
+  return runRegisteredProjectSourceRejection(context, fixture, continuity, false);
+}
+
+export async function runRegisteredProjectSourceInsufficient(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgAttributionGap, continuity: RegisteredPgSeedContinuity) {
+  return runRegisteredProjectSourceRejection(context, fixture, continuity, true);
+}
+
+async function runRegisteredProjectSourceRejection(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgAttributionGap, continuity: RegisteredPgSeedContinuity, insufficient: boolean) {
   const checked: CheckedOperation = async operation => {
     continuity.checkLight();
     const value = await operation();
@@ -398,12 +408,12 @@ export async function runRegisteredProjectAttributionGap(context: RegisteredPgEx
     idempotencyKey: ids.requestKey, expectedPaymentUpdatedAt: options.expectedPaymentUpdatedAt, amountCents: "800",
     paidAt: plan.paidAt, scopeKey, expectedRegistrationId: fixture.companyBRegistrationId, openingTreatment: "not_included",
     openingReason: "本次付款未计入核对期初", openingEvidence: "隔离PG合成项目归属差额",
-    sourceAllocations: [{sourceBatchId: fixture.companyBSourceId, amountCents: "500"},
-      {sourceBatchId: attributionGap.otherSourceId, amountCents: "300"}],
+    sourceAllocations: insufficient ? [{sourceBatchId: fixture.companyBSourceId, amountCents: "800"}] :
+      [{sourceBatchId: fixture.companyBSourceId, amountCents: "500"}, {sourceBatchId: attributionGap.otherSourceId, amountCents: "300"}],
     confirmationPassword: context.password
   }, fixture.accessToken, continuity));
   const conflict = response.body as {message?: unknown} | null;
-  check(response.status === 409 && conflict?.message === "所选来源的项目归属不足，差额须先由业务确认，不能自动形成垫资到账",
+  check(response.status === 409 && conflict?.message === (insufficient ? "所选来源可用余额不足，请重新核对来源" : "所选来源的项目归属不足，差额须先由业务确认，不能自动形成垫资到账"),
     "PG_CASE_ATTRIBUTION_GAP_EXPECTED_CONFLICT");
   continuity.markAttributionGapStage?.("ORIGINAL_RESULT");
   const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`,
@@ -423,7 +433,7 @@ export async function runRegisteredProjectAttributionGap(context: RegisteredPgEx
     // source/registration revision, movement, allocation or relationship write.
     sourceAllocation:Object.freeze({basis:"EXACT_OWNER_SOURCE_PREDICATES" as const,balanceCents:"800",projectCents:"500",gapCents:"300"}),
     ownerUnchanged:true as const,originalKeyAbsent:true as const});
-  return { caseId: "registered.project-attribution-gap", database: identity.database, observerPid: identity.observerPid,
+  return { caseId: insufficient ? "registered.project-source-insufficient" : "registered.project-attribution-gap", database: identity.database, observerPid: identity.observerPid,
     passed: true as const, registrationStatus: response.status, projectAmountCents: "500", gapAmountCents: "300", originalResultUnconfirmed: true as const,accountingEvidence };
 }
 

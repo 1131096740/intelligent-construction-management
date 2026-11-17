@@ -473,3 +473,26 @@ test('revocation inbound fence rejects unrelated routes and every payment POST',
  for(const [method,route] of [['POST',`/payment-executions/${ids.execution}/registrations`],['POST','/projects'],['GET','/projects/management'],['GET','/projects?foo=1'],['GET','/audit-logs'],['POST','/files']])assert.equal(allowed(method,route,ids),false);
  assert.equal(allowed('GET','/projects',null),false);
 });
+test('source insufficiency has separate one-lane purpose and command admission',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),purpose='TASK16_NATIVE_PROJECT_SOURCE_INSUFFICIENT_V1';
+ const selected=api.nativeTask16CaseSelection(purpose);assert.equal(selected.caseId,'registered.project-source-insufficient');assert.equal(selected.competition,false);assert.equal(selected.paymentProfile,'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1');
+ const input=['--prepare-source-insufficient','--run-root','/private/tmp/example','--binary-manifest','/private/tmp/binary','--expected-binary-sha256','a'.repeat(64),'--output','/private/tmp/example/plan.json'];
+ assert.equal(api.parseNativeTask16Args(input).purpose,purpose);
+ for(const action of ['--verify-source-insufficient','--once-source-insufficient'])assert.equal(api.parseNativeTask16Args([action,'--plan','/private/tmp/example/plan.json','--expected-plan-sha256','a'.repeat(64)]).purpose,purpose);
+});
+test('source insufficiency accounting uses distinct identity and rejects changed financial evidence',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),p=planModel(t),e=gapAccountingModel();
+ const result=api.writeNativeTask16SourceAccounting(p.runRoot,'a'.repeat(40),p.runId,JSON.stringify(e));
+ const saved=JSON.parse(fs.readFileSync(result.file));assert.equal(saved.purpose,'TASK16_NATIVE_PROJECT_SOURCE_INSUFFICIENT_V1');assert.equal(saved.caseId,'registered.project-source-insufficient');
+ const other=planModel(t),bad=gapAccountingModel();bad.after.executionCount=1;
+ assert.throws(()=>api.writeNativeTask16SourceAccounting(other.runRoot,'a'.repeat(40),other.runId,JSON.stringify(bad)));assert.deepEqual(fs.readdirSync(other.runRoot),[]);
+});
+for(const [purpose,flag] of [['TASK16_NATIVE_PROJECT_SOURCE_INSUFFICIENT_V1','--once-gap'],['TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1','--once-source-insufficient']])test('source insufficiency and existing gap plans cannot cross '+purpose,t=>{
+ const p=planModel(t);p.purpose=purpose;const target=path.join(p.runRoot,'plan.json'),bytes=JSON.stringify(p)+'\n';fs.writeFileSync(target,bytes,{mode:0o600});
+ const result=spawnSync(process.execPath,[path.join(__dirname,'run-task16-native-competition-follow-up-once.cjs'),flag,'--plan',target,'--expected-plan-sha256',require('node:crypto').createHash('sha256').update(bytes).digest('hex')],{encoding:'utf8',env:{PATH:path.dirname(process.execPath)},timeout:10000,maxBuffer:8192});
+ assert.equal(result.status,1);assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_CASE_PURPOSE'});assert.deepEqual(fs.readdirSync(p.runRoot),['plan.json']);
+});
+test('source insufficiency interface selects the independent case on the existing one-lane protocols',()=>{
+ const rows=require('./run-task16-native-competition-follow-up-once.cjs').resolveNativeTask16Interfaces('TASK16_NATIVE_PROJECT_SOURCE_INSUFFICIENT_V1');
+ const names=rows.flatMap(row=>row.exports.map(entry=>entry.name));assert.ok(names.includes('runRegisteredProjectSourceInsufficient'));assert.ok(!names.includes('runRegisteredProjectAttributionGap'));
+});
