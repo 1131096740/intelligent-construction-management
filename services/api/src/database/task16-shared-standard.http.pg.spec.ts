@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { hash } from "bcryptjs";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import { Catch, ConflictException, Controller, Post, type ArgumentsHost, type INestApplication } from "@nestjs/common";
+import { APP_FILTER, HttpAdapterHost } from "@nestjs/core";
+import { Task16RegistrationErrorFilter, projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts } from "../payment/registered-payment-impact-reader";
@@ -13,6 +15,45 @@ import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixt
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
 
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
+
+@Catch()
+class SignatureFailureCapture extends Task16RegistrationErrorFilter {
+ constructor(adapter:HttpAdapterHost,private readonly report:(detail:ReturnType<typeof projectTask16RegistrationError>)=>void){super(adapter);}
+ override catch(exception:unknown,host:ArgumentsHost){
+  try{
+   const request=host.switchToHttp().getRequest<{method?:string;originalUrl?:string}>();
+   if(request.method==="POST"&&request.originalUrl==="/me/signature/canvas")this.report(projectTask16RegistrationError(exception));
+  }catch{ /* Diagnostic failure must not change the original HTTP response. */ }
+  super.catch(exception,host);
+ }
+}
+
+it("captures only a safe signature error and always preserves the original exception path",()=>{
+ const report=jest.fn(),parent=jest.spyOn(Task16RegistrationErrorFilter.prototype,"catch").mockImplementation(()=>{});
+ const filter=new SignatureFailureCapture({} as HttpAdapterHost,report);
+ const host=(url:string)=>({switchToHttp:()=>({getRequest:()=>({method:"POST",originalUrl:url})})}) as ArgumentsHost;
+ const error=new Prisma.PrismaClientKnownRequestError("private detail",{code:"P2010",clientVersion:"test",meta:{code:"42501",secret:"private detail"}});
+ try{
+  filter.catch(error,host("/me/signature/canvas"));
+  expect(report).toHaveBeenCalledWith({serverErrorKind:"KNOWN_REQUEST_ERROR",serverPrismaCode:"P2010",serverSqlState:"42501"});
+  expect(parent).toHaveBeenCalledWith(error,expect.anything());
+  report.mockClear();filter.catch(error,host("/unrelated"));expect(report).not.toHaveBeenCalled();
+  report.mockImplementation(()=>{throw new Error("recording failed");});filter.catch(error,host("/me/signature/canvas"));
+  expect(parent).toHaveBeenCalledTimes(3);
+ }finally{parent.mockRestore();}
+});
+
+@Controller("me/signature")
+class SignatureFailureTestController {
+ @Post("canvas") fail(){throw new ConflictException("synthetic conflict");}
+}
+it("preserves the original HTTP status through the actual Nest filter",async()=>{
+ const module=await Test.createTestingModule({controllers:[SignatureFailureTestController],providers:[{provide:APP_FILTER,useClass:Task16RegistrationErrorFilter}]}).compile();
+ const app=module.createNestApplication({logger:false}),report=jest.fn();
+ app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),report));
+ try{await app.listen(0,"127.0.0.1");const response=await fetch(`${await app.getUrl()}/me/signature/canvas`,{method:"POST"});expect(response.status).toBe(409);expect(report).toHaveBeenCalledTimes(1);}
+ finally{await app.close();}
+});
 
 (enabled?describe:describe.skip)("#398 isolated shared payment real HTTP and PostgreSQL",()=>{
  it("signs and approves, shares partial duties, pays in three instalments and supplements the voucher",async()=>{
@@ -30,7 +71,7 @@ const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
    const hashes=await Promise.all(passwords.map(value=>hash(value,10)));
    const seeded=await seedSharedPaymentPredecessors(owner,plan,{financeHash:hashes[0],keeperHash:hashes[1],directorHash:hashes[2]},process.env.FILE_STORAGE_ROOT??"");
    const module=await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
-   app=module.createNestApplication({logger:false});app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());await app.listen(0,"127.0.0.1");
+   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());await app.listen(0,"127.0.0.1");
    const origin=await app.getUrl();
    const json=async(path:string,method:string,body?:unknown,token?:string)=>{const response=await fetch(origin+path,{method,headers:{...(body!==undefined?{"content-type":"application/json"}:{}),...(token?{authorization:`Bearer ${token}`}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};};
    const login=async(phone:string,password:string)=>{const response=await json("/auth/login","POST",{phone,password});expect(response.status).toBe(201);return response.body.tokens.accessToken as string;};
