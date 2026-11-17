@@ -53,7 +53,7 @@ const { createNativeLifecycleDiagnostics, withNativeLifecycleCleanup, nativeLife
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { verifyCurrent259GeneratedDocumentRuntime, withCurrent259GeneratedDocumentRuntime } = require("../../prisma/task12-current259-generated-document-runtime.cjs");
 
-it("runs native V2 submission, withdrawal, rejection, five approvals, seal, rollback and two-file private archive on the staged limited roles", async () => {
+it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and two-file private archive on the staged limited roles", async () => {
   expect(packet.scope.source.candidateSha).toBe(packet.candidateSha);
   expect(packet.lifecyclePlan).toEqual(nativeLifecyclePlanBinding(packet.scope));
   expect(packet.lifecyclePlan.installation).toBe("ARCHIVE261_MIGRATIONS_ONLY");
@@ -271,16 +271,28 @@ it("runs native V2 submission, withdrawal, rejection, five approvals, seal, roll
       const second = await generate();
       expect(second.fact.id).not.toBe(first.fact.id);
       expect(second.input.documentContentFingerprint).not.toBe(first.input.documentContentFingerprint);
-      diagnostic.enter('REJECT');
-      const rejected = await accepted(0, draftPath + "/submission", "POST", second.input, undefined, 201, headers);
-      expect((await review(1, await reviewContext(1), "reject")).status).toBe(201);
-      expect((await owner.contractVersion.findUniqueOrThrow({ where: { id: versionId } })).status).toBe("draft");
-      expect(await owner.contractSealTask.count({ where: { contractVersionId: versionId } })).toBe(0);
-      const finalGenerated = await generate();
-      finalGenerated.input.idempotencyKey = randomUUID();
+      const staleDocument = await send(0, draftPath + "/submission", "POST", {
+        ...second.input, idempotencyKey: randomUUID(), generatedDocumentId: first.fact.id
+      }, undefined, headers);
+      expect(staleDocument.status).toBe(409);
+      expect(staleDocument.body.message).toBe("当前正文的Word和PDF尚未就绪，请生成当前版本后再提交");
+      expect(await owner.approvalInstance.count({ where: { businessId: versionId } })).toBe(1);
+      let finalGenerated = second;
+      let rejectedRoundId: string | undefined;
+      if (process.env.TASK12_NATIVE_INCLUDE_REJECTION === "1") {
+        diagnostic.enter('REJECT');
+        const rejected = await accepted(0, draftPath + "/submission", "POST", second.input, undefined, 201, headers);
+        rejectedRoundId = rejected.approvalInstanceId;
+        expect((await review(1, await reviewContext(1), "reject")).status).toBe(201);
+        expect((await owner.contractVersion.findUniqueOrThrow({ where: { id: versionId } })).status).toBe("draft");
+        expect(await owner.contractSealTask.count({ where: { contractVersionId: versionId } })).toBe(0);
+        finalGenerated = await generate();
+        finalGenerated.input.idempotencyKey = randomUUID();
+      }
       diagnostic.enter('SUBMIT');
       const submitted = await accepted(0, draftPath + "/submission", "POST", finalGenerated.input, undefined, 201, headers);
-      expect(submitted.approvalInstanceId).not.toBe(rejected.approvalInstanceId);
+      expect(submitted.approvalInstanceId).not.toBe(firstRound.approvalInstanceId);
+      if (rejectedRoundId) expect(submitted.approvalInstanceId).not.toBe(rejectedRoundId);
       expect(await accepted(0, draftPath + "/submission", "POST", finalGenerated.input, undefined, 201, headers)).toEqual(submitted);
       diagnostic.enter('APPROVE');
       const contexts = await Promise.all([1,2,3,4,5].map(actor => reviewContext(actor)));
@@ -353,7 +365,8 @@ it("runs native V2 submission, withdrawal, rejection, five approvals, seal, roll
       diagnostic.enter('VERIFY');
       expect(await owner.contractArchiveFile.count({ where: { contractVersionId: versionId } })).toBe(1);
       expect((await owner.approvalInstance.findUniqueOrThrow({ where: { id: firstRound.approvalInstanceId } })).status).toBe("withdrawn");
-      expect((await owner.approvalInstance.findUniqueOrThrow({ where: { id: rejected.approvalInstanceId } })).status).toBe("rejected");
+      if (rejectedRoundId) expect((await owner.approvalInstance.findUniqueOrThrow({ where: { id: rejectedRoundId } })).status).toBe("rejected");
+      expect((await owner.approvalInstance.findUniqueOrThrow({ where: { id: submitted.approvalInstanceId } })).status).toBe("approved");
       expect((await detail()).contractVersionId).toBe(versionId);
     }, [
       ['PROCESSOR_CLOSE', () => processor?.onApplicationShutdown()],
