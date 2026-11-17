@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 通用模板主体局部修订
+
+通用模板甲乙主体绑定与冲突保护候选 `4cc381f3` 经独审合入本地 `d8b64b41`，封存补丁 SHA `c7eb9ee466f44fec92eb590bb6ce61dba5589a301ef9369591d2d5de71fb58d6`；逐文件补丁字节一致，生成 diff 的文件块排序不同。四套相关测试 155/155，API typecheck/lint 通过。这是局部修复，字形和物理分页、劳务及用户全部模板要求仍未完成；新旧 worker 混版须协调。
+
+机械已有外观证据可参考，但最终候选适用门须集中完成；按用户要求本次未重跑无关文书资格，未推送或操作生产，不代表 #394 验收通过。
+
 ## 2026-11-17 劳务模板隔离试验
 
 劳务候选[补丁](/private/tmp/jg-labor-generic-party-1117/experiment/labor-reviewed-f3cc8c81.patch) SHA `d9d9f4b573d15939cd84690b57fbd6c70fc410865e23f6caceae18c4848e69a3` 仅保留在隔离试验，未合入。两种 PDF 引擎的虚构中文 80 字长正文试验局部通过；emoji 反例中 docx4j 转换成功但未绘制 emoji。[docx4j PDF](/private/tmp/jg-labor-generic-party-1117/experiment/emoji/labor-docx4j.pdf) SHA `6254819a796489eb0849a4ccd13312edec4c6d7b5aedfbac9006ee4962bed2e9`，[LO PDF](/private/tmp/jg-labor-generic-party-1117/experiment/emoji/labor-long.pdf) SHA `d98e6bdf5e33669eb118b5239cfee318dd424b1897c4597616f88c2a5e5ddde5`。原输入后来重建，不能以其当前 SHA 作为两个 PDF 的精确输入证明。
