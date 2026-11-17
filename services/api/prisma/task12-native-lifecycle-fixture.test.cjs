@@ -238,3 +238,31 @@ test('native fixed-case grants are exactly the authenticated lifecycle producer 
  assert.throws(()=>renderNativeLifecycleFixture({...scope,source:{...source,profile:{...qualifiedProfile,ledger:qualifiedProfile.ledger.slice(0,259)}}},secrets));
  assert.throws(()=>renderNativeLifecycleFixture({...scope,source:undefined},secrets));
 });
+test('queue-only draft stages preserve only bounded response status and fixed database class',()=>{
+ const {createNativeLifecycleDiagnostics}=require('./task12-native-lifecycle-fixture.cjs');
+ for(const stage of ['DRAFT_CREATE','DRAFT_LEASE','DRAFT_SAVE_READ','DRAFT_SAVE_WRITE','DRAFT_QUEUE_READ','DRAFT_DENY','DRAFT_DENY_PROOF','DRAFT_QUEUE','DRAFT_QUEUE_PROOF']){
+  const d=createNativeLifecycleDiagnostics();d.enter(stage);d.httpStatus(500);d.database('application',{code:'P2010',meta:{code:'42501'},message:'PRIVATE'});d.primary(Error('PRIVATE'));
+  assert.deepEqual(d.report(),{stage,role:'application',code:'P2010',sqlState:'42501',httpStatus:500,cleanupFailures:[]});assert.doesNotMatch(JSON.stringify(d.report()),/PRIVATE/u);
+ }
+});
+test('queue draft status is bounded, scoped, and discarded at the next stage',()=>{
+ const {createNativeLifecycleDiagnostics}=require('./task12-native-lifecycle-fixture.cjs');
+ for(const value of [99,600,-1,NaN,'500',{},new Proxy({}, {})]){const d=createNativeLifecycleDiagnostics();d.enter('DRAFT_CREATE');d.httpStatus(value);d.primary(Error('x'));assert.equal(d.report().httpStatus,undefined);}
+ const d=createNativeLifecycleDiagnostics();d.enter('DRAFT_CREATE');d.httpStatus(201);d.enter('DRAFT_DENY_PROOF');d.primary(Error('x'));assert.equal(d.report().httpStatus,undefined);
+ const original=createNativeLifecycleDiagnostics();original.enter('DRAFT');original.httpStatus(500);original.primary(Error('x'));assert.equal(original.report().httpStatus,undefined);
+});
+test('queue draft diagnostics retain an HTTP failure status even when the response is not JSON',async()=>{
+ const http=require('node:http'),{createNativeLifecycleDiagnostics}=require('./task12-native-lifecycle-fixture.cjs');
+ const server=http.createServer((_request,response)=>{response.writeHead(503,{'content-type':'text/plain'});response.end('PRIVATE_RESPONSE');});
+ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+ try{
+  const d=createNativeLifecycleDiagnostics();d.enter('DRAFT_SAVE_WRITE');
+  try{const response=await fetch(`http://127.0.0.1:${server.address().port}/fixture`,{method:'PUT'});d.httpStatus(response.status);await response.json();assert.fail('expected invalid JSON');}catch(error){d.primary(error);}
+  assert.deepEqual(d.report(),{stage:'DRAFT_SAVE_WRITE',role:'UNKNOWN',code:'REJECTED',httpStatus:503,cleanupFailures:[]});assert.doesNotMatch(JSON.stringify(d.report()),/PRIVATE|127\.0\.0\.1/u);
+ } finally {await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
+});
+test('queue draft HTTP evidence survives cleanup failure without replacing the original exception',async()=>{
+ const {createNativeLifecycleDiagnostics,withNativeLifecycleCleanup}=require('./task12-native-lifecycle-fixture.cjs'),d=createNativeLifecycleDiagnostics(),original=Error('PRIVATE_FIRST');
+ await assert.rejects(withNativeLifecycleCleanup(async()=>{d.enter('DRAFT_QUEUE');d.httpStatus(500);throw original;},[['APP_CLOSE',async()=>{throw Error('PRIVATE_CLEANUP');}]],d),error=>error===original);
+ assert.deepEqual(d.report(),{stage:'DRAFT_QUEUE',role:'UNKNOWN',code:'REJECTED',httpStatus:500,cleanupFailures:[{step:'APP_CLOSE',role:'application',code:'REJECTED'}]});assert.doesNotMatch(JSON.stringify(d.report()),/PRIVATE/u);
+});

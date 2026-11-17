@@ -148,6 +148,7 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
         const response = await fetch(base + path, { method, headers: { connection: "close", "x-contract-numeric-protocol": "2",
           ...(tokens[actor] ? { authorization: "Bearer " + tokens[actor] } : {}), ...(json ? { "content-type": "application/json" } : {}), ...extra },
           body: form ?? (json ? JSON.stringify(json) : undefined), signal: AbortSignal.timeout(15_000) });
+        if (packet.queueOnly) diagnostic.httpStatus(response.status);
         const body = await response.json() as Payload;
         runtime.check();return { status: response.status, body };
       };
@@ -196,16 +197,21 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
         layoutId=version.id;
       }
       diagnostic.enter('DRAFT');
+      const queueDraftStage = (stage: string) => { if (packet.queueOnly) diagnostic.enter(stage); };
+      queueDraftStage('DRAFT_CREATE');
       const created = await accepted(0, "/contracts", "POST", { projectId: seed.project.id, numericProtocolVersion: 2,
         contractTypeKey: "material_purchase", relationship: "inside", amountLimitType: "capped" });
       const versionId = created.version.id as string, contractId = created.contract.id as string;
       const draftPath = "/contract-drafts/" + versionId, contractPath = "/contracts/" + versionId;
+      queueDraftStage('DRAFT_LEASE');
       const lease = await accepted(0, draftPath + "/edit-lease", "POST");
       const headers = { "x-contract-draft-lease": lease.token as string };
       const workbench = () => accepted(0, draftPath + "/workbench");
       let bodyPlan: object | undefined;
       const save = async () => {
+        queueDraftStage('DRAFT_SAVE_READ');
         const current = await workbench();
+        queueDraftStage('DRAFT_SAVE_WRITE');
         return accepted(0, draftPath, "PUT", {
           idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision,
           changedSections: ["draft", "parties"], draft: { numericProtocolVersion: 2, companyEntityId: company.id,
@@ -221,13 +227,18 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
       };
       await save();
       if (packet.queueOnly) {
+        queueDraftStage('DRAFT_QUEUE_READ');
         const current = await workbench(), revision = current.version.draftRevision;
         const endpoint = draftPath + "/preview-generation";
+        queueDraftStage('DRAFT_DENY');
         const denied = await send(7, endpoint, "POST", {sourceRevision:revision});
         expect(denied.status).toBe(403);
+        queueDraftStage('DRAFT_DENY_PROOF');
         expect(await owner.contractGeneratedDocument.count({where:{contractVersionId:versionId}})).toBe(0);
+        queueDraftStage('DRAFT_QUEUE');
         const queued = await accepted(0, endpoint, "POST", {sourceRevision:revision});
         expect(queued).toMatchObject({status:"queued",sourceRevision:revision,documentContentRevision:current.version.documentContentRevision,documentContentFingerprint:current.version.documentContentFingerprint});
+        queueDraftStage('DRAFT_QUEUE_PROOF');
         const facts = await owner.contractGeneratedDocument.findMany({where:{contractVersionId:versionId}});
         expect(facts).toHaveLength(1);
         expect(facts[0]).toMatchObject({id:queued.generationId,status:"queued",sourceRevision:revision,docxFileId:null,pdfFileId:null});
