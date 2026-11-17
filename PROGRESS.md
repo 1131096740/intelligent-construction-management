@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 A16 提交取消虚构隔离运行
+
+准确候选 `f6d57640d8991f41ba3c9572f559797ee0215306` 单次虚构运行返回 `NATIVE_DIRECT_CASE_RETURNED_NOT_FULL_ACCEPTANCE` 与 `CANCELLED_ROLLBACK_CONFIRMED`，`financialAcceptance=false`。[原回执](/private/tmp/jg-a16-can-f6-XIqGOM/receipt.json) SHA `c213d57567a883da39d2594f99df09bdd9aa4cfaf0948b780300049542d2ced2`；[核账证据](/private/tmp/jg-a16-can-f6-XIqGOM/accounting-evidence.json) SHA `ec9f1efb32dcdb0a5ae152de9d180630c500e8932232e30d1289f1711a86a4b6`。独审确认前后两个账户各 100 元、申请及结算已付为零，execution/root/funding/allocation/event/audit/fact/impact 均为零，owner 前后相同。
+
+fault 记录 cancel-commit/commit-cancelled、XID、owner/runtime/commit 时间及数据库身份；唯一 blocker、逐刻锁状态、实际信号、单次 POST 和原键查询依封存源码成功路径推论，非独立原始轨迹。HMAC 无密钥，不能事后重算。原 cleanup 自报完成；[独立检查](/private/tmp/jg-a16-can-f6-receipt-AFJ3ZI/cleanup-independent.json) SHA `957316a8355589362e695f3acaddaeeb7e7f0fac8f77eb87b7a35249caf44870` 记录当时 PG/runner 进程、PG 监听及 pidfile 缺席，应用端口未独核。本次仅虚构跨公司 null scope 取消，断连及整票仍未验收；b047 仍 UNKNOWN。
+
 ## 2026-11-17 A16 提交取消隔离候选
 
 新虚构付款提交取消候选 `7a36711a` 经独审合入本地 `79c814af`，准确补丁 SHA `25d6605dca1b32ec2cbd4afe60472f5d7f1924852e822fb83a4eb8e24e910e43`。付款 fixture 140/140、取消及原协议/响应丢失回归 26/26，API build/typecheck/lint 通过；这些是本地模型和组件检查。
