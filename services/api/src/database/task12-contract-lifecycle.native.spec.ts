@@ -230,7 +230,7 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
         queueDraftStage('DRAFT_SAVE_READ');
         const current = await workbench(packet.queueOnly === true);
         queueDraftStage('DRAFT_SAVE_WRITE');
-        return accepted(0, draftPath, "PUT", {
+        const performSave = (extraHeaders: Record<string,string> = {}) => accepted(0, draftPath, "PUT", {
           idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision,
           changedSections: ["draft", "parties"], draft: { numericProtocolVersion: 2, companyEntityId: company.id,
             draftData: { ...current.draft, contractName: "原生V2材料合同", contractBasics: {
@@ -241,7 +241,20 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
             { roleKey: "party_b", displayOrder: 0, businessPartyVersionId: partyVersion.id, snapshot: {} }],
           bills: current.bills.map((bill: { billKey: string; revision: number }) => ({ billKey: bill.billKey, expectedRevision: bill.revision,
             numericProtocolVersion: 2, rows: [] })), paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
-        }, undefined, 200, headers);
+        }, undefined, 200, { ...headers, ...extraHeaders });
+        if (!privateDraftFilter) return performSave();
+        let nonce: string;
+        try { nonce=randomBytes(16).toString("hex");privateDraftFilter.arm(app!.getHttpServer() as Server,versionId,nonce,"save"); }
+        catch { return performSave(); }
+        let failed=false;
+        try { return await performSave({"x-task12-diagnostic":nonce}); }
+        catch(error) { failed=true;throw error; }
+        finally {
+          try {
+            const captured=privateDraftFilter.finish();
+            if(failed){const result=retainTask12QueueDraftPrivateCapture(captured);process.stderr.write("TASK12_PRIVATE_DRAFT_CAPTURE "+JSON.stringify(result)+"\n");}
+          } catch { /* Preserve the original request outcome. */ }
+        }
       };
       await save();
       if (packet.queueOnly) {
