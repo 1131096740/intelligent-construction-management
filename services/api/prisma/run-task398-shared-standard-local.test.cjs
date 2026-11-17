@@ -30,16 +30,16 @@ test("the isolated shared role composes existing cash and voucher plans without 
   assert.deepEqual(row(table).insert,[]);assert.deepEqual(row(table).update,[]);
   const physicalApproval=approvalDependencyCheckSql();
   for(const column of columns)assert.ok(physicalApproval.includes(`has_column_privilege('jg_task01_runtime','public."${table}"','${column}','SELECT')`));
-  assert.ok(physicalApproval.includes(`NOT has_table_privilege('jg_task01_runtime','public."${table}"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')`));
+  assert.ok(physicalApproval.includes(`NOT has_table_privilege('jg_task01_runtime','public."${table}"','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')`));
   assert.ok(physicalApproval.includes(`NOT has_any_column_privilege('jg_task01_runtime','public."${table}"','INSERT,UPDATE,REFERENCES')`));
  }
  const signatureCheck=signatureBindingCheckSql();
  assert.match(signatureCheck,/has_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','fileId','SELECT'\)/u);
  assert.match(signatureCheck,/has_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','slotKey','SELECT'\)/u);
- assert.match(signatureCheck,/NOT has_table_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'\)/u);
+ assert.match(signatureCheck,/NOT has_table_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'\)/u);
  assert.match(signatureCheck,/NOT has_any_column_privilege\('jg_task01_runtime','public\."ContractDraftAttachment"','INSERT,UPDATE,REFERENCES'\)/u);
  for(const column of ["attachmentFileId","correctionType","schemaVersion"])assert.ok(signatureCheck.includes(`has_column_privilege('jg_task01_runtime','public."ContractTakeoverCorrection"','${column}','SELECT')`));
- assert.match(signatureCheck,/NOT has_table_privilege\('jg_task01_runtime','public\."ContractTakeoverCorrection"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'\)/u);
+ assert.match(signatureCheck,/NOT has_table_privilege\('jg_task01_runtime','public\."ContractTakeoverCorrection"','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'\)/u);
  assert.match(signatureCheck,/NOT has_any_column_privilege\('jg_task01_runtime','public\."ContractTakeoverCorrection"','INSERT,UPDATE,REFERENCES'\)/u);
  const sql=columnGrants(plan);assert.doesNotMatch(sql,/GRANT (?:SELECT|INSERT|UPDATE) ON ALL TABLES/u);assert.doesNotMatch(sql,/\bxmin\b/u);
  assert.equal(technicalDeleteGrant(plan),'GRANT DELETE ON public."AuthRateLimit" TO jg_task01_runtime;');
@@ -148,4 +148,24 @@ test("approval delegation lookup has its exact read-only predicate and projectio
  const query=source.slice(start,end);for(const column of columns.filter(value=>value!=="id"))assert.match(query,new RegExp(`\\b${column}\\b`,"u"));
  const guard=fs.readFileSync(path.join(__dirname,"../src/auth/guards/permission.guard.ts"),"utf8");assert.match(guard,/activeApprovalDelegatorIds\(delegationClient as ActiveApprovalDelegationClient, userId\)/u);
  const sql=approvalDependencyCheckSql();for(const col of columns){assert.ok(sql.includes(`'${col}','SELECT'`));assert.ok(sql.includes(`'${col}','SELECT WITH GRANT OPTION'`));}assert.match(sql,/NOT has_any_column_privilege\('jg_task01_runtime','public\."ApprovalDelegation"','INSERT,UPDATE,REFERENCES'\)/u);
+});
+
+
+test("broad reads exclude secret and credential tables while retaining write restrictions",()=>{
+ const {businessReadGrantSql,businessReadCheckSql,excludedReadTables}=require("./run-task398-shared-standard-local.cjs");
+ for(const name of ["User","EmployeeRegistration","HandwrittenSignatureHandoff","RefreshToken","ContractDraftEditLease","SettlementDraft","Settlement","SettlementSignedDocument","SettlementSignedDocumentGenerationClaim","ApprovalFormGenerationClaim","AuthRateLimit","FileObject","OperatingLedgerWriteSecret","OperatingLedgerWriteContext","PaymentExecutionPayerVerificationIssuerContext"])assert.ok(excludedReadTables.includes(name));
+ const schema=fs.readFileSync(path.join(__dirname,"schema.prisma"),"utf8");
+ for(const name of ["User","EmployeeRegistration","HandwrittenSignatureHandoff","RefreshToken","ContractDraftEditLease","SettlementDraft","Settlement","SettlementSignedDocument","SettlementSignedDocumentGenerationClaim","ApprovalFormGenerationClaim"]){const match=new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`,"u").exec(schema);assert.ok(match,`${name} model`);assert.match(match[1],/password|token|credential/iu);}
+ assert.match(businessReadGrantSql(),/information_schema\.columns/u);assert.match(businessReadGrantSql(),/col\.column_name ~\*/u);assert.match(businessReadCheckSql(),/information_schema\.columns/u);assert.match(businessReadGrantSql(),/GRANT SELECT ON TABLE/u);assert.match(businessReadCheckSql(),/SELECT WITH GRANT OPTION/u);assert.doesNotMatch(businessReadGrantSql(),/GRANT (INSERT|UPDATE|DELETE)/u);
+});
+
+test("observer reads only actual accounting tables and bounded signature columns",()=>{
+ const {observerReadGrantSql,observerReadCheckSql,observerTables,observerSignatureColumns,excludedReadTables}=require("./run-task398-shared-standard-local.cjs");
+ assert.deepEqual(observerSignatureColumns,["id","userId","fileId","contentSha256","source"]);
+ for(const table of observerTables)assert.ok(!excludedReadTables.includes(table));
+ assert.doesNotMatch(observerReadGrantSql(),/ALL TABLES|OperatingLedgerWriteSecret|RefreshToken|"User"/u);
+ assert.match(observerReadGrantSql(),/GRANT SELECT \("id","userId","fileId","contentSha256","source"\)/u);
+ const sql=observerReadCheckSql();for(const text of ["SELECT WITH GRANT OPTION","has_any_column_privilege","INSERT,UPDATE,REFERENCES","pg_catalog.pg_attribute"])assert.ok(sql.includes(text));
+ const spec=fs.readFileSync(path.join(__dirname,"../src/database/task16-shared-standard.http.pg.spec.ts"),"utf8");
+ for(const expression of ["observer.paymentRequest","observer.approvalInstance","observer.approvalActionLog","observer.handwrittenSignatureVersion","observer.paymentExecution","observer.registeredPaymentVoucher"])assert.ok(spec.includes(expression));
 });
