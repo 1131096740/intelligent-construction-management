@@ -1,11 +1,13 @@
 import "reflect-metadata";
 import { Test } from "@nestjs/testing";
-import { Reflector } from "@nestjs/core";
+import { HttpAdapterHost, Reflector } from "@nestjs/core";
 import { type INestApplication } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { Server } from "node:http";
+import { Task12QueueDraftPrivateFilter, retainTask12QueueDraftPrivateCapture } from "./task12-queue-draft-private.test-support";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { PrismaService } from "./prisma.service";
 import { Task12FirstQ2ApplicationModule } from "./task12-first-q2-application.module";
@@ -135,6 +137,8 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
       const documents = module.get(ContractDocumentService);
       documents.queueDraftPreview = queue.queueDraftPreview.bind(queue);
       app = module.createNestApplication({ logger: false });
+      const privateDraftFilter = packet.queueOnly ? new Task12QueueDraftPrivateFilter(app.get(HttpAdapterHost)) : undefined;
+      if (privateDraftFilter) app.useGlobalFilters(privateDraftFilter);
       app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
       app.useGlobalPipes(createApiValidationPipe());
       app.useGlobalGuards(new JwtAuthGuard(new Reflector(), module.get(JwtTokenService), application),
@@ -206,11 +210,25 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
       queueDraftStage('DRAFT_LEASE');
       const lease = await accepted(0, draftPath + "/edit-lease", "POST");
       const headers = { "x-contract-draft-lease": lease.token as string };
-      const workbench = () => accepted(0, draftPath + "/workbench");
+      const workbench = async (capture = false) => {
+        if (!capture || !privateDraftFilter) return accepted(0, draftPath + "/workbench");
+        let nonce:string;
+        try { nonce=randomBytes(16).toString("hex");privateDraftFilter.arm(app!.getHttpServer() as Server,versionId,nonce); }
+        catch { return accepted(0,draftPath + "/workbench"); }
+        let failed=false;
+        try { return await accepted(0,draftPath + "/workbench","GET",undefined,undefined,200,{"x-task12-diagnostic":nonce}); }
+        catch(error) { failed=true;throw error; }
+        finally {
+          try {
+            const captured=privateDraftFilter.finish();
+            if(failed){const result=retainTask12QueueDraftPrivateCapture(captured);process.stderr.write("TASK12_PRIVATE_DRAFT_CAPTURE "+JSON.stringify(result)+"\n");}
+          } catch { /* Preserve the original request outcome. */ }
+        }
+      };
       let bodyPlan: object | undefined;
       const save = async () => {
         queueDraftStage('DRAFT_SAVE_READ');
-        const current = await workbench();
+        const current = await workbench(packet.queueOnly === true);
         queueDraftStage('DRAFT_SAVE_WRITE');
         return accepted(0, draftPath, "PUT", {
           idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision,
