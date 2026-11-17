@@ -187,3 +187,19 @@ test("registered catalog uses migration owner while impact reader keeps its qual
  const spec=fs.readFileSync(path.join(__dirname,"../src/database/task16-shared-standard.http.pg.spec.ts"),"utf8");
  assert.match(spec,/runtime\.\$transaction\(tx=>registeredPaymentInstalled\(tx\)\)/u);
 });
+test('browser mode is explicit and preserves standard selection',()=>{
+ const {selectTask398Scenario}=require('./run-task398-shared-standard-local.cjs');
+ assert.equal(selectTask398Scenario([]),'src/database/task16-shared-standard.http.pg.spec.ts');
+ assert.equal(selectTask398Scenario(['--browser-real']),'src/database/task16-real-browser.pg.spec.ts');
+ assert.throws(()=>selectTask398Scenario(['--browser-real','--other']));
+ assert.throws(()=>selectTask398Scenario(['--unknown']));
+});
+test('browser observer adds only the exact Settlement lookup columns and no other privileges',()=>{
+ const {observerReadGrantSql,observerReadCheckSql}=require('./run-task398-shared-standard-local.cjs');
+ const oldGrant=observerReadGrantSql(),browserGrant=observerReadGrantSql(true),oldCheck=observerReadCheckSql(),browserCheck=observerReadCheckSql(true);
+ assert.equal(browserGrant,oldGrant+'\nGRANT SELECT ("id","paidAmountCents") ON public."Settlement" TO jg_task01_observer;');
+ assert.doesNotMatch(oldGrant,/ON public\."Settlement"/u);assert.doesNotMatch(oldCheck,/'Settlement'\]::text\[\]/u);
+ for(const part of ['public."Settlement"','paidAmountCents','attname <> ALL','SELECT WITH GRANT OPTION','INSERT,UPDATE,REFERENCES','has_table_privilege'])assert.ok(browserCheck.includes(part));
+ assert.match(browserCheck,/c\.relname <> ALL\(ARRAY\[[^\]]*'Settlement'\]\)/u);
+ assert.doesNotMatch(browserGrant,/GRANT (?:INSERT|UPDATE|DELETE|REFERENCES).*"Settlement"/u);
+});
