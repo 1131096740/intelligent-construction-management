@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离签名权限对象诊断
+
+准确 `48f0cdd6` 的真实隔离运行三次登录通过，签名返回 500，Prisma unknown 错误分类为 SQLSTATE 42501/PERMISSION，但权限对象未知；审批和付款未进入，容器独立检查已移除。[原日志](/private/tmp/jg398-standard-run-r2ud5a58/run.log) SHA `ba66629a69878bf806f91470cc4dadbe2cc4041c3b24ad7020b20024630b1419`。签名可能已有写入，不能据此认定根因。
+
+测试侧固定权限对象枚举 `99624174` 经独审合入本地 `99e0263a`，准确补丁 SHA `40f3682048b19456d4b6c2676740f4ea5ae8695a6fbec38275d81b83f409ee42`；Node20 定向测试 3/3、API typecheck/lint 通过，真实 PG 测试按约跳过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重跑文书资格或推送。
+
 ## 2026-11-17 隔离签名错误分类
 
 准确 `b5f7ce10` 的真实隔离运行三次登录通过，签名返回 500，Prisma 分类为 unknown，未取得 code 或 SQLSTATE；审批及付款未进入，容器已删除。[私有日志](/private/tmp/jg398-standard-run-37myl1vh/run.log) SHA `3bd798f20fa933ccf4f56afdf6b86f56a8d1216d73f496579f4d27ac4d152cb9`。签名可能已有写入，根因未确定。
