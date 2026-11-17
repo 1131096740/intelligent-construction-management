@@ -281,11 +281,21 @@ function captureOwnerRead(context: RegisteredPgExecutionContext, originalKeyMust
 }
 
 /** The owned case executor provides the one-use commit cancellation gate. */
-export async function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
+export function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
   fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
   cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  return runCancellationCase(context, fixture, continuity, cancelCommit, false);
+}
+export function runRegisteredNullCrossCompanyNativeCancellation(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  return runCancellationCase(context, fixture, continuity, cancelCommit, true);
+}
+async function runCancellationCase(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  cancelCommit: (submit: () => Promise<void>) => Promise<void>, fullAudit: boolean) {
   const observeOwner = captureOwnerRead(context, true);
-  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true);
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true, false, fullAudit);
   const ownerBefore = await observeOwner(fixture, identity.ownerPid, checked);
   let submitted = false;
   let status: number | undefined;
@@ -294,7 +304,7 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
     submitted = true;
     status = (await checked(() => submit())).status;
   }));
-  const after = await checked(() => observe(context, fixture, continuity, true));
+  const after = await checked(() => observe(context, fixture, continuity, true, false, fullAudit));
   const ownerAfter = await observeOwner(fixture, identity.ownerPid, checked);
   check(status === 409 || (status !== undefined && status >= 500 && status <= 599), "PG_CASE_CANCEL_HTTP_STATUS");
   check(isDeepStrictEqual(after, before) && isDeepStrictEqual(ownerAfter, ownerBefore), "PG_CASE_CANCEL_LEDGER_CHANGED");
@@ -303,7 +313,10 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
   const body = result.body as { status?: unknown } | null;
   check(result.status === 200 && body?.status === "unconfirmed" && !Object.hasOwn(body, "execution"), "PG_CASE_CANCEL_ORIGINAL_RESULT");
   return { caseId: "registered.null-cross-company.cancel-commit", database: identity.database,
-    observerPid: identity.observerPid, passed: true as const, rollbackObserved: true as const, originalResultUnconfirmed: true as const };
+    observerPid: identity.observerPid, passed: true as const, rollbackObserved: true as const, originalResultUnconfirmed: true as const,
+    accountingEvidence: Object.freeze({ origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ" as const, currency: "CNY" as const,
+      before: projectCompetitionAccounting("BEFORE", before), after: projectCompetitionAccounting("AFTER", after),
+      ownerBefore: Object.freeze({...ownerBefore}), ownerAfter: Object.freeze({...ownerAfter}), ownerStable: true as const, originalKeyAbsent: true as const }) };
 }
 
 function assertCommittedCrossCompany(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
