@@ -16,13 +16,18 @@ export function prepareLegacyPartyRoleBindings(source:Buffer,mapped:Buffer):Buff
   const paragraphs=Array.from(doc.getElementsByTagName("w:p"));
   const original=new DOMParser({onError:fail}).parseFromString(originalPart.asText(),"application/xml");
   const originals=Array.from(original.getElementsByTagName("w:p"));
-  const roles=kind==="generic"?[]:kind==="mechanical"?[[28,"甲方"],[29,"乙方"]] as const:[[28,"买方"],[29,"卖方"]] as const;
+  const roles=kind==="generic"?[]:kind==="labor"?[[27,"发包人"],[28,"承包人"]] as const:kind==="mechanical"?[[28,"甲方"],[29,"乙方"]] as const:[[28,"买方"],[29,"卖方"]] as const;
   if(paragraphs.length!==originals.length||!roles.every(([index])=>paragraphs[index]&&originals[index])) return fail();
   for(const [index,label] of roles) prepareBuiltInRoleParagraph(paragraphs[index],label);
   if(kind==="generic") for(const index of [13,14,53,58]) {
     if(!paragraphs[index]||!originals[index]) return fail();
     const sourceText=Array.from(originals[index].getElementsByTagName("w:t")).map(node=>node.textContent??"").join("");
     prepareGenericPartyParagraph(paragraphs[index],sourceText,index);
+  }
+  if(kind==="labor") for(const index of [156,159]) {
+    const paragraph=paragraphs[index];
+    if(!paragraph) return fail();
+    for(const node of Array.from(paragraph.getElementsByTagName("w:t"))) node.textContent="";
   }
   zip.file("word/document.xml",new XMLSerializer().serializeToString(doc));
   return zip.generate({type:"nodebuffer"});
