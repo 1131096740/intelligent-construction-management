@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 草稿保存事务客户端修订
+
+准确 `81d604a3` 隔离运行在 10 秒期限下仍报告 P2028/10004ms；原异常已清理。[日志](/private/tmp/jg-queue-81d604-run-1117/run.log) SHA `b14c3738ea22e8505f8ea4c0c25bfdae7c2878550dea7a8afc055297a58097a8`，[独立清理](/private/tmp/jg-queue-81d604-run-1117/cleanup-independent.json) SHA `47db14d868674a672ea0b639c5cf64e273a68b86da1db124af04d57ed47568de`。事务内使用 root client 导致自等待是可从代码证明的机制，但是否造成该轮失败仍待隔离验证。
+
+保存改用事务客户端并恢复 5 秒时限的修订 `7a7e3442` 经独审合入本地 `8d640128`，准确补丁 SHA `1d0432d63f7ca5242d8a4e816ba2174241683482d1d63301a292fe4fdb0bbf22`；定向 67/67、API typecheck/lint 通过。新候选尚未真实运行，不代表合同链验收；本次未操作资源或推送。
+
 ## 2026-11-17 经营账取消隔离候选
 
 经营账取消 v2 候选 `129c48d1` 经独审合入本地 `e7ae5f56`，封存补丁 SHA `942ca8ee7985a631a4bd3ff029c465c55633e6062042116a6e8f5a2b86aa02bd`，逐文件补丁字节一致；付款 fixture/现金前置 166/166、Node20 故障及旧用途模型 100/100、API build/typecheck/lint 通过。
