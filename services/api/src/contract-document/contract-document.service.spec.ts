@@ -311,7 +311,7 @@ describe("ContractDocumentService", () => {
     );
   });
 
-  it.each(["equipment-rental-real-v1.docx","material-purchase-real-v1.docx"])("freezes the party-placement version for a newly queued legacy %s document", async (filename) => {
+  it.each(["equipment-rental-real-v1.docx","material-purchase-real-v1.docx","labor-subcontract-real-v1.docx"])("freezes the party-placement version for a newly queued legacy %s document", async (filename) => {
     const mechanical=readFileSync(join(__dirname,"../../assets/templates",filename));
     const sourcePositions=readLayoutSourcePositions(mechanical);
     const bindings=sourcePositions.positions.flatMap(position=>[
@@ -328,8 +328,28 @@ describe("ContractDocumentService", () => {
     files.getFileBuffer.mockResolvedValueOnce({buffer:mechanical,file:{id:"layout-file-1",storageStatus:"active",contentSha256:sourcePositions.sourceSha256}});
     const {service}=makeService(tx);
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
-    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe("built-in-party-placement-v1");
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe(filename.startsWith("labor")?"built-in-labor-party-v1":"built-in-party-placement-v1");
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.mechanicalContactLayoutVersion).toBe(filename.startsWith("equipment") ? "mechanical-contact-layout-v2" : undefined);
+  });
+  it.each([
+    ["   ", "请先填写合同甲乙双方名称"],
+    ["甲".repeat(81), "合同主体名称过长或含不支持的字符"],
+    ["甲\uffff方", "合同主体名称过长或含不支持的字符"],
+    ["甲\ud800方", "合同主体名称过长或含不支持的字符"]
+  ])("rejects an invalid labor party name before queueing", async (name, message) => {
+    const input=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx"));
+    const positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],
+      ["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    const sourceMapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping;
+    const tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...sourceMapping,confirmation:{sourceFileId:sourceMapping.sourceFileId,sourceSha256:sourceMapping.sourceSha256,draftRevision:2,mappingFingerprint:sourceMapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{roleKey:"party_a",displayOrder:0,snapshot:{name}},{roleKey:"party_b",displayOrder:0,snapshot:{name:"虚构乙方"}}]);
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await expect(makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow(message);
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
   });
   it("rejects queuing before creating a document when a confirmed layout maps the removed billing block", async () => {
     const input=readFileSync(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx"));
@@ -346,6 +366,19 @@ describe("ContractDocumentService", () => {
     files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
     const {service}=makeService(tx);
     await expect(service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("正文开票资料与当前版式映射冲突");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+  });
+  it("rejects a labor party mapping in the ordinary contract body before queueing",async()=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    const ordinary=positions.positions.find(position=>position.part==="word/document.xml"&&position.paragraphIndex===35)!;
+    bindings.push({positionId:ordinary.positionId,start:0,end:1,fieldKey:"party.owner.name"});
+    const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await expect(makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("劳务合同主体位置与版式映射冲突");
     expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
   });
   it("freezes the source-bound font-table version only for a newly queued built-in generic document",async()=>{

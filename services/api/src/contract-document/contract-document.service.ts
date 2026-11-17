@@ -6,8 +6,9 @@ import { readSelectableLayoutSource } from "../contract-template/layout-selectio
 import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { BUILT_IN_GENERIC_FONT_VERSION, BUILT_IN_GENERIC_SOURCE_SHA256 } from "./contract-docx-package-metadata";
 import { assertGenericBankInputs } from "./generic-bank-blanks";
-import { assertGenericPartySourceMapping } from "./contract-body-document";
-import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, BUILT_IN_PARTY_PLACEMENT_VERSION, GENERIC_BANK_BLANKS_PLACEMENT_VERSION, type PartyPlacementVersion, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
+import { assertGenericPartySourceMapping, assertLaborPartySourceMapping } from "./contract-body-document";
+import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, BUILT_IN_PARTY_PLACEMENT_VERSION, GENERIC_BANK_BLANKS_PLACEMENT_VERSION, LABOR_PARTY_PLACEMENT_VERSION, type PartyPlacementVersion, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
+import { laborFinalPartyNames } from "./contract-labor-final-party-page";
 import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
 import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
 import {
@@ -158,13 +159,13 @@ export class ContractDocumentService {
     const schema=this.isObject(layout.placeholderSchema)?layout.placeholderSchema:{};
     const mapping=this.isObject(schema.sourceMapping)?schema.sourceMapping:undefined;
     if(mapping) {
-      try { assertGenericPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); }
+      try { assertGenericPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); assertLaborPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); }
       catch (error) { if (!(error instanceof ConflictException)) throw error; partyDetailsExternalMappingConflict=true; }
     }
     const rendered = renderContractBody(source.buffer, mapped, { values: this.renderValues(contract, version, parties,
       bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION) }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
         ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}),
-        ...(builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) ? {partyDetailsVersion: builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) === "generic" ? GENERIC_BANK_BLANKS_PLACEMENT_VERSION : BUILT_IN_PARTY_PLACEMENT_VERSION,partyDetailsConflictPreview:true,partyDetailsExternalMappingConflict} : {}) });
+        ...(builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) ? {partyDetailsVersion: builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) === "generic" ? GENERIC_BANK_BLANKS_PLACEMENT_VERSION : builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) === "labor" ? LABOR_PARTY_PLACEMENT_VERSION : BUILT_IN_PARTY_PLACEMENT_VERSION,partyDetailsConflictPreview:true,partyDetailsExternalMappingConflict} : {}) });
     const savePoints = checkpoints.flatMap(checkpoint => {
       const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
       return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
@@ -180,7 +181,7 @@ export class ContractDocumentService {
       warnings: [
         ...(createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
           ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []),
-        ...(rendered.partyDetailsMappingConflict ? [builtInPartyPlacementKind(rendered.sourceSha256)==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"] : []),
+        ...(rendered.partyDetailsMappingConflict ? [builtInPartyPlacementKind(rendered.sourceSha256)==="generic"?"通用合同主体位置与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":builtInPartyPlacementKind(rendered.sourceSha256)==="labor"?"劳务合同主体或银行资料与版式映射冲突，请联系合同管理员处理；合同正文内容已保留。":"正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"] : []),
         ...(rendered.partyDetailsConflict ? ["正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"] : [])
       ]
     };
@@ -300,7 +301,7 @@ export class ContractDocumentService {
         const useBodyRenderer = version.numericProtocolVersion === 2 || draftData.documentBody !== undefined;
         const bodySource = useBodyRenderer ? selectedSource : undefined;
         const partyKind = builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex"));
-        const partyDetailsVersion = partyKind === "generic" ? GENERIC_BANK_BLANKS_PLACEMENT_VERSION : partyKind ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
+        const partyDetailsVersion = partyKind === "generic" ? GENERIC_BANK_BLANKS_PLACEMENT_VERSION : partyKind === "labor" ? LABOR_PARTY_PLACEMENT_VERSION : partyKind ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
         const mechanicalContactLayoutVersion=builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex"))==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:undefined;
         const genericFontTableVersion=createHash("sha256").update(selectedSource.buffer).digest("hex")===BUILT_IN_GENERIC_SOURCE_SHA256?BUILT_IN_GENERIC_FONT_VERSION:undefined;
         const engineVersion = useBodyRenderer ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION;
@@ -382,7 +383,7 @@ export class ContractDocumentService {
           : [];
         for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
         const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
-        if (partyDetailsVersion) assertGenericPartySourceMapping(selectedSource.buffer,layoutSourceMapping);
+        if (partyDetailsVersion) { assertGenericPartySourceMapping(selectedSource.buffer,layoutSourceMapping); assertLaborPartySourceMapping(selectedSource.buffer,layoutSourceMapping); }
         let bodyDocument: ContractDocumentInputSnapshot["bodyDocument"];
         if (useBodyRenderer) {
           const source = bodySource!;
@@ -436,6 +437,9 @@ export class ContractDocumentService {
           throw new BadRequestException("请先填写合同甲乙双方名称，再生成合同");
         }
         if (partyDetailsVersion === GENERIC_BANK_BLANKS_PLACEMENT_VERSION) assertGenericBankInputs(selectedSource.buffer,mappedLayoutSourceForVersion(selectedSource.buffer,layout),inputSnapshot.renderInput.values,inputSnapshot.bodyDocument?.editPlan);
+        if (partyDetailsVersion && builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex")) === "labor") {
+          laborFinalPartyNames(inputSnapshot.renderInput.values);
+        }
         const document = await tx.contractGeneratedDocument.create({
           data: {
             contractVersionId: version.id,
