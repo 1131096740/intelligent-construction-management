@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 预览队列有限诊断
+
+准确 `d57fe25b` 原轮在有效 queued 前的 preview-generation 请求返回 500/`TASK12_GENERATED_DOCUMENT_QUEUE`，业务结果 UNKNOWN，服务端可能已有写入；PG 已清理，不能从其他轮次推断本轮首因。[原回执](/private/tmp/jg-native-contract-d57-yfnu_xpc/receipt.json) SHA `11735803bbc33223338e8478c7a89cbd347a0d3c8d5b46eecf11a46ccabff107`，[独立清理](/private/tmp/jg-con18-d57-log-vs_57axy/cleanup-independent.json) SHA `30bdc5009bf11a6f5c0f78bd94f6f8ec07edba873845206a3daa6d0335554fc3`。
+
+测试侧有限捕获 `53b887e5` 经独审合入本地 `6f6f9c8e`，准确补丁 SHA `4d180bf529449b73ea7c923874a358bcd7c1b7062741a1d65880485f4871668e`；Node20 bridge 66/66、本地 Nest 16/16、API typecheck/lint 通过。新候选尚未真实运行，合同链未验收；按用户要求先不重复文书资格，待集中验收，本次未启动资源或推送。
+
 ## 2026-11-17 CON-18 续至归档候选
 
 CON-18 撤回重提续至归档候选 `01060b66` 经独审合入本地 `88a77dd7`，准确补丁 SHA `0768e584c06f185e52005e811a55437b3eb416266cb5009df1a7068da4819578`；定向模型 13/13、owner/HTTP/runner 模型 83/83、API build/typecheck/lint 通过，真实 PG 尚未运行。
