@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 真实页面付款隔离候选
+
+虚构真实页面付款 v2 候选 `2a370406` 经独审合入本地 `699abc8e`，封存补丁 SHA `993fd21aa8015f57f8860664b12cf2f823358d09a55336f09560f14da838c21e`，逐文件补丁字节一致；Node20 runner 15/15、页面装配模型 8/8、API typecheck/lint 通过，真实浏览器/PG 测试按约跳过。
+
+候选使用 token 注入，只覆盖部分付款范围；browser 专用观察角色仅增 `Settlement.id/paidAmountCents` 两列读取，不能视为生产授权。实际浏览器和 PostgreSQL 尚未运行，不代表 #398 验收；本次未操作资源或推送。
+
 ## 2026-11-17 queue-only 单连接与经营账取消结果
 
 准确 `0ad412b6` 单连接 queue-only 虚构隔离运行的保存、无权 403 和唯一 queued 检查通过；worker 禁用，不证明旧轮失败因果或完整文书链。[日志](/private/tmp/jg-queue-0ad412-run-1117/run.log) SHA `59cbfc8a1985cd08f820c8af3bbe63c9e60b7fb860f0e5385efd252baf68736f`，[独立清理](/private/tmp/jg-queue-0ad412-run-1117/cleanup-independent.json) SHA `2039feaf1a87294af8ba2232308f977ffe0d7fba902971ed92475446dbf8bcb5`。
