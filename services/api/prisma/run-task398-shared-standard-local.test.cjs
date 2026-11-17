@@ -139,11 +139,11 @@ test("approval guard project lookup has only required spot payment reads",()=>{
 
 test("approval delegation lookup has its exact read-only predicate and projection",()=>{
  const row=runtimePlan().runtime.tables.find(value=>value.table==="ApprovalDelegation");
- const columns=["toUserId","actionKey","resourceType","resourceId","enabled","startsAt","endsAt","fromUserId"];
+ const columns=["id","toUserId","actionKey","resourceType","resourceId","enabled","startsAt","endsAt","fromUserId"];
  assert.deepEqual([...row.select].sort(),[...columns].sort());assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);
  const source=fs.readFileSync(path.join(__dirname,"../src/approval/active-approval-delegations.ts"),"utf8");
  const start=source.indexOf("export async function activeApprovalDelegatorIds"),end=source.indexOf("export async function activeScopedApprovalDelegatorIds");assert.ok(start>=0&&end>start);
- const query=source.slice(start,end);for(const column of columns)assert.match(query,new RegExp(`\\b${column}\\b`,"u"));
+ const query=source.slice(start,end);for(const column of columns.filter(value=>value!=="id"))assert.match(query,new RegExp(`\\b${column}\\b`,"u"));
  const guard=fs.readFileSync(path.join(__dirname,"../src/auth/guards/permission.guard.ts"),"utf8");assert.match(guard,/activeApprovalDelegatorIds\(delegationClient as ActiveApprovalDelegationClient, userId\)/u);
  const sql=approvalDependencyCheckSql();for(const col of columns){assert.ok(sql.includes(`'${col}','SELECT'`));assert.ok(sql.includes(`'${col}','SELECT WITH GRANT OPTION'`));}assert.match(sql,/NOT has_any_column_privilege\('jg_task01_runtime','public\."ApprovalDelegation"','INSERT,UPDATE,REFERENCES'\)/u);
 });
