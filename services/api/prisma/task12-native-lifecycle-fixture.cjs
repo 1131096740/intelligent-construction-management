@@ -70,6 +70,8 @@ module.exports = { DATABASE, TERMINAL, DOCUMENT_ROLES, validateNativeLifecycleSc
 
 const { types } = require('node:util');
 const NATIVE_STAGES = new Set(['INPUT','IDENTITY','SEED','NEST_INIT','LOGIN','SIGNATURES','TEMPLATE','DRAFT','GENERATE','SUBMIT','WITHDRAW','REJECT','APPROVE','SEAL','UPLOAD','AUDIT_FAULT_INSTALL','AUDIT_FAULT_ARCHIVE','AUDIT_FAULT_ROLLBACK_VERIFY','AUDIT_FAULT_CLEANUP','ARCHIVE','DOWNLOAD','VERIFY','CLEANUP']);
+const QUEUE_DRAFT_STAGES = new Set(['DRAFT_CREATE','DRAFT_LEASE','DRAFT_SAVE_READ','DRAFT_SAVE_WRITE','DRAFT_QUEUE_READ','DRAFT_DENY','DRAFT_DENY_PROOF','DRAFT_QUEUE','DRAFT_QUEUE_PROOF']);
+for (const stage of QUEUE_DRAFT_STAGES) NATIVE_STAGES.add(stage);
 const NATIVE_ROLES = new Set(['owner','application','template','worker','queue']);
 const CLEANUP_ROLES=Object.freeze({CONTAINER_REMOVE:'CONTROL',DIRECTORY_REMOVE:'CONTROL',PROCESSOR_CLOSE:'worker',APP_CLOSE:'application',APPLICATION_DISCONNECT:'application',TEMPLATE_DISCONNECT:'template',WORKER_DISCONNECT:'worker',QUEUE_DISCONNECT:'queue',OWNER_DISCONNECT:'owner',AUDIT_TRIGGER_DROP:'owner',AUDIT_FUNCTION_DROP:'owner'});
 const CLEANUP_STEPS = new Set(['CONTAINER_REMOVE','DIRECTORY_REMOVE','PROCESSOR_CLOSE','APP_CLOSE','APPLICATION_DISCONNECT','TEMPLATE_DISCONNECT','WORKER_DISCONNECT','QUEUE_DISCONNECT','OWNER_DISCONNECT','AUDIT_TRIGGER_DROP','AUDIT_FUNCTION_DROP']);
@@ -84,12 +86,13 @@ function nativeCodes(error) {
     ...(typeof sql==='string'&&SQLSTATES.has(sql)?{sqlState:sql}:SQLSTATES.has(code)?{sqlState:code}:{})};
 }
 function createNativeLifecycleDiagnostics() {
-  let stage='INPUT',database,first;
+  let stage='INPUT',database,first,httpStatus;
   const cleanupFailures=[];
   return Object.freeze({
-    enter(value) { if(!NATIVE_STAGES.has(value))fail('STAGE');stage=value;database=undefined; },
+    enter(value) { if(!NATIVE_STAGES.has(value))fail('STAGE');stage=value;database=undefined;httpStatus=undefined; },
+    httpStatus(value) { if(QUEUE_DRAFT_STAGES.has(stage)&&Number.isInteger(value)&&value>=100&&value<=599)httpStatus=value; },
     database(role,error) { if(!NATIVE_ROLES.has(role))fail('ROLE');const codes=nativeCodes(error);if(!database&&codes.code!=='REJECTED')database={role,...codes}; },
-    primary(error) { first??={error,projection:{stage,role:database?.role??'UNKNOWN',...(database??nativeCodes(error))}}; },
+    primary(error) { first??={error,projection:{stage,role:database?.role??'UNKNOWN',...(database??nativeCodes(error)),...(httpStatus===undefined?{}:{httpStatus})}}; },
     cleanup(step,error) {
       if(!CLEANUP_STEPS.has(step))fail('CLEANUP_STEP');
       const row=Object.freeze({step,role:CLEANUP_ROLES[step],...nativeCodes(error)});if(cleanupFailures.length<9)cleanupFailures.push(row);
