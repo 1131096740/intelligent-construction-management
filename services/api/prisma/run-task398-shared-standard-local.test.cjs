@@ -92,7 +92,9 @@ test("approval trigger and quota lookup dependencies match the restricted read p
  const service=fs.readFileSync(path.join(__dirname,"../src/payment/payment-request.service.ts"),"utf8");
  const start=service.indexOf("private async financingUsageTotals("),end=service.indexOf("\n  private ",start+1);assert.ok(start>=0&&end>start);
  const lookup=service.slice(start,end);for(const column of ["paymentRequestId","status","amountCents"])assert.ok(lookup.includes(column));
- fields("ProjectFinancingQuotaUsage",["paymentRequestId","status","amountCents"]);
+ // Same-version Prisma probe showed the projection also reads its primary key.
+ fields("ProjectFinancingQuotaUsage",["id","paymentRequestId","status","amountCents"]);
+ const sql=approvalDependencyCheckSql();assert.ok(sql.includes('public."ProjectFinancingQuotaUsage"'));assert.ok(sql.includes('NOT has_column_privilege(\'jg_task01_runtime\',\'public."ProjectFinancingQuotaUsage"\',\'id\',\'SELECT WITH GRANT OPTION\')'));
 });
 
 test("resolves a lost launch ID by exact name and run label, without touching other containers",()=>{
