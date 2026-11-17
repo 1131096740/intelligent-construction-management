@@ -5,6 +5,7 @@ import PizZip from "pizzip";
 import { readLayoutSourcePositions, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
+import { addGenericBankBlanks } from "./generic-bank-blanks";
 import { BUILT_IN_GENERIC_SOURCE_SHA256 } from "./contract-docx-package-metadata";
 import { completeContractPageNumberFields } from "./layout-preview-docx";
 import type { ContractDocumentRenderInput } from "./contract-document.types";
@@ -824,6 +825,8 @@ export function upgradeReviewedLaborTaxPlan(value: unknown, source: Buffer, mapp
  * They never become user text or exported metadata; original formatting stays in place.
  */
 export const BUILT_IN_PARTY_PLACEMENT_VERSION = "built-in-party-placement-v1";
+export const GENERIC_BANK_BLANKS_PLACEMENT_VERSION = "built-in-generic-bank-blanks-v1";
+export type PartyPlacementVersion = typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION;
 export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|"generic"|undefined {
   return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":sourceSha256===BUILT_IN_GENERIC_SOURCE_SHA256?"generic":undefined;
 }
@@ -915,7 +918,7 @@ export function assertBuiltInPartyPlacementPlan(source:Buffer,mapped:Buffer,layo
   const protectedIds=new Set([...roleIds,...(kind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[])]);
   if(plan.edits.some(edit=>protectedIds.has(edit.positionId))||plan.additions?.some(addition=>protectedIds.has(addition.afterPositionId))||plan.deletedPositionIds?.some(id=>roleIds.has(id))) throw new ConflictException("合同主体信息位置已有编辑，请保留内容并核对后重试");
 }
-export function renderContractBody(source: Buffer, mapped: Buffer, input: ContractDocumentRenderInput, requiredKeys: readonly string[], layoutTemplateVersionId: string, rawPlan?: unknown, options: { allowBlankWatermark?: boolean; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: typeof BUILT_IN_PARTY_PLACEMENT_VERSION; partyDetailsConflictPreview?: boolean; partyDetailsExternalMappingConflict?: boolean } = {}) {
+export function renderContractBody(source: Buffer, mapped: Buffer, input: ContractDocumentRenderInput, requiredKeys: readonly string[], layoutTemplateVersionId: string, rawPlan?: unknown, options: { allowBlankWatermark?: boolean; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: PartyPlacementVersion; partyDetailsConflictPreview?: boolean; partyDetailsExternalMappingConflict?: boolean } = {}) {
   const values = { ...input.values };
   const hasReviewedTaxVersion = Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion");
   const reviewedLaborTaxBindingVersion = hasReviewedTaxVersion ? values["contract.reviewedLaborTaxBindingVersion"] : undefined;
@@ -955,7 +958,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const model = sourceParagraphs(source, mapped, binding);
   const placement=options.partyDetailsVersion;
   const placementKind=builtInPartyPlacementKind(model.sourceSha256);
-  if(placement!==undefined&&(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION||!placementKind)) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==GENERIC_BANK_BLANKS_PLACEMENT_VERSION||placementKind!=="generic")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
   const roleIndexes=placementKind==="generic"?[13,14,53,58]:[28,29];
   const roleIds=new Set(placement?roleIndexes.map(index=>model.paragraphs[index].id):[]);
   const removedPartyIds=new Set(placement&&placementKind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[]);
@@ -1127,6 +1130,13 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     }
     return [block, ...addedBlocks];
   });
+  if(placement===GENERIC_BANK_BLANKS_PLACEMENT_VERSION&&!partyDetailsConflict&&!partyDetailsMappingConflict) {
+    try { addGenericBankBlanks(document); }
+    catch(error) {
+      if(!(error instanceof ConflictException)||!options.partyDetailsConflictPreview) throw error;
+      partyDetailsConflict=true;
+    }
+  }
   for (const paragraph of Array.from(document.getElementsByTagNameNS(W, "p"))) {
     if (ids.has(paragraph)) continue;
     const id = `generated:${blocks.length}`;
