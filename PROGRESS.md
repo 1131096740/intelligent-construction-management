@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 经营账响应丢失候选
+
+经营账响应丢失交叉场景 `615278e9` 经独审合入本地 `a8eb8066`，补丁 SHA `fa0c87baa50c88eac5f565735a1bc54e28b3885c49e51d57dd260376ce0e9853`，七文件差异逐项一致；Node20 定向 95/95、付款 fixture 159/159、API build/typecheck/lint 通过。
+
+新交叉场景尚未真实隔离验证，不能据模型认定资金结果或 #398 完成；既有证据仍绑定各自原 SHA，b047 仍 UNKNOWN。本次未碰生产或推送。
+
 ## 2026-11-17 虚构账号停用旧票隔离结果
 
 准确 `fc8e991ec93a5652863d2b37b53b83ede84557cc` 的虚构真实 PG 场景中，账号停用前旧票访问为 200；停用后未过期旧票返回 403，存储未读取，成员及账务观察不变。[回执](/private/tmp/jg-disabled-fc8-5f7a26yy/receipt.json) SHA `b640a1060a8565ba6cd8be0135f3bab1c962c1363e0dee253f5fae6a45a08180`，[日志](/private/tmp/jg-disabled-fc8-once.log) SHA `74be93e7a2c5130a55a2c548fa8dc47dcfa1443840b3d490f4613788d90c0103`，[清理](/private/tmp/jg-disabled-fc8-cleanup.json) SHA `4b17ab58c1e90b504d354d2d7b9fbedacc3555c59c59ae8fc0cb9fac215b5bf9`。
