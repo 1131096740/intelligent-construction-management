@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {runNativeVoucherRevocation,prepareNativeVoucherForRevocation}=require('./task16-native-voucher-revocation.cjs');
+const {runNativeVoucherRevocation,runNativeVoucherDisabled,prepareNativeVoucherForRevocation}=require('./task16-native-voucher-revocation.cjs');
 
 // These are protocol tests of the GET-only case using a fake transport and
 // observer. They do not claim PostgreSQL, Nest or storage acceptance.
@@ -10,16 +10,16 @@ const base='http://127.0.0.1:30001';
 const bytes=Buffer.from('synthetic voucher');
 const sha=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
 
-function scenario({retainsTicket=false,extraRoster=false,drift=false,inactive=false,writerOid='10'}={}) {
- let revoked=false,issued=false,downloaded=false;const requests=[];
+function scenario({retainsTicket=false,extraRoster=false,drift=false,inactive=false,disabledMode=false,readOnDenied=false,writerOid='10'}={}) {
+ let revoked=false,issued=false,downloaded=false,storageReads=0;const requests=[];
  const origin=new URL(base);
- const members=()=>revoked?[]:[{id:ids.member,positionKey:'project_manager'}];
+ const members=()=>revoked&&!disabledMode?[]:[{id:ids.member,positionKey:'project_manager'}];
  const observe=async()=>({stdout:JSON.stringify({databaseOid:'16384',systemIdentifier:'12345',readerOid:'10',readerPid:7,readerTls:true,ownerSession:true,readOnly:true,
-  active:!inactive,targetActive:true,otherActive:true,sessionVersion:0,globalPositions:0,targetPositions:0,targetRoster:extraRoster?1:0,
+  active:!inactive&&!(revoked&&disabledMode),targetActive:true,otherActive:true,sessionVersion:0,globalPositions:0,targetPositions:0,targetRoster:extraRoster?1:0,
   targetMembers:members(),otherMembers:[{id:'77777777-7777-4777-8777-777777777777',positionKey:'project_manager'}],paymentPresent:true,executionPresent:true,fundingPresent:true,voucherPresent:true,
   fileSha256:sha,fileSize:bytes.length,financialSha:drift&&revoked?'b'.repeat(64):'a'.repeat(64),
   ticketAudits:issued?1:0,downloadAudits:downloaded?1:0})});
- const revoke=async()=>{revoked=true;return {stdout:JSON.stringify({deleted:1,databaseOid:'16384',systemIdentifier:'12345',writerOid,writerPid:8,writerTls:true,ownerSession:true})};};
+ const revoke=async()=>{revoked=true;return {stdout:JSON.stringify({deleted:1,updated:1,databaseOid:'16384',systemIdentifier:'12345',writerOid,writerPid:8,writerTls:true,ownerSession:true})};};
  const transport=async(target,init)=>{
   const u=new URL(target);requests.push([u.pathname,init.method,Boolean(init.headers?.authorization)]);
   if(u.pathname==='/projects')return {status:200,url:u.href,redirected:false,json:async()=>[{id:ids.other},...(!revoked?[{id:ids.project}]:[])]};
@@ -30,10 +30,10 @@ function scenario({retainsTicket=false,extraRoster=false,drift=false,inactive=fa
    const p=new URL(`/files/${ids.file}/download`,origin);for(const [k,v] of Object.entries({actorUserId:ids.actor,expiresAt,downloadReason:'实际付款凭证下载',accessMode:'download',token:'A'.repeat(43)}))p.searchParams.set(k,v);
    return {status:200,url:u.href,redirected:false,json:async()=>({fileId:ids.file,sizeBytes:bytes.length,expiresAt,downloadUrl:p.pathname+p.search})};
   }
-  if(u.pathname.endsWith('/download')) {const allowed=!revoked||retainsTicket;if(allowed)downloaded=true;return {status:allowed?200:403,url:u.href,redirected:false,headers:{get:key=>key==='content-length'?String(bytes.length):'image/png'},body:{getReader:()=>{let sent=false;return {read:async()=>sent?{done:true}:(sent=true,{done:false,value:bytes}),releaseLock(){}};}}};}
+  if(u.pathname.endsWith('/download')) {const allowed=!revoked||retainsTicket;if(allowed){downloaded=true;storageReads++;}else if(readOnDenied)storageReads++;return {status:allowed?200:403,url:u.href,redirected:false,headers:{get:key=>key==='content-length'?String(bytes.length):'image/png'},body:{getReader:()=>{let sent=false;return {read:async()=>sent?{done:true}:(sent=true,{done:false,value:bytes}),releaseLock(){}};}}};}
   throw Error('unexpected route');
  };
- return {input:{ids,origin:base,token:'synthetic-token',fileSha256:sha,fileSize:bytes.length,known:{databaseOid:'16384',systemIdentifier:'12345',ownerOid:'10',sessionPids:[1,2,3]},observe,revoke,transport,check(){}},requests};
+ return {input:{ids,origin:base,token:'synthetic-token',fileSha256:sha,fileSize:bytes.length,known:{databaseOid:'16384',systemIdentifier:'12345',ownerOid:'10',sessionPids:[1,2,3]},observe,revoke,transport,check(){},storageReadCount:()=>storageReads},requests};
 }
 
 test('revoked manager loses capability and both new and already issued tickets while other project and immutable facts remain',async()=>{
@@ -179,4 +179,20 @@ test('records each completed request as a fixed stage and status without ticket 
  await runNativeVoucherRevocation(input);
  assert.deepEqual(observed,[{stage:'PROJECTS_BEFORE',status:200},{stage:'CAPABILITY_BEFORE',status:200},{stage:'TICKET_ISSUE',status:200},{stage:'DOWNLOAD_BEFORE',status:200},{stage:'PROJECTS_AFTER',status:200},{stage:'CAPABILITY_AFTER',status:403},{stage:'TICKET_AFTER',status:403},{stage:'OLD_TICKET',status:403}]);
  assert.doesNotMatch(JSON.stringify(observed),/token|127\.0\.0\.1|00000000/);
+});
+
+
+test('disabled account cannot use an unexpired old ticket or reach storage while membership and facts remain',async()=>{
+ const {input,requests}=scenario({disabledMode:true});const result=await runNativeVoucherDisabled(input);
+ assert.deepEqual(result,{authorizedBefore:true,accountDisabled:true,membershipUnchanged:true,oldTicketDenied:true,storageUnread:true,observedFactsUnchanged:true});
+ assert.equal(requests.filter(([path])=>path.endsWith('/download')).length,2);
+});
+test('disabled-account proof rejects a still-valid download, storage read, or financial drift',async()=>{
+ for(const options of [{retainsTicket:true},{readOnDenied:true},{drift:true}])await assert.rejects(runNativeVoucherDisabled(scenario({disabledMode:true,...options}).input));
+});
+
+test('disable SQL mutates exactly the supplied active actor and preserves membership',()=>{
+ const api=require('./task16-native-voucher-revocation.cjs'),sql=api.voucherDisableAccountSql(ids);
+ assert.match(sql,/UPDATE public\."User" SET "isActive"=false/u);assert.ok(sql.includes(`WHERE id='${ids.actor}' AND "isActive"=true`));
+ assert.doesNotMatch(sql,/DELETE\s+FROM|UPDATE\s+public\."ProjectMember"/iu);assert.throws(()=>api.voucherDisableAccountSql({...ids,actor:"bad"}));
 });
