@@ -169,3 +169,11 @@ test("observer reads only actual accounting tables and bounded signature columns
  const spec=fs.readFileSync(path.join(__dirname,"../src/database/task16-shared-standard.http.pg.spec.ts"),"utf8");
  for(const expression of ["observer.paymentRequest","observer.approvalInstance","observer.approvalActionLog","observer.handwrittenSignatureVersion","observer.paymentExecution","observer.registeredPaymentVoucher"])assert.ok(spec.includes(expression));
 });
+
+test("personal work items read only required settlement fields without tokens",()=>{
+ const {meSensitiveReadCheckSql}=require("./run-task398-shared-standard-local.cjs"),plan=runtimePlan();
+ for(const [table,required,forbidden] of [["SettlementDraft",["id","projectId","ownerUserId","status","updatedAt","periodLabel","code"],["sourceSnapshotToken"]],["SettlementSignedDocumentGenerationClaim",["id","settlementId","status","claimedAt","uploadedFileId","safeFailureCode"],["claimToken","businessSnapshotToken"]]]){
+  const row=plan.runtime.tables.find(item=>item.table===table);for(const col of required)assert.ok(row.select.includes(col));for(const col of forbidden)assert.ok(!row.select.includes(col));assert.deepEqual(row.insert,[]);assert.deepEqual(row.update,[]);
+ }
+ const sql=meSensitiveReadCheckSql();for(const text of ["sourceSnapshotToken","claimToken","businessSnapshotToken","SELECT WITH GRANT OPTION","has_any_column_privilege"])assert.ok(sql.includes(text));
+});
