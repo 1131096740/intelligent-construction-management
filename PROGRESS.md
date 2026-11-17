@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离附件槽位读取修订
+
+准确 `4cd2adc1` 的真实隔离运行三次登录通过，签名 500/42501 定位到缺少 `ContractDraftAttachment.slotKey` SELECT，但尚未证明这是唯一缺口；审批和付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-qu3bv18f/run.log) SHA `c0e9f1b926489a65e8d42a3e5032dd9245c2ec79f8f247175ff7b0a2a9820c14`。
+
+隔离列读取修订 `70a19a39` 经独审合入本地 `45cca3b9`，准确补丁 SHA `9ccf6013fa78a38e12f4d3d1f7274fcf067da1fffa95de5ac66b0c78b2894084`；Node20 定向 3/3、CJS 语法及 diff 检查通过。新候选尚未真实运行，不代表 #398 验收；本次未运行资源、重跑无关资格或推送。
+
 ## 2026-11-17 隔离签名权限对象诊断
 
 准确 `48f0cdd6` 的真实隔离运行三次登录通过，签名返回 500，Prisma unknown 错误分类为 SQLSTATE 42501/PERMISSION，但权限对象未知；审批和付款未进入，容器独立检查已移除。[原日志](/private/tmp/jg398-standard-run-r2ud5a58/run.log) SHA `ba66629a69878bf806f91470cc4dadbe2cc4041c3b24ad7020b20024630b1419`。签名可能已有写入，不能据此认定根因。
