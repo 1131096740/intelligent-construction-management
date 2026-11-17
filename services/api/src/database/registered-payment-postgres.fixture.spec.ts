@@ -404,7 +404,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 });
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
-  it.each(["attribution-gap", "attribution-gap-owner-drift", "attribution-gap-ledger-drift", "attribution-gap-accepted", "attribution-gap-source-mismatch", "attribution-gap-recorded-key", "normal-null-balance-after-guard", "normal-negative-spent-after-guard", "normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
+  it.each(["attribution-gap", "attribution-gap-owner-drift", "attribution-gap-ledger-drift", "attribution-gap-accepted", "attribution-gap-source-mismatch", "attribution-gap-recorded-key", "normal-null-balance-after-guard", "normal-negative-spent-after-guard", "normal-null-balance", "normal-negative-spent", "normal-snapshot-query-error", "normal-snapshot-before-query-guard", "normal-snapshot-after-query-guard", "normal-extra-graph", "normal-missing-required", "normal", "normal-http-500-owned-json", "normal-http-400-owned-json", "normal-http-403-owned-json", "normal-http-409-owned-json", "native-response-loss", "native-response-loss-absent", "native-response-loss-drift", "native-response-loss-orphan", "native-response-loss-audit-orphan", "native-response-loss-foreign-audit", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
       "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias", "response-loss-owned-json", "normal-owned-json", "upstream-failure-owned-json", "absent-db-fact-owned-json",
       "cancel-commit-owned-json", "cancel-changed-ledger-owned-json", "cancel-fake-success-owned-json", "cancel-result-error-owned-json",
       "disconnect-recovery-owned-json", "disconnect-ledger-drift-owned-json", "disconnect-recorded-key-owned-json", "disconnect-first-succeeded-owned-json",
@@ -416,7 +416,8 @@ describe("registered PG original case: explicit observer projection protocol (no
     const registrationFailureStatus = /^normal-http-(500|400|403|409)$/u.exec(rawScenario)?.[1];
     const snapshotFailureMode=/^normal-(?:snapshot-|extra-graph|missing-required|null-balance|negative-spent)/u.test(rawScenario)?rawScenario:undefined;
     const originalSnapshotError=new Error("owned snapshot failure");
-    const scenario = registrationFailureStatus||snapshotFailureMode ? "normal" : rawScenario;
+    const nativeLoss=rawScenario.startsWith("native-response-loss");
+    const scenario = registrationFailureStatus||snapshotFailureMode ? "normal" : nativeLoss ? rawScenario.endsWith("-absent") ? "absent-db-fact" : "response-loss" : rawScenario;
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
@@ -475,14 +476,16 @@ describe("registered PG original case: explicit observer projection protocol (no
       registeredPaymentEvent: ["executionId"],
       interEntityRelationshipEntry: ["id", "paymentExecutionId", "sourceType", "entryKind", "direction", "status", "originalDebtorCompanyId", "creditorCompanyId", "amountCents", "projectId"],
       operatingFact: ["id"], operatingImpactEntry: ["id"],
-      auditLog: ["actorUserId", "metadata"],
+      auditLog: ["actorUserId", "metadata", ...(nativeLoss ? ["businessId"] : [])],
       fundAccountBalanceRegistration: ["accountId", "balanceYuan", "coveredExecutionIds"]
     };
     function rows(model: string, where: Record<string, unknown>) {
       if (model === "paymentRequest") return [{ approvedAmountCents: total, paidAmountCents: completed ? total : recorded ? paid : 0n, status: completed ? "paid" : recorded ? "partially_paid" : "approved_pending_payment" }];
       if (model === "settlement") return [{ payableAmountCents: total, paidAmountCents: completed ? total : recorded ? paid : 0n }];
       if (model === "fundAccountBalanceRegistration") return [{ accountId: where.id === "registration-a" ? "account-a" : "account-b", balanceYuan: new Prisma.Decimal(gap && where.id === "registration-b" ? "8" : "100"), coveredExecutionIds: [] }];
-      if (model === "operatingImpactEntry" && orphanImpact && where.sourceBusinessId === undefined) return [{ id: "orphan-impact" }];
+      if (model === "operatingImpactEntry" && (orphanImpact || rawScenario === "native-response-loss-orphan" && recorded) && where.sourceBusinessId === undefined) return [{ id: "orphan-impact" }];
+      if (model === "auditLog" && rawScenario === "native-response-loss-audit-orphan" && recorded && where.businessId === undefined) return [{ actorUserId: ids.actor, metadata: {} }, { actorUserId: ids.actor, metadata: {} }];
+      if (model === "auditLog" && rawScenario === "native-response-loss-foreign-audit" && recorded && where.businessId === undefined) return [{ businessId: "foreign", actorUserId: ids.actor, metadata: { voucherFileId: null, voucherPending: true, actualPayer: { kind: "participating_company", id: ids.companyB } } }];
       if (!recorded) return [];
       if (completed) {
         const secondAmount = scenario === "competition-follow-up-double-debit" ? 2000n : 1000n;
@@ -496,8 +499,8 @@ describe("registered PG original case: explicit observer projection protocol (no
       if (model === "registeredPaymentFunding") return [{ executionId: "execution-one", operatingLedgerEffectiveDateAtRegistration: null, actualPayerId: ids.companyB, actualPayerKind: "participating_company" }];
       if (model === "registeredFundPaymentAllocation") return [{ executionId: "execution-one", accountId: "account-b", sourceBatchId: "source-b", amountCents: paid }];
       if (model === "registeredPaymentEvent") return [{ executionId: "execution-one" }];
-      if (model === "interEntityRelationshipEntry") return [{ id: "root-one", paymentExecutionId: "execution-one", sourceType: "registered_payment_execution", entryKind: "proxy_payment", direction: "increase", status: "confirmed", originalDebtorCompanyId: ids.companyA, creditorCompanyId: ids.companyB, amountCents: paid, projectId: ids.project }];
-      if (model === "auditLog") return [{ actorUserId: directorWins?contender.actorId:ids.actor, metadata: { voucherFileId: null, voucherPending: true, actualPayer: { kind: "participating_company", id: ids.companyB } } }];
+      if (model === "interEntityRelationshipEntry") return [{ id: "root-one", paymentExecutionId: "execution-one", sourceType: "registered_payment_execution", entryKind: "proxy_payment", direction: "increase", status: "confirmed", originalDebtorCompanyId: ids.companyA, creditorCompanyId: ids.companyB, amountCents: rawScenario === "native-response-loss-drift" && responseCancellations.length === 2 ? 3999n : paid, projectId: ids.project }];
+      if (model === "auditLog") return [{ ...(where.businessId === undefined ? { businessId: ids.payment } : {}), actorUserId: directorWins?contender.actorId:ids.actor, metadata: { voucherFileId: null, voucherPending: true, actualPayer: { kind: "participating_company", id: ids.companyB } } }];
       return [];
     }
     const observer = Object.fromEntries(Object.keys(allowed).map(model => {
@@ -632,7 +635,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
-      const continuity = { checkLight: jest.fn(()=>{if(inObserverTx){normalTxLight++;if(snapshotFailureMode==="normal-snapshot-before-query-guard"&&normalTxLight===4||(snapshotFailureMode==="normal-snapshot-after-query-guard"||snapshotFailureMode?.endsWith("-after-guard"))&&normalTxLight===5)throw originalSnapshotError;}}), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(), recordObserverDiagnostic: jest.fn(),
+      const continuity = { ...(nativeLoss ? { authorizeResponseLossReplay: jest.fn(), loseRegistrationResponse: jest.fn(async (submit: () => Promise<unknown>) => { await submit(); return { faultState: "dropped", upstreamStatusCode: 201 }; }) } : {}), checkLight: jest.fn(()=>{if(inObserverTx){normalTxLight++;if(snapshotFailureMode==="normal-snapshot-before-query-guard"&&normalTxLight===4||(snapshotFailureMode==="normal-snapshot-after-query-guard"||snapshotFailureMode?.endsWith("-after-guard"))&&normalTxLight===5)throw originalSnapshotError;}}), fetch: globalThis.fetch, assertHttpRequest: jest.fn(), markCaseGate: jest.fn(), recordObserverDiagnostic: jest.fn(),
         ...(ownedJson ? { async requestJson(target: URL, init: RequestInit, timeoutMs: number) {
           const response = await globalThis.fetch(target, { ...init, signal: AbortSignal.timeout(timeoutMs) });
           const body: unknown = await response.json();
@@ -778,7 +781,7 @@ describe("registered PG original case: explicit observer projection protocol (no
         return;
       }
       const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared, ownedJson||snapshotFailureMode ? continuity : undefined)
-        : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
+        : nativeLoss ? registeredCases.runRegisteredNullCrossCompanyNativeResponseLoss(f.context, prepared, continuity) : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
       if(snapshotFailureMode){
         if(snapshotFailureMode.startsWith("normal-snapshot-")||snapshotFailureMode.endsWith("-after-guard")){
           await expect(run).rejects.toBe(originalSnapshotError);expect(fetch).not.toHaveBeenCalled();
@@ -799,15 +802,26 @@ describe("registered PG original case: explicit observer projection protocol (no
         expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST"]);
         return;
       }
-      if (scenario === "upstream-failure" || scenario === "absent-db-fact") {
+      if (rawScenario === "native-response-loss-drift") {
+        await expect(run).rejects.toThrow("PG_CASE_COMMITTED_A_OWES_B_ROOT");
+        expect(fetch.mock.calls.filter(([, request]) => request?.method === "POST")).toHaveLength(2);
+      } else if (rawScenario === "native-response-loss-foreign-audit") {
+        await expect(run).rejects.toThrow("PG_CASE_COMMITTED_AUDIT_BUSINESS");
+        expect(continuity.authorizeResponseLossReplay).not.toHaveBeenCalled();
+      } else if ((rawScenario === "native-response-loss-orphan" || rawScenario === "native-response-loss-audit-orphan")) {
+        await expect(run).rejects.toThrow("PG_CASE_COMMITTED_GRAPH_COUNTS");
+        expect(continuity.authorizeResponseLossReplay).not.toHaveBeenCalled();
+        expect(fetch.mock.calls.filter(([, request]) => request?.method === "POST")).toHaveLength(1);
+      } else if (scenario === "upstream-failure" || scenario === "absent-db-fact") {
         await expect(run).rejects.toThrow(scenario === "upstream-failure" ? "PG_CASE_RESPONSE_LOSS_BOUNDARY" : "PG_CASE_COMMITTED_GRAPH_COUNTS");
         const error = await run.catch((error: unknown) => error);
         expect(Object.getOwnPropertyDescriptor(error, "code")).toEqual({ value: scenario === "upstream-failure" ? "PG_CASE_RESPONSE_LOSS_BOUNDARY" : "PG_CASE_COMMITTED_GRAPH_COUNTS", enumerable: false, configurable: false, writable: false });
         expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST"]);
+        if (nativeLoss) expect(continuity.authorizeResponseLossReplay).not.toHaveBeenCalled();
       } else {
         await expect(run).resolves.toMatchObject({ caseId: scenario === "normal" ? "registered.null-cross-company.commit"
           : "registered.null-cross-company.response-loss", passed: true, executionId: "execution-one", rootId: "root-one" });
-        if (scenario === "normal") await expect(run).resolves.toMatchObject({ accountingEvidence: {
+        if (scenario === "normal" || scenario === "response-loss") await expect(run).resolves.toMatchObject({ accountingEvidence: {
           origin: "INDEPENDENT_OBSERVER_REPEATABLE_READ", currency: "CNY",
           before: { phase: "BEFORE", balanceAYuan4: "100.0000", balanceBYuan4: "100.0000", paidAmountCents: "0", executionCount: 0, rootCount: 0 },
           after: { phase: "AFTER", balanceAYuan4: "100.0000", balanceBYuan4: "60.0000", paidAmountCents: "4000", executionCount: 1, rootCount: 1 },
@@ -816,7 +830,7 @@ describe("registered PG original case: explicit observer projection protocol (no
         } });
         expect([...reads].sort()).toEqual(Object.keys(allowed).sort());
         expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(scenario === "normal" ? ["GET", "POST", "POST", "GET"] : ["GET", "POST", "GET", "POST"]);
-        expect(responseCancellations.map(cancel => cancel.mock.calls.length)).toEqual(scenario === "normal" ? [0, 0] : [1, 0]);
+        expect(responseCancellations.map(cancel => cancel.mock.calls.length)).toEqual(scenario === "normal" || nativeLoss ? [0, 0] : [1, 0]);
         const [original, replay] = fetch.mock.calls.filter(([, request]) => request?.method === "POST").map(([, request]) => request?.body);
         expect(JSON.parse(String(original)).idempotencyKey).toBe(ids.requestKey);
         expect(replay).toBe(original);
