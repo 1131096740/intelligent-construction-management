@@ -341,12 +341,12 @@ export class ContractDraftAggregateService {
     });
   }
 
-  private async isContractDirector(actorUserId: string) {
-    const assignments = await this.prisma.userPosition.findMany({
+  private async isContractDirector(actorUserId: string, client: Pick<Prisma.TransactionClient, "userPosition" | "position"> = this.prisma) {
+    const assignments = await client.userPosition.findMany({
       where: { userId: actorUserId, projectId: null }
     });
     if (!assignments.length) return false;
-    const positions = await this.prisma.position.findMany({
+    const positions = await client.position.findMany({
       where: {
         id: { in: assignments.map((assignment) => assignment.positionId) }
       }
@@ -405,7 +405,7 @@ export class ContractDraftAggregateService {
             receipt.resultRevision,
             version,
             contract.ownerUserId === actorUserId,
-            await this.isContractDirector(actorUserId)
+            await this.isContractDirector(actorUserId, tx)
           );
         }
         if (version.numericProtocolVersion === 2 && input.draft.amountSource === "manual" && input.draft.numericProtocolVersion !== 2) {
@@ -1047,7 +1047,7 @@ export class ContractDraftAggregateService {
               .map(bill => bill.numericProtocolVersion === 2 ? bill[`${kind}Yuan`]?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill[`${kind}Cents`])));
             return [[`${kind}Yuan`, amount], [`${kind}Cents`, compatibleBillCents(amount)?.toString() ?? null]];
           })) : {};
-        const isDirector = await this.isContractDirector(actorUserId);
+        const isDirector = await this.isContractDirector(actorUserId, tx);
         const response = {
           contractVersionId,
           draftRevision: resultRevision,
@@ -1127,7 +1127,7 @@ export class ContractDraftAggregateService {
           }
         });
         return response;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof ConflictException) {
         throw new ConflictException(

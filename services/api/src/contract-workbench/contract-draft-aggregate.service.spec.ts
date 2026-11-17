@@ -514,6 +514,8 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       present: Boolean(options.foundTakeover)
     };
     const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
         const sql = query.strings?.join(" ") ?? "";
         if (sql.includes('FROM "ContractFormalFile"')) {
@@ -1279,12 +1281,11 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
   });
 
-  it("runs aggregate save with a bounded Serializable transaction", async () => {
+  it("runs aggregate save with the default Serializable transaction limit", async () => {
     const { service, prisma } = makeSaveService();
     await service.saveAggregate("cv-1", "owner-1", leaseToken, aggregateInput() as never);
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      timeout: 10_000
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
     });
   });
 
@@ -1296,6 +1297,25 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     await expect(service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)).rejects.toBe(timeout);
     expect(tx.contractDraftSaveRequest.create).not.toHaveBeenCalled();
     await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads director roles through the transaction on both original save and receipt replay", async () => {
+    const { service, prisma, tx } = makeSaveService();
+    prisma.userPosition.findMany.mockRejectedValue(new Error("root client cannot borrow the active connection"));
+    prisma.position.findMany.mockRejectedValue(new Error("root client cannot borrow the active connection"));
+    tx.userPosition.findMany.mockResolvedValue([{ positionId: "director-position" }]);
+    tx.position.findMany.mockResolvedValue([{ id: "director-position", key: "contract_director" }]);
+    const input=aggregateInput();
+    const saved=await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    const replay=await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    expect(replay).toEqual(saved);
+    expect(tx.userPosition.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.position.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.userPosition.findMany).toHaveBeenCalledWith({ where: { userId: "owner-1", projectId: null } });
+    expect(tx.position.findMany).toHaveBeenCalledWith({ where: { id: { in: ["director-position"] } } });
+    expect(prisma.userPosition.findMany).not.toHaveBeenCalled();
+    expect(prisma.position.findMany).not.toHaveBeenCalled();
     expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
   });
 
