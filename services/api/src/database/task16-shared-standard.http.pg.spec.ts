@@ -17,7 +17,13 @@ import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture"
 
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 
-type SignatureFailureDetail=ReturnType<typeof projectTask16RegistrationError> & {signatureFailureClass?:"PERMISSION"|"CONSTRAINT"|"TRIGGER"|"OTHER"};
+// Fixed technical candidates from the existing reviewed file-binding plan;
+// input text can only select an entry, never become a logged value.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const signatureRequirements:{readDelta:Record<string,unknown>;routineSources:Array<{signature:string}>}=require("../../prisma/task16-current259-voucher-acl.requirements.json");
+const signatureTables=[...new Set([...Object.keys(signatureRequirements.readDelta),"User","ApprovalInstance","PaymentRequest","RegisteredPaymentVoucher"])].sort();
+const signatureFunctions=[...new Set([...signatureRequirements.routineSources.map(row=>/^public\.(?:"([A-Za-z0-9_]+)"|([A-Za-z0-9_]+))\(/u.exec(row.signature)?.slice(1).find(Boolean)).filter((value):value is string=>!!value),"jg_has_exclusive_file_business_binding","jg_enforce_exclusive_file_business_binding","jg_enforce_file_replacement_exclusive_binding"])].sort();
+type SignatureFailureDetail=ReturnType<typeof projectTask16RegistrationError> & {signatureFailureClass?:"PERMISSION"|"CONSTRAINT"|"TRIGGER"|"OTHER";signatureResource?:string};
 function signatureFailureDetail(error:unknown):SignatureFailureDetail {
  const safe=projectTask16RegistrationError(error);
  if(safe.serverErrorKind!=="UNKNOWN_REQUEST_ERROR"||!error||typeof error!=="object"||types.isProxy(error))return safe;
@@ -25,7 +31,14 @@ function signatureFailureDetail(error:unknown):SignatureFailureDetail {
  const match=/(?:SQLSTATE\s*[:=]?\s*|SqlState\s*\(\s*E?|code\s*:\s*["']?)(42501|23502|23503|23505|23514|42P01|42703|P0001)\b/iu.exec(message);
  const signatureFailureClass=/permission denied|not authorized|insufficient privilege/iu.test(message)?"PERMISSION":
   /violat(?:es|ion)[\s\S]{0,200}constraint|constraint[\s\S]{0,200}violat/iu.test(message)?"CONSTRAINT":/\btrigger\b/iu.test(message)?"TRIGGER":"OTHER";
- return {...safe,...(match?{serverSqlState:match[1].toUpperCase()}:{}),signatureFailureClass};
+ let signatureResource:string|undefined;
+ if(signatureFailureClass==="PERMISSION"){
+  const resource=/permission denied for (table|relation|function|schema|sequence)\s+(?:(?:\\?"?public\\?"?)\.)?\\?"?([A-Za-z_][A-Za-z0-9_]*)/iu.exec(message);
+  const kind=resource?.[1].toLowerCase(),name=resource?.[2];
+  const tableIndex=name?signatureTables.indexOf(name):-1,functionIndex=name?signatureFunctions.indexOf(name):-1;
+  signatureResource=kind==="schema"&&name==="public"?"SCHEMA_PUBLIC":(kind==="table"||kind==="relation")&&tableIndex>=0?`TABLE_${String(tableIndex+1).padStart(3,"0")}`:kind==="function"&&functionIndex>=0?`FUNCTION_${String(functionIndex+1).padStart(3,"0")}`:"OTHER";
+ }
+ return {...safe,...(match?{serverSqlState:match[1].toUpperCase()}:{}),signatureFailureClass,...(signatureResource?{signatureResource}:{})};
 }
 
 @Catch()
@@ -62,7 +75,7 @@ it("reduces unknown signature database errors to fixed categories without leakin
  try{
   const unknown=(message:string)=>new Prisma.PrismaClientUnknownRequestError(message,{clientVersion:"test"});
   filter.catch(unknown('private account X table Y: code: "42501", permission denied for table Y'),host);
-  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"42501",signatureFailureClass:"PERMISSION"});
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"42501",signatureFailureClass:"PERMISSION",signatureResource:"OTHER"});
   filter.catch(unknown('private value Z code: "23514", violates check constraint secret_constraint'),host);
   expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"23514",signatureFailureClass:"CONSTRAINT"});
   filter.catch(unknown("private value Z trigger failed"),host);
@@ -73,8 +86,12 @@ it("reduces unknown signature database errors to fixed categories without leakin
   expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",signatureFailureClass:"OTHER"});
   const getter=unknown("synthetic");Object.defineProperty(getter,"message",{get(){throw new Error("private getter");}});
   filter.catch(getter,host);expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",signatureFailureClass:"OTHER"});
-  expect(JSON.stringify(report.mock.calls)).not.toMatch(/private|account|table|secret_constraint|value Z/iu);
-  expect(parent).toHaveBeenCalledTimes(6);
+  filter.catch(unknown('private value Z code: "42501", permission denied for table "FileObject"'),host);
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"42501",signatureFailureClass:"PERMISSION",signatureResource:"TABLE_030"});
+  filter.catch(unknown('private value Z code: "42501", permission denied for function jg_file_business_collision_columns'),host);
+  expect(report).toHaveBeenLastCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"42501",signatureFailureClass:"PERMISSION",signatureResource:"FUNCTION_025"});
+  expect(JSON.stringify(report.mock.calls)).not.toMatch(/private|account X|table Y|FileObject|jg_file_business_collision_columns|secret_constraint|value Z/iu);
+  expect(parent).toHaveBeenCalledTimes(8);
  }finally{parent.mockRestore();}
 });
 
