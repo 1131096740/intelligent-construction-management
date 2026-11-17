@@ -3,6 +3,7 @@ import PizZip from "pizzip";
 import { ConflictException } from "@nestjs/common";
 import { readLayoutSourcePositions } from "../contract-template/layout-field-mapping";
 import { canonicalContractPlaceholder } from "./contract-placeholder-registry";
+import { signatureBankLines } from "./contract-signature-bank-fields";
 
 const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const message="签章区已有银行资料，请先核对并保留原内容后再生成合同";
@@ -29,13 +30,13 @@ export function assertGenericBankInputs(source:Buffer,mapped:Buffer,values:Recor
 }
 
 /** Adds empty lines only; existing bank details are never replaced or inferred. */
-export function addGenericBankBlanks(document:Document):void {
+export function addGenericBankBlanks(document:Document,values?:Record<string,unknown>):void {
   const tables=Array.from(document.getElementsByTagNameNS(W,"tbl")).filter(table=>text(table).includes("甲方（盖章）")&&text(table).includes("乙方（盖章）"));
   if(tables.length!==1) throw new ConflictException("通用合同签章位置无法核对，请联系合同管理员处理");
   const cells=Array.from(tables[0].getElementsByTagNameNS(W,"tc"));
   if(cells.length!==2) throw new ConflictException("通用合同签章位置无法核对，请联系合同管理员处理");
   if(cells.some(cell=>Array.from(cell.getElementsByTagNameNS(W,"p")).slice(1).some(paragraph=>containsBankDetails(text(paragraph))))) throw new ConflictException(message);
-  for(const cell of cells) for(const value of ["开户行：________________", "银行账号：________________"]) {
+  for(const [index,cell] of cells.entries()) for(const value of values?signatureBankLines(values,index===0?"party.owner":"party.counterparty"):["开户行：________________", "银行账号：________________"]) {
     const paragraph=document.createElementNS(W,"w:p"),properties=document.createElementNS(W,"w:pPr"),alignment=document.createElementNS(W,"w:jc");
     alignment.setAttributeNS(W,"w:val","left");properties.appendChild(alignment);paragraph.appendChild(properties);
     const run=document.createElementNS(W,"w:r"),runProperties=document.createElementNS(W,"w:rPr"),size=document.createElementNS(W,"w:sz"),node=document.createElementNS(W,"w:t");
@@ -44,11 +45,11 @@ export function addGenericBankBlanks(document:Document):void {
   }
 }
 
-export function addGenericBankBlanksToDocx(bytes:Buffer):Buffer {
+export function addGenericBankBlanksToDocx(bytes:Buffer,values?:Record<string,unknown>):Buffer {
   const zip=new PizZip(bytes),part=zip.file("word/document.xml");
   if(!part) throw new ConflictException("通用合同签章位置无法核对，请联系合同管理员处理");
   const document=new DOMParser().parseFromString(part.asText(),"application/xml");
-  addGenericBankBlanks(document);
+  addGenericBankBlanks(document,values);
   zip.file("word/document.xml",new XMLSerializer().serializeToString(document));
   return zip.generate({type:"nodebuffer"});
 }

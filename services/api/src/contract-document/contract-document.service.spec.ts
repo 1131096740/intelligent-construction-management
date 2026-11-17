@@ -329,7 +329,7 @@ describe("ContractDocumentService", () => {
     files.getFileBuffer.mockResolvedValueOnce({buffer:mechanical,file:{id:"layout-file-1",storageStatus:"active",contentSha256:sourcePositions.sourceSha256}});
     const {service}=makeService(tx);
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
-    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe(filename.startsWith("labor")?"built-in-labor-party-v1":"built-in-party-placement-v1");
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe(filename.startsWith("labor")?"built-in-labor-party-banks-v2":"built-in-party-placement-v1");
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.mechanicalContactLayoutVersion).toBe(filename.startsWith("equipment") ? "mechanical-contact-layout-v2" : undefined);
   });
   it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"])("freezes the signature supplement version for new %s body jobs",async(filename)=>{
@@ -346,6 +346,66 @@ describe("ContractDocumentService", () => {
     const snapshot=tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot;
     expect(snapshot.bodyDocument.partyDetailsVersion).toBe("built-in-signature-supplement-v1");
     expect(snapshot.renderInput.values).toMatchObject({"party.owner.openingBank":"甲开户","party.owner.bankAccount":"A001","party.owner.paymentBank":"甲收款","party.owner.paymentAccount":"A002","party.counterparty.openingBank":"乙开户","party.counterparty.bankAccount":"B001"});
+  });
+  it.each(["generic-contract-v1.docx","labor-subcontract-real-v1.docx"])("freezes trusted bank values for new %s body jobs",async(filename)=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates",filename)),positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    if(filename.startsWith("generic")){const owner=positions.positions.find(item=>item.part==="word/document.xml"&&item.paragraphIndex===13)!;const start=owner.text.indexOf("建工智管建设有限公司");bindings.push({positionId:owner.positionId,start,end:start+"建工智管建设有限公司".length,fieldKey:"party.owner.name"});}
+    const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null});
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{roleKey:"party_a",displayOrder:0,snapshot:{name:"虚构甲方",openingBank:"甲开户",bankAccount:"A001",paymentBank:"甲收款",paymentAccount:"A002"}},{roleKey:"party_b",displayOrder:0,snapshot:{name:"虚构乙方",openingBank:"乙开户",bankAccount:"B001"}}]);
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
+    const snapshot=tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot;
+    expect(snapshot.bodyDocument.partyDetailsVersion).toBe(filename.startsWith("generic")?"built-in-generic-bank-values-v2":"built-in-labor-party-glyph-banks-v2");
+    expect(snapshot.renderInput.values).toMatchObject({"party.owner.openingBank":"甲开户","party.owner.bankAccount":"A001","party.owner.paymentBank":"甲收款","party.owner.paymentAccount":"A002","party.counterparty.openingBank":"乙开户","party.counterparty.bankAccount":"B001"});
+  });
+  it.each(["generic-contract-v1.docx","labor-subcontract-real-v1.docx"])("rejects bank values without an authoritative party binding in %s",async(filename)=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates",filename)),positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    if(filename.startsWith("generic")){const owner=positions.positions.find(item=>item.part==="word/document.xml"&&item.paragraphIndex===13)!;const start=owner.text.indexOf("建工智管建设有限公司");bindings.push({positionId:owner.positionId,start,end:start+"建工智管建设有限公司".length,fieldKey:"party.owner.name"});}
+    const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null,draftData:{companyEntitySelection:{name:"虚构甲方",unifiedSocialCreditCode:"TEST"}}});
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{roleKey:"party_a",displayOrder:0,snapshot:{name:"虚构甲方",openingBank:"甲开户",bankAccount:"A001",paymentBank:"甲收款",paymentAccount:"A002"}},{roleKey:"party_b",displayOrder:0,snapshot:{name:"虚构乙方",openingBank:"乙开户",bankAccount:"B001"}}]);
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await expect(makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("合同主体与银行资料无法对应");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+  });
+  it.each(["generic-contract-v1.docx","labor-subcontract-real-v1.docx"])("rejects overlong bank values without changing the saved party in %s",async(filename)=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates",filename)),positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    if(filename.startsWith("generic")){const owner=positions.positions.find(item=>item.part==="word/document.xml"&&item.paragraphIndex===13)!;const start=owner.text.indexOf("建工智管建设有限公司");bindings.push({positionId:owner.positionId,start,end:start+"建工智管建设有限公司".length,fieldKey:"party.owner.name"});}
+    const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null});
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{roleKey:"party_a",displayOrder:0,snapshot:{name:"虚构甲方",openingBank:"甲".repeat(41),bankAccount:"A001",paymentBank:"甲收款",paymentAccount:"A002"}},{roleKey:"party_b",displayOrder:0,snapshot:{name:"虚构乙方",openingBank:"乙开户",bankAccount:"B001"}}]);
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await expect(makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("甲方开户行请改为单行且不超过40个字");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    const parties=await tx.contractPartySnapshot.findMany();expect(parties[0].snapshot.openingBank).toBe("甲".repeat(41));
+  });
+  it.each([["generic-contract-v1.docx","\ufffe"],["generic-contract-v1.docx","\ud800"],["labor-subcontract-real-v1.docx","\uffff"],["labor-subcontract-real-v1.docx","\udfff"]])("rejects XML-invalid bank values without changing the saved party in %s",async(filename,invalid)=>{
+    const input=readFileSync(join(__dirname,"../../assets/templates",filename)),positions=readLayoutSourcePositions(input);
+    const bindings=positions.positions.flatMap(position=>[
+      ["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]
+    ].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    if(filename.startsWith("generic")){const owner=positions.positions.find(item=>item.part==="word/document.xml"&&item.paragraphIndex===13)!;const start=owner.text.indexOf("建工智管建设有限公司");bindings.push({positionId:owner.positionId,start,end:start+"建工智管建设有限公司".length,fieldKey:"party.owner.name"});}
+    const mapping=prepareLayoutSourceMapping(input,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null});
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{roleKey:"party_a",displayOrder:0,snapshot:{name:"虚构甲方",openingBank:invalid,bankAccount:"A001",paymentBank:"甲收款",paymentAccount:"A002"}},{roleKey:"party_b",displayOrder:0,snapshot:{name:"虚构乙方",openingBank:"乙开户",bankAccount:"B001"}}]);
+    files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await expect(makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("甲方开户行请改为单行且不超过40个字");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    const parties=await tx.contractPartySnapshot.findMany();expect(parties[0].snapshot.openingBank).toBe(invalid);
   });
   it("requires an explicit review of the exact signature edits before queueing",async()=>{
     const input=readFileSync(join(__dirname,"../../assets/templates/equipment-rental-real-v1.docx")),positions=readLayoutSourcePositions(input);
@@ -406,7 +466,7 @@ describe("ContractDocumentService", () => {
     const version=await tx.contractVersion.findUnique();Object.assign(version,{numericProtocolVersion:2,amountYuan:null});
     files.getFileBuffer.mockResolvedValueOnce({buffer:input,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
     await makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
-    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.bodyDocument.partyDetailsVersion).toBe("built-in-labor-party-glyph-v1");
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.bodyDocument.partyDetailsVersion).toBe("built-in-labor-party-glyph-banks-v2");
   });
   it.each([
     ["   ", "请先填写合同甲乙双方名称"],
@@ -472,7 +532,7 @@ describe("ContractDocumentService", () => {
     const {service}=makeService(tx);
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.genericFontTableVersion).toBe("built-in-generic-font-v1");
-    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe("built-in-generic-bank-blanks-v1");
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.partyDetailsVersion).toBe("built-in-generic-bank-values-v2");
   });
 
   it.each(["party_a","party_b"])("requires %s before queueing a generic contract",async missing=>{
@@ -571,6 +631,21 @@ describe("ContractDocumentService", () => {
     const mapping=prepareLayoutSourceMapping(bytes,"layout-file-1",2,bindings).mapping,layout=await tx.contractLayoutTemplateVersion.findUnique();
     layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
     await expect(service.getDraftBody("version-1","owner-1")).resolves.toMatchObject({sourceSha256:file.contentSha256,mechanicalContactLayoutVersion:"mechanical-contact-layout-v2"});
+  });
+
+  it.each(["generic-contract-v1.docx","labor-subcontract-real-v1.docx"])("keeps %s preview readable when bank identity conflicts",async filename=>{
+    const bytes=readFileSync(join(__dirname,"../../assets/templates",filename));
+    const {service,file,tx}=makeSingleConnectionService({},bytes);file.contentSha256=createHash("sha256").update(bytes).digest("hex");
+    const positions=readLayoutSourcePositions(bytes).positions;
+    const bindings=positions.flatMap(p=>[["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{相对方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]].flatMap(([token,fieldKey])=>{const start=p.text.indexOf(token);return start<0?[]:[{positionId:p.positionId,start,end:start+token.length,fieldKey}];}));
+    if(filename.startsWith("generic")){const owner=positions.find(item=>item.part==="word/document.xml"&&item.paragraphIndex===13)!;const start=owner.text.indexOf("建工智管建设有限公司");bindings.push({positionId:owner.positionId,start,end:start+"建工智管建设有限公司".length,fieldKey:"party.owner.name"});}
+    const mapping=prepareLayoutSourceMapping(bytes,"layout-file-1",2,bindings).mapping,layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    const version=await tx.contractVersion.findUnique();Object.assign(version,{draftData:{projectName:"虚构项目",deliveryLocation:"虚构地点",deliveryDate:"2026-11-12",companyEntitySelection:{name:"虚构甲方",unifiedSocialCreditCode:"TEST"}}});
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{roleKey:"party_a",displayOrder:0,snapshot:{name:"虚构甲方",openingBank:"虚构开户行"}},{roleKey:"party_b",displayOrder:0,snapshot:{name:"虚构乙方"}}]);
+    const preview=await service.getDraftBody("version-1","owner-1");
+    expect(preview.blocks.length).toBeGreaterThan(0);
+    expect(preview.warnings).toContain("主体、银行资料或版式映射需要核对，请保留内容并联系合同管理员处理。");
   });
 
   it("allocates and locks a formal contract code on first external-file generation", async () => {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertLaborNameFontCoverage, LABOR_FONT_CHECK_ERROR, LABOR_NAME_GLYPH_ERROR } from "./labor-font-coverage";
+import { assertLaborNameFontCoverage, LABOR_FONT_CHECK_ERROR, LABOR_NAME_GLYPH_ERROR, LABOR_BANK_GLYPH_ERROR } from "./labor-font-coverage";
 import { contractBodyPdfRuntimeLockFingerprint, convertContractBodyDocxToPdf } from "./contract-body-pdf-converter";
 
 const font=readFileSync(join(__dirname,"../../assets/fonts/NotoSansSC-Regular.otf"));
@@ -20,6 +20,11 @@ it.each(["虚构𠮷公司","虚构😀公司"])("rejects a name containing an u
 
 it("fails closed with a safe message if font parsing is unavailable",()=>{
   expect(()=>assertLaborNameFontCoverage(["虚构甲方","虚构乙方"],Buffer.from("invalid"),font)).toThrow(LABOR_FONT_CHECK_ERROR);
+});
+
+it("rejects unsupported bank glyphs without exposing the supplied value",()=>{
+  expect(()=>assertLaborNameFontCoverage(["虚构甲方","虚构乙方"],font,font,["虚构银行😀"])).toThrow(LABOR_BANK_GLYPH_ERROR);
+  expect(()=>assertLaborNameFontCoverage(["虚构甲方","虚构乙方"],font,font,["虚构银行"])).not.toThrow();
 });
 
 it("fails safely for a labor job when the verified runtime is unavailable, preserving the other path",async()=>{

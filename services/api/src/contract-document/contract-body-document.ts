@@ -836,7 +836,10 @@ export const SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION = "built-in-signature-supple
 export const GENERIC_BANK_BLANKS_PLACEMENT_VERSION = "built-in-generic-bank-blanks-v1";
 export const LABOR_PARTY_PLACEMENT_VERSION = "built-in-labor-party-v1";
 export const LABOR_GLYPH_PLACEMENT_VERSION = "built-in-labor-party-glyph-v1";
-export type PartyPlacementVersion = typeof SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION | typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION | typeof LABOR_GLYPH_PLACEMENT_VERSION;
+export const GENERIC_BANK_VALUES_VERSION = "built-in-generic-bank-values-v2";
+export const LABOR_BANK_VALUES_VERSION = "built-in-labor-party-banks-v2";
+export const LABOR_GLYPH_BANK_VALUES_VERSION = "built-in-labor-party-glyph-banks-v2";
+export type PartyPlacementVersion = typeof GENERIC_BANK_VALUES_VERSION | typeof LABOR_BANK_VALUES_VERSION | typeof LABOR_GLYPH_BANK_VALUES_VERSION | typeof SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION | typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION | typeof LABOR_GLYPH_PLACEMENT_VERSION;
 export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|"generic"|"labor"|undefined {
   return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":sourceSha256===BUILT_IN_GENERIC_SOURCE_SHA256?"generic":sourceSha256===REVIEWED_LABOR_SOURCE_SHA256?"labor":undefined;
 }
@@ -1020,7 +1023,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const model = sourceParagraphs(source, mapped, binding, Boolean(options.partyDetailsVersion));
   const placement=options.partyDetailsVersion;
   const placementKind=builtInPartyPlacementKind(model.sourceSha256);
-  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION||!["mechanical","material"].includes(placementKind))&&(placement!==GENERIC_BANK_BLANKS_PLACEMENT_VERSION||placementKind!=="generic")&&((placement!==LABOR_PARTY_PLACEMENT_VERSION&&placement!==LABOR_GLYPH_PLACEMENT_VERSION)||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION||!["mechanical","material"].includes(placementKind))&&(![GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION].some(version=>version===placement)||placementKind!=="generic")&&((![LABOR_PARTY_PLACEMENT_VERSION,LABOR_GLYPH_PLACEMENT_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION].some(version=>version===placement))||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
   const roleIndexes=placementKind==="generic"?[13,14,53,58]:placementKind==="labor"?[27,28]:[28,29];
   const roleIds=new Set(placement?roleIndexes.map(index=>model.paragraphs[index].id):[]);
   const removedPartyIds=new Set(placement&&placementKind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[]);
@@ -1234,14 +1237,14 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     const pageBreak=document.createElementNS(W,"w:p"),run=document.createElementNS(W,"w:r"),br=document.createElementNS(W,"w:br");
     br.setAttributeNS(W,"w:type","page");run.appendChild(br);pageBreak.appendChild(run);signatureBody.insertBefore(pageBreak,table);
   }
-  if(placement===GENERIC_BANK_BLANKS_PLACEMENT_VERSION&&!partyDetailsConflict&&!partyDetailsMappingConflict) {
-    try { addGenericBankBlanks(document); }
+  if((placement===GENERIC_BANK_BLANKS_PLACEMENT_VERSION||placement===GENERIC_BANK_VALUES_VERSION)&&!partyDetailsConflict&&!partyDetailsMappingConflict) {
+    try { addGenericBankBlanks(document,placement===GENERIC_BANK_VALUES_VERSION?values:undefined); }
     catch(error) {
       if(!(error instanceof ConflictException)||!options.partyDetailsConflictPreview) throw error;
       partyDetailsConflict=true;
     }
   }
-  if (placement && placementKind === "labor" && !partyDetailsConflict && !partyDetailsMappingConflict) appendLaborFinalPartyPage(document, values);
+  if (placement && placementKind === "labor" && !partyDetailsConflict && !partyDetailsMappingConflict) appendLaborFinalPartyPage(document, values,placement===LABOR_BANK_VALUES_VERSION||placement===LABOR_GLYPH_BANK_VALUES_VERSION);
   for (const paragraph of Array.from(document.getElementsByTagNameNS(W, "p"))) {
     if (ids.has(paragraph)) continue;
     const id = `generated:${blocks.length}`;
