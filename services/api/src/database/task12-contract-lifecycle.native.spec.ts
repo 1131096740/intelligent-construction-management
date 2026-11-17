@@ -16,6 +16,8 @@ import { ContractTemplateModule } from "../contract-template/contract-template.m
 import { LayoutTemplateService } from "../contract-template/layout-template.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractDocumentProcessor } from "../contract-document/contract-document.processor";
+import { syntheticWordSource } from "../contract-template/template-management.test-support";
+import { prepareLayoutSourceMapping, readLayoutSourcePositions } from "../contract-template/layout-field-mapping";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
 import { FileService, PrivateFileStorage } from "../file/file.service";
 import { AuditService } from "../audit/audit.service";
@@ -34,7 +36,7 @@ import { apiJsonReplacer } from "../api-json-replacer";
 // Explicit native-gate payloads are asserted at every public boundary below.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Payload = Record<string, any>;
-type Packet = { candidateSha: string; directory: string; runtime: string; runtimeSha: string;
+type Packet = { candidateSha: string; directory: string; runtime: string; runtimeSha: string; queueOnly?: true;
   scope: { database: string; appName: string; appOid: string; source: { candidateSha: string } }; lifecyclePlan: Record<string, string>; ownerUrl: string;
   urls: Record<"application" | "template" | "worker" | "queue", string> };
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -68,8 +70,8 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
   }
   const diagnostic = createNativeLifecycleDiagnostics();
   try {
-  const native = verifyCurrent259GeneratedDocumentRuntime(packet.runtime, packet.runtimeSha);
-  await withCurrent259GeneratedDocumentRuntime(native, packet.directory, async (runtime: {
+  const withRuntime = packet.queueOnly ? async (fn: (runtime: {check(): void; readPdfDrawnText(bytes: Buffer, signal: AbortSignal): Promise<string[]>}) => Promise<void>) => fn({check(){},async readPdfDrawnText(){throw new Error("QUEUE_ONLY_NO_DOCUMENT_READER");}}) : async (fn: (runtime: {check(): void; readPdfDrawnText(bytes: Buffer, signal: AbortSignal): Promise<string[]>}) => Promise<void>) => withCurrent259GeneratedDocumentRuntime(verifyCurrent259GeneratedDocumentRuntime(packet.runtime, packet.runtimeSha), packet.directory, fn);
+  await withRuntime(async (runtime: {
     check(): void; readPdfDrawnText(bytes: Buffer, signal: AbortSignal): Promise<string[]>;
   }) => {
     const owner = new PrismaClient({ datasources: { db: { url: packet.ownerUrl } } });
@@ -123,9 +125,11 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
       const queue = new ContractDocumentService(queueClient, new AuditService(queueClient), roleFiles(queueClient));
       processor = new ContractDocumentProcessor(workerClient, roleFiles(workerClient), new AuditService(workerClient));
       diagnostic.enter('NEST_INIT');
-      const module = await Test.createTestingModule({ imports: [Task12FirstQ2ApplicationModule, ContractTemplateModule] })
+      const builder = Test.createTestingModule({ imports: [Task12FirstQ2ApplicationModule, ContractTemplateModule] })
         .overrideProvider(PrismaService).useValue(application)
-        .overrideProvider(LayoutTemplateService).useValue(layouts).compile();
+        .overrideProvider(LayoutTemplateService).useValue(layouts);
+      if (packet.queueOnly) builder.overrideProvider(ContractDocumentProcessor).useValue({onApplicationBootstrap(){},onModuleDestroy(){},onApplicationShutdown(){}});
+      const module = await builder.compile();
       // Route only preview queue writes to the original restricted queue service.
       // All other ContractDocumentService methods use the ordinary application.
       const documents = module.get(ContractDocumentService);
@@ -170,11 +174,27 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
         await new Promise(resolve => setTimeout(resolve, Math.min(milliseconds, 100)));
       };
       diagnostic.enter('TEMPLATE');
-      const published = await publishTask12GeneratedMaterialTemplate(
+      const published = packet.queueOnly ? null : await publishTask12GeneratedMaterialTemplate(
         readFileSync(resolve(root, "services/api/assets/templates/material-purchase-real-v1.docx")), seed.users[2].id, {
           now: () => Date.now(), wait: stepWorker,
           send: request => send(2, request.path, request.method, "json" in request ? request.json : undefined, "form" in request ? request.form : undefined)
         });
+      let layoutId = published?.layoutId;
+      if (packet.queueOnly) {
+        // Explicit synthetic fixture: no preview generation or document qualification.
+        const source = syntheticWordSource(true), form = new FormData();
+        form.append("file",new Blob([Uint8Array.from(source)],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}),"synthetic-queue-only.docx");
+        const file = await accepted(2,"/files","POST",undefined,form);
+        const positions = readLayoutSourcePositions(source).positions;
+        const fields = [["合成工程合同","contract.name"],["合成甲方公司","party.owner.name"],["合成乙方公司","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]] as const;
+        const bindings = fields.map(([text,fieldKey]) => {const position=positions.find(value=>value.text.includes(text));expect(position).toBeDefined();const start=position!.text.indexOf(text);return {positionId:position!.positionId,start,end:start+text.length,fieldKey};});
+        const mapping = prepareLayoutSourceMapping(source,file.id,1,bindings).mapping;
+        const template = await owner.contractLayoutTemplate.create({data:{name:"仅入队虚构模板",contractTypeKey:"material_purchase",createdByUserId:seed.users[2].id}});
+        const previewJobId=randomUUID(), previewPdfFileId=randomUUID();
+        const placeholderSchema = {bills:[{key:"materials"}],sourceMapping:{...mapping,confirmation:{sourceFileId:file.id,sourceSha256:mapping.sourceSha256,draftRevision:1,mappingFingerprint:mapping.fingerprint,previewJobId,previewPdfFileId,actorUserId:seed.users[2].id}}} as unknown as Prisma.InputJsonValue;
+        const version = await owner.contractLayoutTemplateVersion.create({data:{layoutTemplateId:template.id,versionNo:1,status:"published",docxFileId:file.id,draftRevision:1,publishedByUserId:seed.users[2].id,publishedAt:new Date(),previewPdfFileId,placeholderSchema}});
+        layoutId=version.id;
+      }
       diagnostic.enter('DRAFT');
       const created = await accepted(0, "/contracts", "POST", { projectId: seed.project.id, numericProtocolVersion: 2,
         contractTypeKey: "material_purchase", relationship: "inside", amountLimitType: "capped" });
@@ -192,7 +212,7 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
             draftData: { ...current.draft, contractName: "原生V2材料合同", contractBasics: {
               businessType: "material_purchase", relationship: "inside", amountBasis: "tax_inclusive", invoiceStatus: "pending" },
             ...(bodyPlan ? { documentBody: bodyPlan } : {}) }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum",
-            layoutTemplateVersionId: published.layoutId, taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } },
+            layoutTemplateVersionId: layoutId, taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } },
           parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: company.name } },
             { roleKey: "party_b", displayOrder: 0, businessPartyVersionId: partyVersion.id, snapshot: {} }],
           bills: current.bills.map((bill: { billKey: string; revision: number }) => ({ billKey: bill.billKey, expectedRevision: bill.revision,
@@ -200,11 +220,25 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
         }, undefined, 200, headers);
       };
       await save();
+      if (packet.queueOnly) {
+        const current = await workbench(), revision = current.version.draftRevision;
+        const endpoint = draftPath + "/preview-generation";
+        const denied = await send(7, endpoint, "POST", {sourceRevision:revision});
+        expect(denied.status).toBe(403);
+        expect(await owner.contractGeneratedDocument.count({where:{contractVersionId:versionId}})).toBe(0);
+        const queued = await accepted(0, endpoint, "POST", {sourceRevision:revision});
+        expect(queued).toMatchObject({status:"queued",sourceRevision:revision,documentContentRevision:current.version.documentContentRevision,documentContentFingerprint:current.version.documentContentFingerprint});
+        const facts = await owner.contractGeneratedDocument.findMany({where:{contractVersionId:versionId}});
+        expect(facts).toHaveLength(1);
+        expect(facts[0]).toMatchObject({id:queued.generationId,status:"queued",sourceRevision:revision,docxFileId:null,pdfFileId:null});
+        expect(facts[0].inputSnapshot).toMatchObject({documentContentRevision:current.version.documentContentRevision,documentContentFingerprint:current.version.documentContentFingerprint});
+        return;
+      }
       const originalBody = await accepted(0, draftPath + "/document-body");
       const editable = originalBody.blocks.find((block: { editable: boolean; text: string }) => block.editable && block.text.startsWith("4.若卖方违背"));
       expect(editable).toBeDefined();
       let currentClause = "双方补充约定第一版。";
-      bodyPlan = { protocolVersion: 1, layoutTemplateVersionId: published.layoutId, sourceSha256: originalBody.sourceSha256,
+      bodyPlan = { protocolVersion: 1, layoutTemplateVersionId: published!.layoutId, sourceSha256: originalBody.sourceSha256,
         edits: [{ positionId: editable.id, text: editable.text + currentClause }] };
       await save();
       const download = async (actor: number, id: string) => {
@@ -224,7 +258,7 @@ it("runs native V2 withdrawal, resubmission, five approvals, seal, rollback and 
         diagnostic.enter('GENERATE');
         const current = await workbench();
         const version = current.version;
-        const generated = await runTask12GeneratedDocument({ template: published, versionId,
+        const generated = await runTask12GeneratedDocument({ template: published!, versionId,
           sourceRevision: version.draftRevision, documentContentRevision: version.documentContentRevision,
           documentContentFingerprint: version.documentContentFingerprint, lease: {
             token: lease.token, leaseRevision: lease.leaseRevision, expiresAt: current.lease.expiresAt } }, {
