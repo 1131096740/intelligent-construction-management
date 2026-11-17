@@ -186,6 +186,11 @@ function describeCurrent261GeneratedLifecycleOrdinaryAcl(source){return describe
 function describeMigration261GeneratedLifecycleOrdinaryAcl(source){
  const profile=lifecycleProfile(source);
  const rows=profile.rows.filter(row=>!['RegisteredPaymentFunding','RegisteredPaymentVoucher'].includes(row.relation));
+ // Prisma's workbench counts project each model's primary ID, as in the native Task12 profile.
+ for(const relation of ['Settlement','PaymentRequest']){
+  need(!rows.some(row=>row.relation===relation&&row.column==='id'&&row.privilege==='SELECT'),'SOURCE');
+  rows.push({relation,column:'id',privilege:'SELECT'});
+ }
  const collision=migrationGeneratedLifecycleCollisionMaterial(source);
  return describeLifecycleOrdinary({...profile,rows,effectivePlanSha256:collision.sha256,installation:collision.installation,sha256:sha(JSON.stringify(['ARCHIVE261_MIGRATIONS_ONLY',profile.sha256,rows]))});
 }
