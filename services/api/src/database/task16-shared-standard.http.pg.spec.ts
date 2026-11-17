@@ -43,11 +43,12 @@ function signatureFailureDetail(error:unknown):SignatureFailureDetail {
 
 @Catch()
 class SignatureFailureCapture extends Task16RegistrationErrorFilter {
- constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void){super(adapter);}
+ constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void,private readonly approval?:{path:string;report:(detail:SignatureFailureDetail)=>void}){super(adapter);}
  override catch(exception:unknown,host:ArgumentsHost){
   try{
    const request=host.switchToHttp().getRequest<{method?:string;originalUrl?:string}>();
    if(request.method==="POST"&&request.originalUrl==="/me/signature/canvas")this.report(signatureFailureDetail(exception));
+   else if(request.method==="POST"&&this.approval&&request.originalUrl===this.approval.path)this.approval.report(signatureFailureDetail(exception));
   }catch{ /* Diagnostic failure must not change the original HTTP response. */ }
   super.catch(exception,host);
  }
@@ -65,6 +66,20 @@ it("captures only a safe signature error and always preserves the original excep
   report.mockClear();filter.catch(error,host("/unrelated"));expect(report).not.toHaveBeenCalled();
   report.mockImplementation(()=>{throw new Error("recording failed");});filter.catch(error,host("/me/signature/canvas"));
   expect(parent).toHaveBeenCalledTimes(3);
+ }finally{parent.mockRestore();}
+});
+
+it("captures only the bound approval path without logging its coordinate",()=>{
+ const report=jest.fn(),signatureReport=jest.fn(),parent=jest.spyOn(Task16RegistrationErrorFilter.prototype,"catch").mockImplementation(()=>{});
+ const path="/payments/10000000-0000-4000-8000-000000000001/approval";
+ const filter=new SignatureFailureCapture({} as HttpAdapterHost,signatureReport,{path,report});
+ const host=(url:string)=>({switchToHttp:()=>({getRequest:()=>({method:"POST",originalUrl:url})})}) as ArgumentsHost;
+ const error=new Prisma.PrismaClientUnknownRequestError('private value code: "42501", permission denied for table "FileObject"',{clientVersion:"test"});
+ try{
+  filter.catch(error,host(path));expect(report).toHaveBeenCalledWith({serverErrorKind:"UNKNOWN_REQUEST_ERROR",serverSqlState:"42501",signatureFailureClass:"PERMISSION",signatureResource:"TABLE_030"});
+  expect(signatureReport).not.toHaveBeenCalled();expect(JSON.stringify(report.mock.calls)).not.toMatch(/private|FileObject|10000000/iu);
+  report.mockClear();filter.catch(error,host(`${path}?other=1`));filter.catch(error,host("/payments/10000000-0000-4000-8000-000000000002/approval"));expect(report).not.toHaveBeenCalled();
+  report.mockImplementation(()=>{throw new Error("recording failed");});filter.catch(error,host(path));expect(parent).toHaveBeenCalledTimes(4);
  }finally{parent.mockRestore();}
 });
 
@@ -99,11 +114,22 @@ it("reduces unknown signature database errors to fixed categories without leakin
 class SignatureFailureTestController {
  @Post("canvas") fail(){throw new ConflictException("synthetic conflict");}
 }
+@Controller("payments")
+class ApprovalFailureTestController {
+ @Post(":id/approval") fail(){throw new ConflictException("synthetic conflict");}
+}
 it("preserves the original HTTP status through the actual Nest filter",async()=>{
  const module=await Test.createTestingModule({controllers:[SignatureFailureTestController],providers:[{provide:APP_FILTER,useClass:Task16RegistrationErrorFilter}]}).compile();
  const app=module.createNestApplication({logger:false}),report=jest.fn();
  app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),report));
  try{await app.listen(0,"127.0.0.1");const response=await fetch(`${await app.getUrl()}/me/signature/canvas`,{method:"POST"});expect(response.status).toBe(409);expect(report).toHaveBeenCalledTimes(1);}
+ finally{await app.close();}
+});
+it("preserves the original approval HTTP status with the existing APP_FILTER",async()=>{
+ const module=await Test.createTestingModule({controllers:[ApprovalFailureTestController],providers:[{provide:APP_FILTER,useClass:Task16RegistrationErrorFilter}]}).compile();
+ const app=module.createNestApplication({logger:false}),report=jest.fn(),path="/payments/10000000-0000-4000-8000-000000000001/approval";
+ app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),()=>{},{path,report}));
+ try{await app.listen(0,"127.0.0.1");const response=await fetch(`${await app.getUrl()}${path}`,{method:"POST"});expect(response.status).toBe(409);expect(report).toHaveBeenCalledTimes(1);}
  finally{await app.close();}
 });
 
@@ -123,7 +149,7 @@ it("preserves the original HTTP status through the actual Nest filter",async()=>
    const hashes=await Promise.all(passwords.map(value=>hash(value,10)));
    const seeded=await seedSharedPaymentPredecessors(owner,plan,{financeHash:hashes[0],keeperHash:hashes[1],directorHash:hashes[2]},process.env.FILE_STORAGE_ROOT??"");
    const module=await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
-   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());await app.listen(0,"127.0.0.1");
+   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)}));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());await app.listen(0,"127.0.0.1");
    const origin=await app.getUrl();
    const json=async(path:string,method:string,body?:unknown,token?:string)=>{const response=await fetch(origin+path,{method,headers:{...(body!==undefined?{"content-type":"application/json"}:{}),...(token?{authorization:`Bearer ${token}`}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};};
    const login=async(phone:string,password:string)=>{const response=await json("/auth/login","POST",{phone,password});expect(response.status).toBe(201);return response.body.tokens.accessToken as string;};
