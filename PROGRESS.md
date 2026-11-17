@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 隔离审批闭集诊断
+
+准确 `13141fe1` 真实隔离运行登录和签名通过，审批返回 500，结果 UNKNOWN 且首因未得；付款未进入，容器已清理。[私有日志](/private/tmp/jg398-standard-run-bqqh6ilz/run.log) SHA `4ea25caf96948c856e201583e4d38c8562df0b9304ea138283964d30a9409dff`。
+
+测试侧审批闭集捕获 `446cf048` 经独审合入本地 `df06bdd0`，准确补丁 SHA `108ac42535bc36f6a67d00684cc1c19a2f3686fc25e450d7d15757416ccaf8c9`；Node20 定向测试 5/5、API typecheck/lint 通过，真实 PG 测试按约跳过。新候选尚未真实运行，不代表 #398 验收；本次未启动资源、重复无关文书资格或推送。
+
 ## 2026-11-17 隔离审批依赖读取修订
 
 准确 `b813ebde` 真实隔离运行登录及签名通过，审批返回 500、结果 UNKNOWN，付款未进入；容器已清理。[私有日志](/private/tmp/jg398-standard-run-_1fmwc2w/run.log) SHA `06231a76b64be45689007ac48fa2522ed587cb9d5925826bd34fcdc3f71a0b25`。
