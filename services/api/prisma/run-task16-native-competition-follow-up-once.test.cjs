@@ -496,3 +496,63 @@ test('source insufficiency interface selects the independent case on the existin
  const rows=require('./run-task16-native-competition-follow-up-once.cjs').resolveNativeTask16Interfaces('TASK16_NATIVE_PROJECT_SOURCE_INSUFFICIENT_V1');
  const names=rows.flatMap(row=>row.exports.map(entry=>entry.name));assert.ok(names.includes('runRegisteredProjectSourceInsufficient'));assert.ok(!names.includes('runRegisteredProjectAttributionGap'));
 });
+test('ledger competition has its own purpose and retains cash ACL and two runtime lanes',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs');const row=api.nativeTask16CaseSelection('TASK16_NATIVE_LEDGER_COMPETITION_V1');
+ assert.equal(row.caseId,'registered.ledger-payment-competition');assert.equal(row.ledgerCompetition,true);assert.equal(row.paymentProfile,'TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1');assert.equal(row.runtimeLimit,2);
+ for(const verb of ['--verify-ledger-competition','--once-ledger-competition'])assert.equal(api.parseNativeTask16Args([verb,'--plan','/private/tmp/example/plan.json','--expected-plan-sha256','a'.repeat(64)]).purpose,'TASK16_NATIVE_LEDGER_COMPETITION_V1');
+});
+test('ledger competition accounting rejects missing fact, impact, audit or funds',()=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),ids={companyA:'a',companyB:'b'};
+ const row=(phase,done)=>({phase,balanceAYuan4:'100.0000',balanceBYuan4:done?'70.0000':'100.0000',paidAmountCents:done?'3000':'0',settlementPaidAmountCents:done?'3000':'0',executionCount:done?1:0,rootCount:done?1:0,fundingCount:done?1:0,allocationCount:done?1:0,eventCount:done?1:0,auditCount:done?1:0,projectFactCount:done?1:0,projectImpactCount:done?3:0});
+ const evidence={origin:'INDEPENDENT_OBSERVER_REPEATABLE_READ',currency:'CNY',before:row('BEFORE',false),after:row('AFTER',true),executionId:'execution',rootId:'root',debtorCompanyId:'a',creditorCompanyId:'b',debtAmountCents:'3000'};
+ assert.deepEqual(api.validateNativeTask16LedgerCompetitionAccounting(JSON.stringify(evidence),ids),evidence);
+ for(const [key,value] of [['projectFactCount',0],['projectImpactCount',2],['auditCount',0],['fundingCount',0],['balanceBYuan4','100.0000']]){
+  const bad=structuredClone(evidence);bad.after[key]=value;assert.throws(()=>api.validateNativeTask16LedgerCompetitionAccounting(JSON.stringify(bad),ids));
+ }
+});
+test('ledger competition seals both key hashes before any submission and fails closed on publication errors',async t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),p=planModel(t),keyA=randomUUID(),keyB=randomUUID();
+ const plan={runId:p.runId,source:{head:'a'.repeat(40)}},identity={databaseOid:'123',systemIdentifier:'456'},fixture={ids:{project:randomUUID(),payment:randomUUID(),requestKey:keyA}},prepared={contender:{requestKey:keyB}},receipt={planSha256:'b'.repeat(64)},stages=[];let calls=0;
+ const invoke=()=>api.runNativeTask16LedgerCompetitionPrepared(p.runRoot,plan,identity,fixture,prepared,receipt,async()=>{},()=>{},stage=>stages.push(stage),async()=>{calls++;return 'ok';});
+ assert.equal(await invoke(),'ok');assert.equal(calls,1);assert.equal(receipt.ledgerCompetitionOutcome,'UNKNOWN');assert.deepEqual(stages,['LEDGER_COMPETITION_RACE_AND_OBSERVER']);
+ const sealed=fs.readFileSync(receipt.ledgerCompetitionRecoveryIdentity.file,'utf8');assert.doesNotMatch(sealed,new RegExp(keyA+'|'+keyB));assert.equal(JSON.parse(sealed).requestKeySha256.length,2);
+ await assert.rejects(invoke());assert.equal(calls,1);
+});
+for(const [purpose,flag] of [['TASK16_NATIVE_LEDGER_COMPETITION_V1','--once-cash'],['TASK16_NATIVE_PUBLIC_CASH_V1','--once-ledger-competition']])test('ledger competition and cash plans cannot cross '+purpose,t=>{
+ const p=planModel(t);p.purpose=purpose;const target=path.join(p.runRoot,'plan.json'),bytes=JSON.stringify(p)+'\n';fs.writeFileSync(target,bytes,{mode:0o600});
+ const result=spawnSync(process.execPath,[path.join(__dirname,'run-task16-native-competition-follow-up-once.cjs'),flag,'--plan',target,'--expected-plan-sha256',require('node:crypto').createHash('sha256').update(bytes).digest('hex')],{encoding:'utf8',env:{PATH:path.dirname(process.execPath)},timeout:10000,maxBuffer:8192});
+ assert.equal(result.status,1);assert.deepEqual(JSON.parse(result.stdout),{status:'REJECTED_NO_RESOURCES',code:'NATIVE_DIRECT_CASE_PURPOSE'});assert.deepEqual(fs.readdirSync(p.runRoot),['plan.json']);
+});
+test('ledger competition interface resolves actual formal seed, case and same-transaction observer',()=>{
+ const rows=require('./run-task16-native-competition-follow-up-once.cjs').resolveNativeTask16Interfaces('TASK16_NATIVE_LEDGER_COMPETITION_V1');
+ const names=rows.flatMap(row=>row.exports.map(entry=>entry.name));
+ for(const name of ['seedRegisteredPgPublicCashFormalFixture','runRegisteredLedgerPaymentCompetition','readLedgerCompetitionPaymentInTransaction','withCashLedgerSecret'])assert.ok(names.includes(name));
+ assert.ok(!names.includes('runRegisteredPublicCashPayment'));
+});
+test('ledger competition preserves the first ambiguous failure and never resubmits',async t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),p=planModel(t),receipt={planSha256:'b'.repeat(64)},original=Error('synthetic response loss');let submissions=0;
+ await assert.rejects(api.runNativeTask16LedgerCompetitionPrepared(p.runRoot,{runId:p.runId,source:{head:'a'.repeat(40)}},{databaseOid:'123',systemIdentifier:'456'},{ids:{project:randomUUID(),payment:randomUUID(),requestKey:randomUUID()}},{contender:{requestKey:randomUUID()}},receipt,async()=>{},()=>{},()=>{},async()=>{submissions++;throw original;}),error=>error===original);
+ assert.equal(submissions,1);assert.equal(receipt.ledgerCompetitionOutcome,'UNKNOWN');assert.ok(fs.existsSync(receipt.ledgerCompetitionRecoveryIdentity.file));
+});
+test('ledger competition qualifies the real formal fixture, cash secret and transaction observer interfaces',()=>{
+ const rows=require('./run-task16-native-competition-follow-up-once.cjs').resolveNativeTask16Interfaces('TASK16_NATIVE_LEDGER_COMPETITION_V1');
+ const names=rows.flatMap(row=>row.exports.map(entry=>entry.name));
+ for(const name of ['seedRegisteredPgPublicCashFormalFixture','runRegisteredLedgerPaymentCompetition','readLedgerCompetitionPaymentInTransaction','withCashLedgerSecret'])assert.ok(names.includes(name));
+ assert.ok(!names.includes('runRegisteredPublicCashPayment'));
+});
+test('actual cash accounting publisher binds candidate and run id from plan',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),p=planModel(t),ids=Array.from({length:4},()=>randomUUID());
+ const row=(phase,done)=>({phase,balanceAYuan4:'100.0000',balanceBYuan4:done?'60.0000':'100.0000',paidAmountCents:done?'4000':'0',settlementPaidAmountCents:done?'4000':'0',executionCount:done?1:0,rootCount:0,fundingCount:done?1:0,allocationCount:done?1:0,eventCount:done?1:0,auditCount:done?1:0,projectFactCount:done?1:0,projectImpactCount:done?2:0});
+ const evidence={origin:'INDEPENDENT_OBSERVER_REPEATABLE_READ',currency:'CNY',before:row('BEFORE',false),after:row('AFTER',true),replay:row('REPLAY',true),cashAccountId:ids[0],paymentFactId:ids[1],executionId:ids[2],settlementFactId:ids[3],costCents:'4000'};
+ const result=api.writeNativeTask16CashAccounting(p.runRoot,{runId:p.runId,source:{head:'a'.repeat(40)}},{caseId:'registered.public-cash.payment',accountingEvidence:evidence});
+ const saved=JSON.parse(fs.readFileSync(result.file));assert.equal(saved.runId,p.runId);assert.equal(saved.candidateSha,'a'.repeat(40));assert.deepEqual(saved.accountingEvidence,evidence);
+});
+test('actual ledger competition accounting publisher binds plan and rejects drift before writing',t=>{
+ const api=require('./run-task16-native-competition-follow-up-once.cjs'),p=planModel(t),ids={companyA:'a',companyB:'b'};
+ const row=(phase,done)=>({phase,balanceAYuan4:'100.0000',balanceBYuan4:done?'70.0000':'100.0000',paidAmountCents:done?'3000':'0',settlementPaidAmountCents:done?'3000':'0',executionCount:done?1:0,rootCount:done?1:0,fundingCount:done?1:0,allocationCount:done?1:0,eventCount:done?1:0,auditCount:done?1:0,projectFactCount:done?1:0,projectImpactCount:done?3:0});
+ const evidence={origin:'INDEPENDENT_OBSERVER_REPEATABLE_READ',currency:'CNY',before:row('BEFORE',false),after:row('AFTER',true),executionId:'execution',rootId:'root',debtorCompanyId:'a',creditorCompanyId:'b',debtAmountCents:'3000'};
+ const result=api.writeNativeTask16LedgerCompetitionAccounting(p.runRoot,{runId:p.runId,source:{head:'a'.repeat(40)}},{caseId:'registered.ledger-payment-competition',ledgerWitness:{factId:'fact',impactCount:3},accountingEvidence:evidence},{settlementFactId:'settlement'},ids);
+ const saved=JSON.parse(fs.readFileSync(result.file));assert.equal(saved.runId,p.runId);assert.equal(saved.candidateSha,'a'.repeat(40));assert.equal(saved.ledgerWitness.impactCount,3);
+ const other=planModel(t),bad=structuredClone(evidence);bad.after.projectFactCount=0;
+ assert.throws(()=>api.writeNativeTask16LedgerCompetitionAccounting(other.runRoot,{runId:other.runId,source:{head:'a'.repeat(40)}},{caseId:'registered.ledger-payment-competition',ledgerWitness:{factId:'fact',impactCount:3},accountingEvidence:bad},{settlementFactId:'settlement'},ids));assert.deepEqual(fs.readdirSync(other.runRoot),[]);
+});
