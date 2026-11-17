@@ -64,3 +64,14 @@ test('mechanical fidelity checks actual mechanical roles without material 25pt c
  }
  assert.throws(()=>validateOfficialDocumentFidelity(report,report.pdfSha256),{code:'TASK12_OFFICIAL_DOCUMENT_FIDELITY'});
 });
+test('current mechanical gate rejects misplaced company, bank and supplemental text',()=>{
+ const {validateOfficialMechanicalCurrentFidelity}=require('./task12-official-document-fidelity.cjs');
+ const report=good();report.pageCount=3;report.pages=['隔离工具资格机械合同 虚构甲方公司 虚构乙方公司 资格样张设备 第1页/共3页','虚构甲方补充说明 虚构乙方补充说明 第2页/共3页','甲方 虚构甲方公司 乙方 虚构乙方公司 虚构甲方开户行 虚构乙方开户行 TESTACCOUNT-A TESTACCOUNT-B 第3页/共3页'];
+ assert.equal(validateOfficialMechanicalCurrentFidelity(report,report.pdfSha256).runtimeAuthority,false);
+ assert.throws(()=>validateOfficialMechanicalCurrentFidelity(report,report.pdfSha256,true));
+ report.bodyAnchor={matches:1,lineSpacings:[],fontSizes:[14],fontFamilies:['simhei']};
+ assert.equal(validateOfficialMechanicalCurrentFidelity(report,report.pdfSha256,true).runtimeAuthority,false);
+ for(const change of [r=>{r.pages[1]+='虚构甲方公司';},r=>{r.pages[1]+='TESTACCOUNT-A';},r=>{r.pages[2]+='虚构乙方补充说明';},r=>{r.pages[2]=r.pages[2].replace('TESTACCOUNT-B','');}]){
+  const bad=structuredClone(report);change(bad);assert.throws(()=>validateOfficialMechanicalCurrentFidelity(bad,bad.pdfSha256));
+ }
+});

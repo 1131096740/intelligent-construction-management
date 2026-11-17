@@ -57,6 +57,16 @@ function validateOfficialMechanicalOfficeFidelity(report,expectedPdfSha256){
  mechanicalPhysical(report,expectedPdfSha256);
  return Object.freeze({status:'MECHANICAL_OFFICE_TRANSPORT_PASSED_PHYSICAL_REVIEW_PENDING',pdfSha256:expectedPdfSha256,pageCount:report.pageCount,runtimeAuthority:false,materialBody25Qualified:false});
 }
+/** Separate current-v2 checks extend, rather than replace, the original tool gates. */
+function validateOfficialMechanicalCurrentFidelity(report,expectedPdfSha256,requireTypography=false){
+ if(requireTypography)validateOfficialMechanicalFidelity(report,expectedPdfSha256);else mechanicalPhysical(report,expectedPdfSha256);
+ const pages=report.pages.map(compact),last=pages.length-1;
+ need(last>0);
+ for(const name of ['虚构甲方公司','虚构乙方公司'])need(pages[0].includes(name)&&pages[last].includes(name)&&pages.slice(1,last).every(page=>!page.includes(name)));
+ for(const value of ['虚构甲方开户行','虚构乙方开户行','TESTACCOUNT-A','TESTACCOUNT-B'])need(pages[last].includes(value)&&pages.slice(0,last).every(page=>!page.includes(value)));
+ for(const value of ['虚构甲方补充说明','虚构乙方补充说明'])need(pages.slice(0,last).some(page=>page.includes(value))&&!pages[last].includes(value));
+ return Object.freeze({status:'MECHANICAL_CURRENT_V2_PASSED_PHYSICAL_REVIEW_PENDING',pdfSha256:expectedPdfSha256,pageCount:report.pageCount,runtimeAuthority:false,exactPaginationReviewed:false});
+}
 function validateOfficialMechanicalMergedFidelity(report,body,attachment,expectedPdfSha256){
  validateOfficialMechanicalFidelity(body,body.pdfSha256);validateOfficialMechanicalOfficeFidelity(attachment,attachment.pdfSha256);
  physical(report,expectedPdfSha256,mechanicalRequired);
@@ -64,4 +74,4 @@ function validateOfficialMechanicalMergedFidelity(report,body,attachment,expecte
  need(Array.isArray(report.failures)&&report.failures.length===0);
  return Object.freeze({status:'MECHANICAL_NORMALIZE_MERGE_PASSED_PHYSICAL_REVIEW_PENDING',pdfSha256:expectedPdfSha256,pageCount:report.pageCount,runtimeAuthority:false});
 }
-module.exports=Object.freeze({validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalMergedFidelity});
+module.exports=Object.freeze({validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalCurrentFidelity,validateOfficialMechanicalMergedFidelity});

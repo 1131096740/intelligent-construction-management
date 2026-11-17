@@ -1,6 +1,6 @@
 'use strict';
 const {isDeepStrictEqual:equal}=require('node:util');
-const {validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalMergedFidelity}=require('./task12-official-document-fidelity.cjs');
+const {validateOfficialDocumentFidelity,validateOfficialOfficeFidelity,validateOfficialMergedFidelity,validateOfficialMechanicalFidelity,validateOfficialMechanicalOfficeFidelity,validateOfficialMechanicalCurrentFidelity,validateOfficialMechanicalMergedFidelity}=require('./task12-official-document-fidelity.cjs');
 const {officialDocumentProfile}=require('./task12-official-document-profiles.cjs');
 const fault=part=>Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_'+part),{code:'TASK12_OFFICIAL_DOCUMENT_'+part});
 const need=value=>{if(!value)throw fault('REGISTRY');};
@@ -24,15 +24,17 @@ function validateOfficialQualificationRegistration(input){
  need(keys(machine.toolControls,['sha256','files'])&&machine.toolControls.sha256===currentControls.sha256&&machine.toolControls.files===currentControls.files);
  need(machine.candidateLockSha256===descriptor.lockSha256&&machine.buildSha256===input.buildSha256&&machine.materialSha256===input.materialSha256&&runtimeInput.qualificationRegistrySha256===input.registrySha256);
  need(keys(machine.boundaries,['foreignSnapshotRejected','malformedDocxRejected','externalRelationshipRejected','activeFieldRejected','noNegativeConverterScratchCreated'])&&Object.values(machine.boundaries).every(value=>value===true));
- need(keys(machine.actions,['java','office','normalized'])&&keys(machine.physicalReview,['status','exactPageCountsReviewed','signatureAndPaginationReviewed'])&&machine.physicalReview.status==='PENDING'&&machine.physicalReview.exactPageCountsReviewed===false&&machine.physicalReview.signatureAndPaginationReviewed===false&&Number.isFinite(machine.elapsedMs)&&machine.elapsedMs>=0&&machine.elapsedMs<=315000);
  const mechanical=descriptor.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1';
- const verdicts={java:(mechanical?validateOfficialMechanicalFidelity:validateOfficialDocumentFidelity)(reports.java,machine.actions.java.pdfSha256),office:(mechanical?validateOfficialMechanicalOfficeFidelity:validateOfficialOfficeFidelity)(reports.office,machine.actions.office.pdfSha256),normalized:(mechanical?validateOfficialMechanicalMergedFidelity:validateOfficialMergedFidelity)(reports.normalized,reports.java,reports.office,machine.actions.normalized.pdfSha256)};
- for(const name of ['java','office','normalized']){
+ const current=Object.hasOwn(input.qualifiedPlan.document??{},'currentPath');
+ const actionNames=current?['java','office','normalized','javaCurrent','officeCurrent']:['java','office','normalized'];
+ need((!current||mechanical)&&keys(machine.actions,actionNames)&&keys(machine.physicalReview,['status','exactPageCountsReviewed','signatureAndPaginationReviewed'])&&machine.physicalReview.status==='PENDING'&&machine.physicalReview.exactPageCountsReviewed===false&&machine.physicalReview.signatureAndPaginationReviewed===false&&Number.isFinite(machine.elapsedMs)&&machine.elapsedMs>=0&&machine.elapsedMs<=315000);
+ const verdicts={java:(mechanical?validateOfficialMechanicalFidelity:validateOfficialDocumentFidelity)(reports.java,machine.actions.java.pdfSha256),office:(mechanical?validateOfficialMechanicalOfficeFidelity:validateOfficialOfficeFidelity)(reports.office,machine.actions.office.pdfSha256),normalized:(mechanical?validateOfficialMechanicalMergedFidelity:validateOfficialMergedFidelity)(reports.normalized,reports.java,reports.office,machine.actions.normalized.pdfSha256),...(current?{javaCurrent:validateOfficialMechanicalCurrentFidelity(reports.javaCurrent,machine.actions.javaCurrent.pdfSha256,true),officeCurrent:validateOfficialMechanicalCurrentFidelity(reports.officeCurrent,machine.actions.officeCurrent.pdfSha256)}:{})};
+ for(const name of actionNames){
   const action=machine.actions[name];need(keys(action,['pdfPath','pdfSha256','physicalPath','physicalSha256','pageCount','verdict'])&&equal(action.verdict,verdicts[name])&&action.pageCount===reports[name].pageCount);
  }
  need(keys(physical,['version','profile','status','machineReceiptSha256','source','toolControlsSha256','pdfs','exactPageCountsReviewed','signatureAndPaginationReviewed','reviewer','reviewedAt'])&&physical.version===1&&physical.profile===descriptor.profile&&physical.status==='INDEPENDENT_PHYSICAL_REVIEW_PASSED'&&physical.machineReceiptSha256===input.machineSha256&&equal(physical.source,machine.source)&&physical.toolControlsSha256===currentControls.sha256&&physical.exactPageCountsReviewed===true&&physical.signatureAndPaginationReviewed===true);
- need(typeof physical.reviewer==='string'&&physical.reviewer.length>0&&physical.reviewer.length<=100&&typeof physical.reviewedAt==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(physical.reviewedAt)&&Number.isFinite(Date.parse(physical.reviewedAt))&&keys(physical.pdfs,['java','office','normalized']));
- for(const name of ['java','office','normalized'])need(keys(physical.pdfs[name],['sha256','pageCount'])&&physical.pdfs[name].sha256===machine.actions[name].pdfSha256&&physical.pdfs[name].pageCount===machine.actions[name].pageCount);
+ need(typeof physical.reviewer==='string'&&physical.reviewer.length>0&&physical.reviewer.length<=100&&typeof physical.reviewedAt==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(physical.reviewedAt)&&Number.isFinite(Date.parse(physical.reviewedAt))&&keys(physical.pdfs,actionNames));
+ for(const name of actionNames)need(keys(physical.pdfs[name],['sha256','pageCount'])&&physical.pdfs[name].sha256===machine.actions[name].pdfSha256&&physical.pdfs[name].pageCount===machine.actions[name].pageCount);
  return Object.freeze({status:'REGISTERED_DATA_MATCHED_NOT_AUTHORITY',runtimeAuthority:false});
 }
 module.exports=Object.freeze({validateOfficialQualificationRegistration});

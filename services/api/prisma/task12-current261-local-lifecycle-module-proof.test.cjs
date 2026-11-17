@@ -6,7 +6,7 @@ function model(){
   con18:'services/api/dist/database/task12-con18-withdrawal-case.js',sample:'services/api/dist/contract-document/task12-official-qualification-sample.js',runtime:'services/api/prisma/task12-current259-generated-document-runtime.cjs',converter:'services/api/dist/contract-document/contract-body-pdf-converter.js',lo:'services/api/dist/contract-document/libreoffice-converter.js'};
  const modules=Object.fromEntries(Object.entries(names).map(([key,name])=>{const m={filename:path.join(root,name),loaded:true,exports:{},children:[]};cache[m.filename]=m;return[key,m];}));
  modules.con18.exports.runTask12Con18Withdrawal=()=>{};
- modules.sample.exports.createOfficialQualificationSample=()=>{};modules.sample.exports.canonicalOfficialQualificationDocx=()=>{};
+ modules.sample.exports.createOfficialQualificationSample=()=>{};modules.sample.exports.createMechanicalCurrentQualificationSample=()=>{};modules.sample.exports.canonicalOfficialQualificationDocx=()=>{};
  modules.profile.exports.currentOfficialDocumentScope=()=>{};modules.child.exports.createOfficialDocumentChildBudget=()=>{};modules.child.exports.attachPostcheck=()=>{};modules.context.exports.createDocumentContextAuthority=()=>{};
  modules.runtime.exports.verifyOfficialTask12DocumentRuntime=()=>{};modules.runtime.exports.withOfficialTask12DocumentRuntime=()=>{};
  modules.profile.children.push(modules.context);modules.runtime.children.push(modules.profile);

@@ -71,14 +71,14 @@ function model(options={}) {
   const documentBytes=zip.generate({type:'nodebuffer'});
   const scopeValue=mechanical?null:{version:1,sourceSha256:'44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd',typographyVersion:'reviewed-material-primary-secondary-body25-v4',paragraphs:[],docxSha256:sha(documentBytes)};
   const sample={docx:documentBytes,officeDocx:documentBytes,scope:scopeValue,expectations:{actualPdfQualification:'NOT_EXECUTED'}};
-  put('/private/tmp/input.docx',documentBytes);put('/private/tmp/scope.json',JSON.stringify(scopeValue));put('/private/tmp/expected.json',JSON.stringify(sample.expectations));
+  put('/private/tmp/input.docx',documentBytes);put('/private/tmp/current.docx',documentBytes);put('/private/tmp/current-office.docx',documentBytes);put('/private/tmp/scope.json',JSON.stringify(scopeValue));put('/private/tmp/expected.json',JSON.stringify(sample.expectations));
   put(path.join(SOURCE,'services/api/assets/templates/'+(mechanical?'equipment-rental-real-v1.docx':'material-purchase-real-v1.docx')),'fixed template',mechanical?'b846a2f93a3f118581a58fe137b9a74c0433a7faa271eed1569068da6d5cef89':'44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd');
   let seq=0;
   function packet() {
     source.sha256=sha(JSON.stringify(tracked.map(name=>[name,hash(files.get(path.join(SOURCE,name)).bytes),files.get(path.join(SOURCE,name)).mode & 0o7777])));
     put('/private/tmp/qualification/build.json',JSON.stringify(build),undefined,0o100600);
     const runRoot='/private/tmp/run-'+(++seq); dirs.add(runRoot);
-    const plan={version:1,profile:lock.qualification.profile,source,build:{path:'/private/tmp/qualification/build.json',sha256:sha(JSON.stringify(build))},archive:'/private/tmp/archive',runtime,document:{path:'/private/tmp/input.docx',sha256:sha(documentBytes),scopePath:'/private/tmp/scope.json',scopeSha256:sha(JSON.stringify(scopeValue)),expectationsPath:'/private/tmp/expected.json',expectationsSha256:sha(JSON.stringify(sample.expectations)),officePath:'/private/tmp/input.docx',officeSha256:sha(documentBytes)},runRoot};
+    const plan={version:1,profile:lock.qualification.profile,source,build:{path:'/private/tmp/qualification/build.json',sha256:sha(JSON.stringify(build))},archive:'/private/tmp/archive',runtime,document:{path:'/private/tmp/input.docx',sha256:sha(documentBytes),scopePath:'/private/tmp/scope.json',scopeSha256:sha(JSON.stringify(scopeValue)),expectationsPath:'/private/tmp/expected.json',expectationsSha256:sha(JSON.stringify(sample.expectations)),officePath:'/private/tmp/input.docx',officeSha256:sha(documentBytes),...(mechanical?{currentPath:'/private/tmp/current.docx',currentSha256:sha(documentBytes),currentOfficePath:'/private/tmp/current-office.docx',currentOfficeSha256:sha(documentBytes)}:{})},runRoot};
     const name='/private/tmp/qualification/plan-'+seq+'.json';put(name,JSON.stringify(plan),undefined,0o100600);
     return {name,sha256:sha(JSON.stringify(plan)),plan};
   }
@@ -119,8 +119,8 @@ function model(options={}) {
   const module={exports:{}};
   const loaded=[],moduleView=Object.freeze({}),leaseState={active:true};
   const checkLease=()=>{if(!leaseState.active)throw Object.assign(new Error("model module lease revoked"),{code:"CURRENT259_LOADER_CHANGED"});};
-  const lease={root:options.leaseRoot??SOURCE,get source(){const value=module.exports.sourceWitness();return options.leaseSource??{candidateSha:value.head,tree:value.tree};},check:checkLease,verifyFull:checkLease,createOfficialQualificationSample:()=>sample,canonicalDocx:bytes=>sha(bytes)};
-  const fakeRequire=name=>{loaded.push(name);if(name==='./task16-current259-client-loader.cjs')return {claimCurrent261OfficialDocumentModules:view=>{assertView(view);checkLease();return lease;}};return name.endsWith('/task12-official-qualification-sample.js')?{createOfficialQualificationSample:()=>sample,canonicalOfficialQualificationDocx:bytes=>sha(bytes)}:name==='node:os'?{release:()=> 'model-os-release',version:()=> 'model-os-version'}:name==='node:fs'?fakeFs:name==='node:crypto'?fakeCrypto:name==='node:child_process'?{execFileSync:(_bin,raw)=>{
+  const lease={root:options.leaseRoot??SOURCE,get source(){const value=module.exports.sourceWitness();return options.leaseSource??{candidateSha:value.head,tree:value.tree};},check:checkLease,verifyFull:checkLease,createOfficialQualificationSample:()=>sample,createMechanicalCurrentQualificationSample:()=>sample,canonicalDocx:bytes=>sha(bytes)};
+  const fakeRequire=name=>{loaded.push(name);if(name==='./task16-current259-client-loader.cjs')return {claimCurrent261OfficialDocumentModules:view=>{assertView(view);checkLease();return lease;}};return name.endsWith('/task12-official-qualification-sample.js')?{createOfficialQualificationSample:()=>sample,createMechanicalCurrentQualificationSample:()=>sample,canonicalOfficialQualificationDocx:bytes=>sha(bytes)}:name==='node:os'?{release:()=> 'model-os-release',version:()=> 'model-os-version'}:name==='node:fs'?fakeFs:name==='node:crypto'?fakeCrypto:name==='node:child_process'?{execFileSync:(_bin,raw)=>{
     const args=raw[0]==='--no-replace-objects'?raw.slice(3):raw;
     if(args[0]==='status'||args[0]==='merge-base')return Buffer.from('');
     if(args[0]==='ls-files')return Buffer.from(tracked.join('\0')+'\0');
