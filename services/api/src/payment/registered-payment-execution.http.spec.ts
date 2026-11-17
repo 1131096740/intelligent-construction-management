@@ -37,6 +37,7 @@ import { AuthService } from "../auth/auth.service";
 import { FundAccountController } from "../fund-account/fund-account.controller";
 import { FundAccountService } from "../fund-account/fund-account.service";
 import { AuditService } from "../audit/audit.service";
+import { Task16SharedPaymentApplicationModule } from "../database/task16-shared-payment-application";
 
 // Persistence and identity facts are synthetic. HTTP, role resolution, JWT,
 // permission/retirement guards and the business service remain real.
@@ -48,6 +49,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
   let notificationSmsOutcome: "accepted" | "failed" | "unknown";
   let notificationTransactionDepth: number;
   let notificationSmsTransactionStates: boolean[];
+  let frozenPaymentEntries: unknown[];
   const tokens = new JwtTokenService();
   const previousOperatingWriteSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
   const previousStorageDriver = process.env.FILE_STORAGE_DRIVER;
@@ -76,6 +78,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     notificationSmsOutcome = "accepted";
     notificationTransactionDepth = 0;
     notificationSmsTransactionStates = [];
+    frozenPaymentEntries = [];
     const seed = database.prisma as unknown as {
       paymentRequest: { create(input: { data: Record<string, unknown> }): Promise<unknown> };
       approvalInstance: { create(input: { data: Record<string, unknown> }): Promise<unknown> };
@@ -94,12 +97,18 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     } });
     await startApplication();
   });
-  async function startApplication(impactReader?: RegisteredPaymentImpactReader | Task16RegisteredPaymentImpactRuntime) {
-    const module = await Test.createTestingModule({
+  async function startApplication(impactReader?: RegisteredPaymentImpactReader | Task16RegisteredPaymentImpactRuntime, realBusinessEntry = false) {
+    const builder = realBusinessEntry ? Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}) : Test.createTestingModule({
       controllers: [PaymentController, FileController, RegisteredPaymentExecutionController, MeController, FundAccountController, AuditController],
       providers: [{ provide: ApprovalSmsService, useValue: { available: () => notificationSmsEnabled, send: async (phone: string) => { notificationSmsCalls.push(phone); notificationSmsTransactionStates.push(notificationTransactionDepth > 0); if (notificationSmsEnabled) return {status:notificationSmsOutcome,message:"Synthetic SMS outcome; no external gateway"}; return {status:"failed",message:"\u5408\u6210\u77ed\u4fe1\u9002\u914d\u5668\u5173\u95ed"}; } } }, PaymentReadService, ProjectVisibilityService, { provide: OperatingSourceReplayService, inject: [PrismaService], useFactory: (prisma: PrismaService) => new OperatingSourceReplayService(prisma,new OperatingLedgerService(prisma),new OperatingSourceAdapterRegistry([new PaymentExecutionOperatingSourceAdapter()])) }, { provide: PaymentRequestService, inject: [PrismaService, AuthService, AuditService, FileService, OperatingSourceReplayService, RegisteredPaymentNotificationService], useFactory: (prisma: PrismaService, auth: AuthService, audit: AuditService, files: FileService, operating: OperatingSourceReplayService, notifications: RegisteredPaymentNotificationService) => new PaymentRequestService(new PaymentAmountService(), prisma, audit, files, auth, undefined, undefined, undefined, undefined, operating, undefined, notifications) }, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, MeService, AuditService, AuthService, JwtTokenService, FundAccountService, { provide: FileService, inject: [PrismaService, AuditService], useFactory: (prisma: PrismaService, audit: AuditService) => new FileService(prisma,audit,new PrivateFileStorage()) }, { provide: PrismaService, useValue: database.prisma },
         ...(impactReader ? [{ provide: REGISTERED_PAYMENT_IMPACT_READER, useValue: impactReader }] : [])]
-    }).compile();
+    });
+    if (realBusinessEntry) {
+      builder.overrideProvider(PrismaService).useValue(database.prisma);
+      builder.overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts);
+      builder.overrideProvider(ApprovalSmsService).useValue({available:()=>false,send:async()=>({status:"failed",message:"合成短信适配器关闭"})});
+    }
+    const module = await builder.compile();
     app = module.createNestApplication({ logger: ["error"] });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     const reflector = new Reflector();
@@ -1505,6 +1514,75 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect(accounts.find((row:{scopeKey:string})=>row.scopeKey==="company:company-a").balanceYuan).toBe("100.0000");
     expect(accounts.find((row:{scopeKey:string})=>row.scopeKey==="company:company-b").balanceYuan).toBe("60.0000");
     for(const actor of ["finance","keeper"])expect((await get(actor)).body.items[0]).toMatchObject({paidAmountCents:"4000",remainingAmountCents:"6000"});
+  });
+  it("keeps both duties consistent through cross-company and cash instalments and a later private voucher", async () => {
+    Object.assign(database.prisma,{businessEntrySubmissionSnapshot:{findMany:async()=>frozenPaymentEntries,create:async({data}:{data:Record<string,unknown>})=>{const row={id:"synthetic-frozen-payment",...data};frozenPaymentEntries.push(row);return row;}}});
+    const adapter=database.prisma as unknown as {$queryRaw(query:Prisma.Sql|TemplateStringsArray,...values:unknown[]):Promise<unknown>;operatingImpactEntry:{findMany(args:unknown):Promise<Array<Record<string,unknown>>>};handwrittenSignatureVersion:{findMany(args:unknown):Promise<Array<Record<string,unknown>>>};fileObject:{findUnique(args:unknown):Promise<Record<string,unknown>|null>};user:{update(args:unknown):Promise<unknown>}};
+    adapter.user.update=async()=>({id:"director"});
+    const raw=adapter.$queryRaw;
+    jest.spyOn(adapter,"$queryRaw").mockImplementation(async(query,...values)=>{
+      if(!Array.isArray(query) && (query as Prisma.Sql).sql.includes('FROM "HandwrittenSignatureVersion"'))return adapter.handwrittenSignatureVersion.findMany({where:{userId:(query as Prisma.Sql).values[0],source:"canvas"}});
+      if(!Array.isArray(query) && (query as Prisma.Sql).sql.includes('FROM "FileObject"')){const file=await adapter.fileObject.findUnique({where:{id:(query as Prisma.Sql).values[0]}});return file?[file]:[];}
+      if(Array.isArray(query)||!(query as Prisma.Sql).sql.includes("jg_read_registered_payment_impacts"))return raw.call(adapter,query,...values);
+      const factId=(query as Prisma.Sql).values[4];
+      return (await adapter.operatingImpactEntry.findMany({where:{factId}})).map(row=>({factId,impactKind:row.impactKind,amountCents:row.amountCents??null,numericProtocolVersion:row.numericProtocolVersion??1,subjectKind:row.subjectKind??null,subjectId:row.subjectId??null}));
+    });
+    await app.close(); await startApplication(undefined,true);
+    const signature=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=","base64"),signatureForm=new FormData();
+    signatureForm.append("file",new Blob([signature],{type:"image/png"}),"signature.png");
+    const directorToken=tokens.signAccessToken({id:"director",name:"合成人员",phone:null,sessionVersion:0});
+    const savedSignature=await fetch(`${await app.getUrl()}/me/signature/canvas`,{method:"POST",headers:{authorization:`Bearer ${directorToken}`},body:signatureForm});
+    expect(savedSignature.status).toBe(201);
+    const signatureReceipt=await savedSignature.json() as {signatureFileId:string;signatureVersionId:string};
+    const cash=await prepareCashOperatingPayment();
+    const seed=database.prisma as unknown as Record<string,{update(input:{where:{id:string};data:Record<string,unknown>}):Promise<Record<string,unknown>>}>;
+    const pending=await seed.paymentRequest.update({where:{id:"payment-a"},data:{status:"approval_pending",approvedAmountCents:null}});
+    const round=await seed.approvalInstance.update({where:{id:"approved-round-a"},data:{status:"in_progress",currentNodeIndex:0,updatedAt:new Date("2026-11-05T00:01:00.000Z"),frozenNodes:[{name:"财务主管批准",roleKeys:["finance_director"],mode:"any",approvedRoleKeys:[],protocolVersion:1,executionMode:"parallel",roleScopesByRole:{finance_director:"global"},candidateUserIdsByRole:{finance_director:["director"]},candidateUserIds:["director"]}]}});
+    if (!(pending.updatedAt instanceof Date) || !(round.updatedAt instanceof Date)) throw new Error("Synthetic approval coordinates missing");
+    expect((await post("director","/payments/payment-a/approval",{decision:"approve",expectedPaymentUpdatedAt:pending.updatedAt.toISOString(),expectedApprovalInstanceId:"approved-round-a",expectedNodeIndex:0,expectedApprovalUpdatedAt:round.updatedAt.toISOString()})).status).toBe(201);
+    const approvals=database.prisma as unknown as {approvalActionLog:{findMany(args:unknown):Promise<unknown[]>}};
+    expect(await approvals.approvalActionLog.findMany({where:{approvalInstanceId:"approved-round-a",action:"approve"}})).toContainEqual(expect.objectContaining({actorUserId:"director",signatureFileIdSnapshot:signatureReceipt.signatureFileId,signatureVersionIdSnapshot:signatureReceipt.signatureVersionId}));
+    expect(frozenPaymentEntries).toContainEqual(expect.objectContaining({sceneKey:"payment_approval_amount",entityId:"payment-a",revision:1}));
+    for(const actor of ["finance","keeper"]) {
+      expect((await get(actor)).body.items).toContainEqual(expect.objectContaining({paymentId:"payment-a",paidAmountCents:"0",remainingAmountCents:"10000"}));
+      const notification=await get(actor,"/payment-executions/notifications");
+      expect(notification).toMatchObject({status:200,body:{items:[expect.objectContaining({businessCode:"FK-16-01",status:"queued",targetPath:"/付款管理?payment=FK-16-01"})]}});
+      expect(await get(actor,"/payment-executions/notifications")).toEqual(notification);
+      expect((await get(actor,"/me/work-items")).body.queues.pending).toContainEqual(expect.objectContaining({type:"payment_execution",businessId:"payment-a"}));
+    }
+    const companyB=await post("finance","/fund-accounts/openings",{scopeKey:"company:company-b",balanceYuan:"100",asOfDate:"2026-11-05",evidenceReference:"虚构乙公司期初",reconciliationNote:"项目来源已核对",reason:"期初",idempotencyKey:"task16-full-chain-b",sources:[{amountYuan:"100",sourceStatus:"known",sourceName:"项目资金",projectStatus:"project",projectId:"project-a"}]});
+    expect(companyB.status).toBe(201);
+    const pay=async(actor:string,scopeKey:string,opening:{body:{id:string;sources:Array<{id:string}>}},amountCents:string,idempotencyKey:string)=>{
+      const options=await get(actor,"/payment-executions/payment-a/registration-options");expect(options.status).toBe(200);
+      return post(actor,"/payment-executions/payment-a/registrations",{idempotencyKey,expectedPaymentUpdatedAt:options.body.expectedPaymentUpdatedAt,amountCents,paidAt:"2026-11-06",scopeKey,expectedRegistrationId:opening.body.id,openingTreatment:"not_included",openingReason:"虚构付款未含期初",openingEvidence:"虚构付款登记",sourceAllocations:[{sourceBatchId:opening.body.sources[0].id,amountCents}],confirmationPassword:"Synthetic15Password!"});
+    };
+    expect((await pay("finance","company:company-b",companyB,"3000","248c02ad-4329-42e7-9b27-c1e8d8326411")).status).toBe(201);
+    const accountA=(await get("finance","/fund-accounts")).body.accounts.find((r:{scopeKey:string})=>r.scopeKey==="company:company-a");
+    expect((await pay("keeper","company:company-a",{body:{id:accountA.currentRegistrationId,sources:accountA.sources}},"3000","248c02ad-4329-42e7-9b27-c1e8d8326412")).status).toBe(201);
+    for(const actor of ["finance","keeper"])expect((await get(actor)).body.items).toContainEqual(expect.objectContaining({paymentId:"payment-a",paidAmountCents:"6000",remainingAmountCents:"4000"}));
+    const final=await pay("keeper","public_cash",cash,"4000","248c02ad-4329-42e7-9b27-c1e8d8326413");expect(final.status).toBe(201);
+    for(const actor of ["finance","keeper"]) {
+      expect((await get(actor)).body.items).toEqual([]);
+      expect((await get(actor,"/me/work-items")).body.queues.pending).not.toContainEqual(expect.objectContaining({type:"payment_execution",businessId:"payment-a"}));
+    }
+    const beforeVoucher=await get("keeper","/payment-executions/results/248c02ad-4329-42e7-9b27-c1e8d8326413");
+    expect(beforeVoucher).toMatchObject({status:200});
+    expect(beforeVoucher.body.execution).toMatchObject({executionId:final.body.id,amountCents:"4000",voucherPending:true});
+    const observed=database.prisma as unknown as Record<string,{findMany(input:{where:Record<string,unknown>}):Promise<Array<Record<string,unknown>>>}>;
+    const eventsBefore=await observed.registeredPaymentEvent.findMany({where:{}}),executionsBefore=await observed.paymentExecution.findMany({where:{paymentRequestId:"payment-a"}}),auditsBefore=await observed.auditLog.findMany({where:{businessId:"payment-a",action:"payment.execution.record"}});
+    expect(executionsBefore).toHaveLength(3);expect(eventsBefore).toHaveLength(3);expect(auditsBefore).toHaveLength(3);
+    expect(eventsBefore.map(event=>event.executionId).sort()).toEqual(executionsBefore.map(execution=>execution.id).sort());
+    const accounts=(await get("finance","/fund-accounts")).body.accounts;
+    for(const [key,balance] of [["company:company-a","70.0000"],["company:company-b","70.0000"],["public_cash","60.0000"]])expect(accounts.find((r:{scopeKey:string})=>r.scopeKey===key).balanceYuan).toBe(balance);
+    const bytes=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=","base64"),form=new FormData();form.append("file",new Blob([bytes],{type:"image/png"}),"voucher.png");form.append("idempotencyKey","248c02ad-4329-42e7-9b27-c1e8d8326414");
+    const token=tokens.signAccessToken({id:"keeper",name:"合成人员",phone:null,sessionVersion:0}),response=await fetch(`${await app.getUrl()}/payment-executions/${final.body.id}/voucher-file-uploads`,{method:"POST",headers:{authorization:`Bearer ${token}`},body:form});expect(response.status).toBe(201);
+    const uploaded=await response.json();expect((await post("keeper",`/payment-executions/${final.body.id}/voucher`,{fileId:uploaded.id})).status).toBe(201);
+    const ticket=await get("keeper",`/payment-executions/${final.body.id}/voucher-ticket`);expect(ticket.status).toBe(200);const download=await fetch(new URL(ticket.body.downloadUrl,await app.getUrl()));expect(download.status).toBe(200);expect(Buffer.from(await download.arrayBuffer())).toEqual(bytes);
+    expect((await get("finance","/payment-executions/results/248c02ad-4329-42e7-9b27-c1e8d8326413")).body.execution).toMatchObject({executionId:final.body.id,amountCents:"4000",voucherPending:false});
+    expect(await observed.paymentExecution.findMany({where:{paymentRequestId:"payment-a"}})).toHaveLength(3);
+    expect(await observed.registeredPaymentEvent.findMany({where:{}})).toHaveLength(3);
+    expect(await observed.auditLog.findMany({where:{businessId:"payment-a",action:"payment.execution.record"}})).toHaveLength(3);
+    for(const actor of ["finance","keeper"])expect((await get(actor)).body.items).toEqual([]);
   });
   it("records B paying A without making B a project participant, creates one canonical A-to-B debt and keeps a later A partial payment shared", async () => {
     await prepareCashOperatingPayment();

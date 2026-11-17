@@ -27,6 +27,10 @@ function renderGeneralProcurementFileGuardGrant() {
   return renderFixtureFileGuardGrant("general_procurement_runtime", "general_procurement", "HandwrittenSignatureVersion", "fileId");
 }
 
+function renderTask398FileGuardGrant() {
+  return renderFixtureFileGuardGrant("jg_task01_runtime", "jiangkong_payment_execution_concurrency", "HandwrittenSignatureVersion", "fileId");
+}
+
 function renderProjectBusinessScopeFileGuardGrant() {
   return renderFixtureFileGuardGrant("project_business_scope_runtime", "project_business_scope", "HandwrittenSignatureVersion", "fileId");
 }
@@ -123,5 +127,6 @@ module.exports = {
   renderContractFinanceFileGuardGrant,
   renderEmployeeOnboardingFileGuardGrant,
   renderGeneralProcurementFileGuardGrant,
+  renderTask398FileGuardGrant,
   renderProjectBusinessScopeFileGuardGrant
 };
