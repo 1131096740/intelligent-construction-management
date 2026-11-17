@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 queue-only 单连接与经营账取消结果
+
+准确 `0ad412b6` 单连接 queue-only 虚构隔离运行的保存、无权 403 和唯一 queued 检查通过；worker 禁用，不证明旧轮失败因果或完整文书链。[日志](/private/tmp/jg-queue-0ad412-run-1117/run.log) SHA `59cbfc8a1985cd08f820c8af3bbe63c9e60b7fb860f0e5385efd252baf68736f`，[独立清理](/private/tmp/jg-queue-0ad412-run-1117/cleanup-independent.json) SHA `2039feaf1a87294af8ba2232308f977ffe0d7fba902971ed92475446dbf8bcb5`。
+
+准确 `1525e3f8` 虚构经营账取消运行出现 unexpected waiter，付款结果 UNKNOWN，不能推断无写入或重发。[原回执](/private/tmp/jg-ledger-can152-8UP4n0nH/receipt.json) SHA `9ad88aa6420eed29853321c104d676f96b5742f8360ff1d4a871b7e3306e0c50`，[独立清理](/private/tmp/jg-ledger-can152-independent-cleanup.json) SHA `d73d2925e0327ec767db4499d38bcee9f21ee2a9832c0e53b69e8b47e278e3da`。以上均不构成 #394/#398 完整验收；b047 仍 UNKNOWN。
+
 ## 2026-11-17 草稿保存事务客户端修订
 
 准确 `81d604a3` 隔离运行在 10 秒期限下仍报告 P2028/10004ms；原异常已清理。[日志](/private/tmp/jg-queue-81d604-run-1117/run.log) SHA `b14c3738ea22e8505f8ea4c0c25bfdae7c2878550dea7a8afc055297a58097a8`，[独立清理](/private/tmp/jg-queue-81d604-run-1117/cleanup-independent.json) SHA `47db14d868674a672ea0b639c5cf64e273a68b86da1db124af04d57ed47568de`。事务内使用 root client 导致自等待是可从代码证明的机制，但是否造成该轮失败仍待隔离验证。
