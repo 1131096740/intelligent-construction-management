@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {createHash,randomBytes,randomUUID}=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
-const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',GAP_PURPOSE='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1',VOUCHER_PURPOSE='TASK16_NATIVE_COMPETITION_VOUCHER_V1',CASH_PURPOSE='TASK16_NATIVE_PUBLIC_CASH_V1',REVOCATION_PURPOSE='TASK16_NATIVE_VOUCHER_REVOCATION_V1';
+const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_COMPETITION_FOLLOW_UP_V1',GAP_PURPOSE='TASK16_NATIVE_PROJECT_ATTRIBUTION_GAP_V1',SOURCE_PURPOSE='TASK16_NATIVE_PROJECT_SOURCE_INSUFFICIENT_V1',VOUCHER_PURPOSE='TASK16_NATIVE_COMPETITION_VOUCHER_V1',CASH_PURPOSE='TASK16_NATIVE_PUBLIC_CASH_V1',REVOCATION_PURPOSE='TASK16_NATIVE_VOUCHER_REVOCATION_V1';
 // Root's independently reviewed official16.15/pgcrypto93-file qualification.
 const BINARY_QUALIFICATION_SHA='26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1';
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -28,8 +28,9 @@ function nativeTask16RevocationInboundAllowed(method,raw,ids){
  try{assertNativeTask16RevocationTarget('http://127.0.0.1:1025',ids,url,method);return true;}catch{return false;}
 }
 function nativeTask16CaseSelection(purpose){
- need(purpose===PURPOSE||purpose===GAP_PURPOSE||purpose===VOUCHER_PURPOSE||purpose===CASH_PURPOSE||purpose===REVOCATION_PURPOSE,'NATIVE_DIRECT_CASE_PURPOSE');
- const competition=purpose!==GAP_PURPOSE;
+ need(purpose===PURPOSE||purpose===GAP_PURPOSE||purpose===SOURCE_PURPOSE||purpose===VOUCHER_PURPOSE||purpose===CASH_PURPOSE||purpose===REVOCATION_PURPOSE,'NATIVE_DIRECT_CASE_PURPOSE');
+ const competition=purpose!==GAP_PURPOSE&&purpose!==SOURCE_PURPOSE;
+ if(purpose===SOURCE_PURPOSE)return Object.freeze({purpose,caseId:'registered.project-source-insufficient',paymentProfile:'TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1',competition:false,runtimeLimit:1,insertAdditionCount:5,sourceInsufficient:true});
  if(purpose===CASH_PURPOSE)return Object.freeze({purpose,caseId:'registered.public-cash.payment',paymentProfile:'TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:13,cash:true});
  if(purpose===REVOCATION_PURPOSE)return Object.freeze({purpose,caseId:'registered.voucher.project-revocation',paymentProfile:'TASK16_PAYMENT261_VOUCHER_REVOCATION_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:11,voucher:true,revocation:true});
  if(purpose===VOUCHER_PURPOSE)return Object.freeze({purpose,caseId:'registered.two-actor.payment-voucher',paymentProfile:'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1',competition:true,runtimeLimit:2,insertAdditionCount:11,voucher:true});
@@ -94,7 +95,7 @@ function compiledMaterials(){return [...treeFiles(path.join(ROOT,'services/api/d
 
 function validateNativePlan(value){
  const p=fixed(value,['schemaVersion','purpose','runId','database','runRoot','rootIdentity','source','artifacts','dependencies','prismaTools','interfaces','binaryManifest','binaries','openssl','externalLibraries','node','security','limits','differences']);
- need(p.schemaVersion===2&&[PURPOSE,GAP_PURPOSE,VOUCHER_PURPOSE,CASH_PURPOSE,REVOCATION_PURPOSE].includes(p.purpose)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
+ need(p.schemaVersion===2&&[PURPOSE,GAP_PURPOSE,SOURCE_PURPOSE,VOUCHER_PURPOSE,CASH_PURPOSE,REVOCATION_PURPOSE].includes(p.purpose)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(p.runId)&&p.database==='jg_task01_'+p.runId.replaceAll('-',''));
  need(equal(fixed(p.limits,['resourceMs','migrationMs','ownerSqlMs','httpMs','commandBytes','ownerSqlBytes']),{resourceMs:3600000,migrationMs:180000,ownerSqlMs:120000,httpMs:5000,commandBytes:1048576,ownerSqlBytes:16777216}));
  need(equal(directory(p.runRoot),p.rootIdentity));return p;
 }
@@ -131,8 +132,8 @@ function verifyNativeTask16Plan(file,expected,purpose=PURPOSE){
 }
 function parse(args){
  need(Array.isArray(args)&&args.every(x=>typeof x==='string'),'NATIVE_DIRECT_ARGUMENTS');
- if(['--prepare','--prepare-gap','--prepare-voucher','--prepare-cash','--prepare-revocation'].includes(args[0])&&args.length===9&&args[1]==='--run-root'&&args[3]==='--binary-manifest'&&args[5]==='--expected-binary-sha256'&&args[7]==='--output')return {mode:'prepare',purpose:args[0]==='--prepare-revocation'?REVOCATION_PURPOSE:args[0]==='--prepare-gap'?GAP_PURPOSE:args[0]==='--prepare-voucher'?VOUCHER_PURPOSE:args[0]==='--prepare-cash'?CASH_PURPOSE:PURPOSE,options:{runRoot:args[2],binaryManifest:args[4],binaryManifestSha256:args[6],output:args[8]}};
- if(['--verify','--once','--verify-gap','--once-gap','--verify-voucher','--once-voucher','--verify-cash','--once-cash','--verify-revocation','--once-revocation'].includes(args[0])&&args.length===5&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256')return {mode:args[0].slice(2).replace(/-(?:gap|voucher|cash|revocation)$/u,''),purpose:args[0].endsWith('-revocation')?REVOCATION_PURPOSE:args[0].endsWith('-gap')?GAP_PURPOSE:args[0].endsWith('-voucher')?VOUCHER_PURPOSE:args[0].endsWith('-cash')?CASH_PURPOSE:PURPOSE,file:args[2],sha256:args[4]};
+ if(['--prepare','--prepare-gap','--prepare-source-insufficient','--prepare-voucher','--prepare-cash','--prepare-revocation'].includes(args[0])&&args.length===9&&args[1]==='--run-root'&&args[3]==='--binary-manifest'&&args[5]==='--expected-binary-sha256'&&args[7]==='--output')return {mode:'prepare',purpose:args[0]==='--prepare-source-insufficient'?SOURCE_PURPOSE:args[0]==='--prepare-revocation'?REVOCATION_PURPOSE:args[0]==='--prepare-gap'?GAP_PURPOSE:args[0]==='--prepare-voucher'?VOUCHER_PURPOSE:args[0]==='--prepare-cash'?CASH_PURPOSE:PURPOSE,options:{runRoot:args[2],binaryManifest:args[4],binaryManifestSha256:args[6],output:args[8]}};
+ if(['--verify','--once','--verify-gap','--once-gap','--verify-source-insufficient','--once-source-insufficient','--verify-voucher','--once-voucher','--verify-cash','--once-cash','--verify-revocation','--once-revocation'].includes(args[0])&&args.length===5&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256')return {mode:args[0].slice(2).replace(/-(?:gap|voucher|cash|revocation|source-insufficient)$/u,''),purpose:args[0].endsWith('-source-insufficient')?SOURCE_PURPOSE:args[0].endsWith('-revocation')?REVOCATION_PURPOSE:args[0].endsWith('-gap')?GAP_PURPOSE:args[0].endsWith('-voucher')?VOUCHER_PURPOSE:args[0].endsWith('-cash')?CASH_PURPOSE:PURPOSE,file:args[2],sha256:args[4]};
  fail('NATIVE_DIRECT_ARGUMENTS');
 }
 function recordNativeTask16CashSecretCleanup(receipt,state,pending){
@@ -279,7 +280,7 @@ function inspectNativeTask16Interfaces(purpose=PURPOSE){
    './task16-current259-runtime-acl.cjs':[['renderCurrent259RuntimeAcl',3]],
    './task16-current259-public-access.cjs':[['renderCurrent259PublicAccess',1]],
    '../dist/database/registered-payment-postgres.fixture.js':[['buildRegisteredPgFixturePlan',3],['seedRegisteredPgAttributionGapFixture',3],['assertRegisteredPgConnectedRoles',2]],
-   '../dist/database/registered-payment-postgres.cases.js':[['runRegisteredProjectAttributionGap',3]]
+   '../dist/database/registered-payment-postgres.cases.js':[[selected.sourceInsufficient?'runRegisteredProjectSourceInsufficient':'runRegisteredProjectAttributionGap',3]]
   };
   for(let i=specs.length-1;i>=0;i--){if(specs[i][0]==='./task16-current259-payment-competition.cjs')specs.splice(i,1);else if(replacements[specs[i][0]])specs[i]=[specs[i][0],replacements[specs[i][0]]];}
  }
@@ -339,11 +340,11 @@ function assertNativeTask16CompetitionLoopbackListeners(text,postmasterPid,port)
  need(addresses.length===2&&addresses.includes('127.0.0.1')&&addresses.includes('::1'),code);
  return Object.freeze({postmasterPid,port,addresses:Object.freeze(['127.0.0.1','::1']),ownedStartupListeners:true});
 }
-module.exports=Object.freeze({nativeTask16RevocationInboundAllowed,assertNativeTask16RevocationTarget,runNativeTask16CashPreparedCase,writeNativeTask16CashRecoveryIdentity,recordNativeTask16CashRegistrationStatus,runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
+module.exports=Object.freeze({writeNativeTask16SourceAccounting,nativeTask16RevocationInboundAllowed,assertNativeTask16RevocationTarget,runNativeTask16CashPreparedCase,writeNativeTask16CashRecoveryIdentity,recordNativeTask16CashRegistrationStatus,runNativeTask16CashScope,recordNativeTask16CashSecretCleanup,parseNativeTask16Args:parse,validateNativeTask16CashAccounting,createNativeTask16BusinessClients,createNativeTask16VoucherStageRecorder,writeNativeTask16VoucherAccounting,nativeTask16CaseSelection,writeNativeTask16GapAccounting,assertNativeTask16CompetitionLoopbackListeners,withNativeTask16CompetitionLock,writeNativeTask16CompetitionAccounting,assertNativeTask16CompetitionTarget,captureNativeTask16Security,projectNativeTask16SecurityPolicy,controlledNativeTask16NameResult,projectNativeTask16TlsWords,parseNativeTask16CatalogRead,renderNativeTask16RuntimeAcl,inspectNativeTask16Interfaces,resolveNativeTask16PrismaTools,resolveNativeTask16Interfaces,nativeTask16FixtureDates,nativeTask16QualifiedModeMatches,assertNativeTask16LogIdentity,projectNativeTask16PlaintextHba,verifyNativeTask16LocalhostAnswers,classifyNativeTask16TlsFailure,trackNativeTask16Child,waitNativeTask16Operation,prepareNativeTask16Plan,verifyNativeTask16Plan,validateNativePlan});
 if(require.main===module){(async()=>{let request;request=parse(process.argv.slice(2));if(request.mode==='prepare')return {status:'NATIVE_DIRECT_PREPARED_NO_RESOURCES',...prepareNativeTask16Plan(request.options,request.purpose)};
  const plan=verifyNativeTask16Plan(request.file,request.sha256,request.purpose);if(request.mode==='verify')return {status:'NATIVE_DIRECT_VERIFIED_NO_RESOURCES',candidateSha:plan.source.head};
  return await executeNativeTask16Once(plan,request.sha256);
-})().then(result=>{process.exitCode=result.status==='STOPPED'?1:0;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--once-gap','--once-voucher','--once-cash','--once-revocation'].includes(process.argv[2]))process.exit(process.exitCode);});},error=>{const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:typeof code==='string'&&/^NATIVE_DIRECT_[A-Z_]+$/u.test(code)?code:'NATIVE_DIRECT_INPUT'})+'\n');process.exitCode=1;});}
+})().then(result=>{process.exitCode=result.status==='STOPPED'?1:0;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--once-gap','--once-source-insufficient','--once-voucher','--once-cash','--once-revocation'].includes(process.argv[2]))process.exit(process.exitCode);});},error=>{const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:typeof code==='string'&&/^NATIVE_DIRECT_[A-Z_]+$/u.test(code)?code:'NATIVE_DIRECT_INPUT'})+'\n');process.exitCode=1;});}
 
 async function executeNativeTask16Once(plan,planSha256){
  need(require.main===module&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH'),'NATIVE_DIRECT_FRESH_MAIN');
@@ -600,15 +601,16 @@ async function runNativeTask16Business(plan,state){
    const continuity={seedProfile:selection.paymentProfile,checkLight:needLive,assertHttpRequest:(route,method)=>assertTarget(route,method),
     fetch:async(target,init)=>{assertTarget(target,init.method??'GET');return fetch(target,init);},
     requestJson:async(target,init,timeout)=>{assertTarget(target,init.method??'GET');need(timeout===5000&&!Object.hasOwn(init,'signal'),'NATIVE_DIRECT_HTTP_TIMEOUT');return requestJson(target,init,timeout);},
-    markAttributionGapStage:phase=>{receipt.attributionGapStage=phase;},
+    markAttributionGapStage:phase=>{if(selection.sourceInsufficient)receipt.sourceInsufficientStage=phase;else receipt.attributionGapStage=phase;},
     recordSeedFailure:(failedStage,code,status)=>{if(!receipt.seedFailure)receipt.seedFailure={stage:failedStage,code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,100}$/u.test(code)?code:'UNKNOWN',...(Number.isInteger(status)?{httpStatus:status}:{})};}};
    await wait(()=>fixture.assertRegisteredPgConnectedRoles(context,continuity));enter('SEED_LOGIN_AND_OPENINGS');receipt.business='ENTERED';
    const prepared=await wait(()=>fixture.seedRegisteredPgAttributionGapFixture(context,fixturePlan,continuity));receipt.loginAndOpenings='ORIGINAL_FIXTURE_RETURNED';
-   await verifyIdentity();enter('ATTRIBUTION_GAP_409_AND_ORIGINAL_KEY_GET');
-   const result=await wait(()=>cases.runRegisteredProjectAttributionGap(context,prepared,continuity));
+   await verifyIdentity();enter(selection.sourceInsufficient?'SOURCE_INSUFFICIENT_409_AND_ORIGINAL_KEY_GET':'ATTRIBUTION_GAP_409_AND_ORIGINAL_KEY_GET');
+   const result=await wait(()=>(selection.sourceInsufficient?cases.runRegisteredProjectSourceInsufficient:cases.runRegisteredProjectAttributionGap)(context,prepared,continuity));
    need(result.passed===true&&result.caseId===selection.caseId&&result.registrationStatus===409&&result.projectAmountCents==='500'&&result.gapAmountCents==='300'&&result.originalResultUnconfirmed===true&&!Object.hasOwn(result,'executionId')&&!Object.hasOwn(result,'rootId'),'NATIVE_DIRECT_CASE_RESULT');
-   receipt.accounting=writeNativeTask16GapAccounting(root,plan.source.head,plan.runId,JSON.stringify(result.accountingEvidence));
-   receipt.attributionGapObserved=true;receipt.business='ORIGINAL_ATTRIBUTION_GAP_CASE_RETURNED';
+   receipt.accounting=(selection.sourceInsufficient?writeNativeTask16SourceAccounting:writeNativeTask16GapAccounting)(root,plan.source.head,plan.runId,JSON.stringify(result.accountingEvidence));
+   if(selection.sourceInsufficient){receipt.sourceInsufficientObserved=true;receipt.business='SOURCE_INSUFFICIENT_CASE_RETURNED';}
+   else {receipt.attributionGapObserved=true;receipt.business='ORIGINAL_ATTRIBUTION_GAP_CASE_RETURNED';}
    await verifyIdentity();await wait(()=>fixture.assertRegisteredPgConnectedRoles(context,continuity));
    receipt.clients=retained.map(row=>({role:row.loginRole,pid:row.pid,startedAt:row.start,tls:row.tls,clientAddress:row.clientAddress,serverAddress:row.serverAddress,serverPort:row.serverPort}));
    need(finalCatalog.status==='CURRENT259_CATALOG_COMMITTED'||finalCatalog.raw?.reader,'NATIVE_DIRECT_B7_CURRENT');return;
@@ -818,7 +820,13 @@ function validateNativeTask16CashAccounting(accountingJson){
 }
 
 function writeNativeTask16GapAccounting(root,candidateSha,runId,accountingJson){
- need(arguments.length===4&&hex(candidateSha,40)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(runId)&&typeof accountingJson==='string'&&Buffer.byteLength(accountingJson)<=8192,'NATIVE_DIRECT_ACCOUNTING_INPUT');directory(root);
+ need(arguments.length===4,'NATIVE_DIRECT_ACCOUNTING_INPUT');return writeNativeTask16SourceRejectionAccounting(root,candidateSha,runId,accountingJson,false);
+}
+function writeNativeTask16SourceAccounting(root,candidateSha,runId,accountingJson){
+ need(arguments.length===4,'NATIVE_DIRECT_ACCOUNTING_INPUT');return writeNativeTask16SourceRejectionAccounting(root,candidateSha,runId,accountingJson,true);
+}
+function writeNativeTask16SourceRejectionAccounting(root,candidateSha,runId,accountingJson,insufficient){
+ need(arguments.length===5&&hex(candidateSha,40)&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(runId)&&typeof accountingJson==='string'&&Buffer.byteLength(accountingJson)<=8192,'NATIVE_DIRECT_ACCOUNTING_INPUT');directory(root);
  const evidence=fixed(JSON.parse(accountingJson),['origin','currency','before','after','sourceAllocation','ownerUnchanged','originalKeyAbsent']);
  need(evidence.origin==='INDEPENDENT_OBSERVER_AND_OWNER_REPEATABLE_READ'&&evidence.currency==='CNY'&&evidence.ownerUnchanged===true&&evidence.originalKeyAbsent===true,'NATIVE_DIRECT_ACCOUNTING_ORIGIN');
  need(equal(fixed(evidence.sourceAllocation,['basis','balanceCents','projectCents','gapCents']),{basis:'EXACT_OWNER_SOURCE_PREDICATES',balanceCents:'800',projectCents:'500',gapCents:'300'}),'NATIVE_DIRECT_ACCOUNTING_COUNTS');
@@ -826,7 +834,7 @@ function writeNativeTask16GapAccounting(root,candidateSha,runId,accountingJson){
   const row=fixed(evidence[key],['phase','balanceAYuan4','balanceBYuan4','paidAmountCents','settlementPaidAmountCents','executionCount','rootCount','fundingCount','allocationCount','eventCount','auditCount','projectFactCount','projectImpactCount']);
   need(equal(row,{phase,balanceAYuan4:'100.0000',balanceBYuan4:'8.0000',paidAmountCents:'0',settlementPaidAmountCents:'0',executionCount:0,rootCount:0,fundingCount:0,allocationCount:0,eventCount:0,auditCount:0,projectFactCount:0,projectImpactCount:0}),'NATIVE_DIRECT_ACCOUNTING_COUNTS');
  }
- const bytes=Buffer.from(JSON.stringify({schemaVersion:1,purpose:GAP_PURPOSE,candidateSha,runId,caseId:'registered.project-attribution-gap',accountingEvidence:evidence})+'\n');need(bytes.length<=8192,'NATIVE_DIRECT_ACCOUNTING_BYTES');return writeNew(root,'accounting-evidence.json',bytes);
+ const bytes=Buffer.from(JSON.stringify({schemaVersion:1,purpose:insufficient?SOURCE_PURPOSE:GAP_PURPOSE,candidateSha,runId,caseId:insufficient?'registered.project-source-insufficient':'registered.project-attribution-gap',accountingEvidence:evidence})+'\n');need(bytes.length<=8192,'NATIVE_DIRECT_ACCOUNTING_BYTES');return writeNew(root,'accounting-evidence.json',bytes);
 }
 
 function writeNativeTask16VoucherAccounting(root,candidateSha,runId,accountingJson){
