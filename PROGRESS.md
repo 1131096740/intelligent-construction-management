@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-17 表内材料访问与合同类型矩阵
+
+表内归档附件权限测试 `9d25e09b` 合入 `65f8b959`，补丁 SHA `f3393fc4de0e09dfcbc647ab85cffe2f7eb6587d4dfaf2f81054aa3c091e371e`；五类型矩阵 `e20a22b3` 顺序合入 `9700449f`，补丁 SHA `4b87b4955d827800bd0cdd85a770bcd913cfdb515da76b973d1cf8de800477a6`。两补丁实际修改同一测试文件，顺序应用无冲突；第二补丁内容与封存一致（文件 index 因前一补丁而变化）。联合 HTTP 测试 29/29、API typecheck/lint 通过。
+
+覆盖五类型真实 HTTP 与合成事务，以及表内材料撤权后旧票访问范围；不证明真实 PostgreSQL 或文书资格。既有机械资格登记及 CON-18 UNKNOWN 保留原证据，本次未碰生产或推送。
+
 ## 2026-11-17 机械资格与 CON-18 结果
 
 准确 `fa23989db447e46d618d1c7239523b670f18c9e0` 的机械机器资格与物理审阅通过；[机器回执](/private/tmp/jg-mechqual-fa239-iUiWG8/run/MACHINE-RECEIPT.json) SHA `8b304a2ed6290b1f6a0e5f893b222416133c06ffe71824f3227c1bd138f0e047`，[物理审阅](/private/tmp/jg-mechfa239-physical-review-ze1wzle1/physical-review.json) SHA `db245eb6d75d8d11117875051240e7091534e01484a3e5e167a2a414677a05a4`。资格登记提交 `072cc394dc98e0e9c5a209019ed7aae1dd0e578f`，登记及 loader 检查通过；此结论限于对应版本和固定样张。
