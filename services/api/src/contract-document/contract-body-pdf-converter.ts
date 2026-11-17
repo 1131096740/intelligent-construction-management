@@ -8,6 +8,7 @@ import { dirname, isAbsolute, join, relative, resolve, delimiter } from "node:pa
 import { promisify } from "node:util";
 import { DOMParser, XMLSerializer, type Element } from "@xmldom/xmldom";
 import PizZip from "pizzip";
+import { assertLaborNameFontCoverage, LABOR_FONT_CHECK_ERROR } from "./labor-font-coverage";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { finalizeContractBodyLineBoxScope, isReviewedTypographyVersion, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION,
   type ContractBodyLineBoxScope, type ReviewedTypographyVersion } from "./contract-body-document";
@@ -329,12 +330,29 @@ async function materialBody25Proof(path: string, expected: ReturnType<typeof mat
 }
 
 export async function convertContractBodyDocxToPdf(bytes: Buffer, expectedRuntimeLockSha256: string,
-  options: { typographyVersion?: ReviewedTypographyVersion; lineBoxScope?: ContractBodyLineBoxScope } = {}) {
+  options: { typographyVersion?: ReviewedTypographyVersion; lineBoxScope?: ContractBodyLineBoxScope; laborPartyNames?: readonly string[] } = {}) {
   const started=performance.now();
   const official=currentOfficialDocumentScope();
   const child=official?createOfficialDocumentChildBudget(official,TIMEOUT_MS,started):undefined;
-  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some(key => !["typographyVersion", "lineBoxScope"].includes(key))) throw new Error(RUNTIME_ERROR);
-  const runtime = await loadRuntime(expectedRuntimeLockSha256, options.typographyVersion);
+  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some(key => !["typographyVersion", "lineBoxScope", "laborPartyNames"].includes(key))) throw new Error(RUNTIME_ERROR);
+  if(options.laborPartyNames!==undefined&&(!Array.isArray(options.laborPartyNames)||options.laborPartyNames.length!==2||options.laborPartyNames.some(name=>typeof name!=="string"||!name.trim()))) throw new Error(LABOR_FONT_CHECK_ERROR);
+  let runtime:Awaited<ReturnType<typeof loadRuntime>>;
+  try { runtime=await loadRuntime(expectedRuntimeLockSha256, options.typographyVersion); }
+  catch(error) { if(options.laborPartyNames) throw new Error(LABOR_FONT_CHECK_ERROR); throw error; }
+  if(options.laborPartyNames) {
+    let fontBytes:Buffer[];
+    try {
+      fontBytes=[];
+      for(const name of ["fangsong","times"]) {
+        const index=runtime.lock.fonts.findIndex(font=>font.name===name);
+        if(index<0) throw new Error(LABOR_FONT_CHECK_ERROR);
+        const bytes=await readFile(runtime.fonts[index]);
+        if(createHash("sha256").update(bytes).digest("hex")!==runtime.lock.fonts[index].sha256) throw new Error(LABOR_FONT_CHECK_ERROR);
+        fontBytes.push(bytes);
+      }
+    } catch { throw new Error(LABOR_FONT_CHECK_ERROR); }
+    assertLaborNameFontCoverage(options.laborPartyNames,fontBytes[0],fontBytes[1]);
+  }
   validateWord(bytes);
   if (runtime.descriptor.scopedBody25 !== Boolean(options.lineBoxScope)) throw new Error(RUNTIME_ERROR);
   const scoped = runtime.descriptor.scopedBody25 && options.lineBoxScope ? materialBody25ScopeXml(bytes, options.lineBoxScope) : undefined;

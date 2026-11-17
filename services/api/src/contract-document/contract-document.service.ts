@@ -7,7 +7,7 @@ import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type Layout
 import { BUILT_IN_GENERIC_FONT_VERSION, BUILT_IN_GENERIC_SOURCE_SHA256 } from "./contract-docx-package-metadata";
 import { assertGenericBankInputs } from "./generic-bank-blanks";
 import { assertGenericPartySourceMapping, assertLaborPartySourceMapping } from "./contract-body-document";
-import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, BUILT_IN_PARTY_PLACEMENT_VERSION, GENERIC_BANK_BLANKS_PLACEMENT_VERSION, LABOR_PARTY_PLACEMENT_VERSION, type PartyPlacementVersion, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
+import { assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, BUILT_IN_PARTY_PLACEMENT_VERSION, GENERIC_BANK_BLANKS_PLACEMENT_VERSION, LABOR_PARTY_PLACEMENT_VERSION, LABOR_GLYPH_PLACEMENT_VERSION, type PartyPlacementVersion, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
 import { laborFinalPartyNames } from "./contract-labor-final-party-page";
 import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
 import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
@@ -301,7 +301,7 @@ export class ContractDocumentService {
         const useBodyRenderer = version.numericProtocolVersion === 2 || draftData.documentBody !== undefined;
         const bodySource = useBodyRenderer ? selectedSource : undefined;
         const partyKind = builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex"));
-        const partyDetailsVersion = partyKind === "generic" ? GENERIC_BANK_BLANKS_PLACEMENT_VERSION : partyKind === "labor" ? LABOR_PARTY_PLACEMENT_VERSION : partyKind ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
+        const partyDetailsVersion = partyKind === "generic" ? GENERIC_BANK_BLANKS_PLACEMENT_VERSION : partyKind === "labor" ? (useBodyRenderer ? LABOR_GLYPH_PLACEMENT_VERSION : LABOR_PARTY_PLACEMENT_VERSION) : partyKind ? BUILT_IN_PARTY_PLACEMENT_VERSION : undefined;
         const mechanicalContactLayoutVersion=builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex"))==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:undefined;
         const genericFontTableVersion=createHash("sha256").update(selectedSource.buffer).digest("hex")===BUILT_IN_GENERIC_SOURCE_SHA256?BUILT_IN_GENERIC_FONT_VERSION:undefined;
         const engineVersion = useBodyRenderer ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION;

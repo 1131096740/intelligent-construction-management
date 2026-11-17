@@ -831,7 +831,8 @@ export function upgradeReviewedLaborTaxPlan(value: unknown, source: Buffer, mapp
 export const BUILT_IN_PARTY_PLACEMENT_VERSION = "built-in-party-placement-v1";
 export const GENERIC_BANK_BLANKS_PLACEMENT_VERSION = "built-in-generic-bank-blanks-v1";
 export const LABOR_PARTY_PLACEMENT_VERSION = "built-in-labor-party-v1";
-export type PartyPlacementVersion = typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION;
+export const LABOR_GLYPH_PLACEMENT_VERSION = "built-in-labor-party-glyph-v1";
+export type PartyPlacementVersion = typeof BUILT_IN_PARTY_PLACEMENT_VERSION | typeof GENERIC_BANK_BLANKS_PLACEMENT_VERSION | typeof LABOR_PARTY_PLACEMENT_VERSION | typeof LABOR_GLYPH_PLACEMENT_VERSION;
 export function builtInPartyPlacementKind(sourceSha256:string):"mechanical"|"material"|"generic"|"labor"|undefined {
   return sourceSha256===REVIEWED_MECHANICAL_SOURCE_SHA256?"mechanical":sourceSha256===REVIEWED_MATERIAL_SOURCE_SHA256?"material":sourceSha256===BUILT_IN_GENERIC_SOURCE_SHA256?"generic":sourceSha256===REVIEWED_LABOR_SOURCE_SHA256?"labor":undefined;
 }
@@ -982,7 +983,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const model = sourceParagraphs(source, mapped, binding, Boolean(options.partyDetailsVersion));
   const placement=options.partyDetailsVersion;
   const placementKind=builtInPartyPlacementKind(model.sourceSha256);
-  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==GENERIC_BANK_BLANKS_PLACEMENT_VERSION||placementKind!=="generic")&&(placement!==LABOR_PARTY_PLACEMENT_VERSION||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
+  if(placement!==undefined&&(!placementKind||(placement!==BUILT_IN_PARTY_PLACEMENT_VERSION&&(placement!==GENERIC_BANK_BLANKS_PLACEMENT_VERSION||placementKind!=="generic")&&((placement!==LABOR_PARTY_PLACEMENT_VERSION&&placement!==LABOR_GLYPH_PLACEMENT_VERSION)||placementKind!=="labor")))) throw new BadRequestException("合同主体信息呈现版本无法核对，请联系管理员处理");
   const roleIndexes=placementKind==="generic"?[13,14,53,58]:placementKind==="labor"?[27,28]:[28,29];
   const roleIds=new Set(placement?roleIndexes.map(index=>model.paragraphs[index].id):[]);
   const removedPartyIds=new Set(placement&&placementKind==="mechanical"?model.paragraphs.slice(93,109).map(item=>item.id):[]);
