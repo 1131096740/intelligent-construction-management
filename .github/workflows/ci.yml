@@ -285,19 +285,23 @@ jobs:
           sudo python3 - <<'PY'
           import re
           from pathlib import Path
-
-          archive = re.compile(r'http://(?:azure\.archive|[a-z0-9-]+\.ec2\.archive|archive)\.ubuntu\.com/ubuntu(?=/|\s|$)')
-          security = re.compile(r'http://security\.ubuntu\.com/ubuntu(?=/|\s|$)')
-          paths = [
-              Path('/etc/apt/apt-mirrors.txt'),
-              Path('/etc/apt/sources.list'),
-              Path('/etc/apt/sources.list.d/ubuntu.sources'),
-          ]
-          for source in paths:
+          mirrors = Path('/etc/apt/apt-mirrors.txt')
+          if mirrors.is_file():
+              lines = mirrors.read_text().splitlines(keepends=True)
+              azure = 'http://azure.archive.ubuntu.com/ubuntu/'
+              official = {'https://archive.ubuntu.com/ubuntu/', 'https://security.ubuntu.com/ubuntu/'}
+              urls = [line.split()[0] for line in lines if line.strip() and not line.lstrip().startswith('#')]
+              if azure in urls:
+                  if not official.intersection(urls):
+                      raise SystemExit('Missing official HTTPS Ubuntu mirror; refusing to change mirrors')
+                  mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
+          ec2 = re.compile(r'http://[a-z0-9-]+\.ec2\.archive\.ubuntu\.com/ubuntu(?=/|\s|$)')
+          for source in (mirrors, Path('/etc/apt/sources.list'), Path('/etc/apt/sources.list.d/ubuntu.sources')):
               if source.is_file():
                   original = source.read_text()
-                  updated = archive.sub('https://archive.ubuntu.com/ubuntu', original)
-                  updated = security.sub('https://security.ubuntu.com/ubuntu', updated)
+                  updated = ''.join(line if line.lstrip().startswith('#') else
+                                    ec2.sub('https://archive.ubuntu.com/ubuntu', line)
+                                    for line in original.splitlines(keepends=True))
                   if updated != original:
                       source.write_text(updated)
           PY

@@ -81,7 +81,7 @@ test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on succe
   }
 });
 
-test("all PostgreSQL runtime installs remove only Azure with an existing official HTTPS fallback", async () => {
+test("all PostgreSQL runtime installs retain Azure fallback rules and use HTTPS for EC2 archives", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
   const start = dynamic.indexOf("      - name: Prefer official HTTPS Ubuntu mirrors\n");
@@ -97,7 +97,9 @@ test("all PostgreSQL runtime installs remove only Azure with an existing officia
   const directory = await mkdtemp(join(tmpdir(), "ci-apt-mirrors-test-"));
   const mirrors = join(directory, "apt-mirrors.txt");
   const signedSources = "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-security\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n";
-  const source = step[1].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors));
+  const source = step[1].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors))
+    .replace("'/etc/apt/sources.list'", JSON.stringify(join(directory, "sources.list")))
+    .replace("'/etc/apt/sources.list.d/ubuntu.sources'", JSON.stringify(join(directory, "ubuntu.sources")));
   const azure = "http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n";
   const archive = "https://archive.ubuntu.com/ubuntu/\tpriority:2\n";
   const security = "https://security.ubuntu.com/ubuntu/\tpriority:3\n";
@@ -108,6 +110,7 @@ test("all PostgreSQL runtime installs remove only Azure with an existing officia
     [azure + "http://archive.ubuntu.com/ubuntu/\n", null, false],
     [azure + "# https://archive.ubuntu.com/ubuntu/\n", null, false],
     [archive + security + other, archive + security + other, true],
+    ["http://us-east-2.ec2.archive.ubuntu.com/ubuntu/\tpriority:2\n" + other, archive + other, true],
     ["", "", true],
     [null, null, true]
   ];
