@@ -7,9 +7,14 @@ const holder={exports:{}};
 const runtimeModel=new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-impact-runtime.test.cjs'),'utf8')+'\nreturn module.exports;')(
  name=>name==='node:test'?{test:noop}:name==='./run-task16-registered-pg-local.cjs'?{}:require(name),holder,__dirname);
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
+const {PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const {captureCurrent259ApplicationFailure,describeCurrent259ApplicationFailure}=require('./task16-current259-live-sessions.cjs');
 function fixture(t,options={}){
  const model=runtimeModel.fixture(),session=model.session,calls=[],proof=Object.freeze({}),handle=Object.freeze({});
+ if(options.paymentProfile===PAYMENT261_RUNTIME_PROFILE){
+  // The ordinary payment profile models the exact 261 prefix even when the checkout has later migrations.
+  session.source={...session.source,migrations:session.source.migrations.slice(0,261)};
+ }
  if(options.paymentProfile!==undefined){
   session.paymentProfile=options.paymentProfile;
   session.effectiveAccessBinding=loadCurrent259CatalogMaterial(session.source,options.paymentProfile).effectiveAccessBinding;
@@ -499,7 +504,7 @@ test('old app that returned from close with its original listener active cannot 
  assert.equal(f.resourceCloses(),1);
 });
 
-const NORMAL261='TASK16_PAYMENT261_RUNTIME_V1';
+const NORMAL261=PAYMENT261_RUNTIME_PROFILE;
 test('normal261 owned application publishes the live effective access binding',async t=>{
  const f=fixture(t,{paymentProfile:NORMAL261});
  await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
