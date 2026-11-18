@@ -68,7 +68,7 @@ describe("task10 material typography without an entered amount basis through pub
       expect(wb.bills[0].rows).toHaveLength(1);
       expect(wb.bills[0].rows[0]).toMatchObject({ itemName: "正文清单钢材", quantity: "2", unitPrice: "3.25", taxRatePercent: "0", taxInclusiveAmountYuan: "6.5000", taxExclusiveAmountYuan: "6.5000", taxAmountYuan: "0.0000" });
       const bodyResponse = await fetch(draft.base + "/document-body", { headers: draft.headers });
-      expect(bodyResponse.status).toBe(200);
+      expect(bodyResponse.status === 200 ? "OK" : await bodyResponse.text()).toBe("OK");
       const body = await bodyResponse.json() as PublicBody;
       await writeFile(join(directory, "public-body-readback.json"), JSON.stringify(body, null, 2));
       expect(body).toMatchObject({ sourceSha256: sourceSha, layoutTemplateVersionId: layout.id,

@@ -1068,6 +1068,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const clearedPartyIds=new Set(placement&&placementKind==="labor"?[156,159].map(index=>model.paragraphs[index].id):[]);
   const protectedBankIds=new Set(placement&&placementKind==="labor"?model.paragraphs.slice(156,162).map(item=>item.id):[]);
   if (hasPageValue) prepareReviewedOriginalMechanicalPage(model.zip);
+  const defaultSigningDateParagraphs = new Set<Element>();
   if (hasDateValue) {
     // Only the two source-qualified, truly empty party-cell paragraphs. Insert
     // defaults before the existing edit/delete plan so user text always wins.
@@ -1082,6 +1083,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
         throw new BadRequestException("合同签署日期呈现版本无法核对，请联系管理员处理");
       }
       replaceParagraphText(slot, "签署日期：　年　月　日", model.document);
+      defaultSigningDateParagraphs.add(slot);
     }
   }
   const plan = rawPlan === undefined ? undefined : normalizeContractBodyPlan(rawPlan, source, mapped, layoutTemplateVersionId, binding);
@@ -1173,7 +1175,15 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     if(options.mappedSignatureSupplement){
       const normalizeParties=(s:string)=>s.replace(/\{([^{}]+)\}/gu,(token,key:string)=>{const canonical=canonicalContractPlaceholder(key.trim());return canonical==="party.owner.name"||canonical==="party.counterparty.name"?`{${canonical}}`:token;});
       const [begin,end]=placementKind==="material"?[205,218]:[187,198];
-      for(let index=begin;index<=end;index++)if(normalizeParties(textOf(model.paragraphs[index].paragraph))!==normalizeParties(model.paragraphs[index].sourceText)&&!entries.some(entry=>entry.index===index))throw new BadRequestException("合同签署区映射无法核对，请保留内容并联系管理员处理");
+      for (let index = begin; index <= end; index++) {
+        const { paragraph, sourceText } = model.paragraphs[index];
+        // These exact source-qualified slots were verified empty before rendering the server default.
+        if (!defaultSigningDateParagraphs.has(paragraph) &&
+            normalizeParties(textOf(paragraph)) !== normalizeParties(sourceText) &&
+            !entries.some(entry => entry.index === index)) {
+          throw new BadRequestException("合同签署区映射无法核对，请保留内容并联系管理员处理");
+        }
+      }
     }
     const body=model.document.getElementsByTagNameNS(W,"body").item(0),anchor=model.paragraphs[placementKind==="material"?205:187].paragraph;
     let table:XmlNode|null=anchor;while(table&&table.parentNode!==body)table=table.parentNode;
