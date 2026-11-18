@@ -1837,6 +1837,7 @@ export interface OperatingProjectionAggregateReadModel {
 }
 
 export interface ProjectOperatingOverviewReadModel {
+  ownerBalance?: { settlementYuan: string; receivedYuan: string; outstandingYuan: string; advanceYuan: string } | null;
   project: ProjectOptionReadModel;
   cash: {
     actualReceiptsCents: string | null;
@@ -1854,9 +1855,11 @@ export interface ProjectOperatingOverviewReadModel {
     effectiveSettlementAmountCents: string | null;
     payableSettlementAmountCents: string | null;
     operatingIncomeCents: string | null;
+    operatingIncomeYuan?: string | null;
     affiliateDownstreamPaymentCents: string | null;
     operatingCostCents: string | null;
     grossProfitCents: string | null;
+    grossProfitYuan?: string | null;
   };
   upstreamFunds: {
     ownerPaymentCents: string | null;
@@ -1929,6 +1932,8 @@ export interface ProjectUpstreamFundFactPageReadModel {
 }
 
 export interface RecordProjectUpstreamFundFactPayload {
+  confirmedReceipt?: boolean;
+  confirmationPassword?: string;
   bankObservationReference?:string;
   factType: ProjectUpstreamFundFactType;
   basisType: ProjectUpstreamFundBasisType;
@@ -2753,10 +2758,18 @@ export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
 }
 
-export function fetchProjectSetOperatingProjection(projectIds?: string[]) {
+export type ProjectSetOperatingProjectionV2 = Pick<OperatingProjectionAggregateReadModel,
+  "scope" | "actualFunds" | "distribution" | "evidence" | "integrity"> & {
+  commitments: { contractCommitmentCents: string | null; contractCommitmentYuan: string | null };
+};
+
+export function fetchProjectSetOperatingProjection(projectIds?: string[]): Promise<OperatingProjectionAggregateReadModel>;
+export function fetchProjectSetOperatingProjection(projectIds: string[] | undefined, numericProtocolVersion: 2): Promise<ProjectSetOperatingProjectionV2>;
+export function fetchProjectSetOperatingProjection(projectIds?: string[], numericProtocolVersion?: 2) {
   const query = new URLSearchParams({ scopeKind: "projects" });
   if (projectIds) query.set("projectIds", projectIds.join(","));
-  return readJson<OperatingProjectionAggregateReadModel>(
+  if (numericProtocolVersion === 2) query.set("numericProtocolVersion", "2");
+  return readJson<OperatingProjectionAggregateReadModel | ProjectSetOperatingProjectionV2>(
     `/operating-projections/as-of?${query.toString()}`
   );
 }
@@ -2845,6 +2858,33 @@ export function fetchProjectUpstreamFundConfirmationCapability(
 ) {
   return readJson<ProjectUpstreamFundConfirmationCapabilityReadModel>(
     `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/${encodeURIComponent(fundFactId)}/confirmation-capability`
+  );
+}
+
+export interface RecordProjectOwnerSettlementPayload {
+  ownerName: string;
+  settledAt: string;
+  amountYuan: string;
+  voucherFileId: string;
+  idempotencyKey: string;
+}
+
+export function fetchProjectOwnerSettlementCapability(projectId: string) {
+  return readJson<{ projectId: string; availableActions: string[] }>(
+    `/projects/${encodeURIComponent(projectId)}/owner-settlements/record-capability`
+  );
+}
+
+export function uploadProjectOwnerSettlementFile(projectId: string, file: File, idempotencyKey: string) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/owner-settlements/file-uploads`,
+    projectDomainPrivateFileForm(file, file.name, undefined, idempotencyKey)
+  );
+}
+
+export function recordProjectOwnerSettlement(projectId: string, body: RecordProjectOwnerSettlementPayload) {
+  return postJson<{ id: string; amountYuan: string }>(
+    `/projects/${encodeURIComponent(projectId)}/owner-settlements`, body
   );
 }
 

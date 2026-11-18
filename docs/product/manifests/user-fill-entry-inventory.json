@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 421,
+    "activeBusinessActionCount": 423,
     "technicalActionCount": 10,
-    "activeBindingCount": 489,
+    "activeBindingCount": 491,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -4920,6 +4920,38 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /projects"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.owner-settlement.evidence-upload",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/owner-settlements/file-uploads"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.owner-settlement.record",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/owner-settlements"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

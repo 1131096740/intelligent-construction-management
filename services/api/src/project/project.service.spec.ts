@@ -727,7 +727,13 @@ describe("ProjectService", () => {
   });
 
   it("adapts the legacy overview to the unified projection without reading source amount tables", async () => {
+    const cutoffAt = new Date("2026-09-10T15:59:59.999Z");
+    const readAt = new Date("2026-09-11T00:00:00.000Z");
     const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        { kind: "settlement", ownerId: "owner", constructionEnterpriseId: "enterprise", amountYuan: "100.0000" },
+        { kind: "receipt", ownerId: "owner", constructionEnterpriseId: "enterprise", amountYuan: "20.0000" }
+      ]),
       project: {
         findFirst: jest.fn().mockResolvedValue({
           id: "project-1",
@@ -773,7 +779,7 @@ describe("ProjectService", () => {
       readProjectCompatibilitySnapshot: jest.fn().mockImplementation(
         async (_actorUserId, _input, readAdditional) => ({
           projection: aggregate,
-          additional: await readAdditional(prisma, ["project-1"]),
+          additional: await readAdditional(prisma, ["project-1"], { moneyComplete: true, cutoffAt, readAt }),
           canExportDetail: true
         })
       )
@@ -815,6 +821,7 @@ describe("ProjectService", () => {
         operatingCostCents: "8800000",
         grossProfitCents: "21200000"
       }),
+      ownerBalance: { settlementYuan: "100.0000", receivedYuan: "20.0000", outstandingYuan: "80.0000", advanceYuan: "0.0000" },
       upstreamFunds: expect.objectContaining({
         unreconciledReceiptDifferenceCents: "5000",
         writtenCount: 2,
@@ -824,6 +831,7 @@ describe("ProjectService", () => {
       operatingProjection: aggregate,
       canExportOperatingProjection: true
     }));
+    expect(prisma.$queryRaw.mock.calls[0]?.[1]).toBe("project-1");
     expect(result).not.toHaveProperty("schema");
     expect(result.upstreamFunds).not.toHaveProperty("rows");
     expect(prisma).not.toHaveProperty("projectReceipt");

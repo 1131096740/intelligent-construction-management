@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsIn,
   IsOptional,
@@ -44,6 +45,18 @@ export type ProjectAffiliateDeductionCategory =
   (typeof PROJECT_AFFILIATE_DEDUCTION_CATEGORIES)[number];
 
 export class RecordProjectUpstreamFundFactDto {
+  @IsOptional()
+  @IsBoolean({ message: "实际到账确认状态不正确" })
+  confirmedReceipt?: boolean;
+
+  @ValidateIf((input, value) => input.confirmedReceipt === true || value !== undefined)
+  @IsRequiredText({
+    requiredMessage: "请输入当前登录密码",
+    typeMessage: "当前登录密码必须是文字",
+    blankMessage: "请输入当前登录密码"
+  })
+  confirmationPassword?: string;
+
  @IsOptional()
  @IsString()
  bankObservationReference?:string;

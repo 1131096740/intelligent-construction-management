@@ -96,6 +96,7 @@ export interface ProjectCloseProfitWorkbenchReadModel {
   projectId: string;
   canReconcileImpacts: boolean;
   availableActions: ProjectCloseAction[];
+  writeBlockedReason?: string;
   projection: {
     readAt: string;
     cutoffAt: string;
@@ -109,7 +110,7 @@ export interface ProjectCloseProfitWorkbenchReadModel {
       distribution: Record<string, string | null>;
       evidence: Record<string, unknown>;
     };
-  };
+  } | null;
   stages: ProjectCloseStageReadModel[];
   currentProfitConfirmation: null | {
     id: string;

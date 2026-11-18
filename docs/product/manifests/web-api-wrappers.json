@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 45,
-    "exportedFunctionCount": 718,
-    "transportWrapperCount": 695,
+    "exportedFunctionCount": 721,
+    "transportWrapperCount": 698,
     "pureExportCount": 23,
-    "mainRequestBindingCount": 735,
+    "mainRequestBindingCount": 738,
     "ticketFollowupCount": 5,
-    "requestEdgeCount": 724,
-    "productionConsumerCount": 608,
+    "requestEdgeCount": 727,
+    "productionConsumerCount": 611,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -6925,7 +6925,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7246,
+          "sourceLine": 7286,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -6957,7 +6957,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7230,
+          "sourceLine": 7270,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -6987,7 +6987,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7230,
+          "sourceLine": 7270,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7017,7 +7017,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5646,
+          "sourceLine": 5686,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7046,7 +7046,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7230,
+          "sourceLine": 7270,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7076,7 +7076,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2779,
+          "sourceLine": 2792,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7138,7 +7138,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5533,
+          "sourceLine": 5573,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7170,7 +7170,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3686,
+          "sourceLine": 3726,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7229,7 +7229,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7273,
+          "sourceLine": 7313,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7258,7 +7258,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7260,
+          "sourceLine": 7300,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7287,7 +7287,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7288,
+          "sourceLine": 7328,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7316,7 +7316,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7230,
+          "sourceLine": 7270,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -8697,6 +8697,34 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectOwnerSettlementCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/projects/:param/owner-settlements/record-capability",
+          "normalizedPath": "/projects/:param/owner-settlements/record-capability",
+          "normalizedKey": "GET /projects/:param/owner-settlements/record-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectOwnerSettlementCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -10468,6 +10496,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "recordProjectOwnerSettlement",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 86,
+          "method": "POST",
+          "path": "/projects/:param/owner-settlements",
+          "normalizedPath": "/projects/:param/owner-settlements",
+          "normalizedKey": "POST /projects/:param/owner-settlements",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectOwnerSettlement",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "recordProjectProxyPayment",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -11688,6 +11744,34 @@
           "localCallChains": [
             [
               "uploadProjectExpensePrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectOwnerSettlementFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 117,
+          "method": "POST",
+          "path": "/projects/:param/owner-settlements/file-uploads",
+          "normalizedPath": "/projects/:param/owner-settlements/file-uploads",
+          "normalizedKey": "POST /projects/:param/owner-settlements/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectOwnerSettlementFile",
               "postForm"
             ]
           ]
@@ -16310,7 +16394,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/downstream-cost/attestations/contract",
           "normalizedPath": "/projects/:param/close-profit/downstream-cost/attestations/contract",
@@ -16338,7 +16422,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/downstream-cost/attestations/finance",
           "normalizedPath": "/projects/:param/close-profit/downstream-cost/attestations/finance",
@@ -16368,7 +16452,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/stages/:param/complete",
           "normalizedPath": "/projects/:param/close-profit/stages/:param/complete",
@@ -16398,7 +16482,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/final-profit/confirm",
           "normalizedPath": "/projects/:param/close-profit/final-profit/confirm",
@@ -16428,7 +16512,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/distributions/confirm",
           "normalizedPath": "/projects/:param/close-profit/distributions/confirm",
@@ -16458,7 +16542,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 270,
+          "sourceLine": 271,
           "method": "GET",
           "path": "/projects/:param/close-profit",
           "normalizedPath": "/projects/:param/close-profit",
@@ -16490,7 +16574,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/temporary-distributions",
           "normalizedPath": "/projects/:param/close-profit/temporary-distributions",
@@ -16520,7 +16604,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/impacts/reconcile",
           "normalizedPath": "/projects/:param/close-profit/impacts/reconcile",
@@ -16548,7 +16632,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/final-profit/submissions",
           "normalizedPath": "/projects/:param/close-profit/final-profit/submissions",
@@ -16579,7 +16663,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 280,
+          "sourceLine": 281,
           "method": "POST",
           "path": "/projects/:param/close-profit/distributions/submissions",
           "normalizedPath": "/projects/:param/close-profit/distributions/submissions",

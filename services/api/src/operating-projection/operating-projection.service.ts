@@ -149,6 +149,12 @@ type ProjectionReadContext = {
   projectionContextFingerprint: string;
 };
 
+export class OwnerSettlementBelowCentForCloseError extends ConflictException {
+  constructor() {
+    super("业主结算含不足一分的金额，当前收口不能准确记账。本次操作已阻止，已冻结的历史仍可查看。");
+  }
+}
+
 export type OperatingProjectionTransactionProjectRead = Readonly<{
   projection: OperatingProjectionReadModel;
   aggregate: OperatingProjectionAggregateView;
@@ -187,7 +193,8 @@ export class OperatingProjectionService {
         scope: { kind: "project", projectId, filters: {} },
         requireOverviewPermission: true,
         fixedReadAt: input.fixedReadAt,
-        transactionClient: tx
+        transactionClient: tx,
+        allowExactOwnerSettlementCents: true
       }, async (_client, _projectIds, context) => ({
         readAt: context.readAt,
         cutoffAt: context.cutoffAt,
@@ -660,29 +667,30 @@ export class OperatingProjectionService {
   async readProjectCompatibilitySnapshot<T>(
     actorUserId: string,
     input: ProjectProjectionQuery,
-    readAdditional: (tx: Prisma.TransactionClient, projectIds: string[]) => Promise<T>
+    readAdditional: (tx: Prisma.TransactionClient, projectIds: string[], context: ProjectionReadContext) => Promise<T>
   ): Promise<{
-    projection: OperatingProjectionAggregateView;
+    projection: OperatingProjectionV2AggregateView;
     additional: T;
     canExportDetail: boolean;
   }> {
     const projectId = required(input.projectId, "项目标识不能为空");
     const bundle = await this.readProjectionBundle({
       actorUserId,
+      numericProtocolVersion: 2,
       scope: {
         kind: "project",
         projectId,
         filters: projectionFilters(input)
       },
       asOf: input.asOf
-    }, async (tx, projectIds) => {
+    }, async (tx, projectIds, context) => {
       const effectiveRoleKeysByProject =
         await this.projectVisibility.effectiveRoleKeysByProjectInTransaction(
           tx,
           actorUserId,
           projectIds
         );
-      const additional = await readAdditional(tx, projectIds);
+      const additional = await readAdditional(tx, projectIds, context);
       return {
         additional,
         canExportDetail: projectIds.every((currentProjectId) =>
@@ -715,6 +723,7 @@ export class OperatingProjectionService {
   }> {
     const bundle = await this.readProjectionBundle({
       actorUserId,
+      numericProtocolVersion: 2,
       scope: {
         kind: "projects",
         projectIds: input.projectIds,
@@ -780,6 +789,7 @@ export class OperatingProjectionService {
     fixedReadAt?: Date;
     fixedCutoffAt?: Date;
     transactionClient?: Prisma.TransactionClient;
+    allowExactOwnerSettlementCents?: boolean;
   }, readAdditional?: (
     tx: Prisma.TransactionClient,
     projectIds: string[],
@@ -1072,11 +1082,18 @@ export class OperatingProjectionService {
       );
       await readOperatingFactsInBatches(tx, projectIds, cutoffAt, readAt, {
         startFacts: (facts) => {
-          const mapped = facts.map((fact) => versionedProjectionFactFromStored(fact, projectById, input.numericProtocolVersion ?? 1));
+          const mapped = facts.map((fact) => versionedProjectionFactFromStored(
+            input.allowExactOwnerSettlementCents ? projectCloseLegacyOwnerSettlementRow(fact) : fact,
+            projectById,
+            input.numericProtocolVersion ?? 1
+          ));
           accumulator.startFacts(mapped);
         },
         addImpacts: (impacts) => accumulator.addImpacts(
-          impacts.map((impact) => ({ ...versionedProjectionImpactFromStored(impact, input.numericProtocolVersion ?? 1), factId: impact.factId }))
+          impacts.map((impact) => ({ ...versionedProjectionImpactFromStored(
+            input.allowExactOwnerSettlementCents ? projectCloseLegacyOwnerSettlementRow(impact) : impact,
+            input.numericProtocolVersion ?? 1
+          ), factId: impact.factId }))
         ),
         finishFacts: () => accumulator.finishFacts()
       });
@@ -2166,6 +2183,15 @@ async function readOperatingFactsInBatches(
       cursorId = page.at(-1)!.id;
     }
   }
+}
+
+function projectCloseLegacyOwnerSettlementRow<Row extends {
+  sourceType: string; numericProtocolVersion: number; amountCents: bigint | null; amountYuan: Prisma.Decimal | null;
+}>(row: Row): Row {
+  if (row.sourceType !== "project_owner_settlement_entry" || row.numericProtocolVersion !== 2) return row;
+  const cents = row.amountYuan?.times(100);
+  if (row.amountCents !== null || !cents?.isInteger()) throw new OwnerSettlementBelowCentForCloseError();
+  return { ...row, numericProtocolVersion: 1, amountCents: BigInt(cents.toFixed(0)), amountYuan: null };
 }
 
 function versionedProjectionFactFromStored(fact: ProjectionStoredFact, projectById: Map<string, { id: string; code: string; name: string }>, protocol: 1 | 2): ProjectionFactInput | ProjectionV2FactInput {

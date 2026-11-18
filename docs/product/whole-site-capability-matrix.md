@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `5c4ffb397fa35df96a7dc31bd37a7df587f05c5031fec6ceccadd401dc5fda71` |
-| webApiWrappers | ready | `0e2bc7c30539e6aa76805054c092aa73e7b2588d394e95c194aa76d470b1f45d` |
-| webPageActions | ready | `33fdd3667d155111fd2985c6c7ba2a0db207c68b4d473444df4b1483443b52cb` |
-| routeUsage | ready | `e45727e0fbfbdaa2ce4cbb2e80f7e6142f4da05f3fcdb0d2f8a7f91396efaf4b` |
+| nestRoutes | ready | `9abfd55febc8b260867382b2e70cc6210c77cc0baa6bbf6e98fd483b2857a49b` |
+| webApiWrappers | ready | `dfacca13e4e992056e2ff9f9bbb7028b3a2c6524052a4b0813dac6b809ed53e6` |
+| webPageActions | ready | `ffd6a6c1f306d4f33af940b278a7dff8786dc09be5930cdb4b13e5e6a11d82f3` |
+| routeUsage | ready | `7014f1310479f0965aa3809568fc347aaf70b9aeb9a0531b751b6b413cb5fb13` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 741 |
-| pageRouteCount | 542 |
+| routeCount | 744 |
+| pageRouteCount | 545 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 735 |
+| mainRequestBindingCount | 738 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 434 |
-| actionBindingCount | 504 |
-| acceptedActionBindingCount | 462 |
+| registeredActionCount | 436 |
+| actionBindingCount | 506 |
+| acceptedActionBindingCount | 464 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 420 |
-| coveredProductionMutationConsumerPairCount | 420 |
+| productionMutationConsumerPairCount | 422 |
+| coveredProductionMutationConsumerPairCount | 422 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -232,6 +232,7 @@
 | GET | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverBatches | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/scenes | external_takeover | none | — | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/workbook-template | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#downloadOperatingTakeoverTemplate | — | not_applicable | — |
+| GET | /projects/:projectId/owner-settlements/record-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOwnerSettlementCapability | — | not_applicable | — |
 | GET | /projects/:projectId/participating-company-options | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectParticipatingCompanyOptions | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |
@@ -652,6 +653,8 @@
 | POST | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#createOperatingTakeoverBatch | operating-takeover.create-batch | covered | — |
 | POST | /projects/:projectId/owner-contracts/:ownerContractId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectOwnerContract | — | not_applicable | — |
 | POST | /projects/:projectId/owner-contracts | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectOwnerContract | — | not_applicable | — |
+| POST | /projects/:projectId/owner-settlements/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectOwnerSettlementFile | project.owner-settlement.evidence-upload | covered | — |
+| POST | /projects/:projectId/owner-settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectOwnerSettlement | project.owner-settlement.record | covered | — |
 | POST | /projects/:projectId/participating-companies/:participantId/deactivation/validate | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#validateProjectParticipatingCompanyDeactivation | project-operating-profile.deactivate-participating-company | covered | — |
 | POST | /projects/:projectId/participating-companies | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#addProjectParticipatingCompany | project-operating-profile.add-participating-company | covered | — |
 | POST | /projects/:projectId/proxy-payments | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment | — | not_applicable | — |

@@ -4,6 +4,7 @@ import {
   reduceOperatingProjection,
   toOperatingProjectionAggregate,
   type ProjectionFactInput,
+  type ProjectionV2FactInput,
   type ProjectionRestrictionSourceInput
 } from "./operating-projection.reducer";
 
@@ -34,6 +35,39 @@ const fact = (
 });
 
 describe("经营金额双协议", () => {
+  it("历史收入与四位新业主正负结算同口径，流式和直读不改变银行资金或合同承诺", () => {
+    const legacy = fact({ id: "historical", amountCents: 6000n, impacts: [
+      { id: "legacy-income", impactKind: "confirmed_income", direction: "increase", amountCents: 6000n },
+      { id: "legacy-receivable", impactKind: "receivable_increase", direction: "increase", amountCents: 6000n }
+    ] });
+    const settlement = (id: string, amountYuan: string, direction: "increase" | "decrease"): ProjectionV2FactInput => ({
+      ...fact({ id, sourceType: "project_owner_settlement_entry", direction: direction === "increase" ? "inflow" : "outflow" }),
+      numericProtocolVersion: 2,
+      amountCents: null,
+      amountYuan,
+      impacts: (["confirmed_income", direction === "increase" ? "receivable_increase" : "receivable_decrease"] as const)
+        .map(impactKind => ({ id: `${id}-${impactKind}`, impactKind, direction, numericProtocolVersion: 2, amountCents: null, amountYuan }))
+    });
+    const rows = [legacy, settlement("positive", "10.0001", "increase"), settlement("negative", "0.0001", "decrease")];
+    const context = { numericProtocolVersion: 2 as const, scope: { kind: "project" as const, projectId: "project-1", projectIds: ["project-1"] },
+      readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", riskByProject: [] };
+    const stream = new OperatingProjectionStreamAccumulator(context);
+    for (const row of rows) {
+      stream.startFacts([{ ...row, impacts: [] }]);
+      stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })));
+      stream.finishFacts();
+    }
+    const direct = reduceOperatingProjection({ ...context, facts: rows });
+    const paged = reduceOperatingProjection({ ...context, facts: [], ...stream.result() });
+    expect(paged.operating).toEqual(direct.operating);
+    expect(paged.operating).toMatchObject({
+      confirmedIncomeCents: null, confirmedIncomeYuan: "70.0000",
+      receivableCents: null, receivableYuan: "70.0000"
+    });
+    expect(paged.actualFunds.confirmedProjectInflowsCents).toBe("0");
+    expect(paged.commitments.contractCommitmentYuan).toBe("0.0000");
+  });
+
   it.each(["decimal","legacy-uncapped"] as const)("%s所选追溯事实在直读与分页只累计一次",kind=>{
     const selected=kind==="decimal"?fact({id:"after-cutoff",sourceType:"contract_version",factKind:"downstream_contract",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050",confirmedAt:"2026-02-01T00:00:00.000Z",sourceSnapshot:{contractRelationship:"inside"},impacts:[{id:"selected-impact",impactKind:"contract_commitment_reference",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050",direction:"increase"}]} as never):fact({id:"after-cutoff",sourceType:"contract_version",factKind:"downstream_contract",amountCents:500n,confirmedAt:"2026-02-01T00:00:00.000Z",sourceSnapshot:{amountNature:"uncapped",contractRelationship:"inside"},impacts:[{id:"selected-impact",impactKind:"contract_commitment_reference",amountCents:500n,direction:"decrease"}]});
     const before=fact({id:"before-cutoff",sourceType:"contract_version",factKind:"downstream_contract",amountCents:0n,sourceSnapshot:{amountNature:"fixed"},impacts:[{id:"known-zero",impactKind:"contract_commitment_reference",amountCents:0n,direction:"increase"}]});

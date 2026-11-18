@@ -1155,6 +1155,26 @@ async function assertV2EconomicReviewSource(tx: OperatingLedgerTransaction, inpu
 function validateOperatingMoneyScope(input: AppendOperatingFactInput, entryKind: OperatingFactEntryKind) {
   if (input.impacts.some(impact => (impact.numericProtocolVersion ?? 1) !== (input.numericProtocolVersion ?? 1))) throw new BadRequestException("经营事实与影响分录必须使用同一金额协议");
   if (input.numericProtocolVersion !== 2) return;
+  if (input.sourceType === "project_owner_settlement_entry") {
+    const reduction = input.direction === "outflow";
+    const impactDirection = reduction ? "decrease" : "increase";
+    const impactKinds = new Set(["confirmed_income", reduction ? "receivable_decrease" : "receivable_increase"]);
+    if (entryKind !== "original" || input.factKind !== "owner_settlement" ||
+      (input.direction !== "inflow" && input.direction !== "outflow") ||
+      !input.amountYuan || input.amountYuan === "0.0000" ||
+      input.subjects.debtor?.kind !== "owner" || input.subjects.creditor?.kind !== "construction_enterprise" ||
+      input.paymentExecutionId || input.fundExecutionId || input.fundExecutionCaseId ||
+      input.impacts.length !== 2 || input.impacts.some(impact =>
+        !impactKinds.delete(impact.impactKind) || impact.sourceImpactKey !== impact.impactKind ||
+        impact.numericProtocolVersion !== 2 || impact.amountYuan !== input.amountYuan || impact.direction !== impactDirection ||
+        impact.subjectRole !== "creditor" || impact.subject?.kind !== "construction_enterprise" ||
+        impact.subject.id !== input.subjects.creditor?.id ||
+        impact.paymentExecutionId || impact.fundExecutionId || impact.fundExecutionCaseId || impact.executionAllocationLineId
+      )) {
+      throw new BadRequestException("业主结算只能按同一金额登记收入及应收，不得记为实付");
+    }
+    return;
+  }
   if (input.sourceType === "contract_economic_review" && (input.amountYuan === null || input.amountYuan === "0.0000")) throw new BadRequestException("履约复核调整仅支持已确认的非零承诺金额");
   if (entryKind !== "original" || !["contract_version", "contract_economic_review"].includes(input.sourceType) || input.factKind !== "downstream_contract" || input.direction !== "neutral" || input.paymentExecutionId || input.fundExecutionId || input.fundExecutionCaseId || input.impacts.length !== 1 || input.impacts.some(impact => impact.numericProtocolVersion !== 2 || impact.impactKind !== "contract_commitment_reference" || impact.sourceImpactKey !== "contract_commitment_reference" || impact.subjectRole !== "debtor" || (input.amountYuan === null ? impact.direction !== "notice" : !["increase", "decrease"].includes(impact.direction)) || impact.amountYuan !== input.amountYuan || impact.paymentExecutionId || impact.fundExecutionId || impact.fundExecutionCaseId || impact.executionAllocationLineId)) throw new BadRequestException("新版合同承诺影响必须与原事实的待确定状态及金额一致，不得改作成本、实付或冲销");
 }

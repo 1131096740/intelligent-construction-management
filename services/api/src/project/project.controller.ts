@@ -43,6 +43,7 @@ import { RecordProjectAffiliatePaymentFactDto } from "./dto/record-project-affil
 import { RecordProjectAffiliateSettlementFactDto } from "./dto/record-project-affiliate-settlement-fact.dto";
 import { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
+import { RecordProjectOwnerSettlementDto } from "./dto/record-project-owner-settlement.dto";
 import { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { RecordProjectUpstreamFundFactDto } from "./dto/record-project-upstream-fund-fact.dto";
 import { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing-quota.dto";
@@ -673,6 +674,37 @@ export class ProjectController {
     throw new GoneException(
       "旧施工企业代付一步式写入口已停用，请使用施工企业业务持续接管的合同、结算、付款事实链"
     );
+  }
+
+  @Post(":projectId/owner-settlements")
+  @RequireProjectRole("project.owner_settlement.record")
+  recordOwnerSettlement(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectOwnerSettlementDto
+  ) {
+    return this.projects.recordOwnerSettlement(projectId, user.id, body);
+  }
+
+  @Post(":projectId/owner-settlements/file-uploads")
+  @RequireProjectRole("project.owner_settlement.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadOwnerSettlementFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "业主结算凭证");
+  }
+
+  @Get(":projectId/owner-settlements/record-capability")
+  @RequireProjectRole("project.owner_settlement.record")
+  ownerSettlementRecordCapability(@Param("projectId") projectId: string) {
+    return { projectId, availableActions: ["record_owner_settlement"] };
   }
 
   @Post(":projectId/upstream-settlements")

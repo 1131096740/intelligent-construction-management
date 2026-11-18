@@ -155,9 +155,17 @@ export interface ReduceOperatingProjectionInput {
   };
 }
 
+const OWNER_SETTLEMENT_SOURCE = "project_owner_settlement_entry";
+
+interface DecimalOwnerSettlementTotals {
+  incomeYuan: string;
+  receivableYuan: string;
+}
+
 export interface ProjectionDecimalSeed {
   sourceGroups: Partial<Record<"contract_version" | "contract_economic_review", ProjectionYuanSummary & { count: number }>>;
   count: number; retroactiveFactCount: number; commitment: ProjectionYuanSummary;
+  ownerSettlement?: DecimalOwnerSettlementTotals;
   relationships: Partial<Record<ContractRelationship, ProjectionYuanSummary>>;
   evidence: Record<EvidenceLevel, { count: number; knownSubtotalYuan: string; unknownCount: number }>;
 }
@@ -396,11 +404,13 @@ export interface OperatingProjectionDetailedView extends OperatingProjectionAggr
   }>;
 }
 
-export type OperatingProjectionV2AggregateView = Omit<OperatingProjectionAggregateView, "commitments" | "relationshipTotals" | "evidence" | "sources"> & {
+export type OperatingProjectionV2AggregateView = Omit<OperatingProjectionAggregateView, "commitments" | "relationshipTotals" | "evidence" | "sources" | "operating" | "profitAndLoss"> & {
   schema: "operating_projection/V2"; numericProtocolVersion: 2;
   commitments: OperatingProjectionV2ReadModel["commitments"];
   relationshipTotals: OperatingProjectionV2ReadModel["relationshipTotals"];
   evidence: OperatingProjectionV2ReadModel["evidence"];
+  operating: OperatingProjectionV2ReadModel["operating"];
+  profitAndLoss: OperatingProjectionV2ReadModel["profitAndLoss"];
   sources: Array<ProjectionYuanSummary & { sourceTypeLabel: string; factCount: number; impactCount: number; riskItemCount: number; signedImpactCents: string | null }>;
 };
 function toV2Aggregate(projection: OperatingProjectionV2ReadModel): OperatingProjectionV2AggregateView {
@@ -600,7 +610,11 @@ export function toOperatingProjectionPublicDetail(
     if (fact.numericProtocolVersion !== 2 || impact.numericProtocolVersion !== 2) throw new Error("经营明细事实与影响使用了不同金额协议");
     const amountYuan = normalizeBusinessAmount(fact.amountYuan);
     if (fact.sourceType === "contract_economic_review" && (amountYuan === null || amountYuan === "0.0000")) throw new Error("履约复核调整必须保留已确认非零金额");
-    if (!["contract_version", "contract_economic_review"].includes(fact.sourceType) || fact.factKind !== "downstream_contract" || fact.amountCents !== null || impact.amountCents !== null || impact.amountYuan !== amountYuan || impact.impactKind !== "contract_commitment_reference" || (amountYuan === null ? impact.direction !== "notice" : !["increase", "decrease"].includes(impact.direction))) throw new Error("新版合同参考明细金额与状态不一致");
+    if (fact.sourceType === OWNER_SETTLEMENT_SOURCE) {
+      signedOwnerSettlementImpact(fact, impact);
+    } else if (!["contract_version", "contract_economic_review"].includes(fact.sourceType) || fact.factKind !== "downstream_contract" || fact.amountCents !== null || impact.amountCents !== null || impact.amountYuan !== amountYuan || impact.impactKind !== "contract_commitment_reference" || (amountYuan === null ? impact.direction !== "notice" : !["increase", "decrease"].includes(impact.direction))) {
+      throw new Error("新版合同参考明细金额与状态不一致");
+    }
     return { numericProtocolVersion: 2 as const, projectCode: fact.projectCode, projectName: fact.projectName, sourceTypeLabel: sourceTypeLabel(fact.sourceType), sourceBusinessCode: fact.sourceBusinessCode, factKindLabel: factKindLabel(fact.factKind), contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType, fact.sourceSnapshot)], evidenceLevel: fact.evidenceLevel, occurredAt: fact.occurredAt, confirmedAt: fact.confirmedAt, confirmedAfterAsOf: fact.confirmedAt > cutoffAt, impactKindLabel: impactKindLabel(impact.impactKind), directionLabel: directionLabel(impact.direction), signedImpactCents: null, amountYuan, signedImpactYuan: amountYuan === null ? null : impact.direction === "decrease" && amountYuan !== "0.0000" ? `-${amountYuan}` : amountYuan, amountState: amountYuan === null ? "unknown" as const : "known" as const, costCategoryCode: null, fundPurpose: null };
   }
   const kindKnown = IMPACT_KIND_SET.has(impact.impactKind);
@@ -667,6 +681,7 @@ const CASH_IMPACT_KINDS = new Set<OperatingImpactKind>([
 const SOURCE_TYPE_LABELS: Readonly<Record<string, string>> = {
   owner_settlement: "业主结算",
   project_upstream_settlement: "对上结算",
+  project_owner_settlement_entry: "业主结算登记",
   project_upstream_fund_fact: "对上资金事实",
   project_affiliate_contract_fact: "表外合同（施工企业签约）",
   project_affiliate_settlement_fact: "施工企业—我方结算事实",
@@ -1332,6 +1347,16 @@ export class OperatingProjectionStreamAccumulator {
   private readonly decimalSeed: ProjectionDecimalSeed = { sourceGroups: {}, count: 0, retroactiveFactCount: 0, commitment: { amountYuan: "0.0000", knownSubtotalYuan: "0.0000", unknownCount: 0 }, relationships: {}, evidence: { A: { count: 0, knownSubtotalYuan: "0.0000", unknownCount: 0 }, B: { count: 0, knownSubtotalYuan: "0.0000", unknownCount: 0 }, C: { count: 0, knownSubtotalYuan: "0.0000", unknownCount: 0 } } };
 
   private addDecimalImpact(fact: ProjectionV2FactInput, impact: ProjectionV2ImpactInput) {
+    if (fact.sourceType === OWNER_SETTLEMENT_SOURCE) {
+      const signed = signedOwnerSettlementImpact(fact, impact);
+      const state = this.decimalFacts.get(fact.id)!;
+      state.impactCount += 1;
+      if (!matchesFilters(fact, impact, this.context.scope.filters, this.context.constructionEnterpriseSubjectIds, this.context.companyEntityVersionIds)) return;
+      state.selected = true;
+      this.decimalSeed.ownerSettlement ??= { incomeYuan: "0.0000", receivableYuan: "0.0000" };
+      addOwnerSettlementImpact(this.decimalSeed.ownerSettlement, impact, signed);
+      return;
+    }
     const amount = normalizeBusinessAmount(fact.amountYuan);
     if (fact.sourceType === "contract_economic_review" && (amount === null || amount === "0.0000")) throw new Error("履约复核调整必须保留已确认非零金额");
     if (!["contract_version", "contract_economic_review"].includes(fact.sourceType) || fact.factKind !== "downstream_contract" || fact.amountCents !== null || impact.numericProtocolVersion !== 2 || impact.amountCents !== null || impact.amountYuan !== amount || impact.impactKind !== "contract_commitment_reference" || !EVIDENCE_LEVEL_SET.has(fact.evidenceLevel) || (amount === null ? impact.direction !== "notice" : !["increase", "decrease"].includes(impact.direction))) throw new Error("分页经营读取遇到不一致的新版合同承诺");
@@ -1532,7 +1557,8 @@ export class OperatingProjectionStreamAccumulator {
 
   finishFacts(): void {
     for (const { fact, impactCount, selected } of this.decimalFacts.values()) {
-      if (impactCount !== 1) throw new Error("新版合同承诺缺少唯一影响分录");
+      const expectedImpactCount = fact.sourceType === OWNER_SETTLEMENT_SOURCE ? 2 : 1;
+      if (impactCount !== expectedImpactCount) throw new Error("四位经营事实缺少对应影响分录");
       if (!selected) continue;
       this.decimalSeed.count += 1;
       if (fact.confirmedAt > this.context.cutoffAt) this.decimalSeed.retroactiveFactCount += 1;
@@ -1782,15 +1808,45 @@ export interface ProjectionYuanSummary {
   amountYuan: string | null; knownSubtotalYuan: string; unknownCount: number;
 }
 export type OperatingProjectionV2ReadModel = Omit<OperatingProjectionReadModel,
-  "schema" | "commitments" | "evidence" | "relationshipTotals" | "impactTotalsByKind" | "details" | "sourceDrilldown"> & {
+  "schema" | "commitments" | "evidence" | "relationshipTotals" | "impactTotalsByKind" | "details" | "sourceDrilldown" | "operating" | "profitAndLoss"> & {
   schema: "operating_projection/V2"; numericProtocolVersion: 2;
   commitments: { contractCommitmentCents: string | null; contractCommitmentYuan: string | null; knownContractCommitmentYuan: string; unknownContractCommitmentCount: number };
   evidence: Record<EvidenceLevel, ProjectionYuanSummary & { factCount: number; amountCents: string | null }> & { gapFactCount: number; gapAmountCents: string };
   relationshipTotals: Array<Omit<NonNullable<OperatingProjectionReadModel["relationshipTotals"]>[number], "contractCommitmentCents"> & { contractCommitmentCents: string | null; contractCommitmentYuan: string | null; knownContractCommitmentYuan: string; unknownContractCommitmentCount: number }>;
+  operating: Omit<OperatingProjectionReadModel["operating"], "confirmedIncomeCents" | "receivableCents"> & {
+    confirmedIncomeCents: string | null;
+    receivableCents: string | null;
+    confirmedIncomeYuan: string;
+    receivableYuan: string;
+  };
+  profitAndLoss: Omit<OperatingProjectionReadModel["profitAndLoss"], "currentOperatingProfitCents" | "currentEstimatedProfitCents"> & {
+    currentOperatingProfitCents: string | null;
+    currentOperatingProfitYuan: string;
+    currentEstimatedProfitCents: string | null;
+    currentEstimatedProfitYuan: string;
+  };
   impactTotalsByKind: Partial<Record<OperatingImpactKind, string | null>>;
   details: Array<OperatingProjectionDetail & { signedImpactYuan: string | null; amountState: "known" | "unknown"; numericProtocolVersion?:1|2; sourceNumericProtocolVersion?:1;sourceAmountCents?:string }>;
   sourceDrilldown: Array<Omit<OperatingProjectionReadModel["sourceDrilldown"][number], "signedImpactCents"> & ProjectionYuanSummary & { signedImpactCents: string | null }>;
 };
+
+function signedOwnerSettlementImpact(fact: ProjectionV2FactInput, impact: ProjectionV2ImpactInput): string {
+  const abs = normalizeBusinessAmount(fact.amountYuan);
+  const reduction = fact.direction === "outflow";
+  if (fact.factKind !== "owner_settlement" || fact.amountCents !== null || !abs || abs === "0.0000" ||
+    (fact.direction !== "inflow" && !reduction) || impact.numericProtocolVersion !== 2 ||
+    impact.amountCents !== null || impact.amountYuan !== abs ||
+    impact.direction !== (reduction ? "decrease" : "increase") ||
+    !["confirmed_income", reduction ? "receivable_decrease" : "receivable_increase"].includes(impact.impactKind)) {
+    throw new Error("业主结算金额与收入或应收分录不一致");
+  }
+  return reduction ? `-${abs}` : abs;
+}
+
+function addOwnerSettlementImpact(totals: DecimalOwnerSettlementTotals, impact: ProjectionV2ImpactInput, signed: string) {
+  const bucket = impact.impactKind === "confirmed_income" ? "incomeYuan" : "receivableYuan";
+  totals[bucket] = sumBusinessAmounts([totals[bucket], signed])!;
+}
 
 /** V1 never silently consumes decimal facts. Explicit V2 keeps the legacy cash/cost unit. */
 export function reduceOperatingProjection(input: ReduceOperatingProjectionV2Input): OperatingProjectionV2ReadModel;
@@ -1826,7 +1882,8 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
   const evidence: OperatingProjectionV2ReadModel["evidence"] = { A: evidenceRow("A"), B: evidenceRow("B"), C: evidenceRow("C"), gapFactCount: result.evidence.gapFactCount, gapAmountCents: result.evidence.gapAmountCents };
   const details: OperatingProjectionV2ReadModel["details"] = result.details.map(row => ({ ...row, signedImpactYuan: businessAmountFromLegacyCents(row.signedImpactCents), amountState: row.signedImpactCents === null ? "unknown" : "known" }));
   const sourceDrilldown: OperatingProjectionV2ReadModel["sourceDrilldown"] = result.sourceDrilldown.map(row => ({ ...row, ...summary(businessAmountFromLegacyCents(row.signedImpactCents)!) }));
-  let selectedDecimalCount = decimalSeed?.count ?? 0;
+  let selectedDecimalCount = Object.values(decimalSeed?.sourceGroups ?? {}).reduce((total, group) => total + (group?.count ?? 0), 0);
+  let ownerSettlement = decimalSeed?.ownerSettlement ? { ...decimalSeed.ownerSettlement } : undefined;
   if (decimalSeed) {
     result.asOf.retroactiveFactCount += decimalSeed.retroactiveFactCount;
     for (const level of EVIDENCE_LEVELS) {
@@ -1852,6 +1909,27 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     }
   }
   for (const fact of decimalFacts) {
+    if (fact.sourceType === OWNER_SETTLEMENT_SOURCE) {
+      if (fact.impacts.length !== 2 || new Set(fact.impacts.map(impact => impact.impactKind)).size !== 2) {
+        throw new Error("业主结算须同时包含收入与应收分录");
+      }
+      let selected = false;
+      for (const impact of fact.impacts) {
+        const signed = signedOwnerSettlementImpact(fact, impact);
+        if (!matchesFilters(fact, impact, input.scope.filters, input.constructionEnterpriseSubjectIds, input.companyEntityVersionIds)) continue;
+        selected = true;
+        ownerSettlement ??= { incomeYuan: "0.0000", receivableYuan: "0.0000" };
+        addOwnerSettlementImpact(ownerSettlement, impact, signed);
+      }
+      if (selected) {
+        if (fact.confirmedAt > input.cutoffAt) result.asOf.retroactiveFactCount += 1;
+        const level = fact.evidenceLevel as EvidenceLevel;
+        evidence[level].factCount += 1;
+        evidence[level].amountCents = null;
+        add(evidence[level], fact.amountYuan);
+      }
+      continue;
+    }
     if (!["contract_version", "contract_economic_review"].includes(fact.sourceType) || fact.factKind !== "downstream_contract" || fact.amountCents !== null || fact.impacts.length !== 1 || !EVIDENCE_LEVEL_SET.has(fact.evidenceLevel)) throw new Error("新版经营读取仅支持合法合同承诺事实");
     const impact = fact.impacts[0];
     const amountYuan = normalizeBusinessAmount(fact.amountYuan);
@@ -1871,7 +1949,29 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     sourceDrilldown.push({ projectId: fact.projectId, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType), sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factCount: 1, impactCount: 1, signedImpactCents: null, ...summary(signedYuan ?? "0.0000", signedYuan === null ? 1 : 0) });
     details.push({ factId: fact.id, impactId: impact.id, projectId: fact.projectId, projectCode: fact.projectCode, projectName: fact.projectName, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType), sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factKind: fact.factKind, factKindLabel: factKindLabel(fact.factKind), contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType, fact.sourceSnapshot)], evidenceLevel: fact.evidenceLevel, occurredAt: fact.occurredAt, confirmedAt: fact.confirmedAt, confirmedAfterAsOf: fact.confirmedAt > input.cutoffAt, impactKind: impact.impactKind, impactKindLabel: impactKindLabel(impact.impactKind), direction: impact.direction, signedImpactCents: null, ...(fact.sourceNumericProtocolVersion===1?{numericProtocolVersion:1 as const,sourceNumericProtocolVersion:1 as const,sourceAmountCents:fact.sourceAmountCents!.toString()}:{numericProtocolVersion:2 as const}), signedImpactYuan: signedYuan, amountState: signedYuan === null ? "unknown" : "known", subjectRole: impact.subjectRole ?? null, subjectKind: impact.subjectKind ?? null, subjectId: impact.subjectId ?? null, costCategoryCode: null, fundPurpose: null, description: impact.description ?? null, sourceReferenceIds: sourceReferenceIds(fact.sourceSnapshot) });
   }
-  return { ...result, schema: "operating_projection/V2", numericProtocolVersion: 2,
+  const operating = {
+    ...result.operating,
+    confirmedIncomeCents: ownerSettlement ? null : result.operating.confirmedIncomeCents,
+    receivableCents: ownerSettlement ? null : result.operating.receivableCents,
+    confirmedIncomeYuan: sumBusinessAmounts([
+      businessAmountFromLegacyCents(result.operating.confirmedIncomeCents), ownerSettlement?.incomeYuan ?? "0.0000"
+    ])!,
+    receivableYuan: sumBusinessAmounts([
+      businessAmountFromLegacyCents(result.operating.receivableCents), ownerSettlement?.receivableYuan ?? "0.0000"
+    ])!
+  };
+  const profitAndLoss = {
+    ...result.profitAndLoss,
+    currentOperatingProfitCents: ownerSettlement ? null : result.profitAndLoss.currentOperatingProfitCents,
+    currentOperatingProfitYuan: sumBusinessAmounts([
+      businessAmountFromLegacyCents(result.profitAndLoss.currentOperatingProfitCents), ownerSettlement?.incomeYuan ?? "0.0000"
+    ])!,
+    currentEstimatedProfitCents: ownerSettlement ? null : result.profitAndLoss.currentEstimatedProfitCents,
+    currentEstimatedProfitYuan: sumBusinessAmounts([
+      businessAmountFromLegacyCents(result.profitAndLoss.currentEstimatedProfitCents), ownerSettlement?.incomeYuan ?? "0.0000"
+    ])!
+  };
+  return { ...result, schema: "operating_projection/V2", numericProtocolVersion: 2, operating, profitAndLoss,
     commitments: { contractCommitmentCents: selectedDecimalCount ? null : result.commitments.contractCommitmentCents, contractCommitmentYuan: commitment.amountYuan, knownContractCommitmentYuan: commitment.knownSubtotalYuan, unknownContractCommitmentCount: commitment.unknownCount },
     relationshipTotals: [...relationships.values()].map(({ row, value, hasDecimal }) => ({ ...row, contractCommitmentCents: hasDecimal ? null : row.contractCommitmentCents, contractCommitmentYuan: value.amountYuan, knownContractCommitmentYuan: value.knownSubtotalYuan, unknownContractCommitmentCount: value.unknownCount })),
     evidence, details, sourceDrilldown, impactTotalsByKind: { ...result.impactTotalsByKind, ...(selectedDecimalCount ? { contract_commitment_reference: null } : {}) }

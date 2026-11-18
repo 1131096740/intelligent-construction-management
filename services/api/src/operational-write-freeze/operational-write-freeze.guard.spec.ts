@@ -18,6 +18,13 @@ class RegisteredPaymentExecutionController {
   mutate() {}
 }
 
+class ProjectController {
+  recordOwnerSettlement() {}
+  uploadOwnerSettlementFile() {}
+  recordUpstreamFundFact() {}
+  confirmUpstreamFundFact() {}
+}
+
 class ContractController {
   create() {}
 }
@@ -45,6 +52,7 @@ function contextFor(input: {
   handler: object;
   method?: string;
   params?: Record<string, string>;
+  body?: { confirmedReceipt?: boolean };
 }): ExecutionContext {
   return {
     getClass: () => input.controller,
@@ -52,7 +60,8 @@ function contextFor(input: {
     switchToHttp: () => ({
       getRequest: () => ({
         method: input.method ?? "POST",
-        params: input.params
+        params: input.params,
+        body: input.body
       })
     })
   } as unknown as ExecutionContext;
@@ -82,6 +91,23 @@ describe("OperationalWriteFreezeGuard", () => {
   const guard = new OperationalWriteFreezeGuard(new OperationalWriteFreezeService());
 
   afterEach(() => restoreEnvironment());
+
+  it("keeps the project freeze and also blocks only the new project financial writes during a finance freeze", () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "finance";
+    const projectWrite = (handler: object, body?: { confirmedReceipt: boolean }) =>
+      guard.canActivate(contextFor({ controller: ProjectController, handler, body }));
+    const project = ProjectController.prototype;
+    for (const handler of [project.recordOwnerSettlement, project.uploadOwnerSettlementFile]) {
+      expectHttpFailure(() => projectWrite(handler), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    expectHttpFailure(() => projectWrite(project.recordUpstreamFundFact, { confirmedReceipt: true }), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    expect(projectWrite(project.recordUpstreamFundFact)).toBe(true);
+    expect(projectWrite(project.confirmUpstreamFundFact)).toBe(true);
+
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "project";
+    expectHttpFailure(() => projectWrite(project.recordOwnerSettlement), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+  });
 
   it("keeps classified writes open by default", () => {
     delete process.env.OPERATIONAL_WRITE_FREEZE_MODE;

@@ -1623,6 +1623,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ProjectOwnerSettlementEntry" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectUpstreamFundFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectAffiliateContractFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectAffiliateSettlementFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}

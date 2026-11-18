@@ -134,7 +134,7 @@ describe("OperatingProjectionService", () => {
       additional: { marker: "same-snapshot" },
       canExportDetail: expected
     }));
-    expect(additional).toHaveBeenCalledWith(tx, [project.id]);
+    expect(additional).toHaveBeenCalledWith(tx, [project.id], expect.objectContaining({ numericProtocolVersion: 2 }));
   });
 
   it("limits per-actor concurrent and minute-rate projection reads", () => {

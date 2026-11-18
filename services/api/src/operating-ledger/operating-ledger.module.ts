@@ -29,6 +29,8 @@ import {
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   ProjectUpstreamFundFactOperatingSourceAdapter,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
+  ProjectOwnerSettlementEntryOperatingSourceAdapter,
+  PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE,
   ProjectUpstreamSettlementOperatingSourceAdapter,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "../project/project-operating-source.adapter";
@@ -77,6 +79,7 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   "company_transfer_event",
   "upward_receipt_match",
   "fund_execution_counterparty",
+  PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
   PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
@@ -107,6 +110,7 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
   new ContractProxyOperatingSourceAdapter(),
   new CompanyTransferOperatingSourceAdapter(),
       new UpwardReceiptMatchOperatingSourceAdapter(),new FundCounterpartyCashAdapter(),
+      new ProjectOwnerSettlementEntryOperatingSourceAdapter(),
       new ProjectUpstreamSettlementOperatingSourceAdapter(),
       new ProjectUpstreamFundFactOperatingSourceAdapter(),
       new ProjectAffiliateContractFactOperatingSourceAdapter(),

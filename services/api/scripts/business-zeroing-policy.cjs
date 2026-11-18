@@ -111,6 +111,7 @@ const protectedTables = Object.freeze({
   PublicCashCustody: "公共现金具名保管人",
   PublicCashHandover: "公共现金交接事实",
   PublicCashHandoverReceipt: "公共现金实点确认事实",
+  ProjectOwnerSettlementEntry: "业主结算正式登记事实",
   RegisteredPaymentEvent: "已登记实付事件",
   RegisteredPaymentVoucher: "实付凭证留存记录",
   FundExecutionCase: "资金执行案件",

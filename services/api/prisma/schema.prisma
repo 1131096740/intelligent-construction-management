@@ -5712,6 +5712,25 @@ model ProjectUpstreamSettlement {
   @@index([projectId, status])
 }
 
+model ProjectOwnerSettlementEntry {
+  id                            String   @id @default(uuid())
+  projectId                     String
+  ownerName                     String
+  ownerSubjectId                String
+  settledAt                     DateTime
+  amountYuan                    Decimal  @db.Decimal(24, 4)
+  affiliateAssignmentId         String
+  affiliateBusinessPartyVersionId String
+  voucherFileId                 String
+  voucherSha256                 String
+  recordedByUserId              String
+  recordedAt                    DateTime @default(now())
+  idempotencyKey                String   @unique
+
+  @@index([projectId, settledAt])
+  @@index([voucherFileId])
+}
+
 model ProjectOwnerContract {
   id                              String    @id @default(uuid())
   projectId                       String

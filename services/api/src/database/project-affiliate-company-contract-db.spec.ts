@@ -425,6 +425,51 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       expect(net(["receivable_increase","receivable_decrease"])).toBe(30000n);expect(net(["company_project_funds_increase","company_project_funds_decrease"])).toBe(cashBefore+10000n);expect(net(["construction_enterprise_funds_increase","construction_enterprise_funds_decrease"])).toBe(-50000n);
       expect(net(["confirmed_cost"])).toBe(100000n);
 
+      const signatureFile = await prisma.fileObject.create({
+        data: {
+          bucket: "private-local", objectKey: `tests/${randomUUID()}.png`,
+          originalName: "收款签名.png", mimeType: "image/png", sizeBytes: 100,
+          uploadedByUserId: f.recorderId, contentSha256: "b".repeat(64), storageStatus: "active"
+        }
+      });
+      await prisma.handwrittenSignatureVersion.create({
+        data: { userId: f.recorderId, fileId: signatureFile.id, contentSha256: "b".repeat(64) }
+      });
+      const verifiedReceiptId = await bankObservation("1000", "inflow", "2026-08-28");
+      const verifiedReceipt = await prisma.verifiedBankTransactionObservation.findUniqueOrThrow({
+        where: { id: verifiedReceiptId }
+      });
+      const directInput = {
+        factType: "affiliate_remittance_to_company" as const, basisType: "written" as const,
+        bankObservationReference: verifiedReceipt.reference,
+        occurredAt: "2026-08-28", amountCents: "1000", counterpartyName: "我方建设有限公司",
+        companyEntityId: f.companyId, affiliateCompanyContractId: upper.id,
+        affiliateSettlementFactId: upperSettlement.id, invoiceRecordId: invoice.id,
+        evidenceFileId: await newFile(), idempotencyKey: randomUUID(),
+        confirmedReceipt: true, confirmationPassword: "test-password"
+      };
+      const [direct, replayed] = await Promise.all([
+        projectService.recordUpstreamFundFact(f.projectId, f.recorderId, directInput),
+        projectService.recordUpstreamFundFact(f.projectId, f.recorderId, directInput)
+      ]);
+      expect(direct).toMatchObject({ status: "confirmed", cashEffectCents: "1000" });
+      expect(replayed).toMatchObject({ id: direct.id, status: "confirmed" });
+      expect(await prisma.contractBankEventClaim.findUnique({ where: { observationId: verifiedReceiptId } }))
+        .toMatchObject({ sourceType: "project_upstream_fund_fact", sourceId: direct.id });
+      const directImpacts = await prisma.operatingImpactEntry.findMany({
+        where: { projectId: f.projectId, sourceType: "project_upstream_fund_fact", sourceBusinessId: direct.id },
+        select: { impactKind: true, direction: true, amountCents: true }, orderBy: { impactKind: "asc" }
+      });
+      expect(directImpacts).toEqual([
+        { impactKind: "company_project_funds_increase", direction: "increase", amountCents: 1000n },
+        { impactKind: "construction_enterprise_funds_decrease", direction: "decrease", amountCents: 1000n },
+        { impactKind: "receivable_decrease", direction: "decrease", amountCents: 1000n }
+      ]);
+      await expect(projectService.recordUpstreamFundFact(f.projectId, f.recorderId, {
+        ...directInput, evidenceFileId: await newFile(), idempotencyKey: randomUUID()
+      })).rejects.toThrow("银行流水已认领");
+
+
     } finally { await bankRuntime.$disconnect(); }
     } finally { await app.close(); }
   },60000);

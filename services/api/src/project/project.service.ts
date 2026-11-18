@@ -1,3 +1,4 @@
+import { readOwnerSettlementCumulative, readProjectOwnerBalance, resolveOwnerSettlementAdjustment } from "./project-owner-balance";
 import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
 import { hasProjectBusiness, lockMasterDataRow } from "../master-data/master-data-lifecycle";
@@ -59,11 +60,12 @@ import {
   type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import {
+  PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "./project-operating-source.adapter";
-import { readAffiliateSnapshot } from "../operating-ledger/formal-operating-source.helpers";
+import { readAffiliateSnapshot, stableNamedSubjectId } from "../operating-ledger/formal-operating-source.helpers";
 import type { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import type { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import type { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
@@ -75,6 +77,7 @@ import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
+import type { RecordProjectOwnerSettlementDto } from "./dto/record-project-owner-settlement.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import {
   PROJECT_AFFILIATE_DEDUCTION_CATEGORIES,
@@ -821,8 +824,8 @@ export class ProjectService {
       await this.operatingProjection.readProjectCompatibilitySnapshot(
         actorUserId,
         { projectId },
-        async (tx) => {
-          const [project, writtenCount, oralCount, contracts, settlements, payments] =
+        async (tx, _projectIds, context) => {
+          const [project, writtenCount, oralCount, contracts, settlements, payments, ownerBalance] =
             await Promise.all([
               tx.project.findFirst({
                 where: { id: projectId, isActive: true },
@@ -836,12 +839,13 @@ export class ProjectService {
               }),
               tx.contract.count({ where: { projectId, voidedAt: null } }),
               tx.settlement.count({ where: { projectId } }),
-              tx.paymentRequest.count({ where: { projectId } })
+              tx.paymentRequest.count({ where: { projectId } }),
+              context.moneyComplete ? readProjectOwnerBalance(tx, projectId, context.cutoffAt, context.readAt) : null
             ]);
-          return { project, writtenCount, oralCount, contracts, settlements, payments };
+          return { project, writtenCount, oralCount, contracts, settlements, payments, ownerBalance };
         }
       );
-    const { project, writtenCount, oralCount, contracts, settlements, payments } = additional;
+    const { project, writtenCount, oralCount, contracts, settlements, payments, ownerBalance } = additional;
     if (!project) {
       throw new NotFoundException("项目不存在或已停用，请刷新后重试");
     }
@@ -868,11 +872,13 @@ export class ProjectService {
         effectiveSettlementAmountCents: null,
         payableSettlementAmountCents: null,
         operatingIncomeCents: projection.operating.confirmedIncomeCents,
+        operatingIncomeYuan: projection.operating.confirmedIncomeYuan,
         affiliateDownstreamPaymentCents: null,
         operatingCostCents: projection.operating.confirmedCostCents,
-        grossProfitCents:
-          projection.profitAndLoss.currentOperatingProfitCents
+        grossProfitCents: projection.profitAndLoss.currentOperatingProfitCents,
+        grossProfitYuan: projection.profitAndLoss.currentOperatingProfitYuan
       },
+      ownerBalance,
       upstreamFunds: {
         ownerPaymentCents: null,
         affiliateRemittanceCents: null,
@@ -1203,10 +1209,21 @@ export class ProjectService {
       );
     }
 
+    const directReceipt = input.confirmedReceipt === true;
+    if (directReceipt) {
+      if (!["owner_payment_to_affiliate", "affiliate_remittance_to_company"].includes(factType) || basisType !== "written" || entryKind !== "original") {
+        throw new BadRequestException("直接确认仅用于有书面实际到账依据的原始上游收款");
+      }
+      const password = requiredTrimmed(input.confirmationPassword, "请输入当前登录密码");
+      if (!this.auth) throw new InternalServerErrorException("到账身份确认服务不可用，请保留资料后重试");
+      await this.auth.confirmPassword(actorUserId, password);
+    }
+
     const requestFingerprint = upstreamFundRequestFingerprint({
       bankObservationReference:input.bankObservationReference,
       projectId,
       actorUserId,
+      ...(directReceipt ? { confirmedReceipt: true } : {}),
       factType,
       basisType,
       entryKind,
@@ -1227,6 +1244,11 @@ export class ProjectService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        if (directReceipt) await lockMasterDataRow(tx, "Project", projectId);
+        const receiptRoles = directReceipt ? await this.loadActorRoleKeys(tx, actorUserId, projectId) : null;
+        if (receiptRoles && !receiptRoles.some(role => role === "finance_staff" || role === "finance_director")) {
+          throw new ForbiddenException("只有项目财务人员或财务主管可以登记上游实际到账");
+        }
         const existing = await tx.projectUpstreamFundFact.findUnique({
           where: { idempotencyKey }
         });
@@ -1241,7 +1263,7 @@ export class ProjectService {
           return toUpstreamFundFactReadModel(existing);
         }
 
-        await lockMasterDataRow(tx, "Project", projectId);
+        if (!directReceipt) await lockMasterDataRow(tx, "Project", projectId);
         const project = await tx.project.findFirst({
           where: { id: projectId, isActive: true },
           select: { id: true }
@@ -1249,7 +1271,7 @@ export class ProjectService {
         if (!project) {
           throw new NotFoundException("项目不存在或已停用，请刷新后重试");
         }
-        const roleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
+        const roleKeys = receiptRoles ?? await this.loadActorRoleKeys(tx, actorUserId, projectId);
         const recordedByRoleKey = roleKeys.includes("finance_director")
           ? "finance_director"
           : roleKeys.includes("finance_staff")
@@ -1467,10 +1489,14 @@ export class ProjectService {
           throw new BadRequestException("上游资金依据文件尚未完成有效性校验");
         }
 
-        const status =
-          factType === "unreconciled_receipt_difference"
-            ? "pending_reconciliation"
-            : "pending_confirm";
+        const bank = directReceipt && factType === "affiliate_remittance_to_company"
+          ? await lockUpstreamRemittanceBankEvent(tx, {
+              projectId, bankObservationReference: input.bankObservationReference ?? null,
+              companyEntityId: remittanceLineage.companyEntityId!, amountCents, occurredAt, effectDirection
+            })
+          : null;
+        const signature = directReceipt ? await snapshotApprovalSignature(tx, actorUserId, { required: true }) : null;
+        const status = signature ? "confirmed" : factType === "unreconciled_receipt_difference" ? "pending_reconciliation" : "pending_confirm";
         const created = await tx.projectUpstreamFundFact.create({
           data: {
             bankObservationReference:input.bankObservationReference?.trim()||null,
@@ -1500,7 +1526,15 @@ export class ProjectService {
             requestFingerprint,
             recordedByUserId: actorUserId,
             recordedByRoleKey,
-            status
+            status,
+            ...(signature ? {
+              confirmedByUserId: actorUserId,
+              confirmedAt: new Date(),
+              confirmationActionId: idempotencyKey,
+              confirmationSignatureVersionId: signature.versionId,
+              confirmationSignatureFileId: signature.fileId,
+              confirmationSignatureSha256: signature.sha256
+            } : {})
           }
         });
 
@@ -1510,6 +1544,14 @@ export class ProjectService {
           created
         );
 
+        if (signature) {
+          if (bank) {
+            await claimContractBankEvent(tx, bank.id, "project_upstream_fund_fact", created.id, actorUserId);
+          }
+          await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, {
+            projectId, sourceType: PROJECT_UPSTREAM_FUND_SOURCE_TYPE, sourceBusinessId: created.id
+          }, actorUserId);
+        }
         await this.audit.record(tx, {
           actorUserId,
           action: "project.upstream_fund_fact.record",
@@ -1533,6 +1575,7 @@ export class ProjectService {
             affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
             evidenceFileId,
             fileContentSha256Snapshot: evidence?.contentSha256 ?? null,
+            ...(signature ? { confirmationSignatureVersionId: signature.versionId, confirmationActionId: idempotencyKey } : {}),
             status
           }
         });
@@ -1543,6 +1586,12 @@ export class ProjectService {
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
+        if (directReceipt) {
+          const roles = await this.loadActorRoleKeys(this.prisma, actorUserId, projectId);
+          if (!roles.some(role => role === "finance_staff" || role === "finance_director")) {
+            throw new ForbiddenException("只有项目财务人员或财务主管可以登记上游实际到账");
+          }
+        }
         const existing = await this.prisma.projectUpstreamFundFact.findUnique({
           where: { idempotencyKey }
         });
@@ -1690,10 +1739,9 @@ export class ProjectService {
         await this.funding.lockFundingContext(tx, projectId);
       }
 
-      if(fact.factType==="affiliate_remittance_to_company"){
-        await acquireFileBusinessBindingTransactionLock(tx);
-        const bank=await requireContractBankEvent(tx,{projectId:fact.projectId,reference:fact.bankObservationReference??undefined,companyId:fact.companyEntityId!,amountCents:fact.amountCents,occurredAt:fact.occurredAt,direction:fact.effectDirection==="decrease"?"outflow":"inflow"});
-        await claimContractBankEvent(tx,bank.id,"project_upstream_fund_fact",fact.id,actorUserId);
+      if (fact.factType === "affiliate_remittance_to_company") {
+        const bank = await lockUpstreamRemittanceBankEvent(tx, fact);
+        await claimContractBankEvent(tx, bank.id, "project_upstream_fund_fact", fact.id, actorUserId);
       }
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
         required: true
@@ -2332,6 +2380,97 @@ export class ProjectService {
         )} 元`
       );
     }
+  }
+
+  async recordOwnerSettlement(
+    projectId: string,
+    actorUserId: string,
+    input: RecordProjectOwnerSettlementDto
+  ) {
+    const ownerName = requiredTrimmed(input.ownerName, "请填写业主名称");
+    const ownerSubjectId = stableNamedSubjectId("owner", ownerName);
+    const voucherFileId = requiredTrimmed(input.voucherFileId, "请上传业主结算凭证");
+    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供业主结算登记编号");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.settledAt)) {
+      throw new BadRequestException("请选择有效的业主结算日期");
+    }
+    let settledAt: Date;
+    try {
+      requiredPastChinaDate(input.settledAt, "业主结算日期");
+      settledAt = new Date(`${input.settledAt}T00:00:00.000Z`);
+    } catch {
+      throw new BadRequestException("请选择实际发生且不晚于今天的业主结算日期");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await lockMasterDataRow(tx, "Project", projectId);
+      const scopes = await new ProjectVisibilityService(this.prisma)
+        .effectiveRoleScopesInTransaction(tx, actorUserId, projectId);
+      const activeRoles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+      if (!canPerform("project.owner_settlement.record", activeRoles)) {
+        throw new ForbiddenException("当前岗位无权登记业主结算");
+      }
+
+      if (input.amountYuan.startsWith("-") &&
+        !activeRoles.some(role => role === "finance_staff" || role === "finance_director")) {
+        throw new ForbiddenException("只有项目财务人员或财务主管可以冲减业主结算");
+      }
+
+      const existing = await tx.projectOwnerSettlementEntry.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        if (existing.projectId !== projectId || existing.recordedByUserId !== actorUserId ||
+          existing.ownerSubjectId !== ownerSubjectId || existing.voucherFileId !== voucherFileId ||
+          existing.settledAt.getTime() !== settledAt.getTime() ||
+          !existing.amountYuan.equals(input.amountYuan)) {
+          throw new ConflictException("业主结算登记编号已用于其他资料");
+        }
+        return { id: existing.id, amountYuan: existing.amountYuan.toFixed(4) };
+      }
+
+      const project = await tx.project.findFirst({
+        where: { id: projectId, isActive: true },
+        select: { operatingLedgerEffectiveDate: true }
+      });
+      if (!project) throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+      if (!project.operatingLedgerEffectiveDate || settledAt < project.operatingLedgerEffectiveDate) {
+        throw new BadRequestException("请先启用项目经营账，启用前的历史业主结算请从历史接管登记");
+      }
+      const affiliate = await resolveCurrentProjectAffiliate(tx, projectId);
+      const [voucher] = await tx.$queryRaw<Array<{
+        uploadedByUserId: string | null;
+        storageStatus: string;
+        contentSha256: string | null;
+      }>>`
+        SELECT "uploadedByUserId", "storageStatus", "contentSha256" FROM "FileObject"
+        WHERE id = ${voucherFileId} FOR SHARE
+      `;
+      if (!voucher || voucher.uploadedByUserId !== actorUserId ||
+        voucher.storageStatus !== "active" || !voucher.contentSha256) {
+        throw new BadRequestException("请使用本人上传并已完成校验的业主结算凭证");
+      }
+      const cumulative = await readOwnerSettlementCumulative(tx, projectId, ownerSubjectId, affiliate.businessPartyId);
+      const { amountYuan } = resolveOwnerSettlementAdjustment(cumulative, input.amountYuan);
+      const entry = await tx.projectOwnerSettlementEntry.create({
+        data: {
+          projectId, ownerName, ownerSubjectId, settledAt, amountYuan,
+          affiliateAssignmentId: affiliate.assignmentId,
+          affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
+          voucherFileId, voucherSha256: voucher.contentSha256, recordedByUserId: actorUserId, idempotencyKey
+        }
+      });
+      const booked = await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, {
+        projectId, sourceType: PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE, sourceBusinessId: entry.id
+      }, actorUserId);
+      if (!booked) throw new ConflictException("项目经营账尚未启用，请刷新后重试");
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.owner_settlement.record",
+        businessType: PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE,
+        businessId: entry.id,
+        metadata: { projectId, amountYuan, ownerSubjectId, voucherFileId }
+      });
+      return { id: entry.id, amountYuan };
+    });
   }
 
   async recordUpstreamSettlement(
@@ -4061,6 +4200,22 @@ export class ProjectService {
       ])
     );
   }
+}
+
+async function lockUpstreamRemittanceBankEvent(
+  tx: Prisma.TransactionClient,
+  fact: Pick<import("@prisma/client").ProjectUpstreamFundFact, "projectId" | "bankObservationReference" |
+    "companyEntityId" | "amountCents" | "occurredAt" | "effectDirection">
+) {
+  await acquireFileBusinessBindingTransactionLock(tx);
+  return requireContractBankEvent(tx, {
+    projectId: fact.projectId,
+    reference: fact.bankObservationReference ?? undefined,
+    companyId: fact.companyEntityId!,
+    amountCents: fact.amountCents,
+    occurredAt: fact.occurredAt,
+    direction: fact.effectDirection === "decrease" ? "outflow" : "inflow"
+  });
 }
 
 async function validateRemittanceLineage(

@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "5c4ffb397fa35df96a7dc31bd37a7df587f05c5031fec6ceccadd401dc5fda71",
+      "sha256": "9abfd55febc8b260867382b2e70cc6210c77cc0baa6bbf6e98fd483b2857a49b",
       "status": "ready",
       "summary": {
-        "routeCount": 741
+        "routeCount": 744
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "0e2bc7c30539e6aa76805054c092aa73e7b2588d394e95c194aa76d470b1f45d",
+      "sha256": "dfacca13e4e992056e2ff9f9bbb7028b3a2c6524052a4b0813dac6b809ed53e6",
       "status": "ready",
       "summary": {
         "apiModuleCount": 45,
-        "exportedFunctionCount": 718,
-        "transportWrapperCount": 695,
+        "exportedFunctionCount": 721,
+        "transportWrapperCount": 698,
         "pureExportCount": 23,
-        "mainRequestBindingCount": 735,
+        "mainRequestBindingCount": 738,
         "ticketFollowupCount": 5,
-        "requestEdgeCount": 724,
-        "productionConsumerCount": 608,
+        "requestEdgeCount": 727,
+        "productionConsumerCount": 611,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "33fdd3667d155111fd2985c6c7ba2a0db207c68b4d473444df4b1483443b52cb",
+      "sha256": "ffd6a6c1f306d4f33af940b278a7dff8786dc09be5930cdb4b13e5e6a11d82f3",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 434,
+        "registeredActionCount": 436,
         "pageActionCount": 81,
-        "backgroundActionCount": 353,
+        "backgroundActionCount": 355,
         "reachableVueFileCount": 216,
         "routeRootCount": 74,
         "totalVueFileCount": 229,
         "parsedVueFileCount": 229,
         "reachableProductionModuleCount": 377,
-        "templateEventDirectiveCount": 1455,
+        "templateEventDirectiveCount": 1460,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 420,
-        "candidateProductionMutationConsumerCount": 420,
-        "acceptedProductionMutationConsumerCount": 420,
-        "productionMutationConsumerPairCount": 420,
+        "coveredProductionMutationConsumerCount": 422,
+        "candidateProductionMutationConsumerCount": 422,
+        "acceptedProductionMutationConsumerCount": 422,
+        "productionMutationConsumerPairCount": 422,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "e45727e0fbfbdaa2ce4cbb2e80f7e6142f4da05f3fcdb0d2f8a7f91396efaf4b",
+      "sha256": "7014f1310479f0965aa3809568fc347aaf70b9aeb9a0531b751b6b413cb5fb13",
       "status": "ready",
       "summary": {
-        "routeCount": 741,
-        "exactRouteCount": 741,
-        "normalizedRouteCount": 741,
+        "routeCount": 744,
+        "exactRouteCount": 744,
+        "normalizedRouteCount": 744,
         "classificationOverrideCount": 217,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
         "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-        "derivedProductionPageCount": 524,
-        "pageRouteCount": 542,
+        "derivedProductionPageCount": 527,
+        "pageRouteCount": 545,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 90,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 595,
+          "web_api_wrapper": 598,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 741,
-    "pageRouteCount": 542,
+    "routeCount": 744,
+    "pageRouteCount": 545,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 90,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 735,
+    "mainRequestBindingCount": 738,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 434,
-    "actionBindingCount": 504,
-    "acceptedActionBindingCount": 462,
+    "registeredActionCount": 436,
+    "actionBindingCount": 506,
+    "acceptedActionBindingCount": 464,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 420,
-    "coveredProductionMutationConsumerPairCount": 420,
+    "productionMutationConsumerPairCount": 422,
+    "coveredProductionMutationConsumerPairCount": 422,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -10021,6 +10021,46 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/owner-settlements/record-capability",
+        "normalizedKey": "GET /projects/:param/owner-settlements/record-capability",
+        "controller": "ProjectController",
+        "handler": "ownerSettlementRecordCapability",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.owner_settlement.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchProjectOwnerSettlementCapability",
+          "method": "GET",
+          "path": "/projects/:param/owner-settlements/record-capability",
+          "normalizedKey": "GET /projects/:param/owner-settlements/record-capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "testConsumers": []
         }
@@ -36921,6 +36961,140 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/owner-settlements/file-uploads",
+        "normalizedKey": "POST /projects/:param/owner-settlements/file-uploads",
+        "controller": "ProjectController",
+        "handler": "uploadOwnerSettlementFile",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.owner_settlement.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectOwnerSettlementFile",
+          "method": "POST",
+          "path": "/projects/:param/owner-settlements/file-uploads",
+          "normalizedKey": "POST /projects/:param/owner-settlements/file-uploads",
+          "bodyKind": "raw",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project.owner-settlement.evidence-upload",
+          "bindingIndex": 0,
+          "identity": "project.owner-settlement.evidence-upload\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadProjectOwnerSettlementFile\u0000POST\u0000POST /projects/:param/owner-settlements/file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "record_owner_settlement",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectOwnerSettlementFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/owner-settlements",
+        "normalizedKey": "POST /projects/:param/owner-settlements",
+        "controller": "ProjectController",
+        "handler": "recordOwnerSettlement",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.owner_settlement.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectOwnerSettlement",
+          "method": "POST",
+          "path": "/projects/:param/owner-settlements",
+          "normalizedKey": "POST /projects/:param/owner-settlements",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project.owner-settlement.record",
+          "bindingIndex": 0,
+          "identity": "project.owner-settlement.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectOwnerSettlement\u0000POST\u0000POST /projects/:param/owner-settlements\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "record_owner_settlement",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectOwnerSettlement",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
