@@ -20,7 +20,7 @@ export interface FundBalanceRegistration {
   projects?: Array<{ id: string; name: string }>;
   approvalEvidence?: Array<{ actorUserId: string; representedUserId: string | null; action: string; signed: boolean; signatureVersionId: string | null; signedAt: string; metadata: Record<string, unknown> | null }>;
   version: number;
-  kind: "opening" | "correction";
+  kind: "opening" | "correction" | "transfer";
   status: "confirmed" | "pending_review" | "returned" | "withdrawn";
   previousRegistrationId: string | null;
   balanceYuan: string | null;

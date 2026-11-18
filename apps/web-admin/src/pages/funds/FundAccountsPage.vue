@@ -5,6 +5,7 @@ import { useRoute } from "vue-router";
 import { fetchFundReview, fetchFundAccount, fetchFundBalanceRegistration, fetchFundAccounts, registerFundOpening, requestFundCorrection, confirmFundCorrection, returnFundCorrection, withdrawFundCorrection, type FundAccount, type FundAccountSource, type FundRegisteredPayment, type FundAccountsReadModel, type FundBalanceRegistration } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
+import FundAccountTransfers from "./FundAccountTransfers.vue";
 const route = useRoute();
 const isTargetReview = computed(() => typeof route.params.registrationId === "string");
 const processedTarget = ref(false);
@@ -217,10 +218,21 @@ onMounted(load);
         label="各公司资金"
       />
       <t-tab-panel
+        value="transfers"
+        label="资金转款"
+      />
+      <t-tab-panel
         value="history"
         label="流水与核对记录"
       />
     </t-tabs>
+    <FundAccountTransfers
+      v-if="activeView === 'transfers' && !isTargetReview"
+      :accounts="data.accounts"
+      :projects="data.projects"
+      :account-loading="loading"
+      @refresh-accounts="load"
+    />
     <t-card
       v-if="processedTarget"
       title="本次办理已完成"
@@ -308,7 +320,7 @@ onMounted(load);
         :key="entry.row.id"
         :title="entry.account.name"
       >
-        <p>{{ entry.row.kind === 'opening' ? '期初余额登记' : '余额核对更正' }} · {{ ({ confirmed: '已核对登记', pending_review: '待财务主管复核', returned: '已退回待重新登记', withdrawn: '已撤回' })[entry.row.status] }}</p>
+        <p>{{ ({ opening: '期初余额登记', correction: '余额核对更正', transfer: '资金转款到账' })[entry.row.kind] }} · {{ ({ confirmed: '已核对登记', pending_review: '待财务主管复核', returned: '已退回待重新登记', withdrawn: '已撤回' })[entry.row.status] }}</p>
         <p>{{ amount(entry.row.balanceYuan) }} · 核对日期 {{ entry.row.asOfDate }}</p>
         <p>依据：{{ entry.row.evidenceReference }}</p><p>核对说明：{{ entry.row.reconciliationNote }}</p><p>原因：{{ entry.row.reason }}</p>
         <p>登记人：{{ entry.row.createdByName || '原登记人员' }} · {{ entry.row.confirmedByName ? `核对人：${entry.row.confirmedByName}` : entry.row.status === 'pending_review' ? entry.row.pendingConfiguration ? '财务主管待配置，保留原登记等待补岗复核' : '等待复核' : entry.row.status === 'returned' ? '本次已退回' : '本次已撤回' }}</p>
