@@ -242,7 +242,8 @@ export class FundAccountTransferService {
   private async transaction<T>(run: (tx: Transaction) => Promise<T>, retry?: { actorId: string; key: string; requestHash: string; authorize(tx: Transaction): Promise<void> }) {
     try { return await this.prisma.$transaction(run, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }); }
     catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || !["P2002", "P2034"].includes(error.code)) throw error;
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        !(["P2002", "P2034"].includes(error.code) || (error.code === "P2010" && error.meta?.code === "40001"))) throw error;
       if (retry) {
         const { actorId, key, requestHash } = retry;
         const receipt = await this.prisma.$transaction(async tx => {
