@@ -16861,7 +16861,238 @@ function proveRegisteredPaymentPageAction({ action, wrapper, context, handler })
   return { verified: true, readOnlyWitness: true };
 }
 
+const FUND_TRANSFER_PAGE = `${WEB_SOURCE_ROOT}/pages/funds/FundAccountTransfers.vue`;
+const FUND_TRANSFER_COMMAND = `${WEB_SOURCE_ROOT}/pages/funds/fund-transfer-command.ts`;
+const FUND_TRANSFER_API = `${WEB_SOURCE_ROOT}/api/fund-account-transfer.api.ts`;
+const FUND_TRANSFER_ACTIONS = new Map([
+  ["fund-transfer.register", ["submitRegistration", "registerAllowed", ["registerFundAccountTransfer"]]],
+  ["fund-transfer.act", ["submitAction", "actionAllowed", ["actOnFundAccountTransfer"]]],
+  ["fund-transfer.recover-original", ["retryPending", "recoveryAllowed", ["registerFundAccountTransfer", "actOnFundAccountTransfer"]]]
+]);
+
+// A retry can be the first committed write. Prove the same current server
+// permission and the same persisted command, including the lock callback.
+function proveFundTransferPageAction({ action, wrapper, context }) {
+  const rule = FUND_TRANSFER_ACTIONS.get(action.id);
+  if (!rule || action.sourceFile !== FUND_TRANSFER_PAGE || wrapper.apiFile !== FUND_TRANSFER_API ||
+      !rule[2].includes(wrapper.name) || normalizedMainRequests(wrapper).length !== 1 ||
+      normalizedMainRequests(wrapper)[0].normalizedKey !== (wrapper.name === "registerFundAccountTransfer"
+        ? "POST /fund-account-transfers" : "POST /fund-account-transfers/:param/actions") ||
+      action.trigger.handler !== rule[0] || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== rule[1]) return null;
+  const page = context.symbols;
+  const commandAst = context.asts.get(FUND_TRANSFER_COMMAND);
+  if (!commandAst) return null;
+  const transport = buildSymbolContext(commandAst, FUND_TRANSFER_COMMAND, context.sourceFileSet);
+  const definition = (scope, name) => {
+    const bindings = topLevelScopeVariables(scope.scopeManager, name);
+    return bindings.length === 1 && !bindings[0].references.some(reference => reference.isWrite() && !reference.init)
+      ? uniqueIndexedNode(scope.declarationsByBinding, bindings[0]) : null;
+  };
+  const actionHandler = definition(page, rule[0]);
+  const pageSubmit = definition(page, "submit");
+  const load = definition(page, "load");
+  const model = definition(page, "model");
+  const saved = definition(transport, "submitFundTransferCommand");
+  const storageKey = definition(transport, "storageKey");
+  const stored = definition(transport, "readFundTransferCommand");
+  const mainRead = { name: "fetchFundAccountTransfers", apiFile: FUND_TRANSFER_API };
+  const readIdentity = wrapperIdentity(FUND_TRANSFER_API, mainRead.name);
+  const read = context.wrapperIndex.get(readIdentity);
+  if (!read || normalizedMainRequests(read).length !== 1 ||
+      normalizedMainRequests(read)[0].normalizedKey !== "GET /fund-account-transfers" ||
+      !actionHandler || !pageSubmit || !load || !model || !saved || !storageKey || !stored ||
+      importedWrapperCalls([load], mainRead, context).length !== 1 ||
+      importedWrapperCalls([saved], wrapper, { symbols: transport }).length !== 1) return null;
+  const dispatch = directRegistrationCalls(pageSubmit, node => node.callee.type === "Identifier" &&
+    node.callee.name === "submitFundTransferCommand");
+  if (dispatch.length !== 1 || !callExpressionMatchesWrapper(dispatch[0],
+    { name: "submitFundTransferCommand", apiFile: FUND_TRANSFER_COMMAND }, page) ||
+    !directRegistrationMatches({ type: "ExpressionStatement", expression: dispatch[0] },
+      "submitFundTransferCommand(actor, proposal, isCurrent, expectedPending);")) return null;
+  const guard = actionHandler.body.body.find(node => node.type === "IfStatement");
+  const expectedGuard = {
+    submitRegistration: "if (!registerAllowed.value || !from?.currentRegistrationId || !to || !canDraft.value) return;",
+    submitAction: "if (!actionAllowed.value || !selectedAction.value || !canDraft.value) return;",
+    retryPending: "if (!recoveryAllowed.value) return;"
+  }[rule[0]];
+  const submitCalls = directRegistrationCalls(actionHandler, node => node.callee.type === "Identifier" && node.callee.name === "submit");
+  if (!directRegistrationMatches(guard, expectedGuard) || submitCalls.length !== 1 ||
+      !directRegistrationLocalCall(submitCalls[0], { binding: topLevelScopeVariables(page.scopeManager, "submit")[0] }, page) ||
+      guard.range[1] >= submitCalls[0].range[0]) return null;
+  const dispatchByHandler = {
+    submitRegistration: `submit({ type: "register", input: {
+      sourceScopeKey: from.scopeKey, destinationScopeKey: to.scopeKey, expectedRegistrationId: from.currentRegistrationId,
+      idempotencyKey: crypto.randomUUID(), transferredOn: date.value, evidenceReference: reference.value.trim(), lines
+    } });`,
+    submitAction: `submit({ type: "action", transferId: transfer.id, input: {
+      idempotencyKey: crypto.randomUUID(), expectedRevision: transfer.revision, action, evidenceReference: reference.value.trim()
+    } });`,
+    retryPending: "submit(null);"
+  };
+  if (!directRegistrationMatches({ type: "ExpressionStatement", expression: submitCalls[0] }, dispatchByHandler[rule[0]])) return null;
+  return fundTransferAuthorityAndStorageProof({ action, wrapper, context, page, definition, pageSubmit, load, model,
+    transport, saved, storageKey, stored, readIdentity });
+}
+
+const FUND_TRANSFER_WITNESSES = {
+  authority: `const canTransferFrom = (scopeKey: string) => scopeKey === "public_cash"
+  ? model.value?.canRegisterCash === true
+  : model.value?.canRegisterCompany === true;
+const registerAllowed = computed(() => Boolean(origin.value && canTransferFrom(origin.value.scopeKey)));
+const actionAllowed = computed(() => {
+  const selected = selectedAction.value;
+  if (!selected) return false;
+  const transfer = model.value?.transfers.find(row => row.id === selected.transfer.id && row.revision === selected.transfer.revision);
+  return (selected.action === "resubmit" || selected.action === "return" ? transfer?.canResolveRejection : transfer?.canReceive) === true;
+});
+const recoveryAllowed = computed(() => {
+  const command = pending.value;
+  if (!command) return false;
+  if (command.type === "register") return canTransferFrom(command.input.sourceScopeKey);
+  const transfer = model.value?.transfers.find(row => row.id === command.transferId);
+  if (!transfer) return false;
+  const fromOrigin = command.input.action === "resubmit" || command.input.action === "return";
+  return canTransferFrom(fromOrigin ? transfer.sourceScopeKey : transfer.destinationScopeKey);
+});`,
+  load: `async function load() {
+  const actor = actorId.value;
+  const request = ++viewRevision;
+  loading.value = true;
+  error.value = "";
+  try {
+    const response = await fetchFundAccountTransfers();
+    if (viewRevision === request && actorId.value === actor) model.value = response;
+  } catch (failure) {
+    if (viewRevision === request && actorId.value === actor) {
+      model.value = null;
+      error.value = formatUnknownApiError(failure, "转款记录读取失败，请刷新后重试");
+    }
+  } finally {
+    if (viewRevision === request) loading.value = false;
+  }
+}`,
+  dispatch: `async function submit(proposal: FundTransferCommand | null) {
+  if (busy.value || !storageReady.value) return;
+  const actor = actorId.value;
+  const openedView = viewRevision;
+  const expectedPending = proposal ? null : pending.value;
+  const isCurrent = () => actorId.value === actor && openedView === viewRevision;
+  busy.value = true;
+  error.value = "";
+  notice.value = "";
+  try {
+    const result = await submitFundTransferCommand(actor, proposal, isCurrent, expectedPending);
+    if (!isCurrent()) return;
+    if (result.kind === "rejected") {
+      error.value = formatUnknownApiError(result.error, "转款未提交，请核对原资料");
+      return;
+    }
+    direction.value = null;
+    selectedAction.value = null;
+    if (result.kind === "unknown" || result.kind === "pending") {
+      pending.value = result.command;
+      return;
+    }
+    pending.value = null;
+    if (result.kind === "saved") notice.value = statusLabel[result.receipt.status];
+    emit("refreshAccounts");
+    await load();
+  } catch (failure) {
+    if (isCurrent()) error.value = formatUnknownApiError(failure, "原转款凭据尚未确认，请刷新后核对");
+  } finally {
+    busy.value = false;
+  }
+}`,
+  saved: `async function submitFundTransferCommand(
+  actorId: string,
+  proposal: FundTransferCommand | null,
+  isCurrent: () => boolean,
+  expectedPending: FundTransferCommand | null = null
+) {
+  if (!actorId || !navigator.locks) throw new Error("当前浏览器无法安全保存转款凭据");
+  const key = storageKey(actorId);
+  return navigator.locks.request(key, { mode: "exclusive" }, async () => {
+    if (!isCurrent()) throw new Error("当前账号已变化，请重新核对");
+    const pending = readFundTransferCommand(actorId);
+    if (pending && (proposal || JSON.stringify(pending) !== JSON.stringify(expectedPending))) {
+      return { kind: "pending", command: pending } as const;
+    }
+    const command = pending ?? proposal;
+    if (!command) return { kind: "missing" } as const;
+    if (!pending) localStorage.setItem(key, JSON.stringify(command));
+    try {
+      const receipt = command.type === "register"
+        ? await registerFundAccountTransfer(command.input)
+        : await actOnFundAccountTransfer(command.transferId, command.input);
+      localStorage.removeItem(key);
+      return { kind: "saved", receipt } as const;
+    } catch (error) {
+      if (!pending && error instanceof FundTransferApiError && [400, 403, 404].includes(error.status)) {
+        localStorage.removeItem(key);
+        return { kind: "rejected", error } as const;
+      }
+      return { kind: "unknown", command } as const;
+    }
+  });
+}`,
+  stored: `function readFundTransferCommand(actorId: string): FundTransferCommand | null {
+  const saved = localStorage.getItem(storageKey(actorId));
+  if (saved === null) return null;
+  const command = JSON.parse(saved) as FundTransferCommand;
+  if ((command.type !== "register" && command.type !== "action") ||
+    typeof command.input?.idempotencyKey !== "string" || !command.input.idempotencyKey ||
+    (command.type === "action" && typeof command.transferId !== "string")) {
+    throw new Error("原转款凭据无法读取，请保留浏览器记录");
+  }
+  return command;
+}`
+};
+
+function fundTransferAuthorityAndStorageProof({ context, page, definition, pageSubmit, load, model,
+  transport, saved, storageKey, stored, readIdentity }) {
+  const reference = (symbols, name) => topLevelScopeVariables(symbols.scopeManager, name)[0];
+  const ownsImport = (symbols, name, file, importedName = name) => {
+    const resolved = symbols.importsByBinding.get(reference(symbols, name));
+    return resolved?.sourceFile === file && resolved.importedName === importedName;
+  };
+  const authority = parseSource("fund-transfer-proof.ts", FUND_TRANSFER_WITNESSES.authority);
+  if (!page.vueRefImportBindings.has(reference(page, "ref")) ||
+      !page.vueComputedImportBindings.has(reference(page, "computed")) ||
+      !authority.body.every(node => {
+    const { id, init } = node.declarations[0];
+    return directRegistrationAstShape(definition(page, id.name)) === directRegistrationAstShape(init);
+  }) ||
+      !directRegistrationExpression(model, "ref<FundTransferReadModel | null>(null)") ||
+      !directRegistrationMatches(load, FUND_TRANSFER_WITNESSES.load) ||
+      !directRegistrationMatches(pageSubmit, FUND_TRANSFER_WITNESSES.dispatch) ||
+      !directRegistrationMatches(saved, FUND_TRANSFER_WITNESSES.saved) ||
+      !directRegistrationMatches(stored, FUND_TRANSFER_WITNESSES.stored) ||
+      !directRegistrationExpression(storageKey, '(actorId: string) => \`jiangkong-fund-transfer:v1:${actorId}\`') ||
+      !ownsImport(transport, "FundTransferApiError", FUND_TRANSFER_API)) return null;
+  const globals = new Set(["navigator", "localStorage", "JSON", "Error"]);
+  let intrinsicReferencesTrusted = true;
+  for (const callable of [saved, stored]) walkEstree(callable, node => {
+    if (node.type === "Identifier" && globals.has(node.name) &&
+        !unshadowedRuntimeGlobal(node, globals, transport.scopeBindings)) intrinsicReferencesTrusted = false;
+  });
+  if (!intrinsicReferencesTrusted) return null;
+  const modelBinding = reference(page, "model");
+  const modelAssignments = [];
+  walkEstree(context.asts.get(FUND_TRANSFER_PAGE), node => {
+    if (node.type === "AssignmentExpression" && node.left.type === "MemberExpression" &&
+        page.scopeBindings.get(node.left.object) === modelBinding) modelAssignments.push(node);
+  });
+  if (modelAssignments.length !== 3 || modelAssignments.some(node =>
+    !directRegistrationMatches({ type: "ExpressionStatement", expression: node }, "model.value = null;") &&
+    (!directRegistrationMatches({ type: "ExpressionStatement", expression: node }, "model.value = response;") ||
+      node.range[0] < load.range[0] || node.range[1] > load.range[1]))) return null;
+  return { verified: true, capabilityWitness: true,
+    capabilitySources: new Set([readIdentity]), capabilitySourceFile: FUND_TRANSFER_PAGE };
+}
+
 function proveBusinessActionPipeline({ action, wrapper, context }) {
+  if (FUND_TRANSFER_ACTIONS.has(action.id)) return proveFundTransferPageAction({ action, wrapper, context });
   const specializedProof = SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
     GENERATED_ARCHIVE_ACTIONS.has(action.id) ? proveGeneratedArchivePageAction : null;
   if (specializedProof) {
@@ -21273,6 +21504,8 @@ function capabilitySourceAuthorizationIsCompatible({
 // A consumer with multiple intentional write paths is covered only when every
 // required action has independently passed causal, capability and route checks.
 const PAIRED_WRITE_COVERAGE = new Map([
+  [`${wrapperIdentity(FUND_TRANSFER_API, "registerFundAccountTransfer")}\u0000${FUND_TRANSFER_COMMAND}`, new Set(["fund-transfer.register", "fund-transfer.recover-original"])],
+  [`${wrapperIdentity(FUND_TRANSFER_API, "actOnFundAccountTransfer")}\u0000${FUND_TRANSFER_COMMAND}`, new Set(["fund-transfer.act", "fund-transfer.recover-original"])],
   [`${wrapperIdentity(SEAL_API, SEAL_WRITE)}\u0000${SEAL_COMPOSABLE}`, SEAL_WRITE_ACTION_IDS],
   [`${wrapperIdentity(GENERATED_ARCHIVE_API, GENERATED_ARCHIVE_WRITE)}\u0000${GENERATED_ARCHIVE_CONSUMER}`, GENERATED_ARCHIVE_ACTIONS],
   [`${wrapperIdentity(GENERATED_ARCHIVE_API, GENERATED_ARCHIVE_UPLOAD)}\u0000${GENERATED_ARCHIVE_CONSUMER}`, new Set([GENERATED_ARCHIVE_CONFIRM])]

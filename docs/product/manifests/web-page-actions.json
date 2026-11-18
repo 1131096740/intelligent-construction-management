@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 427,
-    "pageActionCount": 74,
+    "registeredActionCount": 430,
+    "pageActionCount": 77,
     "backgroundActionCount": 353,
-    "reachableVueFileCount": 214,
+    "reachableVueFileCount": 215,
     "routeRootCount": 74,
-    "totalVueFileCount": 227,
-    "parsedVueFileCount": 227,
-    "reachableProductionModuleCount": 372,
-    "templateEventDirectiveCount": 1437,
+    "totalVueFileCount": 228,
+    "parsedVueFileCount": 228,
+    "reachableProductionModuleCount": 375,
+    "templateEventDirectiveCount": 1450,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 415,
-    "candidateProductionMutationConsumerCount": 415,
-    "acceptedProductionMutationConsumerCount": 415,
-    "productionMutationConsumerPairCount": 415,
+    "coveredProductionMutationConsumerCount": 417,
+    "candidateProductionMutationConsumerCount": 417,
+    "acceptedProductionMutationConsumerCount": 417,
+    "productionMutationConsumerPairCount": 417,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 391,
-    "reachableProductionModuleCount": 372,
-    "totalVueFileCount": 227,
-    "parsedVueFileCount": 227
+    "totalProductionModuleCount": 394,
+    "reachableProductionModuleCount": 375,
+    "totalVueFileCount": 228,
+    "parsedVueFileCount": 228
   },
   "actions": [
     {
@@ -11884,7 +11884,7 @@
         "event": "click",
         "handler": "confirm",
         "kind": "event",
-        "sourceLine": 568,
+        "sourceLine": 580,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11949,7 +11949,7 @@
         "event": "click",
         "handler": "submitOpeningBalance",
         "kind": "event",
-        "sourceLine": 495,
+        "sourceLine": 507,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12018,7 +12018,7 @@
         "event": "click",
         "handler": "submitCorrectionBalance",
         "kind": "event",
-        "sourceLine": 502,
+        "sourceLine": 514,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12087,7 +12087,7 @@
         "event": "click",
         "handler": "returnBalanceCorrection",
         "kind": "event",
-        "sourceLine": 561,
+        "sourceLine": 573,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12153,7 +12153,7 @@
         "event": "confirm",
         "handler": "withdrawBalanceCorrection",
         "kind": "event",
-        "sourceLine": 582,
+        "sourceLine": 594,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -12801,6 +12801,253 @@
             "localCallChain": [
               "updateFundExecutionReversalReasonWithCapability",
               "updateFundExecutionReversalReason"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-transfer.act",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitAction",
+        "kind": "event",
+        "sourceLine": 415,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "actionAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "actOnFundAccountTransfer",
+          "method": "POST",
+          "path": "/fund-account-transfers/:param/actions",
+          "normalizedKey": "POST /fund-account-transfers/:param/actions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-transfers/:id/actions",
+            "normalizedKey": "POST /fund-account-transfers/:param/actions",
+            "controller": "FundAccountTransferController",
+            "handler": "act",
+            "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitAction",
+              "actOnFundAccountTransfer"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-transfer.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryPending",
+        "kind": "event",
+        "sourceLine": 275,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "recoveryAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "actOnFundAccountTransfer",
+          "method": "POST",
+          "path": "/fund-account-transfers/:param/actions",
+          "normalizedKey": "POST /fund-account-transfers/:param/actions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-transfers/:id/actions",
+            "normalizedKey": "POST /fund-account-transfers/:param/actions",
+            "controller": "FundAccountTransferController",
+            "handler": "act",
+            "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryPending",
+              "actOnFundAccountTransfer"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "registerFundAccountTransfer",
+          "method": "POST",
+          "path": "/fund-account-transfers",
+          "normalizedKey": "POST /fund-account-transfers",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-transfers",
+            "normalizedKey": "POST /fund-account-transfers",
+            "controller": "FundAccountTransferController",
+            "handler": "register",
+            "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryPending",
+              "registerFundAccountTransfer"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-transfer.register",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitRegistration",
+        "kind": "event",
+        "sourceLine": 353,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "registerAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "registerFundAccountTransfer",
+          "method": "POST",
+          "path": "/fund-account-transfers",
+          "normalizedKey": "POST /fund-account-transfers",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-transfers",
+            "normalizedKey": "POST /fund-account-transfers",
+            "controller": "FundAccountTransferController",
+            "handler": "register",
+            "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitRegistration",
+              "registerFundAccountTransfer"
             ]
           },
           "ticketFollowups": []

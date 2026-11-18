@@ -77,12 +77,13 @@ it.each([
 });
 
 it("rejects confirmation from an unauthorized reader and submits a real return against the held revision", async () => {
-  const page = await openPage();
   const held: FundTransfer = {
     id: "transfer", revision: 2, status: "rejected_held", sourceScopeKey: "public_cash", destinationScopeKey: "company:a",
     amountYuan: "10.0000", transferredOn: "2026-11-18", evidenceReference: "原凭据", actions: [],
     canReceive: false, canResolveRejection: true
   };
+  mock.load.mockResolvedValue({ canRegisterCash: true, canRegisterCompany: true, transfers: [held] });
+  const page = await openPage();
   page.openAction(held, "confirm");
   expect(page.selectedAction.value).toBeNull();
   page.openAction(held, "return");

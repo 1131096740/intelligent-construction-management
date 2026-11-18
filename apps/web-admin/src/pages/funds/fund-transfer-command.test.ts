@@ -29,7 +29,9 @@ it("recovers a lost registration response with the one original key and allocati
   expect(readFundTransferCommand("other")).toBeNull();
   const changed = { ...command, input: { ...command.input, idempotencyKey: "replacement" } };
   expect(await submitFundTransferCommand("actor", changed, () => true)).toMatchObject({ kind: "pending" });
-  expect(await submitFundTransferCommand("actor", null, () => true)).toMatchObject({ kind: "saved" });
+  expect(await submitFundTransferCommand("actor", null, () => true, changed)).toEqual({ kind: "pending", command });
+  expect(mocked.register).toHaveBeenCalledTimes(1);
+  expect(await submitFundTransferCommand("actor", null, () => true, command)).toMatchObject({ kind: "saved" });
   expect(mocked.register.mock.calls).toEqual([[command.input], [command.input]]);
   expect(readFundTransferCommand("actor")).toBeNull();
 });

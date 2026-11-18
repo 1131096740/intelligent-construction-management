@@ -10455,6 +10455,82 @@
       ]
     },
     {
+      "id": "fund-transfer.register",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitRegistration"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "registerAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "name": "registerFundAccountTransfer"
+        }
+      ]
+    },
+    {
+      "id": "fund-transfer.act",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitAction"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "actionAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "name": "actOnFundAccountTransfer"
+        }
+      ]
+    },
+    {
+      "id": "fund-transfer.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryPending"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "recoveryAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "name": "registerFundAccountTransfer"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "name": "actOnFundAccountTransfer"
+        }
+      ]
+    },
+    {
       "id": "fund-account.confirm-correction",
       "usage": "page_action",
       "routePaths": [

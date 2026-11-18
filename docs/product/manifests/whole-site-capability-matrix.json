@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "56b0a04330603152e90f9d09875603336fbc028ebecf5ae618d53e12d02cec5a",
+      "sha256": "fa4e9fedc7cffd9f66bb8a177feb0238fcb75d54955b2c197f2d603c6a7037c1",
       "status": "ready",
       "summary": {
-        "routeCount": 734
+        "routeCount": 737
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "efa689164daa24771d6ae6278d90656186d2cbd3d46d21c34265a62d82f0053d",
+      "sha256": "7816603ffd017386f6988148fb68b44ceb8281da7deb49c559d3626fcf8d4119",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 43,
-        "exportedFunctionCount": 710,
-        "transportWrapperCount": 688,
+        "apiModuleCount": 44,
+        "exportedFunctionCount": 713,
+        "transportWrapperCount": 691,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 728,
+        "mainRequestBindingCount": 731,
         "ticketFollowupCount": 5,
-        "requestEdgeCount": 717,
-        "productionConsumerCount": 601,
+        "requestEdgeCount": 720,
+        "productionConsumerCount": 604,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "323ef5e0c58082c5c2dcc047120e9c0be9878341ef3f8cb9a4318c7fd6a07c9e",
+      "sha256": "c9d77251488e336e4fba444cce28faebb989f87b87b55ddfe37459fb184988eb",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 427,
-        "pageActionCount": 74,
+        "registeredActionCount": 430,
+        "pageActionCount": 77,
         "backgroundActionCount": 353,
-        "reachableVueFileCount": 214,
+        "reachableVueFileCount": 215,
         "routeRootCount": 74,
-        "totalVueFileCount": 227,
-        "parsedVueFileCount": 227,
-        "reachableProductionModuleCount": 372,
-        "templateEventDirectiveCount": 1437,
+        "totalVueFileCount": 228,
+        "parsedVueFileCount": 228,
+        "reachableProductionModuleCount": 375,
+        "templateEventDirectiveCount": 1450,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 415,
-        "candidateProductionMutationConsumerCount": 415,
-        "acceptedProductionMutationConsumerCount": 415,
-        "productionMutationConsumerPairCount": 415,
+        "coveredProductionMutationConsumerCount": 417,
+        "candidateProductionMutationConsumerCount": 417,
+        "acceptedProductionMutationConsumerCount": 417,
+        "productionMutationConsumerPairCount": 417,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "7e185e5fc01888d74d995a27423db0cafbd3312152c715cef704d1895979b7d6",
+      "sha256": "2d465293d245d448c1eed87468ca9fd48c45bcb3ab2901953f98df2a45d18b63",
       "status": "ready",
       "summary": {
-        "routeCount": 734,
-        "exactRouteCount": 734,
-        "normalizedRouteCount": 734,
+        "routeCount": 737,
+        "exactRouteCount": 737,
+        "normalizedRouteCount": 737,
         "classificationOverrideCount": 217,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
         "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-        "derivedProductionPageCount": 517,
-        "pageRouteCount": 535,
+        "derivedProductionPageCount": 520,
+        "pageRouteCount": 538,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 90,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 588,
+          "web_api_wrapper": 591,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 734,
-    "pageRouteCount": 535,
+    "routeCount": 737,
+    "pageRouteCount": 538,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 90,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 728,
+    "mainRequestBindingCount": 731,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 427,
-    "actionBindingCount": 494,
-    "acceptedActionBindingCount": 452,
+    "registeredActionCount": 430,
+    "actionBindingCount": 498,
+    "acceptedActionBindingCount": 456,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 415,
-    "coveredProductionMutationConsumerPairCount": 415,
+    "productionMutationConsumerPairCount": 417,
+    "coveredProductionMutationConsumerPairCount": 417,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -5153,6 +5153,50 @@
       "usage": "page",
       "consumerSurface": "signed_ticket_delivery",
       "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-account-transfers",
+        "normalizedKey": "GET /fund-account-transfers",
+        "controller": "FundAccountTransferController",
+        "handler": "list",
+        "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "fetchFundAccountTransfers",
+          "method": "GET",
+          "path": "/fund-account-transfers",
+          "normalizedKey": "GET /fund-account-transfers",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountTransfers.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -25492,6 +25536,200 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-account-transfers/:id/actions",
+        "normalizedKey": "POST /fund-account-transfers/:param/actions",
+        "controller": "FundAccountTransferController",
+        "handler": "act",
+        "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "actOnFundAccountTransfer",
+          "method": "POST",
+          "path": "/fund-account-transfers/:param/actions",
+          "normalizedKey": "POST /fund-account-transfers/:param/actions",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-account-transfer.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-transfer.act",
+          "bindingIndex": 0,
+          "identity": "fund-transfer.act\u0000apps/web-admin/src/api/fund-account-transfer.api.ts\u0000actOnFundAccountTransfer\u0000POST\u0000POST /fund-account-transfers/:param/actions\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "actionAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "actOnFundAccountTransfer",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "fund-transfer.recover-original",
+          "bindingIndex": 0,
+          "identity": "fund-transfer.recover-original\u0000apps/web-admin/src/api/fund-account-transfer.api.ts\u0000actOnFundAccountTransfer\u0000POST\u0000POST /fund-account-transfers/:param/actions\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "recoveryAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "actOnFundAccountTransfer",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-account-transfers",
+        "normalizedKey": "POST /fund-account-transfers",
+        "controller": "FundAccountTransferController",
+        "handler": "register",
+        "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "registerFundAccountTransfer",
+          "method": "POST",
+          "path": "/fund-account-transfers",
+          "normalizedKey": "POST /fund-account-transfers",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-account-transfer.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-transfer.recover-original",
+          "bindingIndex": 1,
+          "identity": "fund-transfer.recover-original\u0000apps/web-admin/src/api/fund-account-transfer.api.ts\u0000registerFundAccountTransfer\u0000POST\u0000POST /fund-account-transfers\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "recoveryAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "registerFundAccountTransfer",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "fund-transfer.register",
+          "bindingIndex": 0,
+          "identity": "fund-transfer.register\u0000apps/web-admin/src/api/fund-account-transfer.api.ts\u0000registerFundAccountTransfer\u0000POST\u0000POST /fund-account-transfers\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "registerAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+          "wrapper": "registerFundAccountTransfer",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
           ],
           "causalVerified": true,
           "accepted": true,

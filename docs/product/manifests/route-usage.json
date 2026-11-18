@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 734,
-    "exactRouteCount": 734,
-    "normalizedRouteCount": 734,
+    "routeCount": 737,
+    "exactRouteCount": 737,
+    "normalizedRouteCount": 737,
     "classificationOverrideCount": 217,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
     "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 517,
-    "pageRouteCount": 535,
+    "derivedProductionPageCount": 520,
+    "pageRouteCount": 538,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 588,
+      "web_api_wrapper": 591,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 588,
+    "productionWrapperRouteCount": 591,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 3
   },
@@ -4405,6 +4405,51 @@
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-account-transfers",
+      "normalizedKey": "GET /fund-account-transfers",
+      "controller": "FundAccountTransferController",
+      "handler": "list",
+      "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+            "wrapper": "fetchFundAccountTransfers",
+            "method": "GET",
+            "normalizedPath": "/fund-account-transfers",
+            "normalizedKey": "GET /fund-account-transfers",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountTransfers.vue"
             ]
           }
         ],
@@ -18486,6 +18531,96 @@
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-account-transfers",
+      "normalizedKey": "POST /fund-account-transfers",
+      "controller": "FundAccountTransferController",
+      "handler": "register",
+      "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+            "wrapper": "registerFundAccountTransfer",
+            "method": "POST",
+            "normalizedPath": "/fund-account-transfers",
+            "normalizedKey": "POST /fund-account-transfers",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-account-transfers/:id/actions",
+      "normalizedKey": "POST /fund-account-transfers/:param/actions",
+      "controller": "FundAccountTransferController",
+      "handler": "act",
+      "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account-transfer.api.ts",
+            "wrapper": "actOnFundAccountTransfer",
+            "method": "POST",
+            "normalizedPath": "/fund-account-transfers/:param/actions",
+            "normalizedKey": "POST /fund-account-transfers/:param/actions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/fund-transfer-command.ts"
             ]
           }
         ],

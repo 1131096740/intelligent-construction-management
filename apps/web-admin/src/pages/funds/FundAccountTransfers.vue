@@ -65,6 +65,25 @@ const sourceLabel = (source: FundAvailableSource) => {
     : source.projectStatus === "company_daily" ? "公司日常" : "项目归属待核对";
   return `${source.sourceName || "出资方待核对"} · ${project} · 可用 ¥${source.amountYuan}`;
 };
+const canTransferFrom = (scopeKey: string) => scopeKey === "public_cash"
+  ? model.value?.canRegisterCash === true
+  : model.value?.canRegisterCompany === true;
+const registerAllowed = computed(() => Boolean(origin.value && canTransferFrom(origin.value.scopeKey)));
+const actionAllowed = computed(() => {
+  const selected = selectedAction.value;
+  if (!selected) return false;
+  const transfer = model.value?.transfers.find(row => row.id === selected.transfer.id && row.revision === selected.transfer.revision);
+  return (selected.action === "resubmit" || selected.action === "return" ? transfer?.canResolveRejection : transfer?.canReceive) === true;
+});
+const recoveryAllowed = computed(() => {
+  const command = pending.value;
+  if (!command) return false;
+  if (command.type === "register") return canTransferFrom(command.input.sourceScopeKey);
+  const transfer = model.value?.transfers.find(row => row.id === command.transferId);
+  if (!transfer) return false;
+  const fromOrigin = command.input.action === "resubmit" || command.input.action === "return";
+  return canTransferFrom(fromOrigin ? transfer.sourceScopeKey : transfer.destinationScopeKey);
+});
 const canDraft = computed(() => storageReady.value && !pending.value && !busy.value && !loading.value && !props.accountLoading);
 const disabledRegister = computed(() => !canDraft.value || !cash.value || !companies.value.length);
 const canDraftCompany = computed(() => companies.value.some(account => eligibleSources(account).length > 0));
@@ -133,7 +152,7 @@ function closeForm() {
 function submitRegistration() {
   const from = origin.value;
   const to = destination.value;
-  if (!from?.currentRegistrationId || !to || !canDraft.value) return;
+  if (!registerAllowed.value || !from?.currentRegistrationId || !to || !canDraft.value) return;
   if (![from, to].every(account => props.accounts.some(current =>
     current.scopeKey === account.scopeKey && hasBalance(current) && current.currentRegistrationId === account.currentRegistrationId))) {
     error.value = "账户的有效登记已变化，请保留原依据并重新选择账户和资金来源";
@@ -154,7 +173,7 @@ function submitRegistration() {
   } });
 }
 function submitAction() {
-  if (!selectedAction.value || !canDraft.value) return;
+  if (!actionAllowed.value || !selectedAction.value || !canDraft.value) return;
   const { transfer, action } = selectedAction.value;
   if (!reference.value.trim()) { error.value = "请填写本次办理的实际依据或原因"; return; }
   void submit({ type: "action", transferId: transfer.id, input: {
@@ -162,16 +181,22 @@ function submitAction() {
   } });
 }
 
+function retryPending() {
+  if (!recoveryAllowed.value) return;
+  void submit(null);
+}
+
 async function submit(proposal: FundTransferCommand | null) {
   if (busy.value || !storageReady.value) return;
   const actor = actorId.value;
   const openedView = viewRevision;
+  const expectedPending = proposal ? null : pending.value;
   const isCurrent = () => actorId.value === actor && openedView === viewRevision;
   busy.value = true;
   error.value = "";
   notice.value = "";
   try {
-    const result = await submitFundTransferCommand(actor, proposal, isCurrent);
+    const result = await submitFundTransferCommand(actor, proposal, isCurrent, expectedPending);
     if (!isCurrent()) return;
     if (result.kind === "rejected") {
       error.value = formatUnknownApiError(result.error, "转款未提交，请核对原资料");
@@ -246,8 +271,8 @@ async function submit(proposal: FundTransferCommand | null) {
       <p>原内容和办理凭据已保留。使用原凭据获取结果，避免再次登记。</p>
       <t-button
         :loading="busy"
-        :disabled="!storageReady || loading"
-        @click="submit(null)"
+        :disabled="!recoveryAllowed || !storageReady || loading"
+        @click="retryPending"
       >
         使用原凭据继续核对
       </t-button>
@@ -323,7 +348,7 @@ async function submit(proposal: FundTransferCommand | null) {
       :header="direction === 'cash' ? '登记现金转公司' : '登记公司转公共现金'"
       width="var(--jg-layout-form-max-width)"
       :close-on-overlay-click="false"
-      :confirm-btn="{ content: '登记转出', disabled: !canDraft || !destination || !sourceRows.length, loading: busy }"
+      :confirm-btn="{ content: '登记转出', disabled: !registerAllowed || !canDraft || !destination || !sourceRows.length, loading: busy }"
       :cancel-btn="{ content: '取消', disabled: busy }"
       @confirm="submitRegistration"
       @close="closeForm"
@@ -385,7 +410,7 @@ async function submit(proposal: FundTransferCommand | null) {
       :header="actionLabel[selectedAction.action]"
       width="var(--jg-layout-form-max-width)"
       :close-on-overlay-click="false"
-      :confirm-btn="{ content: actionLabel[selectedAction.action], loading: busy, disabled: !canDraft }"
+      :confirm-btn="{ content: actionLabel[selectedAction.action], loading: busy, disabled: !actionAllowed || !canDraft }"
       :cancel-btn="{ content: '取消', disabled: busy }"
       @confirm="submitAction"
       @close="closeForm"

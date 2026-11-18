@@ -27,14 +27,17 @@ export function readFundTransferCommand(actorId: string): FundTransferCommand | 
 export async function submitFundTransferCommand(
   actorId: string,
   proposal: FundTransferCommand | null,
-  isCurrent: () => boolean
+  isCurrent: () => boolean,
+  expectedPending: FundTransferCommand | null = null
 ) {
   if (!actorId || !navigator.locks) throw new Error("当前浏览器无法安全保存转款凭据");
   const key = storageKey(actorId);
   return navigator.locks.request(key, { mode: "exclusive" }, async () => {
     if (!isCurrent()) throw new Error("当前账号已变化，请重新核对");
     const pending = readFundTransferCommand(actorId);
-    if (pending && proposal) return { kind: "pending", command: pending } as const;
+    if (pending && (proposal || JSON.stringify(pending) !== JSON.stringify(expectedPending))) {
+      return { kind: "pending", command: pending } as const;
+    }
     const command = pending ?? proposal;
     if (!command) return { kind: "missing" } as const;
     if (!pending) localStorage.setItem(key, JSON.stringify(command));

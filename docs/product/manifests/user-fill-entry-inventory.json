@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 414,
+    "activeBusinessActionCount": 417,
     "technicalActionCount": 10,
-    "activeBindingCount": 479,
+    "activeBindingCount": 483,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -2855,6 +2855,55 @@
       "capabilityKind": "detail_action",
       "bindingKeys": [
         "PATCH /fund-executions/cases/:param/reversal"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-transfer.act",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-transfers/:param/actions"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-transfer.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-transfers",
+        "POST /fund-account-transfers/:param/actions"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-transfer.register",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-transfers"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
