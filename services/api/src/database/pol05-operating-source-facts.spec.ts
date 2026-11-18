@@ -488,6 +488,8 @@ function fixtureIds() {
   const prefix = `pol05_${randomUUID().replace(/-/gu, "")}`;
   return {
     prefix,
+    affiliateName: `POL-05 施工企业 ${prefix}`,
+    counterpartyName: `POL-05 下游供应商 ${prefix}`,
     projectId: `${prefix}_project`,
     financeUserId: `${prefix}_finance`,
     managerUserId: `${prefix}_manager`,
@@ -569,21 +571,19 @@ async function seedFixture(
       }
     ]
   });
-  const affiliateName = `POL-05 施工企业 ${fixture.prefix}`;
-  const counterpartyName = `POL-05 下游供应商 ${fixture.prefix}`;
   await client.businessParty.createMany({
     data: [
       {
         id: fixture.affiliatePartyId,
-        name: affiliateName,
-        normalizedName: affiliateName,
+        name: fixture.affiliateName,
+        normalizedName: fixture.affiliateName,
         unifiedSocialCreditCode: `${fixture.prefix}AFF`,
         createdByUserId: fixture.financeUserId
       },
       {
         id: fixture.counterpartyId,
-        name: counterpartyName,
-        normalizedName: counterpartyName,
+        name: fixture.counterpartyName,
+        normalizedName: fixture.counterpartyName,
         unifiedSocialCreditCode: `${fixture.prefix}PAYEE`,
         createdByUserId: fixture.financeUserId
       }
@@ -595,14 +595,14 @@ async function seedFixture(
         id: fixture.affiliateVersionId,
         businessPartyId: fixture.affiliatePartyId,
         versionNo: 1,
-        snapshot: { name: affiliateName },
+        snapshot: { name: fixture.affiliateName },
         createdByUserId: fixture.financeUserId
       },
       {
         id: fixture.counterpartyVersionId,
         businessPartyId: fixture.counterpartyId,
         versionNo: 1,
-        snapshot: { name: counterpartyName },
+        snapshot: { name: fixture.counterpartyName },
         createdByUserId: fixture.financeUserId
       }
     ]
@@ -613,7 +613,7 @@ async function seedFixture(
       projectId: fixture.projectId,
       businessPartyId: fixture.affiliatePartyId,
       businessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: affiliateName,
+      affiliateNameSnapshot: fixture.affiliateName,
       affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
       changeReason: "POL-05 测试",
@@ -681,7 +681,7 @@ async function seedFixture(
       projectId: fixture.projectId,
       code: `${fixture.prefix}-CON`,
       name: "POL-05 材料合同",
-      counterparty: "POL-05 下游供应商",
+      counterparty: fixture.counterpartyName,
       contractTypeKey: "material_purchase"
     }
   });
@@ -721,7 +721,7 @@ async function seedFixture(
       roleKey: "party_b",
       displayOrder: 1,
       businessPartyVersionId: fixture.counterpartyVersionId,
-      snapshot: { name: "POL-05 下游供应商" }
+      snapshot: { name: fixture.counterpartyName }
     }
   });
   await client.contract.create({
@@ -730,7 +730,7 @@ async function seedFixture(
       projectId: fixture.projectId,
       code: `${fixture.prefix}-AFF-CON`,
       name: "POL-05 施工企业材料合同",
-      counterparty: "POL-05 下游供应商",
+      counterparty: fixture.counterpartyName,
       contractTypeKey: "material_purchase"
     }
   });
@@ -746,7 +746,7 @@ async function seedFixture(
       signingSubjectType: "affiliate",
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       draftData: {},
       templateSnapshot: {},
@@ -760,7 +760,7 @@ async function seedFixture(
       roleKey: "party_b",
       displayOrder: 1,
       businessPartyVersionId: fixture.counterpartyVersionId,
-      snapshot: { name: "POL-05 下游供应商" }
+      snapshot: { name: fixture.counterpartyName }
     }
   });
 
@@ -880,7 +880,7 @@ async function seedFixture(
       periodLabel: "2026年8月",
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       voucherFileId: fileIds[2]!,
       fileContentSha256Snapshot: "a".repeat(64),
       recordedByUserId: fixture.financeUserId,
@@ -971,13 +971,13 @@ async function seedFixture(
       projectId: fixture.projectId,
       paidAt: new Date("2026-08-14T00:30:00.000Z"),
       amountCents: 20_000n,
-      generalContractorName: "POL-05 施工企业",
-      paidTargetName: "POL-05 下游供应商",
+      generalContractorName: fixture.affiliateName,
+      paidTargetName: fixture.counterpartyName,
       paymentType: "material",
       paymentSubjectType: "affiliate",
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       voucherFileId: fileIds[4]!,
       recordedByUserId: fixture.financeUserId,
       contractId: fixture.affiliateContractId,
@@ -1116,7 +1116,7 @@ async function appendOwnerPaymentRoleProbe(
       isBeforeOperatingLedgerEffectiveDate: false,
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       sourceSnapshot: { purpose: "actual_payer role constraint probe" },
       subjects: {
