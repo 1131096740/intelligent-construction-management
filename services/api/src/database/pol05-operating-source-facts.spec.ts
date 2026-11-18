@@ -319,7 +319,7 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           expenseType: "sporadic_payment", expenseSubtype: "sporadic_material", paymentSubject: "our_company",
           reason: "核对独占凭证冲突", requestedAmountCents: 100n, approvedAmountCents: 100n,
           paymentMethod: "bank_transfer", handlerUserId: fixture.financeUserId,
-          applicantUserId: fixture.financeUserId, status: "approved",
+          applicantUserId: fixture.financeUserId, status: "approved_pending_payment",
         } });
         await expect(owner.$executeRaw`
           INSERT INTO public."ProjectExpenseExecution"

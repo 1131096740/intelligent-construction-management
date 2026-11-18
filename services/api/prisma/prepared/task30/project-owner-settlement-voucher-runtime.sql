@@ -12,5 +12,5 @@ BEGIN
     OR EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE member = runtime_role.oid OR roleid = runtime_role.oid)
   THEN RAISE EXCEPTION 'owner settlement voucher requires an existing restricted FileService runtime';
   END IF;
-  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_project_owner_settlement_voucher_bound(TEXT) TO %I', runtime_name);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_project_owner_settlement_voucher_bound(TEXT), public.jg_file_business_binding_columns_before_owner_settlement() TO %I', runtime_name);
 END $$;

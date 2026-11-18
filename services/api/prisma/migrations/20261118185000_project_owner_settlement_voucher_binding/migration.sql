@@ -18,12 +18,12 @@ BEGIN
 
   EXECUTE format('SET LOCAL ROLE %I', owner_name);
   ALTER FUNCTION public.jg_file_business_binding_columns()
-    RENAME TO jg_file_business_binding_columns_before_project_owner_settlement;
+    RENAME TO jg_file_business_binding_columns_before_owner_settlement;
   EXECUTE $new_registry$
     CREATE FUNCTION public.jg_file_business_binding_columns()
     RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
     LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog, public AS $body$
-      SELECT * FROM public.jg_file_business_binding_columns_before_project_owner_settlement()
+      SELECT * FROM public.jg_file_business_binding_columns_before_owner_settlement()
       UNION ALL
       VALUES ('ProjectOwnerSettlementEntry', 'voucherFileId', FALSE);
     $body$;
