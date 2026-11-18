@@ -1068,24 +1068,6 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const clearedPartyIds=new Set(placement&&placementKind==="labor"?[156,159].map(index=>model.paragraphs[index].id):[]);
   const protectedBankIds=new Set(placement&&placementKind==="labor"?model.paragraphs.slice(156,162).map(item=>item.id):[]);
   if (hasPageValue) prepareReviewedOriginalMechanicalPage(model.zip);
-  const defaultSigningDateParagraphs = new Set<Element>();
-  if (hasDateValue) {
-    // Only the two source-qualified, truly empty party-cell paragraphs. Insert
-    // defaults before the existing edit/delete plan so user text always wins.
-    const table = model.document.getElementsByTagNameNS(W, "tbl").item(1);
-    const rows = table ? direct(table, "tr") : [], cells = rows.length === 1 ? direct(rows[0], "tc") : [];
-    const expectedIds = ["be6d8bf0f1e5172844c287c65d2f53f404b033dd67611442873a02d5a37a312e", "f20c09d2043ff82ab2e75bd5cce357c5c2a7dc7885246d96872c54245e699d2f"];
-    if (cells.length !== 2) throw new BadRequestException("合同签署日期呈现版本无法核对，请联系管理员处理");
-    for (let i = 0; i < cells.length; i++) {
-      const paragraphs = direct(cells[i], "p"), slot = paragraphs[5];
-      const original = model.paragraphs.find(item => item.id === expectedIds[i]);
-      if (paragraphs.length !== 7 || !slot || original?.paragraph !== slot || slot.childNodes.length !== 0) {
-        throw new BadRequestException("合同签署日期呈现版本无法核对，请联系管理员处理");
-      }
-      replaceParagraphText(slot, "签署日期：　年　月　日", model.document);
-      defaultSigningDateParagraphs.add(slot);
-    }
-  }
   const plan = rawPlan === undefined ? undefined : normalizeContractBodyPlan(rawPlan, source, mapped, layoutTemplateVersionId, binding);
   let partyDetailsConflict=false;
   const supplementReview=[SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,SIGNATURE_SUPPLEMENT_COMPANY_VERSION,SIGNATURE_SUPPLEMENT_PAGE_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===placement)?signatureSupplementReview(model,plan,(placement===SIGNATURE_SUPPLEMENT_COMPANY_VERSION||placement===SIGNATURE_SUPPLEMENT_PAGE_VERSION)):undefined;
@@ -1175,15 +1157,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     if(options.mappedSignatureSupplement){
       const normalizeParties=(s:string)=>s.replace(/\{([^{}]+)\}/gu,(token,key:string)=>{const canonical=canonicalContractPlaceholder(key.trim());return canonical==="party.owner.name"||canonical==="party.counterparty.name"?`{${canonical}}`:token;});
       const [begin,end]=placementKind==="material"?[205,218]:[187,198];
-      for (let index = begin; index <= end; index++) {
-        const { paragraph, sourceText } = model.paragraphs[index];
-        // These exact source-qualified slots were verified empty before rendering the server default.
-        if (!defaultSigningDateParagraphs.has(paragraph) &&
-            normalizeParties(textOf(paragraph)) !== normalizeParties(sourceText) &&
-            !entries.some(entry => entry.index === index)) {
-          throw new BadRequestException("合同签署区映射无法核对，请保留内容并联系管理员处理");
-        }
-      }
+      for(let i=begin;i<=end;i++)if(normalizeParties(textOf(model.paragraphs[i].paragraph))!==normalizeParties(model.paragraphs[i].sourceText)&&!entries.some(entry=>entry.index===i))throw new BadRequestException("合同签署区映射无法核对，请保留内容并联系管理员处理");
     }
     const body=model.document.getElementsByTagNameNS(W,"body").item(0),anchor=model.paragraphs[placementKind==="material"?205:187].paragraph;
     let table:XmlNode|null=anchor;while(table&&table.parentNode!==body)table=table.parentNode;
@@ -1219,6 +1193,24 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
     const used=new Set(starts.map(node=>node.getAttributeNS(W,"id")));let id=0;while(used.has(String(id)))id++;legacySignatureMarkerId=String(id);
     const first=(table as Element).getElementsByTagNameNS(W,"p").item(0);if(!first)throw new BadRequestException("合同签署区位置无法核对，请联系管理员处理");
     const start=model.document.createElementNS(W,"w:bookmarkStart"),end=model.document.createElementNS(W,"w:bookmarkEnd");start.setAttributeNS(W,"w:id",legacySignatureMarkerId);start.setAttributeNS(W,"w:name","jg_legacy_body_signature_anchor");end.setAttributeNS(W,"w:id",legacySignatureMarkerId);first.appendChild(start);first.appendChild(end);
+  }
+  const defaultSigningDateIds = new Set<string>();
+  if (hasDateValue) {
+    // Only the two source-qualified, truly empty party-cell paragraphs. Insert
+    // defaults before the existing edit/delete plan so user text always wins.
+    const table = model.document.getElementsByTagNameNS(W, "tbl").item(1);
+    const rows = table ? direct(table, "tr") : [], cells = rows.length === 1 ? direct(rows[0], "tc") : [];
+    const expectedIds = ["be6d8bf0f1e5172844c287c65d2f53f404b033dd67611442873a02d5a37a312e", "f20c09d2043ff82ab2e75bd5cce357c5c2a7dc7885246d96872c54245e699d2f"];
+    if (cells.length !== 2) throw new BadRequestException("合同签署日期呈现版本无法核对，请联系管理员处理");
+    for (let i = 0; i < cells.length; i++) {
+      const paragraphs = direct(cells[i], "p"), slot = paragraphs[5];
+      const original = model.paragraphs.find(item => item.id === expectedIds[i]);
+      if (paragraphs.length !== 7 || !slot || original?.paragraph !== slot || slot.childNodes.length !== 0) {
+        throw new BadRequestException("合同签署日期呈现版本无法核对，请联系管理员处理");
+      }
+      replaceParagraphText(slot, "签署日期：　年　月　日", model.document);
+      defaultSigningDateIds.add(original.id);
+    }
   }
   for (const item of model.paragraphs.filter(paragraph => paragraph.editable)) {
     for (const tag of placeholderTags(textOf(item.paragraph))) {
@@ -1275,7 +1267,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
   const signatureRoles = new Map<string,number>();
   if (signatureSupplement) for (const [role,[start,end]] of signatureRanges.entries()) for (let index=start;index<=end;index++) {
     const item=model.paragraphs[index]; if (!item) throw new BadRequestException("合同签署区位置无法核对，请联系管理员处理");
-    signatureRoles.set(item.id,role);
+    if (!defaultSigningDateIds.has(item.id)) signatureRoles.set(item.id,role);
   }
   const supplements: Element[][] = [[],[]];
   const signatureOriginals: Array<{id:string;paragraph:Element}> = [];

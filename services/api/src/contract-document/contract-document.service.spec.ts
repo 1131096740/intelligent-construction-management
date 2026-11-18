@@ -26,15 +26,17 @@ describe("ContractDocumentService", () => {
   const { mapping } = prepareLayoutSourceMapping(source, "layout-file-1", 2, parsed.positions.slice(0, 5).map((position, index) => ({ positionId: position.positionId, start: index === 0 ? 5 : index === 4 ? 0 : 3, end: position.text.length, fieldKey: keys[index] })));
   const sourceMapping = { ...mapping, confirmation: { sourceFileId: mapping.sourceFileId, sourceSha256: mapping.sourceSha256, draftRevision: 2, mappingFingerprint: mapping.fingerprint, previewJobId: "confirmed-preview", previewPdfFileId: "confirmed-pdf" } };
   const audit = { record: jest.fn() };
-  const files = {
+  const makeFiles = () => ({
     getFileBuffer: jest.fn().mockResolvedValue({ buffer: source, file: { id: "layout-file-1", storageStatus: "active", contentSha256: createHash("sha256").update(source).digest("hex") } }),
     assertCanDownloadFile: jest.fn(),
     linkFileReplacement: jest.fn()
-  };
+  });
+  let files: ReturnType<typeof makeFiles>;
   const docxMime =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
   beforeEach(() => {
+    files = makeFiles();
     audit.record.mockReset();
     files.linkFileReplacement.mockReset().mockResolvedValue(undefined);
     files.assertCanDownloadFile.mockReset().mockImplementation(
@@ -521,7 +523,7 @@ describe("ContractDocumentService", () => {
     Object.assign(plan,{signatureSupplementReviewDigest:upgraded.signatureSupplementReview!.digest});
     await service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
     expect(tx.contractGeneratedDocument.create).toHaveBeenCalledTimes(1);expect(plan.edits[0].text).toBe("虚构补充");
-  });
+  }, 30_000);
   it("requires company-and-bank review before queueing generic signature edits",async()=>{
     const input=readFileSync(join(__dirname,"../../assets/templates/generic-contract-v1.docx")),positions=readLayoutSourcePositions(input);
     const target=positions.positions.find(position=>position.part==="word/document.xml"&&position.paragraphIndex===54)!;

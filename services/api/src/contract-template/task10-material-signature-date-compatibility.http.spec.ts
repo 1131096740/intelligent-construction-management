@@ -97,7 +97,7 @@ describe("task10 signature-date capability public compatibility", () => {
       try {
         expect(await server.processor.processNext()).toBe(true);
         const failed = (await list()).find((entry: { id: string }) => entry.id === generation.generationId);
-        expect(failed).toMatchObject({ status: "failed", docxFileId: null, pdfFileId: null, errorMessage: vector === "wrongEngine" ? "合同文档输入快照格式不正确" : "合同签署日期呈现版本无法核对，请联系管理员处理" });
+        expect(failed).toMatchObject({ status: "failed", docxFileId: null, pdfFileId: null, errorMessage: (vector === "wrongEngine" || vector === "wrongSource") ? "合同文档输入快照格式不正确" : "合同签署日期呈现版本无法核对，请联系管理员处理" });
         expect(reads).toHaveBeenCalledTimes(0); expect(uploads).toHaveBeenCalledTimes(0);
         const after = await fetch(draft.base + "/workbench", { headers: draft.headers }).then(r => r.json());
         expect(after.version).toEqual(wb.version); expect(after.draft).toEqual(wb.draft); expect(after.bills).toEqual(wb.bills);
