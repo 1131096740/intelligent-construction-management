@@ -207,19 +207,23 @@ describe("task10 fixed generic primary roles through public HTTP", () => {
       expect(wb.version.documentContentRevision).toBe(current.version.documentContentRevision + 1);
       expect(wb.version.documentContentFingerprint).toMatch(/^[a-f0-9]{64}$/u);
       expect(wb.version.documentContentFingerprint).not.toBe(current.version.documentContentFingerprint);
-      // One source-less readonly separator has an ordinal ID, not a persistent source position.
+      // Source-less readonly separators and bank blanks have ordinal IDs.
       // Qualify that exact bill-table -> separator -> source signature-label slot; never omit generated blocks.
       const signatureLabelId = "f3185df482bbf40c5b438e954a68e6f22c4fa0dfd9aa389e85536eb501ac927d";
       const qualifySeparator = (snapshot: PublicBody) => {
         const generated = snapshot.blocks.filter(block => block.id.startsWith("generated:"));
-        expect(generated).toHaveLength(1);
+        expect(generated.map(block => [block.text, block.editable])).toEqual([
+          ["", false], ["", false],
+          ["开户行：________________", false], ["银行账号：________________", false],
+          ["开户行：________________", false], ["银行账号：________________", false]
+        ]);
         const signatureIndices = snapshot.flow.flatMap((node, index) => node.kind === "paragraph" && node.paragraphId === signatureLabelId ? [index] : []);
         expect(signatureIndices).toHaveLength(1);
         const signatureIndex = signatureIndices[0];
         expect(signatureIndex).toBeGreaterThan(1);
         const separatorNode = snapshot.flow[signatureIndex - 1], billTable = snapshot.flow[signatureIndex - 2];
         if (!separatorNode || separatorNode.kind !== "paragraph" || !billTable || billTable.kind !== "table") throw new Error("清单与签章页之间的只读分隔段资格不符");
-        const separator = generated[0];
+        const separator = generated.find(block => block.id === separatorNode.paragraphId)!;
         expect(separator.id).toMatch(/^generated:\d+$/u);
         expect(separatorNode.paragraphId).toBe(separator.id);
         expect(snapshot.flow.filter(node => node.kind === "paragraph" && node.paragraphId === separator.id)).toHaveLength(1);
@@ -227,19 +231,24 @@ describe("task10 fixed generic primary roles through public HTTP", () => {
         expect(separator).toEqual({ id: separator.id, kind: "paragraph", text: "", editable: false,
           format: { align: "justify", fontFamily: "仿宋_GB2312", fontSizePt: 14 }, blankFields: [] });
         expect([billTable.rows.length, billTable.columns.length]).toEqual([4, 7]);
-        return { separator, billTable, signatureNode: snapshot.flow[signatureIndex] };
+        return { separator, generated, billTable, signatureNode: snapshot.flow[signatureIndex] };
       };
       const beforeSeparator = qualifySeparator(before), afterSeparator = qualifySeparator(body);
       expect(afterSeparator.billTable).toEqual(beforeSeparator.billTable);
       expect(afterSeparator.billTable).toEqual(tables[0]);
       expect(afterSeparator.signatureNode).toEqual(beforeSeparator.signatureNode);
       expect({ ...afterSeparator.separator, id: beforeSeparator.separator.id }).toEqual(beforeSeparator.separator);
-      expect(before.blocks.filter(block => block.id === afterSeparator.separator.id && block.id !== beforeSeparator.separator.id)).toHaveLength(0);
-      expect(body.blocks.filter(block => block.id === beforeSeparator.separator.id && block.id !== afterSeparator.separator.id)).toHaveLength(0);
+      const aliases = new Map(beforeSeparator.generated.map((block, index) => [block.id, afterSeparator.generated[index].id]));
+      const alias = (id: string) => aliases.get(id) ?? id;
+      expect(afterSeparator.generated).toEqual(beforeSeparator.generated.map(block => ({ ...block, id: alias(block.id) })));
       await writeFile(join(directory, "qualified-separator-alias.json"), JSON.stringify({ before: beforeSeparator, after: afterSeparator,
-        scope: "Only one fully qualified source-less readonly empty separator across content revisions; source and addition IDs remain exact." }, null, 2));
-      const aliasedBeforeBlocks = before.blocks.map(block => block.id === beforeSeparator.separator.id ? { ...block, id: afterSeparator.separator.id } : block);
-      const aliasedBeforeFlow = before.flow.map<ContractBodyFlow>(node => node.kind === "paragraph" && node.paragraphId === beforeSeparator.separator.id ? { ...node, paragraphId: afterSeparator.separator.id } : node);
+        scope: "Qualified ordinal IDs for readonly separators and bank blanks; source and addition IDs remain exact." }, null, 2));
+      const aliasedBeforeBlocks = before.blocks.map(block => ({ ...block, id: alias(block.id) }));
+      const aliasFlow = (node: ContractBodyFlow): ContractBodyFlow => node.kind === "paragraph"
+        ? { ...node, paragraphId: alias(node.paragraphId) }
+        : { ...node, rows: node.rows.map(row => ({ ...row,
+            cells: row.cells.map(cell => ({ ...cell, paragraphIds: cell.paragraphIds.map(alias), flow: cell.flow.map(aliasFlow) })) })) };
+      const aliasedBeforeFlow = before.flow.map(aliasFlow);
       expect(body.blocks.filter(block => block.id !== addedBlockId).map(block => block.id)).toEqual(aliasedBeforeBlocks.map(block => block.id));
       expect(body.blocks.filter(block => block.id !== addedBlockId).map(block => [block.id, block.editable, block.text])).toEqual(aliasedBeforeBlocks.map(block => [block.id, block.editable, block.text]));
       const expectedFlow = aliasedBeforeFlow.flatMap<ContractBodyFlow>(node => node.kind === "paragraph" && node.paragraphId === additionAnchorId ? [node, { kind: "paragraph" as const, paragraphId: addedBlockId }] : [node]);
@@ -272,7 +281,8 @@ describe("task10 fixed generic primary roles through public HTTP", () => {
       expect(Object.hasOwn(queued.inputSnapshot.renderInput.values, "contract.reviewedLaborTaxBindingVersion")).toBe(false);
       expect(Object.hasOwn(queued.inputSnapshot.bodyDocument, "typographyVersion")).toBe(true);
       expect(Object.hasOwn(queued.inputSnapshot.renderInput.values, "contract.typographyVersion")).toBe(true);
-      const keyTuple = [draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lockSha, "contract-money-v1", "body-bill-loop-v2", expectedVersion];
+      const keyTuple = [draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lockSha, "contract-money-v1", "body-bill-loop-v2", expectedVersion,
+        "built-in-automatic-party-guard-v1:built-in-generic-signature-review-v3", "built-in-generic-font-v1", "built-in-mapped-signature-supplement-v1"];
       const expectedKey = createHash("sha256").update(JSON.stringify(keyTuple)).digest("hex");
       expect(queued.idempotencyKey).toBe(expectedKey);
       await writeFile(join(directory, "public-queued-key.json"), JSON.stringify({ keyTuple, expectedKey, queued }, null, 2));

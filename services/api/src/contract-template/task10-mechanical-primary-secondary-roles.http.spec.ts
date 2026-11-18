@@ -191,7 +191,8 @@ describe("task10 fixed mechanical primary and secondary roles through public HTT
           renderInput: { values: { "contract.typographyVersion": expectedVersion, "contract.renderSemanticVersion": "contract-money-v1", "contract.tableLayoutVersion": "body-bill-loop-v2" } } } });
       expect(Object.hasOwn(queued.inputSnapshot.bodyDocument, "typographyVersion")).toBe(true);
       expect(Object.hasOwn(queued.inputSnapshot.renderInput.values, "contract.typographyVersion")).toBe(true);
-      const keyTuple = [draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lockSha, "contract-money-v1", "body-bill-loop-v2", expectedVersion];
+      const keyTuple = [draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lockSha, "contract-money-v1", "body-bill-loop-v2", expectedVersion,
+        "built-in-automatic-party-guard-v1:built-in-signature-supplement-company-v3", "mechanical-contact-layout-v2", "built-in-mapped-signature-supplement-v1"];
       const expectedKey = createHash("sha256").update(JSON.stringify(keyTuple)).digest("hex");
       expect(queued.idempotencyKey).toBe(expectedKey);
       await writeFile(join(directory, "public-queued-key.json"), JSON.stringify({ keyTuple, expectedKey, queued }, null, 2));
