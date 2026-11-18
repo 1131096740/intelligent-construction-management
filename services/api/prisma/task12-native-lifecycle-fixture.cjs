@@ -4,15 +4,15 @@ const {describeMigration261GeneratedLifecycleDocumentAcl}=require('./task12-curr
 const {qualifyCurrent261GeneratedLifecycleSource}=require('./task12-current261-generated-lifecycle-source.cjs');
 const {generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
 const DATABASE = 'jiangkong_contract_draft_aggregate_test';
-const TERMINAL = '20261111140000_contract_direct_upward_retention_acl_source_v3';
 const DOCUMENT_ROLES = Object.freeze({ template: 'jg_c259_doc_template', worker: 'jg_c259_doc_worker', queue: 'jg_c259_doc_queue' });
 const quote = text => "'" + text.replaceAll("'", "''") + "'";
 const ident = text => '"' + text.replaceAll('"', '""') + '"';
 const fail = suffix => { throw new Error('TASK12_NATIVE_FIXTURE_' + suffix); };
 function validateNativeLifecycleScope(scope) {
   if (!scope || scope.database !== DATABASE || !/^jg_fixture_app_[a-f0-9]{24}$/u.test(scope.appName) ||
-    !/^[1-9][0-9]{1,9}$/u.test(scope.appOid) || scope.appOid === '10' || scope.migrationCount !== 261 || scope.terminal !== TERMINAL) fail('SCOPE');
-  qualifyCurrent261GeneratedLifecycleSource(scope.source);
+    !/^[1-9][0-9]{1,9}$/u.test(scope.appOid) || scope.appOid === '10') fail('SCOPE');
+  const { profile: { ledger } } = qualifyCurrent261GeneratedLifecycleSource(scope.source);
+  if (scope.migrationCount !== ledger.length || scope.terminal !== ledger.at(-1).name) fail('SCOPE');
 }
 function lifecycleMaterial(scope){
  validateNativeLifecycleScope(scope);
@@ -33,7 +33,7 @@ function renderNativeLifecycleFixture(scope, secrets) {
  const sql = ['BEGIN ISOLATION LEVEL SERIALIZABLE;', `DO $scope$ BEGIN
     IF current_database()<>${quote(scope.database)} OR current_user<>'jiangkong' OR session_user<>current_user
       OR current_setting('server_version_num')::integer NOT BETWEEN 160000 AND 169999
-      OR (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)<>261
+      OR (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)<>${scope.migrationCount}
       OR (SELECT jsonb_agg(jsonb_build_object('name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL) ORDER BY migration_name COLLATE "C",started_at,id) FROM public._prisma_migrations) IS DISTINCT FROM ${quote(JSON.stringify(scope.source.profile.ledger))}::jsonb
       OR NOT EXISTS(SELECT 1 FROM public._prisma_migrations WHERE migration_name=${quote(scope.terminal)} AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
       OR NOT EXISTS(SELECT 1 FROM pg_roles r WHERE r.oid=${scope.appOid}::oid AND r.rolname=${quote(scope.appName)}
@@ -66,7 +66,7 @@ function renderNativeLifecycleFixture(scope, secrets) {
  return sql.join('\n');
 }
 
-module.exports = { DATABASE, TERMINAL, DOCUMENT_ROLES, validateNativeLifecycleScope, renderNativeLifecycleFixture, nativeLifecyclePlanBinding };
+module.exports = { DATABASE, DOCUMENT_ROLES, validateNativeLifecycleScope, renderNativeLifecycleFixture, nativeLifecyclePlanBinding };
 
 const { types } = require('node:util');
 const NATIVE_STAGES = new Set(['INPUT','IDENTITY','SEED','NEST_INIT','LOGIN','SIGNATURES','TEMPLATE','DRAFT','GENERATE','SUBMIT','WITHDRAW','REJECT','APPROVE','SEAL','UPLOAD','AUDIT_FAULT_INSTALL','AUDIT_FAULT_ARCHIVE','AUDIT_FAULT_ROLLBACK_VERIFY','AUDIT_FAULT_CLEANUP','ARCHIVE','DOWNLOAD','VERIFY','CLEANUP']);
@@ -117,7 +117,7 @@ const RUNNER_CODES=new Set(['ARGUMENTS','ENVIRONMENT','SOURCE','DOCKER','CONTAIN
 for(const code of ['INPUT','SOURCE','LEDGER','DATABASE_IDENTITY','PREFIX_CACHE','STOPPED','CONTAINER_IDENTITY','CONTAINER_PORT','TAIL_STDIN_PORT','READBACK','CI_RECOVERY','CURRENT259_FRESH_FULL_ONLY','PARTIAL_QUALIFICATION','PARTIAL_TAIL_QUALIFICATION','RECOVERY_CONTEXT','RECOVERY_NOT_RESOLVED','ROLE_PROVENANCE','SCHEMA','SOURCE_204_205','SOURCE_PREFIX','STAGE203','STAGE205','TAIL_PREFIX','TARGET','CONTROL','STAGE205_FRAMING','TAIL_QUALIFICATION','TAIL_READBACK','CLEANUP','COMPLETION'])RUNNER_CODES.add('LOCAL_MIGRATION_'+code);
 RUNNER_CODES.add('LOCAL_CI_DYNAMIC_MIGRATION_RESOURCE');
 for(const phase of ['PREFLIGHT','QUALIFICATION_SETUP','QUALIFICATION_CLEANUP','CLEANUP_READBACK','POST_QUALIFICATION','COMPLETE_READBACK'])RUNNER_CODES.add('LOCAL_MIGRATION_SQL_'+phase);
-for(let stage=1;stage<=261;stage++)RUNNER_CODES.add('LOCAL_MIGRATION_SQL_STAGE'+stage+'_READBACK');
+for(let stage=1;stage<=262;stage++)RUNNER_CODES.add('LOCAL_MIGRATION_SQL_STAGE'+stage+'_READBACK');
 for(const stage of [213,215,218,221])for(const phase of ['BEFORE','SUPPLY','READBACK']){
   RUNNER_CODES.add('LOCAL_MIGRATION_SQL_TAIL'+stage+'_'+phase);
   for(const kind of ['RESOURCE_PORT','NODE_PROOF'])RUNNER_CODES.add('LOCAL_MIGRATION_TAIL'+stage+'_'+phase+'_'+kind);

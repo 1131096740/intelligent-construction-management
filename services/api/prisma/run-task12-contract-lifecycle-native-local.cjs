@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture, withNativeLifecycleCleanup, createNativeLifecycleRunnerFailureRecorder, projectNativeLifecyclePsqlFailure, nativeLifecyclePlanBinding } = require('./task12-native-lifecycle-fixture.cjs');
+const { DATABASE, DOCUMENT_ROLES, renderNativeLifecycleFixture, withNativeLifecycleCleanup, createNativeLifecycleRunnerFailureRecorder, projectNativeLifecyclePsqlFailure, nativeLifecyclePlanBinding } = require('./task12-native-lifecycle-fixture.cjs');
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require('./local-staged-ci-dynamic.cjs');
 const { createCommandRuntime } = require('./money-bigint-runner-runtime.cjs');
 const { verifyCurrent259GeneratedDocumentRuntime } = require('./task12-current259-generated-document-runtime.cjs');
@@ -112,7 +112,8 @@ async function run(args,enter,capture) {
     const psql = sql => docker(['exec','--interactive',container,'psql','-X','-A','-t','-q','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','jiangkong','-d',DATABASE,'-f','-'], { input: sql,psqlLineCount:sql.split('\n').length });
     enter('ORIGINAL_APP_READ');
     const applicationRole = psql(`SELECT rolname FROM pg_roles WHERE oid=${applicationOid}::oid;`);
-    const scope = { source, database: DATABASE, appName: applicationRole, appOid: applicationOid, migrationCount: 261, terminal: TERMINAL };
+    const { ledger } = source.profile;
+    const scope = { source, database: DATABASE, appName: applicationRole, appOid: applicationOid, migrationCount: ledger.length, terminal: ledger.at(-1).name };
     const secrets = Object.fromEntries(['application',...Object.keys(DOCUMENT_ROLES)].map(slot => [slot,randomBytes(32).toString('hex')]));
     enter('ROLE_PROVISION');
     build.check();
@@ -130,7 +131,7 @@ async function run(args,enter,capture) {
       { env: { ...env, DATABASE_URL: urls.application, FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: files,
         FILE_DOWNLOAD_SECRET: randomBytes(32).toString('hex'), TASK12_NATIVE_LIFECYCLE_INPUT: packet }, stdio: 'inherit', timeout: 900_000 });
     build.check();
-    return { status: input.queueOnly ? 'TASK12_QUEUE_ONLY_SYNTHETIC_PG_HTTP_PASSED_NO_DOCUMENT_ACCEPTANCE' : 'TASK12_NATIVE_LIFECYCLE_PG_HTTP_PASSED', candidateSha: input.sha, migrationCount: 261 };
+    return { status: input.queueOnly ? 'TASK12_QUEUE_ONLY_SYNTHETIC_PG_HTTP_PASSED_NO_DOCUMENT_ACCEPTANCE' : 'TASK12_NATIVE_LIFECYCLE_PG_HTTP_PASSED', candidateSha: input.sha, migrationCount: scope.migrationCount };
   }, [
     ['CONTAINER_REMOVE', () => {
       enter('CLEANUP_CONTAINER');

@@ -10,8 +10,17 @@ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>
 const qualifiedProfile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'schema.prisma'))).digest('hex'),migrations});
 const source=Object.freeze({candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile:qualifiedProfile});
 const scope = { source, database: 'jiangkong_contract_draft_aggregate_test', appName: 'jg_fixture_app_' + 'a'.repeat(24),
-  appOid: '20000', migrationCount: 261, terminal: '20261111140000_contract_direct_upward_retention_acl_source_v3' };
+  appOid: '20000', migrationCount: 262, terminal: '20261118120000_contract_upward_projection_source_forward' };
 const secrets = Object.fromEntries(['application','template','worker','queue'].map(name => [name, 'b'.repeat(64)]));
+
+test('native lifecycle binds the migration run to the qualified 262-entry ledger', () => {
+  const terminal = '20261118120000_contract_upward_projection_source_forward';
+  assert.equal(qualifiedProfile.profile, 'TASK12_ARCHIVE262_SOURCE_V1');
+  const sql = renderNativeLifecycleFixture({ ...scope, migrationCount: 262, terminal }, secrets);
+  assert.match(sql, /rolled_back_at IS NULL\)<>262/u);
+  assert.match(sql, /migration_name='20261118120000_contract_upward_projection_source_forward'/u);
+  assert.throws(() => renderNativeLifecycleFixture({ ...scope, migrationCount: 261, terminal }, secrets), /TASK12_NATIVE_FIXTURE_SCOPE/u);
+});
 
 test('native lifecycle grants retain the original staged app and three separate document roles', () => {
   const sql = renderNativeLifecycleFixture(scope, secrets);
