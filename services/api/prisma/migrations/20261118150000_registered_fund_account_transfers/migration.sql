@@ -234,17 +234,17 @@ BEGIN
    receipt."balanceYuan"<>previous."balanceYuan"+(CASE WHEN receipt."accountId"=t."sourceAccountId" THEN -t."amountYuan" ELSE t."amountYuan" END)
   THEN RAISE EXCEPTION 'fund transfer receipt changes only its own conserved balance'; END IF;
   IF EXISTS (
-   SELECT 1 FROM public."FundAccountSourceBatch" old
+   SELECT 1 FROM public."FundAccountSourceBatch" prior_source
    LEFT JOIN public."FundAccountSourceBatch" next
-    ON next."registrationId"=receipt."id" AND next."previousSourceBatchId"=old."id"
-   WHERE old."registrationId"=previous."id"
-   GROUP BY old."id" HAVING count(next."id")<>1
+    ON next."registrationId"=receipt."id" AND next."previousSourceBatchId"=prior_source."id"
+   WHERE prior_source."registrationId"=previous."id"
+   GROUP BY prior_source."id" HAVING count(next."id")<>1
   ) OR EXISTS (
-   SELECT 1 FROM public."FundAccountSourceBatch" next JOIN public."FundAccountSourceBatch" old ON old."id"=next."previousSourceBatchId"
+   SELECT 1 FROM public."FundAccountSourceBatch" next JOIN public."FundAccountSourceBatch" prior_source ON prior_source."id"=next."previousSourceBatchId"
    WHERE next."registrationId"=receipt."id" AND (
     (next."sourceStatus",next."sourceName",next."projectStatus",next."projectId") IS DISTINCT FROM
-    (old."sourceStatus",old."sourceName",old."projectStatus",old."projectId")
-    OR (receipt."accountId"=t."destinationAccountId" AND next."amountYuan"<>old."amountYuan")
+    (prior_source."sourceStatus",prior_source."sourceName",prior_source."projectStatus",prior_source."projectId")
+    OR (receipt."accountId"=t."destinationAccountId" AND next."amountYuan"<>prior_source."amountYuan")
    )
   ) THEN RAISE EXCEPTION 'fund transfer changes existing source identity'; END IF;
  END LOOP;
@@ -261,10 +261,10 @@ BEGIN
   )
   SELECT 1 FROM debits WHERE candidates<>1
   UNION ALL SELECT 1 FROM public."FundAccountSourceBatch" next
-   LEFT JOIN public."FundAccountSourceBatch" old ON old."id"=next."previousSourceBatchId"
+   LEFT JOIN public."FundAccountSourceBatch" prior_source ON prior_source."id"=next."previousSourceBatchId"
    WHERE next."registrationId"=outgoing."id" AND (
-    old."id" IS NULL OR next."receivedTransferLineId" IS NOT NULL OR
-    next."amountYuan"<>old."amountYuan"-coalesce((SELECT sum(d."amountYuan") FROM debits d WHERE d.current_id=old."id"),0)
+    prior_source."id" IS NULL OR next."receivedTransferLineId" IS NOT NULL OR
+    next."amountYuan"<>prior_source."amountYuan"-coalesce((SELECT sum(d."amountYuan") FROM debits d WHERE d.current_id=prior_source."id"),0)
    )
  ) OR EXISTS (
   SELECT 1 FROM public."RegisteredFundTransferLine" l

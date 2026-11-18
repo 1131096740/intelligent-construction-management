@@ -196,11 +196,15 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     class TransferFailureCapture extends Task16RegistrationErrorFilter {
      override catch(error:unknown,host:ArgumentsHost){
       const request=host.switchToHttp().getRequest<{method?:string;originalUrl?:string}>();
-      if(request.method==="POST"&&request.originalUrl?.startsWith("/fund-account-transfers")&&!(error instanceof HttpException)&&error instanceof Error){
+      if(request.method==="POST"&&request.originalUrl?.startsWith("/fund-account-transfers")&&error instanceof Error&&(!(error instanceof HttpException)||error.getStatus()>=500)){
        try{
         const safe=projectTask16RegistrationError(error);
-        appendFileSync(capturePath,JSON.stringify({route:"fund-account-transfers",httpStatus:500,...safe,message:error.message.slice(0,8192),stack:error.stack?.slice(0,16384)})+"\n",{mode:0o600,flag:"a"});
-        console.error("TASK406_FAILURE",JSON.stringify({httpStatus:500,...safe}));
+        const httpStatus=error instanceof HttpException?error.getStatus():500;
+        const response=error instanceof HttpException?error.getResponse():undefined;
+        const freezeCode=typeof response==="object"&&response&&"code" in response&&
+          ["OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED","OPERATIONAL_WRITE_FREEZE_ACTIVE"].includes(String(response.code))?response.code:undefined;
+        appendFileSync(capturePath,JSON.stringify({route:"fund-account-transfers",httpStatus,...safe,freezeCode,message:error.message.slice(0,8192),stack:error.stack?.slice(0,16384)})+"\n",{mode:0o600,flag:"a"});
+        console.error("TASK406_FAILURE",JSON.stringify({httpStatus,...safe,freezeCode}));
        }catch{ /* Keep the original HTTP failure. */ }
       }
       super.catch(error,host);
