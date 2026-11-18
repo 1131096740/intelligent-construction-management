@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -12,10 +14,10 @@ const {createHash}=require('node:crypto');
 const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const candidateSha='a'.repeat(40),sourceSealSha256='9'.repeat(64);
 const digest=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(name=>({
+const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().slice(0,historicalMigrationCount).map(name=>({
  path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:digest(path.join(__dirname,'migrations',name,'migration.sql')),
 }));
-const profile=qualifyCurrent259Source({candidateSha,sealSha256:sourceSealSha256,schemaSha256:digest(path.join(__dirname,'schema.prisma')),migrations});
+const profile=qualifyCurrent259Source({candidateSha,sealSha256:sourceSealSha256,schemaSha256:historicalQualificationSchemaHash(),migrations});
 const source={candidateSha,sourceSealSha256,profile};
 const application={name:'jg_fixture_app_'+'b'.repeat(24),oid:'100',nonce:'c'.repeat(64)};
 const databaseIdentity={database,databaseOid:'90',namespaceOid:'2200',ownerOid:'10',actorOid:'10',actor:'jg_task01_owner',sessionActor:'jg_task01_owner',systemIdentifier:'1234567890123456789',tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:5432};

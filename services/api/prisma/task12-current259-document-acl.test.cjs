@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {beginCurrent259GeneratedDocumentAcl}=require('./task12-current259-document-acl.cjs');
@@ -53,8 +55,8 @@ test('explicit 261 lifecycle document roles add only their reached defaults and 
  const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
  const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
- const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
  const api=require('./task12-current259-document-acl.cjs'),material=api.describeCurrent261GeneratedLifecycleDocumentAcl(source);
  const projection=api.renderCurrent261DocumentAclContinuity(source,roles.map((name,i)=>({name,oid:String(17000+i)})));
@@ -180,8 +182,8 @@ test('fixed document ACL source rejects either missing primary key and every add
 
 test('qualified261 worker upload can evaluate every existing direct-archive retention INSERT predicate without widening other roles',()=>{
  const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
- const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile},api=require('./task12-current259-document-acl.cjs');
  const material=api.describeCurrent261GeneratedLifecycleDocumentAcl(source);
  const trigger=fs.readFileSync(path.join(__dirname,'migrations/20261109140000_contract_direct_archive_retention_complete_v1/migration.sql'),'utf8');
@@ -198,8 +200,8 @@ test('qualified261 worker upload can evaluate every existing direct-archive rete
 
 test('qualified261 worker closes all three original FileObject INSERT paths for a new nonreplacement preview upload',()=>{
  const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
- const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations}),source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile},api=require('./task12-current259-document-acl.cjs'),material=api.describeCurrent261GeneratedLifecycleDocumentAcl(source);
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations}),source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile},api=require('./task12-current259-document-acl.cjs'),material=api.describeCurrent261GeneratedLifecycleDocumentAcl(source);
  const read=name=>fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql'),'utf8'),review=read('20261109110000_contract_direct_review_retention_v1'),unified=read('20260719100000_unified_file_business_binding_guard');
  assert.match(review,/jg_protect_contract_direct_review_file_v1\(\)[\s\S]+SECURITY INVOKER[\s\S]+IF TG_OP = 'INSERT' THEN[\s\S]+FROM public\."ContractEconomicReviewFileReference" r\s+WHERE r\."objectKey"=NEW\."objectKey" OR r\."fileId"=NEW\."supersedesFileObjectId"[\s\S]+RETURN NEW/u);
  assert.match(unified,/replacement_file_id := NULLIF\(BTRIM\(NEW\."supersedesFileObjectId"\), ''\);\s+IF replacement_file_id IS NULL THEN\s+RETURN NEW;/u);

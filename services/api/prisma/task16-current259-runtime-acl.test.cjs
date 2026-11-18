@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 
 const assert = require('node:assert/strict');
 const {test} = require('node:test');
@@ -15,7 +17,7 @@ const observer = {name:'jg_task01_observer',oid:'111'};
 const ordinary = {name:'jg_fixture_app_'+'a'.repeat(24),oid:'100'};
 const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 const material = {
- candidateSha:'b'.repeat(40), sealSha256:'c'.repeat(64), schemaSha256:hash(path.join(__dirname,'schema.prisma')),
+ candidateSha:'b'.repeat(40), sealSha256:'c'.repeat(64), schemaSha256:historicalQualificationSchemaHash(),
  migrations:readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(0,259).map(name=>({
   path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
  })),

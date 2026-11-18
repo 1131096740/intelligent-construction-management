@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -290,8 +292,8 @@ test('the document ACL does not change a payment topology or consume legacy gene
 
 test('explicit generated lifecycle 261 material reuses document reads and supplies the proven ordinary normal path',()=>{
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const prisma=__dirname,migrations=fs.readdirSync(path.join(prisma,'migrations')).filter(name=>fs.existsSync(path.join(prisma,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(prisma,'migrations',name,'migration.sql')))}));
- const schemaSha256=hash(fs.readFileSync(path.join(prisma,'schema.prisma')));
+ const prisma=__dirname,migrations=fs.readdirSync(path.join(prisma,'migrations')).filter(name=>fs.existsSync(path.join(prisma,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(prisma,'migrations',name,'migration.sql')))}));
+ const schemaSha256=historicalQualificationSchemaHash();
  const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256,migrations});
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
  const api=require(file),material=api.describeCurrent261GeneratedLifecycleOrdinaryAcl(source);
@@ -314,8 +316,8 @@ test('explicit generated lifecycle 261 material reuses document reads and suppli
 
 test('lifecycle installation uses the genuine archive lease and keeps its proof out of old ordinary claim modes',async()=>{
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
- const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
  const f=fixture({source,observe(row,n){if(n===0)row.changes=[{relation:'AuditLog',column:'createdAt',relationOid:'17002',attnum:9,privileges:['INSERT'],rawAcl:null,acl:[]}];}});
  const result=await f.api.installCurrent261GeneratedLifecycleOrdinaryAcl(f.completion,f.handle);
@@ -333,8 +335,8 @@ test('lifecycle installation uses the genuine archive lease and keeps its proof 
 
 test('lifecycle invoker correction predicates require both hidden predicate columns and preserve CASE-raised existing reads',()=>{
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const prisma=__dirname,migrations=fs.readdirSync(path.join(prisma,'migrations')).filter(name=>fs.existsSync(path.join(prisma,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(prisma,'migrations',name,'migration.sql')))}));
- const schemaSha256=hash(fs.readFileSync(path.join(prisma,'schema.prisma')));
+ const prisma=__dirname,migrations=fs.readdirSync(path.join(prisma,'migrations')).filter(name=>fs.existsSync(path.join(prisma,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(prisma,'migrations',name,'migration.sql')))}));
+ const schemaSha256=historicalQualificationSchemaHash();
  const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256,migrations});
  const f={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
 
@@ -354,8 +356,8 @@ test('ordinary ACL continuation retains its original archive and view capability
 test('diagnostic SQL chain grants only its separate one-use purpose and refuses full claim',async()=>{
  const {createHash}=require('node:crypto'),hash=b=>createHash('sha256').update(b).digest('hex');
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
- const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
  const f=fixture({source,authOnly:true,observe(row,n){if(n===0)row.changes=[{relation:'AuditLog',column:'createdAt',relationOid:'17002',attnum:9,privileges:['INSERT'],rawAcl:null,acl:[]}];}}),result=await f.api.installCurrent261AuthOnlyDiagnosticOrdinaryAcl(f.completion,f.handle);assert.equal(f.calls.length,3);
  assert.throws(()=>f.api.claimCurrent261GeneratedLifecycleOrdinaryAcl(result,f.handle));assert.throws(()=>f.api.claimCurrent261AuthOnlyDiagnosticOrdinaryAcl({...result},f.handle));
@@ -365,8 +367,8 @@ test('diagnostic SQL chain grants only its separate one-use purpose and refuses 
 
 test('native lifecycle ordinary ACL keeps original three-phase grants and rejects cloned projections', async()=>{
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
- const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
  const f=fixture({source});
  const first=f.api.beginNativeTask12OrdinaryAclProtocol(f.completion);
@@ -403,8 +405,8 @@ test('native lifecycle ordinary ACL keeps original three-phase grants and reject
 
 test('full261 real workbench reads takeoverStatus while unrelated ordinary and document profiles retain their matrix',()=>{
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
- const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}));
+ const profile=qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
  const api=require(file),rows=api.describeCurrent261GeneratedLifecycleOrdinaryAcl(source).rows;
  assert.deepEqual(rows.filter(row=>row.relation==='ContractTakeover'&&row.column==='takeoverStatus'),[{relation:'ContractTakeover',column:'takeoverStatus',privilege:'SELECT'}]);
@@ -419,7 +421,7 @@ test('native Task12 ordinary material covers original workbench count primary id
   assert.match(calls,new RegExp('client\\.'+delegate+'\\.count\\(\\{\\s+where: \\{ contractVersionId: version\\.id \\}\\s+\\}\\)','u'));
   assert.match(schema,new RegExp('model '+table+' \\{\\s+id\\s+String\\s+@id','u'));
  }
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
  const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(schema),migrations}),source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
  const f=fixture({source,observe(row,n){if(n===0)for(const [i,relation]of ['Settlement','PaymentRequest'].entries())row.changes.push({relation,column:'id',relationOid:String(17003+i),attnum:1,privileges:['SELECT'],rawAcl:null,acl:[]});}}),first=f.api.beginNativeTask12OrdinaryAclProtocol(f.completion),writer=first.acceptBefore((await f.exec(first.sql,phases[0])).stdout),reader=writer.acceptWritten((await f.exec(writer.sql,phases[1])).stdout),result=reader.acceptCommitted((await f.exec(reader.sql,phases[2])).stdout);
  const native=f.api.readNativeTask12OrdinaryAclProjection(result).profile,legacy=f.api.describeCurrent261GeneratedLifecycleOrdinaryAcl(source),missing=['Settlement','PaymentRequest'].filter(table=>!native.rows.some(r=>r.relation===table&&r.column==='id'&&r.privilege==='SELECT'));
@@ -439,8 +441,8 @@ function fixedEquipmentReadset(){
  return required;
 }
 function fixedEquipmentSource(){
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
- const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations});return {candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});return {candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile};
 }
 async function fixedNativeMaterial(f){
  const first=f.api.beginNativeTask12OrdinaryAclProtocol(f.completion),writer=first.acceptBefore((await f.exec(first.sql,phases[0])).stdout),reader=writer.acceptWritten((await f.exec(writer.sql,phases[1])).stdout),result=reader.acceptCommitted((await f.exec(reader.sql,phases[2])).stdout);

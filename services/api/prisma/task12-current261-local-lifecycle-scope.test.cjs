@@ -1,11 +1,13 @@
 'use strict';
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 function source(){
  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
- const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
- return {candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'c'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations})};
+ const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+ return {candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'c'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations})};
 }
 test('explicit local lifecycle scope binds the real registered plan and reports only the fixed material public case',()=>{
  const api=require('./task12-current261-local-lifecycle-scope.cjs'),s=source(),plan=api.describeCurrent261LocalLifecycle(s);
