@@ -45,16 +45,16 @@ function modelRow(index){
   state:{...base,app:{...app},roles:after?roleRows:[],databases:after?postDatabaseAcls:databaseAcls,
    settings:after?[{oid:'117',database:'0',config:['default_transaction_read_only=on']}]:[],violations:0}};
 }
-function fixture(change,cleanup,historical=false,authOnly=false){
+function fixture(change,cleanup,historical=false,authOnly=false,ledgerSize=historical?259:migrations.length){
  const selectedCompletion=authOnly?Object.freeze({...completion,status:'CURRENT261_AUTH_ONLY_DIAGNOSTIC_SUPPLIED_NOT_ADMISSION',executionPurpose:'AUTH_ONLY_DIAGNOSTIC'}):completion;
- const selectedSource=historical?{...source,profile:qualifyCurrent259Source({candidateSha,sealSha256:sourceSealSha256,schemaSha256:profile.schemaSha256,migrations:migrations.slice(0,259)})}:source;
+ const selectedSource=ledgerSize!==migrations.length?{...source,profile:qualifyCurrent259Source({candidateSha,sealSha256:sourceSealSha256,schemaSha256:profile.schemaSha256,migrations:migrations.slice(0,ledgerSize)})}:source;
  const handle=Object.freeze({}),token=Object.freeze({}),permit=Object.freeze({}),calls=[],metadata={parent:0};let forbidFull=false;
  let taken=false,closed=false,paymentPermitUsed=false;
  const check=()=>{if(closed)throw Error('fixture closed');if(forbidFull)throw Error('full forbidden');};
  const lifetime=()=>assert.equal(closed,false),issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);lifetime();};
  const resource={containerId:completion.containerId,databaseName:database,async execOwnerSql(sql,phase){
   check();const index=calls.length;calls.push({phase,sql});const row=structuredClone(modelRow(index));
-  if(historical)row.state.ledger=structuredClone(selectedSource.profile.ledger);
+  if(ledgerSize!==migrations.length)row.state.ledger=structuredClone(selectedSource.profile.ledger);
   change?.(row,index);
   return {stdout:JSON.stringify(row)+'\n'};
  }};
@@ -83,7 +83,7 @@ function fixture(change,cleanup,historical=false,authOnly=false){
  return {api:holder.exports,completion:selectedCompletion,handle,token,permit,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed,stop(){closed=true;}};
 }
 test('only the original payment261 permit binds the exact 261 ordinary role receipt',async()=>{
- const f=fixture();
+ const f=fixture(undefined,undefined,false,false,261);
  await assert.rejects(f.api.provisionCurrent259Payment261Roles(completion,f.handle,{}));
  assert.equal(f.calls.length,0);
  const result=await f.api.provisionCurrent259Payment261Roles(completion,f.handle,f.permit);
@@ -96,6 +96,9 @@ test('only the original payment261 permit binds the exact 261 ordinary role rece
  const historical=fixture(undefined,undefined,true);
  await assert.rejects(historical.api.provisionCurrent259Payment261Roles(completion,historical.handle,historical.permit));
  assert.equal(historical.calls.length,0);
+ const archive=fixture();
+ await assert.rejects(archive.api.provisionCurrent259Payment261Roles(completion,archive.handle,archive.permit));
+ assert.equal(archive.calls.length,0);
  const competition=fixture();
  await assert.rejects(competition.api.provisionCurrent259CompetitionRoles(completion,competition.handle,competition.permit));
  assert.equal(competition.calls.length,0);

@@ -472,7 +472,7 @@ test('a getter in the one-use B7 binding is rejected without reading it',async t
 });
 
 test('real CommonJS default CLI finishes main initialization before its plan helper reimports frozen exports',t=>{
- const base=fs.mkdtempSync('/private/tmp/jg-payment-cjs-main-model-');
+ const base=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'jg-payment-cjs-main-model-'));
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  const entry=path.join(base,'services/api/prisma/task16-current259-payment-run-authorization.cjs');
  const write=(relative,content)=>{const target=path.join(base,relative);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,content,{mode:0o600});};
@@ -482,6 +482,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  write('services/api/prisma/task16-current259-payment-loopback.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-loopback.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-profile.cjs'),'utf8'));
  write('services/api/prisma/task16-current261-competition-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current261-competition-profile.cjs'),'utf8'));
+ write('services/api/prisma/task16-current262-native-fault-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current262-native-fault-profile.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-disconnect-failure.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-disconnect-failure.cjs'),'utf8'));
  for(const [name,keys]of [
   ['task16-current259-b7-install',['installCurrent259B7']],
@@ -504,7 +505,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  });
  `);
  const result=require('node:child_process').spawnSync(process.execPath,[entry,'--plan',path.join(base,'unused-plan.json'),'--expected-plan-sha256','f'.repeat(64)],{encoding:'utf8',env:{}});
- assert.equal(result.status,0,result.stdout);
+ assert.equal(result.status,0,result.stderr||result.stdout);
  assert.equal(JSON.parse(result.stdout).status,'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES');
  assert.equal(fs.existsSync(path.join(base,'attempt.json')),false);
 });
