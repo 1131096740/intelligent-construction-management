@@ -73,7 +73,7 @@ jobs:
 
       - name: Typecheck
         env:
-          NODE_OPTIONS: --max-old-space-size=3072
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           pnpm typecheck
           pnpm --filter @jiangkong/web-admin typecheck:e2e
