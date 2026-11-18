@@ -19,6 +19,7 @@ describe("fixed public cash payment case (simulated HTTP and observer)",()=>{
    paymentExecution:{findMany:jest.fn(async()=>paymentRows())},
    registeredPaymentFunding:{findMany:jest.fn(async()=>paid?[{executionId:"exec",operatingLedgerEffectiveDateAtRegistration:new Date("2026-11-01"),actualPayerId:"public_cash",actualPayerKind:"public_cash"}]:[])},
    registeredFundPaymentAllocation:{findMany:jest.fn(async()=>allocations())},
+   registeredFundTransferLine:{findMany:jest.fn(async()=>[])},
    registeredPaymentEvent:{findMany:jest.fn(async()=>paid?[{executionId:"exec"}]:[])},
    interEntityRelationshipEntry:{findMany:jest.fn(async()=>paid&&badRoot?[{id:"invented-debt"}]:[])},
    operatingFact:{findMany:jest.fn(async(args:{select:Record<string,unknown>})=>paid?[args.select.actualPayerSubjectKind?{id:"payment-fact",projectId:"project",actualPayerSubjectKind:"public_cash",actualPayerSubjectId:"public_cash"}:{id:"payment-fact"}]:[])},

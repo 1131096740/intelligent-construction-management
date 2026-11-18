@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { appendFileSync } from "node:fs";
 import { types } from "node:util";
 import { hash } from "bcryptjs";
 import { Prisma, PrismaClient } from "@prisma/client";
@@ -29,6 +30,7 @@ async function observedMeRequest<T>(request:()=>Promise<T>,index:number,env:Node
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 const overpay=process.env.TASK398_OVERPAY_MODE==="1";
 const ledgerLoss=process.env.TASK398_LEDGER_LOSS_MODE==="1";
+const transferMode=process.env.TASK406_TRANSFER_MODE==="1";
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
 // input text can only select an entry, never become a logged value.
@@ -169,7 +171,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
 });
 
 (enabled?describe:describe.skip)("#398 isolated shared payment real HTTP and PostgreSQL",()=>{
- it(overpay ? "allows only one of two concurrent instalments that would together overpay" : ledgerLoss ? "recovers and replays cross-company project payment after losing a committed response" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
+ it(transferMode ? "shares one cash transfer across receipt, rejection, return and actual payment contention" : overpay ? "allows only one of two concurrent instalments that would together overpay" : ledgerLoss ? "recovers and replays cross-company project payment after losing a committed response" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
   const ownerUrl=new URL(process.env.TASK398_OWNER_URL??""),runtimeUrl=new URL(process.env.DATABASE_URL??""),observerUrl=new URL(process.env.TASK398_OBSERVER_URL??"");
   const db=ownerUrl.pathname;
   const runId=process.env.TASK398_RUN_ID??"";
@@ -188,9 +190,27 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    await owner.user.create({data:{id:randomUUID(),phone:outsiderPhone,name:"合成无权账号",passwordHash:hashes[3],isActive:true,mustChangePassword:false}});
    const module=await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
    app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());
+   if(transferMode){
+    const capturePath=process.env.TASK406_PRIVATE_FAILURE_PATH??"";
+    if(!capturePath)throw new Error("TASK406_PRIVATE_FAILURE_PATH");
+    class TransferFailureCapture extends Task16RegistrationErrorFilter {
+     override catch(error:unknown,host:ArgumentsHost){
+      const request=host.switchToHttp().getRequest<{method?:string;originalUrl?:string}>();
+      if(request.method==="POST"&&request.originalUrl?.startsWith("/fund-account-transfers")&&!(error instanceof HttpException)&&error instanceof Error){
+       try{
+        const safe=projectTask16RegistrationError(error);
+        appendFileSync(capturePath,JSON.stringify({route:"fund-account-transfers",httpStatus:500,...safe,message:error.message.slice(0,8192),stack:error.stack?.slice(0,16384)})+"\n",{mode:0o600,flag:"a"});
+        console.error("TASK406_FAILURE",JSON.stringify({httpStatus:500,...safe}));
+       }catch{ /* Keep the original HTTP failure. */ }
+      }
+      super.catch(error,host);
+     }
+    }
+    app.useGlobalFilters(new TransferFailureCapture(app.get(HttpAdapterHost)));
+   }
    let waiting:Array<()=>void>|undefined,barrierTimer:NodeJS.Timeout|undefined,arrivals=0,barrierExpired=false;
-   if(overpay)app.use((req:{method:string;url:string},_res:unknown,next:()=>void)=>{
-    if(!waiting||req.method!=="POST"||req.url!==`/payment-executions/${plan.ids.payment}/registrations`)return next();
+   if(overpay||transferMode)app.use((req:{method:string;url:string},_res:unknown,next:()=>void)=>{
+    if(!waiting||req.method!=="POST"||![`/payment-executions/${plan.ids.payment}/registrations`,...(transferMode?["/fund-account-transfers"]:[])].includes(req.url))return next();
     waiting.push(next);arrivals++;
     const release=()=>{
      const ready=waiting;
@@ -248,6 +268,101 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     const response=await json(registrationRoute,"POST",body,args[0]);
     return {key:body.idempotencyKey,response,body};
    };
+   if(transferMode){
+    const beforeLedger=await observer.$transaction(async tx=>({
+     facts:await tx.operatingFact.count(),impacts:await tx.operatingImpactEntry.count()
+    }),{isolationLevel:"RepeatableRead"});
+    const cashScope="public_cash",aScope=`company:${plan.ids.companyA}`,transferPath="/fund-account-transfers";
+    const balance=async(scope:string)=>{
+     const response=await json(`/fund-accounts/${encodeURIComponent(scope)}`,"GET",undefined,finance);
+     expect(response.status).toBe(200);
+     return response.body as { balanceYuan:string; currentRegistrationId:string;sources:Array<{id:string;amountYuan:string;projectId:string}> };
+    };
+    const readBalances=async(cashAmount:string,companyAmount:string)=>{
+     expect((await balance(cashScope)).balanceYuan).toBe(cashAmount);
+     expect((await balance(aScope)).balanceYuan).toBe(companyAmount);
+    };
+    const transferCommand=(sourceScopeKey:string,destinationScopeKey:string,expectedRegistrationId:string,sourceBatchId:string,amountYuan:string)=>({
+     sourceScopeKey,destinationScopeKey,expectedRegistrationId,transferredOn:plan.paidAt.slice(0,10),
+     idempotencyKey:randomUUID(),evidenceReference:"虚构线下交款凭据",lines:[{sourceBatchId,amountYuan}]
+    });
+    const handle=(id:string,token:string,expectedRevision:number,action:string,key=randomUUID())=>
+      json(`${transferPath}/${id}/actions`,"POST",{expectedRevision,action,idempotencyKey:key,evidenceReference:"虚构实收或退回核对"},token);
+    const start=transferCommand(cashScope,aScope,cash.id,cash.sources[0].id,"30.0001");
+    expect((await json(transferPath,"POST",start,finance)).status).toBe(403);
+    const started=await json(transferPath,"POST",start,keeper);
+    expect(started.status).toBe(201);
+    const id=started.body.id as string;
+    expect(started.body).toMatchObject({revision:1,status:"pending_receipt"});
+    expect(await json(transferPath,"POST",start,keeper)).toMatchObject({status:201,body:started.body});
+    await readBalances("69.9999","100.0000");
+    expect((await handle(id,keeper,1,"confirm")).status).toBe(403);
+    expect(await handle(id,finance,1,"reject")).toMatchObject({status:201,body:{status:"rejected_held",revision:2}});
+    await readBalances("69.9999","100.0000");
+    expect((await handle(id,finance,2,"confirm")).status).toBe(409);
+    expect(await handle(id,keeper,2,"resubmit")).toMatchObject({status:201,body:{status:"pending_receipt",revision:3}});
+    const exactKey=randomUUID();
+    const received=await handle(id,finance,3,"confirm",exactKey);
+    expect(received).toMatchObject({status:201,body:{status:"received",revision:4}});
+    expect(await handle(id,finance,3,"confirm",exactKey)).toMatchObject({status:201,body:received.body});
+    expect((await handle(id,finance,3,"confirm")).status).toBe(409);
+    await readBalances("69.9999","130.0001");
+    const firstReceipt=await observer.$transaction(async tx=>{
+     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+     return tx.registeredFundTransfer.findUniqueOrThrow({where:{id},include:{
+      actions:{orderBy:{revision:"asc"}},lines:{include:{sourceBatch:true,receivedBatch:true}},registrations:true
+     }});
+    },{isolationLevel:"RepeatableRead"});
+    expect(firstReceipt.actions.map(row=>row.action)).toEqual(["register","reject","resubmit","confirm"]);
+    expect(firstReceipt.registrations).toHaveLength(2);
+    expect(firstReceipt.lines).toHaveLength(1);
+    const line=firstReceipt.lines[0];
+    expect(line.sourceBatchId).toBe(cash.sources[0].id);
+    expect(line.receivedBatch).toMatchObject({receivedTransferLineId:line.id,projectId:plan.ids.project,sourceName:line.sourceBatch.sourceName});
+    expect(line.receivedBatch!.amountYuan.toFixed(4)).toBe("30.0001");
+    expect(await observer.auditLog.count({where:{businessId:id,businessType:"registered_fund_transfer"}})).toBe(4);
+
+    const currentCash=await balance(cashScope);
+    const rejected=await json(transferPath,"POST",transferCommand(cashScope,aScope,currentCash.currentRegistrationId,currentCash.sources[0].id,"5"),keeper);
+    expect(rejected.status).toBe(201);
+    expect((await handle(rejected.body.id,finance,1,"reject")).status).toBe(201);
+    await readBalances("64.9999","130.0001");
+    expect(await handle(rejected.body.id,keeper,2,"return")).toMatchObject({status:201,body:{status:"returned",revision:3}});
+    await readBalances("69.9999","130.0001");
+    expect(await observer.fundAccountBalanceRegistration.count({where:{transferId:rejected.body.id}})).toBe(0);
+
+    const currentCompany=await balance(aScope);
+    const reverse=await json(transferPath,"POST",transferCommand(aScope,cashScope,currentCompany.currentRegistrationId,line.receivedBatch!.id,"30.0001"),finance);
+    expect(reverse.status).toBe(201);
+    await readBalances("69.9999","100.0000");
+    expect((await handle(reverse.body.id,finance,1,"confirm")).status).toBe(403);
+    expect(await handle(reverse.body.id,keeper,1,"confirm")).toMatchObject({status:201,body:{status:"received"}});
+    await readBalances("100.0000","100.0000");
+    expect(await observer.$transaction(async tx=>({facts:await tx.operatingFact.count(),impacts:await tx.operatingImpactEntry.count()}),{isolationLevel:"RepeatableRead"})).toEqual(beforeLedger);
+
+    const restored=await balance(cashScope);
+    const originalSource=restored.sources.find(source=>source.amountYuan==="69.9999")!;
+    const latestCash:Opening={id:restored.currentRegistrationId,sources:restored.sources};
+    const payBody=await command(keeper,cashScope,latestCash,"6000",[{sourceBatchId:originalSource.id,amountCents:"6000"}]);
+    const holdBody=transferCommand(cashScope,aScope,restored.currentRegistrationId,originalSource.id,"60.0000");
+    waiting=[];
+    const [paid,held]=await Promise.all([json(registrationRoute,"POST",payBody,keeper),json(transferPath,"POST",holdBody,keeper)]);
+    expect({arrivals,barrierExpired}).toEqual({arrivals:2,barrierExpired:false});
+    expect([paid.status,held.status].sort()).toEqual([201,409]);
+    await readBalances("40.0000","100.0000");
+    const race=await observer.$transaction(async tx=>{
+     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+     return { paymentCount:await tx.paymentExecution.count({where:{paymentRequestId:plan.ids.payment}}),
+      holdCount:await tx.registeredFundTransferAction.count({where:{idempotencyKey:holdBody.idempotencyKey}}) };
+    },{isolationLevel:"RepeatableRead"});
+    expect(race).toEqual({paymentCount:paid.status===201?1:0,holdCount:held.status===201?1:0});
+    console.info("TASK406_HTTP_WITNESS",JSON.stringify({
+     hold:"30.0001", heldCash:"69.9999", receivedCompany:"130.0001", returnRestored:"69.9999",
+     reverseRestored:"100.0000", auditCount:firstReceipt.actions.length, transferOperatingDelta:0,
+     raceHttp:[paid.status,held.status],race, cashAfterRace:"40.0000"
+    }));
+    return;
+   }
    if(overpay){
     const choices=[{token:finance,scopeKey:`company:${plan.ids.companyA}`,opening:a,actor:plan.ids.actor},{token:keeper,scopeKey:"public_cash",opening:cash,actor:seeded.keeper}];
     const options=await Promise.all(choices.map(choice=>registrationOptions(choice.token)));

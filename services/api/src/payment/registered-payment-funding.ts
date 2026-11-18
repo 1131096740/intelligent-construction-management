@@ -1,3 +1,4 @@
+import { FUND_ACCOUNT_TRANSFER_HELD_STATES } from "../fund-account/fund-account-transfer-state";
 import { registeredPaymentWriteAuthority } from "./registered-payment-approval";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
@@ -42,6 +43,8 @@ export function registeredPaymentFingerprint(paymentId: string, actorUserId: str
     }} : {}) })).digest("hex");
 }
 
+export const RegisteredBalanceDecimal = Prisma.Decimal.clone({ precision: 30 });
+
 /** Reads the same formal source postings used by execution validation and the account page. */
 export async function availableRegisteredBalance(tx: Prisma.TransactionClient, registration: Prisma.FundAccountBalanceRegistrationGetPayload<{ include: { sources: true } }>) {
   const covered = new Set(registration.coveredExecutionIds ?? []);
@@ -70,9 +73,22 @@ export async function availableRegisteredBalance(tx: Prisma.TransactionClient, r
     const sourceId = descendants[0].id;
     paidBySource.set(sourceId,(paidBySource.get(sourceId)??0n)+allocation.amountCents);
   }
-  return { ...registration, pendingAllocations,
-    balanceYuan: registration.balanceYuan === null ? null : registration.balanceYuan.minus(new Prisma.Decimal(paidCents.toString()).div(100)),
-    sources: registration.sources.map(source => ({ ...source, amountYuan: source.amountYuan.minus(new Prisma.Decimal((paidBySource.get(source.id)??0n).toString()).div(100)) })) };
+  const heldLines = await tx.registeredFundTransferLine.findMany({
+    where: { transfer: { sourceAccountId: registration.accountId, status: { in: [...FUND_ACCOUNT_TRANSFER_HELD_STATES] } } }
+  });
+  const heldBySource = new Map<string, Prisma.Decimal>();
+  const heldTransferAllocations = heldLines.map(line => {
+    const candidateSourceIds = registration.sources.filter(source => isDescendant(source.id, line.sourceBatchId)).map(source => source.id);
+    if (candidateSourceIds.length === 1) {
+      const sourceId = candidateSourceIds[0];
+      heldBySource.set(sourceId, (heldBySource.get(sourceId) ?? new RegisteredBalanceDecimal(0)).plus(line.amountYuan));
+    }
+    return { transferId: line.transferId, amountYuan: line.amountYuan, sourceBatchId: line.sourceBatchId, candidateSourceIds };
+  });
+  const heldYuan = heldLines.reduce((total, line) => total.plus(line.amountYuan), new RegisteredBalanceDecimal(0));
+  return { ...registration, pendingAllocations, heldTransferAllocations,
+    balanceYuan: registration.balanceYuan === null ? null : new RegisteredBalanceDecimal(registration.balanceYuan.toFixed(4)).minus(new RegisteredBalanceDecimal(paidCents.toString()).div(100)).minus(heldYuan),
+    sources: registration.sources.map(source => ({ ...source, amountYuan: new RegisteredBalanceDecimal(source.amountYuan.toFixed(4)).minus(new RegisteredBalanceDecimal((paidBySource.get(source.id)??0n).toString()).div(100)).minus(heldBySource.get(source.id) ?? 0) })) };
 
 }
 
@@ -93,7 +109,8 @@ export async function prepareRegisteredFunding(tx: Prisma.TransactionClient, act
     if (available.balanceYuan.lt(new Prisma.Decimal(amountCents.toString()).div(100))) throw new ConflictException("登记资金余额不足，请核对实际资金");
     if (new Set(allocations.map(line=>line.sourceBatchId)).size !== allocations.length || allocations.reduce((sum,line)=>sum+line.amount,0n) !== amountCents) throw new BadRequestException("来源分摊必须逐笔明确且合计等于实付金额，不能自动分配来源");
     for (const line of allocations) {
-      if (available.pendingAllocations.some(row=>row.candidateSourceIds.includes(line.sourceBatchId))) throw new ConflictException("所选来源可用分摊待核对，不能用核对原值或0代替可用余额");
+      if (available.pendingAllocations.some(row=>row.candidateSourceIds.includes(line.sourceBatchId)) ||
+          available.heldTransferAllocations.some(row => row.candidateSourceIds.length !== 1 && (row.candidateSourceIds.length === 0 || row.candidateSourceIds.includes(line.sourceBatchId)))) throw new ConflictException("所选来源可用分摊待核对，不能用核对原值或0代替可用余额");
       const source = available.sources.find(row=>row.id===line.sourceBatchId);
       if (!source || source.amountYuan.lt(new Prisma.Decimal(line.amount.toString()).div(100))) throw new ConflictException("所选来源可用余额不足，请重新核对来源");
       if (source.projectStatus === "project" && source.projectId !== payment.projectId) throw new ConflictException("所选来源的项目归属不足，差额须先由业务确认，不能自动形成垫资到账");

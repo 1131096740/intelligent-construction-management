@@ -160,6 +160,11 @@ export class FundAccountService {
       const versions = await tx.fundAccountBalanceRegistration.findMany({ where: { accountId: row.accountId, status: "confirmed" }, orderBy: { version: "desc" } });
       if (versions[0]?.id !== row.previousRegistrationId) throw new ConflictException("有效余额已变化，请重新核对原登记");
       const prospective = await availableRegisteredBalance(tx, row);
+      if (prospective.heldTransferAllocations.length && (prospective.balanceYuan === null ||
+          prospective.heldTransferAllocations.some(hold => hold.candidateSourceIds.length !== 1) ||
+          prospective.sources.some(source => source.amountYuan.lt(0)))) {
+        throw new ConflictException("待确认转款的余额或来源归属尚未保留，请重新核对");
+      }
       if (prospective.balanceYuan !== null && prospective.balanceYuan.lt(0)) throw new ConflictException("本次已知核对金额不足以覆盖未包含的实际支出，请保留待复核并重新核对依据");
       const account = await tx.registeredFundAccount.findUnique({where:{id:row.accountId}});
       if (!account) throw new ConflictException("资金账户不存在，请刷新后核对");

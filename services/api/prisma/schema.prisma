@@ -8,6 +8,8 @@ datasource db {
 }
 
 model User {
+  registeredFundTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferActor")
+  registeredFundTransferActions RegisteredFundTransferAction[] @relation("RegisteredFundTransferActionActor")
   id                                 String                            @id @default(uuid())
   phone                              String?                           @unique
   name                               String
@@ -169,6 +171,8 @@ model RegisteredFundAccount {
   registeredPayments RegisteredPaymentFunding[]
   allocations RegisteredFundPaymentAllocation[]
   registrations FundAccountBalanceRegistration[]
+  outgoingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferSource")
+  incomingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferDestination")
   createdAt DateTime @default(now())
 }
 
@@ -182,6 +186,7 @@ model FundAccountBalanceRegistration {
   approvalInstanceId String? @unique
   balanceYuan Decimal? @db.Decimal(24,4)
   coveredExecutionIds String[] @default([])
+  transferId String?
   asOfDate String
   evidenceReference String
   reconciliationNote String
@@ -199,6 +204,8 @@ model FundAccountBalanceRegistration {
   account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   payments RegisteredPaymentFunding[]
   sources FundAccountSourceBatch[]
+  transfer RegisteredFundTransfer? @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  @@unique([transferId, accountId])
   @@unique([accountId, version])
   @@unique([id, accountId])
   @@index([accountId, status])
@@ -214,9 +221,59 @@ model FundAccountSourceBatch {
   projectStatus String
   projectId String?
   previousSourceBatchId String?
+  receivedTransferLineId String? @unique
+  receivedTransferLine RegisteredFundTransferLine? @relation("RegisteredFundTransferReceipt", fields: [receivedTransferLineId], references: [id], onDelete: Restrict)
+  transferLines RegisteredFundTransferLine[] @relation("RegisteredFundTransferOrigin")
   allocations RegisteredFundPaymentAllocation[]
   registration FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
   @@unique([registrationId, lineNo])
+}
+
+model RegisteredFundTransfer {
+  id String @id @default(uuid())
+  sourceAccountId String
+  destinationAccountId String
+  status String
+  revision Int @default(1)
+  amountYuan Decimal @db.Decimal(24,4)
+  createdByUserId String
+  transferredOn String
+  evidenceReference String
+  createdAt DateTime @default(now())
+  createdBy User @relation("RegisteredFundTransferActor", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  sourceAccount RegisteredFundAccount @relation("RegisteredFundTransferSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount RegisteredFundAccount @relation("RegisteredFundTransferDestination", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  lines RegisteredFundTransferLine[]
+  actions RegisteredFundTransferAction[]
+  registrations FundAccountBalanceRegistration[]
+  @@index([sourceAccountId, status])
+  @@index([destinationAccountId, status])
+}
+
+model RegisteredFundTransferLine {
+  id String @id @default(uuid())
+  transferId String
+  sourceBatchId String
+  amountYuan Decimal @db.Decimal(24,4)
+  transfer RegisteredFundTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  sourceBatch FundAccountSourceBatch @relation("RegisteredFundTransferOrigin", fields: [sourceBatchId], references: [id], onDelete: Restrict)
+  receivedBatch FundAccountSourceBatch? @relation("RegisteredFundTransferReceipt")
+  @@unique([transferId, sourceBatchId])
+}
+
+model RegisteredFundTransferAction {
+  idempotencyKey String @id
+  transferId String
+  actorUserId String
+  revision Int
+  action String
+  status String
+  evidenceReference String
+  payloadFingerprint String
+  createdAt DateTime @default(now())
+  actor User @relation("RegisteredFundTransferActionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  transfer RegisteredFundTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  @@unique([transferId, revision])
 }
 
 model CompanyEntity {
