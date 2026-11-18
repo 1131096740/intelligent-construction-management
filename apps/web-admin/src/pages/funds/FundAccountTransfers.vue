@@ -417,12 +417,14 @@ async function submit(proposal: FundTransferCommand | null) {
     >
       <p>{{ label(selectedAction.transfer.sourceScopeKey) }} → {{ label(selectedAction.transfer.destinationScopeKey) }} · ¥{{ selectedAction.transfer.amountYuan }}</p>
       <p>{{ actionPrompt[selectedAction.action] }}</p>
-      <t-textarea
-        v-model="reference"
-        aria-label="办理依据"
-        :maxlength="1000"
-        :disabled="busy"
-      />
+      <label>
+        办理依据
+        <t-textarea
+          v-model="reference"
+          :maxlength="1000"
+          :disabled="busy"
+        />
+      </label>
       <t-alert
         v-if="error"
         theme="error"
