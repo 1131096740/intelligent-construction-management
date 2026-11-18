@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { FundTransferApiError } from "../../api/fund-account-transfer.api";
 import { readFundTransferCommand, submitFundTransferCommand, type FundTransferCommand } from "./fund-transfer-command";
 
 const mocked = vi.hoisted(() => ({ register: vi.fn() }));
@@ -14,7 +15,7 @@ const command: FundTransferCommand = { type: "register", input: {
   lines: [{ sourceBatchId: "source-id", amountYuan: "10.2500" }]
 } };
 
-it("recovers a lost registration response with the one original key and allocation after reload", async () => {
+function stubBrowser() {
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -22,6 +23,10 @@ it("recovers a lost registration response with the one original key and allocati
     removeItem: (key: string) => storage.delete(key)
   });
   vi.stubGlobal("navigator", { locks: { request: (_key: string, _options: unknown, callback: () => unknown) => callback() } });
+}
+
+it("recovers a lost registration response with the one original key and allocation after reload", async () => {
+  stubBrowser();
   mocked.register.mockRejectedValueOnce(new TypeError("connection closed"))
     .mockResolvedValueOnce({ id: "saved", revision: 1, status: "pending_receipt" });
   expect(await submitFundTransferCommand("actor", command, () => true)).toMatchObject({ kind: "unknown" });
@@ -34,4 +39,19 @@ it("recovers a lost registration response with the one original key and allocati
   expect(await submitFundTransferCommand("actor", null, () => true, command)).toMatchObject({ kind: "saved" });
   expect(mocked.register.mock.calls).toEqual([[command.input], [command.input]]);
   expect(readFundTransferCommand("actor")).toBeNull();
+});
+
+it.each([false, true])("only clears a proved no-write conflict on the fresh attempt (previously uncertain: %s)", async previouslyUncertain => {
+  stubBrowser();
+  if (previouslyUncertain) {
+    mocked.register.mockRejectedValueOnce(new TypeError("connection closed"));
+    expect(await submitFundTransferCommand("actor", command, () => true)).toMatchObject({ kind: "unknown" });
+  }
+  mocked.register.mockRejectedValueOnce(new FundTransferApiError(
+    "请重新核对转款资料", 409, "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE"
+  ));
+  const proposal = previouslyUncertain ? null : command;
+  const result = await submitFundTransferCommand("actor", proposal, () => true, previouslyUncertain ? command : null);
+  expect(result.kind).toBe(previouslyUncertain ? "unknown" : "rejected");
+  expect(readFundTransferCommand("actor")).toEqual(previouslyUncertain ? command : null);
 });

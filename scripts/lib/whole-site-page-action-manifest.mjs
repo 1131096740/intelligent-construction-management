@@ -17028,7 +17028,7 @@ const recoveryAllowed = computed(() => {
       localStorage.removeItem(key);
       return { kind: "saved", receipt } as const;
     } catch (error) {
-      if (!pending && error instanceof FundTransferApiError && [400, 403, 404].includes(error.status)) {
+      if (!pending && error instanceof FundTransferApiError && error.isDefinitiveRejection) {
         localStorage.removeItem(key);
         return { kind: "rejected", error } as const;
       }

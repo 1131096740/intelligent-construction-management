@@ -29,3 +29,12 @@ it("requires a valid receipt before treating confirmation as successful", async 
     method: "POST", body: JSON.stringify(command)
   }));
 });
+
+it.each([
+  ["FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE", true],
+  ["UNKNOWN_UPSTREAM_CONFLICT", false]
+])("distinguishes an explicit no-write conflict from an unknown conflict (%s)", async (code, isDefinitiveRejection) => {
+  apiFetch.mockResolvedValue(Response.json({ statusCode: 409, code, message: "请重新核对转款资料" }, { status: 409 }));
+  const command = { idempotencyKey: "original-key", expectedRevision: 2, action: "confirm" as const, evidenceReference: "财务确认到账" };
+  await expect(actOnFundAccountTransfer("transfer-id", command)).rejects.toMatchObject({ status: 409, isDefinitiveRejection });
+});

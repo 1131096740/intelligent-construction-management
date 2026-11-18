@@ -41,17 +41,24 @@ export interface ActOnFundTransferInput {
 }
 
 export class FundTransferApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, private readonly code?: string) {
     super(message);
+  }
+
+  get isDefinitiveRejection() {
+    return [400, 403, 404].includes(this.status) ||
+      (this.status === 409 && this.code === "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE");
   }
 }
 
 async function result(response: Response): Promise<unknown> {
   if (response.ok) return response.json();
-  const body: { message?: unknown } = await response.json().catch(() => ({}));
+  const payload: unknown = await response.json().catch(() => null);
+  const body = payload && typeof payload === "object" ? payload as { message?: unknown; statusCode?: unknown; code?: unknown } : {};
+  const code = body.statusCode === response.status && typeof body.code === "string" ? body.code : undefined;
   throw new FundTransferApiError(
     formatApiErrorMessage(typeof body.message === "string" ? body.message : "", response.status, "转款办理失败，请核对原记录"),
-    response.status
+    response.status, code
   );
 }
 
