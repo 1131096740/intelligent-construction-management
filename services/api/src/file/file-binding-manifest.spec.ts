@@ -58,6 +58,27 @@ function ownedKeyOf(manifest: { rows: FileBindingManifestRow[] }, fileId: string
 }
 
 describe("classifyFileBinding", () => {
+  it("protects an owner-settlement voucher without disclosing its business row", async () => {
+    const protectedBinding = {
+      fileId: "signed-file", table: "ProjectOwnerSettlementEntry", column: "voucherFileId", rowId: null,
+    };
+    const tx = {
+      $queryRaw: jest.fn(async (query: Prisma.Sql) => {
+        if (query.sql.includes("registered_payment_voucher_catalog")) {
+          return [{ state: "absent", ownerSettlementVoucher: true }];
+        }
+        expect(query.sql).toContain("jg_project_owner_settlement_voucher_bound");
+        expect(query.sql).not.toContain('FROM "ProjectOwnerSettlementEntry"');
+        return [protectedBinding];
+      })
+    } as unknown as Prisma.TransactionClient;
+    const bindings = await fileBusinessBindingRefs(tx, ["signed-file"]);
+    expect(bindings).toEqual([protectedBinding]);
+    expect(classifyFileBinding(bindings, new Set(), new Set(["signed-file"]))).toEqual({
+      bindingType: "shared", sharedReason: "ProjectOwnerSettlementEntry:voucherFileId:受保护凭证",
+    });
+  });
+
   const owned = new Set(["file-a"]);
   const ownedKeys = new Set(["ContractFormalFile:fileId:formal-1"]);
 

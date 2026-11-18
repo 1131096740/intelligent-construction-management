@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { NON_RECEIPT_FILE_BINDINGS, registeredPaymentVoucherInstalled } from "./file-business-binding";
+import { readFileBindingCatalog } from "../database/registered-payment-catalog";
+import { NON_RECEIPT_FILE_BINDINGS } from "./file-business-binding";
 import { contractReviewRetainedObjectKeys } from "./contract-review-file-retention";
 import { isValidObjectKey, type VersionedObjectStorage } from "./versioned-object-storage";
 
@@ -21,7 +22,7 @@ import { isValidObjectKey, type VersionedObjectStorage } from "./versioned-objec
 export interface ManifestBusinessBinding {
   table: string;
   column: string;
-  rowId: string;
+  rowId: string | null;
 }
 
 /** 已解析的绑定：`fileId` 是绑定行里实际引用到的文件对象 ID。 */
@@ -95,9 +96,9 @@ export interface FileBindingClassification {
 export function bindingKey(binding: {
   table: string;
   column: string;
-  rowId: string;
+  rowId: string | null;
 }): string {
-  return `${binding.table}:${binding.column}:${binding.rowId}`;
+  return `${binding.table}:${binding.column}:${binding.rowId ?? "受保护凭证"}`;
 }
 
 function sqlIdentifier(value: string): Prisma.Sql {
@@ -128,11 +129,19 @@ export async function fileBusinessBindingRefs(
   const candidates = Prisma.join(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
-  const includeVoucher = await registeredPaymentVoucherInstalled(tx);
+  const catalog = await readFileBindingCatalog(tx);
   const registryQueries = NON_RECEIPT_FILE_BINDINGS
-    .filter(({ table }) => table !== "RegisteredPaymentVoucher" || includeVoucher)
+    .filter(({ table }) => table === "RegisteredPaymentVoucher" ? catalog.registeredPayment :
+      table === "ProjectOwnerSettlementEntry" ? catalog.ownerSettlementVoucher : true)
     .flatMap((binding) =>
       binding.columns.map((column) => {
+        if (binding.table === "ProjectOwnerSettlementEntry") {
+          return Prisma.sql`
+            SELECT c."id" AS "fileId", 'ProjectOwnerSettlementEntry' AS "table",
+              'voucherFileId' AS "column", NULL::text AS "rowId"
+            FROM candidates c WHERE public.jg_project_owner_settlement_voucher_bound(c."id")
+          `;
+        }
         const tableId = sqlIdentifier(binding.table);
         const voucher = binding.table === "RegisteredPaymentVoucher";
         const relation = voucher ? Prisma.sql`public.${tableId}` : tableId;
@@ -197,6 +206,7 @@ export function classifyFileBinding(
   candidateFileIds: ReadonlySet<string>
 ): FileBindingClassification {
   const external = refs.filter((ref) => {
+    if (ref.rowId === null) return true;
     if (ownedRefKeys.has(bindingKey(ref))) {
       return false;
     }
