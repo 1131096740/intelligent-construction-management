@@ -51,6 +51,22 @@ describe("principal return work items", () => {
     await expect(principalReturnWorkItems(prisma, "other", "pending")).resolves.toEqual([]);
   });
 
+  it("keeps pending approvals readable without querying prepared funding when no principal is outstanding", async () => {
+    const { prisma, tx } = database();
+    tx.registeredPrincipalReturnApplication.findMany.mockResolvedValueOnce([
+      queryRows[0], { ...queryRows[1], paidYuan: queryRows[1].approvedYuan },
+    ]);
+    resolveReview.mockResolvedValueOnce({ identity: {
+      viaAssignment: false, approvedRoleKey: "finance_director", representedUserId: "finance",
+    }, roles: ["finance_director"] });
+    payableScopes.mockRejectedValue(new Error("Payment runtime preparation is unavailable"));
+    await expect(principalReturnWorkItems(prisma, "finance", "pending")).resolves.toMatchObject([
+      { id: "principal-return-review:round:0" },
+    ]);
+    expect(payableScopes).not.toHaveBeenCalled();
+    expect(tx.registeredPrincipalReturnApplication.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the last fractional digit at the account precision limit", async () => {
     const { prisma, tx } = database();
     tx.registeredPrincipalReturnApplication.findMany.mockResolvedValueOnce([

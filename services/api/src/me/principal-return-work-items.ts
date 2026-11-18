@@ -17,14 +17,16 @@ export async function principalReturnWorkItems(
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const actor = await tx.user.findUnique({ where: { id: actorId }, select: { isActive: true } });
     if (!actor?.isActive) return [];
-    const payable = mode === "pending" && (await principalReturnPayableScopeKeys(tx, actorId)).length > 0;
     const rows = await tx.registeredPrincipalReturnApplication.findMany({
       where: {
-        status: { in: payable ? ["pending", "approved", "partially_paid"] : ["pending"] },
+        status: { in: mode === "pending" ? ["pending", "approved", "partially_paid"] : ["pending"] },
         ...(mode === "started" ? { createdByUserId: actorId } : {}),
       },
       orderBy: { createdAt: "desc" },
     });
+    const hasOutstanding = mode === "pending" && rows.some(row =>
+      (row.status === "approved" || row.status === "partially_paid") && row.approvedYuan?.gt(row.paidYuan));
+    const payable = hasOutstanding && (await principalReturnPayableScopeKeys(tx, actorId)).length > 0;
     const [rounds, projects] = await Promise.all([
       tx.approvalInstance.findMany({
         where: { id: { in: rows.filter(row => row.status === "pending").map(row => row.approvalInstanceId) },
