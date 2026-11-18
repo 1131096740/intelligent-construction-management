@@ -91,7 +91,7 @@ jobs:
   unit-test-gates:
     name: Unit test gates (${{ matrix.target }})
     runs-on: ${{ startsWith(matrix.target, 'api-') && 'ubuntu-24.04' || 'ubuntu-latest' }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ startsWith(matrix.target, 'api-') && 60 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -124,7 +124,8 @@ jobs:
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
 
-      - name: Test API shard
+      - name: Prepare API browser dependencies
+        timeout-minutes: 35
         if: startsWith(matrix.target, 'api-')
         env:
           NODE_OPTIONS: --max-old-space-size=4096
@@ -137,6 +138,16 @@ jobs:
           if grep -Eq '/task10-(labor-signature-recovery|signature-review)-browser\.http\.spec\.ts$' <<< "$tests"; then
             pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
           fi
+
+      - name: Test API shard
+        if: startsWith(matrix.target, 'api-')
+        timeout-minutes: 20
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          API_TEST_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shard="${API_TEST_TARGET#api-}"
           pnpm --filter @jiangkong/api run test --runInBand --config jest.runtime.config.cjs --shard="$shard/4"
 
       - name: Test Web
