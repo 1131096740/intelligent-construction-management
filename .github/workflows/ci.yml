@@ -90,7 +90,7 @@ jobs:
 
   unit-test-gates:
     name: Unit test gates (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(matrix.target, 'api-') && 'ubuntu-24.04' || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false

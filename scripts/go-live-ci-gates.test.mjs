@@ -40,10 +40,10 @@ test("quality typecheck has a bounded compiler-only heap while preserving comple
   const quality = jobBlock(workflow, "quality-gates");
   const step = /      - name: Typecheck\n([\s\S]*?)(?=\n      - name:)/u.exec(quality)?.[1];
   assert.ok(step);
-  assert.match(step, /        env:\n          NODE_OPTIONS: --max-old-space-size=3072\n/u);
+  assert.match(step, /        env:\n          NODE_OPTIONS: --max-old-space-size=4096\n/u);
   const commands = step.split("        run: |\n")[1].trim().split("\n").map(line => line.trim());
   assert.deepEqual(commands, ["pnpm typecheck", "pnpm --filter @jiangkong/web-admin typecheck:e2e"]);
-  assert.doesNotMatch(jobBlock(workflow, "postgresql16-dynamic-gates"), /max-old-space-size=3072/u);
+  assert.doesNotMatch(jobBlock(workflow, "postgresql16-dynamic-gates"), /max-old-space-size/u);
 });
 
 test("API runtime shards reuse isolated transpilation without changing heap, timeout or coverage", async () => {
@@ -53,6 +53,7 @@ test("API runtime shards reuse isolated transpilation without changing heap, tim
   assert.ok(step);
   assert.match(step, /NODE_OPTIONS: --max-old-space-size=4096/u);
   assert.match(step, /pnpm --filter @jiangkong\/api run test --runInBand --config jest\.runtime\.config\.cjs --shard="\$shard\/4"/u);
+  assert.ok(unit.includes("runs-on: ${{ startsWith(matrix.target, 'api-') && 'ubuntu-24.04' || 'ubuntu-latest' }}"));
   assert.match(unit, /target: \[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
   assert.doesNotMatch(step, /testTimeout|testNamePattern|passWithNoTests|testPathIgnore/u);
 });
