@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 261,
-    "terminalMigration": "20261111140000_contract_direct_upward_retention_acl_source_v3",
-    "terminalMigrationChecksum": "03fb063d22eec31cefdc34ce2561f6e6acacc9c335d680d86aef70ed3c4eeb5f",
+    "expectedDirectoryCount": 262,
+    "terminalMigration": "20261118120000_contract_upward_projection_source_forward",
+    "terminalMigrationChecksum": "0c047bd2103ba25a06e3537314d51ae3fc671bccc48bab8ab573cf473fb76fbd",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 79,
-    "fullyPendingSuites": 68,
-    "partiallyPendingSuites": 11,
-    "pendingTests": 541,
-    "coveredFiles": 79,
-    "coveredTests": 541,
+    "pendingFiles": 82,
+    "fullyPendingSuites": 70,
+    "partiallyPendingSuites": 12,
+    "pendingTests": 545,
+    "coveredFiles": 82,
+    "coveredTests": 545,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -399,7 +399,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 173,
+      "pendingTests": 174,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -413,7 +413,7 @@
         },
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
-          "pendingTests": 9,
+          "pendingTests": 10,
           "suiteStatus": "fully_pending"
         },
         {
@@ -707,14 +707,68 @@
       "executionStatus": "NOT_EXECUTED",
       "scope": "first-case-tracer-only; explicit separate authorization and immutable inputs required",
       "ciExecution": "manual-only"
+    },
+    {
+      "id": "task398_shared_standard",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task16-shared-standard.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 398,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task398_browser",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task16-real-browser.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 398,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task398_browser_completion",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task16-real-browser-completion.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 398,
+      "executionStatus": "NOT_EXECUTED"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 22,
-      "files": 78,
-      "tests": 540
+      "groups": 25,
+      "files": 81,
+      "tests": 544
     },
     "manualOnly": {
       "groups": 1,

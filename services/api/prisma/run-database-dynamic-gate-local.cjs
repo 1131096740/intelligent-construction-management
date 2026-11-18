@@ -661,6 +661,12 @@ function resolveGroupCommand(group, options = {}) {
       "--packet", options.task01["--task01-packet"], "--inputs", options.task01["--task01-inputs"],
       "--inputs-sha256", options.task01["--task01-inputs-sha256"], "--artifacts", options.task01["--task01-artifacts"]] };
   }
+  const task398Modes = { task398_shared_standard: [], task398_browser: ["--browser-real"], task398_browser_completion: ["--browser-completion-real"] };
+  if (Object.hasOwn(task398Modes, group.id)) {
+    const runnerPath = "services/api/prisma/run-task398-shared-standard-local.cjs";
+    if (group.runner.kind !== "node" || group.runner.path !== runnerPath) fail("任务398运行入口不匹配");
+    return { command: process.execPath, args: [resolveRepositoryPath(runnerPath, "任务398运行入口"), ...task398Modes[group.id]] };
+  }
   // This dispatcher runs only after the gate's real generate + build preflight.
   // Standalone pnpm entry points retain their normal preparation lifecycle.
   const pol108Shards = {
@@ -762,6 +768,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       const groupStartedAt = Date.now();
       const resolved = resolveGroupCommand(group);
       const groupEnvironment = { ...childEnvironment };
+      if (["task398_shared_standard", "task398_browser", "task398_browser_completion"].includes(group.id)) groupEnvironment.TASK398_EXPECTED_SHA = candidateSha;
       if (group.id === POL113_POL115_GROUP) {
         // The preflight above generated this checkout's client and built the API.
         groupEnvironment.POL113_POL115_PREPARED_SHA = candidateSha;
