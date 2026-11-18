@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `9abfd55febc8b260867382b2e70cc6210c77cc0baa6bbf6e98fd483b2857a49b` |
-| webApiWrappers | ready | `dfacca13e4e992056e2ff9f9bbb7028b3a2c6524052a4b0813dac6b809ed53e6` |
-| webPageActions | ready | `ffd6a6c1f306d4f33af940b278a7dff8786dc09be5930cdb4b13e5e6a11d82f3` |
-| routeUsage | ready | `7014f1310479f0965aa3809568fc347aaf70b9aeb9a0531b751b6b413cb5fb13` |
+| nestRoutes | ready | `2a561e96ffaf121056272f794158dacb238ae70e87fc8d20460effbc119137b8` |
+| webApiWrappers | ready | `3f5ebe94384289eb41819cdc1f38567585d552843d1d77bd6e590d37c82b8c33` |
+| webPageActions | ready | `15c373960abb27cad4cbefc1ce6af68da9d58008ff578fcd98895fdc92785f08` |
+| routeUsage | ready | `75c3826118d01e4b6a4065615ed5c72baba9dc8fde99e29cbf5bb7b0b7a5531f` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 744 |
-| pageRouteCount | 545 |
+| routeCount | 748 |
+| pageRouteCount | 549 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 738 |
+| mainRequestBindingCount | 742 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 436 |
-| actionBindingCount | 506 |
-| acceptedActionBindingCount | 464 |
+| registeredActionCount | 438 |
+| actionBindingCount | 510 |
+| acceptedActionBindingCount | 468 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 422 |
-| coveredProductionMutationConsumerPairCount | 422 |
+| productionMutationConsumerPairCount | 424 |
+| coveredProductionMutationConsumerPairCount | 424 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -140,6 +140,8 @@
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
+| GET | /fund-account-advance-receipts/company-owned-bank-options | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#fetchCompanyOwnedBankOptions | — | not_applicable | — |
+| GET | /fund-account-advance-receipts/contributor-options | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#fetchFundAdvanceContributorOptions | — | not_applicable | — |
 | GET | /fund-account-transfers | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#fetchFundAccountTransfers | — | not_applicable | — |
 | GET | /fund-accounts/:scopeKey | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccount | — | not_applicable | — |
 | GET | /fund-accounts | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccounts | — | not_applicable | — |
@@ -481,6 +483,8 @@
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-generated-archive.confirm<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>layout-template.create<br>layout-template.save<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
+| POST | /fund-account-advance-receipts/company-owned | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerCompanyOwnedFund | fund-advance.recover-original<br>fund-advance.register | covered | — |
+| POST | /fund-account-advance-receipts | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerFundAdvance | fund-advance.recover-original<br>fund-advance.register | covered | — |
 | POST | /fund-account-transfers/:id/actions | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#actOnFundAccountTransfer | fund-transfer.act<br>fund-transfer.recover-original | covered | — |
 | POST | /fund-account-transfers | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#registerFundAccountTransfer | fund-transfer.recover-original<br>fund-transfer.register | covered | — |
 | POST | /fund-accounts/corrections | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#requestFundCorrection | fund-account.requestFundCorrection | covered | — |

@@ -18,6 +18,13 @@
           />
         </div>
         <t-button
+          v-if="canRegisterProjectAdvance && selectedProjectId"
+          variant="outline"
+          @click="router.push({ path: '/资金账户', query: { advanceForProject: selectedProjectId } })"
+        >
+          登记项目垫资
+        </t-button>
+        <t-button
           v-if="canManageProjectEntities && selectedProjectId"
           variant="outline"
           @click="activeTab = 'settings'"
@@ -1143,6 +1150,9 @@ interface ProjectExpenseActionFormState {
 
 const auth = useAuthStore();
 const router = useRouter();
+const canRegisterProjectAdvance = computed(() => auth.user?.globalRoleKeys.some(role =>
+  role === "finance_staff" || role === "finance_director" || role === "comprehensive_director"
+) ?? false);
 const route = useRoute();
 const projectSelectPopupProps = {
   overlayInnerStyle: (trigger: HTMLElement) => ({

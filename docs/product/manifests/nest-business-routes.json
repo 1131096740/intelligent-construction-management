@@ -1991,6 +1991,48 @@
     },
     {
       "method": "GET",
+      "path": "/fund-account-advance-receipts/company-owned-bank-options",
+      "normalizedKey": "GET /fund-account-advance-receipts/company-owned-bank-options",
+      "controller": "FundAccountAdvanceController",
+      "handler": "companyOwnedBankOptions",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/fund-account-advance-receipts/contributor-options",
+      "normalizedKey": "GET /fund-account-advance-receipts/contributor-options",
+      "controller": "FundAccountAdvanceController",
+      "handler": "contributorOptions",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/fund-account-transfers",
       "normalizedKey": "GET /fund-account-transfers",
       "controller": "FundAccountTransferController",
@@ -8650,6 +8692,48 @@
       "guardAuthorization": "authenticated_only",
       "isPublic": false,
       "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-account-advance-receipts",
+      "normalizedKey": "POST /fund-account-advance-receipts",
+      "controller": "FundAccountAdvanceController",
+      "handler": "register",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-account-advance-receipts/company-owned",
+      "normalizedKey": "POST /fund-account-advance-receipts/company-owned",
+      "controller": "FundAccountAdvanceController",
+      "handler": "registerCompanyOwned",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,

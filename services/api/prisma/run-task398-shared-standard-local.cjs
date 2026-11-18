@@ -91,9 +91,9 @@ function signatureBindingCheckSql(){
 }
 // Broad reads are limited to synthetic business tables in this disposable DB.
 const excludedReadTables=["User","EmployeeRegistration","HandwrittenSignatureHandoff","RefreshToken","ContractDraftEditLease","SettlementDraft","Settlement","SettlementSignedDocument","SettlementSignedDocumentGenerationClaim","ApprovalFormGenerationClaim","AuthRateLimit","FileObject","OperatingLedgerWriteSecret","OperatingLedgerWriteContext","PaymentExecutionPayerVerificationIssuerContext","_prisma_migrations"];
-function sensitiveReadTableSql(){return `(c.relname = ANY(ARRAY[${excludedReadTables.map(x=>`'${x}'`).join(",")}]) OR c.relname ~* '(secret|token|credential|password|privatekey|context)' OR EXISTS(SELECT FROM information_schema.columns col WHERE col.table_schema=n.nspname AND col.table_name=c.relname AND col.column_name ~* '(secret|token|credential|password|privatekey)'))`;}
-function businessReadGrantSql(){return `DO $read$ DECLARE r record; BEGIN FOR r IN SELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT ${sensitiveReadTableSql()} LOOP EXECUTE format('GRANT SELECT ON TABLE public.%I TO jg_task01_runtime',r.relname); END LOOP; END $read$;`;}
-function businessReadCheckSql(){return `NOT EXISTS(SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p') AND ((${sensitiveReadTableSql()} AND has_table_privilege('jg_task01_runtime',c.oid,'SELECT')) OR (NOT ${sensitiveReadTableSql()} AND (NOT has_table_privilege('jg_task01_runtime',c.oid,'SELECT') OR has_table_privilege('jg_task01_runtime',c.oid,'SELECT WITH GRANT OPTION')))))`;}
+function sensitiveReadTableSql(extraExcluded=[]){return `(c.relname = ANY(ARRAY[${[...excludedReadTables,...extraExcluded].map(x=>`'${x}'`).join(",")}]) OR c.relname ~* '(secret|token|credential|password|privatekey|context)' OR EXISTS(SELECT FROM information_schema.columns col WHERE col.table_schema=n.nspname AND col.table_name=c.relname AND col.column_name ~* '(secret|token|credential|password|privatekey)'))`;}
+function businessReadGrantSql(extraExcluded=[]){return `DO $read$ DECLARE r record; BEGIN FOR r IN SELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT ${sensitiveReadTableSql(extraExcluded)} LOOP EXECUTE format('GRANT SELECT ON TABLE public.%I TO jg_task01_runtime',r.relname); END LOOP; END $read$;`;}
+function businessReadCheckSql(extraExcluded=[]){return `NOT EXISTS(SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p') AND ((${sensitiveReadTableSql(extraExcluded)} AND has_table_privilege('jg_task01_runtime',c.oid,'SELECT')) OR (NOT ${sensitiveReadTableSql(extraExcluded)} AND (NOT has_table_privilege('jg_task01_runtime',c.oid,'SELECT') OR has_table_privilege('jg_task01_runtime',c.oid,'SELECT WITH GRANT OPTION')))))`;}
 // Observer reads only the tables asserted by the HTTP case; signatures have a column-only projection.
 const observerTables=["PaymentRequest","ApprovalInstance","ApprovalActionLog","FundAccountBalanceRegistration","PaymentExecution","RegisteredPaymentEvent","RegisteredPaymentFunding","RegisteredFundPaymentAllocation","OperatingFact","OperatingImpactEntry","AuditLog","RegisteredPaymentVoucher"];
 const observerSignatureColumns=["id","userId","fileId","contentSha256","source"];
@@ -144,7 +144,7 @@ function cleanupOwnedContainer({id,name,runId,list,inspect,remove,confirmAbsent}
 }
 function selectTask398Scenario(args){
  if(!Array.isArray(args)||args.length>1)throw new Error("TASK398_SCENARIO");
- if(args.length===0||["--overpay-real","--ledger-loss-real","--transfer-real","--transfer-rejection-real","--transfer-browser-real"].includes(args[0]))return "src/database/task16-shared-standard.http.pg.spec.ts";
+ if(args.length===0||["--overpay-real","--ledger-loss-real","--transfer-real","--transfer-rejection-real","--transfer-browser-real","--project-advance-real"].includes(args[0]))return "src/database/task16-shared-standard.http.pg.spec.ts";
  if(args[0]==="--cash-handover-real")return "src/database/task25-public-cash-handover.http.pg.spec.ts";
  if(args[0]==="--browser-real")return "src/database/task16-real-browser.pg.spec.ts";
  if(args[0]==="--browser-completion-real")return "src/database/task16-real-browser-completion.pg.spec.ts";
@@ -157,7 +157,9 @@ async function run(){
  const transferRejection=process.argv[2]==="--transfer-rejection-real";
  const transferBrowser=process.argv[2]==="--transfer-browser-real";
  const handoverScenario=process.argv[2]==="--cash-handover-real";
- const transferScenario=process.argv[2]==="--transfer-real"||transferRejection||transferBrowser||handoverScenario;
+ const advanceScenario=process.argv[2]==="--project-advance-real";
+ const advanceExcludedReads=advanceScenario?["ProjectOwnerSettlementEntry"]:[];
+ const transferScenario=process.argv[2]==="--transfer-real"||transferRejection||transferBrowser||handoverScenario||advanceScenario;
  const browserScenario=scenario==="src/database/task16-real-browser.pg.spec.ts"||scenario==="src/database/task16-real-browser-completion.pg.spec.ts";
  if(process.env.NODE_ENV==="production"||process.env.DOCKER_HOST&&!process.env.DOCKER_HOST.startsWith("unix://"))throw new Error("TASK398_LOCAL_ONLY");
  const candidate=process.env.TASK398_EXPECTED_SHA;
@@ -192,9 +194,9 @@ async function run(){
  const plan=runtimePlan();
  const routines=[...plan.runtime.functions.filter(name=>!name.includes("jg_task01_connection_identity")),...CASH_WRITER_FUNCTIONS,...requirements.routineSources.map(row=>row.signature),"public.jg_read_registered_payment_impacts(text,text,text,text,text)"];
  if(routines.some(name=>typeof name!=="string"||!/^[a-zA-Z0-9_.,()" ]+$/u.test(name)))throw new Error("TASK398_ROUTINE_LIST");
- sql("jiangkong",`${columnGrants(plan)}\n${businessReadGrantSql()}\n${technicalDeleteGrant(plan)}\n${observerReadGrantSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}\nREVOKE ALL ON public."OperatingLedgerWriteSecret",public."OperatingLedgerWriteContext" FROM jg_task01_runtime,jg_task01_observer;\n${[...new Set(routines)].map(name=>`GRANT EXECUTE ON FUNCTION ${name} TO jg_task01_runtime;`).join("\n")}\nINSERT INTO public."OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,public.crypt('${secret}',public.gen_salt('bf')));`);
+ sql("jiangkong",`${columnGrants(plan)}\n${businessReadGrantSql(advanceExcludedReads)}\n${technicalDeleteGrant(plan)}\n${observerReadGrantSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}\nREVOKE ALL ON public."OperatingLedgerWriteSecret",public."OperatingLedgerWriteContext" FROM jg_task01_runtime,jg_task01_observer;\n${[...new Set(routines)].map(name=>`GRANT EXECUTE ON FUNCTION ${name} TO jg_task01_runtime;`).join("\n")}\nINSERT INTO public."OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,public.crypt('${secret}',public.gen_salt('bf')));`);
  if(transferScenario)sql("jiangkong",`BEGIN;\nSET LOCAL jg.task16_runtime_role='jg_task01_runtime';\n${transferFence}\nCOMMIT;`);
- if(handoverScenario){
+ if(handoverScenario||advanceScenario){
   const acl=readFileSync(path.join(__dirname,"prepared/task25/public-cash-handover-runtime.sql"),"utf8");
   sql("jiangkong",`BEGIN;\nSET LOCAL jg.task16_runtime_role='jg_task01_runtime';\n${acl}\nCOMMIT;`);
   const exact=sql("jiangkong",`SELECT CASE WHEN
@@ -208,7 +210,7 @@ async function run(){
     THEN 'TASK407_ROLE_CHECK_OK' ELSE 'TASK407_ROLE_CHECK_FAILED' END;`);
   if(!exact.includes("TASK407_ROLE_CHECK_OK"))throw new Error("TASK407_ROLE_CHECK");
  }
- const check=sql("jiangkong",`SELECT CASE WHEN NOT EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer') AND (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)) AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.member OR r.oid=m.roleid WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer')) AND NOT has_table_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,DELETE') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingImpactEntry"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_observer','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_schema_privilege('jg_task01_runtime','public','CREATE') AND NOT has_schema_privilege('jg_task01_observer','public','CREATE') AND (${technicalDeleteCheckSql()}) AND (${signatureBindingCheckSql()}) AND (${approvalDependencyCheckSql()}) AND (${spotGuardCheckSql()}) AND (${businessReadCheckSql()}) AND (${observerReadCheckSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}) AND (${meSensitiveReadCheckSql()}) THEN 'TASK398_ROLE_CHECK_OK' ELSE 'TASK398_ROLE_CHECK_FAILED' END;`);
+ const check=sql("jiangkong",`SELECT CASE WHEN NOT EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer') AND (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)) AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.member OR r.oid=m.roleid WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer')) AND NOT has_table_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,DELETE') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingImpactEntry"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_observer','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_schema_privilege('jg_task01_runtime','public','CREATE') AND NOT has_schema_privilege('jg_task01_observer','public','CREATE') AND (${technicalDeleteCheckSql()}) AND (${signatureBindingCheckSql()}) AND (${approvalDependencyCheckSql()}) AND (${spotGuardCheckSql()}) AND (${businessReadCheckSql(advanceExcludedReads)}) AND (${observerReadCheckSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}) AND (${meSensitiveReadCheckSql()}) THEN 'TASK398_ROLE_CHECK_OK' ELSE 'TASK398_ROLE_CHECK_FAILED' END;`);
  if(!check.includes("TASK398_ROLE_CHECK_OK"))throw new Error("TASK398_ROLE_CHECK");
  if(transferScenario){
   const transferCheck=sql("jiangkong",`SELECT CASE WHEN
@@ -223,14 +225,40 @@ async function run(){
   if(!transferCheck.includes("TASK406_ROLE_CHECK_OK"))throw new Error("TASK406_ROLE_CHECK");
  }
 
+ if(advanceScenario){
+  const {migrationBaseline}=require("./database-dynamic-gate-manifest.json");
+  if(migrationBaseline.expectedDirectoryCount!==267 || migrationBaseline.terminalMigration!=="20261118190000_registered_project_advance_funding" || !/^[a-f0-9]{64}$/u.test(migrationBaseline.terminalMigrationChecksum))throw new Error("TASK408_EXPECTED_267_LEDGER");
+  sql("jiangkong",`DO $$ BEGIN
+    IF (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)<>267
+      OR NOT EXISTS (SELECT 1 FROM public._prisma_migrations WHERE migration_name='20261118190000_registered_project_advance_funding'
+        AND checksum='${migrationBaseline.terminalMigrationChecksum}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
+    THEN RAISE EXCEPTION 'TASK408_MIGRATION_LEDGER'; END IF;
+  END $$;`);
+  const advanceAcl=readFileSync(path.join(__dirname,"prepared/task26/registered-project-advance-funding-fence.sql"),"utf8");
+  sql("jiangkong",`BEGIN;\nSET LOCAL jg.task16_runtime_role='jg_task01_runtime';\n${advanceAcl}\nCOMMIT;`);
+  sql("jiangkong",`GRANT SELECT ON public."RegisteredFundAdvanceReceipt",public."RegisteredFundCompanyOwnedReceipt",public."RegisteredPaymentProjectAdvance" TO jg_task01_observer;
+  DO $$ BEGIN
+    IF has_any_column_privilege('jg_task01_runtime','public."ProjectOwnerSettlementEntry"','SELECT')
+     OR NOT has_function_privilege('jg_task01_runtime','public.jg_project_owner_settlement_voucher_bound(text)','EXECUTE')
+     OR has_function_privilege('jg_task01_observer','public.jg_project_owner_settlement_voucher_bound(text)','EXECUTE')
+     OR has_table_privilege('jg_task01_runtime','public."RegisteredFundAdvanceReceipt"','UPDATE,DELETE,TRUNCATE')
+     OR has_table_privilege('jg_task01_runtime','public."RegisteredFundCompanyOwnedReceipt"','UPDATE,DELETE,TRUNCATE')
+     OR has_table_privilege('jg_task01_runtime','public."RegisteredPaymentProjectAdvance"','UPDATE,DELETE,TRUNCATE')
+     OR has_any_column_privilege('jg_task01_observer','public."RegisteredPaymentProjectAdvance"','INSERT,UPDATE')
+     OR has_function_privilege('jg_task01_observer','public.jg_registered_fund_verified_own_candidates(text)','EXECUTE')
+    THEN RAISE EXCEPTION 'TASK408_ROLE_CHECK'; END IF;
+  END $$;`);
+  console.log("TASK408_267_ROLE_OK",migrationBaseline.terminalMigrationChecksum);
+ }
  const privateLogDir=realpathSync(mkdtempSync(path.join(tmpdir(),"jg398-approval-pglog-")));chmodSync(privateLogDir,0o700);
  console.log(`TASK398_PRIVATE_PG_LOG_DIR ${privateLogDir}`);
  env.TASK398_LOG_CONTAINER=containerId;env.TASK398_LOG_ENDPOINT=endpoint;env.TASK398_LOG_FILE=path.join(privateLogDir,"approval-postgres-errors.log");
  env.DATABASE_URL=url("jg_task01_runtime");env.TASK398_OWNER_URL=url("jg_task01_owner");env.TASK398_OBSERVER_URL=url("jg_task01_observer");
  if(handoverScenario)env.RUN_TASK407_HANDOVER_PG16="1";
+ if(advanceScenario)env.RUN_TASK408_ADVANCE_PG16="1";
  if(overpayScenario)env.TASK398_OVERPAY_MODE="1";
  if(ledgerLossScenario)env.TASK398_LEDGER_LOSS_MODE="1";
- if(transferScenario){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
+ if(transferScenario&&!advanceScenario){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
  if(browserScenario){const evidenceDir=realpathSync(mkdtempSync("/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
  try{command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",scenario],{env,timeout:300000});}
  catch(error){
@@ -239,6 +267,12 @@ async function run(){
    if(native.status===0)writeFileSync(path.join(privateLogDir,"transfer-postgresql.log"),Buffer.concat([native.stdout,native.stderr]),{mode:0o600,flag:"wx"});
   }catch{ /* Preserve the original failed business command and let owned cleanup run. */ }
   throw error;
+ }
+ if(advanceScenario){
+  const native=spawnSync("docker",["--host",endpoint,"logs",containerId],{cwd:root,timeout:3000,maxBuffer:256*1024,encoding:"utf8"});
+  const logs=String(native.stdout??"")+String(native.stderr??"");
+  if(native.status!==0||!logs.includes("same company project funding gap requires a confirmed project advance"))throw new Error("TASK408_MIXED_FUNDING_DB_WITNESS_MISSING");
+  console.log("TASK408_MIXED_FUNDING_DB_WITNESS");
  }
  if(command("git",["rev-parse","HEAD"],{quiet:true})!==candidate||command("git",["status","--porcelain"],{quiet:true})!=="")throw new Error("TASK398_CANDIDATE_CHANGED");
 }
@@ -251,6 +285,6 @@ if(require.main===module)run().then(()=>{businessPassed=true;},error=>{console.e
   console.error(`TASK398_CONTAINER_CLEANUP_${status} run=${runId} name=${name}`);if(status==="UNKNOWN"){containerClean=false;console.error(`TASK398_STORAGE_RETAINED:${storage}`);process.exitCode=1;}
  }
  if(storage&&containerClean)try{rmSync(storage,{recursive:true,force:true});}catch{console.error("TASK398_STORAGE_CLEANUP_FAILED");process.exitCode=1;}
- if(businessPassed&&!process.exitCode)console.log(`${["--browser-real","--browser-completion-real"].includes(process.argv[2])?"TASK398_BROWSER_PASS":process.argv[2]==="--overpay-real"?"TASK398_OVERPAY_PASS":process.argv[2]==="--ledger-loss-real"?"TASK398_LEDGER_LOSS_PASS":process.argv[2]==="--transfer-browser-real"?"TASK406_BROWSER_PASS":process.argv[2]==="--cash-handover-real"?"TASK407_HANDOVER_PASS":process.argv[2]==="--transfer-real"?"TASK406_TRANSFER_PASS":process.argv[2]==="--transfer-rejection-real"?"TASK406_REJECTION_PASS":"TASK398_STANDARD_PASS"} candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
+ if(businessPassed&&!process.exitCode)console.log(`${["--browser-real","--browser-completion-real"].includes(process.argv[2])?"TASK398_BROWSER_PASS":process.argv[2]==="--overpay-real"?"TASK398_OVERPAY_PASS":process.argv[2]==="--ledger-loss-real"?"TASK398_LEDGER_LOSS_PASS":process.argv[2]==="--transfer-browser-real"?"TASK406_BROWSER_PASS":process.argv[2]==="--cash-handover-real"?"TASK407_HANDOVER_PASS":process.argv[2]==="--transfer-real"?"TASK406_TRANSFER_PASS":process.argv[2]==="--transfer-rejection-real"?"TASK406_REJECTION_PASS":process.argv[2]==="--project-advance-real"?"TASK408_ADVANCE_PASS":"TASK398_STANDARD_PASS"} candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
 });
 module.exports={selectTask398Scenario,runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,approvalDependencyCheckSql,spotGuardCheckSql,businessReadGrantSql,businessReadCheckSql,excludedReadTables,observerReadGrantSql,observerReadCheckSql,observerTables,observerSignatureColumns,meSensitiveReadCheckSql,cleanupOwnedContainer,containerName};

@@ -1,4 +1,6 @@
 import { assertPublicCashCustodian } from "../fund-account/public-cash-custodian";
+import { confirmedProjectAdvancePayload, planRegisteredProjectAdvance, registeredProjectAdvanceReceiptStatus, type ConfirmedProjectAdvance } from "./registered-payment-project-advance";
+import { readRegisteredCompanyOwnedSources } from "../fund-account/registered-company-owned-fund-source";
 import { FUND_ACCOUNT_TRANSFER_HELD_STATES } from "../fund-account/fund-account-transfer-state";
 import { registeredPaymentWriteAuthority } from "./registered-payment-approval";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
@@ -42,7 +44,8 @@ export function registeredPaymentFingerprint(paymentId: string, actorUserId: str
     ...(input.contractHistoryConfirmation ? {contractHistoryConfirmation:{
       treatment:input.contractHistoryConfirmation.treatment,expectedFingerprint:input.contractHistoryConfirmation.expectedFingerprint,
       reason:input.contractHistoryConfirmation.reason.trim(),evidence:input.contractHistoryConfirmation.evidence.trim()
-    }} : {}) })).digest("hex");
+    }} : {}),
+    ...(input.confirmedProjectAdvance ? { confirmedProjectAdvance: confirmedProjectAdvancePayload(input.confirmedProjectAdvance) } : {}) })).digest("hex");
 }
 
 type TransferSourceIdentity = {
@@ -123,15 +126,60 @@ export async function prepareRegisteredFunding(tx: Prisma.TransactionClient, act
   if (!current || current.id !== input.expectedRegistrationId) throw new ConflictException("余额核对版本已变化，请刷新资金资料后重新确认期初归属");
   const available = await availableRegisteredBalance(tx, current);
   const amountCents = positiveMoneyCents(input.amountCents, "实付金额必须大于0");
-  const allocations = input.sourceAllocations.map(line => ({ ...line, amount: positiveMoneyCents(line.amountCents, "来源分摊金额必须大于0") }));
+  const projectAllocations = input.sourceAllocations.map(line => ({ ...line, amount: positiveMoneyCents(line.amountCents, "来源分摊金额必须大于0") }));
+  let allocations = projectAllocations;
+  let projectAdvance: ReturnType<typeof planRegisteredProjectAdvance> = null;
+  let needsMixedFundingFence = false;
+  if (input.confirmedProjectAdvance) {
+    const companyOwnership = await readRegisteredCompanyOwnedSources(tx, input.confirmedProjectAdvance.sourceAllocations.map(line => line.sourceBatchId));
+    projectAdvance = planRegisteredProjectAdvance({
+      projectId: payment.projectId, payerCompanyId: account.kind === "company" ? account.companyEntityId : null,
+      debtorCompanyId: payment.companyEntityIdSnapshot,
+      paidCents: amountCents, openingTreatment: input.openingTreatment, projectAllocations,
+      sources: available.sources.map(source => ({ ...source, ownedByCompanyId: companyOwnership.get(source.id) ?? null })),
+      confirmed: input.confirmedProjectAdvance
+    });
+    if (projectAdvance) allocations = [...projectAllocations, ...projectAdvance.companyAllocations];
+  }
   if (input.openingTreatment === "not_included") {
     if (available.balanceYuan === null) throw new ConflictException("资金余额尚未核对，不能将未知余额当作0或可用余额");
     if (available.balanceYuan.lt(new Prisma.Decimal(amountCents.toString()).div(100))) throw new ConflictException("登记资金余额不足，请核对实际资金");
-    if (new Set(allocations.map(line=>line.sourceBatchId)).size !== allocations.length || allocations.reduce((sum,line)=>sum+line.amount,0n) !== amountCents) throw new BadRequestException("来源分摊必须逐笔明确且合计等于实付金额，不能自动分配来源");
+    const selectedAmount = allocations.reduce((sum, line) => sum + line.amount, 0n);
+    const uniqueLineage = new Set(allocations.map(line => line.sourceBatchId)).size === allocations.length;
+    const sources = new Map(available.sources.map(source => [source.id, source]));
+    const awaitingReconciliation = (sourceBatchId: string) =>
+      available.pendingAllocations.some(row => row.candidateSourceIds.includes(sourceBatchId)) ||
+      available.heldTransferAllocations.some(row => row.candidateSourceIds.length !== 1 &&
+        (row.candidateSourceIds.length === 0 || row.candidateSourceIds.includes(sourceBatchId)));
+    const currentProjectAllocations = allocations.filter(line => {
+      const source = sources.get(line.sourceBatchId);
+      return source?.projectStatus === "project" && source.projectId === payment.projectId;
+    });
+    const mixesUnassignedSource = selectedAmount === amountCents && currentProjectAllocations.length > 0 &&
+      allocations.some(line => sources.get(line.sourceBatchId)?.projectStatus === "pending") &&
+      allocations.every(line => {
+        const source = sources.get(line.sourceBatchId);
+        return source?.projectStatus === "pending" || (source?.projectStatus === "project" && source.projectId === payment.projectId);
+      });
+    needsMixedFundingFence = mixesUnassignedSource && account.kind === "company" &&
+      account.companyEntityId === payment.companyEntityIdSnapshot;
+    if (!projectAdvance && uniqueLineage && account.kind === "company" &&
+        (selectedAmount < amountCents || mixesUnassignedSource) && allocations.every(line => {
+          const source = sources.get(line.sourceBatchId);
+          return source && !awaitingReconciliation(source.id) &&
+            !source.amountYuan.lt(new RegisteredBalanceDecimal(line.amount.toString()).div(100));
+        })) {
+      planRegisteredProjectAdvance({
+        projectId: payment.projectId, payerCompanyId: account.companyEntityId, debtorCompanyId: payment.companyEntityIdSnapshot,
+        paidCents: amountCents, openingTreatment: input.openingTreatment,
+        projectAllocations: mixesUnassignedSource ? currentProjectAllocations : allocations,
+        sources: available.sources.map(source => ({ ...source, ownedByCompanyId: null }))
+      });
+    }
+    if (!uniqueLineage || selectedAmount !== amountCents) throw new BadRequestException("来源分摊必须逐笔明确且合计等于实付金额，不能自动分配来源");
     for (const line of allocations) {
-      if (available.pendingAllocations.some(row=>row.candidateSourceIds.includes(line.sourceBatchId)) ||
-          available.heldTransferAllocations.some(row => row.candidateSourceIds.length !== 1 && (row.candidateSourceIds.length === 0 || row.candidateSourceIds.includes(line.sourceBatchId)))) throw new ConflictException("所选来源可用分摊待核对，不能用核对原值或0代替可用余额");
-      const source = available.sources.find(row=>row.id===line.sourceBatchId);
+      if (awaitingReconciliation(line.sourceBatchId)) throw new ConflictException("所选来源可用分摊待核对，不能用核对原值或0代替可用余额");
+      const source = sources.get(line.sourceBatchId);
       if (!source || source.amountYuan.lt(new Prisma.Decimal(line.amount.toString()).div(100))) throw new ConflictException("所选来源可用余额不足，请重新核对来源");
       if (source.projectStatus === "project" && source.projectId !== payment.projectId) throw new ConflictException("所选来源的项目归属不足，差额须先由业务确认，不能自动形成垫资到账");
       if (source.projectStatus === "company_daily") throw new ConflictException("所选来源属于公司日常，请先明确此次项目付款的资金归属");
@@ -139,6 +187,7 @@ export async function prepareRegisteredFunding(tx: Prisma.TransactionClient, act
   } else if (allocations.length) throw new BadRequestException("已含期初的历史实付不再分摊扣减当前资金来源");
   const company = account.companyEntityId ? await tx.companyEntity.findUnique({where:{id:account.companyEntityId}}) : null;
   if (account.kind === "company" && !company) throw new ConflictException("登记资金的我方公司档案不存在，请核对原资金资料");
+  if (projectAdvance && !company?.isActive) throw new ConflictException("付款公司档案已停用，不能新确认项目垫资");
   if (company?.isActive === false && company.id !== payment.companyEntityIdSnapshot) throw new ConflictException("停用公司不能新选为代付主体，请核对原单冻结付款主体");
   if (company?.isActive === false && (!payment.companyEntityNameSnapshot || !payment.companyEntityCreditCodeSnapshot)) throw new ConflictException("停用公司原单冻结主体资料不完整，请核对历史依据");
   // Keep original request/history/contract/settlement/account locks before the
@@ -149,16 +198,60 @@ export async function prepareRegisteredFunding(tx: Prisma.TransactionClient, act
 
   const actualPayer = account.kind === "public_cash" ? { kind: "public_cash", id: "public_cash", snapshot: { kind: "public_cash", scopeKey: "public_cash" } }
     : { kind: "participating_company", id: company!.id, snapshot: { kind: "participating_company", companyEntityId: company!.id, name: company!.isActive === false ? payment.companyEntityNameSnapshot : company!.name, creditCode: company!.isActive === false ? payment.companyEntityCreditCodeSnapshot : company!.unifiedSocialCreditCode ?? null } };
-  return { account, current, allocations, actualPayer, writeAuthority, operatingLedgerEffectiveDateAtRegistration, fingerprint: registeredPaymentFingerprint(payment.id, actorUserId, input) };
+  return { account, current, allocations, actualPayer, projectAdvance, needsMixedFundingFence, projectId: payment.projectId, writeAuthority, operatingLedgerEffectiveDateAtRegistration, fingerprint: registeredPaymentFingerprint(payment.id, actorUserId, input) };
 }
 
-export async function appendRegisteredFunding(tx: Prisma.TransactionClient, executionId: string, context: Awaited<ReturnType<typeof prepareRegisteredFunding>>, input: RecordRegisteredPaymentExecutionDto, contractHistoryConfirmation: Awaited<ReturnType<typeof confirmRegisteredContractHistory>>) {
+export async function appendRegisteredFunding(tx: Prisma.TransactionClient, executionId: string, context: Awaited<ReturnType<typeof prepareRegisteredFunding>>, input: RecordRegisteredPaymentExecutionDto, actorUserId: string, contractHistoryConfirmation: Awaited<ReturnType<typeof confirmRegisteredContractHistory>>) {
   await tx.registeredPaymentFunding.create({ data: { executionId, operatingLedgerEffectiveDateAtRegistration:context.operatingLedgerEffectiveDateAtRegistration, accountId: context.account.id, balanceRegistrationId: context.current.id,
     actualPayerKind: context.actualPayer.kind, actualPayerId: context.actualPayer.id, actualPayerSnapshot: context.actualPayer.snapshot,
     ...(contractHistoryConfirmation ? {contractHistoryConfirmation} : {}),
     openingTreatment: input.openingTreatment, openingReason: input.openingReason.trim(), openingEvidence: input.openingEvidence.trim(), payloadFingerprint: context.fingerprint } });
   for (const line of context.allocations) await tx.registeredFundPaymentAllocation.create({ data: { id: randomUUID(), executionId, accountId: context.account.id, sourceBatchId: line.sourceBatchId, amountCents: line.amount } });
+  if (context.projectAdvance) {
+    const { amount, companyId, reason, evidence, companyAllocations } = context.projectAdvance;
+    await tx.registeredPaymentProjectAdvance.create({ data: {
+      executionId, projectId: context.projectId, accountId: context.account.id, creditorCompanyId: companyId,
+      confirmedByUserId: actorUserId, amountCents: amount, reason, evidence,
+      companyAllocations: companyAllocations.map(line => ({ sourceBatchId: line.sourceBatchId, amountCents: line.amountCents }))
+    } });
+  }
   await tx.registeredPaymentEvent.create({ data: { executionId, payload: { executionId, accountId: context.account.id, balanceRegistrationId: context.current.id, writeAuthority:context.writeAuthority } } });
+}
+
+/** Run only the prepared Task26 constraints before reporting a new registered payment. */
+export async function enforceRegisteredPaymentAdvanceConstraints(
+  tx: Prisma.TransactionClient,
+  context: Awaited<ReturnType<typeof prepareRegisteredFunding>>,
+) {
+  if (!context.projectAdvance && !context.needsMixedFundingFence) return;
+  const [catalog] = await tx.$queryRaw<Array<{ present: number; valid: number }>>(Prisma.sql`
+    WITH expected(name, relation, handler) AS (VALUES
+      ('RegisteredPaymentProjectAdvance_payment',
+       to_regclass('public."RegisteredPaymentProjectAdvance"'),
+       to_regprocedure('public.jg_registered_payment_project_advance_check()')),
+      ('RegisteredFundPaymentAllocation_project_mixed_funding',
+       to_regclass('public."RegisteredFundPaymentAllocation"'),
+       to_regprocedure('public.jg_registered_payment_project_mixed_funding_check()'))
+    )
+    SELECT count(found_trigger.oid)::int AS present, count(*) FILTER (
+      WHERE found_trigger.tgrelid = expected.relation AND found_trigger.tgfoid = expected.handler
+      AND found_trigger.tgtype = 5 AND found_trigger.tgenabled = 'O' AND found_trigger.tgdeferrable AND found_trigger.tginitdeferred
+      AND NOT found_trigger.tgisinternal AND constraint_row.condeferrable AND constraint_row.condeferred
+    )::int AS valid
+    FROM expected
+    JOIN pg_catalog.pg_trigger found_trigger ON found_trigger.tgname::text = expected.name
+    JOIN pg_catalog.pg_class relation ON relation.oid = found_trigger.tgrelid AND relation.relnamespace = 'public'::regnamespace
+    LEFT JOIN pg_catalog.pg_constraint constraint_row
+      ON constraint_row.oid = found_trigger.tgconstraint AND constraint_row.conname::text = expected.name
+      AND constraint_row.connamespace = 'public'::regnamespace
+  `);
+  if (catalog.present === 0 && !context.projectAdvance) return;
+  if (catalog.present !== 2 || catalog.valid !== 2) {
+    throw new ConflictException("项目垫资登记校验暂不可用，请联系财务核对，暂勿重复登记");
+  }
+  await tx.$executeRaw(Prisma.sql`SET CONSTRAINTS
+    public."RegisteredPaymentProjectAdvance_payment",
+    public."RegisteredFundPaymentAllocation_project_mixed_funding" IMMEDIATE`);
 }
 
 /** Public account/review projections retain the canonical payment identity. */
@@ -177,6 +270,17 @@ export async function registeredPaymentSummaries(tx: Prisma.TransactionClient, f
 
 
 /** Same execution creates the existing formal inter-company consequence once. */
+export async function readRegisteredProjectAdvanceStatus(
+  tx: Prisma.TransactionClient,
+  executionId: string,
+  expected: { actorUserId: string; projectId: string; accountId: string; companyId: string; input: ConfirmedProjectAdvance }
+) {
+  const receipt = await tx.registeredPaymentProjectAdvance.findUnique({ where: { executionId } });
+  if (receipt && (receipt.confirmedByUserId !== expected.actorUserId || receipt.projectId !== expected.projectId ||
+      receipt.accountId !== expected.accountId || receipt.creditorCompanyId !== expected.companyId)) return "mismatch";
+  return registeredProjectAdvanceReceiptStatus(expected.input, receipt);
+}
+
 export async function appendRegisteredIntercompany(tx: Prisma.TransactionClient, executionId: string, actorUserId: string, payment: {projectId:string;contractId:string;contractVersionId:string;companyEntityIdSnapshot:string|null;companyEntityNameSnapshot:string|null;companyEntityCreditCodeSnapshot:string|null}, context: Awaited<ReturnType<typeof prepareRegisteredFunding>>, amountCents: bigint) {
   const creditorId=context.account.companyEntityId;
   if (!creditorId || creditorId===payment.companyEntityIdSnapshot) return;

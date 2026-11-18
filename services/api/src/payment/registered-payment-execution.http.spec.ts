@@ -34,6 +34,7 @@ import { MeController } from "../me/me.controller";
 import { MeService } from "../me/me.service";
 import { FileService, PrivateFileStorage } from "../file/file.service";
 import { AuthService } from "../auth/auth.service";
+import * as companyOwnedSources from "../fund-account/registered-company-owned-fund-source";
 import { FundAccountController } from "../fund-account/fund-account.controller";
 import { FundAccountService } from "../fund-account/fund-account.service";
 import { AuditService } from "../audit/audit.service";
@@ -134,11 +135,12 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     await seed.contractVersion.create({data:{id:"version-a",contractId:"contract-a",versionNo:1,status:"active",signingSubjectType:"our_company",companyEntityIdSnapshot:"company-a",companyEntityNameSnapshot:"甲公司",companyEntityCreditCodeSnapshot:"SYNTHETIC-COMPANY-A"}});
     await seed.paymentTermsVersion.create({data:{id:"terms-a",contractId:"contract-a",contractVersionId:"version-a",versionNo:1,status:"active",originalText:"按冻结付款条件分次付款",updatedAt:new Date("2026-11-01T00:00:00Z")}});
   }
-  async function prepareApprovedPayment(sourceStatus: "known" | "pending" = "known") {
+  async function prepareApprovedPayment(sourceStatus: "known" | "pending" = "known", splitForAdvance = false) {
     const opening = await post("finance", "/fund-accounts/openings", {
-      scopeKey: "company:company-a", balanceYuan: "100", asOfDate: "2026-11-05", evidenceReference: "甲公司期初核对表",
+      scopeKey: "company:company-a", balanceYuan: splitForAdvance ? "8" : "100", asOfDate: "2026-11-05", evidenceReference: "甲公司期初核对表",
       reconciliationNote: "余额和来源核对一致", reason: "期初启用", idempotencyKey: "task16-opening-a",
-      sources: [{ amountYuan: "100", sourceStatus, sourceName: sourceStatus === "known" ? "甲项目自有资金" : null, projectStatus: "project", projectId: "project-a" }]
+      sources: [{ amountYuan: splitForAdvance ? "5" : "100", sourceStatus, sourceName: sourceStatus === "known" ? "甲项目自有资金" : null, projectStatus: "project", projectId: "project-a" },
+        ...(splitForAdvance ? [{ amountYuan: "3", sourceStatus: "pending", sourceName: null, projectStatus: "pending", projectId: null }] : [])]
     });
     expect(opening.status).toBe(201);
     const seed = database.prisma as unknown as Record<string, {create(input: {data:Record<string,unknown>}): Promise<unknown>; update(input:{where:{id:string};data:Record<string,unknown>}):Promise<unknown>}>;
@@ -149,6 +151,116 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     await seed.paymentRequest.update({where:{id:"payment-a"},data:{sourceType:"settlement",settlementId:"settlement-a"}});
     return opening;
   }
+  it("returns the exact three-yuan shortfall without recording cash, payment, funding, or audit", async () => {
+    const opening = await prepareApprovedPayment("known", true);
+    const work = await get("keeper");
+    const beforeFunds = await get("finance", "/fund-accounts");
+    const beforeAudit = await get("admin", "/audit-logs");
+    const idempotencyKey = "7e164361-0621-4802-9a1d-f07dc355b31a";
+    const input = {
+      idempotencyKey, expectedPaymentUpdatedAt: work.body.items[0].expectedPaymentUpdatedAt, amountCents: "800",
+      paidAt: "2026-11-06", scopeKey: "company:company-a", expectedRegistrationId: opening.body.id,
+      openingTreatment: "not_included", openingReason: "本次实付未含期初", openingEvidence: "合成出款凭据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "500" }],
+      confirmationPassword: "Synthetic15Password!"
+    };
+    const path = "/payment-executions/payment-a/registrations";
+    const response = await post("keeper", path, input);
+    expect(response).toMatchObject({ status: 409, body: {
+      code: "REGISTERED_PROJECT_ADVANCE_CONFIRMATION_REQUIRED", differenceCents: "300"
+    } });
+    const mixed = await post("keeper", path, {
+      ...input, sourceAllocations: [...input.sourceAllocations, { sourceBatchId: opening.body.sources[1].id, amountCents: "300" }]
+    });
+    expect(mixed).toMatchObject({ status: 409, body: {
+      code: "REGISTERED_PROJECT_ADVANCE_CONFIRMATION_REQUIRED", differenceCents: "300"
+    } });
+    expect((await get("keeper", `/payment-executions/results/${idempotencyKey}`)).body).toMatchObject({ status: "unconfirmed" });
+    expect(await get("keeper")).toEqual(work);
+    expect(await get("finance", "/fund-accounts")).toEqual(beforeFunds);
+    expect(await get("admin", "/audit-logs")).toEqual(beforeAudit);
+  });
+
+  it("records only the verified three-yuan company advance with the original eight-yuan payment and same-key replay", async () => {
+    const opening = await prepareApprovedPayment("known", true);
+    const companyBatchId = opening.body.sources[1].id as string;
+    const ownership = jest.spyOn(companyOwnedSources, "readRegisteredCompanyOwnedSources");
+    const tx = database.prisma as unknown as Prisma.TransactionClient;
+    const rawQuery = tx.$queryRaw;
+    const rawExecute = tx.$executeRaw;
+    let catalog = { present: 2, valid: 2 };
+    let deferredFailure = true;
+    let constraintChecks = 0;
+    const query = jest.spyOn(tx, "$queryRaw").mockImplementation((sql, ...values) =>
+      "sql" in sql && sql.sql.includes("RegisteredPaymentProjectAdvance_payment") ? Promise.resolve([catalog]) as never : rawQuery(sql, ...values));
+    const execute = jest.spyOn(tx, "$executeRaw").mockImplementation((sql, ...values) => {
+      if (!("sql" in sql) || !sql.sql.includes("SET CONSTRAINTS")) return rawExecute(sql, ...values);
+      expect(sql.sql).toContain('public."RegisteredPaymentProjectAdvance_payment"');
+      expect(sql.sql).toContain('public."RegisteredFundPaymentAllocation_project_mixed_funding" IMMEDIATE');
+      constraintChecks++;
+      return (deferredFailure ? Promise.reject(new Error("Synthetic deferred payment constraint rejection")) : Promise.resolve(0)) as never;
+    });
+    const work = await get("keeper");
+    const beforeFunds = await get("finance", "/fund-accounts");
+    const beforeAudit = await get("admin", "/audit-logs");
+    const input = {
+      idempotencyKey: "ae65cab8-fdca-43ef-b30d-31acd282d5e6",
+      expectedPaymentUpdatedAt: work.body.items[0].expectedPaymentUpdatedAt,
+      amountCents: "800", paidAt: "2026-11-06", scopeKey: "company:company-a",
+      expectedRegistrationId: opening.body.id,
+      openingTreatment: "not_included", openingReason: "本次实付未含期初", openingEvidence: "合成出款凭据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "500" }],
+      confirmedProjectAdvance: {
+        amountCents: "300", reason: "已核实公司自有资金", evidence: "合成银行凭据",
+        sourceAllocations: [{ sourceBatchId: companyBatchId, amountCents: "300" }]
+      },
+      confirmationPassword: "Synthetic15Password!"
+    };
+    const path = "/payment-executions/payment-a/registrations";
+    try {
+      ownership.mockResolvedValueOnce(new Map());
+      expect((await post("keeper", path, input)).status).toBe(409);
+      expect(await get("finance", "/fund-accounts")).toEqual(beforeFunds);
+
+      for (const unavailable of [{ present: 0, valid: 0 }, { present: 2, valid: 1 }]) {
+        catalog = unavailable;
+        ownership.mockResolvedValueOnce(new Map([[companyBatchId, "company-a"]]));
+        expect(await post("keeper", path, input)).toMatchObject({status:409});
+        expect(await get("finance", "/fund-accounts")).toEqual(beforeFunds);
+      }
+      expect(constraintChecks).toBe(0);
+      catalog = { present: 2, valid: 2 };
+      ownership.mockResolvedValueOnce(new Map([[companyBatchId, "company-a"]]));
+      expect(await post("keeper", path, input)).toMatchObject({status:500});
+      expect(await get("finance", "/fund-accounts")).toEqual(beforeFunds);
+      expect(await get("keeper", `/payment-executions/results/${input.idempotencyKey}`)).toMatchObject({body:{status:"unconfirmed"}});
+      expect(await get("admin", "/audit-logs")).toEqual(beforeAudit);
+      expect(await tx.paymentExecution.findMany()).toEqual([]);
+      expect(await tx.registeredPaymentProjectAdvance.findMany()).toEqual([]);
+
+      deferredFailure = false;
+      ownership.mockResolvedValueOnce(new Map([[companyBatchId, "company-a"]]));
+      const result = await post("keeper", path, input);
+      expect(result).toMatchObject({ status: 201, body: { amountCents: "800" } });
+      const prisma = database.prisma as unknown as Prisma.TransactionClient;
+      const persisted = await prisma.registeredPaymentProjectAdvance.findMany();
+      expect(persisted).toEqual([expect.objectContaining({
+        executionId: result.body.id, projectId: "project-a", creditorCompanyId: "company-a",
+        confirmedByUserId: "keeper", amountCents: 300n, companyAllocations: input.confirmedProjectAdvance.sourceAllocations,
+      })]);
+      expect(await post("keeper", path, input)).toEqual(result);
+      expect(await prisma.registeredPaymentProjectAdvance.findMany()).toEqual(persisted);
+      expect(constraintChecks).toBe(2);
+      expect(await post("keeper", "/payment-executions/payment-a/recovery-proof", {
+        ...input, confirmationPassword: undefined
+      })).toMatchObject({ status: 201, body: { status: "matched", executionId: result.body.id } });
+    } finally {
+      query.mockRestore();
+      execute.mockRestore();
+      ownership.mockRestore();
+    }
+  });
+
   async function recordSourcePayment(opening: {body:{id:string;sources:Array<{id:string}>}}, amountCents: string, key: string) {
     const current = await get("keeper");
     return post("keeper", "/payment-executions/payment-a/registrations", {

@@ -1,7 +1,7 @@
-import type { RegisteredPaymentCommand } from "../../api/registered-payment-execution.api";
+import type { RegisteredPaymentCommand, RegisteredProjectAdvanceConfirmation } from "../../api/registered-payment-execution.api";
 
 export type PendingPaymentCommand = Omit<RegisteredPaymentCommand, "confirmationPassword">;
-export interface PendingPaymentDraft { amountYuan:string;paidAt:string;scopeKey:string;treatment:string;reason:string;evidence:string;accountName:string;historyTreatment?:string;historyReason?:string;historyEvidence?:string;allocations:Array<{sourceBatchId:string;amountYuan:string}> }
+export interface PendingPaymentDraft { amountYuan:string;paidAt:string;scopeKey:string;treatment:string;reason:string;evidence:string;accountName:string;historyTreatment?:string;historyReason?:string;historyEvidence?:string;advance?:{confirmed:boolean;reason:string;evidence:string};allocations:Array<{sourceBatchId:string;amountYuan:string}> }
 export interface PendingPaymentAttempt { version:1;phase:"prepared"|"sending";userId:string;paymentId:string;command:PendingPaymentCommand;draft:PendingPaymentDraft }
 type StorageAccess = () => Pick<Storage,"getItem"|"setItem"|"removeItem">;
 export type PendingAttemptRead = {kind:"missing"}|{kind:"restored";attempt:PendingPaymentAttempt}|{kind:"unreadable";notice:string;blocksNewAttempt:boolean};
@@ -11,10 +11,17 @@ function storageKey(userId: string) { return `jiangkong-payment-pending:v1:${use
 // permissions or successful funds facts cross this explicit whitelist.
 export function transportCommand(command: PendingPaymentCommand): PendingPaymentCommand {
  const history = command.contractHistoryConfirmation;
- return {...(history ? {contractHistoryConfirmation:{treatment:history.treatment,expectedFingerprint:history.expectedFingerprint,reason:history.reason,evidence:history.evidence}} : {}),idempotencyKey:command.idempotencyKey,expectedPaymentUpdatedAt:command.expectedPaymentUpdatedAt,amountCents:command.amountCents,paidAt:command.paidAt,scopeKey:command.scopeKey,expectedRegistrationId:command.expectedRegistrationId,openingTreatment:command.openingTreatment,openingReason:command.openingReason,openingEvidence:command.openingEvidence,sourceAllocations:command.sourceAllocations.map(line=>({sourceBatchId:line.sourceBatchId,amountCents:line.amountCents}))};
+ const advance = command.confirmedProjectAdvance;
+ return {...(advance ? { confirmedProjectAdvance: storedProjectAdvance(advance) } : {}),...(history ? {contractHistoryConfirmation:{treatment:history.treatment,expectedFingerprint:history.expectedFingerprint,reason:history.reason,evidence:history.evidence}} : {}),idempotencyKey:command.idempotencyKey,expectedPaymentUpdatedAt:command.expectedPaymentUpdatedAt,amountCents:command.amountCents,paidAt:command.paidAt,scopeKey:command.scopeKey,expectedRegistrationId:command.expectedRegistrationId,openingTreatment:command.openingTreatment,openingReason:command.openingReason,openingEvidence:command.openingEvidence,sourceAllocations:command.sourceAllocations.map(line=>({sourceBatchId:line.sourceBatchId,amountCents:line.amountCents}))};
+}
+function storedProjectAdvance(advance: RegisteredProjectAdvanceConfirmation): RegisteredProjectAdvanceConfirmation {
+ return {
+  amountCents: advance.amountCents, reason: advance.reason, evidence: advance.evidence,
+  sourceAllocations: advance.sourceAllocations.map(line => ({ sourceBatchId: line.sourceBatchId, amountCents: line.amountCents }))
+ };
 }
 export function makePendingPaymentAttempt(userId:string,paymentId:string,command:PendingPaymentCommand,draft:PendingPaymentDraft): PendingPaymentAttempt {
- return {version:1,phase:"prepared",userId,paymentId,command:transportCommand(command),draft:{amountYuan:draft.amountYuan,paidAt:draft.paidAt,scopeKey:draft.scopeKey,treatment:draft.treatment,reason:draft.reason,evidence:draft.evidence,accountName:draft.accountName,...(draft.historyTreatment!==undefined?{historyTreatment:draft.historyTreatment}:{}),...(draft.historyReason!==undefined?{historyReason:draft.historyReason}:{}),...(draft.historyEvidence!==undefined?{historyEvidence:draft.historyEvidence}:{}),allocations:draft.allocations.map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:line.amountYuan}))}};
+ return {version:1,phase:"prepared",userId,paymentId,command:transportCommand(command),draft:{amountYuan:draft.amountYuan,paidAt:draft.paidAt,scopeKey:draft.scopeKey,treatment:draft.treatment,reason:draft.reason,evidence:draft.evidence,accountName:draft.accountName,...(draft.historyTreatment!==undefined?{historyTreatment:draft.historyTreatment}:{}),...(draft.historyReason!==undefined?{historyReason:draft.historyReason}:{}),...(draft.historyEvidence!==undefined?{historyEvidence:draft.historyEvidence}:{}),...(draft.advance?{advance:{confirmed:draft.advance.confirmed,reason:draft.advance.reason,evidence:draft.advance.evidence}}:{}),allocations:draft.allocations.map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:line.amountYuan}))}};
 }
 export function writePendingPaymentAttempt(attempt:PendingPaymentAttempt,storage:StorageAccess,expectedPrepared?:PendingPaymentAttempt):{saved:boolean;conflict:boolean;notice:string;prepared?:boolean} {
  const prepared=JSON.stringify(makePendingPaymentAttempt(attempt.userId,attempt.paymentId,attempt.command,attempt.draft));
@@ -108,9 +115,16 @@ export function readPendingPaymentAttempt(userId:string,storage:StorageAccess):P
   if (pointer.version !== 1 || pointer.userId !== userId || typeof pointer.paymentId !== "string" || !command || fields.some(field=>typeof command[field] !== "string") || !["included","not_included"].includes(command.openingTreatment) || !Array.isArray(command.sourceAllocations) || command.sourceAllocations.some(line=>!line || typeof line.sourceBatchId !== "string" || typeof line.amountCents !== "string") || !pointer.draft || ["amountYuan","paidAt","scopeKey","treatment","reason","evidence","accountName"].some(field=>typeof (pointer.draft as unknown as Record<string,unknown>)[field] !== "string") || !Array.isArray(pointer.draft.allocations) || pointer.draft.allocations.some(line=>!line || typeof line.sourceBatchId !== "string" || typeof line.amountYuan !== "string")) throw new Error("Invalid transport pointer");
   const history = command.contractHistoryConfirmation;
   if (history && (history.treatment !== "not_included" || [history.expectedFingerprint,history.reason,history.evidence].some(value=>typeof value !== "string"))) throw new Error("Invalid history transport confirmation");
+  const advance = command.confirmedProjectAdvance;
+  if (advance !== undefined && (!advance || [advance.amountCents, advance.reason, advance.evidence].some(value => typeof value !== "string") ||
+      !Array.isArray(advance.sourceAllocations) || advance.sourceAllocations.some(line => !line ||
+        typeof line.sourceBatchId !== "string" || typeof line.amountCents !== "string"))) throw new Error("Invalid advance transport confirmation");
+  const advanceDraft = pointer.draft.advance;
+  if (advanceDraft !== undefined && (!advanceDraft || typeof advanceDraft.confirmed !== "boolean" || typeof advanceDraft.reason !== "string" ||
+      typeof advanceDraft.evidence !== "string")) throw new Error("Invalid advance draft confirmation");
   const stored = transportCommand(command);
   if ([pointer.draft.historyTreatment,pointer.draft.historyReason,pointer.draft.historyEvidence].some(value=>value!==undefined && typeof value!=="string")) throw new Error("Invalid draft history");
-  const draft: PendingPaymentDraft = {amountYuan:pointer.draft.amountYuan,paidAt:pointer.draft.paidAt,scopeKey:pointer.draft.scopeKey,treatment:pointer.draft.treatment,reason:pointer.draft.reason,evidence:pointer.draft.evidence,accountName:pointer.draft.accountName,...(pointer.draft.historyTreatment!==undefined?{historyTreatment:pointer.draft.historyTreatment}:{}),...(pointer.draft.historyReason!==undefined?{historyReason:pointer.draft.historyReason}:{}),...(pointer.draft.historyEvidence!==undefined?{historyEvidence:pointer.draft.historyEvidence}:{}),allocations:pointer.draft.allocations.map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:line.amountYuan}))};
+  const draft: PendingPaymentDraft = {amountYuan:pointer.draft.amountYuan,paidAt:pointer.draft.paidAt,scopeKey:pointer.draft.scopeKey,treatment:pointer.draft.treatment,reason:pointer.draft.reason,evidence:pointer.draft.evidence,accountName:pointer.draft.accountName,...(pointer.draft.historyTreatment!==undefined?{historyTreatment:pointer.draft.historyTreatment}:{}),...(pointer.draft.historyReason!==undefined?{historyReason:pointer.draft.historyReason}:{}),...(pointer.draft.historyEvidence!==undefined?{historyEvidence:pointer.draft.historyEvidence}:{}),...(pointer.draft.advance?{advance:{confirmed:pointer.draft.advance.confirmed,reason:pointer.draft.advance.reason,evidence:pointer.draft.advance.evidence}}:{}),allocations:pointer.draft.allocations.map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:line.amountYuan}))};
   return {kind:"restored",attempt:{version:1,phase,userId,paymentId:pointer.paymentId,command:stored,draft}};
  } catch { return {kind:"unreadable",notice:"浏览器保存的待确认信息暂时无法读取，请由有权财务或综合部主管核查原申请，暂勿重复登记。",blocksNewAttempt:true}; }
 }

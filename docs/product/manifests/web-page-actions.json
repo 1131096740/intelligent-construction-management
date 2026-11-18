@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 436,
-    "pageActionCount": 81,
+    "registeredActionCount": 438,
+    "pageActionCount": 83,
     "backgroundActionCount": 355,
-    "reachableVueFileCount": 216,
+    "reachableVueFileCount": 217,
     "routeRootCount": 74,
-    "totalVueFileCount": 229,
-    "parsedVueFileCount": 229,
-    "reachableProductionModuleCount": 377,
-    "templateEventDirectiveCount": 1460,
+    "totalVueFileCount": 230,
+    "parsedVueFileCount": 230,
+    "reachableProductionModuleCount": 379,
+    "templateEventDirectiveCount": 1468,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 422,
-    "candidateProductionMutationConsumerCount": 422,
-    "acceptedProductionMutationConsumerCount": 422,
-    "productionMutationConsumerPairCount": 422,
+    "coveredProductionMutationConsumerCount": 424,
+    "candidateProductionMutationConsumerCount": 424,
+    "acceptedProductionMutationConsumerCount": 424,
+    "productionMutationConsumerPairCount": 424,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 396,
-    "reachableProductionModuleCount": 377,
-    "totalVueFileCount": 229,
-    "parsedVueFileCount": 229
+    "totalProductionModuleCount": 398,
+    "reachableProductionModuleCount": 379,
+    "totalVueFileCount": 230,
+    "parsedVueFileCount": 230
   },
   "actions": [
     {
@@ -11884,7 +11884,7 @@
         "event": "click",
         "handler": "confirm",
         "kind": "event",
-        "sourceLine": 586,
+        "sourceLine": 594,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11949,7 +11949,7 @@
         "event": "click",
         "handler": "submitOpeningBalance",
         "kind": "event",
-        "sourceLine": 513,
+        "sourceLine": 521,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12018,7 +12018,7 @@
         "event": "click",
         "handler": "submitCorrectionBalance",
         "kind": "event",
-        "sourceLine": 520,
+        "sourceLine": 528,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12087,7 +12087,7 @@
         "event": "click",
         "handler": "returnBalanceCorrection",
         "kind": "event",
-        "sourceLine": 579,
+        "sourceLine": 587,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12153,7 +12153,7 @@
         "event": "confirm",
         "handler": "withdrawBalanceCorrection",
         "kind": "event",
-        "sourceLine": 600,
+        "sourceLine": 608,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -12199,6 +12199,220 @@
             "localCallChain": [
               "withdrawBalanceCorrection",
               "withdrawFundCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-advance.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryPending",
+        "kind": "event",
+        "sourceLine": 247,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "recoveryAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "wrapper": "registerCompanyOwnedFund",
+          "method": "POST",
+          "path": "/fund-account-advance-receipts/company-owned",
+          "normalizedKey": "POST /fund-account-advance-receipts/company-owned",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-advance-receipts/company-owned",
+            "normalizedKey": "POST /fund-account-advance-receipts/company-owned",
+            "controller": "FundAccountAdvanceController",
+            "handler": "registerCompanyOwned",
+            "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryPending",
+              "registerCompanyOwnedFund"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "wrapper": "registerFundAdvance",
+          "method": "POST",
+          "path": "/fund-account-advance-receipts",
+          "normalizedKey": "POST /fund-account-advance-receipts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-advance-receipts",
+            "normalizedKey": "POST /fund-account-advance-receipts",
+            "controller": "FundAccountAdvanceController",
+            "handler": "register",
+            "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryPending",
+              "registerFundAdvance"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-advance.register",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitRegistration",
+        "kind": "event",
+        "sourceLine": 263,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "registrationAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "wrapper": "registerCompanyOwnedFund",
+          "method": "POST",
+          "path": "/fund-account-advance-receipts/company-owned",
+          "normalizedKey": "POST /fund-account-advance-receipts/company-owned",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-advance-receipts/company-owned",
+            "normalizedKey": "POST /fund-account-advance-receipts/company-owned",
+            "controller": "FundAccountAdvanceController",
+            "handler": "registerCompanyOwned",
+            "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitRegistration",
+              "registerCompanyOwnedFund"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "wrapper": "registerFundAdvance",
+          "method": "POST",
+          "path": "/fund-account-advance-receipts",
+          "normalizedKey": "POST /fund-account-advance-receipts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-advance-receipts",
+            "normalizedKey": "POST /fund-account-advance-receipts",
+            "controller": "FundAccountAdvanceController",
+            "handler": "register",
+            "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitRegistration",
+              "registerFundAdvance"
             ]
           },
           "ticketFollowups": []
@@ -19216,7 +19430,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 1895,
+        "sourceLine": 1905,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -19511,7 +19725,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2969,
+        "sourceLine": 2979,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19576,7 +19790,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2931,
+        "sourceLine": 2941,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19641,7 +19855,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2295,
+        "sourceLine": 2305,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19706,7 +19920,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2279,
+        "sourceLine": 2289,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20009,7 +20223,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2890,
+        "sourceLine": 2900,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21886,7 +22100,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 912,
+        "sourceLine": 919,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -22709,7 +22923,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1806,
+        "sourceLine": 1816,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22774,7 +22988,7 @@
         "event": "call",
         "handler": "uploadOwnerSettlementFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1482,
+        "sourceLine": 1492,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22839,7 +23053,7 @@
         "event": "call",
         "handler": "recordOwnerSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1473,
+        "sourceLine": 1483,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23252,7 +23466,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1815,
+        "sourceLine": 1825,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23317,7 +23531,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2672,
+        "sourceLine": 2682,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23382,7 +23596,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2611,
+        "sourceLine": 2621,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23447,7 +23661,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2559,
+        "sourceLine": 2569,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23512,7 +23726,7 @@
         "event": "call",
         "handler": "validateProjectUpstreamFundDraftWithDefinition",
         "kind": "background_call",
-        "sourceLine": 2575,
+        "sourceLine": 2585,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23952,7 +24166,7 @@
         "event": "click",
         "handler": "queryOriginal",
         "kind": "event",
-        "sourceLine": 646,
+        "sourceLine": 687,
         "sourceColumn": 6
       },
       "semantic": "read_only",
@@ -24052,7 +24266,7 @@
         "event": "confirm",
         "handler": "submit",
         "kind": "event",
-        "sourceLine": 1006,
+        "sourceLine": 1058,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -24118,7 +24332,7 @@
         "event": "click",
         "handler": "saveVoucher",
         "kind": "event",
-        "sourceLine": 943,
+        "sourceLine": 995,
         "sourceColumn": 12
       },
       "semantic": "business_write",

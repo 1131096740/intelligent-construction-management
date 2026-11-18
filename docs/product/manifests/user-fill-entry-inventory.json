@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 423,
+    "activeBusinessActionCount": 425,
     "technicalActionCount": 10,
-    "activeBindingCount": 491,
+    "activeBindingCount": 495,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -2713,6 +2713,40 @@
         "POST /fund-accounts/registrations/:param/withdraw"
       ],
       "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-advance.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-advance-receipts",
+        "POST /fund-account-advance-receipts/company-owned"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-advance.register",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-advance-receipts",
+        "POST /fund-account-advance-receipts/company-owned"
+      ],
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },

@@ -5,27 +5,35 @@ export interface RegisteredPaymentWorkItem { paymentId: string; code: string; pr
 export interface RegisteredOriginalPaymentResult { executionId: string; resultKey: string; amountCents: string; paidAt: string; source: {type:string;id:string;version:number;fingerprint:string} }
 export interface RegisteredContractHistoryConfirmation { treatment:"not_included"|"included"|"uncertain"; expectedFingerprint:string; reason:string; evidence:string }
 export interface RegisteredContractHistoryBasis { required:boolean;fingerprint:string;records:Array<{id:string;contractId:string;contractVersionId:string;paymentTermsVersionId:string;updatedAt:string;confirmedAt:string;activatedAt:string|null;historicalPaidCents:string;historicalProxyPaidCents:string;historicalAdvancePaidCents:string}> }
-export interface RegisteredPaymentOptions extends RegisteredPaymentWorkItem { canRegisterPayment: boolean; contractHistoryBasis:RegisteredContractHistoryBasis; originalResults?: RegisteredOriginalPaymentResult[]; accounts: Array<{ scopeKey: string; name: string; eligible: boolean; reason: string | null; currentRegistrationId: string | null }> }
-export class RegisteredPaymentApiError extends Error { constructor(message: string, readonly status: number, readonly code?: string, readonly resultStatus?: string, readonly definitiveFailure = false) { super(message); } }
+export interface RegisteredPaymentOptions extends RegisteredPaymentWorkItem { canRegisterPayment: boolean; contractHistoryBasis:RegisteredContractHistoryBasis; originalResults?: RegisteredOriginalPaymentResult[]; accounts: Array<{ scopeKey: string; name: string; eligible: boolean; reason: string | null; currentRegistrationId: string | null; projectAdvanceSourceBatchIds?: string[] }> }
+export class RegisteredPaymentApiError extends Error { constructor(message: string, readonly status: number, readonly code?: string, readonly resultStatus?: string, readonly definitiveFailure = false, readonly differenceCents?: string) { super(message); } }
 async function read<T>(response: Response, fallback = "付款登记办理失败，请保留填写后重试"): Promise<T> {
  if (response.ok) return response.json() as Promise<T>;
  let message = fallback;
- let code: string | undefined; let resultStatus: string | undefined; let definitiveFailure = false;
+ let code: string | undefined; let resultStatus: string | undefined; let definitiveFailure = false; let differenceCents: string | undefined;
  try {
-  const body = await response.json() as { message?: unknown;code?:unknown;resultStatus?:unknown } | null;
+  const body = await response.json() as { message?: unknown;code?:unknown;resultStatus?:unknown;differenceCents?:unknown } | null;
   if (body && typeof body.message === "string") {
    message = body.message;
    code = typeof body.code === "string" ? body.code : undefined;
    resultStatus = typeof body.resultStatus === "string" ? body.resultStatus : undefined;
-   definitiveFailure = code !== "PAYMENT_RESULT_UNCONFIRMED" && resultStatus !== "unconfirmed" && (response.status === 400 || (response.status === 409 && message === "付款申请已变化，请刷新后重试"));
+   if (response.status === 409 && code === "REGISTERED_PROJECT_ADVANCE_CONFIRMATION_REQUIRED" &&
+       typeof body.differenceCents === "string" && /^[1-9][0-9]*$/u.test(body.differenceCents)) differenceCents = body.differenceCents;
+   definitiveFailure = differenceCents !== undefined || (code !== "PAYMENT_RESULT_UNCONFIRMED" && resultStatus !== "unconfirmed" && (response.status === 400 || (response.status === 409 && message === "付款申请已变化，请刷新后重试")));
   }
  } catch { /* An unreadable body cannot establish the original outcome. */ }
- throw new RegisteredPaymentApiError(formatApiErrorMessage(message,response.status,fallback),response.status,code,resultStatus,definitiveFailure);
+ throw new RegisteredPaymentApiError(formatApiErrorMessage(message,response.status,fallback),response.status,code,resultStatus,definitiveFailure,differenceCents);
 }
 export async function fetchRegisteredPaymentWorkItems() { return read<{items:RegisteredPaymentWorkItem[];total:number}>(await apiFetch("/payment-executions/work-items")); }
-export async function fetchRegisteredPaymentOptions(paymentId: string) { return read<RegisteredPaymentOptions>(await apiFetch(`/payment-executions/${encodeURIComponent(paymentId)}/registration-options`),"实付登记资料读取失败，请保留填写后重试"); }
+export async function fetchRegisteredPaymentOptions(paymentId: string) { return read<RegisteredPaymentOptions>(await apiFetch(`/payment-executions/${encodeURIComponent(paymentId)}/registration-options`, { headers: { "X-Registered-Project-Advance": "1" } }),"实付登记资料读取失败，请保留填写后重试"); }
 export interface RecordedPaymentItem { executionId: string; paymentId: string; code: string; projectId: string; amountCents: string; paidAt: string; registeredByName: string; actualPayerName?: string; voucherPending: boolean; canSupplementVoucher: boolean; resultKey: string }
-export interface RegisteredPaymentCommand { contractHistoryConfirmation?:RegisteredContractHistoryConfirmation; idempotencyKey: string; expectedPaymentUpdatedAt: string; amountCents: string; paidAt: string; scopeKey: string; expectedRegistrationId: string; openingTreatment: "included" | "not_included"; openingReason: string; openingEvidence: string; sourceAllocations: Array<{sourceBatchId:string;amountCents:string}>; confirmationPassword: string }
+export interface RegisteredProjectAdvanceConfirmation {
+ amountCents: string;
+ reason: string;
+ evidence: string;
+ sourceAllocations: Array<{sourceBatchId:string;amountCents:string}>;
+}
+export interface RegisteredPaymentCommand { confirmedProjectAdvance?: RegisteredProjectAdvanceConfirmation; contractHistoryConfirmation?:RegisteredContractHistoryConfirmation; idempotencyKey: string; expectedPaymentUpdatedAt: string; amountCents: string; paidAt: string; scopeKey: string; expectedRegistrationId: string; openingTreatment: "included" | "not_included"; openingReason: string; openingEvidence: string; sourceAllocations: Array<{sourceBatchId:string;amountCents:string}>; confirmationPassword: string }
 export interface RegisteredPaymentResult { canSupplementVoucher?: boolean; intercompany?: Array<{amountCents:string;voucherPending:boolean}>; status: "recorded" | "unconfirmed"; message?: string; execution?: { executionId: string; paymentId: string; amountCents: string; paidAt: string; voucherPending: boolean } }
 export async function fetchRecordedPaymentItems() { return read<{items:RecordedPaymentItem[];total:number}>(await apiFetch("/payment-executions/recorded-items")); }
 export async function recordRegisteredPayment(paymentId: string, input: RegisteredPaymentCommand) {

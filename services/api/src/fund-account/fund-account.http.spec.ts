@@ -84,6 +84,23 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     expect(account.sources[0].previousSourceBatchId).toBe(opening.body.sources[0].id);
   });
   const basis = { scopeKey: "company:company-b", balanceYuan: "0", asOfDate: "2026-11-05", evidenceReference: "核对表", reconciliationNote: "已核对", reason: "期初登记", idempotencyKey: "negative-opening", sources: [] };
+  it("returns account-bound permissions for new advances and original-key recovery", async () => {
+    expect((await post(basis)).status).toBe(201);
+    const company = "/fund-accounts/company%3Acompany-b";
+    expect(await get("finance", company)).toMatchObject({ status: 200, body: {
+      canRegisterAdvance: true, canRecoverAdvance: true, canRegisterCompanyOwned: false, canRecoverCompanyOwned: false
+    } });
+    expect(await get("director", company)).toMatchObject({ status: 200, body: {
+      canRegisterAdvance: true, canRecoverAdvance: true, canRegisterCompanyOwned: true, canRecoverCompanyOwned: true
+    } });
+    expect(await get("keeper", company)).toMatchObject({ status: 200, body: {
+      canRegisterAdvance: false, canRecoverAdvance: false, canRegisterCompanyOwned: false, canRecoverCompanyOwned: false
+    } });
+    expect(await get("keeper", "/fund-accounts/public_cash")).toMatchObject({ status: 200, body: {
+      canRegisterAdvance: false, canRecoverAdvance: true, canRegisterCompanyOwned: false, canRecoverCompanyOwned: false
+    } });
+    expect((await get("employee", company)).status).toBe(403);
+  });
   it("keeps an explicitly reconciled zero distinct from an unknown balance", async () => {
     expect(await post({ ...basis, balanceYuan: null, idempotencyKey: "unknown-company-a", scopeKey: "company:company-a" })).toMatchObject({ status: 201, body: { balanceYuan: null, sources: [] } });
     expect(await post(basis)).toMatchObject({ status: 201, body: { balanceYuan: "0.0000" } });

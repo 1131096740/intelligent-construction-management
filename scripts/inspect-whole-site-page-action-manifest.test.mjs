@@ -10982,7 +10982,8 @@ test("payment recovery POST closes its transitive read-only database proof when 
     "payment/registered-payment-execution.service.ts",
     "payment/registered-payment-domain.ts",
     "payment/registered-payment-funding.ts",
-    "auth/company-role-resolver.service.ts"
+    "auth/company-role-resolver.service.ts",
+    "payment/registered-payment-project-advance.ts"
   ].map(relative => "services/api/src/" + relative);
   try {
     const sources = await Promise.all(sourcePaths.map(path => readFile(new URL("../" + path, import.meta.url), "utf8")));
@@ -10992,6 +10993,9 @@ test("payment recovery POST closes its transitive read-only database proof when 
     assert.equal(await proveReadOnlyPaymentRecovery(root), false);
     await write(root, sourcePaths[1], sources[1]);
     await write(root, sourcePaths[4], sources[4].replace("client.position.findMany", "client.position.deleteMany"));
+    assert.equal(await proveReadOnlyPaymentRecovery(root), false);
+    await write(root, sourcePaths[4], sources[4]);
+    await write(root, sourcePaths[3], sources[3].replace("tx.registeredPaymentProjectAdvance.findUnique", "tx.registeredPaymentProjectAdvance.update"));
     assert.equal(await proveReadOnlyPaymentRecovery(root), false);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -11047,4 +11051,61 @@ for (const [label, before, after] of [
   const result = await inspectWholeSitePageActionManifest({ root });
   assert.equal(result.status, "blocked");
   assert.ok(result.blockers.unresolvedWrappers.some(item => item.actionId.startsWith("public-cash-handover.")));
+});
+
+async function actualFundAdvanceFixture(t, change = source => source) {
+  const base = "apps/web-admin/src";
+  const pagePath = `${base}/pages/funds/FundAccountAdvanceReceipt.vue`;
+  const parentPath = `${base}/pages/funds/FundAccountsPage.vue`;
+  const apiPaths = [`${base}/api/fund-account.api.ts`, `${base}/api/fund-account-advance.api.ts`];
+  const source = path => readFile(new URL("../" + path, import.meta.url), "utf8");
+  const registry = JSON.parse(await source("docs/product/manifests/web-page-actions.registry.json"));
+  const web = JSON.parse(await source("docs/product/manifests/web-api-wrappers.json"));
+  const nest = JSON.parse(await source("docs/product/manifests/nest-business-routes.json"));
+  const wrappers = web.wrappers.filter(row => row.apiFile === apiPaths[1] ||
+    row.apiFile === apiPaths[0] && row.name === "fetchFundAccounts");
+  const root = await fixture({
+    pagePath: parentPath,
+    page: await source(parentPath),
+    routeRecords: 'export const webAdminRoutes = [{ path: "/资金账户", component: () => import("../pages/funds/FundAccountsPage.vue") }];',
+    actions: registry.actions.filter(entry => entry.sourceFile === pagePath),
+    wrappers,
+    routes: nest.routes.filter(entry => entry.controller === "FundAccountAdvanceController" || entry.normalizedKey === "GET /fund-accounts"),
+    webManifestOverrides: { evidence: { productionModuleCount: 11, reachableProductionModuleCount: 10 } },
+    extraFiles: {
+      [pagePath]: change(await source(pagePath)),
+      [apiPaths[0]]: await source(apiPaths[0]),
+      [apiPaths[1]]: await source(apiPaths[1]),
+      [`${base}/api/api-fetch.ts`]: "export async function apiFetch() { return new Response(); }",
+      [`${base}/api/error-message.ts`]: "export function formatApiErrorMessage() {} export function formatUnknownApiError() {}",
+      [`${base}/auth/auth.store.ts`]: "export function useAuthStore() { return { user: { id: 'fixture' } }; }"
+    }
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  return root;
+}
+
+test("fund advance proof uses both server permissions and the original durably saved request", async t => {
+  const result = await inspectWholeSitePageActionManifest({ root: await actualFundAdvanceFixture(t) });
+  assert.equal(result.status, "ready", JSON.stringify(result.blockers));
+  assert.equal(result.actions.length, 2);
+  assert.ok(result.actions.every(action => action.capability.serverDerived &&
+    action.bindings.length === 2 && action.bindings.every(binding => binding.causalVerified)));
+});
+
+for (const [label, from, to] of [
+  ["unqualified company principal", 'mode.value === "company_owned" ? row.canRegisterCompanyOwned : row.canRegisterAdvance',
+    "row.canRegisterAdvance"],
+  ["mutated payload with the same key", "JSON.stringify(stored) !== JSON.stringify(original)", "stored.idempotencyKey !== original?.idempotencyKey"],
+  ["original key dropped", "const command = stored ?? proposal;", "const command = proposal ?? stored;"],
+  ["authorization bypass within the lock", "if (stored ? !canRecover(command) : !canRegister(command)) return;", "if (!command) return;"]
+]) test(`fund advance proof rejects ${label}`, async t => {
+  const root = await actualFundAdvanceFixture(t, source => {
+    const changed = source.replace(from, to);
+    assert.notEqual(changed, source);
+    return changed;
+  });
+  const result = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.unresolvedWrappers.some(item => item.actionId.startsWith("fund-advance.")));
 });

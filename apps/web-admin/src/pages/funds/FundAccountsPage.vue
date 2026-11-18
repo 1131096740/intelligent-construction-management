@@ -5,6 +5,7 @@ import { useRoute } from "vue-router";
 import { fetchFundReview, fetchFundAccount, fetchFundBalanceRegistration, fetchFundAccounts, registerFundOpening, requestFundCorrection, confirmFundCorrection, returnFundCorrection, withdrawFundCorrection, type FundAccount, type FundAccountSource, type FundRegisteredPayment, type FundAccountsReadModel, type FundBalanceRegistration } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
+import FundAccountAdvanceReceipt from "./FundAccountAdvanceReceipt.vue";
 import FundAccountTransfers from "./FundAccountTransfers.vue";
 import PublicCashHandoverPanel from "./PublicCashHandoverPanel.vue";
 const route = useRoute();
@@ -205,6 +206,13 @@ onMounted(load);
       theme="info"
       :message="data.notice || '未知余额请留空，不填零；已知余额但来源或项目未明可分别标为待核对。'"
     />
+    <FundAccountAdvanceReceipt
+      v-if="!isTargetReview"
+      :accounts="data.accounts"
+      :projects="data.projects"
+      :project-id="typeof route.query.advanceForProject === 'string' ? route.query.advanceForProject : undefined"
+      @saved="load"
+    />
     <t-tabs
       v-if="!isTargetReview"
       v-model="activeView"
@@ -297,7 +305,7 @@ onMounted(load);
             v-for="(source, index) in account.sources"
             :key="source.id || index"
           >
-            {{ availableAmount(source.amountYuan) }}<span v-if="source.pendingAllocation">（原核对 ¥{{ source.reconciledAmountYuan }}，实付分摊待核对）</span> · {{ source.sourceStatus === 'known' ? source.sourceName : '出资方待核对' }} · {{ projectName(source) }}
+            {{ availableAmount(source.amountYuan) }}<span v-if="source.pendingAllocation">（原核对 ¥{{ source.reconciledAmountYuan }}，实付分摊待核对）</span> · {{ source.sourceStatus === 'known' ? source.sourceName : '出资方待核对' }} · {{ projectName(source) }}<span v-if="source.originalContributorName !== undefined"> · 原到账出资方：{{ source.originalContributorName || '待核对' }}</span>
           </li>
         </ul>
         <p v-if="account.unallocatedPaymentAmountYuan && account.unallocatedPaymentAmountYuan !== '0.0000'">
@@ -326,7 +334,7 @@ onMounted(load);
         :key="entry.row.id"
         :title="entry.account.name"
       >
-        <p>{{ ({ opening: '期初余额登记', correction: '余额核对更正', transfer: '资金转款到账' })[entry.row.kind] }} · {{ ({ confirmed: '已核对登记', pending_review: '待财务主管复核', returned: '已退回待重新登记', withdrawn: '已撤回' })[entry.row.status] }}</p>
+        <p>{{ ({ opening: '期初余额登记', correction: '余额核对更正', transfer: '资金转款到账', advance_receipt: '垫资到账登记' })[entry.row.kind] }} · {{ ({ confirmed: '已核对登记', pending_review: '待财务主管复核', returned: '已退回待重新登记', withdrawn: '已撤回' })[entry.row.status] }}</p>
         <p>{{ amount(entry.row.balanceYuan) }} · 核对日期 {{ entry.row.asOfDate }}</p>
         <p>依据：{{ entry.row.evidenceReference }}</p><p>核对说明：{{ entry.row.reconciliationNote }}</p><p>原因：{{ entry.row.reason }}</p>
         <p>登记人：{{ entry.row.createdByName || '原登记人员' }} · {{ entry.row.confirmedByName ? `核对人：${entry.row.confirmedByName}` : entry.row.status === 'pending_review' ? entry.row.pendingConfiguration ? '财务主管待配置，保留原登记等待补岗复核' : '等待复核' : entry.row.status === 'returned' ? '本次已退回' : '本次已撤回' }}</p>

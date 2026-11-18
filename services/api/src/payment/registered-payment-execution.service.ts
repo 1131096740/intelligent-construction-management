@@ -1,4 +1,4 @@
-import { registeredPaymentFingerprint } from "./registered-payment-funding";
+import { readRegisteredProjectAdvanceStatus, registeredPaymentFingerprint } from "./registered-payment-funding";
 import type { RegisteredPaymentRecoveryProofDto } from "./dto/record-registered-payment-execution.dto";
 import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
@@ -71,6 +71,10 @@ export class RegisteredPaymentExecutionService {
       if (!domain.supportedDomain || !domain.payment) return unconfirmed;
       const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:execution.id}});
       if (!funding || funding.payloadFingerprint !== registeredPaymentFingerprint(execution.paymentRequestId,actorUserId,input)) return unconfirmed;
+      if (input.confirmedProjectAdvance && await readRegisteredProjectAdvanceStatus(tx, execution.id, {
+        actorUserId, projectId: domain.payment.projectId, accountId: funding.accountId,
+        companyId: funding.actualPayerId, input: input.confirmedProjectAdvance
+      }) !== "matched") return unconfirmed;
       return {status:"matched",executionId:execution.id} as const;
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   }

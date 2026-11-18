@@ -16749,7 +16749,7 @@ export async function proveReadOnlyPaymentRecovery(root) {
       recoveryProof: ["this.executions.recoveryProof"]
     }],
     ["payment/registered-payment-execution.service.ts", {
-      recoveryProof: ["this.prisma.$transaction", "this.canRegister", "tx.paymentExecution.findUnique", "input.idempotencyKey.trim().toLowerCase", "input.idempotencyKey.trim", "currentRegisteredPaymentDomain", "tx.registeredPaymentFunding.findUnique", "registeredPaymentFingerprint", "new ForbiddenException"],
+      recoveryProof: ["this.prisma.$transaction", "this.canRegister", "tx.paymentExecution.findUnique", "input.idempotencyKey.trim().toLowerCase", "input.idempotencyKey.trim", "currentRegisteredPaymentDomain", "tx.registeredPaymentFunding.findUnique", "registeredPaymentFingerprint", "readRegisteredProjectAdvanceStatus", "new ForbiddenException"],
       canRegister: ["this.roles.resolveActiveRoleScopesInTransaction", "roles.some", "[].includes"]
     }],
     ["payment/registered-payment-domain.ts", {
@@ -16761,7 +16761,12 @@ export async function proveReadOnlyPaymentRecovery(root) {
       resolveWithClient: ["client.user.findUnique", "new Error", "new Error", "client.userPosition.findMany", "new Error", "Array.from", "new Set", "assignments.map", "new Error", "client.position.findMany", "new Error", "new Map", "positions.map", "new Error", "positionIds.map", "positionsById.get", "roleKeys.some", "supportedRoleKeys.includes", "new Error", "Array.from().sort", "Array.from", "new Set"]
     }],
     ["payment/registered-payment-funding.ts", {
-      registeredPaymentFingerprint: ["createHash().update().digest", "createHash().update", "createHash", "JSON.stringify", "input.openingReason.trim", "input.openingEvidence.trim", "[].sort", "a.sourceBatchId.localeCompare", "input.contractHistoryConfirmation.reason.trim", "input.contractHistoryConfirmation.evidence.trim"]
+      registeredPaymentFingerprint: ["createHash().update().digest", "createHash().update", "createHash", "JSON.stringify", "input.openingReason.trim", "input.openingEvidence.trim", "[].sort", "a.sourceBatchId.localeCompare", "input.contractHistoryConfirmation.reason.trim", "input.contractHistoryConfirmation.evidence.trim", "confirmedProjectAdvancePayload"],
+      readRegisteredProjectAdvanceStatus: ["tx.registeredPaymentProjectAdvance.findUnique", "registeredProjectAdvanceReceiptStatus"]
+    }],
+    ["payment/registered-payment-project-advance.ts", {
+      confirmedProjectAdvancePayload: ["input.sourceAllocations.map().sort", "input.sourceAllocations.map", "left.sourceBatchId.localeCompare", "input.reason.trim", "input.evidence.trim"],
+      registeredProjectAdvanceReceiptStatus: ["confirmedProjectAdvancePayload", "receipt.amountCents.toString", "Array.isArray", "new Map", "receipt.companyAllocations.filter().map", "receipt.companyAllocations.filter", "Boolean", "expected.sourceAllocations.every", "stored.get"]
     }]
   ];
   const callPath = node => {
@@ -17099,7 +17104,121 @@ function fundTransferAuthorityAndStorageProof({ context, page, definition, pageS
     capabilitySources: new Set([readIdentity]), capabilitySourceFile: FUND_TRANSFER_PAGE };
 }
 
+const FUND_ADVANCE_PAGE = `${WEB_SOURCE_ROOT}/pages/funds/FundAccountAdvanceReceipt.vue`;
+const FUND_ADVANCE_PARENT = `${WEB_SOURCE_ROOT}/pages/funds/FundAccountsPage.vue`;
+const FUND_ADVANCE_API = `${WEB_SOURCE_ROOT}/api/fund-account-advance.api.ts`;
+const FUND_ADVANCE_ACTIONS = new Map([
+  ["fund-advance.register", ["submitRegistration", "registrationAllowed", false]],
+  ["fund-advance.recover-original", ["retryPending", "recoveryAllowed", true]]
+]);
+const FUND_ADVANCE_WRITES = new Map([
+  ["registerFundAdvance", "POST /fund-account-advance-receipts"],
+  ["registerCompanyOwnedFund", "POST /fund-account-advance-receipts/company-owned"]
+]);
+
+function fundAdvanceNode(symbols, name) {
+  const bindings = topLevelScopeVariables(symbols.scopeManager, name);
+  return bindings.length === 1 && !bindings[0].references.some(reference => reference.isWrite() && !reference.init)
+    ? uniqueIndexedNode(symbols.declarationsByBinding, bindings[0]) : null;
+}
+
+function proveFundAdvancePageAction({ action, wrapper, context }) {
+  const rule = FUND_ADVANCE_ACTIONS.get(action.id);
+  const route = FUND_ADVANCE_WRITES.get(wrapper.name);
+  const requests = normalizedMainRequests(wrapper);
+  if (!rule || action.sourceFile !== FUND_ADVANCE_PAGE || wrapper.apiFile !== FUND_ADVANCE_API ||
+      !route || requests.length !== 1 || requests[0].normalizedKey !== route ||
+      action.trigger.handler !== rule[0] || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== rule[1]) return null;
+
+  const page = context.symbols;
+  const handler = fundAdvanceNode(page, rule[0]);
+  const submit = fundAdvanceNode(page, "submit");
+  const readPending = fundAdvanceNode(page, "readPending");
+  const canRegister = fundAdvanceNode(page, "canRegister");
+  const canRecover = fundAdvanceNode(page, "canRecover");
+  const registration = fundAdvanceNode(page, "registrationAllowed");
+  const recovery = fundAdvanceNode(page, "recoveryAllowed");
+  const props = fundAdvanceNode(page, "props");
+  if (!directRegistrationMatches(handler, `function ${rule[0]}() {
+    if (${rule[1]}.value) return submit(${rule[2]});
+  }`) || !submit || !registration || !recovery || !props || !readPending || !canRegister || !canRecover) return null;
+  const submitCalls = directRegistrationCalls(handler, node => node.callee.type === "Identifier" && node.callee.name === "submit");
+  if (submitCalls.length !== 1 ||
+      !directRegistrationLocalCall(submitCalls[0], { binding: topLevelScopeVariables(page.scopeManager, "submit")[0] }, page) ||
+      !directRegistrationExpression(props, `defineProps<{ accounts: FundAccount[]; projects: Array<{ id: string; name: string }>; projectId?: string }>()`) ||
+      !directRegistrationExpression(registration, `computed(() => props.accounts.some(row =>
+        row.scopeKey === form.scopeKey && (mode.value === "company_owned" ? row.canRegisterCompanyOwned : row.canRegisterAdvance)))`) ||
+      !directRegistrationExpression(recovery, "computed(() => pending.value !== null && canRecover(pending.value))") ||
+      !directRegistrationMatches(canRegister, `function canRegister(command: AdvanceCommand) {
+        return props.accounts.some(row => row.scopeKey === command.scopeKey &&
+          ("observationReference" in command ? row.canRegisterCompanyOwned : row.canRegisterAdvance));
+      }`) ||
+      !directRegistrationMatches(canRecover, `function canRecover(command: AdvanceCommand) {
+        return props.accounts.some(row => row.scopeKey === command.scopeKey &&
+          ("observationReference" in command ? row.canRecoverCompanyOwned : row.canRecoverAdvance));
+      }`)) return null;
+
+  // An original-key retry can be the first committed write. Require the same
+  // actor, persisted payload and current account permission inside the lock.
+  const actualCalls = importedWrapperCalls([submit], wrapper, context);
+  const lockCalls = directRegistrationCalls(submit, node => staticMemberPath(node.callee) === "navigator.locks.request");
+  if (actualCalls.length !== 1 || lockCalls.length !== 1) return null;
+  const callback = lockCalls[0].arguments[1];
+  const statements = callback?.body?.body;
+  if (callback?.type !== "ArrowFunctionExpression" || callback.async !== true || !statements ||
+      !astAncestorChain(callback, actualCalls[0])?.includes(callback)) return null;
+  const guard = statements.findIndex(node => directRegistrationMatches(node, "if (stored ? !canRecover(command) : !canRegister(command)) return;"));
+  const save = statements.findIndex(node => directRegistrationMatches(node, "if (!stored) localStorage.setItem(key, JSON.stringify(command));"));
+  const operation = statements.findIndex(node => node.type === "TryStatement" &&
+      directRegistrationMatches(node.block.body[0], 'if ("observationReference" in command) await registerCompanyOwnedFund(command); else await registerFundAdvance(command);') &&
+      astAncestorChain(node, actualCalls[0])?.includes(node));
+  if (guard < 0 || save !== guard + 1 || operation !== save + 1 ||
+      !directRegistrationMatches(statements[0], "if (actorId.value !== actor) return;") ||
+      !directRegistrationMatches(statements[1], "const stored = readPending(actor);") ||
+      !directRegistrationMatches(statements[2], `if (stored && (proposal || JSON.stringify(stored) !== JSON.stringify(original))) {
+        pending.value = stored; visible.value = false; return;
+      }`) || !directRegistrationMatches(statements[3], "const command = stored ?? proposal;") ||
+      !directRegistrationMatches(submit.body.body[0], "if (replay ? !recoveryAllowed.value : !registrationAllowed.value) return;")) return null;
+  const source = context.source;
+  if (!containsOrderedSourceFragments(source.slice(...submit.range), [
+    "const actor = actorId.value;", "const key = storageKey(actor);", "const original = pending.value;",
+    "if (!replay && mode.value ===", "if (!replay && mode.value ===", "await navigator.locks.request(key, async () =>"
+  ]) || !containsOrderedSourceFragments(source.slice(...readPending.range), [
+    "localStorage.getItem(storageKey(actor))", "JSON.parse(saved)", "return input;"
+  ])) return null;
+
+  const parentAst = context.asts.get(FUND_ADVANCE_PARENT);
+  const parentSource = context.sources.get(FUND_ADVANCE_PARENT);
+  if (!parentAst || !parentSource) return null;
+  const parent = buildSymbolContext(parentAst, FUND_ADVANCE_PARENT, context.sourceFileSet);
+  const load = fundAdvanceNode(parent, "load");
+  const childBindings = topLevelScopeVariables(parent.scopeManager, "FundAccountAdvanceReceipt");
+  const childImport = childBindings.length === 1 && parent.importsByBinding.get(childBindings[0]);
+  const childInstances = [];
+  walkEstree(parentAst.templateBody, node => {
+    if (node.type === "VElement" && node.rawName === "FundAccountAdvanceReceipt") childInstances.push(node);
+  });
+  if (childImport?.kind !== "default" || childImport.sourceFile !== FUND_ADVANCE_PAGE ||
+      childInstances.length !== 1 ||
+      !directRegistrationExpression(directiveExpression(elementDirective(childInstances[0], "if")), "!isTargetReview") ||
+      !directRegistrationExpression(directiveExpression(elementDirective(childInstances[0], "bind", "accounts")), "data.accounts")) return null;
+  const read = { apiFile: `${WEB_SOURCE_ROOT}/api/fund-account.api.ts`, name: "fetchFundAccounts" };
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const readWrapper = context.wrapperIndex.get(readIdentity);
+  if (!load || !readWrapper || normalizedMainRequests(readWrapper).map(entry => entry.normalizedKey).join() !== "GET /fund-accounts" ||
+      importedWrapperCalls([load], read, { symbols: parent }).length !== 1 ||
+      !containsOrderedSourceFragments(parentSource.slice(...load.range), [
+        "const response = await fetchFundAccounts();",
+        "if (ownLoad === loadRevision && !isTargetReview.value) data.value = response;"
+      ])) return null;
+
+  return { verified: true, capabilityWitness: true, capabilitySources: new Set([readIdentity]),
+    capabilitySourceFile: FUND_ADVANCE_PARENT };
+}
+
 function proveBusinessActionPipeline({ action, wrapper, context }) {
+  if (FUND_ADVANCE_ACTIONS.has(action.id)) return proveFundAdvancePageAction({ action, wrapper, context });
   if (FUND_TRANSFER_ACTIONS.has(action.id)) return proveFundTransferPageAction({ action, wrapper, context });
   const specializedProof = PUBLIC_CASH_HANDOVER_ACTIONS.has(action.id) ? provePublicCashHandoverPageAction :
     SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
@@ -21514,6 +21633,8 @@ function capabilitySourceAuthorizationIsCompatible({
 // A consumer with multiple intentional write paths is covered only when every
 // required action has independently passed causal, capability and route checks.
 const PAIRED_WRITE_COVERAGE = new Map([
+  ...[...FUND_ADVANCE_WRITES.keys()].map(name =>
+    [`${wrapperIdentity(FUND_ADVANCE_API, name)}\u0000${FUND_ADVANCE_PAGE}`, new Set(FUND_ADVANCE_ACTIONS.keys())]),
   [`${wrapperIdentity(FUND_TRANSFER_API, "registerFundAccountTransfer")}\u0000${FUND_TRANSFER_COMMAND}`, new Set(["fund-transfer.register", "fund-transfer.recover-original"])],
   [`${wrapperIdentity(FUND_TRANSFER_API, "actOnFundAccountTransfer")}\u0000${FUND_TRANSFER_COMMAND}`, new Set(["fund-transfer.act", "fund-transfer.recover-original"])],
   [`${wrapperIdentity(SEAL_API, SEAL_WRITE)}\u0000${SEAL_COMPOSABLE}`, SEAL_WRITE_ACTION_IDS],
@@ -22091,7 +22212,7 @@ export async function inspectWholeSitePageActionManifest({
     }
     const mutationBindings = bindings.filter(isMutationRequest);
     capabilityContext.mutationBindings = mutationBindings;
-    const governedPipelineRequired = [...(capabilityContext.pipelineProofs?.values() ?? [])]
+    const governedPipelineRequired = FUND_ADVANCE_ACTIONS.has(action.id) || [...(capabilityContext.pipelineProofs?.values() ?? [])]
       .some((proof) => [
         "project_definition",
         "project_capability",

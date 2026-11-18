@@ -12,6 +12,11 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { projectOperatingConstraintMessage, PROJECT_OPERATING_CONSTRAINT_MESSAGES } from "../project/project-operating-constraint";
 import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts } from "../payment/registered-payment-impact-reader";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { ContractBankVerificationService } from "../contract-ledger/contract-bank-verification.service";
+import * as projectAdvancePlanning from "../payment/registered-payment-project-advance";
 import { PrismaService } from "./prisma.service";
 import { registeredPaymentInstalled } from "./registered-payment-catalog";
 import { Task16SharedPaymentApplicationModule } from "./task16-shared-payment-application";
@@ -32,6 +37,7 @@ const overpay=process.env.TASK398_OVERPAY_MODE==="1";
 const ledgerLoss=process.env.TASK398_LEDGER_LOSS_MODE==="1";
 const transferRejection=process.env.TASK406_TRANSFER_MODE==="rejection";
 const transferBrowser=process.env.TASK406_TRANSFER_MODE==="browser";
+const advanceMode=process.env.RUN_TASK408_ADVANCE_PG16==="1";
 const transferMode=process.env.TASK406_TRANSFER_MODE==="1"||transferRejection||transferBrowser;
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
@@ -173,7 +179,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
 });
 
 (enabled?describe:describe.skip)("#398 isolated shared payment real HTTP and PostgreSQL",()=>{
- it(transferRejection ? "distinguishes a fresh no-write rejection from a committed missing response" : transferMode ? "shares one cash transfer across receipt, rejection, return and actual payment contention" : overpay ? "allows only one of two concurrent instalments that would together overpay" : ledgerLoss ? "recovers and replays cross-company project payment after losing a committed response" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
+ it(advanceMode ? "preserves actual advance origins and records one confirmed own-company payment gap" : transferRejection ? "distinguishes a fresh no-write rejection from a committed missing response" : transferMode ? "shares one cash transfer across receipt, rejection, return and actual payment contention" : overpay ? "allows only one of two concurrent instalments that would together overpay" : ledgerLoss ? "recovers and replays cross-company project payment after losing a committed response" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
   const ownerUrl=new URL(process.env.TASK398_OWNER_URL??""),runtimeUrl=new URL(process.env.DATABASE_URL??""),observerUrl=new URL(process.env.TASK398_OBSERVER_URL??"");
   const db=ownerUrl.pathname;
   const runId=process.env.TASK398_RUN_ID??"";
@@ -274,6 +280,107 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     const response=await json(registrationRoute,"POST",body,args[0]);
     return {key:body.idempotencyKey,response,body};
    };
+   if (advanceMode) {
+    const companyScope = `company:${plan.ids.companyA}`;
+    const receiptPath = "/fund-account-advance-receipts";
+    const transferPath = "/fund-account-transfers";
+    const receivedOn = plan.paidAt.slice(0, 10);
+    const beforeFacts = await observer.operatingFact.count();
+    const intent = {
+      scopeKey: "public_cash", expectedRegistrationId: cash.id, idempotencyKey: randomUUID(),
+      contributorKind: "person", contributorName: "虚构出资人", projectId: plan.ids.project,
+      amountYuan: "5.0001", receivedOn, evidenceReference: "虚构到账凭据"
+    };
+    const received = await json(receiptPath, "POST", intent, keeper);
+    expect(received).toMatchObject({ status: 201, body: { amountYuan: "5.0001", registeredBalanceYuan: "105.0001" } });
+    expect(await json(receiptPath, "POST", intent, keeper)).toEqual(received);
+    expect(await json(receiptPath, "POST", { ...intent, amountYuan: "6.0000" }, keeper)).toMatchObject({ status: 409 });
+
+    const transfer = await json(transferPath, "POST", {
+      sourceScopeKey: "public_cash", destinationScopeKey: companyScope,
+      expectedRegistrationId: received.body.registrationId, idempotencyKey: randomUUID(), transferredOn: receivedOn,
+      evidenceReference: "虚构现金转款", lines: [{ sourceBatchId: received.body.sourceBatchId, amountYuan: "5.0001" }]
+    }, keeper);
+    expect(transfer).toMatchObject({ status: 201, body: { status: "pending_receipt" } });
+    expect(await json(`${transferPath}/${transfer.body.id}/actions`, "POST", {
+      idempotencyKey: randomUUID(), expectedRevision: 1, action: "confirm", evidenceReference: "虚构公司确认收款"
+    }, finance)).toMatchObject({ status: 201, body: { status: "received" } });
+    expect(await observer.operatingFact.count()).toBe(beforeFacts);
+
+    const readAccount = () => json(`/fund-accounts/${encodeURIComponent(companyScope)}`, "GET", undefined, finance);
+    const afterTransfer = await readAccount();
+    expect(afterTransfer).toMatchObject({ status: 200, body: { balanceYuan: "105.0001" } });
+
+    // Bank verification uses the existing formal service and synthetic evidence.
+    const bank = new ContractBankVerificationService(owner as never, new ProjectVisibilityService(owner as never),
+      app.get(AuthService), new AuditService());
+    const company = await owner.companyEntity.findUniqueOrThrow({ where: { id: plan.ids.companyA } });
+    const bankFile = (userId: string) => owner.fileObject.create({ data: {
+      bucket: "task408", objectKey: `task408/${randomUUID()}`, originalName: "虚构银行核验.pdf",
+      mimeType: "application/pdf", sizeBytes: 1,
+      uploadedByUserId: userId, storageStatus: "active", contentSha256: "b".repeat(64)
+    } });
+    const transactionFile = await bankFile(plan.ids.actor);
+    const holderFile = await bankFile(seeded.director);
+    const accountNumber = "1000000000000123";
+    const verification = await bank.prepare(plan.ids.actor, {
+      projectId: null, companyEntityId: company.id, accountNumber, bankReference: `TASK408-${runId}`,
+      direction: "inflow", amountCents: "300", occurredAt: plan.paidAt, evidenceFileId: transactionFile.id,
+      reason: "虚构公司自有款到账", idempotencyKey: randomUUID(), confirmationPassword: passwords[0]
+    });
+    await bank.decide(seeded.director, verification.id, {
+      decision: "confirm", holderEvidenceFileId: holderFile.id, accountNumber, confirmationPassword: passwords[2]
+    });
+    const ownIntent = {
+      scopeKey: companyScope, expectedRegistrationId: afterTransfer.body.currentRegistrationId, idempotencyKey: randomUUID(),
+      observationReference: `contract-bank:${verification.id}`, ownershipEvidence: "虚构自有本金依据"
+    };
+    expect((await json(receiptPath + "/company-owned", "POST", ownIntent, finance)).status).toBe(403);
+    const owned = await json(receiptPath + "/company-owned", "POST", ownIntent, director);
+    expect(owned).toMatchObject({ status: 201, body: { amountYuan: "3.0000", registeredBalanceYuan: "108.0001" } });
+    expect(await json(receiptPath + "/company-owned", "POST", ownIntent, director)).toEqual(owned);
+    expect((await json(receiptPath + "/company-owned", "POST", {
+      ...ownIntent, idempotencyKey: randomUUID(), expectedRegistrationId: owned.body.registrationId
+    }, director)).status).toBe(409);
+
+    const account = await readAccount();
+    expect(account.status).toBe(200);
+    const named = account.body.sources.find((source: { originalContributorName?: string }) => source.originalContributorName === "虚构出资人");
+    expect(named?.amountYuan).toBe("5.0001");
+    const paymentInput = await command(finance, companyScope, { id: owned.body.registrationId, sources: [] }, "800",
+      [{ sourceBatchId: named.id, amountCents: "500" }]);
+    const mixed = { ...paymentInput, sourceAllocations: [...paymentInput.sourceAllocations,
+      { sourceBatchId: owned.body.sourceBatchId, amountCents: "300" }] };
+    expect(await json(registrationRoute, "POST", mixed, finance)).toMatchObject({
+      status: 409, body: { code: "REGISTERED_PROJECT_ADVANCE_CONFIRMATION_REQUIRED", differenceCents: "300" }
+    });
+    // Independently exercise the database fence even if the app's ordinary mixed-allocation check is absent.
+    const useDatabaseCheck = jest.spyOn(projectAdvancePlanning, "planRegisteredProjectAdvance").mockReturnValueOnce(null);
+    try {
+      const blocked = await json(registrationRoute, "POST", mixed, finance);
+      expect(blocked.status).toBeGreaterThanOrEqual(400);
+      expect(useDatabaseCheck).toHaveBeenCalledTimes(1);
+      expect(await observer.paymentExecution.count({ where: { idempotencyKey: mixed.idempotencyKey } })).toBe(0);
+    } finally {
+      useDatabaseCheck.mockRestore();
+    }
+
+    const full = { ...paymentInput, confirmedProjectAdvance: {
+      amountCents: "300", reason: "核对真实付款差额", evidence: "虚构银行依据",
+      sourceAllocations: [{ sourceBatchId: owned.body.sourceBatchId, amountCents: "300" }]
+    } };
+    const paid = await json(registrationRoute, "POST", full, finance);
+    expect(paid).toMatchObject({ status: 201, body: { amountCents: "800" } });
+    expect(await json(registrationRoute, "POST", full, finance)).toEqual(paid);
+    expect(await observer.registeredPaymentProjectAdvance.findMany()).toEqual([expect.objectContaining({
+      executionId: paid.body.id, projectId: plan.ids.project, creditorCompanyId: company.id, amountCents: 300n,
+      companyAllocations: full.confirmedProjectAdvance.sourceAllocations
+    })]);
+    expect(await observer.registeredFundAdvanceReceipt.count()).toBe(2);
+    expect(await observer.registeredFundCompanyOwnedReceipt.count()).toBe(1);
+    expect((await readAccount()).body.balanceYuan).toBe("100.0001");
+    return;
+   }
    if(transferMode){
     const beforeLedger=await observer.$transaction(async tx=>({
      facts:await tx.operatingFact.count(),impacts:await tx.operatingImpactEntry.count()

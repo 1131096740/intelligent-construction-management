@@ -42,6 +42,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ExpenseClaimController: "expense",
   GeneralProcurementController: "procurement",
   FileController: "files",
+  FundAccountAdvanceController: "finance",
   FundAccountController: "finance",
   FundAccountTransferController: "finance",
   PublicCashHandoverController: "finance",

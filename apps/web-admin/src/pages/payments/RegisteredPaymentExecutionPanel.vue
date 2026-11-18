@@ -74,7 +74,7 @@ const resultDetailLoading = ref(false);
 const resultDetailTitle = ref("");
 const resultDetailError = ref("");
 const uploadSizeLimit = {size:CORE_ARCHIVE_UPLOAD_POLICY.limitBytes,unit:"B" as const,message:`文件大小不能超过 ${CORE_ARCHIVE_UPLOAD_POLICY.limitText.replace("不超过 ","")}`};
-const form = reactive({amountYuan:"",paidAt:chinaDateOnly(),scopeKey:"",treatment:"",reason:"",evidence:"",password:"",idempotencyKey:"",historyTreatment:"",historyReason:"",historyEvidence:""});
+const form = reactive({amountYuan:"",paidAt:chinaDateOnly(),scopeKey:"",treatment:"",reason:"",evidence:"",password:"",idempotencyKey:"",historyTreatment:"",historyReason:"",historyEvidence:"",advanceConfirmed:false,advanceReason:"",advanceEvidence:""});
 const allocations = reactive<Record<string,string>>({});
 let restoringPrepared = false;
 let unsavedPrepared: {expected:PendingPaymentAttempt;next:PendingPaymentAttempt} | null = null;
@@ -102,12 +102,23 @@ const shownItems = computed(() => items.value.filter(item => !props.paymentRefer
 const shownRecorded = computed(() => recorded.value.filter(item => !props.paymentReference || item.paymentId === props.paymentReference || item.code === props.paymentReference));
 const account = computed(() => funds.value.accounts.find(item=>item.scopeKey === form.scopeKey));
 const accountOption = computed(() => selected.value?.accounts.find(item=>item.scopeKey === form.scopeKey));
+const projectAdvanceSourceIds = computed(() => new Set(accountOption.value?.projectAdvanceSourceBatchIds ?? []));
+const definiteAdvanceGap = ref<string | null>(null);
+const advanceEditable = computed(() => projectAdvanceSourceIds.value.size > 0 && form.treatment === "not_included");
+const advanceDraft = () => ({ confirmed: form.advanceConfirmed, reason: form.advanceReason, evidence: form.advanceEvidence });
+function resetAdvanceSelection() {
+ form.advanceConfirmed = false;
+ form.advanceReason = "";
+ form.advanceEvidence = "";
+ definiteAdvanceGap.value = null;
+}
+
 const locked = computed(() => saving.value || uncertain.value || completed.value);
 const accountOptions = computed(() => (selected.value?.accounts ?? []).map(item=>({value:item.scopeKey,label:item.name,disabled:!item.eligible})));
-watch(() => [form.amountYuan,form.paidAt,form.scopeKey,form.treatment,form.reason,form.evidence,form.historyTreatment,form.historyReason,form.historyEvidence,JSON.stringify(allocations)],()=>{
+watch(() => [form.amountYuan,form.paidAt,form.scopeKey,form.treatment,form.reason,form.evidence,form.historyTreatment,form.historyReason,form.historyEvidence,form.advanceConfirmed,form.advanceReason,form.advanceEvidence,JSON.stringify(allocations)],()=>{
  const current=pendingAttempt.value;
  if(restoringPrepared || saving.value || uncertain.value || current?.phase!=="prepared" || selected.value?.paymentId!==current.paymentId || auth.user?.id!==current.userId) return;
- const draft:PendingPaymentDraft={amountYuan:form.amountYuan,paidAt:form.paidAt,scopeKey:form.scopeKey,treatment:form.treatment,reason:form.reason,evidence:form.evidence,accountName:accountOption.value?.name ?? current.draft.accountName,historyTreatment:form.historyTreatment,historyReason:form.historyReason,historyEvidence:form.historyEvidence,allocations:Object.entries(allocations).map(([sourceBatchId,amountYuan])=>({sourceBatchId,amountYuan}))};
+ const draft:PendingPaymentDraft={amountYuan:form.amountYuan,paidAt:form.paidAt,scopeKey:form.scopeKey,treatment:form.treatment,reason:form.reason,evidence:form.evidence,accountName:accountOption.value?.name ?? current.draft.accountName,historyTreatment:form.historyTreatment,historyReason:form.historyReason,historyEvidence:form.historyEvidence,...(form.advanceConfirmed || form.advanceReason || form.advanceEvidence ? {advance:advanceDraft()} : {}),allocations:Object.entries(allocations).map(([sourceBatchId,amountYuan])=>({sourceBatchId,amountYuan}))};
  latestPreparedDraft=draft;
  draftQueue=draftQueue.then(async()=>{
   if(unsavedPrepared || submitConflict || uncertain.value) return;
@@ -129,7 +140,7 @@ watch(()=>auth.user?.id,(userId,previous)=>{
  try {
   pendingAttempt.value=null;preparedDraft.value=null;frozenCommand.value=null;selected.value=null;
   commandUserId.value="";commandPaymentId.value="";unsavedPrepared=null;submitConflict=null;discardReadbackUser=null;discardRecordAppeared=false;externalDraftBlocked=false;discardPreparedVisible.value=false;discardPreparedCandidate.value=null;
-  Object.assign(form,{amountYuan:"",paidAt:chinaDateOnly(),scopeKey:"",treatment:"",reason:"",evidence:"",password:"",idempotencyKey:"",historyTreatment:"",historyReason:"",historyEvidence:""});
+  Object.assign(form,{amountYuan:"",paidAt:chinaDateOnly(),scopeKey:"",treatment:"",reason:"",evidence:"",password:"",idempotencyKey:"",historyTreatment:"",historyReason:"",historyEvidence:"",advanceConfirmed:false,advanceReason:"",advanceEvidence:""});
   for(const key of Object.keys(allocations)) delete allocations[key];
  } finally {restoringPrepared=false;}
  blockStorage();
@@ -174,7 +185,10 @@ async function restorePendingAttempt(): Promise<boolean> {
  frozenCommand.value = {...stored,confirmationPassword:""}; confirmationAccountName.value = draft.accountName;
  restoringPrepared=true;
  try {
-  Object.assign(form,{amountYuan:draft.amountYuan,paidAt:draft.paidAt,scopeKey:draft.scopeKey,treatment:draft.treatment,reason:draft.reason,evidence:draft.evidence,password:"",idempotencyKey:stored.idempotencyKey,historyTreatment:draft.historyTreatment ?? stored.contractHistoryConfirmation?.treatment ?? "",historyReason:draft.historyReason ?? stored.contractHistoryConfirmation?.reason ?? "",historyEvidence:draft.historyEvidence ?? stored.contractHistoryConfirmation?.evidence ?? ""});
+  Object.assign(form,{amountYuan:draft.amountYuan,paidAt:draft.paidAt,scopeKey:draft.scopeKey,treatment:draft.treatment,reason:draft.reason,evidence:draft.evidence,password:"",idempotencyKey:stored.idempotencyKey,historyTreatment:draft.historyTreatment ?? stored.contractHistoryConfirmation?.treatment ?? "",historyReason:draft.historyReason ?? stored.contractHistoryConfirmation?.reason ?? "",historyEvidence:draft.historyEvidence ?? stored.contractHistoryConfirmation?.evidence ?? "",
+   advanceConfirmed:draft.advance?.confirmed ?? Boolean(stored.confirmedProjectAdvance),
+   advanceReason:draft.advance?.reason ?? stored.confirmedProjectAdvance?.reason ?? "",
+   advanceEvidence:draft.advance?.evidence ?? stored.confirmedProjectAdvance?.evidence ?? ""});
   for (const key of Object.keys(allocations)) delete allocations[key];
   for (const line of draft.allocations) allocations[line.sourceBatchId] = line.amountYuan;
  } finally { restoringPrepared=false; }
@@ -285,13 +299,16 @@ async function open(item: RegisteredPaymentWorkItem) {
   registrationPermissionOwner.value = owner; registrationPermissionRoute.value = routeOwner;
   registrationPermission.value = options;
   selected.value = structuredClone(options); funds.value = balances; completed.value = false; frozenCommand.value = null; resultMessage.value = "";
-  basisReadRequired.value = false; basisReadNotice.value = ""; outdatedSourceDrafts.value = []; confirmationFundBasis.value = null;
+  basisReadRequired.value = false; basisReadNotice.value = ""; outdatedSourceDrafts.value = []; definiteAdvanceGap.value = null; confirmationFundBasis.value = null;
   restoringPrepared=true;
-  Object.assign(form,{amountYuan:"",paidAt:chinaDateOnly(),scopeKey:"",treatment:"",reason:"",evidence:"",password:"",idempotencyKey:crypto.randomUUID(),historyTreatment:"",historyReason:"",historyEvidence:""});
+  Object.assign(form,{amountYuan:"",paidAt:chinaDateOnly(),scopeKey:"",treatment:"",reason:"",evidence:"",password:"",idempotencyKey:crypto.randomUUID(),historyTreatment:"",historyReason:"",historyEvidence:"",advanceConfirmed:false,advanceReason:"",advanceEvidence:""});
   for (const key of Object.keys(allocations)) delete allocations[key];
   if (prepared) {
    const d=prepared.draft;
-   Object.assign(form,{amountYuan:d.amountYuan,paidAt:d.paidAt,scopeKey:d.scopeKey,treatment:d.treatment,reason:d.reason,evidence:d.evidence,idempotencyKey:prepared.command.idempotencyKey,historyTreatment:d.historyTreatment ?? prepared.command.contractHistoryConfirmation?.treatment ?? "",historyReason:d.historyReason ?? prepared.command.contractHistoryConfirmation?.reason ?? "",historyEvidence:d.historyEvidence ?? prepared.command.contractHistoryConfirmation?.evidence ?? ""});
+   Object.assign(form,{amountYuan:d.amountYuan,paidAt:d.paidAt,scopeKey:d.scopeKey,treatment:d.treatment,reason:d.reason,evidence:d.evidence,idempotencyKey:prepared.command.idempotencyKey,historyTreatment:d.historyTreatment ?? prepared.command.contractHistoryConfirmation?.treatment ?? "",historyReason:d.historyReason ?? prepared.command.contractHistoryConfirmation?.reason ?? "",historyEvidence:d.historyEvidence ?? prepared.command.contractHistoryConfirmation?.evidence ?? "",
+    advanceConfirmed:d.advance?.confirmed ?? Boolean(prepared.command.confirmedProjectAdvance),
+    advanceReason:d.advance?.reason ?? prepared.command.confirmedProjectAdvance?.reason ?? "",
+    advanceEvidence:d.advance?.evidence ?? prepared.command.confirmedProjectAdvance?.evidence ?? ""});
    for (const line of d.allocations) allocations[line.sourceBatchId]=line.amountYuan;
   }
  } catch (failure) { error.value = formatUnknownApiError(failure,"实付登记资料读取失败，原填写已保留"); }
@@ -361,15 +378,32 @@ function prepare() {
     const text = allocations[source.id ?? ""]?.trim();
     return !text || text === "0" ? [] : [{sourceBatchId:source.id!,amountCents:yuanTextToCentsText(text)}];
   });
-  if (form.treatment === "not_included" && sourceAllocations.reduce((sum,line)=>sum+BigInt(line.amountCents),0n) !== BigInt(amountCents)) throw new Error("来源分摊合计必须等于本次实付金额，请逐项填写");
+  const selectedAllocationCents = sourceAllocations.reduce((sum, line) => sum + BigInt(line.amountCents), 0n);
+  let confirmedProjectAdvance: RegisteredPaymentCommand["confirmedProjectAdvance"];
+  if (form.advanceConfirmed) {
+    if (!advanceEditable.value) throw new Error("当前无已核实且可用于补差的同公司自有资金");
+    if (!form.advanceReason.trim() || !form.advanceEvidence.trim()) throw new Error("请填写公司补差的核对原因和依据");
+    const companyAllocations = sourceAllocations.filter(line => projectAdvanceSourceIds.value.has(line.sourceBatchId));
+    const companyAmount = companyAllocations.reduce((sum, line) => sum + BigInt(line.amountCents), 0n);
+    if (companyAmount <= 0n || selectedAllocationCents !== BigInt(amountCents)) throw new Error("请分别填写实际项目资金及公司自有补差，合计应等于原实付金额");
+    confirmedProjectAdvance = { amountCents: companyAmount.toString(), reason: form.advanceReason.trim(),
+      evidence: form.advanceEvidence.trim(), sourceAllocations: companyAllocations };
+  } else if (form.treatment === "not_included" && selectedAllocationCents !== BigInt(amountCents)) {
+    if (sourceAllocations.length && selectedAllocationCents < BigInt(amountCents)) {
+      const gap = (BigInt(amountCents) - selectedAllocationCents).toString();
+      throw new Error(`本次实付仍有 ¥${centsTextToYuanText(gap)} 的来源待核对。请保留实际金额并确认资金来源。`);
+    }
+    throw new Error("来源分摊合计必须等于本次实付金额，请逐项填写");
+  }
   const userId = auth.user?.id;
   if (!userId) throw new Error("请重新登录后登记本次实际付款");
   confirmationAccountName.value = accountOption.value.name;
   confirmationFundBasis.value = {balanceYuan:account.value.balanceYuan ?? null,asOfDate:account.value.asOfDate ?? null};
   commandUserId.value = userId;
-  preparedDraft.value = {amountYuan:form.amountYuan,paidAt:form.paidAt,scopeKey:form.scopeKey,treatment:form.treatment,reason:form.reason,evidence:form.evidence,accountName:accountOption.value.name,historyTreatment:form.historyTreatment,historyReason:form.historyReason,historyEvidence:form.historyEvidence,allocations:sourceAllocations.map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:allocations[line.sourceBatchId] ?? centsTextToYuanText(line.amountCents).replaceAll(",","")}))};
+  preparedDraft.value = {amountYuan:form.amountYuan,paidAt:form.paidAt,scopeKey:form.scopeKey,treatment:form.treatment,reason:form.reason,evidence:form.evidence,accountName:accountOption.value.name,historyTreatment:form.historyTreatment,historyReason:form.historyReason,historyEvidence:form.historyEvidence,...(form.advanceConfirmed || form.advanceReason || form.advanceEvidence ? {advance:advanceDraft()} : {}),allocations:sourceAllocations.map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:allocations[line.sourceBatchId] ?? centsTextToYuanText(line.amountCents).replaceAll(",","")}))};
   commandPaymentId.value = selected.value.paymentId;
-  frozenCommand.value = {...(contractHistoryConfirmation ? {contractHistoryConfirmation} : {}),idempotencyKey:form.idempotencyKey,expectedPaymentUpdatedAt:selected.value.expectedPaymentUpdatedAt,amountCents,paidAt:form.paidAt,scopeKey:form.scopeKey,expectedRegistrationId:account.value.currentRegistrationId,openingTreatment:form.treatment as "included"|"not_included",openingReason:form.reason.trim(),openingEvidence:form.evidence.trim(),sourceAllocations,confirmationPassword:form.password};
+  frozenCommand.value = {...(contractHistoryConfirmation ? {contractHistoryConfirmation} : {}),...(confirmedProjectAdvance ? {confirmedProjectAdvance} : {}),idempotencyKey:form.idempotencyKey,expectedPaymentUpdatedAt:selected.value.expectedPaymentUpdatedAt,amountCents,paidAt:form.paidAt,scopeKey:form.scopeKey,expectedRegistrationId:account.value.currentRegistrationId,openingTreatment:form.treatment as "included"|"not_included",openingReason:form.reason.trim(),openingEvidence:form.evidence.trim(),sourceAllocations:confirmedProjectAdvance ? sourceAllocations.filter(line => !projectAdvanceSourceIds.value.has(line.sourceBatchId)) : sourceAllocations,confirmationPassword:form.password};
+  definiteAdvanceGap.value = null;
   confirmation.value = true;
  } catch (failure) { error.value = formatUnknownApiError(failure,"请检查本次实付填写，金额最多保留两位小数"); }
 }
@@ -420,7 +454,14 @@ async function submit() {
   if(!paymentPanelActive || auth.user?.id!==owner) return;
   confirmation.value = false;
   if (failure instanceof RegisteredPaymentApiError && failure.status === 403) registrationPermission.value = null;
-  if (outcomeUnconfirmed(failure)) {
+  if (failure instanceof RegisteredPaymentApiError && failure.differenceCents) {
+   definiteAdvanceGap.value = failure.differenceCents;
+   await clearConfirmedPointer();
+   if (!paymentPanelActive || auth.user?.id !== owner) return;
+   form.idempotencyKey = crypto.randomUUID();
+   uncertain.value = false;
+   resultMessage.value = "本次未登记实付，请核对差额资金来源后重新确认。";
+  } else if (outcomeUnconfirmed(failure)) {
    uncertain.value = true;
    resultMessage.value = failure instanceof RegisteredPaymentApiError && failure.status === 403 ? "当前岗位暂不能办理，已保留原请求，请由有权财务或综合部主管核查登记结果。" : "登记结果暂未确认，请保留当前填写并查询本次结果，不能重复登记。";
   } else { await clearConfirmedPointer(); if(!paymentPanelActive || auth.user?.id!==owner) return; resultMessage.value = ""; if (failure instanceof RegisteredPaymentApiError && failure.status === 409) basisReadRequired.value = true; }
@@ -517,7 +558,7 @@ function paymentStorageChanged(event:StorageEvent) {
  catch { blockStorage();return; }
  const previous=pendingAttempt.value;
  if(previous?.phase==="prepared" && selected.value?.paymentId===previous.paymentId) {
-  const draft:PendingPaymentDraft={amountYuan:form.amountYuan,paidAt:form.paidAt,scopeKey:form.scopeKey,treatment:form.treatment,reason:form.reason,evidence:form.evidence,accountName:accountOption.value?.name ?? previous.draft.accountName,historyTreatment:form.historyTreatment,historyReason:form.historyReason,historyEvidence:form.historyEvidence,allocations:Object.entries(allocations).map(([sourceBatchId,amountYuan])=>({sourceBatchId,amountYuan}))};
+  const draft:PendingPaymentDraft={amountYuan:form.amountYuan,paidAt:form.paidAt,scopeKey:form.scopeKey,treatment:form.treatment,reason:form.reason,evidence:form.evidence,accountName:accountOption.value?.name ?? previous.draft.accountName,historyTreatment:form.historyTreatment,historyReason:form.historyReason,historyEvidence:form.historyEvidence,...(form.advanceConfirmed || form.advanceReason || form.advanceEvidence ? {advance:advanceDraft()} : {}),allocations:Object.entries(allocations).map(([sourceBatchId,amountYuan])=>({sourceBatchId,amountYuan}))};
   unsavedPrepared={expected:previous,next:makePendingPaymentAttempt(previous.userId,previous.paymentId,previous.command,draft)};
  } else if(selected.value && !previous && frozenCommand.value && preparedDraft.value) {
   submitConflict=makePendingPaymentAttempt(userId,commandPaymentId.value,frozenCommand.value,preparedDraft.value);
@@ -737,6 +778,7 @@ onMounted(async () => {
         <label aria-label="实际付款资金"><span>实际付款资金</span><t-select
           v-model="form.scopeKey"
           :options="accountOptions"
+          @change="resetAdvanceSelection"
           :disabled="locked"
           placeholder="按实际付款选择公司资金或公共现金"
         /></label>
@@ -850,7 +892,7 @@ onMounted(async () => {
           :key="source.id"
           class="registered-payment__source"
         >
-          <span>{{ source.sourceName || '出资来源待核对' }} · {{ projectLabel(source) }} · {{ source.amountYuan === null ? '可用分摊待核对（未知）' : `可用 ¥${source.amountYuan}` }}</span>
+          <span>{{ source.sourceName || '出资来源待核对' }} · {{ source.id && projectAdvanceSourceIds.has(source.id) ? '已核实本公司自有资金' : projectLabel(source) }} · {{ source.amountYuan === null ? '可用分摊待核对（未知）' : `可用 ¥${source.amountYuan}` }}</span>
           <label :aria-label="`来源分摊金额${index+1}`"><span>本次使用金额（元）</span><t-input
             v-model="allocations[source.id!]"
             inputmode="decimal"
@@ -858,6 +900,16 @@ onMounted(async () => {
           /></label>
         </div>
       </section>
+      <t-alert v-if="definiteAdvanceGap" theme="warning" :message="`项目资金差额 ¥${centsTextToYuanText(definiteAdvanceGap)} 待核对`" />
+      <fieldset v-if="advanceEditable" class="registered-payment__basis">
+        <legend>确认由公司补足项目差额</legend>
+        <t-checkbox v-model="form.advanceConfirmed" :disabled="locked">本次实际使用已核实的付款公司自有资金补足差额</t-checkbox>
+        <template v-if="form.advanceConfirmed">
+          <p>在上方逐项填写本次实际使用金额，并核对付款凭据。确认后只登记实际差额的项目往来。</p>
+          <label>公司补差核对原因<t-textarea v-model="form.advanceReason" :disabled="locked" :maxlength="500" /></label>
+          <label>公司补差核对依据<t-textarea v-model="form.advanceEvidence" :disabled="locked" :maxlength="1000" /></label>
+        </template>
+      </fieldset>
       <div class="registered-payment__fields">
         <label aria-label="期初核对原因"><span>期初核对原因</span><t-textarea
           v-model="form.reason"
@@ -1016,6 +1068,11 @@ onMounted(async () => {
         <p>合同历史独立确认：未计入合同历史已付</p>
         <p>合同历史核对原因：{{ frozenCommand.contractHistoryConfirmation.reason }}</p>
         <p>合同历史核对依据：{{ frozenCommand.contractHistoryConfirmation.evidence }}</p>
+      </template>
+      <template v-if="frozenCommand?.confirmedProjectAdvance">
+        <p>本次确认公司补足项目差额 ¥{{ centsTextToYuanText(frozenCommand.confirmedProjectAdvance.amountCents) }}。</p>
+        <p>公司补差核对原因：{{ frozenCommand.confirmedProjectAdvance.reason }}</p>
+        <p>公司补差核对依据：{{ frozenCommand.confirmedProjectAdvance.evidence }}</p>
       </template>
       <p v-if="confirmationFundBasis">
         本次核对余额：{{ confirmationFundBasis.balanceYuan === null ? '待核对（未知）' : `¥${confirmationFundBasis.balanceYuan}` }}；核对日期：{{ confirmationFundBasis.asOfDate || '待核对' }}

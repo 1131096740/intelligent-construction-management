@@ -65,6 +65,8 @@ test("the signature guard can read each schema-backed candidate in the migration
     assert.ok(source.includes("REVOKE ALL ON FUNCTION public.jg_project_owner_settlement_voucher_bound(TEXT) FROM PUBLIC"));
     const fixtureGrant=fs.readFileSync(path.join(__dirname,"contract-bank-runtime-fixture.cjs"),"utf8");
     assert.ok(fixtureGrant.includes("GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement(), public.jg_project_owner_settlement_voucher_bound(pg_catalog.text) TO %I"));
+    const acl=fs.readFileSync(path.join(__dirname,"prepared/task30/project-owner-settlement-voucher-runtime.sql"),"utf8");
+    assert.ok(acl.includes("GRANT EXECUTE ON FUNCTION public.jg_project_owner_settlement_voucher_bound(TEXT)"));
     assert.ok(!plan.runtime.tables.find(row=>row.table===match[1])?.select.includes(match[2]));
     continue;
    }

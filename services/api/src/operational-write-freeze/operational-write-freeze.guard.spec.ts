@@ -14,6 +14,12 @@ class FundAccountController {
   mutate() {}
 }
 
+class FundAccountAdvanceController {
+  register() {}
+  registerCompanyOwned() {}
+  companyOwnedBankOptions() {}
+}
+
 class RegisteredPaymentExecutionController {
   mutate() {}
 }
@@ -107,6 +113,16 @@ describe("OperationalWriteFreezeGuard", () => {
 
     process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "project";
     expectHttpFailure(() => projectWrite(project.recordOwnerSettlement), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+  });
+
+  it("keeps the new advance writes behind the finance freeze and preserves candidate reads", () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "finance";
+    const controller = FundAccountAdvanceController;
+    for (const handler of [controller.prototype.register, controller.prototype.registerCompanyOwned]) {
+      expectHttpFailure(() => guard.canActivate(contextFor({ controller, handler })), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    expect(guard.canActivate(contextFor({ controller, handler: controller.prototype.companyOwnedBankOptions, method: "GET" }))).toBe(true);
   });
 
   it("keeps classified writes open by default", () => {

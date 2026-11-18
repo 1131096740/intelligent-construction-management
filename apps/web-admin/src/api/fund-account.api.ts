@@ -10,7 +10,7 @@ export interface FundAccountSource {
   previousSourceBatchId?: string | null;
 }
 export interface FundRegisteredPayment { executionId: string; paymentId: string; code: string; amountCents: string; amountYuan: string; paidAt: string; registeredByName: string; openingEvidence: string }
-export interface FundAvailableSource extends Omit<FundAccountSource, "amountYuan"> { amountYuan: string | null; reconciledAmountYuan?: string | null; pendingAllocation?: boolean }
+export interface FundAvailableSource extends Omit<FundAccountSource, "amountYuan"> { amountYuan: string | null; reconciledAmountYuan?: string | null; pendingAllocation?: boolean; originalContributorName?: string | null }
 export interface FundBalanceRegistration {
   id: string;
   coveredExecutionIds?: string[];
@@ -20,7 +20,7 @@ export interface FundBalanceRegistration {
   projects?: Array<{ id: string; name: string }>;
   approvalEvidence?: Array<{ actorUserId: string; representedUserId: string | null; action: string; signed: boolean; signatureVersionId: string | null; signedAt: string; metadata: Record<string, unknown> | null }>;
   version: number;
-  kind: "opening" | "correction" | "transfer";
+  kind: "opening" | "correction" | "transfer" | "advance_receipt";
   status: "confirmed" | "pending_review" | "returned" | "withdrawn";
   previousRegistrationId: string | null;
   balanceYuan: string | null;
@@ -56,6 +56,10 @@ export interface FundAccount {
   sources: FundAvailableSource[];
   projectBalances: Array<Pick<FundAvailableSource, "projectStatus" | "projectId" | "amountYuan">>;
   history: FundBalanceRegistration[];
+  canRegisterAdvance?: boolean;
+  canRegisterCompanyOwned?: boolean;
+  canRecoverAdvance?: boolean;
+  canRecoverCompanyOwned?: boolean;
   canRegisterBalance: boolean;
   canRegisterOpening: boolean;
   canRequestCorrection: boolean;

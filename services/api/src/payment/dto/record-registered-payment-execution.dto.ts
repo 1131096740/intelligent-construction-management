@@ -1,10 +1,18 @@
 import { Type } from "class-transformer";
-import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsISO8601, IsOptional, IsInt, Min, IsString, IsUUID, MaxLength, MinLength, ValidateNested } from "class-validator";
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsDateString, IsIn, IsISO8601, IsOptional, IsInt, Min, IsString, IsUUID, MaxLength, MinLength, ValidateNested } from "class-validator";
 import { IsCanonicalMoneyText } from "../../validation/static-field-validation";
 
 class RegisteredPaymentSourceAllocationDto {
   @IsUUID("4", { message: "请选择有效的资金来源" }) sourceBatchId!: string;
   @IsCanonicalMoneyText({ typeMessage: "来源分摊金额格式不正确", formatMessage: "来源分摊金额须为整数分" }) amountCents!: string;
+}
+
+class RegisteredProjectAdvanceConfirmationDto {
+  @IsCanonicalMoneyText({ typeMessage: "公司垫资差额格式不正确", formatMessage: "公司垫资差额须为整数分" }) amountCents!: string;
+  @IsString() @MinLength(1) @MaxLength(500) reason!: string;
+  @IsString() @MinLength(1) @MaxLength(1000) evidence!: string;
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(100) @ValidateNested({ each: true })
+  @Type(() => RegisteredPaymentSourceAllocationDto) sourceAllocations!: RegisteredPaymentSourceAllocationDto[];
 }
 
 class ExistingRegisteredPaymentSourceDto {
@@ -22,6 +30,8 @@ class RegisteredContractHistoryConfirmationDto {
 }
 
 export class RegisteredPaymentRecoveryProofDto {
+  @IsOptional() @ValidateNested() @Type(() => RegisteredProjectAdvanceConfirmationDto)
+  confirmedProjectAdvance?: RegisteredProjectAdvanceConfirmationDto;
   @IsOptional() @ValidateNested({message:"合同历史独立核对资料格式不正确"}) @Type(() => RegisteredContractHistoryConfirmationDto) contractHistoryConfirmation?: RegisteredContractHistoryConfirmationDto;
   @IsOptional() @ValidateNested() @Type(() => ExistingRegisteredPaymentSourceDto) existingSource?: ExistingRegisteredPaymentSourceDto;
   @IsUUID("4", { message: "付款登记请求格式不正确" }) idempotencyKey!: string;

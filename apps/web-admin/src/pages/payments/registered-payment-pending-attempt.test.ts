@@ -55,3 +55,18 @@ it("accepts the exact intended prepared update after transient readback failure"
  const store={getItem:()=>{reads++;if(reads===2)throw Error("readback");return stored;},setItem:(_key:string,value:string)=>{stored=value;},removeItem:()=>{stored=null;}};
  expect(updatePreparedPaymentAttempt(attempt,edited,()=>store)).toBe(false);expect(updatePreparedPaymentAttempt(attempt,edited,()=>store)).toBe(true);expect(readPendingPaymentAttempt("user",()=>store)).toMatchObject({kind:"restored",attempt:{phase:"prepared",draft:{reason:"新内容"}}});
 });
+
+it("preserves the original key, declared amount and confirmed company funding after reload", () => {
+ const store = memory();
+ const advance = { amountCents:"300", reason:"已核实公司自有资金", evidence:"本次付款核对单", sourceAllocations:[{sourceBatchId:"company-owned",amountCents:"300"}] };
+ const original = {...command,amountCents:"800",sourceAllocations:[{sourceBatchId:"project",amountCents:"500"}],confirmedProjectAdvance:advance,confirmationPassword:"do-not-store"};
+ const pointer = makePendingPaymentAttempt("user","payment",original,{...draft,amountYuan:"8",advance:{confirmed:true,reason:advance.reason,evidence:advance.evidence}});
+ expect(writePendingPaymentAttempt(pointer,()=>store).saved).toBe(true);
+ expect(store.getItem()).not.toContain(original.confirmationPassword);
+ expect(readPendingPaymentAttempt("user",()=>store)).toMatchObject({
+  kind:"restored",
+  attempt:{phase:"sending",command:{idempotencyKey:"original-key",amountCents:"800",sourceAllocations:original.sourceAllocations,confirmedProjectAdvance:advance}},
+ });
+ store.setItem("",JSON.stringify({...pointer,command:{...pointer.command,confirmedProjectAdvance:null}}));
+ expect(readPendingPaymentAttempt("user",()=>store)).toMatchObject({kind:"unreadable",blocksNewAttempt:true});
+});

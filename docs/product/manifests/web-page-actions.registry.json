@@ -10609,6 +10609,62 @@
       ]
     },
     {
+      "id": "fund-advance.register",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitRegistration"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "registrationAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "name": "registerFundAdvance"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "name": "registerCompanyOwnedFund"
+        }
+      ]
+    },
+    {
+      "id": "fund-advance.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryPending"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "recoveryAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "name": "registerFundAdvance"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+          "name": "registerCompanyOwnedFund"
+        }
+      ]
+    },
+    {
       "id": "fund-transfer.register",
       "usage": "page_action",
       "routePaths": [

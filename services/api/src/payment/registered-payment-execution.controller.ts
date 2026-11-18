@@ -3,7 +3,7 @@ import { FileInterceptor, normalizeUploadedOriginalName, type MemoryUploadedFile
 import { AttachRegisteredPaymentVoucherDto } from "./dto/attach-registered-payment-voucher.dto";
 import { PaymentRequestService } from "./payment-request.service";
 import { RecordRegisteredPaymentExecutionDto, RegisteredPaymentRecoveryProofDto } from "./dto/record-registered-payment-execution.dto";
-import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RegisteredPaymentExecutionService } from "./registered-payment-execution.service";
@@ -39,8 +39,9 @@ export class RegisteredPaymentExecutionController {
   }
 
   @Get(":paymentId/registration-options")
-  registrationOptions(@CurrentUser() actor: AuthenticatedUser, @Param("paymentId") paymentId: string) {
-    return this.payments.registeredExecutionOptions(paymentId,actor.id);
+  registrationOptions(@CurrentUser() actor: AuthenticatedUser, @Param("paymentId") paymentId: string,
+    @Headers("x-registered-project-advance") includeProjectAdvance?: string) {
+    return this.payments.registeredExecutionOptions(paymentId,actor.id,includeProjectAdvance === "1");
   }
 
   @Get(":paymentId/existing-source/:type/:id")

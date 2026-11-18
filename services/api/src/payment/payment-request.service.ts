@@ -5,7 +5,8 @@ import { registeredPaymentInstalled } from "../database/registered-payment-catal
 import { confirmRegisteredContractHistory, lockRegisteredContractHistoryRevision, registeredContractHistoryBasis } from "./registered-payment-contract-history";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
 import { registeredOriginalPaymentResults, resolveRegisteredExistingSource } from "./registered-payment-existing-source";
-import { appendRegisteredFunding, appendRegisteredIntercompany, assertRegisteredPaymentActor, prepareRegisteredFunding, registeredPaymentFingerprint } from "./registered-payment-funding";
+import { readRegisteredCompanyOwnedSources } from "../fund-account/registered-company-owned-fund-source";
+import { appendRegisteredFunding, appendRegisteredIntercompany, assertRegisteredPaymentActor, enforceRegisteredPaymentAdvanceConstraints, prepareRegisteredFunding, readRegisteredProjectAdvanceStatus, registeredPaymentFingerprint } from "./registered-payment-funding";
 import { RecordRegisteredPaymentExecutionDto } from "./dto/record-registered-payment-execution.dto";
 import { assertFrozenCompanyIdentity } from "../company-entity/frozen-company-identity";
 import { chinaDateOnly, requiredPastChinaDate } from "@jiangkong/shared-domain";
@@ -3167,7 +3168,7 @@ export class PaymentRequestService {
     }
   }
 
-  async registeredExecutionOptions(paymentId: string, actorUserId: string) {
+  async registeredExecutionOptions(paymentId: string, actorUserId: string, includeProjectAdvance = false) {
     if (!this.prisma) throw new ConflictException("付款登记服务暂不可用");
     return this.prisma.$transaction(async tx => {
       const roles = await assertRegisteredPaymentActor(tx,actorUserId);
@@ -3180,6 +3181,11 @@ export class PaymentRequestService {
       const version = await tx.contractVersion.findUnique({where:{id:payment.contractVersionId}});
       const contract = await tx.contract.findUnique({where:{id:payment.contractId}});
       if (!version || !contract || version.contractId !== contract.id || contract.projectId !== payment.projectId || version.signingSubjectType !== "our_company") throw new ConflictException("付款申请的合同与冻结主体依据不完整");
+      const ownershipReadsEnabled = includeProjectAdvance &&
+        (await tx.$queryRaw<Array<{ usable: boolean }>>`SELECT
+          coalesce(has_function_privilege(to_regprocedure('public.jg_registered_fund_source_ownership(text[])'), 'EXECUTE'), false)
+          AND coalesce(has_table_privilege(to_regclass('public."RegisteredFundCompanyOwnedReceipt"'), 'SELECT'), false)
+          AND coalesce(has_table_privilege(to_regclass('public."RegisteredPaymentProjectAdvance"'), 'INSERT'), false) AS usable`)[0]?.usable === true;
       const accounts = [];
       for (const account of await tx.registeredFundAccount.findMany({
         orderBy: { scopeKey: "asc" },
@@ -3208,7 +3214,15 @@ export class PaymentRequestService {
             }
           }
         }
-        accounts.push({scopeKey:account.scopeKey,name:account.kind === "public_cash" ? "公共现金" : company?.id === version.companyEntityIdSnapshot ? version.companyEntityNameSnapshot ?? "原付款公司" : company?.name ?? "公司资料待核对",eligible:reason === null,reason,currentRegistrationId:registration?.id ?? null});
+        let projectAdvanceSourceBatchIds: string[] | undefined;
+        if (ownershipReadsEnabled && !reason && registration && company?.isActive && company.id === version.companyEntityIdSnapshot) {
+          const eligible = await tx.fundAccountSourceBatch.findMany({
+            where: { registrationId: registration.id, projectStatus: "pending" }, select: { id: true }
+          });
+          const ownership = await readRegisteredCompanyOwnedSources(tx, eligible.map(row => row.id));
+          projectAdvanceSourceBatchIds = eligible.filter(row => ownership.get(row.id) === company.id).map(row => row.id);
+        }
+        accounts.push({scopeKey:account.scopeKey,name:account.kind === "public_cash" ? "公共现金" : company?.id === version.companyEntityIdSnapshot ? version.companyEntityNameSnapshot ?? "原付款公司" : company?.name ?? "公司资料待核对",eligible:reason === null,reason,currentRegistrationId:registration?.id ?? null,...(projectAdvanceSourceBatchIds ? { projectAdvanceSourceBatchIds } : {})});
       }
       const contractHistoryBasis = await registeredContractHistoryBasis(tx,payment.contractId);
       const originalResults = await registeredOriginalPaymentResults(tx,payment.id);
@@ -3307,6 +3321,9 @@ export class PaymentRequestService {
           where: { idempotencyKey }
         });
         if (registered) await assertRegisteredPaymentActor(tx, actorUserId);
+        if (registered?.existingSource && registered.confirmedProjectAdvance) {
+          throw new BadRequestException("复核原实付时不能同时确认新的项目垫资");
+        }
         if (registered?.existingSource) {
           const proof = await resolveRegisteredExistingSource(tx,paymentId,registered.existingSource.type,registered.existingSource.id);
           if (proof.source.version !== registered.existingSource.expectedVersion || proof.source.fingerprint !== registered.existingSource.expectedFingerprint) throw new ConflictException("历史来源版本已变化，请重新核验原结果");
@@ -3557,7 +3574,7 @@ export class PaymentRequestService {
           }
         });
         if (registered && registeredFunding) {
-          await appendRegisteredFunding(tx,execution.id,registeredFunding,registered,contractHistoryConfirmation);
+          await appendRegisteredFunding(tx,execution.id,registeredFunding,registered,actorUserId,contractHistoryConfirmation);
           await appendRegisteredIntercompany(tx,execution.id,actorUserId,payment,registeredFunding,amountCents);
         }
         if (payerAttestation) {
@@ -3669,6 +3686,7 @@ export class PaymentRequestService {
             paidAt: paidAt.toISOString(),
             ...(wagePayableBindings.length > 0 ? {} : { voucherFileId: registered ? null : voucherFileId }),
             ...(registeredFunding ? { voucherPending: true, actualPayer: registeredFunding.actualPayer } : {}),
+            ...(registeredFunding?.projectAdvance ? { projectAdvanceAmountCents: registeredFunding.projectAdvance.amount.toString() } : {}),
             idempotencyKey,
             payer: {
               paymentSubjectType: "our_company",
@@ -3703,6 +3721,7 @@ export class PaymentRequestService {
           }
         });
 
+        if (registeredFunding) await enforceRegisteredPaymentAdvanceConstraints(tx, registeredFunding);
         if (sharedAllocation) {
           // Claimed executions depend on deferred shared-allocation contracts.
           // Evaluate them before the interactive transaction callback returns
@@ -3787,12 +3806,17 @@ export class PaymentRequestService {
     const { paymentId, actorUserId } = coordinates;
     const request = await tx.paymentRequest.findFirst({
       where: { OR: [{ id: paymentId }, { code: paymentId }] },
-      select: { id: true }
+      select: { id: true, projectId: true }
     });
     if (!request || execution.paymentRequestId !== request.id) return "mismatch";
     const receipt = await tx.registeredPaymentFunding.findUnique({ where: { executionId: execution.id } });
     if (!receipt) return execution.voucherFileId === null && this.matchesRegisteredPaymentExecution(execution, coordinates) ? "missing" : "mismatch";
-    return receipt.payloadFingerprint === registeredPaymentFingerprint(request.id, actorUserId, input) ? "matched" : "mismatch";
+    if (receipt.payloadFingerprint !== registeredPaymentFingerprint(request.id, actorUserId, input)) return "mismatch";
+    if (!input.confirmedProjectAdvance) return "matched";
+    return readRegisteredProjectAdvanceStatus(tx, execution.id, {
+      actorUserId, projectId: request.projectId, accountId: receipt.accountId, companyId: receipt.actualPayerId,
+      input: input.confirmedProjectAdvance
+    });
   }
 
   private matchesRegisteredPaymentExecution(

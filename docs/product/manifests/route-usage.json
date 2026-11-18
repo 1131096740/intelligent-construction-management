@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 744,
-    "exactRouteCount": 744,
-    "normalizedRouteCount": 744,
+    "routeCount": 748,
+    "exactRouteCount": 748,
+    "normalizedRouteCount": 748,
     "classificationOverrideCount": 217,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
     "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 527,
-    "pageRouteCount": 545,
+    "derivedProductionPageCount": 531,
+    "pageRouteCount": 549,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 598,
+      "web_api_wrapper": 602,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 598,
+    "productionWrapperRouteCount": 602,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 3
   },
@@ -4405,6 +4405,94 @@
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-account-advance-receipts/company-owned-bank-options",
+      "normalizedKey": "GET /fund-account-advance-receipts/company-owned-bank-options",
+      "controller": "FundAccountAdvanceController",
+      "handler": "companyOwnedBankOptions",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+            "wrapper": "fetchCompanyOwnedBankOptions",
+            "method": "GET",
+            "normalizedPath": "/fund-account-advance-receipts/company-owned-bank-options",
+            "normalizedKey": "GET /fund-account-advance-receipts/company-owned-bank-options",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-account-advance-receipts/contributor-options",
+      "normalizedKey": "GET /fund-account-advance-receipts/contributor-options",
+      "controller": "FundAccountAdvanceController",
+      "handler": "contributorOptions",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+            "wrapper": "fetchFundAdvanceContributorOptions",
+            "method": "GET",
+            "normalizedPath": "/fund-account-advance-receipts/contributor-options",
+            "normalizedKey": "GET /fund-account-advance-receipts/contributor-options",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
             ]
           }
         ],
@@ -18617,6 +18705,94 @@
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-account-advance-receipts",
+      "normalizedKey": "POST /fund-account-advance-receipts",
+      "controller": "FundAccountAdvanceController",
+      "handler": "register",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+            "wrapper": "registerFundAdvance",
+            "method": "POST",
+            "normalizedPath": "/fund-account-advance-receipts",
+            "normalizedKey": "POST /fund-account-advance-receipts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-account-advance-receipts/company-owned",
+      "normalizedKey": "POST /fund-account-advance-receipts/company-owned",
+      "controller": "FundAccountAdvanceController",
+      "handler": "registerCompanyOwned",
+      "sourceFile": "services/api/src/fund-account/fund-account-advance.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account-advance.api.ts",
+            "wrapper": "registerCompanyOwnedFund",
+            "method": "POST",
+            "normalizedPath": "/fund-account-advance-receipts/company-owned",
+            "normalizedKey": "POST /fund-account-advance-receipts/company-owned",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue"
             ]
           }
         ],

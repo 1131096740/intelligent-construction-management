@@ -8,6 +8,9 @@ datasource db {
 }
 
 model User {
+  registeredFundAdvanceReceipts RegisteredFundAdvanceReceipt[] @relation("FundAdvanceReceiptActor")
+  registeredCashAdvanceReceipts RegisteredFundAdvanceReceipt[] @relation("FundAdvanceReceiptCustodian")
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   currentCashCustodies PublicCashCustody[] @relation("CurrentPublicCashCustodian")
   initialCashCustodies PublicCashCustody[] @relation("InitialPublicCashCustodian")
   outgoingCashHandovers PublicCashHandover[] @relation("PreviousPublicCashCustodian")
@@ -168,6 +171,7 @@ model HandwrittenSignatureHandoff {
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
 model RegisteredFundAccount {
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   id String @id @default(uuid())
   writeRevision Int @default(0)
   scopeKey String @unique
@@ -177,6 +181,7 @@ model RegisteredFundAccount {
   registeredPayments RegisteredPaymentFunding[]
   allocations RegisteredFundPaymentAllocation[]
   registrations FundAccountBalanceRegistration[]
+  advanceReceipts RegisteredFundAdvanceReceipt[]
   outgoingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferSource")
   incomingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferDestination")
   publicCashCustody PublicCashCustody?
@@ -258,6 +263,7 @@ model FundAccountBalanceRegistration {
   account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   payments RegisteredPaymentFunding[]
   sources FundAccountSourceBatch[]
+  advanceReceipt RegisteredFundAdvanceReceipt?
   transfer RegisteredFundTransfer? @relation(fields: [transferId], references: [id], onDelete: Restrict)
   @@unique([transferId, accountId])
   @@unique([accountId, version])
@@ -279,8 +285,45 @@ model FundAccountSourceBatch {
   receivedTransferLine RegisteredFundTransferLine? @relation("RegisteredFundTransferReceipt", fields: [receivedTransferLineId], references: [id], onDelete: Restrict)
   transferLines RegisteredFundTransferLine[] @relation("RegisteredFundTransferOrigin")
   allocations RegisteredFundPaymentAllocation[]
+  advanceReceipt RegisteredFundAdvanceReceipt?
   registration FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
   @@unique([registrationId, lineNo])
+}
+
+model RegisteredFundAdvanceReceipt {
+  id String @id @default(uuid())
+  accountId String
+  registrationId String @unique
+  sourceBatchId String @unique
+  contributorKind String
+  contributorId String?
+  contributorNameSnapshot String?
+  projectId String?
+  amountYuan Decimal @db.Decimal(24,4)
+  receivedOn String
+  custodianUserId String?
+  evidenceReference String
+  createdByUserId String
+  idempotencyKey String @unique
+  payloadFingerprint String
+  createdAt DateTime @default(now())
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  registration FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  sourceBatch FundAccountSourceBatch @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
+  companyOwned RegisteredFundCompanyOwnedReceipt?
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy User @relation("FundAdvanceReceiptActor", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  custodian User? @relation("FundAdvanceReceiptCustodian", fields: [custodianUserId], references: [id], onDelete: Restrict)
+}
+
+model RegisteredFundCompanyOwnedReceipt {
+  receiptId String @id
+  companyId String
+  observationId String @unique
+  ownershipEvidence String
+  company CompanyEntity @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  observation VerifiedBankTransactionObservation @relation(fields: [observationId], references: [id], onDelete: Restrict)
+  receipt RegisteredFundAdvanceReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
 }
 
 model RegisteredFundTransfer {
@@ -331,6 +374,8 @@ model RegisteredFundTransferAction {
 }
 
 model CompanyEntity {
+  registeredCompanyPrincipalReceipts RegisteredFundCompanyOwnedReceipt[]
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   registeredFundAccount RegisteredFundAccount?
   id                                  String                          @id @default(uuid())
   name                                String
@@ -443,6 +488,8 @@ model UserPosition {
 }
 
 model Project {
+  registeredFundAdvanceReceipts RegisteredFundAdvanceReceipt[]
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   id                                     String                            @id @default(uuid())
   code                                   String                            @unique
   name                                   String
@@ -3559,6 +3606,7 @@ model PaymentExecution {
 
   registeredVoucher RegisteredPaymentVoucher?
   registeredFunding RegisteredPaymentFunding?
+  registeredProjectAdvance RegisteredPaymentProjectAdvance?
   registeredPaymentEvent RegisteredPaymentEvent?
 
   payableSettlementCases         PayableSettlementCase[]
@@ -3575,6 +3623,7 @@ model PaymentExecution {
 // transaction. It freezes the complete active payer-verification authority
 // together with the transaction amount, direction, time, and source identity.
 model VerifiedBankTransactionObservation {
+  registeredCompanyPrincipalReceipt RegisteredFundCompanyOwnedReceipt?
   id                                String   @id @default(uuid())
   reference                         String   @unique
   payerVerificationId               String
@@ -7370,6 +7419,24 @@ model RegisteredPaymentFunding {
   registration FundAccountBalanceRegistration @relation(fields: [balanceRegistrationId, accountId], references: [id, accountId], onDelete: Restrict)
   allocations RegisteredFundPaymentAllocation[]
   @@unique([executionId, accountId])
+}
+
+model RegisteredPaymentProjectAdvance {
+  executionId String @id
+  projectId String
+  accountId String
+  creditorCompanyId String
+  confirmedByUserId String
+  amountCents BigInt
+  reason String
+  evidence String
+  companyAllocations Json
+  createdAt DateTime @default(now())
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  creditorCompany CompanyEntity @relation(fields: [creditorCompanyId], references: [id], onDelete: Restrict)
+  confirmedBy User @relation(fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
 }
 
 model RegisteredFundPaymentAllocation {

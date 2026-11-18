@@ -15,3 +15,15 @@ describe("付款错误响应分类",()=>{
  it("原请求冲突保留待查询",async()=>{api.mockResolvedValue({ok:false,status:409,json:async()=>({message:"原请求已绑定不同的实付登记内容，请查询原结果"})});const error=await recordRegisteredPayment("p",input).catch(e=>e);expect(error.definitiveFailure).toBe(false);});
  it("可解析的普通输入错误及已知付款版本冲突可明确处理",async()=>{for(const [status,message] of [[400,"金额不正确"],[409,"付款申请已变化，请刷新后重试"]] as const){api.mockResolvedValueOnce({ok:false,status,json:async()=>({message})});const error=await recordRegisteredPayment("p",input).catch(e=>e);expect(error.definitiveFailure).toBe(true);}});
 });
+
+it("clears only a typed pre-write gap with a valid positive amount", async () => {
+ for (const [differenceCents,definitive] of [["300",true],["0",false],["-3",false],[null,false]] as const) {
+  api.mockResolvedValueOnce({ok:false,status:409,json:async()=>({
+   code:"REGISTERED_PROJECT_ADVANCE_CONFIRMATION_REQUIRED",message:"差额待确认",differenceCents,
+  })});
+  const error=await recordRegisteredPayment("p",input).catch(e=>e);
+  expect(error).toBeInstanceOf(RegisteredPaymentApiError);
+  expect(error.definitiveFailure).toBe(definitive);
+  expect(error.differenceCents ?? null).toBe(definitive ? differenceCents : null);
+ }
+});
