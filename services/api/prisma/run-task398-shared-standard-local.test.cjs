@@ -191,6 +191,7 @@ test('browser and overpay modes are explicit and preserve standard selection',()
  const {selectTask398Scenario}=require('./run-task398-shared-standard-local.cjs');
  assert.equal(selectTask398Scenario([]),'src/database/task16-shared-standard.http.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--overpay-real']),'src/database/task16-shared-standard.http.pg.spec.ts');
+ assert.equal(selectTask398Scenario(['--ledger-loss-real']),'src/database/task16-shared-standard.http.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--browser-real']),'src/database/task16-real-browser.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--browser-completion-real']),'src/database/task16-real-browser-completion.pg.spec.ts');
  assert.throws(()=>selectTask398Scenario(['--browser-real','--other']));
@@ -204,4 +205,14 @@ test('browser observer adds only the exact Settlement lookup columns and no othe
  for(const part of ['public."Settlement"','paidAmountCents','attname <> ALL','SELECT WITH GRANT OPTION','INSERT,UPDATE,REFERENCES','has_table_privilege'])assert.ok(browserCheck.includes(part));
  assert.match(browserCheck,/c\.relname <> ALL\(ARRAY\[[^\]]*'Settlement'\]\)/u);
  assert.doesNotMatch(browserGrant,/GRANT (?:INSERT|UPDATE|DELETE|REFERENCES).*"Settlement"/u);
+});
+
+test('ledger loss adds only the exact debt witness columns to the browser observer matrix',()=>{
+ const {observerReadGrantSql,observerReadCheckSql}=require('./run-task398-shared-standard-local.cjs');
+ const debtGrant='GRANT SELECT ("id","paymentExecutionId","sourceType","entryKind","direction","status","originalDebtorCompanyId","creditorCompanyId","amountCents","projectId") ON public."InterEntityRelationshipEntry" TO jg_task01_observer;';
+ assert.equal(observerReadGrantSql(true,true),observerReadGrantSql(true)+'\n'+debtGrant);
+ assert.doesNotMatch(observerReadCheckSql(true),/InterEntityRelationshipEntry/u);
+ const exact=observerReadCheckSql(true,true);
+ assert.match(exact,/'public\."InterEntityRelationshipEntry"'::regclass/u);
+ assert.match(exact,/has_column_privilege\([^)]*'SELECT'\) IS DISTINCT FROM \(a\.attname = ANY\(ARRAY\['id','paymentExecutionId','sourceType'/u);
 });

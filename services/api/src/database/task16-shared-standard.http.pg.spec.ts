@@ -392,7 +392,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
         executions:[{id,idempotencyKey:key,amountCents:3000n,executedByUserId:plan.ids.actor}],
         funding:[{executionId:id,actualPayerId:plan.ids.companyB}],allocations:[{executionId:id,sourceBatchId:ownSource.id,amountCents:3000n}],
         events:[{executionId:id}],audits:[{actorUserId:plan.ids.actor}],facts:[{id:factId,sourceBusinessId:id}],
-        debt:[{id:debtId,paymentExecutionId:id,sourceType:"registered_payment_execution",originalDebtorCompanyId:plan.ids.companyA,creditorCompanyId:plan.ids.companyB,amountCents:3000n,projectId:plan.ids.project}]
+        debt:[{id:debtId,paymentExecutionId:id,sourceType:"registered_payment_execution",entryKind:"proxy_payment",direction:"increase",status:"confirmed",originalDebtorCompanyId:plan.ids.companyA,creditorCompanyId:plan.ids.companyB,amountCents:3000n,projectId:plan.ids.project}]
        });
        expect(recorded.impacts).toHaveLength(3);
        expect(recorded.impacts).toEqual(expect.arrayContaining(["payable_decrease","company_project_funds_decrease","inter_subject_balance_increase"].map(impactKind=>({factId,sourceBusinessId:id,impactKind,amountCents:3000n}))));
