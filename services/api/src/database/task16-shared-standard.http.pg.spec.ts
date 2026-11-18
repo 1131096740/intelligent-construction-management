@@ -31,7 +31,8 @@ const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 const overpay=process.env.TASK398_OVERPAY_MODE==="1";
 const ledgerLoss=process.env.TASK398_LEDGER_LOSS_MODE==="1";
 const transferRejection=process.env.TASK406_TRANSFER_MODE==="rejection";
-const transferMode=process.env.TASK406_TRANSFER_MODE==="1"||transferRejection;
+const transferBrowser=process.env.TASK406_TRANSFER_MODE==="browser";
+const transferMode=process.env.TASK406_TRANSFER_MODE==="1"||transferRejection||transferBrowser;
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
 // input text can only select an entry, never become a logged value.
@@ -335,9 +336,21 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     }
     const handle=(id:string,token:string,expectedRevision:number,action:string,key=randomUUID())=>
       json(`${transferPath}/${id}/actions`,"POST",{expectedRevision,action,idempotencyKey:key,evidenceReference:"虚构实收或退回核对"},token);
-    const start=transferCommand(cashScope,aScope,cash.id,cash.sources[0].id,"30.0001");
+    let start=transferCommand(cashScope,aScope,cash.id,cash.sources[0].id,"30.0001");
     expect((await json(transferPath,"POST",start,finance)).status).toBe(403);
-    const started=await json(transferPath,"POST",start,keeper);
+    let started: Awaited<ReturnType<typeof json>>;
+    if (transferBrowser) {
+      const login = await json("/auth/login", "POST", { phone: seeded.keeperPhone, password: passwords[1] });
+      expect(login.status).toBe(201);
+      const { user, tokens: { accessToken, refreshToken } } = login.body;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { registerCashTransferInBrowser } = require("./task24-transfer-browser.cjs");
+      const receipt = await registerCashTransferInBrowser(origin, { user, accessToken, refreshToken }, aScope);
+      start = receipt.command;
+      started = receipt;
+    } else {
+      started = await json(transferPath,"POST",start,keeper);
+    }
     expect(started.status).toBe(201);
     const id=started.body.id as string;
     expect(started.body).toMatchObject({revision:1,status:"pending_receipt"});

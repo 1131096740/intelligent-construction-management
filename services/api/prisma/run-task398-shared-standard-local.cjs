@@ -141,7 +141,7 @@ function cleanupOwnedContainer({id,name,runId,list,inspect,remove,confirmAbsent}
 }
 function selectTask398Scenario(args){
  if(!Array.isArray(args)||args.length>1)throw new Error("TASK398_SCENARIO");
- if(args.length===0||["--overpay-real","--ledger-loss-real","--transfer-real","--transfer-rejection-real"].includes(args[0]))return "src/database/task16-shared-standard.http.pg.spec.ts";
+ if(args.length===0||["--overpay-real","--ledger-loss-real","--transfer-real","--transfer-rejection-real","--transfer-browser-real"].includes(args[0]))return "src/database/task16-shared-standard.http.pg.spec.ts";
  if(args[0]==="--browser-real")return "src/database/task16-real-browser.pg.spec.ts";
  if(args[0]==="--browser-completion-real")return "src/database/task16-real-browser-completion.pg.spec.ts";
  throw new Error("TASK398_SCENARIO");
@@ -151,7 +151,8 @@ async function run(){
  const overpayScenario=process.argv[2]==="--overpay-real";
  const ledgerLossScenario=process.argv[2]==="--ledger-loss-real";
  const transferRejection=process.argv[2]==="--transfer-rejection-real";
- const transferScenario=process.argv[2]==="--transfer-real"||transferRejection;
+ const transferBrowser=process.argv[2]==="--transfer-browser-real";
+ const transferScenario=process.argv[2]==="--transfer-real"||transferRejection||transferBrowser;
  const browserScenario=scenario==="src/database/task16-real-browser.pg.spec.ts"||scenario==="src/database/task16-real-browser-completion.pg.spec.ts";
  if(process.env.NODE_ENV==="production"||process.env.DOCKER_HOST&&!process.env.DOCKER_HOST.startsWith("unix://"))throw new Error("TASK398_LOCAL_ONLY");
  const candidate=process.env.TASK398_EXPECTED_SHA;
@@ -209,7 +210,7 @@ async function run(){
  env.DATABASE_URL=url("jg_task01_runtime");env.TASK398_OWNER_URL=url("jg_task01_owner");env.TASK398_OBSERVER_URL=url("jg_task01_observer");
  if(overpayScenario)env.TASK398_OVERPAY_MODE="1";
  if(ledgerLossScenario)env.TASK398_LEDGER_LOSS_MODE="1";
- if(transferScenario){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
+ if(transferScenario){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
  if(browserScenario){const evidenceDir=realpathSync(mkdtempSync("/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
  try{command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",scenario],{env,timeout:300000});}
  catch(error){
@@ -230,6 +231,6 @@ if(require.main===module)run().then(()=>{businessPassed=true;},error=>{console.e
   console.error(`TASK398_CONTAINER_CLEANUP_${status} run=${runId} name=${name}`);if(status==="UNKNOWN"){containerClean=false;console.error(`TASK398_STORAGE_RETAINED:${storage}`);process.exitCode=1;}
  }
  if(storage&&containerClean)try{rmSync(storage,{recursive:true,force:true});}catch{console.error("TASK398_STORAGE_CLEANUP_FAILED");process.exitCode=1;}
- if(businessPassed&&!process.exitCode)console.log(`${["--browser-real","--browser-completion-real"].includes(process.argv[2])?"TASK398_BROWSER_PASS":process.argv[2]==="--overpay-real"?"TASK398_OVERPAY_PASS":process.argv[2]==="--ledger-loss-real"?"TASK398_LEDGER_LOSS_PASS":process.argv[2]==="--transfer-real"?"TASK406_TRANSFER_PASS":process.argv[2]==="--transfer-rejection-real"?"TASK406_REJECTION_PASS":"TASK398_STANDARD_PASS"} candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
+ if(businessPassed&&!process.exitCode)console.log(`${["--browser-real","--browser-completion-real"].includes(process.argv[2])?"TASK398_BROWSER_PASS":process.argv[2]==="--overpay-real"?"TASK398_OVERPAY_PASS":process.argv[2]==="--ledger-loss-real"?"TASK398_LEDGER_LOSS_PASS":process.argv[2]==="--transfer-browser-real"?"TASK406_BROWSER_PASS":process.argv[2]==="--transfer-real"?"TASK406_TRANSFER_PASS":process.argv[2]==="--transfer-rejection-real"?"TASK406_REJECTION_PASS":"TASK398_STANDARD_PASS"} candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
 });
 module.exports={selectTask398Scenario,runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,approvalDependencyCheckSql,spotGuardCheckSql,businessReadGrantSql,businessReadCheckSql,excludedReadTables,observerReadGrantSql,observerReadCheckSql,observerTables,observerSignatureColumns,meSensitiveReadCheckSql,cleanupOwnedContainer,containerName};
