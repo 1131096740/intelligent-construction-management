@@ -21,6 +21,8 @@ SET search_path = pg_catalog, public AS $$
   );
 $$;
 
+REVOKE ALL ON FUNCTION public.jg_project_owner_settlement_voucher_bound(TEXT) FROM PUBLIC;
+
 DO $migration$
 DECLARE
   definition TEXT := pg_get_functiondef('public.jg_enforce_exclusive_file_business_binding()'::regprocedure);
