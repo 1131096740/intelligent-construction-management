@@ -35,7 +35,7 @@ async function closeChild(child:ChildProcess|undefined){
  finally{if(timer)clearTimeout(timer);}
 }
 (enabled?describe:describe.skip)("#398 browser against real isolated PostgreSQL",()=>{
- it("recovers a lost payment response by the original key, then completes and reconciles payment",async()=>{
+ it("recovers a lost payment response by the original key after page reload, then completes and reconciles payment",async()=>{
   const urls=[process.env.TASK398_OWNER_URL,process.env.DATABASE_URL,process.env.TASK398_OBSERVER_URL].map(value=>new URL(value??""));
   const runId=process.env.TASK398_RUN_ID??"",candidate=process.env.TASK398_CANDIDATE_SHA??"",output=process.env.TASK398_BROWSER_EVIDENCE??"";
   if(process.env.NODE_ENV!=="test"||!/^[a-f0-9]{32}$/u.test(runId)||!/^[a-f0-9]{40}$/u.test(candidate)||!output.startsWith("/private/tmp/")||!urls.every(url=>url.hostname==="127.0.0.1"&&url.port===urls[0]!.port&&url.pathname==="/jiangkong_payment_execution_concurrency")||urls.map(url=>url.username).join(",")!=="jg_task01_owner,jg_task01_runtime,jg_task01_observer")throw new Error("TASK398_BROWSER_ISOLATION");
@@ -157,11 +157,10 @@ async function closeChild(child:ChildProcess|undefined){
    const originalKey=scope.resultKeys[0]!;
    const resultRead=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="GET"&&new URL(response.url()).pathname===`/api/payment-executions/results/${originalKey}`);
    const recoveryProof=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/payment-executions/${plan.ids.payment}/recovery-proof`);
-   await panel.getByRole("button",{name:"查询本次登记结果",exact:true}).click();
-   const result=await resultRead;
+   // Recreate the page before recovery; only persisted browser state can supply the original command.
+   const [result,proof]=await Promise.all([resultRead,recoveryProof,page.reload()]);
    expect(result.status()).toBe(200);
    expect(await result.json()).toMatchObject({status:"recorded",execution:{executionId:firstExecutionId,amountCents:"3000"}});
-   const proof=await recoveryProof;
    expect(proof.status()).toBe(201);
    expect(await proof.json()).toEqual({status:"matched",executionId:firstExecutionId});
    await panel.getByText("已查到本次付款登记，电子凭证可继续补充。",{exact:true}).waitFor();
@@ -209,7 +208,7 @@ async function closeChild(child:ChildProcess|undefined){
    const pathToDownload=path.join(path.dirname(output),"downloaded-voucher.png");await download.saveAs(pathToDownload);expect(readFileSync(pathToDownload)).toEqual(png);
    expect(await observe()).toEqual(final);
    await page.screenshot({path:path.join(path.dirname(output),"finance-complete-voucher.png"),fullPage:true});
-   completedEvidence={candidate,runId,status:"BROWSER_COMPLETION_CASE_RETURNED_NOT_FULL_ACCEPTANCE",requestKeySha256:digests,before,after,final,voucherDownloaded:true,firstResponseRecovered:true};
+   completedEvidence={candidate,runId,status:"BROWSER_COMPLETION_CASE_RETURNED_NOT_FULL_ACCEPTANCE",requestKeySha256:digests,before,after,final,voucherDownloaded:true,firstResponseRecovered:true,firstResponseRecoveredAfterReload:true};
   }catch(error){primaryError=error;throw error;}
   finally{
    const failures:string[]=[];
