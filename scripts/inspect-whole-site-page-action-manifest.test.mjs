@@ -10997,3 +10997,54 @@ test("payment recovery POST closes its transitive read-only database proof when 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+async function actualCashHandoverFixture(t, change = source => source) {
+  const pagePath = "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue";
+  const apiFile = "apps/web-admin/src/api/public-cash-handover.api.ts";
+  const registry = JSON.parse(await readFile(new URL("../docs/product/manifests/web-page-actions.registry.json", import.meta.url), "utf8"));
+  const web = JSON.parse(await readFile(new URL("../docs/product/manifests/web-api-wrappers.json", import.meta.url), "utf8"));
+  const nest = JSON.parse(await readFile(new URL("../docs/product/manifests/nest-business-routes.json", import.meta.url), "utf8"));
+  const source = await readFile(new URL("../" + pagePath, import.meta.url), "utf8");
+  const root = await fixture({
+    pagePath,
+    page: change(source),
+    routeRecords: 'export const webAdminRoutes = [{ path: "/资金账户", component: () => import("../pages/funds/PublicCashHandoverPanel.vue") }];',
+    actions: registry.actions.filter(entry => entry.sourceFile === pagePath),
+    wrappers: web.wrappers.filter(entry => entry.apiFile === apiFile),
+    routes: nest.routes.filter(entry => entry.controller === "PublicCashHandoverController"),
+    webManifestOverrides: { evidence: { productionModuleCount: 9, reachableProductionModuleCount: 8 } },
+    extraFiles: {
+      [apiFile]: await readFile(new URL("../" + apiFile, import.meta.url), "utf8"),
+      "apps/web-admin/src/api/api-fetch.ts": "export async function apiFetch() { return new Response(); }",
+      "apps/web-admin/src/api/error-message.ts": "export function formatApiErrorMessage() {} export function formatUnknownApiError() {}",
+      "apps/web-admin/src/auth/auth.store.ts": "export function useAuthStore() { return { user: { id: 'fixture' } }; }"
+    }
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  return root;
+}
+
+test("cash handover proof binds fresh capabilities and only replays the exact saved command", async t => {
+  const result = await inspectWholeSitePageActionManifest({ root: await actualCashHandoverFixture(t) });
+  assert.equal(result.status, "ready", JSON.stringify(result.blockers));
+  assert.equal(result.actions.length, 4);
+  assert.equal(result.actions.flatMap(action => action.bindings).length, 6);
+  assert.ok(result.actions.every(action => action.bindings.every(binding => binding.causalVerified)));
+});
+
+for (const [label, before, after] of [
+  ["bypassed recipient", "if (!confirmAllowed.value || !selected.value", "if (!selected.value"],
+  ["unsafe owner after lock", "if (actor.value !== owner) return;", "if (!owner) return;"],
+  ["no durable command", "if (!existing) localStorage.setItem(key, JSON.stringify(command));", "if (!existing) pending.value = command;"],
+  ["different browser command", "JSON.stringify(existing) !== JSON.stringify(expectedPending)", "false"],
+  ["fresh key on recovery", "if (recoveryAllowed.value) void run();", "if (recoveryAllowed.value) void run({ type: 'claim', input: { idempotencyKey: crypto.randomUUID(), expectedRevision: 0 } });"]
+]) test(`cash handover proof rejects ${label}`, async t => {
+  const root = await actualCashHandoverFixture(t, source => {
+    const changed = source.replace(before, after);
+    assert.notEqual(changed, source);
+    return changed;
+  });
+  const result = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.unresolvedWrappers.some(item => item.actionId.startsWith("public-cash-handover.")));
+});

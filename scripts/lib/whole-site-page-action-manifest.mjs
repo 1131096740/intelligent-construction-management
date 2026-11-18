@@ -1,3 +1,4 @@
+import { PUBLIC_CASH_HANDOVER_ACTIONS, provePublicCashHandoverPageAction } from "./public-cash-handover-page-action-proof.mjs";
 import { createRequire } from "node:module";
 import {
   GENERATED_ARCHIVE_ACTIONS,
@@ -17100,7 +17101,8 @@ function fundTransferAuthorityAndStorageProof({ context, page, definition, pageS
 
 function proveBusinessActionPipeline({ action, wrapper, context }) {
   if (FUND_TRANSFER_ACTIONS.has(action.id)) return proveFundTransferPageAction({ action, wrapper, context });
-  const specializedProof = SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
+  const specializedProof = PUBLIC_CASH_HANDOVER_ACTIONS.has(action.id) ? provePublicCashHandoverPageAction :
+    SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
     GENERATED_ARCHIVE_ACTIONS.has(action.id) ? proveGeneratedArchivePageAction : null;
   if (specializedProof) {
     return specializedProof({ action, wrapper, context, syntax: {
@@ -17108,6 +17110,7 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
       buildSymbolContext,
       callExpressionMatchesWrapper,
       elementDirective,
+      importedWrapperCalls,
       localCallable: directRegistrationCallable,
       matches: directRegistrationMatches,
       normalizedMainRequests,

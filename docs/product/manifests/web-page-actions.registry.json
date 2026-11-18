@@ -10455,6 +10455,110 @@
       ]
     },
     {
+      "id": "public-cash-handover.claim",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "claim"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "claimAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "name": "claimInitialPublicCashCustody"
+        }
+      ]
+    },
+    {
+      "id": "public-cash-handover.start",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "start"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "startAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "name": "startPublicCashHandover"
+        }
+      ]
+    },
+    {
+      "id": "public-cash-handover.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "confirm"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "confirmAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "name": "confirmPublicCashHandover"
+        }
+      ]
+    },
+    {
+      "id": "public-cash-handover.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryPending"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "recoveryAllowed"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "name": "claimInitialPublicCashCustody"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "name": "startPublicCashHandover"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "name": "confirmPublicCashHandover"
+        }
+      ]
+    },
+    {
       "id": "fund-transfer.register",
       "usage": "page_action",
       "routePaths": [

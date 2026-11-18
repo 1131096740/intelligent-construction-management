@@ -5,5 +5,7 @@ import { FundAccountController } from "./fund-account.controller";
 import { FundAccountTransferController } from "./fund-account-transfer.controller";
 import { FundAccountTransferService } from "./fund-account-transfer.service";
 import { FundAccountService } from "./fund-account.service";
-@Module({ imports: [AuthModule, AuditModule], controllers: [FundAccountController, FundAccountTransferController], providers: [FundAccountService, FundAccountTransferService], exports: [FundAccountService] })
+import { PublicCashHandoverController } from "./public-cash-handover.controller";
+import { PublicCashHandoverService } from "./public-cash-handover.service";
+@Module({ imports: [AuthModule, AuditModule], controllers: [FundAccountController, FundAccountTransferController, PublicCashHandoverController], providers: [FundAccountService, FundAccountTransferService, PublicCashHandoverService], exports: [FundAccountService] })
 export class FundAccountModule {}

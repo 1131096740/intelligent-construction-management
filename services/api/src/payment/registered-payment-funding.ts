@@ -1,3 +1,4 @@
+import { assertPublicCashCustodian } from "../fund-account/public-cash-custodian";
 import { FUND_ACCOUNT_TRANSFER_HELD_STATES } from "../fund-account/fund-account-transfer-state";
 import { registeredPaymentWriteAuthority } from "./registered-payment-approval";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
@@ -30,6 +31,7 @@ export async function assertRegisteredPaymentActor(tx: Prisma.TransactionClient,
   try { roles = await new CompanyRoleResolverService(tx as PrismaService).resolveActiveRoleScopesInTransaction(tx, actorUserId); }
   catch { throw new ForbiddenException("当前付款登记账号或公司岗位不可用"); }
   if (!roles.some(role => ["finance_staff", "finance_director", "comprehensive_director"].includes(role))) throw new ForbiddenException("只有当前财务人员或综合部主管可以办理实际付款");
+  return roles;
 }
 
 export function registeredPaymentFingerprint(paymentId: string, actorUserId: string, input: Omit<RecordRegisteredPaymentExecutionDto, "confirmationPassword">) {
@@ -108,12 +110,15 @@ export async function availableRegisteredBalance(tx: Prisma.TransactionClient, r
 }
 
 export async function prepareRegisteredFunding(tx: Prisma.TransactionClient, actorUserId: string, payment: { id: string; projectId: string; companyEntityIdSnapshot: string | null; companyEntityNameSnapshot: string | null; companyEntityCreditCodeSnapshot: string | null }, input: RecordRegisteredPaymentExecutionDto, historyRevision:bigint) {
-  await assertRegisteredPaymentActor(tx, actorUserId);
+  const roles = await assertRegisteredPaymentActor(tx, actorUserId);
   const writeAuthority=await registeredPaymentWriteAuthority(tx,payment.id,historyRevision);
   if (!input.openingReason.trim() || !input.openingEvidence.trim()) throw new BadRequestException("请填写期初归属确认原因和核对依据");
   const account = await tx.registeredFundAccount.findUnique({ where: { scopeKey: input.scopeKey } });
   if (!account) throw new ConflictException("资金账户尚未核对登记，请刷新资金资料");
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "RegisteredFundAccount" WHERE "id" = ${account.id} FOR UPDATE`);
+  if (account.kind === "public_cash" && !roles.some(role => role === "finance_staff" || role === "finance_director")) {
+    await assertPublicCashCustodian(tx, account.id, actorUserId);
+  }
   const current = await tx.fundAccountBalanceRegistration.findFirst({ where: { accountId: account.id, status: "confirmed" }, orderBy: { version: "desc" }, include: { sources: true } });
   if (!current || current.id !== input.expectedRegistrationId) throw new ConflictException("余额核对版本已变化，请刷新资金资料后重新确认期初归属");
   const available = await availableRegisteredBalance(tx, current);

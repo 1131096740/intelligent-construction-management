@@ -23,6 +23,7 @@ function transferService(role: string, firstConflict = false, activeCompany = fa
     registeredFundAccount: { findUnique: async ({ where }: { where: { scopeKey: string } }) =>
       where.scopeKey === "public_cash" ? { id: "cash", kind: "public_cash", companyEntityId: null } : { id: "company", kind: "company", companyEntityId: "company-a" },
       update: jest.fn() },
+    publicCashCustody: { findUnique: async () => null },
     companyEntity: { findUnique: async () => ({ isActive: activeCompany }) },
     fundAccountBalanceRegistration: { findFirst: async ({ select }: { select?: { id: true } }) => select
       ? (originalRegistrationExists ? { id: registration.expectedRegistrationId } : null)

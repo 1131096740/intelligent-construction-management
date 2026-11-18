@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `fa4e9fedc7cffd9f66bb8a177feb0238fcb75d54955b2c197f2d603c6a7037c1` |
-| webApiWrappers | ready | `1adf69c5894432df0d480700bd6361b0544149f6e395234a90388e05b6989a27` |
-| webPageActions | ready | `087c76c08257a8d6699cb417ccfd868e66087785609820cd45061e0cefbbf6cb` |
-| routeUsage | ready | `2d465293d245d448c1eed87468ca9fd48c45bcb3ab2901953f98df2a45d18b63` |
+| nestRoutes | ready | `5c4ffb397fa35df96a7dc31bd37a7df587f05c5031fec6ceccadd401dc5fda71` |
+| webApiWrappers | ready | `0e2bc7c30539e6aa76805054c092aa73e7b2588d394e95c194aa76d470b1f45d` |
+| webPageActions | ready | `33fdd3667d155111fd2985c6c7ba2a0db207c68b4d473444df4b1483443b52cb` |
+| routeUsage | ready | `e45727e0fbfbdaa2ce4cbb2e80f7e6142f4da05f3fcdb0d2f8a7f91396efaf4b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 737 |
-| pageRouteCount | 538 |
+| routeCount | 741 |
+| pageRouteCount | 542 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 731 |
+| mainRequestBindingCount | 735 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 430 |
-| actionBindingCount | 498 |
-| acceptedActionBindingCount | 456 |
+| registeredActionCount | 434 |
+| actionBindingCount | 504 |
+| acceptedActionBindingCount | 462 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 417 |
-| coveredProductionMutationConsumerPairCount | 417 |
+| productionMutationConsumerPairCount | 420 |
+| coveredProductionMutationConsumerPairCount | 420 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -249,6 +249,7 @@
 | GET | /projects/management | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectManagement | — | not_applicable | — |
 | GET | /projects | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjects | — | not_applicable | — |
 | GET | /projects/roster | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectRoster | — | not_applicable | — |
+| GET | /public-cash-handovers | page | web_api_wrapper | apps/web-admin/src/api/public-cash-handover.api.ts#fetchPublicCashHandovers | — | not_applicable | — |
 | GET | /settlement-template-workbench/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#fetchTemplateWorkbenchCapability | — | not_applicable | — |
 | GET | /settlement-template-workbench/templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#getSettlementTemplate | — | not_applicable | — |
 | GET | /settlement-template-workbench/templates | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#listSettlementTemplates | — | not_applicable | — |
@@ -674,6 +675,9 @@
 | POST | /projects/:projectId/upstream-settlements | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement | — | not_applicable | — |
 | POST | /projects/create-validation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#validateProjectCreation | project-create.validate<br>project.rename.name-warning | covered | — |
 | POST | /projects | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createProject | project.create | covered | — |
+| POST | /public-cash-handovers/:id/confirmation | page | web_api_wrapper | apps/web-admin/src/api/public-cash-handover.api.ts#confirmPublicCashHandover | public-cash-handover.confirm<br>public-cash-handover.recover-original | covered | — |
+| POST | /public-cash-handovers/initial-custodian | page | web_api_wrapper | apps/web-admin/src/api/public-cash-handover.api.ts#claimInitialPublicCashCustody | public-cash-handover.claim<br>public-cash-handover.recover-original | covered | — |
+| POST | /public-cash-handovers | page | web_api_wrapper | apps/web-admin/src/api/public-cash-handover.api.ts#startPublicCashHandover | public-cash-handover.recover-original<br>public-cash-handover.start | covered | — |
 | POST | /settlement-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#cloneSettlementTemplateVersion | — | not_applicable | — |
 | POST | /settlement-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#discardSettlementTemplateVersion | — | not_applicable | — |
 | POST | /settlement-template-versions/:versionId/inspection | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#inspectSettlementTemplateVersion | — | not_applicable | — |

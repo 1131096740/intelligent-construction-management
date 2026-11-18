@@ -1,3 +1,4 @@
+import { currentPublicCashCustodian } from "../fund-account/public-cash-custodian";
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
@@ -3169,7 +3170,7 @@ export class PaymentRequestService {
   async registeredExecutionOptions(paymentId: string, actorUserId: string) {
     if (!this.prisma) throw new ConflictException("付款登记服务暂不可用");
     return this.prisma.$transaction(async tx => {
-      await assertRegisteredPaymentActor(tx,actorUserId);
+      const roles = await assertRegisteredPaymentActor(tx,actorUserId);
       const payment = await tx.paymentRequest.findUnique({where:{id:paymentId}});
       if (!payment || payment.paymentSubjectType !== "our_company" || !["approved_pending_payment","partially_paid"].includes(payment.status)) throw new ConflictException("当前申请暂不能登记实际付款，请刷新共同待办");
       if (!(await currentRegisteredPaymentDomain(tx,payment.id)).supportedDomain) throw new ConflictException("当前付款不属于统一实付办理范围，请经原业务权限入口核验");
@@ -3187,6 +3188,10 @@ export class PaymentRequestService {
         const registration = await tx.fundAccountBalanceRegistration.findFirst({where:{accountId:account.id,status:"confirmed"},orderBy:{version:"desc"}});
         const company = account.companyEntityId ? await tx.companyEntity.findUnique({where:{id:account.companyEntityId}}) : null;
         let reason = registration ? null : "账户尚未登记有效核对余额";
+        if (account.kind === "public_cash" && !roles.some(role => role === "finance_staff" || role === "finance_director")) {
+          const custodian = await currentPublicCashCustodian(tx, account.id);
+          if (custodian && custodian !== actorUserId) reason = "当前公共现金操作由具名保管人办理";
+        }
         if (account.kind === "company" && !company) reason = "账户公司档案不可用，请核对原资料";
         if (company?.isActive === false) {
           if (company.id !== version.companyEntityIdSnapshot) reason = "停用公司不能新选为代付主体";

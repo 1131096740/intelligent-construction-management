@@ -6,6 +6,7 @@ import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
 import { availableRegisteredBalance, RegisteredBalanceDecimal, sameTransferSourceIdentity } from "../payment/registered-payment-funding";
+import { assertPublicCashCustodian, currentPublicCashCustodian } from "./public-cash-custodian";
 import { ActOnFundAccountTransferDto, RegisterFundAccountTransferDto } from "./fund-account-transfer.dto";
 import { rejectedTransferWithoutWrite, supersededTransferCommand, transferStateAfterAction, type FundAccountTransferState } from "./fund-account-transfer-state";
 
@@ -30,15 +31,26 @@ export class FundAccountTransferService {
         include: { sourceAccount: true, destinationAccount: true, actions: { orderBy: { revision: "asc" } } },
         orderBy: { createdAt: "desc" }
       });
-      return { canRegisterCash: roles.some(role => CASH.includes(role)), canRegisterCompany: roles.some(role => FINANCE.includes(role)),
+      const cashAccount = await tx.registeredFundAccount.findUnique({ where: { scopeKey: "public_cash" }, select: { id: true } });
+      const custodian = cashAccount ? await currentPublicCashCustodian(tx, cashAccount.id) : null;
+      const canRegisterCash = roles.some(role => CASH.includes(role)) && (!custodian || custodian === actorId);
+      const handedOverBy = cashAccount && canRegisterCash && custodian === actorId ? new Set(
+        (await tx.publicCashHandover.findMany({
+          where: { accountId: cashAccount.id, fromCustodian: { isActive: false }, receipt: { isNot: null } },
+          select: { fromCustodianId: true }
+        })).map(row => row.fromCustodianId)
+      ) : new Set<string>();
+      return { canRegisterCash, canRegisterCompany: roles.some(role => FINANCE.includes(role)),
         transfers: rows.map(row => ({
           id: row.id, sourceScopeKey: row.sourceAccount.scopeKey, destinationScopeKey: row.destinationAccount.scopeKey,
           amountYuan: row.amountYuan.toFixed(4), status: row.status, revision: row.revision, transferredOn: row.transferredOn,
           evidenceReference: row.evidenceReference, actions: row.actions.map(action => ({
             action: action.action, evidenceReference: action.evidenceReference, createdAt: action.createdAt
           })),
-          canReceive: row.status === "pending_receipt" && rolesFor(row.destinationAccount.kind).some(role => roles.includes(role)),
-          canResolveRejection: row.status === "rejected_held" && row.createdByUserId === actorId &&
+          canReceive: row.status === "pending_receipt" && (row.destinationAccount.kind === "public_cash"
+            ? canRegisterCash : rolesFor(row.destinationAccount.kind).some(role => roles.includes(role))),
+          canResolveRejection: row.status === "rejected_held" && (row.createdByUserId === actorId ||
+            (row.sourceAccount.kind === "public_cash" && handedOverBy.has(row.createdByUserId))) &&
             rolesFor(row.sourceAccount.kind).some(role => roles.includes(role))
         })) };
     });
@@ -76,6 +88,7 @@ export class FundAccountTransferService {
       const company = companyId ? await tx.companyEntity.findUnique({ where: { id: companyId }, select: { isActive: true } }) : null;
       if (!company?.isActive) throw rejectedTransferWithoutWrite("所选公司已停用，不能登记新的转款");
       await this.lockAccounts(tx, source.id, destination.id);
+      if (source.kind === "public_cash") await assertPublicCashCustodian(tx, source.id, actorId);
       const current = await this.current(tx, source.id);
       await this.current(tx, destination.id);
       if (current.id !== input.expectedRegistrationId) {
@@ -113,9 +126,8 @@ export class FundAccountTransferService {
     const evidence = this.evidence(input.evidenceReference);
     const requestHash = fingerprint({ transferId, actorId, action: input.action, expectedRevision: input.expectedRevision, evidence });
     const forOrigin = input.action === "resubmit" || input.action === "return";
-    const authorizeAction = async (tx: Transaction, transfer: { createdByUserId: string; sourceAccount: { kind: string }; destinationAccount: { kind: string } }) => {
+    const authorizeAction = async (tx: Transaction, transfer: { sourceAccount: { kind: string }; destinationAccount: { kind: string } }) => {
       await this.authorize(tx, actorId, rolesFor(forOrigin ? transfer.sourceAccount.kind : transfer.destinationAccount.kind));
-      if (forOrigin && transfer.createdByUserId !== actorId) throw new ForbiddenException("仅原经办人可以办理驳回后的转款");
     };
     return this.transaction(async tx => {
       const transfer = await tx.registeredFundTransfer.findUnique({
@@ -126,6 +138,22 @@ export class FundAccountTransferService {
       const replay = await this.replay(tx, actorId, input.idempotencyKey, requestHash);
       if (replay) return replay;
       await this.lockAccounts(tx, transfer.sourceAccountId, transfer.destinationAccountId);
+      if (!forOrigin && transfer.destinationAccount.kind === "public_cash") {
+        await assertPublicCashCustodian(tx, transfer.destinationAccountId, actorId);
+      }
+      let handoverId: string | undefined;
+      if (forOrigin && transfer.createdByUserId !== actorId) {
+        if (transfer.sourceAccount.kind === "public_cash" &&
+            await currentPublicCashCustodian(tx, transfer.sourceAccountId) === actorId) {
+          const handover = await tx.publicCashHandover.findFirst({
+            where: { accountId: transfer.sourceAccountId, fromCustodianId: transfer.createdByUserId,
+              fromCustodian: { isActive: false }, receipt: { isNot: null } },
+            select: { id: true }, orderBy: { startedRevision: "desc" }
+          });
+          handoverId = handover?.id;
+        }
+        if (!handoverId) throw new ForbiddenException("仅原经办人或已完成离职交接的现任现金保管人可以处理驳回转款");
+      }
       // This snapshot saw the newer revision and no receipt for this key.
       // The database only permits a one-step increment, so the original action cannot now commit.
       if (transfer.revision > input.expectedRevision) throw supersededTransferCommand();
@@ -166,7 +194,7 @@ export class FundAccountTransferService {
           ...transfer.lines.map(line => ({ ...this.sourceSnapshot(line.sourceBatch, line.amountYuan, null), receivedTransferLineId: line.id }))
         ]);
       }
-      return this.record(tx, actorId, { ...transfer, status, revision }, input.idempotencyKey, requestHash, input.action, evidence);
+      return this.record(tx, actorId, { ...transfer, status, revision }, input.idempotencyKey, requestHash, input.action, evidence, handoverId);
     }, { actorId, key: input.idempotencyKey, requestHash, authorize: async tx => {
       const transfer = await tx.registeredFundTransfer.findUnique({
         where: { id: transferId }, include: { sourceAccount: true, destinationAccount: true }
@@ -226,11 +254,12 @@ export class FundAccountTransferService {
     return evidence;
   }
 
-  private async record(tx: Transaction, actorId: string, transfer: { id: string; status: string; revision: number }, key: string, requestHash: string, action: string, evidence: string) {
+  private async record(tx: Transaction, actorId: string, transfer: { id: string; status: string; revision: number }, key: string, requestHash: string, action: string, evidence: string, handoverId?: string) {
     await tx.registeredFundTransferAction.create({ data: { idempotencyKey: key, transferId: transfer.id, actorUserId: actorId,
       revision: transfer.revision, status: transfer.status, action, evidenceReference: evidence, payloadFingerprint: requestHash } });
     await this.audit.record(tx, { actorUserId: actorId, action: `fund_account.transfer.${action}`, businessType: "registered_fund_transfer",
-      businessId: transfer.id, metadata: { revision: transfer.revision, status: transfer.status, evidenceReference: evidence } });
+      businessId: transfer.id, metadata: { revision: transfer.revision, status: transfer.status, evidenceReference: evidence,
+        ...(handoverId ? { cashCustodyHandoverId: handoverId } : {}) } });
     return { id: transfer.id, revision: transfer.revision, status: transfer.status };
   }
 

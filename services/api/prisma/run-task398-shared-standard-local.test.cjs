@@ -192,6 +192,7 @@ test('browser and overpay modes are explicit and preserve standard selection',()
  assert.equal(selectTask398Scenario([]),'src/database/task16-shared-standard.http.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--overpay-real']),'src/database/task16-shared-standard.http.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--ledger-loss-real']),'src/database/task16-shared-standard.http.pg.spec.ts');
+ assert.equal(selectTask398Scenario(['--cash-handover-real']),'src/database/task25-public-cash-handover.http.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--browser-real']),'src/database/task16-real-browser.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--browser-completion-real']),'src/database/task16-real-browser-completion.pg.spec.ts');
  assert.throws(()=>selectTask398Scenario(['--browser-real','--other']));

@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 44,
-    "exportedFunctionCount": 713,
-    "transportWrapperCount": 691,
-    "pureExportCount": 22,
-    "mainRequestBindingCount": 731,
+    "apiModuleCount": 45,
+    "exportedFunctionCount": 718,
+    "transportWrapperCount": 695,
+    "pureExportCount": 23,
+    "mainRequestBindingCount": 735,
     "ticketFollowupCount": 5,
-    "requestEdgeCount": 720,
-    "productionConsumerCount": 604,
+    "requestEdgeCount": 724,
+    "productionConsumerCount": 608,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 394,
-    "reachableProductionModuleCount": 375
+    "productionModuleCount": 396,
+    "reachableProductionModuleCount": 377
   },
   "wrappers": [
     {
@@ -17486,6 +17486,126 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "assertPublicCashHandoverReceipt",
+      "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "claimInitialPublicCashCustody",
+      "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 66,
+          "method": "POST",
+          "path": "/public-cash-handovers/initial-custodian",
+          "normalizedPath": "/public-cash-handovers/initial-custodian",
+          "normalizedKey": "POST /public-cash-handovers/initial-custodian",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "claimInitialPublicCashCustody"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmPublicCashHandover",
+      "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 72,
+          "method": "POST",
+          "path": "/public-cash-handovers/:param/confirmation",
+          "normalizedPath": "/public-cash-handovers/:param/confirmation",
+          "normalizedKey": "POST /public-cash-handovers/:param/confirmation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmPublicCashHandover"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchPublicCashHandovers",
+      "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 55,
+          "method": "GET",
+          "path": "/public-cash-handovers",
+          "normalizedPath": "/public-cash-handovers",
+          "normalizedKey": "GET /public-cash-handovers",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPublicCashHandovers"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "startPublicCashHandover",
+      "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 69,
+          "method": "POST",
+          "path": "/public-cash-handovers",
+          "normalizedPath": "/public-cash-handovers",
+          "normalizedKey": "POST /public-cash-handovers",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "startPublicCashHandover"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []

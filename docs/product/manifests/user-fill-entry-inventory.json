@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 417,
+    "activeBusinessActionCount": 421,
     "technicalActionCount": 10,
-    "activeBindingCount": 483,
+    "activeBindingCount": 489,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -5085,6 +5085,72 @@
       ],
       "bindingCount": 1,
       "productionConsumerCount": 3,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.claim",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers/initial-custodian"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers/:param/confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers",
+        "POST /public-cash-handovers/:param/confirmation",
+        "POST /public-cash-handovers/initial-custodian"
+      ],
+      "bindingCount": 3,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.start",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
       "causalVerified": true
     },
     {

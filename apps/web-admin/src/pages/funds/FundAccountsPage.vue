@@ -6,6 +6,7 @@ import { fetchFundReview, fetchFundAccount, fetchFundBalanceRegistration, fetchF
 import { formatUnknownApiError } from "../../api/error-message";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import FundAccountTransfers from "./FundAccountTransfers.vue";
+import PublicCashHandoverPanel from "./PublicCashHandoverPanel.vue";
 const route = useRoute();
 const isTargetReview = computed(() => typeof route.params.registrationId === "string");
 const processedTarget = ref(false);
@@ -222,6 +223,10 @@ onMounted(load);
         label="资金转款"
       />
       <t-tab-panel
+        value="handover"
+        label="现金保管交接"
+      />
+      <t-tab-panel
         value="history"
         label="流水与核对记录"
       />
@@ -233,6 +238,7 @@ onMounted(load);
       :account-loading="loading"
       @refresh-accounts="load"
     />
+    <PublicCashHandoverPanel v-if="activeView === 'handover' && !isTargetReview" />
     <t-card
       v-if="processedTarget"
       title="本次办理已完成"

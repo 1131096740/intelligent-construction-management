@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "fa4e9fedc7cffd9f66bb8a177feb0238fcb75d54955b2c197f2d603c6a7037c1",
+      "sha256": "5c4ffb397fa35df96a7dc31bd37a7df587f05c5031fec6ceccadd401dc5fda71",
       "status": "ready",
       "summary": {
-        "routeCount": 737
+        "routeCount": 741
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "1adf69c5894432df0d480700bd6361b0544149f6e395234a90388e05b6989a27",
+      "sha256": "0e2bc7c30539e6aa76805054c092aa73e7b2588d394e95c194aa76d470b1f45d",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 44,
-        "exportedFunctionCount": 713,
-        "transportWrapperCount": 691,
-        "pureExportCount": 22,
-        "mainRequestBindingCount": 731,
+        "apiModuleCount": 45,
+        "exportedFunctionCount": 718,
+        "transportWrapperCount": 695,
+        "pureExportCount": 23,
+        "mainRequestBindingCount": 735,
         "ticketFollowupCount": 5,
-        "requestEdgeCount": 720,
-        "productionConsumerCount": 604,
+        "requestEdgeCount": 724,
+        "productionConsumerCount": 608,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "087c76c08257a8d6699cb417ccfd868e66087785609820cd45061e0cefbbf6cb",
+      "sha256": "33fdd3667d155111fd2985c6c7ba2a0db207c68b4d473444df4b1483443b52cb",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 430,
-        "pageActionCount": 77,
+        "registeredActionCount": 434,
+        "pageActionCount": 81,
         "backgroundActionCount": 353,
-        "reachableVueFileCount": 215,
+        "reachableVueFileCount": 216,
         "routeRootCount": 74,
-        "totalVueFileCount": 228,
-        "parsedVueFileCount": 228,
-        "reachableProductionModuleCount": 375,
-        "templateEventDirectiveCount": 1450,
+        "totalVueFileCount": 229,
+        "parsedVueFileCount": 229,
+        "reachableProductionModuleCount": 377,
+        "templateEventDirectiveCount": 1455,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 417,
-        "candidateProductionMutationConsumerCount": 417,
-        "acceptedProductionMutationConsumerCount": 417,
-        "productionMutationConsumerPairCount": 417,
+        "coveredProductionMutationConsumerCount": 420,
+        "candidateProductionMutationConsumerCount": 420,
+        "acceptedProductionMutationConsumerCount": 420,
+        "productionMutationConsumerPairCount": 420,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "2d465293d245d448c1eed87468ca9fd48c45bcb3ab2901953f98df2a45d18b63",
+      "sha256": "e45727e0fbfbdaa2ce4cbb2e80f7e6142f4da05f3fcdb0d2f8a7f91396efaf4b",
       "status": "ready",
       "summary": {
-        "routeCount": 737,
-        "exactRouteCount": 737,
-        "normalizedRouteCount": 737,
+        "routeCount": 741,
+        "exactRouteCount": 741,
+        "normalizedRouteCount": 741,
         "classificationOverrideCount": 217,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
         "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-        "derivedProductionPageCount": 520,
-        "pageRouteCount": 538,
+        "derivedProductionPageCount": 524,
+        "pageRouteCount": 542,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 90,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 591,
+          "web_api_wrapper": 595,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 737,
-    "pageRouteCount": 538,
+    "routeCount": 741,
+    "pageRouteCount": 542,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 90,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 731,
+    "mainRequestBindingCount": 735,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 430,
-    "actionBindingCount": 498,
-    "acceptedActionBindingCount": 456,
+    "registeredActionCount": 434,
+    "actionBindingCount": 504,
+    "acceptedActionBindingCount": 462,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 417,
-    "coveredProductionMutationConsumerPairCount": 417,
+    "productionMutationConsumerPairCount": 420,
+    "coveredProductionMutationConsumerPairCount": 420,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -10816,6 +10816,50 @@
           "testConsumers": [
             "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/public-cash-handovers",
+        "normalizedKey": "GET /public-cash-handovers",
+        "controller": "PublicCashHandoverController",
+        "handler": "list",
+        "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "fetchPublicCashHandovers",
+          "method": "GET",
+          "path": "/public-cash-handovers",
+          "normalizedKey": "GET /public-cash-handovers",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -38382,6 +38426,291 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/public-cash-handovers/:id/confirmation",
+        "normalizedKey": "POST /public-cash-handovers/:param/confirmation",
+        "controller": "PublicCashHandoverController",
+        "handler": "confirm",
+        "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "confirmPublicCashHandover",
+          "method": "POST",
+          "path": "/public-cash-handovers/:param/confirmation",
+          "normalizedKey": "POST /public-cash-handovers/:param/confirmation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "public-cash-handover.confirm",
+          "bindingIndex": 0,
+          "identity": "public-cash-handover.confirm\u0000apps/web-admin/src/api/public-cash-handover.api.ts\u0000confirmPublicCashHandover\u0000POST\u0000POST /public-cash-handovers/:param/confirmation\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "confirmAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "confirmPublicCashHandover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "public-cash-handover.recover-original",
+          "bindingIndex": 1,
+          "identity": "public-cash-handover.recover-original\u0000apps/web-admin/src/api/public-cash-handover.api.ts\u0000confirmPublicCashHandover\u0000POST\u0000POST /public-cash-handovers/:param/confirmation\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "recoveryAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "confirmPublicCashHandover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/public-cash-handovers/initial-custodian",
+        "normalizedKey": "POST /public-cash-handovers/initial-custodian",
+        "controller": "PublicCashHandoverController",
+        "handler": "claimInitial",
+        "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "claimInitialPublicCashCustody",
+          "method": "POST",
+          "path": "/public-cash-handovers/initial-custodian",
+          "normalizedKey": "POST /public-cash-handovers/initial-custodian",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "public-cash-handover.claim",
+          "bindingIndex": 0,
+          "identity": "public-cash-handover.claim\u0000apps/web-admin/src/api/public-cash-handover.api.ts\u0000claimInitialPublicCashCustody\u0000POST\u0000POST /public-cash-handovers/initial-custodian\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "claimAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "claimInitialPublicCashCustody",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "public-cash-handover.recover-original",
+          "bindingIndex": 0,
+          "identity": "public-cash-handover.recover-original\u0000apps/web-admin/src/api/public-cash-handover.api.ts\u0000claimInitialPublicCashCustody\u0000POST\u0000POST /public-cash-handovers/initial-custodian\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "recoveryAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "claimInitialPublicCashCustody",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/public-cash-handovers",
+        "normalizedKey": "POST /public-cash-handovers",
+        "controller": "PublicCashHandoverController",
+        "handler": "start",
+        "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "startPublicCashHandover",
+          "method": "POST",
+          "path": "/public-cash-handovers",
+          "normalizedKey": "POST /public-cash-handovers",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "public-cash-handover.recover-original",
+          "bindingIndex": 2,
+          "identity": "public-cash-handover.recover-original\u0000apps/web-admin/src/api/public-cash-handover.api.ts\u0000startPublicCashHandover\u0000POST\u0000POST /public-cash-handovers\u00002",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "recoveryAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "startPublicCashHandover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "public-cash-handover.start",
+          "bindingIndex": 0,
+          "identity": "public-cash-handover.start\u0000apps/web-admin/src/api/public-cash-handover.api.ts\u0000startPublicCashHandover\u0000POST\u0000POST /public-cash-handovers\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "startAllowed",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "startPublicCashHandover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
           ],
           "causalVerified": true,
           "accepted": true,

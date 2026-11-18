@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 430,
-    "pageActionCount": 77,
+    "registeredActionCount": 434,
+    "pageActionCount": 81,
     "backgroundActionCount": 353,
-    "reachableVueFileCount": 215,
+    "reachableVueFileCount": 216,
     "routeRootCount": 74,
-    "totalVueFileCount": 228,
-    "parsedVueFileCount": 228,
-    "reachableProductionModuleCount": 375,
-    "templateEventDirectiveCount": 1450,
+    "totalVueFileCount": 229,
+    "parsedVueFileCount": 229,
+    "reachableProductionModuleCount": 377,
+    "templateEventDirectiveCount": 1455,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 417,
-    "candidateProductionMutationConsumerCount": 417,
-    "acceptedProductionMutationConsumerCount": 417,
-    "productionMutationConsumerPairCount": 417,
+    "coveredProductionMutationConsumerCount": 420,
+    "candidateProductionMutationConsumerCount": 420,
+    "acceptedProductionMutationConsumerCount": 420,
+    "productionMutationConsumerPairCount": 420,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 394,
-    "reachableProductionModuleCount": 375,
-    "totalVueFileCount": 228,
-    "parsedVueFileCount": 228
+    "totalProductionModuleCount": 396,
+    "reachableProductionModuleCount": 377,
+    "totalVueFileCount": 229,
+    "parsedVueFileCount": 229
   },
   "actions": [
     {
@@ -11884,7 +11884,7 @@
         "event": "click",
         "handler": "confirm",
         "kind": "event",
-        "sourceLine": 580,
+        "sourceLine": 586,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11949,7 +11949,7 @@
         "event": "click",
         "handler": "submitOpeningBalance",
         "kind": "event",
-        "sourceLine": 507,
+        "sourceLine": 513,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12018,7 +12018,7 @@
         "event": "click",
         "handler": "submitCorrectionBalance",
         "kind": "event",
-        "sourceLine": 514,
+        "sourceLine": 520,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12087,7 +12087,7 @@
         "event": "click",
         "handler": "returnBalanceCorrection",
         "kind": "event",
-        "sourceLine": 573,
+        "sourceLine": 579,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12153,7 +12153,7 @@
         "event": "confirm",
         "handler": "withdrawBalanceCorrection",
         "kind": "event",
-        "sourceLine": 594,
+        "sourceLine": 600,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -23443,6 +23443,362 @@
             "localCallChain": [
               "validateProjectUpstreamFundDraftWithDefinition",
               "validateBusinessEntryDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "public-cash-handover.claim",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "claim",
+        "kind": "event",
+        "sourceLine": 163,
+        "sourceColumn": 69
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "claimAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "claimInitialPublicCashCustody",
+          "method": "POST",
+          "path": "/public-cash-handovers/initial-custodian",
+          "normalizedKey": "POST /public-cash-handovers/initial-custodian",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/public-cash-handovers/initial-custodian",
+            "normalizedKey": "POST /public-cash-handovers/initial-custodian",
+            "controller": "PublicCashHandoverController",
+            "handler": "claimInitial",
+            "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "claim",
+              "claimInitialPublicCashCustody"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "public-cash-handover.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "confirm",
+        "kind": "event",
+        "sourceLine": 190,
+        "sourceColumn": 71
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "confirmAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "confirmPublicCashHandover",
+          "method": "POST",
+          "path": "/public-cash-handovers/:param/confirmation",
+          "normalizedKey": "POST /public-cash-handovers/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/public-cash-handovers/:id/confirmation",
+            "normalizedKey": "POST /public-cash-handovers/:param/confirmation",
+            "controller": "PublicCashHandoverController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirm",
+              "confirmPublicCashHandover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "public-cash-handover.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryPending",
+        "kind": "event",
+        "sourceLine": 167,
+        "sourceColumn": 57
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "recoveryAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "claimInitialPublicCashCustody",
+          "method": "POST",
+          "path": "/public-cash-handovers/initial-custodian",
+          "normalizedKey": "POST /public-cash-handovers/initial-custodian",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/public-cash-handovers/initial-custodian",
+            "normalizedKey": "POST /public-cash-handovers/initial-custodian",
+            "controller": "PublicCashHandoverController",
+            "handler": "claimInitial",
+            "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryPending",
+              "claimInitialPublicCashCustody"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "confirmPublicCashHandover",
+          "method": "POST",
+          "path": "/public-cash-handovers/:param/confirmation",
+          "normalizedKey": "POST /public-cash-handovers/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/public-cash-handovers/:id/confirmation",
+            "normalizedKey": "POST /public-cash-handovers/:param/confirmation",
+            "controller": "PublicCashHandoverController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryPending",
+              "confirmPublicCashHandover"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "startPublicCashHandover",
+          "method": "POST",
+          "path": "/public-cash-handovers",
+          "normalizedKey": "POST /public-cash-handovers",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/public-cash-handovers",
+            "normalizedKey": "POST /public-cash-handovers",
+            "controller": "PublicCashHandoverController",
+            "handler": "start",
+            "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryPending",
+              "startPublicCashHandover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "public-cash-handover.start",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "start",
+        "kind": "event",
+        "sourceLine": 181,
+        "sourceColumn": 108
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "startAllowed",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/public-cash-handover.api.ts",
+          "wrapper": "startPublicCashHandover",
+          "method": "POST",
+          "path": "/public-cash-handovers",
+          "normalizedKey": "POST /public-cash-handovers",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/public-cash-handovers",
+            "normalizedKey": "POST /public-cash-handovers",
+            "controller": "PublicCashHandoverController",
+            "handler": "start",
+            "sourceFile": "services/api/src/fund-account/public-cash-handover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "start",
+              "startPublicCashHandover"
             ]
           },
           "ticketFollowups": []

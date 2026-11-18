@@ -8,6 +8,12 @@ datasource db {
 }
 
 model User {
+  currentCashCustodies PublicCashCustody[] @relation("CurrentPublicCashCustodian")
+  initialCashCustodies PublicCashCustody[] @relation("InitialPublicCashCustodian")
+  outgoingCashHandovers PublicCashHandover[] @relation("PreviousPublicCashCustodian")
+  incomingCashHandovers PublicCashHandover[] @relation("SuccessorPublicCashCustodian")
+  initiatedCashHandovers PublicCashHandover[] @relation("PublicCashHandoverInitiator")
+  confirmedCashHandovers PublicCashHandoverReceipt[]
   registeredFundTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferActor")
   registeredFundTransferActions RegisteredFundTransferAction[] @relation("RegisteredFundTransferActionActor")
   id                                 String                            @id @default(uuid())
@@ -173,6 +179,54 @@ model RegisteredFundAccount {
   registrations FundAccountBalanceRegistration[]
   outgoingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferSource")
   incomingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferDestination")
+  publicCashCustody PublicCashCustody?
+  cashHandovers PublicCashHandover[]
+  createdAt DateTime @default(now())
+}
+
+model PublicCashCustody {
+  accountId String @id
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  currentCustodianId String
+  currentCustodian User @relation("CurrentPublicCashCustodian", fields: [currentCustodianId], references: [id], onDelete: Restrict)
+  initialCustodianId String
+  initialCustodian User @relation("InitialPublicCashCustodian", fields: [initialCustodianId], references: [id], onDelete: Restrict)
+  initialIdempotencyKey String @unique
+  initialRevision Int
+  assignedAt DateTime @default(now())
+}
+
+model PublicCashHandover {
+  id String @id @default(uuid())
+  accountId String
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  fromCustodianId String
+  fromCustodian User @relation("PreviousPublicCashCustodian", fields: [fromCustodianId], references: [id], onDelete: Restrict)
+  toCustodianId String
+  toCustodian User @relation("SuccessorPublicCashCustodian", fields: [toCustodianId], references: [id], onDelete: Restrict)
+  startedByUserId String
+  startedBy User @relation("PublicCashHandoverInitiator", fields: [startedByUserId], references: [id], onDelete: Restrict)
+  startedRevision Int
+  deliveredYuan Decimal @db.Decimal(24,4)
+  expectedBalanceYuan Decimal? @db.Decimal(24,4)
+  evidenceReference String
+  idempotencyKey String @unique
+  payloadFingerprint String
+  receipt PublicCashHandoverReceipt?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, startedRevision])
+}
+
+model PublicCashHandoverReceipt {
+  handoverId String @id
+  handover PublicCashHandover @relation(fields: [handoverId], references: [id], onDelete: Restrict)
+  confirmedByUserId String
+  confirmedBy User @relation(fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  amountReceivedYuan Decimal @db.Decimal(24,4)
+  discrepancyYuan Decimal? @db.Decimal(25,4)
+  idempotencyKey String @unique
+  payloadFingerprint String
   createdAt DateTime @default(now())
 }
 

@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 263,
-    "terminalMigration": "20261118150000_registered_fund_account_transfers",
-    "terminalMigrationChecksum": "9c62772bed9eaa293db4e546485ffa1e1aa62ebcfccaa46231c55039e80deb8d",
+    "expectedDirectoryCount": 264,
+    "terminalMigration": "20261118170000_public_cash_custody_handover",
+    "terminalMigrationChecksum": "4cf4830e08dd6e454ba7c085e6104b682eed00457f3a74c8a37a16959f7f996c",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 82,
-    "fullyPendingSuites": 70,
+    "pendingFiles": 83,
+    "fullyPendingSuites": 71,
     "partiallyPendingSuites": 12,
-    "pendingTests": 545,
-    "coveredFiles": 82,
-    "coveredTests": 545,
+    "pendingTests": 546,
+    "coveredFiles": 83,
+    "coveredTests": 546,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -761,14 +761,32 @@
       "state": "executable_local_runner",
       "issue": 398,
       "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task407_public_cash_handover",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task25-public-cash-handover.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 407,
+      "executionStatus": "NOT_EXECUTED"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 25,
-      "files": 81,
-      "tests": 544
+      "groups": 26,
+      "files": 82,
+      "tests": 545
     },
     "manualOnly": {
       "groups": 1,
