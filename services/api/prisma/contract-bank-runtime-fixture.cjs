@@ -43,6 +43,8 @@ DECLARE
   owner_oid oid := current_user::pg_catalog.regrole::oid;
   signature text;
   routine_oid oid;
+  owner_settlement_alias oid := pg_catalog.to_regprocedure('public.jg_file_business_binding_columns_before_owner_settlement()');
+  owner_settlement_lookup oid := pg_catalog.to_regprocedure('public.jg_project_owner_settlement_voucher_bound(pg_catalog.text)');
 BEGIN
   IF current_database() <> '${database}'
     OR current_user <> 'jiangkong' OR session_user <> current_user
@@ -72,6 +74,28 @@ BEGIN
       RAISE EXCEPTION 'Contract finance file guard fixture grant did not match';
     END IF;
   END LOOP;
+
+  -- Only a fully installed forward registry admits these two additional calls.
+  -- An old migration prefix does not know either routine and needs no new ACL.
+  IF owner_settlement_alias IS NOT NULL OR owner_settlement_lookup IS NOT NULL THEN
+    IF owner_settlement_alias IS NULL OR owner_settlement_lookup IS NULL
+      OR (SELECT count(*) FROM pg_catalog.pg_proc p
+        WHERE p.oid IN (owner_settlement_alias, owner_settlement_lookup)
+          AND p.pronamespace=pg_catalog.to_regnamespace('public') AND p.proowner=owner_oid
+          AND p.prokind='f' AND p.prosecdef=(p.oid=owner_settlement_lookup)
+          AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+            WHERE a.grantee=0 OR (a.grantee=fixture_oid AND (a.grantor<>owner_oid OR a.privilege_type<>'EXECUTE' OR a.is_grantable)))
+      )<>2 THEN
+      RAISE EXCEPTION 'Owner settlement voucher lookup requires the complete restricted catalog';
+    END IF;
+    EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement(), public.jg_project_owner_settlement_voucher_bound(pg_catalog.text) TO %I',fixture_role);
+    IF NOT pg_catalog.has_function_privilege(fixture_oid,owner_settlement_alias,'EXECUTE')
+      OR NOT pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')
+      OR pg_catalog.has_function_privilege(fixture_oid,owner_settlement_alias,'EXECUTE WITH GRANT OPTION')
+      OR pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'Owner settlement voucher fixture grant did not match';
+    END IF;
+  END IF;
 END;
 $contract_finance_file_guard$;`;
 }

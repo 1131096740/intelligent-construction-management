@@ -60,6 +60,14 @@ test("the signature guard can read each schema-backed candidate in the migration
   const file=path.join(migrationRoot,directory,"migration.sql");if(!fs.existsSync(file))continue;
   const source=fs.readFileSync(file,"utf8");if(!source.includes("jg_file_business_binding_columns"))continue;
   for(const match of source.matchAll(/\(\s*'([A-Za-z][A-Za-z0-9_]*)'\s*,\s*'([A-Za-z][A-Za-z0-9_]*)'\s*,\s*(?:TRUE|FALSE)/giu)){
+   if(directory==="20261118185000_project_owner_settlement_voucher_binding" && match[1]==="ProjectOwnerSettlementEntry" && match[2]==="voucherFileId"){
+    assert.ok(source.includes("binding_exists := public.jg_project_owner_settlement_voucher_bound(candidate_file_id)"));
+    assert.ok(source.includes("REVOKE ALL ON FUNCTION public.jg_project_owner_settlement_voucher_bound(TEXT) FROM PUBLIC"));
+    const fixtureGrant=fs.readFileSync(path.join(__dirname,"contract-bank-runtime-fixture.cjs"),"utf8");
+    assert.ok(fixtureGrant.includes("GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement(), public.jg_project_owner_settlement_voucher_bound(pg_catalog.text) TO %I"));
+    assert.ok(!plan.runtime.tables.find(row=>row.table===match[1])?.select.includes(match[2]));
+    continue;
+   }
    if(models.has(match[1]))assert.ok(plan.runtime.tables.find(row=>row.table===match[1])?.select.includes(match[2]),`${directory}: ${match[1]}.${match[2]}`);
   }
  }
