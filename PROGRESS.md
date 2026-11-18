@@ -1,5 +1,11 @@
 # 建工智管当前状态
 
+## 2026-11-18 合同银行资料隔离验证
+
+准确本地提交 `1b938d2f53e8d963ba2a3ec4eb15c03e825f3414` 的合同草稿组在全新虚构 PostgreSQL 16 中完成 262 个迁移，6 套测试 31/31 通过；包括公司银行绑定保存、重载、旧版本拒绝、新版本重新绑定及旧处理中合同文书失效。[运行日志](/private/tmp/jg392-company-bank-pg-1118-ceZV3C/official-run-262-local2.log) SHA `8f46ed2da12cb5962773abe4f0eb567244fba067adb01b30b1b80e3d8b6e5ab2`；[独立清理核对](/private/tmp/jg392-company-bank-pg-1118-ceZV3C/cleanup-independent.json) SHA `c66bfb670ce13ab3523a8afe48b9f27433734bacdb9b3ed29e9253a562c0e268` 确认记录的本轮容器和临时目录已不存在；未独立检查主机端口或其他资源。该银行测试仅覆盖顺序版本变化，不证明并发或完整合同业务链。
+
+付款 262 资格尚未就绪，既有 261 资格不能用于证明当前候选；超付场景仍为 UNKNOWN。#394、#398 和 #382 均未完整验收，本次未推送或操作生产。
+
 ## 2026-11-17 经营账响应丢失隔离结果
 
 准确 `210898f008e1250dc18cdab4adfeae99ed4c05fe` 的虚构真实隔离运行停在 `LEDGER_LOSS_RESULT_OBSERVE_REPLAY`，结果 UNKNOWN，未产生 accounting 证据，无法判断是否提交或重放；原键禁止重试，secret 已清除。[回执](/private/tmp/jg-ledger-loss210-qj2bpsf5/receipt.json) SHA `b3ca396fa5f658ba9ea3dbd60be21f06f89e97e3b6685582082704217abc64b8`，[日志](/private/tmp/jg-ledger-loss-210-once.log) SHA `e1c5fc5a86bb9d2d412ce243cf3fba79ef65bd834e3967690c5d992836506eff`，[清理](/private/tmp/jg-ledger-loss-210-cleanup.json) SHA `2fdee853a5417da651b428b575e747375a3aa7953bee05613506e82c18bc29d3`，清理核查仅覆盖已记录对象。
