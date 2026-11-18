@@ -1,3 +1,4 @@
+import { COMPANY_BANK_BINDING_GATE } from "../contract-workbench/company-bank-binding";
 import { assertAutomaticPartyMapping, AUTOMATIC_PARTY_GUARD_PREFIX } from "./contract-automatic-party-mapping";
 import { reviewedBuiltinTemplateKind } from "./builtin-template-parts";
 import { applyMechanicalContactLayout, MECHANICAL_CONTACT_LAYOUT_V1, MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
@@ -1071,8 +1072,11 @@ export class ContractDocumentProcessor
     const frozenTag=raw.bodyDocument?.partyDetailsVersion ?? raw.partyDetailsVersion;
     const automaticPartyMappingGuard=typeof frozenTag==="string" && frozenTag.startsWith(AUTOMATIC_PARTY_GUARD_PREFIX);
     const guardedTag=automaticPartyMappingGuard ? (frozenTag as string).slice(AUTOMATIC_PARTY_GUARD_PREFIX.length) : frozenTag;
-    const equivalentBuiltInSource=typeof guardedTag==="string" && guardedTag.startsWith("built-in-equivalent-v1:");
-    const rawTag=equivalentBuiltInSource ? (guardedTag as string).slice("built-in-equivalent-v1:".length) : guardedTag;
+    const bankBound=typeof guardedTag==="string" && guardedTag.startsWith(COMPANY_BANK_BINDING_GATE);
+    if(bankBound&&!automaticPartyMappingGuard)throw new Error("合同文档输入快照格式不正确");
+    const bankTag=bankBound ? (guardedTag as string).slice(COMPANY_BANK_BINDING_GATE.length) : guardedTag;
+    const equivalentBuiltInSource=typeof bankTag==="string" && bankTag.startsWith("built-in-equivalent-v1:");
+    const rawTag=equivalentBuiltInSource ? (bankTag as string).slice("built-in-equivalent-v1:".length) : bankTag;
     if (equivalentBuiltInSource && ![MAPPED_MATERIAL_SIGNATURE_GATE,MAPPED_GENERIC_BODY_GATE,MAPPED_GENERIC_LEGACY_GATE,LEGACY_BODY_SIGNATURE_VERSION,LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===rawTag)) throw new Error("合同文档输入快照格式不正确");
     const gates=new Map<string,PartyPlacementVersion>([[MAPPED_MATERIAL_SIGNATURE_GATE,SIGNATURE_SUPPLEMENT_PAGE_VERSION],[MAPPED_GENERIC_BODY_GATE,GENERIC_SIGNATURE_REVIEW_VERSION],[MAPPED_GENERIC_LEGACY_GATE,GENERIC_BANK_VALUES_VERSION]]);
     const mappedCanonical=typeof rawTag==="string"?gates.get(rawTag):undefined;

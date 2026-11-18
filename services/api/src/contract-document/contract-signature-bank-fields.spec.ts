@@ -22,3 +22,22 @@ it("accepts the tested single-line capacity and identifies the precise invalid f
  expect(()=>assertBankFieldCapacity({...values,"party.counterparty.paymentAccount":"号".repeat(41)})).toThrow("乙方实际收款账号");
  expect(()=>assertBankFieldCapacity({...values,"party.owner.openingBank":"虚构𠮷银行"})).not.toThrow();
 });
+it("uses explicitly bound company bank data without assigning old party data to that company",()=>{
+ const selected={id:"company-a",versionId:"version-a",name:"同名"};
+ const oldParty={name:"同名",bankAccount:"new-account"};
+ const counterparty={bankAccount:"b-account"};
+ const binding={protocolVersion:1 as const,companyEntityId:"company-a",companyEntityVersionNo:1,companyEntityVersionId:"version-a",values:{openingBank:"new-bank",bankAccount:"new-account",paymentBank:"",paymentAccount:""}};
+ expect(projectSignatureBankValues({"party.owner":[selected],"party.counterparty":[counterparty]},[{roleKey:"party_a",snapshot:oldParty},{roleKey:"party_b",snapshot:counterparty}],binding)).toMatchObject({"party.owner.bankAccount":"new-account","party.counterparty.bankAccount":"b-account"});
+ expect(oldParty.bankAccount).toBe("new-account");
+ expect(()=>projectSignatureBankValues({"party.owner":[{...selected,id:"different"}]},[],binding)).toThrow("核对");
+ expect(()=>projectSignatureBankValues({"party.owner":[{...selected,versionId:"changed"}]},[],binding)).toThrow("核对");
+});
+it("requires explicit resolution when an old party bank field is absent or different in the new binding",()=>{
+ const selected={id:"company-a",versionId:"version-a"};
+ const old={roleKey:"party_a",snapshot:{bankAccount:"OLD"}};
+ const binding={protocolVersion:1 as const,companyEntityId:"company-a",companyEntityVersionNo:1,companyEntityVersionId:"version-a",values:{openingBank:"bank",bankAccount:"",paymentBank:"",paymentAccount:""}};
+ expect(()=>projectSignatureBankValues({"party.owner":[selected]},[old],binding)).toThrow("核对");
+ expect(()=>projectSignatureBankValues({"party.owner":[selected]},[old],{...binding,values:{...binding.values,bankAccount:"OTHER"}})).toThrow("核对");
+ expect(projectSignatureBankValues({"party.owner":[selected]},[old],{...binding,values:{...binding.values,bankAccount:"OLD"}})["party.owner.bankAccount"]).toBe("OLD");
+ expect(old.snapshot.bankAccount).toBe("OLD");
+});

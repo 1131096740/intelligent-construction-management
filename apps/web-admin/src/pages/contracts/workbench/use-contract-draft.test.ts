@@ -488,6 +488,21 @@ describe("useContractDraft", () => {
     expect(mockTakeOverLease).not.toHaveBeenCalled();
   });
 
+  it("keeps an explicitly company-bound bank value across aggregate save and reload", async () => {
+    const binding = { protocolVersion: 1, companyEntityId: "company-a", companyEntityVersionNo: 3, companyEntityVersionId: "version-3", values: { openingBank: "虚构银行", bankAccount: "A001", paymentBank: "", paymentAccount: "" } };
+    const initial = makeWorkbench();
+    const reloaded = workbenchReceiptAtRevision(4);
+    reloaded.version.draftData = { ...reloaded.version.draftData, companyBankBinding: binding };
+    mockFetchWorkbench.mockResolvedValueOnce(initial).mockResolvedValueOnce(reloaded);
+    mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
+    const draft = makeDraft(); await draft.load("cv-1");
+    draft.model.extraDraftData = { ...draft.model.extraDraftData, companyBankBinding: binding };
+    draft.markDirty(); await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockSaveDraft.mock.calls[0]?.[2].draft.draftData.companyBankBinding).toEqual(binding);
+    await draft.reload();
+    expect(draft.model.extraDraftData.companyBankBinding).toEqual(binding);
+  });
+
   it("queues preview only when the caller explicitly requests it after a successful save", async () => {
     const draft = makeDraft();
     mockFetchWorkbench

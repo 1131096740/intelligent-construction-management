@@ -1,3 +1,4 @@
+import { COMPANY_BANK_BINDING_GATE, normalizeCompanyBankBinding } from "../contract-workbench/company-bank-binding";
 import { assertAutomaticPartyMapping, AUTOMATIC_PARTY_GUARD_PREFIX } from "./contract-automatic-party-mapping";
 import { reviewedBuiltinTemplateKind } from "./builtin-template-parts";
 import { prepareLegacyPartyRoleBindings } from "./contract-mechanical-party-placement";
@@ -320,7 +321,7 @@ export class ContractDocumentService {
         const mappedSignatureVersion = (partyKind==="generic" || (version.numericProtocolVersion===2 && (partyKind==="material" || partyKind==="mechanical"))) ? "built-in-mapped-signature-supplement-v1" as const : undefined;
         const selectedPartyDetailsVersion = mappedSignatureVersion ? (partyKind === "generic" ? (useBodyRenderer ? MAPPED_GENERIC_BODY_GATE : MAPPED_GENERIC_LEGACY_GATE) : MAPPED_MATERIAL_SIGNATURE_GATE) : partyDetailsVersion;
         const sourcePartyDetailsVersion = equivalentBuiltIn && selectedPartyDetailsVersion ? `built-in-equivalent-v1:${selectedPartyDetailsVersion}` as const : selectedPartyDetailsVersion;
-        const frozenPartyDetailsVersion = partyKind && sourcePartyDetailsVersion ? `${AUTOMATIC_PARTY_GUARD_PREFIX}${sourcePartyDetailsVersion}` as const : sourcePartyDetailsVersion;
+        const frozenPartyDetailsVersion = partyKind && sourcePartyDetailsVersion ? `${AUTOMATIC_PARTY_GUARD_PREFIX}${draftData.companyBankBinding === undefined ? "" : COMPANY_BANK_BINDING_GATE}${sourcePartyDetailsVersion}` as const : sourcePartyDetailsVersion;
         if (partyKind) assertAutomaticPartyMapping(selectedSource.buffer, confirmedLayoutSourceMapping(layout));
         const mechanicalContactLayoutVersion=partyKind==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:undefined;
         const genericFontTableVersion=partyKind==="generic" ? equivalentBuiltIn ? EQUIVALENT_GENERIC_FONT_VERSION : BUILT_IN_GENERIC_FONT_VERSION : undefined;
@@ -1512,7 +1513,8 @@ export class ContractDocumentService {
     // Server layout context wins after every configurable field/party/bill merge.
     if (tableLayoutVersion !== undefined) values["contract.tableLayoutVersion"] = tableLayoutVersion;
 
-    const finalValues=includeSignatureBanks?projectSignatureBankValues(values,parties):values;
+    const bankBinding = !includeSignatureBanks || draftData.companyBankBinding === undefined ? undefined : normalizeCompanyBankBinding(draftData.companyBankBinding,draftData.companyBankBinding,null);
+    const finalValues=includeSignatureBanks?projectSignatureBankValues(values,parties,bankBinding):values;
     return Object.fromEntries(
       Object.entries(finalValues).map(([key, value]) => [key, this.jsonSafeRenderValue(value)])
     );

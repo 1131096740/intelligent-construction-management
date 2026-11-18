@@ -554,6 +554,7 @@
                 <ContractOverviewSection :workbench="workbench" />
                 <ContractBasicSection
                   mode="basic"
+                  :parties="aggregateModel.parties"
                   :definition="workbench?.businessEntry?.definition"
                   :model="model"
                   :disabled="editorDisabled"

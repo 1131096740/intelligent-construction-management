@@ -355,6 +355,22 @@ describe("ContractDocumentService", () => {
     await expect(makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]})).rejects.toThrow("请先填写合同甲乙双方名称，再生成合同");
     expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();expect(parties.find(p=>p.roleKey===missing)?.snapshot.name).toBe("  ");
   });
+  it.each(["inside", "upward"])("freezes explicitly bound company bank values and a distinct worker gate for %s on a real template queue",async(relationship)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx")),positions=readLayoutSourcePositions(source);
+    const bindings=positions.positions.flatMap(position=>[["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
+    const mapping=prepareLayoutSourceMapping(source,"layout-file-1",2,bindings).mapping,tx=makeTx(),layout=await tx.contractLayoutTemplateVersion.findUnique();
+    layout.placeholderSchema.sourceMapping={...mapping,confirmation:{sourceFileId:mapping.sourceFileId,sourceSha256:mapping.sourceSha256,draftRevision:2,mappingFingerprint:mapping.fingerprint,previewJobId:"confirmed-preview",previewPdfFileId:"confirmed-pdf"}};
+    tx.companyEntity.findUnique.mockResolvedValue({id:"entity-1",isActive:true,dataStatus:"complete",currentVersionNo:3});
+    const version=await tx.contractVersion.findUnique();
+    const contract=await tx.contract.findUnique(); Object.assign(contract,{projectId:"project-1",companyEntityId:"entity-1"});
+    Object.assign(version,{numericProtocolVersion:2,changeType:"original",amountYuan:null,draftData:{contractName:"虚构合同",contractBasics:{relationship},companyEntitySelection:{id:"entity-1",versionId:"version-3",versionNo:3,name:"虚构甲方",unifiedSocialCreditCode:"TEST",registeredAddress:""},companyBankBinding:{protocolVersion:1,companyEntityId:"entity-1",companyEntityVersionId:"version-3",companyEntityVersionNo:3,values:{openingBank:"虚构开户",bankAccount:"A001",paymentBank:"",paymentAccount:""}}}});
+    tx.contractPartySnapshot.findMany.mockResolvedValue([...(relationship === "inside" ? [{roleKey:"party_a",displayOrder:0,snapshot:{name:"虚构甲方",bankAccount:"A001"}}] : []),{roleKey:"party_b",displayOrder:0,snapshot:{name:"虚构乙方",bankAccount:"B001"}}]);
+    files.getFileBuffer.mockResolvedValueOnce({buffer:source,file:{id:"layout-file-1",storageStatus:"active",contentSha256:positions.sourceSha256}});
+    await makeService(tx).service.queue("version-1","owner-1",{layoutTemplateVersionId:"layout-1",purpose:"draft",attachmentFileIds:[]});
+    const snapshot=tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot;
+    expect(snapshot.bodyDocument.partyDetailsVersion).toBe("built-in-automatic-party-guard-v1:built-in-company-bank-binding-v1:built-in-mapped-material-signature-v1");
+    expect(snapshot.renderInput.values).toMatchObject({"party.owner.bankAccount":"A001","party.counterparty.bankAccount":"B001"});
+  });
   it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"])("projects both parties' saved bank values for newly queued legacy %s",async(filename)=>{
     const source=readFileSync(join(__dirname,"../../assets/templates",filename)),positions=readLayoutSourcePositions(source);
     const bindings=positions.positions.flatMap(position=>[["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]].flatMap(([token,fieldKey])=>{const start=position.text.indexOf(token);return start<0?[]:[{positionId:position.positionId,start,end:start+token.length,fieldKey}];}));
@@ -1890,6 +1906,20 @@ describe("ContractDocumentService", () => {
       companyEntityCreditCodeSnapshot: null,
       companyEntityRegisteredAddressSnapshot: null
     }, parties, [], "draft")).toThrow("合同已提交但我方主体冻结快照缺失");
+  });
+
+  it("projects saved company-bound bank data only for the exact selected company version", () => {
+    const { service } = makeService(makeTx());
+    const renderer = service as unknown as { renderValues: (...args: unknown[]) => Record<string, unknown> };
+    const binding = { protocolVersion: 1, companyEntityId: "company-a", companyEntityVersionNo: 3, companyEntityVersionId: "version-a", values: { openingBank: "虚构银行", bankAccount: "A-123", paymentBank: "", paymentAccount: "" } };
+    const selection = { id: "company-a", versionId: "version-a", versionNo: 3, name: "虚构甲方", unifiedSocialCreditCode: "TEST", registeredAddress: "" };
+    const version = { status: "draft", amountCents: 1n, invoiceType: null, defaultTaxRatePercent: null, draftData: { companyEntitySelection: selection, companyBankBinding: binding }, clauseSnapshot: [] };
+    const oldParty = { roleKey: "party_a", snapshot: { name: "虚构甲方", bankAccount: "A-123" } };
+    const contract = { name: "合同", temporaryCode: null, code: null };
+    const result = renderer.renderValues(contract, version, [oldParty], [], "draft", [], undefined, true);
+    expect(result["party.owner.bankAccount"]).toBe("A-123");
+    expect(oldParty.snapshot.bankAccount).toBe("A-123");
+    expect(() => renderer.renderValues(contract, { ...version, draftData: { ...version.draftData, companyEntitySelection: { ...selection, versionId: "other-version" } } }, [oldParty], [], "draft", [], undefined, true)).toThrow("核对");
   });
 
   it("queues v2 document output with canonical four-place amounts and unchanged content coordinates", async () => {

@@ -930,6 +930,19 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     );
   });
 
+  it.each(["inside", "upward"])("versions and invalidates document content when %s company bank binding changes", async (relationship) => {
+    const fingerprints: string[] = [];
+    for (const account of ["A-001", "A-002"]) {
+      const binding = { protocolVersion: 1, companyEntityId: "entity-1", companyEntityVersionNo: 3, companyEntityVersionId: "version-3", values: { openingBank: "虚构银行", bankAccount: account, paymentBank: "", paymentAccount: "" } };
+      const { service, tx } = makeSaveService({ fieldChanged: true, storedDraftData: { contractBasics: { relationship }, companyBankBinding: binding }, documentContentRevision: 7, documentContentFingerprint: "c".repeat(64) });
+      const result = await service.saveAggregate("cv-1", "owner-1", leaseToken, aggregateInput() as never);
+      fingerprints.push(String(result.documentContentFingerprint));
+      expect(result.documentContentRevision).toBe(8);
+      expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({ where: { contractVersionId: "cv-1", status: { in: ["queued", "processing", "success"] } }, data: { status: "stale" } });
+    }
+    expect(fingerprints[0]).not.toBe(fingerprints[1]);
+  });
+
   it("stales generated and preview documents only when document content changes", async () => {
     const changed = makeSaveService();
 

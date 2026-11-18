@@ -269,6 +269,17 @@ describe("ContractDocumentProcessor", () => {
     } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
   });
 
+  it("accepts only guarded company-bank-binding snapshot versions",()=>{
+    const base=queuedDocument().inputSnapshot;
+    const parse=(value:unknown)=>(new ContractDocumentProcessor({} as never,{} as never,{} as never) as unknown as {documentSnapshot:(input:unknown)=>unknown}).documentSnapshot(value);
+    const marker="built-in-company-bank-binding-v1:";
+    const inner="built-in-legacy-signature-bank-v1";
+    expect(()=>parse({...base,partyDetailsVersion:`built-in-automatic-party-guard-v1:${marker}${inner}`})).not.toThrow();
+    expect(()=>parse({...base,partyDetailsVersion:`${marker}${inner}`})).toThrow("合同文档输入快照格式不正确");
+    expect(()=>parse({...base,partyDetailsVersion:`built-in-automatic-party-guard-v1:${marker}unknown`})).toThrow("合同文档输入快照格式不正确");
+    expect(()=>parse({...base,partyDetailsVersion:inner})).not.toThrow();
+  });
+
   it("preserves historic labor versions and rejects abandoned image-placement snapshots",()=>{
     const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),sourceSha256=createHash("sha256").update(source).digest("hex"),base=queuedDocument().inputSnapshot;
     const parse=(value:unknown)=>(new ContractDocumentProcessor({} as never,{} as never,{} as never) as unknown as {documentSnapshot:(input:unknown)=>unknown}).documentSnapshot(value);

@@ -617,6 +617,20 @@ describe("ContractWorkbenchService", () => {
     expect(savedDraftData).not.toHaveProperty("project_name");
   });
 
+  it("rejects new or existing company bank bindings through the legacy writer without dropping them", async () => {
+    const binding = { protocolVersion: 1, companyEntityId: "entity-1", companyEntityVersionNo: 3, companyEntityVersionId: "entity-version-3", values: { openingBank: "虚构银行", bankAccount: "A-123", paymentBank: "", paymentAccount: "" } };
+    const input = { expectedRevision: 4, draftData: {}, clauses: [], pricingNature: "fixed_total" as const, amountSource: "manual" as const, manualAmountCents: "1000000", taxFacts: VALID_TAX_FACTS };
+    const tx = ownedVersionTx(); const service = makeService(tx);
+    await expect(service.saveDraft("version-1", "owner-1", { ...input, draftData: { companyBankBinding: binding } })).rejects.toThrow("新版合同工作台");
+    const version = await tx.contractVersion.findUnique();
+    version.draftData = { project_name: "旧", companyBankBinding: binding } as typeof version.draftData;
+    for (const draftData of [{}, { companyBankBinding: null }, { companyBankBinding: { ...binding, companyEntityId: "other" } }]) {
+      await expect(service.saveDraft("version-1", "owner-1", { ...input, draftData })).rejects.toThrow("新版合同工作台");
+    }
+    expect(version.draftData).toEqual({ project_name: "旧", companyBankBinding: binding });
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
   it("derives the company entity snapshot and synchronizes the parent contract", async () => {
     const tx = ownedVersionTx({
       $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1" }]),
@@ -1453,6 +1467,22 @@ describe("ContractWorkbenchService", () => {
     });
     expect(tx.paymentTermsStage.deleteMany).not.toHaveBeenCalled();
     expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["inside", "upward"])("binds company bank fields for %s in the aggregate draft transaction using the locked version", async (relationship) => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1" }]),
+      companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-1", dataStatus: "complete", currentVersionNo: 3, isActive: true }) },
+      companyEntityVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-3", versionNo: 3, name: "虚构公司", unifiedSocialCreditCode: "TEST", registeredAddress: null }) },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const binding = { protocolVersion: 1, companyEntityId: "entity-1", companyEntityVersionNo: 3, values: { openingBank: "虚构银行", bankAccount: "A-123", paymentBank: "", paymentAccount: "" } };
+    const result = await makeService(tx as never).prepareAggregateDraftFieldsInTransaction(tx as never,
+      { id: "version-1", changeType: "initial", baseVersionId: null, draftData: {}, templateSnapshot: { ...TEMPLATE_SNAPSHOT, billSchema: [] }, clauseSnapshot: [], amountLimitType: "capped", pricingNature: "fixed_total", amountSource: "manual", amountCents: 1000000n, estimatedAmountCents: null, amountAdjustmentReason: null, invoiceType: "vat_special", taxMode: "single_rate", defaultTaxRatePercent: new Prisma.Decimal("13"), taxFactSource: "contract_document", layoutTemplateVersionId: null } as never,
+      { expectedRevision: 4, draft: { companyEntityId: "entity-1", draftData: { contractBasics: { relationship }, companyBankBinding: binding }, clauses: [], pricingNature: "fixed_total", amountSource: "manual", manualAmountCents: "1000000", taxFacts: VALID_TAX_FACTS }, negotiationDocuments: { referencedGeneratedDocumentIds: [] } } as never);
+    expect(result.changed).toBe(true);
+    expect(result.storedDraftData).toEqual(expect.objectContaining({ companyBankBinding: { ...binding, companyEntityVersionId: "version-3" } }));
+    expect(tx.companyEntityVersion.findUnique).toHaveBeenCalled();
   });
 
   it("accepts validated nested DTO instances and treats absent versus empty negotiation references as identical", async () => {

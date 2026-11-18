@@ -1,3 +1,4 @@
+import type { CompanyBankBinding } from "../contract-workbench/company-bank-binding";
 import { ConflictException } from "@nestjs/common";
 const fields=["openingBank","bankAccount","paymentBank","paymentAccount"] as const;
 const fail=()=>{throw new ConflictException("合同主体与银行资料无法对应，请保留当前内容并核对主体信息后重试");};
@@ -13,9 +14,24 @@ export function assertBankFieldCapacity(values:Record<string,unknown>):void {
  }
 }
 /** Copies only saved fields whose party identity can be tied to the selected party. */
-export function projectSignatureBankValues(values:Record<string,unknown>,parties:ReadonlyArray<{roleKey:string;snapshot:unknown}>):Record<string,unknown>{
+export function projectSignatureBankValues(values:Record<string,unknown>,parties:ReadonlyArray<{roleKey:string;snapshot:unknown}>,binding?:CompanyBankBinding):Record<string,unknown>{
  const result={...values};
+ if(binding){
+  const selected=result["party.owner"];
+  if(!Array.isArray(selected)||selected.length!==1||!selected[0]||typeof selected[0]!=="object"||selected[0].id!==binding.companyEntityId||selected[0].versionId!==binding.companyEntityVersionId)fail();
+  for(const field of fields){const value=binding.values[field];if(value)result[`party.owner.${field}`]=value;}
+ }
  for(const [role,alias] of [["party_a","party.owner"],["party_b","party.counterparty"]] as const){
+  if(role==="party_a"&&binding){
+   for(const party of parties.filter(p=>p.roleKey===role&&p.snapshot&&typeof p.snapshot==="object"&&!Array.isArray(p.snapshot))) {
+    const snapshot=party.snapshot as Record<string,unknown>;
+    for(const field of fields) {
+     const oldValue=snapshot[field];
+     if(oldValue!==undefined&&oldValue!==null&&oldValue!==""&&oldValue!==binding.values[field]) throw new ConflictException("原甲方银行资料与我方公司银行资料尚未一致，请核对或明确复制后重试，原资料均已保留");
+    }
+   }
+   continue;
+  }
   const candidates=parties.filter(p=>p.roleKey===role&&p.snapshot&&typeof p.snapshot==="object"&&!Array.isArray(p.snapshot))
    .map(p=>p.snapshot as Record<string,unknown>).filter(p=>fields.some(key=>p[key]!==undefined&&p[key]!==null&&p[key]!==""));
   if(candidates.length>1)fail();

@@ -1,3 +1,4 @@
+import { normalizeCompanyBankBinding } from "./company-bank-binding";
 import { assertNotDirectPendingVersion } from "../contract/contract-direct-pending-policy";
 import { hasDirectSigningInput } from "../contract/contract-direct-pending-source";
 import { resolveContractDraftBusinessType } from "./contract-draft-basics";
@@ -593,6 +594,9 @@ export class ContractWorkbenchService {
         throw new ConflictException("合同文书呈现资料已升级，请使用新版合同草稿工作台保存，原内容已保留");
       }
       this.assertRevision(version.draftRevision, input.expectedRevision);
+      if (Object.hasOwn(this.objectValue(version.draftData), "companyBankBinding") || Object.hasOwn(input.draftData, "companyBankBinding")) {
+        throw new ConflictException("我方银行资料请在新版合同工作台保存，原资料已保留，请刷新后继续填写");
+      }
 
       const template = this.parseTemplateSnapshot(version.templateSnapshot);
       const isChangeVersion =
@@ -829,6 +833,15 @@ export class ContractWorkbenchService {
       throw new BadRequestException("合同变更不得修改我方签约主体，如需换主体请新签合同");
     }
     const clientDraftData = { ...input.draftData };
+      const previousCompanyBankBinding = this.objectValue(version.draftData).companyBankBinding;
+      const bankAuthority = companySelection && !isDeepStrictEqual(clientDraftData.companyBankBinding, previousCompanyBankBinding) && clientDraftData.companyBankBinding !== undefined
+        ? await this.lockAndLoadCompanyEntitySelection(tx, companySelection.id)
+        : companySelection;
+      if (bankAuthority && companySelection && bankAuthority.versionId !== companySelection.versionId && !isDeepStrictEqual(clientDraftData.companyBankBinding, previousCompanyBankBinding) && clientDraftData.companyBankBinding !== undefined) {
+        throw new ConflictException("我方公司主体资料已更新，请同步主体后重新核对银行资料，原内容已保留");
+      }
+      const companyBankBinding = normalizeCompanyBankBinding(clientDraftData.companyBankBinding, previousCompanyBankBinding, bankAuthority);
+      if (companyBankBinding) clientDraftData.companyBankBinding = companyBankBinding;
     delete clientDraftData.companyEntitySelection;
     delete clientDraftData.myCompanyEntity;
     delete clientDraftData.workbenchReferences;
@@ -2705,6 +2718,7 @@ export class ContractWorkbenchService {
       "documentRenderProfile",
       "myCompanyEntity",
       "companyEntitySelection",
+      "companyBankBinding",
       "fieldValues",
       "partyValues"
     ]);
