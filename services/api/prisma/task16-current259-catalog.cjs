@@ -5,6 +5,7 @@ const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
 const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
 const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
+const {PAYMENT262_FAULT_RUNTIME_PROFILE}=require('./task16-current262-native-fault-profile.cjs');
 const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_CASH_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
@@ -41,6 +42,7 @@ const oid=x=>typeof x==='string'&&/^[1-9][0-9]{0,9}$/u.test(x)&&BigInt(x)<=0xfff
 const wide=x=>typeof x==='string'&&/^[1-9][0-9]{0,19}$/u.test(x)&&BigInt(x)<=0xffffffffffffffffn;
 function material(source,paymentProfile){
  const p=qualifyCurrent259Source(source),capture=relative=>read(path.join(ROOT,relative),{maxBytes:2*1024*1024,collect:true,code:'TASK16_CURRENT259_CATALOG'});
+ if(paymentProfile===PAYMENT262_FAULT_RUNTIME_PROFILE)need(capture('services/api/prisma/task16-current262-native-fault-profile.cjs').sha256==='faedc7714b7399233e896b9dff470cb561624b2f4b10a5b4fc04094f98d8b014');
  if(paymentProfile!==undefined)need(isExactCurrentPaymentRuntimeSource(p,paymentProfile));
  const m=capture(MANIFEST);need(m.sha256===MANIFEST_SHA);const manifest=JSON.parse(m.bytes.toString('utf8'));
  need(p.ledgerSha256===(p.profile==='TASK12_ARCHIVE262_SOURCE_V1'?require('./task16-current259-profile.cjs').ARCHIVE262_LEDGER_SHA256:p.profile==='TASK12_ARCHIVE261_SOURCE_V1'?manifest.archive261LedgerSha256:manifest.fullLedgerSha256));
@@ -74,7 +76,7 @@ function material(source,paymentProfile){
   ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];
  need(equal(manifest.normal261RuntimeInsertAdditions,{paymentProfile:PAYMENT261_RUNTIME_PROFILE,columns:required}));
  let effectiveAccessBinding;
- if(paymentProfile===PAYMENT261_RUNTIME_PROFILE||paymentProfile===PAYMENT261_COMPETITION_RUNTIME_PROFILE||paymentProfile===PAYMENT261_CASH_RUNTIME_PROFILE){
+ if([PAYMENT261_RUNTIME_PROFILE,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_CASH_RUNTIME_PROFILE,PAYMENT262_FAULT_RUNTIME_PROFILE].includes(paymentProfile)){
   for(const [table,column]of required){
    const rows=plan.runtime.tables.filter(row=>row.table===table);need(rows.length===1&&rows[0].insert.length>0&&!rows[0].insert.includes(column));
    rows[0].insert=[...rows[0].insert,column].sort();
@@ -181,13 +183,27 @@ function payment261SourceGuardsSql(){
   WHERE f.oid=pg_catalog.to_regprocedure(expected.signature) AND f.proowner=10
    AND f.pronamespace=pg_catalog.to_regnamespace('public') AND ${bodySha('f.prosrc')}=expected.body_sha))`;
 }
+function payment262FaultSourceGuardsSql(){
+ return `NOT EXISTS(SELECT 1 FROM (VALUES
+  ('public.jg_upward_archive_catalog_projection_v2()','ab4df8e090da9da9c3750787fc262145d74554b04ea8e60dbaa98000d10be38b',true),
+  ('public.jg_upward_direct_archive_admission_v1()','c95e8553897ff36853c9503fee242087c23a28479e02b3225f5fc24bfc3259c2',false)
+ ) expected(signature,body_sha,definer) WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc f
+  JOIN pg_catalog.pg_language l ON l.oid=f.prolang
+  WHERE f.oid=pg_catalog.to_regprocedure(expected.signature) AND f.proowner=10
+   AND f.pronamespace=pg_catalog.to_regnamespace('public') AND f.prokind='f'
+   AND l.lanname='plpgsql' AND f.prosecdef=expected.definer AND NOT(f.proisstrict OR f.proretset OR f.proleakproof)
+   AND f.provolatile='v' AND f.proparallel='u' AND f.pronargs=0 AND f.pronargdefaults=0 AND f.provariadic=0 AND f.prosupport=0
+   AND f.prorettype='pg_catalog.jsonb'::regtype AND f.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
+   AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(f.prosrc,'UTF8')),'hex')=expected.body_sha))`;
+}
 function query(r,m){
  const template=m.files.find(f=>f.path==='services/api/prisma/task16-current259-catalog.sql').bytes.toString('utf8');
  need(template.split('__CONFIG__').length===2&&template.includes('__GUARDS__'));
  const guards='('+baselineGuardsSql()+') AND ('+referenceGuardSql(m.plan)+')';
  const voucher=m.voucher?' AND ('+m.voucher.continuitySql(m.plan.functionProofs)+')':'';
  const payment261=r.identity.paymentProfile?' AND ('+payment261SourceGuardsSql()+')':'';
- const sql=template.replace('__CONFIG__',quote(JSON.stringify(config(r,m)))).replace('__GUARDS__',guards+voucher+payment261);
+ const payment262=r.identity.paymentProfile===PAYMENT262_FAULT_RUNTIME_PROFILE?' AND ('+payment262FaultSourceGuardsSql()+')':'';
+ const sql=template.replace('__CONFIG__',quote(JSON.stringify(config(r,m)))).replace('__GUARDS__',guards+voucher+payment261+payment262);
  if(!m.voucher)return sql;
  return `SELECT q.result || pg_catalog.jsonb_build_object('voucherBindingSha256',${m.voucher.bindingSha256Sql}) AS result
  FROM (${sql.trim().replace(/;$/u,'')}) q;\n`;

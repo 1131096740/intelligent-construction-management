@@ -245,7 +245,7 @@ test('versioned reader bytes are checked in an independent copied source closure
  try{
   const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-current259-access.json'),'utf8'));
   const files=[...manifest.files.map(x=>x.path),'services/api/prisma/task16-current259-catalog.cjs',
-   'services/api/prisma/task16-current259-access.json','services/api/prisma/task16-current261-competition-profile.cjs','services/api/prisma/schema.prisma',...migrations.map(x=>x.path)];
+   'services/api/prisma/task16-current259-access.json','services/api/prisma/task16-current261-competition-profile.cjs','services/api/prisma/task16-current262-native-fault-profile.cjs','services/api/prisma/schema.prisma',...migrations.map(x=>x.path)];
   for(const relative of files){const to=path.join(temporary,relative);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(root,relative),to);}
   const isolated=require(path.join(temporary,'services/api/prisma/task16-current259-catalog.cjs'));
   assert.equal(isolated.loadCurrent259CatalogMaterial(source).nativeAdmission,false);
@@ -589,7 +589,7 @@ test('runtime PK manifest decoder remains closed after a separately rebound file
  try{
   const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-current259-access.json'),'utf8'));
   const files=[...manifest.files.map(x=>x.path),'services/api/prisma/task16-current259-catalog.cjs','services/api/prisma/task16-current259-access.json',
-   'services/api/prisma/task16-current261-competition-profile.cjs','services/api/prisma/schema.prisma',...migrations.map(x=>x.path)];
+   'services/api/prisma/task16-current261-competition-profile.cjs','services/api/prisma/task16-current262-native-fault-profile.cjs','services/api/prisma/schema.prisma',...migrations.map(x=>x.path)];
   for(const relative of files){const to=path.join(temporary,relative);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(root,relative),to);}
   const catalogPath=path.join(temporary,'services/api/prisma/task16-current259-catalog.cjs');
   const manifestPath=path.join(temporary,'services/api/prisma/task16-current259-access.json');
@@ -671,4 +671,25 @@ test('revocation six-column binding survives B7 before staged and committed read
  const before=parse(row('before'),'before'),staged=parse(row('staged'),'staged',before);assert.equal(parse(row('committed'),'committed',staged).nativeAdmission,false);
  for(const [phase,prior]of [['before',undefined],['staged',before],['committed',staged]]){const changed=row(phase);changed.capabilities=changed.capabilities.filter(x=>!(x[0]==='jg_task01_observer'&&x[2]==='FundAccountSourceBatch'&&x[3]==='amountYuan'));assert.throws(()=>parse(changed,phase,prior));}
  const sql=api.renderCurrent259B7Install({source:src,identity:id,nonce:request.nonce,before});assert.match(sql,/FundAccountSourceBatch/u);
+});
+
+test('262 fault catalog retains ordinary payment access and attests both rewritten routines',()=>{
+ const fault='TASK16_PAYMENT262_FAULT_RUNTIME_V1';
+ const name='20261118120000_contract_upward_projection_source_forward';
+ const full={...source,migrations:[...currentMigrations,{path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql')))}]};
+ const legacy=api.loadCurrent259CatalogMaterial({...source,migrations:currentMigrations},PAYMENT261_RUNTIME_PROFILE);
+ const admitted=api.loadCurrent259CatalogMaterial(full,fault);
+ assert.equal(admitted.ledger.length,262);
+ assert.equal(admitted.executionAllowed,false);
+ assert.equal(admitted.nativeAdmission,false);
+ assert.equal(admitted.effectiveAccessBinding.paymentProfile,fault);
+ assert.deepEqual(admitted.accessPlan,legacy.accessPlan);
+ assert.equal(admitted.effectiveAccessBinding.accessPlanSha256,legacy.effectiveAccessBinding.accessPlanSha256);
+ assert.throws(()=>api.loadCurrent259CatalogMaterial(full,PAYMENT261_RUNTIME_PROFILE),{code:'TASK16_CURRENT259_CATALOG'});
+ assert.throws(()=>api.loadCurrent259CatalogMaterial({...source,migrations:currentMigrations},fault),{code:'TASK16_CURRENT259_CATALOG'});
+ const read=api.renderCurrent259CatalogRead({...request,source:full,identity:{...identity,paymentProfile:fault}});
+ assert.match(read,/jg_upward_archive_catalog_projection_v2\(\).*ab4df8e090da9da9c3750787fc262145d74554b04ea8e60dbaa98000d10be38b/u);
+ assert.match(read,/jg_upward_direct_archive_admission_v1\(\).*c95e8553897ff36853c9503fee242087c23a28479e02b3225f5fc24bfc3259c2/u);
+ const legacyRead=api.renderCurrent259CatalogRead({...request,source:{...source,migrations:currentMigrations},identity:{...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE}});
+ assert.doesNotMatch(legacyRead,/ab4df8e090da9da9c3750787fc262145d74554b04ea8e60dbaa98000d10be38b/u);
 });

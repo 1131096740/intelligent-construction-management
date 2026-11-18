@@ -11,6 +11,7 @@ const {claimCurrent259ProvisionedRoles}=require('./task16-current259-role-provis
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial,current259Schema205WitnessSql,current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
+const {PAYMENT262_FAULT_RUNTIME_PROFILE}=require('./task16-current262-native-fault-profile.cjs');
 const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
 const {renderCurrent259SevenPreimage,parseCurrent259SevenPreimage,describeCurrent259SevenPreimageFailure}=require('./task16-current259-seven-preimage.cjs');
 const {functionProofSql}=require('./task16-registered-access-check.cjs');
@@ -656,13 +657,20 @@ function nativeSevenContext(text){
  return {...value,roleCompletion:{commitXid:value.roleCommitXid,databaseAcl:{after:value.databaseAclAfter}},competition:false};
 }
 function nativeSevenInput(text,paymentProfile=require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE){
- need([require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE,require('./task16-current261-competition-profile.cjs').PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE].includes(paymentProfile),'NATIVE_INPUT');
+ need([require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE,require('./task16-current261-competition-profile.cjs').PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE,PAYMENT262_FAULT_RUNTIME_PROFILE].includes(paymentProfile),'NATIVE_INPUT');
  const context=nativeSevenContext(text);
  return {...context,paymentProfile,material:material(context.source,false,paymentProfile)};
 }
 function renderNativeTask16Seven(inputJson,phase,nonce,priorStdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
- const input=nativeSevenInput(inputJson),prior=phase===0?undefined:readResult({stdout:priorStdout},input,phase-1,nonce);
+ return renderNativeTask16SingleLaneSeven(inputJson,phase,nonce,priorStdout);
+}
+function renderNativeTask16Fault262Seven(inputJson,phase,nonce,priorStdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
+ return renderNativeTask16SingleLaneSeven(inputJson,phase,nonce,priorStdout,PAYMENT262_FAULT_RUNTIME_PROFILE);
+}
+function renderNativeTask16SingleLaneSeven(inputJson,phase,nonce,priorStdout,paymentProfile){
+ const input=nativeSevenInput(inputJson,paymentProfile),prior=phase===0?undefined:readResult({stdout:priorStdout},input,phase-1,nonce);
  const sql=render(input,phase,nonce,prior);
  // Native-only endpoint binding; the original private-runner guard stays byte-identical.
  const original="host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port() IS DISTINCT FROM 5432";
@@ -696,6 +704,10 @@ function createNativeTask12ArchiveSevenMaterial(text,nonce){
 }
 function parseNativeTask16Seven(inputJson,phase,nonce,stdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');return readResult({stdout},nativeSevenInput(inputJson),phase,nonce);
+}
+function parseNativeTask16Fault262Seven(inputJson,phase,nonce,stdout){
+ need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64),'NATIVE_INPUT');
+ return readResult({stdout},nativeSevenInput(inputJson,PAYMENT262_FAULT_RUNTIME_PROFILE),phase,nonce);
 }
 function renderNativeTask16GapSeven(inputJson,phase,nonce,priorStdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
@@ -781,5 +793,5 @@ function renderNativeTask16RevocationSevenPreimage(inputJson,nonce,committedStdo
  const committed=readResult({stdout:committedStdout},input,2,nonce);
  return voucherSevenPreimageSql(input,committed.catalogSha256);
 }
-module.exports=Object.freeze({renderNativeTask16RevocationSeven,parseNativeTask16RevocationSeven,renderNativeTask16RevocationSevenPreimage,renderNativeTask16CashSeven,parseNativeTask16CashSeven,renderNativeTask16VoucherSeven,parseNativeTask16VoucherSeven,renderNativeTask16VoucherSevenPreimage,bindNativeTask12ArchiveEndpointSql,createNativeTask12ArchiveSevenMaterial,renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
+module.exports=Object.freeze({renderNativeTask16Fault262Seven,parseNativeTask16Fault262Seven,renderNativeTask16RevocationSeven,parseNativeTask16RevocationSeven,renderNativeTask16RevocationSevenPreimage,renderNativeTask16CashSeven,parseNativeTask16CashSeven,renderNativeTask16VoucherSeven,parseNativeTask16VoucherSeven,renderNativeTask16VoucherSevenPreimage,bindNativeTask12ArchiveEndpointSql,createNativeTask12ArchiveSevenMaterial,renderNativeTask16GapSeven,parseNativeTask16GapSeven,renderNativeTask16CompetitionSeven,parseNativeTask16CompetitionSeven,renderNativeTask16Seven,parseNativeTask16Seven,installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,archiveSevenAuthOnlyDiagnosticMaterial,
  claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure,describeCurrent259SevenPrestateReadbackFailure});
