@@ -10628,6 +10628,35 @@
       ]
     },
     {
+      "id": "registered-payment.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "queryOriginal"
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "frozenCommand.idempotencyKey"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "name": "fetchRegisteredPaymentResult"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "name": "verifyRegisteredPaymentRecovery"
+        }
+      ]
+    },
+    {
       "id": "registered-payment.supplement-voucher",
       "usage": "page_action",
       "routePaths": [
