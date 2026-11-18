@@ -508,6 +508,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { title: "本次余额核对复核" }
       },
       {
+        path: "垫资本金归还/:applicationId",
+        component: () => import("../pages/funds/FundPrincipalReturnDetailPage.vue"),
+        meta: { title: "垫资本金归还" }
+      },
+      {
         path: "资金账户",
         component: () => import("../pages/funds/FundAccountsPage.vue"),
         meta: { requiredGlobalRoleKeys: fundsWorkbenchRoleKeys, title: "资金账户" }

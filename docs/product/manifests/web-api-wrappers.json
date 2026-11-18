@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 46,
-    "exportedFunctionCount": 725,
-    "transportWrapperCount": 702,
+    "apiModuleCount": 47,
+    "exportedFunctionCount": 730,
+    "transportWrapperCount": 707,
     "pureExportCount": 23,
-    "mainRequestBindingCount": 742,
+    "mainRequestBindingCount": 747,
     "ticketFollowupCount": 5,
-    "requestEdgeCount": 731,
-    "productionConsumerCount": 615,
+    "requestEdgeCount": 736,
+    "productionConsumerCount": 620,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 398,
-    "reachableProductionModuleCount": 379
+    "productionModuleCount": 402,
+    "reachableProductionModuleCount": 383
   },
   "wrappers": [
     {
@@ -13558,6 +13558,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+        "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
         "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
       ],
       "testConsumers": [],
@@ -14209,6 +14210,142 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/fund-movements/FundMovementPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "actOnPrincipalReturn",
+      "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 91,
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/actions",
+          "normalizedPath": "/fund-accounts/principal-returns/applications/:param/actions",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/actions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "actOnPrincipalReturn"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/principal-return-command.ts"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "applyPrincipalReturn",
+      "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 84,
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications",
+          "normalizedPath": "/fund-accounts/principal-returns/applications",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyPrincipalReturn"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/principal-return-command.ts"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchPrincipalReturnResult",
+      "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/fund-accounts/principal-returns/results/:param",
+          "normalizedPath": "/fund-accounts/principal-returns/results/:param",
+          "normalizedKey": "GET /fund-accounts/principal-returns/results/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPrincipalReturnResult"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/principal-return-command.ts"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchPrincipalReturns",
+      "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/fund-accounts/principal-returns",
+          "normalizedPath": "/fund-accounts/principal-returns",
+          "normalizedKey": "GET /fund-accounts/principal-returns",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPrincipalReturns"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+        "apps/web-admin/src/pages/funds/principal-return-command.ts"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "payPrincipalReturn",
+      "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/payments",
+          "normalizedPath": "/fund-accounts/principal-returns/applications/:param/payments",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "payPrincipalReturn"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/principal-return-command.ts"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

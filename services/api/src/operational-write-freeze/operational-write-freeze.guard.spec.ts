@@ -20,6 +20,14 @@ class FundAccountAdvanceController {
   companyOwnedBankOptions() {}
 }
 
+class FundPrincipalReturnController {
+  list() {}
+  apply() {}
+  act() {}
+  pay() {}
+  result() {}
+}
+
 class RegisteredPaymentExecutionController {
   mutate() {}
 }
@@ -123,6 +131,18 @@ describe("OperationalWriteFreezeGuard", () => {
       expectHttpFailure(() => guard.canActivate(contextFor({ controller, handler })), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
     }
     expect(guard.canActivate(contextFor({ controller, handler: controller.prototype.companyOwnedBankOptions, method: "GET" }))).toBe(true);
+  });
+
+  it("freezes principal return writes while preserving the list and original-key lookup", () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "finance";
+    const controller = FundPrincipalReturnController;
+    for (const handler of [controller.prototype.apply, controller.prototype.act, controller.prototype.pay]) {
+      expectHttpFailure(() => guard.canActivate(contextFor({ controller, handler })), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    for (const handler of [controller.prototype.list, controller.prototype.result]) {
+      expect(guard.canActivate(contextFor({ controller, handler, method: "GET" }))).toBe(true);
+    }
   });
 
   it("keeps classified writes open by default", () => {

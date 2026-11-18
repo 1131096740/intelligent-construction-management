@@ -145,6 +145,7 @@ function cleanupOwnedContainer({id,name,runId,list,inspect,remove,confirmAbsent}
 function selectTask398Scenario(args){
  if(!Array.isArray(args)||args.length>1)throw new Error("TASK398_SCENARIO");
  if(args.length===0||["--overpay-real","--ledger-loss-real","--transfer-real","--transfer-rejection-real","--transfer-browser-real","--project-advance-real"].includes(args[0]))return "src/database/task16-shared-standard.http.pg.spec.ts";
+ if(["--principal-return-real","--principal-return-roles-real"].includes(args[0]))return "src/database/task27-principal-return.http.pg.spec.ts";
  if(args[0]==="--cash-handover-real")return "src/database/task25-public-cash-handover.http.pg.spec.ts";
  if(args[0]==="--browser-real")return "src/database/task16-real-browser.pg.spec.ts";
  if(args[0]==="--browser-completion-real")return "src/database/task16-real-browser-completion.pg.spec.ts";
@@ -158,8 +159,11 @@ async function run(){
  const transferBrowser=process.argv[2]==="--transfer-browser-real";
  const handoverScenario=process.argv[2]==="--cash-handover-real";
  const advanceScenario=process.argv[2]==="--project-advance-real";
- const advanceExcludedReads=advanceScenario?["ProjectOwnerSettlementEntry"]:[];
- const transferScenario=process.argv[2]==="--transfer-real"||transferRejection||transferBrowser||handoverScenario||advanceScenario;
+ const principalRoleCoverage=process.argv[2]==="--principal-return-roles-real";
+ const principalScenario=process.argv[2]==="--principal-return-real"||principalRoleCoverage;
+ const usesAdvanceRuntime=advanceScenario||principalScenario;
+ const advanceExcludedReads=usesAdvanceRuntime?["ProjectOwnerSettlementEntry"]:[];
+ const transferScenario=process.argv[2]==="--transfer-real"||transferRejection||transferBrowser||handoverScenario||usesAdvanceRuntime;
  const browserScenario=scenario==="src/database/task16-real-browser.pg.spec.ts"||scenario==="src/database/task16-real-browser-completion.pg.spec.ts";
  if(process.env.NODE_ENV==="production"||process.env.DOCKER_HOST&&!process.env.DOCKER_HOST.startsWith("unix://"))throw new Error("TASK398_LOCAL_ONLY");
  const candidate=process.env.TASK398_EXPECTED_SHA;
@@ -196,7 +200,7 @@ async function run(){
  if(routines.some(name=>typeof name!=="string"||!/^[a-zA-Z0-9_.,()" ]+$/u.test(name)))throw new Error("TASK398_ROUTINE_LIST");
  sql("jiangkong",`${columnGrants(plan)}\n${businessReadGrantSql(advanceExcludedReads)}\n${technicalDeleteGrant(plan)}\n${observerReadGrantSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}\nREVOKE ALL ON public."OperatingLedgerWriteSecret",public."OperatingLedgerWriteContext" FROM jg_task01_runtime,jg_task01_observer;\n${[...new Set(routines)].map(name=>`GRANT EXECUTE ON FUNCTION ${name} TO jg_task01_runtime;`).join("\n")}\nINSERT INTO public."OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,public.crypt('${secret}',public.gen_salt('bf')));`);
  if(transferScenario)sql("jiangkong",`BEGIN;\nSET LOCAL jg.task16_runtime_role='jg_task01_runtime';\n${transferFence}\nCOMMIT;`);
- if(handoverScenario||advanceScenario){
+ if(handoverScenario||usesAdvanceRuntime){
   const acl=readFileSync(path.join(__dirname,"prepared/task25/public-cash-handover-runtime.sql"),"utf8");
   sql("jiangkong",`BEGIN;\nSET LOCAL jg.task16_runtime_role='jg_task01_runtime';\n${acl}\nCOMMIT;`);
   const exact=sql("jiangkong",`SELECT CASE WHEN
@@ -225,14 +229,16 @@ async function run(){
   if(!transferCheck.includes("TASK406_ROLE_CHECK_OK"))throw new Error("TASK406_ROLE_CHECK");
  }
 
- if(advanceScenario){
+ if(usesAdvanceRuntime){
   const {migrationBaseline}=require("./database-dynamic-gate-manifest.json");
-  if(migrationBaseline.expectedDirectoryCount!==267 || migrationBaseline.terminalMigration!=="20261118190000_registered_project_advance_funding" || !/^[a-f0-9]{64}$/u.test(migrationBaseline.terminalMigrationChecksum))throw new Error("TASK408_EXPECTED_267_LEDGER");
+  const count=principalScenario?268:267;
+  const terminal=principalScenario?"20261118200000_registered_principal_returns":"20261118190000_registered_project_advance_funding";
+  if(migrationBaseline.expectedDirectoryCount!==count || migrationBaseline.terminalMigration!==terminal || !/^[a-f0-9]{64}$/u.test(migrationBaseline.terminalMigrationChecksum))throw new Error("TASK408_409_EXPECTED_LEDGER");
   sql("jiangkong",`DO $$ BEGIN
-    IF (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)<>267
-      OR NOT EXISTS (SELECT 1 FROM public._prisma_migrations WHERE migration_name='20261118190000_registered_project_advance_funding'
+    IF (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)<>${count}
+      OR NOT EXISTS (SELECT 1 FROM public._prisma_migrations WHERE migration_name='${terminal}'
         AND checksum='${migrationBaseline.terminalMigrationChecksum}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
-    THEN RAISE EXCEPTION 'TASK408_MIGRATION_LEDGER'; END IF;
+    THEN RAISE EXCEPTION 'TASK408_409_MIGRATION_LEDGER'; END IF;
   END $$;`);
   const advanceAcl=readFileSync(path.join(__dirname,"prepared/task26/registered-project-advance-funding-fence.sql"),"utf8");
   sql("jiangkong",`BEGIN;\nSET LOCAL jg.task16_runtime_role='jg_task01_runtime';\n${advanceAcl}\nCOMMIT;`);
@@ -248,7 +254,27 @@ async function run(){
      OR has_function_privilege('jg_task01_observer','public.jg_registered_fund_verified_own_candidates(text)','EXECUTE')
     THEN RAISE EXCEPTION 'TASK408_ROLE_CHECK'; END IF;
   END $$;`);
-  console.log("TASK408_267_ROLE_OK",migrationBaseline.terminalMigrationChecksum);
+  if (principalScenario) {
+   const task27=readFileSync(path.join(__dirname,"prepared/task27/registered-principal-return-runtime.sql"),"utf8");
+   const relations=["RegisteredPrincipalReturnSource","RegisteredPrincipalReturnApplication","RegisteredPrincipalReturnPayment","RegisteredPrincipalReturnAllocation","RegisteredPrincipalReturnCommand"];
+   const entries=relations.map(table=>`'public."${table}"'`).join(",");
+   sql("jiangkong",`BEGIN; SET LOCAL jg.task16_runtime_role='jg_task01_runtime'; ${task27} COMMIT;`);
+   sql("jiangkong",`GRANT SELECT ON ${relations.map(table=>`public."${table}"`).join(",")} TO jg_task01_observer;
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM unnest(ARRAY[${entries}]::regclass[]) original
+       WHERE NOT has_table_privilege('jg_task01_runtime',original,'SELECT,INSERT')
+        OR NOT has_table_privilege('jg_task01_observer',original,'SELECT')
+        OR has_table_privilege('jg_task01_runtime',original,'UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES')
+        OR has_any_column_privilege('jg_task01_observer',original,'INSERT,UPDATE,REFERENCES'))
+       OR NOT has_column_privilege('jg_task01_runtime','public."RegisteredPrincipalReturnSource"','writeRevision','UPDATE')
+       OR NOT has_column_privilege('jg_task01_runtime','public."RegisteredPrincipalReturnApplication"','revision','UPDATE')
+       OR has_column_privilege('jg_task01_runtime','public."RegisteredPrincipalReturnApplication"','requestedYuan','UPDATE')
+      THEN RAISE EXCEPTION 'TASK409_ROLE_CHECK'; END IF;
+    END $$;`);
+   console.log("TASK409_268_ROLE_OK",migrationBaseline.terminalMigrationChecksum);
+  } else {
+   console.log("TASK408_267_ROLE_OK",migrationBaseline.terminalMigrationChecksum);
+  }
  }
  const privateLogDir=realpathSync(mkdtempSync(path.join(tmpdir(),"jg398-approval-pglog-")));chmodSync(privateLogDir,0o700);
  console.log(`TASK398_PRIVATE_PG_LOG_DIR ${privateLogDir}`);
@@ -256,9 +282,11 @@ async function run(){
  env.DATABASE_URL=url("jg_task01_runtime");env.TASK398_OWNER_URL=url("jg_task01_owner");env.TASK398_OBSERVER_URL=url("jg_task01_observer");
  if(handoverScenario)env.RUN_TASK407_HANDOVER_PG16="1";
  if(advanceScenario)env.RUN_TASK408_ADVANCE_PG16="1";
+ if(principalScenario){env.RUN_TASK409_PRINCIPAL_PG16="1";env.TASK409_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"principal-return-failure.jsonl");}
+ if(principalRoleCoverage)env.TASK409_PRINCIPAL_ROLE_ONLY="1";
  if(overpayScenario)env.TASK398_OVERPAY_MODE="1";
  if(ledgerLossScenario)env.TASK398_LEDGER_LOSS_MODE="1";
- if(transferScenario&&!advanceScenario){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
+ if(transferScenario&&!usesAdvanceRuntime){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
  if(browserScenario){const evidenceDir=realpathSync(mkdtempSync("/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
  try{command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",scenario],{env,timeout:300000});}
  catch(error){
@@ -285,6 +313,6 @@ if(require.main===module)run().then(()=>{businessPassed=true;},error=>{console.e
   console.error(`TASK398_CONTAINER_CLEANUP_${status} run=${runId} name=${name}`);if(status==="UNKNOWN"){containerClean=false;console.error(`TASK398_STORAGE_RETAINED:${storage}`);process.exitCode=1;}
  }
  if(storage&&containerClean)try{rmSync(storage,{recursive:true,force:true});}catch{console.error("TASK398_STORAGE_CLEANUP_FAILED");process.exitCode=1;}
- if(businessPassed&&!process.exitCode)console.log(`${["--browser-real","--browser-completion-real"].includes(process.argv[2])?"TASK398_BROWSER_PASS":process.argv[2]==="--overpay-real"?"TASK398_OVERPAY_PASS":process.argv[2]==="--ledger-loss-real"?"TASK398_LEDGER_LOSS_PASS":process.argv[2]==="--transfer-browser-real"?"TASK406_BROWSER_PASS":process.argv[2]==="--cash-handover-real"?"TASK407_HANDOVER_PASS":process.argv[2]==="--transfer-real"?"TASK406_TRANSFER_PASS":process.argv[2]==="--transfer-rejection-real"?"TASK406_REJECTION_PASS":process.argv[2]==="--project-advance-real"?"TASK408_ADVANCE_PASS":"TASK398_STANDARD_PASS"} candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
+ if(businessPassed&&!process.exitCode)console.log(`${["--browser-real","--browser-completion-real"].includes(process.argv[2])?"TASK398_BROWSER_PASS":process.argv[2]==="--overpay-real"?"TASK398_OVERPAY_PASS":process.argv[2]==="--ledger-loss-real"?"TASK398_LEDGER_LOSS_PASS":process.argv[2]==="--transfer-browser-real"?"TASK406_BROWSER_PASS":process.argv[2]==="--cash-handover-real"?"TASK407_HANDOVER_PASS":process.argv[2]==="--transfer-real"?"TASK406_TRANSFER_PASS":process.argv[2]==="--transfer-rejection-real"?"TASK406_REJECTION_PASS":process.argv[2]==="--project-advance-real"?"TASK408_ADVANCE_PASS":process.argv[2]==="--principal-return-roles-real"?"TASK409_PRINCIPAL_ROLES_PASS":process.argv[2]==="--principal-return-real"?"TASK409_PRINCIPAL_PASS":"TASK398_STANDARD_PASS"} candidate=${process.env.TASK398_EXPECTED_SHA} run=${runId}`);
 });
 module.exports={selectTask398Scenario,runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,approvalDependencyCheckSql,spotGuardCheckSql,businessReadGrantSql,businessReadCheckSql,excludedReadTables,observerReadGrantSql,observerReadCheckSql,observerTables,observerSignatureColumns,meSensitiveReadCheckSql,cleanupOwnedContainer,containerName};

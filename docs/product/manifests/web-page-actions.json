@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 438,
-    "pageActionCount": 83,
+    "registeredActionCount": 441,
+    "pageActionCount": 86,
     "backgroundActionCount": 355,
-    "reachableVueFileCount": 217,
-    "routeRootCount": 74,
-    "totalVueFileCount": 230,
-    "parsedVueFileCount": 230,
-    "reachableProductionModuleCount": 379,
-    "templateEventDirectiveCount": 1468,
+    "reachableVueFileCount": 219,
+    "routeRootCount": 75,
+    "totalVueFileCount": 232,
+    "parsedVueFileCount": 232,
+    "reachableProductionModuleCount": 383,
+    "templateEventDirectiveCount": 1481,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 424,
-    "candidateProductionMutationConsumerCount": 424,
-    "acceptedProductionMutationConsumerCount": 424,
-    "productionMutationConsumerPairCount": 424,
+    "coveredProductionMutationConsumerCount": 427,
+    "candidateProductionMutationConsumerCount": 427,
+    "acceptedProductionMutationConsumerCount": 427,
+    "productionMutationConsumerPairCount": 427,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 398,
-    "reachableProductionModuleCount": 379,
-    "totalVueFileCount": 230,
-    "parsedVueFileCount": 230
+    "totalProductionModuleCount": 402,
+    "reachableProductionModuleCount": 383,
+    "totalVueFileCount": 232,
+    "parsedVueFileCount": 232
   },
   "actions": [
     {
@@ -11884,7 +11884,7 @@
         "event": "click",
         "handler": "confirm",
         "kind": "event",
-        "sourceLine": 594,
+        "sourceLine": 605,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11949,7 +11949,7 @@
         "event": "click",
         "handler": "submitOpeningBalance",
         "kind": "event",
-        "sourceLine": 521,
+        "sourceLine": 532,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12018,7 +12018,7 @@
         "event": "click",
         "handler": "submitCorrectionBalance",
         "kind": "event",
-        "sourceLine": 528,
+        "sourceLine": 539,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12087,7 +12087,7 @@
         "event": "click",
         "handler": "returnBalanceCorrection",
         "kind": "event",
-        "sourceLine": 587,
+        "sourceLine": 598,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12153,7 +12153,7 @@
         "event": "confirm",
         "handler": "withdrawBalanceCorrection",
         "kind": "event",
-        "sourceLine": 608,
+        "sourceLine": 619,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -13015,6 +13015,361 @@
             "localCallChain": [
               "updateFundExecutionReversalReasonWithCapability",
               "updateFundExecutionReversalReason"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-principal-return.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "checkOriginal",
+        "kind": "event",
+        "sourceLine": 260,
+        "sourceColumn": 10
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "pending.idempotencyKey",
+        "serverDerived": false,
+        "dominatesTrigger": false
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "wrapper": "fetchPrincipalReturnResult",
+          "method": "GET",
+          "path": "/fund-accounts/principal-returns/results/:param",
+          "normalizedKey": "GET /fund-accounts/principal-returns/results/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/fund-accounts/principal-returns/results/:key",
+            "normalizedKey": "GET /fund-accounts/principal-returns/results/:param",
+            "controller": "FundPrincipalReturnController",
+            "handler": "result",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "checkOriginal",
+              "fetchPrincipalReturnResult"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-principal-return.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryOriginal",
+        "kind": "event",
+        "sourceLine": 266,
+        "sourceColumn": 10
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canWritePrincipalReturn",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "wrapper": "actOnPrincipalReturn",
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/actions",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/actions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/principal-returns/applications/:id/actions",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/actions",
+            "controller": "FundPrincipalReturnController",
+            "handler": "act",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryOriginal",
+              "actOnPrincipalReturn"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "wrapper": "applyPrincipalReturn",
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/principal-returns/applications",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications",
+            "controller": "FundPrincipalReturnController",
+            "handler": "apply",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryOriginal",
+              "applyPrincipalReturn"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "wrapper": "payPrincipalReturn",
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/payments",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/principal-returns/applications/:id/payments",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
+            "controller": "FundPrincipalReturnController",
+            "handler": "pay",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retryOriginal",
+              "payPrincipalReturn"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-principal-return.submit",
+      "usage": "page_action",
+      "routePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submit",
+        "kind": "event",
+        "sourceLine": 385,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canWritePrincipalReturn",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "wrapper": "actOnPrincipalReturn",
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/actions",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/actions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/principal-returns/applications/:id/actions",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/actions",
+            "controller": "FundPrincipalReturnController",
+            "handler": "act",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submit",
+              "actOnPrincipalReturn"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "wrapper": "applyPrincipalReturn",
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/principal-returns/applications",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications",
+            "controller": "FundPrincipalReturnController",
+            "handler": "apply",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submit",
+              "applyPrincipalReturn"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "wrapper": "payPrincipalReturn",
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/payments",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/principal-returns/applications/:id/payments",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
+            "controller": "FundPrincipalReturnController",
+            "handler": "pay",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/principal-return-command.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submit",
+              "payPrincipalReturn"
             ]
           },
           "ticketFollowups": []

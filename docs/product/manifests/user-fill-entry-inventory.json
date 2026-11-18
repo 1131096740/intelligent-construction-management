@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 425,
+    "activeBusinessActionCount": 427,
     "technicalActionCount": 10,
-    "activeBindingCount": 495,
+    "activeBindingCount": 501,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -2891,6 +2891,44 @@
         "PATCH /fund-executions/cases/:param/reversal"
       ],
       "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-principal-return.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/principal-returns/applications",
+        "POST /fund-accounts/principal-returns/applications/:param/actions",
+        "POST /fund-accounts/principal-returns/applications/:param/payments"
+      ],
+      "bindingCount": 3,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-principal-return.submit",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/principal-returns/applications",
+        "POST /fund-accounts/principal-returns/applications/:param/actions",
+        "POST /fund-accounts/principal-returns/applications/:param/payments"
+      ],
+      "bindingCount": 3,
       "productionConsumerCount": 1,
       "causalVerified": true
     },

@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 748,
-    "exactRouteCount": 748,
-    "normalizedRouteCount": 748,
+    "routeCount": 753,
+    "exactRouteCount": 753,
+    "normalizedRouteCount": 753,
     "classificationOverrideCount": 217,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
     "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 531,
-    "pageRouteCount": 549,
+    "derivedProductionPageCount": 536,
+    "pageRouteCount": 554,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 602,
+      "web_api_wrapper": 607,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 602,
+    "productionWrapperRouteCount": 607,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 3
   },
@@ -4583,6 +4583,7 @@
             "normalizedKey": "GET /fund-accounts",
             "productionConsumers": [
               "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+              "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
               "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
             ]
           }
@@ -4629,6 +4630,89 @@
             "normalizedKey": "GET /fund-accounts/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/principal-returns",
+      "normalizedKey": "GET /fund-accounts/principal-returns",
+      "controller": "FundPrincipalReturnController",
+      "handler": "list",
+      "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+            "wrapper": "fetchPrincipalReturns",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts/principal-returns",
+            "normalizedKey": "GET /fund-accounts/principal-returns",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+              "apps/web-admin/src/pages/funds/principal-return-command.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/principal-returns/results/:key",
+      "normalizedKey": "GET /fund-accounts/principal-returns/results/:param",
+      "controller": "FundPrincipalReturnController",
+      "handler": "result",
+      "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+            "wrapper": "fetchPrincipalReturnResult",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts/principal-returns/results/:param",
+            "normalizedKey": "GET /fund-accounts/principal-returns/results/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/principal-return-command.ts"
             ]
           }
         ],
@@ -18972,6 +19056,135 @@
             "normalizedKey": "POST /fund-accounts/openings",
             "productionConsumers": [
               "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/principal-returns/applications",
+      "normalizedKey": "POST /fund-accounts/principal-returns/applications",
+      "controller": "FundPrincipalReturnController",
+      "handler": "apply",
+      "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+            "wrapper": "applyPrincipalReturn",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/principal-returns/applications",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/principal-return-command.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/principal-returns/applications/:id/actions",
+      "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/actions",
+      "controller": "FundPrincipalReturnController",
+      "handler": "act",
+      "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+            "wrapper": "actOnPrincipalReturn",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/principal-returns/applications/:param/actions",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/actions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/principal-return-command.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/principal-returns/applications/:id/payments",
+      "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
+      "controller": "FundPrincipalReturnController",
+      "handler": "pay",
+      "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+            "wrapper": "payPrincipalReturn",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/principal-returns/applications/:param/payments",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/principal-return-command.ts"
             ]
           }
         ],

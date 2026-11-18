@@ -45,6 +45,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   FundAccountAdvanceController: "finance",
   FundAccountController: "finance",
   FundAccountTransferController: "finance",
+  FundPrincipalReturnController: "finance",
   PublicCashHandoverController: "finance",
   FundExecutionController: "finance",
   FundMovementController: "finance",

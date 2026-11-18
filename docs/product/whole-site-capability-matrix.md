@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `2a561e96ffaf121056272f794158dacb238ae70e87fc8d20460effbc119137b8` |
-| webApiWrappers | ready | `3f5ebe94384289eb41819cdc1f38567585d552843d1d77bd6e590d37c82b8c33` |
-| webPageActions | ready | `15c373960abb27cad4cbefc1ce6af68da9d58008ff578fcd98895fdc92785f08` |
-| routeUsage | ready | `75c3826118d01e4b6a4065615ed5c72baba9dc8fde99e29cbf5bb7b0b7a5531f` |
+| nestRoutes | ready | `45d7d5053bb23e481dad5e46d7c7c553abe1c9ebfc0c0e02a30e6510f82e8d7a` |
+| webApiWrappers | ready | `8031b455a0dc810a12de8617aeab9dcf824efe7e9d697b384ccdbaf6ceed1718` |
+| webPageActions | ready | `2501bc0cb0468cf705da5618f263f1f483fb212ed28c308f57158168e0c99ac5` |
+| routeUsage | ready | `357e2dfc090efcc53cc90267f3d744b3ad87935f444c64575892521f84c004ba` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 748 |
-| pageRouteCount | 549 |
+| routeCount | 753 |
+| pageRouteCount | 554 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 742 |
+| mainRequestBindingCount | 747 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 438 |
-| actionBindingCount | 510 |
-| acceptedActionBindingCount | 468 |
+| registeredActionCount | 441 |
+| actionBindingCount | 517 |
+| acceptedActionBindingCount | 474 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 424 |
-| coveredProductionMutationConsumerPairCount | 424 |
+| productionMutationConsumerPairCount | 427 |
+| coveredProductionMutationConsumerPairCount | 427 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -145,6 +145,8 @@
 | GET | /fund-account-transfers | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#fetchFundAccountTransfers | — | not_applicable | — |
 | GET | /fund-accounts/:scopeKey | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccount | — | not_applicable | — |
 | GET | /fund-accounts | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccounts | — | not_applicable | — |
+| GET | /fund-accounts/principal-returns | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#fetchPrincipalReturns | — | not_applicable | — |
+| GET | /fund-accounts/principal-returns/results/:key | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#fetchPrincipalReturnResult | fund-principal-return.lookup-original | not_applicable | — |
 | GET | /fund-accounts/registrations/:registrationId | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundBalanceRegistration | — | not_applicable | — |
 | GET | /fund-accounts/registrations/:registrationId/review | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundReview | — | not_applicable | — |
 | GET | /fund-executions/capabilities | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCapabilities | — | not_applicable | — |
@@ -489,6 +491,9 @@
 | POST | /fund-account-transfers | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#registerFundAccountTransfer | fund-transfer.recover-original<br>fund-transfer.register | covered | — |
 | POST | /fund-accounts/corrections | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#requestFundCorrection | fund-account.requestFundCorrection | covered | — |
 | POST | /fund-accounts/openings | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#registerFundOpening | fund-account.registerFundOpening | covered | — |
+| POST | /fund-accounts/principal-returns/applications/:id/actions | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#actOnPrincipalReturn | fund-principal-return.recover-original<br>fund-principal-return.submit | covered | — |
+| POST | /fund-accounts/principal-returns/applications/:id/payments | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#payPrincipalReturn | fund-principal-return.recover-original<br>fund-principal-return.submit | covered | — |
+| POST | /fund-accounts/principal-returns/applications | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#applyPrincipalReturn | fund-principal-return.recover-original<br>fund-principal-return.submit | covered | — |
 | POST | /fund-accounts/registrations/:registrationId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#confirmFundCorrection | fund-account.confirm-correction | covered | — |
 | POST | /fund-accounts/registrations/:registrationId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#returnFundCorrection | fund-account.returnFundCorrection | covered | — |
 | POST | /fund-accounts/registrations/:registrationId/withdraw | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#withdrawFundCorrection | fund-account.withdrawFundCorrection | covered | — |

@@ -236,6 +236,7 @@ jobs:
           - task398_browser
           - task398_browser_completion
           - task407_public_cash_handover
+          - task409_principal_return
         include:
           - group: pol113_pol115_business_entries
             shard: pol113_pol114

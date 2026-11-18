@@ -1,3 +1,5 @@
+import { PRINCIPAL_RETURN_BUSINESS_TYPE } from "../fund-account/fund-principal-return.service";
+import { createPrincipalReturnDelegation, loadPrincipalReturnDelegationDuty, principalReturnDelegationOptions } from "./principal-return-delegation";
 import { createFundReviewDelegation, fundReviewDelegationCapability, fundReviewDutyOptions, isFundReviewDuty } from "../fund-account/fund-account-delegation";
 import { FUND_REVIEW_RESOURCE } from "../fund-account/fund-account-duty";
 import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyIdentity } from "../general-procurement/general-procurement-request-access";
@@ -36,6 +38,7 @@ export class ApprovalDelegationService {
       throw new Error("Prisma service is required to create approval delegation");
     }
 
+    if (input.resourceType === PRINCIPAL_RETURN_BUSINESS_TYPE) return createPrincipalReturnDelegation(this.prisma, this.audit, fromUserId, input);
     if (input.resourceType === FUND_REVIEW_RESOURCE) return createFundReviewDelegation(this.prisma, this.audit, fromUserId, input);
     if (input.resourceType === GENERAL_REQUEST_DUTY_RESOURCE) return this.createGeneralDutyDelegation(fromUserId, input);
     if (input.resourceType === SPOT_APPROVAL_DUTY_RESOURCE) return this.createDutyDelegation(fromUserId, input);
@@ -179,6 +182,8 @@ export class ApprovalDelegationService {
 
   async dutyCapability(userId: string, resourceId: string) {
     if (!this.prisma) return {canDelegate: false};
+    const principalReturn = await loadPrincipalReturnDelegationDuty(this.prisma, userId, resourceId);
+    if (principalReturn) return { canDelegate: true, actionKey: principalReturn.actionKey, resourceType: principalReturn.resourceType, resourceId };
     if (await isFundReviewDuty(this.prisma, resourceId)) { await fundReviewDelegationCapability(this.prisma as never, userId, resourceId); return { canDelegate: true, actionKey: "fund_account.balance.review", resourceType: FUND_REVIEW_RESOURCE, resourceId }; }
     if (await this.generalDuty(this.prisma as never, userId, resourceId, false)) return { canDelegate: true, actionKey: "general_procurement.approve", resourceType: GENERAL_REQUEST_DUTY_RESOURCE, resourceId };
     await this.duty(this.prisma as never, userId, resourceId, false);
@@ -193,7 +198,10 @@ export class ApprovalDelegationService {
   async listDutyOptions(userId: string) {
     if (!this.prisma) return [];
     const rounds = await this.prisma.approvalInstance.findMany({where: {businessType: "spot_procurement_version", status: "approval_pending"}, orderBy: {createdAt: "desc"}});
-    const result: Array<{value: string; label: string; actionKey: BusinessAction; resourceType: string}> = await fundReviewDutyOptions(this.prisma as never, userId);
+    const result: Array<{value: string; label: string; actionKey: BusinessAction; resourceType: string}> = [
+      ...await fundReviewDutyOptions(this.prisma as never, userId),
+      ...await principalReturnDelegationOptions(this.prisma, userId),
+    ];
     for (const round of rounds) {
       if (!isParallelApprovalRound(round.frozenNodes)) continue;
       for (const index of activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex)) {
@@ -233,7 +241,7 @@ export class ApprovalDelegationService {
         })
       : [];
     const nameById = new Map(users.map((user) => [user.id, user.name]));
-    const scopedIds = delegations.filter(row => [SPOT_APPROVAL_DUTY_RESOURCE, FUND_REVIEW_RESOURCE, GENERAL_REQUEST_DUTY_RESOURCE].includes(row.resourceType ?? "")).map(row => row.id);
+    const scopedIds = delegations.filter(row => [SPOT_APPROVAL_DUTY_RESOURCE, FUND_REVIEW_RESOURCE, GENERAL_REQUEST_DUTY_RESOURCE, PRINCIPAL_RETURN_BUSINESS_TYPE].includes(row.resourceType ?? "")).map(row => row.id);
     const creationFacts = scopedIds.length ? await this.prisma.auditLog.findMany({where: {action: "approval.delegation.create", businessType: "approval_delegation", businessId: {in: scopedIds}}, orderBy: {createdAt: "asc"}, select: {businessId: true, metadata: true}}) : [];
     const labelById = new Map<string, string>();
     for (const fact of creationFacts) {
@@ -244,6 +252,13 @@ export class ApprovalDelegationService {
 
     const reviewPathById = new Map<string, string>();
     for (const delegation of delegations) {
+      if (delegation.resourceType === PRINCIPAL_RETURN_BUSINESS_TYPE && delegation.toUserId === userId && delegation.resourceId) {
+        try {
+          const duty = await loadPrincipalReturnDelegationDuty(this.prisma, userId, delegation.resourceId, false);
+          if (duty) reviewPathById.set(delegation.id, `/垫资本金归还/${encodeURIComponent(duty.applicationId)}`);
+        } catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
+        continue;
+      }
       if (delegation.resourceType !== FUND_REVIEW_RESOURCE || delegation.toUserId !== userId || !delegation.resourceId) continue;
       try {
         const { resolveFundReviewIdentity } = await import("../fund-account/fund-account-duty");
@@ -273,7 +288,7 @@ export class ApprovalDelegationService {
         await fundReviewDelegationCapability(this.prisma as never, userId, dutyId);
         return this.prisma.user.findMany({ where: { isActive: true, id: { not: userId } }, orderBy: { name: "asc" }, select: { id: true, name: true } });
       }
-      if (!(await this.generalDuty(this.prisma as never, userId, dutyId, false))) await this.duty(this.prisma as never, userId, dutyId, false);
+      if (!(await loadPrincipalReturnDelegationDuty(this.prisma, userId, dutyId)) && !(await this.generalDuty(this.prisma as never, userId, dutyId, false))) await this.duty(this.prisma as never, userId, dutyId, false);
       return this.prisma.user.findMany({where: {isActive: true, id: {not: userId}}, orderBy: {name: "asc"}, select: {id: true, name: true}});
     }
     const sameProjectUserIds = await this.sameProjectUserIds(userId);
@@ -295,7 +310,7 @@ export class ApprovalDelegationService {
       throw new Error("审批委托记录不存在或已被删除");
     }
 
-    if ([SPOT_APPROVAL_DUTY_RESOURCE, FUND_REVIEW_RESOURCE, GENERAL_REQUEST_DUTY_RESOURCE].includes(delegation.resourceType ?? "")) {
+    if ([SPOT_APPROVAL_DUTY_RESOURCE, FUND_REVIEW_RESOURCE, GENERAL_REQUEST_DUTY_RESOURCE, PRINCIPAL_RETURN_BUSINESS_TYPE].includes(delegation.resourceType ?? "")) {
       return this.prisma.$transaction(async tx => {
         const instanceId = delegation.resourceId?.split(":")[0];
         if (instanceId) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${instanceId} FOR UPDATE`);

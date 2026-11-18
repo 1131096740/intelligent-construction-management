@@ -10665,6 +10665,97 @@
       ]
     },
     {
+      "id": "fund-principal-return.submit",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/垫资本金归还/:applicationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submit"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canWritePrincipalReturn"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "name": "applyPrincipalReturn"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "name": "actOnPrincipalReturn"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "name": "payPrincipalReturn"
+        }
+      ]
+    },
+    {
+      "id": "fund-principal-return.recover-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/垫资本金归还/:applicationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retryOriginal"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canWritePrincipalReturn"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "name": "applyPrincipalReturn"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "name": "actOnPrincipalReturn"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "name": "payPrincipalReturn"
+        }
+      ]
+    },
+    {
+      "id": "fund-principal-return.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/垫资本金归还/:applicationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "checkOriginal"
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "pending.idempotencyKey"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-principal-return.api.ts",
+          "name": "fetchPrincipalReturnResult"
+        }
+      ]
+    },
+    {
       "id": "fund-transfer.register",
       "usage": "page_action",
       "routePaths": [

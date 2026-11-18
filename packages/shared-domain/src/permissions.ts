@@ -8,6 +8,7 @@ import { GLOBAL_BUSINESS_ROLE_KEYS, RoleKey } from "./roles";
  */
 export const BUSINESS_ACTIONS = [
   "fund_account.balance.review",
+  "fund_account.principal_return.review",
   "business_party.create",
   "contract.create",
   "contract.draft.delete",
@@ -167,6 +168,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  */
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
   "fund_account.balance.review": ["finance_director"],
+  "fund_account.principal_return.review": ["comprehensive_director", "project_manager", "finance_director", "general_manager", "chairman"],
   "business_party.create": ["comprehensive_director", "chairman"],
   "contract.create": ["contract_staff", "contract_director"],
   "contract.draft.delete": ["contract_staff", "contract_director"],

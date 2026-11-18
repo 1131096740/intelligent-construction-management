@@ -17217,7 +17217,143 @@ function proveFundAdvancePageAction({ action, wrapper, context }) {
     capabilitySourceFile: FUND_ADVANCE_PARENT };
 }
 
+const PRINCIPAL_RETURN_PAGE = `${WEB_SOURCE_ROOT}/pages/funds/FundPrincipalReturns.vue`;
+const PRINCIPAL_RETURN_COMMAND = `${WEB_SOURCE_ROOT}/pages/funds/principal-return-command.ts`;
+const PRINCIPAL_RETURN_API = `${WEB_SOURCE_ROOT}/api/fund-principal-return.api.ts`;
+const PRINCIPAL_RETURN_ACTIONS = new Map([
+  ["fund-principal-return.submit", "submit"],
+  ["fund-principal-return.recover-original", "retryOriginal"],
+  ["fund-principal-return.lookup-original", "checkOriginal"]
+]);
+const PRINCIPAL_RETURN_WRITES = new Map([
+  ["applyPrincipalReturn", "POST /fund-accounts/principal-returns/applications"],
+  ["actOnPrincipalReturn", "POST /fund-accounts/principal-returns/applications/:param/actions"],
+  ["payPrincipalReturn", "POST /fund-accounts/principal-returns/applications/:param/payments"]
+]);
+
+export async function proveReadOnlyPrincipalReturnResult(root) {
+  const service = "services/api/src/fund-account/fund-principal-return.service.ts";
+  const controller = "services/api/src/fund-account/fund-principal-return.controller.ts";
+  const expected = [
+    [controller, "result", "{ return this.returns.result(actor.id,key); }"],
+    [service, "result", `{
+      return this.prisma.$transaction(async tx=>{
+        const user = await tx.user.findUnique({where:{id:actor},select:{isActive:true}});
+        if (!user?.isActive) throw new ForbiddenException("当前账号不可查询归还结果");
+        const prior = await tx.registeredPrincipalReturnCommand.findUnique({where:{idempotencyKey}});
+        if (!prior || prior.actorUserId !== actor) return {status:"unconfirmed",idempotencyKey};
+        return this.receipt(prior);
+      });
+    }`],
+    [service, "receipt", `{
+      return {status:"recorded",idempotencyKey:row.idempotencyKey,applicationId:row.applicationId,...(row.paymentId ? {paymentId:row.paymentId} : {})};
+    }`]
+  ];
+  for (const [file, name, block] of expected) {
+    let ast;
+    try { ast = parseSource(file, await readFile(resolve(root, file), "utf8")); }
+    catch { return false; }
+    const methods = [];
+    walkEstree(ast, node => {
+      if (node.type === "MethodDefinition" && !node.computed && node.key.name === name) methods.push(node.value.body);
+    });
+    if (methods.length !== 1 || !directRegistrationMatches(methods[0], block)) return false;
+  }
+  return true;
+}
+
+function provePrincipalReturnPageAction({ action, wrapper, context }) {
+  const handlerName = PRINCIPAL_RETURN_ACTIONS.get(action.id);
+  const lookup = handlerName === "checkOriginal";
+  const route = lookup ? "GET /fund-accounts/principal-returns/results/:param" : PRINCIPAL_RETURN_WRITES.get(wrapper.name);
+  if (!handlerName || action.sourceFile !== PRINCIPAL_RETURN_PAGE || action.trigger.handler !== handlerName ||
+      wrapper.apiFile !== PRINCIPAL_RETURN_API || !route || normalizedMainRequests(wrapper).map(entry => entry.normalizedKey).join() !== route ||
+      (lookup ? wrapper.name !== "fetchPrincipalReturnResult" || action.capability.kind !== "none" || action.capability.source !== "pending.idempotencyKey" || !context.principalReturnReadOnly
+        : action.capability.kind !== "server_boolean" || action.capability.source !== "canWritePrincipalReturn")) return null;
+
+  const page = context.symbols;
+  const handler = fundAdvanceNode(page, handlerName);
+  const recover = fundAdvanceNode(page, "recover");
+  const run = fundAdvanceNode(page, "run");
+  const dispatch = { apiFile: PRINCIPAL_RETURN_COMMAND, name: "runPrincipalReturnCommand" };
+  if (!handler || !run || importedWrapperCalls([run], dispatch, context).length !== 1) return null;
+  const usesRun = (node, expression) => {
+    const calls = directRegistrationCalls(node, candidate => directRegistrationExpression(candidate, expression));
+    return calls.length === 1 && directRegistrationLocalCall(calls[0], { binding: topLevelScopeVariables(page.scopeManager, "run")[0] }, page);
+  };
+  if (handlerName === "submit" ? !usesRun(handler, 'run(command, "new", password)') :
+      !recover || !usesRun(recover, "run(pending.value, mode, password)") ||
+      !directRegistrationMatches(handler, `function ${handlerName}() { recover("${lookup ? "check" : "retry"}"); }`)) return null;
+
+  const commandAst = context.asts.get(PRINCIPAL_RETURN_COMMAND);
+  if (!commandAst) return null;
+  const symbols = buildSymbolContext(commandAst, PRINCIPAL_RETURN_COMMAND, context.sourceFileSet);
+  const pipeline = fundAdvanceNode(symbols, "runPrincipalReturnCommand");
+  const gate = fundAdvanceNode(symbols, "canWritePrincipalReturn");
+  if (!pipeline || !gate) return null;
+  const locks = directRegistrationCalls(pipeline, node => staticMemberPath(node.callee) === "navigator.locks.request");
+  const callback = locks[0]?.arguments[2];
+  const statements = callback?.body?.body ?? [];
+  const operation = statements[4];
+  if (locks.length !== 1 || !unshadowedRuntimeGlobal(locks[0].callee.object.object, new Set(["navigator"]), symbols.scopeBindings) ||
+      !directRegistrationExpression(locks[0].arguments[1], '{ mode: "exclusive" }') ||
+      !directRegistrationMatches(statements[0], 'if (!isCurrent()) throw new Error("当前账号已变化，请重新核对");') ||
+      !directRegistrationMatches(statements[1], "const saved = readPrincipalReturnCommand(actor);") ||
+      !directRegistrationMatches(statements[2], `if (saved && (mode === "new" || JSON.stringify(saved) !== JSON.stringify(command))) {
+        return { kind: "pending", command: saved } as const;
+      }`) ||
+      !directRegistrationMatches(statements[3], 'if (!saved && mode !== "new") return { kind: "missing" } as const;') ||
+      statements.length !== 6 || operation?.type !== "TryStatement" ||
+      !directRegistrationMatches(statements[5], 'return { kind: "pending", command } as const;')) return null;
+  const work = operation.block.body;
+  const calls = importedWrapperCalls([pipeline], wrapper, { symbols });
+  if (calls.length !== 1 || !directRegistrationMatches(work[0], `if (saved) {
+      const receipt = await fetchPrincipalReturnResult(command.idempotencyKey, isCurrent);
+      if (isRecordedReceipt(receipt, command)) {
+        localStorage.removeItem(key);
+        return { kind: "recorded" } as const;
+      }
+      if (mode === "check" || receipt?.status !== "unconfirmed" ||
+        receipt.idempotencyKey !== command.idempotencyKey) return { kind: "pending", command } as const;
+    }`)) return null;
+  if (lookup) return astAncestorChain(work[0], calls[0]) ? { verified: true, readOnlyWitness: true } : null;
+  const read = { apiFile: PRINCIPAL_RETURN_API, name: "fetchPrincipalReturns" };
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const readWrapper = context.wrapperIndex.get(readIdentity);
+  const readCalls = importedWrapperCalls([work[1]], read, { symbols });
+  if (!readWrapper || normalizedMainRequests(readWrapper).map(entry => entry.normalizedKey).join() !== "GET /fund-accounts/principal-returns" ||
+      readCalls.length !== 1 || !directRegistrationMatches(work[1], "const model = await fetchPrincipalReturns(isCurrent);") ||
+      !directRegistrationMatches(work[2], 'if (!isCurrent()) return { kind: "pending", command } as const;') ||
+      !directRegistrationMatches(work[3], `if (!canWritePrincipalReturn(model, command)) {
+        const error = new Error("办理权限或原记录状态已变化，请刷新后核对");
+        return saved ? { kind: "pending", command } as const : { kind: "rejected", error } as const;
+      }`) ||
+      !directRegistrationLocalCall(work[3].test.argument, { binding: topLevelScopeVariables(symbols.scopeManager, "canWritePrincipalReturn")[0] }, symbols) ||
+      !directRegistrationMatches(work[4], "if (!saved) localStorage.setItem(key, JSON.stringify(command));") ||
+      !directRegistrationMatches(work[5], `const receipt = command.kind === "apply"
+        ? await applyPrincipalReturn(command, isCurrent)
+        : command.kind === "act"
+          ? await actOnPrincipalReturn(command, password, isCurrent)
+          : await payPrincipalReturn(command, password, isCurrent);`) ||
+      !astAncestorChain(work[5], calls[0]) ||
+      !directRegistrationMatches(gate, `function canWritePrincipalReturn(model: PrincipalReturnReadModel, command: PrincipalReturnCommand) {
+        if (command.kind === "apply") {
+          return model.items.some(source => source.sourceKind === command.input.sourceKind &&
+            source.sourceId === command.input.sourceId && source.canApply);
+        }
+        const application = model.items.flatMap(source => source.applications).find(row => row.id === command.applicationId);
+        if (!application || application.revision !== command.input.expectedRevision) return false;
+        if (command.kind === "pay") return application.canPay && model.payableScopeKeys.includes(command.input.scopeKey);
+        if (command.input.action === "withdraw") return application.canWithdraw;
+        if (command.input.action === "reduce") return application.canReduce;
+        return application.approvalDuties.some(duty => duty.nodeIndex === command.input.nodeIndex);
+      }`)) return null;
+  return { verified: true, capabilityWitness: true, capabilitySources: new Set([readIdentity]),
+    capabilitySourceFile: PRINCIPAL_RETURN_COMMAND };
+}
+
 function proveBusinessActionPipeline({ action, wrapper, context }) {
+  if (PRINCIPAL_RETURN_ACTIONS.has(action.id)) return provePrincipalReturnPageAction({ action, wrapper, context });
   if (FUND_ADVANCE_ACTIONS.has(action.id)) return proveFundAdvancePageAction({ action, wrapper, context });
   if (FUND_TRANSFER_ACTIONS.has(action.id)) return proveFundTransferPageAction({ action, wrapper, context });
   const specializedProof = PUBLIC_CASH_HANDOVER_ACTIONS.has(action.id) ? provePublicCashHandoverPageAction :
@@ -22023,6 +22159,7 @@ export async function inspectWholeSitePageActionManifest({
     )
   );
   const paymentRecoveryReadOnly = registryActions.some(action => action.id === PAYMENT_LOOKUP_ACTION) && await proveReadOnlyPaymentRecovery(resolvedRoot);
+  const principalReturnReadOnly = registryActions.some(action => PRINCIPAL_RETURN_ACTIONS.has(action.id)) && await proveReadOnlyPrincipalReturnResult(resolvedRoot);
   for (const action of registryActions) {
     const source = sources.get(action.sourceFile);
     const ast = asts.get(action.sourceFile);
@@ -22129,6 +22266,7 @@ export async function inspectWholeSitePageActionManifest({
     const capabilityContext = {
       actionId: action.id,
       paymentRecoveryReadOnly,
+      principalReturnReadOnly,
       candidate,
       nestRouteIndex,
       symbols,

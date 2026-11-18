@@ -4,6 +4,7 @@ import { readContractV2LifecycleContext } from "../contract/contract-v2-lifecycl
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
 import { spotPurchaseWorkItems } from "../spot-procurement/spot-purchase-work-items";
 import { fundReviewWorkItems } from "../fund-account/fund-account-work-items";
+import { principalReturnWorkItems } from "./principal-return-work-items";
 import { generalRequestWorkItems } from "../general-procurement/general-procurement-request-work-items";
 import { generalRequestActor } from "../general-procurement/general-procurement-request-access";
 import {scopedSpotDutyNodeIndexes, SPOT_APPROVAL_DUTY_RESOURCE} from "../approval/spot-approval-duty-access";
@@ -805,6 +806,7 @@ export class MeService {
     await addContractRelationshipSummaries(this.prisma,pending);
     return pending.filter((item) =>
       ["company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") ||
+      item.businessType === "registered_principal_return" ||
       item.businessType === "payment_request" ||
       item.businessType === "spot_procurement_payment" ||
       item.businessType === "spot_payment"
@@ -2313,6 +2315,7 @@ export class MeService {
 
     items.push(...await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, mode));
     items.push(...await fundReviewWorkItems(this.prisma, userId, mode));
+    items.push(...await principalReturnWorkItems(this.prisma, userId, mode));
     return items;
   }
 

@@ -236,6 +236,8 @@ model PublicCashHandoverReceipt {
 }
 
 model FundAccountBalanceRegistration {
+  principalReturnPayment RegisteredPrincipalReturnPayment?
+
   id String @id @default(uuid())
   accountId String
   version Int
@@ -7478,4 +7480,79 @@ model RegisteredContractHistoryRevision {
   contractId String @id
   revision BigInt @default(0)
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model RegisteredPrincipalReturnSource {
+  kind          String
+  sourceId      String
+  writeRevision Int    @default(0)
+  applications  RegisteredPrincipalReturnApplication[]
+
+  @@id([kind, sourceId])
+}
+
+model RegisteredPrincipalReturnApplication {
+  id                 String   @id @default(uuid())
+  sourceKind         String
+  sourceId           String
+  projectId          String?
+  contributorName    String
+  requestedYuan      Decimal  @db.Decimal(24, 4)
+  approvedYuan       Decimal? @db.Decimal(24, 4)
+  paidYuan           Decimal  @default(0) @db.Decimal(24, 4)
+  reason             String
+  status             String
+  revision           Int      @default(1)
+  approvalInstanceId String   @unique
+  createdByUserId    String
+  createdAt          DateTime @default(now())
+  source             RegisteredPrincipalReturnSource @relation(fields: [sourceKind, sourceId], references: [kind, sourceId], onDelete: Restrict)
+  payments           RegisteredPrincipalReturnPayment[]
+  commands           RegisteredPrincipalReturnCommand[]
+
+  @@index([sourceKind, sourceId])
+}
+
+model RegisteredPrincipalReturnPayment {
+  id                     String   @id @default(uuid())
+  applicationId          String
+  accountId              String
+  scopeKey               String
+  previousRegistrationId String
+  registrationId          String @unique
+  amountYuan             Decimal  @db.Decimal(24, 4)
+  paidOn                 String
+  evidenceReference      String
+  paidByUserId           String
+  createdAt              DateTime @default(now())
+  application            RegisteredPrincipalReturnApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  allocations            RegisteredPrincipalReturnAllocation[]
+  command                RegisteredPrincipalReturnCommand?
+  registration           FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId])
+}
+
+model RegisteredPrincipalReturnAllocation {
+  paymentId     String
+  sourceBatchId String
+  amountYuan    Decimal @db.Decimal(24, 4)
+  payment       RegisteredPrincipalReturnPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@id([paymentId, sourceBatchId])
+}
+
+model RegisteredPrincipalReturnCommand {
+  idempotencyKey     String   @id
+  applicationId      String
+  paymentId          String? @unique
+  actorUserId        String
+  action             String
+  applicationRevision Int
+  payloadFingerprint String
+  createdAt          DateTime @default(now())
+  application        RegisteredPrincipalReturnApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  payment            RegisteredPrincipalReturnPayment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([applicationId, applicationRevision])
 }

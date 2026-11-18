@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 267,
-    "terminalMigration": "20261118190000_registered_project_advance_funding",
-    "terminalMigrationChecksum": "a86aeff90956ed09f4c22d33aa16ed10c360263cb49d4f37704746493455b850",
+    "expectedDirectoryCount": 268,
+    "terminalMigration": "20261118200000_registered_principal_returns",
+    "terminalMigrationChecksum": "c404812600e804d7af6b27eca74fe0522e409a569fd3568babb126a804405a99",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 83,
-    "fullyPendingSuites": 71,
+    "pendingFiles": 84,
+    "fullyPendingSuites": 72,
     "partiallyPendingSuites": 12,
-    "pendingTests": 546,
-    "coveredFiles": 83,
-    "coveredTests": 546,
+    "pendingTests": 547,
+    "coveredFiles": 84,
+    "coveredTests": 547,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -779,14 +779,32 @@
       "state": "executable_local_runner",
       "issue": 407,
       "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task409_principal_return",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task27-principal-return.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 409,
+      "executionStatus": "NOT_EXECUTED"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 26,
-      "files": 82,
-      "tests": 545
+      "groups": 27,
+      "files": 83,
+      "tests": 546
     },
     "manualOnly": {
       "groups": 1,

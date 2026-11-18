@@ -6,6 +6,7 @@ import { fetchFundReview, fetchFundAccount, fetchFundBalanceRegistration, fetchF
 import { formatUnknownApiError } from "../../api/error-message";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import FundAccountAdvanceReceipt from "./FundAccountAdvanceReceipt.vue";
+import FundPrincipalReturns from "./FundPrincipalReturns.vue";
 import FundAccountTransfers from "./FundAccountTransfers.vue";
 import PublicCashHandoverPanel from "./PublicCashHandoverPanel.vue";
 const route = useRoute();
@@ -231,6 +232,10 @@ onMounted(load);
         label="资金转款"
       />
       <t-tab-panel
+        value="principal-returns"
+        label="待归还本金"
+      />
+      <t-tab-panel
         value="handover"
         label="现金保管交接"
       />
@@ -243,6 +248,12 @@ onMounted(load);
       v-if="activeView === 'transfers' && !isTargetReview"
       :accounts="data.accounts"
       :projects="data.projects"
+      :account-loading="loading"
+      @refresh-accounts="load"
+    />
+    <FundPrincipalReturns
+      v-if="activeView === 'principal-returns' && !isTargetReview"
+      :accounts="data.accounts"
       :account-loading="loading"
       @refresh-accounts="load"
     />
