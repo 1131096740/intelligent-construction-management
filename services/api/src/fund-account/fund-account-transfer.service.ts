@@ -59,7 +59,9 @@ export class FundAccountTransferService {
       if (!lines.length || new Set(lines.map(line => line.sourceBatchId)).size !== lines.length) throw new Error();
       amountYuan = sumBusinessAmounts(lines.map(line => line.amountYuan))!;
     } catch { throw new BadRequestException("请核对实际转款日期和每项正数来源金额"); }
-    const requestHash = fingerprint({ action: "register", actorId, ...input, lines, evidenceReference: evidence });
+    const requestHash = fingerprint({ action: "register", actorId, sourceScopeKey: input.sourceScopeKey,
+      destinationScopeKey: input.destinationScopeKey, expectedRegistrationId: input.expectedRegistrationId,
+      transferredOn: input.transferredOn, evidence, lines });
     return this.transaction(async tx => {
       const source = await tx.registeredFundAccount.findUnique({ where: { scopeKey: input.sourceScopeKey } });
       const destination = await tx.registeredFundAccount.findUnique({ where: { scopeKey: input.destinationScopeKey } });
@@ -95,7 +97,7 @@ export class FundAccountTransferService {
 
   async act(actorId: string, transferId: string, input: ActOnFundAccountTransferDto) {
     const evidence = this.evidence(input.evidenceReference);
-    const requestHash = fingerprint({ transferId, actorId, ...input, evidenceReference: evidence });
+    const requestHash = fingerprint({ transferId, actorId, action: input.action, expectedRevision: input.expectedRevision, evidence });
     return this.transaction(async tx => {
       const transfer = await tx.registeredFundTransfer.findUnique({
         where: { id: transferId }, include: { sourceAccount: true, destinationAccount: true, lines: { include: { sourceBatch: true } } }

@@ -231,7 +231,7 @@ BEGIN
     WHERE other."accountId"=receipt."accountId" AND other."status"='confirmed' AND other."version">previous."version" AND other."version"<receipt."version"
    ) OR previous."coveredExecutionIds"<>receipt."coveredExecutionIds" OR previous."asOfDate"<>receipt."asOfDate" OR
    receipt."createdByUserId"<>a."actorUserId" OR receipt."confirmedByUserId"<>a."actorUserId" OR
-   receipt."balanceYuan"<>previous."balanceYuan"+CASE WHEN receipt."accountId"=t."sourceAccountId" THEN -t."amountYuan" ELSE t."amountYuan" END
+   receipt."balanceYuan"<>previous."balanceYuan"+(CASE WHEN receipt."accountId"=t."sourceAccountId" THEN -t."amountYuan" ELSE t."amountYuan" END)
   THEN RAISE EXCEPTION 'fund transfer receipt changes only its own conserved balance'; END IF;
   IF EXISTS (
    SELECT 1 FROM public."FundAccountSourceBatch" old
