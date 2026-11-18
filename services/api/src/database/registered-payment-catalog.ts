@@ -2,8 +2,8 @@ import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
 /** Recognize the atomic registered-payment installation on the caller’s transaction. */
-export async function registeredPaymentInstalled(tx: Pick<Prisma.TransactionClient, "$queryRaw">): Promise<boolean> {
-  const [row, extra] = await tx.$queryRaw<Array<{ state: string }>>(Prisma.sql`
+export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, "$queryRaw">) {
+  const [row, extra] = await tx.$queryRaw<Array<{ state: string; ownerSettlementVoucher?: boolean }>>(Prisma.sql`
     /* registered_payment_voucher_catalog */
     WITH scope AS (
       SELECT pg_catalog.to_regclass('public."PaymentExecution"')::oid AS payment,
@@ -60,9 +60,17 @@ export async function registeredPaymentInstalled(tx: Pick<Prisma.TransactionClie
           AND t.tgfoid=pg_catalog.to_regprocedure('public.jg_enforce_exclusive_file_business_binding()'))
         THEN 'installed'
       ELSE 'unavailable'
-    END AS state FROM anchor
+    END AS state,
+      pg_catalog.to_regprocedure('public.jg_project_owner_settlement_voucher_bound(text)') IS NOT NULL AS "ownerSettlementVoucher"
+    FROM anchor
   `);
-  if (!extra && row?.state === "absent") return false;
-  if (!extra && row?.state === "installed") return true;
+  if (!extra && (row?.state === "absent" || row?.state === "installed")) {
+    return { registeredPayment: row.state === "installed", ownerSettlementVoucher: row.ownerSettlementVoucher === true };
+  }
   throw new ServiceUnavailableException("付款凭证文件绑定暂不可核验，请稍后重试");
+}
+
+
+export async function registeredPaymentInstalled(tx: Pick<Prisma.TransactionClient, "$queryRaw">): Promise<boolean> {
+  return (await readFileBindingCatalog(tx)).registeredPayment;
 }

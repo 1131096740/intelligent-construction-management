@@ -1,3 +1,4 @@
+import { readFileBindingCatalog } from "../database/registered-payment-catalog";
 import { contractApprovalFormHasReaderRole, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "../contract/contract-parallel-duty-access";
 import { generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
 import { ModuleRef } from "@nestjs/core";
@@ -1572,8 +1573,12 @@ export class FileService {
   }
 
   private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string): Promise<boolean> {
-    const registeredVoucher = await registeredPaymentVoucherInstalled(tx)
+    const catalog = await readFileBindingCatalog(tx);
+    const registeredVoucher = catalog.registeredPayment
       ? Prisma.sql`UNION ALL SELECT 1 FROM public."RegisteredPaymentVoucher" WHERE "fileId" = ${fileId}`
+      : Prisma.empty;
+    const ownerSettlementVoucher = catalog.ownerSettlementVoucher
+      ? Prisma.sql`UNION ALL SELECT 1 WHERE public.jg_project_owner_settlement_voucher_bound(${fileId})`
       : Prisma.empty;
     const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
       SELECT EXISTS (
@@ -1623,7 +1628,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
-        UNION ALL SELECT 1 FROM "ProjectOwnerSettlementEntry" WHERE "voucherFileId" = ${fileId}
+        ${ownerSettlementVoucher}
         UNION ALL SELECT 1 FROM "ProjectUpstreamFundFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectAffiliateContractFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectAffiliateSettlementFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}

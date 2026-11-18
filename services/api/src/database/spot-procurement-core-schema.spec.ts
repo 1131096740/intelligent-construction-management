@@ -428,6 +428,7 @@ const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
   "ExpenseClaimPaymentExecution",
   "ContractDraftAttachment",
   "ProjectUpstreamFundFact",
+  "ProjectOwnerSettlementEntry",
   "ProjectAffiliateContractFact",
   "ProjectAffiliateSettlementFact",
   "ProjectAffiliatePaymentFact",

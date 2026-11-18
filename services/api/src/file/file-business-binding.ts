@@ -1,6 +1,6 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { registeredPaymentInstalled as registeredPaymentVoucherInstalled } from "../database/registered-payment-catalog";
+import { readFileBindingCatalog, registeredPaymentInstalled as registeredPaymentVoucherInstalled } from "../database/registered-payment-catalog";
 
 export { registeredPaymentVoucherInstalled };
 
@@ -275,14 +275,19 @@ export async function nonReceiptBusinessFileBindingIds(
   const candidates = Prisma.join(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
-  const includeVoucher = !excludedBindingKeys.has("RegisteredPaymentVoucher.fileId") &&
-    await registeredPaymentVoucherInstalled(tx);
+  const catalog = await readFileBindingCatalog(tx);
+  const includeVoucher = catalog.registeredPayment && !excludedBindingKeys.has("RegisteredPaymentVoucher.fileId");
+  const includeOwnerSettlement = catalog.ownerSettlementVoucher && !excludedBindingKeys.has("ProjectOwnerSettlementEntry.voucherFileId");
   const bindingQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
     ({ table, columns }) =>
       columns
         .filter((column) => table === "RegisteredPaymentVoucher" ? includeVoucher :
-          !excludedBindingKeys.has(`${table}.${column}`))
+          table === "ProjectOwnerSettlementEntry" ? includeOwnerSettlement : !excludedBindingKeys.has(`${table}.${column}`))
         .map((column) => {
+          if (table === "ProjectOwnerSettlementEntry") {
+            return Prisma.sql`SELECT c."id" AS "fileId" FROM candidates c
+              WHERE public.jg_project_owner_settlement_voucher_bound(c."id")`;
+          }
           const field = sqlIdentifier(column);
           const relation = table === "RegisteredPaymentVoucher"
             ? Prisma.sql`public.${sqlIdentifier(table)}`

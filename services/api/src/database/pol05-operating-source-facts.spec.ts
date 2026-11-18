@@ -309,6 +309,27 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
       const originalKey = randomUUID();
       const registered = await submit(first, "10.0001", originalKey);
       await expect(submit(second, "10.0001", originalKey)).resolves.toEqual(registered);
+      if (process.env.PROJECT_OWNER_SETTLEMENT_TEST_RUNTIME_URL) {
+        const binding = await first.$queryRaw<Array<{ bound: boolean }>>`
+          SELECT public.jg_project_owner_settlement_voucher_bound(${voucher.id}) AS bound
+        `;
+        expect(binding).toEqual([{ bound: true }]);
+        const expense = await owner.projectExpenseRequest.create({ data: {
+          projectId: fixture.projectId, code: `${fixture.prefix}_owner_voucher_rebind`,
+          expenseType: "project_daily", expenseSubtype: "other", paymentSubject: "our_company",
+          reason: "核对独占凭证冲突", requestedAmountCents: 100n, approvedAmountCents: 100n,
+          paymentMethod: "bank_transfer", handlerUserId: fixture.financeUserId,
+          applicantUserId: fixture.financeUserId, status: "approved",
+        } });
+        await expect(owner.$executeRaw`
+          INSERT INTO public."ProjectExpenseExecution"
+            ("id", "idempotencyKey", "projectExpenseRequestId", "projectId", "amountCents", "paidAt", "executedByUserId", "voucherFileId")
+          VALUES (${randomUUID()}, ${randomUUID()}, ${expense.id}, ${fixture.projectId}, 100, now(),
+            ${fixture.financeUserId}, ${voucher.id})
+        `).rejects.toThrow("该文件已绑定其他业务记录，不能重复使用");
+        expect(await owner.projectExpenseExecution.count({ where: { projectExpenseRequestId: expense.id } })).toBe(0);
+      }
+
       const negativeKeys = [randomUUID(), randomUUID()];
       const results = await Promise.allSettled([
         submit(first, "-8.0000", negativeKeys[0]), submit(second, "-8.0000", negativeKeys[1])

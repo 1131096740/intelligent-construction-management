@@ -203,13 +203,16 @@ function schemaFileBindings(): string[] {
   return bindings.sort();
 }
 
+const ownerSettlementVoucherBindingMigration = readFileSync(join(process.cwd(),
+  "prisma/migrations/20261118185000_project_owner_settlement_voucher_binding/migration.sql"), "utf8");
+
 const contractLedgerBindings=["20261019210000_contract_proxy_execution","20261019230000_upward_contract_amount_revision","20261020000000_contract_bank_verification_entry","20261020120000_company_transfer"].map(name=>readFileSync(join(process.cwd(),"prisma/migrations",name,"migration.sql"),"utf8")).join("\n");
 function migrationBindings(): Array<{
   binding: string;
   exclusive: boolean;
 }> {
   return Array.from(
-      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}\n${procurementBindingMigration}\n${contractLedgerBindings}\n${archiveVoucherBindings}`.matchAll(
+      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}\n${procurementBindingMigration}\n${contractLedgerBindings}\n${ownerSettlementVoucherBindingMigration}\n${archiveVoucherBindings}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -228,7 +231,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("accounts for every current registry-bound FileObject reference in migration or prepared source", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(102);
+    expect(registered).toHaveLength(103);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -448,6 +451,14 @@ describe("unified file business binding migration", () => {
     expect(expenseClaimPaymentExecutionBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "voucherFileId" ON "ExpenseClaimPaymentExecution"'
     );
+  });
+
+  it("keeps owner settlement vouchers within the central database binding guard", () => {
+    expect(ownerSettlementVoucherBindingMigration).toContain("pg_advisory_xact_lock(190731, 13)");
+    expect(ownerSettlementVoucherBindingMigration).toContain("('ProjectOwnerSettlementEntry', 'voucherFileId', FALSE)");
+    expect(ownerSettlementVoucherBindingMigration).toContain('BEFORE INSERT ON public."ProjectOwnerSettlementEntry"');
+    expect(ownerSettlementVoucherBindingMigration).toContain('jg_has_exclusive_file_business_binding(NEW."voucherFileId")');
+    expect(ownerSettlementVoucherBindingMigration).toContain("jg_project_owner_settlement_voucher_bound(candidate_file_id)");
   });
 
   it("locks all participants, checks existing conflicts, and rebuilds both trigger directions", () => {

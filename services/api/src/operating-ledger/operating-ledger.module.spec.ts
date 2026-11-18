@@ -15,6 +15,7 @@ describe("OperatingLedgerModule formal source registry", () => {
       "contract_economic_review",
       "contract_proxy_execution", "company_transfer_event", "upward_receipt_match",
       "fund_execution_counterparty",
+      "project_owner_settlement_entry",
       "project_upstream_settlement",
       "project_upstream_fund_fact",
       "project_affiliate_contract_fact",
