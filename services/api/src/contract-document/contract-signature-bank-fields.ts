@@ -44,7 +44,7 @@ export function signatureBankLines(values:Record<string,unknown>,alias:string):s
  return lines;
 }
 /** Only called for the source-qualified new signature layout. */
-export function appendSignatureBankFields(document:Document,table:Element,values:Record<string,unknown>):void {
+export function appendSignatureBankFields(document:Document,table:Element,values:Record<string,unknown>,options:{compact?:boolean}={}):void {
  const rows=Array.from(table.childNodes).filter(node=>node.nodeType===1&&(node as Element).namespaceURI===W&&(node as Element).localName==="tr") as Element[];
  const cells=rows.length===1?Array.from(rows[0].childNodes).filter(node=>node.nodeType===1&&(node as Element).namespaceURI===W&&(node as Element).localName==="tc") as Element[]:[];
  if(cells.length!==2)throw new ConflictException("合同签署区位置无法核对，请联系合同管理员处理");
@@ -52,6 +52,7 @@ export function appendSignatureBankFields(document:Document,table:Element,values
   const lines=signatureBankLines(values,alias);
   for(const value of lines){
    const p=document.createElementNS(W,"w:p"),r=document.createElementNS(W,"w:r"),properties=document.createElementNS(W,"w:rPr"),size=document.createElementNS(W,"w:sz"),t=document.createElementNS(W,"w:t");
+   if(options.compact){const pPr=document.createElementNS(W,"w:pPr"),spacing=document.createElementNS(W,"w:spacing");for(const [key,value] of [["before","0"],["after","0"],["line","200"],["lineRule","auto"]])spacing.setAttributeNS(W,`w:${key}`,value);pPr.appendChild(spacing);p.appendChild(pPr);}
    size.setAttributeNS(W,"w:val","18");properties.appendChild(size);r.appendChild(properties);t.appendChild(document.createTextNode(value));r.appendChild(t);p.appendChild(r);cells[index].appendChild(p);
   }
  }

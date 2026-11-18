@@ -104,11 +104,11 @@ it.each([["material-purchase-real-v1.docx",206],["equipment-rental-real-v1.docx"
  expect(()=>renderContractBody(source,source,{values},[],"layout",oldConfirmed,old)).not.toThrow();
  const fresh=renderContractBody(source,source,{values},[],"layout",oldConfirmed,{...current,partyDetailsConflictPreview:true});
  expect(fresh.signatureSupplementReview?.scope).toBe("company-and-bank");expect(fresh.signatureSupplementReview?.confirmed).toBe(false);
- expect(()=>renderContractBody(source,source,{values},[],"layout",oldConfirmed,current)).toThrow("公司及银行信息");
+ expect(()=>renderContractBody(source,source,{values},[],"layout",oldConfirmed,current)).toThrow("核对内容及甲乙方归属");
  const confirmed={...plan,signatureSupplementReviewDigest:fresh.signatureSupplementReview!.digest};
  expect(renderContractBody(source,source,{values},[],"layout",confirmed,current).signatureSupplementReview?.confirmed).toBe(true);
  const next={partyDetailsVersion:"built-in-signature-supplement-company-v3" as never};
- expect(()=>renderContractBody(source,source,{values},[],"layout",oldConfirmed,next)).toThrow("公司及银行信息");
+ expect(()=>renderContractBody(source,source,{values},[],"layout",oldConfirmed,next)).toThrow("核对内容及甲乙方归属");
  expect(renderContractBody(source,source,{values},[],"layout",confirmed,next).signatureSupplementReview?.confirmed).toBe(true);
  expect(plan.edits[0].text).toBe("虚构补充原文");
 });

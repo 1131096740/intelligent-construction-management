@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import PizZip from "pizzip";
+import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { assertBuiltInPartyPlacementPlan, assertLaborPartySourceMapping, renderContractBody } from "./contract-body-document";
 import { renderContractDocx } from "./contract-docx-renderer";
 import { prepareLegacyPartyRoleBindings, removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
@@ -115,4 +116,12 @@ it.each([13,14,27,28])("only accepts exact party mappings at labor slot %i",inde
   expect(()=>assertLaborPartySourceMapping(source,{...mapping,bindings:[{...binding,end:end-1}]})).toThrow();
   expect(()=>assertLaborPartySourceMapping(source,{...mapping,bindings:[{...binding,fieldKey:"field.useLocation"}]})).toThrow();
   expect(()=>assertLaborPartySourceMapping(source,{...mapping,bindings:[{...binding,fieldKey:owner?"party.counterparty.name":"party.owner.name"}]})).toThrow();
+});
+it("appends external images after the generated final party page",()=>{
+ const plain=renderContractBody(source,source,{values},[],"layout",undefined,{partyDetailsVersion:"built-in-labor-signature-review-v3"}).docx;
+ const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nGQAAAAASUVORK5CYII=","base64");
+ const result=appendDocxImageAttachments(plain,[{name:"虚构图片.png",type:"png",buffer:png}]);
+ expect(rows(result).filter(text=>text.trim())).toEqual(rows(plain).filter(text=>text.trim()));
+ const body=new DOMParser().parseFromString(new PizZip(result).file("word/document.xml")!.asText(),"application/xml").getElementsByTagName("w:body").item(0)!;
+ const nodes=Array.from(body.childNodes).filter(n=>n.nodeType===1),image=nodes.findIndex(n=>(n as typeof body).getElementsByTagName("w:drawing").length>0),last=nodes.findIndex(n=>(n.textContent??"").includes("双方主体及银行信息"));expect(image).toBeGreaterThan(last);
 });

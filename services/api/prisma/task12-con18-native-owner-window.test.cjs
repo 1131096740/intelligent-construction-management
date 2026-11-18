@@ -71,3 +71,8 @@ test('oversized diagnostic results fail closed before a classification escapes',
  await assert.rejects(f.api.observeTask12Con18Document(key,{versionId:id(3),generationId:id(4),sourceRevision:3,documentContentRevision:4,documentContentFingerprint:'a'.repeat(64)}),/TASK12_CON18_OWNER_WINDOW/u);
  assert.equal((await f.api.closeTask12Con18OwnerWindow(key)).matched,false);
 });
+test('default app cannot start with a forged or another fixture owner window',async()=>{
+ const f=model(),token=await f.begin();assert.equal(f.api.assertTask12Con18OwnerWindow(token,f.fixture),true);
+ assert.throws(()=>f.api.assertTask12Con18OwnerWindow({},f.fixture));assert.throws(()=>f.api.assertTask12Con18OwnerWindow(token,{}));
+ await f.api.observeTask12Con18Signed(token,id(3),id(4),id(22));assert.throws(()=>f.api.assertTask12Con18OwnerWindow(token,f.fixture));
+});

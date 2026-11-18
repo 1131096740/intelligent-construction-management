@@ -20,6 +20,7 @@ async function beginTask12Con18OwnerWindow(cap,loginProjection,moduleView,fixtur
  need(admitted&&admitted.prior&&admitted.modules&&fixture?.case?.key==='inside:equipment_rental'&&uuid(fixture?.approval?.project?.id)&&Array.isArray(fixture.approval.users)&&fixture.approval.users.length===8&&fixture.approval.users.every(u=>uuid(u.id)));
  admitted.modules.verifyFull();const s={prior:admitted.prior,modules:admitted.modules,fixture,exec,open:true,failed:false,pending:false,stage:0};need(await read(s,'BEGIN')===null);const token=Object.freeze({});active.set(token,s);return token;
 }
+function assertTask12Con18OwnerWindow(key,fixture){const s=scopeFor(key);need(arguments.length===2&&s.fixture===fixture&&s.stage===0&&!s.pending);return true;}
 async function observeTask12Con18Signed(key,versionId,roundId,actorId){
  const s=scopeFor(key);if(!(arguments.length===4&&s.stage===0&&[versionId,roundId,actorId].every(uuid)&&actorId===s.fixture.approval.users[2].id)){s.failed=true;need(false);}
  const payload=`pg_catalog.jsonb_build_object('signed',EXISTS(SELECT FROM public."ApprovalInstance" r JOIN public."ContractVersion" v ON v.id=r."businessId" JOIN public."Contract" c ON c.id=v."contractId" WHERE r.id=${quote(roundId)} AND r."businessId"=${quote(versionId)} AND r."businessType"='contract_version' AND r."flowType"='contract.approve' AND r.status='in_progress' AND c."projectId"=${quote(s.fixture.approval.project.id)}) AND (SELECT count(*) FROM public."ApprovalActionLog" a WHERE a."approvalInstanceId"=${quote(roundId)} AND a.action='approve')=1 AND EXISTS(SELECT FROM public."ApprovalActionLog" a WHERE a."approvalInstanceId"=${quote(roundId)} AND a.action='approve' AND a."actorUserId"=${quote(actorId)} AND a."signatureFileIdSnapshot" IS NOT NULL AND a."signatureVersionIdSnapshot" IS NOT NULL AND a."signatureSha256Snapshot" ~ '^[a-f0-9]{64}$'))`;
@@ -47,4 +48,4 @@ async function closeTask12Con18OwnerWindow(key){
  const s=key&&!types.isProxy(key)?active.get(key):undefined;need(s&&s.open);
  try{if(s.failed||s.stage!==3||s.pending)return Object.freeze({matched:false,localOnly:true,full394Accepted:false});need(await read(s,'CLOSE')===null);return Object.freeze({matched:true,localOnly:true,full394Accepted:false});}finally{s.open=false;active.delete(key);}
 }
-module.exports=Object.freeze({beginTask12Con18OwnerWindow,observeTask12Con18Signed,observeTask12Con18Rounds,observeTask12Con18Archived,observeTask12Con18Document,closeTask12Con18OwnerWindow});
+module.exports=Object.freeze({assertTask12Con18OwnerWindow,beginTask12Con18OwnerWindow,observeTask12Con18Signed,observeTask12Con18Rounds,observeTask12Con18Archived,observeTask12Con18Document,closeTask12Con18OwnerWindow});

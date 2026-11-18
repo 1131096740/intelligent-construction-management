@@ -88,6 +88,13 @@ describe("已核后继来源在原保存入口的连续性", () => {
     observation = { ...observation, constraint: { ...observation.constraint, afterOid: "51003" } };
     await expect(assertUpwardPendingSaveContinuity(tx, before)).rejects.toMatchObject({ status: 503 });
   });
+  it("新应用拒绝 261 旧 projection 摘要，避免混用 262 新闭包", async () => {
+    const oldProjectionSha = "785c21ee595eb128fa0911d3f18c9718457615f1d6df1abf532bf4159659210c";
+    const projection = syntheticProjection();
+    projection.definers = projection.definers.map(row => row.signature === "public.jg_upward_archive_catalog_projection_v2()"
+      ? { ...row, bodySha256: oldProjectionSha } : row);
+    await expect(qualifyUpwardPendingSave(successorClient(() => projection))).rejects.toMatchObject({ status: 503 });
+  });
   it("拒绝来自另一事务的后继目录响应", async () => {
     await expect(qualifyUpwardPendingSave(successorClient(() => ({ ...syntheticProjection(), transactionId: "500004" }))))
       .rejects.toMatchObject({ status: 503 });

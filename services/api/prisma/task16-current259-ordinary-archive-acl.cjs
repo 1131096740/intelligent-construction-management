@@ -567,6 +567,47 @@ function readNativeTask12OrdinaryAclProjection(result){
  need(arguments.length===1&&result&&!types.isProxy(result)&&nativeOrdinaryProjections.has(result),'HANDLE');
  return nativeOrdinaryProjections.get(result);
 }
+// A separate, owner-read-only post-install observation. It does not grant or
+// authenticate the application; the controller must bind this OID to its pool.
+function beginNativeTask12OrdinaryPostInstallAudit(result){
+ need(arguments.length===1,'HANDLE');
+ const projection=readNativeTask12OrdinaryAclProjection(result), ordinary=projection.roleCompletion.ordinary;
+ const identity=projection.archiveCompletion.databaseIdentity, profile=projection.profile;
+ need(ordinary&&oid(ordinary.oid)&&identity&&oid(identity.databaseOid)&&oid(identity.namespaceOid)&&
+  xid(identity.systemIdentifier)&&identity.ownerOid==='10'&&typeof identity.database==='string'&&
+  Number.isInteger(projection.serverPort),'HANDLE');
+ const challenge=randomBytes(32).toString('hex'), app=ownerRoleSql(ordinary);
+ const sql=[readOnly,setup,`DO $ordinary_post_audit$ BEGIN
+ IF current_user::regrole::oid<>10 OR session_user::regrole::oid<>10
+  OR current_database() IS DISTINCT FROM ${quote(identity.database)}
+  OR (SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database() AND datdba=10) IS DISTINCT FROM ${quote(identity.databaseOid)}
+  OR pg_catalog.to_regnamespace('public')::oid::text IS DISTINCT FROM ${quote(identity.namespaceOid)}
+  OR (SELECT system_identifier::text FROM pg_catalog.pg_control_system()) IS DISTINCT FROM ${quote(identity.systemIdentifier)}
+  OR pg_catalog.inet_server_port() IS DISTINCT FROM ${projection.serverPort}
+  OR (SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()) IS DISTINCT FROM true
+  OR NOT EXISTS(SELECT FROM pg_catalog.pg_authid r WHERE r.oid=${app} AND r.rolname=${quote(ordinary.name)}
+   AND r.rolcanlogin AND NOT (r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
+   AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m WHERE r.oid IN (m.roleid,m.member))
+   AND NOT pg_catalog.has_schema_privilege(r.oid,'public','CREATE'))
+ THEN RAISE EXCEPTION '${CODE}_POST_AUDIT_IDENTITY'; END IF;
+ ${limits(ordinary,profile)}
+ IF (${targets(ordinary,profile)}) IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION '${CODE}_POST_AUDIT_MISSING'; END IF;
+ END $ordinary_post_audit$;`,
+ `SELECT pg_catalog.jsonb_build_object('challenge',${quote(challenge)},'roleOid',${quote(ordinary.oid)},
+  'databaseOid',${quote(identity.databaseOid)},'namespaceOid',${quote(identity.namespaceOid)},
+  'systemIdentifier',${quote(identity.systemIdentifier)},'backendPid',pg_catalog.pg_backend_pid(),
+  'readOnly',pg_catalog.current_setting('transaction_read_only'));`,'ROLLBACK;'].join('\n');
+ let used=false;
+ return Object.freeze({sql,accept(stdout){
+  need(!used,'PHASE');used=true;let row;try{row=JSON.parse(stdout);}catch{throw fault('OUTPUT');}
+  need(shape(row,['challenge','roleOid','databaseOid','namespaceOid','systemIdentifier','backendPid','readOnly'])&&
+   row.challenge===challenge&&row.roleOid===ordinary.oid&&row.databaseOid===identity.databaseOid&&
+   row.namespaceOid===identity.namespaceOid&&row.systemIdentifier===identity.systemIdentifier&&
+   Number.isInteger(row.backendPid)&&row.backendPid>0&&row.readOnly==='on','OUTPUT');
+  return Object.freeze({roleOid:ordinary.oid,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,
+   systemIdentifier:identity.systemIdentifier,backendPid:row.backendPid,scope:'ORDINARY_ACL_OBSERVED_NOT_ADMISSION'});
+ }});
+}
 function beginNativeTask12OrdinaryAclProtocol(archiveCompletion){
  need(arguments.length===1,'HANDLE');
  const lease=require('./task16-current259-archive-install.cjs').readNativeTask12ArchiveProjection(archiveCompletion);
@@ -603,5 +644,5 @@ function beginNativeTask12OrdinaryAclProtocol(archiveCompletion){
   }});
  }});
 }
-module.exports=Object.freeze({beginNativeTask12OrdinaryAclProtocol,readNativeTask12OrdinaryAclProjection,installCurrent261AuthOnlyDiagnosticOrdinaryAcl,claimCurrent261AuthOnlyDiagnosticOrdinaryAcl,describeCurrent261GeneratedLifecycleOrdinaryAcl,describeMigration261GeneratedLifecycleOrdinaryAcl,installCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
+module.exports=Object.freeze({beginNativeTask12OrdinaryPostInstallAudit,beginNativeTask12OrdinaryAclProtocol,readNativeTask12OrdinaryAclProjection,installCurrent261AuthOnlyDiagnosticOrdinaryAcl,claimCurrent261AuthOnlyDiagnosticOrdinaryAcl,describeCurrent261GeneratedLifecycleOrdinaryAcl,describeMigration261GeneratedLifecycleOrdinaryAcl,installCurrent261GeneratedLifecycleOrdinaryAcl,claimCurrent261GeneratedLifecycleOrdinaryAcl,installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
  installCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl});

@@ -308,7 +308,7 @@ function loadCurrent259Client(handle){
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
- let contract,document,lifeDocument,ordinaryTestingUsed=false;
+ let contract,document,lifeDocument,defaultDocument,ordinaryTestingUsed=false;
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
@@ -514,15 +514,50 @@ function loadCurrent259Client(handle){
      own(rootProviders[2],'useExisting')===documentValues.Task12AuthErrorFilter&&own(rootProviders[3],'provide')==='APP_INTERCEPTOR'&&own(rootProviders[3],'useExisting')===documentValues.Task12AuthStageInterceptor&&Object.getPrototypeOf(documentValues.Task12AuthErrorFilter.prototype)===filter.prototype&&dataMethod(filter.prototype,'catch')===baseFilterCatch&&
      authMethods.every(row=>dataMethod(row.target,row.name)===row.value)&&taskMethods.every(row=>dataMethod(row.target,row.name)===row.value)&&
      hooks.every(([key,value])=>dataMethod(ContractDocumentProcessor.prototype,key)===value)&&
-     ['app.module.js','main.js'].every(file=>!files.has(path.join(dist,file))),code);
+     !files.has(path.join(dist,'main.js'))&&(!files.has(path.join(dist,'app.module.js'))||Boolean(defaultDocument?.checkMetadata())),code);
    }});
    collect();
    return exports;
   }catch(error){failed=true;throw error;}
  }
+ function loadCurrent261DefaultAppModules(){
+  const code='CURRENT261_DEFAULT_APP_MODULE_SOURCE';
+  need(arguments.length===0&&require.main?.filename===path.join(root,'services/api/prisma/run-task12-native-con18-default-once.cjs'),code);
+  const base=loadCurrent261LocalLifecycleDocumentModules();check();if(defaultDocument)return defaultDocument.exports;
+  try{
+   const dist=path.join(root,'services/api/dist'), entry=path.join(dist,'database/task12-con18-default-app.js');
+   const entryExports=guardedRequire(entry),entryModule=require.cache[entry];
+   need(entryModule?.loaded===true&&entryModule.exports===entryExports,code);roots.push(entryModule);
+   const runDescriptor=Object.getOwnPropertyDescriptor(entryExports,'runTask12Con18DefaultApp');
+   need(runDescriptor&&Object.hasOwn(runDescriptor,'value')&&typeof runDescriptor.value==='function',code);
+   records.push({module:entryModule,key:'runTask12Con18DefaultApp',value:runDescriptor.value,descriptor:runDescriptor});
+   const pin=(relative,key)=>{
+    const module=require.cache[path.join(dist,relative+'.js')],descriptor=module&&Object.getOwnPropertyDescriptor(module.exports,key);
+    need(module?.loaded===true&&descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',code);
+    records.push({module,key,value:descriptor.value,descriptor});return descriptor.value;
+   };
+   const app=pin('app.module','AppModule');
+   const fixedImports=[["contract-ledger/contract-relationship-ledger.module","ContractRelationshipLedgerModule"],["database/database.module","DatabaseModule"],["organization/organization.module","OrganizationModule"],["project/project.module","ProjectModule"],["contract/contract.module","ContractModule"],["contract-bill/contract-bill.module","ContractBillModule"],["contract-document/contract-document.module","ContractDocumentModule"],["contract-document/contract-document-worker.module","ContractDocumentWorkerModule"],["contract-workbench/contract-workbench.module","ContractWorkbenchModule"],["contract-template/contract-template.module","ContractTemplateModule"],["contract-takeover/contract-takeover.module","ContractTakeoverModule"],["business-party/business-party.module","BusinessPartyModule"],["business-entry-definition/business-entry-definition.module","BusinessEntryDefinitionModule"],["clearing/clearing.module","ClearingModule"],["company-entity/company-entity.module","CompanyEntityModule"],["operating-ledger/operating-ledger.module","OperatingLedgerModule"],["operating-projection/operating-projection.module","OperatingProjectionModule"],["operating-takeover/operating-takeover.module","OperatingTakeoverModule"],["payable-registry/payable-registry.module","PayableRegistryModule"],["settlement/settlement.module","SettlementModule"],["payment/payment.module","PaymentModule"],["project-expense/project-expense.module","ProjectExpenseModule"],["project-close-profit/project-close-profit.module","ProjectCloseProfitModule"],["expense-claim/expense-claim.module","ExpenseClaimModule"],["general-procurement/general-procurement.module","GeneralProcurementModule"],["funds-workbench/funds-workbench.module","FundsWorkbenchModule"],["fund-account/fund-account.module","FundAccountModule"],["fund-movement/fund-movement.module","FundMovementModule"],["company-transfer/company-transfer.module","CompanyTransferModule"],["fund-execution/fund-execution.module","FundExecutionModule"],["spot-procurement/spot-procurement.module","SpotProcurementModule"],["wage-statement/wage-statement.module","WageStatementModule"],["necessary-expense-reserve/necessary-expense-reserve.module","NecessaryExpenseReserveModule"],["project-fund-dispute/project-fund-dispute.module","ProjectFundDisputeModule"],["invoice-ledger/invoice-ledger.module","InvoiceLedgerModule"],["approval/approval.module","ApprovalModule"],["file/file.module","FileModule"],["draft-retention/draft-retention.module","DraftRetentionModule"],["contract-ended-retention/contract-ended-retention.module","ContractEndedApplicationRetentionModule"],["contract-ended-purge/contract-ended-application-purge.module","ContractEndedApplicationPurgeModule"],["me/me.module","MeModule"],["archive/archive.module","ArchiveModule"],["audit/audit.module","AuditModule"],["auth/auth.module","AuthModule"],["pdf/pdf.module","PdfModule"]].map(([file,key])=>pin(file,key));
+   const database=pin('database/database.module','DatabaseModule'),worker=pin('contract-document/contract-document-worker.module','ContractDocumentWorkerModule');
+   const health=pin('health.controller','HealthController'),filterClass=pin('project/project-operating-constraint.filter','ProjectOperatingConstraintFilter');
+   const exact=(key,target,expected)=>{const actual=metadata(key,target);return Array.isArray(actual)&&actual.length===expected.length&&expected.every((item,i)=>actual[i]===item);};
+   const verify=()=>{
+    const providers=metadata('providers',app);
+    need(exact('imports',app,fixedImports)&&fixedImports.filter(v=>v===database).length===1&&fixedImports.filter(v=>v===worker).length===1&&
+     exact('controllers',app,[health])&&Array.isArray(providers)&&providers.length===1&&own(providers[0],'provide')==='APP_FILTER'&&own(providers[0],'useClass')===filterClass&&
+     exact('providers',database,[values.PrismaService])&&exact('exports',database,[values.PrismaService])&&metadata('__module:global__',database)===true&&
+     !files.has(path.join(dist,'main.js')),code);
+    return true;
+   };
+   const exports=Object.freeze({...base,runTask12Con18DefaultApp:runDescriptor.value});
+   defaultDocument=Object.freeze({exports,checkMetadata:verify});verify();collect();
+   const lease=officialDocumentModuleViews.get(base);need(lease,code);officialDocumentModuleViews.set(exports,lease);
+   return exports;
+  }catch(error){failed=true;throw error;}
+ }
  function loadCurrent261LocalLifecycleDocumentModules(){
   const code='CURRENT261_LOCAL_LIFECYCLE_MODULE_SOURCE';
-  need(arguments.length===0&&material.source.profile.profile==='TASK12_ARCHIVE261_SOURCE_V1',code);
+  need(arguments.length===0&&['TASK12_ARCHIVE261_SOURCE_V1','TASK12_ARCHIVE262_SOURCE_V1'].includes(material.source.profile.profile),code);
   check();if(lifeDocument)return lifeDocument.exports;
   try{
    const base=loadGeneratedContractDocumentModules(),published={},modules={};
@@ -834,7 +869,7 @@ function loadCurrent259Client(handle){
  }
  function createNativeTask12OrdinaryClient(urlText){
   const code='CURRENT261_NATIVE_ORDINARY_HANDLE';
-  need(arguments.length===1&&typeof urlText==='string'&&urlText.length<=8192&&material.source.profile.profile==='TASK12_ARCHIVE261_SOURCE_V1',code);
+  need(arguments.length===1&&typeof urlText==='string'&&urlText.length<=8192&&['TASK12_ARCHIVE261_SOURCE_V1','TASK12_ARCHIVE262_SOURCE_V1'].includes(material.source.profile.profile),code);
   check();const loaded=loadCurrent261LocalLifecycleDocumentModules(),Constructor=values.PrismaService;
   const url=new URL(urlText),keys=['schema','connection_limit','sslmode','sslaccept','sslcert','connect_timeout','pool_timeout','application_name'];
   need(url.protocol==='postgresql:'&&url.hostname==='127.0.0.1'&&Number(url.port)>1024&&Number(url.port)<=65535&&Number(url.port)!==5432&&/^jg_fixture_app_[a-f0-9]{24}$/u.test(url.username)&&/^[a-f0-9]{96}$/u.test(url.password)&&/^\/jg_task01_[a-f0-9]{32}$/u.test(url.pathname)&&url.hash===''&&[...url.searchParams.keys()].length===keys.length&&keys.every(key=>url.searchParams.getAll(key).length===1)&&url.searchParams.get('schema')==='public'&&url.searchParams.get('connection_limit')==='2'&&url.searchParams.get('sslmode')==='require'&&url.searchParams.get('sslaccept')==='strict'&&url.searchParams.get('connect_timeout')==='5'&&url.searchParams.get('pool_timeout')==='5'&&/^\/private\/tmp\/jg-native-contract-[A-Za-z0-9_-]{1,32}\/ca\.crt$/u.test(url.searchParams.get('sslcert'))&&/^native_task12_[a-f0-9]{32}_3$/u.test(url.searchParams.get('application_name')),code);
@@ -844,7 +879,7 @@ function loadCurrent259Client(handle){
    check();need(loadCurrent261LocalLifecycleDocumentModules()===loaded&&values.PrismaService===Constructor&&loaded.PrismaService===Constructor&&client instanceof Constructor&&Object.getPrototypeOf(client)===Constructor.prototype,code);
   }});return client;
  }
- check();material.check();const result=Object.freeze({createNativeTask12OrdinaryClient,Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,loadCurrent261LocalLifecycleDocumentModules,loadCurrent261FirstLoginModules,createDocumentTestingModule,
+ check();material.check();const result=Object.freeze({createNativeTask12OrdinaryClient,Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,loadCurrent261LocalLifecycleDocumentModules,loadCurrent261DefaultAppModules,loadCurrent261FirstLoginModules,createDocumentTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;

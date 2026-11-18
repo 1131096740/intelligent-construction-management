@@ -1,3 +1,6 @@
+import { assertAutomaticPartyMapping, AUTOMATIC_PARTY_GUARD_PREFIX } from "./contract-automatic-party-mapping";
+import { reviewedBuiltinTemplateKind } from "./builtin-template-parts";
+import { prepareLegacyPartyRoleBindings } from "./contract-mechanical-party-placement";
 import { assertBankFieldCapacity, projectSignatureBankValues } from "./contract-signature-bank-fields";
 import { MECHANICAL_CONTACT_LAYOUT_VERSION, type MechanicalContactLayoutVersion } from "./mechanical-contact-layout";
 import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
@@ -5,10 +8,10 @@ import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/cont
 import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
 import { readSelectableLayoutSource } from "../contract-template/layout-selection-policy";
 import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
-import { BUILT_IN_GENERIC_FONT_VERSION, BUILT_IN_GENERIC_SOURCE_SHA256 } from "./contract-docx-package-metadata";
+import { BUILT_IN_GENERIC_FONT_VERSION, EQUIVALENT_GENERIC_FONT_VERSION } from "./contract-docx-package-metadata";
 import { assertGenericBankInputs } from "./generic-bank-blanks";
 import { assertGenericPartySourceMapping, assertLaborPartySourceMapping } from "./contract-body-document";
-import { assertSignatureSupplementReview, assertSignatureSupplementMapping, assertLaborProtectedSignatureEdits, assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, BUILT_IN_PARTY_PLACEMENT_VERSION, SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION, SIGNATURE_SUPPLEMENT_COMPANY_VERSION, SIGNATURE_SUPPLEMENT_PAGE_VERSION, GENERIC_BANK_VALUES_VERSION, GENERIC_SIGNATURE_REVIEW_VERSION, LABOR_BANK_VALUES_VERSION, LABOR_GLYPH_BANK_VALUES_VERSION, LABOR_SIGNATURE_REVIEW_VERSION, LABOR_GLYPH_SIGNATURE_REVIEW_VERSION, type PartyPlacementVersion, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
+import { MAPPED_MATERIAL_SIGNATURE_GATE, MAPPED_GENERIC_BODY_GATE, MAPPED_GENERIC_LEGACY_GATE, type MappedSignatureGate, LEGACY_BODY_SIGNATURE_VERSION, LEGACY_SIGNATURE_BANK_VERSION, LEGACY_MECHANICAL_SOURCE_BOUND_VERSION, assertSignatureSupplementReview, assertSignatureSupplementMapping, assertLaborProtectedSignatureEdits, assertBuiltInPartyPlacementPlan, builtInPartyPlacementKind, SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION, SIGNATURE_SUPPLEMENT_COMPANY_VERSION, SIGNATURE_SUPPLEMENT_PAGE_VERSION, GENERIC_BANK_VALUES_VERSION, GENERIC_SIGNATURE_REVIEW_VERSION, LABOR_BANK_VALUES_VERSION, LABOR_GLYPH_BANK_VALUES_VERSION, LABOR_SIGNATURE_REVIEW_VERSION, LABOR_GLYPH_SIGNATURE_REVIEW_VERSION, type PartyPlacementVersion, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
 import { laborFinalPartyNames } from "./contract-labor-final-party-page";
 import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
 import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
@@ -72,11 +75,12 @@ export interface ContractDocumentInputSnapshot {
   documentContentFingerprint: string;
   templateFileId: string;
   layoutSourceMapping?: LayoutSourceMapping;
-  partyDetailsVersion?: PartyPlacementVersion;
-  genericFontTableVersion?: typeof BUILT_IN_GENERIC_FONT_VERSION;
+  partyDetailsVersion?: PartyPlacementVersion | MappedSignatureGate | `built-in-equivalent-v1:${string}` | `built-in-automatic-party-guard-v1:${string}`;
+  genericFontTableVersion?: typeof BUILT_IN_GENERIC_FONT_VERSION | typeof EQUIVALENT_GENERIC_FONT_VERSION;
+  mappedSignatureVersion?: "built-in-mapped-signature-supplement-v1";
   mechanicalContactLayoutVersion?: MechanicalContactLayoutVersion;
   bodyDocument?: { protocolVersion: 1; layoutTemplateVersionId: string; sourceSha256: string; editPlan?: ContractBodyEditPlan;
-    pdfEngine?: "docx4j-17.3.5"; runtimeLockSha256?: string; renderSemanticVersion?: typeof CONTRACT_BODY_MONEY_SEMANTICS_VERSION; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: PartyPlacementVersion };
+    pdfEngine?: "docx4j-17.3.5"; runtimeLockSha256?: string; renderSemanticVersion?: typeof CONTRACT_BODY_MONEY_SEMANTICS_VERSION; tableLayoutVersion?: ContractBodyTableLayoutVersion; typographyVersion?: ReviewedTypographyVersion; signatureDateVersion?: typeof REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION; pageNumberVersion?: typeof REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION; partyDetailsVersion?: PartyPlacementVersion | MappedSignatureGate | `built-in-equivalent-v1:${string}` | `built-in-automatic-party-guard-v1:${string}` };
   outputBaseName: string;
   renderInput: { values: Record<string, unknown> };
   requiredKeys: string[];
@@ -160,10 +164,11 @@ export class ContractDocumentService {
     const schema=this.isObject(layout.placeholderSchema)?layout.placeholderSchema:{};
     const mapping=this.isObject(schema.sourceMapping)?schema.sourceMapping:undefined;
     if(mapping) {
-      try { assertGenericPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); assertLaborPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); }
+      try { assertGenericPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); assertLaborPartySourceMapping(source.buffer,mapping as unknown as LayoutSourceMapping); assertAutomaticPartyMapping(source.buffer,mapping as unknown as LayoutSourceMapping); }
       catch (error) { if (!(error instanceof ConflictException)) throw error; partyDetailsExternalMappingConflict=true; }
     }
-    const previewSignatureBanks=["material","mechanical","generic","labor"].includes(builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) ?? "");
+    const previewKind = reviewedBuiltinTemplateKind(source.buffer);
+    const previewSignatureBanks = Boolean(previewKind);
     const readPreviewValues=(includeBanks:boolean)=>this.renderValues(contract, version, parties,
       bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION,includeBanks);
     let previewValues:Record<string,unknown>;
@@ -171,7 +176,7 @@ export class ContractDocumentService {
     catch(error) { if (!(error instanceof ConflictException)||!previewSignatureBanks) throw error; partyDetailsExternalMappingConflict=true;previewValues=readPreviewValues(false); }
     const rendered = renderContractBody(source.buffer, mapped, { values: previewValues }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
         ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}),
-        ...(builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) ? {partyDetailsVersion: builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) === "generic" ? GENERIC_SIGNATURE_REVIEW_VERSION : builtInPartyPlacementKind(createHash("sha256").update(source.buffer).digest("hex")) === "labor" ? LABOR_GLYPH_SIGNATURE_REVIEW_VERSION : SIGNATURE_SUPPLEMENT_PAGE_VERSION,partyDetailsConflictPreview:true,partyDetailsExternalMappingConflict} : {}) });
+        ...(previewKind ? {partyDetailsVersion: previewKind === "generic" ? GENERIC_SIGNATURE_REVIEW_VERSION : previewKind === "labor" ? LABOR_GLYPH_SIGNATURE_REVIEW_VERSION : version.numericProtocolVersion !== 2 ? LEGACY_BODY_SIGNATURE_VERSION : SIGNATURE_SUPPLEMENT_PAGE_VERSION,partyDetailsConflictPreview:true,partyDetailsExternalMappingConflict,genericMappedSupplement: previewKind === "generic",mappedSignatureSupplement: version.numericProtocolVersion===2 && ["material","mechanical"].includes(previewKind ?? "")} : {}) });
     const savePoints = checkpoints.flatMap(checkpoint => {
       const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
       return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
@@ -181,17 +186,17 @@ export class ContractDocumentService {
       contractVersionId, draftRevision: version.draftRevision,
       documentContentRevision: version.documentContentRevision,
       layoutTemplateVersionId: layout.id, sourceSha256: rendered.sourceSha256,
-      mechanicalContactLayoutVersion:builtInPartyPlacementKind(rendered.sourceSha256)==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:null,
+      mechanicalContactLayoutVersion:previewKind==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:null,
       blocks: rendered.blocks, flow: rendered.flow, paragraphGroups: rendered.paragraphGroups, savePoints,
       ...(rendered.partyDetailsRecovery ? {partyDetailsRecovery:rendered.partyDetailsRecovery} : {}),
       ...(rendered.laborSignatureRecovery ? {laborSignatureRecovery:rendered.laborSignatureRecovery} : {}),
       ...(rendered.signatureSupplementReview ? {signatureSupplementReview:rendered.signatureSupplementReview} : {}),
       warnings: [
-        ...(rendered.signatureSupplementReview&&!rendered.signatureSupplementReview.confirmed ? [rendered.signatureSupplementReview.scope==="labor-company-and-bank"?"请核对劳务主合同签署栏内容，确保不含公司及银行信息；如有请先转填主体资料。":rendered.signatureSupplementReview.scope==="company-and-bank"?"请核对签署页前的甲乙方补充内容，确保不含公司及银行信息；如有请先转填主体资料。":"请核对签署页前的甲乙方补充内容，确保不含银行资料；如有请先转填主体银行资料。"] : []),
+        ...(rendered.signatureSupplementReview&&!rendered.signatureSupplementReview.confirmed ? ["请核对内容及甲乙方归属，确认后保存。"] : []),
         ...(createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
           ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []),
         ...(rendered.partyDetailsMappingConflict ? ["主体、银行资料或版式映射需要核对，请保留内容并联系合同管理员处理。"] : []),
-        ...(rendered.partyDetailsConflict ? [builtInPartyPlacementKind(rendered.sourceSha256)==="labor"?"劳务主合同或附件签署位置已有编辑，请保留并复制原内容，联系合同管理员核对；草稿内容已保留。":"正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"] : [])
+        ...(rendered.partyDetailsConflict ? [previewKind==="labor"?"劳务主合同或附件签署位置已有编辑，请保留并复制原内容，联系合同管理员核对；草稿内容已保留。":"正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。"] : [])
       ]
     };
   }
@@ -309,10 +314,16 @@ export class ContractDocumentService {
 
         const useBodyRenderer = version.numericProtocolVersion === 2 || draftData.documentBody !== undefined;
         const bodySource = useBodyRenderer ? selectedSource : undefined;
-        const partyKind = builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex"));
-        const partyDetailsVersion = partyKind === "generic" ? (useBodyRenderer ? GENERIC_SIGNATURE_REVIEW_VERSION : GENERIC_BANK_VALUES_VERSION) : partyKind === "labor" ? (useBodyRenderer ? LABOR_GLYPH_SIGNATURE_REVIEW_VERSION : LABOR_SIGNATURE_REVIEW_VERSION) : partyKind ? (useBodyRenderer ? SIGNATURE_SUPPLEMENT_PAGE_VERSION : BUILT_IN_PARTY_PLACEMENT_VERSION) : undefined;
-        const mechanicalContactLayoutVersion=builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex"))==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:undefined;
-        const genericFontTableVersion=createHash("sha256").update(selectedSource.buffer).digest("hex")===BUILT_IN_GENERIC_SOURCE_SHA256?BUILT_IN_GENERIC_FONT_VERSION:undefined;
+        const partyKind = reviewedBuiltinTemplateKind(selectedSource.buffer);
+        const equivalentBuiltIn = Boolean(partyKind && !builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex")));
+        const partyDetailsVersion = partyKind === "generic" ? (useBodyRenderer ? GENERIC_SIGNATURE_REVIEW_VERSION : GENERIC_BANK_VALUES_VERSION) : partyKind === "labor" ? (useBodyRenderer ? LABOR_GLYPH_SIGNATURE_REVIEW_VERSION : LABOR_SIGNATURE_REVIEW_VERSION) : partyKind ? (useBodyRenderer ? version.numericProtocolVersion !== 2 ? LEGACY_BODY_SIGNATURE_VERSION : SIGNATURE_SUPPLEMENT_PAGE_VERSION : partyKind === "mechanical" ? LEGACY_MECHANICAL_SOURCE_BOUND_VERSION : LEGACY_SIGNATURE_BANK_VERSION) : undefined;
+        const mappedSignatureVersion = (partyKind==="generic" || (version.numericProtocolVersion===2 && (partyKind==="material" || partyKind==="mechanical"))) ? "built-in-mapped-signature-supplement-v1" as const : undefined;
+        const selectedPartyDetailsVersion = mappedSignatureVersion ? (partyKind === "generic" ? (useBodyRenderer ? MAPPED_GENERIC_BODY_GATE : MAPPED_GENERIC_LEGACY_GATE) : MAPPED_MATERIAL_SIGNATURE_GATE) : partyDetailsVersion;
+        const sourcePartyDetailsVersion = equivalentBuiltIn && selectedPartyDetailsVersion ? `built-in-equivalent-v1:${selectedPartyDetailsVersion}` as const : selectedPartyDetailsVersion;
+        const frozenPartyDetailsVersion = partyKind && sourcePartyDetailsVersion ? `${AUTOMATIC_PARTY_GUARD_PREFIX}${sourcePartyDetailsVersion}` as const : sourcePartyDetailsVersion;
+        if (partyKind) assertAutomaticPartyMapping(selectedSource.buffer, confirmedLayoutSourceMapping(layout));
+        const mechanicalContactLayoutVersion=partyKind==="mechanical"?MECHANICAL_CONTACT_LAYOUT_VERSION:undefined;
+        const genericFontTableVersion=partyKind==="generic" ? equivalentBuiltIn ? EQUIVALENT_GENERIC_FONT_VERSION : BUILT_IN_GENERIC_FONT_VERSION : undefined;
         const engineVersion = useBodyRenderer ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION;
         const renderSemanticVersion = this.moneyRenderSemanticVersion(version);
         const tableLayoutVersion = useBodyRenderer ? CONTRACT_BODY_TABLE_LAYOUT_VERSION : undefined;
@@ -340,9 +351,10 @@ export class ContractDocumentService {
           typographyVersion,
           signatureDateVersion,
           pageNumberVersion,
-          partyDetailsVersion,
+          partyKind ? `${AUTOMATIC_PARTY_GUARD_PREFIX}${partyDetailsVersion}` : partyDetailsVersion,
           genericFontTableVersion,
-          mechanicalContactLayoutVersion
+          mechanicalContactLayoutVersion,
+          mappedSignatureVersion
         );
         const existing = await tx.contractGeneratedDocument.findUnique({
           where: { idempotencyKey: contestedKey }
@@ -357,8 +369,9 @@ export class ContractDocumentService {
         if (partyDetailsVersion) {
           const mapped = mappedLayoutSourceForVersion(selectedSource.buffer, layout);
           assertBuiltInPartyPlacementPlan(selectedSource.buffer, mapped, layout.id, draftData.documentBody);
+          if(mappedSignatureVersion && partyDetailsVersion===GENERIC_BANK_VALUES_VERSION) assertSignatureSupplementMapping(selectedSource.buffer,mapped,layout.id,draftData.documentBody,{genericMappedSupplement:true});
           if ([SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,SIGNATURE_SUPPLEMENT_COMPANY_VERSION,SIGNATURE_SUPPLEMENT_PAGE_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion)) {
-            assertSignatureSupplementMapping(selectedSource.buffer, mapped, layout.id, draftData.documentBody);
+            assertSignatureSupplementMapping(selectedSource.buffer, mapped, layout.id, draftData.documentBody,{genericMappedSupplement:mappedSignatureVersion!==undefined && partyKind==="generic",mappedSignatureSupplement:mappedSignatureVersion!==undefined});
             if([LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion))assertLaborProtectedSignatureEdits(selectedSource.buffer,mapped,layout.id,draftData.documentBody);
             assertSignatureSupplementReview(selectedSource.buffer, mapped, layout.id, draftData.documentBody,partyDetailsVersion);
           }
@@ -401,6 +414,13 @@ export class ContractDocumentService {
         for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
         const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
         if (partyDetailsVersion) { assertGenericPartySourceMapping(selectedSource.buffer,layoutSourceMapping); assertLaborPartySourceMapping(selectedSource.buffer,layoutSourceMapping); }
+        if (partyDetailsVersion === LEGACY_MECHANICAL_SOURCE_BOUND_VERSION) {
+          try {
+            prepareLegacyPartyRoleBindings(selectedSource.buffer, mappedLayoutSourceForVersion(selectedSource.buffer,layout), {signatureBankAnchor:true,sourceBoundSystemFields:true});
+          } catch {
+            throw new ConflictException("机械合同系统信息位置与版式映射冲突，请核对模板后重试；草稿内容已保留。");
+          }
+        }
         let bodyDocument: ContractDocumentInputSnapshot["bodyDocument"];
         if (useBodyRenderer) {
           const source = bodySource!;
@@ -413,13 +433,13 @@ export class ContractDocumentService {
             ...(typographyVersion ? { typographyVersion } : {}),
             ...(signatureDateVersion ? { signatureDateVersion } : {}),
             ...(pageNumberVersion ? { pageNumberVersion } : {}),
-            ...(partyDetailsVersion ? { partyDetailsVersion } : {}),
+            ...(frozenPartyDetailsVersion ? { partyDetailsVersion: frozenPartyDetailsVersion } : {}),
             ...(draftData.documentBody === undefined ? {} : { editPlan: normalizeContractBodyPlan(draftData.documentBody, source.buffer, mappedLayoutSourceForVersion(source.buffer, layout), layout.id, reviewedLaborTaxBindingVersion) }) };
         }
         const signatureRenderValues=this.renderValues(contract,version,parties,
           bills.map(bill=>({...bill,rows:rows.filter(row=>row.contractBillId===bill.id)})),input.purpose,
-          declaredBillKeys(layout.placeholderSchema,layout.inspectionReport),tableLayoutVersion,[SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,SIGNATURE_SUPPLEMENT_COMPANY_VERSION,SIGNATURE_SUPPLEMENT_PAGE_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion));
-        if([GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion))assertBankFieldCapacity(signatureRenderValues);
+          declaredBillKeys(layout.placeholderSchema,layout.inspectionReport),tableLayoutVersion,[LEGACY_BODY_SIGNATURE_VERSION,LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,SIGNATURE_SUPPLEMENT_COMPANY_VERSION,SIGNATURE_SUPPLEMENT_PAGE_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion));
+        if([LEGACY_BODY_SIGNATURE_VERSION,LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion))assertBankFieldCapacity(signatureRenderValues);
         const inputSnapshot: ContractDocumentInputSnapshot = {
           documentContentRevision: documentContent.revision,
           documentContentFingerprint: documentContent.fingerprint,
@@ -427,7 +447,8 @@ export class ContractDocumentService {
           ...(layoutSourceMapping ? { layoutSourceMapping } : {}),
           ...(genericFontTableVersion ? {genericFontTableVersion} : {}),
           ...(mechanicalContactLayoutVersion ? {mechanicalContactLayoutVersion} : {}),
-          ...(!useBodyRenderer && partyDetailsVersion ? { partyDetailsVersion } : {}),
+          ...(mappedSignatureVersion ? {mappedSignatureVersion} : {}),
+          ...(!useBodyRenderer && frozenPartyDetailsVersion ? { partyDetailsVersion: frozenPartyDetailsVersion } : {}),
           ...(bodyDocument ? { bodyDocument } : {}),
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
           renderInput: {
@@ -443,11 +464,11 @@ export class ContractDocumentService {
             mimeType
           }))
         };
-        if (partyDetailsVersion && builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex")) === "generic" && ["party.owner.name","party.counterparty.name"].some(key=>typeof inputSnapshot.renderInput.values[key] !== "string" || !(inputSnapshot.renderInput.values[key] as string).trim())) {
+        if (partyDetailsVersion && ([LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION].some(v=>v===partyDetailsVersion) || partyKind === "generic") && ["party.owner.name","party.counterparty.name"].some(key=>typeof inputSnapshot.renderInput.values[key] !== "string" || !(inputSnapshot.renderInput.values[key] as string).trim())) {
           throw new BadRequestException("请先填写合同甲乙双方名称，再生成合同");
         }
-        if ([GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion)) assertGenericBankInputs(selectedSource.buffer,mappedLayoutSourceForVersion(selectedSource.buffer,layout),inputSnapshot.renderInput.values,inputSnapshot.bodyDocument?.editPlan);
-        if (partyDetailsVersion && builtInPartyPlacementKind(createHash("sha256").update(selectedSource.buffer).digest("hex")) === "labor") {
+        if ([GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(value=>value===partyDetailsVersion)) assertGenericBankInputs(selectedSource.buffer,mappedLayoutSourceForVersion(selectedSource.buffer,layout),inputSnapshot.renderInput.values,inputSnapshot.bodyDocument?.editPlan,{editsMovedToSupplement: mappedSignatureVersion!==undefined && partyDetailsVersion===GENERIC_SIGNATURE_REVIEW_VERSION,genericMappedSupplement:mappedSignatureVersion!==undefined});
+        if (partyDetailsVersion && partyKind === "labor") {
           laborFinalPartyNames(inputSnapshot.renderInput.values);
         }
         const document = await tx.contractGeneratedDocument.create({
@@ -1163,7 +1184,8 @@ export class ContractDocumentService {
     pageNumberVersion?: string,
     partyDetailsVersion?: string,
     genericFontTableVersion?: string,
-    mechanicalContactLayoutVersion?: string
+    mechanicalContactLayoutVersion?: string,
+    mappedSignatureVersion?: string
   ) {
     return createHash("sha256")
       .update(
@@ -1183,7 +1205,8 @@ export class ContractDocumentService {
           ...(pageNumberVersion ? [pageNumberVersion] : []),
           ...(partyDetailsVersion ? [partyDetailsVersion] : []),
           ...(genericFontTableVersion ? [genericFontTableVersion] : []),
-          ...(mechanicalContactLayoutVersion ? [mechanicalContactLayoutVersion] : [])
+          ...(mechanicalContactLayoutVersion ? [mechanicalContactLayoutVersion] : []),
+          ...(mappedSignatureVersion ? [mappedSignatureVersion] : [])
         ])
       )
       .digest("hex");

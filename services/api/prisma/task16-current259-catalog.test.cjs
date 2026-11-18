@@ -6,7 +6,7 @@ const {PAYMENT261_RUNTIME_PROFILE,PAYMENT261_LEDGER_SHA256}=require('./task16-cu
 const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const hash=x=>crypto.createHash('sha256').update(x).digest('hex');
 const root=path.resolve(__dirname,'../../..');
-const currentMigrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+const currentMigrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))})).slice(0,261);
 const migrations=currentMigrations.slice(0,259);
 const source={candidateSha:'a'.repeat(40),sealSha256:'b'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations};
 const identity={runId:'01234567-89ab-cdef-0123-456789abcdef',database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16384',namespaceOid:'2200',ownerOid:'10',runtimeOid:'17000',observerOid:'17001',systemIdentifier:'123456789'};

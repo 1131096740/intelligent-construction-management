@@ -21,7 +21,7 @@ function qualifyCurrent261GeneratedLifecycleSource(input){
  const p=source.profile;need(p&&Array.isArray(p.ledger));
  const qualified=qualifyCurrent259Source({candidateSha:source.candidateSha,sealSha256:source.sourceSealSha256,
   schemaSha256:p.schemaSha256,migrations:p.ledger.map(row=>({path:'services/api/prisma/migrations/'+row.name+'/migration.sql',sha256:row.sha256}))});
- need(qualified.profile==='TASK12_ARCHIVE261_SOURCE_V1'&&equal(qualified,p));
+ need(['TASK12_ARCHIVE261_SOURCE_V1','TASK12_ARCHIVE262_SOURCE_V1'].includes(qualified.profile)&&equal(qualified,p));
  return source;
 }
 module.exports=Object.freeze({qualifyCurrent261GeneratedLifecycleSource});

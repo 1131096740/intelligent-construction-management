@@ -58,9 +58,7 @@
         </li>
       </ul>
       <template v-if="body?.signatureSupplementReview && !body.signatureSupplementReview.confirmed">
-        <p v-if="body.signatureSupplementReview.scope === 'labor-company-and-bank'">请逐项核对劳务主合同签署栏内容。公司及银行信息应填写在主体资料中。</p>
-        <p v-else-if="body.signatureSupplementReview.scope === 'company-and-bank'">请逐项核对以下签署页前的补充内容。公司及银行信息应填写在主体资料中，不能放在补充内容里。</p>
-        <p v-else>请逐项核对以下签署页前的补充内容。银行信息应填写在主体银行资料中，不能放在补充内容里。</p>
+        <p>请逐项核对以下内容及其甲乙方归属。</p>
         <div
           v-for="entry in body.signatureSupplementReview.entries"
           :key="entry.id"
@@ -73,7 +71,7 @@
           variant="outline"
           @click="confirmSignatureSupplementReview"
         >
-          {{ body.signatureSupplementReview.scope === "labor-company-and-bank" ? "已核对，签署栏内容不含公司及银行信息" : body.signatureSupplementReview.scope === "company-and-bank" ? "已核对，补充内容不含公司及银行信息" : "已核对，补充内容不含银行资料" }}
+          已核对内容及甲乙方归属
         </t-button>
       </template>
       <template v-if="body?.partyDetailsRecovery">

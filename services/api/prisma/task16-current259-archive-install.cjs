@@ -155,7 +155,7 @@ function roleGuards(input) {
 
 function backendGuards(input, write) {
   const standardPath = 'search_path=pg_catalog, pg_temp';
-  const archive261 = input.source.profile.profile === 'TASK12_ARCHIVE261_SOURCE_V1';
+  const archive261 = ['TASK12_ARCHIVE261_SOURCE_V1','TASK12_ARCHIVE262_SOURCE_V1'].includes(input.source.profile.profile);
   const specs = [
     ...INSTALLERS.map(([name, args, result, body], index) => ({ signature: `public.${name}(${args})`, result, body,
       language: 'plpgsql', volatility: 'v', strict: index === 0 || index === INSTALLERS.length - 1,

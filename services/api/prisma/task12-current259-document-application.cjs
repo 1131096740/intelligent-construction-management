@@ -70,7 +70,7 @@ async function runNativeTask12DocumentApplication(loginProjection,bridge){
  const loader=own(bridge,'loader'),loaded=own(bridge,'loaded'),ordinary=own(bridge,'ordinary'),config=own(bridge,'publicLifecycle');
  need(loader&&loaded&&config&&own(bridge,'publicDraft')===undefined&&typeof own(loader,'loadCurrent261LocalLifecycleDocumentModules')==='function'&&loader.loadCurrent261LocalLifecycleDocumentModules()===loaded,'HANDLE');
  const Class=own(loaded,'PrismaService'),isFixture=own(loaded,'isTask12LocalLifecycleFixture');
- need(typeof Class==='function'&&ordinary&&takeCurrent261NativeOrdinaryClient(loader,loaded,ordinary)===true&&ordinary instanceof Class&&typeof isFixture==='function'&&isFixture(own(config,'fixture'))&&own(own(own(config,'fixture'),'case'),'key')==='inside:equipment_rental'&&prior.source.profile?.profile==='TASK12_ARCHIVE261_SOURCE_V1','HANDLE');
+ need(typeof Class==='function'&&ordinary&&takeCurrent261NativeOrdinaryClient(loader,loaded,ordinary)===true&&ordinary instanceof Class&&typeof isFixture==='function'&&isFixture(own(config,'fixture'))&&own(own(own(config,'fixture'),'case'),'key')==='inside:equipment_rental'&&['TASK12_ARCHIVE261_SOURCE_V1','TASK12_ARCHIVE262_SOURCE_V1'].includes(prior.source.profile?.profile),'HANDLE');
  nativeApplications.add(loginProjection);return runDocumentApplication(bridge,true);
 }
 async function runDocumentApplication(bridge,nativeEquipment=false){

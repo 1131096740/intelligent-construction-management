@@ -8,7 +8,7 @@ const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-cur
 const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_CASH_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_VOUCHER_REVOCATION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='0c9037bd1cd5329ebdf1d946829a081f59e1adcfcb73807b130fcb12efed2cef';
+const MANIFEST_SHA='c7505ae476284c5ec1370e01fa3131eec374fd9ea034a5695e9fee874b3b8183';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -43,7 +43,7 @@ function material(source,paymentProfile){
  const p=qualifyCurrent259Source(source),capture=relative=>read(path.join(ROOT,relative),{maxBytes:2*1024*1024,collect:true,code:'TASK16_CURRENT259_CATALOG'});
  if(paymentProfile!==undefined)need(isExactCurrentPaymentRuntimeSource(p,paymentProfile));
  const m=capture(MANIFEST);need(m.sha256===MANIFEST_SHA);const manifest=JSON.parse(m.bytes.toString('utf8'));
- need(p.ledgerSha256===(p.profile==='TASK12_ARCHIVE261_SOURCE_V1'?manifest.archive261LedgerSha256:manifest.fullLedgerSha256));
+ need(p.ledgerSha256===(p.profile==='TASK12_ARCHIVE262_SOURCE_V1'?require('./task16-current259-profile.cjs').ARCHIVE262_LEDGER_SHA256:p.profile==='TASK12_ARCHIVE261_SOURCE_V1'?manifest.archive261LedgerSha256:manifest.fullLedgerSha256));
  for(let i=0;i<p.ledger.length;i++){const r=p.ledger[i];need(capture(source.migrations[i].path).sha256===r.sha256);}
  need(capture('services/api/prisma/schema.prisma').sha256===p.schemaSha256);
  const files=manifest.files.map(r=>{const c=capture(r.path);need(c.sha256===r.sha256);return{...r,bytes:c.bytes};});

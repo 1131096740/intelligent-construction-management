@@ -650,6 +650,26 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
       body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
     });
   });
+  it("proves only the original actor and complete funding payload during recovery", async () => {
+    const opening=await prepareApprovedPayment(), work=await get("keeper");
+    const intent={idempotencyKey:"77b32f97-f4b4-4427-80bb-80197c654031",expectedPaymentUpdatedAt:work.body.items[0].expectedPaymentUpdatedAt,amountCents:"4000",paidAt:"2026-11-06",scopeKey:"company:company-a",expectedRegistrationId:opening.body.id,openingTreatment:"not_included",openingReason:"核对之后线下实付",openingEvidence:"合成付款核对依据",sourceAllocations:[{sourceBatchId:opening.body.sources[0].id,amountCents:"4000"}]};
+    const original=await post("keeper","/payment-executions/payment-a/registrations",{...intent,confirmationPassword:"Synthetic15Password!"});expect(original.status).toBe(201);
+    const path="/payment-executions/payment-a/recovery-proof";
+    expect(await post("keeper",path,intent)).toEqual({status:201,body:{status:"matched",executionId:original.body.id}});
+    const upperKey=intent.idempotencyKey.toUpperCase();
+    expect((await get("keeper",`/payment-executions/results/${upperKey}`)).body).toMatchObject({status:"recorded",execution:{executionId:original.body.id}});
+    expect(await post("keeper",path,{...intent,idempotencyKey:upperKey})).toEqual({status:201,body:{status:"matched",executionId:original.body.id}});
+    expect(await post("finance",path,{...intent,idempotencyKey:upperKey})).toEqual({status:201,body:{status:"unconfirmed"}});
+    expect(await post("keeper",path,{...intent,idempotencyKey:"A77B32F9-7F4B-4427-80BB-80197C654031"})).toEqual({status:201,body:{status:"unconfirmed"}});
+    expect((await get("keeper","/payment-executions/results/A77B32F9-7F4B-4427-80BB-80197C654031")).body.status).toBe("unconfirmed");
+    expect((await get("employee",`/payment-executions/results/${upperKey}`)).status).toBe(403);
+    expect((await get("keeper",`/payment-executions/results/${encodeURIComponent(` ${upperKey} `)}`)).status).toBe(400);
+    expect((await post("keeper",path,{...intent,idempotencyKey:` ${upperKey} `})).status).toBe(400);
+    expect(await post("keeper",path,{...intent,expectedPaymentUpdatedAt:"2026-11-01T00:00:00.000Z"})).toEqual({status:201,body:{status:"matched",executionId:original.body.id}});
+    for(const [actor,body] of [["finance",intent],["keeper",{...intent,scopeKey:"company:other"}],["keeper",{...intent,openingEvidence:"不同依据"}],["keeper",{...intent,sourceAllocations:[]}]] as const) expect(await post(actor,path,body)).toEqual({status:201,body:{status:"unconfirmed"}});
+    expect((await post("employee",path,intent)).status).toBe(403);
+    const funding=(database.prisma as unknown as Pick<Prisma.TransactionClient,"registeredPaymentFunding">).registeredPaymentFunding;const missing=jest.spyOn(funding,"findUnique").mockResolvedValueOnce(null);expect(await post("keeper",path,intent)).toEqual({status:201,body:{status:"unconfirmed"}});missing.mockRestore();
+  });
   it("keeps the original key when a committed registration cannot be read back immediately", async () => {
     const opening = await prepareApprovedPayment();
     const key = "77b32f97-f4b4-4427-80bb-80197c654031";

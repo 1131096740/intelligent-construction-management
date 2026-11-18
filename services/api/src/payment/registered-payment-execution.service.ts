@@ -1,3 +1,5 @@
+import { registeredPaymentFingerprint } from "./registered-payment-funding";
+import type { RegisteredPaymentRecoveryProofDto } from "./dto/record-registered-payment-execution.dto";
 import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
 import { resolveRegisteredExistingSource } from "./registered-payment-existing-source";
@@ -59,11 +61,25 @@ export class RegisteredPaymentExecutionService {
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   }
 
+  async recoveryProof(actorUserId: string, paymentId: string, input: RegisteredPaymentRecoveryProofDto) {
+    return this.prisma.$transaction(async tx => {
+      if (!(await this.canRegister(tx, actorUserId))) throw new ForbiddenException("只有当前财务人员或综合部主管可以查询实际付款登记");
+      const unconfirmed = {status:"unconfirmed"} as const;
+      const execution = await tx.paymentExecution.findUnique({where:{idempotencyKey:input.idempotencyKey.trim().toLowerCase()}});
+      if (input.existingSource || !execution || execution.paymentRequestId !== paymentId || execution.executedByUserId !== actorUserId) return unconfirmed;
+      const domain = await currentRegisteredPaymentDomain(tx, execution.paymentRequestId);
+      if (!domain.supportedDomain || !domain.payment) return unconfirmed;
+      const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:execution.id}});
+      if (!funding || funding.payloadFingerprint !== registeredPaymentFingerprint(execution.paymentRequestId,actorUserId,input)) return unconfirmed;
+      return {status:"matched",executionId:execution.id} as const;
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }
+
   async result(actorUserId: string, idempotencyKey: string) {
     const operation = async (tx: Prisma.TransactionClient, read?: RegisteredPaymentImpactReader) => {
       if (!(await this.canRegister(tx, actorUserId))) throw new ForbiddenException("只有当前财务人员或综合部主管可以查询实际付款登记");
       const unconfirmed = { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" } as const;
-      const execution = await tx.paymentExecution.findUnique({ where: { idempotencyKey } });
+      const execution = await tx.paymentExecution.findUnique({ where: { idempotencyKey: idempotencyKey.trim().toLowerCase() } });
       if (!execution) return unconfirmed;
       const domain = await currentRegisteredPaymentDomain(tx, execution.paymentRequestId);
       if (!domain.supportedDomain || !domain.payment) throw new ForbiddenException("该付款记录不属于此办理入口，请经原业务权限入口核验");

@@ -105,7 +105,7 @@
     },
     {
       "path": "services/api/prisma/task16-current259-profile.cjs",
-      "sha256": "73d80baddd811ac8dc6d3c41a029a7f82a58fd9a9d2b165b6b77ca8bbe370639"
+      "sha256": "c495346c3ee93349c395eadb0f4ed5b7ecd943a0549ced19464285b8f2589661"
     },
     {
       "path": "services/api/prisma/task16-runtime-inputs.cjs",

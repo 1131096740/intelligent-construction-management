@@ -31,7 +31,7 @@ export async function assertRegisteredPaymentActor(tx: Prisma.TransactionClient,
   if (!roles.some(role => ["finance_staff", "finance_director", "comprehensive_director"].includes(role))) throw new ForbiddenException("只有当前财务人员或综合部主管可以办理实际付款");
 }
 
-export function registeredPaymentFingerprint(paymentId: string, actorUserId: string, input: RecordRegisteredPaymentExecutionDto) {
+export function registeredPaymentFingerprint(paymentId: string, actorUserId: string, input: Omit<RecordRegisteredPaymentExecutionDto, "confirmationPassword">) {
   return createHash("sha256").update(JSON.stringify({ paymentId, actorUserId, amountCents: input.amountCents, paidAt: input.paidAt,
     scopeKey: input.scopeKey, registrationId: input.expectedRegistrationId, openingTreatment: input.openingTreatment,
     reason: input.openingReason.trim(), evidence: input.openingEvidence.trim(),

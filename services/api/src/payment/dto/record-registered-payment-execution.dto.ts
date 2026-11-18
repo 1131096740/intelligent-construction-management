@@ -21,7 +21,7 @@ class RegisteredContractHistoryConfirmationDto {
   @IsString({message:"请填写合同历史独立核对依据"}) @MinLength(1,{message:"请填写合同历史独立核对依据"}) @MaxLength(1000,{message:"合同历史独立核对依据不能超过1000字"}) evidence!: string;
 }
 
-export class RecordRegisteredPaymentExecutionDto {
+export class RegisteredPaymentRecoveryProofDto {
   @IsOptional() @ValidateNested({message:"合同历史独立核对资料格式不正确"}) @Type(() => RegisteredContractHistoryConfirmationDto) contractHistoryConfirmation?: RegisteredContractHistoryConfirmationDto;
   @IsOptional() @ValidateNested() @Type(() => ExistingRegisteredPaymentSourceDto) existingSource?: ExistingRegisteredPaymentSourceDto;
   @IsUUID("4", { message: "付款登记请求格式不正确" }) idempotencyKey!: string;
@@ -34,5 +34,8 @@ export class RecordRegisteredPaymentExecutionDto {
   @IsString() @MinLength(1) @MaxLength(500) openingReason!: string;
   @IsString() @MinLength(1) @MaxLength(1000) openingEvidence!: string;
   @IsArray() @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => RegisteredPaymentSourceAllocationDto) sourceAllocations!: RegisteredPaymentSourceAllocationDto[];
+}
+
+export class RecordRegisteredPaymentExecutionDto extends RegisteredPaymentRecoveryProofDto {
   @IsString() @MinLength(1) @MaxLength(200) confirmationPassword!: string;
 }

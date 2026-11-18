@@ -1,3 +1,4 @@
+import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 export interface RegisteredPaymentWorkItem { paymentId: string; code: string; projectId: string; paidAmountCents: string; remainingAmountCents: string; expectedPaymentUpdatedAt: string }
@@ -5,13 +6,21 @@ export interface RegisteredOriginalPaymentResult { executionId: string; resultKe
 export interface RegisteredContractHistoryConfirmation { treatment:"not_included"|"included"|"uncertain"; expectedFingerprint:string; reason:string; evidence:string }
 export interface RegisteredContractHistoryBasis { required:boolean;fingerprint:string;records:Array<{id:string;contractId:string;contractVersionId:string;paymentTermsVersionId:string;updatedAt:string;confirmedAt:string;activatedAt:string|null;historicalPaidCents:string;historicalProxyPaidCents:string;historicalAdvancePaidCents:string}> }
 export interface RegisteredPaymentOptions extends RegisteredPaymentWorkItem { canRegisterPayment: boolean; contractHistoryBasis:RegisteredContractHistoryBasis; originalResults?: RegisteredOriginalPaymentResult[]; accounts: Array<{ scopeKey: string; name: string; eligible: boolean; reason: string | null; currentRegistrationId: string | null }> }
-export class RegisteredPaymentApiError extends Error { constructor(message: string, readonly status: number, readonly code?: string, readonly resultStatus?: string) { super(message); } }
+export class RegisteredPaymentApiError extends Error { constructor(message: string, readonly status: number, readonly code?: string, readonly resultStatus?: string, readonly definitiveFailure = false) { super(message); } }
 async function read<T>(response: Response, fallback = "付款登记办理失败，请保留填写后重试"): Promise<T> {
  if (response.ok) return response.json() as Promise<T>;
  let message = fallback;
- let code: string | undefined; let resultStatus: string | undefined;
- try { const body = await response.json() as { message?: unknown;code?:unknown;resultStatus?:unknown }; if (typeof body.message === "string") message = body.message; code = typeof body.code === "string" ? body.code : undefined; resultStatus = typeof body.resultStatus === "string" ? body.resultStatus : undefined; } catch { /* Retain business fallback. */ }
- throw new RegisteredPaymentApiError(formatApiErrorMessage(message,response.status,fallback),response.status,code,resultStatus);
+ let code: string | undefined; let resultStatus: string | undefined; let definitiveFailure = false;
+ try {
+  const body = await response.json() as { message?: unknown;code?:unknown;resultStatus?:unknown } | null;
+  if (body && typeof body.message === "string") {
+   message = body.message;
+   code = typeof body.code === "string" ? body.code : undefined;
+   resultStatus = typeof body.resultStatus === "string" ? body.resultStatus : undefined;
+   definitiveFailure = code !== "PAYMENT_RESULT_UNCONFIRMED" && resultStatus !== "unconfirmed" && (response.status === 400 || (response.status === 409 && message === "付款申请已变化，请刷新后重试"));
+  }
+ } catch { /* An unreadable body cannot establish the original outcome. */ }
+ throw new RegisteredPaymentApiError(formatApiErrorMessage(message,response.status,fallback),response.status,code,resultStatus,definitiveFailure);
 }
 export async function fetchRegisteredPaymentWorkItems() { return read<{items:RegisteredPaymentWorkItem[];total:number}>(await apiFetch("/payment-executions/work-items")); }
 export async function fetchRegisteredPaymentOptions(paymentId: string) { return read<RegisteredPaymentOptions>(await apiFetch(`/payment-executions/${encodeURIComponent(paymentId)}/registration-options`),"实付登记资料读取失败，请保留填写后重试"); }
@@ -19,8 +28,18 @@ export interface RecordedPaymentItem { executionId: string; paymentId: string; c
 export interface RegisteredPaymentCommand { contractHistoryConfirmation?:RegisteredContractHistoryConfirmation; idempotencyKey: string; expectedPaymentUpdatedAt: string; amountCents: string; paidAt: string; scopeKey: string; expectedRegistrationId: string; openingTreatment: "included" | "not_included"; openingReason: string; openingEvidence: string; sourceAllocations: Array<{sourceBatchId:string;amountCents:string}>; confirmationPassword: string }
 export interface RegisteredPaymentResult { canSupplementVoucher?: boolean; intercompany?: Array<{amountCents:string;voucherPending:boolean}>; status: "recorded" | "unconfirmed"; message?: string; execution?: { executionId: string; paymentId: string; amountCents: string; paidAt: string; voucherPending: boolean } }
 export async function fetchRecordedPaymentItems() { return read<{items:RecordedPaymentItem[];total:number}>(await apiFetch("/payment-executions/recorded-items")); }
-export async function recordRegisteredPayment(paymentId: string, input: RegisteredPaymentCommand) { return read<{id:string;amountCents:string}>(await apiFetch(`/payment-executions/${encodeURIComponent(paymentId)}/registrations`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})); }
+export async function recordRegisteredPayment(paymentId: string, input: RegisteredPaymentCommand) {
+ const result = await read<unknown>(await apiFetch(`/payment-executions/${encodeURIComponent(paymentId)}/registrations`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}));
+ const body = result && typeof result === "object" ? result as Record<string,unknown> : null;
+ let matchesDate = false;
+ try { matchesDate = typeof body?.paidAt === "string" && chinaDateOnly(body.paidAt) === chinaDateOnly(input.paidAt); } catch { /* Preserve the original key when the response date is invalid. */ }
+ if (!body || typeof body.id !== "string" || !body.id.trim() || body.idempotencyKey !== input.idempotencyKey || body.paymentRequestId !== paymentId || body.amountCents !== input.amountCents || !matchesDate) throw new Error("付款登记结果暂未确认，请查询本次结果。");
+ return body as {id:string;idempotencyKey:string;paymentRequestId:string;amountCents:string;paidAt:string};
+}
 export async function fetchRegisteredPaymentResult(key: string) { return read<RegisteredPaymentResult>(await apiFetch(`/payment-executions/results/${encodeURIComponent(key)}`)); }
+export async function verifyRegisteredPaymentRecovery(paymentId:string, input:Omit<RegisteredPaymentCommand,"confirmationPassword">) {
+ return read<{status:"matched";executionId:string}|{status:"unconfirmed"}>(await apiFetch(`/payment-executions/${encodeURIComponent(paymentId)}/recovery-proof`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}));
+}
 async function uploadRegisteredPaymentVoucher(executionId: string, file: File, idempotencyKey: string) {
  const form = new FormData(); form.append("file",file,file.name); form.append("idempotencyKey",idempotencyKey);
  return read<{id:string}>(await apiFetch(`/payment-executions/${encodeURIComponent(executionId)}/voucher-file-uploads`,{method:"POST",body:form}),"电子凭证上传结果暂未确认，请保留所选文件后重试");

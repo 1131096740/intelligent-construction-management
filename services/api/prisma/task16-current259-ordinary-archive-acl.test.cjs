@@ -382,6 +382,23 @@ test('native lifecycle ordinary ACL keeps original three-phase grants and reject
  assert.throws(()=>f.api.beginNativeTask12OrdinaryAclProtocol({...f.completion}));
  assert.throws(()=>f.api.readNativeTask12OrdinaryAclProjection({...result}));
  assert.equal(f.api.readNativeTask12OrdinaryAclProjection(result).archiveCompletion,f.completion);
+ const audit=f.api.beginNativeTask12OrdinaryPostInstallAudit(result);
+ assert.throws(()=>f.api.beginNativeTask12OrdinaryPostInstallAudit({...result}));
+ assert.match(audit.sql,/BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/u);
+ assert.match(audit.sql,/pg_auth_members/u);
+ assert.match(audit.sql,/RegisteredPaymentVoucher/u);
+ assert.match(audit.sql,/FileObject/u);
+ assert.match(audit.sql,/16392/u);
+ assert.throws(()=>audit.accept('{}'));
+ const accepted=f.api.beginNativeTask12OrdinaryPostInstallAudit(result);
+ const challenge=accepted.sql.match(/'challenge',\s*'([a-f0-9]{64})'/u)[1];
+ const observation={challenge,roleOid:ordinary.oid,databaseOid:'16384',namespaceOid:'2200',systemIdentifier:'7200000000000000001',backendPid:701,readOnly:'on'};
+ assert.equal(accepted.accept(JSON.stringify(observation)).roleOid,ordinary.oid);
+ assert.throws(()=>accepted.accept(JSON.stringify(observation)));
+ for(const [key,value] of [['roleOid','16393'],['databaseOid','16385'],['readOnly','off']]){
+  const rejected=f.api.beginNativeTask12OrdinaryPostInstallAudit(result), nonce=rejected.sql.match(/'challenge',\s*'([a-f0-9]{64})'/u)[1];
+  assert.throws(()=>rejected.accept(JSON.stringify({...observation,challenge:nonce,[key]:value})));
+ }
 });
 
 test('full261 real workbench reads takeoverStatus while unrelated ordinary and document profiles retain their matrix',()=>{

@@ -2,7 +2,7 @@ import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { FileInterceptor, normalizeUploadedOriginalName, type MemoryUploadedFile } from "../file/uploaded-file";
 import { AttachRegisteredPaymentVoucherDto } from "./dto/attach-registered-payment-voucher.dto";
 import { PaymentRequestService } from "./payment-request.service";
-import { RecordRegisteredPaymentExecutionDto } from "./dto/record-registered-payment-execution.dto";
+import { RecordRegisteredPaymentExecutionDto, RegisteredPaymentRecoveryProofDto } from "./dto/record-registered-payment-execution.dto";
 import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -51,6 +51,11 @@ export class RegisteredPaymentExecutionController {
   @Post(":paymentId/registrations")
   record(@CurrentUser() actor: AuthenticatedUser, @Param("paymentId") paymentId: string, @Body() input: RecordRegisteredPaymentExecutionDto) {
     return this.payments.recordRegisteredExecution(paymentId, actor.id, input);
+  }
+
+  @Post(":paymentId/recovery-proof")
+  recoveryProof(@CurrentUser() actor: AuthenticatedUser, @Param("paymentId") paymentId: string, @Body() input: RegisteredPaymentRecoveryProofDto) {
+    return this.executions.recoveryProof(actor.id,paymentId,input);
   }
 
   @Get("recorded-items")

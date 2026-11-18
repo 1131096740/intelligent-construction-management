@@ -288,7 +288,7 @@ describe("contract workbench API client", () => {
     expect((await fetchContractDraftBody("version-1")).warnings).toEqual([warning]);
   });
   it("preserves the bounded signature review and its actionable warning",async()=>{
-    const warning="请核对签署页前的甲乙方补充内容，确保不含银行资料；如有请先转填主体银行资料。";
+    const warning="请核对内容及甲乙方归属，确认后保存。";
     const review={digest:"a".repeat(64),confirmed:false,entries:[{role:"party_a",id:"b".repeat(64),text:"虚构原文"}]};
     mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review}));
     const body=await fetchContractDraftBody("version-1");expect(body.signatureSupplementReview).toEqual(review);expect(body.warnings).toEqual([warning]);
@@ -296,7 +296,7 @@ describe("contract workbench API client", () => {
     expect((await fetchContractDraftBody("version-1")).signatureSupplementReview).toBeUndefined();
   });
   it("retains the generic company-and-bank review scope and rejects unknown scopes",async()=>{
-    const warning="请核对签署页前的甲乙方补充内容，确保不含公司及银行信息；如有请先转填主体资料。";
+    const warning="请核对内容及甲乙方归属，确认后保存。";
     const review={digest:"a".repeat(64),confirmed:false,scope:"company-and-bank",entries:[{role:"party_a",id:"b".repeat(64),text:"虚构原文"}]};
     mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review}));
     expect(await fetchContractDraftBody("version-1")).toMatchObject({signatureSupplementReview:review,warnings:[warning]});
@@ -306,7 +306,7 @@ describe("contract workbench API client", () => {
   it("retains labor recovery content and review scope for the current response",async()=>{
     const id="b".repeat(64),review={digest:"a".repeat(64),confirmed:false,scope:"labor-company-and-bank",entries:[{role:"party_a",id,text:"虚构说明"}]};
     const recovery={entries:[{id,text:"保留原文",kind:"edit"}],groups:[]};
-    const warning="请核对劳务主合同签署栏内容，确保不含公司及银行信息；如有请先转填主体资料。";
+    const warning="请核对内容及甲乙方归属，确认后保存。";
     mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review,laborSignatureRecovery:recovery}));
     expect(await fetchContractDraftBody("version-1")).toMatchObject({signatureSupplementReview:review,laborSignatureRecovery:recovery,warnings:[warning]});
     mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,laborSignatureRecovery:{...recovery,entries:[{id:"bad",text:"原文",kind:"edit"}]}}));

@@ -30,7 +30,7 @@ function sourceCapture(){
  const head=git(['rev-parse','HEAD']),tree=git(['rev-parse','HEAD^{tree}']);
  const capturedFiles=git(['ls-files','-z']).split('\0').filter(Boolean).map(relative=>({relative,...capture(path.join(ROOT,relative))})),capturedByPath=new Map(capturedFiles.map(row=>[row.relative,row]));
  const files=capturedFiles.map(({relative,sha256})=>({relative,sha256})),objectFormat=git(['rev-parse','--show-object-format']);need(['sha1','sha256'].includes(objectFormat),'NATIVE_DIRECT_SOURCE');
- const migrationFiles=files.filter(row=>/^services\/api\/prisma\/migrations\/\d{14}_[a-z0-9_]+\/migration.sql$/u.test(row.relative));need(migrationFiles.length===261);
+ const migrationFiles=files.filter(row=>/^services\/api\/prisma\/migrations\/\d{14}_[a-z0-9_]+\/migration.sql$/u.test(row.relative));need([261,262].includes(migrationFiles.length));
  const sourceRows=git(['ls-tree','-r','-z','HEAD']).split('\0').filter(Boolean).map(row=>{const [meta,relative]=row.split('\t'),[mode,type,oid]=meta.split(' ');need(type==='blob'&&['100644','100755'].includes(mode),'NATIVE_DIRECT_SOURCE');const observed=capturedByPath.get(relative);need(observed&&Boolean(Number(observed.identity.mode)&0o111)===(mode==='100755')&&createHash(objectFormat).update('blob '+observed.bytes.length+'\0').update(observed.bytes).digest('hex')===oid,'NATIVE_DIRECT_SOURCE');return {path:relative,mode,oid,sha256:observed.sha256};}).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
  const code={candidateSha:head,sealSha256:hash(Buffer.from(JSON.stringify(sourceRows))),schemaSha256:capture(path.join(__dirname,'schema.prisma')).sha256,migrations:migrationFiles.map(row=>({path:row.relative,sha256:row.sha256}))};
  const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source(code);
@@ -370,7 +370,7 @@ async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,e
  const tools=resolveNativeTask16PrismaTools();need(equal(tools,plan.prismaTools),'NATIVE_DIRECT_PRISMA_TOOLS_CHANGED');const cli=tools.cli.file,engine=tools.engine.file;
  const schema=capture(path.join(__dirname,'schema.prisma')).bytes;
  const roots=new Map();
- for(const size of [203,205,213,215,218,221,261]){
+ for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
   const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
   fs.writeFileSync(path.join(dir,'schema.prisma'),schema,{flag:'wx',mode:0o600});
   fs.writeFileSync(path.join(dir,'migrations/migration_lock.toml'),'provider = "postgresql"\n',{flag:'wx',mode:0o600});
@@ -393,7 +393,7 @@ async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,e
  await sql(controls.cleanupSql(migrationPlan,setup));const clean=await jsonSql(controls.cleanReadSql(migrationPlan,setup));need(clean.schemaAbsent===true&&clean.eventAbsent===true&&clean.appOid===setup.appOid&&clean.applicationQualified===true,'NATIVE_DIRECT_QUALIFICATION_CLEANUP');
  const materials=[];const tail=createLocalTailQualification({plan:migrationPlan,setup,migrations},{read:async(_phase,text)=>jsonSql(text),write:async(_phase,text)=>jsonSql(text),recordMaterial:row=>{need(hash(Buffer.from(row.sql))===row.afterSha256,'NATIVE_DIRECT_SQL_MATERIAL');materials.push({kind:row.kind,beforeSha256:row.beforeSha256,afterSha256:row.afterSha256});}});
  for(const size of [213,215,218,221]){await deploy(size);const row=await jsonSql(controls.inspectSql());need(equal(identity(row),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(row,size);await tail.qualify(size);}
- await deploy(261);const final=await jsonSql(controls.inspectSql());need(equal(identity(final),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(final,261);
+ await deploy(ledger.length);const final=await jsonSql(controls.inspectSql());need(equal(identity(final),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(final,ledger.length);
  return {plan:migrationPlan,setup,materials};
 }
 
@@ -435,7 +435,7 @@ async function installNativeTask12Full261(plan,state){
  const loginWriter=login.acceptBefore(await run('DOCUMENT_LOGIN_BEFORE',login.sql));
  const loginReader=loginWriter.acceptWritten(await run('DOCUMENT_LOGIN_WRITE',loginWriter.sql));
  const loginResult=loginReader.acceptCommitted(await run('DOCUMENT_LOGIN_COMMITTED',loginReader.sql));
- receipt.installation={migrations:261,roles:9,documentRoles:3,archiveInstallXid:archiveResult.installXid,
+ receipt.installation={migrations:source.profile.ledger.length,roles:9,documentRoles:3,archiveInstallXid:archiveResult.installXid,
   ordinaryAclInstallXid:ordinaryResult.installXid,documentRoleInstallXid:roleResult.installXid,
   documentAclInstallXid:aclResult.installXid,documentLoginInstallXid:loginResult.installXid};
  return {source,archiveResult,ordinaryResult,roleResult,aclResult,loginResult,secrets,bootstrapRoles:[{name:"jg_task01_owner",oid:"10"},...["runtime","observer"].map(kind=>(need(provisioned.roles.filter(role=>role.name==="jg_task01_"+kind).length===1,"NATIVE_DIRECT_BOOTSTRAP_ROLES"),provisioned.roles.find(role=>role.name==="jg_task01_"+kind)))]};

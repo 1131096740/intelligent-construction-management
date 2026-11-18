@@ -11,16 +11,17 @@ const text=(node:Element)=>Array.from(node.getElementsByTagNameNS(W,"t")).map(it
 const containsBankDetails=(value:string)=>/开户|银行|账户|账号/u.test(value.replace(/\s+/gu,""));
 
 /** Check the existing signature positions without rendering or modifying user data. */
-export function assertGenericBankInputs(source:Buffer,mapped:Buffer,values:Record<string,unknown>,plan?:{edits:readonly {positionId:string;text:string}[];deletedPositionIds?:readonly string[]}):void {
+export function assertGenericBankInputs(source:Buffer,mapped:Buffer,values:Record<string,unknown>,plan?:{edits:readonly {positionId:string;text:string}[];deletedPositionIds?:readonly string[]},options:{editsMovedToSupplement?:boolean;genericMappedSupplement?:boolean}={}):void {
   const sourcePositions=readLayoutSourcePositions(source).positions;
   const part=new PizZip(mapped).file("word/document.xml");
   if(!part) throw new ConflictException("通用合同签章位置无法核对，请联系合同管理员处理");
   const document=new DOMParser().parseFromString(part.asText(),"application/xml"),paragraphs=Array.from(document.getElementsByTagNameNS(W,"p"));
+  const originals=options.genericMappedSupplement?Array.from(new DOMParser().parseFromString(new PizZip(source).file("word/document.xml")!.asText(),"application/xml").getElementsByTagNameNS(W,"p")):[];
   for(const index of [54,55,56,57,59,60,61,62]) {
     const position=sourcePositions.find(item=>item.part==="word/document.xml"&&item.paragraphIndex===index),paragraph=paragraphs[index];
     if(!position||!paragraph) throw new ConflictException("通用合同签章位置无法核对，请联系合同管理员处理");
     if(plan?.deletedPositionIds?.includes(position.positionId)) continue;
-    const current=plan?.edits.find(edit=>edit.positionId===position.positionId)?.text ?? text(paragraph);
+    const current=(options.editsMovedToSupplement ? undefined : plan?.edits.find(edit=>edit.positionId===position.positionId)?.text) ?? text(options.genericMappedSupplement ? originals[index] : paragraph);
     const resolved=current.replace(/\{([^{}]+)\}/gu,(_whole,tag:string)=>{
       const value=values[canonicalContractPlaceholder(tag.trim())]??values[tag.trim()];
       return typeof value==="string"?value:"";

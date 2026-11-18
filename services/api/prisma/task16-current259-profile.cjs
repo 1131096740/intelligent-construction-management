@@ -2,12 +2,14 @@
 const {createHash}=require('node:crypto'),{types}=require('node:util');
 const FULL='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
 const ARCHIVE_FULL='ebd6ee528e5eabd4b53abbd992c58637af70fee61f015a17f70b04cd55761598';
+const ARCHIVE262_FULL='b57d5da27a4eb4d2c98309ffca35af50938745ab476d3f3e1b626ca45e18f4f3';
 const PAYMENT261_RUNTIME_PROFILE='TASK16_PAYMENT261_RUNTIME_V1';
 const PREFIX='85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24';
 const SCHEMA='60386e4f3c54ee25461e8a3814e7254f8d4f5695eb58a805486485cb1cc788e4';
 const EXACT_PROFILES=Object.freeze([
  Object.freeze({profile:'TASK16_CURRENT259_SOURCE_V1',size:259,ledgerSha256:FULL}),
  Object.freeze({profile:'TASK12_ARCHIVE261_SOURCE_V1',size:261,ledgerSha256:ARCHIVE_FULL}),
+ Object.freeze({profile:'TASK12_ARCHIVE262_SOURCE_V1',size:262,ledgerSha256:ARCHIVE262_FULL}),
 ]);
 const hash=rows=>createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 const fail=()=>{throw Object.assign(new Error('TASK16_CURRENT259_SOURCE'),{code:'TASK16_CURRENT259_SOURCE'});};
@@ -47,4 +49,4 @@ function isExactCurrentPaymentProfile(source,paymentProfile){
   hash(source.ledger)===source.ledgerSha256;
 }
 module.exports={qualifyCurrent259Source,currentArchiveLedgerSize,isExactCurrentArchiveProfile,isExactCurrentPaymentProfile,
- PAYMENT261_RUNTIME_PROFILE,PAYMENT259_LEDGER_SHA256:FULL,PAYMENT261_LEDGER_SHA256:ARCHIVE_FULL};
+ ARCHIVE262_LEDGER_SHA256:ARCHIVE262_FULL,PAYMENT261_RUNTIME_PROFILE,PAYMENT259_LEDGER_SHA256:FULL,PAYMENT261_LEDGER_SHA256:ARCHIVE_FULL};
