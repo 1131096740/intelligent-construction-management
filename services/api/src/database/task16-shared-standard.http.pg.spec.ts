@@ -27,6 +27,7 @@ async function observedMeRequest<T>(request:()=>Promise<T>,index:number,env:Node
 }
 
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
+const overpay=process.env.TASK398_OVERPAY_MODE==="1";
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
 // input text can only select an entry, never become a logged value.
@@ -167,7 +168,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
 });
 
 (enabled?describe:describe.skip)("#398 isolated shared payment real HTTP and PostgreSQL",()=>{
- it("rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
+ it(overpay ? "allows only one of two concurrent instalments that would together overpay" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
   const ownerUrl=new URL(process.env.TASK398_OWNER_URL??""),runtimeUrl=new URL(process.env.DATABASE_URL??""),observerUrl=new URL(process.env.TASK398_OBSERVER_URL??"");
   const db=ownerUrl.pathname;
   const runId=process.env.TASK398_RUN_ID??"";
@@ -185,7 +186,20 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const outsiderPhone=`196${plan.phone.slice(3)}`;
    await owner.user.create({data:{id:randomUUID(),phone:outsiderPhone,name:"合成无权账号",passwordHash:hashes[3],isActive:true,mustChangePassword:false}});
    const module=await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
-   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());await app.listen(0,"127.0.0.1");
+   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());
+   let waiting:Array<()=>void>|undefined,barrierTimer:NodeJS.Timeout|undefined,arrivals=0,barrierExpired=false;
+   if(overpay)app.use((req:{method:string;url:string},_res:unknown,next:()=>void)=>{
+    if(!waiting||req.method!=="POST"||req.url!==`/payment-executions/${plan.ids.payment}/registrations`)return next();
+    waiting.push(next);arrivals++;
+    const release=()=>{
+     const ready=waiting;
+     waiting=undefined;
+     ready?.forEach(proceed=>proceed());
+    };
+    if(waiting.length===1)barrierTimer=setTimeout(()=>{barrierExpired=true;release();},5000);
+    else {clearTimeout(barrierTimer);release();}
+   });
+   await app.listen(0,"127.0.0.1");
    const origin=await app.getUrl();
    const json=async(path:string,method:string,body?:unknown,token?:string)=>{const response=await fetch(origin+path,{method,headers:{...(body!==undefined?{"content-type":"application/json"}:{}),...(token?{authorization:`Bearer ${token}`}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};};
    const login=async(phone:string,password:string)=>{const response=await json("/auth/login","POST",{phone,password});expect(response.status).toBe(201);return response.body.tokens.accessToken as string;};
@@ -219,13 +233,70 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    };
    const a=await open(finance,`company:${plan.ids.companyA}`),b=await open(finance,bScope,[projectSource(plan.ids.project,"97"),projectSource(otherProjectId,"3")]),cash=await open(keeper,"public_cash");
    const openingRows=await observer.fundAccountBalanceRegistration.findMany({where:{id:{in:[a.id,b.id,cash.id]}}});expect(openingRows).toHaveLength(3);for(const row of openingRows)expect(row.balanceYuan?.toFixed(4)).toBe("100.0000");
-   const submit=async(token:string,scopeKey:string,opening:Opening,amountCents:string,sourceAllocations:Array<{sourceBatchId:string;amountCents:string}>)=>{
+   const registrationOptions=async(token:string)=>{
     const options=await json(`/payment-executions/${plan.ids.payment}/registration-options`,"GET",undefined,token);
     expect(options.status).toBe(200);
-    const key=randomUUID();
-    const response=await json(`/payment-executions/${plan.ids.payment}/registrations`,"POST",{idempotencyKey:key,expectedPaymentUpdatedAt:options.body.expectedPaymentUpdatedAt,amountCents,paidAt:plan.paidAt,scopeKey,expectedRegistrationId:opening.id,openingTreatment:"not_included",openingReason:"虚构付款未含期初",openingEvidence:"隔离登记",sourceAllocations,confirmationPassword:token===finance?passwords[0]:passwords[1]},token);
-    return {key,response};
+    return options.body;
    };
+   const registrationRoute=`/payment-executions/${plan.ids.payment}/registrations`;
+   const submit=async(token:string,scopeKey:string,opening:Opening,amountCents:string,sourceAllocations:Array<{sourceBatchId:string;amountCents:string}>,expectedPaymentUpdatedAt?:string)=>{
+    const key=randomUUID();
+    const body={idempotencyKey:key,expectedPaymentUpdatedAt:expectedPaymentUpdatedAt??(await registrationOptions(token)).expectedPaymentUpdatedAt,amountCents,paidAt:plan.paidAt,scopeKey,expectedRegistrationId:opening.id,openingTreatment:"not_included",openingReason:"虚构付款未含期初",openingEvidence:"隔离登记",sourceAllocations,confirmationPassword:token===finance?passwords[0]:passwords[1]};
+    const response=await json(registrationRoute,"POST",body,token);
+    return {key,response,body};
+   };
+   if(overpay){
+    const choices=[{token:finance,scopeKey:`company:${plan.ids.companyA}`,opening:a,actor:plan.ids.actor},{token:keeper,scopeKey:"public_cash",opening:cash,actor:seeded.keeper}];
+    const options=await Promise.all(choices.map(choice=>registrationOptions(choice.token)));
+    expect(options.map(value=>value.remainingAmountCents)).toEqual(["10000","10000"]);
+    expect(options[0].expectedPaymentUpdatedAt).toBe(options[1].expectedPaymentUpdatedAt);
+    for(const [index,choice] of choices.entries())expect(options[index].accounts).toContainEqual(expect.objectContaining({scopeKey:choice.scopeKey,eligible:true,currentRegistrationId:choice.opening.id}));
+    waiting=[];
+    const results=await Promise.all(choices.map((choice,index)=>submit(choice.token,choice.scopeKey,choice.opening,"6000",[{sourceBatchId:choice.opening.sources[0].id,amountCents:"6000"}],options[index].expectedPaymentUpdatedAt)));
+    expect({arrivals,barrierExpired}).toEqual({arrivals:2,barrierExpired:false});
+    expect(results.map(result=>result.response.status).sort()).toEqual([201,409]);
+    expect(new Set(results.map(result=>result.key)).size).toBe(2);
+    const winnerIndex=results.findIndex(result=>result.response.status===201);
+    const winner=results[winnerIndex],loser=results[1-winnerIndex],winnerChoice=choices[winnerIndex],loserChoice=choices[1-winnerIndex];
+    const getResult=(key:string,token:string)=>json(`/payment-executions/results/${key}`,"GET",undefined,token);
+    const executionId=winner.response.body.id;
+    expect(typeof executionId).toBe("string");
+    expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{status:"recorded",execution:{executionId,amountCents:"6000"}}});
+    expect(await getResult(loser.key,loserChoice.token)).toMatchObject({status:200,body:{status:"unconfirmed"}});
+    const observeRace=()=>observer.$transaction(async tx=>{
+     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+     return {
+      paid:(await tx.paymentRequest.findUniqueOrThrow({where:{id:plan.ids.payment},select:{paidAmountCents:true}})).paidAmountCents,
+      settlementPaid:(await tx.settlement.findUniqueOrThrow({where:{id:plan.ids.settlement},select:{paidAmountCents:true}})).paidAmountCents,
+      executions:await tx.paymentExecution.findMany({select:{id:true,idempotencyKey:true,amountCents:true,executedByUserId:true}}),
+      funding:await tx.registeredPaymentFunding.findMany({select:{executionId:true}}),
+      allocations:await tx.registeredFundPaymentAllocation.findMany({select:{executionId:true,sourceBatchId:true,amountCents:true}}),
+      events:await tx.registeredPaymentEvent.findMany({select:{executionId:true}}),
+      audits:await tx.auditLog.findMany({where:{businessId:plan.ids.payment,action:"payment.execution.record"},select:{actorUserId:true}}),
+      facts:await tx.operatingFact.findMany({where:{sourceType:"payment_execution"},select:{sourceBusinessId:true},orderBy:{id:"asc"}}),
+      impacts:await tx.operatingImpactEntry.findMany({where:{sourceType:"payment_execution"},select:{sourceBusinessId:true,impactKind:true,amountCents:true},orderBy:{id:"asc"}})
+     };
+    },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
+    const recorded=await observeRace();
+    expect(recorded).toEqual({
+     paid:6000n,settlementPaid:6000n,executions:[{id:executionId,idempotencyKey:winner.key,amountCents:6000n,executedByUserId:winnerChoice.actor}],
+     funding:[{executionId}],allocations:[{executionId,sourceBatchId:winnerChoice.opening.sources[0].id,amountCents:6000n}],
+     events:[{executionId}],audits:[{actorUserId:winnerChoice.actor}],facts:[{sourceBusinessId:executionId}],impacts:expect.any(Array)
+    });
+    expect(recorded.impacts).toHaveLength(2);
+    expect(recorded.impacts).toEqual(expect.arrayContaining(["payable_decrease",winnerChoice.scopeKey==="public_cash"?"public_cash_funds_decrease":"company_project_funds_decrease"].map(impactKind=>({sourceBusinessId:executionId,impactKind,amountCents:6000n}))));
+    const accounts=await json("/fund-accounts","GET",undefined,finance);
+    expect(accounts).toMatchObject({status:200,body:{accounts:expect.arrayContaining([
+     expect.objectContaining({scopeKey:winnerChoice.scopeKey,balanceYuan:"40.0000"}),
+     expect.objectContaining({scopeKey:loserChoice.scopeKey,balanceYuan:"100.0000"})
+    ])}});
+    for(const choice of choices)expect(await registrationOptions(choice.token)).toMatchObject({paidAmountCents:"6000",remainingAmountCents:"4000"});
+    const replay=await json(registrationRoute,"POST",winner.body,winnerChoice.token);
+    expect(replay).toMatchObject({status:201,body:{id:executionId}});
+    expect(await observeRace()).toEqual(recorded);
+    expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
+    return;
+   }
    const bAccount=async()=>{
     const response=await json("/fund-accounts","GET",undefined,finance);
     expect(response.status).toBe(200);

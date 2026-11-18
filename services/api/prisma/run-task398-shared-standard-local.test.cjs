@@ -187,9 +187,10 @@ test("registered catalog uses migration owner while impact reader keeps its qual
  const spec=fs.readFileSync(path.join(__dirname,"../src/database/task16-shared-standard.http.pg.spec.ts"),"utf8");
  assert.match(spec,/runtime\.\$transaction\(tx=>registeredPaymentInstalled\(tx\)\)/u);
 });
-test('browser mode is explicit and preserves standard selection',()=>{
+test('browser and overpay modes are explicit and preserve standard selection',()=>{
  const {selectTask398Scenario}=require('./run-task398-shared-standard-local.cjs');
  assert.equal(selectTask398Scenario([]),'src/database/task16-shared-standard.http.pg.spec.ts');
+ assert.equal(selectTask398Scenario(['--overpay-real']),'src/database/task16-shared-standard.http.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--browser-real']),'src/database/task16-real-browser.pg.spec.ts');
  assert.equal(selectTask398Scenario(['--browser-completion-real']),'src/database/task16-real-browser-completion.pg.spec.ts');
  assert.throws(()=>selectTask398Scenario(['--browser-real','--other']));
