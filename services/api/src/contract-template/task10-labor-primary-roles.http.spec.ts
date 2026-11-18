@@ -218,7 +218,8 @@ describe("task10 fixed labor primary roles through public HTTP", () => {
           renderInput: { values: { "contract.reviewedLaborTaxBindingVersion": "reviewed-labor-tax-v1", "contract.taxRateLabel": "0%", "contract.amountBasis": "tax_inclusive", "contract.taxInclusiveAmount": "600.0000", "contract.taxExclusiveAmount": "600.0000", "contract.taxAmount": "0.0000", "contract.typographyVersion": expectedVersion, "contract.renderSemanticVersion": "contract-money-v1", "contract.tableLayoutVersion": "body-bill-loop-v2" } } } });
       expect(Object.hasOwn(queued.inputSnapshot.bodyDocument, "typographyVersion")).toBe(true);
       expect(Object.hasOwn(queued.inputSnapshot.renderInput.values, "contract.typographyVersion")).toBe(true);
-      const keyTuple = [draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lockSha, "contract-money-v1", "body-bill-loop-v2", "reviewed-labor-tax-v1", expectedVersion];
+      const keyTuple = [draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lockSha, "contract-money-v1", "body-bill-loop-v2", "reviewed-labor-tax-v1", expectedVersion,
+        "built-in-automatic-party-guard-v1:built-in-labor-signature-review-v3"];
       const expectedKey = createHash("sha256").update(JSON.stringify(keyTuple)).digest("hex");
       expect(queued.idempotencyKey).toBe(expectedKey);
       await writeFile(join(directory, "public-queued-key.json"), JSON.stringify({ keyTuple, expectedKey, queued }, null, 2));
