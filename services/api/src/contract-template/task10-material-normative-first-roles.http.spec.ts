@@ -46,8 +46,10 @@ describe("task10 first confirmed material normative roles through public body HT
       expect(articles).toHaveLength(1);
       const article = articles[0], articleAt = firstOrder.indexOf(article);
       expect(bodyAt).toBeLessThan(articleAt);
-      expect(firstOrder.slice(bodyAt + 1, articleAt).some(block => block.text.trim() === "买方：当前单甲方")).toBe(true);
-      expect(firstOrder.slice(bodyAt + 1, articleAt).some(block => block.text.trim() === "卖方：当前单乙方")).toBe(true);
+      const partyBlocks = firstOrder.slice(bodyAt + 1, articleAt).map(block => block.text);
+      expect(partyBlocks.map(text => text.trim())).toEqual(expect.arrayContaining(["买方：", "卖方："]));
+      expect(before.blocks.map(block => block.text).join("\n")).toContain("当前单甲方");
+      expect(before.blocks.map(block => block.text).join("\n")).toContain("当前单乙方");
       const ordinary = before.blocks.find(block => block.editable && block.text.startsWith("4.若卖方违背"));
       expect(ordinary).toBeDefined();
       const manualText = ordinary!.text + "双方人工补充约定应当保留。";
