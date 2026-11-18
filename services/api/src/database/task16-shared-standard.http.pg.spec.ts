@@ -30,7 +30,8 @@ async function observedMeRequest<T>(request:()=>Promise<T>,index:number,env:Node
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 const overpay=process.env.TASK398_OVERPAY_MODE==="1";
 const ledgerLoss=process.env.TASK398_LEDGER_LOSS_MODE==="1";
-const transferMode=process.env.TASK406_TRANSFER_MODE==="1";
+const transferRejection=process.env.TASK406_TRANSFER_MODE==="rejection";
+const transferMode=process.env.TASK406_TRANSFER_MODE==="1"||transferRejection;
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
 // input text can only select an entry, never become a logged value.
@@ -171,7 +172,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
 });
 
 (enabled?describe:describe.skip)("#398 isolated shared payment real HTTP and PostgreSQL",()=>{
- it(transferMode ? "shares one cash transfer across receipt, rejection, return and actual payment contention" : overpay ? "allows only one of two concurrent instalments that would together overpay" : ledgerLoss ? "recovers and replays cross-company project payment after losing a committed response" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
+ it(transferRejection ? "distinguishes a fresh no-write rejection from a committed missing response" : transferMode ? "shares one cash transfer across receipt, rejection, return and actual payment contention" : overpay ? "allows only one of two concurrent instalments that would together overpay" : ledgerLoss ? "recovers and replays cross-company project payment after losing a committed response" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
   const ownerUrl=new URL(process.env.TASK398_OWNER_URL??""),runtimeUrl=new URL(process.env.DATABASE_URL??""),observerUrl=new URL(process.env.TASK398_OBSERVER_URL??"");
   const db=ownerUrl.pathname;
   const runId=process.env.TASK398_RUN_ID??"";
@@ -290,6 +291,48 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
      sourceScopeKey,destinationScopeKey,expectedRegistrationId,transferredOn:plan.paidAt.slice(0,10),
      idempotencyKey:randomUUID(),evidenceReference:"虚构线下交款凭据",lines:[{sourceBatchId,amountYuan}]
     });
+    if(transferRejection){
+     const stale=transferCommand(cashScope,aScope,randomUUID(),cash.sources[0].id,"20.0001");
+     const actionCount=()=>observer.$transaction(async tx=>{
+      await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+      const openings=await tx.fundAccountBalanceRegistration.findMany({
+       where:{id:{in:[cash.id,a.id]}},select:{id:true,balanceYuan:true},orderBy:{id:"asc"}
+      });
+      return {actions:await tx.registeredFundTransferAction.count(),transfers:await tx.registeredFundTransfer.count(),
+       openings:openings.map(row=>row.balanceYuan?.toFixed(4))};
+     },{isolationLevel:"RepeatableRead"});
+     const initialCount=await actionCount();
+     expect(initialCount).toEqual({actions:0,transfers:0,openings:["100.0000","100.0000"]});
+     const denied=await json(transferPath,"POST",stale,keeper);
+     expect(denied).toMatchObject({status:409,body:{statusCode:409,code:"FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE"}});
+     expect(await actionCount()).toEqual(initialCount);
+     await readBalances("100.0000","100.0000");
+
+     const input=transferCommand(cashScope,aScope,cash.id,cash.sources[0].id,"20.0001");
+     let upstreamStatus:number|undefined;
+     const loseResponse:typeof fetch=async (url,request)=>{
+      const response=await fetch(url,request);
+      upstreamStatus=response.status;
+      await response.body?.cancel();
+      throw new TypeError("synthetic response loss");
+     };
+     await expect(json(transferPath,"POST",input,keeper,loseResponse)).rejects.toThrow("synthetic response loss");
+     expect(upstreamStatus).toBe(201);
+     const action=await observer.$transaction(async tx=>{
+      await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+      return tx.registeredFundTransferAction.findUniqueOrThrow({where:{idempotencyKey:input.idempotencyKey}});
+     },{isolationLevel:"RepeatableRead"});
+     expect(await json(transferPath,"POST",input,keeper)).toMatchObject({
+      status:201,body:{id:action.transferId,revision:1,status:"pending_receipt"}
+     });
+     expect(await actionCount()).toEqual({actions:1,transfers:1,openings:initialCount.openings});
+     await readBalances("79.9999","100.0000");
+     console.info("TASK406_REJECTION_WITNESS",JSON.stringify({
+      staleHttp:409,staleCode:denied.body.code,staleActions:0,staleTransferCount:0,cashAfterStale:"100.0000",
+      lostUpstreamHttp:upstreamStatus,replayedHttp:201,committedActions:1,committedTransfers:1,cashAfterReplay:"79.9999"
+     }));
+     return;
+    }
     const handle=(id:string,token:string,expectedRevision:number,action:string,key=randomUUID())=>
       json(`${transferPath}/${id}/actions`,"POST",{expectedRevision,action,idempotencyKey:key,evidenceReference:"虚构实收或退回核对"},token);
     const start=transferCommand(cashScope,aScope,cash.id,cash.sources[0].id,"30.0001");

@@ -7,7 +7,7 @@ import { CompanyRoleResolverService } from "../auth/company-role-resolver.servic
 import { PrismaService } from "../database/prisma.service";
 import { availableRegisteredBalance, RegisteredBalanceDecimal } from "../payment/registered-payment-funding";
 import { ActOnFundAccountTransferDto, RegisterFundAccountTransferDto } from "./fund-account-transfer.dto";
-import { transferStateAfterAction, type FundAccountTransferState } from "./fund-account-transfer-state";
+import { rejectedTransferWithoutWrite, transferStateAfterAction, type FundAccountTransferState } from "./fund-account-transfer-state";
 
 type Transaction = Prisma.TransactionClient;
 type Registration = Prisma.FundAccountBalanceRegistrationGetPayload<{ include: { sources: true } }>;
@@ -74,19 +74,19 @@ export class FundAccountTransferService {
       if (replay) return replay;
       const companyId = source.companyEntityId ?? destination.companyEntityId;
       const company = companyId ? await tx.companyEntity.findUnique({ where: { id: companyId }, select: { isActive: true } }) : null;
-      if (!company?.isActive) throw new ConflictException("所选公司已停用，不能登记新的转款");
+      if (!company?.isActive) throw rejectedTransferWithoutWrite("所选公司已停用，不能登记新的转款");
       await this.lockAccounts(tx, source.id, destination.id);
       const current = await this.current(tx, source.id);
       await this.current(tx, destination.id);
-      if (current.id !== input.expectedRegistrationId) throw new ConflictException("资金核对版本已变化，请刷新后重新选择资金来源");
+      if (current.id !== input.expectedRegistrationId) throw rejectedTransferWithoutWrite("资金核对版本已变化，请刷新后重新选择资金来源");
       const available = await availableRegisteredBalance(tx, current);
       if (available.balanceYuan?.lt(amountYuan) || available.heldTransferAllocations.some(hold => hold.candidateSourceIds.length !== 1)) {
-        throw new ConflictException("可用资金不足或已有转款来源待核对");
+        throw rejectedTransferWithoutWrite("可用资金不足或已有转款来源待核对");
       }
       for (const line of lines) {
         const sourceLine = available.sources.find(row => row.id === line.sourceBatchId);
         if (!sourceLine || sourceLine.amountYuan.lt(line.amountYuan) || available.pendingAllocations.some(row => row.candidateSourceIds.includes(line.sourceBatchId))) {
-          throw new ConflictException("所选资金来源可用余额不足或待核对");
+          throw rejectedTransferWithoutWrite("所选资金来源可用余额不足或待核对");
         }
       }
       const transfer = await tx.registeredFundTransfer.create({ data: {
@@ -119,7 +119,7 @@ export class FundAccountTransferService {
       const replay = await this.replay(tx, actorId, input.idempotencyKey, requestHash);
       if (replay) return replay;
       await this.lockAccounts(tx, transfer.sourceAccountId, transfer.destinationAccountId);
-      if (transfer.revision !== input.expectedRevision) throw new ConflictException("转款已更新，请刷新后核对");
+      if (transfer.revision !== input.expectedRevision) throw rejectedTransferWithoutWrite("转款已更新，请刷新后核对");
       const status = transferStateAfterAction(transfer.status as FundAccountTransferState, input.action);
       const revision = transfer.revision + 1;
       const touched = await tx.registeredFundTransfer.updateMany({ where: { id: transferId, revision: transfer.revision }, data: { status, revision } });
@@ -139,13 +139,13 @@ export class FundAccountTransferService {
             }
             return false;
           });
-          if (candidates.length !== 1) throw new ConflictException("转款来源尚未核对，不能确认实收");
+          if (candidates.length !== 1) throw rejectedTransferWithoutWrite("转款来源尚未核对，不能确认实收");
           const id = candidates[0].id;
           debits.set(id, (debits.get(id) ?? new RegisteredBalanceDecimal(0)).plus(line.amountYuan));
         }
         const activeSource = await availableRegisteredBalance(tx, source);
         if (activeSource.balanceYuan!.lt(transfer.amountYuan) || activeSource.sources.some(batch => batch.amountYuan.lt(debits.get(batch.id) ?? 0))) {
-          throw new ConflictException("转款余额或来源已变化，不能确认实收");
+          throw rejectedTransferWithoutWrite("转款余额或来源已变化，不能确认实收");
         }
         await this.appendReceipt(tx, source, transfer, actorId, evidence, source.sources.map(batch =>
           this.sourceSnapshot(batch, new RegisteredBalanceDecimal(batch.amountYuan.toFixed(4)).minus(debits.get(batch.id) ?? 0), batch.id)));
@@ -173,7 +173,7 @@ export class FundAccountTransferService {
     const latest = await tx.fundAccountBalanceRegistration.findFirstOrThrow({ where: { accountId: previous.accountId }, orderBy: { version: "desc" } });
     let balanceYuan: string;
     try { balanceYuan = sumBusinessAmounts(sources.map(source => source.amountYuan.toFixed(4)))!; }
-    catch { throw new ConflictException("实收后登记余额超出可保存范围，请先核对账户"); }
+    catch { throw rejectedTransferWithoutWrite("实收后登记余额超出可保存范围，请先核对账户"); }
     const registration = await tx.fundAccountBalanceRegistration.create({ data: {
       accountId: previous.accountId, previousRegistrationId: previous.id, version: latest.version + 1,
       kind: "transfer", status: "confirmed", transferId: transfer.id, balanceYuan,
@@ -189,7 +189,7 @@ export class FundAccountTransferService {
     const row = await tx.fundAccountBalanceRegistration.findFirst({
       where: { accountId, status: "confirmed" }, orderBy: { version: "desc" }, include: { sources: true }
     });
-    if (!row || row.balanceYuan === null) throw new ConflictException("资金余额尚未核对，不能办理转款");
+    if (!row || row.balanceYuan === null) throw rejectedTransferWithoutWrite("资金余额尚未核对，不能办理转款");
     return row;
   }
 

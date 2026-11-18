@@ -13,7 +13,7 @@ const registration = {
   lines: [{ sourceBatchId: "10561000-0000-4000-8000-000000000003", amountYuan: "30.0001" }]
 };
 
-function transferService(role: string, firstConflict = false) {
+function transferService(role: string, firstConflict = false, activeCompany = false) {
   const receipt = jest.fn();
   const transferUpdate = jest.fn();
   const tx = {
@@ -21,11 +21,14 @@ function transferService(role: string, firstConflict = false) {
     userPosition: { findMany: async () => [{ positionId: role }] },
     position: { findMany: async () => [{ id: role, key: role }] },
     registeredFundAccount: { findUnique: async ({ where }: { where: { scopeKey: string } }) =>
-      where.scopeKey === "public_cash" ? { kind: "public_cash", companyEntityId: null } : { kind: "company", companyEntityId: "company-a" } },
-    companyEntity: { findUnique: async () => ({ isActive: false }) },
+      where.scopeKey === "public_cash" ? { id: "cash", kind: "public_cash", companyEntityId: null } : { id: "company", kind: "company", companyEntityId: "company-a" },
+      update: jest.fn() },
+    companyEntity: { findUnique: async () => ({ isActive: activeCompany }) },
+    fundAccountBalanceRegistration: { findFirst: async () => ({ id: "new-current", balanceYuan: new Prisma.Decimal(100) }) },
+    $queryRaw: async () => [{ id: "cash" }, { id: "company" }],
     registeredFundTransferAction: { findUnique: receipt },
     registeredFundTransfer: {
-      findUnique: async () => ({ createdByUserId: "origin", sourceAccount: { kind: "public_cash" }, destinationAccount: { kind: "company" } }),
+      findUnique: async () => ({ revision: 2, sourceAccountId: "cash", destinationAccountId: "company", createdByUserId: "origin", sourceAccount: { kind: "public_cash" }, destinationAccount: { kind: "company" } }),
       updateMany: transferUpdate
     }
   };
@@ -59,4 +62,31 @@ it("rejects a new transfer into an inactive company", async () => {
   const { service, receipt } = transferService("comprehensive_director");
   await expect(service.register("origin", registration)).rejects.toThrow("所选公司已停用");
   expect(receipt).toHaveBeenCalledTimes(1);
+});
+
+it("returns a typed no-write rejection for a stale source registration after proving the key has no receipt", async () => {
+  const { service, receipt } = transferService("comprehensive_director", false, true);
+  await expect(service.register("origin", registration)).rejects.toMatchObject({
+    response: { statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE" }
+  });
+  expect(receipt).toHaveBeenCalledTimes(1);
+});
+
+it("returns a typed no-write rejection for a stale receipt decision", async () => {
+  const { service, receipt, transferUpdate } = transferService("finance_staff");
+  await expect(service.act("recipient", "transfer", {
+    idempotencyKey: registration.idempotencyKey, expectedRevision: 1, action: "confirm", evidenceReference: "独立实收"
+  })).rejects.toMatchObject({
+    response: { statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE" }
+  });
+  expect(receipt).toHaveBeenCalledTimes(1);
+  expect(transferUpdate).not.toHaveBeenCalled();
+});
+
+it("does not mark a key collision with an existing receipt as a definite rejection", async () => {
+  const { service, receipt } = transferService("comprehensive_director", false, true);
+  receipt.mockResolvedValue({ actorUserId: "origin", payloadFingerprint: "0".repeat(64) });
+  await expect(service.register("origin", registration)).rejects.toMatchObject({
+    response: { statusCode: 409, error: "Conflict" }
+  });
 });
