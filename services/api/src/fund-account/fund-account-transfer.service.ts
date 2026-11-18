@@ -72,6 +72,9 @@ export class FundAccountTransferService {
       await this.authorize(tx, actorId, rolesFor(source.kind));
       const replay = await this.replay(tx, actorId, input.idempotencyKey, requestHash);
       if (replay) return replay;
+      const companyId = source.companyEntityId ?? destination.companyEntityId;
+      const company = companyId ? await tx.companyEntity.findUnique({ where: { id: companyId }, select: { isActive: true } }) : null;
+      if (!company?.isActive) throw new ConflictException("所选公司已停用，不能登记新的转款");
       await this.lockAccounts(tx, source.id, destination.id);
       const current = await this.current(tx, source.id);
       await this.current(tx, destination.id);
@@ -92,20 +95,27 @@ export class FundAccountTransferService {
         lines: { create: lines }
       } });
       return this.record(tx, actorId, transfer, input.idempotencyKey, requestHash, "register", evidence);
-    }, { actorId, key: input.idempotencyKey, requestHash });
+    }, { actorId, key: input.idempotencyKey, requestHash, authorize: async tx => {
+      const source = await tx.registeredFundAccount.findUnique({ where: { scopeKey: input.sourceScopeKey } });
+      if (!source) throw new NotFoundException("转出账户不存在");
+      await this.authorize(tx, actorId, rolesFor(source.kind));
+    } });
   }
 
   async act(actorId: string, transferId: string, input: ActOnFundAccountTransferDto) {
     const evidence = this.evidence(input.evidenceReference);
     const requestHash = fingerprint({ transferId, actorId, action: input.action, expectedRevision: input.expectedRevision, evidence });
+    const forOrigin = input.action === "resubmit" || input.action === "return";
+    const authorizeAction = async (tx: Transaction, transfer: { createdByUserId: string; sourceAccount: { kind: string }; destinationAccount: { kind: string } }) => {
+      await this.authorize(tx, actorId, rolesFor(forOrigin ? transfer.sourceAccount.kind : transfer.destinationAccount.kind));
+      if (forOrigin && transfer.createdByUserId !== actorId) throw new ForbiddenException("仅原经办人可以办理驳回后的转款");
+    };
     return this.transaction(async tx => {
       const transfer = await tx.registeredFundTransfer.findUnique({
         where: { id: transferId }, include: { sourceAccount: true, destinationAccount: true, lines: { include: { sourceBatch: true } } }
       });
       if (!transfer) throw new NotFoundException("转款记录不存在");
-      const forOrigin = input.action === "resubmit" || input.action === "return";
-      await this.authorize(tx, actorId, rolesFor(forOrigin ? transfer.sourceAccount.kind : transfer.destinationAccount.kind));
-      if (forOrigin && transfer.createdByUserId !== actorId) throw new ForbiddenException("仅原经办人可以办理驳回后的转款");
+      await authorizeAction(tx, transfer);
       const replay = await this.replay(tx, actorId, input.idempotencyKey, requestHash);
       if (replay) return replay;
       await this.lockAccounts(tx, transfer.sourceAccountId, transfer.destinationAccountId);
@@ -145,7 +155,13 @@ export class FundAccountTransferService {
         ]);
       }
       return this.record(tx, actorId, { ...transfer, status, revision }, input.idempotencyKey, requestHash, input.action, evidence);
-    }, { actorId, key: input.idempotencyKey, requestHash });
+    }, { actorId, key: input.idempotencyKey, requestHash, authorize: async tx => {
+      const transfer = await tx.registeredFundTransfer.findUnique({
+        where: { id: transferId }, include: { sourceAccount: true, destinationAccount: true }
+      });
+      if (!transfer) throw new NotFoundException("转款记录不存在");
+      await authorizeAction(tx, transfer);
+    } });
   }
 
   private sourceSnapshot(batch: Registration["sources"][number], amountYuan: Prisma.Decimal, previousSourceBatchId: string | null) {
@@ -213,13 +229,16 @@ export class FundAccountTransferService {
     return { id: action.transferId, revision: action.revision, status: action.status };
   }
 
-  private async transaction<T>(run: (tx: Transaction) => Promise<T>, retry?: { actorId: string; key: string; requestHash: string }) {
+  private async transaction<T>(run: (tx: Transaction) => Promise<T>, retry?: { actorId: string; key: string; requestHash: string; authorize(tx: Transaction): Promise<void> }) {
     try { return await this.prisma.$transaction(run, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }); }
     catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || !["P2002", "P2034"].includes(error.code)) throw error;
       if (retry) {
         const { actorId, key, requestHash } = retry;
-        const receipt = await this.prisma.$transaction(tx => this.replay(tx, actorId, key, requestHash));
+        const receipt = await this.prisma.$transaction(async tx => {
+          await retry.authorize(tx);
+          return this.replay(tx, actorId, key, requestHash);
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
         if (receipt) return receipt;
       }
       throw new ConflictException("资金或转款状态已变化，请保留原凭据并刷新核对");

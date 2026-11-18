@@ -100,7 +100,7 @@ BEGIN
  END IF;
  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
   WHERE tgrelid=to_regclass('public."RegisteredFundPaymentAllocation"')
-    AND tgname='RegisteredFundPaymentAllocation_transfer_capacity' AND tgenabled IN ('O','A')
+    AND tgname='RegisteredFundPaymentAllocation_transfer_capacity' AND tgtype=5 AND tgenabled IN ('O','A')
     AND tgfoid='public.jg_registered_fund_transfer_account_trigger()'::regprocedure
     AND tgdeferrable AND tginitdeferred) THEN
    RAISE EXCEPTION 'registered payment transfer capacity fence is not installed';
