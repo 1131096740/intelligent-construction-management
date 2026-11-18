@@ -65,9 +65,15 @@ async function closeChild(child:ChildProcess|undefined){
    const scope={paymentId:plan.ids.payment,executionIds:[] as string[],resultKeys:[] as string[],fileIds:[] as string[]};let ticket:string|undefined;
    const digests:string[]=[];
    const admit=createTask16BrowserCompletionGate({companyId:plan.ids.companyA,paidAt:plan.paidAt,getOpening:()=>admittedOpening,record:(_stage,requestKeySha256)=>{digests.push(requestKeySha256);recordEvidence({candidate,runId,status:"UNKNOWN_DO_NOT_RETRY",requestKeySha256:digests},digests.length===1?"receipt.json":"receipt-stage2.json");}});
+   let registrationRequests=0;
    app.use((req:{method:string;originalUrl:string;body?:Record<string,unknown>},res:{status:(code:number)=>{end:()=>void}},next:()=>void)=>{
+    if(req.method==="POST"&&req.originalUrl===`/payment-executions/${plan.ids.payment}/recovery-proof`){
+     const originalKey=scope.resultKeys[0];
+     return originalKey&&req.body?.idempotencyKey===originalKey ? next() : res.status(404).end();
+    }
     if(!task16RealBrowserRequestAllowed(req.method,req.originalUrl,scope,ticket))return res.status(404).end();
     if(req.method==="POST"&&req.originalUrl===`/payment-executions/${plan.ids.payment}/registrations`){
+     registrationRequests++;
      if(!admit.admit(req.body))return res.status(404).end();
      submitted=true;scope.resultKeys.push(req.body!.idempotencyKey as string);
     }
@@ -160,6 +166,7 @@ async function closeChild(child:ChildProcess|undefined){
    expect(await proof.json()).toEqual({status:"matched",executionId:firstExecutionId});
    await panel.getByText("已查到本次付款登记，电子凭证可继续补充。",{exact:true}).waitFor();
    expect(scope.resultKeys).toEqual([originalKey]);
+   expect(registrationRequests).toBe(1);
    await page.locator(".business-status-summary__item").filter({hasText:"已实付金额"}).getByText("¥30.00",{exact:true}).waitFor();
    await page.locator(".financial-balances").getByText("应付余额：70.00 元",{exact:false}).first().waitFor();
    await panel.getByText("已付 ¥30.00 · 剩余待付 ¥70.00",{exact:true}).first().waitFor();
@@ -177,6 +184,7 @@ async function closeChild(child:ChildProcess|undefined){
    await form.getByRole("button",{name:"确认登记这笔实付",exact:true}).click();
    const finalPost=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/payment-executions/${plan.ids.payment}/registrations`);
    await page.getByRole("button",{name:"已核实并确认登记",exact:true}).click();const finalResponse=await finalPost;expect(finalResponse.status()).toBe(201);
+   expect(registrationRequests).toBe(2);
    const finalBody=await finalResponse.json();expect(typeof finalBody.id).toBe("string");scope.executionIds.push(finalBody.id);
    await panel.getByText("当前没有待登记的实付。",{exact:true}).waitFor();await other.reload();await other.getByRole("region",{name:"共享实付待办"}).getByText("当前没有待登记的实付。",{exact:true}).waitFor();
    const final=await observe();expect(final).toEqual({balance:"0.0000",executionWitness:[{id:firstExecutionId,amount:"3000"},{id:finalBody.id,amount:"7000"}],settlementWitness:before.settlementWitness,settlementFacts:1,settlementImpacts:2,paid:"10000",settlementPaid:"10000",executions:2,amount:"10000",funding:2,allocations:2,allocationAmount:"10000",events:2,audits:2,facts:2,impacts:4});
