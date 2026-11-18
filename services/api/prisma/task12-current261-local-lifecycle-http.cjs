@@ -58,11 +58,18 @@ function closedAuthTransactionPhase(value){
   ['UPSERT_2_PENDING','UPSERT_2_RETURNED'].includes(phase)?callbackEntered&&!callbackReturned&&upsertOrdinal===2:false;
  if(valid)return Object.freeze({operation,phase,upsertOrdinal,callbackEntered,callbackReturned,elapsedMs,phaseElapsedMs});
 }
+function closedWorkbenchTransactionPhase(value){
+ const phase=own(value,'phase'),elapsedMs=own(value,'elapsedMs'),phaseElapsedMs=own(value,'phaseElapsedMs');
+ if(['BEGIN','VERSION_READ','LAYOUT_READ','TEMPLATE_READ','BILLS_READ','CALLBACK_RETURNED'].includes(phase)&&
+  Number.isSafeInteger(elapsedMs)&&elapsedMs>=0&&elapsedMs<=3600000&&Number.isSafeInteger(phaseElapsedMs)&&phaseElapsedMs>=0&&phaseElapsedMs<=elapsedMs){
+  return Object.freeze({phase,elapsedMs,phaseElapsedMs});
+ }
+}
 function closedAuthDetail(value){
  const kind=own(value,'serverErrorKind'),code=own(value,'serverPrismaCode'),sql=own(value,'serverSqlState'),boundary=own(value,'serverAuthBoundary');
  if(!authKinds.has(kind))return {};
- const transactionPhase=closedAuthTransactionPhase(own(value,'serverAuthTransactionPhase'));
- return {serverErrorKind:kind,...(transactionPhase?{serverAuthTransactionPhase:transactionPhase}:{}),...(['PRE_CONTROLLER_MARKER','CONTROLLER_MARKER_REACHED'].includes(boundary)?{serverAuthBoundary:boundary}:{}),...(['KNOWN_REQUEST_ERROR','INITIALIZATION_ERROR'].includes(kind)&&authCodes.has(code)?{serverPrismaCode:code}:{}),
+ const transactionPhase=closedAuthTransactionPhase(own(value,'serverAuthTransactionPhase')),workbenchPhase=closedWorkbenchTransactionPhase(own(value,'serverWorkbenchTransactionPhase'));
+ return {serverErrorKind:kind,...(workbenchPhase?{serverWorkbenchTransactionPhase:workbenchPhase}:{}),...(transactionPhase?{serverAuthTransactionPhase:transactionPhase}:{}),...(['PRE_CONTROLLER_MARKER','CONTROLLER_MARKER_REACHED'].includes(boundary)?{serverAuthBoundary:boundary}:{}),...(['KNOWN_REQUEST_ERROR','INITIALIZATION_ERROR'].includes(kind)&&authCodes.has(code)?{serverPrismaCode:code}:{}),
   ...(kind==='KNOWN_REQUEST_ERROR'&&authStates.has(sql)?{serverSqlState:sql}:{})};
 }
 const relayCodes=new Set(['ABORTED','CONFIG','LIMIT','CHILD','STREAM','FRAME','HALF_CLOSE_TIMEOUT','DEPLOY_DRAIN_TIMEOUT','DEPLOY_DRAIN_ACTIVE','LISTEN','CLOSED','CLEANUP'].map(part=>'CURRENT259_LOOPBACK_FORWARD_'+part));
@@ -200,7 +207,7 @@ async function withLifecycleHttp(config,server,verify,verifyToken,consume,authOn
  const wire=async(method,path,headers,body,binary=false,authPhone)=>{
   const observation={method,routeTemplate:routeTemplate(path),phase:'BEFORE_CHECK',httpStatus:null,businessOutcome:'UNKNOWN'};
   lastObservation=undefined;let ticket;
-  const collectAuth=()=>{if(ticket===undefined)return;const current=ticket;ticket=undefined;try{const detail=closedAuthDetail(takeAuth.call(authDiagnostics,current));if(['/contract-drafts/:versionId/edit-lease/heartbeat','/contract-drafts/:versionId/workbench','/contract-drafts/:versionId/preview-generation'].includes(observation.routeTemplate)){const {serverAuthBoundary,serverAuthTransactionPhase,...finite}=detail;const boundaryKey=observation.routeTemplate.endsWith('/workbench')?'serverWorkbenchBoundary':observation.routeTemplate.endsWith('/preview-generation')?'serverQueueBoundary':'serverLeaseBoundary';Object.assign(observation,finite,...(serverAuthBoundary?[{[boundaryKey]:serverAuthBoundary}]:[]));}else Object.assign(observation,detail);}catch{/* Preserve the original HTTP failure and UNKNOWN. */}};
+  const collectAuth=()=>{if(ticket===undefined)return;const current=ticket;ticket=undefined;try{const detail=closedAuthDetail(takeAuth.call(authDiagnostics,current));if(['/contract-drafts/:versionId/edit-lease/heartbeat','/contract-drafts/:versionId/workbench','/contract-drafts/:versionId/preview-generation'].includes(observation.routeTemplate)){const {serverAuthBoundary,serverAuthTransactionPhase,serverWorkbenchTransactionPhase,...finite}=detail;const boundaryKey=observation.routeTemplate.endsWith('/workbench')?'serverWorkbenchBoundary':observation.routeTemplate.endsWith('/preview-generation')?'serverQueueBoundary':'serverLeaseBoundary';Object.assign(observation,finite,...(boundaryKey==='serverWorkbenchBoundary'&&serverWorkbenchTransactionPhase?[{serverWorkbenchTransactionPhase}]:[]),...(serverAuthBoundary?[{[boundaryKey]:serverAuthBoundary}]:[]));}else Object.assign(observation,detail);}catch{/* Preserve the original HTTP failure and UNKNOWN. */}};
   try{
    check();need(++requests<=600);
    if(authPhone!==undefined){need(method==='POST'&&path==='/auth/login'||require.main&&require.main.filename===require('node:path').join(__dirname,'run-task12-native-con18-once.cjs')&&(method==='POST'&&['/contract-drafts/:versionId/edit-lease/heartbeat','/contract-drafts/:versionId/preview-generation'].includes(routeTemplate(path))||method==='GET'&&routeTemplate(path)==='/contract-drafts/:versionId/workbench'));try{ticket=armAuth.call(authDiagnostics,authPhone);}catch{/* Diagnostics confer no request authority and cannot replace its response. */}}

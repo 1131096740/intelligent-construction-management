@@ -7,16 +7,17 @@ import { types } from "node:util";
 import { ProjectOperatingConstraintFilter } from "../project/project-operating-constraint.filter";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 
+import { takeTask12WorkbenchPhase, type Task12WorkbenchPhase } from "./task12-workbench-transaction-phase";
 import { takeTask12AuthTransactionPhase, type Task12AuthTransactionPhase } from "./task12-auth-transaction-phase";
 
 // Reuse the fixed finite decoder only. AUTH owns separate state and tickets.
 const projectError = projectTask16RegistrationError;
-type Detail = ReturnType<typeof projectTask16RegistrationError> & Readonly<{ serverAuthTransactionPhase?: Task12AuthTransactionPhase; serverAuthBoundary: "PRE_CONTROLLER_MARKER" | "CONTROLLER_MARKER_REACHED" }>;
+type Detail = ReturnType<typeof projectTask16RegistrationError> & Readonly<{ serverAuthTransactionPhase?: Task12AuthTransactionPhase; serverWorkbenchTransactionPhase?: Task12WorkbenchPhase; serverAuthBoundary: "PRE_CONTROLLER_MARKER" | "CONTROLLER_MARKER_REACHED" }>;
 type Active = { server: Server; phoneHash: string; route: "AUTH" | "LEASE" | "WORKBENCH" | "QUEUE" | "SAVE"; armedAt: number; expiresAt: number; observed: boolean; captured?: Detail };
 type State = { active?: Active; interceptor?: object };
 const states = new WeakMap<object, State>();
 const interceptorOwners = new WeakMap<object, object>();
-const markers = new WeakMap<IncomingMessage, { filter: object; interceptor: object }>();
+const markers = new WeakMap<IncomingMessage, { filter: object; interceptor: object; active: Active }>();
 const tickets = new WeakMap<object, { state: State; active: Active }>();
 const readHeaders = Object.getOwnPropertyDescriptor(IncomingMessage.prototype, "headers")?.get;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -35,6 +36,12 @@ function method(value: unknown, key: string): ((...args: unknown[]) => unknown) 
   }
   return undefined;
 }
+export function task12ObservedWorkbenchRequest(request?: IncomingMessage): IncomingMessage | undefined {
+  const marker = request && markers.get(request);
+  const active = marker && states.get(marker.filter)?.active;
+  if (active && marker?.active === active && active.route === "WORKBENCH" && !active.observed && performance.now() <= active.expiresAt) return request;
+}
+
 export function armTask12AuthError(filter: object, server: object, phone: string, remainingMs = 15000): object {
   const state = filter && !types.isProxy(filter) ? states.get(filter) : undefined;
   const workbenchIdentity = typeof phone === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}:[a-f0-9]{32}:workbench$/u.test(phone);
@@ -74,8 +81,10 @@ export class Task12AuthErrorFilter extends ProjectOperatingConstraintFilter {
         if (typeof phone === "string" && phone.length <= 79 && hash(phone) === active.phoneHash) {
           const marker = markers.get(request), state = states.get(this);
           const transactionPhase = takeTask12AuthTransactionPhase(exception, request, active.armedAt);
+          const workbenchPhase = active.route === "WORKBENCH" ? takeTask12WorkbenchPhase(exception, request, active.armedAt) : undefined;
           active.captured = active.observed ? undefined : Object.freeze({ ...projectError(exception),
             ...(transactionPhase?{serverAuthTransactionPhase:transactionPhase}:{}),
+            ...(workbenchPhase ? { serverWorkbenchTransactionPhase: workbenchPhase } : {}),
             serverAuthBoundary: marker?.filter === this && marker.interceptor === state?.interceptor && interceptorOwners.get(marker.interceptor) === this
               ? "CONTROLLER_MARKER_REACHED" : "PRE_CONTROLLER_MARKER" });
           active.observed = true;
@@ -106,7 +115,7 @@ export class Task12AuthStageInterceptor implements NestInterceptor {
         own(request, "method") === (active.route === "WORKBENCH" ? "GET" : active.route === "SAVE" ? "PUT" : "POST") && own(own(request, "route"), "path") === (active.route === "AUTH" ? "/auth/login" : active.route === "LEASE" ? "/contract-drafts/:contractVersionId/edit-lease/heartbeat" : active.route === "QUEUE" ? "/contract-drafts/:contractVersionId/preview-generation" : active.route === "SAVE" ? "/contract-drafts/:contractVersionId" : "/contract-drafts/:contractVersionId/workbench")) {
         const id = active.route !== "AUTH" ? own(own(request, "params"), "contractVersionId") : undefined, nonce = active.route !== "AUTH" ? own(readHeaders?.call(request), "x-task12-diagnostic") : undefined;
         const phone = active.route === "AUTH" ? own(own(request, "body"), "phone") : typeof id === "string" && typeof nonce === "string" && nonce.length === 32 ? `${id}:${nonce}${active.route === "WORKBENCH" ? ":workbench" : active.route === "QUEUE" ? ":queue" : active.route === "SAVE" ? ":save" : ""}` : undefined;
-        if (typeof phone === "string" && phone.length <= 79 && hash(phone) === active.phoneHash) markers.set(request, { filter, interceptor: this });
+        if (typeof phone === "string" && phone.length <= 79 && hash(phone) === active.phoneHash) markers.set(request, { filter, interceptor: this, active });
       }
     } catch { /* The marker is diagnostic-only; preserve the original next.handle. */ }
     return handle.call(next) as ReturnType<CallHandler["handle"]>;
