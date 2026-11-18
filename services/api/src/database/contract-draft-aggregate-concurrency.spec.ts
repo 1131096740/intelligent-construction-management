@@ -41,6 +41,55 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
   const integrationTest =
     process.env.RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE === "1" ? it : it.skip;
 
+  integrationTest("persists an explicitly selected company bank binding and invalidates documents across company version changes", async () => {
+    const url = contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL);
+    const client = new PrismaClient({ datasources: { db: { url } } });
+    const ids = makeIds("company-bank-binding");
+    const companyId = `synthetic-company-${randomUUID()}`;
+    const version1 = `synthetic-company-version-${randomUUID()}`;
+    const version2 = `synthetic-company-version-${randomUUID()}`;
+    const documentId = `synthetic-document-${randomUUID()}`;
+    const audit = new AuditService();
+    const aggregate = new ContractDraftAggregateService(client as never, new ContractWorkbenchService(client as never, audit), new ContractBillService(client as never, audit), new BusinessPartyService(client as never, audit), { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
+    try {
+      await seedDraft(client, ids);
+      await client.companyEntity.create({ data: { id: companyId, name: "虚构主体甲", unifiedSocialCreditCode: `FAKE${randomUUID()}`, isActive: true, dataStatus: "complete", currentVersionNo: 1 } });
+      await client.companyEntityVersion.create({ data: { id: version1, companyEntityId: companyId, versionNo: 1, name: "虚构主体甲", unifiedSocialCreditCode: "SYNTHETIC-A", isActive: true, action: "created" } });
+      const values = { openingBank: "虚构开户行", bankAccount: "SYNTHETIC-001", paymentBank: "", paymentAccount: "" };
+      const binding = { protocolVersion: 1, companyEntityId: companyId, companyEntityVersionNo: 1, values };
+      const first = aggregateInput(randomUUID());
+      const saved = await aggregate.saveAggregate(ids.version, ids.owner, leaseToken(ids), { ...first, draft: { ...first.draft, companyEntityId: companyId, draftData: { companyBankBinding: binding } } } as never);
+      const reloaded = await aggregate.getWorkbench(ids.version, ids.owner);
+      expect(reloaded.version.draftData).toEqual(expect.objectContaining({ companyBankBinding: { ...binding, companyEntityVersionId: version1 } }));
+      await client.contractGeneratedDocument.create({ data: { id: documentId, contractVersionId: ids.version, layoutTemplateVersionId: `synthetic-layout-${randomUUID()}`, purpose: "draft", status: "processing", sourceRevision: Number(saved.draftRevision), inputSnapshot: {}, idempotencyKey: randomUUID(), engineVersion: "synthetic", createdByUserId: ids.owner } });
+      await client.companyEntityVersion.create({ data: { id: version2, companyEntityId: companyId, versionNo: 2, name: "虚构主体甲", unifiedSocialCreditCode: "SYNTHETIC-A", isActive: true, action: "updated" } });
+      await client.companyEntity.update({ where: { id: companyId }, data: { currentVersionNo: 2 } });
+      const next = aggregateInput(randomUUID());
+      const stale = { ...next, expectedRevision: saved.draftRevision, draft: { ...next.draft, companyEntityId: companyId, draftData: { companyBankBinding: { ...binding, values: { ...values, bankAccount: "SYNTHETIC-002" } } } } };
+      await expect(aggregate.saveAggregate(ids.version, ids.owner, leaseToken(ids), stale as never)).rejects.toThrow("我方银行资料与所选公司版本不一致");
+      const afterRejected = await aggregate.getWorkbench(ids.version, ids.owner);
+      expect(afterRejected.version.draftData).toEqual(expect.objectContaining({ companyBankBinding: { ...binding, companyEntityVersionId: version1 } }));
+      expect(afterRejected.version.draftRevision).toBe(saved.draftRevision);
+      expect((await client.contractGeneratedDocument.findUniqueOrThrow({ where: { id: documentId } })).status).toBe("processing");
+      const rebound = { ...stale, idempotencyKey: randomUUID(), draft: { ...stale.draft, draftData: { companyBankBinding: { ...binding, companyEntityVersionNo: 2, values: { ...values, bankAccount: "SYNTHETIC-002" } } } } };
+      const savedAgain = await aggregate.saveAggregate(ids.version, ids.owner, leaseToken(ids), rebound as never);
+      expect(savedAgain.documentContentRevision).toBeGreaterThan(Number(saved.documentContentRevision));
+      expect(savedAgain.documentContentFingerprint).not.toEqual(saved.documentContentFingerprint);
+      expect((await client.contractGeneratedDocument.findUniqueOrThrow({ where: { id: documentId } })).status).toBe("stale");
+      const final = await aggregate.getWorkbench(ids.version, ids.owner);
+      expect(final.version.draftData).toEqual(expect.objectContaining({ companyBankBinding: expect.objectContaining({ companyEntityVersionId: version2, values: expect.objectContaining({ bankAccount: "SYNTHETIC-002" }) }) }));
+    } finally {
+      try {
+        await client.contractGeneratedDocument.deleteMany({ where: { id: documentId, contractVersionId: ids.version } });
+        await cleanupDraft(client, ids);
+        await client.companyEntityVersion.deleteMany({ where: { companyEntityId: companyId, id: { in: [version1, version2] } } });
+        await client.companyEntity.deleteMany({ where: { id: companyId } });
+      } finally {
+        await client.$disconnect();
+      }
+    }
+  }, 30_000);
+
   // Task 09 PREPARED ONLY: no resource/SQL execution is authorised in this run.
   integrationTest("creates a pending v2 draft without a legacy template and preserves its four-place or unknown facts under the real subject CHECK", async () => {
     const client = new PrismaClient({ datasources: { db: { url: contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL) } } });
