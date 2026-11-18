@@ -199,7 +199,7 @@ if(require.main===module)run().then(()=>{businessPassed=true;},error=>{console.e
  let containerClean=true;
  if(launchAttempted){
   const list=()=>docker(["ps","-a","--no-trunc","--filter",`name=^/${name}$`,"--format","{{.ID}}"],{quiet:true}).split("\n").filter(Boolean);
-  const status=cleanupOwnedContainer({id:containerId,name,runId,list,inspect:id=>{const value=JSON.parse(docker(["inspect","--type","container","--format",`{"id":{{json .Id}},"name":{{json .Name}},"runId":{{json (index .Config.Labels \"${CI_DYNAMIC_MIGRATION_LABEL}\")}}}`,id],{quiet:true}));return {...value,name:value.name?.replace(/^\//u,"")};},remove:id=>docker(["rm","--force","--volumes",id],{quiet:true}),confirmAbsent:id=>!list().includes(id)});
+  const status=cleanupOwnedContainer({id:containerId,name,runId,list,inspect:id=>{const value=JSON.parse(docker(["inspect","--type","container","--format",`{"id":{{json .Id}},"name":{{json .Name}},"runId":{{json (index .Config.Labels \"${CI_DYNAMIC_MIGRATION_LABEL}\")}}}`,id],{quiet:true}));return {...value,name:value.name?.replace(/^\//u,"")};},remove:containerId=>docker(["rm","--force","--volumes",containerId],{quiet:true}),confirmAbsent:id=>!list().includes(id)});
   console.error(`TASK398_CONTAINER_CLEANUP_${status} run=${runId} name=${name}`);if(status==="UNKNOWN"){containerClean=false;console.error(`TASK398_STORAGE_RETAINED:${storage}`);process.exitCode=1;}
  }
  if(storage&&containerClean)try{rmSync(storage,{recursive:true,force:true});}catch{console.error("TASK398_STORAGE_CLEANUP_FAILED");process.exitCode=1;}
