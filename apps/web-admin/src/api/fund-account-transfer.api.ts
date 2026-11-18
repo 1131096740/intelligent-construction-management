@@ -45,6 +45,10 @@ export class FundTransferApiError extends Error {
     super(message);
   }
 
+  get isSupersededCommand() {
+    return this.status === 409 && this.code === "FUND_ACCOUNT_TRANSFER_COMMAND_SUPERSEDED";
+  }
+
   get isDefinitiveRejection() {
     return [400, 403, 404].includes(this.status) ||
       (this.status === 409 && this.code === "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE");

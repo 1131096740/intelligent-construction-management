@@ -212,6 +212,7 @@ async function submit(proposal: FundTransferCommand | null) {
     if (result.kind === "saved") notice.value = statusLabel[result.receipt.status];
     emit("refreshAccounts");
     await load();
+    if (result.kind === "superseded") error.value = formatUnknownApiError(result.error, "转款已更新，请刷新后核对");
   } catch (failure) {
     if (isCurrent()) error.value = formatUnknownApiError(failure, "原转款凭据尚未确认，请刷新后核对");
   } finally {

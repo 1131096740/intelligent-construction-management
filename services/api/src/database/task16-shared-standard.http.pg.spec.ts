@@ -328,6 +328,26 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
      });
      expect(await actionCount()).toEqual({actions:1,transfers:1,openings:initialCount.openings});
      await readBalances("79.9999","100.0000");
+     const confirmationPath = `${transferPath}/${action.transferId}/actions`;
+     const confirmationCommands = [randomUUID(), randomUUID()].map(idempotencyKey => ({
+       idempotencyKey, expectedRevision: 1, action: "confirm", evidenceReference: "虚构到账核对"
+     }));
+     const confirmations = await Promise.all(confirmationCommands.map(command => json(confirmationPath, "POST", command, finance)));
+     expect(confirmations.map(response => response.status).sort()).toEqual([201, 409]);
+     const winner = confirmations.findIndex(response => response.status === 201);
+     const loser = 1 - winner;
+     const losingReplay = await json(confirmationPath, "POST", confirmationCommands[loser], finance);
+     expect(losingReplay).toMatchObject({ status: 409, body: { code: "FUND_ACCOUNT_TRANSFER_COMMAND_SUPERSEDED" } });
+     expect(await json(confirmationPath, "POST", confirmationCommands[winner], finance)).toEqual(confirmations[winner]);
+     expect(await observer.registeredFundTransferAction.count({ where: { idempotencyKey: confirmationCommands[loser].idempotencyKey } })).toBe(0);
+     const oldRegistrationReplay = await json(transferPath, "POST", { ...input, idempotencyKey: randomUUID() }, keeper);
+     expect(oldRegistrationReplay).toMatchObject({ status: 409, body: { code: "FUND_ACCOUNT_TRANSFER_COMMAND_SUPERSEDED" } });
+     expect(await json(transferPath, "POST", input, keeper)).toMatchObject({ status: 201, body: { id: action.transferId, revision: 1 } });
+     await readBalances("79.9999", "120.0001");
+     console.info("TASK406_SUPERSEDED_WITNESS", JSON.stringify({
+       firstStatuses: confirmations.map(response => response.status), losingReplay: losingReplay.status,
+       staleRegistration: oldRegistrationReplay.status, confirmedCompany: "120.0001"
+     }));
      console.info("TASK406_REJECTION_WITNESS",JSON.stringify({
       staleHttp:409,staleCode:denied.body.code,staleActions:0,staleTransferCount:0,cashAfterStale:"100.0000",
       lostUpstreamHttp:upstreamStatus,replayedHttp:201,committedActions:1,committedTransfers:1,cashAfterReplay:"79.9999"

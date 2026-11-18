@@ -7,7 +7,7 @@ import { CompanyRoleResolverService } from "../auth/company-role-resolver.servic
 import { PrismaService } from "../database/prisma.service";
 import { availableRegisteredBalance, RegisteredBalanceDecimal } from "../payment/registered-payment-funding";
 import { ActOnFundAccountTransferDto, RegisterFundAccountTransferDto } from "./fund-account-transfer.dto";
-import { rejectedTransferWithoutWrite, transferStateAfterAction, type FundAccountTransferState } from "./fund-account-transfer-state";
+import { rejectedTransferWithoutWrite, supersededTransferCommand, transferStateAfterAction, type FundAccountTransferState } from "./fund-account-transfer-state";
 
 type Transaction = Prisma.TransactionClient;
 type Registration = Prisma.FundAccountBalanceRegistrationGetPayload<{ include: { sources: true } }>;
@@ -78,7 +78,14 @@ export class FundAccountTransferService {
       await this.lockAccounts(tx, source.id, destination.id);
       const current = await this.current(tx, source.id);
       await this.current(tx, destination.id);
-      if (current.id !== input.expectedRegistrationId) throw rejectedTransferWithoutWrite("资金核对版本已变化，请刷新后重新选择资金来源");
+      if (current.id !== input.expectedRegistrationId) {
+        const original = await tx.fundAccountBalanceRegistration.findFirst({
+          where: { id: input.expectedRegistrationId, accountId: source.id, status: "confirmed", version: { lt: current.version } },
+          select: { id: true }
+        });
+        if (original) throw supersededTransferCommand();
+        throw rejectedTransferWithoutWrite("资金核对版本已变化，请刷新后重新选择资金来源");
+      }
       const available = await availableRegisteredBalance(tx, current);
       if (available.balanceYuan?.lt(amountYuan) || available.heldTransferAllocations.some(hold => hold.candidateSourceIds.length !== 1)) {
         throw rejectedTransferWithoutWrite("可用资金不足或已有转款来源待核对");
@@ -119,6 +126,9 @@ export class FundAccountTransferService {
       const replay = await this.replay(tx, actorId, input.idempotencyKey, requestHash);
       if (replay) return replay;
       await this.lockAccounts(tx, transfer.sourceAccountId, transfer.destinationAccountId);
+      // This snapshot saw the newer revision and no receipt for this key.
+      // The database only permits a one-step increment, so the original action cannot now commit.
+      if (transfer.revision > input.expectedRevision) throw supersededTransferCommand();
       if (transfer.revision !== input.expectedRevision) throw rejectedTransferWithoutWrite("转款已更新，请刷新后核对");
       const status = transferStateAfterAction(transfer.status as FundAccountTransferState, input.action);
       const revision = transfer.revision + 1;

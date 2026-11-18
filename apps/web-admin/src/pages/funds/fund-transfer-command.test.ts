@@ -2,12 +2,13 @@ import { afterEach, expect, it, vi } from "vitest";
 import { FundTransferApiError } from "../../api/fund-account-transfer.api";
 import { readFundTransferCommand, submitFundTransferCommand, type FundTransferCommand } from "./fund-transfer-command";
 
-const mocked = vi.hoisted(() => ({ register: vi.fn() }));
+const mocked = vi.hoisted(() => ({ register: vi.fn(), act: vi.fn() }));
 vi.mock("../../api/fund-account-transfer.api", async original => ({
   ...await original<typeof import("../../api/fund-account-transfer.api")>(),
-  registerFundAccountTransfer: mocked.register
+  registerFundAccountTransfer: mocked.register,
+  actOnFundAccountTransfer: mocked.act
 }));
-afterEach(() => { vi.unstubAllGlobals(); mocked.register.mockReset(); });
+afterEach(() => { vi.unstubAllGlobals(); mocked.register.mockReset(); mocked.act.mockReset(); });
 const command: FundTransferCommand = { type: "register", input: {
   sourceScopeKey: "public_cash", destinationScopeKey: "company:a",
   expectedRegistrationId: "origin-revision", idempotencyKey: "first-key",
@@ -54,4 +55,21 @@ it.each([false, true])("only clears a proved no-write conflict on the fresh atte
   const result = await submitFundTransferCommand("actor", proposal, () => true, previouslyUncertain ? command : null);
   expect(result.kind).toBe(previouslyUncertain ? "unknown" : "rejected");
   expect(readFundTransferCommand("actor")).toEqual(previouslyUncertain ? command : null);
+});
+
+
+it("releases a frozen action only after the same key is proven superseded", async () => {
+  stubBrowser();
+  const action: FundTransferCommand = { type: "action", transferId: "transfer", input: {
+    idempotencyKey: "losing-key", expectedRevision: 1, action: "confirm", evidenceReference: "到账凭据"
+  } };
+  mocked.act.mockRejectedValueOnce(new FundTransferApiError("状态已变化", 409))
+    .mockRejectedValueOnce(new FundTransferApiError("暂不可办理", 409, "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE"))
+    .mockRejectedValueOnce(new FundTransferApiError("原操作未入账", 409, "FUND_ACCOUNT_TRANSFER_COMMAND_SUPERSEDED"));
+  expect(await submitFundTransferCommand("actor", action, () => true)).toMatchObject({ kind: "unknown" });
+  expect(await submitFundTransferCommand("actor", null, () => true, action)).toMatchObject({ kind: "unknown" });
+  expect(readFundTransferCommand("actor")).toEqual(action);
+  expect(await submitFundTransferCommand("actor", null, () => true, action)).toMatchObject({ kind: "superseded" });
+  expect(mocked.act.mock.calls).toEqual(Array.from({ length: 3 }, () => [action.transferId, action.input]));
+  expect(readFundTransferCommand("actor")).toBeNull();
 });

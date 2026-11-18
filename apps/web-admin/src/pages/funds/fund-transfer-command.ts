@@ -48,6 +48,10 @@ export async function submitFundTransferCommand(
       localStorage.removeItem(key);
       return { kind: "saved", receipt } as const;
     } catch (error) {
+      if (error instanceof FundTransferApiError && error.isSupersededCommand) {
+        localStorage.removeItem(key);
+        return { kind: "superseded", error } as const;
+      }
       if (!pending && error instanceof FundTransferApiError && error.isDefinitiveRejection) {
         localStorage.removeItem(key);
         return { kind: "rejected", error } as const;

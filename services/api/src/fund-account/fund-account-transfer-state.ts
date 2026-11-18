@@ -26,3 +26,11 @@ export function transferStateAfterAction(state: FundAccountTransferState, action
   if (!next) throw rejectedTransferWithoutWrite("转款当前状态不能办理，请刷新核对");
   return next;
 }
+
+
+export function supersededTransferCommand() {
+  return new ConflictException({
+    statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_COMMAND_SUPERSEDED",
+    message: "转款或余额已更新，原操作未入账，请刷新后核对"
+  });
+}
