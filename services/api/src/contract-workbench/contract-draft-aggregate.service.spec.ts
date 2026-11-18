@@ -1,3 +1,4 @@
+import { takeTask12WorkbenchPhase } from "../database/task12-workbench-transaction-phase";
 import { Reflector } from "@nestjs/core";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PermissionGuard } from "../auth/guards/permission.guard";
@@ -150,6 +151,18 @@ describe("ContractDraftAggregateService", () => {
         .toEqual([[null, null], ["0.0000", "0"], ["1.5340", "153"]]);
       expect(body.bills[2].taxExclusiveAmountCents).toBeNull();
     } finally { await app.close(); }
+  });
+
+  it("keeps the workbench transaction failure and binds its phase to the observed request", async () => {
+    const { prisma, service } = makeService();
+    const request = {};
+    const failure = new Error("private transaction detail");
+    prisma.contractVersion.findUnique.mockRejectedValueOnce(failure);
+
+    await expect(service.getWorkbench("cv-1", "actor-1", undefined, request)).rejects.toBe(failure);
+    expect(takeTask12WorkbenchPhase(failure, {})).toBeUndefined();
+    expect(takeTask12WorkbenchPhase(failure, request)).toMatchObject({ phase: "VERSION_READ", elapsedMs: expect.any(Number) });
+    expect(takeTask12WorkbenchPhase(failure, request)).toBeUndefined();
   });
 
   it("loads the requested version id and never asks the legacy service to choose the latest", async () => {

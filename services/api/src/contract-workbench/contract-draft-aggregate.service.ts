@@ -1,3 +1,4 @@
+import { observeTask12WorkbenchTransaction } from "../database/task12-workbench-transaction-phase";
 import { UPWARD_DIRECT_ARCHIVE_AUTHORITY, type UpwardDirectArchiveAuthority } from "../contract/contract-upward-direct-registration";
 import { readUpwardArchiveAdmission } from "../contract/contract-upward-direct-archive-native";
 import { DIRECT_ARCHIVE_EXECUTOR, type DirectArchiveExecutor } from "../contract/contract-direct-archive-executor";
@@ -96,15 +97,27 @@ export class ContractDraftAggregateService {
     });
   }
 
-  async getWorkbench(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
-    const { version, templateEntry, billEntries, layoutTemplateSelection } = await this.prisma.$transaction(async (tx) => {
+  async getWorkbench(contractVersionId: string, actorUserId: string, numericProtocol?: string, observedRequest?: object) {
+    const observation = observedRequest && observeTask12WorkbenchTransaction(observedRequest);
+    const transaction = this.prisma.$transaction(async (tx) => {
+      observation?.step("VERSION_READ");
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
       if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
+      observation?.step("LAYOUT_READ");
       const layout = version.layoutTemplateVersionId ? await tx.contractLayoutTemplateVersion.findUnique({ where: { id: version.layoutTemplateVersionId } }) : null;
       const layoutTemplate = layout ? await tx.contractLayoutTemplate.findUnique({ where: { id: layout.layoutTemplateId } }) : null;
       const layoutTemplateSelection = layout && layoutTemplate ? { id: layout.id, name: layoutTemplate.name, versionNo: layout.versionNo, status: layout.status } : null;
-      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version), layoutTemplateSelection };
+      observation?.step("TEMPLATE_READ");
+      const templateEntry = await resolveContractTemplateEntry(tx, version);
+      observation?.step("BILLS_READ");
+      const billEntries = await resolveContractBillEntries(tx, version);
+      observation?.step("CALLBACK_RETURNED");
+      return { version, templateEntry, billEntries, layoutTemplateSelection };
     });
+    const { version, templateEntry, billEntries, layoutTemplateSelection } = await (observation ? transaction.catch(error => {
+      try { observation.capture(error); } catch { /* Preserve the original transaction failure. */ }
+      throw error;
+    }) : transaction);
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }

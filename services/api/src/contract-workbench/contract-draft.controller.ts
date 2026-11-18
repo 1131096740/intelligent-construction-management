@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+import { task12ObservedWorkbenchRequest } from "../database/task12-auth-error-diagnostic";
 import {
   Body,
   Controller,
@@ -77,8 +79,11 @@ export class ContractDraftController {
   workbench(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Headers("x-contract-numeric-protocol") numericProtocol?: string
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string,
+    @Req() request?: IncomingMessage
   ) {
+    const observedRequest = task12ObservedWorkbenchRequest(request);
+    if (observedRequest) return this.aggregate.getWorkbench(contractVersionId, user.id, numericProtocol, observedRequest);
     return numericProtocol === undefined
       ? this.aggregate.getWorkbench(contractVersionId, user.id)
       : this.aggregate.getWorkbench(contractVersionId, user.id, numericProtocol);
