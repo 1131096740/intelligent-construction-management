@@ -165,14 +165,19 @@ BEGIN
    JOIN public."RegisteredFundTransfer" t ON t."id"=l."transferId"
    WHERE t."sourceAccountId"=account_id AND t."status" IN ('pending_receipt','rejected_held')
   ), held_matches AS (
-   SELECT h."id",h."amountYuan",min(a.current_id) AS current_id,count(a.current_id) AS candidates
-   FROM holds h LEFT JOIN ancestry a ON a.node_id=h."sourceBatchId" GROUP BY h."id",h."amountYuan"
+   SELECT h."id",h."sourceBatchId",h."amountYuan",min(a.current_id) AS current_id,count(a.current_id) AS candidates
+   FROM holds h LEFT JOIN ancestry a ON a.node_id=h."sourceBatchId" GROUP BY h."id",h."sourceBatchId",h."amountYuan"
   ), payment_matches AS (
    SELECT e.ord, (e.row->>'amount')::numeric AS amount,min(a.current_id) AS current_id,count(a.current_id) AS candidates
    FROM jsonb_array_elements(payments) WITH ORDINALITY e(row,ord)
    LEFT JOIN ancestry a ON a.node_id=e.row->>'source' GROUP BY e.ord,e.row
   )
-  SELECT 1 FROM held_matches WHERE candidates<>1
+  SELECT 1 FROM held_matches d
+   JOIN public."FundAccountSourceBatch" origin ON origin."id"=d."sourceBatchId"
+   LEFT JOIN public."FundAccountSourceBatch" active ON active."id"=d.current_id
+   WHERE d.candidates<>1 OR
+    (active."sourceStatus",active."sourceName",active."projectStatus",active."projectId") IS DISTINCT FROM
+    (origin."sourceStatus",origin."sourceName",origin."projectStatus",origin."projectId")
   UNION ALL SELECT 1 FROM (
    SELECT h.current_id,sum(h."amountYuan")+coalesce((SELECT sum(p.amount) FROM payment_matches p WHERE p.candidates=1 AND p.current_id=h.current_id),0) AS consumed
    FROM held_matches h WHERE h.candidates=1 GROUP BY h.current_id
@@ -255,11 +260,16 @@ BEGIN
     FROM ancestry a JOIN public."FundAccountSourceBatch" s ON s."id"=a.node_id
     WHERE s."previousSourceBatchId" IS NOT NULL AND NOT s."previousSourceBatchId"=ANY(a.path)
   ), debits AS (
-   SELECT l."id",l."amountYuan",min(a.current_id) AS current_id,count(a.current_id) AS candidates
+   SELECT l."id",l."sourceBatchId",l."amountYuan",min(a.current_id) AS current_id,count(a.current_id) AS candidates
    FROM public."RegisteredFundTransferLine" l LEFT JOIN ancestry a ON a.node_id=l."sourceBatchId"
-   WHERE l."transferId"=transfer_id GROUP BY l."id",l."amountYuan"
+   WHERE l."transferId"=transfer_id GROUP BY l."id",l."sourceBatchId",l."amountYuan"
   )
-  SELECT 1 FROM debits WHERE candidates<>1
+  SELECT 1 FROM debits d
+   JOIN public."FundAccountSourceBatch" origin ON origin."id"=d."sourceBatchId"
+   LEFT JOIN public."FundAccountSourceBatch" active ON active."id"=d.current_id
+   WHERE d.candidates<>1 OR
+    (active."sourceStatus",active."sourceName",active."projectStatus",active."projectId") IS DISTINCT FROM
+    (origin."sourceStatus",origin."sourceName",origin."projectStatus",origin."projectId")
   UNION ALL SELECT 1 FROM public."FundAccountSourceBatch" next
    LEFT JOIN public."FundAccountSourceBatch" prior_source ON prior_source."id"=next."previousSourceBatchId"
    WHERE next."registrationId"=outgoing."id" AND (

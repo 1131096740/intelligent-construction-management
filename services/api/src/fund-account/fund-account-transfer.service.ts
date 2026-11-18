@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
-import { availableRegisteredBalance, RegisteredBalanceDecimal } from "../payment/registered-payment-funding";
+import { availableRegisteredBalance, RegisteredBalanceDecimal, sameTransferSourceIdentity } from "../payment/registered-payment-funding";
 import { ActOnFundAccountTransferDto, RegisterFundAccountTransferDto } from "./fund-account-transfer.dto";
 import { rejectedTransferWithoutWrite, supersededTransferCommand, transferStateAfterAction, type FundAccountTransferState } from "./fund-account-transfer-state";
 
@@ -149,7 +149,9 @@ export class FundAccountTransferService {
             }
             return false;
           });
-          if (candidates.length !== 1) throw rejectedTransferWithoutWrite("转款来源尚未核对，不能确认实收");
+          if (candidates.length !== 1 || !sameTransferSourceIdentity(line.sourceBatch, candidates[0])) {
+            throw rejectedTransferWithoutWrite("转款来源或项目归属已变化，不能确认实收");
+          }
           const id = candidates[0].id;
           debits.set(id, (debits.get(id) ?? new RegisteredBalanceDecimal(0)).plus(line.amountYuan));
         }

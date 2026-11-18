@@ -380,6 +380,44 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     expect(await handle(id,finance,1,"reject")).toMatchObject({status:201,body:{status:"rejected_held",revision:2}});
     await readBalances("69.9999","100.0000");
     expect((await handle(id,finance,2,"confirm")).status).toBe(409);
+    if (!transferBrowser) {
+      const correction = async (projectId: string) => {
+        const proposed = await json("/fund-accounts/corrections", "POST", {
+          scopeKey: cashScope, previousRegistrationId: cash.id, balanceYuan: "100.0000",
+          asOfDate: plan.openingDate, evidenceReference: "虚构余额核对依据",
+          reconciliationNote: "保留待转来源并核对余额", reason: "测试待转来源归属",
+          idempotencyKey: randomUUID(), sources: [{
+            ...projectSource(projectId, "100.0000"), previousSourceBatchId: cash.sources[0].id
+          }]
+        }, finance);
+        expect(proposed.status).toBe(201);
+        return proposed.body as { id: string; approvalInstanceId: string };
+      };
+      const decideCorrection = (row: { id: string; approvalInstanceId: string }, action: "confirm" | "return") =>
+        json(`/fund-accounts/registrations/${row.id}/${action}`, "POST", {
+          expectedApprovalInstanceId: row.approvalInstanceId, idempotencyKey: randomUUID(),
+          reviewNote: "虚构资金来源核对复核"
+        }, director);
+
+      const changed = await correction(otherProjectId);
+      await expect(owner.$transaction(async tx => {
+        await tx.fundAccountBalanceRegistration.update({ where: { id: changed.id }, data: {
+          status: "confirmed", confirmedByUserId: seeded.director,
+          confirmedAt: new Date(), reviewNote: "隔离验证数据库拒绝改写待转来源"
+        } });
+        await tx.$executeRaw`SET CONSTRAINTS "FundAccountBalanceRegistration_transfer_capacity" IMMEDIATE`;
+      })).rejects.toThrow("pending fund transfer source capacity or lineage changed");
+      const disallowed = await decideCorrection(changed, "confirm");
+      expect(disallowed).toMatchObject({status:409,body:{message:"待确认转款的余额或来源归属尚未保留，请重新核对"}});
+      expect(await observer.fundAccountBalanceRegistration.findUnique({where:{id:changed.id}}))
+        .toMatchObject({status:"pending_review"});
+      expect((await decideCorrection(changed, "return")).status).toBe(201);
+      const preserved = await correction(plan.ids.project);
+      expect((await decideCorrection(preserved, "confirm")).status).toBe(201);
+      expect((await balance(cashScope)).currentRegistrationId).toBe(preserved.id);
+      await readBalances("69.9999","100.0000");
+      console.info("TASK406_HOLD_SOURCE_LINEAGE_WITNESS", {reassignedHttp:disallowed.status,preservedHttp:201});
+    }
     expect(await handle(id,keeper,2,"resubmit")).toMatchObject({status:201,body:{status:"pending_receipt",revision:3}});
     let exactKey=randomUUID();
     let received: Awaited<ReturnType<typeof json>>;

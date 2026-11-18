@@ -43,6 +43,18 @@ export function registeredPaymentFingerprint(paymentId: string, actorUserId: str
     }} : {}) })).digest("hex");
 }
 
+type TransferSourceIdentity = {
+  sourceStatus: string;
+  sourceName: string | null;
+  projectStatus: string;
+  projectId: string | null;
+};
+
+export function sameTransferSourceIdentity(origin: TransferSourceIdentity, current: TransferSourceIdentity): boolean {
+  return origin.sourceStatus === current.sourceStatus && origin.sourceName === current.sourceName &&
+    origin.projectStatus === current.projectStatus && origin.projectId === current.projectId;
+}
+
 export const RegisteredBalanceDecimal = Prisma.Decimal.clone({ precision: 30 });
 
 /** Reads the same formal source postings used by execution validation and the account page. */
@@ -74,16 +86,19 @@ export async function availableRegisteredBalance(tx: Prisma.TransactionClient, r
     paidBySource.set(sourceId,(paidBySource.get(sourceId)??0n)+allocation.amountCents);
   }
   const heldLines = await tx.registeredFundTransferLine.findMany({
-    where: { transfer: { sourceAccountId: registration.accountId, status: { in: [...FUND_ACCOUNT_TRANSFER_HELD_STATES] } } }
+    where: { transfer: { sourceAccountId: registration.accountId, status: { in: [...FUND_ACCOUNT_TRANSFER_HELD_STATES] } } },
+    include: { sourceBatch: true }
   });
   const heldBySource = new Map<string, Prisma.Decimal>();
   const heldTransferAllocations = heldLines.map(line => {
-    const candidateSourceIds = registration.sources.filter(source => isDescendant(source.id, line.sourceBatchId)).map(source => source.id);
+    const candidates = registration.sources.filter(source => isDescendant(source.id, line.sourceBatchId));
+    const candidateSourceIds = candidates.map(source => source.id);
     if (candidateSourceIds.length === 1) {
       const sourceId = candidateSourceIds[0];
       heldBySource.set(sourceId, (heldBySource.get(sourceId) ?? new RegisteredBalanceDecimal(0)).plus(line.amountYuan));
     }
-    return { transferId: line.transferId, amountYuan: line.amountYuan, sourceBatchId: line.sourceBatchId, candidateSourceIds };
+    return { transferId: line.transferId, amountYuan: line.amountYuan, sourceBatchId: line.sourceBatchId, candidateSourceIds,
+      preservesSourceIdentity: candidates.length === 1 && sameTransferSourceIdentity(line.sourceBatch, candidates[0]) };
   });
   const heldYuan = heldLines.reduce((total, line) => total.plus(line.amountYuan), new RegisteredBalanceDecimal(0));
   return { ...registration, pendingAllocations, heldTransferAllocations,

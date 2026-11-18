@@ -161,7 +161,7 @@ export class FundAccountService {
       if (versions[0]?.id !== row.previousRegistrationId) throw new ConflictException("有效余额已变化，请重新核对原登记");
       const prospective = await availableRegisteredBalance(tx, row);
       if (prospective.heldTransferAllocations.length && (prospective.balanceYuan === null ||
-          prospective.heldTransferAllocations.some(hold => hold.candidateSourceIds.length !== 1) ||
+          prospective.heldTransferAllocations.some(hold => !hold.preservesSourceIdentity) ||
           prospective.sources.some(source => source.amountYuan.lt(0)))) {
         throw new ConflictException("待确认转款的余额或来源归属尚未保留，请重新核对");
       }
