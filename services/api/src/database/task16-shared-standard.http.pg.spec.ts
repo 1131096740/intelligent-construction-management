@@ -361,8 +361,20 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     await readBalances("69.9999","100.0000");
     expect((await handle(id,finance,2,"confirm")).status).toBe(409);
     expect(await handle(id,keeper,2,"resubmit")).toMatchObject({status:201,body:{status:"pending_receipt",revision:3}});
-    const exactKey=randomUUID();
-    const received=await handle(id,finance,3,"confirm",exactKey);
+    let exactKey=randomUUID();
+    let received: Awaited<ReturnType<typeof json>>;
+    if (transferBrowser) {
+      const login = await json("/auth/login", "POST", { phone: plan.phone, password: passwords[0] });
+      expect(login.status).toBe(201);
+      const { user, tokens: { accessToken, refreshToken } } = login.body;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { confirmCashTransferInBrowser } = require("./task24-transfer-browser.cjs");
+      const receipt = await confirmCashTransferInBrowser(origin, { user, accessToken, refreshToken }, id);
+      exactKey = receipt.command.idempotencyKey;
+      received = receipt;
+    } else {
+      received = await handle(id,finance,3,"confirm",exactKey);
+    }
     expect(received).toMatchObject({status:201,body:{status:"received",revision:4}});
     expect(await handle(id,finance,3,"confirm",exactKey)).toMatchObject({status:201,body:received.body});
     expect((await handle(id,finance,3,"confirm")).status).toBe(409);
