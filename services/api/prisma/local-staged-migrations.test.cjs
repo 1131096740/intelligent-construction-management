@@ -1,4 +1,5 @@
 "use strict";
+const {historicalQualificationSchemaHash,historicalQualificationSchema,historicalMigrationCount}=require('./testdata/historical-qualification-schema.cjs');
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
@@ -58,12 +59,12 @@ async function canonicalRows() {
     .update(await fs.readFile(path.join(dir, name, "migration.sql"))).digest("hex") })));
 }
 
-async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = false, named = false, ciRecovery) {
+async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = false, named = false, ciRecovery, migrationCount) {
   const database = ciRecovery?.database ?? (named ? "jg_task01_0123456789abcdef0123456789abcdef" : "jiangkong_project_financing_quota_concurrency");
   const container = { id: "a".repeat(64), name: named ? "jg-task01-01234567-89ab-cdef-0123-456789abcdef" : "jiangkong-pfq-concurrency-fixture", runId: "01234567-89ab-cdef-0123-456789abcdef" };
   const actor = { oid: "10", name: named ? "jg_task01_owner" : "jiangkong", superuser: true, createRole: false, createDb: true, replication: true, bypassRls: true, memberships: [] };
   const observedContainer = () => ({ ...container, running: true, publishedHost: "127.0.0.1", publishedPort: "55432" });
-  const rows = await canonicalRows();
+  const rows = (await canonicalRows()).slice(0, migrationCount);
   const calls = [];
   const databaseNames = ciRecovery ? [database] : [database, "jiangkong_project_financing_quota_pre115_clean",
     "jiangkong_project_financing_quota_pre115_duplicate", "jiangkong_project_financing_quota_pre115_cross_business",
@@ -152,7 +153,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       const state = currentState();
       const target = request.schemaPath ? path.dirname(request.schemaPath) : __dirname;
       const files = (await fs.readdir(path.join(target, "migrations"), { withFileTypes: true }))
-        .filter(row => row.isDirectory());
+        .filter(row => row.isDirectory() && (migrationCount === undefined || rows.some(migration => migration.name === row.name)));
       calls.push("deploy-" + files.length);
       if (nextDeploymentError) {
         const error = nextDeploymentError;
@@ -583,13 +584,16 @@ for(const [name,alter] of [
 // The only replaced boundaries here are the original owned-resource claim and
 // bounded Prisma CLI process. No alternative issuer is registered in product.
 async function current259Model(temporaryRoot, mutate, technical = true, commandFailure, authOnly = false) {
-  const model = await fakeFixture(temporaryRoot, mutate, [], false, true);
+  const model = await fakeFixture(temporaryRoot, mutate, [], false, true, undefined, historicalMigrationCount);
   const vm = require("node:vm"), nativeRequire = require("node:module").createRequire(__filename);
   const handle = Object.freeze({ simulation: "owned-current259-test" });
   let closed = false, checks = 0, commands = 0, closes = 0, observations = 0, observation = "valid", pauseSql = false, pendingReject, notifySql, closeFails = false, cliHash = "ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388";
   let fullFailure, fullFailureAfter;
-  const canonical = await canonicalRows();
+  const canonical = (await canonicalRows()).slice(0, historicalMigrationCount);
   const rows = authOnly ? canonical.slice(0, 261) : canonical;
+  const modelMigrationNames = new Set(canonical.map(row => row.name));
+  const modelMigrationRoot = path.join(__dirname, "migrations");
+  const modelSchemaPath = path.join(__dirname, "schema.prisma");
   const receipt = { runId: container.runId, containerId: container.id, networkId: "b".repeat(64),
     databaseName: "jg_task01_0123456789abcdef0123456789abcdef", port: 55432,
     containerName: "jg-task01-" + container.runId, purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",limits:{totalDeadlineMs:3600000} };
@@ -615,7 +619,7 @@ async function current259Model(temporaryRoot, mutate, technical = true, commandF
     } };
   const view = { purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",deadlineMs:3600000,source: { candidateSha: "c".repeat(40), profile: require('./task16-current259-profile.cjs').qualifyCurrent259Source({
       candidateSha:"c".repeat(40),sealSha256:"e".repeat(64),
-      schemaSha256:crypto.createHash("sha256").update(require("node:fs").readFileSync(path.join(__dirname,"schema.prisma"))).digest("hex"),
+      schemaSha256:historicalQualificationSchemaHash(),
       migrations: rows.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))
     }) },
     build: { node: { path: process.execPath, sha256: crypto.createHash("sha256").update(require("node:fs").readFileSync(process.execPath)).digest("hex") } }, runId: container.runId, resource,
@@ -632,6 +636,18 @@ async function current259Model(temporaryRoot, mutate, technical = true, commandF
     if (cache.has(name)) return cache.get(name).exports;
     const file = path.join(__dirname, name), module = { exports: {} }; cache.set(name, module); moduleCache[file] = module;
     const uncachedRequire = request => {
+      // Only the sealed historical owned-model sees the original canonical entry.
+      // Generic staged-migration tests continue validating the current checkout.
+      if (name === "local-staged-migrations.cjs" && request === "node:fs/promises") return {
+        ...fs,
+        async readFile(file, ...args) {
+          return file === modelSchemaPath ? historicalQualificationSchema() : fs.readFile(file, ...args);
+        },
+        async readdir(file, ...args) {
+          const entries = await fs.readdir(file, ...args);
+          return file === modelMigrationRoot ? entries.filter(entry => modelMigrationNames.has(entry.name ?? entry)) : entries;
+        }
+      };
       if (request === "node:fs") return { ...require("node:fs"), realpathSync(file) {
         if(file.endsWith("services/api/node_modules/prisma/build/index.js") || file.endsWith("schema-engine-darwin-arm64")) return file;
         return require("node:fs").realpathSync(file);
@@ -702,7 +718,7 @@ test("owned exact261 technical recipe reuses all four atomic windows and indepen
   assert.equal(result.status, "CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION");
   assert.equal(result.executionAllowed, false); assert.equal(result.nativeAdmission, false);
   assert.match(result.application.name, /^jg_fixture_app_[a-f0-9]{24}$/u);
-  assert.deepEqual(model.deploymentRequests.map(row => row.count), [203,205,213,215,218,221,canonicalBaseline.expectedDirectoryCount]);
+  assert.deepEqual(model.deploymentRequests.map(row => row.count), [203,205,213,215,218,221,historicalMigrationCount]);
   for (const stage of [213,215,218,221]) assert.deepEqual(model.calls.filter(value => value.startsWith("tail" + stage)),
     ["tail" + stage + "-before", "tail" + stage + "-supply", "tail" + stage + "-readback"]);
   assert.ok(model.counts().checks >= 544,"all former per-stage source checks remain"); assert.equal(model.counts().commands, 7);
@@ -887,7 +903,7 @@ test("owned current259 partial final readback cannot issue technical supply",asy
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-partial-'));
  const model=await current259Model(root,(phase,row)=>{if(phase==='complete-readback')row.ledger.pop();return row;});
  const partial=model.api.createCurrent259TechnicalMigration(model.handle).migrate();
- await assert.rejects(partial,/LOCAL_MIGRATION_COMPLETION/);assert.equal(model.deploymentRequests.at(-1).count,canonicalBaseline.expectedDirectoryCount);
+ await assert.rejects(partial,/LOCAL_MIGRATION_COMPLETION/);assert.equal(model.deploymentRequests.at(-1).count,historicalMigrationCount);
  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(partial,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
  assert.equal(model.counts().closes,1);
 });

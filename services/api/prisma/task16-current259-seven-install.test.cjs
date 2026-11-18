@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync,readdirSync}=require('node:fs');
@@ -9,10 +11,10 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const read=name=>readFileSync(path.join(__dirname,name),'utf8');
 const model=new Function('require',read('task16-current259-seven-preimage.test.cjs')+'\nreturn syntheticObservation;')(name=>name==='node:test'?()=>{}:require(name));
 const candidateSha='b'.repeat(40),sealSha256='a'.repeat(64);
-const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort()
+const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(0,historicalMigrationCount)
  .map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(read(`migrations/${name}/migration.sql`))}));
 const sourceFor=rows=>({candidateSha,sourceSealSha256:sealSha256,profile:qualifyCurrent259Source({candidateSha,sealSha256,
- schemaSha256:hash(read('schema.prisma')),migrations:rows})});
+ schemaSha256:historicalQualificationSchemaHash(),migrations:rows})});
 const source=sourceFor(migrations.slice(0,259));
 const payment261Source=sourceFor(migrations.slice(0,261));
 const runId='12345678-1234-4234-8234-123456789012',database='jg_task01_'+runId.replaceAll('-','');

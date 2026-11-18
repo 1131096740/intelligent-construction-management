@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -53,7 +55,7 @@ function model(alter = row => row, alterClaim = () => {}, migrationCount = 261, 
     .map(item => item.name).sort().slice(0,migrationCount).map(name => ({ name, sha256: createHash('sha256').update(readFileSync(join(root, name, 'migration.sql'))).digest('hex'), finished: true, rolledBack: false }));
   const source = { candidateSha: completion.sourceSha, tree: 'd'.repeat(40), sourceSealSha256: 'e'.repeat(64) };
   source.profile = structuredClone(require('./task16-current259-profile.cjs').qualifyCurrent259Source({ candidateSha: source.candidateSha,
-    sealSha256: source.sourceSealSha256, schemaSha256: createHash('sha256').update(readFileSync(join(__dirname, 'schema.prisma'))).digest('hex'),
+    sealSha256: source.sourceSealSha256, schemaSha256: historicalQualificationSchemaHash(),
     migrations: ledger.map(row => ({ path: `services/api/prisma/migrations/${row.name}/migration.sql`, sha256: row.sha256 })) }));
   alterClaim({ source, completion });
   function freeze(value) {

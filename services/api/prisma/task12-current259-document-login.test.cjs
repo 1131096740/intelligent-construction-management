@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');
 const filename=require('node:path').join(__dirname,'task12-current259-document-login.cjs');
@@ -10,8 +12,8 @@ function fixture(change, priorSql, pool, save=false,lifecycle=false,runtimeProfi
  const handle={},source={candidateSha:'a'.repeat(40)},runId='a0000000-0000-4000-8000-000000000001';
  if(lifecycle){
   const fs=require('node:fs'),path=require('node:path');
-  const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:sha(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
-  Object.assign(source,{tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:source.candidateSha,sealSha256:'c'.repeat(64),schemaSha256:sha(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations})});
+  const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:sha(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+  Object.assign(source,{tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:source.candidateSha,sealSha256:'c'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations})});
  }
  const life=lifecycle?require('./task12-current261-local-lifecycle-scope.cjs').describeCurrent261LocalLifecycle(source):undefined;
  const plan=life?{effectivePlanSha256:life.effectivePlanSha256,installation:life.installation}:{};

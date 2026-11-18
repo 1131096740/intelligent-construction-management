@@ -1,4 +1,6 @@
 'use strict';
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const path = require('node:path');
@@ -6,8 +8,8 @@ const { spawnSync } = require('node:child_process');
 const { renderNativeLifecycleFixture, validateNativeLifecycleScope } = require('./task12-native-lifecycle-fixture.cjs');
 const {createHash}=require('node:crypto');
 const fs=require('node:fs');
-const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql'))).digest('hex')}));
-const qualifiedProfile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'schema.prisma'))).digest('hex'),migrations});
+const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>fs.existsSync(path.join(__dirname,'migrations',name,'migration.sql'))).sort().slice(0,historicalMigrationCount).map(name=>({path:'services/api/prisma/migrations/'+name+'/migration.sql',sha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'migrations',name,'migration.sql'))).digest('hex')}));
+const qualifiedProfile=require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:'a'.repeat(40),sealSha256:'3'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations});
 const source=Object.freeze({candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'3'.repeat(64),profile:qualifiedProfile});
 const scope = { source, database: 'jiangkong_contract_draft_aggregate_test', appName: 'jg_fixture_app_' + 'a'.repeat(24),
   appOid: '20000', migrationCount: 262, terminal: '20261118120000_contract_upward_projection_source_forward' };

@@ -1,9 +1,11 @@
 "use strict";
+const {historicalQualificationSchemaHash,historicalMigrationCount,useHistoricalQualificationSchemaFile}=require('./testdata/historical-qualification-schema.cjs');
+useHistoricalQualificationSchemaFile();
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
 const ROOT=path.resolve(__dirname,'../../..');
 function source(){
  const base='services/api/prisma/migrations';
- return {candidateSha:'0'.repeat(40),sealSha256:'a'.repeat(64),schemaSha256:createHash('sha256').update(fs.readFileSync(path.join(ROOT,'services/api/prisma/schema.prisma'))).digest('hex'),migrations:fs.readdirSync(path.join(ROOT,base),{withFileTypes:true}).filter(x=>x.isDirectory()).map(x=>x.name).sort().map(name=>({path:`${base}/${name}/migration.sql`,sha256:createHash('sha256').update(fs.readFileSync(path.join(ROOT,base,name,'migration.sql'))).digest('hex')}))};
+ return {candidateSha:'0'.repeat(40),sealSha256:'a'.repeat(64),schemaSha256:historicalQualificationSchemaHash(),migrations:fs.readdirSync(path.join(ROOT,base),{withFileTypes:true}).filter(x=>x.isDirectory()).map(x=>x.name).sort().slice(0,historicalMigrationCount).map(name=>({path:`${base}/${name}/migration.sql`,sha256:createHash('sha256').update(fs.readFileSync(path.join(ROOT,base,name,'migration.sql'))).digest('hex')}))};
 }
 function projectedAddress(sql,side,address){
  // PostgreSQL 16 renders a full-mask inet cast with /32; host(inet) returns
