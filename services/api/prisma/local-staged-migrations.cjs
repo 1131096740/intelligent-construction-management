@@ -172,7 +172,7 @@ function createMigrationFixture(input,authOnly) {
         expected: structuredClone(source.expected) };
     }
     const roots = new Map();
-    for (const size of (authOnly?[203,205,213]:[203, 205, ...[213, 215, 218, 221].filter(size => size < targetLength)])) {
+    for (const size of (authOnly ? [203, 205, 213, targetLength] : [203, 205, ...[213, 215, 218, 221].filter(size => size < targetLength)])) {
       if (!prefixCache.has(size)) {
         const dir = path.join(phaseRoot, String(size));
         await mkdir(path.join(dir, "migrations"), { recursive: true });
@@ -290,7 +290,9 @@ function createMigrationFixture(input,authOnly) {
       const schema = await readFile(schemaPath);
       need(schema.equals(await readFile(path.join(__dirname, "schema.prisma"))), "SCHEMA");
       const expected = await inventory(__dirname);
-      const target = await inventory(targetRoot);
+      const inventoryTarget = await inventory(targetRoot);
+      const target = authOnly && request.schemaPath === undefined
+        ? inventoryTarget.slice(0, technical.ledger.length) : inventoryTarget;
       need(expected.length >= 205 && isDeepStrictEqual(target, expected.slice(0, target.length)) &&
         target.length > 0, "SOURCE_PREFIX");
       const lock = await readFile(path.join(canonicalRoot, "migration_lock.toml"));
@@ -423,7 +425,7 @@ function createMigrationFixture(input,authOnly) {
           await tail.qualify(size);
         }
       }
-      const result = await deploy(request);
+      const result = await deploy(authOnly ? { ...request, schemaPath: path.join(roots.get(target.length), "schema.prisma") } : request);
       const final = await read(database, "complete-readback", controls.inspectSql());
       need(isDeepStrictEqual(identity(final, database, owner), bound) &&
         checkLedger(final.ledger, target, rolledBack) === target.length, "COMPLETION");

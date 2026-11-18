@@ -582,13 +582,14 @@ for(const [name,alter] of [
 
 // The only replaced boundaries here are the original owned-resource claim and
 // bounded Prisma CLI process. No alternative issuer is registered in product.
-async function current259Model(temporaryRoot, mutate, technical = true, commandFailure) {
+async function current259Model(temporaryRoot, mutate, technical = true, commandFailure, authOnly = false) {
   const model = await fakeFixture(temporaryRoot, mutate, [], false, true);
   const vm = require("node:vm"), nativeRequire = require("node:module").createRequire(__filename);
   const handle = Object.freeze({ simulation: "owned-current259-test" });
   let closed = false, checks = 0, commands = 0, closes = 0, observations = 0, observation = "valid", pauseSql = false, pendingReject, notifySql, closeFails = false, cliHash = "ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388";
   let fullFailure, fullFailureAfter;
-  const rows = await canonicalRows();
+  const canonical = await canonicalRows();
+  const rows = authOnly ? canonical.slice(0, 261) : canonical;
   const receipt = { runId: container.runId, containerId: container.id, networkId: "b".repeat(64),
     databaseName: "jg_task01_0123456789abcdef0123456789abcdef", port: 55432,
     containerName: "jg-task01-" + container.runId, purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",limits:{totalDeadlineMs:3600000} };
@@ -1244,11 +1245,15 @@ for(const mode of ["child-failed","relay-failed"])test("owned migration preserve
   assert.equal(opened,1);assert.equal(f.counts().commands,1);assert.equal(f.counts().closes,1);
 });
 
+function authOnly261Model(root, mutate) {
+  return current259Model(root, mutate, true, undefined, true);
+}
+
 // Source-shaped owned-resource/CLI model only: no PostgreSQL, SDK, or native authority.
 test("auth-only bootstrap retains real203/205/213 prerequisites then completes261 with a separate single-use proof",async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'auth261-bootstrap-model-'));
  try{
-  const model=await current259Model(root);
+  const model=await authOnly261Model(root);
   const result=await model.api.createCurrent261AuthOnlyDiagnosticBootstrap(model.handle).migrate();
   assert.equal(result.status,'CURRENT261_AUTH_ONLY_DIAGNOSTIC_SUPPLIED_NOT_ADMISSION');
   assert.equal(result.executionPurpose,'AUTH_ONLY_DIAGNOSTIC');
@@ -1278,7 +1283,7 @@ for(const [phase,alter,forbidden] of [
 ])test(`auth-only bootstrap model stops permanently on changed ${phase} proof`,async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'auth261-bootstrap-reject-'));
  try{
-  const model=await current259Model(root,(current,row)=>{if(current===phase)alter(row);return row;});
+  const model=await authOnly261Model(root,(current,row)=>{if(current===phase)alter(row);return row;});
   const run=model.api.createCurrent261AuthOnlyDiagnosticBootstrap(model.handle);
   await assert.rejects(run.migrate());assert.equal(model.counts().closes,1);
   if(forbidden)assert.equal(model.calls.includes(forbidden),false);
@@ -1288,7 +1293,7 @@ for(const [phase,alter,forbidden] of [
 for(const ended of ['scope ended','signal aborted'])test(`auth-only supply model revokes claimed and unclaimed authority after ${ended}`,async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'auth261-bootstrap-revoke-'));
  try{
-  const model=await current259Model(root),controller=new AbortController();
+  const model=await authOnly261Model(root),controller=new AbortController();
   const result=await model.api.createCurrent261AuthOnlyDiagnosticBootstrap(model.handle,controller.signal).migrate();
   const proof=model.api.claimCurrent261AuthOnlyDiagnosticSupply(result,model.handle);
   if(ended==='scope ended')model.close();else controller.abort();
