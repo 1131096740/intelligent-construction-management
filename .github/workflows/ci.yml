@@ -227,6 +227,9 @@ jobs:
           - employee_onboarding
           - general_procurement
           - contract_finance_acceptance
+          - task398_shared_standard
+          - task398_browser
+          - task398_browser_completion
         include:
           - group: pol113_pol115_business_entries
             shard: pol113_pol114
@@ -315,6 +318,12 @@ jobs:
           browser_path="$RUNNER_TEMP/contract-finance-playwright"
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
+
+      - name: Install task 398 Chromium runtime
+        if: ${{ matrix.group == 'task398_browser' || matrix.group == 'task398_browser_completion' }}
+        run: |
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
 
       - name: Install POL-109 browser runtime
         if: ${{ matrix.group == 'project_close_profit_pol109' }}
