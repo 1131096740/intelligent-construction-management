@@ -13,7 +13,7 @@ const registration = {
   lines: [{ sourceBatchId: "10561000-0000-4000-8000-000000000003", amountYuan: "30.0001" }]
 };
 
-function transferService(role: string, firstConflict = false, activeCompany = false) {
+function transferService(role: string, firstConflict = false, activeCompany = false, originalRegistrationExists = false) {
   const receipt = jest.fn();
   const transferUpdate = jest.fn();
   const tx = {
@@ -24,7 +24,9 @@ function transferService(role: string, firstConflict = false, activeCompany = fa
       where.scopeKey === "public_cash" ? { id: "cash", kind: "public_cash", companyEntityId: null } : { id: "company", kind: "company", companyEntityId: "company-a" },
       update: jest.fn() },
     companyEntity: { findUnique: async () => ({ isActive: activeCompany }) },
-    fundAccountBalanceRegistration: { findFirst: async () => ({ id: "new-current", balanceYuan: new Prisma.Decimal(100) }) },
+    fundAccountBalanceRegistration: { findFirst: async ({ select }: { select?: { id: true } }) => select
+      ? (originalRegistrationExists ? { id: registration.expectedRegistrationId } : null)
+      : { id: "new-current", version: 2, balanceYuan: new Prisma.Decimal(100) } },
     $queryRaw: async () => [{ id: "cash" }, { id: "company" }],
     registeredFundTransferAction: { findUnique: receipt },
     registeredFundTransfer: {
@@ -64,7 +66,7 @@ it("rejects a new transfer into an inactive company", async () => {
   expect(receipt).toHaveBeenCalledTimes(1);
 });
 
-it("returns a typed no-write rejection for a stale source registration after proving the key has no receipt", async () => {
+it("does not mark an unrecognized source registration as superseded", async () => {
   const { service, receipt } = transferService("comprehensive_director", false, true);
   await expect(service.register("origin", registration)).rejects.toMatchObject({
     response: { statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE" }
@@ -72,12 +74,20 @@ it("returns a typed no-write rejection for a stale source registration after pro
   expect(receipt).toHaveBeenCalledTimes(1);
 });
 
-it("returns a typed no-write rejection for a stale receipt decision", async () => {
+it("proves an older confirmed source registration is superseded", async () => {
+  const { service, receipt } = transferService("comprehensive_director", false, true, true);
+  await expect(service.register("origin", registration)).rejects.toMatchObject({
+    response: { statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_COMMAND_SUPERSEDED" }
+  });
+  expect(receipt).toHaveBeenCalledTimes(1);
+});
+
+it("proves a stale receipt decision is superseded", async () => {
   const { service, receipt, transferUpdate } = transferService("finance_staff");
   await expect(service.act("recipient", "transfer", {
     idempotencyKey: registration.idempotencyKey, expectedRevision: 1, action: "confirm", evidenceReference: "独立实收"
   })).rejects.toMatchObject({
-    response: { statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE" }
+    response: { statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_COMMAND_SUPERSEDED" }
   });
   expect(receipt).toHaveBeenCalledTimes(1);
   expect(transferUpdate).not.toHaveBeenCalled();

@@ -16998,6 +16998,9 @@ const recoveryAllowed = computed(() => {
     if (result.kind === "saved") notice.value = statusLabel[result.receipt.status];
     emit("refreshAccounts");
     await load();
+    if (result.kind === "superseded" && actorId.value === actor && viewRevision === openedView + 1 && !error.value) {
+      error.value = formatUnknownApiError(result.error, "转款已更新，请刷新后核对");
+    }
   } catch (failure) {
     if (isCurrent()) error.value = formatUnknownApiError(failure, "原转款凭据尚未确认，请刷新后核对");
   } finally {
@@ -17028,6 +17031,10 @@ const recoveryAllowed = computed(() => {
       localStorage.removeItem(key);
       return { kind: "saved", receipt } as const;
     } catch (error) {
+      if (error instanceof FundTransferApiError && error.isSupersededCommand) {
+        localStorage.removeItem(key);
+        return { kind: "superseded", error } as const;
+      }
       if (!pending && error instanceof FundTransferApiError && error.isDefinitiveRejection) {
         localStorage.removeItem(key);
         return { kind: "rejected", error } as const;

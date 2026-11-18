@@ -12823,7 +12823,7 @@
         "event": "confirm",
         "handler": "submitAction",
         "kind": "event",
-        "sourceLine": 415,
+        "sourceLine": 418,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -12892,7 +12892,7 @@
         "event": "click",
         "handler": "retryPending",
         "kind": "event",
-        "sourceLine": 275,
+        "sourceLine": 278,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -13001,7 +13001,7 @@
         "event": "confirm",
         "handler": "submitRegistration",
         "kind": "event",
-        "sourceLine": 353,
+        "sourceLine": 356,
         "sourceColumn": 6
       },
       "semantic": "business_write",
