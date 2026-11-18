@@ -17,8 +17,12 @@ export function transferUsesHeldFunds(state: FundAccountTransferState): boolean 
   return FUND_ACCOUNT_TRANSFER_HELD_STATES.some(held => held === state);
 }
 
+export function rejectedTransferWithoutWrite(message: string) {
+  return new ConflictException({ statusCode: 409, code: "FUND_ACCOUNT_TRANSFER_REJECTED_NO_WRITE", message });
+}
+
 export function transferStateAfterAction(state: FundAccountTransferState, action: FundAccountTransferAction): FundAccountTransferState {
   const next = transitions[state]?.[action];
-  if (!next) throw new ConflictException("转款当前状态不能办理，请刷新核对");
+  if (!next) throw rejectedTransferWithoutWrite("转款当前状态不能办理，请刷新核对");
   return next;
 }
