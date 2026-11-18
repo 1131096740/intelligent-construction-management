@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 266,
     "terminalMigration": "20261118185000_project_owner_settlement_voucher_binding",
-    "terminalMigrationChecksum": "766e44524adcc61092d948c808af3a900ea00761c35b2714fa2fe0e1d2d10214",
+    "terminalMigrationChecksum": "0de8b9cca63ecfa8050ed9bbef882cd137b51902d92a8321be5980dd79818dff",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

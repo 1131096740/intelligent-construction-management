@@ -316,7 +316,7 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
         expect(binding).toEqual([{ bound: true }]);
         const expense = await owner.projectExpenseRequest.create({ data: {
           projectId: fixture.projectId, code: `${fixture.prefix}_owner_voucher_rebind`,
-          expenseType: "project_daily", expenseSubtype: "other", paymentSubject: "our_company",
+          expenseType: "sporadic_payment", expenseSubtype: "sporadic_material", paymentSubject: "our_company",
           reason: "核对独占凭证冲突", requestedAmountCents: 100n, approvedAmountCents: 100n,
           paymentMethod: "bank_transfer", handlerUserId: fixture.financeUserId,
           applicantUserId: fixture.financeUserId, status: "approved",

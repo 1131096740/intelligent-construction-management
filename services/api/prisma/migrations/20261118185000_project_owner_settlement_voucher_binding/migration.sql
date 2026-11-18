@@ -1,16 +1,48 @@
 BEGIN;
 
 SELECT pg_advisory_xact_lock(190731, 13);
-ALTER FUNCTION public.jg_file_business_binding_columns()
-  RENAME TO jg_file_business_binding_columns_before_project_owner_settlement;
+DO $registry$
+DECLARE
+  old_oid oid := 'public.jg_file_business_binding_columns()'::regprocedure;
+  owner_id oid;
+  owner_name TEXT;
+  original_acl aclitem[];
+  installer TEXT := current_user;
+  privilege RECORD;
+BEGIN
+  SELECT proowner, proacl INTO STRICT owner_id, original_acl FROM pg_proc WHERE oid = old_oid;
+  SELECT rolname INTO STRICT owner_name FROM pg_roles WHERE oid = owner_id;
+  IF EXISTS (SELECT 1 FROM aclexplode(coalesce(original_acl, acldefault('f', owner_id))) WHERE grantor <> owner_id) THEN
+    RAISE EXCEPTION 'owner settlement voucher cannot change a third-party file registry grant';
+  END IF;
 
-CREATE FUNCTION public.jg_file_business_binding_columns()
-RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
-LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog, public AS $$
-  SELECT * FROM public.jg_file_business_binding_columns_before_project_owner_settlement()
-  UNION ALL
-  VALUES ('ProjectOwnerSettlementEntry', 'voucherFileId', FALSE);
-$$;
+  EXECUTE format('SET LOCAL ROLE %I', owner_name);
+  ALTER FUNCTION public.jg_file_business_binding_columns()
+    RENAME TO jg_file_business_binding_columns_before_project_owner_settlement;
+  EXECUTE $new_registry$
+    CREATE FUNCTION public.jg_file_business_binding_columns()
+    RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
+    LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog, public AS $body$
+      SELECT * FROM public.jg_file_business_binding_columns_before_project_owner_settlement()
+      UNION ALL
+      VALUES ('ProjectOwnerSettlementEntry', 'voucherFileId', FALSE);
+    $body$;
+  $new_registry$;
+  FOR privilege IN SELECT grantee FROM aclexplode(coalesce((SELECT proacl FROM pg_proc
+    WHERE oid = 'public.jg_file_business_binding_columns()'::regprocedure), acldefault('f', owner_id)))
+  LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION public.jg_file_business_binding_columns() FROM %s',
+      CASE WHEN privilege.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(privilege.grantee)) END);
+  END LOOP;
+  FOR privilege IN SELECT grantee, is_grantable FROM aclexplode(coalesce(original_acl, acldefault('f', owner_id)))
+  LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns() TO %s%s',
+      CASE WHEN privilege.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(privilege.grantee)) END,
+      CASE WHEN privilege.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+  END LOOP;
+  EXECUTE format('SET LOCAL ROLE %I', installer);
+END;
+$registry$;
 
 -- Old restricted writers only need a yes/no answer for the exact file they are binding.
 CREATE FUNCTION public.jg_project_owner_settlement_voucher_bound(candidate TEXT)
