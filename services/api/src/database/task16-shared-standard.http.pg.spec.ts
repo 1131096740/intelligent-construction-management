@@ -167,7 +167,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
 });
 
 (enabled?describe:describe.skip)("#398 isolated shared payment real HTTP and PostgreSQL",()=>{
- it("signs and approves, shares partial duties, pays in three instalments and supplements the voucher",async()=>{
+ it("rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
   const ownerUrl=new URL(process.env.TASK398_OWNER_URL??""),runtimeUrl=new URL(process.env.DATABASE_URL??""),observerUrl=new URL(process.env.TASK398_OBSERVER_URL??"");
   const db=ownerUrl.pathname;
   const runId=process.env.TASK398_RUN_ID??"";
@@ -207,10 +207,65 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    let meWindowIndex=0;
    for(const token of [finance,keeper]){const list=await json("/payment-executions/work-items","GET",undefined,token);expect(list.body.items).toContainEqual(expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"0",remainingAmountCents:"10000"}));const me=await observedMeRequest(()=>json("/me/work-items","GET",undefined,token),++meWindowIndex);expect(me.status).toBe(200);expect(me.body.queues.pending).toContainEqual(expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment}));const notifications=await json("/payment-executions/notifications","GET",undefined,token);expect(notifications.body.items).toContainEqual(expect.objectContaining({businessCode:payment.code,status:"queued"}));}
    await app.get(OperatingSourceReplayService).replaySource({projectId:plan.ids.project,sourceType:"settlement",sourceBusinessId:plan.ids.settlement},plan.ids.actor);
-   const open=async(token:string,scopeKey:string)=>{const response=await json("/fund-accounts/openings","POST",{scopeKey,balanceYuan:"100",asOfDate:plan.openingDate,evidenceReference:"虚构期初",reconciliationNote:"虚构项目来源",reason:"隔离测试",idempotencyKey:randomUUID(),sources:[{amountYuan:"100",sourceStatus:"known",sourceName:"虚构项目资金",projectStatus:"project",projectId:plan.ids.project}]},token);expect(response.status).toBe(201);return response.body as {id:string;sources:Array<{id:string}>};};
-   const a=await open(finance,`company:${plan.ids.companyA}`),b=await open(finance,`company:${plan.ids.companyB}`),cash=await open(keeper,"public_cash");
+   const otherProjectId=randomUUID();
+   await owner.project.create({data:{id:otherProjectId,code:`T16-${plan.runId}-OTHER`,name:"虚构其他项目",isActive:true}});
+   const bScope=`company:${plan.ids.companyB}`;
+   const projectSource=(projectId:string,amountYuan:string)=>({amountYuan,sourceStatus:"known",sourceName:"虚构项目资金",projectStatus:"project",projectId});
+   type Opening={id:string;sources:Array<{id:string;projectId:string}>};
+   const open=async(token:string,scopeKey:string,sources=[projectSource(plan.ids.project,"100")])=>{
+    const response=await json("/fund-accounts/openings","POST",{scopeKey,balanceYuan:"100",asOfDate:plan.openingDate,evidenceReference:"虚构期初",reconciliationNote:"虚构项目来源",reason:"隔离测试",idempotencyKey:randomUUID(),sources},token);
+    expect(response.status).toBe(201);
+    return response.body as Opening;
+   };
+   const a=await open(finance,`company:${plan.ids.companyA}`),b=await open(finance,bScope,[projectSource(plan.ids.project,"97"),projectSource(otherProjectId,"3")]),cash=await open(keeper,"public_cash");
    const openingRows=await observer.fundAccountBalanceRegistration.findMany({where:{id:{in:[a.id,b.id,cash.id]}}});expect(openingRows).toHaveLength(3);for(const row of openingRows)expect(row.balanceYuan?.toFixed(4)).toBe("100.0000");
-   const pay=async(token:string,scopeKey:string,opening:{id:string;sources:Array<{id:string}>},amountCents:string)=>{const options=await json(`/payment-executions/${plan.ids.payment}/registration-options`,"GET",undefined,token);expect(options.status).toBe(200);const key=randomUUID(),response=await json(`/payment-executions/${plan.ids.payment}/registrations`,"POST",{idempotencyKey:key,expectedPaymentUpdatedAt:options.body.expectedPaymentUpdatedAt,amountCents,paidAt:plan.paidAt,scopeKey,expectedRegistrationId:opening.id,openingTreatment:"not_included",openingReason:"虚构付款未含期初",openingEvidence:"隔离登记",sourceAllocations:[{sourceBatchId:opening.sources[0].id,amountCents}],confirmationPassword:token===finance?passwords[0]:passwords[1]},token);expect(response.status).toBe(201);return {key,id:response.body.id as string};};
+   const submit=async(token:string,scopeKey:string,opening:Opening,amountCents:string,sourceAllocations:Array<{sourceBatchId:string;amountCents:string}>)=>{
+    const options=await json(`/payment-executions/${plan.ids.payment}/registration-options`,"GET",undefined,token);
+    expect(options.status).toBe(200);
+    const key=randomUUID();
+    const response=await json(`/payment-executions/${plan.ids.payment}/registrations`,"POST",{idempotencyKey:key,expectedPaymentUpdatedAt:options.body.expectedPaymentUpdatedAt,amountCents,paidAt:plan.paidAt,scopeKey,expectedRegistrationId:opening.id,openingTreatment:"not_included",openingReason:"虚构付款未含期初",openingEvidence:"隔离登记",sourceAllocations,confirmationPassword:token===finance?passwords[0]:passwords[1]},token);
+    return {key,response};
+   };
+   const bAccount=async()=>{
+    const response=await json("/fund-accounts","GET",undefined,finance);
+    expect(response.status).toBe(200);
+    return response.body.accounts.find((account:{scopeKey:string})=>account.scopeKey===bScope);
+   };
+   const observeGap=()=>observer.$transaction(async tx=>{
+    await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+    return {
+     paid:(await tx.paymentRequest.findUniqueOrThrow({where:{id:plan.ids.payment},select:{paidAmountCents:true}})).paidAmountCents,
+     executions:await tx.paymentExecution.count(),funding:await tx.registeredPaymentFunding.count(),
+     allocations:await tx.registeredFundPaymentAllocation.count(),events:await tx.registeredPaymentEvent.count(),
+     audits:await tx.auditLog.count({where:{businessId:plan.ids.payment,action:"payment.execution.record"}}),
+     facts:await tx.operatingFact.count({where:{projectId:{in:[plan.ids.project,otherProjectId]}}}),
+     impacts:await tx.operatingImpactEntry.count({where:{projectId:{in:[plan.ids.project,otherProjectId]}}})
+    };
+   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
+   const beforeGap=await observeGap();
+   expect(beforeGap).toMatchObject({paid:0n,executions:0,funding:0,allocations:0,events:0,audits:0});
+   const beforeAccount=await bAccount();
+   expect(beforeAccount).toMatchObject({balanceYuan:"100.0000",projectBalances:expect.arrayContaining([
+    {projectStatus:"project",projectId:plan.ids.project,amountYuan:"97.0000"},
+    {projectStatus:"project",projectId:otherProjectId,amountYuan:"3.0000"}
+   ])});
+   const ownSource=b.sources.find(source=>source.projectId===plan.ids.project),otherSource=b.sources.find(source=>source.projectId===otherProjectId);
+   if(!ownSource||!otherSource)throw new Error("TASK398_GAP_SOURCE_BINDING");
+   const rejected=await submit(finance,bScope,b,"10000",[{sourceBatchId:ownSource.id,amountCents:"9700"},{sourceBatchId:otherSource.id,amountCents:"300"}]);
+   expect(rejected.response.status).toBe(409);
+   expect(rejected.response.body.message).toContain("所选来源的项目归属不足，差额须先由业务确认，不能自动形成垫资到账");
+   const rejectedResult=await json(`/payment-executions/results/${rejected.key}`,"GET",undefined,finance);
+   expect(rejectedResult.status).toBe(200);
+   expect(rejectedResult.body).toMatchObject({status:"unconfirmed"});
+   expect(await observeGap()).toEqual(beforeGap);
+   expect(await bAccount()).toEqual(beforeAccount);
+   const pay=async(token:string,scopeKey:string,opening:Opening,amountCents:string)=>{
+    const source=opening.sources.find(item=>item.projectId===plan.ids.project);
+    if(!source)throw new Error("TASK398_PAYMENT_SOURCE_BINDING");
+    const {key,response}=await submit(token,scopeKey,opening,amountCents,[{sourceBatchId:source.id,amountCents}]);
+    expect(response.status).toBe(201);
+    return {key,id:response.body.id as string};
+   };
    const companyB=await pay(finance,`company:${plan.ids.companyB}`,b,"3000"),companyA=await pay(keeper,`company:${plan.ids.companyA}`,a,"3000");
    for(const token of [finance,keeper])expect((await json("/payment-executions/work-items","GET",undefined,token)).body.items).toContainEqual(expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"6000",remainingAmountCents:"4000"}));
    const final=await pay(keeper,"public_cash",cash,"4000");
@@ -225,7 +280,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    const executions=await observer.paymentExecution.findMany({where:{paymentRequestId:plan.ids.payment}}),events=await observer.registeredPaymentEvent.findMany({where:{executionId:{in:executions.map(row=>row.id)}}});expect(executions).toHaveLength(3);expect(events).toHaveLength(3);expect(executions.reduce((sum,row)=>sum+row.amountCents,0n)).toBe(10000n);
    const executionIds=executions.map(row=>row.id),funding=await observer.registeredPaymentFunding.findMany({where:{executionId:{in:executionIds}}}),allocations=await observer.registeredFundPaymentAllocation.findMany({where:{executionId:{in:executionIds}}});
    expect(funding).toHaveLength(3);expect(allocations).toHaveLength(3);expect(allocations.reduce((sum,row)=>sum+row.amountCents,0n)).toBe(10000n);
-   for(const [opening,expected] of [[a,3000n],[b,3000n],[cash,4000n]] as const)expect(allocations.filter(row=>row.sourceBatchId===opening.sources[0].id).reduce((sum,row)=>sum+row.amountCents,0n)).toBe(expected);
+   for(const [opening,expected] of [[a,3000n],[b,3000n],[cash,4000n]] as const)expect(allocations.filter(row=>row.sourceBatchId===opening.sources.find(source=>source.projectId===plan.ids.project)?.id).reduce((sum,row)=>sum+row.amountCents,0n)).toBe(expected);
    const facts=await observer.operatingFact.findMany({where:{sourceType:"payment_execution",sourceBusinessId:{in:executionIds}}});expect(facts).toHaveLength(3);
    const impacts=await observer.operatingImpactEntry.findMany({where:{sourceType:"payment_execution",sourceBusinessId:{in:executionIds}},select:{factId:true,sourceBusinessId:true,projectId:true,impactKind:true,direction:true,amountCents:true,numericProtocolVersion:true}});
    for(const [executionId,amount,fundKind,proxy] of [[companyB.id,3000n,"company_project_funds_decrease",true],[companyA.id,3000n,"company_project_funds_decrease",false],[final.id,4000n,"public_cash_funds_decrease",false]] as const){
