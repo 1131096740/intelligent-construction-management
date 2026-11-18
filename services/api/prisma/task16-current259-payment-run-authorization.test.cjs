@@ -11,7 +11,7 @@ function planFixture(t,options){
 }
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 function fixture(t,options={}){
- const s=options.planFixture??planFixture(t,{payment261:options.payment261});
+ const s=options.planFixture??planFixture(t,{payment261:options.payment261,registerSchemaCleanup:options.registerSchemaCleanup});
  const prepare=options.payment261?s.api.prepareCurrent261PaymentInstallPlan:options.pfqPlan?s.api.prepareCurrent259PfqCompositionPlan:s.api.prepareCurrent259PaymentInstallPlan;
  const saved=options.saved??prepare({runRoot:s.runRoot,daemonId:s.daemonId,output:s.output});
  const state={calls:[],output:'',closes:0,signals:{},consumed:null},handle=Object.freeze({});
@@ -1645,7 +1645,7 @@ for(const mode of ['signals','timer'])test('owned Node '+mode+' executes origina
  const text=fs.readFileSync(target,'utf8')+'\nmodule.exports={fixture};';
  new Function('require','module','__dirname',text)(rq,holder,path.dirname(target));
  const pending=new Promise(()=>{}),cleanup=[];
- const f=holder.exports.fixture({after(fn){cleanup.push(fn);}},{nativeSignals:mode==='signals',realTimerCallback:mode==='timer',sourceTransform:baseline?()=>fs.readFileSync(baseline,'utf8'):undefined,
+ const f=holder.exports.fixture({after(fn){cleanup.push(fn);}},{registerSchemaCleanup:callback=>process.once('exit',callback),nativeSignals:mode==='signals',realTimerCallback:mode==='timer',sourceTransform:baseline?()=>fs.readFileSync(baseline,'utf8'):undefined,
  onTechnical(){process.stdout.write(JSON.stringify({event:'READY'})+'\n');return pending;},
  async beforeResourceCleanup(){if(mode==='signals'){process.stdout.write(JSON.stringify({event:'CLEANUP_WAIT'})+'\n');await new Promise(resolve=>setTimeout(resolve,200));}}
  });

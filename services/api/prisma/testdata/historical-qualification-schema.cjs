@@ -28,7 +28,7 @@ function historicalQualificationSchemaHash() {
 }
 
 let restoreSchema;
-function useHistoricalQualificationSchemaFile() {
+function useHistoricalQualificationSchemaFile(registerCleanup = after) {
   if (restoreSchema) return;
   const current = path.resolve(__dirname, "../schema.prisma");
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "legacy-qualified-schema-"));
@@ -50,7 +50,7 @@ function useHistoricalQualificationSchemaFile() {
     fs.rmSync(directory, { recursive: true, force: true });
     restoreSchema = undefined;
   };
-  after(() => restoreSchema?.());
+  registerCleanup(() => restoreSchema?.());
 }
 
 module.exports = { historicalQualificationSchema, historicalQualificationSchemaHash, historicalMigrationCount, useHistoricalQualificationSchemaFile };

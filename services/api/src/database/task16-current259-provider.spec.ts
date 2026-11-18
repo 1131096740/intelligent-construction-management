@@ -8,6 +8,9 @@ import { RegisteredPaymentExecutionService } from "../payment/registered-payment
 import { REGISTERED_PAYMENT_IMPACT_READER, type Task16RegisteredPaymentImpactRuntime } from "../payment/registered-payment-impact-reader";
 import { createRegisteredPaymentSyntheticDb } from "../payment/testing/registered-payment-execution.synthetic-db";
 
+const { historicalQualificationSchemaHash } = createRequire(__filename)("../../prisma/testdata/historical-qualification-schema.cjs") as {
+  historicalQualificationSchemaHash(): string;
+};
 const { createCurrent259ImpactRuntime } = createRequire(__filename)("../../prisma/task16-current259-impact-runtime.cjs") as {
   createCurrent259ImpactRuntime(session: unknown, check: () => void): Task16RegisteredPaymentImpactRuntime;
 };
@@ -35,9 +38,10 @@ it("the real payment result service consumes the259 transaction provider and pre
   } };
   const root = resolve(__dirname, "../../../..");
   const migrationRoot = resolve(root, "services/api/prisma/migrations");
+  // Exercise the historical 259-migration provider after later Schema migrations.
   const source = { candidateSha: "0".repeat(40), sealSha256: "a".repeat(64),
-    schemaSha256: createHash("sha256").update(readFileSync(resolve(root, "services/api/prisma/schema.prisma"))).digest("hex"),
-    migrations: readdirSync(migrationRoot, { withFileTypes: true }).filter(row => row.isDirectory()).map(row => row.name).sort()
+    schemaSha256: historicalQualificationSchemaHash(),
+    migrations: readdirSync(migrationRoot, { withFileTypes: true }).filter(row => row.isDirectory()).map(row => row.name).sort().slice(0, 259)
       .map(name => ({ path: `services/api/prisma/migrations/${name}/migration.sql`, sha256: createHash("sha256").update(readFileSync(resolve(migrationRoot, name, "migration.sql"))).digest("hex") })) };
   const identity = ["owner", "runtime", "observer"].map((role, index) => ({ database: "jg_task01_0123456789abcdef0123456789abcdef", databaseOid: "16910", systemIdentifier: "7245753496126091540",
     effectiveRole: `jg_task01_${role}`, loginRole: `jg_task01_${role}`, effectiveOid: String(16911 + index), loginOid: String(16911 + index), pid: 411 + index,

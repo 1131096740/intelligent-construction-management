@@ -1,11 +1,13 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {createHash}=require('node:crypto');
+const {useHistoricalQualificationSchemaFile}=require('../services/api/prisma/testdata/historical-qualification-schema.cjs');
 const {readQualifiedTask16File:realRead}=require('../services/api/prisma/task16-runtime-inputs.cjs');
 const file=path.join(__dirname,'prepare-task16-current259-payment-install.cjs');
 const historicalEnd='20261111120000_contract_direct_upward_closure_source_v2';
 const payment261End='20261111140000_contract_direct_upward_retention_acl_source_v3';
-function fixture(t,{payment261=false}={}){
+function fixture(t,{payment261=false,registerSchemaCleanup=callback=>t.after(callback)}={}){
+ useHistoricalQualificationSchemaFile(registerSchemaCleanup);
  const base=fs.mkdtempSync('/private/tmp/jg-259-payment-plan-model-'),runRoot=path.join(base,'run');fs.mkdirSync(runRoot,{mode:0o700});
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  const state={captures:0,loads:0,stale:false,fullCalls:0,lightCalls:0,linkedTool:false};
