@@ -5,6 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {createHash,createHmac,randomBytes,randomUUID}=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {types,isDeepStrictEqual:equal}=require('node:util');
+const {nativeCommitFaultPaymentProfile,PAYMENT262_FAULT_RUNTIME_PROFILE}=require('./task16-current262-native-fault-profile.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),PURPOSE='TASK16_NATIVE_COMMIT_CANCEL_V1';
 // Root's independently reviewed official16.15/pgcrypto93-file qualification.
 const BINARY_QUALIFICATION_SHA='26e93f289366a2f9c60c61b9035849052d59509d54f2c388cbdf7c419d3663a1';
@@ -72,9 +73,10 @@ function sourceCapture(){
  need(git(['status','--porcelain'])==='','NATIVE_DIRECT_SOURCE_DIRTY');
  const head=git(['rev-parse','HEAD']),tree=git(['rev-parse','HEAD^{tree}']);
  const files=git(['ls-files','-z']).split('\0').filter(Boolean).map(relative=>({relative,...capture(path.join(ROOT,relative))})).map(({relative,sha256})=>({relative,sha256}));
- const migrationFiles=files.filter(row=>/^services\/api\/prisma\/migrations\/\d{14}_[a-z0-9_]+\/migration.sql$/u.test(row.relative));need(migrationFiles.length===261);
+ const migrationFiles=files.filter(row=>/^services\/api\/prisma\/migrations\/\d{14}_[a-z0-9_]+\/migration.sql$/u.test(row.relative));
  const code={candidateSha:head,sealSha256:hash(Buffer.from(JSON.stringify(files))),schemaSha256:capture(path.join(__dirname,'schema.prisma')).sha256,migrations:migrationFiles.map(row=>({path:row.relative,sha256:row.sha256}))};
  const profile=require('./task16-current259-profile.cjs').qualifyCurrent259Source(code);
+ nativeCommitFaultPaymentProfile(profile);
  return {head,tree,files,code,witness:{candidateSha:head,sourceSealSha256:code.sealSha256,profile}};
 }
 function treeFiles(root,allowed=root){
@@ -214,7 +216,7 @@ function inspectNativeTask16Interfaces(){
   ['./local-staged-migration-controls.cjs',[['inspectSql',0],['setupSql',1],['checkSetup',2],['readbackSql',2],['parseReadback',1],['checkCompletion',3],['cleanupSql',2],['cleanReadSql',2]]],
   ['./local-staged-tail-qualification.cjs',[['createLocalTailQualification',2]]],
   ['./task16-current259-role-provision.cjs',[['renderNativeTask16RoleRead',2],['renderNativeTask16RoleInstall',3],['parseNativeTask16RoleRead',3]]],
-  ['./task16-current259-seven-install.cjs',[['renderNativeTask16Seven',4],['parseNativeTask16Seven',4]]],
+  ['./task16-current259-seven-install.cjs',[['renderNativeTask16Seven',4],['parseNativeTask16Seven',4],['renderNativeTask16Fault262Seven',4],['parseNativeTask16Fault262Seven',4]]],
   ['./task16-current259-runtime-acl.cjs',[['renderCurrent259RuntimeAcl',3]]],
   ['./task16-current259-public-access.cjs',[['renderCurrent259PublicAccess',1]]],
   ['./task16-current259-catalog.cjs',[['loadCurrent259CatalogMaterial',2],['renderCurrent259CatalogRead',1],['parseCurrent259CatalogRead',3],['describeNativeTask16CatalogFailure',3],['renderCurrent259B7Install',1]]],
@@ -264,7 +266,7 @@ function parseNativeTask16CatalogRead(stdout,input,prior,receipt){
 function renderNativeTask16RuntimeAcl(inputJson,nonce){
  need(typeof inputJson==='string'&&Buffer.byteLength(inputJson)<=512*1024,'NATIVE_DIRECT_ACL_ENDPOINT');const value=JSON.parse(inputJson);
  need(value&&Object.keys(value).sort().join(',')==='provisioned,source','NATIVE_DIRECT_ACL_ENDPOINT');const {source,provisioned}=value,id=provisioned?.databaseIdentity;
- need(provisioned?.paymentProfile==='TASK16_PAYMENT261_RUNTIME_V1'&&id?.tls===true&&id.clientAddress==='127.0.0.1'&&id.serverAddress==='127.0.0.1'&&Number.isInteger(id.serverPort)&&id.serverPort>1024&&id.serverPort<=65535&&id.serverPort!==5432,'NATIVE_DIRECT_ACL_ENDPOINT');
+ need(provisioned?.paymentProfile===nativeCommitFaultPaymentProfile(source.profile)&&id?.tls===true&&id.clientAddress==='127.0.0.1'&&id.serverAddress==='127.0.0.1'&&Number.isInteger(id.serverPort)&&id.serverPort>1024&&id.serverPort<=65535&&id.serverPort!==5432,'NATIVE_DIRECT_ACL_ENDPOINT');
  const rendered=require('./task16-current259-runtime-acl.cjs').renderCurrent259RuntimeAcl(source,provisioned,nonce);
  const original="pg_catalog.host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR pg_catalog.host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'\n    OR inet_server_port() IS DISTINCT FROM 5432";
  const parts=rendered.sql.split(original);
@@ -355,22 +357,25 @@ async function executeNativeTask16Once(plan,planSha256){
   const staged=(await sql(roles.renderNativeTask16RoleInstall(roleScope,before,{runtime:credentials.runtime,observer:credentials.observer}))).stdout;const stagedRow=roles.parseNativeTask16RoleRead(roleScope,staged,'install',before);
   const committed=(await sql(roles.renderNativeTask16RoleRead(migration.setup.appOid,stagedRow.writeXid))).stdout;const roleRow=roles.parseNativeTask16RoleRead(roleScope,committed,'committed',before,staged);
   need(roleRow.state.roles.length===9,'NATIVE_DIRECT_NINE_ROLES');
-  const provisioned={status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:plan.source.head,runId,databaseIdentity:roleIdentity,ordinary:roleRow.state.app,roles:roleRow.state.roles,commitXid:stagedRow.writeXid,databaseAcl:{before:JSON.parse(before).state.databases,after:roleRow.state.databases},paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'};
+  const paymentProfile=nativeCommitFaultPaymentProfile(plan.source.witness.profile);
+  const provisioned={status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:plan.source.head,runId,databaseIdentity:roleIdentity,ordinary:roleRow.state.app,roles:roleRow.state.roles,commitXid:stagedRow.writeXid,databaseAcl:{before:JSON.parse(before).state.databases,after:roleRow.state.databases},paymentProfile};
   enter('SEVEN_FRAGMENTS');const seven=require('./task16-current259-seven-install.cjs');
   const sevenInput=JSON.stringify({source:plan.source.witness,id:roleIdentity,ordinary:provisioned.ordinary,runtime:provisioned.roles.find(r=>r.name==='jg_task01_runtime'),observer:provisioned.roles.find(r=>r.name==='jg_task01_observer'),roleCommitXid:provisioned.commitXid,databaseAclAfter:provisioned.databaseAcl.after});
-  const sevenRaw=[],sevenRows=[];for(let phase=0;phase<3;phase++){const out=(await sql(seven.renderNativeTask16Seven(sevenInput,phase,nonce,phase===0?null:sevenRaw[phase-1]))).stdout;sevenRaw.push(out);sevenRows.push(seven.parseNativeTask16Seven(sevenInput,phase,nonce,out));}
+  const renderSeven=paymentProfile===PAYMENT262_FAULT_RUNTIME_PROFILE?seven.renderNativeTask16Fault262Seven:seven.renderNativeTask16Seven;
+  const parseSeven=paymentProfile===PAYMENT262_FAULT_RUNTIME_PROFILE?seven.parseNativeTask16Fault262Seven:seven.parseNativeTask16Seven;
+  const sevenRaw=[],sevenRows=[];for(let phase=0;phase<3;phase++){const out=(await sql(renderSeven(sevenInput,phase,nonce,phase===0?null:sevenRaw[phase-1]))).stdout;sevenRaw.push(out);sevenRows.push(parseSeven(sevenInput,phase,nonce,out));}
   need(sevenRows[1].installXid!==provisioned.commitXid&&sevenRows[1].catalogSha256!==sevenRows[0].catalogSha256&&sevenRows[2].installXid===sevenRows[1].installXid&&sevenRows[2].catalogSha256===sevenRows[1].catalogSha256&&new Set(sevenRows.map(row=>row.backendPid)).size===3&&new Set(sevenRows.map(row=>row.backendStart)).size===3,'NATIVE_DIRECT_SEVEN_COMMIT');
   enter('ACL_AND_B7');const acl=renderNativeTask16RuntimeAcl(JSON.stringify({source:plan.source.witness,provisioned}),nonce);
   enter('ACL_APPLY');await sql('BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;\n'+acl.writeSql+'\nCOMMIT;');enter('ACL_READBACK');await sql(acl.readbackSql);
   const catalog=require('./task16-current259-catalog.cjs'),source=plan.source.code;
-  const identity={runId,database:db,databaseOid:roleIdentity.databaseOid,namespaceOid:roleIdentity.namespaceOid,ownerOid:'10',systemIdentifier:roleIdentity.systemIdentifier,runtimeOid:provisioned.roles.find(r=>r.name==='jg_task01_runtime').oid,observerOid:provisioned.roles.find(r=>r.name==='jg_task01_observer').oid,paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'};
+  const identity={runId,database:db,databaseOid:roleIdentity.databaseOid,namespaceOid:roleIdentity.namespaceOid,ownerOid:'10',systemIdentifier:roleIdentity.systemIdentifier,runtimeOid:provisioned.roles.find(r=>r.name==='jg_task01_runtime').oid,observerOid:provisioned.roles.find(r=>r.name==='jg_task01_observer').oid,paymentProfile};
   const request={source,identity,nonce,phase:'before'};enter('B7_BEFORE_RENDER');const beforeSql=catalog.renderCurrent259CatalogRead(request);
   enter('B7_BEFORE_QUERY');const beforeRaw=(await sql(beforeSql)).stdout;enter('B7_BEFORE_VALIDATE');const beforeCatalog=parseNativeTask16CatalogRead(beforeRaw,request,undefined,receipt);
   enter('B7_INSTALL_RENDER');const b7Sql=catalog.renderCurrent259B7Install({source,identity,nonce,before:beforeCatalog});
   enter('B7_INSTALL_QUERY');const stagedRaw=(await sql(b7Sql)).stdout;enter('B7_STAGED_VALIDATE');const stagedCatalog=parseNativeTask16CatalogRead(stagedRaw,{...request,phase:'staged'},beforeCatalog,receipt);
   const finalRequest={...request,phase:'committed',installXid:stagedCatalog.raw.writeXid};enter('B7_COMMITTED_RENDER');const finalSql=catalog.renderCurrent259CatalogRead(finalRequest);
   enter('B7_COMMITTED_QUERY');const finalRaw=(await sql(finalSql)).stdout;enter('B7_COMMITTED_VALIDATE');const finalCatalog=parseNativeTask16CatalogRead(finalRaw,finalRequest,stagedCatalog,receipt);
-  receipt.installation={migrations:261,roles:9,sevenCommitXid:sevenRows[2].installXid,b7CommitXid:stagedCatalog.raw.writeXid,catalogSha256:hash(Buffer.from(JSON.stringify(finalCatalog.raw)))};
+  receipt.installation={migrations:plan.source.witness.profile.ledger.length,roles:9,sevenCommitXid:sevenRows[2].installXid,b7CommitXid:stagedCatalog.raw.writeXid,catalogSha256:hash(Buffer.from(JSON.stringify(finalCatalog.raw)))};
   need(equal(sourceCapture(),plan.source)&&equal(compiledMaterials(),plan.artifacts)&&equal(dependencyDigest(),plan.dependencies),'NATIVE_DIRECT_SOURCE_CHANGED');
   receipt.directoryBytesBeforeBusiness=nativeDirectoryBytes(root);
   enter('REAL_CLIENTS_NEST_AND_CASE');await wait(()=>runNativeTask16Business(plan,{root,port,credentials,identity,finalCatalog,sql,jsonSql,needLive,wait,cleanupWait,enter,receipt,checkPublicCertificateContext,command,logIdentity:pgLogIdentity,setRestoreEnvironment:value=>{restoreEnvironment=value;},setClients:value=>{clients=value;},setApplication:(a,m)=>{app=a;moduleRef=m;}}));
@@ -411,7 +416,7 @@ async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,e
  const tools=resolveNativeTask16PrismaTools();need(equal(tools,plan.prismaTools),'NATIVE_DIRECT_PRISMA_TOOLS_CHANGED');const cli=tools.cli.file,engine=tools.engine.file;
  const schema=capture(path.join(__dirname,'schema.prisma')).bytes;
  const roots=new Map();
- for(const size of [203,205,213,215,218,221,261]){
+ for(const size of [203,205,213,215,218,221,ledger.length]){
   const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
   fs.writeFileSync(path.join(dir,'schema.prisma'),schema,{flag:'wx',mode:0o600});
   fs.writeFileSync(path.join(dir,'migrations/migration_lock.toml'),'provider = "postgresql"\n',{flag:'wx',mode:0o600});
@@ -434,7 +439,7 @@ async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,e
  await sql(controls.cleanupSql(migrationPlan,setup));const clean=await jsonSql(controls.cleanReadSql(migrationPlan,setup));need(clean.schemaAbsent===true&&clean.eventAbsent===true&&clean.appOid===setup.appOid&&clean.applicationQualified===true,'NATIVE_DIRECT_QUALIFICATION_CLEANUP');
  const materials=[];const tail=createLocalTailQualification({plan:migrationPlan,setup,migrations},{read:async(_phase,text)=>jsonSql(text),write:async(_phase,text)=>jsonSql(text),recordMaterial:row=>{need(hash(Buffer.from(row.sql))===row.afterSha256,'NATIVE_DIRECT_SQL_MATERIAL');materials.push({kind:row.kind,beforeSha256:row.beforeSha256,afterSha256:row.afterSha256});}});
  for(const size of [213,215,218,221]){await deploy(size);const row=await jsonSql(controls.inspectSql());need(equal(identity(row),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(row,size);await tail.qualify(size);}
- await deploy(261);const final=await jsonSql(controls.inspectSql());need(equal(identity(final),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(final,261);
+ await deploy(ledger.length);const final=await jsonSql(controls.inspectSql());need(equal(identity(final),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(final,ledger.length);
  return {plan:migrationPlan,setup,materials};
 }
 
@@ -498,7 +503,7 @@ async function runNativeTask16Business(plan,state){
   await wait(()=>app.init());await wait(()=>require('../dist/api-listen.js').listenApi(app,0,'127.0.0.1'));
   const address=app.getHttpServer().address();need(address.address==='127.0.0.1'&&address.family==='IPv4'&&address.port>1024,'NATIVE_DIRECT_HTTP_ENDPOINT');
   const origin='http://127.0.0.1:'+address.port;
-  const catalog=require('./task16-current259-catalog.cjs'),material=catalog.loadCurrent259CatalogMaterial(plan.source.code,'TASK16_PAYMENT261_RUNTIME_V1');
+  const catalog=require('./task16-current259-catalog.cjs'),material=catalog.loadCurrent259CatalogMaterial(plan.source.code,identity.paymentProfile);
   const proof=Object.freeze({authorizationReference:'root-native-plan-sha256:'+receipt.planSha256,runId:plan.runId.replaceAll('-','').slice(0,12),resourceRunId:plan.runId,databaseName:plan.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,host:'127.0.0.1',port,ownerRole:'jg_task01_owner',runtimeRole:'jg_task01_runtime',observerRole:'jg_task01_observer',sourceSealSha256:plan.source.code.sealSha256,preparedSqlSha256:Object.freeze(Object.fromEntries(material.sevenFragments.map(row=>[path.basename(row.path),row.sha256]))),transport:'isolated-loopback-tls-verify-full',application:Object.freeze({origin,databaseRole:'jg_task01_runtime',sourceSealSha256:plan.source.code.sealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'})});
   const context=Object.freeze({proof,owner,runtime,observer,password:randomBytes(32).toString('hex'),httpTimeoutMs:5000});
   const fixture=require('../dist/database/registered-payment-postgres.fixture.js'),cases=require('../dist/database/registered-payment-postgres.cases.js');

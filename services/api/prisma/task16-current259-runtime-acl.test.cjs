@@ -64,7 +64,7 @@ test('rejects a different candidate role receipt and checked-to-used getters',()
 });
 
 test('payment261 runtime ACL retains the old grants and requires its scoped ordinary role receipt',()=>{
- const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259,261).map(name=>({
   path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
  }));
  const profile=qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]});
@@ -173,7 +173,7 @@ test('voucher runtime takes the original shared locks and installs only the addi
 
 test('261 competition ACL supplies exactly normal default INSERT additions and rejects mismatched pairings',()=>{
  const {PAYMENT261_COMPETITION_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
- const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259,261).map(name=>({
   path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
  }));
  const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
@@ -200,7 +200,7 @@ test('261 competition ACL supplies exactly normal default INSERT additions and r
 
 test('261 gap adds five opening defaults and voucher eleven with unchanged nonINSERT grants and lane limits',()=>{
  const {PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
- const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259,261).map(name=>({
   path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
  }));
  const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
@@ -281,7 +281,7 @@ test('three native proxy PK grants are narrow runtime selects in writer and inde
 
 test('native fixed ACL renderer changes only the fully verified endpoint and audits all three SQL outputs',()=>{
  const {renderNativeTask16RuntimeAcl}=require('./run-task16-native-direct-once.cjs');
- const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(0,261).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
  const witness={...source,profile:qualifyCurrent259Source({...material,migrations})},provisioned={...receipt(),commitXid:'1234',paymentProfile:PAYMENT261_RUNTIME_PROFILE};
  provisioned.databaseIdentity={...provisioned.databaseIdentity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54968};
  const original=renderCurrent259RuntimeAcl(witness,provisioned,nonce),actual=renderNativeTask16RuntimeAcl(JSON.stringify({source:witness,provisioned}),nonce);
@@ -302,7 +302,7 @@ test('native fixed ACL renderer changes only the fully verified endpoint and aud
 });
 test('cash grants and physical readback are bound to its own source and profile',()=>{
  const {PAYMENT261_CASH_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
- const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259,261).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
  const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
  const roles={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}],paymentProfile:PAYMENT261_CASH_RUNTIME_PROFILE};
  const acl=renderCurrent259CompetitionRuntimeAcl(witness,roles,nonce);
@@ -322,7 +322,7 @@ test('cash grants and physical readback are bound to its own source and profile'
 });
 test('cash allocation readback adds only observed ordering column to runtime',()=>{
  const profiles=require('./task16-current261-competition-profile.cjs');
- const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259,261).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
  const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
  const paired={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}]};
  const render=profile=>renderCurrent259CompetitionRuntimeAcl(witness,{...paired,paymentProfile:profile},nonce);
@@ -336,7 +336,7 @@ test('cash allocation readback adds only observed ordering column to runtime',()
 
 test('cash impact writer proof follows the later stored-watermark migration exactly',()=>{
  const {PAYMENT261_CASH_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
- const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259,261).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
  const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
  const roles={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}],paymentProfile:PAYMENT261_CASH_RUNTIME_PROFILE};
  const sql=renderCurrent259CompetitionRuntimeAcl(witness,roles,nonce).sql;
@@ -350,7 +350,7 @@ test('cash impact writer proof follows the later stored-watermark migration exac
 
 test('revocation writer and readback bind only the six source columns to observer',()=>{
  const profiles=require('./task16-current261-competition-profile.cjs');
- const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259,261).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))}));
  const witness={...source,profile:qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]})};
  const paired={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}]};
  const old=renderCurrent259VoucherRuntimeAcl(witness,{...paired,paymentProfile:profiles.PAYMENT261_VOUCHER_RUNTIME_PROFILE},nonce);
@@ -358,4 +358,28 @@ test('revocation writer and readback bind only the six source columns to observe
  const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);const difference=grants(added.sql).filter(x=>!grants(old.sql).includes(x));
  assert.deepEqual(difference,['GRANT SELECT ("amountYuan", "id", "projectId", "projectStatus", "registrationId", "sourceStatus") ON TABLE public."FundAccountSourceBatch" TO "jg_task01_observer";']);
  for(const sql of [added.sql,added.readbackSql]){const caps=JSON.parse(/report->'capabilities' = '([^']+)'::jsonb/u.exec(sql)[1]);const rows=caps.filter(r=>r[0]==='jg_task01_observer'&&r[2]==='FundAccountSourceBatch');assert.deepEqual(rows.map(r=>r[3]).sort(),['amountYuan','id','projectId','projectStatus','registrationId','sourceStatus']);assert.ok(rows.every(r=>r[1]==='column'&&r[4]==='SELECT'&&r[5]===false));}
+});
+
+test('native 262 fault ACL keeps ordinary grants and fails closed with a 261 role profile',()=>{
+ const {PAYMENT262_FAULT_RUNTIME_PROFILE}=require('./task16-current262-native-fault-profile.cjs');
+ const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(0,262).map(name=>({
+  path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql'))
+ }));
+ const witness={...source,profile:qualifyCurrent259Source({...material,migrations})};
+ const legacy={...source,profile:qualifyCurrent259Source({...material,migrations:migrations.slice(0,261)})};
+ const provisioned={...receipt(),commitXid:'1234',paymentProfile:PAYMENT262_FAULT_RUNTIME_PROFILE};
+ provisioned.databaseIdentity={...provisioned.databaseIdentity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54968};
+ const legacyReceipt={...provisioned,paymentProfile:PAYMENT261_RUNTIME_PROFILE};
+ const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);
+ const original=renderCurrent259RuntimeAcl(legacy,legacyReceipt,nonce);
+ for(const name of ['cancel','disconnect']){
+  const {renderNativeTask16RuntimeAcl}=require(`./run-task16-native-${name}-once.cjs`);
+  const actual=renderNativeTask16RuntimeAcl(JSON.stringify({source:witness,provisioned}),nonce);
+  assert.deepEqual(grants(actual.sql),grants(original.sql));
+  assert.match(actual.readbackSql,/jg_upward_archive_catalog_projection_v2/u);
+  assert.match(actual.readbackSql,/jg_upward_direct_archive_admission_v1/u);
+  assert.equal(actual.nativeAdmission,false);
+  assert.throws(()=>renderNativeTask16RuntimeAcl(JSON.stringify({source:witness,provisioned:legacyReceipt}),nonce));
+  assert.throws(()=>renderNativeTask16RuntimeAcl(JSON.stringify({source:legacy,provisioned}),nonce));
+ }
 });

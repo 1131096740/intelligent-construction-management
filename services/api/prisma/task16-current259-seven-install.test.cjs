@@ -345,6 +345,10 @@ test('native contract archive material binds the exact 262 ledger without admitt
  assert.match(beforeSql,/inet_server_port\(\) IS DISTINCT FROM 54204/u);
  const payment={source:witness,id,ordinary,runtime:roles[0],observer:roles[1],roleCommitXid:completion.commitXid,databaseAclAfter:databaseAcl.after};
  assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify(payment),0,nonce,null),/CURRENT259_SEVEN_INSTALL_QUALIFICATION/u);
+ const faultBefore=api.renderNativeTask16Fault262Seven(JSON.stringify(payment),0,nonce,null);
+ assert.ok(faultBefore.includes(terminal.name)&&faultBefore.includes(terminal.sha256));
+ assert.match(faultBefore,/inet_server_port\(\) IS DISTINCT FROM 54204/u);
+ assert.throws(()=>api.renderNativeTask16Fault262Seven(JSON.stringify({...payment,source:payment261Source}),0,nonce,null),/CURRENT259_SEVEN_INSTALL_QUALIFICATION/u);
 });
 
 test('native pure seven protocol retains the original qualified before SQL and rejects a different source',async()=>{
