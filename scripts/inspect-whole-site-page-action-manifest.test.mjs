@@ -9976,12 +9976,15 @@ for (const [label, change] of [
 
 async function actualPaperActionFixture(operation, change = source => source, bodyApiSource = null) {
   const pagePath = "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue";
-  const source = await readFile(new URL("../" + pagePath, import.meta.url), "utf8");
+  const paperSource = await readFile(new URL("../" + pagePath, import.meta.url), "utf8");
+  // Projection tests exercise the editor reader's warning normalization in the same paper proof.
+  const bodyReader = bodyApiSource ? "fetchContractDraftBody" : "fetchContractPaperDraftIdentity";
+  const source = paperSource.replaceAll("fetchContractPaperDraftIdentity", bodyReader);
   const apiFile = "apps/web-admin/src/api/contract-workbench.api.ts";
   const filesApi = "apps/web-admin/src/api/core-flow-read.api.ts";
   const reads = [
     [apiFile, "fetchContractDraftWorkbench", "GET /contract-drafts/:param/workbench"],
-    [apiFile, "fetchContractDraftBody", "GET /contract-drafts/:param/document-body"],
+    [apiFile, bodyReader, "GET /contract-drafts/:param/document-body"],
     [apiFile, "listContractDocuments", "GET /contract-workbench/:param/documents"],
     [filesApi, "getPrivateFileDownloadTicketCapability", "GET /files/:param/download-ticket-capability"]
   ];
@@ -10001,12 +10004,12 @@ async function actualPaperActionFixture(operation, change = source => source, bo
       capability: { kind: "available_action_string", source: capabilitySource, key },
       wrappers: [{ apiFile: targetApi, name }] })],
     wrappers: [
-      ...reads.map(([apiFile, name, normalizedKey]) => wrapper({ apiFile, name, normalizedKey, productionConsumers: [pagePath], returnProvenance: name === "fetchContractDraftBody" && bodyApiSource ? "unverified" : "transparent_main_response" })),
+      ...reads.map(([apiFile, name, normalizedKey]) => wrapper({ apiFile, name, normalizedKey, productionConsumers: [pagePath], returnProvenance: name === bodyReader && bodyApiSource ? "unverified" : "transparent_main_response" })),
       wrapper({ apiFile: targetApi, name, normalizedKey, productionConsumers: [pagePath] })
     ],
     routes: [...reads.map(([, , normalizedKey]) => route(normalizedKey)), route(normalizedKey)],
     extraFiles: {
-      [apiFile]: bodyApiSource ?? "export async function fetchContractDraftWorkbench() { return {}; }\nexport async function fetchContractDraftBody() { return {}; }\nexport async function listContractDocuments() { return []; }\nexport async function queueContractDraftPreview() { return {}; }\n",
+      [apiFile]: bodyApiSource ?? "export async function fetchContractDraftWorkbench() { return {}; }\nexport async function fetchContractPaperDraftIdentity() { return {}; }\nexport async function listContractDocuments() { return []; }\nexport async function queueContractDraftPreview() { return {}; }\n",
       [filesApi]: "export async function getPrivateFileDownloadTicketCapability() { return {}; }\nexport async function downloadPrivateFileByTicket() { return {}; }\n",
       "apps/web-admin/src/api/error-message.ts": await readFile(new URL("../apps/web-admin/src/api/error-message.ts", import.meta.url), "utf8"),
       "apps/web-admin/src/auth/auth.store.ts": "export function useAuthStore() { return { user: null }; }\n",
@@ -10699,7 +10702,10 @@ async function actualBodyWarningProjectionApi(change = source => source) {
   };
   return change(part("async function readJson<T>(", "\nasync function postJson<") + "\n" +
     part("export function fetchContractDraftWorkbench(", "\nexport interface ContractBodyEditPlan") + "\n" +
-    part("const approvedBodyWarnings =", "\nexport function fetchContractDraftOperationCapabilities(") +
+    part("const approvedBodyWarnings =", "\nexport function fetchContractPaperDraftIdentity(") +
+    // Isolate the warning projection from the editor's separate recovery projections.
+    part("export async function fetchContractDraftBody(", "  if(body.mechanicalContactLayoutVersion") +
+    "  return { ...body, warnings: normalizeBodyWarnings(body.warnings) };\n}\n" +
     "\nexport async function listContractDocuments() { return []; }\nexport async function queueContractDraftPreview() { return {}; }\n");
 }
 
