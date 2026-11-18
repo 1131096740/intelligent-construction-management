@@ -16737,6 +16737,130 @@ function frozenServerGrantPipelineProof({ action, wrapper, handler, context }) {
   return { verified: true, kind: "frozen_server_grant", capabilityWitness: true, capabilitySources: new Set([sourceIdentity]) };
 }
 
+const REGISTERED_PAYMENT_PANEL = `${WEB_SOURCE_ROOT}/pages/payments/RegisteredPaymentExecutionPanel.vue`;
+const REGISTERED_PAYMENT_API = `${WEB_SOURCE_ROOT}/api/registered-payment-execution.api.ts`;
+const PAYMENT_LOOKUP_ACTION = "registered-payment.lookup-original";
+const PAYMENT_RECOVERY_ROUTE = "POST /payment-executions/:param/recovery-proof";
+
+export async function proveReadOnlyPaymentRecovery(root) {
+  const modules = [
+    ["payment/registered-payment-execution.controller.ts", {
+      recoveryProof: ["this.executions.recoveryProof"]
+    }],
+    ["payment/registered-payment-execution.service.ts", {
+      recoveryProof: ["this.prisma.$transaction", "this.canRegister", "tx.paymentExecution.findUnique", "input.idempotencyKey.trim().toLowerCase", "input.idempotencyKey.trim", "currentRegisteredPaymentDomain", "tx.registeredPaymentFunding.findUnique", "registeredPaymentFingerprint", "new ForbiddenException"],
+      canRegister: ["this.roles.resolveActiveRoleScopesInTransaction", "roles.some", "[].includes"]
+    }],
+    ["payment/registered-payment-domain.ts", {
+      currentRegisteredPaymentDomain: ["tx.paymentRequest.findUnique", "[].includes", "tx.contractVersion.findUnique", "tx.paymentExecution.findMany", "registeredExecutionIsWageLinked"],
+      registeredExecutionIsWageLinked: ["tx.paymentExecutionWagePayableBinding.findFirst", "Boolean", "tx.historicalWageSummaryPaymentExecutionLink.findFirst"]
+    }],
+    ["auth/company-role-resolver.service.ts", {
+      resolveActiveRoleScopesInTransaction: ["this.resolveWithClient"],
+      resolveWithClient: ["client.user.findUnique", "new Error", "new Error", "client.userPosition.findMany", "new Error", "Array.from", "new Set", "assignments.map", "new Error", "client.position.findMany", "new Error", "new Map", "positions.map", "new Error", "positionIds.map", "positionsById.get", "roleKeys.some", "supportedRoleKeys.includes", "new Error", "Array.from().sort", "Array.from", "new Set"]
+    }],
+    ["payment/registered-payment-funding.ts", {
+      registeredPaymentFingerprint: ["createHash().update().digest", "createHash().update", "createHash", "JSON.stringify", "input.openingReason.trim", "input.openingEvidence.trim", "[].sort", "a.sourceBatchId.localeCompare", "input.contractHistoryConfirmation.reason.trim", "input.contractHistoryConfirmation.evidence.trim"]
+    }]
+  ];
+  const callPath = node => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "ThisExpression") return "this";
+    if (value?.type === "Identifier") return value.name;
+    if (value?.type === "ArrayExpression") return "[]";
+    if (value?.type === "CallExpression") return callPath(value.callee) + "()";
+    if (value?.type === "MemberExpression" && !value.computed && value.property.type === "Identifier") {
+      return callPath(value.object) + "." + value.property.name;
+    }
+    return "?";
+  };
+  for (const [relative, expected] of modules) {
+    const file = `services/api/src/${relative}`;
+    let ast;
+    try { ast = parseSource(file, await readFile(resolve(root, file), "utf8")); }
+    catch { return false; }
+    const definitions = new Map();
+    walkEstree(ast, node => {
+      const name = node.type === "FunctionDeclaration" ? node.id?.name :
+        node.type === "MethodDefinition" && !node.computed ? node.key.name : null;
+      if (name && Object.hasOwn(expected, name)) {
+        const bodies = definitions.get(name) ?? [];
+        bodies.push(node.body ?? node.value.body);
+        definitions.set(name, bodies);
+      }
+    });
+    for (const [name, allowed] of Object.entries(expected)) {
+      if (definitions.get(name)?.length !== 1) return false;
+      const calls = [];
+      let safe = true;
+      walkEstree(definitions.get(name)[0], node => {
+        if (node.type === "CallExpression" || node.type === "NewExpression") {
+          calls.push((node.type === "NewExpression" ? "new " : "") + callPath(node.callee));
+        }
+        if (["ImportExpression", "TaggedTemplateExpression", "UpdateExpression"].includes(node.type) ||
+            node.type === "AssignmentExpression" && (relative !== "auth/company-role-resolver.service.ts" ||
+              node.left.type !== "Identifier" || !["user", "assignments", "positions"].includes(node.left.name))) safe = false;
+      });
+      if (!safe || JSON.stringify(calls.sort()) !== JSON.stringify(allowed.sort())) return false;
+    }
+  }
+  return true;
+}
+
+function proveRegisteredPaymentPageAction({ action, wrapper, context, handler }) {
+  if (action.sourceFile !== REGISTERED_PAYMENT_PANEL || wrapper.apiFile !== REGISTERED_PAYMENT_API || handler.definitions.length !== 1) return null;
+  const source = context.source;
+  const definition = handler.definition;
+  const statements = definition.body?.body ?? [];
+  const syntax = node => node?.range ? normalizedSource(source.slice(...node.range)) : "";
+  const calls = importedWrapperCalls([definition], wrapper, context);
+  if (calls.length !== 1) return null;
+  const keys = normalizedMainRequests(wrapper).map(request => request.normalizedKey);
+  if (action.id === "registered-payment.register" && action.trigger.handler === "submit" && wrapper.name === "recordRegisteredPayment" &&
+      keys.length === 1 && keys[0] === "POST /payment-executions/:param/registrations") {
+    const direct = statements.find(statement =>
+      statement.type === "VariableDeclaration" && statement.kind === "const" &&
+      statement.declarations.some(declaration => declaration.init === calls[0]));
+    const within = statements.filter(statement => statement.range[1] <= (direct?.range[0] ?? 0));
+    const declarations = within.flatMap(statement => statement.type === "VariableDeclaration" && statement.kind === "const" ? statement.declarations : []);
+    const captured = (name, value) => declarations.some(declaration => declaration.id.name === name && syntax(declaration.init) === value);
+    const guard = (condition) => within.find(statement => statement.type === "IfStatement" && !statement.alternate &&
+      syntax(statement.test) === condition &&
+      (statement.consequent.type === "ReturnStatement" || statement.consequent.body?.at(-1)?.type === "ReturnStatement"));
+    const wait = within.find(statement => statement.type === "ExpressionStatement" && syntax(statement.expression) === "await draftQueue");
+    const persistence = within.find(statement => statement.type === "TryStatement" && statement.block.body.length === 1 &&
+      statement.handler?.body?.body?.at(-1)?.type === "ReturnStatement" &&
+      statement.block.body[0].type === "ExpressionStatement" &&
+      syntax(statement.block.body[0].expression) === 'saved=await withPaymentStorage(owner,storage=>writePendingPaymentAttempt(pointer,()=>storage,pendingAttempt.value?.phase === "prepared" ? pendingAttempt.value : undefined))');
+    const permission = guard("!allowed || !sameCommand"), actor = guard("!sameActor"), saved = guard("!saved.saved"), owner = guard("auth.user?.id!==owner || !paymentPanelActive");
+    if (!direct || !captured("command", "frozenCommand.value") || !captured("paymentId", "commandPaymentId.value") ||
+        !captured("allowed", "registrationAllowed.value") || !captured("owner", "commandUserId.value") ||
+        syntax(calls[0]) !== "recordRegisteredPayment(paymentId,command)" ||
+        ![permission, actor, wait, persistence, saved, owner].every((statement, index, ordered) =>
+          statement && (!index || ordered[index - 1].range[0] < statement.range[0]))) return null;
+    return { verified: true };
+  }
+  if (action.id !== PAYMENT_LOOKUP_ACTION || action.trigger.handler !== "queryOriginal" || !context.paymentRecoveryReadOnly || keys.length !== 1 ||
+      !["fetchRegisteredPaymentResult", "verifyRegisteredPaymentRecovery"].includes(wrapper.name) ||
+      keys[0] !== (wrapper.name === "verifyRegisteredPaymentRecovery" ? PAYMENT_RECOVERY_ROUTE : "GET /payment-executions/results/:param")) return null;
+  const full = source.slice(...definition.range);
+  if (!containsOrderedSourceFragments(full, [
+    "if (!frozenCommand.value || saving.value) return;", "if (auth.user?.id !== commandUserId.value)",
+    "await fetchRegisteredPaymentResult(frozenCommand.value.idempotencyKey)",
+    'if (result.status === "recorded")',
+    "result.execution.paymentId !== commandPaymentId.value",
+    "await verifyRegisteredPaymentRecovery(commandPaymentId.value,transportCommand(frozenCommand.value))"
+  ])) return null;
+  const attempt = statements.find(statement => statement.type === "TryStatement");
+  const bindingIsDirect = block => block?.body?.some(statement =>
+    statement.type === "VariableDeclaration" && statement.kind === "const" &&
+    statement.declarations.some(declaration => declaration.init?.type === "AwaitExpression" && declaration.init.argument === calls[0]));
+  const recorded = attempt?.block?.body?.find(statement => statement.type === "IfStatement" &&
+    staticMemberPath(statement.test?.left) === "result.status" && literalString(statement.test.right) === "recorded" && statement.test.operator === "===");
+  if (!bindingIsDirect(wrapper.name === "verifyRegisteredPaymentRecovery" ? recorded?.consequent : attempt?.block)) return null;
+  return { verified: true, readOnlyWitness: true };
+}
+
 function proveBusinessActionPipeline({ action, wrapper, context }) {
   const specializedProof = SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
     GENERATED_ARCHIVE_ACTIONS.has(action.id) ? proveGeneratedArchivePageAction : null;
@@ -16767,6 +16891,9 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
     context
   );
   if (targetCalls !== 1) return null;
+
+  const paymentProof = proveRegisteredPaymentPageAction({ action, wrapper, context, handler });
+  if (paymentProof) return paymentProof;
 
   const frozenGrantProof = frozenServerGrantPipelineProof({ action, wrapper, handler, context });
   if (frozenGrantProof) return frozenGrantProof;
@@ -21531,6 +21658,7 @@ export async function inspectWholeSitePageActionManifest({
       `${WEB_SOURCE_ROOT}/components/BusinessDraftAction.vue`
     )
   );
+  const paymentRecoveryReadOnly = registryActions.some(action => action.id === PAYMENT_LOOKUP_ACTION) && await proveReadOnlyPaymentRecovery(resolvedRoot);
   for (const action of registryActions) {
     const source = sources.get(action.sourceFile);
     const ast = asts.get(action.sourceFile);
@@ -21636,6 +21764,7 @@ export async function inspectWholeSitePageActionManifest({
     }
     const capabilityContext = {
       actionId: action.id,
+      paymentRecoveryReadOnly,
       candidate,
       nestRouteIndex,
       symbols,
@@ -21747,9 +21876,10 @@ export async function inspectWholeSitePageActionManifest({
         }
       }
     }
-    const writes = bindings.some((binding) =>
-      isMutationRequest(binding)
-    );
+    const paymentLookupProven = action.id === PAYMENT_LOOKUP_ACTION && bindings.length === 2 &&
+      bindings.some(binding => binding.normalizedKey === PAYMENT_RECOVERY_ROUTE && binding.nestRoute?.authentication === "authenticated") &&
+      bindings.every(binding => capabilityContext.pipelineProofs?.get(wrapperIdentity(binding.apiFile, binding.wrapper))?.readOnlyWitness === true);
+    const writes = !paymentLookupProven && bindings.some(isMutationRequest);
     const pipelineDominates =
       mutationBindings.length > 0 &&
       mutationBindings.every((binding) =>
@@ -21919,8 +22049,8 @@ export async function inspectWholeSitePageActionManifest({
     } else if (action.capability.kind === "none" && !(
       (capabilityContext.directRegistrationLookupVerified ||
         [...(capabilityContext.pipelineProofs?.values() ?? [])].some(proof => proof.readOnlyWitness === true)) &&
-      action.semantic === "read_only" && !writes && bindings.length === 1 &&
-      bindingUpstreamAssociationIsTrusted({ binding: bindings[0], webManifest, nestManifest })
+      action.semantic === "read_only" && !writes && (bindings.length === 1 || paymentLookupProven) &&
+      bindings.every(binding => bindingUpstreamAssociationIsTrusted({ binding, webManifest, nestManifest }))
     )) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({

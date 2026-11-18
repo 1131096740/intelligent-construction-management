@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 733,
-    "exactRouteCount": 733,
-    "normalizedRouteCount": 733,
+    "routeCount": 734,
+    "exactRouteCount": 734,
+    "normalizedRouteCount": 734,
     "classificationOverrideCount": 217,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
     "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 516,
-    "pageRouteCount": 534,
+    "derivedProductionPageCount": 517,
+    "pageRouteCount": 535,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 587,
+      "web_api_wrapper": 588,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 587,
+    "productionWrapperRouteCount": 588,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 3
   },
@@ -2071,7 +2071,16 @@
             "normalizedKey": "GET /contract-drafts/:param/document-body",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchContractPaperDraftIdentity",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/document-body",
+            "normalizedKey": "GET /contract-drafts/:param/document-body",
+            "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
             ]
           }
@@ -21064,6 +21073,47 @@
             "method": "POST",
             "normalizedPath": "/payment-executions/:param/voucher-file-uploads",
             "normalizedKey": "POST /payment-executions/:param/voucher-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payment-executions/:paymentId/recovery-proof",
+      "normalizedKey": "POST /payment-executions/:param/recovery-proof",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "recoveryProof",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+            "wrapper": "verifyRegisteredPaymentRecovery",
+            "method": "POST",
+            "normalizedPath": "/payment-executions/:param/recovery-proof",
+            "normalizedKey": "POST /payment-executions/:param/recovery-proof",
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
             ]

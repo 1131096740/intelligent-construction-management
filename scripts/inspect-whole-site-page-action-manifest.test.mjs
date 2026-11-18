@@ -14,6 +14,7 @@ import test from "node:test";
 
 import {
   inspectWholeSitePageActionManifest,
+  proveReadOnlyPaymentRecovery,
   renderWholeSitePageActionManifest,
   verifyDocumentContentCoordinatesFunctionSource,
   verifyFinalContractDraftRevisionGuardSource,
@@ -10966,4 +10967,27 @@ for (const [label, expression] of [["bare member", "error.message"], ["unary coe
   const manifest = await inspectWholeSitePageActionManifest({ root });
   assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
   assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("payment recovery POST closes its transitive read-only database proof when a write appears", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jgzg-payment-recovery-proof-"));
+  const sourcePaths = [
+    "payment/registered-payment-execution.controller.ts",
+    "payment/registered-payment-execution.service.ts",
+    "payment/registered-payment-domain.ts",
+    "payment/registered-payment-funding.ts",
+    "auth/company-role-resolver.service.ts"
+  ].map(relative => "services/api/src/" + relative);
+  try {
+    const sources = await Promise.all(sourcePaths.map(path => readFile(new URL("../" + path, import.meta.url), "utf8")));
+    await Promise.all(sourcePaths.map((path, index) => write(root, path, sources[index])));
+    assert.equal(await proveReadOnlyPaymentRecovery(root), true);
+    await write(root, sourcePaths[1], sources[1].replace("const funding = await tx.registeredPaymentFunding.findUnique", "const funding = await tx.registeredPaymentFunding.update"));
+    assert.equal(await proveReadOnlyPaymentRecovery(root), false);
+    await write(root, sourcePaths[1], sources[1]);
+    await write(root, sourcePaths[4], sources[4].replace("client.position.findMany", "client.position.deleteMany"));
+    assert.equal(await proveReadOnlyPaymentRecovery(root), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
