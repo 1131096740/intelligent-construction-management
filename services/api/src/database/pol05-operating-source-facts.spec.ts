@@ -321,12 +321,28 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           paymentMethod: "bank_transfer", handlerUserId: fixture.financeUserId,
           applicantUserId: fixture.financeUserId, status: "approved_pending_payment",
         } });
-        await expect(owner.$executeRaw`
-          INSERT INTO public."ProjectExpenseExecution"
-            ("id", "idempotencyKey", "projectExpenseRequestId", "projectId", "amountCents", "paidAt", "executedByUserId", "voucherFileId")
-          VALUES (${randomUUID()}, ${randomUUID()}, ${expense.id}, ${fixture.projectId}, 100, now(),
-            ${fixture.financeUserId}, ${voucher.id})
-        `).rejects.toThrow("该文件已绑定其他业务记录，不能重复使用");
+        const constraint = await owner.$transaction(async tx => {
+          await tx.$executeRaw`
+            CREATE FUNCTION pg_temp.try_owner_voucher_rebind(
+              execution_id TEXT, request_key TEXT, expense_id TEXT, project_id TEXT, actor_id TEXT, voucher_id TEXT
+            ) RETURNS TEXT LANGUAGE plpgsql AS $$
+            DECLARE violated TEXT;
+            BEGIN
+              INSERT INTO public."ProjectExpenseExecution"
+                ("id", "idempotencyKey", "projectExpenseRequestId", "projectId", "amountCents", "paidAt", "executedByUserId", "voucherFileId")
+              VALUES (execution_id, request_key, expense_id, project_id, 100, now(), actor_id, voucher_id);
+              RETURN NULL;
+            EXCEPTION WHEN unique_violation THEN
+              GET STACKED DIAGNOSTICS violated = CONSTRAINT_NAME;
+              RETURN violated;
+            END $$;
+          `;
+          return tx.$queryRaw<Array<{ constraint: string }>>`
+            SELECT pg_temp.try_owner_voucher_rebind(${randomUUID()}, ${randomUUID()}, ${expense.id},
+              ${fixture.projectId}, ${fixture.financeUserId}, ${voucher.id}) AS "constraint"
+          `;
+        });
+        expect(constraint).toEqual([{ constraint: "exclusive_file_business_binding_guard" }]);
         expect(await owner.projectExpenseExecution.count({ where: { projectExpenseRequestId: expense.id } })).toBe(0);
       }
 
