@@ -214,14 +214,17 @@ describe("task10 fixed labor primary roles through public HTTP", () => {
       expect(queued).toBeDefined();
       expect(queued).toMatchObject({ status: "queued", layoutTemplateVersionId: layout.id, documentContentRevision: wb.version.documentContentRevision, documentContentFingerprint: wb.version.documentContentFingerprint,
         inputSnapshot: { documentContentRevision: wb.version.documentContentRevision, documentContentFingerprint: wb.version.documentContentFingerprint,
+          laborMainSignaturePageVersion: "built-in-labor-main-signature-page-v1",
           bodyDocument: { protocolVersion: 1, sourceSha256: sourceSha, layoutTemplateVersionId: layout.id, typographyVersion: expectedVersion, renderSemanticVersion: "contract-money-v1", tableLayoutVersion: "body-bill-loop-v2" },
           renderInput: { values: { "contract.reviewedLaborTaxBindingVersion": "reviewed-labor-tax-v1", "contract.taxRateLabel": "0%", "contract.amountBasis": "tax_inclusive", "contract.taxInclusiveAmount": "600.0000", "contract.taxExclusiveAmount": "600.0000", "contract.taxAmount": "0.0000", "contract.typographyVersion": expectedVersion, "contract.renderSemanticVersion": "contract-money-v1", "contract.tableLayoutVersion": "body-bill-loop-v2" } } } });
       expect(Object.hasOwn(queued.inputSnapshot.bodyDocument, "typographyVersion")).toBe(true);
       expect(Object.hasOwn(queued.inputSnapshot.renderInput.values, "contract.typographyVersion")).toBe(true);
       const keyTuple = [draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lockSha, "contract-money-v1", "body-bill-loop-v2", "reviewed-labor-tax-v1", expectedVersion,
-        "built-in-automatic-party-guard-v1:built-in-labor-signature-review-v3"];
+        "built-in-automatic-party-guard-v1:built-in-labor-signature-review-v3", "built-in-labor-main-signature-page-v1"];
       const expectedKey = createHash("sha256").update(JSON.stringify(keyTuple)).digest("hex");
       expect(queued.idempotencyKey).toBe(expectedKey);
+      const historicalKey = createHash("sha256").update(JSON.stringify(keyTuple.slice(0, -1))).digest("hex");
+      expect(queued.idempotencyKey).not.toBe(historicalKey);
       await writeFile(join(directory, "public-queued-key.json"), JSON.stringify({ keyTuple, expectedKey, queued }, null, 2));
       const stableBodyResponse = await fetch(draft.base + "/document-body", { headers: draft.headers });
       expect(stableBodyResponse.status).toBe(200);
