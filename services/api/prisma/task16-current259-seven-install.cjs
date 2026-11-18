@@ -643,8 +643,7 @@ SET LOCAL search_path=pg_catalog,pg_temp;`;
 }
 // Pure native diagnostic SQL/readback only. No installed WeakMap entry or
 // original owned-resource continuation is issued by these data functions.
-function nativeSevenInput(text,paymentProfile=require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE){
- need([require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE,require('./task16-current261-competition-profile.cjs').PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE].includes(paymentProfile),'NATIVE_INPUT');
+function nativeSevenContext(text){
  need(typeof text==='string'&&Buffer.byteLength(text)<=512*1024,'NATIVE_INPUT');const value=JSON.parse(text);
  need(value&&Object.getPrototypeOf(value)===Object.prototype&&equal(Object.keys(value).sort(),['source','id','ordinary','runtime','observer','roleCommitXid','databaseAclAfter'].sort()),'NATIVE_INPUT');
  const {source,id,ordinary,runtime,observer}=value;
@@ -654,8 +653,12 @@ function nativeSevenInput(text,paymentProfile=require('./task16-current259-profi
   runtime.name==='jg_task01_runtime'&&observer.name==='jg_task01_observer'&&[runtime,observer].every(r=>oid(r.oid)&&r.limit===1&&r.login===true&&r.password==='scram')&&
   new Set(['10',ordinary.oid,runtime.oid,observer.oid]).size===4,'NATIVE_INPUT');
  need(xid(value.roleCommitXid)&&Array.isArray(value.databaseAclAfter)&&value.databaseAclAfter.length>=1&&value.databaseAclAfter.length<=4,'NATIVE_INPUT');
- return {...value,roleCompletion:{commitXid:value.roleCommitXid,databaseAcl:{after:value.databaseAclAfter}},competition:false,paymentProfile,
-  material:material(source,false,paymentProfile)};
+ return {...value,roleCompletion:{commitXid:value.roleCommitXid,databaseAcl:{after:value.databaseAclAfter}},competition:false};
+}
+function nativeSevenInput(text,paymentProfile=require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE){
+ need([require('./task16-current259-profile.cjs').PAYMENT261_RUNTIME_PROFILE,require('./task16-current261-competition-profile.cjs').PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE].includes(paymentProfile),'NATIVE_INPUT');
+ const context=nativeSevenContext(text);
+ return {...context,paymentProfile,material:material(context.source,false,paymentProfile)};
 }
 function renderNativeTask16Seven(inputJson,phase,nonce,priorStdout){
  need(arguments.length===4&&[0,1,2].includes(phase)&&hex(nonce,64)&&(phase===0?priorStdout===null:typeof priorStdout==='string'),'NATIVE_INPUT');
@@ -681,8 +684,8 @@ function createNativeTask12ArchiveSevenMaterial(text,nonce){
  const {source,completion,serverPort}=value,id=completion.databaseIdentity;
  need(id&&id.serverPort===serverPort&&id.actorOid==='10'&&id.actor==='jg_task01_owner'&&id.sessionActor===id.actor&&Array.isArray(completion.roles)&&completion.roles.length===9,'NATIVE_INPUT');
  const role=name=>{const rows=completion.roles.filter(row=>row.name===name);need(rows.length===1,'NATIVE_INPUT');return rows[0];};
- const input=nativeSevenInput(JSON.stringify({source,id,ordinary:completion.ordinary,runtime:role('jg_task01_runtime'),observer:role('jg_task01_observer'),roleCommitXid:completion.commitXid,databaseAclAfter:completion.databaseAcl.after}));
- input.paymentProfile=undefined;input.material=material(input.source,true,undefined);input.roleCompletion={...input.roleCompletion,roles:completion.roles};
+ const context=nativeSevenContext(JSON.stringify({source,id,ordinary:completion.ordinary,runtime:role('jg_task01_runtime'),observer:role('jg_task01_observer'),roleCommitXid:completion.commitXid,databaseAclAfter:completion.databaseAcl.after}));
+ const input={...context,material:material(context.source,true),roleCompletion:{...context.roleCompletion,roles:completion.roles}};
  const original=archiveInputMaterial(input,nonce);
  return Object.freeze({beforeSql:bindNativeTask12ArchiveEndpointSql(original.beforeSql,serverPort),readBefore(result){
   const found=original.readBefore(result);return Object.freeze({...found,

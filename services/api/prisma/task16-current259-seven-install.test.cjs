@@ -14,6 +14,7 @@ const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\
 const sourceFor=rows=>({candidateSha,sourceSealSha256:sealSha256,profile:qualifyCurrent259Source({candidateSha,sealSha256,
  schemaSha256:hash(read('schema.prisma')),migrations:rows})});
 const source=sourceFor(migrations.slice(0,259));
+const payment261Source=sourceFor(migrations.slice(0,261));
 const runId='12345678-1234-4234-8234-123456789012',database='jg_task01_'+runId.replaceAll('-','');
 const containerId='c'.repeat(64),nonce='d'.repeat(64);
 const identity={database,databaseOid:'90',namespaceOid:'2200',ownerOid:'10',systemIdentifier:'1234567890123456789'};
@@ -56,7 +57,7 @@ function fixture(mutate,competition=false,migrationDrift,{witness=source,payment
  return {api:holder.exports,handle,token,metadata,suppliedRoles,forbidFull(){forbidFull=true;},calls,closed:()=>closed};
 }
 test('standalone payment261 requires the private payment profile and attests both rows in all owner phases',async()=>{
- const witness=sourceFor(migrations);
+ const witness=payment261Source;
  const archive=fixture(undefined,false,undefined,{witness});
  await assert.rejects(archive.api.installCurrent259SevenFragments(archive.suppliedRoles,archive.handle),/PRESTATE_REJECTED/u);
  assert.equal(archive.calls.length,0);
@@ -328,8 +329,26 @@ test('pure auth archive material uses identical SQL with fixed distinct status a
  let getters=0;const hostile={...auth};Object.defineProperty(hostile,'executionPurpose',{get(){getters++;return 'AUTH_ONLY_DIAGNOSTIC';}});assert.throws(()=>f.api.archiveSevenAuthOnlyDiagnosticMaterial(hostile,view,nonce));assert.equal(getters,0);
 });
 
-test('native pure seven protocol retains the original qualified before SQL and rejects a different source',async()=>{
+test('native contract archive material binds the exact 262 ledger without admitting payments', () => {
  const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations);
+ const serverPort=54204;
+ const id={...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort,actorOid:'10',actor:'jg_task01_owner',sessionActor:'jg_task01_owner'};
+ const archiveRoles=['jg_c259_outside_issuer_login','jg_c259_outside_issuer_owner','jg_c259_outside_executor_login',
+  'jg_c259_outside_executor_owner','jg_c259_upward_issuer_login','jg_c259_upward_issuer_owner','jg_c259_upward_runtime_login']
+  .map((name,index)=>({name,oid:String(220+index),login:name.endsWith('_login')}));
+ const completion={...roleCompletion,databaseIdentity:id,roles:[...roles,...archiveRoles]};
+ const input={source:witness,completion,serverPort};
+ assert.equal(witness.profile.profile,'TASK12_ARCHIVE262_SOURCE_V1');
+ const {beforeSql}=api.createNativeTask12ArchiveSevenMaterial(JSON.stringify(input),nonce);
+ const terminal=witness.profile.ledger.at(-1);
+ assert.ok(beforeSql.includes(terminal.name)&&beforeSql.includes(terminal.sha256));
+ assert.match(beforeSql,/inet_server_port\(\) IS DISTINCT FROM 54204/u);
+ const payment={source:witness,id,ordinary,runtime:roles[0],observer:roles[1],roleCommitXid:completion.commitXid,databaseAclAfter:databaseAcl.after};
+ assert.throws(()=>api.renderNativeTask16Seven(JSON.stringify(payment),0,nonce,null),/CURRENT259_SEVEN_INSTALL_QUALIFICATION/u);
+});
+
+test('native pure seven protocol retains the original qualified before SQL and rejects a different source',async()=>{
+ const api=require('./task16-current259-seven-install.cjs'),witness=payment261Source;
  const f=fixture(undefined,false,undefined,{witness,paymentProfile:PAYMENT261_RUNTIME_PROFILE});
  await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
  const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,roleCommitXid:f.suppliedRoles.commitXid,databaseAclAfter:f.suppliedRoles.databaseAcl.after,runtime:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_runtime'),observer:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_observer')};
@@ -345,7 +364,7 @@ test('native pure seven protocol retains the original qualified before SQL and r
 });
 
 test('native competition261 seven protocol preserves all three original SQL stages with exactly two runtime lanes',async()=>{
- const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations),paymentProfile='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
+ const api=require('./task16-current259-seven-install.cjs'),witness=payment261Source,paymentProfile='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
  const f=fixture(undefined,true,undefined,{witness,paymentProfile});f.suppliedRoles.paymentProfile=paymentProfile;
  await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
  const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,
@@ -369,7 +388,7 @@ test('native competition261 seven protocol preserves all three original SQL stag
 });
 
 test('native gap261 seven protocol binds exact gap profile and one runtime lane',async()=>{
- const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations),paymentProfile='TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1';
+ const api=require('./task16-current259-seven-install.cjs'),witness=payment261Source,paymentProfile='TASK16_PAYMENT261_ATTRIBUTION_GAP_RUNTIME_V1';
  const f=fixture(undefined,false,undefined,{witness,paymentProfile});
  await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
  const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,roleCommitXid:f.suppliedRoles.commitXid,databaseAclAfter:f.suppliedRoles.databaseAcl.after,runtime:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_runtime'),observer:f.suppliedRoles.roles.find(r=>r.name==='jg_task01_observer')};
@@ -387,7 +406,7 @@ test('native gap261 seven protocol binds exact gap profile and one runtime lane'
 });
 
 test('native voucher261 seven protocol preserves all three original SQL stages with exactly two runtime lanes',async()=>{
- const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations),paymentProfile='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
+ const api=require('./task16-current259-seven-install.cjs'),witness=payment261Source,paymentProfile='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
  const f=fixture(undefined,true,undefined,{witness,paymentProfile});f.suppliedRoles.paymentProfile=paymentProfile;
  await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
  const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,
@@ -416,7 +435,7 @@ test('native voucher261 seven protocol preserves all three original SQL stages w
 });
 
 test('native cash261 seven protocol preserves all three original SQL stages with exactly two runtime lanes',async()=>{
- const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations),paymentProfile='TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1';
+ const api=require('./task16-current259-seven-install.cjs'),witness=payment261Source,paymentProfile='TASK16_PAYMENT261_PUBLIC_CASH_RUNTIME_V1';
  const f=fixture(undefined,true,undefined,{witness,paymentProfile});f.suppliedRoles.paymentProfile=paymentProfile;
  await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
  const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,
@@ -440,7 +459,7 @@ test('native cash261 seven protocol preserves all three original SQL stages with
 });
 
 test('native revocation261 seven protocol preserves all three original SQL stages with exactly two runtime lanes',async()=>{
- const api=require('./task16-current259-seven-install.cjs'),witness=sourceFor(migrations),paymentProfile='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
+ const api=require('./task16-current259-seven-install.cjs'),witness=payment261Source,paymentProfile='TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
  const f=fixture(undefined,true,undefined,{witness,paymentProfile});f.suppliedRoles.paymentProfile=paymentProfile;
  await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
  const input={source:witness,id:{...identity,tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:54204},ordinary,
