@@ -134,7 +134,7 @@ jobs:
           shard="${API_TEST_TARGET#api-}"
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
           tests=$(pnpm --filter @jiangkong/api exec jest --listTests --runInBand --config jest.runtime.config.cjs --shard="$shard/4")
-          if grep -q '/task10-labor-signature-recovery-browser\.http\.spec\.ts$' <<< "$tests"; then
+          if grep -Eq '/task10-(labor-signature-recovery|signature-review)-browser\.http\.spec\.ts$' <<< "$tests"; then
             pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
           fi
           pnpm --filter @jiangkong/api run test --runInBand --config jest.runtime.config.cjs --shard="$shard/4"
