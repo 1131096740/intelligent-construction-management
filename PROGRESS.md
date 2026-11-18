@@ -1,5 +1,14 @@
 # 建工智管当前状态
 
+## 2026-11-18 #382 接续集成
+
+[父任务 #382](https://github.com/1131096740/intelligent-construction-management/issues/382) 的 45 个子任务中 14 个关闭、31 个开放。当前可领取的只有 #394（合同审批归档）和 #398（实付安全）。本地接续集成分支为 `codex/382-integration-1118`。GitHub [PR #428](https://github.com/1131096740/intelligent-construction-management/pull/428) 目前为草稿，准确远端 `2907d95de41c59352601e549ca440ef1e65ddda5` 的 [CI](https://github.com/1131096740/intelligent-construction-management/actions/runs/43880093163) 32 项通过。
+
+- #394 在本地集成 `432f4028f9433c86457d5b0d3d575c50bdec725e` 将验证入口与完整迁移账绑定。27 项定向检查通过，真实独占 PostgreSQL 16 完成 262 个迁移并通过 Nest 队列场景。完整链在数据库创建前的 LibreOffice 二进制摘要校验处停止。[合同验证回执](/Users/leoyang/.codex/visualizations/2026/11/18/01a1ecd7-e4ad-78d1-a2c8-f0cb9a56745b/task12-262/README.md)
+- #398 在 `81fea672726ef906ba05f03d90ed22906efb91df` 的标准真实隔离组合链验证了签名审批、两家公司的分次实付、公共现金、凭证后补下载、待办结束及独立核账。262 个迁移的精确账核对及 8 项集成测试通过。同一源码的真实 PG、Chromium 两阶段验证通过，终态单独落回执。[浏览器终态](/private/tmp/jg398-browser-evidence-pRmpEG/receipt-complete.json) Web 定向 78 项、typecheck、check:ui 通过，lint 0 错误、1155 警告。原生付款运行资格与结果未知的历史场景仍需各按其准确证据核验。[标准隔离付款日志](/private/tmp/jg398-81fea-standard-Ma1Evo/run.log)
+
+本轮未推送、关票、合并主分支或部署。继续推进两项业务链及剩余验收，待各自整票通过后按依赖领取下游。
+
 ## 2026-11-18 合同银行资料隔离验证
 
 准确本地提交 `1b938d2f53e8d963ba2a3ec4eb15c03e825f3414` 的合同草稿组在全新虚构 PostgreSQL 16 中完成 262 个迁移，6 套测试 31/31 通过；包括公司银行绑定保存、重载、旧版本拒绝、新版本重新绑定及旧处理中合同文书失效。[运行日志](/private/tmp/jg392-company-bank-pg-1118-ceZV3C/official-run-262-local2.log) SHA `8f46ed2da12cb5962773abe4f0eb567244fba067adb01b30b1b80e3d8b6e5ab2`；[独立清理核对](/private/tmp/jg392-company-bank-pg-1118-ceZV3C/cleanup-independent.json) SHA `c66bfb670ce13ab3523a8afe48b9f27433734bacdb9b3ed29e9253a562c0e268` 确认记录的本轮容器和临时目录已不存在；未独立检查主机端口或其他资源。该银行测试仅覆盖顺序版本变化，不证明并发或完整合同业务链。
