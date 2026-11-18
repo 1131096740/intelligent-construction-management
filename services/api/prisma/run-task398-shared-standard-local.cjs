@@ -4,7 +4,7 @@
 // until its resource, role and payment-guard setup has been independently reviewed.
 const {randomUUID,randomBytes}=require("node:crypto");
 const {spawnSync}=require("node:child_process");
-const {mkdtempSync,readFileSync,rmSync,chmodSync,realpathSync,mkdirSync}=require("node:fs");
+const {mkdtempSync,readFileSync,rmSync,chmodSync,realpathSync,mkdirSync,writeFileSync}=require("node:fs");
 const {tmpdir}=require("node:os");
 const path=require("node:path");
 const {createCommandRuntime}=require("./money-bigint-runner-runtime.cjs");
@@ -159,7 +159,7 @@ async function run(){
  endpoint=process.env.DOCKER_HOST||command("docker",["context","inspect","--format","{{.Endpoints.docker.Host}}"],{quiet:true});
  if(!endpoint.startsWith("unix://"))throw new Error("TASK398_LOCAL_ONLY");
  launchAttempted=true;
- const launchedId=docker(["run","--detach","--rm","--pull=never","--name",name,"--label",`${CI_DYNAMIC_MIGRATION_LABEL}=${runId}`,"--env","POSTGRES_PASSWORD","--env","POSTGRES_USER=jiangkong", "--env",`POSTGRES_DB=${db}`,"--publish","127.0.0.1::5432","postgres:16","-c","log_destination=stderr","-c","logging_collector=off","-c","log_line_prefix=JG398|%a|%d|%p|%e|","-c","log_min_messages=error","-c","log_error_verbosity=default","-c","log_statement=none","-c","log_min_error_statement=panic","-c","log_parameter_max_length_on_error=0"],{env:{...process.env,POSTGRES_PASSWORD:password},quiet:true});
+ const launchedId=docker(["run","--detach","--rm","--pull=never","--name",name,"--label",`${CI_DYNAMIC_MIGRATION_LABEL}=${runId}`,"--env","POSTGRES_PASSWORD","--env","POSTGRES_USER=jiangkong", "--env",`POSTGRES_DB=${db}`,"--publish","127.0.0.1::5432","postgres:16","-c","log_destination=stderr","-c","logging_collector=off","-c","log_line_prefix=JG398|%a|%d|%p|%e|","-c","log_min_messages=error","-c",transferScenario?"log_error_verbosity=verbose":"log_error_verbosity=default","-c","log_statement=none","-c","log_min_error_statement=panic","-c","log_parameter_max_length_on_error=0"],{env:{...process.env,POSTGRES_PASSWORD:password},quiet:true});
  if(!/^[a-f0-9]{64}$/u.test(launchedId))throw new Error("TASK398_CONTAINER_ID");
  containerId=launchedId;
  const binding=docker(["port",containerId,"5432/tcp"],{quiet:true}),port=/^127\.0\.0\.1:(\d+)$/u.exec(binding)?.[1];if(!port)throw new Error("TASK398_LOOPBACK_ONLY");
@@ -210,7 +210,14 @@ async function run(){
  if(ledgerLossScenario)env.TASK398_LEDGER_LOSS_MODE="1";
  if(transferScenario){env.TASK406_TRANSFER_MODE="1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
  if(browserScenario){const evidenceDir=realpathSync(mkdtempSync("/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
- command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",scenario],{env,timeout:300000});
+ try{command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",scenario],{env,timeout:300000});}
+ catch(error){
+  if(transferScenario)try{
+   const native=spawnSync("docker",["--host",endpoint,"logs","--tail","80",containerId],{cwd:root,timeout:3000,maxBuffer:256*1024});
+   if(native.status===0)writeFileSync(path.join(privateLogDir,"transfer-postgresql.log"),Buffer.concat([native.stdout,native.stderr]),{mode:0o600,flag:"wx"});
+  }catch{ /* Preserve the original failed business command and let owned cleanup run. */ }
+  throw error;
+ }
  if(command("git",["rev-parse","HEAD"],{quiet:true})!==candidate||command("git",["status","--porcelain"],{quiet:true})!=="")throw new Error("TASK398_CANDIDATE_CHANGED");
 }
 let businessPassed=false;

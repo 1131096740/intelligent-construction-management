@@ -196,7 +196,7 @@ DO $$ BEGIN
 END $$;
 
 CREATE FUNCTION public."jg_registered_fund_transfer_consistency"() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
-DECLARE transfer_id TEXT; t public."RegisteredFundTransfer"; a public."RegisteredFundTransferAction";
+DECLARE transfer_id TEXT; t public."RegisteredFundTransfer"; command_receipt public."RegisteredFundTransferAction";
   receipt public."FundAccountBalanceRegistration"; previous public."FundAccountBalanceRegistration";
   outgoing public."FundAccountBalanceRegistration"; incoming public."FundAccountBalanceRegistration";
 BEGIN
@@ -205,11 +205,11 @@ BEGIN
  END IF;
  IF transfer_id IS NULL THEN RETURN NULL; END IF;
  SELECT * INTO STRICT t FROM public."RegisteredFundTransfer" WHERE "id"=transfer_id;
- SELECT * INTO STRICT a FROM public."RegisteredFundTransferAction" WHERE "transferId"=transfer_id AND "revision"=t."revision";
- IF a."status"<>t."status" OR a."action" IS DISTINCT FROM (CASE t."status"
+ SELECT * INTO STRICT command_receipt FROM public."RegisteredFundTransferAction" WHERE "transferId"=transfer_id AND "revision"=t."revision";
+ IF command_receipt."status"<>t."status" OR command_receipt."action" IS DISTINCT FROM (CASE t."status"
   WHEN 'pending_receipt' THEN CASE WHEN t."revision"=1 THEN 'register' ELSE 'resubmit' END
   WHEN 'rejected_held' THEN 'reject' WHEN 'received' THEN 'confirm' ELSE 'return' END)
-  OR (a."action" IN ('register','resubmit','return') AND a."actorUserId"<>t."createdByUserId")
+  OR (command_receipt."action" IN ('register','resubmit','return') AND command_receipt."actorUserId"<>t."createdByUserId")
   OR (SELECT count(*) FROM public."RegisteredFundTransferAction" WHERE "transferId"=transfer_id)<>t."revision"
   OR (SELECT coalesce(sum("amountYuan"),0) FROM public."RegisteredFundTransferLine" WHERE "transferId"=transfer_id)<>t."amountYuan" THEN
   RAISE EXCEPTION 'fund transfer and its lines or action evidence do not agree';
@@ -230,7 +230,7 @@ BEGIN
     SELECT 1 FROM public."FundAccountBalanceRegistration" other
     WHERE other."accountId"=receipt."accountId" AND other."status"='confirmed' AND other."version">previous."version" AND other."version"<receipt."version"
    ) OR previous."coveredExecutionIds"<>receipt."coveredExecutionIds" OR previous."asOfDate"<>receipt."asOfDate" OR
-   receipt."createdByUserId"<>a."actorUserId" OR receipt."confirmedByUserId"<>a."actorUserId" OR
+   receipt."createdByUserId"<>command_receipt."actorUserId" OR receipt."confirmedByUserId"<>command_receipt."actorUserId" OR
    receipt."balanceYuan"<>previous."balanceYuan"+(CASE WHEN receipt."accountId"=t."sourceAccountId" THEN -t."amountYuan" ELSE t."amountYuan" END)
   THEN RAISE EXCEPTION 'fund transfer receipt changes only its own conserved balance'; END IF;
   IF EXISTS (
