@@ -185,7 +185,7 @@ async function run(command: PrincipalReturnCommand, mode: "new" | "check" | "ret
       selected.value = null;
       notice.value = "原办理结果待核对。请查询回执，或使用原内容继续办理。";
     } else if (result.kind === "rejected") {
-      error.value = result.error.message;
+      error.value = formatUnknownApiError(result.error, "归还办理未提交，请核对原资料");
       void load();
     } else {
       pending.value = null;
