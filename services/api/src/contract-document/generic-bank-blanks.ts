@@ -54,3 +54,17 @@ export function addGenericBankBlanksToDocx(bytes:Buffer,values?:Record<string,un
   zip.file("word/document.xml",new XMLSerializer().serializeToString(document));
   return zip.generate({type:"nodebuffer"});
 }
+
+
+export const GENERIC_SIGNATURE_HEADING_VERSION = "built-in-generic-signature-heading-v1" as const;
+
+/** Move the source heading and its authored additions together onto the signing page. */
+export function moveGenericSignatureHeading(table: Element, heading: Element, additions: readonly Element[]): void {
+  const body = table.parentNode;
+  if (!body || body !== heading.parentNode ||
+      additions.some((paragraph, index) => paragraph.parentNode !== body ||
+        paragraph.previousSibling !== (index === 0 ? heading : additions[index - 1]))) {
+    throw new ConflictException("通用合同签章标题位置无法核对，请保留当前内容后重试");
+  }
+  for (const paragraph of [heading, ...additions]) body.insertBefore(paragraph, table);
+}

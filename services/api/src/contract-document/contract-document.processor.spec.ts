@@ -17,6 +17,7 @@ jest.mock("./docx-attachment-appender", () => ({
   appendDocxImageAttachments: jest.fn(() => Buffer.from("docx-with-image-attachments"))
 }));
 jest.mock("./pdf-normalizer", () => ({
+  ...jest.requireActual("./pdf-normalizer"),
   normalizeContractPdf: jest.fn(async () => ({
     buffer: Buffer.from("%PDF-normalized"),
     pageCount: 2,
@@ -71,7 +72,7 @@ import { ContractDocumentProcessor } from "./contract-document.processor";
 import { armCon18WorkerDiagnostic, takeCon18WorkerDiagnostic, closeCon18WorkerDiagnostic } from "./task12-con18-worker-diagnostic";
 import { applyMechanicalContactLayout } from "./mechanical-contact-layout";
 import { convertDocxToPdf } from "./libreoffice-converter";
-import { normalizeContractPdf } from "./pdf-normalizer";
+import { normalizeContractPdf, UPLOAD_ORDERED_ATTACHMENTS_VERSION } from "./pdf-normalizer";
 import * as bodyModule from "./contract-body-document";
 import * as bodyConverter from "./contract-body-pdf-converter";
 import { createHash } from "node:crypto";
@@ -754,7 +755,12 @@ describe("ContractDocumentProcessor", () => {
     );
   });
 
-  it.each([undefined,"mechanical-contact-layout-v1","mechanical-contact-layout-v2"] as const)("renders and uploads with frozen contact layout %s", async (contactLayoutVersion) => {
+  it.each([
+    [undefined, undefined],
+    ["mechanical-contact-layout-v1", undefined],
+    ["mechanical-contact-layout-v2", undefined],
+    [undefined, UPLOAD_ORDERED_ATTACHMENTS_VERSION]
+  ] as const)("renders and uploads with contact layout %s and attachment order %s", async (contactLayoutVersion, attachmentOrderVersion) => {
     const prisma = makePrisma();
     prisma.tx.$queryRaw.mockResolvedValue([
       {
@@ -773,6 +779,7 @@ describe("ContractDocumentProcessor", () => {
         ...documentContentCoordinates,
         templateFileId: "layout-file",
         ...(contactLayoutVersion ? {mechanicalContactLayoutVersion:contactLayoutVersion} : {}),
+        ...(attachmentOrderVersion ? { attachmentOrderVersion } : {}),
         outputBaseName: "草稿-001-对外磋商稿-修订8",
         renderInput: { values: { "contract.name": "合同" } },
         attachmentFiles: [
@@ -829,26 +836,20 @@ describe("ContractDocumentProcessor", () => {
     );
     if(contactLayoutVersion) expect(applyMechanicalContactLayout).toHaveBeenCalledWith(Buffer.from("template"),Buffer.from("rendered-docx"),contactLayoutVersion);
     else expect(applyMechanicalContactLayout).not.toHaveBeenCalled();
-    expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(Buffer.from("rendered-docx"), [
-      {
-        name: "清单.pdf",
-        buffer: Buffer.from("%PDF-attachment"),
-        type: "pdf"
-      },
-      {
-        name: "营业执照.png",
-        buffer: Buffer.from("png-attachment"),
-        type: "png"
-      }
-    ]);
-    expect(mockedConvert).toHaveBeenCalledWith(Buffer.from("docx-with-image-attachments"));
-    expect(mockedNormalize).toHaveBeenCalledWith(convertedPdf, [
-      {
-        name: "清单.pdf",
-        buffer: Buffer.from("%PDF-attachment"),
-        type: "pdf"
-      }
-    ]);
+    const orderedAttachments = [
+      { name: "清单.pdf", buffer: Buffer.from("%PDF-attachment"), type: "pdf" },
+      { name: "营业执照.png", buffer: Buffer.from("png-attachment"), type: "png" }
+    ];
+    const bodyDocx = Buffer.from("rendered-docx");
+    if (attachmentOrderVersion) {
+      expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(bodyDocx, orderedAttachments, { preserveUploadOrder: true });
+      expect(mockedConvert).toHaveBeenCalledWith(bodyDocx);
+      expect(mockedNormalize).toHaveBeenCalledWith(convertedPdf, orderedAttachments, { preserveUploadOrder: true });
+    } else {
+      expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(bodyDocx, orderedAttachments);
+      expect(mockedConvert).toHaveBeenCalledWith(Buffer.from("docx-with-image-attachments"));
+      expect(mockedNormalize).toHaveBeenCalledWith(convertedPdf, orderedAttachments.slice(0, 1));
+    }
     expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

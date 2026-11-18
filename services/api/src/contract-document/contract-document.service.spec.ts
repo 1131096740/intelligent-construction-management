@@ -239,7 +239,7 @@ describe("ContractDocumentService", () => {
     };
   }
 
-  it("queues a document for the current draft revision with a deterministic attachment order", async () => {
+  it("queues a document for the current draft revision with the requested attachment order", async () => {
     const tx = makeTx();
     const { service } = makeService(tx);
 
@@ -257,7 +257,7 @@ describe("ContractDocumentService", () => {
     expect(files.assertCanDownloadFile).toHaveBeenNthCalledWith(
       1,
       tx,
-      "attachment-a",
+      "attachment-b",
       "owner-1"
     );
     expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
@@ -278,9 +278,10 @@ describe("ContractDocumentService", () => {
             "field.deliveryLocation",
             "field.deliveryDate"
           ]),
+          attachmentOrderVersion: "upload-ordered-mixed-attachments-v1",
           attachmentFiles: [
-            expect.objectContaining({ id: "attachment-a" }),
-            expect.objectContaining({ id: "attachment-b" })
+            expect.objectContaining({ id: "attachment-b" }),
+            expect.objectContaining({ id: "attachment-a" })
           ],
           renderInput: {
             values: expect.objectContaining({
@@ -314,6 +315,30 @@ describe("ContractDocumentService", () => {
       "attachment-a",
       "owner-1"
     );
+  });
+
+  it.each([true, false])("changes unsupported-file admission only for the new mixed export (mixed %s)", async mixed => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+    const attachment = (id: string, originalName: string, mimeType: string) => ({ id, originalName, mimeType });
+    const docx = attachment("attachment-x", "补充文件.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const selected = mixed
+      ? [attachment("attachment-b", "附件B.pdf", "application/pdf"), attachment("attachment-a", "附件A.png", "image/png"), docx]
+      : [docx];
+    for (const file of selected) files.assertCanDownloadFile.mockResolvedValueOnce(file);
+    const result = service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1", purpose: "draft",
+      attachmentFileIds: selected.map(file => file.id)
+    });
+    if (mixed) {
+      await expect(result).rejects.toThrow("合同生成只支持 PDF、PNG 或 JPEG 附件");
+      expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    } else {
+      await expect(result).resolves.toMatchObject({ status: "queued" });
+      expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        inputSnapshot: expect.objectContaining({ attachmentFiles: [docx] })
+      }) });
+    }
   });
 
   it.each(["equipment-rental-real-v1.docx","material-purchase-real-v1.docx","labor-subcontract-real-v1.docx"])("freezes the party-placement version for a newly queued legacy %s document", async (filename) => {
@@ -2020,6 +2045,44 @@ describe("ContractDocumentService", () => {
       taxExclusiveAmount: "—",
       taxAmount: "—"
     });
+  });
+
+  it("keeps the current upload-ordered document when an old mixed document is retried", async () => {
+    const findFirst = jest.fn().mockResolvedValue({ id: "current-document" });
+    const tx = makeTx({
+      contractGeneratedDocument: {
+        ...makeTx().contractGeneratedDocument,
+        findFirst
+      }
+    });
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "old-document",
+      contractVersionId: "version-1",
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft",
+      sourceRevision: 7,
+      status: "failed",
+      inputSnapshot: {
+        ...documentContentCoordinates,
+        attachmentFiles: [
+          { id: "attachment-a", originalName: "附件A.pdf", mimeType: "application/pdf" },
+          { id: "attachment-b", originalName: "附件B.png", mimeType: "image/png" }
+        ]
+      }
+    });
+    await expect(makeService(tx).service.retry("old-document", "owner-1")).rejects.toThrow("当前文书已有按附件顺序生成的版本");
+    expect(findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        contractVersionId: "version-1", purpose: "draft", status: "success",
+        AND: [
+          { inputSnapshot: { path: ["attachmentOrderVersion"], equals: "upload-ordered-mixed-attachments-v1" } },
+          { inputSnapshot: { path: ["documentContentRevision"], equals: documentContentCoordinates.documentContentRevision } },
+          { inputSnapshot: { path: ["documentContentFingerprint"], equals: documentContentCoordinates.documentContentFingerprint } }
+        ]
+      }),
+      select: { id: true }
+    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
   it("marks failure retryable and records retry audit", async () => {

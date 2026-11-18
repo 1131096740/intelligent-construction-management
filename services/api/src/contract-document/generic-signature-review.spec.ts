@@ -4,7 +4,7 @@ import {DOMParser,XMLSerializer} from "@xmldom/xmldom";
 import PizZip from "pizzip";
 import {prepareLegacyPartyRoleBindings,removeMechanicalPartyDetailsFromLegacyDocx} from "./contract-mechanical-party-placement";
 import {renderContractDocx} from "./contract-docx-renderer";
-import {addGenericBankBlanksToDocx,assertGenericBankInputs} from "./generic-bank-blanks";
+import {addGenericBankBlanksToDocx,assertGenericBankInputs,GENERIC_SIGNATURE_HEADING_VERSION} from "./generic-bank-blanks";
 import {appendDocxImageAttachments} from "./docx-attachment-appender";
 import {readLayoutSourcePositions} from "../contract-template/layout-field-mapping";
 import {assertSignatureSupplementMapping,renderContractBody} from "./contract-body-document";
@@ -123,4 +123,26 @@ it.each(["party.owner.name","party.counterparty.name","field.counterpartyName"])
  expect(()=>assertSignatureSupplementMapping(source,mapped,"layout",undefined,{genericMappedSupplement:true})).toThrow("签署区");
  expect(()=>renderContractBody(source,mapped,{values:input},[],"layout",undefined,{partyDetailsVersion:"built-in-generic-signature-review-v3",genericMappedSupplement:true})).toThrow("签署区");
  expect(()=>prepareLegacyPartyRoleBindings(source,mapped,{genericMappedSupplement:true})).toThrow("签署区");
+});
+
+it("moves the original signing heading and its user anchor after the page break as a frozen generic variant", () => {
+ const parsed=readLayoutSourcePositions(source);
+ const id=(i:number)=>parsed.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===i)!.positionId;
+ const plan={protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256:parsed.sourceSha256,
+  edits:[{positionId:id(52),text:"用户保留原签署标题"},{positionId:id(54),text:"甲方授权签署原文"}],
+  additions:[{id:"title-note",afterPositionId:id(52),text:"用户标题锚点增补"}]};
+ const options={partyDetailsVersion:"built-in-generic-signature-review-v3" as const,genericMappedSupplement:true};
+ const preview=renderContractBody(source,source,{values},[],"layout",plan,{...options,partyDetailsConflictPreview:true});
+ const reviewed={...plan,signatureSupplementReviewDigest:preview.signatureSupplementReview!.digest};
+ const roles=(docx:Buffer)=>{
+  const doc=new DOMParser().parseFromString(new PizZip(docx).file("word/document.xml")!.asText(),"application/xml");
+  return Array.from(doc.getElementsByTagName("w:body").item(0)!.childNodes)
+   .filter(node=>node.nodeType===1).map(node=>node.toString().includes('w:br w:type="page"')?"分页":node.textContent?.trim());
+ };
+ const before=roles(renderContractBody(source,source,{values},[],"layout",reviewed,options).docx);
+ const after=roles(renderContractBody(source,source,{values},[],"layout",reviewed,
+  {...options,genericSignatureHeadingVersion:GENERIC_SIGNATURE_HEADING_VERSION}).docx);
+ const main=after.findIndex(text=>text?.startsWith("甲方（盖章）"));
+ expect(before.indexOf("用户保留原签署标题")).toBeLessThan(before.lastIndexOf("分页"));
+ expect(after.slice(main-4,main)).toEqual(["甲方授权签署原文","分页","用户保留原签署标题","补充条款1：用户标题锚点增补"]);
 });

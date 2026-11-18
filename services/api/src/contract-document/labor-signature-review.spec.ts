@@ -4,6 +4,9 @@ import {createHash} from "node:crypto";
 import {DOMParser,XMLSerializer} from "@xmldom/xmldom";
 import PizZip from "pizzip";
 import {readLayoutSourcePositions} from "../contract-template/layout-field-mapping";
+import {applyLaborMainSignaturePageToDocx,LABOR_MAIN_SIGNATURE_PAGE_VERSION} from "./contract-labor-final-party-page";
+import {renderContractDocx} from "./contract-docx-renderer";
+import {prepareLegacyPartyRoleBindings,removeMechanicalPartyDetailsFromLegacyDocx} from "./contract-mechanical-party-placement";
 import {assertSignatureSupplementMapping,renderContractBody} from "./contract-body-document";
 const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx"));
 const values={"contract.name":"虚构合同","contract.temporaryCode":"TEST","document.watermark":"草稿","party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
@@ -46,4 +49,48 @@ it("retains all original attachment signature paragraph text in the new body doc
  const before=paragraphs(sourceDoc),after=paragraphs(outputDoc);
  let cursor=0;
  for(const index of [184,185,199,200,201,202,203,204,205,231,232,233,234]){const found=after.findIndex((text,i)=>i>=cursor&&text===before[index]);expect(found).toBeGreaterThanOrEqual(cursor);cursor=found+1;}
+});
+
+it("uses the original main signature table before annexes without deleting user-anchored tail paragraphs", () => {
+ const plan={protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256:parsed.sourceSha256,
+   edits:[{positionId:id(235),text:"尾部用户保留编辑"}],
+   additions:[{id:"user-annex-supplement",afterPositionId:id(256),text:"保留在原空段落上的附件补充"}]};
+ const bankValues={...values,"party.owner.openingBank":"甲方锚点银行","party.counterparty.bankAccount":"BANK-B-SENTINEL"};
+ const before=renderContractBody(source,source,{values:bankValues},[],"layout",plan,options);
+ const after=renderContractBody(source,source,{values:bankValues},[],"layout",plan,
+   {...options,laborMainSignaturePageVersion:LABOR_MAIN_SIGNATURE_PAGE_VERSION});
+ const bodyChildren=(bytes:Buffer)=>{
+  const doc=new DOMParser().parseFromString(new PizZip(bytes).file("word/document.xml")!.asText(),"application/xml");
+  return Array.from(doc.getElementsByTagName("w:body").item(0)!.childNodes).filter(n=>n.nodeType===1);
+ };
+ const previous=bodyChildren(before.docx), current=bodyChildren(after.docx);
+ const main=(node:typeof previous[number])=>node.nodeName==="w:tbl"&&node.textContent?.includes("公司名称：（盖章）");
+ const signature=current.findIndex(main);
+ const appendix=current.findIndex((node,index)=>index>signature&&node.textContent==="附件一：《安全生产管理协议》");
+ expect(signature).toBeGreaterThan(0);
+ expect(appendix).toBeGreaterThan(signature);
+ expect(current[signature-1].textContent).toBe("双方主体及银行信息");
+ expect(current[signature-1].toString()).toContain("w:keepNext");
+ expect(current[signature-1].toString()).not.toContain("w:pageBreakBefore");
+ expect(current[signature].textContent).toContain("甲方锚点银行");
+ expect(current[signature].textContent).toContain("BANK-B-SENTINEL");
+ expect(current[signature].textContent).toContain("法定代表人：（签章）");
+ expect(current.slice(appendix).map(node=>node.toString())).toEqual(
+   previous.slice(previous.findIndex((node,index)=>index>previous.findIndex(main)&&node.textContent==="附件一：《安全生产管理协议》"),
+     previous.findIndex(node=>node.textContent==="双方主体及银行信息"))
+     .concat(previous.at(-1)!).map(node=>node.toString()));
+ expect(after.blocks.find(block=>block.id==="added:user-annex-supplement")?.text).toContain("保留在原空段落上的附件补充");
+ expect(after.blocks.find(block=>block.id===id(235))?.text).toBe("尾部用户保留编辑");
+});
+
+it("reuses the legacy lane's original signing table while preserving its appendix tail", () => {
+ const bindings=prepareLegacyPartyRoleBindings(source,source);
+ const granted=renderContractDocx(bindings,{values},[]);
+ const base=removeMechanicalPartyDetailsFromLegacyDocx(source,granted,{rolesPrepared:true});
+ const rendered=applyLaborMainSignaturePageToDocx(base,values);
+ const data=(bytes:Buffer)=>new PizZip(bytes).file("word/document.xml")!.asText();
+ const xml=data(rendered), original=data(base);
+ expect(xml.indexOf("双方主体及银行信息")).toBeLessThan(xml.indexOf("公司名称：（盖章）"));
+ const appendixBegin=(text:string)=>text.indexOf("关于不拖欠工程民工工资的承诺");
+ expect(xml.slice(appendixBegin(xml))).toBe(original.slice(appendixBegin(original)));
 });

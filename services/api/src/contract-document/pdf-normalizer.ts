@@ -8,6 +8,15 @@ import {
 } from "pdf-lib";
 
 export type PdfAttachmentType = "pdf" | "png" | "jpeg";
+export const UPLOAD_ORDERED_ATTACHMENTS_VERSION = "upload-ordered-mixed-attachments-v1";
+
+export function contractAttachmentType(originalName: string, mimeType: string): PdfAttachmentType | undefined {
+  const lowerName = originalName.toLowerCase();
+  if (mimeType === "application/pdf" || lowerName.endsWith(".pdf")) return "pdf";
+  if (mimeType === "image/png" || lowerName.endsWith(".png")) return "png";
+  if (mimeType === "image/jpeg" || /\.jpe?g$/u.test(lowerName)) return "jpeg";
+  return undefined;
+}
 
 export interface PdfAttachment {
   name: string;
@@ -294,7 +303,8 @@ async function embedImageAttachment(
 
 export async function normalizeContractPdf(
   generatedContractPdf: Buffer,
-  attachments: readonly PdfAttachment[]
+  attachments: readonly PdfAttachment[],
+  options: { preserveUploadOrder?: boolean } = {}
 ): Promise<NormalizedContractPdf> {
   if (generatedContractPdf.length > MAX_TOTAL_INPUT_BYTES) {
     throw new PdfNormalizationLimitError("合同 PDF 及附件总大小超过系统限制");
@@ -340,14 +350,14 @@ export async function normalizeContractPdf(
         }
         assertImagePixels(attachment, type);
         const identitySide = identityCardSide(attachment.name);
-        const pairIndex = identitySide
-          ? findIdentityCardPairIndex(
-              attachments,
-              index,
-              identitySide,
-              consumedAttachmentIndexes
-            )
-          : -1;
+        const next = attachments[index + 1];
+        const nextType = next && attachmentType(next);
+        const pairIndex = options.preserveUploadOrder
+          ? identitySide === "portrait" && next && (nextType === "png" || nextType === "jpeg") &&
+              identityCardSide(next.name) === "emblem" ? index + 1 : -1
+          : identitySide
+            ? findIdentityCardPairIndex(attachments, index, identitySide, consumedAttachmentIndexes)
+            : -1;
         if (pairIndex > -1) {
           const pair = attachments[pairIndex];
           const pairType = attachmentType(pair);
