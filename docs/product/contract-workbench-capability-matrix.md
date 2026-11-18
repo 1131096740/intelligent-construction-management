@@ -7,8 +7,8 @@
 | 证据 | 状态 |
 | --- | --- |
 | Controller 源码路由 | 已扫描 234 条 |
-| Web API 请求 | 已扫描 166 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 733 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| Web API 请求 | 已扫描 167 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 734 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 52 条合同专项候选；物理删除授权固定为否 |
 
@@ -71,7 +71,7 @@
 | GET | `/contract-drafts/:param/bills/:param/export` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-drafts/:param/bills/:param/import-preview` | previewContractDraftBillExcelImport | apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue | matched | 保留 | 否 | — |
 | GET | `/contract-drafts/:param/bills/:param/template` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| GET | `/contract-drafts/:param/document-body` | fetchContractDraftBody | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue | matched | 保留 | 否 | — |
+| GET | `/contract-drafts/:param/document-body` | fetchContractPaperDraftIdentity | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue | matched | 保留 | 否 | — |
 | DELETE | `/contract-drafts/:param/edit-lease` | releaseContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease` | acquireContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease/heartbeat` | heartbeatContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |

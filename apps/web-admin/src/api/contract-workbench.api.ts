@@ -564,6 +564,14 @@ function normalizeBodyWarnings(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > 8 || value.some(item => typeof item !== "string" || item.length > 256 || !approvedBodyWarnings.has(item))) return [incompleteBodyWarning];
   return [...new Set(value as string[])];
 }
+export function fetchContractPaperDraftIdentity(contractVersionId: string) {
+  return readJson<Pick<ContractDraftBodyReadModel,
+    "contractVersionId" | "draftRevision" | "documentContentRevision" | "layoutTemplateVersionId" | "sourceSha256" | "mechanicalContactLayoutVersion">>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/document-body`, true,
+    { "x-contract-numeric-protocol": "2" }
+  );
+}
+
 export async function fetchContractDraftBody(contractVersionId: string) {
   const body = await readJson<ContractDraftBodyReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/document-body`, true,

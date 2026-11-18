@@ -98,24 +98,37 @@
   </section>
 </template>
 
+<script lang="ts">
+import type { ContractDraftBodyReadModel } from "../../../api/contract-workbench.api";
+
+type PaperContext = Pick<ContractDraftBodyReadModel, "contractVersionId" | "draftRevision" | "documentContentRevision" | "layoutTemplateVersionId" | "sourceSha256" | "mechanicalContactLayoutVersion">;
+type Reader = Readonly<{ generation: number; ownerKey: string; actorUserId: string; routeContractId: string; context: Readonly<PaperContext> }>;
+type PaperState = Readonly<{ fingerprint: string; actions: ReadonlyArray<string>; documents: ReadonlyArray<unknown> }>;
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+export function matchingDocuments(owner: Pick<Reader, "context">, state: Pick<PaperState, "documents" | "fingerprint">) {
+  return state.documents.filter((item): item is Record<string, unknown> => isRecord(item) &&
+    typeof item.id === "string" && Boolean(item.id) && item.purpose === "draft" && item.layoutTemplateVersionId === owner.context.layoutTemplateVersionId &&
+    item.documentContentRevision === owner.context.documentContentRevision && item.documentContentFingerprint === state.fingerprint &&
+    isRecord(item.inputSnapshot) && isRecord(item.inputSnapshot.bodyDocument) && item.inputSnapshot.bodyDocument.sourceSha256 === owner.context.sourceSha256 &&
+    (item.inputSnapshot.mechanicalContactLayoutVersion ?? null) === owner.context.mechanicalContactLayoutVersion);
+}
+</script>
+
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, shallowRef, watch } from "vue";
-import { matchingPaperDocuments } from "./contract-paper-document-match";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "../../../auth/auth.store";
-import { fetchContractDraftWorkbench, fetchContractDraftBody, listContractDocuments, queueContractDraftPreview, type ContractDraftBodyReadModel } from "../../../api/contract-workbench.api";
+import { fetchContractDraftWorkbench, fetchContractPaperDraftIdentity, listContractDocuments, queueContractDraftPreview } from "../../../api/contract-workbench.api";
 import { getPrivateFileDownloadTicketCapability, downloadPrivateFileByTicket } from "../../../api/core-flow-read.api";
 
 const LayoutPdfPreview = defineAsyncComponent(() => import("../../../components/files/LayoutPdfPreview.vue"));
-type PaperContext = Pick<ContractDraftBodyReadModel, "contractVersionId" | "draftRevision" | "documentContentRevision" | "layoutTemplateVersionId" | "sourceSha256" | "mechanicalContactLayoutVersion">;
-type Reader = Readonly<{ generation: number; ownerKey: string; actorUserId: string; routeContractId: string; context: Readonly<PaperContext> }>;
 type ReadyPdf = Readonly<{ documentId: string; fileId: string; contentRevision: number; fingerprint: string; layoutId: string; sourceSha256: string }>;
 type FileCapability = Awaited<ReturnType<typeof getPrivateFileDownloadTicketCapability>>;
 type PreviewGrant = Readonly<{
   fileId: string; documentId: string; ownerKey: string; readGeneration: number;
   serverAction: Readonly<FileCapability["action"]>; serverAvailableActions: ReadonlyArray<FileCapability["availableActions"][number]>;
 }>;
-type PaperState = Readonly<{ fingerprint: string; actions: ReadonlyArray<string>; documents: ReadonlyArray<unknown> }>;
 type GenerationGrant = Readonly<{ ownerKey: string; readGeneration: number; sourceRevision: number; fingerprint: string; actions: ReadonlyArray<string> }>;
 type PendingGeneration = Readonly<{ ownerKey: string; readGeneration: number; generationId: string | null; fingerprint: string; status: "queued" | "processing" | "unknown" }>;
 const props = defineProps<{ context: PaperContext; blocked: boolean }>();
@@ -140,7 +153,6 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let automaticQueries = 0;
 let generation = 0;
 const HASH = /^[a-f0-9]{64}$/u;
-const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
 
 function ownerKey() {
   const actor = auth.user?.id, contract = route.params.contractId, version = route.query.versionId;
@@ -209,9 +221,6 @@ async function readCurrentState(owner: Reader): Promise<PaperState | null> {
   return Object.freeze({ fingerprint: version.documentContentFingerprint, documents,
     actions: Object.freeze(Array.isArray(actions) && actions.every(action => typeof action === "string") ? [...actions] : []) });
 }
-function matchingDocuments(owner: Reader, state: PaperState) {
-  return matchingPaperDocuments(state.documents,owner.context,state.fingerprint);
-}
 function readyFile(owner: Reader, state: PaperState, item: Record<string, unknown>): ReadyPdf | null {
   if (item.status !== "success" || typeof item.id !== "string" || typeof item.pdfFileId !== "string" || !item.pdfFileId) return null;
   return Object.freeze({ documentId: item.id, fileId: item.pdfFileId, contentRevision: owner.context.documentContentRevision,
@@ -237,7 +246,10 @@ async function refreshGenerationGrant(owner: Reader, state: PaperState) {
   generationGrant.value = null;
   if (!state.actions.includes("queue_contract_draft_preview")) return false;
   // Workbench does not expose source SHA; verify the actual public body before offering a write action.
-  const body = await fetchContractDraftBody(owner.context.contractVersionId);
+  const body = await fetchContractPaperDraftIdentity(owner.context.contractVersionId);
+  if (body.mechanicalContactLayoutVersion !== null && body.mechanicalContactLayoutVersion !== "mechanical-contact-layout-v2") {
+    throw new Error("正文呈现版本无法核对，请重新读取正文");
+  }
   if (!isCurrent(owner)) return false;
   if (body.contractVersionId !== owner.context.contractVersionId || body.draftRevision !== owner.context.draftRevision ||
     body.documentContentRevision !== owner.context.documentContentRevision || body.layoutTemplateVersionId !== owner.context.layoutTemplateVersionId || body.sourceSha256 !== owner.context.sourceSha256 || body.mechanicalContactLayoutVersion !== owner.context.mechanicalContactLayoutVersion) {

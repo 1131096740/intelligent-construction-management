@@ -1219,7 +1219,8 @@ function validatePageSummary(
     )
   );
   for (const { action, binding } of actionBindings) {
-    if (action.semantic === "read_only") continue;
+    const recoveryRead = isPaymentRecoveryReadBinding(action, binding);
+    if (action.semantic === "read_only" && !recoveryRead) continue;
     for (const consumer of binding.productionConsumers) {
       const key = mutationConsumerKey(
         binding.apiFile,
@@ -1249,8 +1250,7 @@ function validatePageSummary(
       acceptedKeys.add(key);
       if (
         binding.causalVerified &&
-        action.capability.serverDerived &&
-        action.capability.dominatesTrigger
+        (recoveryRead || action.capability.serverDerived && action.capability.dominatesTrigger)
       ) {
         coveredKeys.add(key);
       }
@@ -1288,6 +1288,30 @@ function validatePageSummary(
     "CAPABILITY_MATRIX_INVALID_PAGE_SUMMARY",
     { expected, actual: manifest.summary }
   );
+}
+
+// POST keeps the original payment command in a body. The live page-action
+// guard verifies this exact handler's read-only database call closure.
+function isPaymentRecoveryReadBinding(action, binding) {
+  return action.id === "registered-payment.lookup-original" &&
+    action.semantic === "read_only" &&
+    action.sourceFile === "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue" &&
+    action.trigger.handler === "queryOriginal" &&
+    binding.apiFile === "apps/web-admin/src/api/registered-payment-execution.api.ts" &&
+    binding.wrapper === "verifyRegisteredPaymentRecovery" &&
+    binding.method === "POST" &&
+    binding.normalizedKey === "POST /payment-executions/:param/recovery-proof" &&
+    binding.bodyKind === "json" &&
+    binding.nestRoute?.controller === "RegisteredPaymentExecutionController" &&
+    binding.nestRoute.handler === "recoveryProof" &&
+    binding.nestRoute.authentication === "authenticated" &&
+    !binding.nestRoute.isPublic &&
+    binding.causalVerified &&
+    binding.productionConsumers.length === 1 &&
+    binding.productionConsumers[0] === action.sourceFile &&
+    binding.acceptedProductionConsumers.length === 1 &&
+    binding.acceptedProductionConsumers[0] === action.sourceFile &&
+    binding.ticketFollowups.length === 0;
 }
 
 function validatePageManifestShape(manifest) {
@@ -1420,9 +1444,14 @@ function validatePageManifestShape(manifest) {
       validateBindingShape(binding);
     }
     if (action.semantic === "read_only") {
-      const [binding] = action.bindings;
+      const [binding, recovery] = action.bindings;
+      const singleRead = action.bindings.length === 1;
+      const originalRecovery = action.bindings.length === 2 &&
+        binding.wrapper === "fetchRegisteredPaymentResult" &&
+        binding.normalizedKey === "GET /payment-executions/results/:param" &&
+        isPaymentRecoveryReadBinding(action, recovery);
       assert(
-        action.bindings.length === 1 &&
+        (singleRead || originalRecovery) &&
           action.capability.kind === "none" &&
           !action.capability.serverDerived &&
           !action.capability.dominatesTrigger &&
@@ -2175,8 +2204,8 @@ export function buildWholeSiteCapabilityMatrix({
   for (const { action, binding } of actionBindings) {
     if (
       !binding.causalVerified ||
-      !action.capability.serverDerived ||
-      !action.capability.dominatesTrigger ||
+      !(isPaymentRecoveryReadBinding(action, binding) ||
+        action.capability.serverDerived && action.capability.dominatesTrigger) ||
       !MUTATION_METHODS.has(binding.method)
     ) {
       continue;

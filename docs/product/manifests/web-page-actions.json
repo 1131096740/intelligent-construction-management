@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 426,
-    "pageActionCount": 73,
+    "registeredActionCount": 427,
+    "pageActionCount": 74,
     "backgroundActionCount": 353,
     "reachableVueFileCount": 214,
     "routeRootCount": 74,
     "totalVueFileCount": 227,
     "parsedVueFileCount": 227,
-    "reachableProductionModuleCount": 368,
-    "templateEventDirectiveCount": 1426,
+    "reachableProductionModuleCount": 372,
+    "templateEventDirectiveCount": 1437,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 414,
-    "candidateProductionMutationConsumerCount": 414,
-    "acceptedProductionMutationConsumerCount": 414,
-    "productionMutationConsumerPairCount": 414,
+    "coveredProductionMutationConsumerCount": 415,
+    "candidateProductionMutationConsumerCount": 415,
+    "acceptedProductionMutationConsumerCount": 415,
+    "productionMutationConsumerPairCount": 415,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 387,
-    "reachableProductionModuleCount": 368,
+    "totalProductionModuleCount": 391,
+    "reachableProductionModuleCount": 372,
     "totalVueFileCount": 227,
     "parsedVueFileCount": 227
   },
@@ -4350,7 +4350,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 1001,
+        "sourceLine": 1002,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -4776,7 +4776,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 968,
+        "sourceLine": 969,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -5285,7 +5285,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1211,
+        "sourceLine": 1212,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9195,7 +9195,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1195,
+        "sourceLine": 1196,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9261,7 +9261,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1153,
+        "sourceLine": 1154,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9327,7 +9327,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1166,
+        "sourceLine": 1167,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9393,7 +9393,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1179,
+        "sourceLine": 1180,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23203,6 +23203,106 @@
       ]
     },
     {
+      "id": "registered-payment.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "queryOriginal",
+        "kind": "event",
+        "sourceLine": 646,
+        "sourceColumn": 6
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "frozenCommand.idempotencyKey",
+        "serverDerived": false,
+        "dominatesTrigger": false
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "fetchRegisteredPaymentResult",
+          "method": "GET",
+          "path": "/payment-executions/results/:param",
+          "normalizedKey": "GET /payment-executions/results/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/payment-executions/results/:idempotencyKey",
+            "normalizedKey": "GET /payment-executions/results/:param",
+            "controller": "RegisteredPaymentExecutionController",
+            "handler": "result",
+            "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "queryOriginal",
+              "fetchRegisteredPaymentResult"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "verifyRegisteredPaymentRecovery",
+          "method": "POST",
+          "path": "/payment-executions/:param/recovery-proof",
+          "normalizedKey": "POST /payment-executions/:param/recovery-proof",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payment-executions/:paymentId/recovery-proof",
+            "normalizedKey": "POST /payment-executions/:param/recovery-proof",
+            "controller": "RegisteredPaymentExecutionController",
+            "handler": "recoveryProof",
+            "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "queryOriginal",
+              "verifyRegisteredPaymentRecovery"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "registered-payment.register",
       "usage": "page_action",
       "routePaths": [
@@ -23219,7 +23319,7 @@
         "event": "confirm",
         "handler": "submit",
         "kind": "event",
-        "sourceLine": 745,
+        "sourceLine": 1006,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -23285,7 +23385,7 @@
         "event": "click",
         "handler": "saveVoucher",
         "kind": "event",
-        "sourceLine": 682,
+        "sourceLine": 943,
         "sourceColumn": 12
       },
       "semantic": "business_write",

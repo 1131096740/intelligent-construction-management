@@ -8,22 +8,22 @@
   },
   "summary": {
     "apiModuleCount": 43,
-    "exportedFunctionCount": 708,
-    "transportWrapperCount": 686,
+    "exportedFunctionCount": 710,
+    "transportWrapperCount": 688,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 726,
+    "mainRequestBindingCount": 728,
     "ticketFollowupCount": 5,
-    "requestEdgeCount": 715,
-    "productionConsumerCount": 599,
+    "requestEdgeCount": 717,
+    "productionConsumerCount": 601,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
-    "duplicateNormalizedRouteGroupCount": 15,
+    "duplicateNormalizedRouteGroupCount": 16,
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 387,
-    "reachableProductionModuleCount": 368
+    "productionModuleCount": 391,
+    "reachableProductionModuleCount": 372
   },
   "wrappers": [
     {
@@ -3348,7 +3348,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2431,
+          "sourceLine": 2455,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -3378,7 +3378,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2431,
+          "sourceLine": 2455,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template?numericProtocolVersion=2",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -3475,7 +3475,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1988,
+          "sourceLine": 2012,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -3556,7 +3556,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2431,
+          "sourceLine": 2455,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/export",
           "normalizedPath": "/contract-drafts/:param/bills/:param/export",
@@ -3688,12 +3688,13 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/contract-workbench.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -3858,6 +3859,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchContractPaperDraftIdentity",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 130,
+          "method": "GET",
+          "path": "/contract-drafts/:param/document-body",
+          "normalizedPath": "/contract-drafts/:param/document-body",
+          "normalizedKey": "GET /contract-drafts/:param/document-body",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractPaperDraftIdentity",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchContractWorkbench",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -3952,7 +3981,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1506,
+          "sourceLine": 1530,
           "method": "GET",
           "path": "/business-parties/create-capability",
           "normalizedPath": "/business-parties/create-capability",
@@ -17384,7 +17413,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 37,
+          "sourceLine": 56,
           "method": "GET",
           "path": "/payment-executions/:param/voucher-ticket",
           "normalizedPath": "/payment-executions/:param/voucher-ticket",
@@ -17398,7 +17427,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 39,
+          "sourceLine": 58,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -17423,7 +17452,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 21,
+          "sourceLine": 30,
           "method": "GET",
           "path": "/payment-executions/recorded-items",
           "normalizedPath": "/payment-executions/recorded-items",
@@ -17451,7 +17480,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 17,
+          "sourceLine": 26,
           "method": "GET",
           "path": "/payment-executions/:param/registration-options",
           "normalizedPath": "/payment-executions/:param/registration-options",
@@ -17478,7 +17507,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 23,
+          "sourceLine": 39,
           "method": "GET",
           "path": "/payment-executions/results/:param",
           "normalizedPath": "/payment-executions/results/:param",
@@ -17505,7 +17534,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 16,
+          "sourceLine": 25,
           "method": "GET",
           "path": "/payment-executions/work-items",
           "normalizedPath": "/payment-executions/work-items",
@@ -17528,11 +17557,11 @@
       "name": "recordRegisteredPayment",
       "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
       "kind": "transport",
-      "returnProvenance": "transparent_main_response",
+      "returnProvenance": "unverified",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 22,
+          "sourceLine": 32,
           "method": "POST",
           "path": "/payment-executions/:param/registrations",
           "normalizedPath": "/payment-executions/:param/registrations",
@@ -17545,10 +17574,12 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/registered-payment-execution.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -17559,7 +17590,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 28,
+          "sourceLine": 47,
           "method": "POST",
           "path": "/payment-executions/:param/voucher",
           "normalizedPath": "/payment-executions/:param/voucher",
@@ -17574,7 +17605,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 45,
           "method": "POST",
           "path": "/payment-executions/:param/voucher-file-uploads",
           "normalizedPath": "/payment-executions/:param/voucher-file-uploads",
@@ -17592,6 +17623,35 @@
         "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "verifyRegisteredPaymentRecovery",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 41,
+          "method": "POST",
+          "path": "/payment-executions/:param/recovery-proof",
+          "normalizedPath": "/payment-executions/:param/recovery-proof",
+          "normalizedKey": "POST /payment-executions/:param/recovery-proof",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "verifyRegisteredPaymentRecovery"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/registered-payment-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -21951,6 +22011,19 @@
         {
           "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
           "wrapper": "fetchCompanyTransfers"
+        }
+      ]
+    },
+    {
+      "normalizedKey": "GET /contract-drafts/:param/document-body",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "fetchContractDraftBody"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "fetchContractPaperDraftIdentity"
         }
       ]
     },

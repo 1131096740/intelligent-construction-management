@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `c6f9cb6bca575e640108a917fde4d07f07053e21b7785c0dd2fc72ca3a373821` |
-| webApiWrappers | ready | `16e6cd22c6f03dc320aaa24231bb2bb72f99fcaf569e86205cf59b2037b66ece` |
-| webPageActions | ready | `61dcd72a1a177c7f7471954c61c218ecb42886697af1237ef341796708850616` |
-| routeUsage | ready | `33da84b7ba122d82892347f4c46c9682017941bdf16e92a87d0a9bb5d235114d` |
+| nestRoutes | ready | `56b0a04330603152e90f9d09875603336fbc028ebecf5ae618d53e12d02cec5a` |
+| webApiWrappers | ready | `efa689164daa24771d6ae6278d90656186d2cbd3d46d21c34265a62d82f0053d` |
+| webPageActions | ready | `323ef5e0c58082c5c2dcc047120e9c0be9878341ef3f8cb9a4318c7fd6a07c9e` |
+| routeUsage | ready | `7e185e5fc01888d74d995a27423db0cafbd3312152c715cef704d1895979b7d6` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 733 |
-| pageRouteCount | 534 |
+| routeCount | 734 |
+| pageRouteCount | 535 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 726 |
+| mainRequestBindingCount | 728 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 426 |
-| actionBindingCount | 492 |
-| acceptedActionBindingCount | 451 |
+| registeredActionCount | 427 |
+| actionBindingCount | 494 |
+| acceptedActionBindingCount | 452 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 414 |
-| coveredProductionMutationConsumerPairCount | 414 |
+| productionMutationConsumerPairCount | 415 |
+| coveredProductionMutationConsumerPairCount | 415 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -88,7 +88,7 @@
 | GET | /contract-business-scenarios/recommendations | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/export | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#exportContractDraftBill | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-drafts/:contractVersionId/document-body | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftBody | — | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/document-body | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftBody<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractPaperDraftIdentity | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/save-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftSaveResult<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchDirectPendingSaveResult | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/submission-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftSubmissionResult | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftOperationCapabilities<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
@@ -191,7 +191,7 @@
 | GET | /payment-executions/:executionId/voucher-ticket | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#downloadRegisteredPaymentVoucher | — | not_applicable | — |
 | GET | /payment-executions/notifications | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /payment-executions/recorded-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRecordedPaymentItems | — | not_applicable | — |
-| GET | /payment-executions/results/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentResult | — | not_applicable | — |
+| GET | /payment-executions/results/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentResult | registered-payment.lookup-original | not_applicable | — |
 | GET | /payment-executions/work-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentWorkItems | — | not_applicable | — |
 | GET | /payments/:paymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentActionCapability | — | not_applicable | — |
 | GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
@@ -539,6 +539,7 @@
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#uploadInterEntityRelationshipEvidence | payable-settlement.inter-entity-return.upload-evidence | covered | — |
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnInterEntityRelationship | payable-settlement.inter-entity-return | covered | — |
 | POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
+| POST | /payment-executions/:paymentId/recovery-proof | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#verifyRegisteredPaymentRecovery | registered-payment.lookup-original | covered | — |
 | POST | /payment-executions/:paymentId/registrations | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#recordRegisteredPayment | registered-payment.register | covered | — |
 | POST | /payment-executions/:executionId/voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
 | POST | /payment-executions/:executionId/voucher | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
