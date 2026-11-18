@@ -569,19 +569,21 @@ async function seedFixture(
       }
     ]
   });
+  const affiliateName = `POL-05 施工企业 ${fixture.prefix}`;
+  const counterpartyName = `POL-05 下游供应商 ${fixture.prefix}`;
   await client.businessParty.createMany({
     data: [
       {
         id: fixture.affiliatePartyId,
-        name: "POL-05 施工企业",
-        normalizedName: "POL-05 施工企业",
+        name: affiliateName,
+        normalizedName: affiliateName,
         unifiedSocialCreditCode: `${fixture.prefix}AFF`,
         createdByUserId: fixture.financeUserId
       },
       {
         id: fixture.counterpartyId,
-        name: "POL-05 下游供应商",
-        normalizedName: "POL-05 下游供应商",
+        name: counterpartyName,
+        normalizedName: counterpartyName,
         unifiedSocialCreditCode: `${fixture.prefix}PAYEE`,
         createdByUserId: fixture.financeUserId
       }
@@ -593,14 +595,14 @@ async function seedFixture(
         id: fixture.affiliateVersionId,
         businessPartyId: fixture.affiliatePartyId,
         versionNo: 1,
-        snapshot: { name: "POL-05 施工企业" },
+        snapshot: { name: affiliateName },
         createdByUserId: fixture.financeUserId
       },
       {
         id: fixture.counterpartyVersionId,
         businessPartyId: fixture.counterpartyId,
         versionNo: 1,
-        snapshot: { name: "POL-05 下游供应商" },
+        snapshot: { name: counterpartyName },
         createdByUserId: fixture.financeUserId
       }
     ]
@@ -611,7 +613,7 @@ async function seedFixture(
       projectId: fixture.projectId,
       businessPartyId: fixture.affiliatePartyId,
       businessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: affiliateName,
       affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
       changeReason: "POL-05 测试",
