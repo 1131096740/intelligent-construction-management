@@ -28,6 +28,7 @@ async function observedMeRequest<T>(request:()=>Promise<T>,index:number,env:Node
 
 const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
 const overpay=process.env.TASK398_OVERPAY_MODE==="1";
+const ledgerLoss=process.env.TASK398_LEDGER_LOSS_MODE==="1";
 
 // Fixed technical candidates from the existing reviewed file-binding plan;
 // input text can only select an entry, never become a logged value.
@@ -168,7 +169,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
 });
 
 (enabled?describe:describe.skip)("#398 isolated shared payment real HTTP and PostgreSQL",()=>{
- it(overpay ? "allows only one of two concurrent instalments that would together overpay" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
+ it(overpay ? "allows only one of two concurrent instalments that would together overpay" : ledgerLoss ? "recovers and replays cross-company project payment after losing a committed response" : "rejects a project source gap, then shares three valid instalments and supplements the voucher",async()=>{
   const ownerUrl=new URL(process.env.TASK398_OWNER_URL??""),runtimeUrl=new URL(process.env.DATABASE_URL??""),observerUrl=new URL(process.env.TASK398_OBSERVER_URL??"");
   const db=ownerUrl.pathname;
   const runId=process.env.TASK398_RUN_ID??"";
@@ -201,7 +202,7 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
    });
    await app.listen(0,"127.0.0.1");
    const origin=await app.getUrl();
-   const json=async(path:string,method:string,body?:unknown,token?:string)=>{const response=await fetch(origin+path,{method,headers:{...(body!==undefined?{"content-type":"application/json"}:{}),...(token?{authorization:`Bearer ${token}`}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};};
+   const json=async(path:string,method:string,body?:unknown,token?:string,send=fetch)=>{const response=await send(origin+path,{method,headers:{...(body!==undefined?{"content-type":"application/json"}:{}),...(token?{authorization:`Bearer ${token}`}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};};
    const login=async(phone:string,password:string)=>{const response=await json("/auth/login","POST",{phone,password});expect(response.status).toBe(201);return response.body.tokens.accessToken as string;};
    const finance=await login(plan.phone,passwords[0]),keeper=await login(seeded.keeperPhone,passwords[1]),director=await login(seeded.directorPhone,passwords[2]),outsider=await login(outsiderPhone,passwords[3]);
    const denied=await json(`/payment-executions/recorded-items?paymentId=${plan.ids.payment}`,"GET",undefined,outsider);expect(denied.status).toBe(403);
@@ -239,11 +240,13 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     return options.body;
    };
    const registrationRoute=`/payment-executions/${plan.ids.payment}/registrations`;
-   const submit=async(token:string,scopeKey:string,opening:Opening,amountCents:string,sourceAllocations:Array<{sourceBatchId:string;amountCents:string}>,expectedPaymentUpdatedAt?:string)=>{
-    const key=randomUUID();
-    const body={idempotencyKey:key,expectedPaymentUpdatedAt:expectedPaymentUpdatedAt??(await registrationOptions(token)).expectedPaymentUpdatedAt,amountCents,paidAt:plan.paidAt,scopeKey,expectedRegistrationId:opening.id,openingTreatment:"not_included",openingReason:"虚构付款未含期初",openingEvidence:"隔离登记",sourceAllocations,confirmationPassword:token===finance?passwords[0]:passwords[1]};
-    const response=await json(registrationRoute,"POST",body,token);
-    return {key,response,body};
+   const command=async(token:string,scopeKey:string,opening:Opening,amountCents:string,sourceAllocations:Array<{sourceBatchId:string;amountCents:string}>,expectedPaymentUpdatedAt?:string)=>({
+    idempotencyKey:randomUUID(),expectedPaymentUpdatedAt:expectedPaymentUpdatedAt??(await registrationOptions(token)).expectedPaymentUpdatedAt,amountCents,paidAt:plan.paidAt,scopeKey,expectedRegistrationId:opening.id,openingTreatment:"not_included",openingReason:"虚构付款未含期初",openingEvidence:"隔离登记",sourceAllocations,confirmationPassword:token===finance?passwords[0]:passwords[1]
+   });
+   const submit=async(...args:Parameters<typeof command>)=>{
+    const body=await command(...args);
+    const response=await json(registrationRoute,"POST",body,args[0]);
+    return {key:body.idempotencyKey,response,body};
    };
    if(overpay){
     const choices=[{token:finance,scopeKey:`company:${plan.ids.companyA}`,opening:a,actor:plan.ids.actor},{token:keeper,scopeKey:"public_cash",opening:cash,actor:seeded.keeper}];
@@ -337,7 +340,79 @@ it("preserves the original approval HTTP status with the existing APP_FILTER",as
     expect(response.status).toBe(201);
     return {key,id:response.body.id as string};
    };
-   const companyB=await pay(finance,`company:${plan.ids.companyB}`,b,"3000"),companyA=await pay(keeper,`company:${plan.ids.companyA}`,a,"3000");
+   const payThroughLoss=async()=>{
+    // Use the existing one-drop loopback proxy and the observed-commit replay sequence.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {createNativeResponseLossTransport}=require("../../prisma/task16-native-response-loss-transport.cjs");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {runLedgerLossFlow}=require("../../prisma/task16-ledger-loss-flow.cjs");
+    const attempt=await command(finance,bScope,b,"3000",[{sourceBatchId:ownSource.id,amountCents:"3000"}]);
+    const key=attempt.idempotencyKey;
+    const listener=app!.getHttpServer();
+    const check=()=>{
+     if(!listener.listening||`http://127.0.0.1:${listener.address()?.port}`!==origin)throw new Error("TASK398_LOSS_ENDPOINT");
+    };
+    const transport=await createNativeResponseLossTransport({origin,payment:plan.ids.payment,key,check,prepareBody:(body:string)=>{
+     const fingerprint=createHash("sha256").update(body).digest("hex");
+     return (candidate:string)=>{if(createHash("sha256").update(candidate).digest("hex")!==fingerprint)throw new Error("TASK398_LOSS_BODY_CHANGED");};
+    }});
+    const observe=()=>observer.$transaction(async tx=>{
+     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+     const openings=await tx.fundAccountBalanceRegistration.findMany({where:{id:{in:[a.id,b.id]}},select:{id:true,accountId:true,balanceYuan:true,coveredExecutionIds:true},orderBy:{id:"asc"}});
+     const allocations=await tx.registeredFundPaymentAllocation.findMany({select:{executionId:true,accountId:true,sourceBatchId:true,amountCents:true}});
+     const balances=Object.fromEntries(openings.map(opening=>{
+      const spent=allocations.filter(row=>row.accountId===opening.accountId&&!opening.coveredExecutionIds.includes(row.executionId)).reduce((sum,row)=>sum+row.amountCents,0n);
+      return [opening.id,opening.balanceYuan?.minus(new Prisma.Decimal(spent.toString()).div(100)).toFixed(4)];
+     }));
+     return {
+      paid:(await tx.paymentRequest.findUniqueOrThrow({where:{id:plan.ids.payment},select:{paidAmountCents:true}})).paidAmountCents,
+      settlementPaid:(await tx.settlement.findUniqueOrThrow({where:{id:plan.ids.settlement},select:{paidAmountCents:true}})).paidAmountCents,
+      executions:await tx.paymentExecution.findMany({select:{id:true,idempotencyKey:true,amountCents:true,executedByUserId:true}}),
+      funding:await tx.registeredPaymentFunding.findMany({select:{executionId:true,actualPayerId:true}}),
+      allocations,events:await tx.registeredPaymentEvent.findMany({select:{executionId:true}}),
+      audits:await tx.auditLog.findMany({where:{businessId:plan.ids.payment,action:"payment.execution.record"},select:{actorUserId:true}}),
+      debt:await tx.interEntityRelationshipEntry.findMany({where:{sourceType:"registered_payment_execution"},select:{id:true,paymentExecutionId:true,sourceType:true,entryKind:true,direction:true,status:true,originalDebtorCompanyId:true,creditorCompanyId:true,amountCents:true,projectId:true}}),
+      facts:await tx.operatingFact.findMany({where:{sourceType:"payment_execution"},select:{id:true,sourceBusinessId:true}}),
+      impacts:await tx.operatingImpactEntry.findMany({where:{sourceType:"payment_execution"},select:{factId:true,sourceBusinessId:true,impactKind:true,amountCents:true},orderBy:{id:"asc"}}),
+      balances
+     };
+    },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
+    let recorded:Awaited<ReturnType<typeof observe>>|undefined,id:string|undefined;
+    try {
+     await runLedgerLossFlow({
+      lose:()=>transport.lose(()=>json(registrationRoute,"POST",attempt,finance,transport.fetch)),
+      observeCommitted:async()=>{
+       recorded=await observe();
+       expect(recorded.executions).toHaveLength(1);
+       id=recorded.executions[0].id;
+       const debtId=recorded.debt[0]?.id,factId=recorded.facts[0]?.id;
+       expect(typeof debtId).toBe("string");expect(typeof factId).toBe("string");
+       expect(recorded).toMatchObject({
+        paid:3000n,settlementPaid:3000n,balances:{[a.id]:"100.0000",[b.id]:"70.0000"},
+        executions:[{id,idempotencyKey:key,amountCents:3000n,executedByUserId:plan.ids.actor}],
+        funding:[{executionId:id,actualPayerId:plan.ids.companyB}],allocations:[{executionId:id,sourceBatchId:ownSource.id,amountCents:3000n}],
+        events:[{executionId:id}],audits:[{actorUserId:plan.ids.actor}],facts:[{id:factId,sourceBusinessId:id}],
+        debt:[{id:debtId,paymentExecutionId:id,sourceType:"registered_payment_execution",originalDebtorCompanyId:plan.ids.companyA,creditorCompanyId:plan.ids.companyB,amountCents:3000n,projectId:plan.ids.project}]
+       });
+       expect(recorded.impacts).toHaveLength(3);
+       expect(recorded.impacts).toEqual(expect.arrayContaining(["payable_decrease","company_project_funds_decrease","inter_subject_balance_increase"].map(impactKind=>({factId,sourceBusinessId:id,impactKind,amountCents:3000n}))));
+      },
+      readOriginal:async()=>{
+       expect(await json(`/payment-executions/results/${key}`,"GET",undefined,finance)).toMatchObject({status:200,body:{
+        status:"recorded",execution:{executionId:id,amountCents:"3000"},
+        intercompany:[{entryId:recorded!.debt[0].id,amountCents:"3000",debtorCompanyId:plan.ids.companyA,creditorCompanyId:plan.ids.companyB}]
+       }});
+      },
+      authorizeReplay:()=>transport.authorizeReplay(),
+      replay:async()=>{expect(await json(registrationRoute,"POST",attempt,finance,transport.fetch)).toMatchObject({status:201,body:{id}});},
+      observeReplay:async()=>{expect(await observe()).toEqual(recorded);}
+     });
+     transport.assertCompleted();
+     if(!id)throw new Error("TASK398_LOSS_EXECUTION_ID");
+     return {key,id};
+    } finally {await transport.close();}
+   };
+   const companyB=ledgerLoss ? await payThroughLoss() : await pay(finance,bScope,b,"3000"),companyA=await pay(keeper,`company:${plan.ids.companyA}`,a,"3000");
    for(const token of [finance,keeper])expect((await json("/payment-executions/work-items","GET",undefined,token)).body.items).toContainEqual(expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"6000",remainingAmountCents:"4000"}));
    const final=await pay(keeper,"public_cash",cash,"4000");
    const accountView=await json("/fund-accounts","GET",undefined,finance);expect(accountView.status).toBe(200);
