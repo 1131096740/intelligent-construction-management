@@ -35,7 +35,7 @@ async function closeChild(child:ChildProcess|undefined){
  finally{if(timer)clearTimeout(timer);}
 }
 (enabled?describe:describe.skip)("#398 browser against real isolated PostgreSQL",()=>{
- it("shares one partial payment between roles and independently reconciles its effects",async()=>{
+ it("recovers a lost payment response by the original key, then completes and reconciles payment",async()=>{
   const urls=[process.env.TASK398_OWNER_URL,process.env.DATABASE_URL,process.env.TASK398_OBSERVER_URL].map(value=>new URL(value??""));
   const runId=process.env.TASK398_RUN_ID??"",candidate=process.env.TASK398_CANDIDATE_SHA??"",output=process.env.TASK398_BROWSER_EVIDENCE??"";
   if(process.env.NODE_ENV!=="test"||!/^[a-f0-9]{32}$/u.test(runId)||!/^[a-f0-9]{40}$/u.test(candidate)||!output.startsWith("/private/tmp/")||!urls.every(url=>url.hostname==="127.0.0.1"&&url.port===urls[0]!.port&&url.pathname==="/jiangkong_payment_execution_concurrency")||urls.map(url=>url.username).join(",")!=="jg_task01_owner,jg_task01_runtime,jg_task01_observer")throw new Error("TASK398_BROWSER_ISOLATION");
@@ -132,18 +132,41 @@ async function closeChild(child:ChildProcess|undefined){
    await form.getByText("未含期初，需要扣减登记资金",{exact:true}).click();await form.locator('[aria-label="来源分摊金额1"] input').fill("30");await form.locator('[aria-label="期初核对原因"] textarea').fill("虚构付款未含期初");await form.locator('[aria-label="期初核对依据"] textarea').fill("隔离虚构凭据");await form.locator('[aria-label="本人当前密码"] input').fill(passwords[0]!);
    await form.getByRole("button",{name:"确认登记这笔实付",exact:true}).click();
    await page.locator(".financial-balances").getByText("业务基准日：",{exact:false}).waitFor();
-   const ledgerRefresh=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/payments");
-   const relationshipRefresh=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/contract-relationship-ledger");
-   const balanceRefresh=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/operating-projections/as-of");
-   const posted=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/payment-executions/${plan.ids.payment}/registrations`);
-   await page.getByRole("button",{name:"已核实并确认登记",exact:true}).click();const firstResponse=await posted;expect(firstResponse.status()).toBe(201);const firstBody=await firstResponse.json();expect(typeof firstBody.id).toBe("string");expect(submitted).toBe(true);expect((await ledgerRefresh).status()).toBe(200);expect((await relationshipRefresh).status()).toBe(200);const refreshedProjection=await balanceRefresh;expect(refreshedProjection.status()).toBe(200);expect((await refreshedProjection.json()).operating.payableCents).toBe("7000");
+   const registrationPattern=`**/api/payment-executions/${plan.ids.payment}/registrations`;
+   let firstExecutionId:string|undefined;
+   await page.route(registrationPattern,async(route:{
+    fetch:(options:{maxRetries:number})=>Promise<{status:()=>number;json:()=>Promise<{id?:string}>}>;
+    abort:()=>Promise<void>;
+   })=>{
+    const response=await route.fetch({maxRetries:0});
+    const body=await response.json();
+    if(response.status()===201&&typeof body.id==="string")firstExecutionId=body.id;
+    await route.abort();
+   },{times:1});
+   await page.getByRole("button",{name:"已核实并确认登记",exact:true}).click();
+   await panel.getByText("登记结果暂未确认，请保留当前填写并查询本次结果，不能重复登记。",{exact:true}).waitFor();
+   expect(typeof firstExecutionId).toBe("string");
+   expect(submitted).toBe(true);
+   expect(await panel.getByRole("button",{name:"开始下一笔实付登记",exact:true}).count()).toBe(0);
+   const originalKey=scope.resultKeys[0]!;
+   const resultRead=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="GET"&&new URL(response.url()).pathname===`/api/payment-executions/results/${originalKey}`);
+   const recoveryProof=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/payment-executions/${plan.ids.payment}/recovery-proof`);
+   await panel.getByRole("button",{name:"查询本次登记结果",exact:true}).click();
+   const result=await resultRead;
+   expect(result.status()).toBe(200);
+   expect(await result.json()).toMatchObject({status:"recorded",execution:{executionId:firstExecutionId,amountCents:"3000"}});
+   const proof=await recoveryProof;
+   expect(proof.status()).toBe(201);
+   expect(await proof.json()).toEqual({status:"matched",executionId:firstExecutionId});
+   await panel.getByText("已查到本次付款登记，电子凭证可继续补充。",{exact:true}).waitFor();
+   expect(scope.resultKeys).toEqual([originalKey]);
    await page.locator(".business-status-summary__item").filter({hasText:"已实付金额"}).getByText("¥30.00",{exact:true}).waitFor();
    await page.locator(".financial-balances").getByText("应付余额：70.00 元",{exact:false}).first().waitFor();
    await panel.getByText("已付 ¥30.00 · 剩余待付 ¥70.00",{exact:true}).first().waitFor();
    const other=await second.newPage();await other.goto(`http://127.0.0.1:${port}/付款管理`);await other.getByRole("region",{name:"共享实付待办"}).getByText("已付 ¥30.00 · 剩余待付 ¥70.00",{exact:true}).first().waitFor();
    await page.screenshot({path:path.join(path.dirname(output),"finance-partial.png"),fullPage:true});
    await other.screenshot({path:path.join(path.dirname(output),"keeper-shared.png"),fullPage:true});
-   const after=await observe();expect(after).toEqual({balance:"70.0000",executionWitness:[{id:firstBody.id,amount:"3000"}],settlementWitness:before.settlementWitness,settlementFacts:1,settlementImpacts:2,paid:"3000",settlementPaid:"3000",executions:1,amount:"3000",funding:1,allocations:1,allocationAmount:"3000",events:1,audits:1,facts:1,impacts:2});
+   const after=await observe();expect(after).toEqual({balance:"70.0000",executionWitness:[{id:firstExecutionId,amount:"3000"}],settlementWitness:before.settlementWitness,settlementFacts:1,settlementImpacts:2,paid:"3000",settlementPaid:"3000",executions:1,amount:"3000",funding:1,allocations:1,allocationAmount:"3000",events:1,audits:1,facts:1,impacts:2});
    // No second submission until all first-payment facts above have reconciled.
    admit.reconciledFirst(true);
    await panel.getByRole("button",{name:"开始下一笔实付登记",exact:true}).click();
@@ -156,7 +179,7 @@ async function closeChild(child:ChildProcess|undefined){
    await page.getByRole("button",{name:"已核实并确认登记",exact:true}).click();const finalResponse=await finalPost;expect(finalResponse.status()).toBe(201);
    const finalBody=await finalResponse.json();expect(typeof finalBody.id).toBe("string");scope.executionIds.push(finalBody.id);
    await panel.getByText("当前没有待登记的实付。",{exact:true}).waitFor();await other.reload();await other.getByRole("region",{name:"共享实付待办"}).getByText("当前没有待登记的实付。",{exact:true}).waitFor();
-   const final=await observe();expect(final).toEqual({balance:"0.0000",executionWitness:[{id:firstBody.id,amount:"3000"},{id:finalBody.id,amount:"7000"}],settlementWitness:before.settlementWitness,settlementFacts:1,settlementImpacts:2,paid:"10000",settlementPaid:"10000",executions:2,amount:"10000",funding:2,allocations:2,allocationAmount:"10000",events:2,audits:2,facts:2,impacts:4});
+   const final=await observe();expect(final).toEqual({balance:"0.0000",executionWitness:[{id:firstExecutionId,amount:"3000"},{id:finalBody.id,amount:"7000"}],settlementWitness:before.settlementWitness,settlementFacts:1,settlementImpacts:2,paid:"10000",settlementPaid:"10000",executions:2,amount:"10000",funding:2,allocations:2,allocationAmount:"10000",events:2,audits:2,facts:2,impacts:4});
    const recorded=page.getByRole("region",{name:"已登记实付"});
    const finalRow=recorded.locator(".registered-payment__item").filter({hasText:"¥70.00"});
    await finalRow.getByRole("button",{name:"补充电子凭证",exact:true}).click();
@@ -170,7 +193,7 @@ async function closeChild(child:ChildProcess|undefined){
    const pathToDownload=path.join(path.dirname(output),"downloaded-voucher.png");await download.saveAs(pathToDownload);expect(readFileSync(pathToDownload)).toEqual(png);
    expect(await observe()).toEqual(final);
    await page.screenshot({path:path.join(path.dirname(output),"finance-complete-voucher.png"),fullPage:true});
-   completedEvidence={candidate,runId,status:"BROWSER_COMPLETION_CASE_RETURNED_NOT_FULL_ACCEPTANCE",requestKeySha256:digests,before,after,final,voucherDownloaded:true};
+   completedEvidence={candidate,runId,status:"BROWSER_COMPLETION_CASE_RETURNED_NOT_FULL_ACCEPTANCE",requestKeySha256:digests,before,after,final,voucherDownloaded:true,firstResponseRecovered:true};
   }catch(error){primaryError=error;throw error;}
   finally{
    const failures:string[]=[];
