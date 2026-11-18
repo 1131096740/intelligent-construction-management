@@ -183,7 +183,15 @@ async function closeChild(child:ChildProcess|undefined){
    await form.getByText("未含期初，需要扣减登记资金",{exact:true}).click();await form.locator('[aria-label="来源分摊金额1"] input').fill("70");await form.locator('[aria-label="期初核对原因"] textarea').fill("虚构付款未含期初");await form.locator('[aria-label="期初核对依据"] textarea').fill("隔离虚构凭据");await form.locator('[aria-label="本人当前密码"] input').fill(passwords[0]!);
    await form.getByRole("button",{name:"确认登记这笔实付",exact:true}).click();
    const finalPost=page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/payment-executions/${plan.ids.payment}/registrations`);
-   await page.getByRole("button",{name:"已核实并确认登记",exact:true}).click();const finalResponse=await finalPost;expect(finalResponse.status()).toBe(201);
+   const refreshes=["/api/payments","/api/contract-relationship-ledger","/api/operating-projections/as-of"].map(route=>
+    page.waitForResponse((response:{request:()=>{method:()=>string};url:()=>string})=>response.request().method()==="GET"&&new URL(response.url()).pathname===route)
+   );
+   const [finalResponse,ledger,relationship,projection]=await Promise.all([
+    finalPost,...refreshes,page.getByRole("button",{name:"已核实并确认登记",exact:true}).click()
+   ]);
+   expect(finalResponse.status()).toBe(201);
+   expect([ledger.status(),relationship.status(),projection.status()]).toEqual([200,200,200]);
+   expect((await projection.json()).operating.payableCents).toBe("0");
    expect(registrationRequests).toBe(2);
    const finalBody=await finalResponse.json();expect(typeof finalBody.id).toBe("string");scope.executionIds.push(finalBody.id);
    await panel.getByText("当前没有待登记的实付。",{exact:true}).waitFor();await other.reload();await other.getByRole("region",{name:"共享实付待办"}).getByText("当前没有待登记的实付。",{exact:true}).waitFor();
