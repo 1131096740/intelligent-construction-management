@@ -1,3 +1,4 @@
+import { readFileBindingCatalog } from "../database/registered-payment-catalog";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import { projectCollisionExecuteAcls } from "./contract-direct-pending-collision-acl";
@@ -8,6 +9,10 @@ const registry = "public.jg_file_business_binding_columns()";
 const enforcer = "public.jg_enforce_exclusive_file_business_binding()";
 const postPath = ["search_path=pg_catalog, public, pg_temp"];
 const wrapperBody = "46e6f6acb43b69175637009a272eec11a945928f055272aeea13ea86c384a4a3";
+const settlementRegistryBody = "6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f";
+const settlementPath = ["search_path=pg_catalog, public"];
+const settlementEnforcerBody = "2525f5adb08dac1a782f8bb689c68fa2073f5b72c4cd13df26808fd4660e42b1";
+const normalVoucherEnforcerBody = "2743ad737af5f75986dd94508e6e0d8a998c8a78b3ce08f023db56b2e7324505";
 const voucherGuardBody = "91b57f66e67bb1d888d1d0e8803cabbe08c289b01d2a6e810bfa69fe82a48d62";
 const voucherColumns = ["executionId", "fileId", "uploadedByUserId", "contentSha256", "createdAt"];
 const record = (value: unknown): Catalog | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Catalog : null;
@@ -30,6 +35,7 @@ export const registeredFileBindingCatalog = Prisma.sql`
         CASE WHEN p.proacl IS NULL THEN pg_catalog.acldefault('f',p.proowner) WHEN cardinality(p.proacl)>0 THEN p.proacl END) a) AS acl
     FROM (VALUES ('alias','public.jg_file_business_binding_columns_before_registered_payment()'),
       ('wrapper','public.jg_file_business_binding_columns()'),
+      ('settlementPrior','public.jg_file_business_binding_columns_before_owner_settlement()'),
       ('voucherGuard','public.jg_registered_payment_voucher_file_immutable()')) watched(kind,signature)
     JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(watched.signature)
     JOIN pg_catalog.pg_language l ON l.oid=p.prolang JOIN pg_catalog.pg_type t ON t.oid=p.prorettype
@@ -54,6 +60,8 @@ export const registeredFileBindingCatalog = Prisma.sql`
   SELECT jsonb_build_object(
     'alias',(SELECT metadata FROM routines WHERE kind='alias'),'aliasShape',(SELECT shape FROM routines WHERE kind='alias'),
     'wrapperShape',(SELECT shape FROM routines WHERE kind='wrapper'),'wrapperAcl',(SELECT acl FROM routines WHERE kind='wrapper'),
+    'settlementPrior',(SELECT metadata FROM routines WHERE kind='settlementPrior'),
+    'settlementPriorShape',(SELECT shape FROM routines WHERE kind='settlementPrior'),
     'voucherGuard',(SELECT metadata FROM routines WHERE kind='voucherGuard'),
     'voucherGuardShape',(SELECT shape FROM routines WHERE kind='voucherGuard'),
     'voucherGuardAcl',(SELECT acl FROM routines WHERE kind='voucherGuard'),
@@ -107,15 +115,24 @@ function validVoucherRead(column: Catalog, owner: unknown, roles: string[], allo
 }
 
 /** Only a complete B6 cut may project the two exact changes back to the immutable 205 binding. */
-export function projectRegisteredFileBinding(actual: Catalog, bound: Catalog, expected: Catalog, collisionAcls: Catalog, executor?: string): Catalog | null {
+export function projectRegisteredFileBinding(actual: Catalog, bound: Catalog, expected: Catalog, collisionAcls: Catalog, executor?: string, ownerSettlementVoucher = false): Catalog | null {
   const observed = record(actual.registeredFileBinding);
   if (!observed) return null;
-  if (["alias","voucher","voucherGuard","fileTrigger"].every(key => observed[key] === null)) return {};
+  const prior = record(observed.settlementPrior);
+  if (observed.settlementPrior != null && !prior) return null;
+  if (!prior && ["alias","voucher","voucherGuard","fileTrigger"].every(key => observed[key] === null)) return {};
   const current = record(actual.routines), original = record(bound.routines);
   const oldRegistry = record(original?.[registry]), oldEnforcer = record(original?.[enforcer]);
   const alias = record(observed.alias), wrapper = record(current?.[registry]), enforce = record(current?.[enforcer]);
   const historicalAcl = (signature: string, row: Catalog | null) =>
     row && Object.hasOwn(collisionAcls, signature) ? { ...row, acl: collisionAcls[signature] } : row;
+  const settlement = prior !== null;
+  const enforcerBody = settlement ? enforce?.bodySha256 : oldEnforcer?.bodySha256;
+  if (settlement && (!ownerSettlementVoucher || observed.settlementPriorShape !== true ||
+    !alias || !wrapper || !oid(prior.oid) || prior.oid === wrapper.oid ||
+    Object.values(original ?? {}).some(value => record(value)?.oid === prior.oid) ||
+    !isDeepStrictEqual(prior, { ...alias, oid: prior.oid, acl: wrapper.acl, bodySha256: wrapperBody }) ||
+    (enforcerBody !== settlementEnforcerBody && enforcerBody !== normalVoucherEnforcerBody))) return null;
   const guard = record(observed.voucherGuard), voucher = record(observed.voucher);
   const fileTrigger = record(observed.fileTrigger), exclusive = record(voucher?.exclusiveTrigger);
   const owner = expected.anchorOwnerOid, namespace = expected.anchorNamespaceOid;
@@ -127,10 +144,10 @@ export function projectRegisteredFileBinding(actual: Catalog, bound: Catalog, ex
     || oldRegistry.ownerOid !== owner || oldRegistry.namespaceOid !== namespace
     || observed.aliasShape !== true || observed.wrapperShape !== true || observed.voucherGuardShape !== true
     || !isDeepStrictEqual(historicalAcl(registry,alias),{...oldRegistry,configuration:postPath})
-    || !isDeepStrictEqual(historicalAcl(enforcer,enforce),{...oldEnforcer,configuration:postPath})
-    || !oid(wrapper.oid) || !oid(guard.oid) || wrapper.oid === guard.oid
+    || !isDeepStrictEqual(historicalAcl(enforcer,enforce),{...oldEnforcer,configuration:postPath,...(settlement ? { bodySha256: enforcerBody } : {})})
+    || !oid(wrapper.oid) || !oid(guard.oid) || wrapper.oid === guard.oid || prior?.oid === guard.oid
     || Object.values(original ?? {}).some(value => [wrapper.oid,guard.oid].includes(record(value)?.oid as string))
-    || !isDeepStrictEqual(wrapper,{...alias,oid:wrapper.oid,acl:wrapper.acl,bodySha256:wrapperBody})
+    || !isDeepStrictEqual(wrapper,{...alias,oid:wrapper.oid,acl:wrapper.acl,bodySha256:settlement?settlementRegistryBody:wrapperBody,configuration:settlement?settlementPath:postPath})
     || !hasExactExecute(observed.wrapperAcl,owner,[owner,...roles])
     || guard.ownerOid !== owner || guard.namespaceOid !== namespace || guard.bodySha256 !== voucherGuardBody
     || !isDeepStrictEqual(guard.configuration,postPath) || guard.language !== "plpgsql" || guard.returnType !== "trigger"
@@ -166,6 +183,7 @@ export type RegisteredExclusiveWitness = Readonly<{
   transaction: Prisma.TransactionClient;
   routineOid: string;
   triggerOid: string;
+  successorBodySha256?: string;
 }>;
 
 export function registeredExclusiveOids(tx: Prisma.TransactionClient, witness?: RegisteredExclusiveWitness) {
@@ -182,15 +200,21 @@ export async function qualifyDirectPendingFileBinding(
   const collisionAcls = await projectCollisionExecuteAcls(tx, actual, original, bootstrap, native);
   if (!collisionAcls) return null;
   mark("FILE_BINDING");
-  const fileBinding = projectRegisteredFileBinding(actual, bound, expected, collisionAcls, native?.executorOwnerOid);
+  const settlementInstalled = record(record(actual.registeredFileBinding)?.settlementPrior) !== null;
+  const settlement = settlementInstalled ? await readFileBindingCatalog(tx) : null;
+  const fileBinding = projectRegisteredFileBinding(actual, bound, expected, collisionAcls, native?.executorOwnerOid,
+    settlement?.registeredPayment === true && settlement.ownerSettlementVoucher === true);
   if (!fileBinding) return null;
 
   const routineOid = record(fileBinding[enforcer])?.oid;
   const directAttachment = record(record(bound.triggers)?.jg_direct_pending_attachment_exclusive);
   const triggerOid = directAttachment?.oid;
   if (Object.hasOwn(fileBinding, enforcer) && (!oid(routineOid) || !oid(triggerOid) || directAttachment?.functionOid !== routineOid)) return null;
+  const liveBody = record(record(actual.routines)?.[enforcer])?.bodySha256;
+  const successorBodySha256 = settlementInstalled &&
+    (liveBody === settlementEnforcerBody || liveBody === normalVoucherEnforcerBody) ? liveBody : undefined;
   const exclusive: RegisteredExclusiveWitness | undefined = oid(routineOid) && oid(triggerOid)
-    ? Object.freeze({ [witnessKey]: true as const, transaction: tx, routineOid, triggerOid })
+    ? Object.freeze({ [witnessKey]: true as const, transaction: tx, routineOid, triggerOid, ...(successorBodySha256 ? { successorBodySha256 } : {}) })
     : undefined;
   return { collisionAcls, fileBinding, exclusive };
 }

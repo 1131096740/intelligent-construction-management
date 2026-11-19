@@ -794,7 +794,7 @@ export class TemplateSyntheticStore {
         if (query.values.length) throw new Error("合成expected binding仅允许原固定协议读取");
         return (await this.table("directPendingInstalledBinding").findMany()).map(row => directCatalogFixtureRow(row.snapshot));
       }
-      if (createHash("sha256").update(text).digest("hex") === "8777b4ead52c63de9bf8f83e9a288ea7df6f635d4c2416cb2f055095cfa5de81") {
+      if (createHash("sha256").update(text).digest("hex") === "57c1364638c224be03d0b8c1de99fd4eab91b1781bec6dc82c651edbe51b1884") {
         if (query.values.length !== 1 || typeof query.values[0] !== "string") throw new Error("合成actual目录仅允许精确policy参数");
         const request = directCatalogFixtureRow(JSON.parse(query.values[0]));
         const installed = await this.table("directPendingInstalledBinding").findMany();

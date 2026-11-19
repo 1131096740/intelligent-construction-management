@@ -291,6 +291,11 @@ export async function qualifyUpwardPendingSave(
       ? Prisma.sql`p.oid=${exclusive.routineOid}::oid AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']::text[]`
       : Prisma.sql`p.proconfig IS NULL`;
     const exclusiveTrigger = exclusive ? Prisma.sql`AND t.oid=${exclusive.triggerOid}::oid` : Prisma.empty;
+    const rawRoutineSha = Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`;
+    const projectedRoutineSha = qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, rawRoutineSha);
+    const routineSha = exclusive?.successorBodySha256
+      ? Prisma.sql`CASE WHEN e.role='exclusive' THEN ${rawRoutineSha} ELSE ${projectedRoutineSha} END`
+      : projectedRoutineSha;
     const rows = await tx.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
       /* contract_upward_pending_save_catalog_v1 */
       WITH expected(role,signature) AS (VALUES
@@ -316,7 +321,7 @@ export async function qualifyUpwardPendingSave(
         WHERE b."protocolVersion"=1 AND b."applicationRoleOid"=current_user::regrole::oid
           AND b."applicationRoleOid"=session_user::regrole::oid AND b."namespaceOid"=pg_catalog.to_regnamespace('public')
       ), routines AS (
-        SELECT e.role,p.oid,${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)} AS body
+        SELECT e.role,p.oid,${routineSha} AS body
         FROM scoped b CROSS JOIN expected e
         JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(e.signature)
         JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
@@ -401,7 +406,10 @@ export async function qualifyUpwardPendingSave(
     const hooks = result?.triggerOids;
     const qualifiedSlot = projection?.routines.find(item => item.signature === "public.jg_guard_contract_direct_archive_slot_v1()"
       && item.oid === result?.slotRoutineOid && item.beforeSha256 === "99d80f7a4bb9105acda415aa7cedd6dba0266849cb9b945cb5e7b0aaf6885164");
-    const expectedBodies = qualifiedSlot ? { ...UPWARD_SAVE_ROUTINE_BODIES, slot: qualifiedSlot.beforeSha256 } : UPWARD_SAVE_ROUTINE_BODIES;
+    const expectedBodies = { ...UPWARD_SAVE_ROUTINE_BODIES,
+      ...(qualifiedSlot ? { slot: qualifiedSlot.beforeSha256 } : {}),
+      ...(exclusive?.successorBodySha256 ? { exclusive: exclusive.successorBodySha256 } : {})
+    };
     const names = ["jg_direct_pending_version_shape", "jg_direct_pending_attachment_source", "ContractDraftAttachment_direct_archive_transfer_v1",
       "jg_upward_pending_save_binding_immutable", "jg_upward_pending_save_binding_no_truncate", "jg_upward_pending_save_persistent_proof",
       "jg_direct_pending_file_retained", "jg_direct_pending_attachment_exclusive"];

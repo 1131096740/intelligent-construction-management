@@ -127,6 +127,36 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
         expect(seen[1].sql).toContain("p.oid=?::oid AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']");
         expect(seen[1].sql).toContain("AND t.oid=?::oid");
         expect(seen[1].values).toEqual(expect.arrayContaining([routines[enforce].oid, directHook.oid]));
+        const settlementWrapper = { ...wrapper,
+          bodySha256: "6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f",
+          configuration: ["search_path=pg_catalog, public"] };
+        const settlementPrior = { ...wrapper, oid: "31002" };
+        const settlement = { ...post, registeredFileBinding: { ...registeredFileBinding,
+          settlementPrior, settlementPriorShape: true }, routines: { ...postRoutines,
+          [registry]: settlementWrapper,
+          [enforce]: { ...postRoutines[enforce], bodySha256: "2743ad737af5f75986dd94508e6e0d8a998c8a78b3ce08f023db56b2e7324505" } } };
+        const settlementTx = { $queryRaw: async (query: Prisma.Sql) => {
+          expect(query.sql).toContain("registered_payment_voucher_catalog");
+          return [{ state: "installed", ownerSettlementVoucher: true }];
+        } } as unknown as Prisma.TransactionClient;
+        await expect(qualifyDirectPendingFileBinding(settlementTx, settlement, pre, expected, {}, null))
+          .resolves.toMatchObject({ exclusive: { routineOid: routines[enforce].oid,
+            successorBodySha256: settlement.routines[enforce].bodySha256 } });
+        for (const drift of [
+          { ...settlement, routines: { ...settlement.routines, [registry]: wrapper } },
+          { ...settlement, routines: { ...settlement.routines,
+            [enforce]: { ...settlement.routines[enforce], bodySha256: "0".repeat(64) } } },
+          { ...settlement, registeredFileBinding: { ...settlement.registeredFileBinding,
+            settlementPrior: { ...settlementPrior, oid: routines[registry].oid } } },
+          { ...settlement, registeredFileBinding: { ...settlement.registeredFileBinding,
+            settlementPrior: { ...settlementPrior, acl: ["changed"] } } },
+        ]) {
+          await expect(qualifyDirectPendingFileBinding(settlementTx, drift, pre, expected, {}, null)).resolves.toBeNull();
+        }
+        const unqualifiedTx = {
+          $queryRaw: async () => [{ state: "installed", ownerSettlementVoucher: false }]
+        } as unknown as Prisma.TransactionClient;
+        await expect(qualifyDirectPendingFileBinding(unqualifiedTx, settlement, pre, expected, {}, null)).resolves.toBeNull();
         const foreignTx = { ...tx };
         expect(registeredExclusiveOids(foreignTx, qualified?.exclusive)).toBeUndefined();
         await expect(qualifyUpwardPendingSave(foreignTx, qualified?.exclusive)).rejects.toMatchObject({ status: 503 });
