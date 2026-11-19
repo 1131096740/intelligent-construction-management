@@ -239,6 +239,45 @@ describe("ContractDocumentProcessor", () => {
     };
   }
 
+  it("allows a real processor to be stepped only after manual scheduling is opted in", async () => {
+    jest.useFakeTimers();
+    const prisma = makePrisma();
+    const processor = ContractDocumentProcessor.forManualScheduling(prisma as unknown as PrismaService, {} as never, {} as never);
+    const automatic = new ContractDocumentProcessor(prisma as unknown as PrismaService, {} as never, {} as never);
+    const manualStep = jest.spyOn(processor, "processNext").mockResolvedValue(false);
+    const automaticStep = jest.spyOn(automatic, "processNext").mockResolvedValue(false);
+    try {
+      processor.onApplicationBootstrap();
+      automatic.onApplicationBootstrap();
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(automaticStep).toHaveBeenCalledTimes(2);
+      expect(manualStep).not.toHaveBeenCalled();
+      await processor.processNext();
+      expect(manualStep).toHaveBeenCalledTimes(1);
+    } finally {
+      await processor.onApplicationShutdown();
+      await automatic.onApplicationShutdown();
+      jest.useRealTimers();
+    }
+  });
+
+  it("publishes the qualified preview pointer inside the existing worker transaction", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    const original = prisma.tx.$queryRaw.getMockImplementation()!;
+    prisma.tx.$queryRaw.mockImplementation(async (query: { strings?: string[] }) => {
+      if (query.strings?.join(" ").includes("jg_publish_contract_preview_pointer_v1")) return [{ published: true }];
+      return original(query);
+    });
+    const files = generatedDocumentFiles();
+    const processor = ContractDocumentProcessor.forManualScheduling(prisma as unknown as PrismaService, files as never, audit as never, "ATOMIC_POINTER_V1");
+    await processor.processNext();
+
+    expect(prisma.tx.$queryRaw.mock.calls.some(([query]) => query.strings?.join(" ").includes("jg_publish_contract_preview_pointer_v1"))).toBe(true);
+    expect(prisma.tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(prisma.tx, expect.objectContaining({ action: "contract.document.success" }));
+  });
+
   function generatedDocumentFiles() {
     return {
       getFileBuffer: jest.fn().mockResolvedValue({
@@ -1581,6 +1620,26 @@ describe("ContractDocumentProcessor", () => {
     const processor=new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never), token=armCon18WorkerDiagnostic(processor);
     try {await processor.processNext();const result=takeCon18WorkerDiagnostic(processor,token,{generationId,versionId,sourceRevision:2,...documentContentCoordinates});expect(result).toEqual({status:"OBSERVED",stage:"TEMPLATE",errorKind:"ERROR"});expect(JSON.stringify(result)).not.toMatch(/PRIVATE|10000000/u);expect(prisma.tx.contractGeneratedDocument.updateMany.mock.calls[0][0].data.status).toBe("failed");}
     finally {closeCon18WorkerDiagnostic(processor,token);}
+  });
+
+  it("reports the rejected predecessor lookup inside a scoped publication failure", async () => {
+    const prisma = makePrisma();
+    const generationId = "10000000-0000-4000-8000-000000000002";
+    const versionId = "10000000-0000-4000-8000-000000000001";
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument({ id: generationId, contractVersionId: versionId }));
+    prisma.tx.contractGeneratedDocument.findFirst.mockRejectedValueOnce(new Error("PRIVATE_PUBLISH"));
+    const files = generatedDocumentFiles();
+    const processor = new ContractDocumentProcessor(prisma as unknown as PrismaService, files as never, audit as never);
+    const token = armCon18WorkerDiagnostic(processor);
+    try {
+      await processor.processNext();
+      const detail = takeCon18WorkerDiagnostic(processor, token, { generationId, versionId, sourceRevision: 3, ...documentContentCoordinates });
+      expect(detail).toMatchObject({ status: "OBSERVED", stage: "PUBLISH", errorKind: "ERROR", publishPhase: "PREDECESSOR_READ", publishElapsedMs: expect.any(Number) });
+      expect(JSON.stringify(detail)).not.toMatch(/PRIVATE|10000000/u);
+      expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "failed" }) }));
+    } finally {
+      closeCon18WorkerDiagnostic(processor, token);
+    }
   });
 
   it("requeues expired processing leases before claiming work", async () => {

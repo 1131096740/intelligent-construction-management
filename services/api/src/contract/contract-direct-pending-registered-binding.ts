@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
+import { projectCollisionExecuteAcls } from "./contract-direct-pending-collision-acl";
+import { markTask12DirectSourceDiagnostic as mark } from "./task12-direct-source-diagnostic";
 
 type Catalog = Record<string, unknown>;
 const registry = "public.jg_file_business_binding_columns()";
@@ -156,4 +158,39 @@ export function projectRegisteredFileBinding(actual: Catalog, bound: Catalog, ex
           || row.voucherSelect.some(column => column !== "fileId" && !(role === expected.applicationRoleOid && extraAppReads.includes(column)))));
     })) return null;
   return { [registry]: oldRegistry, [enforcer]: oldEnforcer };
+}
+
+const witnessKey = Symbol("registeredExclusiveWitness");
+export type RegisteredExclusiveWitness = Readonly<{
+  [witnessKey]: true;
+  transaction: Prisma.TransactionClient;
+  routineOid: string;
+  triggerOid: string;
+}>;
+
+export function registeredExclusiveOids(tx: Prisma.TransactionClient, witness?: RegisteredExclusiveWitness) {
+  return witness?.[witnessKey] === true && witness.transaction === tx ? witness : undefined;
+}
+
+export async function qualifyDirectPendingFileBinding(
+  tx: Prisma.TransactionClient, actual: Catalog, bound: Catalog, expected: Catalog, bootstrap: Catalog,
+  native: Parameters<typeof projectCollisionExecuteAcls>[4]
+) {
+  const original = record(bound.routines);
+  if (!original) return null;
+  mark("COLLISION_ACL");
+  const collisionAcls = await projectCollisionExecuteAcls(tx, actual, original, bootstrap, native);
+  if (!collisionAcls) return null;
+  mark("FILE_BINDING");
+  const fileBinding = projectRegisteredFileBinding(actual, bound, expected, collisionAcls, native?.executorOwnerOid);
+  if (!fileBinding) return null;
+
+  const routineOid = record(fileBinding[enforcer])?.oid;
+  const directAttachment = record(record(bound.triggers)?.jg_direct_pending_attachment_exclusive);
+  const triggerOid = directAttachment?.oid;
+  if (Object.hasOwn(fileBinding, enforcer) && (!oid(routineOid) || !oid(triggerOid) || directAttachment?.functionOid !== routineOid)) return null;
+  const exclusive: RegisteredExclusiveWitness | undefined = oid(routineOid) && oid(triggerOid)
+    ? Object.freeze({ [witnessKey]: true as const, transaction: tx, routineOid, triggerOid })
+    : undefined;
+  return { collisionAcls, fileBinding, exclusive };
 }

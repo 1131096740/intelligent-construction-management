@@ -1,9 +1,12 @@
+import { markTask12DirectSourceDiagnostic as mark, recordTask12DirectSourceDiagnostic as recordDiagnostic } from "./task12-direct-source-diagnostic";
+import { directPendingBindingOid, directPendingBindingProjection } from "./contract-direct-pending-binding-projection";
 import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { directParentGuard, directVersionTransition, nativeDirectBodies, readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
 import { hasGeneratedUpwardOperatingInstallation, upwardOperatingParentBody } from "./contract-generated-upward-operating-installation";
 import { qualifyUpwardPendingSave, UPWARD_SAVE_ROUTINE_BODIES } from "./contract-upward-pending-save-profile";
 import { qualifyUpwardPendingCreate, UPWARD_CREATE_DISPATCH_BODY } from "./contract-upward-pending-create";
 import { ServiceUnavailableException } from "@nestjs/common";
+import { qualifyDirectPendingFileBinding } from "./contract-direct-pending-registered-binding";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 
@@ -68,6 +71,24 @@ export async function readDirectArchiveDispatchOid(tx: Prisma.TransactionClient)
   unavailable();
 }
 
+// Mirror the sealed 214 installer. The predefined writer is only ignorable
+// while it is unreachable, and all other effective writers remain checked.
+export const directDispatchBuiltinWriterIsUnreachable = Prisma.sql`
+  EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE r.oid=6182 AND r.rolname='pg_write_all_data'
+    AND NOT (r.rolcanlogin OR r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls))
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.roleid=6182 OR m.member=6182)
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p WHERE p.proowner=6182 AND p.prosecdef)
+`;
+export const directDispatchLegacySlotReads = Prisma.sql`
+  ${directDispatchBuiltinWriterIsUnreachable}
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles r
+    WHERE r.oid<>6182
+      AND (pg_catalog.has_table_privilege(r.oid,'public."ContractDraftAttachment"'::regclass,'INSERT,UPDATE,DELETE')
+        OR pg_catalog.has_any_column_privilege(r.oid,'public."ContractDraftAttachment"'::regclass,'INSERT,UPDATE'))
+      AND EXISTS (SELECT 1 FROM unnest(ARRAY['id','contractId','draftData']) fields(name)
+        WHERE pg_catalog.has_column_privilege(r.oid,'public."ContractVersion"'::regclass,fields.name,'SELECT') IS DISTINCT FROM TRUE))
+`;
+
 async function readCatalog(tx: Prisma.TransactionClient) {
   const projection = await discoverUpwardLegacyProjection(tx);
   return tx.$queryRaw<Array<{ binding: unknown; actual: unknown }>>(Prisma.sql`
@@ -75,10 +96,10 @@ async function readCatalog(tx: Prisma.TransactionClient) {
     WITH registry AS (
       SELECT b.*,b.tableoid AS relation_oid FROM public.jg_contract_direct_archive_dispatch_binding_v1 b
     ), predecessors AS (
-      SELECT p.tableoid AS pending_oid, encode(public.digest(convert_to(to_jsonb(p)::text,'UTF8'),'sha256'),'hex') AS pending_sha,
+      SELECT ${directPendingBindingOid} AS pending_oid, encode(public.digest(convert_to(to_jsonb(p)::text,'UTF8'),'sha256'),'hex') AS pending_sha,
         q.tableoid AS prepare_oid, encode(public.digest(convert_to(to_jsonb(q)::text,'UTF8'),'sha256'),'hex') AS prepare_sha,
         r.tableoid AS retention_oid, encode(public.digest(convert_to(to_jsonb(r)::text,'UTF8'),'sha256'),'hex') AS retention_sha
-      FROM public.jg_contract_direct_pending_binding_v1 p
+      FROM ${directPendingBindingProjection} p
       CROSS JOIN public.jg_contract_direct_archive_binding_v1 q
       CROSS JOIN public.jg_contract_direct_archive_retention_binding_v1 r
       WHERE p."protocolVersion"=1 AND q."protocolVersion"=1 AND r."protocolVersion"=1
@@ -134,11 +155,7 @@ async function readCatalog(tx: Prisma.TransactionClient) {
           AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl
             WHERE acl.grantee<>c.relowner AND (acl.grantee<>current_user::regrole::oid OR acl.privilege_type<>'SELECT' OR acl.is_grantable))
           AND pg_catalog.has_table_privilege(current_user::regrole::oid,c.oid,'SELECT'),
-        'legacySlotReads',NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles r
-          WHERE (pg_catalog.has_table_privilege(r.oid,s.oid,'INSERT,UPDATE,DELETE')
-            OR pg_catalog.has_any_column_privilege(r.oid,s.oid,'INSERT,UPDATE'))
-            AND EXISTS(SELECT 1 FROM unnest(ARRAY['id','contractId','draftData']) fields(name)
-              WHERE pg_catalog.has_column_privilege(r.oid,v.oid,fields.name,'SELECT') IS DISTINCT FROM TRUE)),
+        'legacySlotReads',(${directDispatchLegacySlotReads}),
         'applicationSlotReads',NOT EXISTS(SELECT 1 FROM app_reads fields
           WHERE pg_catalog.has_column_privilege(current_user::regrole::oid,pg_catalog.to_regclass(fields.table_name),fields.column_name,'SELECT') IS DISTINCT FROM TRUE)
           AND pg_catalog.has_any_column_privilege(current_user::regrole::oid,'public."Contract"'::regclass,'UPDATE')
@@ -161,11 +178,13 @@ async function readCatalog(tx: Prisma.TransactionClient) {
 
 /** Project exactly two already-matched body digests for the unchanged 205 verifier. */
 export async function readDirectArchiveDispatchQualification(
-  tx: Prisma.TransactionClient, dispatchOid: string, bootstrap: RecordValue, legacy: RecordValue, observed: RecordValue,
+  tx: Prisma.TransactionClient, dispatchOid: string, bootstrap: RecordValue, legacy: RecordValue, observed: RecordValue, expected: RecordValue,
   transitionOid: string | null, retentionOid: string | null
 ) {
   try {
+    mark("DISPATCH_CATALOG");
     const rows = await readCatalog(tx);
+    mark("DISPATCH_POLICY");
     const binding = rows.length === 1 ? object(rows[0].binding) : null;
     const actual = rows.length === 1 ? object(rows[0].actual) : null;
     if (!binding || !actual || binding.protocolVersion !== 1 || binding.recipeVersion !== "contract-direct-archive-dispatch-v1/1") unavailable();
@@ -180,15 +199,18 @@ export async function readDirectArchiveDispatchQualification(
       || actual.backendPid !== bootstrap.backendPid || actual.transactionId !== bootstrap.transactionId
       || ["registryQualified","legacySlotReads","applicationSlotReads"].some(key => actual[key] !== true)
       || typeof actual.helpersPrivate !== "boolean") unavailable();
+    mark("DISPATCH_NATIVE_ADMISSION");
     const native = actual.helpersPrivate ? null : await readDirectArchiveNativeAdmission(tx, bootstrap);
     if (!actual.helpersPrivate && !native) unavailable();
 
+    mark("DISPATCH_LINKS");
     const links = object(binding.links);
     if (!links || !transitionOid || !retentionOid || links.pendingOid !== bootstrap.bindingRelationOid
       || links.prepareOid !== transitionOid || links.retentionOid !== retentionOid || Object.keys(links).length !== 6
       || ["pendingSha","prepareSha","retentionSha"].some(key => typeof links[key] !== "string" || !/^[0-9a-f]{64}$/u.test(links[key]))
       || !isDeepStrictEqual(links, actual.links)) unavailable();
 
+    mark("SHAPE_BINDINGS");
     const installed = object(binding.bindings), relations = object(actual.relations), oldRelations = object(legacy.relations);
     const oldRoutines = object(legacy.routines), currentRoutines = object(observed.routines), installedRoutines = object(installed?.routines);
     const installedHelpers = object(installed?.helpers), currentHelpers = object(actual.helpers), currentTriggers = object(actual.triggers);
@@ -201,21 +223,27 @@ export async function readDirectArchiveDispatchQualification(
       || Object.keys(installedHelpers).length !== helpers.length || Object.keys(currentHelpers).length !== helpers.length || Object.keys(currentTriggers).length !== triggers.length
       || actual.triggerCount !== triggers.length) unavailable();
 
+    const qualifiedFileBinding = await qualifyDirectPendingFileBinding(tx, observed, legacy, expected, bootstrap, native);
+    if (!qualifiedFileBinding) unavailable();
+
     const legacyProjection: RecordValue = {};
     let upwardCreate: Awaited<ReturnType<typeof qualifyUpwardPendingCreate>> | null = null;
     let upwardSave: Awaited<ReturnType<typeof qualifyUpwardPendingSave>> | undefined;
     for (const [signature, bodySha256] of Object.entries(postBodies)) {
+      mark("SHAPE_BINDINGS");
       const legacyRoutine = object(oldRoutines[signature]);
       if (!legacyRoutine || !oid(legacyRoutine.oid)) unavailable();
       const post = { ...legacyRoutine, bodySha256 };
       if (!isDeepStrictEqual(installedRoutines[signature], post)) unavailable();
       const successorBody = object(currentRoutines[signature])?.bodySha256;
       if (signature === parent && successorBody === upwardOperatingParentBody) {
+        mark("SHAPE_GENERATED_PARENT");
         if (!isDeepStrictEqual(currentRoutines[signature], { ...post, bodySha256: successorBody })
           || !await hasGeneratedUpwardOperatingInstallation(tx, actual)) unavailable();
       } else if (signature === version && (successorBody === UPWARD_CREATE_DISPATCH_BODY || successorBody === UPWARD_SAVE_ROUTINE_BODIES.version)
         && isDeepStrictEqual(currentRoutines[signature], { ...post, bodySha256: successorBody })) {
-        if (successorBody === UPWARD_SAVE_ROUTINE_BODIES.version) upwardSave = await qualifyUpwardPendingSave(tx);
+        if (successorBody === UPWARD_SAVE_ROUTINE_BODIES.version) upwardSave = await qualifyUpwardPendingSave(tx, qualifiedFileBinding.exclusive);
+        mark("SHAPE_UPWARD_CREATE");
         const witness = await qualifyUpwardPendingCreate(tx, upwardSave);
         const legacyTriggers = object(legacy.triggers);
         if (witness.directDispatchSha256 !== actual.dispatchRowSha256 || witness.dispatchBindingOid !== dispatchOid
@@ -231,6 +259,7 @@ export async function readDirectArchiveDispatchQualification(
       legacyProjection[signature] = legacyRoutine;
     }
     if (upwardSave) {
+      mark("SHAPE_UPWARD_SAVE_ATTACHMENT");
       const originalAttachment = object(oldRoutines[attachment]);
       const slotMeta = object(currentHelpers[slot]);
       const oldTriggers = object(legacy.triggers);
@@ -243,6 +272,7 @@ export async function readDirectArchiveDispatchQualification(
         || successorTriggers.jg_direct_pending_attachment_exclusive !== object(oldTriggers?.jg_direct_pending_attachment_exclusive)?.oid) unavailable();
       legacyProjection[attachment] = originalAttachment;
     }
+    mark("SHAPE_HELPERS");
     const nativeBodies: Readonly<Record<string, string>> | null = native && {
       ...nativeDirectBodies,
       [directParentGuard]: native.parentGuardBodySha256,
@@ -263,6 +293,7 @@ export async function readDirectArchiveDispatchQualification(
         || !isDeepStrictEqual(routine.proconfig, ["search_path=pg_catalog, pg_temp"])
         || routine.prorettype !== (relations[resultType] ?? resultType)) unavailable();
     }
+    mark("SHAPE_TRIGGERS");
     for (const [name, relation, routine, type] of triggers) {
       const trigger = object(currentTriggers[name]);
       const triggerFunction = object(installedRoutines[routine]) ?? object(currentHelpers[routine]);
@@ -273,8 +304,10 @@ export async function readDirectArchiveDispatchQualification(
         || trigger.tgattr !== "" || trigger.tgargs !== "" || trigger.tgqual !== null) unavailable();
       if (routine === version && trigger.oid !== object(object(legacy.triggers)?.[name])?.oid) unavailable();
     }
-    return { binding, actual, native, upwardCreate, upwardSave, legacyProjection, archiveRelationOid: relations.archiveOid, links };
-  } catch {
+    return { binding, actual, native, upwardCreate, upwardSave, legacyProjection,
+    qualifiedFileBinding: { collisionAcls: qualifiedFileBinding.collisionAcls, fileBinding: qualifiedFileBinding.fileBinding }, archiveRelationOid: relations.archiveOid, links };
+  } catch (error) {
+    recordDiagnostic(error);
     unavailable();
   }
 }

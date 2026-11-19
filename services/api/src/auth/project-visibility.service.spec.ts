@@ -9,8 +9,8 @@ describe("ProjectVisibilityService", () => {
       userPosition: { findMany: jest.fn().mockResolvedValueOnce([{positionId:"global-position",projectId:null}]).mockResolvedValueOnce([]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
       projectRosterMember: {
-        findMany: jest.fn(async (query: unknown) => {
-          expect(query).toEqual({where:{userId:"actor"},select:{projectId:true}});
+        groupBy: jest.fn(async (query: unknown) => {
+          expect(query).toEqual({by:["projectId"],where:{userId:"actor"}});
           return [{projectId:"project-1"}, {projectId:"project-1"}];
         })
       },
@@ -35,7 +35,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-2" }])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }, { id: "project-3" }])
@@ -61,7 +61,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
@@ -90,7 +90,7 @@ describe("ProjectVisibilityService", () => {
           .mockResolvedValueOnce([])
       },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       project: { findMany: projectFindMany },
       position: {
         findMany: jest.fn().mockResolvedValue([
@@ -121,7 +121,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
@@ -149,7 +149,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
@@ -174,7 +174,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([{ projectId: "project-2" }])
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-2" }])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
@@ -196,7 +196,7 @@ describe("ProjectVisibilityService", () => {
           .mockResolvedValueOnce([{ projectId: "project-1", positionId: "pos-finance" }])
       },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }]) },
       project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1" }]) },
       position: { findMany: jest.fn().mockResolvedValue([
         { id: "pos-employee", key: "employee" },
@@ -210,6 +210,10 @@ describe("ProjectVisibilityService", () => {
       "user-1",
       ["project-1"]
     )).resolves.toEqual(["project-1"]);
+    expect(tx.projectRosterMember.groupBy).toHaveBeenCalledWith({
+      by: ["projectId"],
+      where: { userId: "user-1", projectId: { in: ["project-1"] } }
+    });
     expect(tx.project.findMany).toHaveBeenCalledWith({
       where: { id: { in: ["project-1"] }, isActive: true },
       select: { id: true }
@@ -224,7 +228,7 @@ describe("ProjectVisibilityService", () => {
           .mockResolvedValueOnce([])
       },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       project: {
         findMany: jest.fn().mockResolvedValue(
           Array.from({ length: 201 }, (_, index) => ({ id: `project-${index}` }))

@@ -115,10 +115,24 @@ describe("对上已签合同正式登记公开入口", () => {
       const ticket = await fetch(`${base}/files/${secondFile}/download-ticket`, { method: "POST", headers,
         body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对对上签章照片" }) });
       expect(ticket.status).toBe(201);
-      const download = await fetch(base + (await ticket.json()).downloadUrl);
+      const downloadUrl = (await ticket.json()).downloadUrl;
+      const download = await fetch(base + downloadUrl);
       expect({ status: download.status, bytes: Buffer.from(await download.arrayBuffer()) }).toEqual({ status: 200, bytes: Buffer.from("synthetic PNG original bytes") });
+      const versions = server.store.table("syntheticPrivateFileVersion");
+      const pinned = await versions.findFirst({ where: { objectKey: "upward-original/" + secondFile, objectGeneration: "sealed-upward-1" } });
+      if (!pinned) throw new Error("合成签署原件固定版本缺失");
+      await versions.update({ where: { id: pinned.id }, data: { unavailableByVersion: true } });
+      await versions.create({ data: { bucket: pinned.bucket, objectKey: pinned.objectKey,
+        objectGeneration: "replacement-upward-1", base64: pinned.base64 } });
+      expect((await fetch(base + downloadUrl)).status).toBe(503);
+      await versions.update({ where: { id: pinned.id }, data: { unavailableByVersion: false } });
+      const restored = await fetch(base + downloadUrl);
+      expect({ status: restored.status, bytes: Buffer.from(await restored.arrayBuffer()) }).toEqual({ status: 200, bytes: Buffer.from("synthetic PNG original bytes") });
+      const reads = { pinned: server.store.pinnedPrivateStorageReads, plain: server.store.privateStorageReads };
       await server.store.prisma.userPosition.deleteMany({ where: { userId: "staff" } });
       await server.store.prisma.projectMember.deleteMany({ where: { userId: "staff" } });
+      expect((await fetch(base + downloadUrl)).status).toBe(403);
+      expect({ pinned: server.store.pinnedPrivateStorageReads, plain: server.store.privateStorageReads }).toEqual(reads);
       expect((await send()).status).toBe(403);
       expect((await fetch(`${base}/files/${secondFile}/download-ticket`, { method: "POST", headers,
         body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "已撤销权限" }) })).status).toBe(403);

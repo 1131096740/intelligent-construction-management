@@ -1,4 +1,5 @@
 import PizZip from "pizzip";
+import { Prisma } from "@prisma/client";
 import { ContractEndedApplicationPurgeService } from "../contract-ended-purge/contract-ended-application-purge.service";
 import { FileService } from "../file/file.service";
 import { createHash, randomUUID } from "node:crypto";
@@ -9,6 +10,8 @@ import { seedDirectPendingDatabaseBinding, openDirectPendingDraft, seedPreparedD
 import { seedDirectArchiveDispatchCatalog } from "./task12-direct-archive-dispatch.oracle";
 import { addDirectArchiveRetentionToReviewCatalog, observeDirectArchiveCompletionBody, seedDirectArchiveRetentionCatalog, seedDirectArchiveCompletionCatalog } from "./task12-direct-archive-retention.oracle";
 import { seedDirectReviewDatabaseBinding } from "./task12-direct-review-persistence.oracle";
+import { qualifyDirectPendingFileBinding, registeredExclusiveOids } from "../contract/contract-direct-pending-registered-binding";
+import { qualifyUpwardPendingSave } from "../contract/contract-upward-pending-save-profile";
 import { nativeDirectBodies } from "../contract/contract-direct-archive-native-admission";
 
 describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久与文件边界）", () => {
@@ -105,6 +108,33 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
       };
       const postRoutines: Record<string, Record<string, unknown>> = { ...routines, [registry]: wrapper, [enforce]: { ...routines[enforce], configuration } };
       const post = { ...pre, registeredFileBinding, routines: postRoutines };
+      if (!native) {
+        const seen: Prisma.Sql[] = [];
+        const tx = {
+          $queryRaw: async (query: Prisma.Sql) => {
+            seen.push(query);
+            return query.sql.includes("contract_upward_archive_projection_probe_v2")
+              ? [{ status: "absent", projectionOid: null, closureOid: null }] : [];
+          }
+        } as unknown as Prisma.TransactionClient;
+        const expected = { anchorOwnerOid: "9001", anchorNamespaceOid: "2200", applicationRoleOid: "7001", fileCallerOids: ["7001"] };
+        const qualified = await qualifyDirectPendingFileBinding(tx, post, pre, expected, {}, null);
+        const directHook = (pre.triggers as Record<string, { oid: string }>).jg_direct_pending_attachment_exclusive;
+        expect(registeredExclusiveOids(tx, qualified?.exclusive)).toMatchObject({
+          routineOid: routines[enforce].oid, triggerOid: directHook.oid
+        });
+        await expect(qualifyUpwardPendingSave(tx, qualified?.exclusive)).rejects.toMatchObject({ status: 503 });
+        expect(seen[1].sql).toContain("p.oid=?::oid AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']");
+        expect(seen[1].sql).toContain("AND t.oid=?::oid");
+        expect(seen[1].values).toEqual(expect.arrayContaining([routines[enforce].oid, directHook.oid]));
+        const foreignTx = { ...tx };
+        expect(registeredExclusiveOids(foreignTx, qualified?.exclusive)).toBeUndefined();
+        await expect(qualifyUpwardPendingSave(foreignTx, qualified?.exclusive)).rejects.toMatchObject({ status: 503 });
+        expect(seen[3].sql).toContain("e.role='exclusive' AND p.proconfig IS NULL");
+        await expect(qualifyDirectPendingFileBinding(tx, { ...post, routines: {
+          ...postRoutines, [enforce]: { ...postRoutines[enforce], bodySha256: "0".repeat(64) }
+        } }, pre, expected, {}, null)).resolves.toBeNull();
+      }
       const set = async (snapshot: Record<string, unknown>) => server.store.table("directPendingActualCatalog").update({ where: { id: current.id }, data: { snapshot } });
       const token = await loginTemplateActor(server, "staff");
       const create = async (status: number) => {
@@ -576,6 +606,75 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
       expect(await server.store.prisma.contractGeneratedDocument.count()).toBe(0);
     } finally { await server.app.close(); }
   });
+  it("表外草稿保留已锁定的合同类型，只在实际变更时写入该列", async () => {
+    const server = await createTemplateTestServer({ draftWorkbench: true });
+    try {
+      const draft = await openDirectPendingDraft(server);
+      const updates = jest.spyOn(server.store.prisma.contract, "update");
+      const draftData = draft.input.draft.draftData;
+      const saved = await draft.save(draft.input);
+      expect(saved.status).toBe(200);
+      expect(updates).toHaveBeenLastCalledWith({
+        where: { id: draft.created.version.contractId },
+        data: { name: draftData.contractName }
+      });
+
+      const changed = await draft.save({
+        ...draft.input,
+        idempotencyKey: randomUUID(),
+        expectedRevision: 2,
+        draft: {
+          ...draft.input.draft,
+          draftData: {
+            ...draftData,
+            contractBasics: { ...draftData.contractBasics, businessType: "equipment_rental" }
+          }
+        }
+      });
+      expect(changed.status).toBe(200);
+      expect(updates).toHaveBeenLastCalledWith({
+        where: { id: draft.created.version.contractId },
+        data: { name: draftData.contractName, contractTypeKey: "equipment_rental" }
+      });
+    } finally { await server.app.close(); }
+  });
+
+  it("表外原件保存只使用六个业务写入列，保留版本和上传顺序", async () => {
+    const server = await createTemplateTestServer({ draftWorkbench: true });
+    try {
+      const draft = await openDirectPendingDraft(server);
+      const fileIds = [];
+      for (const name of ["第一份原件.png", "第二份原件.png"]) {
+        const form = new FormData();
+        form.append("file", new Blob([Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+iC3sAAAAASUVORK5CYII=", "base64"
+        )], { type: "image/png" }), name);
+        const upload = await fetch(draft.base + draft.path + "/files", {
+          method: "POST", headers: { authorization: draft.headers.authorization }, body: form
+        });
+        expect(upload.status).toBe(201);
+        fileIds.push((await upload.json()).id);
+      }
+      const writes = jest.spyOn(server.store.prisma, "$executeRaw");
+      const saved = await draft.save({
+        ...draft.input,
+        changedSections: ["draft", "attachments"],
+        attachments: fileIds.map((fileId, displayOrder) => ({ slotKey: "direct_signed_originals_v1", fileId, displayOrder }))
+      });
+      expect(saved.status).toBe(200);
+      const commands = writes.mock.calls.map(([query]) => query).filter(query => query.sql.includes('INSERT INTO "public"."ContractDraftAttachment"'));
+      expect(commands).toHaveLength(1);
+      expect(commands[0].sql.replace(/\s+/gu, " ").trim()).toBe(
+        'INSERT INTO "public"."ContractDraftAttachment" ("id","contractVersionId","slotKey","fileId","displayOrder","createdByUserId") VALUES ( ?, ?, ?, ?, ?, ? ),( ?, ?, ?, ?, ?, ? )'
+      );
+      const rows = await server.store.prisma.contractDraftAttachment.findMany({
+        where: { contractVersionId: draft.created.version.id }, orderBy: { displayOrder: "asc" }
+      });
+      expect(rows).toMatchObject(fileIds.map((fileId, displayOrder) => ({ fileId, displayOrder, createdAt: expect.any(Date) })));
+      expect(new Set(rows.map(row => row.id)).size).toBe(2);
+    } finally { await server.app.close(); }
+  });
+
   it("受控双方与实际assignment及有序上传原件保存后，Q只取持久行且消费DB opaque摘要", async () => {
     const server = await createTemplateTestServer({ draftWorkbench: true });
     try {

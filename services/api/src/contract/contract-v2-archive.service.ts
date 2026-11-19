@@ -129,7 +129,7 @@ export class ContractV2ArchiveService {
         }
         const manifest = [];
         for (const [displayOrder, fileId] of input.fileIds.entries()) {
-          await this.files.assertCanAttachUnlinkedFile(tx, fileId, actor);
+          await this.files.assertCanAttachUnlinkedFile(tx, fileId, actor, versionId);
           const file = await tx.fileObject.findUniqueOrThrow({ where: { id: fileId } });
           const data = await this.files.getFileBuffer(fileId, tx);
           if (file.mimeType !== "application/pdf" || file.sizeBytes <= 0 || file.sizeBytes !== data.buffer.length || file.contentSha256 !== sha(data.buffer)) throw new BadRequestException("双方签章原件必须是可校验的PDF文件");

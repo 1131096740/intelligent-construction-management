@@ -1,3 +1,4 @@
+import { directPendingBindingProjection } from "./contract-direct-pending-binding-projection";
 import { qualifyUpwardPendingSave, UPWARD_SAVE_ROUTINE_BODIES } from "./contract-upward-pending-save-profile";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -33,7 +34,7 @@ export async function qualifyUpwardPendingCreate(tx: Prisma.TransactionClient,
         WHERE n.nspname='public' AND db.datname=pg_catalog.current_database()
       ), installed AS (
         SELECT b.*,s.*,c.oid AS binding_rel,c.relowner AS owner
-        FROM scope s JOIN public.jg_contract_direct_pending_binding_v1 b
+        FROM scope s JOIN ${directPendingBindingProjection} b
           ON b."protocolVersion"=1 AND b."recipeVersion"='contract-direct-pending-input-v1/1'
           AND b."applicationRoleOid"=s.actor AND b."applicationRoleOid"=s.session_role
           AND b."databaseOid"=s.db AND b."anchorNamespaceOid"=s.ns
@@ -150,7 +151,7 @@ export async function qualifyUpwardPendingCreate(tx: Prisma.TransactionClient,
       || row.bindingBody !== bindingBody || row.helperBody !== helperBody || row.safeRole !== true || row.privateExecute !== true
       || row.privateRegistryRead !== true || row.bindingShape !== true) unavailable();
     if (row.versionBody === UPWARD_SAVE_ROUTINE_BODIES.version && row.attachmentBody === UPWARD_SAVE_ROUTINE_BODIES.attachment) {
-      const witness = saveWitness ?? await qualifyUpwardPendingSave(tx);
+      const witness = saveWitness ?? await qualifyUpwardPendingSave(tx, undefined, "upward-create");
       const triggers = record(witness.triggerOids);
       if (!triggers || witness.createBindingSha256 !== row.createBindingSha256 || witness.createBindingOid !== row.createBindingOid
         || witness.versionRoutineOid !== row.versionRoutineOid || triggers.jg_direct_pending_version_shape !== row.versionTriggerOid

@@ -1,6 +1,7 @@
 import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { Prisma } from "@prisma/client";
 import { enabledDirectVersionBody, type readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
+import { UPWARD_NORMAL_GENERATED_LOCK_SHA256, UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
 import { enabledDirectCompletionCatalog } from "./contract-direct-outside-completion-catalog";
 
 type Admission = NonNullable<Awaited<ReturnType<typeof readDirectArchiveNativeAdmission>>>;
@@ -8,6 +9,9 @@ type Admission = NonNullable<Awaited<ReturnType<typeof readDirectArchiveNativeAd
 /** Qualify the full optional operating executor against the ordinary connection's existing native witness. */
 export async function hasDirectOutsideOperatingExecutor(tx: Prisma.TransactionClient, native: Admission) {
   const projection = await discoverUpwardLegacyProjection(tx);
+  const qualifiedNormalLock = projection?.definers.some(item =>
+    item.signature === "public.jg_upward_archive_catalog_projection_v2()"
+    && (item.bodySha256 === UPWARD_NORMAL_GENERATED_PROJECTION_SHA256 || item.bodySha256 === UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256));
   if (native.versionGuardBodySha256 !== enabledDirectVersionBody || native.outsideSlotQualified !== true) return false;
   try {
     const rows = await tx.$queryRaw<Array<{ qualified: boolean; backendPid: number; transactionId: string }>>(Prisma.sql`
@@ -86,8 +90,12 @@ export async function hasDirectOutsideOperatingExecutor(tx: Prisma.TransactionCl
             AND lock.proowner=b."anchorOwnerOid" AND lock.pronamespace=b."namespaceOid" AND lock.prokind='f'
             AND lock.provolatile='v' AND lock.proparallel='u' AND NOT (lock.prosecdef OR lock.proisstrict OR lock.proretset)
             AND lock.prorettype='pg_catalog.trigger'::regtype AND lock.proconfig IS NULL
-            AND encode(public.digest(convert_to(lock.prosrc,'UTF8'),'sha256'),'hex')=
-              'e651e3554e2938ebaa2c07578e109b1ad049188d4984820fe3bc017ca1879839'
+            AND (encode(public.digest(convert_to(lock.prosrc,'UTF8'),'sha256'),'hex') IN (
+              'e651e3554e2938ebaa2c07578e109b1ad049188d4984820fe3bc017ca1879839',
+              'c57288b55b9bac928d32850b0e3171d2089ab1b7f417eb85e7c1282b6d2d90ca',
+              'a2e4f66deffb69215b3be3301b361b4850c78b45f779b16c34f796179e0a126f')
+              ${qualifiedNormalLock ? Prisma.sql`OR encode(public.digest(convert_to(lock.prosrc,'UTF8'),'sha256'),'hex')
+                =${UPWARD_NORMAL_GENERATED_LOCK_SHA256}` : Prisma.empty})
             AND t.tgrelid=pg_catalog.to_regclass('public."ContractVersion"') AND t.tgname='ContractVersion_lock_construction_enterprise'
             AND t.tgtype=21 AND t.tgenabled='O' AND NOT t.tgisinternal AND NOT t.tgdeferrable AND NOT t.tginitdeferred
             AND t.tgqual IS NULL AND t.tgnargs=0 AND t.tgattr::text='')

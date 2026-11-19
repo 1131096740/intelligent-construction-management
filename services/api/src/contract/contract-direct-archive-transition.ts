@@ -1,3 +1,4 @@
+import { directPendingBindingOid, directPendingBindingProjection } from "./contract-direct-pending-binding-projection";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -45,8 +46,8 @@ export async function readPreparedDirectArchiveTransition(tx: Prisma.Transaction
       WITH registry AS (
         SELECT b.*, b.tableoid AS "registryOid" FROM public.jg_contract_direct_archive_binding_v1 b
       ), pending AS (
-        SELECT p.*, p.tableoid AS "relationOid", pg_catalog.encode(public.digest(pg_catalog.convert_to(pg_catalog.to_jsonb(p)::text,'UTF8'),'sha256'),'hex') AS "sha"
-        FROM public.jg_contract_direct_pending_binding_v1 p WHERE p."protocolVersion"=1
+        SELECT p.*, ${directPendingBindingOid} AS "relationOid", pg_catalog.encode(public.digest(pg_catalog.convert_to(pg_catalog.to_jsonb(p)::text,'UTF8'),'sha256'),'hex') AS "sha"
+        FROM ${directPendingBindingProjection} p WHERE p."protocolVersion"=1
       ), review AS (
         SELECT r.*, r.tableoid AS "relationOid", pg_catalog.encode(public.digest(pg_catalog.convert_to(pg_catalog.to_jsonb(r)::text,'UTF8'),'sha256'),'hex') AS "sha"
         FROM public.jg_contract_direct_review_retention_binding_v1 r WHERE r."protocolVersion"=1

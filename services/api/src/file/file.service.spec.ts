@@ -461,6 +461,26 @@ describe("FileService", () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
+  it.each([true, false])("keeps the NORMAL original check in the current transaction (installed %s)", async (installed) => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ state: "installed", ownerSettlementVoucher: true }])
+        .mockResolvedValueOnce([{ installed }])
+        .mockResolvedValueOnce([{ referenced: true }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "signed-original", uploadedByUserId: "contract-user", storageStatus: "active" })
+      }
+    };
+    const service = new FileService({} as PrismaService, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
+
+    await expect(service.assertCanAttachUnlinkedFile(tx as never, "signed-original", "contract-user", "sealed-version"))
+      .rejects.toThrow("该文件已用于其他业务");
+    const bindingQuery = tx.$queryRaw.mock.calls[3][0];
+    expect(bindingQuery.sql).toContain(installed ? "jg_check_normal_archive_voucher_v1" : "jg_project_owner_settlement_voucher_bound");
+    if (installed) expect(bindingQuery.values).toContain("sealed-version");
+  });
+
   it("rejects a correction attachment already bound to another business", async () => {
     const tx = {
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
@@ -6240,7 +6260,7 @@ describe("FileService", () => {
         })
       },
       contractTakeoverCorrection: {
-        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey }]) },
@@ -6262,9 +6282,11 @@ describe("FileService", () => {
       downloadReason: "复核历史主体更正依据"
     });
 
-    expect(tx.contractTakeoverCorrection.findFirst).toHaveBeenCalledWith({
+    expect(tx.contractTakeoverCorrection.groupBy).toHaveBeenCalledWith({
       where: { attachmentFileId: "correction-file-1" },
-      select: { projectId: true }
+      by: ["projectId"],
+      orderBy: { projectId: "asc" },
+      take: 2
     });
     expect(ticket.expiresAt).toBeTruthy();
     expect(ticket.downloadUrl).toContain("correction-file-1");
@@ -6289,7 +6311,7 @@ describe("FileService", () => {
         })
       },
       contractTakeoverCorrection: {
-        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -6345,7 +6367,7 @@ describe("FileService", () => {
         pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
         contractSealTask: { findFirst: jest.fn() },
         contractTakeoverCorrection: {
-          findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+          groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
         },
         userPosition: { findMany: jest.fn().mockResolvedValue([]) },
         projectMember: {
@@ -6368,10 +6390,42 @@ describe("FileService", () => {
         actorUserId: "contract-director",
         downloadReason: "复核历史主体更正依据"
       })).rejects.toThrow("当前账号无权下载该合同签署资料");
-      expect(tx.contractTakeoverCorrection.findFirst).not.toHaveBeenCalled();
+      expect(tx.contractTakeoverCorrection.groupBy).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     }
   );
+
+  it("denies takeover correction file bindings across two projects before checking actor roles", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "correction-file-1",
+          bucket: "private-local",
+          objectKey: "uploads/correction-file-1.pdf",
+          originalName: "主体更正依据.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "uploader"
+        })
+      },
+      contractTakeoverCorrection: {
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }, { projectId: "project-2" }])
+      },
+      projectMember: { findMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(legacyFileTransaction(tx))
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
+
+    await expect(service.createDownloadTicket("correction-file-1", {
+      actorUserId: "uploader", downloadReason: "复核历史接管依据"
+    })).rejects.toThrow("资料文件存在跨业务绑定冲突");
+    expect(tx.projectMember.findMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
 
   it("allows finance users to create download tickets for linked contract archives", async () => {
     const tx = {
@@ -8207,6 +8261,7 @@ describe("FileService", () => {
   it("records a successful wage-evidence download without filename, amount, or personnel content", async () => {
     const buffer = Buffer.from("wage-evidence");
     const txBase = {
+      contractTakeoverCorrection: { groupBy: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({
         id: "wage-evidence-1", bucket: "private-local", objectKey: "uploads/wage-evidence-1.pdf",
         originalName: "张三-100000工资.pdf", mimeType: "application/pdf", sizeBytes: 13,
@@ -8263,6 +8318,7 @@ describe("FileService", () => {
     const buffer = Buffer.from("wage-evidence");
     let actorActive = true;
     const txBase = {
+      contractTakeoverCorrection: { groupBy: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({
         id: "wage-evidence-1", bucket: "private-local", objectKey: "uploads/wage-evidence-1.pdf",
         originalName: "工资依据.pdf", mimeType: "application/pdf", sizeBytes: buffer.length,

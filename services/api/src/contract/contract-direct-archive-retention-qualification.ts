@@ -2,6 +2,7 @@ import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./con
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
+import { markTask12DirectSourceDiagnostic as mark, recordTask12DirectSourceDiagnostic } from "./task12-direct-source-diagnostic";
 import { legacyCompletionName as oldCompletionGuard, readDirectArchiveCompletionOid,
   readDirectArchiveCompletionQualification } from "./contract-direct-archive-completion-qualification";
 
@@ -82,8 +83,11 @@ export async function readDirectArchiveRetentionOid(tx: Prisma.TransactionClient
 export async function readDirectArchiveRetentionQualification(tx: Prisma.TransactionClient, relationOid: string,
   preparation: { binding: Row; actual: Row } | null, anchor: Row) {
   try {
+    mark("RETENTION_PREPARATION");
     if (!preparation) unavailable();
+    mark("RETENTION_PROJECTION");
     const projection = await discoverUpwardLegacyProjection(tx);
+    mark("RETENTION_CATALOG");
     const rows = await tx.$queryRaw<Array<{ binding: Row; actual: Row }>>(Prisma.sql`
       /* contract_direct_archive_retention_catalog_v1 */
       WITH installed AS (
@@ -196,26 +200,36 @@ export async function readDirectArchiveRetentionQualification(tx: Prisma.Transac
     `);
     const result = rows.length === 1 ? rows[0] : null;
     const binding = result?.binding, actual = result?.actual;
+    mark("RETENTION_BINDING");
     if (!binding || !actual || binding.protocolVersion !== 1 || binding.recipeVersion !== "contract-direct-archive-retention-v1/1"
       || binding.applicationRoleOid !== preparation.binding.applicationRoleOid || binding.anchorOwnerOid !== preparation.binding.anchorOwnerOid
       || binding.databaseOid !== preparation.binding.databaseOid || binding.preparationRelationOid !== preparation.actual.relationOid
       || typeof binding.preparationSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(binding.preparationSha256)
       || !["applicationRoleOid","anchorOwnerOid","databaseOid","preparationRelationOid","preparationSha256"].every(key => binding[key] === actual[key])
-      || !["currentRoleOid","sessionRoleOid","backendPid","transactionId"].every(key => actual[key] === anchor[key])
-      || actual.registryQualified !== true || actual.applicationCompletionReads !== true
-      || !Array.isArray(actual.fileCallers) || !isDeepStrictEqual(actual.fileCallers.map(caller => record(caller)?.roleOid), preparation.binding.fileCallerOids)
+      || !["currentRoleOid","sessionRoleOid","backendPid","transactionId"].every(key => actual[key] === anchor[key])) unavailable();
+    mark("RETENTION_REGISTRY");
+    if (actual.registryQualified !== true) unavailable();
+    mark("RETENTION_APPLICATION_READS");
+    if (actual.applicationCompletionReads !== true) unavailable();
+    mark("RETENTION_FILE_CALLERS");
+    if (!Array.isArray(actual.fileCallers) || !isDeepStrictEqual(actual.fileCallers.map(caller => record(caller)?.roleOid), preparation.binding.fileCallerOids)
       || actual.fileCallers.some(caller => record(caller)?.exactReads !== true || record(caller)?.executable !== true)) unavailable();
+    mark("RETENTION_BOUND_CATALOG");
     const installed = record(binding.bindings), observed = record(actual.bindings);
     if (!installed || !observed) unavailable();
+    mark("RETENTION_COMPLETION_PROBE");
     const completionOid = await readDirectArchiveCompletionOid(tx);
     const completion = completionOid === null ? null
       : await readDirectArchiveCompletionQualification(tx, completionOid, relationOid, anchor, installed, observed);
+    mark("RETENTION_LEGACY_CATALOG");
     const catalog: Row = completion?.legacyCatalog ?? observed;
     if (!isDeepStrictEqual(installed, catalog)) unavailable();
+    mark("RETENTION_DESCRIPTORS");
     const relations = record(catalog.relations), routines = record(catalog.routines), triggers = record(catalog.triggers);
     if (!relations || relations[registry] !== relationOid || !["FileObject","ContractArchiveFile","ContractArchiveEvidenceFile"].every(name => oid(relations[name]))
       || Object.keys(relations).length !== 4 || !routines || Object.keys(routines).length !== routineDescriptors.length
       || !triggers || Object.keys(triggers).length !== triggerDescriptors.length || actual.triggerCount !== triggerDescriptors.length) unavailable();
+    mark("RETENTION_ROUTINES");
     for (const [name, sha, language, returnType, volatility, parallel, strict] of routineDescriptors) {
       const routine = record(routines[name]);
       const configuration = name === oldCompletionGuard ? "search_path=pg_catalog, public" : "search_path=pg_catalog, pg_temp";
@@ -225,6 +239,7 @@ export async function readDirectArchiveRetentionQualification(tx: Prisma.Transac
         || routine.parallel !== parallel || routine.strict !== strict || routine.returnsSet !== false || routine.securityDefiner !== false
         || routine.noPublicExecute !== true || !isDeepStrictEqual(routine.configuration, [configuration])) unavailable();
     }
+    mark("RETENTION_TRIGGERS");
     for (const [name, table, routine, type, deferred] of triggerDescriptors) {
       const trigger = record(triggers[name]);
       if (!trigger || !oid(trigger.oid) || trigger.relation !== relations[table] || trigger.routine !== record(routines[routine])?.oid
@@ -233,6 +248,7 @@ export async function readDirectArchiveRetentionQualification(tx: Prisma.Transac
     }
     return { binding, actual, completion, fileTrigger: triggers[directArchiveRetentionFileTrigger] };
   } catch (error) {
+    recordTask12DirectSourceDiagnostic(error);
     if (error instanceof ServiceUnavailableException) throw error;
     unavailable();
   }

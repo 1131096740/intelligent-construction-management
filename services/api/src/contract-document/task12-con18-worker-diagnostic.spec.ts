@@ -36,3 +36,14 @@ it("drops a late worker failure after the diagnostic window closes",()=>{
  const worker={},token=armCon18WorkerDiagnostic(worker),record=beginCon18WorkerJob(worker,job(2));closeCon18WorkerDiagnostic(worker,token);record?.step("PDF_CONVERT");record?.fail(new Error("PRIVATE"));
  expect(takeCon18WorkerDiagnostic(worker,token,coordinates(2))).toEqual({status:"UNAVAILABLE"});
 });
+
+it("omits an unrecognized publication phase from the scoped diagnostic", () => {
+ const worker = {}, token = armCon18WorkerDiagnostic(worker);
+ const record = beginCon18WorkerJob(worker, job(2));
+ try {
+  record?.step("PUBLISH");
+  record?.publishStep("PRIVATE_UNRECOGNIZED" as never);
+  record?.fail(new Error("PRIVATE_MESSAGE"));
+  expect(takeCon18WorkerDiagnostic(worker, token, coordinates(2))).toEqual({status:"OBSERVED",stage:"PUBLISH",errorKind:"ERROR"});
+ } finally { closeCon18WorkerDiagnostic(worker, token); }
+});

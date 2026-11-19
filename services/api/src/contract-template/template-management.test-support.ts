@@ -338,7 +338,14 @@ export class TemplateSyntheticStore {
     companyTransferEvent: this.table("companyTransferEvent"),
     authRateLimit: this.table("authRateLimit"),
     user: this.table("user"), userPosition: this.table("userPosition"), position: this.table("position"),
-    project: this.table("project"), projectRosterMember: this.table("projectRosterMember"),
+    project: this.table("project"), projectRosterMember: {
+      ...this.table("projectRosterMember"),
+      groupBy: async ({ by, where }: { by: ["projectId"]; where: Row }) => {
+        if (by.length !== 1 || by[0] !== "projectId") throw new Error("合成项目人员目录仅支持按项目分组");
+        const rows = await this.table("projectRosterMember").findMany({ where });
+        return [...new Set(rows.map((row) => row.projectId))].map((projectId) => ({ projectId }));
+      }
+    },
     companyEntity: this.table("companyEntity"), companyEntityVersion: this.table("companyEntityVersion"),
     projectParticipatingCompany: this.table("projectParticipatingCompany"),
     projectMember: this.table("projectMember"), refreshToken: this.table("refreshToken"), auditLog: this.table("auditLog"),
@@ -413,6 +420,23 @@ export class TemplateSyntheticStore {
     $executeRawUnsafe: async (statement: string) => { if (statement !== "SET TRANSACTION READ ONLY") throw new Error("合成只读事务拒绝未知语句"); return 0; },
     $executeRaw: async (query: Prisma.Sql): Promise<number> => {
       const text = query.strings.join("?").replace(/\s+/gu, " ").trim();
+      const directAttachments = 'INSERT INTO "public"."ContractDraftAttachment" ("id","contractVersionId","slotKey","fileId","displayOrder","createdByUserId") VALUES ';
+      if (text.startsWith(directAttachments)) {
+        const count = query.values.length / 6;
+        const shape = Array.from({ length: count }, () => "( ?, ?, ?, ?, ?, ? )").join(",");
+        if (count < 1 || count > 20 || !Number.isInteger(count) || text !== directAttachments + shape) {
+          throw new Error("合成签章原件写入只接受已核列和连续顺序");
+        }
+        const data = Array.from({ length: count }, (_, index) => {
+          const [id, contractVersionId, slotKey, fileId, displayOrder, createdByUserId] = query.values.slice(index * 6, index * 6 + 6);
+          if ([id, contractVersionId, fileId, createdByUserId].some(value => typeof value !== "string")
+            || slotKey !== "direct_signed_originals_v1" || displayOrder !== index) {
+            throw new Error("合成签章原件写入拒绝未核参数");
+          }
+          return { id, contractVersionId, slotKey, fileId, displayOrder, createdByUserId };
+        });
+        return (await this.table("contractDraftAttachment").createMany({ data })).count;
+      }
       if (!['SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', 'SELECT 1 FROM "ProjectCloseAggregate" WHERE "projectId" = ? FOR UPDATE'].includes(text) || query.values.length !== 1 || typeof query.values[0] !== "string") throw new Error("合成经营锁拒绝未知形状");
       return 1;
     },
@@ -757,7 +781,7 @@ export class TemplateSyntheticStore {
         const catalog = await this.table("directPendingBindingCatalog").findMany();
         return [{ catalog: catalog.length === 1 ? catalog[0].snapshot : { bindingRelationOid: null } }];
       }
-      if (createHash("sha256").update(text).digest("hex") === "f73d0ed8464e6cc277833f00165f776a82109721e384d77c3367983025169cbb") {
+      if (createHash("sha256").update(text).digest("hex") === "998380df54f0b9f9b1970995fff4450bc16845b2515abe219d2506ee91536c2d") {
         if (query.values.length) throw new Error("合成expected binding仅允许原固定协议读取");
         return (await this.table("directPendingInstalledBinding").findMany()).map(row => directCatalogFixtureRow(row.snapshot));
       }

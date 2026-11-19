@@ -226,8 +226,9 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
                   AND participant.prokind='f' AND participant.provolatile='v' AND participant.proparallel='u'
                   AND NOT participant.proisstrict AND NOT participant.prosecdef AND NOT participant.proretset
                   AND participant.prorettype='pg_catalog.trigger'::regtype AND participant.proconfig IS NULL
-                  AND encode(public.digest(convert_to(participant.prosrc,'UTF8'),'sha256'),'hex')=
-                    'ba713bc2f3d6c7faa9390f75fd9f459a7d2bd2791d62a39fa33a97b291f0ccfc'
+                  AND encode(public.digest(convert_to(participant.prosrc,'UTF8'),'sha256'),'hex') IN (
+                    'ba713bc2f3d6c7faa9390f75fd9f459a7d2bd2791d62a39fa33a97b291f0ccfc',
+                    '1e5c1ae87f5227d928ce16e58d89334e60edfb3e3fcbb3648dd94893cc3daff6')
                   AND t.tgrelid='public."ContractVersion"'::regclass AND t.tgname='ContractVersion_require_active_participant'
                   AND t.tgtype=23 AND t.tgenabled='O' AND NOT t.tgisinternal AND NOT t.tgdeferrable AND NOT t.tginitdeferred
                   AND t.tgqual IS NULL AND t.tgnargs=0 AND t.tgattr::text='')))

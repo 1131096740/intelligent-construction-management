@@ -15,6 +15,8 @@ export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, 
         pg_catalog.to_regclass('public."RegisteredContractHistoryRevision"')::oid AS history,
         pg_catalog.to_regprocedure('public.jg_file_business_binding_columns()')::oid AS registry,
         pg_catalog.to_regprocedure('public.jg_file_business_binding_columns_before_registered_payment()')::oid AS alias,
+        pg_catalog.to_regprocedure('public.jg_file_business_binding_columns_before_owner_settlement()')::oid AS settlement_prior,
+        pg_catalog.to_regprocedure('public.jg_project_owner_settlement_voucher_bound(text)')::oid AS settlement_reader,
         pg_catalog.to_regprocedure('public.jg_registered_payment_voucher_file_immutable()')::oid AS guard
     ), voucher_columns(name, type) AS (VALUES
       ('executionId',25), ('fileId',25), ('uploadedByUserId',25), ('contentSha256',25), ('createdAt',1114)
@@ -24,9 +26,25 @@ export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, 
       JOIN pg_catalog.pg_class f ON f.oid=file AND f.relkind='r' AND f.relowner=p.relowner
       JOIN pg_catalog.pg_attribute a ON a.attrelid=p.oid AND a.attname='voucherFileId'
         AND a.attnum>0 AND NOT a.attisdropped AND a.atttypid='pg_catalog.text'::regtype
+    ), registry_routines AS (
+      SELECT p.*,pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex') AS body_sha
+      FROM anchor a JOIN pg_catalog.pg_proc p ON p.oid IN (a.registry,a.settlement_prior)
+      JOIN pg_catalog.pg_language l ON l.oid=p.prolang
+      WHERE p.pronamespace=pg_catalog.to_regnamespace('public') AND p.proowner=a.owner AND l.lanname='sql'
+        AND p.prokind='f' AND p.provolatile='s' AND p.proparallel='s' AND p.proretset
+        AND NOT (p.prosecdef OR p.proisstrict OR p.proleakproof) AND p.pronargs=0 AND p.pronargdefaults=0
+        AND p.prorettype='pg_catalog.record'::regtype AND p.proargtypes=''::oidvector
+        AND p.proallargtypes=ARRAY[25,25,16]::oid[] AND p.proargmodes=ARRAY['t','t','t']::"char"[]
+        AND p.proargnames=ARRAY['tableName','columnName','exclusive']
+        AND p.provariadic=0 AND p.prosupport=0
+    ), registered_registry AS (
+      SELECT oid,proacl
+      FROM registry_routines
+      WHERE body_sha='46e6f6acb43b69175637009a272eec11a945928f055272aeea13ea86c384a4a3'
+        AND proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']
     )
     SELECT CASE
-      WHEN legacy_voucher AND num_nonnulls(voucher,funding,allocation,event,history,alias,guard)=0
+      WHEN legacy_voucher AND num_nonnulls(voucher,funding,allocation,event,history,alias,guard,settlement_prior,settlement_reader)=0
         AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=registry AND p.proowner=owner
           AND pg_catalog.strpos(p.prosrc,'RegisteredPaymentVoucher')=0
           AND pg_catalog.strpos(p.prosrc,'jg_file_business_binding_columns_before_registered_payment')=0)
@@ -44,10 +62,45 @@ export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, 
           AND k.conname='RegisteredPaymentVoucher_fileId_fkey' AND k.contype='f'
           AND k.confrelid=file AND k.convalidated AND NOT k.condeferrable
           AND k.confupdtype='r' AND k.confdeltype='r')
-        AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_proc predecessor ON predecessor.oid=alias
-          WHERE p.oid=registry AND p.proowner=owner AND predecessor.proowner=owner AND NOT p.prosecdef
-          AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex')
-            ='46e6f6acb43b69175637009a272eec11a945928f055272aeea13ea86c384a4a3')
+        AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc predecessor WHERE predecessor.oid=alias AND predecessor.proowner=owner)
+        AND (
+          (settlement_prior IS NULL AND settlement_reader IS NULL AND EXISTS (
+            SELECT 1 FROM registered_registry p WHERE p.oid=registry
+          ))
+          OR EXISTS (
+            SELECT 1 FROM registry_routines p JOIN registered_registry prior ON prior.oid=settlement_prior
+            JOIN pg_catalog.pg_proc reader ON reader.oid=settlement_reader
+            JOIN pg_catalog.pg_language language ON language.oid=reader.prolang
+            WHERE p.oid=registry AND p.oid<>prior.oid
+              AND p.body_sha='6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f'
+              AND p.proconfig=ARRAY['search_path=pg_catalog, public']
+              AND reader.pronamespace=pg_catalog.to_regnamespace('public') AND reader.proowner=owner
+              AND language.lanname='sql' AND reader.prokind='f' AND reader.prosecdef
+              AND NOT (reader.proisstrict OR reader.proretset OR reader.proleakproof)
+              AND reader.prorettype='pg_catalog.bool'::regtype AND reader.provolatile='s' AND reader.proparallel='u'
+              AND reader.pronargs=1 AND reader.pronargdefaults=0 AND reader.proargtypes='25'::oidvector
+              AND reader.proargnames=ARRAY['candidate'] AND reader.proargmodes IS NULL AND reader.proallargtypes IS NULL
+              AND reader.provariadic=0 AND reader.prosupport=0
+              AND reader.proconfig=ARRAY['search_path=pg_catalog, public']
+              AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(reader.prosrc,'UTF8')),'hex')
+                ='fdeab4bf7fe58fc59edc88ed38ce5b2950b3f8ce049983d8b3521f219ec8da14'
+              AND (SELECT count(*)=1 AND bool_and(a.grantor=owner AND a.grantee=owner
+                    AND a.privilege_type='EXECUTE' AND NOT a.is_grantable)
+                FROM pg_catalog.aclexplode(coalesce(reader.proacl,pg_catalog.acldefault('f',owner))) a)
+              AND NOT EXISTS (
+                SELECT FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',owner))) a
+                WHERE a.grantee=0 OR a.grantor<>owner OR a.privilege_type<>'EXECUTE'
+                  OR (a.grantee<>owner AND a.is_grantable)
+              )
+              AND NOT EXISTS (
+                WITH before_acl AS (SELECT * FROM pg_catalog.aclexplode(coalesce(prior.proacl,pg_catalog.acldefault('f',owner)))),
+                     after_acl AS (SELECT * FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',owner))))
+                (SELECT * FROM before_acl EXCEPT ALL SELECT * FROM after_acl)
+                UNION ALL
+                (SELECT * FROM after_acl EXCEPT ALL SELECT * FROM before_acl)
+              )
+          )
+        )
         AND EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
           WHERE t.tgrelid=file AND t.tgname='RegisteredPaymentVoucher_file_immutable'
           AND t.tgenabled='O' AND NOT t.tgisinternal AND t.tgtype=27
@@ -61,7 +114,7 @@ export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, 
         THEN 'installed'
       ELSE 'unavailable'
     END AS state,
-      pg_catalog.to_regprocedure('public.jg_project_owner_settlement_voucher_bound(text)') IS NOT NULL AS "ownerSettlementVoucher"
+      settlement_reader IS NOT NULL AS "ownerSettlementVoucher"
     FROM anchor
   `);
   if (!extra && (row?.state === "absent" || row?.state === "installed")) {

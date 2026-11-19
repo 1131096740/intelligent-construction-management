@@ -6,7 +6,7 @@ import { readSignedOriginalVersion, type GeneratedArchivePreparationReader } fro
 import type { DirectArchiveRuntimeClient, DirectArchiveSqlClient } from "./contract-direct-archive-executor";
 import { record, upwardArchiveUnavailable, type UpwardDirectArchiveAuthority } from "./contract-upward-direct-registration";
 
-import { UPWARD_ARCHIVE_ADMISSION_SHA256 } from "./contract-upward-direct-source-pins";
+import { UPWARD_ARCHIVE_ADMISSION_SHA256, UPWARD_OUTSIDE_CHECK_ADMISSION_SHA256, UPWARD_NORMAL_GENERATED_ADMISSION_SHA256, UPWARD_NORMAL_VOUCHER_ADMISSION_SHA256 } from "./contract-upward-direct-source-pins";
 export { UPWARD_ARCHIVE_ADMISSION_SHA256 } from "./contract-upward-direct-source-pins";
 
 export async function readUpwardArchiveAdmission(tx: DirectArchiveSqlClient) {
@@ -20,7 +20,7 @@ export async function readUpwardArchiveAdmission(tx: DirectArchiveSqlClient) {
         AND p.prokind='f' AND NOT p.prosecdef AND p.provolatile='v' AND p.proparallel='u'
         AND NOT(p.proisstrict OR p.proretset OR p.proleakproof) AND p.pronargs=0 AND p.pronargdefaults=0
         AND p.prorettype='pg_catalog.jsonb'::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
-        AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${UPWARD_ARCHIVE_ADMISSION_SHA256}
+        AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') IN (${UPWARD_ARCHIVE_ADMISSION_SHA256},${UPWARD_OUTSIDE_CHECK_ADMISSION_SHA256},${UPWARD_NORMAL_GENERATED_ADMISSION_SHA256},${UPWARD_NORMAL_VOUCHER_ADMISSION_SHA256})
         AND current_user=session_user AND current_setting('session_replication_role')='origin'
         AND has_function_privilege(current_user,p.oid,'EXECUTE')
         AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a

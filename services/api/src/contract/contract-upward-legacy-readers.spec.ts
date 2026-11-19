@@ -1,5 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { UPWARD_SOURCE_DEFINERS } from "./contract-upward-direct-source-pins";
+import { matchesDirectOutsideOperatingReader } from "./contract-direct-outside-operating-reader-catalog";
+import { qualifiedUpwardConstraintOid, qualifiedUpwardConstraintSha, type UpwardLegacyProjection } from "./contract-upward-archive-catalog";
+import { observeTask12DirectSourceDiagnostic } from "./task12-direct-source-diagnostic";
+import { UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256, UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256, UPWARD_PROJECTION_SOURCE_SHA256, UPWARD_SOURCE_DEFINERS } from "./contract-upward-direct-source-pins";
 import { assertUpwardPendingSaveContinuity, qualifyUpwardPendingSave } from "./contract-upward-pending-save-profile";
 
 // Existing pre-closure qualification fixture; the new source may not silently replace it.
@@ -65,10 +68,10 @@ function syntheticProjection() {
     definers: Object.entries(UPWARD_SOURCE_DEFINERS).map(([signature, bodySha256], index) => ({ signature, bodySha256, oid: String(52001 + index) }))
   };
 }
-function successorClient(current: () => ReturnType<typeof syntheticProjection>, profile = legacyProfile) {
+function successorClient(current: () => ReturnType<typeof syntheticProjection>, profile = legacyProfile, projectionSource = UPWARD_PROJECTION_SOURCE_SHA256) {
   return { $queryRaw: async (query: Prisma.Sql) => {
     const text = query.strings.join("?");
-    if (text.includes("contract_upward_archive_projection_probe_v2")) return [{ status: "qualified", projectionOid: "49001", closureOid: "49002",
+    if (text.includes("contract_upward_archive_projection_probe_v2")) return [{ status: "qualified", projectionSource, projectionOid: "49001", closureOid: "49002",
       databaseOid: "13000", namespaceOid: "2200", anchorOwnerOid: "9001", currentRoleOid: "7001", sessionRoleOid: "7001",
       backendPid: 71201, transactionId: "500003" }];
     if (text.includes("contract_upward_archive_projection_read_v2")) return [{ projection: current() }];
@@ -94,6 +97,24 @@ describe("已核后继来源在原保存入口的连续性", () => {
     projection.definers = projection.definers.map(row => row.signature === "public.jg_upward_archive_catalog_projection_v2()"
       ? { ...row, bodySha256: oldProjectionSha } : row);
     await expect(qualifyUpwardPendingSave(successorClient(() => projection))).rejects.toMatchObject({ status: 503 });
+  });
+  it("仅在目录和权威投影摘要一致时接受表外执行权限后继", async () => {
+    const projection = syntheticProjection();
+    const definer = projection.definers.find(row => row.signature === "public.jg_upward_archive_catalog_projection_v2()")!;
+    definer.bodySha256 = UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256;
+    await expect(qualifyUpwardPendingSave(successorClient(
+      () => projection, legacyProfile, UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256
+    ))).resolves.toMatchObject(legacyProfile);
+    await expect(qualifyUpwardPendingSave(successorClient(() => projection))).rejects.toMatchObject({ status: 503 });
+  });
+  it.each([UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256])("仅接受目录探针与闭包一致的表内归档后继 %s", async signature => {
+    const projection = syntheticProjection();
+    const definer = projection.definers.find(row => row.signature === "public.jg_upward_archive_catalog_projection_v2()")!;
+    definer.bodySha256 = signature;
+    const candidate = successorClient(() => projection, legacyProfile, signature);
+    await expect(qualifyUpwardPendingSave(candidate)).resolves.toMatchObject(legacyProfile);
+    definer.bodySha256 = UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256;
+    await expect(qualifyUpwardPendingSave(candidate)).rejects.toMatchObject({ status: 503 });
   });
   it("拒绝来自另一事务的后继目录响应", async () => {
     await expect(qualifyUpwardPendingSave(successorClient(() => ({ ...syntheticProjection(), transactionId: "500004" }))))
@@ -124,4 +145,58 @@ describe("后继来源保留表外槽的真实最近前态", () => {
     slot[field] = field === "oid" ? "42006" : "f".repeat(64);
     await expect(qualifyUpwardPendingSave(successorClient(() => projection, latestProfile))).rejects.toMatchObject({ status: 503 });
   });
+});
+
+
+it("records the underlying save query failure before preserving its public 503", async () => {
+  const published = jest.fn();
+  const tx = {
+    $queryRaw: async (query: Prisma.Sql) => {
+      if (query.strings.join("?").includes("contract_upward_archive_projection_probe_v2")) {
+        return [{ status: "absent", projectionOid: null, closureOid: null }];
+      }
+      throw Object.assign(new Error("private query detail"), { code: "P2010", meta: { code: "42501" } });
+    }
+  } as unknown as Prisma.TransactionClient;
+  await expect(observeTask12DirectSourceDiagnostic(() => qualifyUpwardPendingSave(tx), published))
+    .rejects.toMatchObject({ status: 503 });
+  expect(published.mock.calls).toEqual([[{
+    phase: "SHAPE_UPWARD_SAVE_CATALOG", operation: "PRISMA_QUERY_RAW", prismaCode: "P2010", sqlState: "42501"
+  }]]);
+});
+
+
+it("keeps the sealed OIDs and digests when normalizing the exact B7 function prefix", () => {
+  const projection = syntheticProjection() as UpwardLegacyProjection;
+  const prior = Prisma.sql`candidate.prior_oid`, current = Prisma.sql`candidate.current_oid`;
+  const definition = Prisma.sql`pg_catalog.pg_get_constraintdef(candidate.current_oid,false)`;
+  const oid = qualifiedUpwardConstraintOid(projection, prior);
+  const sha = qualifiedUpwardConstraintSha(projection, current, definition);
+  for (const rule of [oid, sha]) {
+    expect(rule.sql).toContain("pg_catalog.starts_with");
+    expect(rule.sql).toContain("pg_catalog.replace");
+    expect(rule.values).toContain("CHECK (jg_upward_archive_constraint_v2(");
+    expect(rule.values).toContain("CHECK ((jg_upward_archive_constraint_v2(");
+    expect(rule.values).toContain(projection.constraint.afterOid);
+    expect(rule.values).toContain(projection.constraint.afterSha256);
+  }
+  expect(oid.values).toContain(projection.constraint.beforeOid);
+  expect(sha.values).toContain(projection.constraint.beforeSha256);
+  const legacy = qualifiedUpwardConstraintSha(null, current, definition);
+  expect(legacy.sql).not.toContain("pg_catalog.replace");
+  expect(legacy.sql).toContain("pg_catalog.pg_get_constraintdef(candidate.current_oid,false)");
+});
+
+it("binds the installed outside archive reader to its proof and exact transaction", () => {
+  const identity = { anchorOwnerOid: "9001", namespaceOid: "2200", databaseOid: "13000",
+    sessionRoleOid: "7001", currentRoleOid: "7001", backendPid: 71201, transactionId: "500003" };
+  const witness = { ...identity, ownerOid: identity.anchorOwnerOid, completionOid: "71300", routineOid: "71301" };
+  const definer = { oid: witness.routineOid,
+    bodySha256: "97187bfe8ea4afecec7836dfaa984f4afd095a58456b433879f485e107fb1776" };
+  expect(matchesDirectOutsideOperatingReader(witness, identity, "71300", definer)).toBe(true);
+  for (const bad of [null, { ...witness, transactionId: "500004" }, { ...witness, completionOid: "71302" },
+    { ...witness, ownerOid: "9002" }, { ...witness, currentRoleOid: "7002" }, { ...witness, routineOid: "71302" }]) {
+    expect(matchesDirectOutsideOperatingReader(bad, identity, "71300", definer)).toBe(false);
+  }
+  expect(matchesDirectOutsideOperatingReader(witness, identity, "71300", { ...definer, bodySha256: "0".repeat(64) })).toBe(false);
 });

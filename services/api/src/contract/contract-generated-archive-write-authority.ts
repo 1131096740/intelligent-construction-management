@@ -131,7 +131,7 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
           AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`g.oid`, Prisma.sql`encode(public.digest(convert_to(g.prosrc,'UTF8'),'sha256'),'hex')`)}='ae9d017bf6f9fd6617e7a58a3908c64c76c0130b0c49aa73a316d34ffbb44449'
         JOIN pg_catalog.pg_constraint k ON k.oid=${qualifiedUpwardConstraintOid(projection, Prisma.sql`v."upwardConstraintOid"`)} AND k.conrelid='public."ContractVersion"'::regclass
           AND k.contype='c' AND k.convalidated AND k.conislocal AND k.conname='ContractVersion_upward_draft_source_check'
-          AND ${qualifiedUpwardConstraintSha(projection, Prisma.sql`k.oid`, Prisma.sql`encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(k.oid,false),'UTF8'),'sha256'),'hex')`)}=v."upwardConstraintSha256"
+          AND ${qualifiedUpwardConstraintSha(projection, Prisma.sql`k.oid`, Prisma.sql`pg_catalog.pg_get_constraintdef(k.oid,false)`)}=v."upwardConstraintSha256"
         WHERE v."protocolVersion"=1 AND v."sealBindingOid"=b.tableoid
           AND encode(public.digest(convert_to(to_jsonb(b)::text,'UTF8'),'sha256'),'hex')=v."sealBindingSha256")
       AND basis.proowner=c.relowner AND basis.pronamespace=c.relnamespace AND NOT basis.prosecdef

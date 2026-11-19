@@ -1,6 +1,7 @@
 import { sumContractBillBusinessAmounts } from "../contract-bill/contract-bill-totals";
 import { BadRequestException, ConflictException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractVersion } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { normalizeBusinessAmount, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import type { SaveContractDraftAggregateDto } from "../contract-workbench/dto/contract-workbench.dto";
@@ -92,7 +93,17 @@ export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, c
   const attachmentChanged = !isDeepStrictEqual(previousAttachments.map(row => ({ slotKey: row.slotKey, fileId: row.fileId, displayOrder: row.displayOrder })), input.attachments.map(row => ({ slotKey: row.slotKey, fileId: row.fileId, displayOrder: row.displayOrder })));
   if (attachmentChanged) {
     await tx.contractDraftAttachment.deleteMany({ where: { contractVersionId: version.id, slotKey: "direct_signed_originals_v1" } });
-    if (input.attachments.length) await tx.contractDraftAttachment.createMany({ data: input.attachments.map(row => ({ ...row, contractVersionId: version.id, createdByUserId: actorUserId })) });
+    if (input.attachments.length) {
+      // Let PostgreSQL supply createdAt. Prisma createMany writes it explicitly,
+      // but the ordinary direct-save role can only insert the business columns.
+      const values = input.attachments.map(file => Prisma.sql`(
+        ${randomUUID()}, ${version.id}, ${file.slotKey}, ${file.fileId}, ${file.displayOrder}, ${actorUserId}
+      )`);
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "public"."ContractDraftAttachment" ("id","contractVersionId","slotKey","fileId","displayOrder","createdByUserId")
+        VALUES ${Prisma.join(values)}
+      `);
+    }
   }
   if (input.paymentTerms && (typeof input.paymentTerms.originalText !== "string" || input.paymentTerms.stages.length)) throw new BadRequestException("已签合同只保存实际付款原文");
   const termCandidates = await tx.paymentTermsVersion.findMany({ where: { contractVersionId: version.id }, orderBy: { versionNo: "asc" } });
@@ -116,11 +127,19 @@ export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, c
   const originalSignedNumber = input.draft.originalSignedNumber === undefined ? stored.originalSignedNumber : input.draft.originalSignedNumber === "" ? null : input.draft.originalSignedNumber;
   const draftData = { ...input.draft.draftData, directSigningInput: marker };
   const tax = { invoiceType: input.draft.taxFacts.invoiceType, taxMode: input.draft.taxFacts.taxMode, defaultTaxRatePercent: taxRate === null ? null : new Prisma.Decimal(taxRate) };
-  const changed = basics.businessType !== contract.contractTypeKey || input.draft.taxFacts.invoiceType !== version.invoiceType || input.draft.taxFacts.taxMode !== version.taxMode || taxRate !== (version.defaultTaxRatePercent?.toFixed(6) ?? null) || paymentChanged || partyResult.changed || attachmentChanged || Object.entries(signing).some(([key,value]) => record(version)?.[key] !== value) || originalSignedNumber !== stored.originalSignedNumber || !isDeepStrictEqual(draftData, current) || input.draft.pricingNature !== version.pricingNature
+  const contractTypeKey = String(basics.businessType);
+  const contractTypeChanged = contractTypeKey !== contract.contractTypeKey;
+  const changed = contractTypeChanged || input.draft.taxFacts.invoiceType !== version.invoiceType || input.draft.taxFacts.taxMode !== version.taxMode || taxRate !== (version.defaultTaxRatePercent?.toFixed(6) ?? null) || paymentChanged || partyResult.changed || attachmentChanged || Object.entries(signing).some(([key,value]) => record(version)?.[key] !== value) || originalSignedNumber !== stored.originalSignedNumber || !isDeepStrictEqual(draftData, current) || input.draft.pricingNature !== version.pricingNature
     || input.draft.amountSource !== version.amountSource || amount !== (version.amountYuan?.toFixed(4) ?? null);
   await assertDirectPendingSourceContinuity(tx, qualification);
   if (changed) {
-    await tx.contract.update({ where: { id: contract.id }, data: { contractTypeKey: String(basics.businessType), name: typeof input.draft.draftData.contractName === "string" ? input.draft.draftData.contractName : "" } });
+    await tx.contract.update({
+      where: { id: contract.id },
+      data: {
+        name: input.draft.draftData.contractName,
+        ...(contractTypeChanged ? { contractTypeKey } : {})
+      }
+    });
     await tx.contractVersion.update({ where: { id: version.id }, data: { ...tax, ...signing, draftData: draftData as Prisma.InputJsonObject, draftRevision: { increment: 1 }, pricingNature: input.draft.pricingNature, amountSource: input.draft.amountSource, amountYuan: amount === null ? null : new Prisma.Decimal(amount) } });
     const written = await tx.$queryRaw<unknown[]>(Prisma.sql`UPDATE public."ContractVersion" SET "originalSignedNumber" = ${originalSignedNumber} WHERE "id" = ${version.id} AND "contractId" = ${contract.id} RETURNING "id", "originalSignedNumber"`);
     const row = written.length === 1 ? record(written[0]) : null;

@@ -1,3 +1,4 @@
+import { directPendingBindingOid, directPendingBindingProjection } from "./contract-direct-pending-binding-projection";
 import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha, type UpwardLegacyProjection } from "./contract-upward-archive-catalog";
 import { Prisma } from "@prisma/client";
 import type { GeneratedUpwardOperatingActivation, UpwardActivationBinding } from "./contract-generated-upward-operating";
@@ -25,8 +26,8 @@ const outsideOperatingProfile = Prisma.sql`
     JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
     WHERE (q.access<>'app' OR EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
       WHERE a.grantee=b."applicationRoleOid" AND a.grantor=p.proowner AND a.privilege_type='EXECUTE' AND NOT a.is_grantable))
-      AND ((q.access='legacy' AND EXISTS(SELECT 1 FROM public.jg_contract_direct_pending_binding_v1 legacy
-        JOIN pg_catalog.pg_class c ON c.oid=legacy.tableoid AND c.relowner=b."ownerOid" AND c.relnamespace=b."namespaceOid"
+      AND ((q.access='legacy' AND EXISTS(SELECT 1 FROM ${directPendingBindingProjection} legacy
+        JOIN pg_catalog.pg_class c ON c.oid=${directPendingBindingOid} AND c.relowner=b."ownerOid" AND c.relnamespace=b."namespaceOid"
           AND c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
         CROSS JOIN LATERAL (SELECT legacy."bindings"->'routines'->
           'public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayloadV2",pg_catalog.text,pg_catalog.text)' AS item) stored

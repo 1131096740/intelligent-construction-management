@@ -46,7 +46,7 @@ import { convertDocxToPdf } from "./libreoffice-converter";
 import { assertContractPreviewFontOutput } from "./contract-preview-font-output";
 import { BUILT_IN_GENERIC_FONT_VERSION, EQUIVALENT_GENERIC_FONT_VERSION, completeContractDocxFontTableType } from "./contract-docx-package-metadata";
 import { contractAttachmentType, normalizeContractPdf, UPLOAD_ORDERED_ATTACHMENTS_VERSION, type PdfAttachment } from "./pdf-normalizer";
-import { beginCon18WorkerJob } from "./task12-con18-worker-diagnostic";
+import { beginCon18WorkerJob, type Con18PublishPhase } from "./task12-con18-worker-diagnostic";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
 const PROCESSING_LEASE_MS = 10 * 60 * 1_000;
@@ -99,6 +99,8 @@ const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
 export class ContractDocumentProcessor
   implements OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown
 {
+  private automatic = true;
+  private qualifiedPreviewPointer = false;
   private timer?: NodeJS.Timeout;
   private running = false;
   private stopping = false;
@@ -111,8 +113,15 @@ export class ContractDocumentProcessor
     @Optional() private readonly writeFreeze: OperationalWriteFreezeService = new OperationalWriteFreezeService()
   ) {}
 
+  static forManualScheduling(prisma: PrismaService, files: FileService, audit: AuditService, pointerPublication?: "ATOMIC_POINTER_V1") {
+    const processor = new ContractDocumentProcessor(prisma, files, audit);
+    processor.automatic = false;
+    processor.qualifiedPreviewPointer = pointerPublication === "ATOMIC_POINTER_V1";
+    return processor;
+  }
+
   onApplicationBootstrap() {
-    if (this.stopping) return;
+    if (this.stopping || !this.automatic) return;
     // ponytail: one DB-backed worker matches the current single API deployment;
     // replace with a distributed queue before running multiple API replicas.
     this.timer = setInterval(() => {
@@ -714,7 +723,12 @@ export class ContractDocumentProcessor
       uploadedFileIds.push(pdfFile.id);
       const completedAt = new Date();
       stage("PUBLISH");
+      const publishStep = (phase: Con18PublishPhase) => {
+        try { diagnostic?.publishStep(phase); } catch { /* Diagnostic only. */ }
+      };
+      publishStep("TRANSACTION_BEGIN");
       const outcome = await this.prisma.$transaction(async (tx) => {
+        publishStep("DRAFT_LOCK");
         const mutationBoundary = await lockContractDraftMutationBoundary<{
           id: string;
           contractId: string;
@@ -744,6 +758,7 @@ export class ContractDocumentProcessor
           version.changeType === "historical_takeover" ||
           version.hasHistoricalTakeoverRelation === true
         ) {
+          publishStep("STALE_WRITE");
           await tx.contractGeneratedDocument.updateMany({
             where: {
               id: job.id,
@@ -752,6 +767,7 @@ export class ContractDocumentProcessor
             },
             data: { status: "stale", completedAt, errorMessage: null }
           });
+          publishStep("CALLBACK_RETURNED");
           return { published: false, discardFileIds: uploadedFileIds };
         }
         const draftData = version.draftData &&
@@ -779,12 +795,14 @@ export class ContractDocumentProcessor
           companyEntityId &&
           companyVersionNo !== null
         ) {
+          publishStep("COMPANY_LOCK");
           await tx.$queryRaw(Prisma.sql`
             SELECT "id"
             FROM "CompanyEntity"
             WHERE "id" = ${companyEntityId}
             FOR UPDATE
           `);
+          publishStep("COMPANY_READ");
           const companyEntity = await tx.companyEntity.findUnique({
             where: { id: companyEntityId }
           });
@@ -794,6 +812,7 @@ export class ContractDocumentProcessor
             companyEntity.dataStatus !== "complete" ||
             companyEntity.currentVersionNo !== companyVersionNo
           ) {
+            publishStep("STALE_WRITE");
             await tx.contractGeneratedDocument.updateMany({
               where: {
                 id: job.id,
@@ -802,9 +821,11 @@ export class ContractDocumentProcessor
               },
               data: { status: "stale", completedAt, errorMessage: null }
             });
+            publishStep("CALLBACK_RETURNED");
             return { published: false, discardFileIds: uploadedFileIds };
           }
         }
+        publishStep("DOCUMENT_WRITE");
         const updated = await tx.contractGeneratedDocument.updateMany({
           where: {
             id: job.id,
@@ -834,8 +855,10 @@ export class ContractDocumentProcessor
           }
         });
         if (updated.count !== 1) {
+          publishStep("CALLBACK_RETURNED");
           return { published: false, discardFileIds: uploadedFileIds };
         }
+        publishStep("PREDECESSOR_READ");
         const predecessor = await tx.contractGeneratedDocument.findFirst({
           where:
             job.purpose === "draft" &&
@@ -894,6 +917,7 @@ export class ContractDocumentProcessor
           docxOldFileId = docxFileId;
           pdfOldFileId = pdfFileId;
           if (job.purpose !== "draft") {
+            publishStep("FILE_REPLACEMENT");
             await this.files.linkFileReplacement(tx, {
               newFileId: docxFile.id,
               oldFileId: docxFileId,
@@ -907,20 +931,30 @@ export class ContractDocumentProcessor
           }
         }
         if (job.purpose === "draft") {
-          const pointerUpdated = await tx.contractVersion.updateMany({
-            where: {
-              id: job.contractVersionId,
-              documentContentRevision: snapshot.documentContentRevision,
-              documentContentFingerprint: snapshot.documentContentFingerprint,
-              latestDraftPreviewDocumentId:
-                version.latestDraftPreviewDocumentId ?? null
-            },
-            data: { latestDraftPreviewDocumentId: job.id }
-          });
-          if (pointerUpdated.count !== 1) {
+          publishStep("PREVIEW_POINTER");
+          const pointerUpdated = this.qualifiedPreviewPointer
+            ? (await tx.$queryRaw<Array<{ published: boolean }>>(Prisma.sql`
+                SELECT public.jg_publish_contract_preview_pointer_v1(
+                  ${job.contractVersionId}::text, ${version.draftRevision}::integer,
+                  ${snapshot.documentContentRevision}::integer, ${snapshot.documentContentFingerprint}::text,
+                  ${version.latestDraftPreviewDocumentId ?? null}::text, ${job.id}::text, ${job.sourceRevision}::integer
+                ) AS published
+              `))[0]?.published === true
+            : (await tx.contractVersion.updateMany({
+                where: {
+                  id: job.contractVersionId,
+                  documentContentRevision: snapshot.documentContentRevision,
+                  documentContentFingerprint: snapshot.documentContentFingerprint,
+                  latestDraftPreviewDocumentId:
+                    version.latestDraftPreviewDocumentId ?? null
+                },
+                data: { latestDraftPreviewDocumentId: job.id }
+              })).count === 1;
+          if (!pointerUpdated) {
             throw new Error("合同草稿预览已被其他任务更新，请刷新后重试");
           }
           if (predecessor && docxOldFileId && pdfOldFileId) {
+            publishStep("SUPERSEDE");
             const superseded = await tx.contractGeneratedDocument.updateMany({
               where: {
                 id: predecessor.id,
@@ -939,6 +973,7 @@ export class ContractDocumentProcessor
             }
           }
         }
+        publishStep("AUDIT");
         await this.audit.record(tx, {
           actorUserId: job.createdByUserId,
           action: "contract.document.success",
@@ -963,6 +998,7 @@ export class ContractDocumentProcessor
               : null
           }
         });
+        publishStep("CALLBACK_RETURNED");
         return {
           published: true,
           discardFileIds:

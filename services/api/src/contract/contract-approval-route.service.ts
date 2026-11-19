@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { task12NativeApprovalAssignments } from "../file/task12-native-review-readiness";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import type { RoleKey } from "@jiangkong/shared-domain";
 
@@ -231,8 +232,9 @@ export class ContractApprovalRouteService {
       throw new BadRequestException("合同所属项目不存在或已停用");
     }
 
-    const projectApplicantRoles = await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["contract_staff"], applicantUserId);
-    const globalApplicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+    const nativeApplicant = await task12NativeApprovalAssignments(tx, "applicant", lockedContract.projectId, applicantUserId);
+    const projectApplicantRoles = nativeApplicant?.project ?? await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["contract_staff"], applicantUserId);
+    const globalApplicantRoles = nativeApplicant?.global ?? await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up
       INNER JOIN "Position" p ON p."id" = up."positionId"
@@ -254,8 +256,9 @@ export class ContractApprovalRouteService {
       throw new BadRequestException("仅允许该项目合同员、公司合同员或合同部主管发起新合同审批");
     }
 
-    const projectCandidates = await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["project_manager", "engineering_director"]);
-    const globalCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+    const nativeCandidates = await task12NativeApprovalAssignments(tx, "candidates", lockedContract.projectId, applicantUserId);
+    const projectCandidates = nativeCandidates?.project ?? await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["project_manager", "engineering_director"]);
+    const globalCandidates = nativeCandidates?.global ?? await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up
       INNER JOIN "Position" p ON p."id" = up."positionId"

@@ -6,6 +6,7 @@ import { enabledDirectCompletionCatalog, enabledDirectGlobalCompletionBody,
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
+import { markTask12DirectSourceDiagnostic as mark, recordTask12DirectSourceDiagnostic } from "./task12-direct-source-diagnostic";
 
 type Catalog = Record<string, unknown>;
 export const legacyCompletionName = "jg_contract_archive_v2_complete_guard";
@@ -49,7 +50,9 @@ export async function readDirectArchiveCompletionOid(tx: Prisma.TransactionClien
 }
 
 async function readCompletionCatalog(tx: Prisma.TransactionClient) {
+  mark("RETENTION_COMPLETION_PROJECTION");
   const projection = await discoverUpwardLegacyProjection(tx);
+  mark("RETENTION_COMPLETION_CATALOG");
   return tx.$queryRaw<Array<{ binding: unknown; actual: unknown }>>(Prisma.sql`
     /* contract_direct_archive_completion_catalog_v1 */
     WITH registry AS (
@@ -94,7 +97,7 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
         'generatedDispatchQualified',2=(SELECT count(*) FROM (VALUES
             ('public.jg_contract_archive_v2_ownership_day(pg_catalog.text)','7bfc159db4085773d9be238c257739f5c881e8f550c4efb061fed6f1a5c2ab13',FALSE,
               'search_path=pg_catalog, public'),
-            ('public.jg_generated_archive_activation_basis_v1(pg_catalog.text,pg_catalog.boolean)','7d231034f736945ec01332f494a33dba7e816eb54aefaae56d13a149c62a2f56',TRUE,
+            ('public.jg_generated_archive_activation_basis_v1(pg_catalog.text,pg_catalog.bool)','7d231034f736945ec01332f494a33dba7e816eb54aefaae56d13a149c62a2f56',TRUE,
               'search_path=pg_catalog, pg_temp')
           ) h(signature,sha,qualified_acl,path)
           JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(h.signature)
@@ -171,11 +174,14 @@ export async function readDirectArchiveCompletionQualification(
     const rows = await readCompletionCatalog(tx);
     const binding = rows.length === 1 ? record(rows[0].binding) : null;
     const actual = rows.length === 1 ? record(rows[0].actual) : null;
+    mark("RETENTION_COMPLETION_REGISTRY");
     if (!binding || !actual || binding.protocolVersion !== 1 || binding.recipeVersion !== "contract-direct-archive-completion-dispatch-v1/1"
       || actual.relationOid !== relationOid || actual.registryQualified !== true || typeof actual.guardsClosed !== "boolean"
       || typeof actual.registryAclQualified !== "boolean") unavailable();
+    mark("RETENTION_COMPLETION_NATIVE");
     const native = actual.guardsClosed && actual.registryAclQualified ? null : await readDirectArchiveNativeAdmission(tx, anchor);
     if ((!actual.guardsClosed || !actual.registryAclQualified) && native?.completionOid !== relationOid) unavailable();
+    mark("RETENTION_COMPLETION_IDENTITY");
     const identity = {
       applicationRoleOid: anchor.currentRoleOid, databaseOid: anchor.databaseOid,
       namespaceOid: anchor.namespaceOid, anchorOwnerOid: anchor.anchorOwnerOid
@@ -184,11 +190,13 @@ export async function readDirectArchiveCompletionQualification(
       if (!oid(value) || binding[key] !== value || actual[key] !== value) unavailable();
     }
     if (!["currentRoleOid","sessionRoleOid","backendPid","transactionId"].every(key => actual[key] === anchor[key])) unavailable();
+    mark("RETENTION_COMPLETION_LINKS");
     const links = record(binding.links);
     if (!links || Object.keys(links).length !== 4 || links.retentionOid !== retentionOid || !oid(links.dispatchOid)
       || ["retentionSha","dispatchSha"].some(key => typeof links[key] !== "string" || !/^[0-9a-f]{64}$/u.test(links[key]))
       || !isDeepStrictEqual(links, actual.links)) unavailable();
 
+    mark("RETENTION_COMPLETION_BINDINGS");
     const bound = record(binding.bindings), procedures = record(bound?.procedures), triggers = record(bound?.registryTriggers);
     const observedBindings = record(actual.bindings), observedProcedures = record(observedBindings?.procedures);
     const observedCompletion = record(observedProcedures?.completion);
@@ -196,11 +204,15 @@ export async function readDirectArchiveCompletionQualification(
     const currentBody = observedCompletion.sha256;
     const enabledDirect = currentBody === enabledDirectGlobalCompletionBody;
     const generatedDispatch = currentBody === generatedDispatchBodySha || enabledDirect;
+    mark("RETENTION_COMPLETION_GENERATED");
     if (currentBody !== successorBodySha && (!generatedDispatch || actual.generatedDispatchQualified !== true)) unavailable();
+    mark("RETENTION_COMPLETION_ENABLED_DIRECT");
     if (enabledDirect && (actual.enabledDirectCompletionQualified !== true || native?.completionOid !== relationOid)) unavailable();
+    mark("RETENTION_COMPLETION_UPWARD");
     if (generatedDispatch && actual.generatedDispatchUsesOperatingSuccessor === true
       && !await hasGeneratedUpwardOperatingInstallation(tx, actual)) unavailable();
     // Compare the intact original registry against the current same-OID routine and known successor.
+    mark("RETENTION_COMPLETION_LEGACY");
     const observedLegacy = { ...observedBindings, procedures: {
       ...observedProcedures, completion: { ...observedCompletion, sha256: successorBodySha }
     } };
@@ -208,22 +220,26 @@ export async function readDirectArchiveCompletionQualification(
       || !procedures || Object.keys(procedures).length !== 3 || !triggers || Object.keys(triggers).length !== 2
       || !oid(triggers.jg_direct_archive_completion_binding_immutable) || !oid(triggers.jg_direct_archive_completion_binding_no_truncate)
       || triggers.jg_direct_archive_completion_binding_immutable === triggers.jg_direct_archive_completion_binding_no_truncate) unavailable();
+    mark("RETENTION_COMPLETION_ROUTINES");
     for (const [key, sha] of Object.entries({ completion: successorBodySha, manifest: manifestBodySha, registry: bindingBodySha })) {
       const procedure = record(procedures[key]);
       if (!procedure || !oid(procedure.oid) || procedure.sha256 !== sha || procedure.prosecdef !== false
         || !isDeepStrictEqual(procedure.proconfig, [key === "registry" ? "search_path=pg_catalog, pg_temp" : "search_path=pg_catalog, public"])) unavailable();
     }
+    mark("RETENTION_COMPLETION_GLOBAL_POSTIMAGE");
     const installedRoutine = record(record(installed209.routines)?.[legacyCompletionName]);
     const observedRoutines = record(observed209.routines);
     if (!installedRoutine || !oid(installedRoutine.oid) || record(procedures.completion)?.oid !== installedRoutine.oid
       || !observedRoutines || !isDeepStrictEqual(observedRoutines[legacyCompletionName], { ...installedRoutine, sha: currentBody })) unavailable();
     const legacyRoutines: Catalog = { ...observedRoutines, [legacyCompletionName]: installedRoutine };
+    mark("RETENTION_COMPLETION_DIRECT_POSTIMAGE");
     if (enabledDirect) {
       const boundDirect = record(record(installed209.routines)?.[retentionCompletionName]);
       if (!boundDirect || !isDeepStrictEqual(observedRoutines[retentionCompletionName],
         { ...boundDirect, sha: enabledDirectRetentionCompletionBody })) unavailable();
       legacyRoutines[retentionCompletionName] = boundDirect;
     }
+    mark("RETENTION_COMPLETION_NATIVE_LEGACY");
     if (native) {
       const oldRoutines = record(installed209.routines);
       for (const name of ["jg_contract_direct_archive_proof_v1", "jg_contract_direct_archive_request_sha_v1"]) {
@@ -234,7 +250,8 @@ export async function readDirectArchiveCompletionQualification(
       }
     }
     return { binding, actual, legacyCatalog: { ...observed209, routines: legacyRoutines } };
-  } catch {
+  } catch (error) {
+    recordTask12DirectSourceDiagnostic(error);
     unavailable();
   }
 }

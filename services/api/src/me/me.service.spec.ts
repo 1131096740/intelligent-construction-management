@@ -2226,6 +2226,37 @@ describe("MeService", () => {
     expect(handler).toHaveBeenCalledWith("contract-1", expect.any(Map), undefined);
   });
 
+  it("does not read non-contract approvals or fund registrations for the contract queue", async () => {
+    const findApprovals = jest.fn().mockResolvedValue([]);
+    const findFundRegistrations = jest.fn().mockRejectedValue(new Error("fund registrations are outside the contract role"));
+    const prisma = {
+      approvalInstance: { findMany: findApprovals },
+      fundAccountBalanceRegistration: { findMany: findFundRegistrations },
+      $transaction: async (read: (tx: unknown) => Promise<unknown>) => read(prisma)
+    };
+    const service = new MeService(prisma as never, {} as never);
+    const sources = service as unknown as {
+      loadProjectRoleScopes(): Promise<unknown[]>;
+      projectNames(): Promise<Map<string, string>>;
+      contractV2LifecycleWorkItems(): Promise<{ pending: WorkItem[] }>;
+      contractArchiveWorkItems(): Promise<WorkItem[]>;
+      contractSealHandlerWorkItems(): Promise<WorkItem[]>;
+      contractFinalUploadSubstituteWorkItems(): Promise<WorkItem[]>;
+    };
+    jest.spyOn(sources, "loadProjectRoleScopes").mockResolvedValue([]);
+    jest.spyOn(sources, "projectNames").mockResolvedValue(new Map());
+    jest.spyOn(sources, "contractV2LifecycleWorkItems").mockResolvedValue({ pending: [] });
+    jest.spyOn(sources, "contractArchiveWorkItems").mockResolvedValue([]);
+    jest.spyOn(sources, "contractSealHandlerWorkItems").mockResolvedValue([]);
+    jest.spyOn(sources, "contractFinalUploadSubstituteWorkItems").mockResolvedValue([]);
+
+    await expect(service.getContractPendingWorkItems("handler")).resolves.toEqual([]);
+    expect(findApprovals).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ businessType: "contract_version" })
+    }));
+    expect(findFundRegistrations).not.toHaveBeenCalled();
+  });
+
   it("derives the untruncated settlement queue only from canonical settlement pending sources", async () => {
     const service = new MeService({} as never, {} as never) as unknown as {
       getSettlementPendingWorkItems(userId: string): Promise<WorkItem[]>;

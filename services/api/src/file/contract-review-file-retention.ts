@@ -1,5 +1,6 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { assertTask12NativeReviewReadiness, hasTask12NativeReviewReadiness, type Task12NativeReviewTransactionRead } from "./task12-native-review-readiness";
 
 type ReviewReferenceCatalog = "legacy" | "ready";
 type FileCleanupTarget = { id: string; bucket: string; objectKey: string };
@@ -16,7 +17,8 @@ export async function reviewReferenceCatalog(
   tx: Prisma.TransactionClient,
   purpose: "cleanup" | "ticket" = "cleanup"
 ): Promise<ReviewReferenceCatalog> {
-  const [row, ...extra] = await tx.$queryRaw<Array<{ state: string }>>(Prisma.sql`
+  const nativeTicket = purpose === "ticket" && hasTask12NativeReviewReadiness();
+  const [row, ...extra] = await tx.$queryRaw<Array<{ state: string } & Task12NativeReviewTransactionRead>>(Prisma.sql`
     /* contract_economic_review_file_reference_catalog */
     WITH scope AS (
       SELECT pg_catalog.to_regnamespace('public')::oid AS namespace,
@@ -73,9 +75,19 @@ export async function reviewReferenceCatalog(
               AND idx.indisvalid AND idx.indisready)
       ) THEN 'ready'
       ELSE 'unavailable'
-    END AS state FROM scope
+    END AS state${nativeTicket ? Prisma.sql`,
+      current_database() AS "database",
+      (SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database()) AS "databaseOid",
+      current_user::regrole::oid::text AS "ordinaryOid", current_user::text AS "ordinaryName",
+      inet_server_port() AS "serverPort", current_user=session_user AS "sessionRole",
+      EXISTS(SELECT FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl) AS "ssl"` : Prisma.empty}
+    FROM scope
   `);
   if (extra.length || !row) return unavailable();
+  if (nativeTicket) {
+    assertTask12NativeReviewReadiness(row, row.state === "ready");
+    return "ready";
+  }
   if (row.state === "ready") {
     const ledger = await tx.$queryRaw<Array<{ completed: boolean }>>(Prisma.sql`
       /* contract_economic_review_file_reference_completed_206 */

@@ -1157,7 +1157,7 @@ export class MeService {
         this.projectIdsFor(scopes, ["contract.archive.confirm"]), ["pending_archive_confirm"], projectNameById,
         "确认合同归档", "确认后合同版本生效", "warning", userId, undefined, undefined
       )),
-      ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
+      ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt, "contract"))
     ];
     await addContractRelationshipSummaries(this.prisma,pending);
     return pending.filter((item) =>
@@ -2459,11 +2459,12 @@ export class MeService {
     scopes: ProjectRoleScope[],
     userId: string,
     mode: "pending" | "started" | "delegated",
-    evaluatedAt: Date
+    evaluatedAt: Date,
+    scope?: "contract"
   ): Promise<WorkItem[]> {
     const instances = (await this.prisma.approvalInstance.findMany({
       where: {
-        ...this.activeApprovalWhere(),
+        ...(scope === "contract" ? { businessType: "contract_version", status: "in_progress" } : this.activeApprovalWhere()),
         ...(mode === "started" ? { applicantUserId: userId } : {})
       },
       orderBy: { updatedAt: "desc" },
@@ -2521,9 +2522,11 @@ export class MeService {
       });
     }
 
-    items.push(...await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, mode));
-    items.push(...await fundReviewWorkItems(this.prisma, userId, mode));
-    items.push(...await principalReturnWorkItems(this.prisma, userId, mode));
+    if (scope !== "contract") {
+      items.push(...await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, mode));
+      items.push(...await fundReviewWorkItems(this.prisma, userId, mode));
+      items.push(...await principalReturnWorkItems(this.prisma, userId, mode));
+    }
     return items;
   }
 

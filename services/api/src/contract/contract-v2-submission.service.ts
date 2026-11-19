@@ -78,7 +78,7 @@ export class ContractV2SubmissionService {
         actorRoleKeys: identity.representedUserId === actorUserId ? [identity.approvedRoleKey] : [], ...identity,
         allowContractDirectorSelfReview: true, selfReviewReason: input.selfReviewReason, confirmationPassword: input.confirmationPassword,
         confirmPassword: password => this.auth.confirmPassword(actorUserId, password, tx) });
-      const signature = input.decision === "approve" ? await snapshotApprovalSignature(tx, actorUserId, { required: true }) : null;
+      const signature = input.decision === "approve" ? await snapshotApprovalSignature(tx, actorUserId, { required: true, contractReviewProject: contract.projectId }) : null;
       const approvalAction = await tx.approvalActionLog.create({ data: await withApprovalIdentity(tx, {
         approvalInstanceId: round.id, action: input.decision, actorUserId, approvedRoleKey: identity.approvedRoleKey,
         representedUserId: identity.representedUserId, comment: input.comment?.trim() ?? null,

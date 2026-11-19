@@ -1,6 +1,6 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { UPWARD_PROJECTION_SOURCE_SHA256, UPWARD_SOURCE_DEFINERS } from "./contract-upward-direct-source-pins";
+import { UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256, UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256, UPWARD_PROJECTION_SOURCE_SHA256, UPWARD_SOURCE_DEFINERS } from "./contract-upward-direct-source-pins";
 
 type Row = Record<string, unknown>;
 type SqlClient = Pick<Prisma.TransactionClient, "$queryRaw">;
@@ -36,13 +36,14 @@ export async function discoverUpwardLegacyProjection(tx: SqlClient): Promise<Upw
       SELECT d.oid::text AS "databaseOid",n.oid::text AS "namespaceOid",d.datdba::text AS "anchorOwnerOid",
         current_user::regrole::oid::text AS "currentRoleOid",session_user::regrole::oid::text AS "sessionRoleOid",
         pg_backend_pid() AS "backendPid",txid_current()::text AS "transactionId",p.oid::text AS "projectionOid",
+        encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') AS "projectionSource",
         to_regclass('public.jg_contract_direct_upward_closure_v2')::oid::text AS "closureOid",
         p.proowner=d.datdba AND p.pronamespace=n.oid AND p.prokind='f' AND p.prosecdef
           AND p.provolatile='v' AND p.proparallel='u' AND NOT(p.proisstrict OR p.proretset OR p.proleakproof)
           AND p.pronargs=0 AND p.pronargdefaults=0 AND p.provariadic=0 AND p.prosupport=0
           AND l.lanname='plpgsql' AND p.prorettype='pg_catalog.jsonb'::regtype
           AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
-          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${UPWARD_PROJECTION_SOURCE_SHA256}
+          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') IN (${UPWARD_PROJECTION_SOURCE_SHA256},${UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256},${UPWARD_NORMAL_GENERATED_PROJECTION_SHA256},${UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256})
           AND NOT EXISTS(SELECT 1 FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
             WHERE a.grantor<>p.proowner OR a.privilege_type<>'EXECUTE'
               OR a.grantee NOT IN(p.proowner,current_user::regrole::oid) OR a.grantee<>p.proowner AND a.is_grantable)
@@ -81,7 +82,9 @@ export async function discoverUpwardLegacyProjection(tx: SqlClient): Promise<Upw
     || !sha(constraint.beforeSha256) || !sha(constraint.afterSha256) || constraint.beforeSha256 === constraint.afterSha256) unavailable();
   const definers = value.definers.map(row);
   if (definers.some(item => !item || !oid(item.oid) || typeof item.signature !== "string"
-    || UPWARD_SOURCE_DEFINERS[item.signature] !== item.bodySha256) || new Set(definers.map(item => item!.signature)).size !== Object.keys(UPWARD_SOURCE_DEFINERS).length) unavailable();
+    || (item.signature === "public.jg_upward_archive_catalog_projection_v2()"
+      ? item.bodySha256 !== probe.projectionSource
+      : UPWARD_SOURCE_DEFINERS[item.signature] !== item.bodySha256)) || new Set(definers.map(item => item!.signature)).size !== Object.keys(UPWARD_SOURCE_DEFINERS).length) unavailable();
   return value as UpwardLegacyProjection;
 }
 
@@ -90,20 +93,40 @@ export function qualifiedUpwardRoutineSha(projection: UpwardLegacyProjection | n
   if (!projection) return actualSha;
   return Prisma.sql`CASE ${Prisma.join(projection.routines.map(item => Prisma.sql`WHEN ${routineOid}=${item.oid}::oid AND ${actualSha}=${item.afterSha256} THEN ${item.beforeSha256}`), " ")} ELSE ${actualSha} END`;
 }
+function constraintDigest(definition: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`encode(public.digest(convert_to(${definition},'UTF8'),'sha256'),'hex')`;
+}
+
+// The B7 owner projection checks the exact current CHECK and its function
+// dependency under pg_catalog, pg_temp. An ordinary connection can see public
+// and elide the schema. Restore only the known lead function name before
+// comparing the entire definition to the same sealed digest.
+function canonicalUpwardConstraintDigest(definition: Prisma.Sql): Prisma.Sql {
+  const fn = "jg_upward_archive_constraint_v2(";
+  return constraintDigest(Prisma.sql`CASE
+    WHEN pg_catalog.starts_with(${definition},${"CHECK (" + fn})
+      OR pg_catalog.starts_with(${definition},${"CHECK ((" + fn})
+    THEN pg_catalog.replace(${definition},${fn},${"public." + fn})
+    ELSE ${definition} END`);
+}
+
 export function qualifiedUpwardConstraintOid(projection: UpwardLegacyProjection | null, priorOid: Prisma.Sql): Prisma.Sql {
   if (!projection) return priorOid;
   const item = projection.constraint;
+  const definition = Prisma.sql`pg_catalog.pg_get_constraintdef(upward_constraint_row.oid,false)`;
   return Prisma.sql`CASE WHEN ${priorOid}=${item.beforeOid}::oid AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint upward_constraint_row
     WHERE upward_constraint_row.oid=${item.afterOid}::oid AND upward_constraint_row.conrelid='public."ContractVersion"'::regclass
       AND upward_constraint_row.conname='ContractVersion_upward_draft_source_check' AND upward_constraint_row.contype='c'
       AND upward_constraint_row.convalidated AND upward_constraint_row.conislocal
-      AND encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(upward_constraint_row.oid,false),'UTF8'),'sha256'),'hex')=${item.afterSha256})
+      AND ${canonicalUpwardConstraintDigest(definition)}=${item.afterSha256})
     THEN ${item.afterOid}::oid ELSE ${priorOid} END`;
 }
-export function qualifiedUpwardConstraintSha(projection: UpwardLegacyProjection | null, constraintOid: Prisma.Sql, actualSha: Prisma.Sql): Prisma.Sql {
+export function qualifiedUpwardConstraintSha(projection: UpwardLegacyProjection | null, constraintOid: Prisma.Sql, definition: Prisma.Sql): Prisma.Sql {
+  const actualSha = constraintDigest(definition);
   if (!projection) return actualSha;
   const item = projection.constraint;
-  return Prisma.sql`CASE WHEN ${constraintOid}=${item.afterOid}::oid AND ${actualSha}=${item.afterSha256} THEN ${item.beforeSha256} ELSE ${actualSha} END`;
+  return Prisma.sql`CASE WHEN ${constraintOid}=${item.afterOid}::oid AND ${canonicalUpwardConstraintDigest(definition)}=${item.afterSha256}
+    THEN ${item.beforeSha256} ELSE ${actualSha} END`;
 }
 export function isQualifiedUpwardDefiner(projection: UpwardLegacyProjection | null, value: unknown): boolean {
   const item = row(value);

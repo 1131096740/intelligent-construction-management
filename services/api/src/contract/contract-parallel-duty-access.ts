@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
+import { task12NativeApprovalAssignments, task12NativeSealAssignments } from "../file/task12-native-review-readiness";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import type { ApprovalActorRoleScopes } from "../approval/approval-review-identity";
@@ -11,7 +12,8 @@ export const contractParallelDutyId = (instanceId: string, nodeIndex: number) =>
 
 export async function hasActiveContractGlobalRole(tx: Prisma.TransactionClient, userId: string, role: RoleKey): Promise<boolean> {
   const roles = [role, "super_admin"];
-  const rows = await tx.$queryRaw<Array<{ userId: string; roleKey: string }>>(Prisma.sql`
+  const native = role === "comprehensive_director" ? await task12NativeSealAssignments(tx, userId) : undefined;
+  const rows = native?.global ?? await tx.$queryRaw<Array<{ userId: string; roleKey: string }>>(Prisma.sql`
     SELECT up."userId", p."key" AS "roleKey"
     FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId"
     INNER JOIN "User" u ON u."id" = up."userId"
@@ -111,15 +113,16 @@ export async function contractParallelDutyIdentity(tx: Prisma.TransactionClient,
   const currentRole = async (userId: string) => {
     const projectRoles = pending.filter(role => frozenContractDutyRoleScope(node, role) === "project");
     const globalRoles = [...pending.filter(role => frozenContractDutyRoleScope(node, role) === "global"), "super_admin"];
-    const projectAssignments = projectRoles.length ? await loadProjectApprovalAssignments(tx, projectId, projectRoles, userId, lockAssignments) : [];
-    const globalAssignments = globalRoles.length ? await tx.$queryRaw<Array<{ userId: string; roleKey: string }>>(Prisma.sql`
+    const native = lockAssignments ? await task12NativeApprovalAssignments(tx, "review", projectId, userId, projectRoles, globalRoles) : undefined;
+    const projectAssignments = native?.project ?? (projectRoles.length ? await loadProjectApprovalAssignments(tx, projectId, projectRoles, userId, lockAssignments) : []);
+    const globalAssignments = native?.global ?? (globalRoles.length ? await tx.$queryRaw<Array<{ userId: string; roleKey: string }>>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId"
       INNER JOIN "User" u ON u."id" = up."userId"
       WHERE up."projectId" IS NULL AND up."userId" = ${userId} AND u."isActive" = TRUE
         AND p."key" IN (${Prisma.join(globalRoles)})
       ${lockAssignments ? Prisma.sql`FOR SHARE OF up, p, u` : Prisma.empty}
-    `) : [];
+    `) : []);
     if (globalAssignments.some(row => row.roleKey === "super_admin")) return "super_admin" as RoleKey;
     return pending.find(role => [...projectAssignments, ...globalAssignments].some(row => row.userId === userId && row.roleKey === role));
   };

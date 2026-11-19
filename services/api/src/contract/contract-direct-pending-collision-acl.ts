@@ -1,3 +1,4 @@
+import { directPendingBindingOid, directPendingBindingProjection } from "./contract-direct-pending-binding-projection";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import type { readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
@@ -62,12 +63,12 @@ export async function projectCollisionExecuteAcls(
           AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles other WHERE other.oid<>r.oid
             AND (pg_catalog.pg_has_role(r.oid,other.oid,'MEMBER') OR (NOT other.rolsuper AND other.oid<>p."anchorOwnerOid"
               AND pg_catalog.pg_has_role(other.oid,r.oid,'MEMBER')))) AS role_qualified
-      FROM public.jg_contract_direct_pending_binding_v1 p
+      FROM ${directPendingBindingProjection} p
       JOIN pg_catalog.pg_database d ON d.oid=p."databaseOid" AND d.datname=pg_catalog.current_database()
         AND d.datdba=p."anchorOwnerOid"
       JOIN pg_catalog.pg_roles r ON r.oid=${native.executorOwnerOid}::oid
       WHERE p."protocolVersion"=1 AND p."recipeVersion"='contract-direct-pending-input-v1/1'
-        AND p.tableoid=${bootstrap.bindingRelationOid}::oid AND p."anchorNamespaceOid"=pg_catalog.to_regnamespace('public')
+        AND ${directPendingBindingOid}=${bootstrap.bindingRelationOid}::oid AND p."anchorNamespaceOid"=pg_catalog.to_regnamespace('public')
         AND p."applicationRoleOid"=current_user::regrole::oid AND current_user=session_user
         AND pg_catalog.current_setting('session_replication_role')='origin'
     )

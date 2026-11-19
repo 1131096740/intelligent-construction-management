@@ -1574,14 +1574,23 @@ export class FileService {
     }
   }
 
-  private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string): Promise<boolean> {
+  private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string, normalArchiveVersionId?: string): Promise<boolean> {
     const catalog = await readFileBindingCatalog(tx);
     const registeredVoucher = catalog.registeredPayment
       ? Prisma.sql`UNION ALL SELECT 1 FROM public."RegisteredPaymentVoucher" WHERE "fileId" = ${fileId}`
       : Prisma.empty;
-    const ownerSettlementVoucher = catalog.ownerSettlementVoucher
-      ? Prisma.sql`UNION ALL SELECT 1 WHERE public.jg_project_owner_settlement_voucher_bound(${fileId})`
-      : Prisma.empty;
+    let ownerSettlementVoucher = Prisma.empty;
+    if (catalog.ownerSettlementVoucher) {
+      const scoped = normalArchiveVersionId ? await tx.$queryRaw<Array<{ installed: boolean }>>(Prisma.sql`
+        SELECT current_user=session_user AND current_user::text ~ '^jg_fixture_app_[a-f0-9]{24}$'
+          AND current_database() ~ '^jg_task01_[a-f0-9]{32}$'
+          AND coalesce(pg_catalog.has_function_privilege(current_user,
+            pg_catalog.to_regprocedure('public.jg_check_normal_archive_voucher_v1(text,text,text)'), 'EXECUTE'),false) AS installed
+      `) : [];
+      ownerSettlementVoucher = scoped[0]?.installed
+        ? Prisma.sql`UNION ALL SELECT 1 WHERE public.jg_check_normal_archive_voucher_v1(${normalArchiveVersionId},${fileId},NULL::text)`
+        : Prisma.sql`UNION ALL SELECT 1 WHERE public.jg_project_owner_settlement_voucher_bound(${fileId})`;
+    }
     const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
       SELECT EXISTS (
         SELECT 1 FROM "User" WHERE "signatureFileId" = ${fileId}
@@ -2065,7 +2074,8 @@ export class FileService {
   async assertCanAttachUnlinkedFile(
     tx: Prisma.TransactionClient,
     fileId: string,
-    actorUserId: string
+    actorUserId: string,
+    normalArchiveVersionId?: string
   ) {
     await tx.$queryRaw(Prisma.sql`
       SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
@@ -2080,7 +2090,7 @@ export class FileService {
     if (file.uploadedByUserId !== actorUserId) {
       throw new ForbiddenException("更正依据附件必须由当前合同员本人上传");
     }
-    if (await this.isFileReferenced(tx, fileId)) {
+    if (await this.isFileReferenced(tx, fileId, normalArchiveVersionId)) {
       throw new BadRequestException("该文件已用于其他业务，请重新上传专用的更正依据附件");
     }
     return file;
@@ -2244,19 +2254,21 @@ export class FileService {
       return;
     }
     const takeoverCorrectionClient = (tx as unknown as {
-      contractTakeoverCorrection?: {
-        findFirst(args: {
-          where: { attachmentFileId: string };
-          select: { projectId: true };
-        }): Promise<{ projectId: string } | null>;
-      };
+      contractTakeoverCorrection?: Prisma.TransactionClient["contractTakeoverCorrection"];
     }).contractTakeoverCorrection;
-    const takeoverCorrection = takeoverCorrectionClient
-      ? await takeoverCorrectionClient.findFirst({
+    // A grouped projection uses only the two columns needed by this scope.
+    // Prisma findFirst also selects the correction's primary key.
+    const [takeoverCorrection, conflictingCorrection] = takeoverCorrectionClient
+      ? await takeoverCorrectionClient.groupBy({
+          by: ["projectId"],
           where: { attachmentFileId: file.id },
-          select: { projectId: true }
+          orderBy: { projectId: "asc" },
+          take: 2
         })
-      : null;
+      : [];
+    if (conflictingCorrection) {
+      throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+    }
     const spotDecision = await this.spotAccess.resolveFileDownloadAccess(
       file.id,
       actorUserId,
@@ -2316,9 +2328,7 @@ export class FileService {
           () => INVOICE_EXCEPTION_PROOF_BINDING
         )
       ];
-      if (
-        takeoverCorrection !== null
-      ) {
+      if (takeoverCorrection) {
         throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
       }
       if (

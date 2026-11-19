@@ -1,12 +1,16 @@
+import { performance } from "node:perf_hooks";
 import { types } from "node:util";
 import { projectTask16RegistrationError } from "../database/task16-registration-error-diagnostic";
 
 // This observer is inert until explicitly armed by the isolated CON18 runner.
 // It has no I/O and never retains exception objects or their messages.
 type Stage = "SNAPSHOT" | "TEMPLATE" | "DOCX_RENDER" | "ATTACHMENTS" | "PDF_CONVERT" | "UPLOAD_DOCX" | "UPLOAD_PDF" | "PUBLISH" | "CLEANUP";
+const publishPhases = ["TRANSACTION_BEGIN", "DRAFT_LOCK", "COMPANY_LOCK", "COMPANY_READ", "STALE_WRITE",
+  "DOCUMENT_WRITE", "PREDECESSOR_READ", "FILE_REPLACEMENT", "PREVIEW_POINTER", "SUPERSEDE", "AUDIT", "CALLBACK_RETURNED"] as const;
+export type Con18PublishPhase = typeof publishPhases[number];
 type Coordinates = Readonly<{ generationId:string; versionId:string; sourceRevision:number; documentContentRevision:number; documentContentFingerprint:string }>;
 type Job = { id:string; contractVersionId:string; sourceRevision:number; inputSnapshot:unknown };
-type Detail = Readonly<{ status:"OBSERVED"; stage:Stage; errorKind:string; prismaCode?:string; sqlState?:string }>;
+type Detail = Readonly<{ status:"OBSERVED"; stage:Stage; errorKind:string; prismaCode?:string; sqlState?:string; publishPhase?:Con18PublishPhase; publishElapsedMs?:number }>;
 type Row = { coordinates:Coordinates; stage:Stage; done:boolean; detail?:Detail };
 type Session = { worker:object; token:object; rows:Map<string,Row>; invalid:boolean; claimed:boolean };
 const sessions=new WeakMap<object,Session>();
@@ -24,9 +28,18 @@ export function beginCon18WorkerJob(worker:object,job:Job) {
   const c={generationId:own(job,"id"),versionId:own(job,"contractVersionId"),sourceRevision:own(job,"sourceRevision"),documentContentRevision:own(own(job,"inputSnapshot"),"documentContentRevision"),documentContentFingerprint:own(own(job,"inputSnapshot"),"documentContentFingerprint")} as Coordinates;
   if(!valid(c)||s.rows.size>=8||s.rows.has(c.generationId)){s.invalid=true;return;}
   const row:Row={coordinates:Object.freeze(c),stage:"SNAPSHOT",done:false};s.rows.set(c.generationId,row);
+  let publishStarted:number | undefined, publishPhase:Con18PublishPhase | undefined;
   return Object.freeze({
+   publishStep(phase:Con18PublishPhase) {
+    if(row.done||row.stage!=="PUBLISH"||!publishPhases.includes(phase))return;
+    publishStarted??=performance.now();
+    publishPhase=phase;
+   },
    step(stage:Stage){try{if(!row.done&&["SNAPSHOT","TEMPLATE","DOCX_RENDER","ATTACHMENTS","PDF_CONVERT","UPLOAD_DOCX","UPLOAD_PDF","PUBLISH","CLEANUP"].includes(stage))row.stage=stage;else s.invalid=true;}catch{s.invalid=true;}},
-   fail(error:unknown){try{if(row.done){s.invalid=true;return;}row.done=true;const d=projectTask16RegistrationError(error);row.detail=Object.freeze({status:"OBSERVED",stage:row.stage,errorKind:d.serverErrorKind,...(d.serverPrismaCode?{prismaCode:d.serverPrismaCode}:{}),...(d.serverSqlState?{sqlState:d.serverSqlState}:{})});}catch{s.invalid=true;}},
+   fail(error:unknown){try{if(row.done){s.invalid=true;return;}row.done=true;const d=projectTask16RegistrationError(error);
+    const elapsed=publishStarted===undefined?undefined:Math.round(performance.now()-publishStarted);
+    const publish=row.stage==="PUBLISH"&&publishPhase&&elapsed!==undefined&&elapsed>=0&&elapsed<=3600000?{publishPhase,publishElapsedMs:elapsed}:{};
+    row.detail=Object.freeze({status:"OBSERVED",stage:row.stage,errorKind:d.serverErrorKind,...publish,...(d.serverPrismaCode?{prismaCode:d.serverPrismaCode}:{}),...(d.serverSqlState?{sqlState:d.serverSqlState}:{})});}catch{s.invalid=true;}},
    success(){if(row.done)s.invalid=true;else row.done=true;}
   });
  }catch{return;}
