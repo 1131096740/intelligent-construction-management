@@ -13644,7 +13644,8 @@
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
         "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
         "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
-        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -19887,7 +19888,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/abandonment",
           "normalizedPath": "/spot-procurements/:param/abandonment",
@@ -19918,7 +19919,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/abandonment",
           "normalizedPath": "/spot-procurement-payments/:param/abandonment",
@@ -19949,7 +19950,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/photos",
           "normalizedPath": "/spot-procurements/:param/receipt/photos",
@@ -19978,7 +19979,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/abnormal-termination/confirmation",
           "normalizedPath": "/spot-procurements/:param/abnormal-termination/confirmation",
@@ -20009,7 +20010,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/discrepancy",
           "normalizedPath": "/spot-procurements/:param/discrepancy",
@@ -20040,7 +20041,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
@@ -20071,7 +20072,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/delegations",
           "normalizedPath": "/spot-procurements/:param/receipt/delegations",
@@ -20100,7 +20101,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/versions",
           "normalizedPath": "/spot-procurements/:param/versions",
@@ -20131,7 +20132,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2393,
+          "sourceLine": 2403,
           "method": "DELETE",
           "path": "/spot-procurements/:param/receipt/photos/:param",
           "normalizedPath": "/spot-procurements/:param/receipt/photos/:param",
@@ -20159,7 +20160,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -20175,7 +20176,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/:param/receipt",
           "normalizedPath": "/spot-procurements/:param/receipt",
@@ -20191,7 +20192,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/invoices",
           "normalizedPath": "/spot-procurement-payments/:param/invoices",
@@ -20223,7 +20224,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval",
           "normalizedPath": "/spot-procurement-payments/:param/approval",
@@ -20255,7 +20256,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/approval",
           "normalizedPath": "/spot-procurements/:param/approval",
@@ -20287,7 +20288,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurements/:param/approval-withdrawal",
@@ -20319,7 +20320,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/projects/:param/application-definitions",
           "normalizedPath": "/spot-procurements/projects/:param/application-definitions",
@@ -20350,7 +20351,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/application-text-suggestions?:param",
           "normalizedPath": "/spot-procurements/application-text-suggestions",
@@ -20380,7 +20381,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/capabilities?projectId=:param",
           "normalizedPath": "/spot-procurements/capabilities",
@@ -20411,7 +20412,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/create-project-options",
           "normalizedPath": "/spot-procurements/create-project-options",
@@ -20441,7 +20442,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
@@ -20473,7 +20474,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -20504,7 +20505,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurement-payments",
           "normalizedPath": "/spot-procurement-payments",
@@ -20535,7 +20536,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/:param/receipt",
           "normalizedPath": "/spot-procurements/:param/receipt",
@@ -20565,7 +20566,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
@@ -20596,7 +20597,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/invoices/:param/invalidation",
           "normalizedPath": "/spot-procurement-payments/:param/invoices/:param/invalidation",
@@ -20627,7 +20628,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -20658,7 +20659,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
@@ -20689,7 +20690,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
@@ -20720,7 +20721,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/executions",
           "normalizedPath": "/spot-procurement-payments/:param/executions",
@@ -20751,7 +20752,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/refunds",
           "normalizedPath": "/spot-procurements/:param/refunds",
@@ -20782,7 +20783,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -20798,7 +20799,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/refunds",
           "normalizedPath": "/spot-procurements/:param/refunds",
@@ -20830,7 +20831,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/payment-drafts",
           "normalizedPath": "/spot-procurements/:param/payment-drafts",
@@ -20861,7 +20862,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/pdf-refresh",
           "normalizedPath": "/spot-procurements/:param/receipt/pdf-refresh",
@@ -20892,7 +20893,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/abnormal-termination",
           "normalizedPath": "/spot-procurements/:param/abnormal-termination",
@@ -20923,7 +20924,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/draft-reset",
           "normalizedPath": "/spot-procurements/:param/receipt/draft-reset",
@@ -20954,7 +20955,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/review",
           "normalizedPath": "/spot-procurements/:param/receipt/review",
@@ -20983,7 +20984,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/review-revocation",
           "normalizedPath": "/spot-procurements/:param/receipt/review-revocation",
@@ -21012,7 +21013,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/submission",
           "normalizedPath": "/spot-procurements/:param/submission",
@@ -21043,7 +21044,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/submission",
           "normalizedPath": "/spot-procurement-payments/:param/submission",
@@ -21074,7 +21075,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/submission",
           "normalizedPath": "/spot-procurements/:param/receipt/submission",
@@ -21105,7 +21106,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "PATCH",
           "path": "/spot-procurements/:param/draft",
           "normalizedPath": "/spot-procurements/:param/draft",
@@ -21137,7 +21138,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "PATCH",
           "path": "/spot-procurement-payments/:param/draft",
           "normalizedPath": "/spot-procurement-payments/:param/draft",
@@ -21168,7 +21169,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "PATCH",
           "path": "/spot-procurement-payments/:param/payer",
           "normalizedPath": "/spot-procurement-payments/:param/payer",
@@ -21199,7 +21200,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "PATCH",
           "path": "/spot-procurements/:param/receipt/draft",
           "normalizedPath": "/spot-procurements/:param/receipt/draft",
@@ -21228,7 +21229,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurements/projects/:param/draft-file-uploads",
           "normalizedPath": "/spot-procurements/projects/:param/draft-file-uploads",
@@ -21256,7 +21257,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurements/:param/draft-file-uploads",
           "normalizedPath": "/spot-procurements/:param/draft-file-uploads",
@@ -21284,7 +21285,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/execution-voucher-file-uploads",
           "normalizedPath": "/spot-procurement-payments/:param/execution-voucher-file-uploads",
@@ -21312,7 +21313,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurements/:param/invoice-file-uploads",
           "normalizedPath": "/spot-procurements/:param/invoice-file-uploads",
@@ -21340,7 +21341,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/draft-file-uploads",
           "normalizedPath": "/spot-procurement-payments/:param/draft-file-uploads",
@@ -21368,7 +21369,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt-photo-file-uploads",
           "normalizedPath": "/spot-procurements/:param/receipt-photo-file-uploads",
@@ -21396,7 +21397,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurements/:param/refund-voucher-file-uploads",
           "normalizedPath": "/spot-procurements/:param/refund-voucher-file-uploads",
@@ -21424,7 +21425,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2379,
+          "sourceLine": 2389,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -21440,7 +21441,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1326,
+          "sourceLine": 1336,
           "method": "POST",
           "path": "/spot-procurements/:param/refund-voucher-file-uploads",
           "normalizedPath": "/spot-procurements/:param/refund-voucher-file-uploads",
@@ -21471,7 +21472,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurements/:param/voiding",
           "normalizedPath": "/spot-procurements/:param/voiding",
@@ -21502,7 +21503,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/voiding",
           "normalizedPath": "/spot-procurement-payments/:param/voiding",
@@ -21533,7 +21534,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2403,
+          "sourceLine": 2413,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurement-payments/:param/approval-withdrawal",

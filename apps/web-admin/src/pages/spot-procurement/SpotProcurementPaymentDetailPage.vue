@@ -1341,7 +1341,8 @@ async function submitExecution(payload: PaymentExecutionSubmitPayload) {
   actionBusy.value = true;
   executionError.value = "";
   try {
-    const attempt = executionAttempt.value ?? (await prepareExecutionAttempt(payload, operationPaymentId));
+    const retryAttempt = executionAttempt.value;
+    const attempt = retryAttempt ?? (await prepareExecutionAttempt(payload, operationPaymentId));
     if (
       paymentId.value !== operationPaymentId ||
       executionOpenedPaymentId !== operationPaymentId || auth.user?.id !== actorId
@@ -1352,7 +1353,20 @@ async function submitExecution(payload: PaymentExecutionSubmitPayload) {
       if (!key) throw new Error("登录状态已变化，请重新登录后登记");
       sessionStorage.setItem(key, JSON.stringify(attempt));
     }
-    await recordSpotProcurementPaymentExecutionWithCapability(operationPaymentId, {
+    let alreadyRecorded = false;
+    if (attempt.registeredFunding) {
+      const recovery = await fetchSpotProcurementPaymentDetail(operationPaymentId);
+      if (
+        paymentId.value !== operationPaymentId ||
+        executionOpenedPaymentId !== operationPaymentId || auth.user?.id !== actorId
+      ) return;
+      if (recovery.payment.id !== operationPaymentId) throw new Error("付款坐标已变化，请刷新详情后重试");
+      alreadyRecorded = Boolean(retryAttempt && recordedRegisteredAttempt(recovery, retryAttempt));
+      if (!alreadyRecorded && !recovery.originalDebtorCompanyId) {
+        throw new Error("原债公司尚待核对，请核对原单");
+      }
+    }
+    if (!alreadyRecorded) await recordSpotProcurementPaymentExecutionWithCapability(operationPaymentId, {
       idempotencyKey: attempt.idempotencyKey,
       amountCents: attempt.amountCents,
       paidAt: attempt.paidAt,
@@ -1447,10 +1461,7 @@ async function recordSpotProcurementPaymentExecutionWithCapability(
   const operationAllowed = capability.availableActions.some(
     (action) => action.key === "record_execution" && action.enabled
   );
-  const attempt = executionAttempt.value;
-  if (body.registeredFunding && attempt && recordedRegisteredAttempt(capability, attempt)) return;
   if (!operationAllowed) throw new Error("当前零星采购付款不可登记实付");
-  if (body.registeredFunding && !capability.originalDebtorCompanyId) throw new Error("原债公司尚待核对，请核对原单");
   return recordSpotProcurementPaymentExecution(paymentIdCoordinate, body);
 }
 

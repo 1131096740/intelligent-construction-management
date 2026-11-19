@@ -24,7 +24,7 @@ function completionFixture() {
     userPosition: { findMany: async () => [] }, position: { findMany: async () => [] },
     projectMember: {findMany: async ({where}: {where:{userId:string;projectId?:string|{in:string[]}}}) => where.userId === "manager" ? [{projectId:"p1",userId:"manager",positionKey:"project_manager"}] : []},
     projectRosterMember: empty(), projectAffiliateAssignment: empty(), projectParticipatingCompany: empty(), companyEntityVersion:empty(),
-    clearingCase:empty(), operatingFact:empty(),operatingImpactEntry:empty(), interEntityRelationshipEntry:empty(),companyTransfer:empty(),companyTransferEvent:empty(),
+    clearingCase:empty(), operatingFact:empty(),operatingImpactEntry:empty(), interEntityRelationshipEntry:empty(),registeredOperationalPayment:empty(),companyTransfer:empty(),companyTransferEvent:empty(),
     projectNecessaryExpenseReserveEntry:empty(),projectFundDisputeEntry:empty(),projectNecessaryExpenseReserveReplacement:empty(),projectFundDisputeReplacement:empty(),
     $queryRaw: async (query: { strings: readonly string[] }) => {
       const sql=query.strings.join("?");

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { mockApprovalProgress } from "./helpers/approval-progress-mocks";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   expectHorizontalScrollOwner,
@@ -1155,6 +1156,7 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
 
 test("records two controlled executions from the frozen channel and refreshes server payment facts", async ({ page }) => {
   await mockLogin(page);
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: "payment-execution" }]);
   let paidCents = 0;
   let uploadNo = 0;
   const executionPayloads: Array<Record<string, unknown>> = [];
@@ -1217,7 +1219,7 @@ test("records two controlled executions from the frozen channel and refreshes se
   await page.route("**/api/spot-procurement-payments/payment-execution", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
   );
-  await page.route("**/api/files", (route) => {
+  await page.route("**/api/spot-procurement-payments/payment-execution/execution-voucher-file-uploads", (route) => {
     uploadNo += 1;
     return route.fulfill({
       contentType: "application/json",
@@ -1276,6 +1278,7 @@ test("records two controlled executions from the frozen channel and refreshes se
 
 test("retries a failed execution with one upload, the same frozen attempt and a re-entered password", async ({ page }) => {
   await mockLogin(page);
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: "payment-execution-retry" }]);
   let paid = false;
   let uploadNo = 0;
   const executionPayloads: Array<Record<string, unknown>> = [];
@@ -1339,7 +1342,7 @@ test("retries a failed execution with one upload, the same frozen attempt and a 
   await page.route("**/api/spot-procurement-payments/payment-execution-retry", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
   );
-  await page.route("**/api/files", (route) => {
+  await page.route("**/api/spot-procurement-payments/payment-execution-retry/execution-voucher-file-uploads", (route) => {
     uploadNo += 1;
     return route.fulfill({
       contentType: "application/json",
@@ -1380,6 +1383,52 @@ test("retries a failed execution with one upload, the same frozen attempt and a 
   expect(executionPayloads[1]?.voucherFileIds).toEqual(executionPayloads[0]?.voucherFileIds);
   expect(executionPayloads[1]?.voucherFileIds).toEqual(["voucher-retry"]);
   await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+});
+
+test("recovers a recorded registered-account attempt without another write", async ({ page }) => {
+  const id = "payment-registered-retry";
+  const key = `spot-registered-execution:handler-1:${id}`;
+  const original = paymentDetail();
+  const attempt = {
+    idempotencyKey: "registered-spot-original-key", amountCents: "220000", amountYuan: "2200.00",
+    paidAt: now, paidAtInput: "2026-07-18 16:00:00", paymentMethod: "bank_transfer",
+    paymentChannelId: "channel-1", voucherFileIds: ["voucher-1"], actualPayerName: "代付公司",
+    registeredFunding: { scopeKey: "company:payer", expectedRegistrationId: "registration-1",
+      sourceAllocations: [{ sourceBatchId: "source-1", amountCents: "220000" }] }
+  };
+  let recorded = false;
+  let submissions = 0;
+  await mockLogin(page, { globalRoleKeys: ["finance_staff"] });
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: id }]);
+  await page.route(`**/api/spot-procurement-payments/${id}/executions`, (route) => {
+    submissions += 1;
+    return route.fulfill({ status: 500, body: "unexpected second write" });
+  });
+  await page.route(`**/api/spot-procurement-payments/${id}`, (route) => route.fulfill({
+    json: {
+      ...original, originalDebtorCompanyId: "debtor", originalDebtorCompanyName: "原债公司",
+      payment: { ...original.payment, id, status: recorded ? "paid" : "approved_pending_payment",
+        statusLabel: recorded ? "已付款" : "待付款", remainingAmountCents: recorded ? "0" : "220000" },
+      executions: recorded ? original.executions.map(execution => ({ ...execution, actualPayerCompanyId: "payer" })) : [],
+      currentTask: { ...original.currentTask, key: recorded ? "none" : "record_execution", label: "登记实际付款" },
+      availableActions: recorded ? [] : [{ key: "record_execution", label: "登记实际付款", kind: "primary", enabled: true }]
+    }
+  }));
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+  await page.evaluate(({ key, attempt }) => sessionStorage.setItem(key, JSON.stringify(attempt)), { key, attempt });
+  await page.goto(`/零星材料付款/${id}?tab=current`);
+  await page.getByRole("button", { name: "登记实际付款", exact: true }).click();
+  await page.getByRole("button", { name: "重试登记", exact: true }).click();
+  await page.getByLabel("当前登录密码", { exact: true }).fill("fresh-password");
+  recorded = true;
+  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+  expect(submissions).toBe(0);
+  expect(await page.evaluate(key => sessionStorage.getItem(key), key)).toBeNull();
 });
 
 test("restores focus to the actual execution trigger after the drawer has closed", async ({ page }) => {

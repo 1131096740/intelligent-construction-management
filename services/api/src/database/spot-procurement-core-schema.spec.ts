@@ -172,6 +172,11 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
   ),
   SpotProcurementPayment: expectedModel(
     [
+      "originalDebtorCompanyId String?",
+      "originalDebtorCompanyName String?",
+      "originalDebtorApprovalId String?",
+      'originalDebtorCompany CompanyEntity? @relation("SpotFirstApprovedDebtor", fields: [originalDebtorCompanyId], references: [id], onDelete: Restrict, onUpdate: NoAction)',
+      'originalDebtorApproval ApprovalInstance? @relation("SpotFirstApprovedDebtorApproval", fields: [originalDebtorApprovalId], references: [id], onDelete: Restrict, onUpdate: NoAction)',
       "id String @id @default(uuid())",
       "projectId String",
       "procurementId String",
@@ -236,6 +241,7 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
   ),
   SpotProcurementPaymentExecution: expectedModel(
     [
+      "registeredOperationalPayment RegisteredOperationalPayment?",
       "id String @id @default(uuid())",
       "paymentId String",
       "amountCents BigInt",
@@ -356,6 +362,12 @@ const CORE_MIGRATION_FIELD_OVERRIDES: Record<string, Record<string, string>> = {
 };
 
 const CORE_MIGRATION_FORWARD_FIELDS = new Set([
+  "SpotProcurementPayment.originalDebtorCompanyId",
+  "SpotProcurementPayment.originalDebtorCompanyName",
+  "SpotProcurementPayment.originalDebtorApprovalId",
+  "SpotProcurementPayment.originalDebtorCompany",
+  "SpotProcurementPayment.originalDebtorApproval",
+  "SpotProcurementPaymentExecution.registeredOperationalPayment",
   "SpotProcurement.abandonedAt",
   "SpotProcurement.abandonedByUserId",
   "SpotProcurement.abandonReason",

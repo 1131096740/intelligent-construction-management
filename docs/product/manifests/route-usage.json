@@ -4626,7 +4626,8 @@
               "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
               "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
               "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
-              "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+              "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
             ]
           }
         ],

@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "7a2cd64c4cc9898211a86b68378d53734ac794cc5dff662977b308a075b35079",
+      "sha256": "74b83c467f74947f5be733bf17d6162cc9f342f15af72e36daf7c11f735861e7",
       "status": "ready",
       "summary": {
         "apiModuleCount": 47,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "9faf5ae5edbb8e47212dd4c3984191f79a2d706a7c4e1b0e72c2940b3490f37b",
+      "sha256": "23ad7b31161dc82a6e30c78a2be79529fb4ce2e589887bfe1b701e3d8c97dd9f",
       "status": "ready",
       "summary": {
         "registeredActionCount": 443,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "1f1e713136b5bdca889e8b92e427b5e06bbf64572fc41873b8a301202797da5b",
+      "sha256": "dd63dbf98347b0ae8b18e495622e96bf85f2c83b93f4c135cb472b728497c664",
       "status": "ready",
       "summary": {
         "routeCount": 756,
@@ -5409,7 +5409,8 @@
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
             "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
             "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
-            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
           ],
           "testConsumers": []
         }

@@ -333,7 +333,7 @@ export class TemplateSyntheticStore {
     affiliateClearingAuthorityVersion: this.table("affiliateClearingAuthorityVersion"),
     projectNecessaryExpenseReserveReplacement: this.table("projectNecessaryExpenseReserveReplacement"),
     projectFundDisputeReplacement: this.table("projectFundDisputeReplacement"),
-    interEntityRelationshipEntry: this.table("interEntityRelationshipEntry"),
+    interEntityRelationshipEntry: this.table("interEntityRelationshipEntry"), registeredOperationalPayment: this.table("registeredOperationalPayment"),
     companyTransfer: this.table("companyTransfer"),
     companyTransferEvent: this.table("companyTransferEvent"),
     authRateLimit: this.table("authRateLimit"),
@@ -796,6 +796,20 @@ export class TemplateSyntheticStore {
         return [{ acquired: true }];
       }
 
+      if (text === "SELECT DISTINCT up.\"projectId\", p.key AS \"roleKey\" FROM \"UserPosition\" up JOIN \"Position\" p ON p.id=up.\"positionId\" JOIN \"User\" u ON u.id=up.\"userId\" WHERE u.\"isActive\"=TRUE AND up.\"userId\"=? AND up.\"projectId\" IS NOT NULL AND p.key IN ('finance_staff','finance_director','project_manager') UNION SELECT pm.\"projectId\", pm.\"positionKey\" AS \"roleKey\" FROM \"ProjectMember\" pm JOIN \"User\" u ON u.id=pm.\"userId\" WHERE u.\"isActive\"=TRUE AND pm.\"userId\"=? AND pm.\"positionKey\" IN ('finance_staff','finance_director','project_manager')") {
+        const actor = query.values[0];
+        if (query.values.length !== 2 || typeof actor !== "string" || query.values[1] !== actor) throw new Error("合成公司互转查询身份不一致");
+        if (!(await this.prisma.user.findUnique({ where: { id: actor } }))?.isActive) return [];
+        const roleKeys = ["finance_staff", "finance_director", "project_manager"];
+        const positions = await this.prisma.position.findMany({ where: { key: { in: roleKeys } } });
+        const assignments = await this.prisma.userPosition.findMany({ where: { userId: actor, projectId: { not: null }, positionId: { in: positions.map(row => row.id) } } });
+        const members = await this.prisma.projectMember.findMany({ where: { userId: actor, positionKey: { in: roleKeys } } });
+        const scopes = [
+          ...assignments.map(row => ({ projectId: row.projectId, roleKey: positions.find(position => position.id === row.positionId)?.key })),
+          ...members.map(row => ({ projectId: row.projectId, roleKey: row.positionKey }))
+        ];
+        return [...new Map(scopes.map(row => [JSON.stringify([row.projectId, row.roleKey]), row])).values()];
+      }
       if (text === "SELECT DISTINCT up.\"projectId\" FROM \"UserPosition\" up JOIN \"Position\" p ON p.id=up.\"positionId\" JOIN \"User\" u ON u.id=up.\"userId\" WHERE u.\"isActive\"=TRUE AND up.\"userId\"=? AND up.\"projectId\" IS NOT NULL AND p.key IN ('finance_staff','finance_director') UNION SELECT pm.\"projectId\" FROM \"ProjectMember\" pm JOIN \"User\" u ON u.id=pm.\"userId\" WHERE u.\"isActive\"=TRUE AND pm.\"userId\"=? AND pm.\"positionKey\" IN ('finance_staff','finance_director')") {
         const actor = query.values[0];
         if (typeof actor !== "string" || query.values[1] !== actor) throw new Error("合成财务项目查询身份不一致");
