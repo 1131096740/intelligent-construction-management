@@ -288,6 +288,59 @@ describe("FileService", () => {
     expect(storage.read).not.toHaveBeenCalled();
   });
 
+  it.each(["generated", "legacy", "parallel", "changed"] as const)(
+    "keeps transfer evidence precedence and scopes flag reads to %s",
+    async scenario => {
+      const authority = { assertCanReadVersionFile: jest.fn().mockResolvedValue(undefined) };
+      const service = new FileService({} as PrismaService, audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage, undefined, undefined, { get: () => authority } as never);
+      const visibility = jest.spyOn(ProjectVisibilityService.prototype, "visibleProjectIdsInTransaction")
+        .mockResolvedValue(["project-1"]);
+      const transfer = {
+        id: "transfer-1", sourceProjectId: "project-1", destinationProjectId: "project-1",
+        status: "approved", applicantUserId: "applicant", approvalInstanceId: "approval-1"
+      };
+      const lookup = jest.fn()
+        .mockResolvedValueOnce(scenario === "generated" ? null : transfer)
+        .mockResolvedValueOnce(scenario === "changed" ? null : { requiresParallelRepaymentApproval: true });
+      const tx = {
+        $queryRaw: jest.fn(async (query: { sql: string }) =>
+          query.sql.includes('SELECT p."key" FROM "UserPosition"') ?
+            [{ key: scenario === "legacy" ? "finance_director" : "comprehensive_director" }] : []),
+        companyTransfer: { findFirst: lookup },
+        userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+        projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+        position: { findMany: jest.fn().mockResolvedValue([]) },
+        contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([{
+          status: "success", contractVersionId: "version-1", docxFileId: "word-1", pdfFileId: "pdf-1"
+        }]) }
+      };
+      const checked = (service as unknown as {
+        assertCanDownloadFileObject(transaction: unknown, file: unknown, actor: string): Promise<void>;
+      }).assertCanDownloadFileObject(legacyFileTransaction(tx), {
+        id: "word-1", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      }, "actor-1");
+      try {
+        if (scenario === "changed") await expect(checked).rejects.toThrow("无权查看互转申请依据");
+        else await expect(checked).resolves.toBeUndefined();
+        expect(lookup.mock.calls[0][0].select).not.toHaveProperty("requiresParallelRepaymentApproval");
+        if (scenario === "parallel" || scenario === "changed") {
+          expect(lookup).toHaveBeenCalledTimes(2);
+          expect(lookup.mock.calls[1][0]).toEqual({
+            where: { ...transfer, evidenceFileId: "word-1" },
+            select: { requiresParallelRepaymentApproval: true }
+          });
+        } else expect(lookup).toHaveBeenCalledTimes(1);
+        if (scenario === "generated") expect(authority.assertCanReadVersionFile).toHaveBeenCalledWith(
+          expect.anything(), "version-1", "actor-1"
+        );
+        else expect(authority.assertCanReadVersionFile).not.toHaveBeenCalled();
+      } finally {
+        visibility.mockRestore();
+      }
+    }
+  );
+
   it("denies a generated upload that is still owned by an incomplete settlement claim", async () => {
     const service = new FileService(
       {} as PrismaService,

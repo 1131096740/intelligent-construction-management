@@ -2520,7 +2520,7 @@ export class FileService {
     }
 
     const transferEvidence = await tx.companyTransfer?.findFirst({ where: { evidenceFileId: file.id }, select: {
-      sourceProjectId: true, destinationProjectId: true, requiresParallelRepaymentApproval: true,
+      id: true, sourceProjectId: true, destinationProjectId: true,
       status: true, applicantUserId: true, approvalInstanceId: true,
     } });
     if (transferEvidence) {
@@ -2530,11 +2530,19 @@ export class FileService {
       if (projects.every(Boolean) &&
           (await Promise.all(projects.map(p => this.hasProjectRole(tx, actorUserId, p!, ["finance_staff", "finance_director"])))).every(Boolean)) return;
       const projectId = transferEvidence.sourceProjectId;
-      if (transferEvidence.requiresParallelRepaymentApproval && projectId &&
-          projectId === transferEvidence.destinationProjectId && transferEvidence.approvalInstanceId) {
+      const comprehensiveCanQualify = roles.includes("comprehensive_director") &&
+        (transferEvidence.applicantUserId === actorUserId || transferEvidence.status === "approved");
+      if (projectId && projectId === transferEvidence.destinationProjectId && transferEvidence.approvalInstanceId &&
+          (comprehensiveCanQualify || transferEvidence.status === "submitted")) {
+        const parallel = await tx.companyTransfer.findFirst({
+          where: { ...transferEvidence, evidenceFileId: file.id },
+          select: { requiresParallelRepaymentApproval: true }
+        });
+        if (parallel?.requiresParallelRepaymentApproval !== true) {
+          throw new ForbiddenException("无权查看互转申请依据");
+        }
         const visibility = new ProjectVisibilityService(this.prisma);
-        if (roles.includes("comprehensive_director") &&
-            (transferEvidence.applicantUserId === actorUserId || transferEvidence.status === "approved") &&
+        if (comprehensiveCanQualify &&
             (await visibility.visibleProjectIdsInTransaction(tx, actorUserId)).includes(projectId)) return;
         if (transferEvidence.status === "submitted") {
           const approval = await tx.approvalInstance.findUnique({
