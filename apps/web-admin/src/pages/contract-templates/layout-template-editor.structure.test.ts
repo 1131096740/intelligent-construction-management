@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { effectScope, nextTick, reactive } from "vue";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import LayoutTemplateEditorPage from "./LayoutTemplateEditorPage.vue";
 
 const layoutEditorRuntime = vi.hoisted(() => ({
-  route: { params: { layoutTemplateId: "layout-a" } },
+  route: { params: { layoutTemplateId: "layout-a" }, query: {} },
   getLayoutTemplate: vi.fn(),
+  getLayoutVersionMaintenanceCapability: vi.fn(),
   stopLayoutTemplateVersion: vi.fn()
 }));
 
@@ -38,6 +39,11 @@ vi.mock("../../lib/use-unsaved-changes-guard", () => ({
   useUnsavedChangesGuard: () => ({
     requestClose: async () => true
   })
+}));
+
+vi.mock("../../api/contract-template-mapping.api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../api/contract-template-mapping.api")>(),
+  getLayoutVersionMaintenanceCapability: layoutEditorRuntime.getLayoutVersionMaintenanceCapability
 }));
 
 vi.mock("../../api/contract-workbench.api", async (importOriginal) => {
@@ -113,16 +119,26 @@ function riskStopVersion(id: string) {
 }
 
 describe("layout template revision governance structure", () => {
+  beforeEach(() => {
+    layoutEditorRuntime.getLayoutVersionMaintenanceCapability.mockReset();
+    layoutEditorRuntime.getLayoutVersionMaintenanceCapability.mockImplementation(async (versionId: string) => ({
+      versionId,
+      availableActions: riskStopVersion(versionId).availableActions
+    }));
+  });
+
   it("selects server versions and saves drafts with expected-revision CAS", () => {
     expect(page).toContain("getLayoutTemplate");
     expect(page).toContain("selectedVersionId");
-    expect(page).toContain("expectedRevision: version.draftRevision");
+    expect(page).toContain("capability.draftRevision === revision");
+    expect(page).toContain("updateLayoutTemplateVersion(versionId, { expectedRevision: revision");
     expect(page).not.toContain("粘贴已有版本编号");
   });
 
   it("keeps published layouts immutable and clones them into a new draft", () => {
-    expect(page).toContain('canSave: currentVersion.value?.status === "draft"');
-    expect(page).toContain('canClone: currentVersion.value?.status === "published"');
+    expect(page).toMatch(/canSave:.*action.key === "save_draft" && action.enabled/u);
+    expect(page).toMatch(/canClone:.*action.key === "clone_version" && action.enabled/u);
+    expect(page).toContain("已发布版本不可覆盖");
     expect(page).toContain("cloneLayoutTemplateVersion");
     expect(page).toContain("复制为新草稿");
   });
@@ -132,14 +148,12 @@ describe("layout template revision governance structure", () => {
     expect(page).toContain("latestPreview.value.sourceRevision");
     expect(page).toContain("旧检查和旧预览自动失效");
     expect(page).not.toContain("预览文件编号");
-    expect(page).not.toContain("latestPreview.previewPdfFileId");
+    expect(page).toContain("<PrivatePdfActions");
+    expect(page).not.toMatch(/\{\{[^}]*previewPdfFileId/u);
   });
 
-  it("uses server lifecycle actions and revision CAS to discard only a pristine draft", () => {
-    expect(page).toContain("<BusinessDraftAction");
-    expect(page).toContain("currentVersion.availableActions ?? []");
-    expect(page).toContain("discardLayoutTemplateVersion");
-    expect(page).toContain("expectedRevision: version.draftRevision");
+  it("keeps retired discard controls out of the authorized maintenance page", () => {
+    expect(page).not.toMatch(/<BusinessDraftAction|discardLayoutTemplateVersion/u);
     expect(page).toContain("getLayoutTemplate(templateId, true)");
   });
 
@@ -150,11 +164,9 @@ describe("layout template revision governance structure", () => {
     expect(page).toContain(':disabled="!riskStopCandidateAction.enabled || riskStopLoading"');
     expect(page).toContain("riskStopCandidateAction.disabledReason");
     expect(page).toContain("riskStopDialogVisible");
+    expect(page).toContain("getLayoutVersionMaintenanceCapability");
     expect(page).toContain(
-      "const request = stopLayoutTemplateVersion(\n    requireCurrentRiskStopVersionId(context)\n  );"
-    );
-    expect(page).toContain(
-      "function requireCurrentRiskStopVersionId(context: RiskStopContext)"
+      "function requireCurrentRiskStopContext(context: RiskStopContext)"
     );
     expect(page).toContain('v-if="riskStopAction?.enabled"');
     expect(page).toContain(".then(() => completeRiskStop(context))");
@@ -193,6 +205,7 @@ describe("layout template revision governance structure", () => {
 
   it("does not let a completed risk stop refresh, clear or message a later route", async () => {
     const pending = deferred();
+    const sent = deferred();
     vi.stubGlobal("window", {
       clearInterval: vi.fn(),
       setInterval: vi.fn()
@@ -203,9 +216,10 @@ describe("layout template revision governance structure", () => {
       .mockReturnValueOnce(new Promise(() => undefined))
       .mockRejectedValue(new Error("stale refresh must not run"));
     layoutEditorRuntime.stopLayoutTemplateVersion.mockReset();
-    layoutEditorRuntime.stopLayoutTemplateVersion.mockReturnValueOnce(
-      pending.promise
-    );
+    layoutEditorRuntime.stopLayoutTemplateVersion.mockImplementationOnce(() => {
+      sent.resolve();
+      return pending.promise;
+    });
     const { bindings, scope } = setupEditor();
     const version = riskStopVersion("layout-version-a");
     bindings.layoutTemplateCapability.value = {
@@ -219,6 +233,7 @@ describe("layout template revision governance structure", () => {
     bindings.openRiskStopDialog();
 
     const action = bindings.stopCurrentVersion();
+    await sent.promise;
     layoutEditorRuntime.route.params.layoutTemplateId = "layout-b";
     await nextTick();
     expect(layoutEditorRuntime.getLayoutTemplate).toHaveBeenCalledTimes(1);
@@ -243,6 +258,7 @@ describe("layout template revision governance structure", () => {
 
   it("releases the owned busy state without refreshing after a same-route version switch", async () => {
     const pending = deferred();
+    const sent = deferred();
     vi.stubGlobal("window", {
       clearInterval: vi.fn(),
       setInterval: vi.fn()
@@ -250,9 +266,10 @@ describe("layout template revision governance structure", () => {
     layoutEditorRuntime.route.params.layoutTemplateId = "layout-a";
     layoutEditorRuntime.getLayoutTemplate.mockReset();
     layoutEditorRuntime.stopLayoutTemplateVersion.mockReset();
-    layoutEditorRuntime.stopLayoutTemplateVersion.mockReturnValueOnce(
-      pending.promise
-    );
+    layoutEditorRuntime.stopLayoutTemplateVersion.mockImplementationOnce(() => {
+      sent.resolve();
+      return pending.promise;
+    });
     const { bindings, scope } = setupEditor();
     const versionA = riskStopVersion("layout-version-a");
     const versionB = riskStopVersion("layout-version-b");
@@ -267,6 +284,7 @@ describe("layout template revision governance structure", () => {
     bindings.openRiskStopDialog();
 
     const action = bindings.stopCurrentVersion();
+    await sent.promise;
     bindings.selectedVersionId.value = versionB.id;
 
     try {
@@ -289,6 +307,7 @@ describe("layout template revision governance structure", () => {
     layoutEditorRuntime.route.params.layoutTemplateId = "layout-a";
     layoutEditorRuntime.stopLayoutTemplateVersion.mockReset();
     const { bindings, scope } = setupEditor();
+    bindings.layoutTemplateCapability.value = { versions: [riskStopVersion("layout-version-a")] };
     bindings.riskStopVersionId.value = "layout-version-a";
     bindings.selectedVersionId.value = "layout-version-b";
     bindings.riskStopLoading.value = false;
@@ -306,7 +325,7 @@ describe("layout template revision governance structure", () => {
     }
   });
 
-  it("keeps busy false when the risk-stop wrapper throws before returning a promise", () => {
+  it("releases busy and reports a synchronous error from the authorized stop request", async () => {
     vi.stubGlobal("window", {
       clearInterval: vi.fn(),
       setInterval: vi.fn()
@@ -329,7 +348,8 @@ describe("layout template revision governance structure", () => {
     bindings.openRiskStopDialog();
 
     try {
-      expect(() => bindings.stopCurrentVersion()).toThrow("同步创建请求失败");
+      await bindings.stopCurrentVersion();
+      expect(bindings.riskStopError.value).toBe("同步创建请求失败");
       expect(bindings.riskStopLoading.value).toBe(false);
     } finally {
       scope.stop();
@@ -340,6 +360,8 @@ describe("layout template revision governance structure", () => {
   it("does not let an older same-version operation overwrite the latest result", async () => {
     const older = deferred();
     const latest = deferred();
+    const olderSent = deferred();
+    const latestSent = deferred();
     vi.stubGlobal("window", {
       clearInterval: vi.fn(),
       setInterval: vi.fn()
@@ -351,8 +373,14 @@ describe("layout template revision governance structure", () => {
     );
     layoutEditorRuntime.stopLayoutTemplateVersion.mockReset();
     layoutEditorRuntime.stopLayoutTemplateVersion
-      .mockReturnValueOnce(older.promise)
-      .mockReturnValueOnce(latest.promise);
+      .mockImplementationOnce(() => {
+        olderSent.resolve();
+        return older.promise;
+      })
+      .mockImplementationOnce(() => {
+        latestSent.resolve();
+        return latest.promise;
+      });
     const { bindings, scope } = setupEditor();
     const version = riskStopVersion("layout-version-a");
     bindings.layoutTemplateCapability.value = { versions: [version] };
@@ -364,7 +392,9 @@ describe("layout template revision governance structure", () => {
     bindings.openRiskStopDialog();
 
     const olderAction = bindings.stopCurrentVersion();
+    await olderSent.promise;
     const latestAction = bindings.stopCurrentVersion();
+    await latestSent.promise;
 
     try {
       latest.reject(new Error("最新请求失败"));
@@ -382,6 +412,35 @@ describe("layout template revision governance structure", () => {
     } finally {
       scope.stop();
       vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not send a stop when the selected version changes during the capability query", async () => {
+    const capability = deferred();
+    layoutEditorRuntime.route.params.layoutTemplateId = "layout-a";
+    layoutEditorRuntime.stopLayoutTemplateVersion.mockReset().mockResolvedValue(undefined);
+    layoutEditorRuntime.getLayoutVersionMaintenanceCapability.mockImplementationOnce(async (versionId: string) => {
+      await capability.promise;
+      return { versionId, availableActions: riskStopVersion(versionId).availableActions };
+    });
+    const { bindings, scope } = setupEditor();
+    const versionA = riskStopVersion("layout-version-a");
+    const versionB = riskStopVersion("layout-version-b");
+    bindings.layoutTemplateCapability.value = { versions: [versionA, versionB] };
+    bindings.detail.value = { versions: [versionA, versionB] };
+    bindings.selectedVersionId.value = versionA.id;
+    bindings.openRiskStopDialog();
+
+    try {
+      const action = bindings.stopCurrentVersion();
+      expect(layoutEditorRuntime.getLayoutVersionMaintenanceCapability).toHaveBeenCalledWith(versionA.id);
+      bindings.selectedVersionId.value = versionB.id;
+      capability.resolve();
+      await action;
+      expect(layoutEditorRuntime.stopLayoutTemplateVersion).not.toHaveBeenCalled();
+      expect(bindings.riskStopLoading.value).toBe(false);
+    } finally {
+      scope.stop();
     }
   });
 

@@ -8,9 +8,12 @@ import {
   Patch,
   Post,
   Query,
+  ServiceUnavailableException,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
@@ -25,7 +28,7 @@ import { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
 import { RecordProcurementRefundDto } from "./dto/record-procurement-refund.dto";
 import { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
-import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
+import { SpotProcurementSubmissionDto, UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { WithdrawSpotProcurementApprovalDto } from "./dto/withdraw-spot-procurement-approval.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
@@ -40,7 +43,8 @@ export class SpotProcurementController {
     private readonly reads: SpotProcurementReadService,
     private readonly settlements: SpotProcurementSettlementService,
     private readonly payments: SpotProcurementPaymentService,
-    @Optional() private readonly files?: FileService
+    @Optional() private readonly files?: FileService,
+    @Optional() private readonly approvalNotifications?: SpotProcurementApprovalNotificationService
   ) {}
 
   @Get("capabilities")
@@ -98,6 +102,18 @@ export class SpotProcurementController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.applications.getCreateEntryDefinitions(user.id, projectId);
+  }
+
+  @Get(":procurementId/duty-sms")
+  dutySms(@Param("procurementId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+    return this.approvalNotifications.status(id, user.id);
+  }
+
+  @Post(":procurementId/duty-sms/retry")
+  retryDutySms(@Param("procurementId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+    return this.approvalNotifications.retry(id, user.id, body.attemptId);
   }
 
   @Get(":procurementId")
@@ -190,9 +206,10 @@ export class SpotProcurementController {
   @RequireProjectRole("spot_procurement.create")
   submit(
     @Param("procurementId") procurementId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SpotProcurementSubmissionDto = {}
   ) {
-    return this.applications.submit(procurementId, user.id);
+    return this.applications.submit(procurementId, user.id, body);
   }
 
   @Post(":procurementId/payment-drafts")

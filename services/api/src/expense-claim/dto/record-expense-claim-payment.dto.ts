@@ -1,5 +1,31 @@
-import { IsString, ValidateIf } from "class-validator";
+import { Type } from "class-transformer";
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsObject, IsString, IsUUID, MaxLength, MinLength, ValidateIf, ValidateNested } from "class-validator";
 import { IsCanonicalMoneyText, IsMaxUnicodeTextLength } from "../../validation/static-field-validation";
+
+class ExpenseClaimRegisteredAllocationDto {
+  @IsUUID("4", { message: "请选择有效的资金来源" })
+  sourceBatchId!: string;
+
+  @IsCanonicalMoneyText({ typeMessage: "来源分摊金额格式不正确", formatMessage: "来源分摊金额须为大于 0 的整数分" })
+  amountCents!: string;
+}
+
+class ExpenseClaimRegisteredFundingDto {
+  @IsString({ message: "请选择登记资金账户" })
+  @MinLength(1)
+  @MaxLength(200)
+  scopeKey!: string;
+
+  @IsUUID("4", { message: "请重新选择有效的余额核对版本" })
+  expectedRegistrationId!: string;
+
+  @IsArray({ message: "请逐笔选择资金来源" })
+  @ArrayNotEmpty({ message: "请至少选择一个资金来源" })
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ExpenseClaimRegisteredAllocationDto)
+  sourceAllocations!: ExpenseClaimRegisteredAllocationDto[];
+}
 
 export class RecordExpenseClaimPaymentDto {
   @IsCanonicalMoneyText({ typeMessage: "补付金额格式不正确", formatMessage: "补付金额必须按分填写为大于 0 的整数" })
@@ -23,6 +49,12 @@ export class RecordExpenseClaimPaymentDto {
   @IsString({ message: "备注必须是文字" })
   @IsMaxUnicodeTextLength({ max: 500, message: "备注不能超过 500 个字符" })
   note?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsObject({ message: "登记资金资料必须是对象" })
+  @ValidateNested()
+  @Type(() => ExpenseClaimRegisteredFundingDto)
+  registeredFunding?: ExpenseClaimRegisteredFundingDto;
 }
 
 export class ReverseEmployeeLoanRepaymentDto {

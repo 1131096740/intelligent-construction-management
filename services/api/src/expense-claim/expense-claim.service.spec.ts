@@ -1,7 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { ExpenseClaimService } from "./expense-claim.service";
+import { appendRegisteredOperationalPayment, readRegisteredOperationalPayment } from "../fund-account/registered-operational-payment";
 
-function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock }; operatingSources?: { appendConfirmedSourceIfEnabledInTransaction: jest.Mock } }) {
+jest.mock("../fund-account/registered-operational-payment", () => ({
+  appendRegisteredOperationalPayment: jest.fn(),
+  readRegisteredOperationalPayment: jest.fn().mockResolvedValue(null)
+}));
+
+function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock }; operatingSources?: { appendConfirmedSourceIfEnabledInTransaction: jest.Mock }; fundingNotifications?: { queue: jest.Mock; afterCommit: jest.Mock } }) {
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
@@ -34,7 +40,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { businessProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]) };
-  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never);
+  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never, undefined, options?.fundingNotifications as never);
   return { service, tx, prisma, numbering, audit, visibility };
 }
 
@@ -986,6 +992,37 @@ describe("ExpenseClaimService", () => {
     });
   });
 
+  it.each([
+    ["reimbursement", "approved_pending_payment"],
+    ["loan", "approved_pending_disbursement"]
+  ])("终审 %s 在原事务登记资金待办，提交后才唤醒派发", async (claimType, status) => {
+    const claim = { id: "funding-claim", claimType, status: "approval_pending", projectId: "project-1", applicantUserId: "applicant",
+      handledByUserId: "applicant", requestedAmountCents: 100n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 100n };
+    const instance = { id: "round", currentNodeIndex: 0, applicantUserId: "applicant", frozenNodes: [{
+      name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["reviewer"],
+      candidateUserIdsByRole: { comprehensive_director: ["reviewer"] }
+    }] };
+    const events: string[] = [];
+    const fundingNotifications = { queue: jest.fn(async () => { events.push("queued"); return true; }),
+      afterCommit: jest.fn(async () => { events.push("dispatch"); }) };
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
+    const { service, tx, prisma } = createHarness({ roles: ["comprehensive_director"], fundingNotifications, operatingSources });
+    prisma.$transaction.mockImplementationOnce(async run => {
+      const result = await run(tx);
+      events.push("commit");
+      return result;
+    });
+    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ id: "reviewer", isActive: true, name: "签批人" }])
+      .mockResolvedValueOnce([{ id: "signature", fileId: "file", contentSha256: "a".repeat(64) }])
+      .mockResolvedValueOnce([{ id: "file", contentSha256: "a".repeat(64), storageStatus: "active" }]);
+    const approved = { ...claim, status };
+    tx.expenseClaim.update.mockResolvedValue(approved);
+    await expect(service.review(claim.id, "reviewer", { decision: "approve" })).resolves.toMatchObject({ status, completed: true });
+    expect(events).toEqual(["queued", "commit", "dispatch"]);
+    expect(fundingNotifications.queue).toHaveBeenCalledWith(tx, approved, "reviewer");
+  });
+
   it("approves an incidental expense into payment instead of loan disbursement", async () => {
     const claim = {
       id: "claim-incidental-1",
@@ -1367,5 +1404,111 @@ describe("ExpenseClaimService", () => {
     tx.$queryRaw.mockResolvedValueOnce([{ id: "loan-1", claimType: "loan", projectId: "project-1", applicantUserId: "user-a" }]).mockResolvedValueOnce([{ id: "repayment-1", loanAccountId: "account-1", amountCents: 5001n, status: "recorded" }]).mockResolvedValueOnce([{ id: "account-1", userId: "user-a", scopeKey: "project:project-1", balanceAmountCents: 5000n, repaidAmountCents: 0n }]);
     await expect(service.confirmEmployeeLoanRepayment("loan-1", "repayment-1", "finance-director-1", { confirmationPassword: "current-password" })).rejects.toThrow(BadRequestException);
     expect(tx.employeeProjectLoanEntry.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("登记资金报销补付", () => {
+  const registeredFunding = { scopeKey: "company:actual", expectedRegistrationId: "registration-1",
+    sourceAllocations: [{ sourceBatchId: "batch-1", amountCents: "800" }] };
+  const body = { amountCents: "800", paidAt: "2020-07-24", paymentMethod: "银行转账",
+    voucherFileId: "voucher-1", confirmationPassword: "current-password", registeredFunding };
+  const receipt = { actualPayerCompanyId: "actual-company", relationshipEntryId: "debt-1" };
+  const first = { id: "execution-1", expenseClaimId: "claim-1", amountCents: 800n, paidAt: new Date(body.paidAt),
+    paymentMethod: body.paymentMethod, voucherFileId: body.voucherFileId, recordedByUserId: "finance-1", note: null };
+
+  function setup(existing: boolean, companyName = "原债务公司") {
+    jest.mocked(appendRegisteredOperationalPayment).mockReset().mockResolvedValue(receipt);
+    jest.mocked(readRegisteredOperationalPayment).mockReset().mockResolvedValue(existing ? receipt : null);
+    const projectFunding = { lockFundingContext: jest.fn(), allocateExecution: jest.fn() };
+    const { service, tx, audit } = createHarness({
+      claim: { id: "claim-1", claimType: "reimbursement", status: "partially_paid", projectId: "project-1",
+        companyEntityId: "original-debtor", companyEntityNameSnapshot: companyName,
+        paymentSubjectCompanyEntityId: "approved-payer", companyPayableAmountCents: 1800n,
+        fundedAmountCents: existing ? 800n : 0n },
+      auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) }, projectFunding
+    });
+    tx.expenseClaimPaymentExecution.findUnique.mockResolvedValue(existing ? first : null);
+    tx.expenseClaimPaymentExecution.create.mockResolvedValue(first);
+    tx.fileObject.findUnique.mockResolvedValue({ id: "voucher-1", uploadedByUserId: "finance-1" });
+    return { service, tx, audit, projectFunding };
+  }
+
+  it("posts once by the execution and frozen original debtor, without a second project allocation", async () => {
+    const { service, tx, projectFunding, audit } = setup(false);
+    await expect(service.recordPayment("claim-1", "finance-1", body)).resolves.toEqual({
+      id: "execution-1", expenseClaimId: "claim-1", paidAmountCents: "800", status: "partially_paid", registeredFunding: receipt
+    });
+    expect(appendRegisteredOperationalPayment).toHaveBeenCalledWith(tx, {
+      sourceType: "expense_claim_payment_execution", executionId: "execution-1", actorUserId: "finance-1",
+      projectId: "project-1", originalDebtorCompanyId: "original-debtor", amountCents: 800n,
+      paidAt: new Date(body.paidAt), funding: registeredFunding
+    });
+    expect(projectFunding.lockFundingContext).not.toHaveBeenCalled();
+    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the stored registered funding receipt for the same voucher without writing again", async () => {
+    const { service, tx, projectFunding, audit } = setup(true);
+    await expect(service.recordPayment("claim-1", "finance-1", body)).resolves.toMatchObject({ id: first.id, registeredFunding: receipt });
+    expect(readRegisteredOperationalPayment).toHaveBeenCalledWith(tx, expect.objectContaining({ executionId: first.id, funding: registeredFunding }));
+    expect(appendRegisteredOperationalPayment).not.toHaveBeenCalled();
+    expect(tx.expenseClaimPaymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("does not add registered funding to an already recorded historical execution", async () => {
+    const { service, tx, projectFunding } = setup(true);
+    jest.mocked(readRegisteredOperationalPayment).mockRejectedValueOnce(new ConflictException("资金凭据与本次提交不同"));
+    await expect(service.recordPayment("claim-1", "finance-1", body)).rejects.toThrow("资金凭据与本次提交不同");
+    expect(appendRegisteredOperationalPayment).not.toHaveBeenCalled();
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+  });
+
+  it("does not write or fall back to legacy funding after a registered replay mismatch", async () => {
+    const { service, tx, projectFunding, audit } = setup(true);
+    jest.mocked(readRegisteredOperationalPayment).mockRejectedValueOnce(new ConflictException("资金凭据与本次提交不同"));
+    await expect(service.recordPayment("claim-1", "finance-1", body)).rejects.toThrow("资金凭据与本次提交不同");
+    expect(appendRegisteredOperationalPayment).not.toHaveBeenCalled();
+    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("returns the frozen company only for registered rows in authorized payment history", async () => {
+    const { service, tx } = createHarness();
+    tx.expenseClaim.findFirst.mockResolvedValue({
+      id: "claim-1", code: "BX-1", claimType: "reimbursement", status: "partially_paid",
+      projectId: "project-1", applicantUserId: "user-a", handledByUserId: "user-a",
+      requestedAmountCents: 1800n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1800n,
+      fundedAmountCents: 1000n, paymentSubjectCompanyEntityId: "later-claim-payer",
+      companyEntityId: "original-debtor", companyEntityNameSnapshot: "原债务公司"
+    });
+    tx.expenseClaimLine.findMany.mockResolvedValue([]);
+    tx.expenseClaimPaymentExecution.findMany.mockResolvedValue([
+      { ...first, registeredOperationalPayment: { id: "debt-1", actualPayerCompanyId: "actual-company",
+        actualPayerName: "实付公司", originalDebtorCompanyId: "original-debtor" } },
+      { id: "history", amountCents: 200n, registeredOperationalPayment: null }
+    ]);
+    const result = await service.getMine("claim-1", "user-a");
+    expect(result.originalDebtorCompanyId).toBe("original-debtor");
+    expect(result.paymentExecutions).toMatchObject([
+      { id: first.id, amountCents: "800", registeredFunding: {
+        actualPayerCompanyId: "actual-company", actualPayerName: "实付公司",
+        originalDebtorCompanyId: "original-debtor", relationshipEntryId: "debt-1"
+      } },
+      { id: "history", amountCents: "200" }
+    ]);
+    expect(result.paymentExecutions[1]).not.toHaveProperty("registeredFunding");
+  });
+
+  it("rejects unresolved original debt while retaining the existing claim", async () => {
+    const { service, tx } = setup(false, "");
+    await expect(service.recordPayment("claim-1", "finance-1", body)).rejects.toThrow("归属待核对");
+    expect(tx.expenseClaimPaymentExecution.create).not.toHaveBeenCalled();
+    expect(appendRegisteredOperationalPayment).not.toHaveBeenCalled();
   });
 });

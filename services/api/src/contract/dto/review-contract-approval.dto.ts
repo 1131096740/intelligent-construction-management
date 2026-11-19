@@ -6,6 +6,7 @@ import {
   IsInt,
   IsObject,
   IsString,
+  Matches,
   Min,
   ValidateIf,
   ValidateNested
@@ -87,6 +88,10 @@ export class ReviewContractApprovalDto {
   })
   @IsISO8601({}, { message: "预期审批版本格式不正确" })
   expectedApprovalUpdatedAt!: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Matches(/^[a-f0-9]{64}$/u, { message: "预期并联审批轮次格式不正确" })
+  expectedParallelApprovalEpoch?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "审批意见必须是文字" })

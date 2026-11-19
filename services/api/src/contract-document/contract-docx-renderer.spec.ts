@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import {
   formatChineseUppercaseMoney,
+  formatChineseUppercaseBusinessAmount,
   formatMoneyCents,
   renderContractDocx
 } from "./contract-docx-renderer";
@@ -353,6 +354,19 @@ describe("contract money formatting", () => {
     [1_234_567_890_12n, "人民币壹拾贰亿叁仟肆佰伍拾陆万柒仟捌佰玖拾元壹角贰分"]
   ])("formats %s cents as Chinese uppercase money", (cents, expected) => {
     expect(formatChineseUppercaseMoney(cents)).toBe(expected);
+  });
+
+  it.each([
+    ["1.5340", "人民币壹元伍角叁分肆厘"], ["0.0001", "人民币零元壹毫"],
+    ["1.0001", "人民币壹元零壹毫"], ["0.0101", "人民币零元壹分零壹毫"],
+    ["1.1010", "人民币壹元壹角零壹厘"], ["0.0000", "人民币零元整"],
+    [null, "待确定"], ["1.5300", "人民币壹元伍角叁分"],
+    ["10000000000000000000.0001", "人民币壹仟京元零壹毫"]
+  ])("renders exact business amount %s through public DOCX output", (value, uppercase) => {
+    const values = requiredValues({ "contract.amount": value ?? "待确定", "contract.amountUppercase": formatChineseUppercaseBusinessAmount(value) });
+    const output = renderContractDocx(createDocx(paragraph("{contract.name}|{document.watermark}|{contract.amount}|{contract.amountUppercase}")), { values });
+    expect(renderedDocumentXml(output)).toContain(uppercase);
+    expect(renderedDocumentXml(output)).toContain(value ?? "待确定");
   });
 
   it("formats cents without locale-dependent output", () => {

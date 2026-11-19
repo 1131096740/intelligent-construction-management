@@ -126,6 +126,20 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     return { status: response.status, body: await response.json() as { id: string; status: string; entryDefinition: BusinessEntrySceneDefinition; entrySnapshots: Array<{ definitionSnapshot: BusinessEntrySceneDefinition; valuesSnapshot: Record<string, unknown> }> } };
   }
 
+  function procurementInput(reason: string) {
+    return {
+      requestProtocolVersion: 2,
+      scope: "project",
+      projectId,
+      companyEntityId,
+      category: "office_supplies",
+      reason,
+      estimatedAmount: "1.0000",
+      lines: [{ id: randomUUID(), name: "合成办公用品" }],
+      requestKey: randomUUID()
+    };
+  }
+
   async function selfAccount(role?: RoleKey) {
     const prisma = app.get(PrismaService);
     const suffix = randomUUID();
@@ -179,9 +193,12 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
 
   (enabled ? it : it.skip)("删除未提交草稿：综合采购删除和旧请求防复活", async () => {
     const prisma = app.get(PrismaService);
-    const body = { projectId, companyEntityId, category: "office_supplies", reason: "删除草稿测试", requestedAmountCents: "100", requestKey: randomUUID() };
+    const body = procurementInput("删除草稿测试");
     const created = await request("/general-procurements", body);
-    expect(created.status).toBe(201);
+    expect(created).toMatchObject({ status: 201, body: { id: expect.any(String) } });
+    const draft = await prisma.generalProcurement.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect(draft).toMatchObject({ requestProtocolVersion: 2, scope: "project", projectId, companyEntityId, requestedAmountCents: null });
+    expect(draft.estimatedAmount?.toFixed(4)).toBe(body.estimatedAmount);
     expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 1 }, financeToken)).status).toBe(403);
     expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 2 })).status).toBe(409);
     expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 1 })).status).toBe(201);
@@ -189,19 +206,23 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect((await request("/general-procurements", body)).status).toBe(409);
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { businessId: created.body.id, action: "general_procurement.draft.delete" } });
     expect(audit).toMatchObject({ actorUserId: applicantUserId, businessType: "general_procurement" });
-    expect(audit.metadata).toMatchObject({ requestKey: body.requestKey, revision: 1, projectId, companyEntityId, applicantUserId, previousStatus: "draft", category: body.category, requestedAmountCents: "100" });
+    expect(audit.metadata).toMatchObject({ requestKey: body.requestKey, revision: 1, projectId, companyEntityId, applicantUserId, previousStatus: "draft", category: body.category, requestedAmountCents: null });
     expect(await prisma.auditLog.count({ where: { businessId: created.body.id, action: "general_procurement.create" } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { businessId: created.body.id, action: "general_procurement.draft.delete" } })).toBe(1);
   });
 
   (enabled ? it : it.skip)("删除未提交草稿：综合采购审批后即使退回也不能硬删除", async () => {
-    const created = await request("/general-procurements", { projectId, companyEntityId, category: "office_supplies", reason: "保留审批测试", requestedAmountCents: "100", requestKey: randomUUID() });
-    expect(created.status).toBe(201);
-    expect((await request(`/general-procurements/${created.body.id}/submission`, { revision: 1 })).status).toBe(201);
-    expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 2 })).status).toBe(409);
+    const created = await request("/general-procurements", procurementInput("保留审批测试"));
+    expect(created).toMatchObject({ status: 201, body: { id: expect.any(String) } });
+    const path = `/general-procurements/${created.body.id}`;
+    expect((await request(`${path}/submission`, { revision: 1 })).status).toBe(201);
+    expect((await request(`${path}/draft-deletion`, { revision: 2 })).status).toBe(409);
+    const returned = await request(`${path}/review`, { revision: 2, expectedNodeIndex: 0, decision: "return", comment: "核对采购用途" }, proxySession.tokens.accessToken);
+    expect(returned).toMatchObject({ status: 201, body: { status: "returned", revision: 3 } });
+    expect((await request(`${path}/draft-deletion`, { revision: 3 })).status).toBe(409);
     const prisma = app.get(PrismaService);
     await prisma.generalProcurement.update({ where: { id: created.body.id }, data: { status: "draft" } });
-    expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 2 })).status).toBe(409);
+    expect((await request(`${path}/draft-deletion`, { revision: 3 })).status).toBe(409);
   });
 
   (enabled ? it : it.skip)("删除未提交草稿：附件关联删除，文件保留既有私有回收边界", async () => {
@@ -235,7 +256,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     ]);
     expect(results.filter(result => result.status === 201)).toHaveLength(1);
     expect(results.filter(result => result.status >= 400 && result.status < 500)).toHaveLength(1);
-    const procurement = await request("/general-procurements", { projectId, companyEntityId, category: "office_supplies", reason: "并发删除验证", requestedAmountCents: "100", requestKey: randomUUID() });
+    const procurement = await request("/general-procurements", procurementInput("并发删除验证"));
+    expect(procurement).toMatchObject({ status: 201, body: { id: expect.any(String) } });
     const procurementResults = await Promise.all([
       request(`/general-procurements/${procurement.body.id}/submission`, { revision: 1 }),
       request(`/general-procurements/${procurement.body.id}/draft-deletion`, { revision: 1 })
@@ -246,7 +268,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
 
   (enabled ? it : it.skip)("删除未提交草稿：受限数据库账号只可调用窄入口，不能直接删表", async () => {
     const prisma = app.get(PrismaService);
-    const created = await request("/general-procurements", { projectId, companyEntityId, category: "office_supplies", reason: "受限删除验证", requestedAmountCents: "100", requestKey: randomUUID() });
+    const created = await request("/general-procurements", procurementInput("受限删除验证"));
+    expect(created).toMatchObject({ status: 201, body: { id: expect.any(String) } });
     const role = `draft_delete_${randomUUID().replaceAll("-", "")}`;
     await prisma.$executeRawUnsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
     try {
@@ -255,7 +278,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       await expect(prisma.$transaction(async tx => {
         await tx.$executeRawUnsafe(`SET LOCAL ROLE "${role}"`);
         await tx.$executeRaw`DELETE FROM "GeneralProcurement" WHERE "id" = ${created.body.id}`;
-      })).rejects.toThrow();
+      })).rejects.toMatchObject({ code: "P2010", meta: { code: "42501" } });
       await prisma.$transaction(async tx => {
         await tx.$executeRawUnsafe(`SET LOCAL ROLE "${role}"`);
         expect(await tx.$queryRaw`SELECT public.jg_delete_unsubmitted_general_procurement(${created.body.id}, ${financeSession.user.id}, 1) AS deleted`).toEqual([{ deleted: false }]);
@@ -638,10 +661,10 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         const input = kind === "contract_takeover"
           ? { code: `YS-${randomUUID()}`, name: reason, counterparty: "合成相对方", contractTypeKey: "material_purchase", companyEntityId, amountCents: "100", signedAt: "2026-10-20", takeoverLevel: "B", takeoverLevelAdjustmentReason: "仅本机删除验收", lifecycleStatus: "in_progress", takeoverCutoffDate: "2026-10-20", responsibleUserId: session.user.id }
           : kind === "general_procurement"
-            ? { projectId, companyEntityId, reason, category: "office_supplies", requestedAmountCents: "100", requestKey: randomUUID() }
+            ? procurementInput(reason)
             : { ...selfInput(applicantUserId, "incidental_expense"), reason };
         const created = await request(rootPath, input, session.tokens.accessToken);
-        expect(created.status).toBe(201);
+        expect(created).toMatchObject({ status: 201, body: { id: expect.any(String) } });
         const id = created.body.id;
         let fileId: string | null = null;
         if (kind === "incidental_expense") {
@@ -728,7 +751,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
           expect(audit[0]!.metadata).toMatchObject({ contractId: history.contractId, contractVersionId: history.contractVersionId });
         } else {
           expect(await prisma.generalProcurement.count({ where: { id } })).toBe(0);
-          expect(audit[0]!.metadata).toMatchObject({ companyEntityId, requestedAmountCents: "100", revision: 1, applicantUserId: session.user.id });
+          expect(audit[0]!.metadata).toMatchObject({ companyEntityId, requestedAmountCents: null, revision: 1, applicantUserId: session.user.id });
         }
         if (fileId) {
           const file = await prisma.fileObject.findUniqueOrThrow({ where: { id: fileId } });

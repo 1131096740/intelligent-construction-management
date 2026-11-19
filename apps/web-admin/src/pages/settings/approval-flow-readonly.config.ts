@@ -14,6 +14,7 @@ export interface ApprovalFlowRule {
   title: string;
   businessType: string;
   status: "readonly";
+  mechanismLabel?: string;
   nodes: ApprovalFlowNode[];
   guardrails: string[];
 }
@@ -229,13 +230,14 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
     title: "零星材料采购申请审批",
     businessType: "零星材料采购",
     status: "readonly",
+    mechanismLabel: "当前版本并联职责",
     nodes: [
       { name: "物资部主管", mode: "any", roleKeys: ["material_director"] },
       { name: "项目经理", mode: "any", roleKeys: ["project_manager"] }
     ],
     guardrails: [
       "由同项目物资员发起申请",
-      "物资部主管、项目经理依次审批，审批通过后生成付款草稿"
+      "物资部主管、项目经理同时待办；每项职责分别办理，全部通过后仅生成一份付款草稿；缺岗待配置，不跳过"
     ]
   },
   {

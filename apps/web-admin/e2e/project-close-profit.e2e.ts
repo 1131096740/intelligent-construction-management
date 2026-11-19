@@ -165,31 +165,37 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
     };
     return workbench;
   }, projectId);
+  const expectedLines = decision.participatingCompanies.map((company, index) => ({
+    projectParticipatingCompanyId: company.id,
+    finalShareCents: index === 0 ? decision.currentProfitConfirmation.finalProfitCents : "0"
+  }));
+  expect(expectedLines.length).toBeGreaterThan(0);
   const distributionGrid = page.locator(".distribution-editor revo-grid");
-  await expect(distributionGrid).toHaveCount(1);
-  for (let index = 0; index < decision.participatingCompanies.length; index += 1) {
-    await distributionGrid.evaluate(async (element, rowIndex) => {
-      const grid = element as HTMLElement & {
-        scrollToRow(index: number): Promise<void>;
-        scrollToColumnProp(prop: string): Promise<void>;
-        setCellsFocus(start: { x: number; y: number }, end: { x: number; y: number }): Promise<void>;
-      };
-      await grid.scrollToRow(rowIndex);
-      await grid.scrollToColumnProp("finalShareYuan");
-      await grid.setCellsFocus({ x: 1, y: rowIndex }, { x: 1, y: rowIndex });
-    }, index);
-    await page.keyboard.press("Enter");
-    const editor = distributionGrid.locator("input");
-    await expect(editor).toHaveCount(1);
-    await editor.fill(index === 0
-      ? centsToYuan(decision.currentProfitConfirmation.finalProfitCents)
-      : "0.00");
+  const amountCell = (index: number) => distributionGrid.locator(
+    `revogr-data[col-type="rgCol"] [data-rgrow="${index}"][data-rgcol="1"]`
+  );
+  const editor = distributionGrid.locator("revogr-edit input");
+  await amountCell(0).dblclick();
+  for (const [index, line] of expectedLines.entries()) {
+    const amount = centsToYuan(line.finalShareCents);
+    await expect(editor).toBeFocused();
+    await editor.fill(amount);
     await editor.press("Enter");
-    await expect(editor).toHaveCount(0);
+    await expect(amountCell(index)).toHaveText(amount);
   }
+  await expect(editor).toHaveCount(0);
+
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务重新制作公司分配");
+  const closeProfitPath = `/api/projects/${projectId}/close-profit`;
+  const submission = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === `${closeProfitPath}/distributions/submissions`
+  );
   await page.getByRole("button", { name: "制作并提交公司分配" }).click();
+  const submitted = await submission;
+  expect(submitted.status()).toBe(201);
+  expect(submitted.request().postDataJSON()).toMatchObject({ lines: expectedLines });
   await expect(page.getByText("操作已完成", { exact: true })).toBeVisible();
   await expect(page.getByText(/待高管确认：公司分配第/u)).toBeVisible();
 
@@ -199,6 +205,14 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
   await page.getByRole("button", { name: "确认公司分配" }).click();
   await expect(page.getByText("操作已完成", { exact: true })).toBeVisible();
   await page.reload();
+  const readback = page.waitForResponse((response) =>
+    response.request().method() === "GET" && new URL(response.url()).pathname === closeProfitPath
+  );
   await openCloseProfit(page);
   await expect(page.getByText("历史公司分配", { exact: true })).toBeVisible();
+  const persisted = await (await readback).json();
+  expect(persisted.currentDistribution.lines).toHaveLength(expectedLines.length);
+  expect(persisted.currentDistribution.lines).toEqual(
+    expect.arrayContaining(expectedLines.map((line) => expect.objectContaining(line)))
+  );
 });

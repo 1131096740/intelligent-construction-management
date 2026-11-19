@@ -15,6 +15,7 @@ export function drawApprovalTable(
   options: {
     headerRow?: boolean;
     minRowHeight?: number;
+    fixedRowHeight?: number;
     imageColumn?: number;
     rowImages?: (Buffer | null)[];
   } = {}
@@ -59,7 +60,11 @@ export function drawApprovalTable(
   rows.forEach((row, index) => {
     const image = options.rowImages?.[index];
     let size = 9;
-    let height = Math.max(measure(row, size), options.minRowHeight ?? 0);
+    let height = options.fixedRowHeight ?? Math.max(measure(row, size), options.minRowHeight ?? 0);
+    if (options.fixedRowHeight !== undefined) {
+      while (measure(row, size) > options.fixedRowHeight && size > 4.5) size -= 0.25;
+      if (measure(row, size) > options.fixedRowHeight) throw new BadRequestException("签批内容超过固定签字位置容量，请核查内容后重试");
+    }
     // Keep one signer's identity, full opinion and image together, including long opinions.
     while (height > pageCapacity - headerHeight && size > 4.5) {
       size -= 0.25;

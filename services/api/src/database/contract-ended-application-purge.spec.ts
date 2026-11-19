@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { FileCleanupSeamService } from "../file/file-cleanup-seam.service";
+import { reviewReferenceCatalog } from "../file/contract-review-file-retention";
 import {
   CosVersionedObjectStorage,
   InMemoryVersionedObjectStorage
@@ -10,8 +11,9 @@ import {
 } from "../contract-ended-purge/contract-ended-application-purge.service";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
+const LEGACY_TEST_DATABASE = "jiangkong_contract_cleanup_pre_m206_test";
 
-function localPurgeDatabaseUrl(value: string | undefined) {
+function localPurgeDatabaseUrl(value: string | undefined, expectedDatabase = TEST_DATABASE) {
   if (!value || process.env.NODE_ENV === "production") {
     throw new Error("结束申请物理清理测试必须连接非生产专用数据库");
   }
@@ -19,19 +21,23 @@ function localPurgeDatabaseUrl(value: string | undefined) {
   if (
     !["postgresql:", "postgres:"].includes(url.protocol) ||
     !["127.0.0.1", "localhost", "::1"].includes(url.hostname) ||
-    url.pathname !== `/${TEST_DATABASE}`
+    url.pathname !== `/${expectedDatabase}`
   ) {
     throw new Error("结束申请物理清理测试拒绝非本机专用数据库");
   }
   return url.toString();
 }
 
+function legacyPurgeDatabaseUrl() {
+  return localPurgeDatabaseUrl(process.env.CONTRACT_LEGACY_CLEANUP_DATABASE_URL, LEGACY_TEST_DATABASE);
+}
+
 describe("contract ended application purge PostgreSQL evidence", () => {
   const integrationTest =
     process.env.RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE === "1" ? it : it.skip;
 
-  integrationTest("retries object cleanup after business detachment, preserves shared evidence, and leaves only its formal-code tombstone", async () => {
-    const databaseUrl = localPurgeDatabaseUrl(
+  async function verifyObjectCleanup(legacy: boolean) {
+    const databaseUrl = legacy ? legacyPurgeDatabaseUrl() : localPurgeDatabaseUrl(
       process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
     );
     const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
@@ -56,8 +62,11 @@ describe("contract ended application purge PostgreSQL evidence", () => {
       shared: `uploads/ended-purge-shared-${suffix}.pdf`
     };
     const storage = new InMemoryVersionedObjectStorage();
+    const listVersions = jest.spyOn(storage, "listObjectVersions");
+    const deleteVersion = jest.spyOn(storage, "deleteObjectVersion");
 
     try {
+      await expect(reviewReferenceCatalog(prisma)).resolves.toBe(legacy ? "legacy" : "ready");
       await prisma.user.create({
         data: { id: ownerId, name: "结束申请物理清理测试经办人", mustChangePassword: false }
       });
@@ -299,6 +308,25 @@ describe("contract ended application purge PostgreSQL evidence", () => {
         retryableCount: 1,
         skippedCount: 0
       });
+      if (!legacy) {
+        expect(listVersions).not.toHaveBeenCalled();
+        expect(deleteVersion).not.toHaveBeenCalled();
+        await expect(prisma.contract.findUnique({
+          where: { id: contractId },
+          select: { id: true }
+        })).resolves.toEqual({ id: contractId });
+        await expect(prisma.contractDraftAttachment.count({ where: { contractVersionId } })).resolves.toBe(2);
+        await expect(prisma.fileObject.count({
+          where: { id: { in: [draftFileId, actionFileId, pdfFileId, claimFileId, sharedFileId] },
+            storageStatus: "active", purgeReceiptId: null }
+        })).resolves.toBe(5);
+        await expect(prisma.contractNumberTombstone.count({ where: { formalCode } })).resolves.toBe(0);
+        await expect(prisma.contractEndedApplicationPurgeReceipt.findUnique({
+          where: { contractVersionId },
+          select: { status: true, failureCode: true, completedAt: true }
+        })).resolves.toEqual({ status: "retryable", failureCode: "file_cleanup_scope_blocked", completedAt: null });
+        return;
+      }
       await expect(prisma.contract.findUnique({
         where: { id: contractId },
         select: { id: true }
@@ -403,12 +431,15 @@ describe("contract ended application purge PostgreSQL evidence", () => {
       await prisma.user.deleteMany({ where: { id: ownerId } });
       await prisma.$disconnect();
     }
+  }
+
+  integrationTest("blocks current-catalog physical cleanup and retries legacy cleanup with shared evidence preserved", async () => {
+    await verifyObjectCleanup(false);
+    await verifyObjectCleanup(true);
   }, 30_000);
 
   integrationTest("refuses a historical bucket mismatch before any COS deletion and leaves a retryable technical receipt", async () => {
-    const databaseUrl = localPurgeDatabaseUrl(
-      process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
-    );
+    const databaseUrl = legacyPurgeDatabaseUrl();
     const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     const suffix = `${process.pid}-${Date.now()}`;
     const ownerId = `ended-purge-bucket-owner-${suffix}`;
@@ -745,9 +776,7 @@ describe("contract ended application purge PostgreSQL evidence", () => {
   }, 30_000);
 
   integrationTest("retries after COS converges but final technical receipt persistence fails", async () => {
-    const databaseUrl = localPurgeDatabaseUrl(
-      process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
-    );
+    const databaseUrl = legacyPurgeDatabaseUrl();
     const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     const suffix = `${process.pid}-${Date.now()}`;
     const ownerId = `ended-purge-commit-owner-${suffix}`;

@@ -1,0 +1,225 @@
+"use strict";
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const controls = require("./local-staged-migration-controls.cjs");
+
+const plan = {
+  database: "jiangkong_project_financing_quota_concurrency", databaseOid: "16384",
+  namespaceOid: "2200", actorOid: "10", ownerOid: "10", systemIdentifier: "123456789",
+  runId: "01234567-89ab-cdef-0123-456789abcdef", nonce: "a".repeat(64),
+  appName: "jg_fixture_app_" + "b".repeat(24), schemaName: "jg_fixture_" + "c".repeat(24)
+};
+const setup = {
+  runId: plan.runId, appOid: "17000", fileCallerOids: [10, 17001],
+  schemaOid: "18000", controlOid: "18001", eventOid: "18002", qualified: true
+};
+test("setup proof rejects a runtime identity equal to migration owner even when both inputs agree", () => {
+  assert.throws(() => controls.checkSetup({ ...setup, appOid: "10" }, plan), /LOCAL_MIGRATION_CONTROL/u);
+});
+
+test("fixed control builders reject malformed target or role names before producing SQL", () => {
+  for (const change of [{ schemaName: "public;DROP SCHEMA public" }, { appName: "jiangkong" },
+    { actorOid: "0" }, { databaseOid: null }, { nonce: "x".repeat(64) }]) {
+    assert.throws(() => controls.setupSql({ ...plan, ...change }), /LOCAL_MIGRATION_CONTROL/u);
+  }
+});
+
+const fs = require("node:fs");
+const path = require("node:path");
+const { createHash } = require("node:crypto");
+const migrationRoot = path.join(__dirname, "migrations");
+const migrations = fs.readdirSync(migrationRoot).filter(name => /^[0-9]{14}_/u.test(name)).sort()
+  .slice(0, 205).map(name => ({ name, sha256: createHash("sha256")
+    .update(fs.readFileSync(path.join(migrationRoot, name, "migration.sql"))).digest("hex") }));
+plan.migrations = migrations;
+test("fixed setup includes independent effective application ACL verification before any cleanup proof", () => {
+  const sql = controls.setupSql(plan);
+  assert.match(sql, /CREATE FUNCTION jg_fixture_c{24}\.application_qualified\(\)/u);
+  assert.equal(sql.includes("__PLAN__"), false);
+  assert.equal(sql.includes("GRANT ALL"), false);
+  assert.equal(sql.includes("SECURITY DEFINER"), false);
+  assert.match(controls.readbackSql(plan, setup), /REPEATABLE READ READ ONLY/u);
+  assert.match(controls.cleanupSql(plan, setup), /DROP EVENT TRIGGER/u);
+  assert.equal(controls.cleanupSql(plan, setup).includes("CASCADE"), false);
+});
+
+test("stage205 SQL budgets the full seven-database role and trigger matrix without dropping denied routes", () => {
+  const sql = controls.setupSql(plan);
+  // At M203 the largest run binds 27 cluster roles to 93 triggers.
+  // Max-width OIDs, attribute numbers and all-false flags bound the JSONB text size.
+  const updates = [...Array(90).fill([[1600, false]]), [[1598, false], [1599, false], [1600, false]], [], []];
+  const rows = Array.from({ length: 27 }, () => updates.map(columns =>
+    ["4294967295", "4294967295", "4294967295", 127,
+      false, false, false, false, false, false, false, columns, false, false, false]
+  )).flat();
+  const jsonbBytes = Buffer.byteLength(JSON.stringify(rows).replaceAll(",", ", "));
+  assert.ok(jsonbBytes > 256 * 1024);
+  const cap = /octet_length\(before_vector::text\)>(\d+) OR octet_length\(actual_vector::text\)>(\d+)/u.exec(sql);
+  assert.ok(cap);
+  assert.equal(cap[1], cap[2]);
+  assert.ok(jsonbBytes <= Number(cap[1]));
+  assert.ok(2 * Number(cap[1]) + 64 * 1024 <= 768 * 1024);
+  assert.match(sql, /jsonb_array_length\(before_vector\)>4096/u);
+  assert.match(sql, /FROM pg_roles r CROSS JOIN pg_trigger t/u);
+  assert.match(sql, /IF actual_vector IS DISTINCT FROM expected_vector/u);
+});
+
+function completion() {
+  const anchors = [
+    [204, "ALTER TABLE", "pg_class", "ContractArchiveFile", null],
+    [204, "CREATE FUNCTION", "pg_proc", "protectProjectParticipatingCompanyEndDate", "bf63fd6b2e56aa7d6562f0ab2793ee9f87fd3ffaacb03aee7f3f7162e34c5faa"],
+    [205, "ALTER TABLE", "pg_class", "ContractVersion", null],
+    [205, "ALTER FUNCTION", "pg_proc", "jg_contract_direct_pending_file_guard_v1", "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1"]
+  ];
+  return { ...setup, readerPid: 999, fileCallerTransition: transition(), events: anchors.map(([stage, tag, catalog, name, body], index) => ({
+    ordinal: index + 1, stage, tag, catalog, name, bodySha256: body, objectOid: index === 2 ? "31" : String(19000 + index),
+    querySha256: migrations[stage - 1].sha256, runId: plan.runId, nonce: plan.nonce,
+    databaseOid: plan.databaseOid, systemIdentifier: plan.systemIdentifier, actorOid: plan.actorOid,
+    appOid: setup.appOid, fileCallerOids: [...setup.fileCallerOids], backendPid: 333,
+    backendStart: "2026-11-10T01:02:03.123456Z", transactionId: index < 2 ? "100" : "102",
+    preceding: { ...migrations[stage - 2], finished: true, rolledBack: false }
+  })) };
+}
+test("completion accepts four exact anchors from two committed-stage transactions and independent reader", () => {
+  controls.checkCompletion(completion(), plan, setup);
+});
+for (const [name, mutate] of [
+  ["same backend reader", row => { row.readerPid = 333; }],
+  ["engine backend swap", row => { row.events[3].backendPid = 444; }],
+  ["backend start swap", row => { row.events[3].backendStart = "2026-11-10T01:02:04.123456Z"; }],
+  ["transaction reused", row => { row.events[2].transactionId = "100"; row.events[3].transactionId = "100"; }],
+  ["pair transaction split", row => { row.events[1].transactionId = "101"; }],
+  ["SQL drift", row => { row.events[1].querySha256 = "0".repeat(64); }],
+  ["body drift", row => { row.events[3].bodySha256 = "0".repeat(64); }],
+  ["wrong prior checksum", row => { row.events[2].preceding.sha256 = "0".repeat(64); }],
+  ["nonce changed", row => { row.events[1].nonce = "b".repeat(64); }],
+  ["caller closure changed", row => { row.events[2].fileCallerOids = [10]; }],
+  ["runtime owner substituted", row => { row.appOid = "10"; }],
+  ["control OID substituted", row => { row.controlOid = "19000"; }],
+  ["missing final anchor", row => { row.events.pop(); }],
+  ["extra anchor", row => { row.events.push({ ...row.events[3] }); }]
+]) {
+  test(`completion rejects ${name}`, () => {
+    const row = completion(); mutate(row);
+    assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
+  });
+}
+test("plan accessors are rejected without invoking them", () => {
+  let reads = 0;
+  const malicious = { ...plan };
+  Object.defineProperty(malicious, "schemaName", { enumerable: true, get() { reads++; return plan.schemaName; } });
+  assert.throws(() => controls.setupSql(malicious), /LOCAL_MIGRATION_CONTROL/u);
+  assert.equal(reads, 0);
+});
+
+test("cleanup readback rechecks effective column and routine ACL after controls are gone", () => {
+  const sql = controls.cleanReadSql(plan, setup);
+  assert.match(sql, /has_column_privilege/u);
+  assert.match(sql, /aclexplode\(p.proacl\)/u);
+  assert.equal(sql.includes(`${plan.schemaName}.control`), false);
+});
+
+test("nested migration accessors and unknown serialization hooks are rejected before invocation", () => {
+  let reads = 0;
+  const migration = { ...migrations[0] };
+  Object.defineProperty(migration, "sha256", { enumerable: true, get() { reads++; return migrations[0].sha256; } });
+  assert.throws(() => controls.setupSql({ ...plan, migrations: [migration, ...migrations.slice(1)] }), /LOCAL_MIGRATION_CONTROL/u);
+  assert.throws(() => controls.setupSql({ ...plan, extra: { toJSON() { reads++; return "payload"; } } }), /LOCAL_MIGRATION_CONTROL/u);
+  assert.throws(() => controls.setupSql({ ...plan, migrations: new Proxy(migrations, { get() { reads++; } }) }), /LOCAL_MIGRATION_CONTROL/u);
+  assert.equal(reads, 0);
+});
+
+// Independent worked facts for two frozen file routes; only CV INSERT gains app.
+function transition() {
+  const route = (role, trigger, relation, allowed) => [String(role), String(trigger), String(relation),
+    23, true, true, true, false, allowed, allowed, null, [[8, allowed]], allowed, allowed, allowed];
+  const before = [route(10, 21, 31, true), route(10, 22, 32, true),
+    route(17000, 21, 31, false), route(17000, 22, 32, false),
+    route(17001, 21, 31, true), route(17001, 22, 32, false)];
+  const after = JSON.parse(JSON.stringify(before)); after[2][8] = true;
+  return { versionOid: "31", before, after, callers: [10, 17000, 17001],
+    acl: ["INSERT", "SELECT", "UPDATE"].map(privilege => ["10", "17000", privilege, false]) };
+}
+test("completed205 proves exact original caller routes plus one app INSERT route", () => {
+  controls.checkCompletion(completion(), plan, setup);
+});
+for (const [name, mutate] of [
+  ["another role gains a route", p => { p.after[5][8] = true; }],
+  ["an old caller loses a route", p => { p.after[0][8] = false; }],
+  ["app gains unrelated route", p => { p.after[3][8] = true; }],
+  ["targeted UPDATE changes", p => { p.after[2][11][0][1] = true; }],
+  ["table INSERT grant masks column delta", p => { p.after[2][12] = true; }],
+  ["root changes", p => { p.after[3][4] = false; }],
+  ["registry gate changes", p => { p.after[3][6] = false; }],
+  ["grant option added", p => { p.acl[0][3] = true; }],
+  ["grantor changed", p => { p.acl[0][0] = "17001"; }],
+  ["SELECT ACL missing", p => { p.acl.splice(1, 1); }],
+  ["additional grantee", p => { p.acl.push(["10", "17001", "INSERT", false]); }],
+  // PostgreSQL16 oid[] JSON uses strings; SQL bridges to bigint[] for numeric protocol.
+  ["unbridged PostgreSQL oid JSON", p => { p.callers = p.callers.map(String); }],
+  ["only C0 remains", p => { p.callers = [10, 17001]; }],
+  ["extra caller appears", p => { p.callers.push(17002); }],
+  ["baseline app INSERT already present", p => { p.before[2][8] = true; }],
+  ["frozen trigger disappears", p => { p.after.pop(); }]
+]) {
+  test(`completed205 rejects ${name}`, () => {
+    const row = completion(); mutate(row.fileCallerTransition);
+    assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
+  });
+}
+
+test("completed205 binds the unchanged caller proof to its actual CV anchor OID", () => {
+  const row = completion();
+  row.events[2].objectOid = "32"; // Proof and every permission fact remain bound to CV31.
+  assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
+});
+
+test("stage205 accepts complete frames above the old limit including UTF-8 split across frame bytes", () => {
+  const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
+  const payload = {
+    unicode: "a".repeat(24563) + "验🙂",
+    ledger: Array.from({ length: 205 }, (_, index) => ({ name: "migration_" + index, sha256: "a".repeat(64) })),
+    fileCallerTransition: { before: "b".repeat(251000), after: "c".repeat(251000) }
+  };
+  const bytes = Buffer.from(JSON.stringify(payload));
+  assert.ok(bytes.length > 512 * 1024);
+  assert.equal(bytes[24575], 0xe9);
+  assert.equal(bytes[24576] & 0xc0, 0x80);
+  assert.deepEqual(controls.parseReadback(frameStage205(payload)), payload);
+});
+
+test("stage205 rejects lost, reordered, altered or noncanonical frames", () => {
+  const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
+  const valid = frameStage205({ evidence: "x".repeat(60000) });
+  const [header, one, two, three] = valid.trimEnd().split("\n");
+  const wire = (...lines) => lines.join("\n") + "\n";
+  for (const malformed of [
+    wire(header, one, three),
+    wire(header, two, one, three),
+    wire(header, one, one, three),
+    wire(header, one, two, three, "4|YQ=="),
+    wire(header, one.replace(/.$/u, "A"), two, three),
+    wire(header, one, two, three + " "),
+    wire(header.replace("JG-PFQ205/1|3|", "JG-PFQ205/1|03|"), one, two, three),
+    wire(header, one, "", two, three),
+    valid.slice(0, -1),
+    valid.replaceAll("\n", "\r\n"),
+    JSON.stringify({ evidence: "x" }),
+    "x".repeat(1025 * 1024 + 1)
+  ]) {
+    assert.throws(() => controls.parseReadback(malformed), /LOCAL_MIGRATION_STAGE205_FRAMING/u);
+  }
+});
+
+test("stage205 enforces the byte ceiling and rejects even digest-consistent invalid UTF-8", () => {
+  const { createHash } = require("node:crypto");
+  const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
+  const max = { x: "a".repeat(768 * 1024 - 8) };
+  assert.equal(Buffer.byteLength(JSON.stringify(max)), 768 * 1024);
+  assert.deepEqual(controls.parseReadback(frameStage205(max)), max);
+  assert.throws(() => controls.parseReadback(frameStage205({ x: max.x + "b" })), /LOCAL_MIGRATION_STAGE205_FRAMING/u);
+  const invalid = Buffer.from([34, 0xff, 34]);
+  const sha = createHash("sha256").update(invalid).digest("hex");
+  assert.throws(() => controls.parseReadback("JG-PFQ205/1|1|3|" + sha + "\n1|" + invalid.toString("base64") + "\n"),
+    /LOCAL_MIGRATION_STAGE205_FRAMING/u);
+});

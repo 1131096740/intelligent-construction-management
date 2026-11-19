@@ -2320,11 +2320,13 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
-  it("does not give a director-only account procurement initiation or handler options", async () => {
+  it("PUR01当前公司物资主管可以发起采购", async () => {
     const fixture = buildFixture();
+    fixture.prisma.userPosition.findMany.mockResolvedValue([{userId:"director-1",projectId:null,positionId:"director-position"}] as never);
+    fixture.prisma.position.findMany.mockResolvedValue([{id:"director-position",key:"material_director"}] as never);
     fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_director"]);
     const service = new SpotProcurementReadService(fixture.prisma as never, fixture.visibility as never, fixture.access as never, fixture.pilot as never);
-    await expect(service.capabilities("director-1", "project-1")).resolves.toMatchObject({ canCreate: false, handlerOptions: [] });
+    await expect(service.capabilities("director-1", "project-1")).resolves.toMatchObject({ canCreate: true });
   });
 
   it("continues scanning after a full unauthorized batch before deciding the visible list", async () => {
@@ -3665,4 +3667,44 @@ describe("SpotProcurementReadService", () => {
       "view_only"
     ]);
   });
+});
+
+
+it("项目经理详情直接取得自己的并联职责坐标并提示本人自审确认", async () => {
+  const fixture = buildFixture();
+  fixture.prisma.spotProcurement.findUnique.mockResolvedValue(realProcurementRow({ status: "approval_pending" }));
+  fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([realVersionRow({ status: "approval_pending", approvedAt: null })]);
+  fixture.prisma.spotProcurementLine.findMany.mockResolvedValue([canonicalRealApplicationLine()]);
+  fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([]);
+  fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+  fixture.prisma.approvalInstance.findMany.mockResolvedValue([{ id: "approval-1", flowType: "spot_procurement.approve", businessType: "spot_procurement_version", businessId: "version-1", status: "approval_pending", currentNodeIndex: 0,
+    frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ], applicantUserId: "applicant-1", createdAt: now, updatedAt: now }]);
+  fixture.visibility.effectiveRoleKeys.mockResolvedValue(["project_manager"]);
+  const service = new SpotProcurementReadService(fixture.prisma as never, fixture.visibility as never, fixture.access as never, fixture.pilot as never);
+  const detail = await service.getProcurement("procurement-1", "manager-1");
+  expect(detail.reviewApprovalContext).toEqual({expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1});
+  expect(detail.approval.currentRoleKeys).toEqual(["material_director", "project_manager"]);
+  expect(detail.availableActions.find(action => action.key === "download_application_pdf")).toMatchObject({enabled: true});
+  const owner = await service.getProcurement("procurement-1", "applicant-1");
+  expect(owner.reviewApprovalContext).toEqual({expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1});
+  expect(owner.availableActions.find(action => action.key === "review_approval")).toMatchObject({enabled: true, requiresSelfReviewConfirmation: true});
+});
+
+it("PUR-01 purchase task comes from the approved v2 fact and current materials role, without receipt or payment records", async () => {
+  const fixture = buildFixture();
+  fixture.prisma.spotProcurement.findUnique.mockResolvedValue(realProcurementRow());
+  fixture.prisma.spotProcurementVersion.findUnique.mockResolvedValue(realVersionRow({requestProtocolVersion: 2}) as never);
+  fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([realVersionRow({requestProtocolVersion: 2})] as never);
+  fixture.prisma.spotProcurementLine.findMany.mockResolvedValue([canonicalRealApplicationLine({quantity: null, unit: null})] as never);
+  fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([]);
+  fixture.prisma.spotProcurementReceipt.findUnique.mockResolvedValue(null);
+  fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+  const service = new SpotProcurementReadService(fixture.prisma as never, fixture.visibility as never, fixture.access as never, fixture.pilot as never);
+  const detail = await service.getProcurement("procurement-1", "project-materials-1");
+  expect(detail).toMatchObject({purchaseTask: {pending: true, canHandle: true, label: "待采购", requiresReceipt: false}});
+  fixture.visibility.effectiveRoleKeys.mockResolvedValue(["employee"]);
+  expect(await service.getProcurement("procurement-1", "project-materials-1")).toMatchObject({purchaseTask: {pending: true, canHandle: false}});
 });

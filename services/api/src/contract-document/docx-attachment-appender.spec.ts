@@ -74,6 +74,55 @@ describe("DOCX image attachment appender", () => {
     );
   });
 
+  it("uses automatic line height only for the image paragraphs of a fixed-line contract", () => {
+    const source = new PizZip(createDocx());
+    const styles = '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:pPr>' +
+      '<w:spacing w:line="500" w:lineRule="exact"/></w:pPr></w:style></w:styles>';
+    source.file("word/styles.xml", styles);
+    const result = new PizZip(appendDocxImageAttachments(source.generate({ type: "nodebuffer" }), [
+      { name: "附件.png", type: "png", buffer: PNG }
+    ]));
+    const document = result.file("word/document.xml")?.asText() ?? "";
+    const image = document.match(/<w:p>(?:(?!<w:p>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:p>/u)?.[0];
+
+    expect(image).toContain('<w:spacing w:line="240" w:lineRule="auto"/>');
+    expect(document.match(/w:lineRule="auto"/gu)).toHaveLength(1);
+    expect(document).toContain('<w:p><w:r><w:t>合同正文</w:t></w:r></w:p>');
+    expect(result.file("word/styles.xml")?.asText()).toBe(styles);
+    expect(result.file("word/media/contract-attachment-1.png")?.asNodeBuffer()).toEqual(PNG);
+  });
+
+  it("fits square and grouped attachments inside a narrow final section", () => {
+    const source = new PizZip(createDocx());
+    const original = source.file("word/document.xml")?.asText() ?? "";
+    const section = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>' +
+      '<w:pgMar w:top="1417" w:right="1701" w:bottom="1417" w:left="1701" w:gutter="0"/>' +
+      '<w:docGrid w:type="linesAndChars" w:linePitch="312"/></w:sectPr>';
+    source.file("word/document.xml", original.replace("<w:sectPr/>", section));
+    const result = appendDocxImageAttachments(source.generate({ type: "nodebuffer" }), [
+      { name: "工程现场.png", type: "png", buffer: PNG },
+      { name: "法人身份证人像面.png", type: "png", buffer: PNG },
+      { name: "法人身份证国徽面.png", type: "png", buffer: PNG }
+    ]);
+    const { documentXml } = readDocx(result);
+
+    expect(documentXml.match(/<w:trHeight w:val="(\d+)"/gu)).toEqual([
+      '<w:trHeight w:val="13004"', '<w:trHeight w:val="6502"', '<w:trHeight w:val="6502"'
+    ]);
+    expect(documentXml).toContain('<w:tcW w:w="8204" w:type="dxa"/>');
+    expect(documentXml.match(/<wp:extent[^>]+>/gu)).toEqual([
+      '<wp:extent cx="5209540" cy="5209540"/>',
+      '<wp:extent cx="3823970" cy="3823970"/>',
+      '<wp:extent cx="3823970" cy="3823970"/>'
+    ]);
+    expect(documentXml.match(/w:snapToGrid w:val="0"/gu)).toHaveLength(3);
+    expect(documentXml.match(/<w:ind w:firstLine="0" w:firstLineChars="0"\/>/gu)).toHaveLength(3);
+    expect(documentXml.lastIndexOf("工程现场.png")).toBeLessThan(documentXml.indexOf("身份证人像面"));
+    expect(documentXml.indexOf("身份证人像面")).toBeLessThan(documentXml.indexOf("身份证国徽面"));
+    expect(documentXml).toContain(section);
+  });
+
   it("groups identity card portrait and emblem images on one labeled page", () => {
     const result = appendDocxImageAttachments(createDocx(), [
       { name: "法人身份证人像面.png", type: "png", buffer: PNG },
@@ -85,6 +134,25 @@ describe("DOCX image attachment appender", () => {
     expect(docx.documentXml).toContain("身份证人像面");
     expect(docx.documentXml).toContain("身份证国徽面");
     expect(docx.relationshipsXml.match(/relationships\/image/g)).toHaveLength(2);
+  });
+
+  it.each([
+    [{ placement: "adjacent", order: ["portrait", "emblem", "pdf"], pages: 1 }],
+    [{ placement: "across PDF", order: ["portrait", "pdf", "emblem"], pages: 2 }],
+    [{ placement: "across another image", order: ["portrait", "other", "emblem"], pages: 3 }],
+    [{ placement: "reverse", order: ["emblem", "portrait", "pdf"], pages: 2 }]
+  ])("preserves ordered identity card images for $placement", ({ order, pages }) => {
+    const images = {
+      portrait: { name: "身份证人像面.png", type: "png", buffer: PNG },
+      emblem: { name: "身份证国徽面.jpg", type: "jpeg", buffer: JPEG },
+      other: { name: "现场.png", type: "png", buffer: PNG },
+      pdf: { name: "附件.pdf", type: "pdf", buffer: Buffer.from("%PDF-1.7") }
+    } as const;
+    const xml = readDocx(appendDocxImageAttachments(createDocx(),
+      order.map(key => images[key as keyof typeof images]), { preserveUploadOrder: true })).documentXml;
+    expect(xml.match(/w:type="page"/g)).toHaveLength(pages);
+    const names = Array.from(xml.matchAll(/<wp:docPr[^>]+name="([^"]+)"/gu), match => match[1]);
+    expect(names).toEqual(order.filter(key => key !== "pdf").map(key => images[key as keyof typeof images].name));
   });
 
   it("returns the original DOCX when no image attachments are present", () => {

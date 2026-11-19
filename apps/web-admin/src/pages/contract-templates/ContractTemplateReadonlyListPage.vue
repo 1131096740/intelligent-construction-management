@@ -3,8 +3,9 @@
     <header class="page-head">
       <div>
         <h1>合同模板库</h1>
-        <p>首次上线仅开放已发布业务模板的查看与使用。</p>
+        <p>合同员选择已发布版本；合同主管维护共用 Word 模板。</p>
       </div>
+      <t-button v-if="canMaintainTemplates" @click="router.push('/合同模板库/主管维护')">维护合同模板</t-button>
       <t-button @click="loadTemplates">
         刷新
       </t-button>
@@ -12,8 +13,8 @@
 
     <t-alert
       theme="info"
-      title="上线准备期间暂为只读"
-      message="只允许使用已发布版本；创建、克隆、编辑、提交、发布和停用入口暂不开放。"
+      title="选用已发布版本"
+      message="新合同需手动选择模板版本；共用模板调整由合同主管在维护入口办理，不覆盖旧版本和历史合同文件。"
       class="panel"
     />
     <t-alert
@@ -84,7 +85,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { formatUnknownApiError } from "../../api/error-message";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   listPublishedContractTemplates,
@@ -94,7 +96,11 @@ import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplat
 import { contractTypeLabel } from "../contracts/contract-labels";
 import { normalizePublishedContractTemplates } from "./contract-template.config";
 
+import { useAuthStore } from "../../auth/auth.store";
+import { canMaintainContractTemplates } from "./template-permissions";
 const router = useRouter();
+const auth = useAuthStore();
+const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
 const templates = ref<PublishedContractTemplateReadModel[]>([]);
 const loading = ref(false);
 const message = ref("");
@@ -130,7 +136,7 @@ async function loadTemplates() {
       await listPublishedContractTemplates()
     );
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合同模板失败。";
+    message.value = formatUnknownApiError(error, "加载合同模板失败。");
   } finally {
     loading.value = false;
   }

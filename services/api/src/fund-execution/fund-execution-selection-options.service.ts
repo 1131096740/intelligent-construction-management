@@ -92,6 +92,7 @@ type AvailablePayable = Readonly<{
   availableAmountCents: bigint;
   projectName: string;
   debtorName: string;
+  debtorDirectoryIsActive: boolean;
 }>;
 
 type PlanLineSeed = Readonly<{
@@ -490,6 +491,19 @@ export class FundExecutionSelectionOptionsService {
         context.observation.holderCompanyEntityId,
         payable.registered.debtorCompanyId
       );
+      if (payable.debtorDirectoryIsActive === false || projectContext.holderDirectoryIsActive === false) {
+        // The actual payer is already fixed by the immutable execution and its
+        // bank claim; reading classifications does not select a new company.
+        const { execution, claim, observation, caseRow } = context;
+        if (caseRow.fundExecutionId !== execution.id || claim.targetType !== "fund_execution" ||
+            claim.fundExecutionId !== execution.id || claim.observationId !== observation.id ||
+            execution.executionKind !== "bank_transaction" || execution.direction !== observation.direction ||
+            execution.amountCents !== observation.amountCents || execution.currencyCode !== observation.currencyCode ||
+            execution.occurredAt.getTime() !== observation.occurredAt.getTime()) {
+          throw new ConflictException("历史实际付款来源缺失或与冻结银行流水不一致");
+        }
+        await this.assertHistoricalBankAuthority(tx, observation);
+      }
       const sliceIdentity = stableExecutionIdentity("outflow-slice", {
         fundExecutionId: context.execution.id,
         payableRef: payable.registered.payableRef,
@@ -890,6 +904,22 @@ export class FundExecutionSelectionOptionsService {
     return { caseRow, execution, claim, observation };
   }
 
+  private async assertHistoricalBankAuthority(tx: FundExecutionTransaction, observation: Awaited<ReturnType<FundExecutionSelectionOptionsService["loadCaseContext"]>>["observation"]) {
+    const authority = await tx.paymentExecutionPayerVerification.findUnique({ where: { id: observation.payerVerificationId } });
+    if (!authority || authority.status !== "verified" || authority.sourceType !== "bank_account_legal_holder" || !authority.sourceRecordId?.trim() ||
+        authority.holderCompanyEntityId !== observation.holderCompanyEntityId ||
+        authority.holderNameSnapshot !== observation.holderNameSnapshot ||
+        authority.holderCreditCodeSnapshot !== observation.holderCreditCodeSnapshot ||
+        authority.verificationEvidenceFileId !== observation.verificationEvidenceFileId ||
+        authority.verificationEvidenceContentSha256 !== observation.verificationEvidenceContentSha256) {
+      throw new ConflictException("历史主体的银行账户核验已失效或与原流水不一致");
+    }
+    const evidence = await tx.fileObject.findUnique({ where: { id: authority.verificationEvidenceFileId } });
+    if (!evidence || evidence.storageStatus !== "active" || evidence.contentSha256 !== authority.verificationEvidenceContentSha256) {
+      throw new ConflictException("历史主体的银行账户核验证据已失效");
+    }
+  }
+
   private async loadAvailablePayables(
     tx: FundExecutionTransaction
   ): Promise<readonly AvailablePayable[]> {
@@ -927,12 +957,13 @@ export class FundExecutionSelectionOptionsService {
         select: { id: true, name: true }
       }),
       tx.companyEntity.findMany({
-        where: { id: { in: companyIds }, isActive: true },
-        select: { id: true, name: true }
+        // Debtors come only from confirmed immutable payable references, not new company selections.
+        where: { id: { in: companyIds } },
+        select: { id: true, name: true, isActive: true }
       })
     ]);
     const projectById = new Map(projects.map((row) => [row.id, row.name]));
-    const companyById = new Map(companies.map((row) => [row.id, row.name]));
+    const companyById = new Map(companies.map((row) => [row.id, row]));
     return rows.flatMap((row) => {
       const registered = payableSourceAdapterRegistry
         .require("wage_payable_ref")
@@ -946,7 +977,8 @@ export class FundExecutionSelectionOptionsService {
         row.id
       ).activeAmountCents;
       const projectName = projectById.get(row.projectId);
-      const debtorName = companyById.get(row.debtorCompanyId);
+      const debtor = companyById.get(row.debtorCompanyId);
+      const debtorName = debtor?.name;
       if (available <= 0n || !projectName || !debtorName) return [];
       return [
         {
@@ -954,6 +986,7 @@ export class FundExecutionSelectionOptionsService {
           availableAmountCents: available,
           projectName,
           debtorName,
+          debtorDirectoryIsActive: debtor!.isActive,
           sourceSnapshot: {
             payableRef: registered.payableRef,
             confirmedVersionId: registered.confirmedVersionId,
@@ -1038,11 +1071,11 @@ export class FundExecutionSelectionOptionsService {
       }),
       tx.companyEntity.findUnique({
         where: { id: holderCompanyEntityId },
-        select: { id: true, name: true, unifiedSocialCreditCode: true }
+        select: { id: true, name: true, unifiedSocialCreditCode: true, isActive: true }
       }),
       tx.companyEntity.findUnique({
         where: { id: debtorCompanyEntityId },
-        select: { id: true, name: true, unifiedSocialCreditCode: true }
+        select: { id: true, name: true, unifiedSocialCreditCode: true, isActive: true }
       })
     ]);
     if (!participant || !holderCompany || !debtorCompany) {
@@ -1053,6 +1086,7 @@ export class FundExecutionSelectionOptionsService {
     return {
       affiliate,
       participant: participant satisfies ParticipantSnapshot,
+      holderDirectoryIsActive: holderCompany.isActive,
       holderCompany: this.companySnapshot(holderCompany),
       debtorCompany: this.companySnapshot(debtorCompany)
     };

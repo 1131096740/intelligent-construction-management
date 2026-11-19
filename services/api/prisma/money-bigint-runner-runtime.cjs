@@ -37,6 +37,7 @@ function createCommandRuntime(options = {}) {
   const setTimer = options.setTimer ?? setTimeout;
   const clearTimer = options.clearTimer ?? clearTimeout;
   const activeChildren = new Set();
+  const inputClosers = new WeakMap();
 
   function track(child) {
     activeChildren.add(child);
@@ -48,24 +49,62 @@ function createCommandRuntime(options = {}) {
 
   function command(commandName, args, commandOptions = {}) {
     return new Promise((resolve, reject) => {
+      const hasInput = Object.hasOwn(commandOptions, "stdinText");
+      let input;
+      if (hasInput) {
+        const value = commandOptions.stdinText;
+        if (typeof value !== "string" || value.includes("\0") ||
+          Buffer.byteLength(value, "utf8") > 16 * 1024 * 1024 ||
+          Buffer.from(value, "utf8").toString("utf8") !== value || commandOptions.stdio !== undefined) {
+          reject(new Error("LOCAL_TAIL_STDIN_INPUT")); return;
+        }
+        input = Buffer.from(value, "utf8");
+      }
       const child = track(
         spawnCommand(commandName, args, {
           cwd: commandOptions.cwd ?? defaultCwd,
           env: commandOptions.env,
-          stdio: commandOptions.stdio ?? ["ignore", "pipe", "pipe"]
+          stdio: commandOptions.stdio ?? [hasInput ? "pipe" : "ignore", "pipe", "pipe"]
         })
       );
       const timeoutMs = commandOptions.timeoutMs ?? defaultTimeoutMs;
       let stdout = "";
       let stderr = "";
       let timedOut = false;
+      let outputExceeded = false;
+      let outputBytes = 0;
+      const maxOutputBytes = commandOptions.maxOutputBytes ?? Infinity;
       let settled = false;
       let timeoutTimer;
       let forceKillTimer;
       let hardTimeoutTimer;
+      let inputOffset = 0, inputStopped = false, inputError = false, inputStopping = false;
+      const stopInput = () => {
+        if (!hasInput || inputStopped) return;
+        inputStopped = true;
+        child.stdin?.removeListener("drain", writeInput);
+        child.stdin?.destroy();
+      };
+      function writeInput() {
+        if (inputStopped || settled) return;
+        try {
+          while (inputOffset < input.length) {
+            const chunk = input.subarray(inputOffset, Math.min(inputOffset + 64 * 1024, input.length));
+            inputOffset += chunk.length;
+            if (!child.stdin.write(chunk)) { child.stdin.once("drain", writeInput); return; }
+          }
+          child.stdin.end();
+        } catch { inputError = true; stopInput(); stopCommand(); }
+      }
+
+      if (hasInput) inputClosers.set(child, stopInput);
 
       const timeoutError = () =>
         new Error(`${commandName} 执行超时（${timeoutMs}ms）`);
+
+      const stoppedError = () => outputExceeded
+        ? new Error("子进程输出超过允许字节数")
+        : timeoutError();
 
       const clearTimers = () => {
         if (timeoutTimer) clearTimer(timeoutTimer);
@@ -75,52 +114,84 @@ function createCommandRuntime(options = {}) {
       const settle = (callback) => {
         if (settled) return;
         settled = true;
+        stopInput();
         clearTimers();
         callback();
       };
 
+      const stopCommand = () => {
+        if (hasInput) { if (inputStopping || settled) return; inputStopping = true; }
+        stopInput();
+        if (child.exitCode === null) child.kill("SIGTERM");
+        forceKillTimer = setTimer(() => {
+          if (child.exitCode === null) child.kill("SIGKILL");
+          hardTimeoutTimer = setTimer(
+            () => settle(() => reject(stoppedError())),
+            terminationGraceMs
+          );
+        }, terminationGraceMs);
+      };
+      const acceptOutput = (chunk) => {
+        if (outputExceeded) return false;
+        outputBytes += Buffer.byteLength(chunk);
+        if (outputBytes <= maxOutputBytes) return true;
+        outputExceeded = true;
+        clearTimers();
+        stopCommand();
+        return false;
+      };
+
       child.stdout?.on("data", (chunk) => {
+        if (!acceptOutput(chunk)) return;
         stdout += chunk;
         if (commandOptions.forwardOutput) process.stdout.write(chunk);
       });
       child.stderr?.on("data", (chunk) => {
+        if (!acceptOutput(chunk)) return;
         stderr += chunk;
         if (commandOptions.forwardOutput) process.stderr.write(chunk);
       });
       child.once("error", (error) =>
-        settle(() => reject(timedOut ? timeoutError() : error))
+        settle(() => reject(timedOut || outputExceeded ? stoppedError() : error))
       );
       child.once("close", (code, signal) => {
         settle(() => {
-          if (timedOut) {
-            reject(timeoutError());
+          if (timedOut || outputExceeded) {
+            reject(stoppedError());
             return;
+          }
+          if (hasInput && (inputError || inputOffset !== input.length || !child.stdin.writableFinished)) {
+            reject(new Error("LOCAL_TAIL_STDIN_INCOMPLETE")); return;
           }
           if (code === 0) {
             resolve({ stdout, stderr });
             return;
           }
-          reject(
-            new Error(
-              `${commandName} ${args.join(" ")} failed (${signal ?? code})\n${
-                stderr || stdout
-              }`
-            )
+          const failure = new Error(
+            `${commandName} ${args.join(" ")} failed (${signal ?? code})\n${
+              stderr || stdout
+            }`
           );
+          Object.defineProperties(failure, {
+            exitCode: { value: code },
+            signal: { value: signal }
+          });
+          reject(failure);
         });
       });
+
+      if (hasInput) {
+        if (!child.stdin) { inputError = true; stopCommand(); }
+        else {
+          child.stdin.on("error", () => { inputError = true; stopInput(); if (!settled) stopCommand(); });
+          writeInput();
+        }
+      }
 
       if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
         timeoutTimer = setTimer(() => {
           timedOut = true;
-          if (child.exitCode === null) child.kill("SIGTERM");
-          forceKillTimer = setTimer(() => {
-            if (child.exitCode === null) child.kill("SIGKILL");
-            hardTimeoutTimer = setTimer(
-              () => settle(() => reject(timeoutError())),
-              terminationGraceMs
-            );
-          }, terminationGraceMs);
+          stopCommand();
         }, timeoutMs);
       }
     });
@@ -149,6 +220,7 @@ function createCommandRuntime(options = {}) {
   }
 
   async function stopChild(child) {
+    inputClosers.get(child)?.();
     if (child.exitCode !== null) return;
     child.kill("SIGTERM");
     if (await waitForEnd(child, terminationGraceMs)) return;

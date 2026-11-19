@@ -1,5 +1,6 @@
 import {
   SPOT_PROCUREMENT_EXPECTED_INVOICE_CONDITIONS,
+  requiredPastChinaDate,
   SPOT_PROCUREMENT_PAYMENT_METHODS,
   SPOT_PROCUREMENT_PAYMENT_TYPES
 } from "@jiangkong/shared-domain";
@@ -96,9 +97,7 @@ function requiredEnum<T extends string>(
 
 function requiredPastDate(value: string, label: string) {
   const normalized = requiredText(value, `请选择${label}`);
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) throw new Error(`${label}格式不正确`);
-  if (date.getTime() > Date.now()) throw new Error(`${label}不能晚于当前时间`);
+  const date = requiredPastChinaDate(normalized, label);
   return { source: normalized, iso: date.toISOString() };
 }
 

@@ -80,7 +80,8 @@ function finalApprovalTransaction(ownerContractAmounts: bigint[] = []) {
           mode: "any",
           roleKeys: ["chairman", "general_manager"],
           candidateUserIdsByRole: { chairman: ["chairman-1"], general_manager: [] },
-          candidateUserIds: ["chairman-1"]
+          candidateUserIds: ["chairman-1"],
+          originatorUserIds: ["contract-staff-1"]
         }]
       }),
       update: jest.fn()

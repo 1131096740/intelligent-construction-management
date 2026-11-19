@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { expectNoDocumentHorizontalOverflow } from "./helpers/responsive-assertions";
 
+// Task04 reset UI expectations are PREPARED / NOT RUN in this source-only change.
 test("真实注册、董事长批准、本人登录与管理员重置密码", async ({ page, browser }, testInfo) => {
   const phone = testInfo.project.name === "mobile" ? "13911000002" : "13911000001";
   const name = `验收员工${testInfo.project.name === "mobile" ? "手机" : "电脑"}`;
@@ -60,10 +61,11 @@ test("真实注册、董事长批准、本人登录与管理员重置密码", as
     await dialog.getByText("我已核对员工本人及手机号", { exact: true }).click();
     await dialog.getByPlaceholder("请输入本人当前登录密码").fill(password);
     await dialog.getByRole("button", { name: "确认重置密码", exact: true }).click();
-    const temporaryPassword = await dialog.getByLabel("临时密码", { exact: true }).inputValue();
-    expect(temporaryPassword.length).toBeGreaterThanOrEqual(12);
+    await expect(dialog.getByText(/已恢复受控初始密码/)).toBeVisible();
+    await expect(dialog.getByText(/首次登录必须修改/)).toBeVisible();
+    await expect(dialog.getByLabel("临时密码", { exact: true })).toHaveCount(0);
     await expect(dialog.getByPlaceholder("请输入本人当前登录密码")).toHaveCount(0);
-    await dialog.getByRole("button", { name: "我已记录并将转交本人" }).click();
+    await dialog.getByRole("button", { name: "知道了", exact: true }).click();
     await expect(manager.getByLabel("临时密码", { exact: true })).toHaveCount(0);
     await expectNoDocumentHorizontalOverflow(manager);
   } finally {

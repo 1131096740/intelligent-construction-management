@@ -209,13 +209,6 @@ function privateStoragePath(objectKey) {
   return join(process.cwd(), "storage", "private", objectKey);
 }
 
-async function writePrivateSeedFile(file, buffer) {
-  const targetPath = privateStoragePath(file.objectKey);
-  await mkdir(dirname(targetPath), { recursive: true });
-  await writeFile(targetPath, buffer);
-  return fileMetadata(buffer);
-}
-
 function fileMetadata(buffer) {
   return {
     sizeBytes: buffer.length,
@@ -223,32 +216,42 @@ function fileMetadata(buffer) {
   };
 }
 
+async function ensureSeedFile(file, uploadedByUserId) {
+  const attributes = {
+    bucket: file.bucket,
+    objectKey: file.objectKey,
+    originalName: file.originalName,
+    mimeType: file.mimeType,
+    uploadedByUserId,
+    storageStatus: "active",
+    purgeReceiptId: null,
+    supersedesFileObjectId: null
+  };
+  const targetPath = privateStoragePath(file.objectKey);
+  const existing = await prisma.fileObject.findUnique({ where: { id: file.id } });
+  if (existing) {
+    const metadata = fileMetadata(await readFile(targetPath));
+    if (Object.entries({ ...attributes, ...metadata }).some(([key, value]) => existing[key] !== value)) {
+      throw new Error(`种子文件已登记的身份或内容不一致：${file.id}`);
+    }
+    return metadata;
+  }
 
-async function upsertSeedFile(file, uploadedByUserId, metadata) {
-  await prisma.fileObject.upsert({
-    where: { id: file.id },
-    update: {
-      bucket: file.bucket,
-      objectKey: file.objectKey,
-      originalName: file.originalName,
-      mimeType: file.mimeType,
-      sizeBytes: metadata.sizeBytes,
-      contentSha256: metadata.contentSha256,
-      uploadedByUserId,
-      storageStatus: "active"
-    },
-    create: {
-      id: file.id,
-      bucket: file.bucket,
-      objectKey: file.objectKey,
-      originalName: file.originalName,
-      mimeType: file.mimeType,
-      sizeBytes: metadata.sizeBytes,
-      contentSha256: metadata.contentSha256,
-      uploadedByUserId,
-      storageStatus: "active"
+  const buffer = await seedAttachmentPdf();
+  const metadata = fileMetadata(buffer);
+  await prisma.$transaction(async (tx) => {
+    await tx.fileObject.create({ data: { id: file.id, ...attributes, ...metadata } });
+    await mkdir(dirname(targetPath), { recursive: true });
+    try {
+      await writeFile(targetPath, buffer, { flag: "wx" });
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      if (!(await readFile(targetPath)).equals(buffer)) {
+        throw new Error(`种子文件存储键已有不同内容：${file.id}`);
+      }
     }
   });
+  return metadata;
 }
 
 function canonicalSeedFact(value) {
@@ -316,6 +319,28 @@ async function assertSeedProjectCashAvailable(tx, amountCents) {
   if (receivedCents - usedCents < amountCents) {
     throw new Error("Seed project cash is insufficient for PaymentExecution");
   }
+}
+
+async function ensureSeedPaymentVoucher(tx) {
+  const expected = {
+    ...seed.voucherFile,
+    uploadedByUserId: seed.users.cashier.id,
+    contentSha256: null,
+    storageStatus: "active",
+    purgeReceiptId: null,
+    supersedesFileObjectId: null
+  };
+  const existing = await tx.fileObject.findUnique({
+    where: { id: expected.id },
+    select: Object.fromEntries(Object.keys(expected).map((key) => [key, true]))
+  });
+  if (existing) {
+    assertExactSeedFacts("PaymentExecution voucher", existing, expected);
+    return;
+  }
+  // A native upsert attempts INSERT before conflict handling and trips the
+  // retained storage-key guard even when the seeded voucher is unchanged.
+  await tx.fileObject.create({ data: expected });
 }
 
 async function seedPaymentExecutionClosedLoop() {
@@ -395,19 +420,7 @@ async function seedPaymentExecutionClosedLoop() {
   };
 
   await prisma.$transaction(async (tx) => {
-    const voucher = await tx.fileObject.findUnique({
-      where: { id: seed.voucherFile.id },
-      select: {
-        id: true,
-        uploadedByUserId: true,
-        storageStatus: true
-      }
-    });
-    assertExactSeedFacts("PaymentExecution voucher", voucher, {
-      id: seed.voucherFile.id,
-      uploadedByUserId: seed.users.cashier.id,
-      storageStatus: "active"
-    });
+    await ensureSeedPaymentVoucher(tx);
 
     const paymentExecutionSelect = {
       id: true,
@@ -779,15 +792,7 @@ async function main() {
   await seedAuthAssignments();
   await seedContractWorkbenchTemplates();
 
-  const ownerContractFileMetadata = await writePrivateSeedFile(
-    seed.ownerContractFile,
-    await seedAttachmentPdf()
-  );
-  await upsertSeedFile(
-    seed.ownerContractFile,
-    seed.users.contractStaff.id,
-    ownerContractFileMetadata
-  );
+  const ownerContractFileMetadata = await ensureSeedFile(seed.ownerContractFile, seed.users.contractStaff.id);
   await prisma.projectOwnerContract.upsert({
     where: { id: seed.ownerContract.id },
     update: {
@@ -834,15 +839,7 @@ async function main() {
     }
   });
 
-  const upstreamSettlementFileMetadata = await writePrivateSeedFile(
-    seed.upstreamSettlementFile,
-    await seedAttachmentPdf()
-  );
-  await upsertSeedFile(
-    seed.upstreamSettlementFile,
-    "seed-user-budget-staff",
-    upstreamSettlementFileMetadata
-  );
+  const upstreamSettlementFileMetadata = await ensureSeedFile(seed.upstreamSettlementFile, "seed-user-budget-staff");
   await prisma.projectUpstreamSettlement.upsert({
     where: { id: seed.upstreamSettlement.id },
     update: {
@@ -886,11 +883,7 @@ async function main() {
     }
   });
 
-  const projectReceiptFileMetadata = await writePrivateSeedFile(
-    seed.projectReceiptFile,
-    await seedAttachmentPdf()
-  );
-  await upsertSeedFile(seed.projectReceiptFile, seed.users.cashier.id, projectReceiptFileMetadata);
+  const projectReceiptFileMetadata = await ensureSeedFile(seed.projectReceiptFile, seed.users.cashier.id);
   await prisma.projectReceipt.upsert({
     where: { id: seed.projectReceipt.id },
     update: {
@@ -1130,29 +1123,6 @@ async function main() {
       paidAmountCents: seed.paymentRequest.paidAmountCents,
       paymentSubjectType: seed.paymentExecution.paymentSubjectType,
       dueDate: seed.paymentRequest.dueDate
-    }
-  });
-
-  await prisma.fileObject.upsert({
-    where: { id: seed.voucherFile.id },
-    update: {
-      bucket: seed.voucherFile.bucket,
-      objectKey: seed.voucherFile.objectKey,
-      originalName: seed.voucherFile.originalName,
-      mimeType: seed.voucherFile.mimeType,
-      sizeBytes: seed.voucherFile.sizeBytes,
-      uploadedByUserId: seed.users.cashier.id,
-      storageStatus: "active"
-    },
-    create: {
-      id: seed.voucherFile.id,
-      bucket: seed.voucherFile.bucket,
-      objectKey: seed.voucherFile.objectKey,
-      originalName: seed.voucherFile.originalName,
-      mimeType: seed.voucherFile.mimeType,
-      sizeBytes: seed.voucherFile.sizeBytes,
-      uploadedByUserId: seed.users.cashier.id,
-      storageStatus: "active"
     }
   });
 

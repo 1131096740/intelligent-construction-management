@@ -1,3 +1,6 @@
+import { Test } from "@nestjs/testing";
+import { ProjectExpenseController } from "./project-expense.controller";
+import { FileService } from "../file/file.service";
 import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 import { BadRequestException } from "@nestjs/common";
 import { ProjectExpenseService } from "./project-expense.service";
@@ -2358,6 +2361,24 @@ describe("ProjectExpenseService", () => {
     };
   }
 
+  it.each([["2026-11-05", "2026-11-04T16:00:00.000Z"], ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z"]])("persists HTTP expense payment date %s through the existing synthetic transaction", async (paidAt, expected) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
+    const { service, tx, prisma } = hardenedProjectExpenseExecutionFixture();
+    tx.projectExpenseExecution.create.mockImplementation(async ({ data }) => ({ id: "execution-1", ...data }));
+    const module = await Test.createTestingModule({ controllers: [ProjectExpenseController], providers: [{ provide: ProjectExpenseService, useValue: service }, { provide: FileService, useValue: files }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "cashier-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const url = `${await app.getUrl()}/projects/project-1/expense-requests/expense-1/executions`;
+      const body = { ...hardenedProjectExpenseExecutionInput(), paidAt };
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(201); expect((await response.json()).paidAt).toBe(expected);
+      expect(tx.projectExpenseExecution.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paidAt: new Date(expected) }) }));
+      tx.projectExpenseExecution.create.mockClear(); prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(tx.projectExpenseExecution.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
+  });
+
   it("records one project expense execution with exact CAS, fixed lock order and atomic funding audit", async () => {
     const { service, prisma, request, tx } =
       hardenedProjectExpenseExecutionFixture();
@@ -2974,7 +2995,7 @@ describe("ProjectExpenseService", () => {
         amountCents: "10000",
         paidAt: "not-a-date",
       })
-    ).rejects.toThrow("实付日期无效");
+    ).rejects.toThrow("项目支出实付日期格式不正确");
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 

@@ -1,3 +1,8 @@
+import { appendRegisteredOperationalPayment, readRegisteredOperationalPayment } from "../fund-account/registered-operational-payment";
+import { assertRegisteredPaymentActor } from "../payment/registered-payment-funding";
+import { SpotPaymentExecutionNotificationService } from "./spot-payment-execution-notification.service";
+import { effectiveSpotCompanyPaymentAmount } from "./spot-payment-execution-duty";
+import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import {
   BadRequestException,
@@ -6,7 +11,8 @@ import {
   HttpException,
   Inject,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -154,6 +160,7 @@ type PaymentLockRow = {
   paymentType: string | null;
   merchantNameSnapshot: string | null;
   merchantPayeeMismatchNote: string | null;
+  originalDebtorCompanyId: string | null;
   payerCompanyEntityId: string | null;
   payerCompanyNameSnapshot: string | null;
   payerUnifiedSocialCreditCodeSnapshot: string | null;
@@ -230,7 +237,8 @@ export class SpotProcurementPaymentService {
     private readonly archives?: SpotProcurementPaymentArchiveService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
-      missingOperatingSourceReplayService()
+      missingOperatingSourceReplayService(),
+    @Optional() private readonly paymentNotifications?: SpotPaymentExecutionNotificationService
   ) {}
 
   async recordExecution(
@@ -247,6 +255,7 @@ export class SpotProcurementPaymentService {
       paymentChannelId: string | null;
       idempotencyKey: string;
       voucherFileIds: string[];
+      registeredFunding?: { actualPayerCompanyId: string; relationshipEntryId: string | null };
     };
     payment: {
       id: string;
@@ -258,13 +267,9 @@ export class SpotProcurementPaymentService {
     const amountCents = parsePositiveExecutionAmount(
       input.amountCents
     );
-    const paidAt = new Date(input.paidAt);
-    if (Number.isNaN(paidAt.getTime())) {
-      throw new BadRequestException("实付日期格式不正确");
-    }
-    if (paidAt.getTime() > Date.now()) {
-      throw new BadRequestException("实付日期不能晚于当前时间");
-    }
+    let paidAt: Date;
+    try { paidAt = requiredPastChinaDate(input.paidAt, "实付日期"); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "实付日期格式不正确，请核对实际日期"); }
     if (!PAYMENT_METHODS.has(input.paymentMethod)) {
       throw new BadRequestException("实际付款方式不正确");
     }
@@ -303,6 +308,10 @@ export class SpotProcurementPaymentService {
           });
         if (!fundingScope) {
           throw new NotFoundException("付款申请不存在");
+        }
+        if (input.registeredFunding) {
+          await assertRegisteredPaymentActor(tx, actorUserId);
+          await tx.$queryRaw`SELECT id FROM public."RegisteredFundAccount" WHERE "scopeKey" = ${input.registeredFunding.scopeKey} FOR UPDATE`;
         }
         // 统一锁序：项目 -> 垫资来源 -> 采购版本 -> 该采购全部付款 -> 实付明细。
         await this.projectFunding.lockFundingContext(
@@ -352,9 +361,17 @@ export class SpotProcurementPaymentService {
           );
         }
 
+        const registeredOperation = {
+          sourceType: "spot_procurement_payment_execution" as const, actorUserId, projectId: version.projectId,
+          originalDebtorCompanyId: payment.originalDebtorCompanyId ?? null, amountCents, paidAt,
+        };
+        if (input.registeredFunding && (!isRealFormPayment || !registeredOperation.originalDebtorCompanyId)) {
+          throw new ConflictException("原付款首次批准的债务公司未明确，请先核对原单");
+        }
         const existingByIdempotencyKey =
           await tx.spotProcurementPaymentExecution.findUnique({
-            where: { idempotencyKey }
+            where: { idempotencyKey },
+            include: { registeredOperationalPayment: { select: { id: true } } }
           });
         if (existingByIdempotencyKey) {
           if (isRealFormPayment) {
@@ -381,7 +398,11 @@ export class SpotProcurementPaymentService {
               voucherFileId
             });
           }
-          await this.projectFunding.allocateExecution(tx, {
+          const funding = input.registeredFunding || existingByIdempotencyKey.registeredOperationalPayment
+            ? await readRegisteredOperationalPayment(tx, { ...registeredOperation, executionId: existingByIdempotencyKey.id,
+              funding: input.registeredFunding })
+            : null;
+          if (!funding) await this.projectFunding.allocateExecution(tx, {
             projectId: version.projectId,
             executionType:
               "spot_procurement_payment_execution",
@@ -396,7 +417,7 @@ export class SpotProcurementPaymentService {
           return this.executionReadModel(
             existingByIdempotencyKey,
             payment,
-            isRealFormPayment ? voucherFileIds : undefined
+            isRealFormPayment ? voucherFileIds : undefined, funding
           );
         }
         const pendingDiscrepancy =
@@ -573,7 +594,10 @@ export class SpotProcurementPaymentService {
             }))
           });
         }
-        const fundingAllocation =
+        const registeredFunding = input.registeredFunding
+          ? await appendRegisteredOperationalPayment(tx, { ...registeredOperation, executionId: execution.id, funding: input.registeredFunding })
+          : null;
+        const fundingAllocation = registeredFunding ? null :
           await this.projectFunding.allocateExecution(tx, {
             projectId: version.projectId,
             executionType:
@@ -646,7 +670,8 @@ export class SpotProcurementPaymentService {
               effectiveCompanyPaymentAmountCents -
               newPaidAmountCents
             ).toString(),
-            fundingAllocation: {
+            ...(registeredFunding ? { registeredFunding } : {}),
+            fundingAllocation: fundingAllocation ? {
               kind: fundingAllocation.kind,
               projectCashAmountCents:
                 fundingAllocation.projectCashAmountCents.toString(),
@@ -659,7 +684,7 @@ export class SpotProcurementPaymentService {
                   amountCents:
                     allocation.amountCents.toString()
                 }))
-            }
+            } : null
           }
         });
         await this.closure.recalculateAndClose(
@@ -671,7 +696,7 @@ export class SpotProcurementPaymentService {
         return this.executionReadModel(
           execution,
           paymentAfter,
-          isRealFormPayment ? voucherFileIds : undefined
+          isRealFormPayment ? voucherFileIds : undefined, registeredFunding
         );
       });
       await this.approvalForms.tryRefreshLatestForBusiness(
@@ -690,6 +715,7 @@ export class SpotProcurementPaymentService {
       if (error instanceof HttpException) throw error;
       const code = prismaErrorCode(error);
       if (code === "P2002") {
+        if (input.registeredFunding) throw new ConflictException("实付请求可能已受理，请用原凭据查询并重试");
         const concurrentResult =
           await this.resolveConcurrentExecutionResult({
             paymentId,
@@ -1285,6 +1311,7 @@ export class SpotProcurementPaymentService {
         "paymentType",
         "merchantNameSnapshot",
         "merchantPayeeMismatchNote",
+        "originalDebtorCompanyId",
         "payerCompanyEntityId",
         "payerCompanyNameSnapshot",
         "payerUnifiedSocialCreditCodeSnapshot",
@@ -1849,6 +1876,7 @@ export class SpotProcurementPaymentService {
           approvedRoleKey,
           selfReviewMetadata
         );
+        await this.paymentNotifications?.queue(tx,updated,approval.id,actorUserId);
         return this.paymentReadModel(updated);
       });
       await this.approvalForms.tryRefreshLatestForBusiness(
@@ -1858,6 +1886,7 @@ export class SpotProcurementPaymentService {
         `approval.${input.decision}`
       );
       if (result.status === "approved_pending_payment") {
+        void this.paymentNotifications?.afterCommit();
         await this.archives?.tryCreateVersion(
           paymentId,
           actorUserId,
@@ -2543,6 +2572,7 @@ export class SpotProcurementPaymentService {
         "paymentType",
         "merchantNameSnapshot",
         "merchantPayeeMismatchNote",
+        "originalDebtorCompanyId",
         "payerCompanyEntityId",
         "payerCompanyNameSnapshot",
         "payerUnifiedSocialCreditCodeSnapshot",
@@ -2595,10 +2625,7 @@ export class SpotProcurementPaymentService {
       | "canceledCompanyPaymentAmountCents"
     >
   ) {
-    const amount =
-      payment.companyPaymentAmountCents -
-      payment.canceledCompanyPaymentAmountCents;
-    return amount > 0n ? amount : 0n;
+    return effectiveSpotCompanyPaymentAmount(payment);
   }
 
   private assertSameExecutionFacts(
@@ -2695,7 +2722,8 @@ export class SpotProcurementPaymentService {
       | "companyPaymentAmountCents"
       | "canceledCompanyPaymentAmountCents"
     >,
-    voucherFileIds?: readonly string[]
+    voucherFileIds?: readonly string[],
+    funding?: { actualPayerCompanyId: string; relationshipEntryId: string | null } | null
   ) {
     const remaining =
       this.effectiveCompanyPaymentAmount(payment) -
@@ -2709,7 +2737,8 @@ export class SpotProcurementPaymentService {
         paymentChannelId: execution.paymentChannelId ?? null,
         voucherFileId: execution.voucherFileId,
         voucherFileIds: [...(voucherFileIds ?? (execution.voucherFileId ? [execution.voucherFileId] : []))],
-        idempotencyKey: execution.idempotencyKey
+        idempotencyKey: execution.idempotencyKey,
+        ...(funding ? { registeredFunding: funding } : {})
       },
       payment: {
         id: payment.id,
@@ -2734,9 +2763,11 @@ export class SpotProcurementPaymentService {
   }) {
     const existing =
       await this.prisma.spotProcurementPaymentExecution.findUnique({
-        where: { idempotencyKey: input.idempotencyKey }
+        where: { idempotencyKey: input.idempotencyKey },
+        include: { registeredOperationalPayment: { select: { id: true } } }
       });
     if (existing) {
+      if (existing.registeredOperationalPayment) throw new ConflictException("请用原登记资金凭据查询并重试");
       const payment =
         await this.prisma.spotProcurementPayment.findUnique({
           where: { id: input.paymentId },
@@ -3736,7 +3767,7 @@ export class SpotProcurementPaymentService {
     payment: { handlerUserId: string },
     procurementLines: Array<{
       id: string;
-      quantity: Prisma.Decimal;
+      quantity: Prisma.Decimal | null;
     }>,
     actorUserId: string,
     input: UpdateSpotProcurementPaymentDraftDto
@@ -3781,6 +3812,7 @@ export class SpotProcurementPaymentService {
         unitPrice: line.unitPrice
       });
       const paymentQuantity = new Prisma.Decimal(line.paymentQuantity);
+      if (source.quantity === null) throw new ConflictException("申请数量待确定，请先按实际采购流程办理");
       if (paymentQuantity.greaterThan(source.quantity)) {
         throw new BadRequestException("付款材料数量不能超过采购批准数量");
       }
@@ -3833,7 +3865,7 @@ export class SpotProcurementPaymentService {
   }
 
   private assertCompleteRealFormMaterialScope(
-    procurementLines: Array<{ id: string; quantity: Prisma.Decimal }>,
+    procurementLines: Array<{ id: string; quantity: Prisma.Decimal | null }>,
     paymentLines: Array<{
       procurementLineId: string;
       paymentQuantity: Prisma.Decimal;
@@ -3850,7 +3882,7 @@ export class SpotProcurementPaymentService {
     if (
       procurementLines.some((source) => {
         const paymentLine = paymentLineBySource.get(source.id);
-        return !paymentLine || !paymentLine.paymentQuantity.equals(source.quantity);
+        return !paymentLine || source.quantity === null || !paymentLine.paymentQuantity.equals(source.quantity);
       })
     ) {
       throw new BadRequestException(

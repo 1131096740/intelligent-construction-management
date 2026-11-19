@@ -269,6 +269,7 @@ function workItemBusinessTypeLabel(item: WorkItemReadModel) {
     general_procurement: "综合采购审批",
     expense_claim: "费用申请审批",
     payment_execution: "付款实付",
+    procurement: "综合采购",
     blocker: "阻塞事项",
     contract: "合同",
     settlement: "结算",

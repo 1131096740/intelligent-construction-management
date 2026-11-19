@@ -105,7 +105,7 @@ describe("retired approval reminders public HTTP tombstones", () => {
     });
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ accepted: true });
-    expect(progress.remind).toHaveBeenCalledWith("local-flow", "local-reviewer", requestId, reminderToken);
+    expect(progress.remind).toHaveBeenCalledWith("local-flow", "local-reviewer", requestId, reminderToken, undefined);
     expect(progress.remindBusiness).not.toHaveBeenCalled();
   });
 });

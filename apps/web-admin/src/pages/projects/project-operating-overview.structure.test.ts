@@ -52,7 +52,7 @@ describe("project operating overview structure", () => {
   });
 
   it("loads the cross-project executive total through one project-set projection", () => {
-    expect(source).toContain("await fetchProjectSetOperatingProjection()");
+    expect(source).toContain("await fetchProjectSetOperatingProjection(undefined, 2)");
     expect(source).not.toContain("fetchProjectSetOperatingProjection(\n      projects.value.map");
     expect(source).toContain("buildExecutiveProjectOverview(projection, projects.value)");
     expect(source).not.toContain("projects.value.map((project) => fetchProjectOperatingOverview(project.id))");

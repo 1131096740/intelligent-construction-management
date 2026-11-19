@@ -1,4 +1,5 @@
 import path from "node:path";
+import { mockApprovalProgress } from "./helpers/approval-progress-mocks";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   expectHorizontalScrollOwner,
@@ -1155,6 +1156,7 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
 
 test("records two controlled executions from the frozen channel and refreshes server payment facts", async ({ page }) => {
   await mockLogin(page);
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: "payment-execution" }]);
   let paidCents = 0;
   let uploadNo = 0;
   const executionPayloads: Array<Record<string, unknown>> = [];
@@ -1217,7 +1219,7 @@ test("records two controlled executions from the frozen channel and refreshes se
   await page.route("**/api/spot-procurement-payments/payment-execution", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
   );
-  await page.route("**/api/files", (route) => {
+  await page.route("**/api/spot-procurement-payments/payment-execution/execution-voucher-file-uploads", (route) => {
     uploadNo += 1;
     return route.fulfill({
       contentType: "application/json",
@@ -1276,6 +1278,7 @@ test("records two controlled executions from the frozen channel and refreshes se
 
 test("retries a failed execution with one upload, the same frozen attempt and a re-entered password", async ({ page }) => {
   await mockLogin(page);
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: "payment-execution-retry" }]);
   let paid = false;
   let uploadNo = 0;
   const executionPayloads: Array<Record<string, unknown>> = [];
@@ -1339,7 +1342,7 @@ test("retries a failed execution with one upload, the same frozen attempt and a 
   await page.route("**/api/spot-procurement-payments/payment-execution-retry", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
   );
-  await page.route("**/api/files", (route) => {
+  await page.route("**/api/spot-procurement-payments/payment-execution-retry/execution-voucher-file-uploads", (route) => {
     uploadNo += 1;
     return route.fulfill({
       contentType: "application/json",
@@ -1380,6 +1383,52 @@ test("retries a failed execution with one upload, the same frozen attempt and a 
   expect(executionPayloads[1]?.voucherFileIds).toEqual(executionPayloads[0]?.voucherFileIds);
   expect(executionPayloads[1]?.voucherFileIds).toEqual(["voucher-retry"]);
   await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+});
+
+test("recovers a recorded registered-account attempt without another write", async ({ page }) => {
+  const id = "payment-registered-retry";
+  const key = `spot-registered-execution:handler-1:${id}`;
+  const original = paymentDetail();
+  const attempt = {
+    idempotencyKey: "registered-spot-original-key", amountCents: "220000", amountYuan: "2200.00",
+    paidAt: now, paidAtInput: "2026-07-18 16:00:00", paymentMethod: "bank_transfer",
+    paymentChannelId: "channel-1", voucherFileIds: ["voucher-1"], actualPayerName: "代付公司",
+    registeredFunding: { scopeKey: "company:payer", expectedRegistrationId: "registration-1",
+      sourceAllocations: [{ sourceBatchId: "source-1", amountCents: "220000" }] }
+  };
+  let recorded = false;
+  let submissions = 0;
+  await mockLogin(page, { globalRoleKeys: ["finance_staff"] });
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: id }]);
+  await page.route(`**/api/spot-procurement-payments/${id}/executions`, (route) => {
+    submissions += 1;
+    return route.fulfill({ status: 500, body: "unexpected second write" });
+  });
+  await page.route(`**/api/spot-procurement-payments/${id}`, (route) => route.fulfill({
+    json: {
+      ...original, originalDebtorCompanyId: "debtor", originalDebtorCompanyName: "原债公司",
+      payment: { ...original.payment, id, status: recorded ? "paid" : "approved_pending_payment",
+        statusLabel: recorded ? "已付款" : "待付款", remainingAmountCents: recorded ? "0" : "220000" },
+      executions: recorded ? original.executions.map(execution => ({ ...execution, actualPayerCompanyId: "payer" })) : [],
+      currentTask: { ...original.currentTask, key: recorded ? "none" : "record_execution", label: "登记实际付款" },
+      availableActions: recorded ? [] : [{ key: "record_execution", label: "登记实际付款", kind: "primary", enabled: true }]
+    }
+  }));
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+  await page.evaluate(({ key, attempt }) => sessionStorage.setItem(key, JSON.stringify(attempt)), { key, attempt });
+  await page.goto(`/零星材料付款/${id}?tab=current`);
+  await page.getByRole("button", { name: "登记实际付款", exact: true }).click();
+  await page.getByRole("button", { name: "重试登记", exact: true }).click();
+  await page.getByLabel("当前登录密码", { exact: true }).fill("fresh-password");
+  recorded = true;
+  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+  expect(submissions).toBe(0);
+  expect(await page.evaluate(key => sessionStorage.getItem(key), key)).toBeNull();
 });
 
 test("restores focus to the actual execution trigger after the drawer has closed", async ({ page }) => {
@@ -2632,4 +2681,200 @@ test("executes server-owned procurement, A5 payment and receipt draft lifecycle 
     expect.objectContaining({ body: { expectedUpdatedAt: now, reason: "付款对象需要重新确认" } }),
     expect.objectContaining({ body: { expectedRevision: 1 } })
   ]));
+});
+
+test("待实付短信仅可用原失败尝试重试，待确认和已受理不可重发", async ({ page }) => {
+  const unmocked: string[] = [];
+  await page.route(url => url.pathname.startsWith("/api/"), route => {
+    unmocked.push(new URL(route.request().url()).pathname);
+    return route.abort();
+  });
+  await mockLogin(page, { id: "finance-1", name: "财务甲", roleKeys: ["finance_staff"] });
+  await page.route(url => url.pathname === "/api/approval-progress", route => route.fulfill({ json: { items: [], nextCursor: null } }));
+  const paymentId = "payment-duty-sms";
+  const statusUrl = `**/api/spot-procurement-payments/${paymentId}/duty-sms`;
+  const base = paymentDetail();
+  let authorized = true;
+  let reads = 0;
+  let notice = { attemptId: "original", status: "unknown", canRetry: true };
+  const retries: Array<{ attemptId: string }> = [];
+  await page.route(`**/api/spot-procurement-payments/${paymentId}`, route => route.fulfill({ json: {
+    ...base,
+    payment: { ...base.payment, id: paymentId, status: "approved_pending_payment", statusLabel: "待付款" },
+    currentTask: authorized
+      ? { key: "record_execution", label: "登记实际付款", hint: "登记实付", priority: 300, scope: "personal", enabled: true, disabledReason: null }
+      : { key: "none", label: "无需办理", hint: "当前无办理权限", priority: 0, scope: "none", enabled: false, disabledReason: null },
+    availableActions: authorized ? [{ key: "record_execution", label: "登记实际付款", enabled: true, disabledReason: null }] : []
+  } }));
+  await page.route(statusUrl, route => {
+    reads++;
+    return route.fulfill({ json: { notice } });
+  });
+  await page.route(statusUrl + "/retry", route => {
+    retries.push(route.request().postDataJSON());
+    return route.fulfill({ json: { attemptId: "new-attempt", status: "queued", canRetry: false } });
+  });
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+  await page.goto(`/零星材料付款/${paymentId}?tab=current`);
+  const panel = page.getByRole("region", { name: "待办短信" });
+  const retry = panel.getByRole("button", { name: "重新发送" });
+  const refresh = panel.getByRole("button", { name: "刷新短信状态" });
+  await expect(panel).toContainText("发送结果待确认");
+  await expect(retry).toHaveCount(0);
+  notice = { ...notice, status: "accepted" };
+  await refresh.click();
+  await expect(panel).toContainText("供应商已受理，送达待确认");
+  await expect(retry).toHaveCount(0);
+  notice = { ...notice, status: "failed", canRetry: false };
+  await refresh.click();
+  await expect(panel).toContainText("发送失败");
+  await expect(retry).toHaveCount(0);
+  expect(retries).toHaveLength(0);
+  notice = { ...notice, canRetry: true };
+  await refresh.click();
+  await retry.click();
+  await expect(panel).toContainText("等待发送");
+  await expect(retry).toHaveCount(0);
+  expect(retries).toEqual([{ attemptId: "original" }]);
+  authorized = false;
+  const beforeReload = reads;
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "当前无需办理付款" })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  expect(reads).toBe(beforeReload);
+  expect(unmocked).toEqual([]);
+});
+
+test("收货复核短信只重试当前原失败尝试，复核权限撤回后不读短信", async ({ page }) => {
+  const unmocked: string[] = [];
+  await page.route(url => url.pathname.startsWith("/api/"), route => {
+    unmocked.push(new URL(route.request().url()).pathname);
+    return route.abort();
+  });
+  await mockLogin(page, { id: "materials-1", name: "物资主管甲", roleKeys: ["material_director"] });
+  const procurementId = "procurement-receipt-sms";
+  const routePath = `/api/spot-procurements/${procurementId}`;
+  const base = receiptDetail();
+  let permitted = true;
+  let reads = 0;
+  let notice = { attemptId: "receipt-original", status: "accepted", canRetry: true };
+  const retries: Array<{ attemptId: string }> = [];
+  const match = (suffix: string) => (url: URL) => url.pathname === routePath + suffix;
+  await page.route(match(""), route => route.fulfill({ json: procurementDetailFor(procurementId, "RC-SMS", "合成收货项目") }));
+  await page.route(match("/receipt"), route => route.fulfill({ json: {
+    ...base,
+    receipt: { ...base.receipt, procurementId, currentRevisionNo: 5 },
+    availableActions: permitted ? [{ key: "review_receipt", label: "复核收货", enabled: true }] : []
+  } }));
+  await page.route(match("/receipt/duty-sms"), route => {
+    reads++;
+    return route.fulfill({ json: { notice } });
+  });
+  await page.route(match("/receipt/duty-sms/retry"), route => {
+    retries.push(route.request().postDataJSON());
+    return route.fulfill({ json: { attemptId: "receipt-successor", status: "queued", canRetry: false } });
+  });
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+  await page.goto(`/零星采购收货/${procurementId}`);
+  const panel = page.getByRole("region", { name: "待办短信" });
+  const retry = panel.getByRole("button", { name: "重新发送" });
+  const refresh = panel.getByRole("button", { name: "刷新短信状态" });
+  await expect(panel).toContainText("供应商已受理，送达待确认");
+  await expect(retry).toHaveCount(0);
+  notice = { ...notice, status: "unknown" };
+  await refresh.click();
+  await expect(panel).toContainText("发送结果待确认");
+  await expect(retry).toHaveCount(0);
+  notice = { ...notice, status: "failed", canRetry: false };
+  await refresh.click();
+  await expect(panel).toContainText("发送失败");
+  await expect(retry).toHaveCount(0);
+  expect(retries).toHaveLength(0);
+  notice = { ...notice, canRetry: true };
+  await refresh.click();
+  await retry.click();
+  await expect(panel).toContainText("等待发送");
+  await expect(retry).toHaveCount(0);
+  expect(retries).toEqual([{ attemptId: "receipt-original" }]);
+  permitted = false;
+  const beforeReload = reads;
+  await page.reload();
+  await expect(page.getByText("收货照片与乙方送货单", { exact: true })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  expect(reads).toBe(beforeReload);
+  expect(unmocked).toEqual([]);
+});
+
+test("spot procurement request SMS retry uses its own current duty and original attempt", async ({ page }) => {
+  const unexpectedApi: string[] = [];
+  const attempts: unknown[] = [];
+  let statusReads = 0;
+  const match = (path: string) => (url: URL) => url.pathname === path;
+  await page.route(url => url.pathname.startsWith("/api/"), async route => {
+    unexpectedApi.push(new URL(route.request().url()).pathname);
+    await route.fulfill({ json: {} });
+  });
+  await mockLogin(page);
+  await mockApprovalProgress(page, ["version-1", "version-2"].map(businessId => ({
+    businessType: "spot_procurement_version", businessId
+  })));
+  const path = "/api/spot-procurements/procurement-1";
+  const original = procurementDetail();
+  let record = { ...original, currentVersion: { ...original.currentVersion, requestProtocolVersion: 2 },
+    purchaseTask: { pending: true, canHandle: true }, availableActions: [] as Array<{ key: string; enabled: boolean; label: string }> };
+  await page.route(match(path), route => route.fulfill({ json: record }));
+  await page.route(url => /^\/api\/approval-forms\/spot_procurement_version\/version-[12]\/capability$/u.test(url.pathname),
+    route => route.fulfill({ status: 404, json: {} }));
+  const purchase = { attemptId: "purchase-original", dutyName: "项目物资员采购", status: "failed", canRetry: true };
+  const correction = { attemptId: "correction-original", dutyName: "退回修改", status: "failed", canRetry: true };
+  await page.route(match(path + "/duty-sms"), route => {
+    statusReads++;
+    return route.fulfill({ json: {
+      notices: record.procurement.status === "draft" ? [correction] : [
+        purchase, { attemptId: "parallel-unknown", dutyName: "原并联审批", status: "unknown", canRetry: false }
+      ]
+    } });
+  });
+  await page.route(match(path + "/duty-sms/retry"), route => {
+    const sent = route.request().postDataJSON();
+    attempts.push(sent);
+    const row = sent.attemptId === purchase.attemptId ? purchase : correction;
+    return route.fulfill({ status: 201, json: { ...row, attemptId: row.attemptId + "-retry", status: "accepted", canRetry: false } });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("E2e@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await page.goto("/零星采购/procurement-1");
+  const panel = page.getByRole("region", { name: "零星采购申请待办短信" });
+  await expect(panel.getByRole("button", { name: "重新发送" })).toHaveCount(1);
+  await panel.getByRole("listitem").filter({ hasText: "项目物资员采购" }).getByRole("button", { name: "重新发送" }).click();
+  await expect(panel).toContainText("供应商已受理");
+  await expect(panel).toContainText("发送结果待确认");
+
+  record = { ...record, procurement: { ...record.procurement, status: "draft" },
+    currentVersion: { ...record.currentVersion, id: "version-2", versionNo: 2, status: "draft" },
+    purchaseTask: { pending: false, canHandle: false },
+    availableActions: [{ key: "edit_draft", enabled: true, label: "编辑草稿" }] };
+  await page.reload();
+  await panel.getByRole("listitem").filter({ hasText: "退回修改" }).getByRole("button", { name: "重新发送" }).click();
+  await expect(panel).toContainText("供应商已受理");
+  expect(attempts).toEqual([{ attemptId: "purchase-original" }, { attemptId: "correction-original" }]);
+
+  record = { ...record, currentVersion: { ...record.currentVersion, requestProtocolVersion: 1 } };
+  await page.reload();
+  await expect(page.getByText("LXCG-E2E-001", { exact: true }).first()).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  expect(statusReads).toBe(2);
+  expect(unexpectedApi).toEqual([]);
 });

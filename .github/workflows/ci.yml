@@ -63,12 +63,17 @@ jobs:
         run: pnpm check:migration-baseline
 
       - name: Verify CI orchestration contract
-        run: pnpm test:ci-orchestration
+        run: |
+          set -euo pipefail
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          pnpm test:ci-orchestration
 
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high
 
       - name: Typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           pnpm typecheck
           pnpm --filter @jiangkong/web-admin typecheck:e2e
@@ -84,9 +89,13 @@ jobs:
           bash scripts/ops/go-live-safety-self-test.sh
 
   unit-test-gates:
-    name: Unit test gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Unit test gates (${{ matrix.target }})
+    runs-on: ${{ startsWith(matrix.target, 'api-') && 'ubuntu-24.04' || 'ubuntu-latest' }}
+    timeout-minutes: ${{ startsWith(matrix.target, 'api-') && 60 || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api-1, api-2, api-3, api-4, web, shared-domain]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -115,13 +124,39 @@ jobs:
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @jiangkong/api exec prisma generate
-
-      - name: Test
+      - name: Prepare API browser dependencies
+        timeout-minutes: 35
+        if: startsWith(matrix.target, 'api-')
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm test
+          API_TEST_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shard="${API_TEST_TARGET#api-}"
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          tests=$(pnpm --filter @jiangkong/api exec jest --listTests --runInBand --config jest.runtime.config.cjs --shard="$shard/4")
+          if grep -Eq '/task10-(labor-signature-recovery|signature-review)-browser\.http\.spec\.ts$' <<< "$tests"; then
+            pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
+          fi
+
+      - name: Test API shard
+        if: startsWith(matrix.target, 'api-')
+        timeout-minutes: 20
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          API_TEST_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shard="${API_TEST_TARGET#api-}"
+          pnpm --filter @jiangkong/api run test --runInBand --config jest.runtime.config.cjs --shard="$shard/4"
+
+      - name: Test Web
+        if: matrix.target == 'web'
+        run: pnpm --filter @jiangkong/web-admin test
+
+      - name: Test shared domain
+        if: matrix.target == 'shared-domain'
+        run: pnpm --filter @jiangkong/shared-domain test
 
   build-manifest-gates:
     name: Build and manifest gates
@@ -179,8 +214,8 @@ jobs:
         run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.upload-draft.config.ts
 
   postgresql16-dynamic-gates:
-    name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    name: PostgreSQL 16 dynamic gate (${{ matrix.shard && format('{0}/{1}', matrix.group, matrix.shard) || matrix.group }})
+    runs-on: ${{ matrix.group == 'pol113_pol115_business_entries' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
     timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
     strategy:
@@ -204,11 +239,21 @@ jobs:
           - operating_projection_pol108_facts
           - operating_projection_pol108_impacts
           - project_close_profit_pol109
-          - pol113_pol115_business_entries
           - remaining_dynamic_postgresql16
           - employee_onboarding
           - general_procurement
           - contract_finance_acceptance
+          - task398_shared_standard
+          - task398_browser
+          - task398_browser_completion
+          - task407_public_cash_handover
+          - task409_principal_return
+          - task410_company_proxy_repayment
+        include:
+          - group: pol113_pol115_business_entries
+            shard: pol113_pol114
+          - group: pol113_pol115_business_entries
+            shard: pol115_workbench
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -252,6 +297,7 @@ jobs:
       - name: Prefer official HTTPS Ubuntu mirrors
         run: |
           sudo python3 - <<'PY'
+          import re
           from pathlib import Path
           mirrors = Path('/etc/apt/apt-mirrors.txt')
           if mirrors.is_file():
@@ -263,6 +309,15 @@ jobs:
                   if not official.intersection(urls):
                       raise SystemExit('Missing official HTTPS Ubuntu mirror; refusing to change mirrors')
                   mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
+          ec2 = re.compile(r'http://[a-z0-9-]+\.ec2\.archive\.ubuntu\.com/ubuntu(?=/|\s|$)')
+          for source in (mirrors, Path('/etc/apt/sources.list'), Path('/etc/apt/sources.list.d/ubuntu.sources')):
+              if source.is_file():
+                  original = source.read_text()
+                  updated = ''.join(line if line.lstrip().startswith('#') else
+                                    ec2.sub('https://archive.ubuntu.com/ubuntu', line)
+                                    for line in original.splitlines(keepends=True))
+                  if updated != original:
+                      source.write_text(updated)
           PY
 
       - name: Install seed layout PDF runtime
@@ -293,6 +348,12 @@ jobs:
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
 
+      - name: Install task 398 Chromium runtime
+        if: ${{ matrix.group == 'task398_browser' || matrix.group == 'task398_browser_completion' }}
+        run: |
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
+
       - name: Install POL-109 browser runtime
         if: ${{ matrix.group == 'project_close_profit_pol109' }}
         run: |
@@ -313,13 +374,18 @@ jobs:
       - name: Run exact-SHA PostgreSQL dynamic gate shard
         env:
           DYNAMIC_GROUP: ${{ matrix.group }}
+          DYNAMIC_SHARD: ${{ matrix.shard }}
         run: |
           candidate_sha="$(git rev-parse HEAD)"
+          shard_args=()
+          if [ -n "$DYNAMIC_SHARD" ]; then
+            shard_args=(--pol113-pol115-shard "$DYNAMIC_SHARD")
+          fi
           node services/api/prisma/run-database-dynamic-gate-local.cjs \
             --execute \
             --group "$DYNAMIC_GROUP" \
             --candidate-sha "$candidate_sha" \
-            --confirm LOCAL_PG16_DYNAMIC_GATE
+            --confirm LOCAL_PG16_DYNAMIC_GATE "${shard_args[@]}"
 
       - name: Verify personnel feedback and recovery on desktop and mobile
         if: ${{ matrix.group == 'employee_onboarding' }}

@@ -1,3 +1,4 @@
+import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
 import { contractClassifications } from "../contract-ledger/contract-classification-read";
 import { Injectable, NotFoundException, Optional } from "@nestjs/common";
@@ -525,14 +526,15 @@ export class SettlementReadService {
   async listRecent(
     rawLimit?: string | number,
     visibleProjectIds?: string[],
-    internalOptions?: { unbounded?: boolean }
+    internalOptions?: { unbounded?: boolean; actorUserId?: string }
   ) {
     const take = internalOptions?.unbounded ? undefined : this.limit(rawLimit);
-    const settlements = await this.prisma.settlement.findMany({
+    const allSettlements = await this.prisma.settlement.findMany({
       ...(visibleProjectIds ? { where: { projectId: { in: visibleProjectIds } } } : {}),
       ...(take === undefined ? {} : { take }),
       orderBy: { updatedAt: "desc" }
     });
+    const settlements = await this.filterReadableSettlements(allSettlements, internalOptions?.actorUserId);
     const contractIds = [...new Set(settlements.map((settlement) => settlement.contractId))];
     const termsIds = [...new Set(settlements.map((settlement) => settlement.paymentTermsVersionId))];
     const projectIds = [...new Set(settlements.map((settlement) => settlement.projectId))];
@@ -592,7 +594,7 @@ export class SettlementReadService {
   ): Promise<LifecycleLedgerPage<Record<string, unknown>>> {
     const page = this.page(rawPage);
     const pageSize = this.pageSize(rawPageSize);
-    const [settlements, drafts] = await Promise.all([
+    const [allSettlements, drafts] = await Promise.all([
       this.prisma.settlement.findMany({
         where: { projectId: { in: visibleProjectIds } },
         orderBy: { updatedAt: "desc" }
@@ -602,6 +604,7 @@ export class SettlementReadService {
         orderBy: { updatedAt: "desc" }
       })
     ]);
+    const settlements = await this.filterReadableSettlements(allSettlements, actorUserId);
     const contractIds = [...new Set([
       ...settlements.map((item) => item.contractId),
       ...drafts.map((item) => item.contractId)
@@ -698,7 +701,7 @@ export class SettlementReadService {
   ): Promise<SettlementWorkbenchLedgerPage<Record<string, unknown>>> {
     const page = this.page(rawPage);
     const pageSize = this.pageSize(rawPageSize);
-    const [settlements, drafts, projects, pendingWorkItems] = await Promise.all([
+    const [allSettlements, drafts, projects, pendingWorkItems] = await Promise.all([
       this.prisma.settlement.findMany({
         where: { projectId: { in: visibleProjectIds } },
         orderBy: { updatedAt: "desc" }
@@ -712,6 +715,7 @@ export class SettlementReadService {
         : Promise.resolve([]),
       this.me?.getSettlementPendingWorkItems(actorUserId) ?? Promise.resolve([])
     ]);
+    const settlements = await this.filterReadableSettlements(allSettlements, actorUserId);
     const contractIds = [...new Set([
       ...settlements.map((item) => item.contractId),
       ...drafts.map((item) => item.contractId)
@@ -806,7 +810,7 @@ export class SettlementReadService {
 
   async exportLedger(visibleProjectIds: string[], actorUserId: string) {
     const ledger = await this.listRecent(undefined, visibleProjectIds, {
-      unbounded: true
+      unbounded: true, actorUserId
     });
     const rows = ledger.rows.map((row) => ({
       settlementNo: row.settlementNo,
@@ -880,6 +884,11 @@ export class SettlementReadService {
     });
 
     if (!settlement) {
+      throw new NotFoundException("未找到该结算单，请刷新结算台账后重试");
+    }
+
+    if (actorUserId && !(await sensitiveBusinessReadAllowed(this.prisma, "settlement", settlement.id, actorUserId,
+      await this.actorRoleKeys(actorUserId, settlement.projectId), settlement.preparedByUserId))) {
       throw new NotFoundException("未找到该结算单，请刷新结算台账后重试");
     }
 
@@ -1387,6 +1396,13 @@ export class SettlementReadService {
       0n
     );
     return deducted > reversed ? deducted - reversed : 0n;
+  }
+
+  private async filterReadableSettlements<T extends { id: string; projectId: string; preparedByUserId?: string | null }>(rows: T[], actorUserId?: string): Promise<T[]> {
+    if (!actorUserId) return rows;
+    const allowed = await Promise.all(rows.map(async row => sensitiveBusinessReadAllowed(this.prisma, "settlement", row.id, actorUserId,
+      await this.actorRoleKeys(actorUserId, row.projectId), row.preparedByUserId)));
+    return rows.filter((_row, index) => allowed[index]);
   }
 
   private async actorRoleKeys(actorUserId: string | undefined, projectId: string): Promise<RoleKey[]> {

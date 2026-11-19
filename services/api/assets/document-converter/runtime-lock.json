@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "engine": "docx4j-17.3.5-jdk17",
+  "adapterSourceSha256": "81c5d2ed351d747941f4b239e24a6af5b73defc5caeb9b5513ee19fbf90343c5",
+  "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+  "jdkTreeEntries": 456,
+  "jars": [
+    {
+      "name": "docx4j-bundle-17.3.5.jar",
+      "sha256": "77aa1fe1da4873946766204aabc9ba47ef66f89a46f4bea0e4c49c2994114a63"
+    },
+    {
+      "name": "docx4j-bundle-extras-17.3.5.jar",
+      "sha256": "9e5ed5bdd1f3e88787bc138ca654b23f8c9ed9c1e83bf884687f7a140242d964"
+    }
+  ],
+  "classes": [
+    {
+      "name": "ContractDocxPdf$1.class",
+      "sha256": "840935300b20814a007359ab387a1837b594cced6f49a9c8f6189a2fff3d1c9e"
+    },
+    {
+      "name": "ContractDocxPdf$BoundedPdfOutputStream.class",
+      "sha256": "cf2130c6649532fd83483af1c981b8b93e4d079b4863fbb0259eda78e9b6cdbb"
+    },
+    {
+      "name": "ContractDocxPdf.class",
+      "sha256": "fc8aca861c7c3f50e1b7276c5862175e2582d7552ec7124e817a570b3c41ece6"
+    }
+  ],
+  "fonts": [
+    {
+      "name": "fangsong",
+      "sha256": "fef7cf991b458cabd184b73378918d9d15429010e1d6c804f08d394395c3c3b4"
+    },
+    {
+      "name": "title",
+      "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e"
+    },
+    {
+      "name": "kaiti",
+      "sha256": "99092cbb0df301625f46509e85854db8685556551742097ab3fbbc2e2ca0778b"
+    },
+    {
+      "name": "heiti",
+      "sha256": "aa4560dd8fe5645745fed3ffa301c3ca4d6c03cbd738145b613303961ba733b8"
+    },
+    {
+      "name": "times",
+      "sha256": "f3b4ffff71c2a0c7227d37497683b2498fb2d0a4e8beae26f022e3ccfcaabfa3"
+    },
+    {
+      "name": "times-bold",
+      "sha256": "50f5b1f27b7d34621090e437e8b1dd4510a22d2823fc876b3286bed327b64bbb"
+    },
+    {
+      "name": "times-italic",
+      "sha256": "7bb99c3a67697fbce15ab66d806d9a2151432ce1dab2eaba4156e1251da486c0"
+    },
+    {
+      "name": "times-bolditalic",
+      "sha256": "906157e8294fdf168d83002eaabde01c2d30fc3f44977be89e33fa22f262002a"
+    },
+    {
+      "name": "wingdings",
+      "sha256": "709d5848799239f0c51c0544c471c8d02bcbf9f2bcdc49702ebca1691a4c760e"
+    },
+    {
+      "name": "wingdings2",
+      "sha256": "6fce8b535724253e294c88f272613ad4b796c4181bae18b3e49775be63d02dcd"
+    }
+  ]
+}

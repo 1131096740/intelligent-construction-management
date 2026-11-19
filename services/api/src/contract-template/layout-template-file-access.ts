@@ -37,7 +37,9 @@ export async function resolveLayoutTemplateFileAccess(
   if (!positions.some((position) => LAYOUT_TEMPLATE_READ_ROLES.some((role) => role === position.key))) {
     return false;
   }
-  if (visibleVersions.length) return true;
+  const director = positions.some(position => position.key === "contract_director");
+  if (visibleVersions.length) return director || visibleVersions.some(version => ["published", "stopped", "revoked"].includes(version.status));
+  if (!director) return false;
   for (const job of jobs) {
     const version = await tx.contractLayoutTemplateVersion.findUnique({
       where: { id: job.layoutTemplateVersionId }

@@ -157,6 +157,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "付款",
     items: [
+      { label: "资金账户", path: "/资金账户", requiredGlobalRoleKeys: fundsWorkbenchRoleKeys },
       { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
       {
         label: "资金执行案件",
@@ -166,7 +167,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
       {
         label: "公司互转台账",
         path: "/公司互转台账",
-        requiredRoleKeys: ["finance_staff", "finance_director", "chairman", "general_manager", "project_manager", "contract_staff", "contract_director"]
+        requiredRoleKeys: ["finance_staff", "finance_director", "chairman", "general_manager", "project_manager", "contract_staff", "contract_director", "comprehensive_director"]
       },
       {
         label: "资金移动工作台",
@@ -351,6 +352,16 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         }
       },
       {
+        path: "合同模板库/主管维护",
+        component: () => import("../pages/contract-templates/LayoutTemplateManagementPage.vue"),
+        meta: { requiredGlobalRoleKeys: ["contract_director"], title: "维护合同模板" }
+      },
+      {
+        path: "合同模板库/版式/:layoutTemplateId/维护",
+        component: () => import("../pages/contract-templates/LayoutTemplateEditorPage.vue"),
+        meta: { requiredGlobalRoleKeys: ["contract_director"], title: "维护 Word 模板" }
+      },
+      {
         path: "合同模板库/:templateId",
         component: () => import("../pages/contract-templates/ContractTemplateReadonlyDetailPage.vue")
       },
@@ -492,6 +503,21 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/settlements/SettlementDetailPage.vue")
       },
       {
+        path: "资金余额复核/:registrationId",
+        component: () => import("../pages/funds/FundAccountsPage.vue"),
+        meta: { title: "本次余额核对复核" }
+      },
+      {
+        path: "垫资本金归还/:applicationId",
+        component: () => import("../pages/funds/FundPrincipalReturnDetailPage.vue"),
+        meta: { title: "垫资本金归还" }
+      },
+      {
+        path: "资金账户",
+        component: () => import("../pages/funds/FundAccountsPage.vue"),
+        meta: { requiredGlobalRoleKeys: fundsWorkbenchRoleKeys, title: "资金账户" }
+      },
+      {
         path: "统一资金办理工作台",
         component: () => import("../pages/funds/FundsWorkbenchPage.vue"),
         meta: { requiredRoleKeys: fundsWorkbenchRoleKeys, title: "统一资金办理工作台" }
@@ -499,7 +525,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "公司互转台账",
         component: () => import("../pages/fund-movements/CompanyTransferPage.vue"),
-        meta: { requiredRoleKeys: ["finance_staff", "finance_director", "chairman", "general_manager", "project_manager", "contract_staff", "contract_director"], title: "公司互转台账" }
+        meta: { requiredRoleKeys: ["finance_staff", "finance_director", "chairman", "general_manager", "project_manager", "contract_staff", "contract_director", "comprehensive_director"], title: "公司互转台账" }
       },
       {
         path: "资金移动工作台",

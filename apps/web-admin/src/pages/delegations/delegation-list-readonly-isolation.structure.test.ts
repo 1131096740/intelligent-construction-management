@@ -3,12 +3,17 @@ import { describe, expect, it } from "vitest";
 
 const page = readFileSync(new URL("./DelegationListPage.vue", import.meta.url), "utf8");
 
-describe("stage D approval-delegation readonly isolation", () => {
-  it("keeps the delegation ledger readable while removing create and revoke triggers", () => {
+describe("approval delegation keeps writes bound to an authorized duty", () => {
+  it("reads the ledger and requires server approval for create and revoke", () => {
     expect(page).toContain("listApprovalDelegations");
-    expect(page).toContain("上线准备期间暂为只读");
-    expect(page).not.toMatch(
-      /createApprovalDelegation|revokeApprovalDelegation|fetchApprovalDelegationUserOptions|submitCreate|submitRevoke|创建委托|新增委托|>撤销</
+    expect(page).toContain("fetchApprovalDelegationDutyOptions");
+    expect(page).toContain(':disabled="!duties.length"');
+    expect(page).toContain('v-if="row.fromUserId === auth.user?.id && row.enabled"');
+    expect(page).toMatch(
+      /fetchApprovalDelegationDutyCapability\(input\.resourceId\)[\s\S]*?capability\.canDelegate[\s\S]*?authorizedResource !== selectedResource[\s\S]*?authorizedAction !== selectedAction[\s\S]*?authorizedType !== selectedType[\s\S]*?return createApprovalDelegation\(input\)/u
+    );
+    expect(page).toMatch(
+      /fetchApprovalDelegationRevokeCapability\(id\)[\s\S]*?capability\.canRevoke[\s\S]*?return revokeApprovalDelegation\(id\)/u
     );
   });
 });

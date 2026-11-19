@@ -197,6 +197,34 @@ export class BusinessEntrySceneAuthorizationService {
             })) throw new ForbiddenException("当前零采明细不允许执行该操作");
           }
         },
+        {
+          sceneKey: "spot_procurement.request_v2",
+          resolve: async (context) => {
+            if (!await resolveSpotProcurementVersion({
+              target: context.target,
+              projectId: context.projectId,
+              actorUserId: context.actorUserId,
+              operation: context.operation,
+              scene: context.sceneKey,
+              scope: context.scope,
+              prisma: context.tx ?? prisma
+            })) throw new ForbiddenException("当前零采申请不允许执行该操作");
+          }
+        },
+        {
+          sceneKey: "spot_procurement.request_line_v2",
+          resolve: async (context) => {
+            if (!await resolveSpotProcurementLine({
+              target: context.target,
+              projectId: context.projectId,
+              actorUserId: context.actorUserId,
+              operation: context.operation,
+              scene: context.sceneKey,
+              scope: context.scope,
+              prisma: context.tx ?? prisma
+            })) throw new ForbiddenException("当前零采明细不允许执行该操作");
+          }
+        },
         ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => ({
           sceneKey: definition.key,
           resolve: (context: BusinessEntrySceneAuthorizationContext) => operatingTakeoverEntries.assertAuthorized(context)

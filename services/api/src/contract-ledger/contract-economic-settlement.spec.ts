@@ -1,6 +1,29 @@
 import { assertSettledScopesPreserved, economicScopeOptions, normalizeSettlementAllocations, confirmEconomicSettlementCoverage } from "./contract-economic-settlement";
+import { normalizeCoverage } from "./contract-economic-coverage";
 const doc={ref:"contract:a",projectId:"p",reference:"甲合同",title:"道路",counterparty:"供应商",amountCents:100000n,version:"1",formal:true,settledCents:0n};
 const review={id:"r",leftSourceRef:doc.ref,rightSourceRef:"affiliate:b",confirmedAt:new Date(),coverage:[{scope:"第一批材料",leftAmountCents:"40000",rightAmountCents:"40000",owner:"left"}]};
+it("新版未知总价保留已知重叠容量，独立部分容量明确未知",()=>{
+ const unknown=Object.assign({...doc,amountCents:null},{numericProtocolVersion:2 as const,amountYuan:null});
+ const other=Object.assign({...doc,ref:"affiliate:b",amountCents:null},{numericProtocolVersion:2 as const,amountYuan:"1.5340"});
+ const coverage=normalizeCoverage([{scope:"已验批次",leftAmountYuan:"0.0010",rightAmountYuan:"0.0010",owner:"left"}],"shared_evidence",unknown,other);
+ const options=economicScopeOptions(unknown,[{...review,coverage}])!;
+ expect(options).toMatchObject({numericProtocolVersion:2,scopes:[{capacityCents:null,capacityYuan:"0.0010"},{key:"uncovered",capacityCents:null,capacityYuan:null}]});
+});
+it("四位结算分项0.0050加0.0050完整对应真实一分结算，不写入半分",async()=>{
+ const known=Object.assign({...doc,amountCents:null},{numericProtocolVersion:2 as const,amountYuan:"0.0100"});
+ const coverage=normalizeCoverage([{scope:"已验批次",leftAmountYuan:"0.0050",rightAmountYuan:"0.0050",owner:"left"}],"shared_evidence",known,{...known,ref:"affiliate:b"});
+ const options=economicScopeOptions(known,[{...review,coverage}])!;
+ expect(normalizeSettlementAllocations([{scopeKey:options.scopes[0].key,amountYuan:"0.0050"},{scopeKey:"uncovered",amountYuan:"0.0050"}],options,1n)).toEqual([{scopeKey:options.scopes[0].key,numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050"},{scopeKey:"uncovered",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050"}]);
+ const allocations=normalizeSettlementAllocations([{scopeKey:options.scopes[0].key,amountYuan:"0.0050"},{scopeKey:"uncovered",amountYuan:"0.0050"}],options,1n);
+ const row={id:"coverage-v2",projectId:"p",contractRef:doc.ref,amountCents:1n,reviewFingerprint:options.fingerprint,status:"prepared",allocations};
+ const tx={contractEconomicSettlementCoverage:{findUnique:jest.fn(async()=>row),findMany:jest.fn(async()=>[]),update:jest.fn()}};
+ await confirmEconomicSettlementCoverage(tx as never,known,[{...review,coverage}],"settlement:v1-header",1n);
+ expect(tx.contractEconomicSettlementCoverage.update).toHaveBeenCalledWith({where:{id:"coverage-v2"},data:{status:"confirmed",confirmedAt:expect.any(Date)}});
+ const prior={contractEconomicSettlementCoverage:{findMany:jest.fn(async():Promise<Array<{allocations:unknown}>>=>[{allocations}])}};
+ await expect(assertSettledScopesPreserved(prior as never,known,[])).rejects.toThrow("不能转移");
+ prior.contractEconomicSettlementCoverage.findMany.mockResolvedValue([{allocations:[...allocations,...allocations.map(a=>({...a,amountYuan:"-0.0050"}))]}]);
+ await expect(assertSettledScopesPreserved(prior as never,known,[])).resolves.toBeUndefined();
+});
 describe("部分经济重复结算范围",()=>{
  it("唯一归属保留40000、未覆盖60000，另一文书不得结算共同部分",()=>{
   const options=economicScopeOptions(doc,[review])!;

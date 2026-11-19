@@ -358,6 +358,7 @@ function readFixture(
     amountCents: 500_000n,
     payableAmountCents: 500_000n,
     governanceVersion: null,
+    preparedByUserId: "applicant-1",
     updatedAt: SETTLEMENT_UPDATED_AT
   };
   const instance = approvalInstance();
@@ -399,7 +400,9 @@ function readFixture(
     approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) }
   };
   const projectVisibility = {
-    effectiveRoleKeys: jest.fn().mockResolvedValue([])
+    effectiveRoleKeys: jest.fn((actorUserId: string) =>
+      Promise.resolve(actorUserId === "reviewer-1" ? ["contract_director"] : [])
+    )
   };
   return {
     service: new SettlementReadService(prisma as never, projectVisibility as never)

@@ -1,5 +1,5 @@
 import { prepareSeedLayoutDocxSource } from "../contract-document/seed-layout-docx-source";
-import { LayoutTemplateService } from "../contract-template/layout-template.service";
+import type { LayoutSourcePosition } from "../contract-template/layout-field-mapping";
 import type { INestApplication } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
@@ -14,6 +14,19 @@ import { FileService, PrivateFileStorage } from "../file/file.service";
 
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
+function sampleBindings(positions: LayoutSourcePosition[], contractTypeKey: string) {
+  const sourceFields = [
+    ["{合同名称}", "contract.name"], ["{草稿编号}", "contract.temporaryCode"], ["{文档水印}", "document.watermark"],
+    ...(contractTypeKey === "generic_contract"
+      ? [["建工智管建设有限公司", "party.owner.name"], ["{相对方名称}", "party.counterparty.name"]]
+      : [["{甲方名称}", "party.owner.name"], ["{乙方名称}", "party.counterparty.name"]])
+  ];
+  return positions.flatMap(({ positionId, text }) => sourceFields.flatMap(([marker, fieldKey]) => {
+    const start = text.indexOf(marker);
+    return start < 0 ? [] : [{ positionId, fieldKey, start, end: start + marker.length }];
+  }));
+}
+
 export async function verifyLayoutPreviewHttp(
   app: INestApplication, baseUrl: string, owner: { id: string; phone: string; password: string }
 ) {
@@ -22,7 +35,6 @@ export async function verifyLayoutPreviewHttp(
   };
   const prisma = app.get(PrismaService);
   const files = app.get(FileService);
-  const layouts = app.get(LayoutTemplateService);
   const storage = new PrivateFileStorage();
   const suffix = randomUUID();
   const password = `Layout-${randomUUID()}`;
@@ -54,8 +66,9 @@ export async function verifyLayoutPreviewHttp(
   const chairman = await identity("chairman", 5);
   const project = await prisma.project.create({ data: { code: `layout-${suffix}`, name: "版式样张隔离项目" } });
   const projectStaff = await identity("contract_staff", 6, project.id);
+  const previewDirector = await identity("contract_director", 7);
   const actorPassword = new Map([[director, owner.password], [staff.token, password], [reader.token, password],
-    [finance.token, password], [admin.token, password], [chairman.token, password], [projectStaff.token, password]]);
+    [finance.token, password], [admin.token, password], [chairman.token, password], [projectStaff.token, password], [previewDirector.token, password]]);
   async function ticket(fileId: string, token: string, accessMode: "preview" | "download") {
     const result = await json<{ downloadUrl: string }>("POST", `/files/${fileId}/download-ticket`, token, {
       confirmationPassword: actorPassword.get(token), downloadReason: "版式隔离验收", accessMode
@@ -91,39 +104,60 @@ export async function verifyLayoutPreviewHttp(
     const originalJob = await prisma.contractLayoutPreviewJob.findUniqueOrThrow({ where: { id: data.layout.previewJob.id } });
     const originalBytes = await storage.read(data.layout.previewPdfFile.objectKey);
     const originalDocxFile = await prisma.fileObject.findUniqueOrThrow({ where: { id: data.layout.docxFile.id } });
-    expect((await request("POST", `/contract-layout-template-versions/${original.id}/clone`, staff.token)).status).toBe(410);
-    // Public maintenance routes remain retired. Exercise existing domain lifecycle only in this isolated fixture.
-    const clone = await layouts.cloneVersion(original.id, staff.user.id);
-    expect(clone.versionNo).toBe(2);
+    const clonePath = `/contract-layout-template-versions/${original.id}/clone`;
+    expect((await request("POST", clonePath, staff.token)).status).toBe(403);
+    expect((await request("POST", clonePath, reader.token)).status).toBe(403);
+    const clone = await json<{ id: string; versionNo: number; draftRevision: number }>("POST", clonePath, director);
+    expect(clone).toMatchObject({ versionNo: 2, status: "draft", layoutTemplateId: data.layout.id });
+    const versionPath = `/contract-layout-template-versions/${clone.id}`;
     const prepared = prepareSeedLayoutDocxSource(legacySource);
-    const newSource = await files.uploadPrivateFile({ originalName: "隔离演示V2.docx",
-      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      sizeBytes: prepared.length, buffer: prepared, uploadedByUserId: staff.user.id });
-    await layouts.updateDraftVersion(clone.id, staff.user.id, { docxFileId: newSource.id, expectedRevision: clone.draftRevision });
-    const inspection = await layouts.inspectVersion(clone.id, staff.user.id);
-    expect(inspection.blockingErrors).toEqual([]);
-    await layouts.queuePreview(clone.id, staff.user.id, sample.layout.previewJob.sampleData);
-    let preview: { status: string; previewPdfFileId?: string; errorMessage?: string } = { status: "queued" };
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(prepared)], { type: data.layout.docxFile.mimeType }), "隔离演示V2.docx");
+    const uploaded = await fetch(`${baseUrl}/files`, { method: "POST", headers: { authorization: `Bearer ${director}` }, body: form });
+    expect(uploaded.status).toBe(201);
+    const newSource = await uploaded.json() as { id: string };
+    await json("PATCH", versionPath, director, { docxFileId: newSource.id, expectedRevision: clone.draftRevision });
+    const sourcePositions = await json<{ sourceFileId: string; sourceSha256: string; draftRevision: number; positions: LayoutSourcePosition[] }>("GET", `${versionPath}/source-positions`, director);
+    expect(sourcePositions).toMatchObject({ sourceFileId: newSource.id, sourceSha256: digest(prepared), draftRevision: clone.draftRevision + 1 });
+    const sourceIdentity = { sourceFileId: sourcePositions.sourceFileId, sourceSha256: sourcePositions.sourceSha256 };
+    const mapping = await json<{ draftRevision: number; mappingFingerprint: string }>("PATCH", `${versionPath}/source-mapping`, director, {
+      ...sourceIdentity, expectedRevision: sourcePositions.draftRevision, bindings: sampleBindings(sourcePositions.positions, sample.template.contractTypeKey)
+    });
+    const inspection = await json("POST", `${versionPath}/inspection`, director);
+    expect(inspection).toMatchObject({ blockingErrors: [], sourceRevision: mapping.draftRevision });
+    const previewPath = `${versionPath}/preview-generation`;
+    const queued = await json<{ id: string }>("POST", previewPath, director, sample.layout.previewJob.sampleData);
+    expect(queued).toMatchObject({ status: "queued", sourceRevision: mapping.draftRevision });
+    let preview: { id?: string; status: string; sourceRevision?: number; previewPdfFileId?: string; errorMessage?: string } = { status: "queued" };
     for (let attempt = 0; attempt < 300; attempt += 1) {
-      preview = await json("GET", `/contract-layout-template-versions/${clone.id}/preview-generation`, staff.token);
+      preview = await json("GET", previewPath, director);
       if (["succeeded", "failed"].includes(preview.status)) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     if (preview.status === "failed") throw new Error(`真实版式样张生成失败：${preview.errorMessage}`);
-    expect(preview).toMatchObject({ status: "succeeded", previewPdfFileId: expect.any(String) });
+    expect(preview).toMatchObject({ id: queued.id, sourceRevision: mapping.draftRevision, status: "succeeded", previewPdfFileId: expect.any(String) });
     const pdfId = preview.previewPdfFileId!;
-    // Drafts and source files use global contract detail permissions, regardless of uploader.
+    expect((await request("GET", previewPath, staff.token)).status).toBe(403);
+    expect((await request("GET", `/files/${pdfId}/download-ticket-capability`, staff.token)).status).toBe(403);
     for (const outsider of [reader, finance, admin, chairman, projectStaff]) {
       expect((await request("GET", `/files/${pdfId}/download-ticket-capability`, outsider.token)).status).toBe(403);
       expect((await request("GET", `/files/${data.layout.docxFile.id}/download-ticket-capability`, outsider.token)).status).toBe(403);
     }
     await json("GET", `/files/${pdfId}/download-ticket-capability`, director);
-    const revokedTicket = await ticket(pdfId, staff.token, "preview");
-    await prisma.userPosition.delete({ where: { id: staff.assignment.id } });
-    expect((await fetch(revokedTicket)).status).toBe(403);
-    await prisma.userPosition.create({ data: staff.assignment });
-    await layouts.submitVersion(clone.id, staff.user.id);
-    await layouts.publishVersion(clone.id, owner.id, "隔离验收真实样张 V2，保留 V1");
+    const revokedTicket = await ticket(pdfId, previewDirector.token, "preview");
+    await prisma.userPosition.delete({ where: { id: previewDirector.assignment.id } });
+    try { expect((await fetch(revokedTicket)).status).toBe(403); }
+    finally { await prisma.userPosition.create({ data: previewDirector.assignment }); }
+    const confirmation = await json("POST", `${versionPath}/source-mapping-confirmation`, director, {
+      ...sourceIdentity, expectedRevision: mapping.draftRevision, mappingFingerprint: mapping.mappingFingerprint
+    });
+    expect(confirmation).toMatchObject({ confirmed: true, draftRevision: mapping.draftRevision, previewPdfFileId: pdfId });
+    const submitted = await json("POST", `${versionPath}/submission`, director);
+    expect(submitted).toMatchObject({ status: "submitted", submittedByUserId: owner.id });
+    const publication = { changeSummary: "隔离验收真实样张 V2，保留 V1" };
+    expect((await request("POST", `${versionPath}/publication`, staff.token, publication)).status).toBe(403);
+    const published = await json("POST", `${versionPath}/publication`, director, publication);
+    expect(published).toMatchObject({ status: "published", publishedByUserId: owner.id, previewPdfFileId: pdfId });
     expect(await prisma.contractLayoutTemplateVersion.findUnique({ where: { id: original.id } })).toEqual(original);
     expect(await prisma.fileObject.findUnique({ where: { id: originalFile.id } })).toEqual(originalFile);
     expect(await prisma.contractLayoutPreviewJob.findUnique({ where: { id: originalJob.id } })).toEqual(originalJob);
@@ -156,7 +190,7 @@ export async function verifyLayoutPreviewHttp(
     expect((await fetch(inactiveTicket)).status).toBe(403);
     await prisma.user.update({ where: { id: reader.user.id }, data: { isActive: true } });
     const oldTicket = await ticket(pdfId, reader.token, "preview");
-    await layouts.stopVersion(clone.id, owner.id);
+    expect(await json("POST", `${versionPath}/stop`, director)).toMatchObject({ status: "stopped" });
     expect((await fetch(oldTicket)).status).toBe(403);
     await ticket(pdfId, staff.token, "download");
     // Restore fixture publication only for browser read acceptance, never production history.

@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { randomUUID } from "node:crypto";
 
@@ -915,7 +916,7 @@ export class NecessaryExpenseReserveService {
     const total = replacements.reduce((sum, replacement) => sum + BigInt(replacement.amountCents), 0n);
     if (total > entry.amountCents || replacements.some((replacement) => {
       const impact = impactById.get(replacement.operatingImpactEntryId);
-      return !impact || BigInt(replacement.amountCents) > impact.amountCents;
+      return !impact || BigInt(replacement.amountCents) > requireLegacyOperatingCents(impact);
     })) {
       throw new ConflictException("释放替代分配超过释放金额或正式影响金额");
     }

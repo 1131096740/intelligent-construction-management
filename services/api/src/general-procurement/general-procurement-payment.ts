@@ -26,6 +26,7 @@ export async function prepareProcurementPayment(tx: Prisma.TransactionClient, pr
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "GeneralProcurement" WHERE "id" = ${id} FOR UPDATE`);
   const source = await tx.generalProcurement.findUnique({ where: { id } });
   if (!source || source.status !== "archived") throw new ConflictException("采购申请完成审批并由综合部归档后才能请款");
+  if (source.requestProtocolVersion !== 1 || source.requestedAmountCents == null || source.projectId == null || source.companyEntityId == null) throw new ConflictException("请从实际采购记录办理后续付款");
   if (source.projectId !== input.projectId || source.companyEntityId !== input.companyEntityId || `procurement_${source.category}` !== input.incidentalExpenseCategory) throw new BadRequestException("请款项目、费用承担公司和类别必须与采购申请一致");
   const fingerprint = procurementPaymentFingerprint(input, actorUserId);
   const deleted = await tx.auditLog.findFirst({ where: { action: "expense_claim.draft.delete", metadata: { path: ["requestKey"], equals: input.generalProcurementRequestKey } }, select: { id: true } });

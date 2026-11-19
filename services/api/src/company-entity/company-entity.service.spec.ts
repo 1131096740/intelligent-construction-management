@@ -719,7 +719,7 @@ describe("CompanyEntityService status", () => {
         tx,
         expect.objectContaining({
           action: auditAction,
-          metadata: { versionNo: 5, actorRoleKey: "contract_staff" }
+          metadata: { versionNo: 5, actorRoleKey: "contract_staff", hasExistingBusinessReferences: false }
         })
       );
     }

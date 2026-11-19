@@ -36,10 +36,10 @@ export class OperatingProjectionController {
     @Param("projectId") projectId: string,
     @Query() query: OperatingProjectionProjectQueryDto
   ) {
-    return this.projections.getProjectView(user.id, {
-      projectId,
-      ...filtersAndAsOf(query)
-    });
+    const input = { projectId, ...filtersAndAsOf(query) };
+    return query.numericProtocolVersion === "2"
+      ? this.projections.getProjectView(user.id, { ...input, numericProtocolVersion: 2 })
+      : this.projections.getProjectView(user.id, input);
   }
 
   @Get("project/:projectId/details")
@@ -49,10 +49,8 @@ export class OperatingProjectionController {
     @Param("projectId") projectId: string,
     @Query() query: OperatingProjectionProjectDetailQueryDto
   ) {
-    return this.projections.getProjectDetailPage(user.id, {
-      projectId,
-      ...query
-    });
+    const { numericProtocolVersion, ...detailQuery } = query;
+    return this.projections.getProjectDetailPage(user.id, { projectId, ...detailQuery, ...(numericProtocolVersion === "2" ? { numericProtocolVersion: 2 } : {}) });
   }
 
   @Get("company/:companyEntityId")
@@ -61,10 +59,10 @@ export class OperatingProjectionController {
     @Param("companyEntityId") companyEntityId: string,
     @Query() query: OperatingProjectionCompanyQueryDto
   ) {
-    return this.projections.getCompanyView(user.id, {
-      ...filtersAndAsOf(query),
-      companyEntityId
-    });
+    const input = { ...filtersAndAsOf(query), companyEntityId };
+    return query.numericProtocolVersion === "2"
+      ? this.projections.getCompanyView(user.id, { ...input, numericProtocolVersion: 2 })
+      : this.projections.getCompanyView(user.id, input);
   }
 
   @Get("company/:companyEntityId/details")
@@ -74,10 +72,8 @@ export class OperatingProjectionController {
     @Param("companyEntityId") companyEntityId: string,
     @Query() query: OperatingProjectionCompanyDetailQueryDto
   ) {
-    return this.projections.getCompanyDetailPage(user.id, {
-      ...query,
-      companyEntityId
-    });
+    const { numericProtocolVersion, ...detailQuery } = query;
+    return this.projections.getCompanyDetailPage(user.id, { ...detailQuery, companyEntityId, ...(numericProtocolVersion === "2" ? { numericProtocolVersion: 2 } : {}) });
   }
 
   @Get("as-of")
@@ -94,7 +90,8 @@ export class OperatingProjectionController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: OperatingProjectionAsOfDetailQueryDto
   ) {
-    return this.projections.getAsOfDetailPage(user.id, query);
+    const { numericProtocolVersion, ...detailQuery } = query;
+    return this.projections.getAsOfDetailPage(user.id, { ...detailQuery, ...(numericProtocolVersion === "2" ? { numericProtocolVersion: 2 } : {}) });
   }
 
   @Post("export")
@@ -130,6 +127,7 @@ function filtersAndAsOf(query: OperatingProjectionScopedQueryDto) {
 }
 
 export function asOfQuery(query: {
+  numericProtocolVersion?: "1" | "2";
   scopeKind?: string;
   projectId?: string;
   projectIds?: string;
@@ -141,6 +139,7 @@ export function asOfQuery(query: {
   const scopeKind = query.scopeKind as "project" | "company" | "projects";
   return {
     ...filtersAndAsOf(query),
+    ...(query.numericProtocolVersion === "2" ? { numericProtocolVersion: 2 as const } : {}),
     scopeKind,
     projectId: query.projectId,
     companyEntityId: query.companyEntityId,

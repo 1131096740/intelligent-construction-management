@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ApprovalDelegationService } from "./approval-delegation.service";
@@ -14,9 +14,24 @@ export class ApprovalDelegationController {
     return this.delegations.create(user.id, body);
   }
 
+  @Get("duty-capability")
+  dutyCapability(@CurrentUser() user: AuthenticatedUser, @Query("dutyId") dutyId: string) {
+    return this.delegations.dutyCapability(user.id, dutyId);
+  }
+
+  @Get(":delegationId/revoke-capability")
+  revokeCapability(@CurrentUser() user: AuthenticatedUser, @Param("delegationId") delegationId: string) {
+    return this.delegations.revokeCapability(user.id, delegationId);
+  }
+
   @Get("user-options")
-  userOptions(@CurrentUser() user: AuthenticatedUser) {
-    return this.delegations.listActiveUserOptions(user.id);
+  userOptions(@CurrentUser() user: AuthenticatedUser, @Query("dutyId") dutyId?: string) {
+    return this.delegations.listActiveUserOptions(user.id, dutyId);
+  }
+
+  @Get("duty-options")
+  dutyOptions(@CurrentUser() user: AuthenticatedUser) {
+    return this.delegations.listDutyOptions(user.id);
   }
 
   @Get()

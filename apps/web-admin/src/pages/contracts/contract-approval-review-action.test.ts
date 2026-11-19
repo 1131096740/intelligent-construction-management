@@ -8,7 +8,7 @@ const reviewRuntime = vi.hoisted(() => ({
   prepareReview: vi.fn(),
   fetchDetail: vi.fn(),
   postReview: vi.fn(),
-  route: { params: { contractId: "contract-a" } }
+  route: { params: { contractId: "contract-a" }, query: {} }
 }));
 
 vi.mock("vue", async (importOriginal) => {

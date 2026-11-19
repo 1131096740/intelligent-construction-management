@@ -34,11 +34,15 @@ const metaItems = computed(() => {
   if (!workbench) {
     return [];
   }
+  const data = workbench.version.draftData.contractBasics;
+  const basics = data && typeof data === "object" && !Array.isArray(data) ? data as Record<string, unknown> : {};
+  const businessType = workbench.version.status === "draft" && typeof basics.businessType === "string" ? basics.businessType : workbench.contract.contractTypeKey;
   return [
     { label: "草稿编号", value: workbench.contract.temporaryCode },
     { label: "正式编号", value: workbench.contract.code ?? "未生成" },
-    { label: "合同类型", value: contractTypeLabel(workbench.contract.contractTypeKey) },
-    { label: "状态", value: contractVersionStatusLabel(workbench.version.status) }
+    { label: "合同类型", value: contractTypeLabel(businessType) },
+    { label: "状态", value: contractVersionStatusLabel(workbench.version.status) },
+    ...(workbench.version.signingSubjectType === "draft_unconfirmed" ? [{ label: "签约主体", value: "待补充（未提交草稿）" }] : [])
   ];
 });
 </script>

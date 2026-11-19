@@ -8,7 +8,7 @@ const migrationPath = join(
 const schemaPath = join(process.cwd(), "prisma/schema.prisma");
 
 describe("payment execution idempotency schema", () => {
-  it("stores a unique business command key, exclusive voucher, and payer snapshots", () => {
+  it("stores a unique command key, permits deferred vouchers, and freezes payer snapshots", () => {
     const schema = readFileSync(schemaPath, "utf8");
     const paymentExecution = schema.match(
       /model PaymentExecution \{([\s\S]*?)^\}/mu
@@ -16,7 +16,12 @@ describe("payment execution idempotency schema", () => {
 
     expect(paymentExecution).toBeDefined();
     expect(paymentExecution).toMatch(/idempotencyKey\s+String\s+@unique/u);
-    expect(paymentExecution).toMatch(/voucherFileId\s+String\s+@unique/u);
+    expect(paymentExecution).toMatch(/voucherFileId\s+String\?\s+@unique/u);
+    expect(paymentExecution).toMatch(/registeredVoucher\s+RegisteredPaymentVoucher\?/u);
+    const registeredVoucher = schema.match(/model RegisteredPaymentVoucher \{([\s\S]*?)^\}/mu)?.[1];
+    expect(registeredVoucher).toMatch(/executionId\s+String\s+@id/u);
+    expect(registeredVoucher).toMatch(/fileId\s+String\s+@unique/u);
+    expect(registeredVoucher).toMatch(/execution\s+PaymentExecution\s+@relation\(fields: \[executionId\], references: \[id\]/u);
     expect(paymentExecution).toMatch(/companyEntityIdSnapshot\s+String\s/u);
     expect(paymentExecution).toMatch(/companyEntityNameSnapshot\s+String\s/u);
     expect(paymentExecution).toMatch(

@@ -25,14 +25,17 @@ export function advanceContractBillErrorCursor<T extends {
 </script>
 
 <script setup lang="ts">
-import type { ColumnRegular } from "@revolist/vue3-datagrid";
+import { formatApiErrorMessage } from "../../../api/error-message";
+import { VGridVueTemplate, type ColumnRegular } from "@revolist/vue3-datagrid";
 import {
   isContractBillCustomColumn,
   normalizeContractBillBoolean
 } from "@jiangkong/shared-domain";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
-import type { JgBusinessGridRow } from "../../../components/jg-business-grid.config";
+import JgBusinessGridRowActionsCell from "../../../components/JgBusinessGridRowActionsCell.vue";
+import JgBusinessGridSelectionCell from "../../../components/JgBusinessGridSelectionCell.vue";
+import { JG_BUSINESS_SEARCH_SELECT_EDITOR, type JgBusinessGridRow } from "../../../components/jg-business-grid.config";
 import {
   billColumns,
   inheritedTaxRateText,
@@ -44,6 +47,9 @@ import type {
   ContractBillCellError
 } from "./contract-bill-grid";
 import {
+  addBillCandidateRow,
+  previewBillRowGross,
+  rowHasRemainderCancellationCapability,
   netUnitPriceDetail,
   netUnitPriceDisplay
 } from "./contract-bill-grid";
@@ -53,11 +59,20 @@ const props = defineProps<{
   rows: ContractBillCandidateRow[];
   errors: ContractBillCellError[];
   readonly: boolean;
+  selectedKeys?: string[];
+  presentation?: "grid" | "cards";
 }>();
 
 const emit = defineEmits<{
   "update:rows": [rows: ContractBillCandidateRow[]];
+  "update:presentation": [presentation: "grid" | "cards"];
+  "editor-input": [state: { pending: boolean; edited: boolean }];
+  "copy-row": [rowIndex: number];
+  "delete-row": [rowIndex: number];
+  "move-row": [rowIndex: number, offset: -1 | 1];
   "select-row": [clientRowKey: string];
+  "toggle-selection": [clientRowKey: string | null, shift: boolean];
+  "select-rows": [all: boolean];
 }>();
 const businessGridRef = ref<InstanceType<typeof JgBusinessGrid> | null>(null);
 
@@ -92,6 +107,12 @@ const customBooleanOptions = [
 const isMobile = ref(
   typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
 );
+const mobileCards = ref(props.presentation === "cards");
+watch(() => props.presentation, value => { if (value !== undefined) mobileCards.value = value === "cards"; });
+function togglePresentation() {
+  mobileCards.value = !mobileCards.value;
+  emit("update:presentation", mobileCards.value ? "cards" : "grid");
+}
 const nextErrorIndex = ref(0);
 const errorListSignature = ref("");
 const editorErrors = ref<ContractBillCellError[]>([]);
@@ -106,20 +127,19 @@ const customColumns = computed<EditableColumn[]>(() =>
 
 const resolvedCoreColumns = computed(() => coreColumns.map((column) => {
   const configured = configuredColumns.value.find((candidate) => candidate.key === column.key);
-  return configured
-    ? { ...column, label: configured.label, required: configured.required }
-    : column;
+  const resolved = configured ? { ...column, label: configured.label, required: configured.required } : column;
+  return column.key === "unitPrice" && props.bill.pricingMode === "tax_exclusive" ? { ...resolved, label: "不含税单价" } : resolved;
 }));
 const quantityColumn = computed(() =>
   resolvedCoreColumns.value.find((column) => column.key === "quantity") ?? coreColumns[4]!
 );
-const editableColumns = computed(() => [...resolvedCoreColumns.value, ...customColumns.value]);
+const editableColumns = computed(() => [...resolvedCoreColumns.value.filter(column => props.bill.pricingMode !== "tax_exclusive" || column.key !== "taxExclusiveUnitPrice"), ...customColumns.value]);
 const displayErrors = computed(() =>
   Array.from(
     new Map(
-      [...props.errors, ...editorErrors.value].map((error) => [
-        cellKey(error.clientRowKey, error.field),
-        error
+      [...props.errors, ...editorErrors.value].map((issue) => [
+        cellKey(issue.clientRowKey, issue.field),
+        { ...issue, message: formatApiErrorMessage(issue.message, 0, "请核对清单明细") }
       ])
     ).values()
   )
@@ -127,34 +147,79 @@ const displayErrors = computed(() =>
 const errorLookup = computed(() =>
   new Map(displayErrors.value.map((error) => [cellKey(error.clientRowKey, error.field), error]))
 );
-const gridRows = computed<JgBusinessGridRow[]>(() => props.rows.map(toGridRow));
+const gridRows = computed<JgBusinessGridRow[]>((previous) => {
+  const next = props.rows.map(toGridRow);
+  return previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+});
 const columns = computed<ColumnRegular[]>(() =>
-  editableColumns.value.map((column) => ({
+  [{
+    prop: "__selected", name: "选择", size: isMobile.value ? 56 : 64, readonly: true, pin: "colPinStart",
+    cellTemplate: VGridVueTemplate(JgBusinessGridSelectionCell, { disabled: props.readonly, toggle: toggleSelection, selectRows }),
+    columnTemplate: VGridVueTemplate(JgBusinessGridSelectionCell, {
+      header: true, disabled: props.readonly, toggle: toggleSelection, selectRows,
+      allSelected: Boolean(props.rows.length && props.selectedKeys?.length === props.rows.length),
+      partiallySelected: Boolean(props.selectedKeys?.length && props.selectedKeys.length < props.rows.length)
+    })
+  }, ...editableColumns.value.map((column) => ({
     prop: column.key,
     name: column.required ? `${column.label} *` : column.label,
-    size: column.size,
-    readonly: ({ model }) => isReadonlyCell(column.key, model as JgBusinessGridRow),
-    cellProperties: ({ model }) => {
+    size: column.key === "itemName" && isMobile.value ? 128 : column.size,
+    ...(column.key === "itemName" ? { pin: "colPinStart" as const } : {}),
+    ...businessChoiceColumn(column),
+    readonly: ({ model }: { model: unknown }) => isReadonlyCell(column.key, model as JgBusinessGridRow),
+    cellProperties: ({ model }: { model: unknown }) => {
       const clientRowKey = String((model as JgBusinessGridRow).clientRowKey ?? "");
-      const error = errorLookup.value.get(cellKey(clientRowKey, column.key));
-      if (column.key === "taxExclusiveUnitPrice") {
-        const row = props.rows.find((candidate) => candidate.clientRowKey === clientRowKey);
-        return {
-          className: "contract-bill-grid__cell--authoritative",
-          "data-authoritative-field": "taxExclusiveUnitPrice",
-          title: netUnitPriceDetail(row?.taxExclusiveUnitPrice)
-        };
-      }
-      if (!error) return undefined;
+      const cellIssue = errorLookup.value.get(cellKey(clientRowKey, column.key));
+      const classes = [props.selectedKeys?.includes(clientRowKey) ? "contract-bill-grid__cell--selected" : ""];
+      if (["quantity", "unitPrice", "taxRatePercent", "taxExclusiveUnitPrice"].includes(column.key)) classes.push("contract-bill-grid__cell--number");
+      if (column.key === "taxExclusiveUnitPrice") classes.push("contract-bill-grid__cell--authoritative");
+      if (cellIssue) classes.push("contract-bill-grid__cell--error");
+      if (!classes.some(Boolean)) return undefined;
       return {
-        className: "contract-bill-grid__cell--error",
-        "aria-invalid": "true",
-        "data-cell-error": cellKey(clientRowKey, column.key),
-        title: error.message
+        className: classes.filter(Boolean).join(" "),
+        ...(cellIssue ? { "aria-invalid": "true", "data-cell-error": cellKey(clientRowKey, column.key), title: cellIssue.message } :
+          column.key === "taxExclusiveUnitPrice" ? { "data-authoritative-field": "taxExclusiveUnitPrice", title: netUnitPriceDetail(props.rows.find(row => row.clientRowKey === clientRowKey)?.taxExclusiveUnitPrice) } : {})
       };
     }
-  }))
+  })), {
+    prop: "__grossPreview", name: props.bill.pricingMode === "tax_exclusive" ? "当前行不含税金额" : "当前行含税合计", size: 160, readonly: true,
+    cellProperties: () => ({ className: "contract-bill-grid__cell--number contract-bill-grid__cell--authoritative" })
+  }, {
+    prop: "__rowActions", name: "行操作", size: 220, readonly: true,
+    ...(isMobile.value ? {} : { pin: "colPinEnd" as const }),
+    cellTemplate: VGridVueTemplate(JgBusinessGridRowActionsCell, {
+      disabled: props.readonly, lastIndex: props.rows.length - 1,
+      canDelete: (index: number) => Boolean(props.rows[index] && !rowHasRemainderCancellationCapability(props.rows[index]!)),
+      copy: (index: number) => emit("copy-row", index), remove: (index: number) => emit("delete-row", index),
+      move: (index: number, offset: -1 | 1) => emit("move-row", index, offset)
+    })
+  }]
 );
+
+function businessChoiceColumn(column: EditableColumn): Partial<ColumnRegular> & {
+  businessSelectOptions?: ReadonlyArray<{ label: string; value: string }>;
+} {
+  const options = column.key === "taxRateSource" ? taxRateSourceOptions
+    : column.key === "isProvisional" ? customBooleanOptions.filter(option => option.value !== "")
+      : column.type === "boolean" ? customBooleanOptions : null;
+  if (!options) return {};
+  return {
+    editor: JG_BUSINESS_SEARCH_SELECT_EDITOR,
+    businessSelectOptions: options,
+    cellTemplate: (h, { model }) => {
+      const value = String(model[column.key] ?? "");
+      return h("span", {}, options.find(option => option.value === value)?.label ?? value);
+    }
+  };
+}
+
+function selectRows(all: boolean) {
+  if (!props.readonly) emit("select-rows", all);
+}
+
+function toggleSelection(rowIndex: number | null, shift: boolean) {
+  emit("toggle-selection", rowIndex === null ? null : props.rows[rowIndex]?.clientRowKey ?? null, shift);
+}
 
 onMounted(() => {
   mobileQuery = window.matchMedia("(max-width: 767px)");
@@ -189,6 +254,8 @@ function toGridRow(row: ContractBillCandidateRow): JgBusinessGridRow {
   ]));
   return {
     ...customData,
+    __grossPreview: (() => { const preview = previewBillRowGross(row, props.bill); return preview.invalid ? "需修改输入" : preview.value ?? "待确定"; })(),
+    __selected: props.selectedKeys?.includes(row.clientRowKey) ? "true" : "false",
     clientRowKey: row.clientRowKey,
     itemCode: row.itemCode,
     itemName: row.itemName,
@@ -196,12 +263,32 @@ function toGridRow(row: ContractBillCandidateRow): JgBusinessGridRow {
     unit: row.unit,
     quantity: row.quantity,
     unitPrice: row.unitPrice,
-    taxExclusiveUnitPrice: netUnitPriceDisplay(row.taxExclusiveUnitPrice),
+    taxExclusiveUnitPrice: netUnitPriceDisplay(row.taxExclusiveUnitPrice, row.precisionPolicy === "four_decimal" ? 4 : 2),
     taxRateSource: row.taxRateSource,
     taxRatePercent: row.taxRatePercent,
     isProvisional: row.isProvisional ? "true" : "false",
     settlementBasis: row.settlementBasis
   };
+}
+
+function pasteCells(paste: { rowIndex: number; colIndex: number; cells: string[][] }) {
+  if (props.readonly || !Number.isInteger(paste.rowIndex) || paste.rowIndex < 0 || paste.rowIndex >= props.rows.length) return;
+  let next = props.rows.map(row => ({ ...row, customData: { ...row.customData } }));
+  const nextErrors: ContractBillCellError[] = [];
+  while (next.length < paste.rowIndex + paste.cells.length) next = addBillCandidateRow(next);
+  paste.cells.forEach((cells, offset) => {
+    const index = paste.rowIndex + offset;
+    const current = next[index]!;
+    const gridRow = toGridRow(current);
+    cells.forEach((value, columnOffset) => {
+      const column = columns.value[paste.colIndex + columnOffset];
+      if (!column || typeof column.prop !== "string" || column.readonly === true || isReadonlyCell(column.prop, gridRow)) return;
+      gridRow[column.prop] = value;
+    });
+    next[index] = candidateFromGridRow(current, gridRow, nextErrors);
+  });
+  editorErrors.value = nextErrors;
+  emit("update:rows", next);
 }
 
 function onGridRowsChanged(value: JgBusinessGridRow[]) {
@@ -350,7 +437,7 @@ function updateMobileCell(
 }
 
 function selectError(error: ContractBillCellError) {
-  emit("select-row", error.clientRowKey);
+  void focusReadinessCell(error.clientRowKey, error.field, true);
 }
 
 function selectGridRow(rowIndex: number) {
@@ -372,7 +459,8 @@ function selectNextError() {
 
 async function focusReadinessCell(
   rowKey: string,
-  field: string
+  field: string,
+  edit = false
 ): Promise<boolean> {
   const rowIndex = props.rows.findIndex(
     (row) => row.rowKey === rowKey || row.clientRowKey === rowKey
@@ -380,8 +468,9 @@ async function focusReadinessCell(
   if (rowIndex < 0) return false;
   const row = props.rows[rowIndex]!;
   emit("select-row", row.clientRowKey);
-  if (!isMobile.value) {
-    return (await businessGridRef.value?.focusCell(rowIndex, field)) ?? false;
+  if (!isMobile.value || !mobileCards.value) {
+    if (edit && await businessGridRef.value?.editCell(rowIndex, field, row.clientRowKey)) return true;
+    return (await businessGridRef.value?.focusCell(rowIndex, field, row.clientRowKey)) ?? false;
   }
   await nextTick();
   const control = [...document.querySelectorAll<HTMLElement>(
@@ -424,6 +513,9 @@ function errorRowNumber(clientRowKey: string) {
 
 function isReadonlyCell(field: string, row: JgBusinessGridRow) {
   if (props.readonly) return true;
+  const candidate = props.rows.find(candidate => candidate.clientRowKey === row.clientRowKey);
+  const original = candidate?.rowKey ? props.bill.rows.find(original => original.rowKey === candidate.rowKey) : undefined;
+  if (original?.["remainderDisposition"] === "cancelled") return true;
   if (field === "taxExclusiveUnitPrice") return true;
   if (field === "taxRateSource") return props.bill.taxMode !== "multiple_rate";
   if (field === "taxRatePercent") {
@@ -493,6 +585,14 @@ function cellKey(clientRowKey: string, field: string) {
 
 <template>
   <section class="contract-bill-grid">
+    <t-button
+      v-if="isMobile"
+      size="small"
+      variant="outline"
+      @click="togglePresentation"
+    >
+      {{ mobileCards ? '切换表格填写' : '切换逐行填写' }}
+    </t-button>
     <t-alert
       v-if="displayErrors.length"
       theme="error"
@@ -511,31 +611,36 @@ function cellKey(clientRowKey: string, field: string) {
       </div>
       <ul class="contract-bill-grid__error-list">
         <li
-          v-for="error in displayErrors"
-          :key="cellKey(error.clientRowKey, error.field)"
+          v-for="cellIssue in displayErrors"
+          :key="cellKey(cellIssue.clientRowKey, cellIssue.field)"
         >
           <t-button
             size="small"
             variant="text"
             class="contract-bill-grid__error-link"
-            :data-cell-error="cellKey(error.clientRowKey, error.field)"
-            @click="selectError(error)"
+            :data-cell-error="cellKey(cellIssue.clientRowKey, cellIssue.field)"
+            @click="selectError(cellIssue)"
           >
-            第 {{ errorRowNumber(error.clientRowKey) }} 行 · {{ error.message }}
+            第 {{ errorRowNumber(cellIssue.clientRowKey) }} 行 · {{ cellIssue.message }}
           </t-button>
         </li>
       </ul>
     </t-alert>
 
     <JgBusinessGrid
-      v-if="!isMobile"
+      v-if="!isMobile || !mobileCards"
       ref="businessGridRef"
       :source="gridRows"
       :columns="columns"
       :readonly="readonly"
       :min-height="520"
+      managed-paste
+      row-selection-keyboard
+      @toggle-focused-row="toggleSelection($event, false)"
+      @paste-cells="pasteCells"
       @update:source="onGridRowsChanged"
       @focus-row="selectGridRow"
+      @editor-input="emit('editor-input', $event)"
     />
 
     <div
@@ -614,7 +719,7 @@ function cellKey(clientRowKey: string, field: string) {
             />
           </label>
           <label class="contract-bill-grid__field">
-            <span>含税单价 *</span>
+            <span>{{ props.bill.pricingMode === "tax_exclusive" ? "不含税" : "含税" }}单价 *</span>
             <t-input
               :model-value="row.unitPrice"
               :disabled="readonly"
@@ -633,7 +738,7 @@ function cellKey(clientRowKey: string, field: string) {
               :data-client-row-key="row.clientRowKey"
               :title="netUnitPriceDetail(row.taxExclusiveUnitPrice)"
             >
-              {{ netUnitPriceDisplay(row.taxExclusiveUnitPrice) }}
+              {{ netUnitPriceDisplay(row.taxExclusiveUnitPrice, row.precisionPolicy === "four_decimal" ? 4 : 2) }}
             </span>
           </div>
           <label class="contract-bill-grid__field">
@@ -769,6 +874,12 @@ function cellKey(clientRowKey: string, field: string) {
   color: var(--jg-color-text-secondary);
   font-size: var(--jg-font-size-meta);
 }
+
+.contract-bill-grid :deep([role="gridcell"]) { text-align: left; }
+
+.contract-bill-grid :deep(.contract-bill-grid__cell--selected) { background: var(--jg-color-bg-brand-soft); }
+.contract-bill-grid :deep(.contract-bill-grid__cell--number) { text-align: right; }
+.contract-bill-grid :deep(.contract-bill-grid__cell--authoritative) { background: var(--jg-color-bg-muted); }
 
 .contract-bill-grid :deep(.contract-bill-grid__cell--error) {
   outline: var(--jg-border-width-base) solid var(--jg-color-danger);

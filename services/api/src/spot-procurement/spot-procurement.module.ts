@@ -1,3 +1,5 @@
+import { SpotPaymentExecutionNotificationService } from "./spot-payment-execution-notification.service";
+import { SpotProcurementReceiptReviewNotificationService } from "./spot-procurement-receipt-review-notification.service";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -54,11 +56,13 @@ import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment
     SpotProcurementInvoiceService,
     SpotProcurementPaymentArchiveService,
     SpotProcurementBalanceService,
+    SpotPaymentExecutionNotificationService,
     SpotProcurementPaymentService,
     SpotProcurementPilotService,
     SpotProcurementReadService,
     SpotProcurementReceiptPdfService,
     SpotProcurementReceiptService,
+    SpotProcurementReceiptReviewNotificationService,
     SpotProcurementSettlementService
   ],
   exports: [

@@ -7,7 +7,7 @@ const finalArchiveRuntime = vi.hoisted(() => ({
   associateFinal: vi.fn(),
   fetchDetail: vi.fn(),
   uploadPrivate: vi.fn(),
-  route: { params: { contractId: "2a888482-565d-4326-a668-d8072cf480ca" } }
+  route: { params: { contractId: "2a888482-565d-4326-a668-d8072cf480ca" }, query: {} }
 }));
 
 vi.mock("vue", async (importOriginal) => {

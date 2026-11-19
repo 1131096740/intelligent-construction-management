@@ -23,7 +23,7 @@ function emptyProjectionTx(
     $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
     project: { findMany: jest.fn().mockResolvedValue(projects) },
     projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-    interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+    interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
     companyEntityVersion: { findMany: jest.fn().mockResolvedValue([]) },
     clearingCase: { findMany: jest.fn().mockResolvedValue([]) },
@@ -134,7 +134,7 @@ describe("OperatingProjectionService", () => {
       additional: { marker: "same-snapshot" },
       canExportDetail: expected
     }));
-    expect(additional).toHaveBeenCalledWith(tx, [project.id]);
+    expect(additional).toHaveBeenCalledWith(tx, [project.id], expect.objectContaining({ numericProtocolVersion: 2 }));
   });
 
   it("limits per-actor concurrent and minute-rate projection reads", () => {
@@ -341,7 +341,7 @@ describe("OperatingProjectionService", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: { findMany: jest.fn().mockResolvedValue([project]) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn().mockResolvedValue(0),
@@ -710,7 +710,7 @@ describe("OperatingProjectionService", () => {
           snapshotBytes: 0n,
           maxSnapshotBytes: 0n
         }]).mockResolvedValue([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: {
         findMany: jest.fn().mockResolvedValue([{
           projectId: "project-1",
@@ -814,7 +814,7 @@ describe("OperatingProjectionService", () => {
         )
       },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn(),
@@ -879,7 +879,7 @@ describe("OperatingProjectionService", () => {
           snapshotBytes: 0n,
           maxSnapshotBytes: 0n
         }]).mockResolvedValue([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
       projectParticipatingCompany,
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
       companyEntityVersion: { findMany: jest.fn().mockResolvedValue([{ id: "company-v1" }]) },
@@ -1044,7 +1044,7 @@ describe("OperatingProjectionService", () => {
         )
       },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn().mockResolvedValue(0),
@@ -1229,7 +1229,7 @@ describe("OperatingProjectionService", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: { findMany: jest.fn().mockResolvedValue([project]) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn().mockResolvedValue(10_001),

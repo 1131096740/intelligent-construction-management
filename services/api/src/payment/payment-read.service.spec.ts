@@ -179,7 +179,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(prisma as never, {effectiveRoleKeys: async () => ["finance_staff"]} as never);
 
     const ledger = await service.listLedger(
       { view: "formal_ledger", page: 1, pageSize: 20 },
@@ -301,7 +301,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([{ approvalInstanceId: "approval-returned" }])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(prisma as never, {effectiveRoleKeys: async () => ["finance_staff"]} as never);
 
     const ledger = await service.listRecent(20);
 
@@ -371,6 +371,7 @@ describe("PaymentReadService", () => {
         currentNodeIndex: 0
       };
       const prisma = {
+        $queryRaw: async () => actorUserId === "applicant-1" ? [{id:"approval-returned"}] : [],
         paymentRequest: {
           findFirst: jest.fn().mockResolvedValue({
             id: "payment-returned",
@@ -434,6 +435,10 @@ describe("PaymentReadService", () => {
       };
       const service = new PaymentReadService(prisma as never, projectVisibility as never);
 
+      if (actorUserId !== "applicant-1") {
+        await expect(service.getDetail("payment-returned", undefined, actorUserId)).rejects.toThrow("未找到付款申请");
+        return;
+      }
       const detail = await service.getDetail("payment-returned", undefined, actorUserId);
 
       expect(detail.availableActions.some((action) => action.key === "abandon_application"))
@@ -966,18 +971,7 @@ describe("PaymentReadService", () => {
     });
 
     projectVisibility.effectiveRoleKeys.mockResolvedValueOnce([]);
-    const nonFinanceDetail = await service.getDetail(
-      "FK-2026-011",
-      undefined,
-      "user-observer"
-    );
-    expect(nonFinanceDetail.availableActions).toContainEqual(
-      expect.objectContaining({
-        key: "record_execution",
-        enabled: false
-      })
-    );
-    expect(nonFinanceDetail.executionContext).toBeNull();
+    await expect(service.getDetail("FK-2026-011", undefined, "user-observer")).rejects.toThrow("未找到付款申请");
 
     projectVisibility.effectiveRoleKeys.mockResolvedValueOnce(["finance_staff"]);
     prisma.user.findUnique.mockResolvedValueOnce({

@@ -879,7 +879,8 @@ describe("ContractFormalFileService.counterparty", () => {
     prisma.fileObject.findUnique.mockResolvedValue(file);
     files.getFileBuffer.mockResolvedValue({ file, buffer: docx });
     files.uploadPrivateFile.mockResolvedValue({ id: "preview-file-1" });
-    prisma.$transaction = jest.fn().mockRejectedValue({ code: "P2034" });
+    const preflight = prisma.$transaction.getMockImplementation()!;
+    prisma.$transaction.mockImplementationOnce(preflight).mockRejectedValueOnce({ code: "P2034" });
     const service = new ContractFormalFileService(prisma as never, undefined, files as never);
 
     await expect(service.uploadCounterpartySigned("version-1", "owner-1", {

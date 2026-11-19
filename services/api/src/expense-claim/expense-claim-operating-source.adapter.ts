@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
+import { observeRegisteredOperationalPaymentSource } from "../fund-account/registered-operational-payment";
 
 import {
   frozenAffiliateFromJson,
@@ -368,7 +369,13 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
     if (amountCents <= 0n) throw new BadRequestException("费用实际付款金额必须大于 0");
     const payer: OperatingSubjectReference = {
       kind: "participating_company",
-      id: requiredJsonText(source, "paymentSubjectCompanyEntityId", "费用实际付款")
+      id: source.registeredFunding === undefined
+        ? requiredJsonText(source, "paymentSubjectCompanyEntityId", "费用实际付款")
+        : requiredJsonText(
+            requiredJsonRecord(source.registeredFunding, "费用登记付款"),
+            "actualPayerCompanyId",
+            "费用登记付款"
+          )
     };
     const claimType = requiredJsonText(source, "claimType", "费用实际付款");
     const payee = claimPayee(source, claimType, "费用实际付款");
@@ -436,7 +443,11 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
     ) {
       throw new BadRequestException("费用实际付款缺少可投影的项目费用申请");
     }
-    if (!claim.paymentSubjectCompanyEntityId) {
+    const registeredFunding = await observeRegisteredOperationalPaymentSource(tx, {
+      sourceType: EXPENSE_CLAIM_PAYMENT_EXECUTION_SOURCE_TYPE,
+      executionId: row.id
+    });
+    if (!registeredFunding && !claim.paymentSubjectCompanyEntityId) {
       throw new BadRequestException("费用实际付款缺少冻结付款主体");
     }
     const [effectiveDate, affiliate] = await Promise.all([
@@ -457,7 +468,9 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
         formalStatus: "confirmed",
         expenseClaimId: claim.id,
         claimType: claim.claimType,
-        paymentSubjectCompanyEntityId: claim.paymentSubjectCompanyEntityId,
+        ...(registeredFunding
+          ? { registeredFunding }
+          : { paymentSubjectCompanyEntityId: claim.paymentSubjectCompanyEntityId }),
         applicantUserId: claim.applicantUserId,
         applicantNameSnapshot: claim.applicantNameSnapshot,
         applicantPhoneSnapshot: claim.applicantPhoneSnapshot,

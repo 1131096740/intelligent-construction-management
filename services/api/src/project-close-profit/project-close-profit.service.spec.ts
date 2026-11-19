@@ -1,5 +1,6 @@
 import { ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { OwnerSettlementBelowCentForCloseError } from "../operating-projection/operating-projection.service";
 import {
   ProjectCloseProfitService,
   calculateExistingFundsApplied,
@@ -9,6 +10,38 @@ import { resolveProjectCloseImpactPolicy } from "./project-close-impact-policy";
 import { OPERATING_IMPACT_KINDS } from "@jiangkong/shared-domain";
 
 describe("ProjectCloseProfitService", () => {
+  it("shows frozen stage history without showing or authorizing an inaccurate cent snapshot", async () => {
+    const priorDate = new Date("2026-09-18T08:00:00.000Z");
+    const frozenStage = {
+      id: "frozen-stage", stageKey: "construction_completed", revision: 1, status: "completed",
+      prerequisiteStageVersionIds: [], projectionReadAt: priorDate, projectionCutoffAt: priorDate,
+      projectionFingerprint: "frozen-cent-fingerprint", amountSnapshot: { confirmedIncomeCents: "123" },
+      stateSnapshot: {}, basisSnapshot: {}, confirmedByUserId: "manager", confirmedAt: priorDate
+    };
+    const empty = { findMany: jest.fn().mockResolvedValue([]) };
+    const tx = {
+      projectCloseStageVersion: { findMany: jest.fn().mockResolvedValue([frozenStage]) },
+      projectCloseProfessionalAttestation: empty, projectCloseProfitConfirmation: empty,
+      projectCloseDistribution: empty, projectCloseDecisionSubmission: empty,
+      projectParticipatingCompany: empty, projectTemporaryProfitDistribution: empty, projectCloseImpact: empty
+    };
+    const prisma = { $transaction: async (work: (client: typeof tx) => Promise<unknown>) => work(tx) };
+    const projections = { readProjectInTransaction: jest.fn().mockRejectedValue(new OwnerSettlementBelowCentForCloseError()) };
+    const visibility = { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+      new Map([["project-1", ["finance_director"]]])
+    ) };
+    const service = new ProjectCloseProfitService(prisma as never, projections as never, visibility as never, {} as never);
+    const result = await service.getWorkbench("finance-user", "project-1");
+    expect(result).toMatchObject({
+      projection: null, writeBlockedReason: expect.stringContaining("不足一分"),
+      canReconcileImpacts: false, availableActions: [],
+      history: { stageVersions: [expect.objectContaining({
+        id: frozenStage.id, amountSnapshot: frozenStage.amountSnapshot
+      })] }
+    });
+    expect(result.stages.every(stage => stage.availableActions.length === 0)).toBe(true);
+  });
+
   it("returns the first ready stage and only the current role's server action", async () => {
     const tx = {
       projectCloseStageVersion: {

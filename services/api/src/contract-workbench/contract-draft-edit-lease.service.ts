@@ -1,3 +1,5 @@
+import { qualifyUpwardPendingSave } from "../contract/contract-upward-pending-save-profile";
+import { assertUpwardDirectPendingWriteClosed, isUpwardDirectPendingDraft } from "../contract/contract-upward-pending-read";
 import {
   BadRequestException,
   ConflictException,
@@ -6,7 +8,7 @@ import {
   NotFoundException,
   Optional
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type Contract, type ContractVersion } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -34,10 +36,11 @@ export class ContractDraftEditLeaseService {
   async acquire(contractVersionId: string, actorUserId: string) {
     const issued = this.issueToken();
     return this.prisma.$transaction(async (tx) => {
-      const { contract } = await this.lockEditableDraft(tx, contractVersionId);
+      const { contract, version } = await this.lockEditableDraft(tx, contractVersionId);
       if (contract.ownerUserId !== actorUserId) {
         throw new ForbiddenException("只有当前合同经办人可以取得编辑权");
       }
+      if (isUpwardDirectPendingDraft(version.draftData)) await qualifyUpwardPendingSave(tx);
       const now = this.currentTime();
       const existing = await tx.contractDraftEditLease.findUnique({
         where: { contractVersionId }
@@ -81,11 +84,16 @@ export class ContractDraftEditLeaseService {
   }
 
   async heartbeat(contractVersionId: string, rawToken: string) {
-    const now = this.currentTime();
-    const expiresAt = new Date(now.getTime() + CONTRACT_DRAFT_LEASE_TTL_MS);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await this.lockEditableDraft(tx, contractVersionId);
+        const { version } = await this.lockEditableDraft(tx, contractVersionId);
+        if (isUpwardDirectPendingDraft(version.draftData)) await qualifyUpwardPendingSave(tx);
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "contractVersionId" FROM "ContractDraftEditLease"
+          WHERE "contractVersionId" = ${contractVersionId} FOR UPDATE
+        `);
+        const now = this.currentTime();
+        const expiresAt = new Date(now.getTime() + CONTRACT_DRAFT_LEASE_TTL_MS);
         const result = await tx.contractDraftEditLease.updateMany({
           where: {
             contractVersionId,
@@ -124,8 +132,9 @@ export class ContractDraftEditLeaseService {
     await this.auth.confirmPassword(actorUserId, input.currentPassword);
     const issued = this.issueToken();
     return this.prisma.$transaction(async (tx) => {
-      await this.lockEditableDraft(tx, contractVersionId);
+      const { version } = await this.lockEditableDraft(tx, contractVersionId);
       await this.assertContractDirector(tx, actorUserId);
+      assertUpwardDirectPendingWriteClosed(version.draftData);
       const existing = await tx.contractDraftEditLease.findUnique({
         where: { contractVersionId }
       });
@@ -185,19 +194,14 @@ export class ContractDraftEditLeaseService {
     tx: Prisma.TransactionClient,
     contractVersionId: string
   ) {
-    const mutationBoundary = await lockContractDraftMutationBoundary(
+    const mutationBoundary = await lockContractDraftMutationBoundary<ContractVersion, Contract>(
       tx,
       contractVersionId
     );
     if (!mutationBoundary) {
       throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
     }
-    const version = await tx.contractVersion.findUnique({
-      where: { id: contractVersionId }
-    });
-    if (!version) {
-      throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
-    }
+    const { version, contract } = mutationBoundary;
     if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)) {
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
     }
@@ -208,12 +212,6 @@ export class ContractDraftEditLeaseService {
       throw new BadRequestException(
         "合同已存在正式业务事实，不能继续办理草稿"
       );
-    }
-    const contract = await tx.contract.findUnique({
-      where: { id: mutationBoundary.contractId }
-    });
-    if (!contract) {
-      throw new NotFoundException("未找到合同草稿，请刷新后重试");
     }
     if (contract.voidedAt) {
       throw new BadRequestException("合同草稿已作废，不能继续办理");

@@ -1,0 +1,173 @@
+{
+  "date": "2026-11-05",
+  "scope": "node-owned-database-TCP-to-pg-stat-session-readonly-correlation",
+  "status": "observed_binding",
+  "apiMainPid": 2502628,
+  "apiMainPidStable": true,
+  "actualObservedPoolRole": "jiangkong_runtime",
+  "actualObservedDatabase": "jiangkong",
+  "actualObservedConnectionCount": 5,
+  "actualObservedConnectionsAllSsl": true,
+  "transactionReadOnly": "on",
+  "serverVersionNum": "160014",
+  "attemptCount": 3,
+  "attemptAuthorization": "Original parent limit two; parent explicitly extended exactly one final same-scope query for known CIDR parser correction.",
+  "priorFailures": [
+    {
+      "scope": "node-owned-database-TCP-session-metadata-only",
+      "status": "not_proven",
+      "reason": "READONLY_SESSION_COLLECTION_FAILED"
+    },
+    {
+      "scope": "node-owned-database-TCP-session-metadata-only",
+      "status": "not_proven",
+      "reason": "READONLY_SESSION_COLLECTION_FAILED",
+      "stage": "correlate_owned_connections",
+      "errorClass": "ValueError",
+      "errno": null
+    }
+  ],
+  "thirdAttempt": {
+    "clientDate": "2026-11-05",
+    "attempt": 3,
+    "sshReturnCode": 0,
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "collectorSha256": "a3368c832488ab919c1a5a9cd3b5f27d9a5909c6969b4b081f66b79a0ad3988b",
+    "result": {
+      "scope": "node-owned-database-TCP-session-metadata-only",
+      "status": "observed_binding",
+      "reason": null,
+      "apiMainPid": 2502628,
+      "apiMainPidStable": true,
+      "transactionReadOnly": "on",
+      "serverVersionNum": "160014",
+      "collectorRole": "jiangkong_runtime",
+      "nodeDatabaseSocketsBefore": 5,
+      "nodeDatabaseSocketsAfter": 5,
+      "stableOwnedSocketCount": 5,
+      "bindings": [
+        {
+          "nodeSocket": {
+            "socketInode": 243264958,
+            "localAddress": "127.0.0.1",
+            "clientPort": 39952,
+            "databaseAddress": "127.0.0.1",
+            "databasePort": 5432,
+            "family": "tcp"
+          },
+          "postgresBackend": {
+            "backend_pid": 2028076,
+            "client_port": 39952,
+            "usename": "jiangkong_runtime",
+            "datname": "jiangkong",
+            "client_addr": "127.0.0.1",
+            "application_name": "",
+            "ssl": true
+          }
+        },
+        {
+          "nodeSocket": {
+            "socketInode": 243482574,
+            "localAddress": "127.0.0.1",
+            "clientPort": 46790,
+            "databaseAddress": "127.0.0.1",
+            "databasePort": 5432,
+            "family": "tcp"
+          },
+          "postgresBackend": {
+            "backend_pid": 2067051,
+            "client_port": 46790,
+            "usename": "jiangkong_runtime",
+            "datname": "jiangkong",
+            "client_addr": "127.0.0.1",
+            "application_name": "",
+            "ssl": true
+          }
+        },
+        {
+          "nodeSocket": {
+            "socketInode": 243475946,
+            "localAddress": "127.0.0.1",
+            "clientPort": 48302,
+            "databaseAddress": "127.0.0.1",
+            "databasePort": 5432,
+            "family": "tcp"
+          },
+          "postgresBackend": {
+            "backend_pid": 2065854,
+            "client_port": 48302,
+            "usename": "jiangkong_runtime",
+            "datname": "jiangkong",
+            "client_addr": "127.0.0.1",
+            "application_name": "",
+            "ssl": true
+          }
+        },
+        {
+          "nodeSocket": {
+            "socketInode": 243170631,
+            "localAddress": "127.0.0.1",
+            "clientPort": 48840,
+            "databaseAddress": "127.0.0.1",
+            "databasePort": 5432,
+            "family": "tcp"
+          },
+          "postgresBackend": {
+            "backend_pid": 2010556,
+            "client_port": 48840,
+            "usename": "jiangkong_runtime",
+            "datname": "jiangkong",
+            "client_addr": "127.0.0.1",
+            "application_name": "",
+            "ssl": true
+          }
+        },
+        {
+          "nodeSocket": {
+            "socketInode": 243170634,
+            "localAddress": "127.0.0.1",
+            "clientPort": 48876,
+            "databaseAddress": "127.0.0.1",
+            "databasePort": 5432,
+            "family": "tcp"
+          },
+          "postgresBackend": {
+            "backend_pid": 2010559,
+            "client_port": 48876,
+            "usename": "jiangkong_runtime",
+            "datname": "jiangkong",
+            "client_addr": "127.0.0.1",
+            "application_name": "",
+            "ssl": true
+          }
+        }
+      ],
+      "elapsedSeconds": 0.079,
+      "sqlQueryTextRead": false,
+      "businessRowsRead": false,
+      "productionWrites": false,
+      "allFuturePoolsProven": false
+    }
+  },
+  "correction": "Only SQL projection a.client_addr::text changed to pg_catalog.host(a.client_addr).",
+  "predictionConfirmed": true,
+  "thirdAttemptMarkerCreatedBeforeSsh": true,
+  "furtherProductionQueriesPerformed": false,
+  "queryTextColumnRead": false,
+  "processCmdlineOrEnvironRead": false,
+  "businessRowsRead": false,
+  "productionWrites": false,
+  "privilegesChanged": false,
+  "allFutureConnectionsProven": false,
+  "certificateCaOrSanValidationProven": false,
+  "fullEffectiveAclProven": false,
+  "artifacts": {
+    "/private/tmp/jg-task01-runtime-db-session-binding-20261105-attempt1.json": "ea82b7ab623762743e6c0341007d9985c5de43ee1cc3a10e1b5ffbeb5e1397f3",
+    "/private/tmp/jg-task01-runtime-db-session-binding-20261105-attempt2.json": "ea25dec40cbde812b9b9d9806f57d488d6797fcc3db104c97e2103a22482c8ec",
+    "/private/tmp/jg-task01-runtime-db-session-binding-20261105-attempt1.py": "ecdb8b04d4f6898a2f3a196c6b0032a3426121398508b3573e57179fa4a24190",
+    "/private/tmp/jg-task01-runtime-db-session-binding-20261105.py": "38edb805457029a41e47fc471c96065a127ac95929bc02087784d7b448114bc7",
+    "/private/tmp/jg-task01-runtime-db-session-binding-20261105-attempt3.json": "934c8943466c16795f8ae017adee8b3a1fe75ef0032f027d96a37d030d54e216",
+    "/private/tmp/jg-task01-runtime-db-session-binding-20261105-attempt3.py": "a3368c832488ab919c1a5a9cd3b5f27d9a5909c6969b4b081f66b79a0ad3988b",
+    "/private/tmp/jg-task01-runtime-db-session-binding-20261105-attempt3.marker.json": "5129d2d369d1d3530d692e84b9085df0578dd15bf32c64d910800e1ad9b146a5"
+  }
+}

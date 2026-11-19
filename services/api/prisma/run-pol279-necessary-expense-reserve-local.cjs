@@ -11,6 +11,7 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
@@ -111,6 +112,7 @@ async function main() {
   const containerName = `jiangkong-pol279-${suffix}`;
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-pol279-"));
   const password = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl = `postgresql://jiangkong:${password}@127.0.0.1:${port}/${DATABASE_NAME}`;
   const writeSecret = randomUUID();
   const runtimeEnvironment = {
@@ -153,8 +155,9 @@ async function main() {
   process.once("SIGTERM", onSigterm);
 
   try {
-    await command(docker, [
+    const created = await command(docker, [
       "run", "--detach", "--rm", "--pull=never", "--name", containerName,
+      "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD",
       "--env", `POSTGRES_DB=${DATABASE_NAME}`,
       "--publish", `127.0.0.1:${port}:5432`, IMAGE
@@ -165,12 +168,20 @@ async function main() {
     });
     await waitForPostgres(containerName);
     const schemaPath = path.join(root, "services/api/prisma/schema.prisma");
+    const migrationFixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_POL279_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME], temporaryRoot,
+      dockerCommand: (args, options) => command(docker, args, options),
+      deploy: ({ databaseUrl, runtimeEnv, schemaPath }) =>
+        command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
+          env: { ...runtimeEnv, DATABASE_URL: databaseUrl },
+          forwardOutput: true,
+          timeoutMs: 15 * 60 * 1000
+        })
+    });
     for (let pass = 0; pass < 2; pass += 1) {
-      await command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
-        env: runtimeEnvironment,
-        forwardOutput: true,
-        timeoutMs: 15 * 60 * 1000
-      });
+      await migrationFixture.migrate({ databaseUrl, runtimeEnv: runtimeEnvironment, schemaPath });
     }
     await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], {
       cwd: temporaryRoot,
@@ -204,7 +215,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { main };

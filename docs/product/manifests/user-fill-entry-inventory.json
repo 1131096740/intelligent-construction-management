@@ -8,11 +8,11 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 383,
-    "technicalActionCount": 9,
-    "activeBindingCount": 442,
-    "retiredWriteEntryCount": 88,
-    "retainedReadonlyExitCount": 11,
+    "activeBusinessActionCount": 431,
+    "technicalActionCount": 10,
+    "activeBindingCount": 521,
+    "retiredWriteEntryCount": 78,
+    "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
     "blockerCount": 0
@@ -48,6 +48,38 @@
         "POST /projects/:param/affiliate-company-contracts/file-uploads"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-delegation.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /approval-delegations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-delegation.revoke",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "DELETE /approval-delegations/:param"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -350,6 +382,22 @@
       "causalVerified": true
     },
     {
+      "id": "company-transfer.confirm-original-debt-correction",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/events/:param/original-debt-corrections/:param/confirm"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "company-transfer.createCompanyTransfer",
       "status": "unified_candidate",
       "usage": "background",
@@ -409,6 +457,22 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /company-transfers/:param/events"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-transfer.request-original-debt-correction",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/events/:param/original-debt-corrections"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -850,6 +914,38 @@
       "causalVerified": true
     },
     {
+      "id": "contract-direct-registration.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-direct-registration.resume-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-document.download-ticket",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -926,6 +1022,24 @@
       "bindingKeys": [
         "GET /contract-drafts/:param/workbench",
         "POST /contracts/:param/abandonment"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-draft.body-paper-preview",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "GET /files/:param/download-ticket-capability",
+        "POST /files/:param/download-ticket"
       ],
       "bindingCount": 2,
       "productionConsumerCount": 1,
@@ -1194,6 +1308,39 @@
       "causalVerified": true
     },
     {
+      "id": "contract-generated-archive.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-generated-archive.resume-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-party.upload-file",
       "status": "unified_candidate",
       "usage": "background",
@@ -1206,7 +1353,7 @@
         "POST /contract-drafts/:param/files"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -1252,6 +1399,38 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /files"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-seal-v2.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/seal-confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-seal-v2.resume-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/seal-confirmation"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -1948,6 +2127,79 @@
       "causalVerified": true
     },
     {
+      "id": "duty-sms.retry",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId",
+        "/公司互转台账",
+        "/垫资本金归还/:applicationId",
+        "/结算管理/:settlementId",
+        "/统一资金办理工作台",
+        "/费用与报销/:claimId",
+        "/资金余额复核/:registrationId",
+        "/资金账户",
+        "/零星材料付款/:paymentId",
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-bank-verifications/:param/duty-sms/retry",
+        "POST /contract-economic-reviews/:param/duty-sms/retry",
+        "POST /contract-proxy-executions/:param/duty-sms/retry",
+        "POST /expense-claims/:param/duty-sms/retry",
+        "POST /fund-account-transfers/:param/duty-sms/retry",
+        "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+        "POST /fund-accounts/registrations/:param/review/duty-sms/retry",
+        "POST /payment-executions/:param/duty-sms/retry",
+        "POST /payments/:param/approval/duty-sms/retry",
+        "POST /settlements/:param/duty-sms/retry",
+        "POST /spot-procurement-payments/:param/duty-sms/retry",
+        "POST /spot-procurements/:param/receipt/duty-sms/retry",
+        "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
+        "POST /upward-receipt-matches/:param/duty-sms/retry"
+      ],
+      "bindingCount": 14,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.admin-phone-change",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountPhoneChangeDialog.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/users/:param/change-phone"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.admin-phone-change-sms",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/users/:param/phone-change-sms"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "employee.admin-reset",
       "status": "unified_candidate",
       "usage": "background",
@@ -2453,6 +2705,123 @@
       "causalVerified": true
     },
     {
+      "id": "fund-account.confirm-correction",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/confirm"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.registerFundOpening",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/openings"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.requestFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.returnFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/return"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.withdrawFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/withdraw"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-advance.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-advance-receipts",
+        "POST /fund-account-advance-receipts/company-owned"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-advance.register",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountAdvanceReceipt.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-advance-receipts",
+        "POST /fund-account-advance-receipts/company-owned"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "fund-execution.case.confirm",
       "status": "unified_candidate",
       "usage": "background",
@@ -2597,6 +2966,93 @@
       "causalVerified": true
     },
     {
+      "id": "fund-principal-return.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/principal-returns/applications",
+        "POST /fund-accounts/principal-returns/applications/:param/actions",
+        "POST /fund-accounts/principal-returns/applications/:param/payments"
+      ],
+      "bindingCount": 3,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-principal-return.submit",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/垫资本金归还/:applicationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/principal-returns/applications",
+        "POST /fund-accounts/principal-returns/applications/:param/actions",
+        "POST /fund-accounts/principal-returns/applications/:param/payments"
+      ],
+      "bindingCount": 3,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-transfer.act",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-transfers/:param/actions"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-transfer.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-transfers",
+        "POST /fund-account-transfers/:param/actions"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-transfer.register",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountTransfers.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-account-transfers"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "general-procurement.archiveProcurement",
       "status": "unified_candidate",
       "usage": "background",
@@ -2699,6 +3155,23 @@
       "causalVerified": true
     },
     {
+      "id": "general-procurement.legacy.updateProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/draft"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "general-procurement.reviewProcurement",
       "status": "unified_candidate",
       "usage": "background",
@@ -2747,7 +3220,7 @@
         "POST /general-procurements/:param/draft"
       ],
       "bindingCount": 2,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -2927,6 +3400,190 @@
         "POST /files/:param/download-ticket"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.clone",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/clone"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-layout-templates",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.inspect",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/inspection"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.mapping-confirm",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/source-mapping-confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.mapping-save",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /contract-layout-template-versions/:param/source-mapping"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/preview-generation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.publish",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/publication"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.save",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /contract-layout-template-versions/:param",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.stop",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/stop"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.submit",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/submission"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "multi-duty-sms.retry",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/公司互转台账",
+        "/合同管理/:contractId",
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/duty-sms/retry",
+        "POST /contracts/:param/duty-sms/retry",
+        "POST /general-procurements/:param/duty-sms/retry",
+        "POST /spot-procurements/:param/duty-sms/retry"
+      ],
+      "bindingCount": 4,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -4434,6 +5091,54 @@
       "causalVerified": true
     },
     {
+      "id": "project.owner-settlement.evidence-upload",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/owner-settlements/file-uploads"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.owner-settlement.record",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/owner-settlements"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.rename.name-warning",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/create-validation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "project.rename.validate",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -4577,6 +5282,107 @@
       ],
       "bindingCount": 1,
       "productionConsumerCount": 3,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.claim",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers/initial-custodian"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers/:param/confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.recover-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers",
+        "POST /public-cash-handovers/:param/confirmation",
+        "POST /public-cash-handovers/initial-custodian"
+      ],
+      "bindingCount": 3,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "public-cash-handover.start",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/PublicCashHandoverPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /public-cash-handovers"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "registered-payment.register",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /payment-executions/:param/registrations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "registered-payment.supplement-voucher",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /payment-executions/:param/voucher",
+        "POST /payment-executions/:param/voucher-file-uploads"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
       "causalVerified": true
     },
     {
@@ -5580,6 +6386,22 @@
       "causalVerified": true
     },
     {
+      "id": "spot-procurement.create-draft.update",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /spot-procurements/:param/draft"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "spot-procurement.create-file.upload",
       "status": "unified_candidate",
       "usage": "background",
@@ -6273,6 +7095,23 @@
       "causalVerified": true
     },
     {
+      "id": "contract-draft.body-paper-generate",
+      "status": "technical_only",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /contract-drafts/:param/preview-generation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-draft.lease-acquire",
       "status": "technical_only",
       "usage": "background",
@@ -6409,13 +7248,6 @@
   "retiredEntries": [
     {
       "method": "DELETE",
-      "path": "/approval-delegations/:delegationId",
-      "controller": "ApprovalDelegationController",
-      "handler": "revoke",
-      "status": "gone"
-    },
-    {
-      "method": "DELETE",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "deleteRow",
@@ -6440,13 +7272,6 @@
       "path": "/contract-business-scenarios/:scenarioId",
       "controller": "ContractTemplateController",
       "handler": "updateBusinessScenario",
-      "status": "gone"
-    },
-    {
-      "method": "PATCH",
-      "path": "/contract-layout-template-versions/:versionId",
-      "controller": "ContractTemplateController",
-      "handler": "updateLayoutDraftVersion",
       "status": "gone"
     },
     {
@@ -6496,13 +7321,6 @@
       "path": "/vat-rate-options/:optionId",
       "controller": "VatRateOptionController",
       "handler": "update",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/approval-delegations",
-      "controller": "ApprovalDelegationController",
-      "handler": "create",
       "status": "gone"
     },
     {
@@ -6563,13 +7381,6 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/clone",
-      "controller": "ContractTemplateController",
-      "handler": "cloneLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/discard",
       "controller": "ContractTemplateController",
       "handler": "discardLayout",
@@ -6577,51 +7388,9 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/inspection",
-      "controller": "ContractTemplateController",
-      "handler": "inspectLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "controller": "ContractTemplateController",
-      "handler": "queueLayoutPreview",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/publication",
-      "controller": "ContractTemplateController",
-      "handler": "publishLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/revoke",
       "controller": "ContractTemplateController",
       "handler": "revokeLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/stop",
-      "controller": "ContractTemplateController",
-      "handler": "stopLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/submission",
-      "controller": "ContractTemplateController",
-      "handler": "submitLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-templates",
-      "controller": "ContractTemplateController",
-      "handler": "createLayout",
       "status": "gone"
     },
     {
@@ -7027,9 +7796,16 @@
   "readonlyLegacyEntries": [
     {
       "method": "GET",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
+      "path": "/contract-business-scenarios/available",
       "controller": "ContractTemplateController",
-      "handler": "getLayoutPreview",
+      "handler": "listAvailableScenarios",
+      "status": "readonly"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/recommendations",
+      "controller": "ContractTemplateController",
+      "handler": "recommendScenarioTemplates",
       "status": "readonly"
     },
     {

@@ -1,3 +1,4 @@
+import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 
 export interface ProjectApprovalAssignment {
@@ -12,7 +13,8 @@ export function loadProjectApprovalAssignments(
   tx: Prisma.TransactionClient,
   projectId: string,
   roleKeys?: readonly string[],
-  userId?: string
+  userId?: string,
+  lockAssignments = true
 ): Promise<ProjectApprovalAssignment[]> {
   return tx.$queryRaw<ProjectApprovalAssignment[]>(Prisma.sql`
     WITH members AS MATERIALIZED (
@@ -21,7 +23,7 @@ export function loadProjectApprovalAssignments(
        WHERE pm."projectId" = ${projectId} AND u."isActive" = TRUE
        ${roleKeys?.length ? Prisma.sql`AND pm."positionKey" IN (${Prisma.join([...roleKeys])})` : Prisma.empty}
        ${userId ? Prisma.sql`AND pm."userId" = ${userId}` : Prisma.empty}
-       FOR SHARE OF pm, u
+       ${lockAssignments ? Prisma.sql`FOR SHARE OF pm, u` : Prisma.empty}
     ), positions AS MATERIALIZED (
        SELECT up."projectId", up."userId", p."key" AS "roleKey", u."isActive" AS "userIsActive"
        FROM "UserPosition" up
@@ -30,8 +32,25 @@ export function loadProjectApprovalAssignments(
        WHERE up."projectId" = ${projectId} AND u."isActive" = TRUE
        ${roleKeys?.length ? Prisma.sql`AND p."key" IN (${Prisma.join([...roleKeys])})` : Prisma.empty}
        ${userId ? Prisma.sql`AND up."userId" = ${userId}` : Prisma.empty}
-       FOR SHARE OF up, p, u
+       ${lockAssignments ? Prisma.sql`FOR SHARE OF up, p, u` : Prisma.empty}
     )
     SELECT * FROM members UNION SELECT * FROM positions
   `);
+}
+
+/** Current effective assignments, with the same valid global-role scope as business authorization. */
+export async function loadEffectiveProjectApprovalAssignments(
+  tx: Prisma.TransactionClient, projectId: string, roleKeys: readonly string[], userId?: string
+): Promise<ProjectApprovalAssignment[]> {
+  const scoped = await loadProjectApprovalAssignments(tx, projectId, roleKeys, userId);
+  const globalRoles = roleKeys.filter(role => GLOBAL_BUSINESS_ROLE_KEYS.includes(role as RoleKey));
+  const globals = globalRoles.length ? await tx.$queryRaw<ProjectApprovalAssignment[]>(Prisma.sql`
+    SELECT ${projectId} AS "projectId", up."userId", p."key" AS "roleKey", u."isActive" AS "userIsActive"
+    FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId"
+    INNER JOIN "User" u ON u."id" = up."userId"
+    WHERE up."projectId" IS NULL AND u."isActive" = TRUE AND p."key" IN (${Prisma.join(globalRoles)})
+    ${userId ? Prisma.sql`AND up."userId" = ${userId}` : Prisma.empty}
+    FOR SHARE OF up, p, u
+  `) : [];
+  return [...scoped, ...globals];
 }

@@ -3,7 +3,7 @@ import { RequirePositions } from "../auth/decorators/require-positions.decorator
 import { AuditService } from "./audit.service";
 
 @Controller("audit-logs")
-@RequirePositions("chairman", "general_manager", "super_admin")
+@RequirePositions("chairman", "finance_director", "super_admin")
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
 

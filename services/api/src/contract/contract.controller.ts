@@ -1,10 +1,18 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { ContractDutyNotificationService } from "./contract-duty-notification.service";
+import { ContractV2ArchiveService } from "./contract-v2-archive.service";
+import { SignedContractArchiveV2Pipe, type SignedContractArchiveV2Request } from "./dto/contract-lifecycle-v2.dto";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
+import { ContractV2SubmissionService } from "./contract-v2-submission.service";
+import { ConfirmContractSealV2Dto } from "./dto/contract-lifecycle-v2.dto";
 import {
   BadRequestException,
   Body,
   Controller,
   Get,
+  Headers,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -80,8 +88,22 @@ export class ContractController {
     @Optional() private readonly authorizations?: ContractAuthorizationService,
     @Optional() private readonly seals?: ContractSealService,
     @Optional() private readonly pristineDeletion?: PristineDraftDeletionService,
-    @Optional() private readonly approvalProgress?: ApprovalProgressService
+    @Optional() private readonly approvalProgress?: ApprovalProgressService,
+    @Optional() private readonly preciseLifecycle?: ContractV2SubmissionService,
+    @Optional() private readonly signedArchives?: ContractV2ArchiveService,
+    @Optional() private readonly dutyNotifications?: ContractDutyNotificationService
   ) {}
+
+  @Get(":contractVersionId/duty-sms")
+  async dutySmsStatus(@Param("contractVersionId") versionId:string,@CurrentUser() user:AuthenticatedUser) {
+    return {notices:await this.dutyNotifications?.notificationStatus(versionId,user.id)??[]};
+  }
+
+  @Post(":contractVersionId/duty-sms/retry")
+  retryDutySms(@Param("contractVersionId") versionId:string,@CurrentUser() user:AuthenticatedUser,@Body() input:RetryDutyNotificationDto) {
+    if(!this.dutyNotifications)throw new BadRequestException("短信通知暂不可用");
+    return this.dutyNotifications.retry(versionId,user.id,input.attemptId);
+  }
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
   @Post()
@@ -96,11 +118,16 @@ export class ContractController {
 
   @Get("create-capability")
   @RequireProjectRole("contract.create")
-  createCapability(@Query("projectId") projectId: string) {
-    return {
-      projectId,
-      availableActions: ["create_contract_draft"]
-    };
+  async createCapability(
+    @Query("projectId") projectId: string,
+    @Query("relationship") relationship: string | undefined,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const availableActions = ["create_contract_draft"];
+    if (relationship === "upward" && await this.contracts.canCreateUpwardPendingDraft(projectId, user.id)) {
+      availableActions.push("create_upward_direct_draft");
+    }
+    return { projectId, availableActions };
   }
 
   @Post(":contractVersionId/change-drafts")
@@ -155,11 +182,11 @@ export class ContractController {
 
   @Get()
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
-  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
+  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string, @Headers("x-contract-numeric-protocol") protocol?: string) {
     return this.contractRead.listRecent(
       limit,
       await this.projectVisibility.visibleProjectIds(user.id),
-      { actorUserId: user.id }
+      { actorUserId: user.id, ...(protocol === undefined ? {} : { numericProtocol: protocol }) }
     );
   }
 
@@ -169,18 +196,14 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("view") rawView?: string,
     @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string
+    @Query("pageSize") pageSize?: string,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
     const view = DRAFT_LEDGER_VIEWS.includes(rawView as DraftLedgerView)
       ? rawView as DraftLedgerView
       : "formal_ledger";
-    return this.contractRead.lifecycleLedger(
-      view,
-      page,
-      pageSize,
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id
-    );
+    const args = [view, page, pageSize, await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
+    return protocol === undefined ? this.contractRead.lifecycleLedger(...args) : this.contractRead.lifecycleLedger(...args, protocol);
   }
 
   @Get("workbench")
@@ -189,18 +212,14 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("view") rawView?: string,
     @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string
+    @Query("pageSize") pageSize?: string,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
     const view = CONTRACT_WORKBENCH_VIEWS.includes(rawView as ContractWorkbenchView)
       ? rawView as ContractWorkbenchView
       : "all";
-    return this.contractRead.workbenchLedger(
-      view,
-      page,
-      pageSize,
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id
-    );
+    const args = [view, page, pageSize, await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
+    return protocol === undefined ? this.contractRead.workbenchLedger(...args) : this.contractRead.workbenchLedger(...args, protocol);
   }
 
   @Get("ledger-export")
@@ -208,12 +227,11 @@ export class ContractController {
   async exportLedger(
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true })
-    response: { set: (headers: Record<string, string>) => void }
+    response: { set: (headers: Record<string, string>) => void },
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    const result = await this.contractRead.exportLedger(
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id
-    );
+    const args = [await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
+    const result = await (protocol === undefined ? this.contractRead.exportLedger(...args) : this.contractRead.exportLedger(...args, protocol));
     response.set({
       "Content-Type": XLSX_MIME,
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,
@@ -238,14 +256,11 @@ export class ContractController {
   async detail(
     @Param("contractId") contractId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Query("versionId") versionId?: string
+    @Query("versionId") versionId?: string,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    return this.contractRead.getDetail(
-      contractId,
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id,
-      versionId
-    );
+    const args = [contractId, await this.projectVisibility.visibleProjectIds(user.id), user.id, versionId] as const;
+    return protocol === undefined ? this.contractRead.getDetail(...args) : this.contractRead.getDetail(...args, protocol);
   }
 
   @Post(":contractVersionId/approval-submission")
@@ -301,12 +316,16 @@ export class ContractController {
 
   @Post(":contractVersionId/approval")
   @RequireProjectRole("contract.approve")
-  reviewApproval(
+  async reviewApproval(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: ReviewContractApprovalDto
   ) {
-    return this.contracts.reviewApproval(contractVersionId, user.id, body);
+    const precise = await this.preciseLifecycle?.reviewIfV2(contractVersionId, user.id, body);
+    if (!precise && body.expectedParallelApprovalEpoch !== undefined) {
+      throw new BadRequestException("当前合同不支持并联审批轮次");
+    }
+    return precise ?? this.contracts.reviewApproval(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/approval-transfer")
@@ -376,6 +395,33 @@ export class ContractController {
   ) {
     if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
     return this.seals.complete(contractVersionId, user.id, body);
+  }
+
+  @Get(":contractVersionId/archive-requests/:idempotencyKey")
+  @RequireProjectRole("contract.submit")
+  archiveResult(@Param("contractVersionId") id: string, @Param("idempotencyKey", new ParseUUIDPipe({ version: "4" })) key: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.signedArchives) throw new InternalServerErrorException("合同归档服务尚未就绪");
+    return this.signedArchives.getArchiveResult(id, user.id, key);
+  }
+
+  @Post(":contractVersionId/signed-archive")
+  @RequireProjectRole("contract.submit")
+  archiveSignedContract(@Param("contractVersionId") id: string, @CurrentUser() user: AuthenticatedUser, @Body(SignedContractArchiveV2Pipe) body: SignedContractArchiveV2Request) {
+    if (!this.signedArchives) throw new InternalServerErrorException("合同归档服务暂不可用");
+    return body.archiveSource === "direct_signed"
+      ? this.signedArchives.registerDirect(id, user.id, body)
+      : this.signedArchives.archive(id, user.id, body);
+  }
+
+  @Post(":contractVersionId/seal-confirmation")
+  @RequireProjectRole("contract.seal")
+  confirmParallelContractSeal(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmContractSealV2Dto
+  ) {
+    if (!this.preciseLifecycle) throw new InternalServerErrorException("合同盖章确认服务暂不可用，请稍后重试");
+    return this.preciseLifecycle.confirmSeal(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/formal-files/counterparty")

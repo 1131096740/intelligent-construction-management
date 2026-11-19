@@ -20,7 +20,7 @@ export class OperationalWriteFreezeGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context
       .switchToHttp()
-      .getRequest<{ method?: string; params?: Record<string, string | undefined> }>();
+      .getRequest<{ method?: string; params?: Record<string, string | undefined>; body?: { confirmedReceipt?: unknown } }>();
     if (SAFE_METHODS.has((request.method ?? "GET").toUpperCase())) return true;
 
     const actionKey = operationalWriteActionKey(
@@ -37,7 +37,11 @@ export class OperationalWriteFreezeGuard implements CanActivate {
       );
     }
 
-    if (this.writeFreeze.isFrozen(module)) {
+    const newProjectFinancialWrite =
+      actionKey === "ProjectController.recordOwnerSettlement" ||
+      actionKey === "ProjectController.uploadOwnerSettlementFile" ||
+      (actionKey === "ProjectController.recordUpstreamFundFact" && request.body?.confirmedReceipt === true);
+    if (this.writeFreeze.isFrozen(module) || (newProjectFinancialWrite && this.writeFreeze.isFrozen("finance"))) {
       throw this.exception(
         "OPERATIONAL_WRITE_FREEZE_ACTIVE",
         "系统当前仅开放安全查询，请稍后刷新重试"

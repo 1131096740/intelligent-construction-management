@@ -1,6 +1,7 @@
 import type { ContractBusinessOptionReadModel, MoneyCents } from "@jiangkong/shared-domain";
 import type {
   OperatingProjectionAggregateReadModel,
+  ProjectSetOperatingProjectionV2,
   ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 import { centsTextToYuanText } from "../../lib/money";
@@ -28,7 +29,8 @@ export interface ExecutiveProjectOverviewRow {
 
 export interface ExecutiveProjectOverviewSummary {
   projectCount: number;
-  contractAmountCents: MoneyCents;
+  contractAmountCents: MoneyCents | null;
+  contractAmountYuan?: string | null;
   settlementAmountCents: MoneyCents | null;
   payableAmountCents: MoneyCents | null;
   actualReceiptsCents: MoneyCents | null;
@@ -115,7 +117,7 @@ export function buildProjectBusinessEntries(
 }
 
 export function buildExecutiveProjectOverview(
-  projection: OperatingProjectionAggregateReadModel,
+  projection: OperatingProjectionAggregateReadModel | ProjectSetOperatingProjectionV2,
   projects: ProjectOptionReadModel[]
 ): ExecutiveProjectOverview {
   const rows = projects
@@ -130,6 +132,8 @@ export function buildExecutiveProjectOverview(
     summary: {
       projectCount: projection.scope.projectCount,
       contractAmountCents: projection.commitments.contractCommitmentCents,
+      ...("contractCommitmentYuan" in projection.commitments
+        ? { contractAmountYuan: projection.commitments.contractCommitmentYuan } : {}),
       settlementAmountCents: null,
       payableAmountCents: null,
       actualReceiptsCents: null,

@@ -7,7 +7,7 @@ export interface ApprovalProgress {
   projectName: string; applicant: ApprovalPerson; status: string; createdAt: string;
   currentNodeIndex: number; currentNodeName: string;
   nodes: Array<{ name: string; mode: string; status: string; participants: ApprovalPerson[]; pending: ApprovalPerson[]; legacyRoster: boolean }>;
-  pendingRecipients: ApprovalPerson[]; reminderToken: string; canRemind: boolean; reminderUnavailableReason: string | null; nextRemindAt: string | null;
+  pendingRecipients: ApprovalPerson[]; remindableRecipients?: ApprovalPerson[]; reminderToken: string; canRemind: boolean; reminderUnavailableReason: string | null; nextRemindAt: string | null;
   history: Array<{ id: string; actor: ApprovalPerson; action: string; comment: string | null; createdAt: string }>;
   reminders: Array<{ id: string; actor: ApprovalPerson; createdAt: string; recipients: ApprovalPerson[]; results: Array<{ userId: string; status: string; message: string }>; pending: boolean }>;
 }
@@ -35,8 +35,8 @@ export async function fetchApprovalProgress(instanceId: string) {
   return read<ApprovalProgress>(await apiFetch(`/approval-progress/${encodeURIComponent(instanceId)}`));
 }
 
-export async function remindApprovalBySms(instanceId: string, requestId: string, reminderToken: string) {
+export async function remindApprovalBySms(instanceId: string, requestId: string, reminderToken: string, recipientIds?: string[]) {
   return read<ApprovalProgress>(await apiFetch(`/approval-progress/${encodeURIComponent(instanceId)}/remind`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId, reminderToken })
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId, reminderToken, recipientIds })
   }));
 }

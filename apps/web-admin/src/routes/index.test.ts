@@ -621,6 +621,7 @@ describe("web admin routes", () => {
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
       { label: "结算工作台", path: "/结算工作台" },
+      { label: "资金账户", path: "/资金账户" },
       { label: "资金办理工作台", path: "/统一资金办理工作台" },
       { label: "资金执行案件", path: "/资金执行案件" },
       { label: "公司互转台账", path: "/公司互转台账" },
@@ -693,6 +694,14 @@ describe("web admin routes", () => {
     ).toEqual(["资金办理工作台", "公司互转台账"]);
   });
 
+  it("shows the fixed funds account entry to company finance and comprehensive directors only", () => {
+    for (const role of ["finance_staff", "finance_director", "comprehensive_director"] as const) {
+      expect(visibleAdminNavigationGroups([role], [role]).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(true);
+      expect(visibleAdminNavigationGroups([role], []).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(false);
+    }
+    expect(visibleAdminNavigationGroups(["super_admin"], ["super_admin"]).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(false);
+  });
+
   it("keeps old create routes as redirects to the dedicated workbenches", () => {
     expect(redirectOf("结算管理/新建")).toBe("/结算工作台/新建");
     expect(redirectOf("settlements/new")).toBe("/结算工作台/新建");
@@ -737,6 +746,17 @@ describe("web admin routes", () => {
     expect(visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path)).toContain("/历史合同接管");
     expect(visibleAdminNavigationItems(["contract_director"]).map((item) => item.path)).toContain("/历史合同接管");
     expect(visibleAdminNavigationItems(["budget_staff"]).map((item) => item.path)).not.toContain("/历史合同接管");
+  });
+
+  it.each([
+    ["合同管理/:contractId", "/合同管理/HT-01"],
+    ["结算管理/:settlementId", "/结算管理/JS-01"],
+    ["费用与报销/:claimId", "/费用与报销/claim-01"]
+  ])("通知直达 %s 先要求登录，并保留原目标", (route, link) => {
+    const record = childRoute(route);
+    expect(record?.component).toBeDefined();
+    expect(resolveRouteAccess({ meta: record?.meta ?? {}, fullPath: link }, { isAuthenticated: false, roleKeys: [] }))
+      .toEqual({ path: "/login", query: { redirect: link } });
   });
 
   it("keeps read-only ledger users on the contract root while blocking new contract writes", () => {

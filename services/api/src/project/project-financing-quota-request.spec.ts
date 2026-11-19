@@ -125,6 +125,7 @@ function makeTx(input: {
         storageStatus: "active",
         contentSha256: FILE_SHA256
       }],
+      [{ state: "absent" }],
       input.bindingRows ?? []
     );
   }

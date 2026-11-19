@@ -1,7 +1,9 @@
+import { assertBankVerificationProjectFinance } from "./contract-bank-verification-access";
+import { ContractBankVerificationNotificationService } from "./contract-bank-verification-notification.service";
 import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import {requireCompanyFinance} from "../company-transfer/company-transfer.access";
-import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from "@nestjs/common";
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException,Optional} from "@nestjs/common";
 import type {Prisma} from "@prisma/client";
 import {createHash,randomUUID} from "node:crypto";
 import {PrismaService} from "../database/prisma.service";
@@ -17,12 +19,11 @@ export interface PrepareBankVerification{projectId?:string|null;companyEntityId:
 const digest=(s:string)=>createHash("sha256").update(s).digest("hex");
 @Injectable()
 export class ContractBankVerificationService{
- constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService){}
+ constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService,
+  @Optional() private readonly notifications?:ContractBankVerificationNotificationService){}
  private async authorize(tx:Prisma.TransactionClient,actor:string,projectId:string|null){
   if(!projectId){await requireCompanyFinance(tx,actor);return;}
-  if(!(await this.visibility.visibleProjectIdsInTransaction(tx,actor)).includes(projectId))throw new ForbiddenException("无权核验本项目银行流水");
-  const roles=(await this.visibility.effectiveRoleKeysByProjectInTransaction(tx,actor,[projectId])).get(projectId)??[];
-  if(!roles.some(r=>["finance_staff","finance_director"].includes(r)))throw new ForbiddenException("银行流水由所属项目财务岗位办理");
+  await assertBankVerificationProjectFinance(tx,this.visibility,actor,projectId);
  }
  private async isDirector(tx:Prisma.TransactionClient,actor:string){const role=await tx.position.findUnique({where:{key:"finance_director"},select:{id:true}});return role?tx.userPosition.count({where:{userId:actor,projectId:null,positionId:role.id}}):0;}
  private async companies(tx:Prisma.TransactionClient,projectId:string|null){
@@ -41,7 +42,7 @@ export class ContractBankVerificationService{
   await this.auth.confirmPassword(actor,input.confirmationPassword);
   const accountHash=digest(account.toLowerCase()),bankIdentity=digest(`${input.companyEntityId}|${accountHash}|${input.bankReference.normalize("NFKC").replace(/\s/gu,"").toLowerCase()}`);
   const fingerprint=digest(JSON.stringify({...input,accountNumber:undefined,accountHash,confirmationPassword:undefined,actor}));
-  return this.prisma.$transaction(async tx=>{
+  const result=await this.prisma.$transaction(async tx=>{
    await this.authorize(tx,actor,input.projectId||null);if(input.projectId)await lockEconomicProject(tx,input.projectId);
    const replay=await tx.contractBankVerificationRequest.findUnique({where:{idempotencyKey:input.idempotencyKey}});if(replay){if(replay.requestFingerprint!==fingerprint)throw new ConflictException("操作凭据已用于其他银行核验");return {id:replay.id,status:replay.status};}
    const company=(await this.companies(tx,input.projectId||null)).find(c=>c.id===input.companyEntityId);if(!company?.unifiedSocialCreditCode)throw new BadRequestException("请选择本项目有完整法人档案的公司");
@@ -49,8 +50,12 @@ export class ContractBankVerificationService{
    if(await tx.contractBankVerificationRequest.count({where:{bankIdentity,status:{not:"returned"}}}))throw new ConflictException("这笔银行流水已提交核验，请打开原记录，不要跨项目重复登记");
    await acquireFileBusinessBindingTransactionLock(tx);const file=await tx.fileObject.findUnique({where:{id:input.evidenceFileId}});if(!file||file.uploadedByUserId!==actor||file.storageStatus!=="active"||!file.contentSha256)throw new BadRequestException("请上传本人持有的有效银行交易回单");
    const row=await tx.contractBankVerificationRequest.create({data:{projectId:input.projectId||null,companyEntityId:company.id,companyName:company.name,companyCreditCode:company.unifiedSocialCreditCode,accountHash,accountLast4:account.slice(-4),bankReference:input.bankReference.trim(),bankIdentity,direction:input.direction,amountCents:amount,occurredAt:date,evidenceFileId:file.id,evidenceSha256:file.contentSha256,reason:input.reason.trim(),recordedByUserId:actor,idempotencyKey:input.idempotencyKey,requestFingerprint:fingerprint}});
-   await this.audit.record(tx,{actorUserId:actor,action:"contract.bank_verification.prepare",businessType:"contract_bank_verification",businessId:row.id,metadata:{projectId:row.projectId}});return {id:row.id,status:row.status};
+   await this.audit.record(tx,{actorUserId:actor,action:"contract.bank_verification.prepare",businessType:"contract_bank_verification",businessId:row.id,metadata:{projectId:row.projectId}});
+   await this.notifications?.queue(tx,row);
+   return {id:row.id,status:row.status};
   });
+  void this.notifications?.afterCommit();
+  return result;
  }
  async decide(actor:string,id:string,input:{decision:"confirm"|"return";holderEvidenceFileId?:string;accountNumber?:string;confirmationPassword:string}){
   if(!input||!["confirm","return"].includes(input.decision))throw new BadRequestException("核验动作不正确");await this.auth.confirmPassword(actor,input.confirmationPassword);

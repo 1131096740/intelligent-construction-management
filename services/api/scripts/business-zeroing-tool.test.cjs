@@ -1298,13 +1298,41 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
     (item) => item.disposition === "protected" && !legacyProtected.has(item.name)
   );
 
-  assert.equal(addedProtected.length, 126);
+  assert.equal(addedProtected.length, 154);
   for (const representative of [
     "ClearingCase",
     "FundExecution",
     "ProjectCloseAggregate",
     "WageStatement",
-    "PayableSettlementCase"
+    "PayableSettlementCase",
+    "ContractArchiveEvidenceFile",
+    "ContractEconomicReviewFileReference",
+    "RegisteredContractHistoryRevision",
+    "RegisteredFundAccount",
+    "FundAccountBalanceRegistration",
+    "FundAccountSourceBatch",
+    "RegisteredPaymentFunding",
+    "RegisteredOperationalPayment",
+    "RegisteredOperationalPaymentAllocation",
+    "CompanyTransferOriginalDebtCorrection",
+    "RegisteredFundPaymentAllocation",
+    "RegisteredFundAdvanceReceipt",
+    "RegisteredFundCompanyOwnedReceipt",
+    "RegisteredPaymentProjectAdvance",
+    "RegisteredFundTransfer",
+    "RegisteredFundTransferAction",
+    "RegisteredFundTransferLine",
+    "PublicCashCustody",
+    "PublicCashHandover",
+    "PublicCashHandoverReceipt",
+    "ProjectOwnerSettlementEntry",
+    "RegisteredPaymentEvent",
+    "RegisteredPaymentVoucher",
+    "RegisteredPrincipalReturnAllocation",
+    "RegisteredPrincipalReturnApplication",
+    "RegisteredPrincipalReturnCommand",
+    "RegisteredPrincipalReturnPayment",
+    "RegisteredPrincipalReturnSource"
   ]) {
     assert.equal(
       addedProtected.find((item) => item.name === representative)?.disposition,

@@ -35,6 +35,11 @@
         </t-button>
       </t-form>
     </t-card>
+    <t-alert
+      theme="info"
+      title="项目主体关系"
+      message="表内合同：我方公司与下游；表外合同：施工企业与下游；对上合同：我方公司与施工企业。项目经营表内指我方公司、表外指施工企业；业主与施工企业的关系单独核对。"
+    />
     <t-card title="唯一施工企业">
       <t-alert
         theme="info"

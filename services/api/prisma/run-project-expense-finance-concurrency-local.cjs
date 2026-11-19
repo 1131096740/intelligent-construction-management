@@ -12,6 +12,7 @@ const {
   runInterruption,
   withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const DATABASE_NAME = "jiangkong_project_expense_finance_concurrency";
@@ -580,9 +581,10 @@ async function verifyValidLegacy({
   databaseName,
   databaseUrl,
   runtimeEnv,
-  dockerCommand
+  dockerCommand,
+  migrationFixture
 }) {
-  await runPrismaMigrate({
+  await migrationFixture.migrate({
     databaseUrl: databaseUrlFor(databaseUrl, databaseName),
     runtimeEnv,
     forwardOutput: false
@@ -609,7 +611,8 @@ async function verifyFailedMigrationRecovery({
   databaseName,
   databaseUrl,
   runtimeEnv,
-  dockerCommand
+  dockerCommand,
+  migrationFixture
 }) {
   const targetDatabaseUrl = databaseUrlFor(databaseUrl, databaseName);
   await resolveLatestMigrationAsRolledBack({
@@ -632,7 +635,7 @@ async function verifyFailedMigrationRecovery({
       );
     `
   );
-  await runPrismaMigrate({
+  await migrationFixture.migrate({
     databaseUrl: targetDatabaseUrl,
     runtimeEnv,
     forwardOutput: false
@@ -722,7 +725,8 @@ async function verifyRetainedMigration({
   dockerCommand,
   databaseUrl,
   temporaryRoot,
-  runtimeEnv
+  runtimeEnv,
+  migrationFixture
 }) {
   const pre150MigrationRoot = await preparePre150MigrationRoot(temporaryRoot);
   const pre150SchemaPath = path.join(pre150MigrationRoot, "schema.prisma");
@@ -778,7 +782,8 @@ async function verifyRetainedMigration({
     databaseName: RETAINED_MIGRATION_DATABASES.valid,
     databaseUrl,
     runtimeEnv,
-    dockerCommand
+    dockerCommand,
+    migrationFixture
   });
 
   const failures = [
@@ -817,7 +822,8 @@ async function verifyRetainedMigration({
     databaseName: RETAINED_MIGRATION_DATABASES.auditMissing,
     databaseUrl,
     runtimeEnv,
-    dockerCommand
+    dockerCommand,
+    migrationFixture
   });
   console.log(
     "项目支出财务 150000 存量迁移：legacy NULL 原样保留，十四类非法事实和在途 writer 均失败回滚，resolve/retry 成功"
@@ -833,6 +839,7 @@ async function main() {
     path.join(tmpdir(), "jiangkong-project-expense-finance-")
   );
   const databasePassword = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl =
     `postgresql://jiangkong:${databasePassword}` +
     `@127.0.0.1:${databasePort}/${DATABASE_NAME}`;
@@ -887,7 +894,7 @@ async function main() {
     ]);
     assertLocalDockerEndpoint(dockerEndpoint.stdout);
     await dockerCommand(["info"]);
-    await dockerCommand(
+    const created = await dockerCommand(
       [
         "run",
         "--pull=never",
@@ -895,6 +902,8 @@ async function main() {
         "--rm",
         "--name",
         containerName,
+        "--label",
+        CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
         "--env",
         "POSTGRES_USER=jiangkong",
         "--env",
@@ -916,14 +925,23 @@ async function main() {
         `（${DATABASE_NAME}，仅 127.0.0.1）`
     );
 
+    const migrationFixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_PROJECT_EXPENSE_FINANCE_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME, RETAINED_MIGRATION_DATABASES.valid, RETAINED_MIGRATION_DATABASES.auditMissing],
+      temporaryRoot,
+      dockerCommand,
+      deploy: runPrismaMigrate
+    });
     await verifyRetainedMigration({
       dockerCommand,
       databaseUrl,
       temporaryRoot,
-      runtimeEnv
+      runtimeEnv,
+      migrationFixture
     });
-    await runPrismaMigrate({ databaseUrl, runtimeEnv });
-    await runPrismaMigrate({ databaseUrl, runtimeEnv });
+    await migrationFixture.migrate({ databaseUrl, runtimeEnv });
+    await migrationFixture.migrate({ databaseUrl, runtimeEnv });
     await command(
       pnpm,
       ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],

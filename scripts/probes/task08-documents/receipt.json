@@ -1,0 +1,2033 @@
+{
+  "issue": 390,
+  "task": "08",
+  "status": "compact-party-P1-repaired / fresh-independent-review-pending / formal-master-not-certified",
+  "sourceBase": "f352d187b720a2e8231874775616c24e91eb3bd8",
+  "method": "DOCX-preserving candidate public CLI; historical default LibreOffice rejected; explicit pinned offline docx4j adapter under independent fidelity checks",
+  "sourceManifestSha256": "c8790a0375224d3485695394eb059451cec07e1b148077980e77292a6ad6d56b",
+  "versions": {
+    "python": "3.11.15",
+    "lxml": "6.0.2",
+    "fonttools": "4.60.1",
+    "PyMuPDF": "1.26.7",
+    "LibreOffice": "26.2.4.2",
+    "Pages": "15.4"
+  },
+  "results": [
+    {
+      "template": "equipment-rental-real-v1.docx",
+      "pagesBeforeAfter": [
+        20,
+        20
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+TimesNewRomanPSMT",
+        "CAAAAA+FangSong_GB2312",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+TimesNewRomanPS-BoldMT",
+        "FAAAAA+SIL-Hei-Med-Jian",
+        "GAAAAA+FangSong_GB2312",
+        "HAAAAA+FangSong_GB2312"
+      ],
+      "docxSha256": "1b3c0ed494911162096fa5580927de181a6ded6f928c2fded6fe25359e8baf2a",
+      "pdfSha256": "5387681020399cb30ecbbd8ea1b8315b1f2f2eb9d49db81f4bfdfba56ed1370f"
+    },
+    {
+      "template": "equipment-rental-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT"
+      ],
+      "docxSha256": "6e9dd1e1af498d765beb4ce62221ddadbb58e2c73936b8a19572bdd05485e8a7",
+      "pdfSha256": "7505e6c128f93d7556d080e74b9a0ee6dff11280120ee3082167000703108d9e"
+    },
+    {
+      "template": "generic-contract-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+SIL-Hei-Med-Jian"
+      ],
+      "docxSha256": "56ac5b065b518f24f2b32cac0f36b6ec4640746aac8f145f21a54645c29902b4",
+      "pdfSha256": "146a7b571fb996274f0bc83005a4ebf6e52a7eb5e282a9b44a76426206065e02"
+    },
+    {
+      "template": "labor-subcontract-real-v1.docx",
+      "pagesBeforeAfter": [
+        15,
+        15
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {
+        "、": 1,
+        "，": 3
+      },
+      "missingTraceCharacters": {
+        "，": 3
+      },
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+SIL-Hei-Med-Jian",
+        "FAAAAA+TimesNewRomanPS-BoldMT",
+        "GAAAAA+FangSong_GB2312",
+        "HAAAAA+FangSong_GB2312"
+      ],
+      "docxSha256": "31a92478bba530fc4ade3dc2d7f946b4785bb68b26ed1ff312a7865ceaad1de2",
+      "pdfSha256": "27b60a48e410f132ae27910d7d4cd2b1444ec27824730ae88f6987c9e269934d"
+    },
+    {
+      "template": "labor-subcontract-v1.docx",
+      "pagesBeforeAfter": [
+        1,
+        1
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT"
+      ],
+      "docxSha256": "dc9e10f46ee9710ef00f43f952331de572764d9d7c52df6567f8db6c90c6ca81",
+      "pdfSha256": "98d2cc36a11df5b4f9ffd91026ed3d42100eb2e42cceb489610bb08c67ec628f"
+    },
+    {
+      "template": "material-purchase-real-v1.docx",
+      "pagesBeforeAfter": [
+        20,
+        20
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+TimesNewRomanPSMT",
+        "CAAAAA+FangSong_GB2312",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+TimesNewRomanPS-BoldMT",
+        "FAAAAA+SIL-Hei-Med-Jian",
+        "GAAAAA+FangSong_GB2312",
+        "HAAAAA+FangSong_GB2312",
+        "IAAAAA+KaiTi_GB2312"
+      ],
+      "docxSha256": "8b6f92875291404af43f134c7f468f30b2d1c2ddb2e78eac2ad15799f88ba544",
+      "pdfSha256": "da31b441d08c04a122bec8aea56b6cdfef8eb9c02b3c3bc727b07f15b22bbab0"
+    },
+    {
+      "template": "material-purchase-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT"
+      ],
+      "docxSha256": "f04225651630506a55e6c2274699d3eaa979671ac1e6c74ba7846d9013796537",
+      "pdfSha256": "65edf250b3b34e6757c4c75ba265a36af059b6e9a8ac84fbe8ff1d3741c14414"
+    },
+    {
+      "template": "professional-subcontract-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+SIL-Hei-Med-Jian"
+      ],
+      "docxSha256": "0deb3946a4d0cf93e14dc47366deaad1cb583e1c0ace1a112b41d2036488b7ae",
+      "pdfSha256": "85a4c82c472ddccbca604d8415effb2b0aa17010a3cd0a686a95e1050c4dcb5d"
+    }
+  ],
+  "knownFailures": [
+    {
+      "sample": "labor-subcontract-real-v1.docx",
+      "codepoint": "U+FF0C",
+      "count": 3,
+      "sourceParagraphFragments": [
+        "公司审批后方可生效，否则不予作为最终结算依据。",
+        "所有工序、工艺，若乙方报价",
+        "向甲方汇报，48小时内"
+      ],
+      "pdfPages": [
+        4,
+        5,
+        7
+      ],
+      "font": "FangSong_GB2312",
+      "evidence": "absent both normal extraction and PDF texttrace; actual page4 rendered and visually checked"
+    },
+    {
+      "sample": "labor-subcontract-real-v1.docx",
+      "codepoint": "U+3001",
+      "count": 1,
+      "sourceParagraphFragment": "若乙方出现材料浪费、遗失",
+      "evidence": "absent ordinary extraction but present PDF texttrace; extraction discrepancy, not proven glyph loss"
+    },
+    {
+      "samples": [
+        "equipment-rental-v1.docx",
+        "labor-subcontract-v1.docx"
+      ],
+      "evidence": "raw-source PDF defaults Letter612x792; explicit derivative a4-portrait fixes paper only; originals unchanged"
+    },
+    {
+      "samples": [
+        "equipment-rental-v1.docx",
+        "labor-subcontract-v1.docx",
+        "material-purchase-v1.docx"
+      ],
+      "evidence": "compact source titles lack FZXBSJW in actual fonts; not full formal-cover/font-standard acceptance"
+    },
+    {
+      "sample": "generic-contract-v1.docx",
+      "evidence": "A09 framework blank total retains final-amount wording; untaxed clause conflicts with fixed tax-inclusive heading; no coercion of unknown tax to zero",
+      "historical": true,
+      "followup": "Fixed for three actual generic pricing cases by reviewed semantic anchors; eight mappings checked through DOCX CLI. Full-template acceptance still blocked by converter."
+    }
+  ],
+  "failedHypotheses": [
+    "overflowPunct=0 did not restore three commas; removed from candidate",
+    "characterSpacingControl=doNotCompress did not restore three commas; removed from candidate"
+  ],
+  "alternativeConverter": {
+    "MicrosoftWord": "not installed in /Applications or user Applications",
+    "Pages": "existing local15.4; one AppleScript open timed out(-1712), no PDF; capability unknown",
+    "cleanup": "script has no finally; open timeout returned no ownedDocument; no claim of closing app/document, no unknown documents touched",
+    "PagesNativeUi": {
+      "purpose": "task08-native-ui-diagnostic-not-acceptance",
+      "observedAt": 1793861339.69539,
+      "input": "/private/tmp/jg-task08-document-receipts-20261105/pages-tracer/labor-derived.docx",
+      "inputSha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+      "inputMatchesPreparedCopy": true,
+      "intendedOutput": "/private/tmp/jg-task08-document-receipts-20261105/pages-tracer/labor-pages-native-ui.pdf",
+      "outputExists": false,
+      "observations": [
+        "Pages native UI opened the exact local derived DOCX",
+        "Document showed missing-font warning",
+        "Local export panel displayed correct filename and task directory but Export remained disabled",
+        "No permissions or login dialog was observed",
+        "Export panel was cancelled; only the owned document was closed",
+        "After close the UI tool reported noWindowsAvailable"
+      ],
+      "status": "NOT_ACCEPTED_NO_PDF",
+      "limitations": [
+        "No inference about cause of disabled export",
+        "No inference about prior AppleEvent timeout",
+        "No claim about unopened or unrelated documents",
+        "No font installation or settings change"
+      ]
+    },
+    "cleanupFollowup": "Root native UI cancelled export and closed only owned document; UI observed noWindowsAvailable. Earlier AppleScript had no finally; its timeout remains separate."
+  },
+  "limits": [
+    "not a formal application editor or approved conversion solution",
+    "native Microsoft Word pagination not verified",
+    "same-engine import/export is not independent native Word equivalence",
+    "all-fonts-embedded does not prove exact font choice or full text retention",
+    "font redistribution/license rights unverified; existing local fonts only",
+    "no PG/Docker/SQL/migrations/deploy/production/business writes"
+  ],
+  "externalArtifacts": "/private/tmp/jg-task08-document-receipts-20261105",
+  "artifacts": [
+    {
+      "path": "actual-comparison-02/comparison.json",
+      "sha256": "483a40f00c3dd8e0aa9dad58ce6c42b9b8013aea145bea36fb0abc3dd9d5d669"
+    },
+    {
+      "path": "actual-comparison-03-a4/comparison-inspected-final.json",
+      "sha256": "67c574095122c714a9c3bd37c44d0819c5c5869b27aee560b54ca18944298373"
+    },
+    {
+      "path": "pricing-cases-01/pricing-cases.json",
+      "sha256": "d762e96b35a212f55ecc7923ebff0dc88efd4e06af99b44ded775d289a2d62f3"
+    },
+    {
+      "path": "font-inventory.json",
+      "sha256": "1a33cc807da80d81ace0d735cc943ca2ee6e4a2b22a066d755f51725de4995fa"
+    },
+    {
+      "path": "pages-tracer/labor-derived.docx",
+      "sha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043"
+    },
+    {
+      "path": "pages-tracer/export.applescript",
+      "sha256": "9c9a380d704bf9af12837d2ea10e6089788639bb7e71ecbafeaf288813f1f9a9"
+    },
+    {
+      "path": "pages-tracer/result.log",
+      "sha256": "db6e2b88fa159c45c30bcc453fcdc5eb8812f6102ca3bd916c1bb2c6daf8c59f"
+    },
+    {
+      "path": "01-red.log",
+      "sha256": "09394fcc6d857f92cbae681d46a887f61d8813718e608916299d972878b08b2d"
+    },
+    {
+      "path": "01-green.log",
+      "sha256": "669b7650bd3d7c2d95fc3077be66316033fc1ff72775a625d8ca18d5b3996637"
+    },
+    {
+      "path": "01-green2.log",
+      "sha256": "89df3d8a1a303da179ebf2ae6affd741710db97acbaaa8579f115bf073b52125"
+    },
+    {
+      "path": "02-red.log",
+      "sha256": "94f2ea1110c00f389fdd2a2bc1cb0061d63534a82c1ea1fe20dc660141265e88"
+    },
+    {
+      "path": "02-green.log",
+      "sha256": "f4ca1ba093e0a269419f9b1e331edbc231b1042124379064a162d4c0886b053b"
+    },
+    {
+      "path": "03-red.log",
+      "sha256": "01a04a2caad95fe4f883f65fae51e9d98addad5af7917fcfe136251a77322285"
+    },
+    {
+      "path": "03-green.log",
+      "sha256": "748482a0050507ff20b34334893b0567492c4dbc30cb05a8f07104aa2a8a0785"
+    },
+    {
+      "path": "04-red.log",
+      "sha256": "5abb86d637c91b690c177d25ae60e2574cde2d13d9adbe7df50b38fde6931591"
+    },
+    {
+      "path": "04-green-attempt.log",
+      "sha256": "43c30113151bdb5da3624c341b4896ee6de74051dc58d80a106153ae0bf57367"
+    },
+    {
+      "path": "05-compression-attempt.log",
+      "sha256": "37ae3fdb1461973318aa801001bae40481ca13e216c54166c9cd7783374158db"
+    },
+    {
+      "path": "pages-tracer/native-ui-diagnostic.json",
+      "sha256": "9c6286b102ac0c9547bcd2c558bcef5a15fca2e5631a9778c46c4de870f3fac9"
+    },
+    {
+      "path": "lo-standard17-once/attempt.json",
+      "sha256": "2ad9ab6e2b39e602893e8329f0df4bf01c8f823dcd14138782778f75d7c16084"
+    },
+    {
+      "path": "lo-standard17-once/receipt.json",
+      "sha256": "a2d11901662adda8ffd91aa39dea3a0492ee266e907939f3dd37a7fe42d6ff0e"
+    },
+    {
+      "path": "lo-standard17-once/labor-standard17.pdf",
+      "sha256": "e48b6cfc3fa9f27492d878de28cc2c40e7fa98086157adbc551c88ef7e84ce01"
+    },
+    {
+      "path": "pricing-cases-02-semantic/pricing-cases.json",
+      "sha256": "4744b1ae352e7f9c5dcea6aa48a28cb5a6cc2b2ce3f0820683005da201c89cb5"
+    },
+    {
+      "path": "pricing-cases-02-semantic/independent-inspection.json",
+      "sha256": "8289dcf89540d8478e2fcf1d2c5fea663799465244cf6df09868ccf64cac21be"
+    },
+    {
+      "path": "06-semantic-pricing-red.log",
+      "sha256": "42c3b1f235707d2a8b908b3c0bd7918a47eba2a777e555a7e0522fb54ff9ca87"
+    },
+    {
+      "path": "06-semantic-pricing-green.log",
+      "sha256": "d16c32585aa19c2a4ef1af4bd3e24d5dfb2a40fc6da27c50641ef2c43a84cdfd"
+    },
+    {
+      "path": "07-semantic-docx-matrix.log",
+      "sha256": "957341ea8ab31aed849d3c39899652fcea119361c53936bc95a85c96331f9b7e"
+    },
+    {
+      "path": "08-pricing-authority-red.log",
+      "sha256": "4529ea55015fb04e6a34e7509ee4fa41f536da69c6e2ef3647b8ba56ce0ebdd6"
+    },
+    {
+      "path": "08-pricing-authority-green.log",
+      "sha256": "02bc707f892aa4b9b16cc466d6c1f0b7dfb6cc7c360a533a37768089afa4915b"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/stage1-receipt.json",
+      "sha256": "758765a9b636d2b6e65659bf9e03656fea9dece950dfcca946af6c2f65f954a5"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/Task08Fo.java",
+      "sha256": "ae5fdeed1d84725a34fff26ce025dea6bdabce1c4566713802fe2838699d23f2"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/offline.policy",
+      "sha256": "1900693173fa2ed1049ddf1ed88ffad795d4a7e97cb240020815fae2250f0993"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/boundary.log",
+      "sha256": "49445b13da9e0918d75c03879b5c7b3fc055cb361c913ade7bcad38d2c343566"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-output/receipt.json",
+      "sha256": "6f1303d731d2a4c1672f0c7cc163e31ca70890f4ab1c6c8be20f0662e7d6d904"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-output/stdout.log",
+      "sha256": "df99d59b7110e26d3603c16aff9b9c1aeb5b96af770d8c4e52462de2781422ab"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-output/stderr.log",
+      "sha256": "aefca6769b7e603e7f4f178f1440617c8ff45ba30208ec8a49de49adbfdf58a2"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/FZX-font-metadata.json",
+      "sha256": "82f7be6bbc5f2182cbaf137bb3126a35548211ae8321658d78383c80e070f383"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/PhysicalFonts.bytecode.txt",
+      "sha256": "a9152f1391035aaf0c9eddfcb03a479982610247218f168797066820cbf82845"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/FontInfoFinder.bytecode.txt",
+      "sha256": "89f79d79e0441855f06a1e2b36474cedae592656169cb4d5a93f5562670d6dcc"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/new-engine-proposal.md",
+      "sha256": "5537b574fc10119e8b6bc5a909e3295478ccaaff2755887454d1eab4b291dec7"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/new-engine-metadata-readonly.json",
+      "sha256": "915d9987c5189cf41515de5837daf488761af75c8586bfc0109f035e9acb175e"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter-v3/input-manifest.json",
+      "sha256": "fe58f96b3f3bd3f89963f256444a9f05a3cb8d37abd7651e1e97d4ff04310685"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter-v3/Task08Fo.java",
+      "sha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter-v3/offline.policy",
+      "sha256": "40440a4c075734e7569ba916948a5d544177e512f0456bc3a49d87b72c9ada94"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/font-discovery-new-version-once/receipt.json",
+      "sha256": "be450c611455f9c2a289c3dd7419b076da25c0ff475327bbab659e15e85fb667"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/simhei-discovery-once/receipt.json",
+      "sha256": "dde9ae2c394bbc057947d5d2e07f1d18bf4ac8adf526ffc0861a2999ebfe4920"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v3-first-conversion/receipt.json",
+      "sha256": "2a8cafd95474736309027c397f509b8e0010bf8ce5c3b6a907c50bcbf18268c8"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v4-cwd-correction/receipt.json",
+      "sha256": "a5e2ff26c6b0bb70c49fb284946f1c93809329386fc84234b9372e6dec512d3b"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v4-cwd-correction/literal-font-checks.json",
+      "sha256": "489f17a178136ad1f45f9dc7cd6bc35f12c594cd50f45df75c6cbeb14934a0fb"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v4-cwd-correction/final-layout-assessment.json",
+      "sha256": "a5ee5d442dd5ee4a00abd55a9a3c5b295e761886495fcb27babf524397ad724f"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/causal-investigation.json",
+      "sha256": "0bbcd36da3cc710cf2db7eff2599ac67388037847705a958c50bc4bd2b289bc9"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/input-manifest.json",
+      "sha256": "b8c8ccf263001a85156ebb8e4b72a41621b909ffd04dfcdccc81a510d135604b"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/renderer-source.py",
+      "sha256": "d388f90834c7c96b2ac16aca7cccaa184616959f0988c926a13e9b855709db95"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/labor-layout-fixed.docx",
+      "sha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v5-derived-layout-fix/receipt.json",
+      "sha256": "44d79fe58a43f6ff953541a9c60a9c397d461b88b539e794d88d78e967285abe"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v5-derived-layout-fix/layout-assessment.json",
+      "sha256": "dac59905402d1fc8e8f6b0b96e61ae3ed19c6202539fd74bdd1861accaa0475c"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/10-block-table-loop-red.log",
+      "sha256": "d413f630169d8287f00a758dba62aceda834687f681e2b8800a7780ad45dd15c"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/11-terminal-whitespace-red.log",
+      "sha256": "77737cf155cbab464d5a0fb79b055ebab4d22ac4823141ff1019f17886c39193"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/12-layout-source-green.log",
+      "sha256": "ba51ac7592bbaf436fa522faeea111552863d75e3b5498e1a1248310e73e25f9"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/13-layout-source-green.log",
+      "sha256": "af10cb781b9f3cb6f2337f678b3b50d4495891f439978b9ed815ea44631065d5"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/14-ambiguous-table-loop-red.log",
+      "sha256": "1477ba740c600c1c25949917202b953774cf64e1aa9de4188491c006cd7407ee"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/15-layout-source-final-green.log",
+      "sha256": "1facbabd3b54d02cbc73681c07145683097fe6b193d40c223a0a856a5a998833"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/16-public-docx4j-cli-red.log",
+      "sha256": "8ece67ce983f53bf05c3f1df44c473d9cf1d0614591e99b78683a440508f31ea"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/17-public-docx4j-cli-green-attempt.log",
+      "sha256": "6fd9c7c3c4b878a1406ec487fa4a0e04506ee2a373c42c38efe7693884ce24fd"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/18-inherited-jvm-options-red.log",
+      "sha256": "a620b0d0fbb2d4a1fc5ebeb4a2eea321db72d7b752477477b5b14a064a73a8cb"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/19-public-cli-guards-green.log",
+      "sha256": "2ba5a21435285a938fb16f40ab7ac47b37317b65d74ead0ca166dbaf2c84668a"
+    },
+    {
+      "path": "/private/tmp/task08-public-export-xd9ovvej/labor.pdf",
+      "sha256": "1a809cad0d766985f2f8db13eb3a4f16170e2f68d748a5f8f9fac971efa7ee3c"
+    },
+    {
+      "path": "/private/tmp/task08-public-export-xd9ovvej/labor.export.json",
+      "sha256": "78315739155cc4e60574571d3ece269d31bf449210c4ae16ef53233feb8f7617"
+    },
+    {
+      "path": "/private/tmp/task08-public-export-xd9ovvej/independent-inspection.json",
+      "sha256": "c12834839edae153b02062f0ff69d851966386ee7462bfde2e021c8c0fb4f180"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/plan.json",
+      "sha256": "b603ab593fe2eb5783f98f3bffdadcfb7e8559e9854c89d043ecd60ee75641b2"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/results.json",
+      "sha256": "95afc1f24c3f5964456fd42402445c56bd3bbedd3741854ffd57addc205e0745"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/failure.json",
+      "sha256": "f6c5c25a48131c50524c3cc8c91a720fdc3a9f724a7ef26b3df54801c917f257"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/attempt-summary.json",
+      "sha256": "a574e65e61c2a76a3ad31d9d422fbf345b04f9b164799f66b28338ca3ccf33e6"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/actual.docx",
+      "sha256": "a49b105b272f4fa276511fcba8089d592d9423ea4c9b96d475bafbbda2eea995"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/actual.pdf",
+      "sha256": "5cd820bd9eb07cd6ade82a67f1942ae036d2f84ecb7582140f088f0c48f82554"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/actual.export.json",
+      "sha256": "cc126b19a68c86f7ddc1d172335f358c07cdeb13f3b38929df63aa59e1a6dc66"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/failure-inspection.json",
+      "sha256": "9cb4301cde7945c43318cd4da406cf44c42ac86093b13b4c6b2dd85a41643820"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/checkbox-cause.json",
+      "sha256": "3884ce0b4c0fc94283c51791f1afc56cb711d6be530cd9e415a094024217e64f"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/cell-layout-cause.json",
+      "sha256": "b59aeacca6cc1cff0637935a6110199b222606b81c3d94f8ca42d19827faae33"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/visual-page-2.png",
+      "sha256": "3c0478883278801ea1773e1cea5ecd28e434dfb1a1e58b5cc14da5e3cb7ce0b1"
+    }
+  ],
+  "followup": {
+    "status": "candidate-not-accepted; A09 semantic tracer repaired",
+    "baselineCheckpoint": "bdb92b81397d5f737ef9d0ca7256050f7267b8b0",
+    "singleFilterDifference": {
+      "sourceSha256Before": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+      "sourceSha256After": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+      "onlyFilterChange": {
+        "SelectPdfVersionBefore": 2,
+        "SelectPdfVersionAfter": 0
+      },
+      "status": "HYPOTHESIS_REJECTED",
+      "missingTraceCharacters": {
+        "，": 3
+      },
+      "allFontsEmbedded": true,
+      "outOfPageTextCount": 0
+    },
+    "semanticPricing": {
+      "outcomes": [
+        {
+          "case": "framework-unknown-total",
+          "expectedAmountBasis": "含税",
+          "docxSha256": "4eaf6ad87daa0946c2200d6b775394b7258ef008a4b7e9d9108e63f8e5a28472",
+          "pdfSha256": "3ec446e81b375018ad740ad479e693ccfc60d96c268d63f10fd0621b70ec2df1",
+          "unknownRateNotCoercedToZero": true,
+          "semanticPricingParagraph": [
+            "计价方式：框架按单价；发票类型：待补充；适用税率：待补充。合同金额（含税）：部分金额待确定（非最终总价）；计价方式：框架按单价；税率：待补充；发票类型：待补充（不推算另一金额口径），付款周期为待补充，付款比例为60%。"
+          ],
+          "expectedLiteralPresentInActualPdf": true,
+          "status": "measured-literal-check-pass"
+        },
+        {
+          "case": "lumpsum-no-quantity",
+          "expectedAmountBasis": "含税",
+          "docxSha256": "cc3087039da507cc8ac39ed17ca160c0d5242ee404f2e2f74d938aa079992ec8",
+          "pdfSha256": "089eb54c03e206a1cb37711c6b890053ac09036bc78862894bad9909dba977e4",
+          "unknownRateNotCoercedToZero": true,
+          "semanticPricingParagraph": [
+            "计价方式：包干；发票类型：待补充；适用税率：待补充。合同金额（含税）：人民币1500.00元（大写：人民币壹仟伍佰元整）；计价方式：包干；税率：待补充；发票类型：待补充（不推算另一金额口径），付款周期为待补充，付款比例为60%。"
+          ],
+          "expectedLiteralPresentInActualPdf": true,
+          "status": "measured-literal-check-pass"
+        },
+        {
+          "case": "untaxed-unknown-rate",
+          "expectedAmountBasis": "不含税",
+          "docxSha256": "7ec0e6a2206cae2d8c09c3b6f8108b91c5ac90e6c1e5555358516bb7fad6d500",
+          "pdfSha256": "d229eb0c82c22a3bb2f3e146f532dab645369d0c849b08d97df73a83ddd81663",
+          "unknownRateNotCoercedToZero": true,
+          "semanticPricingParagraph": [
+            "计价方式：框架按单价；发票类型：待补充；适用税率：待补充。合同金额（不含税）：人民币1.5340元（大写：人民币壹元伍角叁分肆厘）；计价方式：框架按单价；税率：待补充；发票类型：待补充（不推算另一金额口径），付款周期为待补充，付款比例为60%。"
+          ],
+          "expectedLiteralPresentInActualPdf": true,
+          "status": "measured-literal-check-pass"
+        }
+      ],
+      "overall": "measured-checks-pass",
+      "limitations": [
+        "this is not full template acceptance or a conversion reliability proof",
+        "uppercase and decimal strings are caller-provided; no business algorithm repeated"
+      ]
+    },
+    "independentPricingChecks": {
+      "status": "measured-checks-pass",
+      "cases": [
+        {
+          "case": "framework-unknown-total",
+          "docxSha256": "4eaf6ad87daa0946c2200d6b775394b7258ef008a4b7e9d9108e63f8e5a28472",
+          "pdfSha256": "3ec446e81b375018ad740ad479e693ccfc60d96c268d63f10fd0621b70ec2df1",
+          "missingCharacters": {},
+          "missingTraceCharacters": {},
+          "allFontsEmbedded": true,
+          "allPagesA4": true,
+          "outOfPageTextCount": 0
+        },
+        {
+          "case": "lumpsum-no-quantity",
+          "docxSha256": "cc3087039da507cc8ac39ed17ca160c0d5242ee404f2e2f74d938aa079992ec8",
+          "pdfSha256": "089eb54c03e206a1cb37711c6b890053ac09036bc78862894bad9909dba977e4",
+          "missingCharacters": {},
+          "missingTraceCharacters": {},
+          "allFontsEmbedded": true,
+          "allPagesA4": true,
+          "outOfPageTextCount": 0
+        },
+        {
+          "case": "untaxed-unknown-rate",
+          "docxSha256": "7ec0e6a2206cae2d8c09c3b6f8108b91c5ac90e6c1e5555358516bb7fad6d500",
+          "pdfSha256": "d229eb0c82c22a3bb2f3e146f532dab645369d0c849b08d97df73a83ddd81663",
+          "missingCharacters": {},
+          "missingTraceCharacters": {},
+          "allFontsEmbedded": true,
+          "allPagesA4": true,
+          "outOfPageTextCount": 0
+        }
+      ]
+    },
+    "testScope": "Three public DOCX workflows pass, including eight actual templates. Actual labor comma regression remains RED; not re-run after the one bounded standard1.7 difference.",
+    "authority": "pricing is atomic mode/basis/total/uppercase/taxRate/invoiceKind; raw edits to semantic-dependent fields rejected; no decimal/uppercase/tax computation implemented",
+    "preserved": "all original sample bytes and unrelated ordinary clauses; old failed artifacts retained",
+    "remaining": [
+      "labor converter loses three U+FF0C under both PDF filters",
+      "compact source cover/font differences",
+      "semantic mapping eight DOCX check is not eight newly accepted PDF layouts",
+      "native Word pagination and formal signing acceptance unverified"
+    ],
+    "independentEngine": {
+      "stage1": {
+        "status": "PREPARED_NOT_EXECUTED_REQUIRES_ROOT_REVIEW",
+        "downloadBytes": 235989010,
+        "totalBytes": 560593557,
+        "downloads": [
+          {
+            "file": "OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.17_10.tar.gz",
+            "publicSource": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.17%2B10/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.17_10.tar.gz",
+            "finalHost": "release-assets.githubusercontent.com",
+            "bytes": 185617580,
+            "sha256": "856059de21518c2ff6eba6126ffc93390affe363c3ee205b3146a3bac3be0aa5",
+            "sha1": "5218877518234ceb3bb3173729a050e7572239b3",
+            "publishedAlgorithm": "sha256",
+            "publishedExpected": "856059de21518c2ff6eba6126ffc93390affe363c3ee205b3146a3bac3be0aa5",
+            "publishedMatches": true
+          },
+          {
+            "file": "docx4j-bundle-17.3.5.jar",
+            "publicSource": "https://repo.maven.apache.org/maven2/org/docx4j/docx4j-bundle/17.3.5/docx4j-bundle-17.3.5.jar",
+            "finalHost": "repo.maven.apache.org",
+            "bytes": 35304398,
+            "sha256": "77aa1fe1da4873946766204aabc9ba47ef66f89a46f4bea0e4c49c2994114a63",
+            "sha1": "a6bb663c770d1db0bb9a1ca1966c8c09d9f682d2",
+            "publishedAlgorithm": "sha1",
+            "publishedExpected": "a6bb663c770d1db0bb9a1ca1966c8c09d9f682d2",
+            "publishedMatches": true
+          },
+          {
+            "file": "docx4j-bundle-extras-17.3.5.jar",
+            "publicSource": "https://repo.maven.apache.org/maven2/org/docx4j/docx4j-bundle-extras/17.3.5/docx4j-bundle-extras-17.3.5.jar",
+            "finalHost": "repo.maven.apache.org",
+            "bytes": 15067032,
+            "sha256": "9e5ed5bdd1f3e88787bc138ca654b23f8c9ed9c1e83bf884687f7a140242d964",
+            "sha1": "6576e2b010de92f9265cadc5210869062f089d6b",
+            "publishedAlgorithm": "sha1",
+            "publishedExpected": "6576e2b010de92f9265cadc5210869062f089d6b",
+            "publishedMatches": true
+          }
+        ],
+        "signatureVerification": "signature source files retained; no signing-key verification claimed; root accepted chain for local diagnostic only"
+      },
+      "stage2": {
+        "status": "STOPPED_NOT_ACCEPTED_NO_RETRY",
+        "sourceSha256Before": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "sourceSha256Expected": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "externalRelationships": 0,
+        "doctypeEntities": 0,
+        "policySha256": "1900693173fa2ed1049ddf1ed88ffad795d4a7e97cb240020815fae2250f0993",
+        "adapterSha256": "ae5fdeed1d84725a34fff26ce025dea6bdabce1c4566713802fe2838699d23f2",
+        "networkBoundary": "SecurityManager overriding explicit policy; actual loopback Socket, DNS and outside-file permission denied before document load",
+        "exitCode": 1,
+        "conversionCallBegun": false,
+        "sourceSha256After": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "pdfExists": false,
+        "intendedConversionCallLimit": true,
+        "actualConversionCalls": 0,
+        "adapterInvocations": 1
+      },
+      "observedFailure": "Explicit FangSong succeeded; FZXBSJW_1.TTF yielded no exact PhysicalFont. Stopped before conversion; no substitute. Font alias vs discovery/parser or policy cause under read-only investigation.",
+      "noProductDependencyAdopted": true,
+      "readOnlyDiagnosis": {
+        "observedOriginalPathExists": false,
+        "observedNamedFamilyPath": "/Users/leoyang/Library/Fonts/方正小标宋简体.ttf",
+        "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e",
+        "matchesInitialByteFingerprint": false,
+        "magic": "00010000",
+        "sfntVersion": "'\\x00\\x01\\x00\\x00'",
+        "faceCount": 1,
+        "fsType": 8,
+        "names": [
+          {
+            "id": 1,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 2,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 6,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "FZXBSJW--GB1-0"
+          },
+          {
+            "id": 1,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 2,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 6,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "FZXBSJW--GB1-0"
+          },
+          {
+            "id": 1,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 2,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 6,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "FZXBSJW--GB1-0"
+          },
+          {
+            "id": 1,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 2,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 6,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "FZXBSJW--GB1-0"
+          }
+        ],
+        "cmapFormats": [
+          {
+            "platform": 1,
+            "encoding": 0,
+            "format": 0,
+            "count": 126
+          },
+          {
+            "platform": 3,
+            "encoding": 1,
+            "format": 4,
+            "count": 8104
+          }
+        ],
+        "conclusion": "Old hard-coded FZXBSJW_1.TTF path is currently absent. Current named-family TTF has matching family names/fsType but DIFFERENT bytes; no substitution or conversion performed."
+      },
+      "aliasHypothesis": "Rejected by actual getPhysicalFont bytecode: FontInfoFinder.find receives URI/resolver/cache, returns null before alias-dependent font construction. Current old path missing; parser unsupported is NOT PROVED.",
+      "subsequentExplicitFontChoices": {
+        "title": {
+          "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e",
+          "sameAsHistorical2322": false,
+          "approvedNewVersion": true,
+          "fontDiscoveryPassed": true
+        },
+        "black": {
+          "sha256": "aa4560dd8fe5645745fed3ffa301c3ca4d6c03cbd738145b613303961ba733b8",
+          "family": "SimHei / black",
+          "explicitCorrection": "STHeiti SC is NOT exact SimHei; old adapter-v2 retained, adapter-v3 replaces mapping/read permission only",
+          "fontDiscoveryPassed": true
+        },
+        "bodyFangSongSha256": "fef7cf991b458cabd184b73378918d9d15429010e1d6c804f08d394395c3c3b4"
+      },
+      "firstActualConversion": {
+        "attempt": "tracer-v3-first-conversion",
+        "status": "FAILED_CWD_PERMISSION",
+        "conversionCalls": 1,
+        "outputPdfBytes": 0,
+        "intermediateFoBytes": 241590,
+        "failure": "FOP default cwd metadata read denied by policy; no content fidelity conclusion",
+        "preserved": true
+      },
+      "authorizedCwdCorrection": {
+        "attempt": "tracer-v4-cwd-correction",
+        "onlyAdjustment": "Java subprocess cwd moved to owned task output directory; output path new; adapter,policy,fonts,source,flags unchanged",
+        "exitCode": 0,
+        "conversionCalls": 1,
+        "boundaryDenied3": true,
+        "allFontHashesUnchanged": true,
+        "sourceSha256Before": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "sourceSha256After": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "pdfSha256": "7bf5e02e304162fa599ff3df73463f53794b84d10ad813fcbfb4f5ff7ea2218f",
+        "pages": 16,
+        "missingCharacterCounts": {},
+        "missingTraceCharacterCounts": {},
+        "allFontsEmbedded": true,
+        "allPagesA4": true,
+        "outOfPageTextCount": 0,
+        "notdefOrReplacementGlyphCandidates": 0,
+        "exactEmbeddedFonts": [
+          {
+            "pdfName": "EAAAAA+TimesNewRomanPSMT",
+            "type": "Type0",
+            "bytes": 16692,
+            "sha256": "0c44f5944e887dfa7a7523582ae30c3df61e6c70d501f3f849117b03f1a74e75",
+            "nameIDs": [
+              "Times New Roman",
+              "TimesNewRomanPSMT"
+            ]
+          },
+          {
+            "pdfName": "EAAAAB+FZXBSJW--GB1-0",
+            "type": "Type0",
+            "bytes": 6112,
+            "sha256": "726e5d2ffa412a08808d348ec6fe1deb4a3dd4d10a4ef0a9dc4e88a21dd6c2c4",
+            "nameIDs": [
+              "FZXBSJW--GB1-0",
+              "FZXiaoBiaoSong-B05S",
+              "方正小标宋简体"
+            ]
+          },
+          {
+            "pdfName": "EAAAAC+TimesNewRomanPSMT",
+            "type": "Type0",
+            "bytes": 12140,
+            "sha256": "c024349fe243db332aef78ba508280284a0dccce347948a3bbe719070fc4bb83",
+            "nameIDs": [
+              "Times New Roman",
+              "TimesNewRomanPSMT"
+            ]
+          },
+          {
+            "pdfName": "EAAAAD+TimesNewRomanPS-BoldMT",
+            "type": "Type0",
+            "bytes": 13676,
+            "sha256": "82c82400428fdcf401848f5b4a51b368a3655cd45d8b6213ccdfe712f2cb4501",
+            "nameIDs": [
+              "Times New Roman",
+              "TimesNewRomanPS-BoldMT"
+            ]
+          },
+          {
+            "pdfName": "EAAAAE+SimHei",
+            "type": "Type0",
+            "bytes": 4140,
+            "sha256": "db80835dfb190cfdeaeb4625d53aadd655a09f51da20878d2e84e2b7354a82e2",
+            "nameIDs": [
+              "SimHei",
+              "黑体"
+            ]
+          },
+          {
+            "pdfName": "EAAAAF+SimHei",
+            "type": "Type0",
+            "bytes": 19300,
+            "sha256": "61f4dc1dc795466841b6130833116b5881293fccc7d83cc492aea3f9b9cdee41",
+            "nameIDs": [
+              "SimHei",
+              "黑体"
+            ]
+          },
+          {
+            "pdfName": "EAAAAG+FangSong_GB2312",
+            "type": "Type0",
+            "bytes": 177660,
+            "sha256": "888be029128ecc8f98a7a4d758a8b8bc4c259ce8bb316f8bfd9674185ea2102d",
+            "nameIDs": [
+              "FangSong_GB2312",
+              "仿宋_GB2312"
+            ]
+          },
+          {
+            "pdfName": "EAAAAH+FangSong_GB2312",
+            "type": "Type0",
+            "bytes": 26684,
+            "sha256": "48da74989aaf6eaee2eea3b58a7caab960301afb412517e8cb04d62dd1d55d81",
+            "nameIDs": [
+              "FangSong_GB2312",
+              "仿宋_GB2312"
+            ]
+          }
+        ],
+        "status": "NOT_ACCEPTED_LAYOUT",
+        "remainingLayoutDifferences": [
+          "Page16 has only watermark/footer, no body; extra blank ending page vs LO15",
+          "page15 list repeats header for every one of3 data rows; source loop versus import cause not yet established",
+          "native Word layout not verified",
+          "no eight-template batch conversion authorized or executed for this engine"
+        ],
+        "nativeWordEquivalenceProven": false,
+        "eightTemplateBatchRun": false
+      }
+    },
+    "derivedLayoutSourceRepair": {
+      "rootAuthorizedScope": "two confirmed source fixes only, then one derived labor conversion; no eight-template batch",
+      "cause": {
+        "status": "read-only-cause-established",
+        "originalAsset": {
+          "sha256": "faae3cebc8e377764df12e999bcfddb1beefe6958cb728175f33f8e6fa4a187f",
+          "bodyTableCount": 3,
+          "tableRowCounts": [
+            9,
+            3,
+            2
+          ],
+          "trailingWhitespaceParagraphs": [
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "  ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "        ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            }
+          ]
+        },
+        "oldDerived": {
+          "sha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+          "bodyTableCount": 5,
+          "tableRowCounts": [
+            9,
+            3,
+            2,
+            2,
+            2
+          ],
+          "trailingWhitespaceParagraphs": [
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "  ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "        ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            }
+          ]
+        },
+        "v4Fo": {
+          "tableCount": 5,
+          "sequences": [
+            {
+              "force-page-count": "no-force",
+              "format": "",
+              "id": "section_s1",
+              "master-reference": "s1"
+            },
+            {
+              "force-page-count": "no-force",
+              "format": "1",
+              "id": "section_s2",
+              "master-reference": "s2"
+            }
+          ],
+          "finalFlowTrailingWhitespaceBlocks": 6,
+          "trailingBlockLineHeightPt": 25
+        },
+        "causes": [
+          "candidate repeats entire table block instead of unique data row",
+          "source has6 inert trailing paragraphs; FO preserves6 fixed25pt blocks, no forced odd/even page sequence"
+        ],
+        "minimalFixes": [
+          "single reviewed table block with unique placeholder row; ambiguous block rejected",
+          "existing a4 print profile trims only inert terminal p, stops at bookmark/field/drawing/break/section; interior whitespace unchanged"
+        ],
+        "newDerived": {
+          "sha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+          "bodyTableCount": 3,
+          "tableRowCounts": [
+            9,
+            3,
+            4
+          ],
+          "trailingWhitespaceParagraphs": []
+        }
+      },
+      "publicCliTests": "6 pass; includes3/45 rows, signature tables, protected trailing bookmark, ambiguous block rejection, prior pricing/sync/restore tests",
+      "newInputManifest": {
+        "status": "PREPARED_SIMHEI_WIRING_NOT_CONVERTED_REQUIRES_ROOT_APPROVAL",
+        "inputDocx": {
+          "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/labor-layout-fixed.docx",
+          "sha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a"
+        },
+        "newFontVersionExplicit": true,
+        "historicalTitleFontSha256": "2322dbfb4fe3b51e5f530c0ee668a7d83df20c0fd8b1aa113a0a9e7ee45d45f3",
+        "fonts": [
+          {
+            "path": "/Users/leoyang/Library/Fonts/仿宋_GB2312.ttf",
+            "sha256": "fef7cf991b458cabd184b73378918d9d15429010e1d6c804f08d394395c3c3b4",
+            "faces": [
+              {
+                "names": [
+                  "FangSong_GB2312",
+                  "仿宋_GB2312"
+                ],
+                "fsType": 0
+              }
+            ]
+          },
+          {
+            "path": "/Users/leoyang/Library/Fonts/方正小标宋简体.ttf",
+            "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e",
+            "faces": [
+              {
+                "names": [
+                  "FZXBSJW--GB1-0",
+                  "FZXiaoBiaoSong-B05S",
+                  "方正小标宋简体"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/Users/leoyang/Library/Fonts/楷体_GB2312_0.TTF",
+            "sha256": "99092cbb0df301625f46509e85854db8685556551742097ab3fbbc2e2ca0778b",
+            "faces": [
+              {
+                "names": [
+                  "KaiTi_GB2312",
+                  "楷体_GB2312"
+                ],
+                "fsType": 0
+              }
+            ]
+          },
+          {
+            "path": "/Users/leoyang/Library/Fonts/黑体.ttf",
+            "sha256": "aa4560dd8fe5645745fed3ffa301c3ca4d6c03cbd738145b613303961ba733b8",
+            "faces": [
+              {
+                "names": [
+                  "SimHei",
+                  "黑体"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+            "sha256": "f3b4ffff71c2a0c7227d37497683b2498fb2d0a4e8beae26f022e3ccfcaabfa3",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPSMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+            "sha256": "50f5b1f27b7d34621090e437e8b1dd4510a22d2823fc876b3286bed327b64bbb",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPS-BoldMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf",
+            "sha256": "7bb99c3a67697fbce15ab66d806d9a2151432ce1dab2eaba4156e1251da486c0",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPS-ItalicMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf",
+            "sha256": "906157e8294fdf168d83002eaabde01c2d30fc3f44977be89e33fa22f262002a",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPS-BoldItalicMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Wingdings.ttf",
+            "sha256": "709d5848799239f0c51c0544c471c8d02bcbf9f2bcdc49702ebca1691a4c760e",
+            "faces": [
+              {
+                "names": [
+                  "Wingdings",
+                  "Wingdings-Regular"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Wingdings 2.ttf",
+            "sha256": "6fce8b535724253e294c88f272613ad4b796c4181bae18b3e49775be63d02dcd",
+            "faces": [
+              {
+                "names": [
+                  "Wingdings 2",
+                  "Wingdings2"
+                ],
+                "fsType": 8
+              }
+            ]
+          }
+        ],
+        "adapterSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "policySha256": "40440a4c075734e7569ba916948a5d544177e512f0456bc3a49d87b72c9ada94",
+        "engineCoreSha256": "77aa1fe1da4873946766204aabc9ba47ef66f89a46f4bea0e4c49c2994114a63",
+        "engineExtrasSha256": "9e5ed5bdd1f3e88787bc138ca654b23f8c9ed9c1e83bf884687f7a140242d964",
+        "plannedOutput": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v5-derived-layout-fix/labor-docx4j.pdf",
+        "maxConversionCalls": 1,
+        "timeoutSeconds": 120,
+        "preflight": "recheck every font and DOCX hash; XML external/DTD reject; actual socket/DNS/outside-file deny before fonts; no alias loop or substitute",
+        "prediction": "If independent engine handles body punctuation, all three original U+FF0C appear using unchanged fef7 FangSong. Title da811 is a new version candidate, not a single-variable historical-font comparison. Any missing char/font substitution/A4/table/signing failure is NOT ACCEPTED.",
+        "previousAdapterAndPolicyRetained": "adapter-v2",
+        "explicitCorrection": "Heiti SC is not exact SimHei; use root-selected existing aa4560 SimHei; no font install or source modification",
+        "rendererSourceSha256": "d388f90834c7c96b2ac16aca7cccaa184616959f0988c926a13e9b855709db95",
+        "sourceLayoutFixProvenance": {
+          "previousDocxSha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+          "changes": [
+            "block table loop retains1 header and3 data rows instead of3 full tables",
+            "A4 profile removes6 inert terminal whitespace paragraphs"
+          ],
+          "unchangedChecks": [
+            "two signature tables c14n identical",
+            "three data row c14n identical",
+            "final section properties c14n identical",
+            "inserted and edited ordinary clause preserved",
+            "same preexisting request values and revision sequence"
+          ],
+          "oldTableCount": 5,
+          "newTableCount": 3,
+          "newBillRows": 3,
+          "conversionPerformed": false
+        }
+      },
+      "conversion": {
+        "exitCode": 0,
+        "sourceSha256Before": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "sourceSha256After": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "boundaryDenied3": true,
+        "allInputFontHashesUnchanged": true,
+        "pages": 15,
+        "pdfSha256": "e9c645a42fbf727bb8cb32247c09a400090fba93040f63c755ad87775b455168",
+        "missingCharacters": {},
+        "missingTraceCharacters": {},
+        "allFontsEmbedded": true,
+        "allPagesA4": true,
+        "outOfPageTextCount": 0
+      },
+      "independentLayoutAssessment": {
+        "status": "single-sample-measured-checks-pass-pending-full-eight",
+        "pages": 15,
+        "commaFragmentsPresent": [
+          true,
+          true,
+          true
+        ],
+        "notdefOrReplacementCandidates": [],
+        "lastPageBodyHasAll3Rows": true,
+        "lastPageHeaderOccurrences": 1,
+        "lastPageCharacters": 382,
+        "signatureBodyClipComparison": [
+          {
+            "page": 11,
+            "bodyClipPt": [
+              0.0,
+              71.0,
+              595.0,
+              770.0
+            ],
+            "pixelBytesIdenticalToV4": true
+          },
+          {
+            "page": 14,
+            "bodyClipPt": [
+              0.0,
+              71.0,
+              595.0,
+              770.0
+            ],
+            "pixelBytesIdenticalToV4": true
+          }
+        ],
+        "fonts": [
+          "EAAAAA+TimesNewRomanPSMT",
+          "EAAAAB+FZXBSJW--GB1-0",
+          "EAAAAC+TimesNewRomanPSMT",
+          "EAAAAD+TimesNewRomanPS-BoldMT",
+          "EAAAAE+SimHei",
+          "EAAAAF+SimHei",
+          "EAAAAG+FangSong_GB2312",
+          "EAAAAH+FangSong_GB2312"
+        ],
+        "nativeWordPaginationProven": false,
+        "eightTemplateBatchExecuted": false
+      },
+      "currentRendererSha256": "9ac5d318fc883bdfd8942be7bb4d7cb4cfbf8d95f20a7c05cb8bd063cca1fd1c",
+      "scopeLimit": "one sample measured pass; full task08 not complete, compact standards and eight-template batch not verified under new engine"
+    },
+    "publicCliDocx4j": {
+      "status": "single-sample-cli-pass; full matrix not yet run",
+      "arguments": "export-pdf --engine docx4j --runtime-manifest <exact lock>",
+      "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+      "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+      "runtimeJdkTreeEntries": 456,
+      "noBinariesAddedToRepository": true,
+      "childEnvironment": "new PATH/LANG/LC_ALL/TMPDIR whitelist; global HOME unchanged; no inherited JVM, CLASSPATH or dynamic-loader variables",
+      "publicTests": "2 pass: positive real15-page export with nonexistent-agent hostile parent option; negative manifest drift/external relation/implicit LO rejected",
+      "pdfReceipt": {
+        "status": "EXPORTED_REQUIRES_INDEPENDENT_FIDELITY_CHECKS",
+        "engine": "docx4j17.3.5-jdk17.0.17+10-offline",
+        "scratch": "/private/tmp/jg-task08-docx4j-tools-20261105/public-cli-runs/export-pqb7iwwn",
+        "sourceSha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "runtimeManifestSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+        "policySha256": "885d1d8346430f44f95ee844b8a0d57351df21637041b69ee8e2f1b870e04434",
+        "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "conversionCalls": 1,
+        "childEnvironmentKeys": [
+          "LANG",
+          "LC_ALL",
+          "PATH",
+          "TMPDIR"
+        ],
+        "exitCode": 0,
+        "networkAndOutsideFileDenied": true,
+        "pdfSha256": "1a809cad0d766985f2f8db13eb3a4f16170e2f68d748a5f8f9fac971efa7ee3c",
+        "usedFontNames": [
+          "FZXBSJW--GB1-0",
+          "FangSong_GB2312",
+          "SimHei",
+          "TimesNewRomanPS-BoldMT",
+          "TimesNewRomanPSMT"
+        ],
+        "sourceAndPinnedFilesUnchanged": true
+      },
+      "independentInspectionSummary": {
+        "docxSha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "pdfSha256": "1a809cad0d766985f2f8db13eb3a4f16170e2f68d748a5f8f9fac971efa7ee3c",
+        "missingCharacterCounts": {},
+        "missingTraceCharacterCounts": {},
+        "allFontsEmbedded": true,
+        "allPagesA4": true,
+        "outOfPageText": []
+      },
+      "stillIncomplete": "new engine eight-template matrix18 exports not started; compact standards not accepted"
+    },
+    "publicMatrix18FirstAttempt": {
+      "status": "STOPPED_NOT_ACCEPTED_LAYOUT",
+      "exportsPlanned": 18,
+      "actualExports": 1,
+      "laterExportsNotExecuted": 17,
+      "candidateSha": "584b8ce087b854eebb2d1395bf28494814f696a6",
+      "firstCase": "equipment-rental-real-v1 before 3 rows",
+      "engineExit": 0,
+      "pdfPages": 12,
+      "textAndTraceMissingCharacters": {},
+      "allFontsEmbedded": true,
+      "allPagesA4": true,
+      "outOfPageTextCount": 0,
+      "automatedStop": "matrix erroneously marked literal U+25A1 as missing candidate",
+      "readOnlyCheckboxCause": {
+        "sourceLiteralCheckboxContexts": [
+          "含税单价中：（1）已含燃油费□（②燃油由乙方自行购买承担，不扣除，不调整单价）□；（2）进场费由甲方负责；（3）出场费由乙方负责；（4）场内机械转移费由甲方负责。"
+        ],
+        "sourceU25A1Count": 2,
+        "pdfU25A1Count": 2,
+        "observedGlyphIds": [
+          127,
+          127
+        ],
+        "assessment": "all-U25A1-is-missing predicate is overbroad; validate exact source checkbox context and nonzero glyph before classifying, no DOCX/engine/font/flags change"
+      },
+      "actualLayoutNotAccepted": [
+        "whole semantic pricing context occupies narrow numeric gross total cell, making total row excessively tall",
+        "quantity1.0000 wraps into1.000 plus0; no precision dropped but presentation unsuitable"
+      ],
+      "sourceOrParameterChangesAfterFailure": false,
+      "rerunPerformed": false,
+      "nextProposedScope": "source-aware checkbox validation, mechanical scalar numeric cell plus independent full-width semantic context, bounded quantity cell padding; first structure RED/GREEN then separately scoped real PDF"
+    },
+    "mechanicalSourceLayoutCheckpoint": {
+      "status": "single-nine-point-mechanical-measured-pass; task08-open; other17-hold",
+      "artifactDirectory": "/private/tmp/jg-task08-document-receipts-20261105/mechanical-nine-point-single",
+      "sourceSha256": "3b6d91cb09bd35ca5a97bc2e97d3deaa3e7fa08c299f735e4482f2f06a742714",
+      "pdfSha256": "a87a36b6ad44b3ec2713e21f7afbfb505d391e53ef9eca4be943a1c9705905a9",
+      "rendererSha256": "a017c17bed98b9e2985552f0f93ada03717c9e9a9ca5217161713046a9c901f3",
+      "inspectionSha256": "f8a36dff53ff249a207d673eb54a3471c08ab900240a1c82ac3ab67f303b2fc0",
+      "layoutMeasurementSha256": "1d4f94370d66e9d7bfb66462ddbdd77896960d34b8388b551500fa146eeab7c3",
+      "exportReceipt": {
+        "status": "EXPORTED_REQUIRES_INDEPENDENT_FIDELITY_CHECKS",
+        "engine": "docx4j17.3.5-jdk17.0.17+10-offline",
+        "scratch": "/private/tmp/jg-task08-docx4j-tools-20261105/public-cli-runs/export-oqynwmlb",
+        "sourceSha256": "3b6d91cb09bd35ca5a97bc2e97d3deaa3e7fa08c299f735e4482f2f06a742714",
+        "runtimeManifestSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+        "policySha256": "f5994c32ed5148a02bc9ceda500e67d35fbe16c7b3a365fdd3f931a1a6407010",
+        "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "conversionCalls": 1,
+        "childEnvironmentKeys": [
+          "LANG",
+          "LC_ALL",
+          "PATH",
+          "TMPDIR"
+        ],
+        "exitCode": 0,
+        "networkAndOutsideFileDenied": true,
+        "pdfSha256": "a87a36b6ad44b3ec2713e21f7afbfb505d391e53ef9eca4be943a1c9705905a9",
+        "usedFontNames": [
+          "FZXBSJW--GB1-0",
+          "FangSong_GB2312",
+          "SimHei",
+          "TimesNewRomanPS-BoldMT",
+          "TimesNewRomanPSMT"
+        ],
+        "sourceAndPinnedFilesUnchanged": true
+      },
+      "checks": {
+        "noMissingText": true,
+        "noBadGlyphs": true,
+        "exactSourceCheckboxes": true,
+        "embedded": true,
+        "a4": true,
+        "noOutpageText": true,
+        "threeSingleLineFourDecimalQuantities": true,
+        "tableMinimumNinePoint": true,
+        "shortTotalRow": true,
+        "signaturePreserved": true,
+        "noEmptyLastPage": true,
+        "sourceAssetsUnchanged": true,
+        "ordinarySourcePreserved": true,
+        "gridUnchanged": true
+      },
+      "pages": 12,
+      "originalTotalRowHeightPt": 193.604,
+      "newTotalRowHeightPt": 17.129,
+      "quantityFontPt": 9,
+      "quantityLines": 3,
+      "signatureRelativeGeometryPreserved": true,
+      "signatureSourceC14nIdentical": true,
+      "sourceTemplatesUnchanged": true,
+      "ordinarySourceParagraphsC14nRetained": true,
+      "checkboxRule": "only exact complete original source paragraph context + nonzero glyph; extra square, U+FFFD and glyph0 still rejected",
+      "pricingRule": "same authority supplies selected-basis numeric total; opposite-basis cell pending without inference; full context immediately after table; raw net/gross writes blocked on sync",
+      "fontCorrection": "previous9pt causal estimate incorrect; old source/PDF8.5pt retained. First source-fidelity correction8.5pt is NOT minimum-size-standard pass; subsequent authorized derived list table only promotes <9pt to9, larger fonts/families/body/signatures preserved",
+      "redGreenLogs": [
+        "20-mechanical-context-red.log",
+        "21-mechanical-structure-green.log",
+        "22-checkbox-source-context-green.log",
+        "23-mechanical-nine-point-red.log",
+        "24-mechanical-nine-point-structure-green.log",
+        "25-mechanical-net-sync-red.log",
+        "26-mechanical-net-sync-green.log (capture-group wiring error retained)",
+        "27-mechanical-net-sync-green.log",
+        "28-mechanical-nine-point-full-structure.log (wrong test method selector retained)",
+        "29-mechanical-nine-point-full-structure-green.log",
+        "30-mechanical-checkpoint-tests.log (10 passed, no new PDF conversion)"
+      ],
+      "scopeLimit": "one source-fidelity mechanical8.5pt then one separately authorized9pt actual public CLI PDF; rest17 paused; compact standards/full8/nativeWord and formal adoption not accepted"
+    },
+    "knownPackageRepairCheckpoint": {
+      "status": "CLEAN_CHECKPOINT_TASK08_OPEN_MATRIX_PAUSED",
+      "matrix": "public-matrix18-source-aware-02-20261105",
+      "matrixSourceSha": "ad31c731c4fbc9f4156403482af082d8498275d0",
+      "matrixMeasuredContentCases": 2,
+      "exactReusedMechanicalBaselines": 1,
+      "newMechanicalAfterPdf": 1,
+      "case3InitialFailure": "ClassCastException styles typed as genericapplication/xml; beforetoFO",
+      "case3StylesOnlyRepairFailure": "Null InputStream due absent optionalsettings relation target; beforetoFO",
+      "case3AllKnownPackageFix": "one new actual1page PDF content-measured-pass; inheritedcompactstandard NOT_ACCEPTED",
+      "unstartedCases": 15,
+      "sourcePackageAudit": {
+        "path": "/private/tmp/jg-task08-document-receipts-20261105/compact-style-package-fix-single/all-eight-source-package-audit.json",
+        "sha256": "7bdcbddc84517a957fcfbc19f1da56f2a3f3026c80e9bceb8225a8afaaa1dd43",
+        "sourceCount": 8,
+        "scope": "all ZIPparts/hashes and declared content types; all internal relationship target presence; standardWML/theme content-type checks; unknown expected type explicitlynull",
+        "knownFindingsByTemplate": {
+          "equipment-rental-real-v1.docx": [],
+          "equipment-rental-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/styles.xml"
+            },
+            {
+              "kind": "danglingInternalRelationship",
+              "part": "word/settings.xml"
+            },
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "generic-contract-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "labor-subcontract-real-v1.docx": [],
+          "labor-subcontract-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/styles.xml"
+            },
+            {
+              "kind": "danglingInternalRelationship",
+              "part": "word/settings.xml"
+            },
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "material-purchase-real-v1.docx": [],
+          "material-purchase-v1.docx": [
+            {
+              "kind": "danglingInternalRelationship",
+              "part": "word/settings.xml"
+            },
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "professional-subcontract-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ]
+        }
+      },
+      "approvedDerivedRepairs": {
+        "stylesOverrideOnly": [
+          "equipment-rental-v1.docx",
+          "labor-subcontract-v1.docx"
+        ],
+        "unreferencedAbsentOptionalSettingsRelationshipOnly": [
+          "equipment-rental-v1.docx",
+          "labor-subcontract-v1.docx",
+          "material-purchase-v1.docx"
+        ],
+        "fontTableOverrideOnly": [
+          "equipment-rental-v1.docx",
+          "labor-subcontract-v1.docx",
+          "material-purchase-v1.docx",
+          "generic-contract-v1.docx",
+          "professional-subcontract-v1.docx"
+        ]
+      },
+      "repairGuards": "exactknownsource names only; unique standard samepath relation + actual w:styles/w:fonts root + existingpart required; conflicting declaration rejects; optionalsettings removal requires precise rIdSettings/type/target/internal, missingpart, no r:namespace reference; existingsettings/allotherrels retained; no speculativeparts/defaults/fontnames",
+      "stylesAndDocumentAndFontTableBytesPreserved": true,
+      "originalEightSampleHashesUnchanged": true,
+      "artifactDirectory": "/private/tmp/jg-task08-document-receipts-20261105/compact-known-package-fix-single",
+      "attemptSha256": "e34f0cca5c3ca22687e6a5a68a89a3829b2778b828ec007f391b611bcfeb33ec",
+      "rendererSha256": "c7ef5a82622e2f0be1f61a76ee61835284a8a7ce1b837d4a56ac51600e65b2ae",
+      "docxSha256": "87e66eaf9e3b7cecc2e03161ee843317179c02ccd457298b5867e8c8c297c641",
+      "pdfSha256": "be4707441814ad3161753145a88a8197361a3f5d3685afa305b2bb5e266a21fc",
+      "exportReceipt": {
+        "status": "EXPORTED_REQUIRES_INDEPENDENT_FIDELITY_CHECKS",
+        "engine": "docx4j17.3.5-jdk17.0.17+10-offline",
+        "scratch": "/private/tmp/jg-task08-docx4j-tools-20261105/public-cli-runs/export-10h_bqqo",
+        "sourceSha256": "87e66eaf9e3b7cecc2e03161ee843317179c02ccd457298b5867e8c8c297c641",
+        "runtimeManifestSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+        "policySha256": "bc518d8bf35a98cdea74df8f70b2c6c563ab80989808092d3e187561c2042bd5",
+        "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "conversionCalls": 1,
+        "childEnvironmentKeys": [
+          "LANG",
+          "LC_ALL",
+          "PATH",
+          "TMPDIR"
+        ],
+        "exitCode": 0,
+        "networkAndOutsideFileDenied": true,
+        "pdfSha256": "be4707441814ad3161753145a88a8197361a3f5d3685afa305b2bb5e266a21fc",
+        "usedFontNames": [
+          "FangSong_GB2312",
+          "TimesNewRomanPSMT"
+        ],
+        "sourceAndPinnedFilesUnchanged": true
+      },
+      "independentInspection": {
+        "missingCharacterCounts": {},
+        "missingTraceCharacterCounts": {},
+        "physicalGlyphCandidates": [],
+        "allFontsEmbedded": true,
+        "allPagesA4": true,
+        "outOfPageText": []
+      },
+      "actualPdfFonts": [
+        "EAAAAA+FangSong_GB2312",
+        "EAAAAB+TimesNewRomanPSMT"
+      ],
+      "pageCount": 1,
+      "standardStatus": "NOT_ACCEPTED_INHERITED_MISSING_FORMAL_COVER_AND_TITLE_FONT; embedded FangSong/Times proves those source glyphs only",
+      "tests": "4 public render tests pass; valid package repairs, badroot/missingpart/duplicate styles/typeconflict refusal, r:id-refused removal, existingsettings exactpreservation, fontTable metadata typed with bytes unchanged",
+      "testLog": "/private/tmp/jg-task08-document-receipts-20261105/40-package-repair-checkpoint-tests.log",
+      "testLogSha256": "f83e8ee93128c895aaed36c3a7ed7a2d6d1c2316d9423ca2654fd83b50864db4",
+      "remaining": "matrix15 notstarted per root scheduling; no next conversion; task08 notcomplete; no PG/SQL/deploy/production"
+    },
+    "finalTechnicalCandidate": {
+      "status": "technical-matrix-measured / independent-review-pending / formal-master-not-certified",
+      "effectiveMatrix": "/private/tmp/jg-task08-document-receipts-20261105/task08-final-effective-matrix.json",
+      "effectiveMatrixSha256": "d40e20efe83c8da3bd09d65644675867f84c7f73099bba39eb6de4f3a1fdc4b4",
+      "effectiveCases": 18,
+      "basis": "existing8 exactsources: before/after each plus13colmaterial45/10colequipment45; explicitstagebindings preserved",
+      "rendererSha256": "2d671f96e6a7ce6cbb16657549a61f563d724950e18784b83ce7486ade81b446",
+      "materialNinePoint": {
+        "sourceChange": "reviewed13colbilltable only explicit<9pt to9; unchanged grid/fonts/body/signature",
+        "redLog": "43-material-minimum-nine-red.log",
+        "greenLog": "44-material-minimum-nine-structure-green.log",
+        "threeActualResults": {
+          "status": "THREE_MATERIAL_NINE_POINT_CONTENT_LAYOUT_MEASURED_NOT_FULL_MASTER_STANDARD",
+          "results": [
+            {
+              "index": 11,
+              "variant": "before",
+              "rows": 3,
+              "pages": 12,
+              "docxSha256": "52f09e5987abad37e2d12343c706d8ac46be9dbe770a1e63de75054f6d24fa71",
+              "pdfSha256": "f07db7e575d0492e39eeac6de2f965877429374b4963cfc070f12f07db295ad9",
+              "checks": {
+                "contentNoMissing": true,
+                "noPhysicalGlyphErrors": true,
+                "embedded": true,
+                "a4": true,
+                "noOutpageText": true,
+                "exactRows": true,
+                "quantitiesSingleLineNinePoint": true,
+                "continuationHeader": true,
+                "manualClauseSurvived": true,
+                "signatureSourceIdentical": true,
+                "gridIdentical": true
+              },
+              "outputDirectory": "/private/tmp/jg-task08-document-receipts-20261105/material-nine-point-three/11-before"
+            },
+            {
+              "index": 12,
+              "variant": "after",
+              "rows": 3,
+              "pages": 12,
+              "docxSha256": "f9abbe224a95b8f7e09beafb72f2f3e27b0ad8007eb496e6e6a237dfc04ce85f",
+              "pdfSha256": "348fbef1f0474673c8f8e6c1f3a69aafefeb25b3c8ff27cbc99d02fe45a1faf4",
+              "checks": {
+                "contentNoMissing": true,
+                "noPhysicalGlyphErrors": true,
+                "embedded": true,
+                "a4": true,
+                "noOutpageText": true,
+                "exactRows": true,
+                "quantitiesSingleLineNinePoint": true,
+                "continuationHeader": true,
+                "manualClauseSurvived": true,
+                "signatureSourceIdentical": true,
+                "gridIdentical": true
+              },
+              "outputDirectory": "/private/tmp/jg-task08-document-receipts-20261105/material-nine-point-three/12-after"
+            },
+            {
+              "index": 17,
+              "variant": "long45",
+              "rows": 45,
+              "pages": 13,
+              "docxSha256": "7372aaa5ed9fd808b27c7f1268b05070297a034f4b563e81baab68917e312a8f",
+              "pdfSha256": "de31b881f086758b5021e0c666f7c134acdfb2205e37bf29537fa12a2c3cb354",
+              "checks": {
+                "contentNoMissing": true,
+                "noPhysicalGlyphErrors": true,
+                "embedded": true,
+                "a4": true,
+                "noOutpageText": true,
+                "exactRows": true,
+                "quantitiesSingleLineNinePoint": true,
+                "continuationHeader": true,
+                "manualClauseSurvived": true,
+                "signatureSourceIdentical": true,
+                "gridIdentical": true
+              },
+              "outputDirectory": "/private/tmp/jg-task08-document-receipts-20261105/material-nine-point-three/17-long45"
+            }
+          ]
+        },
+        "allOriginalEightPointFiveArtifactsPreserved": true,
+        "sourceResultsSha256": "6b1be96e271cd1e625b68f0a72aa20994f5b36b67909f2a9c49786df091dd9cb"
+      },
+      "other15CurrentDocxEquivalence": {
+        "receipt": "/private/tmp/jg-task08-document-receipts-20261105/current-generator-other15-docx-equivalence/receipt.json",
+        "sha256": "8711f65fe68f0b07ccda3da398e0c92c21510d4ae42373fcecedcdc65b78280e",
+        "allZipPartNamesAndBytesEqual": true,
+        "reExported": false,
+        "reason": "same actual DOCXparts + same pinned JDK/jars/adapter/fonts/export flags allow explicit inherited PDF measurements; no claim oldPDF newlyexported"
+      },
+      "allEightManualClausesSurviveSync": true,
+      "fiveFullAssetsHaveBothPartyAnchors": true,
+      "threeCompactAssetsMissingPartyAnchors": true,
+      "allPagesA4AndFontsEmbeddedAndNoMissingGlyphOrTextOrOutpage": true,
+      "longTables": {
+        "material": {
+          "columns": 13,
+          "rows": 45,
+          "pagesWithRows": [
+            2,
+            3
+          ],
+          "rowSplit": [
+            28,
+            17
+          ],
+          "actualQuantityPt": 9,
+          "all45QuantitiesOneLine": true
+        },
+        "equipment": {
+          "columns": 10,
+          "rows": 45,
+          "pagesWithRows": [
+            2,
+            3
+          ],
+          "rowSplit": [
+            27,
+            18
+          ],
+          "actualQuantityPt": 9,
+          "all45QuantitiesOneLine": true
+        }
+      },
+      "focusedTests": {
+        "passed": 15,
+        "log": "/private/tmp/jg-task08-document-receipts-20261105/46-final-fifteen-focused-tests.log",
+        "sha256": "16f2f787117e97b24209165043117446032d26535dc8667245edd0d2a2e6fce6",
+        "newPdfConversions": 0
+      },
+      "standardsLimits": [
+        "threecompactoriginalassetsmissingformalcover/titlefont/partyanchors; no silent addition",
+        "originalmechanical30/18pttitles and12ptbody/margins, originalmaterial36/18pttitles/margins differ confirmedmaster; preserved sourcefacts not conversionfailures",
+        "formal10/11 includes authoritativebackend persistence/revision/privatefile/API/UI/templateversion/approvedmapping and fullmotherstyle acceptance",
+        "nativeWordpage rendering/contractdepartmentmanualmasterapproval not proven; noMicrosoftWordinstalled",
+        "JDK/jars/fonts localdiagnosticonly; nofontredistributionEULAorproductdependencyadoption claimed",
+        "LO stillrejectedbaseline3missingcommas; defaultengine is not acceptedroute"
+      ],
+      "technicalDecision": "OOXML-preserving anchored document + explicit pinned offline docx4j feasible on reviewed8 packages with approved source-normalization guards; not a fullWebeditor/productservice/universalWordloader/formalmastercertification",
+      "nextFormalTasks": "10 needs serverrevision/authority/persistence/privatefiles/responsiveeditor/currentversionexport/fullsource-styleacceptance;11 needs supervisor-approved template mappings/version isolation/retirement and actual8motherstyle approval; no dependency-edge or originalticketcriteria changed",
+      "githubStatus": "task08open pendingindependentreviews; no push/close/integrationmerge bythisagent",
+      "stage": "819f3e25 pre-review historical candidate; partygapassumption rejected by SpecP1; superseded by compactPartyP1Repair"
+    },
+    "compactPartyP1Repair": {
+      "status": "compact-party-P1-repaired / fresh-independent-review-pending / formal-master-not-certified",
+      "findingSource": "/private/tmp/jg-enterprise-task08-spec-819f3e25.md",
+      "findingSourceSha256": "f4de2dd2bffb4553a8c5fbd83bf23b341d37e2776a60eda0358820fdd640a466",
+      "finding": "3compact originalabsence ofpartyanchors was not valid reason to omit user-supplied parties or defer keycapability10/11",
+      "sourceInspection": "all3 original document and otherwordparts contain no parties/signingnames; no oldnamesconflict to reuse",
+      "approvedMapping": "neutral甲方/乙方 controlled14ptFangSong+Times paragraphs after unique originalnumber directly before originalamount; no inferredlessor/buyer/contractorroles; no sidecar/appendix/signaturefabrication",
+      "renderGuards": "explicitnonempty bothparties, uniqueexactnumber/nextamount, no existingunreviewedpartytext; conflictingorambiguous positions reject",
+      "syncGuards": "both existingfieldanchors updated; blank/nonstringpartysync rejects; ordinaryeditingcontrolledpartyparagraph refused by existingpublicboundary",
+      "actualSixNewExports": [
+        {
+          "index": 3,
+          "template": "equipment-rental-v1.docx",
+          "variant": "before",
+          "pages": 1,
+          "docxSha256": "0309a065e296322f7cf87e2c5f210f3de16fb0a19958dc3982dc0bae4cf4c22a",
+          "pdfSha256": "bf33ff7ae88bc0dbd4f1b32f2f234d072d01db546fec1a551ed57d5095db6546",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 4,
+          "template": "equipment-rental-v1.docx",
+          "variant": "after",
+          "pages": 1,
+          "docxSha256": "5f06d295ad1c6c62574da3e47d4f42a7a83405a9c39d2bb99a97abff196deac9",
+          "pdfSha256": "7d8d55220003e15caac4ff5062364825c4c365de539c15335def54dd4de4e5a7",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 9,
+          "template": "labor-subcontract-v1.docx",
+          "variant": "before",
+          "pages": 1,
+          "docxSha256": "de82da98e3b1f3c87d90fcf4188cfbe398accebd9cb74f586b839d23ff9d639e",
+          "pdfSha256": "3d1a2fdbf685d59eb5964b5eadb05b03747206ecf5448623b4020563de8539e3",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 10,
+          "template": "labor-subcontract-v1.docx",
+          "variant": "after",
+          "pages": 1,
+          "docxSha256": "a658e6f110f0283c49d9a8cb60241aa0e255bf979b839a2b5b3c195b5d5a516b",
+          "pdfSha256": "4bbaa51680089e62070e3da992ec7af3d59b461bfe0116ee2ca3a4646b6b1cc7",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 13,
+          "template": "material-purchase-v1.docx",
+          "variant": "before",
+          "pages": 1,
+          "docxSha256": "f7dc58b1b74dc9d7d25942be67bc521696cc9a9908f8ce09c9cce015d56f5d6b",
+          "pdfSha256": "93876e2a57be3537d5e56c334822d4ced8cd3064ff72beffdc71ce649ee80e6c",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 14,
+          "template": "material-purchase-v1.docx",
+          "variant": "after",
+          "pages": 1,
+          "docxSha256": "a684513ac30ba408c2d859e047d01e8ad1170f8eba6c19d652940effe29f7026",
+          "pdfSha256": "1552307feeb074d987dd3c728868df0446221367ed42c7e9c78f9595062ff90d",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        }
+      ],
+      "sixResultsSha256": "0c8c4ac7846f0cf881ea25d5532810bd88236e33491a14de7c557bc4c320f7a0",
+      "allOriginal8SourceBytesUnchanged": true,
+      "bothPartyCoverageEffectiveCases": 18,
+      "effectiveCurrentMatrix": "/private/tmp/jg-task08-document-receipts-20261105/task08-party-fixed-effective-matrix-current.json",
+      "effectiveCurrentMatrixSha256": "a1923a4ac3e037bab59c41fef23e1a1e2113502183dfdb4b90e54a3b5f299f33",
+      "other12CurrentDocxAllPartEquivalence": {
+        "path": "/private/tmp/jg-task08-document-receipts-20261105/compact-parties-other12-docx-equivalence/receipt.json",
+        "sha256": "a112400e6e3ece54c4db31a245b7e2724ff5f0add462c06c4157350b424a899f",
+        "newPdfExports": 0
+      },
+      "lastExactAmountPositionGuard": "publicRED56/GREEN57; currentall18DOCXpartbyteequal to6new+12retainedPDFinputs; no furtherPDF",
+      "final18CurrentDocxEquivalenceSha256": "dc538697b7ef938ff4b141e92a20c712d0cf25f060ae71cf7494b2658aa4ebf7",
+      "rendererSha256": "7429c4b0800c3cc2243be75d8386917d4be43d14fc6b9d8d92277f323a5f1b28",
+      "focusedTests": {
+        "passed": 17,
+        "path": "/private/tmp/jg-task08-document-receipts-20261105/58-party-fix-final-current-seventeen-tests.log",
+        "sha256": "13ad872520a5bf56d4d645e17780f514881e61ea8ac57384b8395dd7f49f9eaa",
+        "newPdfConversions": 0
+      },
+      "oldFailedSixPreserved": "prioractualsix that omitted names and oldsync that omitted partyupdates retained; pre-review819receipt not overwritten",
+      "remainingSourceLimits": "compact originalcover/titlefont/signingregion absent; realinheritedstyle differences and nativeWord/manualmasterapproval limits persist; partycapability no longer deferred",
+      "reviews": "819 Standards0/SpecP1 retained; newSHA needs freshdualreview; no claim P1 independentlyclosed",
+      "noRemoteOrResourceChanges": true
+    }
+  }
+}

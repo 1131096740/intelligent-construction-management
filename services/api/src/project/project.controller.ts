@@ -43,6 +43,7 @@ import { RecordProjectAffiliatePaymentFactDto } from "./dto/record-project-affil
 import { RecordProjectAffiliateSettlementFactDto } from "./dto/record-project-affiliate-settlement-fact.dto";
 import { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
+import { RecordProjectOwnerSettlementDto } from "./dto/record-project-owner-settlement.dto";
 import { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { RecordProjectUpstreamFundFactDto } from "./dto/record-project-upstream-fund-fact.dto";
 import { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing-quota.dto";
@@ -57,7 +58,6 @@ import { ProjectAffiliateBusinessService } from "./project-affiliate-business.se
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectService } from "./project.service";
 import { ProjectOperatingProfileService } from "./project-operating-profile.service";
-import { PROJECT_CREATE_DEFINITION } from "./project-base-entry";
 
 @Controller("projects")
 export class ProjectController {
@@ -95,25 +95,25 @@ export class ProjectController {
   }
 
   @Post()
-  @RequireProjectRole("project.master_data.manage")
+  @RequireProjectRole("project.basics.manage")
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
     return this.projects.createProject(user.id, body);
   }
 
   @Get("create-capability")
-  @RequireProjectRole("project.master_data.manage")
-  createCapability() {
-    return { availableActions: ["create_project"], definition: PROJECT_CREATE_DEFINITION };
+  @RequireProjectRole("project.basics.manage")
+  createCapability(@CurrentUser() user: AuthenticatedUser) {
+    return this.projects.basicCapability(user.id);
   }
 
   @Post("create-validation")
-  @RequireProjectRole("project.master_data.manage")
-  validateCreation(@Body() body: CreateProjectDto) {
-    return this.projects.validateCreation(body);
+  @RequireProjectRole("project.basics.manage")
+  validateCreation(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
+    return this.projects.validateCreationWithWarnings(user.id, body);
   }
 
   @Patch(":projectId")
-  @RequireProjectRole("project.master_data.manage")
+  @RequireProjectRole("project.basics.manage")
   update(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -123,9 +123,9 @@ export class ProjectController {
   }
 
   @Get(":projectId/update-capability")
-  @RequireProjectRole("project.master_data.manage")
-  updateCapability(@Param("projectId") projectId: string) {
-    return { projectId, availableActions: ["update_project", "update_project_status"] };
+  @RequireProjectRole("project.basics.manage")
+  updateCapability(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projects.basicCapability(user.id, projectId);
   }
 
   @Get()
@@ -134,7 +134,7 @@ export class ProjectController {
   }
 
   @Get("management")
-  @RequirePositions("comprehensive_director", "chairman")
+  @RequireProjectRole("project.basics.manage")
   management(@CurrentUser() user: AuthenticatedUser) {
     return this.projects.listForManagement(user.id);
   }
@@ -674,6 +674,37 @@ export class ProjectController {
     throw new GoneException(
       "旧施工企业代付一步式写入口已停用，请使用施工企业业务持续接管的合同、结算、付款事实链"
     );
+  }
+
+  @Post(":projectId/owner-settlements")
+  @RequireProjectRole("project.owner_settlement.record")
+  recordOwnerSettlement(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectOwnerSettlementDto
+  ) {
+    return this.projects.recordOwnerSettlement(projectId, user.id, body);
+  }
+
+  @Post(":projectId/owner-settlements/file-uploads")
+  @RequireProjectRole("project.owner_settlement.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadOwnerSettlementFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "业主结算凭证");
+  }
+
+  @Get(":projectId/owner-settlements/record-capability")
+  @RequireProjectRole("project.owner_settlement.record")
+  ownerSettlementRecordCapability(@Param("projectId") projectId: string) {
+    return { projectId, availableActions: ["record_owner_settlement"] };
   }
 
   @Post(":projectId/upstream-settlements")

@@ -210,9 +210,13 @@ export class ContractApprovalRouteService {
   async freezeNewContractRoute(
     tx: Prisma.TransactionClient,
     lockedContract: LockedNewContractRouteInput,
-    applicantUserId: string
+    applicantUserId: string,
+    parallel = false
   ): Promise<FrozenNewContractApprovalNode[]> {
-    const contractTypeKey = lockedContract.contractTypeKey?.trim() ?? "";
+    const persistedType = lockedContract.contractTypeKey?.trim() ?? "";
+    // The v2 creator persists "other". Resolve its parallel duty table without
+    // changing that business fact or accepting a new type in the serial protocol.
+    const contractTypeKey = parallel && persistedType === "other" ? "generic_contract" : persistedType;
     if (!SUPPORTED_CONTRACT_TYPES.has(contractTypeKey)) {
       throw new BadRequestException("合同类型无法匹配审批路线，请先完善合同类型");
     }
@@ -272,7 +276,7 @@ export class ContractApprovalRouteService {
     const route = NEW_CONTRACT_ROUTE[contractTypeKey as NewContractTypeKey];
     return route.map((definition) => {
       const sourceRows = definition.source === "global" ? globalCandidates : projectCandidates;
-      if (definition.source === "unique_project") {
+      if (definition.source === "unique_project" && !parallel) {
         const allActiveCandidates = stableUnique(
           sourceRows
             .filter((row) => row.roleKey === definition.roleKeys[0])
@@ -298,7 +302,7 @@ export class ContractApprovalRouteService {
         definition.roleKeys.flatMap((roleKey) => candidateUserIdsByRole[roleKey] ?? [])
       );
 
-      if (candidateUserIds.length === 0) {
+      if (candidateUserIds.length === 0 && !parallel) {
         if (definition.roleKeys.length > 1) {
           throw new BadRequestException("董事长或总经理没有可审批本合同的人员，请先完善岗位配置");
         }
@@ -306,6 +310,7 @@ export class ContractApprovalRouteService {
       }
 
       return {
+        ...(parallel ? { protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] } : {}),
         name: definition.name,
         mode: "any" as const,
         roleKeys: [...definition.roleKeys],

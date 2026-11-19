@@ -6,7 +6,7 @@
           发票与税率
         </h2>
         <p class="section-hint">
-          以下内容将随合同版本保存，并作为清单、合同文档和后续结算的税务事实。
+          税率按合同约定填写；未确定时可留空，留空与明确零税率不同。
         </p>
       </div>
       <t-tag variant="outline">
@@ -16,19 +16,7 @@
 
     <div class="field-grid">
       <label class="field">
-        <span class="field-label">发票类型 <em class="required">*</em></span>
-        <t-select
-          :value="model.invoiceType ?? undefined"
-          data-field-key="invoiceType"
-          :options="contractInvoiceTypeOptions"
-          :disabled="disabled"
-          placeholder="选择增值税发票类型"
-          @change="updateInvoiceType"
-        />
-      </label>
-
-      <label class="field">
-        <span class="field-label">计税模式 <em class="required">*</em></span>
+        <span class="field-label">计税模式 </span>
         <t-select
           :value="model.taxMode"
           data-field-key="taxMode"
@@ -45,14 +33,14 @@
       <label class="field">
         <span class="field-label">
           {{ model.taxMode === "multiple_rate" ? "合同默认税率" : "合同税率" }}
-          <em class="required">*</em>
+
         </span>
         <t-select
           :value="quickRate"
           data-field-key="defaultTaxRatePercent"
           :options="taxRateQuickOptions"
           :disabled="disabled"
-          placeholder="选择常用税率"
+          placeholder="待补充，可选常用税率"
           @change="updateQuickRate"
         />
       </label>
@@ -61,7 +49,7 @@
         v-if="quickRate === 'other'"
         class="field"
       >
-        <span class="field-label">其他税率（%） <em class="required">*</em></span>
+        <span class="field-label">其他税率（%） </span>
         <t-input
           :value="model.defaultTaxRatePercent ?? ''"
           data-field-key="defaultTaxRatePercent"
@@ -69,7 +57,7 @@
           placeholder="请输入 0 到 100 之间的税率"
           @change="updateOtherRate"
         />
-        <small class="field-help">税率最多保留 6 位小数。</small>
+        <small class="field-help">税率最多保留 4 位小数。</small>
       </label>
     </div>
 
@@ -85,13 +73,11 @@
 <script setup lang="ts">
 import {
   contractTaxFactStatusLabel,
-  type ContractInvoiceType,
   type ContractTaxMode,
   type ContractWorkbenchReadModel
 } from "@jiangkong/shared-domain";
 import { computed, ref, watch } from "vue";
 import {
-  contractInvoiceTypeOptions,
   contractTaxModeOptions,
   resolveTaxRatePercent,
   taxFactsDisabledReason,
@@ -124,16 +110,12 @@ watch(
   { immediate: true }
 );
 const validationMessage = computed(() =>
-  taxFactsDisabledReason({
-    invoiceType: props.model.invoiceType,
+  props.model.defaultTaxRatePercent === null ? "" : taxFactsDisabledReason({
+    invoiceType: props.model.invoiceType ?? "vat_general",
     taxMode: props.model.taxMode,
     rate: props.model.defaultTaxRatePercent ?? ""
   })
 );
-
-function updateInvoiceType(value: string) {
-  emit("update", { invoiceType: value as ContractInvoiceType });
-}
 
 function updateTaxMode(value: string) {
   emit("update", { taxMode: value as ContractTaxMode });

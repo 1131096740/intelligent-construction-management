@@ -4,6 +4,25 @@ import {
 } from "./project-visibility.service";
 
 describe("ProjectVisibilityService", () => {
+  it.each(["finance_staff", "comprehensive_director", "employee"])("keeps %s visibility through the transaction boundary with only the roster project projection", async (role) => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValueOnce([{positionId:"global-position",projectId:null}]).mockResolvedValueOnce([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: {
+        findMany: jest.fn(async (query: unknown) => {
+          expect(query).toEqual({where:{userId:"actor"},select:{projectId:true}});
+          return [{projectId:"project-1"}, {projectId:"project-1"}];
+        })
+      },
+      project: { findMany: jest.fn().mockResolvedValue([{id:"project-1"},{id:"project-2"}]) },
+      position: { findMany: jest.fn().mockResolvedValue([{id:"global-position",key:role}]) }
+    };
+    const service = new ProjectVisibilityService({} as never);
+    await expect(service.visibleProjectIdsInTransaction(tx as never,"actor")).resolves.toEqual(
+      role === "employee" ? ["project-1"] : ["project-1","project-2"]
+    );
+  });
+
   it("limits project-only users to their active project memberships", async () => {
     const prisma = {
       userPosition: {
@@ -30,7 +49,7 @@ describe("ProjectVisibilityService", () => {
     await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1", "project-2"]);
   });
 
-  it("allows global business roles to see all active projects", async () => {
+  it.each(["chairman", "finance_staff", "finance_director", "comprehensive_director", "contract_director", "material_director", "super_admin"])("allows company %s to see all active projects without granting approval", async (role) => {
     const prisma = {
       userPosition: {
         findMany: jest
@@ -48,7 +67,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ id: "pos-chairman", key: "chairman" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-chairman", key: role }])
       }
     };
     const service = new ProjectVisibilityService(prisma as never);

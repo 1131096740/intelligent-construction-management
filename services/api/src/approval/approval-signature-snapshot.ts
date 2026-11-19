@@ -6,6 +6,16 @@ interface SignatureSnapshotClient {
   $queryRaw<T>(query: Prisma.Sql): Promise<T>;
 }
 
+export async function clearApprovalRoundSignatureSnapshots(
+  tx: Pick<Prisma.TransactionClient, "approvalActionLog">,
+  approvalInstanceId: string
+) {
+  await tx.approvalActionLog.updateMany({
+    where: { approvalInstanceId, action: "approve" },
+    data: { signatureFileIdSnapshot: null, signatureSha256Snapshot: null, signatureVersionIdSnapshot: null }
+  });
+}
+
 export async function snapshotApprovalSignature(
   tx: SignatureSnapshotClient,
   actorUserId: string,

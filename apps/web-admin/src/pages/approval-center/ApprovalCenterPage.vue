@@ -20,6 +20,11 @@
       {{ errorMessage }}
     </div>
 
+    <ApprovalProgressPanel
+      v-if="independentReviewId"
+      :instance-id="independentReviewId"
+    />
+
     <t-tabs
       v-model="activeView"
       class="tab-bar"
@@ -77,9 +82,10 @@
 
 <script setup lang="ts">
 import { formatUnknownApiError } from "../../api/error-message";
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import RelatedApprovalList from "../../components/RelatedApprovalList.vue";
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   fetchWorkItems,
   type ApprovalCenterViewKey,
@@ -103,6 +109,9 @@ const approvalViews: ApprovalView[] = [
 ];
 
 const router = useRouter();
+const route = useRoute();
+const independentReviewId = computed(() => typeof route.query.review === "string" && route.query.review.startsWith("independent:")
+  ? route.query.review : undefined);
 const loading = ref(false);
 const errorMessage = ref("");
 const activeView = ref<ApprovalCenterViewKey | "related">("related");

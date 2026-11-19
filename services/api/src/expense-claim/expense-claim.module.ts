@@ -1,3 +1,4 @@
+import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -20,6 +21,6 @@ import { ExpenseClaimService } from "./expense-claim.service";
     ProjectFundingModule
   ],
   controllers: [ExpenseClaimController],
-  providers: [ExpenseClaimService]
+  providers: [ExpenseClaimService, ExpenseClaimFundingNotificationService]
 })
 export class ExpenseClaimModule {}

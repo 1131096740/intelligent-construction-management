@@ -18,7 +18,14 @@
           />
         </div>
         <t-button
-          v-if="canManageProjects && selectedProjectId"
+          v-if="canRegisterProjectAdvance && selectedProjectId"
+          variant="outline"
+          @click="router.push({ path: '/资金账户', query: { advanceForProject: selectedProjectId } })"
+        >
+          登记项目垫资
+        </t-button>
+        <t-button
+          v-if="canManageProjectEntities && selectedProjectId"
           variant="outline"
           @click="activeTab = 'settings'"
         >
@@ -69,6 +76,7 @@
                   :key="selectedProjectId"
                   :project-id="selectedProjectId"
                   :name="selectedProjectName"
+                  :code="projects.find((project) => project.id === selectedProjectId)?.code ?? ''"
                   :saving="projectUpdating"
                   @save="submitProjectName"
                 />
@@ -193,6 +201,24 @@
               <p>从当前项目进入合同、结算、付款、资料、审批和审计</p>
             </div>
             <div class="project-entry-grid">
+              <button
+                v-if="canOpenOwnerSettlement && selectedProjectId"
+                type="button"
+                class="project-entry"
+                @click="openOwnerSettlement"
+              >
+                <span>登记业主结算</span>
+                <small>按业主确认的实际资料登记，可冲减原结算</small>
+              </button>
+              <button
+                v-if="canRecordUpstreamFunds && selectedProjectId"
+                type="button"
+                class="project-entry"
+                @click="openOwnerPayment"
+              >
+                <span>登记业主付款</span>
+                <small>按实际到账登记，未结算先收款可记为预付款</small>
+              </button>
               <button
                 v-for="entry in projectBusinessEntries"
                 :key="entry.label"
@@ -334,6 +360,14 @@
 
       <t-tab-panel
         v-if="selectedProjectId"
+        value="personnel"
+        label="项目人员"
+      >
+        <ProjectPersonnelPanel :project-id="selectedProjectId" />
+      </t-tab-panel>
+
+      <t-tab-panel
+        v-if="selectedProjectId"
         value="close-profit"
         label="项目收口与盈亏"
       >
@@ -347,7 +381,7 @@
       </t-tab-panel>
 
       <t-tab-panel
-        v-if="financingQuotaWorkbench || financingQuotaError || ((canReadProjectExpenseLedger || canCreateProjectExpense) && (overview || selectedProjectId))"
+        v-if="canRecordUpstreamFunds || financingQuotaWorkbench || financingQuotaError || ((canReadProjectExpenseLedger || canCreateProjectExpense) && (overview || selectedProjectId))"
         value="operations"
         label="资金办理"
       >
@@ -381,7 +415,7 @@
                 :disabled="receiptSubmitting"
                 @click="submitReceipt"
               >
-                {{ receiptSubmitting ? "提交中" : "保存待确认" }}
+                {{ receiptSubmitting ? "提交中" : pendingReceiptAttempt ? "重试原登记" : directUpstreamReceipt ? "登记实际到账" : "保存待确认" }}
               </button>
             </div>
             <form
@@ -401,6 +435,22 @@
                 title="施工企业资金事实字段读取失败"
                 :message="receiptEntryDefinitionError || '请刷新后重试'"
               />
+              <t-alert
+                v-if="pendingReceiptAttempt"
+                theme="warning"
+                title="正在核对上次到账登记"
+                message="重试会提交上次登记的原日期、金额及依据。"
+              />
+              <label v-if="directUpstreamReceipt || pendingReceiptAttempt">
+                本人当前登录密码
+                <t-input
+                  v-model="upstreamReceiptPassword"
+                  type="password"
+                  aria-label="本人当前登录密码"
+                  autocomplete="current-password"
+                  :disabled="receiptSubmitting"
+                />
+              </label>
               <label>
                 <CompanyBankEventSelect
                   v-if="receiptForm.factType==='affiliate_remittance_to_company'"
@@ -870,6 +920,56 @@
       @cancel="closeOperatingProjectionExport"
     />
 
+    <t-dialog
+      v-model:visible="ownerSettlementVisible"
+      header="登记业主结算"
+      :confirm-btn="{ content: pendingOwnerSettlement ? '重试原登记' : '登记结算', loading: ownerSettlementSubmitting }"
+      @confirm="submitOwnerSettlement"
+    >
+      <form
+        class="receipt-form"
+        @submit.prevent="submitOwnerSettlement"
+      >
+        <label>
+          业主名称
+          <t-input
+            v-model="ownerSettlementForm.ownerName"
+            maxlength="200"
+            :disabled="ownerSettlementFormLocked"
+          />
+        </label>
+        <label>
+          结算日期
+          <t-date-picker
+            v-model="ownerSettlementForm.settledAt"
+            format="YYYY-MM-DD"
+            :disabled="ownerSettlementFormLocked"
+          />
+        </label>
+        <label>
+          结算金额（元，负数冲减）
+          <t-input
+            v-model="ownerSettlementForm.amountYuan"
+            :disabled="ownerSettlementFormLocked"
+          />
+        </label>
+        <label>
+          业主结算凭证
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+            :disabled="ownerSettlementFormLocked"
+            @change="selectOwnerSettlementVoucher"
+          >
+        </label>
+      </form>
+      <t-alert
+        v-if="ownerSettlementError"
+        theme="warning"
+        :message="ownerSettlementError"
+      />
+    </t-dialog>
+
     <SensitiveActionDialog
       v-model="upstreamFundConfirmationVisible"
       title="确认上游资金事实"
@@ -895,9 +995,10 @@
 </template>
 
 <script setup lang="ts">
+import { chinaDateOnly, normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   confirmProjectUpstreamFundFact,
@@ -911,6 +1012,7 @@ import {
   fetchProjectExpenseCreateCapability,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
+  fetchProjectOwnerSettlementCapability,
   fetchProjectSetOperatingProjection,
   fetchProjectUpstreamFundFacts,
   fetchProjectUpstreamFundConfirmationCapability,
@@ -919,8 +1021,10 @@ import {
   fetchProjectUpdateCapability,
   fetchProjects,
   recordProjectExpensePurchaseExecution,
+  recordProjectOwnerSettlement,
   recordProjectUpstreamFundFact,
   uploadProjectExpensePrivateFile,
+  uploadProjectOwnerSettlementFile,
   uploadProjectUpstreamFundPrivateFile,
   updateProject,
   type ProjectExpensePaymentMethod,
@@ -928,6 +1032,7 @@ import {
   type ProjectExpenseSubtype,
   type ProjectExpenseType,
   type ProjectOperatingOverviewReadModel,
+  type RecordProjectOwnerSettlementPayload,
   type ProjectUpstreamFundBasisType,
   type ProjectUpstreamFundFactReadModel,
   type ProjectUpstreamFundReferenceOptionsReadModel,
@@ -962,6 +1067,7 @@ import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
+import ProjectPersonnelPanel from "./components/ProjectPersonnelPanel.vue";
 import ProjectRenameForm from "./components/ProjectRenameForm.vue";
 import ProjectCreateForm from "./components/ProjectCreateForm.vue";
 import ProjectLifecyclePanel from "./components/ProjectLifecyclePanel.vue";
@@ -1044,6 +1150,9 @@ interface ProjectExpenseActionFormState {
 
 const auth = useAuthStore();
 const router = useRouter();
+const canRegisterProjectAdvance = computed(() => auth.user?.globalRoleKeys.some(role =>
+  role === "finance_staff" || role === "finance_director" || role === "comprehensive_director"
+) ?? false);
 const route = useRoute();
 const projectSelectPopupProps = {
   overlayInnerStyle: (trigger: HTMLElement) => ({
@@ -1077,6 +1186,7 @@ const projectCreateRevision = ref(0);
 const projectMaintenanceMode = ref<"create" | "rename" | "status">("rename");
 const selectedProjectName = ref("");
 const receiptSubmitting = ref(false);
+const upstreamReceiptPassword = ref("");
 const receiptMessage = ref("");
 const receiptMessageTone = ref<"success" | "danger">("success");
 const receiptForm = ref<ReceiptFormState>(createReceiptForm());
@@ -1326,6 +1436,10 @@ const visibleExpenseTypeOptions = computed(() =>
 );
 
 const canManageProjects = computed(
+  () => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director" || role === "general_manager") ?? false
+);
+
+const canManageProjectEntities = computed(
   () => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false
 );
 
@@ -1333,6 +1447,109 @@ const canViewExecutiveOverview = computed(
   () =>
     auth.user?.globalRoleKeys.some((role) => GLOBAL_PROJECT_OVERVIEW_ROLE_KEYS.has(role)) ?? false
 );
+
+const ownerSettlementVisible = ref(false);
+const ownerSettlementProject = ref("");
+const ownerSettlementError = ref("");
+const ownerSettlementSubmitting = ref(false);
+const ownerSettlementForm = reactive({ ownerName: "", settledAt: "", amountYuan: "", file: null as File | null });
+const ownerSettlementAttempts = reactive(new Map<string, RecordProjectOwnerSettlementPayload>());
+const pendingOwnerSettlement = computed(() => ownerSettlementAttempts.get(JSON.stringify([auth.user?.id, ownerSettlementProject.value])));
+const ownerSettlementFormLocked = computed(() => ownerSettlementSubmitting.value || !!pendingOwnerSettlement.value);
+const canOpenOwnerSettlement = computed(() => auth.user?.roleKeys.some(role =>
+  role === "comprehensive_director" || role === "finance_staff" || role === "finance_director"
+) ?? false);
+
+async function openOwnerSettlement() {
+  const projectId = selectedProjectId.value;
+  const actorId = auth.user?.id;
+  try {
+    const capability = await fetchProjectOwnerSettlementCapability(projectId);
+    if (actorId !== auth.user?.id || projectId !== selectedProjectId.value || capability.projectId !== projectId) return;
+    if (!capability.availableActions.includes("record_owner_settlement")) return;
+    ownerSettlementProject.value = projectId;
+    const pending = pendingOwnerSettlement.value;
+    Object.assign(ownerSettlementForm, {
+      ownerName: pending?.ownerName ?? "", settledAt: pending?.settledAt ?? "",
+      amountYuan: pending?.amountYuan ?? "", file: null
+    });
+    ownerSettlementError.value = pending ? "上次结果仍待核对，请重试原登记。" : "";
+    ownerSettlementVisible.value = true;
+  } catch (error) {
+    message.value = formatUnknownApiError(error, "当前项目不能登记业主结算");
+  }
+}
+
+async function recordOwnerSettlementWithCapability(projectId: string, body: RecordProjectOwnerSettlementPayload) {
+  const capability = await fetchProjectOwnerSettlementCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_owner_settlement");
+  if (!operationAllowed) throw new Error("当前岗位不能登记该项目的业主结算");
+  return recordProjectOwnerSettlement(projectId, body);
+}
+
+async function uploadOwnerSettlementFileWithCapability(projectId: string, file: File, idempotencyKey: string) {
+  const capability = await fetchProjectOwnerSettlementCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_owner_settlement");
+  if (!operationAllowed) throw new Error("当前岗位不能上传该项目的业主结算凭证");
+  return uploadProjectOwnerSettlementFile(projectId, file, idempotencyKey);
+}
+
+function openOwnerPayment() {
+  if (!pendingReceiptAttempt.value) {
+    receiptForm.value.factType = "owner_payment_to_affiliate";
+    receiptForm.value.basisType = "written";
+  }
+  activeTab.value = "operations";
+}
+
+function selectOwnerSettlementVoucher(event: Event) {
+  ownerSettlementForm.file = (event.target as HTMLInputElement).files?.[0] ?? null;
+}
+
+async function submitOwnerSettlement() {
+  const projectId = ownerSettlementProject.value;
+  const actorId = auth.user?.id;
+  if (!actorId || ownerSettlementSubmitting.value || projectId !== selectedProjectId.value) return;
+  const attemptKey = JSON.stringify([actorId, projectId]);
+  const previousAttempt = pendingOwnerSettlement.value;
+  let submission = previousAttempt;
+  ownerSettlementSubmitting.value = true;
+  ownerSettlementError.value = "";
+  try {
+    if (!submission) {
+      const ownerName = ownerSettlementForm.ownerName.trim();
+      const settledAt = ownerSettlementForm.settledAt;
+      const file = ownerSettlementForm.file;
+      const amountYuan = normalizeBusinessAmount(ownerSettlementForm.amountYuan.trim(), { allowNegative: true });
+      if (!ownerName || !settledAt || !file || !amountYuan || amountYuan === "0.0000") {
+        ownerSettlementError.value = "请填写业主、结算日期和非零金额，并上传凭证。";
+        return;
+      }
+      const idempotencyKey = crypto.randomUUID();
+      const voucher = await uploadOwnerSettlementFileWithCapability(projectId, file, idempotencyKey);
+      if (actorId !== auth.user?.id || projectId !== selectedProjectId.value) return;
+      submission = { ownerName, settledAt, amountYuan, voucherFileId: voucher.id, idempotencyKey };
+      ownerSettlementAttempts.set(attemptKey, submission);
+    }
+    await recordOwnerSettlementWithCapability(projectId, submission);
+    ownerSettlementAttempts.delete(attemptKey);
+    ownerSettlementVisible.value = false;
+    if (actorId === auth.user?.id && projectId === selectedProjectId.value) await loadOverview();
+  } catch (error) {
+    if (!previousAttempt && error instanceof Error && "status" in error &&
+      (error.status === 400 || error.status === 403 || error.status === 404)) {
+      ownerSettlementAttempts.delete(attemptKey);
+    }
+    ownerSettlementError.value = formatUnknownApiError(error, "业主结算登记失败");
+    if (ownerSettlementAttempts.has(attemptKey)) ownerSettlementError.value += " 请重试原登记核对结果。";
+  } finally {
+    ownerSettlementSubmitting.value = false;
+  }
+}
 
 const canRecordUpstreamFunds = computed(
   () =>
@@ -1397,20 +1614,24 @@ const cashItems = computed(() => {
 const businessItems = computed(() => {
   const business = overview.value?.business;
   const upstream = overview.value?.upstreamFunds;
+  const owner = overview.value?.ownerBalance;
   return [
     { label: "生效合同额", value: formatCents(business?.effectiveContractAmountCents ?? "0") },
     { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? null) },
     { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? null) },
-    { label: "业主向施工企业付款", value: formatCents(upstream?.ownerPaymentCents ?? null) },
+    { label: "业主已结算", value: owner ? `¥${owner.settlementYuan}` : "暂无数据" },
+    { label: "业主已付", value: owner ? `¥${owner.receivedYuan}` : formatCents(upstream?.ownerPaymentCents ?? null) },
+    { label: "业主未付", value: owner ? `¥${owner.outstandingYuan}` : "暂无数据" },
+    { label: "未结算业主预付款", value: owner ? `¥${owner.advanceYuan}` : "暂无数据" },
     { label: "施工企业扣款", value: formatCents(upstream?.affiliateDeductionCents ?? null) },
     { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? null) },
-    { label: "经营收入", value: formatCents(business?.operatingIncomeCents ?? null) },
+    { label: "经营收入", value: business?.operatingIncomeYuan ? `¥${business.operatingIncomeYuan}` : formatCents(business?.operatingIncomeCents ?? null) },
     {
       label: "施工企业对下付款",
       value: formatCents(business?.affiliateDownstreamPaymentCents ?? null)
     },
     { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
-    { label: "毛利", value: formatCents(business?.grossProfitCents ?? null) }
+    { label: "毛利", value: business?.grossProfitYuan ? `¥${business.grossProfitYuan}` : formatCents(business?.grossProfitCents ?? null) }
   ];
 });
 
@@ -1468,7 +1689,7 @@ const executiveSummaryItems = computed(() => {
   const summary = executiveOverview.value?.summary;
   return [
     { label: "项目数", value: String(summary?.projectCount ?? 0) },
-    { label: "生效合同额", value: formatExecutiveMoneyCents(summary?.contractAmountCents ?? null) },
+    { label: "生效合同额", value: summary?.contractAmountYuan ? `¥${summary.contractAmountYuan}` : formatExecutiveMoneyCents(summary?.contractAmountCents ?? null) },
     { label: "生效结算额", value: formatExecutiveMoneyCents(summary?.settlementAmountCents ?? null) },
     { label: "结算可付额", value: formatExecutiveMoneyCents(summary?.payableAmountCents ?? null) },
     { label: "实际收款", value: formatExecutiveMoneyCents(summary?.actualReceiptsCents ?? null) },
@@ -1670,12 +1891,14 @@ async function handleOperatingTabChange(value: string | number) {
 
 async function fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId: string) {
   const workbench = await fetchProjectCloseProfitWorkbench(projectId);
+  const projection = workbench.projection;
+  if (!projection) return workbench;
   const hasProjectionDrift = workbench.stages.some((stage) =>
     stage.currentVersion?.status === "completed" &&
-    stage.currentVersion.projectionFingerprint !== workbench.projection.fingerprint
+    stage.currentVersion.projectionFingerprint !== projection.fingerprint
   );
   if (!hasProjectionDrift || !workbench.canReconcileImpacts) return workbench;
-  await reconcileProjectCloseImpactsWithCapability(projectId, workbench.projection.fingerprint);
+  await reconcileProjectCloseImpactsWithCapability(projectId, projection.fingerprint);
   return fetchProjectCloseProfitWorkbench(projectId);
 }
 
@@ -1726,7 +1949,7 @@ async function loadExecutiveOverview() {
   loadingExecutiveOverview.value = true;
   executiveMessage.value = "";
   try {
-    const projection = await fetchProjectSetOperatingProjection();
+    const projection = await fetchProjectSetOperatingProjection(undefined, 2);
     executiveOverview.value = buildExecutiveProjectOverview(projection, projects.value);
   } catch (error) {
     executiveOverview.value = null;
@@ -2151,17 +2374,49 @@ function syncExpenseFormBaseline() {
   expenseFormBaseline.value = projectExpenseFormSnapshot(expenseForm.value);
 }
 
+const directUpstreamReceipt = computed(() => receiptForm.value.basisType === "written" &&
+  (receiptForm.value.factType === "owner_payment_to_affiliate" || receiptForm.value.factType === "affiliate_remittance_to_company"));
+type ReceiptSubmissionBody = Omit<Parameters<typeof recordProjectUpstreamFundFact>[1], "confirmationPassword">;
+const upstreamReceiptAttempts = reactive(new Map<string, ReceiptSubmissionBody>());
+const pendingReceiptAttempt = computed(() => {
+  const actorId = auth.user?.id;
+  const projectId = selectedProjectId.value;
+  return actorId && projectId ? upstreamReceiptAttempts.get(JSON.stringify([actorId, projectId])) : undefined;
+});
+
 async function submitReceipt() {
+  if (receiptSubmitting.value) return;
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setReceiptError("请先选择项目");
     return;
   }
 
+  const actorId = auth.user?.id;
+  if (!actorId) {
+    setReceiptError("请登录后登记上游资金");
+    return;
+  }
+  const attemptKey = JSON.stringify([actorId, projectId]);
+  const previousAttempt = upstreamReceiptAttempts.get(attemptKey);
   receiptSubmitting.value = true;
   receiptMessage.value = "";
   try {
     const form = receiptForm.value;
+    const confirmActualReceipt = directUpstreamReceipt.value;
+    const password = confirmActualReceipt || previousAttempt
+      ? requiredText(upstreamReceiptPassword.value, "本人登录密码")
+      : undefined;
+    if (previousAttempt) {
+      await recordProjectUpstreamFundFactWithCapability(projectId, {
+        ...previousAttempt,
+        confirmationPassword: password
+      });
+      upstreamReceiptAttempts.delete(attemptKey);
+      finishReceiptSubmission(previousAttempt.factType, true);
+      await loadOverview();
+      return;
+    }
     if (!receiptEntryDefinition.value) {
       throw new Error(receiptEntryDefinitionError.value || "施工企业资金事实字段尚未就绪");
     }
@@ -2181,14 +2436,9 @@ async function submitReceipt() {
     const amountCents = parseYuanToCents(form.amountYuan, "上游资金金额");
     const counterpartyName = requiredText(form.counterpartyName, "交易对方");
     const evidenceFileId = form.voucherFile
-      ? (
-          await uploadProjectUpstreamFundEvidenceWithCapability(
-            projectId,
-            form.voucherFile
-          )
-        ).id
+      ? (await uploadProjectUpstreamFundEvidenceWithCapability(projectId, form.voucherFile)).id
       : undefined;
-    await recordProjectUpstreamFundFactWithCapability(projectId, {
+    const body: ReceiptSubmissionBody = {
       factType: form.factType,
       bankObservationReference:form.factType==='affiliate_remittance_to_company'?form.bankObservationReference:undefined,
       basisType: form.basisType,
@@ -2217,22 +2467,44 @@ async function submitReceipt() {
         : {}),
       description: form.description.trim() || undefined,
       evidenceFileId,
-      idempotencyKey: crypto.randomUUID()
+      idempotencyKey: crypto.randomUUID(),
+      ...(confirmActualReceipt ? { confirmedReceipt: true } : {})
+    };
+    if (confirmActualReceipt) upstreamReceiptAttempts.set(attemptKey, body);
+    await recordProjectUpstreamFundFactWithCapability(projectId, {
+      ...body,
+      ...(confirmActualReceipt ? { confirmationPassword: password } : {})
     });
-    receiptForm.value = createReceiptForm(form.factType);
-    if (receiptVoucherInput.value) {
-      receiptVoucherInput.value.value = "";
-    }
+    if (confirmActualReceipt) upstreamReceiptAttempts.delete(attemptKey);
+    finishReceiptSubmission(form.factType, confirmActualReceipt);
     await loadOverview();
-    receiptMessageTone.value = "success";
-    receiptMessage.value =
-      form.factType === "unreconciled_receipt_difference"
-        ? "到账差额已进入待核对，不会自动生成扣款或成本。"
-        : "上游资金事实已保存待独立确认。";
   } catch (error) {
+    if (!previousAttempt && error instanceof Error && "status" in error &&
+      (error.status === 400 || error.status === 401 || error.status === 403 || error.status === 404)) {
+      upstreamReceiptAttempts.delete(attemptKey);
+    }
     setReceiptError(formatUnknownApiError(error, "登记上游资金事实失败"));
   } finally {
     receiptSubmitting.value = false;
+  }
+}
+
+function finishReceiptSubmission(
+  factType: Parameters<typeof recordProjectUpstreamFundFact>[1]["factType"],
+  confirmed: boolean
+) {
+  upstreamReceiptPassword.value = "";
+  receiptForm.value = createReceiptForm(factType);
+  if (receiptVoucherInput.value) receiptVoucherInput.value.value = "";
+  receiptMessageTone.value = "success";
+  if (factType === "unreconciled_receipt_difference") {
+    receiptMessage.value = "到账差额已进入待核对，不会自动生成扣款或成本。";
+  } else if (!confirmed) {
+    receiptMessage.value = "上游资金事实已保存待独立确认。";
+  } else {
+    receiptMessage.value = factType === "owner_payment_to_affiliate"
+      ? "业主实际付款已登记。未结算部分计为预付款。"
+      : "施工企业转入资金已按实收登记。";
   }
 }
 
@@ -2552,11 +2824,7 @@ function canRecordPurchaseExecution(row: ProjectExpenseRow) {
 }
 
 function todayText(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return chinaDateOnly();
 }
 
 function requiredText(value: string, label: string): string {
@@ -2766,6 +3034,7 @@ function upstreamFundStatusLabel(status: ProjectUpstreamFundFactReadModel["statu
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
@@ -2774,6 +3043,7 @@ function formatDate(value: string): string {
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

@@ -1,3 +1,4 @@
+import { isParallelDutyNotificationEvent } from "../approval/parallel-approval-protocol";
 import type { ApprovalTimelineItemReadModel } from "@jiangkong/shared-domain";
 
 interface ApprovalTimelinePrisma {
@@ -96,7 +97,7 @@ export async function approvalTimelineForBusiness(
     : [];
   const userNameById = new Map(users.map((user) => [user.id, user.name]));
 
-  return logs.map((log) => ({
+  return logs.filter(log => !isParallelDutyNotificationEvent(log)).map((log) => ({
     id: log.id,
     action: log.action,
     actionLabel: ACTION_LABELS[log.action] ?? "审批动作未读取",

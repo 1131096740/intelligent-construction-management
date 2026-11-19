@@ -844,13 +844,13 @@ describe("ProjectController authorization wiring", () => {
 
   it("guards project creation with company decision roles", () => {
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ProjectController.prototype.create)).toEqual(
-      "project.master_data.manage"
+      "project.basics.manage"
     );
   });
 
   it("guards project updates with company decision roles", () => {
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ProjectController.prototype.update)).toEqual(
-      "project.master_data.manage"
+      "project.basics.manage"
     );
   });
 

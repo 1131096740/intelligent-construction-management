@@ -42,3 +42,10 @@ export class ApplicationPasswordDto {
   @Length(8, 72, { message: "密码需要8到72个字符" })
   newPassword!: string;
 }
+
+export class AdminChangePhoneDto extends ConfirmAccountPasswordDto {
+  @Matches(/^1[3-9]\d{9}$/u, { message: "请填写正确的新手机号" })
+  phone!: string;
+  @Matches(/^\d{6}$/u, { message: "请输入新手机号收到的6位验证码" })
+  code!: string;
+}

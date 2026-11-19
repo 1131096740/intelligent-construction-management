@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 
-export type ContractSigningSubjectType = "affiliate" | "our_company";
+export type ContractSigningSubjectType = "affiliate" | "our_company" | "draft_unconfirmed";
 
 export interface ProjectAffiliateSnapshot {
   assignmentId: string;

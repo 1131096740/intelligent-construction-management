@@ -1,20 +1,37 @@
+import { hasDirectSigningInput } from "../contract/contract-direct-pending-source";
+import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import { normalizeEconomicScope } from "./contract-economic-scope";
 import { confirmEconomicSettlementCoverage,assertSettledScopesPreserved } from "./contract-economic-settlement";
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
+// Local precision covers the full numeric(24,4) range and bounded sums without global settings.
+const EconomicDecimal=Prisma.Decimal.clone({precision:60});
 
 export interface EconomicDocument {
  targetVersionId?:string;
   ref: string; projectId: string; reference: string; title: string; counterparty: string;
+  numericProtocolVersion?: 1 | 2; amountYuan?: string | null;
   amountCents: bigint | null; version: string; formal: boolean; hasFormalHistory?: boolean; settledCents: bigint;
 }
 export interface EconomicCoverage {
   scope: string; leftAmountCents: string; rightAmountCents: string;
   owner: "left" | "right";
 }
+export interface EconomicCoverageV2 {
+  numericProtocolVersion: 2; scope: string; leftAmountCents: null; rightAmountCents: null;
+  leftAmountYuan: string; rightAmountYuan: string; owner: "left" | "right";
+}
+export function economicDocumentYuan(document: EconomicDocument): string | null {
+  if(document.numericProtocolVersion===2){
+    if(document.amountCents!==null||document.amountYuan===undefined)throw new BadRequestException("文书金额协议不完整");
+    return normalizeBusinessAmount(document.amountYuan);
+  }
+  return document.amountCents===null?null:new EconomicDecimal(document.amountCents.toString()).div(100).toFixed(4);
+}
 export const ECONOMIC_RELATIONS = ["independent", "supplement", "replacement", "shared_evidence"] as const;
 export function documentFingerprint(d: EconomicDocument) {
+  if(d.numericProtocolVersion===2)return createHash("sha256").update(JSON.stringify({numericProtocolVersion:2,ref:d.ref,version:d.version,amountYuan:economicDocumentYuan(d),party:d.counterparty,reference:d.reference,title:d.title})).digest("hex");
   return createHash("sha256").update(JSON.stringify({ ref: d.ref, version: d.version, amount: d.amountCents?.toString() ?? null,
     party: d.counterparty, reference: d.reference, title: d.title })).digest("hex");
 }
@@ -22,12 +39,32 @@ export function money(value: unknown, label: string) {
   if (typeof value !== "string" || !/^(0|[1-9]\d{0,17})$/u.test(value)) throw new BadRequestException(`${label}必须按分填写非负整数`);
   return BigInt(value);
 }
-export function normalizeCoverage(value: unknown, relation: string, left: EconomicDocument, right: EconomicDocument): EconomicCoverage[] {
+export function normalizeCoverage(value: unknown, relation: string, left: EconomicDocument, right: EconomicDocument): Array<EconomicCoverage | EconomicCoverageV2> {
   if (!ECONOMIC_RELATIONS.includes(relation as typeof ECONOMIC_RELATIONS[number])) throw new BadRequestException("文书关系不正确");
   if (!Array.isArray(value) || value.length > 100) throw new BadRequestException("请按履约分项填写重叠范围，最多100项");
   if (relation === "independent") {
     if (value.length) throw new BadRequestException("独立履约不应包含重叠分项");
     return [];
+  }
+  if(left.numericProtocolVersion===2||right.numericProtocolVersion===2){
+    if(!value.length)throw new BadRequestException("存在重叠时须明确双方分项金额");
+    const scopes=new Set<string>();
+    const rows=value.map((raw:unknown):EconomicCoverageV2=>{
+      if(!raw||typeof raw!=="object")throw new BadRequestException("重叠分项格式不正确");
+      const row=raw as Record<string,unknown>;
+      const scope=typeof row.scope==="string"?row.scope.trim():"";
+      if(!scope||scope.length>300||scopes.has(normalizeEconomicScope(scope)))throw new BadRequestException("履约分项名称不能为空或重复");
+      scopes.add(normalizeEconomicScope(scope));
+      if(row.owner!=="left"&&row.owner!=="right")throw new BadRequestException("每个重叠分项必须指定唯一统计及结算归属");
+      if(row.leftAmountCents!=null||row.rightAmountCents!=null||typeof row.leftAmountYuan!=="string"||typeof row.rightAmountYuan!=="string")throw new BadRequestException("新版覆盖金额须明确填写四位元，不能混用分");
+      let l:string|null,r:string|null;
+      try{l=normalizeBusinessAmount(row.leftAmountYuan);r=normalizeBusinessAmount(row.rightAmountYuan);}catch{throw new BadRequestException("覆盖金额最多4位小数");}
+      if(l===null||r===null||new EconomicDecimal(l).lte(0)||new EconomicDecimal(r).lte(0))throw new BadRequestException("重叠分项双方覆盖金额必须大于零");
+      return {scope,numericProtocolVersion:2,leftAmountCents:null,rightAmountCents:null,leftAmountYuan:l,rightAmountYuan:r,owner:row.owner};
+    });
+    const l=economicDocumentYuan(left),r=economicDocumentYuan(right);
+    if(l!==null&&rows.reduce((s,row)=>s.plus(row.leftAmountYuan),new EconomicDecimal(0)).gt(l)||r!==null&&rows.reduce((s,row)=>s.plus(row.rightAmountYuan),new EconomicDecimal(0)).gt(r))throw new BadRequestException("覆盖金额不能超过任一原文书金额");
+    return rows;
   }
   if (!value.length || left.amountCents === null || right.amountCents === null) throw new BadRequestException("存在重叠时须明确双方金额及分项，未定价范围不能直接抵减");
   const scopes = new Set<string>();
@@ -46,10 +83,17 @@ export function normalizeCoverage(value: unknown, relation: string, left: Econom
   return rows;
 }
 function normalized(value: string) { return value.normalize("NFKC").replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase(); }
-export function suspectedOverlap(a: EconomicDocument, b: EconomicDocument) {
+export function suspectedOverlap(a: EconomicDocument, b: EconomicDocument, amountPrecision: "legacy-cents" | "business-yuan" = "legacy-cents") {
   if (a.ref === b.ref || !normalized(a.counterparty) || normalized(a.counterparty) !== normalized(b.counterparty)) return false;
   if (normalized(a.reference) && normalized(a.reference) === normalized(b.reference)) return true;
   if (normalized(a.title) && normalized(a.title) === normalized(b.title)) return true;
+  if (amountPrecision === "business-yuan") {
+    const left = economicDocumentYuan(a), right = economicDocumentYuan(b);
+    if (left === null || right === null) return false;
+    const first = new EconomicDecimal(left), second = new EconomicDecimal(right);
+    if (first.isZero() || second.isZero()) return false;
+    return first.minus(second).abs().times(10).lte(EconomicDecimal.max(first, second));
+  }
   if (a.amountCents === null || b.amountCents === null || a.amountCents === 0n || b.amountCents === 0n) return false;
   const delta = a.amountCents > b.amountCents ? a.amountCents-b.amountCents : b.amountCents-a.amountCents;
   return delta * 10n <= (a.amountCents > b.amountCents ? a.amountCents : b.amountCents);
@@ -69,9 +113,10 @@ export async function economicDocuments(tx: Prisma.TransactionClient, projectId:
   const documents: EconomicDocument[] = [];
   for (const c of contracts) {
     const own=versions.filter(v=>v.contractId===c.id);
-    const v = selection ? (selection.targetRef===`contract:${c.id}` && selection.targetVersionId ? own.find(v=>v.id===selection.targetVersionId) : own.find(v=>v.effectiveAt) ?? own[0]) : own[0]; if (!v) continue;
+    const v = selection ? (selection.targetRef===`contract:${c.id}` && selection.targetVersionId ? own.find(v=>v.id===selection.targetVersionId) : own.find(v=>v.effectiveAt) ?? own[0]) : own[0];
+    if (!v || hasDirectSigningInput(v.draftData)) continue;
     documents.push({ ref: `contract:${c.id}`, projectId, reference: c.code ?? c.temporaryCode ?? "", title: c.name, counterparty: c.counterparty,
-      amountCents: v.amountLimitType === "uncapped" ? null : v.amountCents, version: `${v.id}:${v.documentContentRevision}`,targetVersionId:v.id,
+      ...(v.numericProtocolVersion===2?{numericProtocolVersion:2 as const,amountCents:null,amountYuan:normalizeBusinessAmount(v.amountYuan===null?null:v.amountYuan.toString())}:{amountCents:v.amountLimitType === "uncapped" ? null : v.amountCents}), version: `${v.id}:${v.documentContentRevision}`,targetVersionId:v.id,
       formal: Boolean(v.effectiveAt), hasFormalHistory: own.some(v=>Boolean(v.effectiveAt)), settledCents: settlements.filter(s=>s.contractId===c.id).reduce((a,s)=>a+s.amountCents,0n) });
   }
   for (const c of external.filter(c=>c.entryKind==="original")) {
@@ -89,7 +134,14 @@ export function excludedAmount(review: { leftSourceRef: string; rightSourceRef: 
   const side = ref === review.leftSourceRef ? "left" : ref === review.rightSourceRef ? "right" : null;
   if (!side) return 0n;
   const coverage = review.coverage as EconomicCoverage[];
+  if(coverage.some(row=>"numericProtocolVersion" in row&&row.numericProtocolVersion===2))throw new BadRequestException("新版履约覆盖须使用四位元核对入口");
   return coverage.filter(row=>row.owner!==side).reduce((sum,row)=>sum+BigInt(side==="left"?row.leftAmountCents:row.rightAmountCents),0n);
+}
+export function excludedAmountYuan(review:{leftSourceRef:string;rightSourceRef:string;coverage:unknown},ref:string):string {
+ const side=ref===review.leftSourceRef?"left":ref===review.rightSourceRef?"right":null;
+ if(!side)return "0.0000";
+ const Decimal=Prisma.Decimal.clone({precision:60});
+ return (review.coverage as Array<EconomicCoverage|EconomicCoverageV2>).filter(row=>row.owner!==side).reduce((sum,row)=>sum.plus("numericProtocolVersion" in row?side==="left"?row.leftAmountYuan:row.rightAmountYuan:new Decimal(side==="left"?row.leftAmountCents:row.rightAmountCents).div(100)),new Decimal(0)).toFixed(4);
 }
 /** 事务内执行，所有入口共用。未知关系不会由付款方或金额猜测为独立。 */
 export async function assertEconomicContractReady(tx: Prisma.TransactionClient, projectId: string, ref: string, nextSettlementAmount?: bigint, settlementRef?: string, targetVersionId?: string) {
@@ -104,6 +156,14 @@ export async function assertEconomicContractReady(tx: Prisma.TransactionClient, 
   const conflicts = documents.filter(other=>(other.formal||other.hasFormalHistory) && (suspectedOverlap(document,other)||reviews.some(r=>[r.leftSourceRef,r.rightSourceRef].includes(other.ref))) && !current.some(r=>[r.leftSourceRef,r.rightSourceRef].includes(other.ref)));
   if (conflicts.length) throw new ConflictException({ code: "CONTRACT_ECONOMIC_REVIEW_REQUIRED", message: "存在相同相对方及相近履约资料，请先在合同台账完成经济重复复核；相关部分尚不能正式确认", references: conflicts.map(c=>c.reference) });
   await assertSettledScopesPreserved(tx,document,current);
+  if(document.numericProtocolVersion===2||current.some(r=>Array.isArray(r.coverage)&&r.coverage.some(line=>line&&typeof line==="object"&&!Array.isArray(line)&&line.numericProtocolVersion===2))){
+    const excluded=current.reduce((sum,r)=>sum.plus(excludedAmountYuan(r,ref)),new EconomicDecimal(0));
+    const total=economicDocumentYuan(document),settled=new EconomicDecimal(document.settledCents.toString()).div(100);
+    if(total!==null&&(excluded.gt(total)||settled.gt(new EconomicDecimal(total).minus(excluded))))throw new ConflictException("跨文书覆盖金额重复分配，请重新核对履约范围");
+    if(nextSettlementAmount!==undefined&&total!==null&&excluded.gt(0)&&settled.plus(new EconomicDecimal(nextSettlementAmount.toString()).div(100)).gt(new EconomicDecimal(total).minus(excluded)))throw new ConflictException("本次结算覆盖了其他文书已承接的履约范围；请按未覆盖分项办理，不能重复确认成本");
+    if(nextSettlementAmount!==undefined)await confirmEconomicSettlementCoverage(tx,document,current,settlementRef,nextSettlementAmount);
+    return {numericProtocolVersion:2 as const,document,excludedAmountCents:null,excludedAmountYuan:excluded.toFixed(4),reviews:current};
+  }
   const excluded = current.reduce((sum,r)=>sum+excludedAmount(r,ref),0n);
   if (document.amountCents !== null && (excluded > document.amountCents||document.settledCents>document.amountCents-excluded)) throw new ConflictException("跨文书覆盖金额重复分配，请重新核对履约范围");
   if (nextSettlementAmount !== undefined && document.amountCents !== null && excluded > 0n && document.settledCents + nextSettlementAmount > document.amountCents-excluded) throw new ConflictException("本次结算覆盖了其他文书已承接的履约范围；请按未覆盖分项办理，不能重复确认成本");
@@ -122,4 +182,9 @@ export function reviewAppliesToVersion(review:{frozenSources:unknown},ref:string
 export async function economicExcludedAt(tx:Prisma.TransactionClient,projectId:string,ref:string,asOf:Date,version?:string) {
  const reviews=await tx.contractEconomicReview.findMany({where:{projectId,status:"confirmed",confirmedAt:{lte:asOf},OR:[{leftSourceRef:ref},{rightSourceRef:ref}]}});
  return latestEconomicReviews(version?reviews.filter(r=>reviewAppliesToVersion(r,ref,version)):reviews).reduce((sum,r)=>sum+excludedAmount(r,ref),0n);
+}
+export async function economicExcludedYuanAt(tx:Prisma.TransactionClient,projectId:string,ref:string,asOf:Date,version?:string) {
+ const reviews=await tx.contractEconomicReview.findMany({where:{projectId,status:"confirmed",confirmedAt:{lte:asOf},OR:[{leftSourceRef:ref},{rightSourceRef:ref}]}});
+ const Decimal=Prisma.Decimal.clone({precision:60});
+ return latestEconomicReviews(version?reviews.filter(r=>reviewAppliesToVersion(r,ref,version)):reviews).reduce((sum,r)=>sum.plus(excludedAmountYuan(r,ref)),new Decimal(0)).toFixed(4);
 }

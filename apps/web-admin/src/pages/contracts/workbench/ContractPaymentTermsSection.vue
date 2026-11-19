@@ -1,118 +1,31 @@
 <template>
   <div class="workbench-section">
-    <h2 class="section-title">
-      付款条款
-    </h2>
-
+    <h2 class="section-title">付款方式及约定</h2>
     <label class="field">
-      <span class="field-label">付款条款原文摘要</span>
+      <span class="field-label">付款时间、比例与条件</span>
       <t-textarea
         :value="model.paymentTermsOriginalText"
         data-field-key="paymentTerms"
         :disabled="disabled"
-        :autosize="{ minRows: 3, maxRows: 6 }"
-        placeholder="粘贴合同中与付款比例、期限、发票、分次付款有关的原文摘要"
+        :autosize="{ minRows: 3, maxRows: 8 }"
+        placeholder="按实际约定填写付款时间、比例和条件，可留空待补充"
         @change="(value: string) => emit('update', { paymentTermsOriginalText: value })"
       />
     </label>
-
-    <div class="field-grid">
-      <label class="field">
-        <span class="field-label">{{ ratioLabel }}</span>
-        <t-input
-          :value="ratioPercentText"
-          :disabled="disabled"
-          placeholder="如 80"
-          @change="onRatioChange"
-        />
-      </label>
-
-      <label class="field">
-        <span class="field-label">{{ dueDaysLabel }}</span>
-        <t-input
-          :value="dueDaysText"
-          :disabled="disabled"
-          placeholder="如 30"
-          @change="onDueDaysChange"
-        />
-      </label>
-    </div>
-
-    <div class="checkbox-row">
-      <t-checkbox
-        :checked="model.paymentRequiresInvoice"
-        :disabled="disabled"
-        @change="(checked: boolean) => emit('update', { paymentRequiresInvoice: checked })"
-      >
-        付款前需收到合规发票
-      </t-checkbox>
-      <t-checkbox
-        :checked="model.paymentAllowsInstallments"
-        :disabled="disabled"
-        @change="(checked: boolean) => emit('update', { paymentAllowsInstallments: checked })"
-      >
-        允许分次付款
-      </t-checkbox>
-    </div>
+    <p class="field-help">按合同原文记录，供业务人员核对；系统不据此自动判断验收、付款条件或执行付款。</p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
 import type { ContractSettlementMode } from "@jiangkong/shared-domain";
 import type { ContractDraftModel } from "./use-contract-draft";
-
-const props = defineProps<{
+defineProps<{
   model: ContractDraftModel;
   contractTypeKey: string;
   settlementMode?: ContractSettlementMode | null;
   disabled: boolean;
 }>();
-
 const emit = defineEmits<{ (event: "update", patch: Partial<ContractDraftModel>): void }>();
-
-const ratioPercentText = computed(() =>
-  props.model.paymentRatioBps === null ? "" : String(props.model.paymentRatioBps / 100)
-);
-const dueDaysText = computed(() =>
-  props.model.paymentDueDays === null ? "" : String(props.model.paymentDueDays)
-);
-const isDirectPayment = computed(() => props.settlementMode === "direct_payment" || (
-  props.settlementMode == null && props.contractTypeKey === "generic_contract"
-));
-const ratioLabel = computed(() =>
-  isDirectPayment.value
-    ? "合同可付款比例（%）"
-    : "当期结算款比例（%）"
-);
-const dueDaysLabel = computed(() =>
-  isDirectPayment.value
-    ? "合同生效后付款期限（天）"
-    : "结算生效后付款期限（天）"
-);
-
-function onRatioChange(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    emit("update", { paymentRatioBps: null });
-    return;
-  }
-  const ratio = Number(trimmed);
-  emit("update", {
-    paymentRatioBps: Number.isFinite(ratio) ? Math.round(ratio * 100) : null
-  });
-}
-
-function onDueDaysChange(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    emit("update", { paymentDueDays: null });
-    return;
-  }
-  const days = Number.parseInt(trimmed, 10);
-  emit("update", { paymentDueDays: Number.isInteger(days) ? days : null });
-}
-
 </script>
 
 <style scoped>

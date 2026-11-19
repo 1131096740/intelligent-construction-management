@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "engine": "docx4j17.3.5-jdk17.0.17+10-offline",
+  "toolRoot": "/private/tmp/jg-task08-docx4j-tools-20261105",
+  "jdkHome": "/private/tmp/jg-task08-docx4j-tools-20261105/jdk/jdk-17.0.17+10/Contents/Home",
+  "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+  "jdkTreeEntries": 456,
+  "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+  "jars": [
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/docx4j-bundle-17.3.5.jar",
+      "sha256": "77aa1fe1da4873946766204aabc9ba47ef66f89a46f4bea0e4c49c2994114a63"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/docx4j-bundle-extras-17.3.5.jar",
+      "sha256": "9e5ed5bdd1f3e88787bc138ca654b23f8c9ed9c1e83bf884687f7a140242d964"
+    }
+  ],
+  "classes": [
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter-v3/Task08Fo.class",
+      "sha256": "a43fc645112502f31085491038c0c02eeeb92b66b0416a2af2e42746b263fe64"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter-v3/Task08Fo$1.class",
+      "sha256": "cadafdddccf505efebfd698b3c37cde7a0144cc813b20b32809986daf595aaa3"
+    }
+  ],
+  "fonts": [
+    {
+      "path": "/Users/leoyang/Library/Fonts/仿宋_GB2312.ttf",
+      "sha256": "fef7cf991b458cabd184b73378918d9d15429010e1d6c804f08d394395c3c3b4",
+      "faces": [
+        {
+          "names": [
+            "FangSong_GB2312",
+            "仿宋_GB2312"
+          ],
+          "fsType": 0
+        }
+      ]
+    },
+    {
+      "path": "/Users/leoyang/Library/Fonts/方正小标宋简体.ttf",
+      "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e",
+      "faces": [
+        {
+          "names": [
+            "FZXBSJW--GB1-0",
+            "FZXiaoBiaoSong-B05S",
+            "方正小标宋简体"
+          ],
+          "fsType": 8
+        }
+      ]
+    },
+    {
+      "path": "/Users/leoyang/Library/Fonts/楷体_GB2312_0.TTF",
+      "sha256": "99092cbb0df301625f46509e85854db8685556551742097ab3fbbc2e2ca0778b",
+      "faces": [
+        {
+          "names": [
+            "KaiTi_GB2312",
+            "楷体_GB2312"
+          ],
+          "fsType": 0
+        }
+      ]
+    },
+    {
+      "path": "/Users/leoyang/Library/Fonts/黑体.ttf",
+      "sha256": "aa4560dd8fe5645745fed3ffa301c3ca4d6c03cbd738145b613303961ba733b8",
+      "faces": [
+        {
+          "names": [
+            "SimHei",
+            "黑体"
+          ],
+          "fsType": 8
+        }
+      ]
+    },
+    {
+      "path": "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+      "sha256": "f3b4ffff71c2a0c7227d37497683b2498fb2d0a4e8beae26f022e3ccfcaabfa3",
+      "faces": [
+        {
+          "names": [
+            "Times New Roman",
+            "TimesNewRomanPSMT"
+          ],
+          "fsType": 8
+        }
+      ]
+    },
+    {
+      "path": "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+      "sha256": "50f5b1f27b7d34621090e437e8b1dd4510a22d2823fc876b3286bed327b64bbb",
+      "faces": [
+        {
+          "names": [
+            "Times New Roman",
+            "TimesNewRomanPS-BoldMT"
+          ],
+          "fsType": 8
+        }
+      ]
+    },
+    {
+      "path": "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf",
+      "sha256": "7bb99c3a67697fbce15ab66d806d9a2151432ce1dab2eaba4156e1251da486c0",
+      "faces": [
+        {
+          "names": [
+            "Times New Roman",
+            "TimesNewRomanPS-ItalicMT"
+          ],
+          "fsType": 8
+        }
+      ]
+    },
+    {
+      "path": "/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf",
+      "sha256": "906157e8294fdf168d83002eaabde01c2d30fc3f44977be89e33fa22f262002a",
+      "faces": [
+        {
+          "names": [
+            "Times New Roman",
+            "TimesNewRomanPS-BoldItalicMT"
+          ],
+          "fsType": 8
+        }
+      ]
+    },
+    {
+      "path": "/System/Library/Fonts/Supplemental/Wingdings.ttf",
+      "sha256": "709d5848799239f0c51c0544c471c8d02bcbf9f2bcdc49702ebca1691a4c760e",
+      "faces": [
+        {
+          "names": [
+            "Wingdings",
+            "Wingdings-Regular"
+          ],
+          "fsType": 8
+        }
+      ]
+    },
+    {
+      "path": "/System/Library/Fonts/Supplemental/Wingdings 2.ttf",
+      "sha256": "6fce8b535724253e294c88f272613ad4b796c4181bae18b3e49775be63d02dcd",
+      "faces": [
+        {
+          "names": [
+            "Wingdings 2",
+            "Wingdings2"
+          ],
+          "fsType": 8
+        }
+      ]
+    }
+  ]
+}

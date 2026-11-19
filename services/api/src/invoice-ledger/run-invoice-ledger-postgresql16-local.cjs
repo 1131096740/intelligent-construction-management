@@ -11,6 +11,7 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("../../prisma/money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("../../prisma/local-staged-ci-dynamic.cjs");
 const {
   waitForLocalTcpReady
 } = require("../../prisma/wait-for-local-tcp-ready.cjs");
@@ -67,6 +68,7 @@ async function main() {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-pol260-invoice-ledger-"));
   const containerName = `jiangkong-pol260-invoice-ledger-${Date.now()}-${process.pid}`;
   const password = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl = `postgresql://jiangkong:${password}@127.0.0.1:${port}/${DATABASE_NAME}`;
   const runtimeEnv = {
     ...process.env,
@@ -76,9 +78,10 @@ async function main() {
     DATABASE_URL: databaseUrl,
     RUN_INVOICE_LEDGER_POSTGRESQL16: "1"
   };
+  let containerRunAttempted = false;
   const cleanup = createRunnerCleanup({
     stopChildren: () => commandRuntime.stopAll(),
-    removeContainer: () => command(docker, ["rm", "--force", containerName], { timeoutMs: 60_000 }).catch((error) => {
+    removeContainer: () => containerRunAttempted && command(docker, ["rm", "--force", containerName], { timeoutMs: 60_000 }).catch((error) => {
       if (!String(error?.message).includes("No such container")) throw error;
     }),
     removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true }),
@@ -100,22 +103,38 @@ async function main() {
   process.once("SIGTERM", onSigterm);
 
   try {
-    await command(docker, [
+    const context = await command(docker, [
       "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"
     ]);
+    let endpoint;
+    try { endpoint = JSON.parse(context.stdout.trim()); }
+    catch { fail("无法解析 Docker context endpoint"); }
+    if (typeof endpoint !== "string" || !/^(unix|npipe):\/\//u.test(endpoint)) {
+      fail("当前 Docker context 不是本机 socket");
+    }
     await command(docker, ["info"]);
-    await command(docker, [
+    containerRunAttempted = true;
+    const created = await command(docker, [
       "run", "--detach", "--rm", "--pull=never", "--name", containerName,
+      "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD",
       "--env", `POSTGRES_DB=${DATABASE_NAME}`,
       "--publish", `127.0.0.1:${port}:5432`, "postgres:16"
     ], { env: { ...process.env, POSTGRES_PASSWORD: password }, forwardOutput: true });
     await waitForPostgres(containerName, port);
-    await command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", path.join(root, "services/api/prisma/schema.prisma")], {
-      env: runtimeEnv,
-      forwardOutput: true,
-      timeoutMs: 15 * 60 * 1000
+    const migrationFixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_INVOICE_LEDGER_POL260_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME], temporaryRoot,
+      dockerCommand: (args, options) => command(docker, args, options),
+      deploy: ({ databaseUrl, runtimeEnv, schemaPath }) =>
+        command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
+          env: { ...runtimeEnv, DATABASE_URL: databaseUrl },
+          forwardOutput: true,
+          timeoutMs: 15 * 60 * 1000
+        })
     });
+    await migrationFixture.migrate({ databaseUrl, runtimeEnv, schemaPath: path.join(root, "services/api/prisma/schema.prisma") });
     await command(pnpm, [
       "--filter", "@jiangkong/api", "test", "--", "--runInBand",
       "src/invoice-ledger/invoice-ledger.postgres.spec.ts"

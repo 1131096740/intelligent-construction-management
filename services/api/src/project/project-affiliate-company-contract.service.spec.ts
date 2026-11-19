@@ -168,13 +168,10 @@ function recordHarness(
     projectUpstreamFundFact: { create: jest.fn() },
     paymentRequest: { create: jest.fn() },
     $queryRaw: jest.fn().mockImplementation(async (query: unknown) => {
-      const text =
-        typeof query === "object" &&
-        query !== null &&
-        "strings" in query &&
-        Array.isArray(query.strings)
-          ? query.strings.join(" ")
-          : String(query);
+      const text = rawQueryText(query);
+      if (text.includes("/* registered_payment_voucher_catalog */")) {
+        return [{ state: "absent" }];
+      }
       return text.includes('FROM "FileObject"') && text.includes("FOR UPDATE")
         ? lockedFile
           ? [lockedFile]

@@ -89,10 +89,17 @@ $XDG_STATE_HOME/jiangkong/local-release-<sha>.json
 # 如果未设置 XDG_STATE_HOME：$HOME/.local/state/jiangkong/local-release-<sha>.json
 ```
 
-完整门禁包含：冻结依赖安装、Prisma Client 生成、依赖审计、typecheck、lint、业务
-错误与运维安全自测、全量测试、API/Web build、UI 规则、release manifests、精确 SHA
-PostgreSQL 16 动态门、POL-22 隔离只读预检，以及
+完整门禁从冻结依赖安装和 Prisma Client 生成开始，然后运行 CI 编排测试，支持从
+未安装工作区依赖的干净候选启动。随后核对迁移基线、依赖审计、typecheck、E2E
+typecheck、lint、业务错误与运维安全自测、全量测试、API/Web build、UI 规则、
+release manifests、精确 SHA PostgreSQL 16 动态门、POL-22 隔离只读预检，以及
 Chromium/WebKit 的 P0 和 RC-06 mocked browser checks。
+
+本地发布的 PostgreSQL 阶段显式使用 `--automatic-only`，按经过校验的动态库存执行
+所有自动组，范围与 CI 自动组一致。该阶段的独立收据报告本次执行数量和
+`deferredManualOnly`。其中的手工组仍列在公开库存，须单独选择并提供独立输入与授权。
+本地发布收据仅证明它列出的 17 个阶段。手工组的实际结果必须由相同候选 SHA 的独立
+执行收据证明，库存中的 `remainingTests=0` 表示无未登记项。
 
 收据中的 `durationsMs` 会按上述 17 个固定阶段记录毫秒耗时，命令行也会在每个
 阶段结束时显示耗时。它既用于部署前的严格收据校验，也用于判断下一轮应优先优化

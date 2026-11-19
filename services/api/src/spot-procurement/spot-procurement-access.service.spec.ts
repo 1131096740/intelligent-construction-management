@@ -9,6 +9,8 @@ type AccessFixture = {
     projectId: string;
     applicantUserId: string;
     handlerUserId: string;
+    currentVersionId?: string;
+    status?: string;
   }>;
   payments?: Array<{
     id: string;
@@ -2129,6 +2131,23 @@ describe("SpotProcurementAccessService", () => {
       new SpotProcurementAccessService(buildPrisma(base) as never)
         .resolveFileDownloadAccess("file-1", "unrelated-finance")
     ).resolves.toBe("denied");
+  });
+
+  it.each([
+    ["当前并联轮申请人", "version-1", "applicant-1", true, "allowed"],
+    ["当前并联轮无关人员", "version-1", "unrelated", true, "denied"],
+    ["旧轮申请人", "version-old", "applicant-1", true, "denied"],
+    ["旧串联办理中", "version-1", "applicant-1", false, "denied"]
+  ] as const)("办理中PDF只放行当前并联轮授权主体：%s", async (_label, currentVersionId, actor, parallel, expected) => {
+    const fixture: AccessFixture = {
+      versions: [{ id: "version-1", procurementId: "procurement-1", handlerUserId: "handler-1" }],
+      procurements: [{ id: "procurement-1", projectId: "project-1", applicantUserId: "applicant-1", handlerUserId: "handler-1", currentVersionId, status: "approval_pending" }],
+      approvals: [{ id: "approval-1", businessType: "spot_procurement_version", businessId: "version-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "applicant-1", frozenNodes: parallel ? [
+        {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+        {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+      ] : [{roleKeys: ["material_director"]}] }]
+    };
+    await expect(new SpotProcurementAccessService(buildPrisma(fixture) as never).resolveBusinessDownloadAccess("spot_procurement_version", "version-1", actor)).resolves.toBe(expected);
   });
 
   it("authorizes a formal Spot business before any PDF repair write", async () => {

@@ -1,4 +1,5 @@
 import { ForbiddenException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 
 import { FileService } from "../file/file.service";
 
@@ -20,8 +21,13 @@ describe("necessary-expense reserve evidence file access", () => {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null)
     };
+    const rawLookup = jest.fn(async (query: Prisma.Sql): Promise<Array<{ projectId: string } | { state: string }>> => {
+      if (query.text.includes("/* registered_payment_voucher_catalog */")) return [{ state: "absent" }];
+      throw new Error("Unexpected private-file lookup");
+    });
     const tx = new Proxy(
       {
+        $queryRaw: rawLookup,
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         projectNecessaryExpenseReserveEntry: {
           findFirst: jest.fn().mockResolvedValue({
@@ -122,14 +128,22 @@ describe("necessary-expense reserve evidence file access", () => {
 
   it("keeps reserve evidence ACL fail-closed when the generated delegate is stale", async () => {
     const { service, tx } = createService("employee");
-    const rawLookup = jest.fn().mockResolvedValue([{ projectId: "project-1" }]);
     Reflect.deleteProperty(tx, "projectNecessaryExpenseReserveEntry");
-    Reflect.set(tx, "$queryRaw", rawLookup);
+    tx.$queryRaw.mockImplementation(async (query: Prisma.Sql) => {
+      if (query.text.includes("/* registered_payment_voucher_catalog */")) return [{ state: "absent" }];
+      if (query.text.includes('FROM "ProjectNecessaryExpenseReserveEntry"') && query.values[0] === "reserve-evidence-1") {
+        return [{ projectId: "project-1" }];
+      }
+      throw new Error("Unexpected private-file lookup");
+    });
 
     await expect(service.createDownloadTicket("reserve-evidence-1", {
       actorUserId: "evidence-uploader",
       downloadReason: "查看必要费用准备依据"
     })).rejects.toThrow("当前账号无权下载该必要费用准备依据");
-    expect(rawLookup).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw.mock.calls.map(([query]) => query.text)).toEqual([
+      expect.stringContaining("/* registered_payment_voucher_catalog */"),
+      expect.stringContaining('FROM "ProjectNecessaryExpenseReserveEntry"')
+    ]);
   });
 });

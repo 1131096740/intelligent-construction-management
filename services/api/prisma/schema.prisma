@@ -8,6 +8,20 @@ datasource db {
 }
 
 model User {
+  companyTransferCorrectionRequests CompanyTransferOriginalDebtCorrection[] @relation("CompanyTransferCorrectionApplicant")
+  companyTransferCorrectionReviews CompanyTransferOriginalDebtCorrection[] @relation("CompanyTransferCorrectionReviewer")
+  registeredOperationalPaymentActs RegisteredOperationalPayment[]
+  registeredFundAdvanceReceipts RegisteredFundAdvanceReceipt[] @relation("FundAdvanceReceiptActor")
+  registeredCashAdvanceReceipts RegisteredFundAdvanceReceipt[] @relation("FundAdvanceReceiptCustodian")
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
+  currentCashCustodies PublicCashCustody[] @relation("CurrentPublicCashCustodian")
+  initialCashCustodies PublicCashCustody[] @relation("InitialPublicCashCustodian")
+  outgoingCashHandovers PublicCashHandover[] @relation("PreviousPublicCashCustodian")
+  incomingCashHandovers PublicCashHandover[] @relation("SuccessorPublicCashCustodian")
+  initiatedCashHandovers PublicCashHandover[] @relation("PublicCashHandoverInitiator")
+  confirmedCashHandovers PublicCashHandoverReceipt[]
+  registeredFundTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferActor")
+  registeredFundTransferActions RegisteredFundTransferAction[] @relation("RegisteredFundTransferActionActor")
   id                                 String                            @id @default(uuid())
   phone                              String?                           @unique
   name                               String
@@ -159,7 +173,222 @@ model HandwrittenSignatureHandoff {
 }
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
+model RegisteredFundAccount {
+  registeredOperationalPayments RegisteredOperationalPayment[]
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
+  id String @id @default(uuid())
+  writeRevision Int @default(0)
+  scopeKey String @unique
+  kind String
+  companyEntityId String? @unique
+  company CompanyEntity? @relation(fields: [companyEntityId], references: [id], onDelete: Restrict)
+  registeredPayments RegisteredPaymentFunding[]
+  allocations RegisteredFundPaymentAllocation[]
+  registrations FundAccountBalanceRegistration[]
+  advanceReceipts RegisteredFundAdvanceReceipt[]
+  outgoingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferSource")
+  incomingTransfers RegisteredFundTransfer[] @relation("RegisteredFundTransferDestination")
+  publicCashCustody PublicCashCustody?
+  cashHandovers PublicCashHandover[]
+  createdAt DateTime @default(now())
+}
+
+model PublicCashCustody {
+  accountId String @id
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  currentCustodianId String
+  currentCustodian User @relation("CurrentPublicCashCustodian", fields: [currentCustodianId], references: [id], onDelete: Restrict)
+  initialCustodianId String
+  initialCustodian User @relation("InitialPublicCashCustodian", fields: [initialCustodianId], references: [id], onDelete: Restrict)
+  initialIdempotencyKey String @unique
+  initialRevision Int
+  assignedAt DateTime @default(now())
+}
+
+model PublicCashHandover {
+  id String @id @default(uuid())
+  accountId String
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  fromCustodianId String
+  fromCustodian User @relation("PreviousPublicCashCustodian", fields: [fromCustodianId], references: [id], onDelete: Restrict)
+  toCustodianId String
+  toCustodian User @relation("SuccessorPublicCashCustodian", fields: [toCustodianId], references: [id], onDelete: Restrict)
+  startedByUserId String
+  startedBy User @relation("PublicCashHandoverInitiator", fields: [startedByUserId], references: [id], onDelete: Restrict)
+  startedRevision Int
+  deliveredYuan Decimal @db.Decimal(24,4)
+  expectedBalanceYuan Decimal? @db.Decimal(24,4)
+  evidenceReference String
+  idempotencyKey String @unique
+  payloadFingerprint String
+  receipt PublicCashHandoverReceipt?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, startedRevision])
+}
+
+model PublicCashHandoverReceipt {
+  handoverId String @id
+  handover PublicCashHandover @relation(fields: [handoverId], references: [id], onDelete: Restrict)
+  confirmedByUserId String
+  confirmedBy User @relation(fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  amountReceivedYuan Decimal @db.Decimal(24,4)
+  discrepancyYuan Decimal? @db.Decimal(25,4)
+  idempotencyKey String @unique
+  payloadFingerprint String
+  createdAt DateTime @default(now())
+}
+
+model FundAccountBalanceRegistration {
+  operationalPayment RegisteredOperationalPayment? @relation("OperationalPaymentRegistration")
+  previousOperationalPayments RegisteredOperationalPayment[] @relation("OperationalPaymentPreviousRegistration")
+  principalReturnPayment RegisteredPrincipalReturnPayment?
+
+  id String @id @default(uuid())
+  accountId String
+  version Int
+  kind String
+  status String
+  previousRegistrationId String?
+  approvalInstanceId String? @unique
+  balanceYuan Decimal? @db.Decimal(24,4)
+  coveredExecutionIds String[] @default([])
+  transferId String?
+  asOfDate String
+  evidenceReference String
+  reconciliationNote String
+  reason String
+  idempotencyKey String @unique
+  payloadFingerprint String
+  createdByUserId String
+  confirmedByUserId String?
+  confirmedAt DateTime?
+  reviewNote String?
+  closedByUserId String?
+  closedAt DateTime?
+  closeReason String?
+  createdAt DateTime @default(now())
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  payments RegisteredPaymentFunding[]
+  sources FundAccountSourceBatch[]
+  advanceReceipt RegisteredFundAdvanceReceipt?
+  transfer RegisteredFundTransfer? @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  @@unique([transferId, accountId])
+  @@unique([accountId, version])
+  @@unique([id, accountId])
+  @@index([accountId, status])
+}
+
+model FundAccountSourceBatch {
+  operationalPaymentAllocations RegisteredOperationalPaymentAllocation[]
+  id String @id @default(uuid())
+  registrationId String
+  lineNo Int
+  amountYuan Decimal @db.Decimal(24,4)
+  sourceStatus String
+  sourceName String?
+  projectStatus String
+  projectId String?
+  previousSourceBatchId String?
+  receivedTransferLineId String? @unique
+  receivedTransferLine RegisteredFundTransferLine? @relation("RegisteredFundTransferReceipt", fields: [receivedTransferLineId], references: [id], onDelete: Restrict)
+  transferLines RegisteredFundTransferLine[] @relation("RegisteredFundTransferOrigin")
+  allocations RegisteredFundPaymentAllocation[]
+  advanceReceipt RegisteredFundAdvanceReceipt?
+  registration FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  @@unique([registrationId, lineNo])
+}
+
+model RegisteredFundAdvanceReceipt {
+  id String @id @default(uuid())
+  accountId String
+  registrationId String @unique
+  sourceBatchId String @unique
+  contributorKind String
+  contributorId String?
+  contributorNameSnapshot String?
+  projectId String?
+  amountYuan Decimal @db.Decimal(24,4)
+  receivedOn String
+  custodianUserId String?
+  evidenceReference String
+  createdByUserId String
+  idempotencyKey String @unique
+  payloadFingerprint String
+  createdAt DateTime @default(now())
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  registration FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  sourceBatch FundAccountSourceBatch @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
+  companyOwned RegisteredFundCompanyOwnedReceipt?
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy User @relation("FundAdvanceReceiptActor", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  custodian User? @relation("FundAdvanceReceiptCustodian", fields: [custodianUserId], references: [id], onDelete: Restrict)
+}
+
+model RegisteredFundCompanyOwnedReceipt {
+  receiptId String @id
+  companyId String
+  observationId String @unique
+  ownershipEvidence String
+  company CompanyEntity @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  observation VerifiedBankTransactionObservation @relation(fields: [observationId], references: [id], onDelete: Restrict)
+  receipt RegisteredFundAdvanceReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+}
+
+model RegisteredFundTransfer {
+  id String @id @default(uuid())
+  sourceAccountId String
+  destinationAccountId String
+  status String
+  revision Int @default(1)
+  amountYuan Decimal @db.Decimal(24,4)
+  createdByUserId String
+  transferredOn String
+  evidenceReference String
+  createdAt DateTime @default(now())
+  createdBy User @relation("RegisteredFundTransferActor", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  sourceAccount RegisteredFundAccount @relation("RegisteredFundTransferSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount RegisteredFundAccount @relation("RegisteredFundTransferDestination", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  lines RegisteredFundTransferLine[]
+  actions RegisteredFundTransferAction[]
+  registrations FundAccountBalanceRegistration[]
+  @@index([sourceAccountId, status])
+  @@index([destinationAccountId, status])
+}
+
+model RegisteredFundTransferLine {
+  id String @id @default(uuid())
+  transferId String
+  sourceBatchId String
+  amountYuan Decimal @db.Decimal(24,4)
+  transfer RegisteredFundTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  sourceBatch FundAccountSourceBatch @relation("RegisteredFundTransferOrigin", fields: [sourceBatchId], references: [id], onDelete: Restrict)
+  receivedBatch FundAccountSourceBatch? @relation("RegisteredFundTransferReceipt")
+  @@unique([transferId, sourceBatchId])
+}
+
+model RegisteredFundTransferAction {
+  idempotencyKey String @id
+  transferId String
+  actorUserId String
+  revision Int
+  action String
+  status String
+  evidenceReference String
+  payloadFingerprint String
+  createdAt DateTime @default(now())
+  actor User @relation("RegisteredFundTransferActionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  transfer RegisteredFundTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  @@unique([transferId, revision])
+}
+
 model CompanyEntity {
+  spotPaymentsAsOriginalDebtor SpotProcurementPayment[] @relation("SpotFirstApprovedDebtor")
+  registeredOperationalDebts RegisteredOperationalPayment[] @relation("OperationalPaymentDebtor")
+  registeredOperationalPayerFacts RegisteredOperationalPayment[] @relation("OperationalPaymentActualPayer")
+  registeredCompanyPrincipalReceipts RegisteredFundCompanyOwnedReceipt[]
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
+  registeredFundAccount RegisteredFundAccount?
   id                                  String                          @id @default(uuid())
   name                                String
   unifiedSocialCreditCode             String?
@@ -271,6 +500,9 @@ model UserPosition {
 }
 
 model Project {
+  registeredOperationalPayments RegisteredOperationalPayment[]
+  registeredFundAdvanceReceipts RegisteredFundAdvanceReceipt[]
+  registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   id                                     String                            @id @default(uuid())
   code                                   String                            @unique
   name                                   String
@@ -678,7 +910,9 @@ model OperatingFact {
   factKind                             String
   operatingLevel                       String
   evidenceLevel                        String
-  amountCents                          BigInt
+  amountCents BigInt?
+  numericProtocolVersion Int @default(1)
+  amountYuan Decimal? @db.Decimal(24, 4)
   currencyCode                         String   @default("CNY")
   direction                            String
   debtorSubjectKind                    String?
@@ -731,7 +965,9 @@ model OperatingImpactEntry {
   sourceImpactKey                     String
   idempotencyKey                      String                                      @unique
   impactKind                          String
-  amountCents                         BigInt
+  amountCents BigInt?
+  numericProtocolVersion Int @default(1)
+  amountYuan Decimal? @db.Decimal(24, 4)
   direction                           String
   subjectRole                         String?
   subjectKind                         String?
@@ -2270,6 +2506,7 @@ model ProjectRosterMember {
 }
 
 model Contract {
+  registeredHistoryRevision RegisteredContractHistoryRevision?
   id                        String    @id @default(uuid())
   projectId                 String
   source                    String    @default("system")
@@ -2302,6 +2539,10 @@ model ContractVersion {
   changeType                             String
   status                                 String
   amountCents                            BigInt
+  /// Original paper number; nonempty source text is preserved, including whitespace.
+  originalSignedNumber                   String?
+  numericProtocolVersion                 Int       @default(1)
+  amountYuan                             Decimal?  @db.Decimal(24, 4)
   estimatedAmountCents                   BigInt?
   baseVersionId                          String?
   supersedesVersionId                    String?
@@ -2877,14 +3118,47 @@ model PaymentTermsStage {
 }
 
 model ContractArchiveFile {
-  id                String    @id @default(uuid())
+  id                         String    @id @default(uuid())
+  contractVersionId          String
+  /// V1 owns one file; V2 owns the ordered evidence rows, enforced in migration.
+  fileId                     String?
+  uploadedByUserId           String
+  confirmedByUserId          String?
+  confirmedAt                DateTime?
+  status                     String
+  createdAt                  DateTime  @default(now())
+  archiveProtocolVersion     Int       @default(1)
+  archiveSource              String?
+  approvalInstanceId         String?
+  sealTaskId                 String?
+  idempotencyKey             String?   @unique
+  requestSha256              String?
+  sourceRevision             Int?
+  documentContentRevision    Int?
+  documentContentFingerprint String?
+  authoritySnapshot          Json?
+  authoritySha256            String?
+  fileManifestSha256         String?
+  responseSnapshot           Json?
+
+  @@unique([id, contractVersionId])
+  // V2-only uniqueness and Version/R/T composite FKs live in migration 204.
+}
+
+model ContractArchiveEvidenceFile {
+  id                String   @id @default(uuid())
+  archiveFileId     String
   contractVersionId String
-  fileId            String
-  uploadedByUserId  String
-  confirmedByUserId String?
-  confirmedAt       DateTime?
-  status            String
-  createdAt         DateTime  @default(now())
+  fileId            String   @unique
+  displayOrder      Int
+  mimeType          String
+  sizeBytes         Int
+  contentSha256     String
+  createdAt         DateTime @default(now())
+
+  @@unique([archiveFileId, displayOrder])
+  @@index([contractVersionId])
+  // Composite parent/version and private-file FKs live in migration 204.
 }
 
 model ContractFormalFile {
@@ -2967,6 +3241,7 @@ model ContractSealTask {
 
   @@index([status, handlerUserId])
   @@index([contractVersionId, status])
+  @@unique([id, contractVersionId, approvalInstanceId])
 }
 
 model SettlementDraft {
@@ -3338,9 +3613,14 @@ model PaymentExecution {
   amountCents                     BigInt
   paidAt                          DateTime
   executedByUserId                String
-  voucherFileId                   String   @unique
+  voucherFileId                   String?  @unique
   payerAttestationFingerprint     String?
   createdAt                       DateTime @default(now())
+
+  registeredVoucher RegisteredPaymentVoucher?
+  registeredFunding RegisteredPaymentFunding?
+  registeredProjectAdvance RegisteredPaymentProjectAdvance?
+  registeredPaymentEvent RegisteredPaymentEvent?
 
   payableSettlementCases         PayableSettlementCase[]
   payableSettlementAllocations   PayableSettlementAllocation[]
@@ -3356,6 +3636,7 @@ model PaymentExecution {
 // transaction. It freezes the complete active payer-verification authority
 // together with the transaction amount, direction, time, and source identity.
 model VerifiedBankTransactionObservation {
+  registeredCompanyPrincipalReceipt RegisteredFundCompanyOwnedReceipt?
   id                                String   @id @default(uuid())
   reference                         String   @unique
   payerVerificationId               String
@@ -3928,6 +4209,8 @@ model SpotProcurement {
 }
 
 model SpotProcurementVersion {
+  requestProtocolVersion          Int @default(1)
+  draftRevision                   Int @default(1)
   id                              String    @id @default(uuid())
   procurementId                   String
   versionNo                       Int
@@ -3943,7 +4226,8 @@ model SpotProcurementVersion {
   purchaserNameSnapshot           String
   purchaserDepartmentId           String?
   purchaserDepartmentNameSnapshot String
-  requestedArrivalAt              DateTime
+  requestedArrivalAt              DateTime?
+  estimatedTotalAmount            Decimal? @db.Decimal(24, 4)
   totalAmountCents                BigInt? // legacy: the A4 procurement application has no amount
   changeReason                    String?
   changeSummary                   Json?
@@ -3968,13 +4252,15 @@ model SpotProcurementLine {
   sortOrder            Int
   materialName         String
   specification        String?
-  unit                 String
-  quantity             Decimal  @db.Decimal(24, 6)
+  unit                 String?
+  quantity             Decimal? @db.Decimal(24, 6)
   invoiceMode          String? // legacy: expected invoice facts belong to payment lines
   invoiceType          String?
   vatRateOptionId      String?
   vatRateValueSnapshot Decimal? @db.Decimal(9, 6)
   vatRateLabelSnapshot String?
+  estimatedUnitPrice   Decimal? @db.Decimal(24, 4)
+  estimatedAmount      Decimal? @db.Decimal(24, 4)
   unitPrice            Decimal? @db.Decimal(24, 6) // legacy: price belongs to payment lines
   amountCents          BigInt? // legacy: amount belongs to payment lines
   usageLocation        String?
@@ -3998,6 +4284,11 @@ model SpotProcurementAttachment {
 }
 
 model SpotProcurementPayment {
+  originalDebtorCompanyId String?
+  originalDebtorCompanyName String?
+  originalDebtorApprovalId String?
+  originalDebtorCompany CompanyEntity? @relation("SpotFirstApprovedDebtor", fields: [originalDebtorCompanyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  originalDebtorApproval ApprovalInstance? @relation("SpotFirstApprovedDebtorApproval", fields: [originalDebtorApprovalId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   id                                   String                   @id @default(uuid())
   projectId                            String
   procurementId                        String
@@ -4060,6 +4351,7 @@ model SpotProcurementPayment {
 }
 
 model SpotProcurementPaymentExecution {
+  registeredOperationalPayment RegisteredOperationalPayment?
   id               String    @id @default(uuid())
   paymentId        String
   amountCents      BigInt
@@ -4941,6 +5233,7 @@ model ExpenseClaimAttachment {
 
 // 公司补付是独立、只追加的实际付款事实；不复用旧项目支出实付记录。
 model ExpenseClaimPaymentExecution {
+  registeredOperationalPayment RegisteredOperationalPayment?
   id               String   @id @default(uuid())
   expenseClaimId   String
   amountCents      BigInt
@@ -5488,6 +5781,25 @@ model ProjectUpstreamSettlement {
   @@index([projectId, status])
 }
 
+model ProjectOwnerSettlementEntry {
+  id                            String   @id @default(uuid())
+  projectId                     String
+  ownerName                     String
+  ownerSubjectId                String
+  settledAt                     DateTime
+  amountYuan                    Decimal  @db.Decimal(24, 4)
+  affiliateAssignmentId         String
+  affiliateBusinessPartyVersionId String
+  voucherFileId                 String
+  voucherSha256                 String
+  recordedByUserId              String
+  recordedAt                    DateTime @default(now())
+  idempotencyKey                String   @unique
+
+  @@index([projectId, settledAt])
+  @@index([voucherFileId])
+}
+
 model ProjectOwnerContract {
   id                              String    @id @default(uuid())
   projectId                       String
@@ -5652,6 +5964,7 @@ model ApprovalFlowNode {
 }
 
 model ApprovalInstance {
+  spotPaymentsOriginalDebtor SpotProcurementPayment[] @relation("SpotFirstApprovedDebtorApproval")
   id               String   @id @default(uuid())
   flowType         String
   businessType     String
@@ -5662,6 +5975,8 @@ model ApprovalInstance {
   applicantUserId  String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@unique([id, businessId])
 }
 
 model ApprovalActionLog {
@@ -5695,6 +6010,8 @@ model ApprovalDelegation {
 }
 
 model FileObject {
+  economicReviewFileReferences            ContractEconomicReviewFileReference[]
+  registeredPaymentVouchers RegisteredPaymentVoucher[]
   id                                     String                                @id @default(uuid())
   bucket                                 String
   objectKey                              String
@@ -5717,6 +6034,7 @@ model FileObject {
   @@index([supersedesFileObjectId])
   @@index([purgeReceiptId])
   @@index([storageStatus])
+  @@index([objectKey], map: "FileObject_objectKey_direct_retention_idx")
 }
 
 model ArchiveRecord {
@@ -6009,6 +6327,10 @@ model ContractBill {
   schemaSnapshot          Json
   sourceExcelFileId       String?
   revision                Int      @default(1)
+  numericProtocolVersion  Int      @default(1)
+  taxInclusiveAmountYuan  Decimal? @db.Decimal(24, 4)
+  taxExclusiveAmountYuan  Decimal? @db.Decimal(24, 4)
+  taxAmountYuan           Decimal? @db.Decimal(24, 4)
   taxInclusiveAmountCents BigInt   @default(0)
   taxExclusiveAmountCents BigInt   @default(0)
   taxAmountCents          BigInt   @default(0)
@@ -6033,6 +6355,12 @@ model ContractBillRow {
   taxRateSource                String    @default("version_default")
   pricingFactStatus            String    @default("unconfirmed")
   precisionPolicy              String    @default("two_decimal")
+  numericProtocolVersion       Int       @default(1)
+  numericSource                String    @default("legacy_cents")
+  numericReviewStatus          String    @default("not_assessed")
+  taxInclusiveAmountYuan       Decimal?  @db.Decimal(24, 4)
+  taxExclusiveAmountYuan       Decimal?  @db.Decimal(24, 4)
+  taxAmountYuan                Decimal?  @db.Decimal(24, 4)
   taxInclusiveAmountCents      BigInt?
   taxExclusiveAmountCents      BigInt?
   taxAmountCents               BigInt?
@@ -6689,7 +7017,7 @@ model InterEntityRelationshipEntry {
   approvedPayerSnapshot                 Json
   amountCents                           BigInt
   currencyCode                          String    @default("CNY")
-  evidenceFileId                        String
+  evidenceFileId                        String?
   evidenceClaimId                       String?
   evidenceUploadedByUserId              String?
   evidenceContentSha256                 String?
@@ -6806,14 +7134,18 @@ model GeneralProcurement {
   code                      String   @unique
   requestKey                String   @unique
   creationFingerprint       String
-  projectId                 String
-  companyEntityId           String
-  companyNameSnapshot       String
+  projectId                 String?
+  companyEntityId           String?
+  companyNameSnapshot       String?
   applicantUserId           String
   applicantNameSnapshot     String
   category                  String
   reason                    String
-  requestedAmountCents      BigInt
+  requestedAmountCents      BigInt?
+  estimatedAmount           Decimal? @db.Decimal(24, 4)
+  requestProtocolVersion    Int      @default(1)
+  scope                     String   @default("project")
+  lines                     Json     @default("[]")
   status                    String   @default("draft")
   revision                  Int      @default(1)
   approvalInstanceId        String?
@@ -6853,12 +7185,37 @@ model ContractEconomicReview {
   targetSourceRef       String?
   targetVersionId       String?
   frozenSources         Json?
+  directSourcePins      Json?
+  directFileReferences  ContractEconomicReviewFileReference[]
   createdAt             DateTime @default(now())
   confirmedAt           DateTime?
   returnedAt            DateTime?
   returnReason          String?
 
   @@index([projectId, leftSourceRef, rightSourceRef, status])
+}
+
+model ContractEconomicReviewFileReference {
+  reviewId                    String
+  sourceRef                   String
+  displayOrder                Int
+  sourceContractVersionId     String
+  directInputProtocolVersion  Int
+  sourceRevision              Int
+  inputSha256                 String
+  fileId                      String
+  mimeType                    String
+  sizeBytes                   Int
+  contentSha256               String
+  bucket                      String
+  objectKey                   String
+  review                      ContractEconomicReview @relation(fields: [reviewId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  file                        FileObject @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([reviewId, sourceRef, displayOrder])
+  @@unique([reviewId, sourceRef, fileId])
+  @@index([fileId])
+  @@index([objectKey])
 }
 
 model ContractEconomicSettlementCoverage {
@@ -7016,6 +7373,9 @@ model CompanyTransfer {
  evidenceSha256 String
  frozenParties Json
  status String @default("submitted")
+ originalOperationalPaymentId String?
+ originalOperationalPayment RegisteredOperationalPayment? @relation(fields: [originalOperationalPaymentId], references: [id], onDelete: Restrict)
+ requiresParallelRepaymentApproval Boolean @default(false)
  approvalInstanceId String? @unique
  applicantUserId String
  approvedByUserId String?
@@ -7027,6 +7387,7 @@ model CompanyTransfer {
  @@index([destinationProjectId,status])
 }
 model CompanyTransferEvent {
+  originalDebtCorrections CompanyTransferOriginalDebtCorrection[]
  id String @id @default(uuid())
  transferId String
  kind String
@@ -7061,4 +7422,225 @@ model SpotPaymentAuditSource {
   projectId String
   procurementId String
   createdAt DateTime @default(now())
+}
+
+// One canonical PaymentExecution; this immutable receipt freezes only funding
+// attribution and the actor's opening-inclusion declaration, never another payment.
+model RegisteredPaymentFunding {
+  executionId String @id
+  operatingLedgerEffectiveDateAtRegistration DateTime? @db.Date
+  actualPayerKind String
+  actualPayerId String
+  actualPayerSnapshot Json
+  accountId String
+  balanceRegistrationId String
+  openingTreatment String
+  openingReason String
+  openingEvidence String
+  contractHistoryConfirmation Json?
+  payloadFingerprint String
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  registration FundAccountBalanceRegistration @relation(fields: [balanceRegistrationId, accountId], references: [id, accountId], onDelete: Restrict)
+  allocations RegisteredFundPaymentAllocation[]
+  @@unique([executionId, accountId])
+}
+
+model RegisteredPaymentProjectAdvance {
+  executionId String @id
+  projectId String
+  accountId String
+  creditorCompanyId String
+  confirmedByUserId String
+  amountCents BigInt
+  reason String
+  evidence String
+  companyAllocations Json
+  createdAt DateTime @default(now())
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  creditorCompany CompanyEntity @relation(fields: [creditorCompanyId], references: [id], onDelete: Restrict)
+  confirmedBy User @relation(fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+}
+
+model RegisteredFundPaymentAllocation {
+  id String @id @default(uuid())
+  executionId String
+  accountId String
+  sourceBatchId String
+  amountCents BigInt
+  funding RegisteredPaymentFunding @relation(fields: [executionId, accountId], references: [executionId, accountId], onDelete: Restrict)
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  source FundAccountSourceBatch @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
+  @@unique([executionId, sourceBatchId])
+  @@index([accountId, sourceBatchId])
+}
+
+// Durable payment source event, committed with the fact and allocations.
+// This is not the approval notification outbox or a delivery receipt.
+model RegisteredPaymentEvent {
+  executionId String @id
+  eventType String @default("payment_execution.registered")
+  payload Json
+  createdAt DateTime @default(now())
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+}
+
+// A later private voucher is evidence for the same immutable payment fact.
+model RegisteredPaymentVoucher {
+  executionId String @id
+  fileId String @unique
+  file FileObject @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  uploadedByUserId String
+  contentSha256 String
+  createdAt DateTime @default(now())
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+}
+
+// Technical serialization coordinate only; never a payment or balance fact.
+model RegisteredContractHistoryRevision {
+  contractId String @id
+  revision BigInt @default(0)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model RegisteredPrincipalReturnSource {
+  kind          String
+  sourceId      String
+  writeRevision Int    @default(0)
+  applications  RegisteredPrincipalReturnApplication[]
+
+  @@id([kind, sourceId])
+}
+
+model RegisteredPrincipalReturnApplication {
+  id                 String   @id @default(uuid())
+  sourceKind         String
+  sourceId           String
+  projectId          String?
+  contributorName    String
+  requestedYuan      Decimal  @db.Decimal(24, 4)
+  approvedYuan       Decimal? @db.Decimal(24, 4)
+  paidYuan           Decimal  @default(0) @db.Decimal(24, 4)
+  reason             String
+  status             String
+  revision           Int      @default(1)
+  approvalInstanceId String   @unique
+  createdByUserId    String
+  createdAt          DateTime @default(now())
+  source             RegisteredPrincipalReturnSource @relation(fields: [sourceKind, sourceId], references: [kind, sourceId], onDelete: Restrict)
+  payments           RegisteredPrincipalReturnPayment[]
+  commands           RegisteredPrincipalReturnCommand[]
+
+  @@index([sourceKind, sourceId])
+}
+
+model RegisteredPrincipalReturnPayment {
+  id                     String   @id @default(uuid())
+  applicationId          String
+  accountId              String
+  scopeKey               String
+  previousRegistrationId String
+  registrationId          String @unique
+  amountYuan             Decimal  @db.Decimal(24, 4)
+  paidOn                 String
+  evidenceReference      String
+  paidByUserId           String
+  createdAt              DateTime @default(now())
+  application            RegisteredPrincipalReturnApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  allocations            RegisteredPrincipalReturnAllocation[]
+  command                RegisteredPrincipalReturnCommand?
+  registration           FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId])
+}
+
+model RegisteredPrincipalReturnAllocation {
+  paymentId     String
+  sourceBatchId String
+  amountYuan    Decimal @db.Decimal(24, 4)
+  payment       RegisteredPrincipalReturnPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@id([paymentId, sourceBatchId])
+}
+
+model RegisteredPrincipalReturnCommand {
+  idempotencyKey     String   @id
+  applicationId      String
+  paymentId          String? @unique
+  actorUserId        String
+  action             String
+  applicationRevision Int
+  payloadFingerprint String
+  createdAt          DateTime @default(now())
+  application        RegisteredPrincipalReturnApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  payment            RegisteredPrincipalReturnPayment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([applicationId, applicationRevision])
+}
+
+
+model RegisteredOperationalPayment {
+  id                       String @id
+  expenseExecutionId       String? @unique
+  spotExecutionId          String? @unique
+  accountId                String
+  registrationId           String @unique
+  previousRegistrationId   String
+  projectId                String
+  originalDebtorCompanyId  String
+  actualPayerCompanyId     String
+  actualPayerName          String
+  actorUserId              String
+  amountCents              BigInt
+  paidAt                   DateTime
+  payloadFingerprint       String
+  createdAt                DateTime @default(now())
+  expenseExecution         ExpenseClaimPaymentExecution? @relation(fields: [expenseExecutionId], references: [id], onDelete: Restrict)
+  spotExecution            SpotProcurementPaymentExecution? @relation(fields: [spotExecutionId], references: [id], onDelete: Restrict)
+  account                  RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  registration             FundAccountBalanceRegistration @relation("OperationalPaymentRegistration", fields: [registrationId], references: [id], onDelete: Restrict)
+  previousRegistration     FundAccountBalanceRegistration @relation("OperationalPaymentPreviousRegistration", fields: [previousRegistrationId], references: [id], onDelete: Restrict)
+  project                  Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  originalDebtorCompany    CompanyEntity @relation("OperationalPaymentDebtor", fields: [originalDebtorCompanyId], references: [id], onDelete: Restrict)
+  actualPayerCompany       CompanyEntity @relation("OperationalPaymentActualPayer", fields: [actualPayerCompanyId], references: [id], onDelete: Restrict)
+  actor                    User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  allocations              RegisteredOperationalPaymentAllocation[]
+  repayments               CompanyTransfer[]
+
+  @@index([projectId, originalDebtorCompanyId, actualPayerCompanyId], map: "RegisteredOperationalPayment_projectId_debtor_actualPayer_idx")
+}
+
+model RegisteredOperationalPaymentAllocation {
+  paymentId     String
+  sourceBatchId String
+  amountCents   BigInt
+  payment       RegisteredOperationalPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  sourceBatch   FundAccountSourceBatch @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
+
+  @@id([paymentId, sourceBatchId])
+}
+
+model CompanyTransferOriginalDebtCorrection {
+  id                    String @id
+  outgoingEventId        String
+  originalSource         String
+  targetOriginalSource   String
+  reason                 String
+  requestedByUserId      String
+  requestedAt            DateTime @default(now())
+  requestKey             String @unique
+  status                 String @default("pending")
+  confirmedByUserId      String?
+  confirmedAt            DateTime?
+  confirmKey             String? @unique
+  selfReviewReason       String?
+  outgoingEvent          CompanyTransferEvent @relation(fields: [outgoingEventId], references: [id], onDelete: Restrict)
+  requestedBy            User @relation("CompanyTransferCorrectionApplicant", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  confirmedBy            User? @relation("CompanyTransferCorrectionReviewer", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([outgoingEventId])
+  @@index([originalSource])
+  @@index([targetOriginalSource])
 }

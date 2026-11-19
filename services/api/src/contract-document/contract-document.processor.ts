@@ -1,7 +1,17 @@
+import { COMPANY_BANK_BINDING_GATE } from "../contract-workbench/company-bank-binding";
+import { assertAutomaticPartyMapping, AUTOMATIC_PARTY_GUARD_PREFIX } from "./contract-automatic-party-mapping";
+import { reviewedBuiltinTemplateKind } from "./builtin-template-parts";
+import { applyMechanicalContactLayout, MECHANICAL_CONTACT_LAYOUT_V1, MECHANICAL_CONTACT_LAYOUT_VERSION } from "./mechanical-contact-layout";
+import { mappedLayoutSourceForVersion } from "../contract-template/layout-field-mapping";
+import { assertGenericPartySourceMapping, assertLaborPartySourceMapping, assertSignatureSupplementMapping, assertLaborProtectedSignatureEdits, assertSignatureSupplementReview } from "./contract-body-document";
+import { GENERIC_BANK_BLANKS_PLACEMENT_VERSION, GENERIC_BANK_VALUES_VERSION, GENERIC_SIGNATURE_REVIEW_VERSION, LABOR_PARTY_PLACEMENT_VERSION, LABOR_GLYPH_PLACEMENT_VERSION, LABOR_BANK_VALUES_VERSION, LABOR_GLYPH_BANK_VALUES_VERSION, LABOR_SIGNATURE_REVIEW_VERSION, LABOR_GLYPH_SIGNATURE_REVIEW_VERSION } from "./contract-body-document";
+import { addGenericBankBlanksToDocx, GENERIC_SIGNATURE_HEADING_VERSION } from "./generic-bank-blanks";
+import { assertBankFieldCapacity } from "./contract-signature-bank-fields";
 import { renderLayoutPreviewDocx } from "./layout-preview-docx";
 import { layoutPreviewValues } from "./layout-preview-values";
 import {
   Injectable,
+  BadRequestException,
   Optional,
   OnModuleDestroy,
   OnApplicationBootstrap,
@@ -17,14 +27,26 @@ import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { compareContractDocumentSnapshots } from "./contract-document-comparison";
 import { renderContractDocx } from "./contract-docx-renderer";
+import { appendLegacySignatureBankFields, prepareLegacyPartyRoleBindings, removeMechanicalPartyDetailsFromLegacyDocx } from "./contract-mechanical-party-placement";
+import { appendLaborFinalPartyPageToDocx, applyLaborMainSignaturePageToDocx, LABOR_MAIN_SIGNATURE_PAGE_VERSION } from "./contract-labor-final-party-page";
+import { MAPPED_MATERIAL_SIGNATURE_GATE, MAPPED_GENERIC_BODY_GATE, MAPPED_GENERIC_LEGACY_GATE, type PartyPlacementVersion, LEGACY_BODY_SIGNATURE_VERSION, LEGACY_SIGNATURE_BANK_VERSION, LEGACY_MECHANICAL_SOURCE_BOUND_VERSION, BUILT_IN_PARTY_PLACEMENT_VERSION, SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION, SIGNATURE_SUPPLEMENT_COMPANY_VERSION, SIGNATURE_SUPPLEMENT_PAGE_VERSION, builtInPartyPlacementKind, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, finalizeContractBodyLineBoxScope, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, reviewedTypographySourceSha256, isReviewedTypographyVersion, REVIEWED_LABOR_SOURCE_SHA256, REVIEWED_LABOR_TAX_BINDING_VERSION, REVIEWED_LABOR_TYPOGRAPHY_VERSION, isContractBodyTableLayoutVersion, prepareContractBodyTableMargins, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, renderContractBody } from "./contract-body-document";
+import { assertContractBodyPdfRuntimeLock, convertContractBodyDocxToPdf } from "./contract-body-pdf-converter";
+import { laborFinalPartyNames } from "./contract-labor-final-party-page";
+import { LABOR_FONT_CHECK_ERROR, LABOR_NAME_GLYPH_ERROR } from "./labor-font-coverage";
+import { createHash } from "node:crypto";
 import {
   CONTRACT_DOCUMENT_ENGINE_VERSION,
+  CONTRACT_BODY_DOCUMENT_ENGINE_VERSION,
+  CONTRACT_BODY_DOCX4J_ENGINE_VERSION,
   declaredBillKeys,
   requiredPlaceholderKeys,
   type ContractDocumentInputSnapshot
 } from "./contract-document.service";
 import { convertDocxToPdf } from "./libreoffice-converter";
-import { normalizeContractPdf, type PdfAttachment } from "./pdf-normalizer";
+import { assertContractPreviewFontOutput } from "./contract-preview-font-output";
+import { BUILT_IN_GENERIC_FONT_VERSION, EQUIVALENT_GENERIC_FONT_VERSION, completeContractDocxFontTableType } from "./contract-docx-package-metadata";
+import { contractAttachmentType, normalizeContractPdf, UPLOAD_ORDERED_ATTACHMENTS_VERSION, type PdfAttachment } from "./pdf-normalizer";
+import { beginCon18WorkerJob } from "./task12-con18-worker-diagnostic";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
 const PROCESSING_LEASE_MS = 10 * 60 * 1_000;
@@ -35,9 +57,20 @@ const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
   "合同版式预览清单数据格式不正确",
   "合同生成文档前驱文件记录异常，无法接入版本链",
   "合同文档输入快照格式不正确",
+  "合同文书金额口径版本无法核对，请联系管理员处理",
+  "合同签署日期呈现版本无法核对，请联系管理员处理",
+  "合同页码呈现版本无法核对，请联系管理员处理",
+  "合同文书表格版式版本无法核对，请联系管理员处理",
+  "合同正文字体呈现版本无法核对，请联系管理员处理",
+  "合同模板的表格边距设置暂不支持，请核对模板后再生成",
   "合同金额格式不正确",
   "合同金额超出中文大写金额可转换范围",
   "合同文档缺少必填内容，请补充后重试",
+  "签章区已有银行资料，请先核对并保留原内容后再生成合同",
+  "通用合同签章位置无法核对，请联系合同管理员处理",
+  "合同主体名称过长或含不支持的字符，请核对后重试",
+  LABOR_FONT_CHECK_ERROR,
+  LABOR_NAME_GLYPH_ERROR,
   "合同 DOCX 模板格式不正确",
   "合同 DOCX 模板渲染失败，请检查模板内容",
   "合同附件合并所用 DOCX 文件结构不正确",
@@ -49,6 +82,11 @@ const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
   "合同 PDF 转换超时，请稍后重试",
   "合同 PDF 转换失败，请稍后重试",
   "合同 PDF 转换未生成输出文件，请稍后重试",
+  "合同 PDF 字体输出异常，请联系管理员核对转换服务字体后重试",
+  "合同 Word 模板的字体资料无法安全核对，请检查模板后重试",
+  "合同正文转换运行环境未就绪，请联系管理员",
+  "合同正文 PDF 转换失败，请联系管理员核对保留的转换记录",
+  "合同正文文件无法安全转换，请核对文件内容",
   "合同正文 PDF 格式不正确",
   "合同附件文件类型不受支持",
   "合同附件处理失败，请检查文件是否完整且格式正确",
@@ -324,6 +362,7 @@ export class ContractDocumentProcessor
         version.templateSnapshot
       );
       const convertedPdf = await convertDocxToPdf(revision.buffer);
+      await assertContractPreviewFontOutput(convertedPdf);
       const normalizedPdf = await normalizeContractPdf(convertedPdf, []);
       const preview = await this.files.uploadPrivateFile({
         originalName: `${job.label.replace(/[\\/\0\r\n]/gu, "_")}.pdf`,
@@ -492,11 +531,12 @@ export class ContractDocumentProcessor
       const values = layoutPreviewValues(job.sampleData, billKeys);
       const source = await this.files.getFileBuffer(layout.docxFileId);
       const docx = renderLayoutPreviewDocx(
-        source.buffer,
+        mappedLayoutSourceForVersion(source.buffer, layout),
         { values },
         requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport)
       );
       const pdf = await convertDocxToPdf(docx);
+      await assertContractPreviewFontOutput(pdf);
       const uploaded = await this.files.uploadPrivateFile({
         originalName: `layout-preview-${job.id}.pdf`,
         mimeType: "application/pdf",
@@ -560,25 +600,100 @@ export class ContractDocumentProcessor
     createdByUserId: string;
   }) {
     const uploadedFileIds: string[] = [];
+    const diagnostic = beginCon18WorkerJob(this, job);
+    const stage = (name: "TEMPLATE" | "DOCX_RENDER" | "ATTACHMENTS" | "PDF_CONVERT" | "UPLOAD_DOCX" | "UPLOAD_PDF" | "PUBLISH" | "CLEANUP") => { try { diagnostic?.step(name); } catch { /* Diagnostic only. */ } };
     try {
       const snapshot = this.documentSnapshot(job.inputSnapshot);
+      if([LEGACY_BODY_SIGNATURE_VERSION,LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===(snapshot.bodyDocument?.partyDetailsVersion??snapshot.partyDetailsVersion)))assertBankFieldCapacity(snapshot.renderInput.values);
+      stage("TEMPLATE");
+      if (snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5") await assertContractBodyPdfRuntimeLock(snapshot.bodyDocument.runtimeLockSha256!, snapshot.bodyDocument.typographyVersion);
       const template = await this.files.getFileBuffer(snapshot.templateFileId);
-      const docx = renderContractDocx(
-        template.buffer,
-        snapshot.renderInput,
-        snapshot.requiredKeys,
-        { allowBlankWatermark: job.purpose === "external" }
-      );
+      if (snapshot.automaticPartyMappingGuard) assertAutomaticPartyMapping(template.buffer,snapshot.layoutSourceMapping);
+      const templateKind = snapshot.equivalentBuiltInSource ? reviewedBuiltinTemplateKind(template.buffer) : builtInPartyPlacementKind(createHash("sha256").update(template.buffer).digest("hex"));
+      if (snapshot.equivalentBuiltInSource) {
+        const placement = snapshot.bodyDocument?.partyDetailsVersion ?? snapshot.partyDetailsVersion;
+        const allowed = templateKind === "labor" ? [LABOR_GLYPH_SIGNATURE_REVIEW_VERSION,LABOR_SIGNATURE_REVIEW_VERSION] : templateKind === "generic" ? [GENERIC_SIGNATURE_REVIEW_VERSION,GENERIC_BANK_VALUES_VERSION] : ["material","mechanical"].includes(templateKind ?? "") ? [LEGACY_BODY_SIGNATURE_VERSION,LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,SIGNATURE_SUPPLEMENT_PAGE_VERSION] : [];
+        if (!placement || !allowed.some(version => version === placement)) throw new Error("合同文档输入快照格式不正确");
+      }
+      if (snapshot.partyDetailsVersion===LEGACY_MECHANICAL_SOURCE_BOUND_VERSION && templateKind!=="mechanical") throw new Error("合同文档输入快照格式不正确");
+      if (snapshot.partyDetailsVersion===LEGACY_SIGNATURE_BANK_VERSION && !["material","mechanical"].includes(templateKind ?? "")) throw new Error("合同文档输入快照格式不正确");
+      if ([GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION].some(version=>version===snapshot.partyDetailsVersion) && templateKind !== "generic") throw new Error("合同文档输入快照格式不正确");
+      if ([LABOR_PARTY_PLACEMENT_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.partyDetailsVersion) && templateKind !== "labor") throw new Error("合同文档输入快照格式不正确");
+      if (snapshot.partyDetailsVersion || snapshot.bodyDocument?.partyDetailsVersion) { assertGenericPartySourceMapping(template.buffer,snapshot.layoutSourceMapping); assertLaborPartySourceMapping(template.buffer,snapshot.layoutSourceMapping); }
+      // Old queued jobs keep their original bytes. New jobs use only the exact
+      // confirmed coordinates captured when queued, never a current template.
+      const source = snapshot.layoutSourceMapping === undefined ? template.buffer : mappedLayoutSourceForVersion(template.buffer, {
+        docxFileId: snapshot.templateFileId,
+        draftRevision: snapshot.layoutSourceMapping.draftRevision,
+        placeholderSchema: { sourceMapping: snapshot.layoutSourceMapping }
+      });
+      if([LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===(snapshot.bodyDocument?.partyDetailsVersion??snapshot.partyDetailsVersion))) {
+        const plan=snapshot.bodyDocument?.editPlan,layoutId=snapshot.bodyDocument?.layoutTemplateVersionId??"";
+        assertSignatureSupplementMapping(template.buffer,source,layoutId,plan);
+        assertLaborProtectedSignatureEdits(template.buffer,source,layoutId,plan);
+        assertSignatureSupplementReview(template.buffer,source,layoutId,plan);
+      }
+      if (snapshot.bodyDocument && createHash("sha256").update(template.buffer).digest("hex") !== snapshot.bodyDocument.sourceSha256) throw new Error("正文所用模板已变化，请重新核对后生成");
+      if (snapshot.laborMainSignaturePageVersion && createHash("sha256").update(template.buffer).digest("hex") !== REVIEWED_LABOR_SOURCE_SHA256) {
+        throw new BadRequestException("劳务合同正文签署页来源已变化，请重新核对后生成");
+      }
+      stage("DOCX_RENDER");
+      const renderedBody = snapshot.bodyDocument
+        ? renderContractBody(template.buffer, source, snapshot.renderInput, snapshot.requiredKeys, snapshot.bodyDocument.layoutTemplateVersionId, snapshot.bodyDocument.editPlan,
+          { allowBlankWatermark: job.purpose === "external", tableLayoutVersion: snapshot.bodyDocument.tableLayoutVersion,
+            ...(Object.hasOwn(snapshot.bodyDocument, "typographyVersion") ? { typographyVersion: snapshot.bodyDocument.typographyVersion } : {}),
+            ...(Object.hasOwn(snapshot.bodyDocument, "signatureDateVersion") ? { signatureDateVersion: snapshot.bodyDocument.signatureDateVersion } : {}),
+            ...(Object.hasOwn(snapshot.bodyDocument, "pageNumberVersion") ? { pageNumberVersion: snapshot.bodyDocument.pageNumberVersion } : {}),
+            ...(snapshot.bodyDocument.partyDetailsVersion ? { partyDetailsVersion: snapshot.bodyDocument.partyDetailsVersion } : {}),
+            laborMainSignaturePageVersion: snapshot.laborMainSignaturePageVersion,
+            genericSignatureHeadingVersion: snapshot.genericSignatureHeadingVersion,
+            genericMappedSupplement:snapshot.mappedSignatureVersion === "built-in-mapped-signature-supplement-v1" && snapshot.bodyDocument.partyDetailsVersion===GENERIC_SIGNATURE_REVIEW_VERSION,
+            mappedSignatureSupplement:snapshot.mappedSignatureVersion === "built-in-mapped-signature-supplement-v1" })
+        : undefined;
+      const legacySource = !renderedBody && snapshot.partyDetailsVersion ? prepareLegacyPartyRoleBindings(template.buffer, source, {signatureBankAnchor:[LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION].some(v=>v===snapshot.partyDetailsVersion),sourceBoundSystemFields:snapshot.partyDetailsVersion===LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,genericMappedSupplement:snapshot.mappedSignatureVersion === "built-in-mapped-signature-supplement-v1" && snapshot.partyDetailsVersion===GENERIC_BANK_VALUES_VERSION}) : source;
+      const legacyDocx = renderedBody ? undefined : renderContractDocx(legacySource, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
+      const legacyOutput = renderedBody ? undefined : snapshot.partyDetailsVersion ? removeMechanicalPartyDetailsFromLegacyDocx(template.buffer,legacyDocx!,{rolesPrepared:true,sourceBoundSystemFields:snapshot.partyDetailsVersion===LEGACY_MECHANICAL_SOURCE_BOUND_VERSION}) : legacyDocx!;
+      const docx = renderedBody ? renderedBody.docx : snapshot.laborMainSignaturePageVersion ? applyLaborMainSignaturePageToDocx(legacyOutput!, snapshot.renderInput.values) : [LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION].some(v=>v===snapshot.partyDetailsVersion) ? appendLegacySignatureBankFields(template.buffer,legacyOutput!,snapshot.renderInput.values) : [GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION].some(version=>version===snapshot.partyDetailsVersion) ? addGenericBankBlanksToDocx(legacyOutput!,snapshot.partyDetailsVersion===GENERIC_BANK_VALUES_VERSION?snapshot.renderInput.values:undefined) : snapshot.partyDetailsVersion && templateKind === "labor" ? appendLaborFinalPartyPageToDocx(legacyOutput!, snapshot.renderInput.values,[LABOR_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.partyDetailsVersion),snapshot.partyDetailsVersion===LABOR_SIGNATURE_REVIEW_VERSION) : legacyOutput!;
+      const contactLayoutDocx=snapshot.mechanicalContactLayoutVersion ? applyMechanicalContactLayout(template.buffer,docx,snapshot.mechanicalContactLayoutVersion) : docx;
+      stage("ATTACHMENTS");
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
         const source = await this.files.getFileBuffer(attachment.id);
         attachments.push({
           name: attachment.originalName,
           buffer: source.buffer,
-          type: this.attachmentType(attachment.originalName, attachment.mimeType)
+          type: contractAttachmentType(attachment.originalName, attachment.mimeType)
         });
       }
-      const finalDocx = appendDocxImageAttachments(docx, attachments);
+      const preserveUploadOrder = snapshot.attachmentOrderVersion === UPLOAD_ORDERED_ATTACHMENTS_VERSION;
+      const templateSha256 = createHash("sha256").update(template.buffer).digest("hex");
+      const completePackage = (bytes: Buffer) => completeContractDocxFontTableType(
+        prepareContractBodyTableMargins(bytes, snapshot.bodyDocument?.tableLayoutVersion),
+        templateSha256,
+        snapshot.genericFontTableVersion,
+        snapshot.genericFontTableVersion === EQUIVALENT_GENERIC_FONT_VERSION ? template.buffer : undefined
+      );
+      const completedPackage = completePackage(preserveUploadOrder
+        ? appendDocxImageAttachments(contactLayoutDocx, attachments, { preserveUploadOrder: true })
+        : appendDocxImageAttachments(contactLayoutDocx, attachments));
+      const finalDocx = completedPackage.docx;
+      const pdfDocx = preserveUploadOrder ? completePackage(contactLayoutDocx).docx : finalDocx;
+      const finalLineBoxScope = renderedBody?.lineBoxScope ? finalizeContractBodyLineBoxScope(pdfDocx, renderedBody.lineBoxScope) : undefined;
+      stage("PDF_CONVERT");
+      const useDocx4j = snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5";
+      const bodyConversion = useDocx4j
+        ? await convertContractBodyDocxToPdf(pdfDocx, snapshot.bodyDocument!.runtimeLockSha256!, {
+          ...(snapshot.bodyDocument!.typographyVersion ? { typographyVersion: snapshot.bodyDocument!.typographyVersion } : {}),
+          ...([LABOR_GLYPH_PLACEMENT_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.bodyDocument!.partyDetailsVersion) ? { laborPartyNames: laborFinalPartyNames(snapshot.renderInput.values) } : {}),
+          ...([LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.bodyDocument!.partyDetailsVersion) ? {laborBankValues:["party.owner","party.counterparty"].flatMap(alias=>["openingBank","bankAccount","paymentBank","paymentAccount"].map(field=>snapshot.renderInput.values[`${alias}.${field}`]).filter((value):value is string=>typeof value==="string"&&value!==""))} : {}),
+          ...(finalLineBoxScope ? { lineBoxScope: finalLineBoxScope } : {}) }) : undefined;
+      const generatedPdf = bodyConversion?.pdf ?? await convertDocxToPdf(pdfDocx);
+      if (!bodyConversion) await assertContractPreviewFontOutput(generatedPdf);
+      const normalized = preserveUploadOrder
+        ? await normalizeContractPdf(generatedPdf, attachments, { preserveUploadOrder: true })
+        : await normalizeContractPdf(generatedPdf, attachments.filter(attachment => attachment.type === "pdf"));
+      // Both frozen engines finish conversion and output checks before either upload.
+      stage("UPLOAD_DOCX");
       const docxFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.docx`,
         mimeType:
@@ -588,9 +703,7 @@ export class ContractDocumentProcessor
         buffer: finalDocx
       });
       uploadedFileIds.push(docxFile.id);
-      const convertedPdf = await convertDocxToPdf(finalDocx);
-      const pdfAttachments = attachments.filter((attachment) => attachment.type === "pdf");
-      const normalized = await normalizeContractPdf(convertedPdf, pdfAttachments);
+      stage("UPLOAD_PDF");
       const pdfFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.pdf`,
         mimeType: "application/pdf",
@@ -600,6 +713,7 @@ export class ContractDocumentProcessor
       });
       uploadedFileIds.push(pdfFile.id);
       const completedAt = new Date();
+      stage("PUBLISH");
       const outcome = await this.prisma.$transaction(async (tx) => {
         const mutationBoundary = await lockContractDraftMutationBoundary<{
           id: string;
@@ -703,13 +817,18 @@ export class ContractDocumentProcessor
             pdfFileId: pdfFile.id,
             completedAt,
             errorMessage: null,
-            engineVersion: CONTRACT_DOCUMENT_ENGINE_VERSION,
+            engineVersion: snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5" ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION
+              : snapshot.bodyDocument ? CONTRACT_BODY_DOCUMENT_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION,
             inputSnapshot: {
               ...snapshot,
               inspection: {
                 pageCount: normalized.pageCount,
                 pageSizes: normalized.pageSizes,
-                warnings: normalized.warnings
+                warnings: normalized.warnings,
+                ...(completedPackage.normalization ? { packageMetadataNormalization: completedPackage.normalization } : {}),
+                ...(bodyConversion ? { runtime: { ...bodyConversion.provenance,
+                  exportedDocxSha256: createHash("sha256").update(finalDocx).digest("hex"),
+                  exportedPdfSha256: createHash("sha256").update(normalized.buffer).digest("hex") } } : {})
               }
             } as unknown as Prisma.InputJsonValue
           }
@@ -852,11 +971,14 @@ export class ContractDocumentProcessor
               : []
         };
       });
+      stage("CLEANUP");
       await this.files.discardUnlinkedGeneratedFiles(
         outcome.discardFileIds,
         job.createdByUserId
       );
+      try { diagnostic?.success(); } catch { /* Diagnostic only. */ }
     } catch (cause) {
+      try { diagnostic?.fail(cause); } catch { /* Preserve the original failure. */ }
       await this.failDocument(job, cause, uploadedFileIds);
       await this.files.discardUnlinkedGeneratedFiles(
         uploadedFileIds,
@@ -954,11 +1076,28 @@ export class ContractDocumentProcessor
     });
   }
 
-  private documentSnapshot(value: Prisma.JsonValue): ContractDocumentInputSnapshot {
+  private documentSnapshot(value: Prisma.JsonValue): Omit<ContractDocumentInputSnapshot, "partyDetailsVersion" | "bodyDocument"> & { partyDetailsVersion?: PartyPlacementVersion; bodyDocument?: Omit<NonNullable<ContractDocumentInputSnapshot["bodyDocument"]>, "partyDetailsVersion"> & { partyDetailsVersion?: PartyPlacementVersion }; equivalentBuiltInSource: boolean; automaticPartyMappingGuard: boolean } {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new Error("合同文档输入快照格式不正确");
     }
-    const snapshot = value as unknown as ContractDocumentInputSnapshot;
+    const raw = value as unknown as ContractDocumentInputSnapshot;
+    const frozenTag=raw.bodyDocument?.partyDetailsVersion ?? raw.partyDetailsVersion;
+    const automaticPartyMappingGuard=typeof frozenTag==="string" && frozenTag.startsWith(AUTOMATIC_PARTY_GUARD_PREFIX);
+    const guardedTag=automaticPartyMappingGuard ? (frozenTag as string).slice(AUTOMATIC_PARTY_GUARD_PREFIX.length) : frozenTag;
+    const bankBound=typeof guardedTag==="string" && guardedTag.startsWith(COMPANY_BANK_BINDING_GATE);
+    if(bankBound&&!automaticPartyMappingGuard)throw new Error("合同文档输入快照格式不正确");
+    const bankTag=bankBound ? (guardedTag as string).slice(COMPANY_BANK_BINDING_GATE.length) : guardedTag;
+    const equivalentBuiltInSource=typeof bankTag==="string" && bankTag.startsWith("built-in-equivalent-v1:");
+    const rawTag=equivalentBuiltInSource ? (bankTag as string).slice("built-in-equivalent-v1:".length) : bankTag;
+    if (equivalentBuiltInSource && ![MAPPED_MATERIAL_SIGNATURE_GATE,MAPPED_GENERIC_BODY_GATE,MAPPED_GENERIC_LEGACY_GATE,LEGACY_BODY_SIGNATURE_VERSION,LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===rawTag)) throw new Error("合同文档输入快照格式不正确");
+    const gates=new Map<string,PartyPlacementVersion>([[MAPPED_MATERIAL_SIGNATURE_GATE,SIGNATURE_SUPPLEMENT_PAGE_VERSION],[MAPPED_GENERIC_BODY_GATE,GENERIC_SIGNATURE_REVIEW_VERSION],[MAPPED_GENERIC_LEGACY_GATE,GENERIC_BANK_VALUES_VERSION]]);
+    const mappedCanonical=typeof rawTag==="string"?gates.get(rawTag):undefined;
+    const canonical=mappedCanonical;
+    if (Object.hasOwn(raw, "imagePlacementVersion")) throw new Error("合同文档输入快照格式不正确");
+    if(raw.mappedSignatureVersion!==undefined || mappedCanonical!==undefined){
+      if(raw.mappedSignatureVersion!=="built-in-mapped-signature-supplement-v1" || !mappedCanonical || (rawTag===MAPPED_GENERIC_LEGACY_GATE ? raw.bodyDocument!==undefined : raw.bodyDocument===undefined)) throw new Error("合同文档输入快照格式不正确");
+    }
+    const snapshot={...raw,equivalentBuiltInSource,automaticPartyMappingGuard,...(raw.bodyDocument ? {bodyDocument:{...raw.bodyDocument,partyDetailsVersion:canonical ?? rawTag}} : {}),...(raw.partyDetailsVersion ? {partyDetailsVersion:canonical ?? rawTag} : {})} as Omit<ContractDocumentInputSnapshot,"partyDetailsVersion"|"bodyDocument"> & {partyDetailsVersion?:PartyPlacementVersion;bodyDocument?:Omit<NonNullable<ContractDocumentInputSnapshot["bodyDocument"]>,"partyDetailsVersion"> & {partyDetailsVersion?:PartyPlacementVersion};equivalentBuiltInSource:boolean;automaticPartyMappingGuard:boolean};
     if (
       !Number.isInteger(snapshot.documentContentRevision) ||
       snapshot.documentContentRevision < 1 ||
@@ -970,9 +1109,87 @@ export class ContractDocumentProcessor
       !snapshot.renderInput ||
       typeof snapshot.renderInput.values !== "object" ||
       (snapshot.requiredKeys !== undefined && !Array.isArray(snapshot.requiredKeys)) ||
-      !Array.isArray(snapshot.attachmentFiles)
+      !Array.isArray(snapshot.attachmentFiles) ||
+      (snapshot.attachmentOrderVersion !== undefined && snapshot.attachmentOrderVersion !== UPLOAD_ORDERED_ATTACHMENTS_VERSION)
     ) {
       throw new Error("合同文档输入快照格式不正确");
+    }
+    if (snapshot.bodyDocument !== undefined && (!snapshot.bodyDocument || typeof snapshot.bodyDocument !== "object" || Array.isArray(snapshot.bodyDocument) || snapshot.bodyDocument.protocolVersion !== 1 || typeof snapshot.bodyDocument.layoutTemplateVersionId !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.sourceSha256))) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.partyDetailsVersion !== undefined && (![LEGACY_SIGNATURE_BANK_VERSION,LEGACY_MECHANICAL_SOURCE_BOUND_VERSION,BUILT_IN_PARTY_PLACEMENT_VERSION,GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION,LABOR_PARTY_PLACEMENT_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.partyDetailsVersion) || snapshot.bodyDocument !== undefined)) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.laborMainSignaturePageVersion !== undefined &&
+        (snapshot.laborMainSignaturePageVersion !== LABOR_MAIN_SIGNATURE_PAGE_VERSION || equivalentBuiltInSource ||
+          (snapshot.bodyDocument ? snapshot.bodyDocument.partyDetailsVersion !== LABOR_GLYPH_SIGNATURE_REVIEW_VERSION ||
+              snapshot.bodyDocument.sourceSha256 !== REVIEWED_LABOR_SOURCE_SHA256
+            : snapshot.partyDetailsVersion !== LABOR_SIGNATURE_REVIEW_VERSION))) {
+      throw new Error("合同文档输入快照格式不正确");
+    }
+    if (snapshot.mechanicalContactLayoutVersion !== undefined && snapshot.mechanicalContactLayoutVersion !== MECHANICAL_CONTACT_LAYOUT_VERSION && snapshot.mechanicalContactLayoutVersion !== MECHANICAL_CONTACT_LAYOUT_V1) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.genericSignatureHeadingVersion !== undefined &&
+        (snapshot.genericSignatureHeadingVersion !== GENERIC_SIGNATURE_HEADING_VERSION || equivalentBuiltInSource ||
+          snapshot.bodyDocument?.partyDetailsVersion !== GENERIC_SIGNATURE_REVIEW_VERSION ||
+          builtInPartyPlacementKind(snapshot.bodyDocument.sourceSha256) !== "generic")) {
+      throw new Error("合同文档输入快照格式不正确");
+    }
+    if (snapshot.genericFontTableVersion !== undefined && snapshot.genericFontTableVersion !== BUILT_IN_GENERIC_FONT_VERSION && !(snapshot.genericFontTableVersion === EQUIVALENT_GENERIC_FONT_VERSION && equivalentBuiltInSource)) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.mappedSignatureVersion !== undefined && (snapshot.mappedSignatureVersion !== "built-in-mapped-signature-supplement-v1" || ![SIGNATURE_SUPPLEMENT_PAGE_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.bodyDocument?.partyDetailsVersion) && snapshot.partyDetailsVersion !== GENERIC_BANK_VALUES_VERSION)) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.bodyDocument?.partyDetailsVersion !== undefined && (![LEGACY_BODY_SIGNATURE_VERSION,BUILT_IN_PARTY_PLACEMENT_VERSION,SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,SIGNATURE_SUPPLEMENT_COMPANY_VERSION,SIGNATURE_SUPPLEMENT_PAGE_VERSION,GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION,LABOR_PARTY_PLACEMENT_VERSION,LABOR_GLYPH_PLACEMENT_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].includes(snapshot.bodyDocument.partyDetailsVersion) || (!equivalentBuiltInSource && (!builtInPartyPlacementKind(snapshot.bodyDocument.sourceSha256) || ([LEGACY_BODY_SIGNATURE_VERSION,SIGNATURE_SUPPLEMENT_PLACEMENT_VERSION,SIGNATURE_SUPPLEMENT_COMPANY_VERSION,SIGNATURE_SUPPLEMENT_PAGE_VERSION].some(version=>version===snapshot.bodyDocument!.partyDetailsVersion)&&!(["mechanical","material"].includes(builtInPartyPlacementKind(snapshot.bodyDocument.sourceSha256) ?? ""))) || ([GENERIC_BANK_BLANKS_PLACEMENT_VERSION,GENERIC_BANK_VALUES_VERSION,GENERIC_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.bodyDocument!.partyDetailsVersion)&&builtInPartyPlacementKind(snapshot.bodyDocument.sourceSha256)!=="generic") || ([LABOR_PARTY_PLACEMENT_VERSION,LABOR_GLYPH_PLACEMENT_VERSION,LABOR_BANK_VALUES_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_SIGNATURE_REVIEW_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.bodyDocument!.partyDetailsVersion)&&builtInPartyPlacementKind(snapshot.bodyDocument.sourceSha256)!=="labor"))))) throw new Error("合同文档输入快照格式不正确");
+    if ([LABOR_GLYPH_PLACEMENT_VERSION,LABOR_GLYPH_BANK_VALUES_VERSION,LABOR_GLYPH_SIGNATURE_REVIEW_VERSION].some(version=>version===snapshot.bodyDocument?.partyDetailsVersion) && snapshot.bodyDocument?.pdfEngine !== "docx4j-17.3.5") throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.bodyDocument?.pdfEngine !== undefined && (snapshot.bodyDocument.pdfEngine !== "docx4j-17.3.5" || typeof snapshot.bodyDocument.runtimeLockSha256 !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.runtimeLockSha256))) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.bodyDocument?.pdfEngine === undefined && snapshot.bodyDocument?.runtimeLockSha256 !== undefined) throw new Error("合同文档输入快照格式不正确");
+    const values = snapshot.renderInput.values;
+    const hasBodyVersion = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "renderSemanticVersion"));
+    const hasValueVersion = Boolean(values && Object.hasOwn(values, "contract.renderSemanticVersion"));
+    if ((hasBodyVersion || hasValueVersion) && (!hasBodyVersion || !hasValueVersion ||
+      snapshot.bodyDocument?.renderSemanticVersion !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION ||
+      values["contract.renderSemanticVersion"] !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION)) {
+      throw new Error("合同文书金额口径版本无法核对，请联系管理员处理");
+    }
+    const hasBodyLayoutVersion = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "tableLayoutVersion"));
+    const hasValueLayoutVersion = Boolean(values && Object.hasOwn(values, "contract.tableLayoutVersion"));
+    if ((hasBodyLayoutVersion || hasValueLayoutVersion) && (!hasBodyLayoutVersion || !hasValueLayoutVersion ||
+      !isContractBodyTableLayoutVersion(snapshot.bodyDocument?.tableLayoutVersion) ||
+      values["contract.tableLayoutVersion"] !== snapshot.bodyDocument?.tableLayoutVersion)) {
+      throw new Error("合同文书表格版式版本无法核对，请联系管理员处理");
+    }
+    if (snapshot.bodyDocument?.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION && snapshot.bodyDocument?.pdfEngine !== "docx4j-17.3.5") {
+      throw new Error("合同正文纸面运行版本无法核对，请联系管理员处理");
+    }
+    const hasPageBody = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "pageNumberVersion"));
+    const hasPageValue = Object.hasOwn(values, "contract.pageNumberVersion");
+    if ((hasPageBody || hasPageValue) && (!hasPageBody || !hasPageValue ||
+      snapshot.bodyDocument?.pageNumberVersion !== REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION || values["contract.pageNumberVersion"] !== REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION ||
+      snapshot.bodyDocument?.sourceSha256 !== REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256 || snapshot.bodyDocument?.pdfEngine !== "docx4j-17.3.5" ||
+      snapshot.bodyDocument?.renderSemanticVersion !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION ||
+      Object.hasOwn(snapshot.bodyDocument, "typographyVersion") || Object.hasOwn(snapshot.bodyDocument, "signatureDateVersion") ||
+      Object.hasOwn(values, "contract.typographyVersion") || Object.hasOwn(values, "contract.signatureDateVersion") || Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion"))) {
+      throw new Error("合同页码呈现版本无法核对，请联系管理员处理");
+    }
+    const hasDateBody = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "signatureDateVersion"));
+    const hasDateValue = Object.hasOwn(values, "contract.signatureDateVersion");
+    if ((hasDateBody || hasDateValue) && (!hasDateBody || !hasDateValue ||
+      snapshot.bodyDocument?.signatureDateVersion !== REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION || values["contract.signatureDateVersion"] !== REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION ||
+      snapshot.bodyDocument?.sourceSha256 !== REVIEWED_MATERIAL_SOURCE_SHA256 || snapshot.bodyDocument?.typographyVersion !== REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION ||
+      snapshot.bodyDocument?.pdfEngine !== "docx4j-17.3.5")) {
+      throw new Error("合同签署日期呈现版本无法核对，请联系管理员处理");
+    }
+    const hasBodyTypography = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "typographyVersion"));
+    const hasValueTypography = Object.hasOwn(values, "contract.typographyVersion");
+    if ((hasBodyTypography || hasValueTypography) && (!hasBodyTypography || !hasValueTypography ||
+      !isReviewedTypographyVersion(snapshot.bodyDocument?.typographyVersion) ||
+      values["contract.typographyVersion"] !== snapshot.bodyDocument?.typographyVersion ||
+      snapshot.bodyDocument?.sourceSha256 !== reviewedTypographySourceSha256(snapshot.bodyDocument?.typographyVersion) ||
+      (snapshot.bodyDocument?.typographyVersion === REVIEWED_LABOR_TYPOGRAPHY_VERSION
+        ? !Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion")
+        : Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion")))) {
+      throw new Error("合同正文字体呈现版本无法核对，请联系管理员处理");
+    }
+    if (Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion") &&
+      (values["contract.reviewedLaborTaxBindingVersion"] !== REVIEWED_LABOR_TAX_BINDING_VERSION ||
+        snapshot.bodyDocument?.sourceSha256 !== REVIEWED_LABOR_SOURCE_SHA256 ||
+        values["contract.renderSemanticVersion"] !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION ||
+        !["tax_inclusive", "tax_exclusive"].includes(values["contract.amountBasis"] as string) ||
+        typeof values["contract.taxRateLabel"] !== "string" || !/^(?:待补充|\d+(?:\.\d+)?%)$/u.test(values["contract.taxRateLabel"] as string))) {
+      throw new Error("合同正文税率呈现版本无法核对，请联系管理员处理");
     }
     return {
       ...snapshot,
@@ -980,23 +1197,6 @@ export class ContractDocumentProcessor
     };
   }
 
-
-  private attachmentType(
-    originalName: string,
-    mimeType: string
-  ): PdfAttachment["type"] {
-    const lowerName = originalName.toLowerCase();
-    if (mimeType === "application/pdf" || lowerName.endsWith(".pdf")) return "pdf";
-    if (mimeType === "image/png" || lowerName.endsWith(".png")) return "png";
-    if (
-      mimeType === "image/jpeg" ||
-      lowerName.endsWith(".jpg") ||
-      lowerName.endsWith(".jpeg")
-    ) {
-      return "jpeg";
-    }
-    return undefined;
-  }
 
   private errorMessage(cause: unknown, fallback: string) {
     let message: string;

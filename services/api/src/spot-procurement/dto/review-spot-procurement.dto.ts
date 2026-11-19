@@ -42,4 +42,10 @@ export class ReviewSpotProcurementDto {
     blankMessage: "审批意见不能为空白"
   })
   comment?: string;
+
+  @IsOptionalNonBlankText({typeMessage: "自审原因必须是文字", blankMessage: "请填写自审原因"})
+  selfReviewReason?: string;
+
+  @IsOptionalNonBlankText({typeMessage: "确认密码必须是文字", blankMessage: "请输入本人当前密码"})
+  confirmationPassword?: string;
 }

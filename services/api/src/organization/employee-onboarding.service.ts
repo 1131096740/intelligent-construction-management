@@ -110,6 +110,14 @@ export class EmployeeOnboardingService {
     const payload = this.tokens.verifyApplicationToken(authorization?.startsWith("Bearer ") ? authorization.slice(7) : "");
     const passwordHash = await this.auth.hashPassword(newPassword);
     const row = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.employeeRegistration.findUnique({ where: { id: payload.sub } });
+      if (!current || current.status === "approved" || current.credentialVersion !== (payload.ver ?? 0)
+        || (current.temporaryPasswordExpiresAt && current.temporaryPasswordExpiresAt <= new Date())) {
+        throw new UnauthorizedException("申请凭证已失效，请重新登录");
+      }
+      if (await bcrypt.compare(newPassword, current.passwordHash)) {
+        throw new BadRequestException("新密码不能与当前密码相同，请设置本人新密码");
+      }
       const changed = await tx.employeeRegistration.updateMany({ where: { id: payload.sub, credentialVersion: payload.ver ?? 0,
         status: { not: "approved" }, OR: [{ temporaryPasswordExpiresAt: null }, { temporaryPasswordExpiresAt: { gt: new Date() } }] },
       data: { passwordHash, mustChangePassword: false, temporaryPasswordExpiresAt: null,

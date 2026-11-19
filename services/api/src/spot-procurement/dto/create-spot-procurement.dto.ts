@@ -15,7 +15,7 @@ import {
   IsOptionalNonBlankText,
   IsRequiredText
 } from "../../validation/static-field-validation";
-import { isSpotProcurementQuantity } from "../spot-procurement-money";
+import { normalizeBusinessAmount, normalizeBusinessQuantity } from "@jiangkong/shared-domain";
 
 const ATTACHMENT_CATEGORIES = [
   "merchant_quote",
@@ -35,9 +35,9 @@ export function IsSpotProcurementQuantity(): PropertyDecorator {
       propertyName: String(propertyKey),
       options: {
         message:
-          "采购数量必须是大于 0、最多 2 位小数且可保存的普通十进制字符串"
+          "采购数量必须是大于 0、最多 4 位小数且可保存的普通十进制字符串"
       },
-      validator: { validate: isSpotProcurementQuantity }
+      validator: { validate: (value: unknown) => { try { return typeof value === "string" && normalizeBusinessQuantity(value) !== null && Number(value) > 0; } catch { return false; } } }
     });
   };
 }
@@ -73,6 +73,13 @@ function IsOptionalNullableNonBlankText(messages: {
   };
 }
 
+function IsEstimatedAmount(): PropertyDecorator {
+  return (target, propertyKey) => registerDecorator({ name: "estimatedAmount", target: target.constructor,
+    propertyName: String(propertyKey), options: { message: "预计金额或单价必须是非负普通十进制数字，最多4位小数" },
+    validator: { validate: (value: unknown) => { try { return typeof value === "string" && value !== "" && normalizeBusinessAmount(value) !== null; } catch { return false; } } }
+  });
+}
+
 export class SpotProcurementLineDto {
   @IsRequiredText({
     requiredMessage: "请填写材料名称",
@@ -87,15 +94,25 @@ export class SpotProcurementLineDto {
   })
   specification?: string;
 
+  @IsOptional()
   @IsRequiredText({
     requiredMessage: "请填写材料单位",
     typeMessage: "材料单位必须是文字",
     blankMessage: "材料单位不能为空白"
   })
-  unit!: string;
+  unit?: string | null;
 
+  @IsOptional()
   @IsSpotProcurementQuantity()
-  quantity!: string;
+  quantity?: string | null;
+
+  @IsOptional()
+  @IsEstimatedAmount()
+  estimatedUnitPrice?: string | null;
+
+  @IsOptional()
+  @IsEstimatedAmount()
+  estimatedAmount?: string | null;
 
   @IsOptionalNonBlankText({
     typeMessage: "采购明细备注必须是文字",
@@ -128,33 +145,41 @@ export class SpotProcurementEntryDefinitionVersionsDto {
 
 export class SpotProcurementDraftDto {
   @IsOptional()
+  @IsEstimatedAmount()
+  estimatedTotalAmount?: string | null;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => SpotProcurementEntryDefinitionVersionsDto)
   entryDefinitionVersions?: SpotProcurementEntryDefinitionVersionsDto;
 
+  @IsOptional()
   @IsRequiredText({
     requiredMessage: "请填写申请部门",
     typeMessage: "申请部门必须是文字",
     blankMessage: "申请部门不能为空白"
   })
-  applicationDepartment!: string;
+  applicationDepartment?: string;
 
+  @IsOptional()
   @IsRequiredText({
     requiredMessage: "请填写申请人",
     typeMessage: "申请人必须是文字",
     blankMessage: "申请人不能为空白"
   })
-  applicationName!: string;
+  applicationName?: string;
 
+  @IsOptional()
   @IsDateString({}, { message: "要求采购到位日期格式不正确" })
-  requestedArrivalAt!: string;
+  requestedArrivalAt?: string | null;
 
+  @IsOptional()
   @IsRequiredText({
     requiredMessage: "请填写采购原因",
     typeMessage: "采购原因必须是文字",
     blankMessage: "采购原因不能为空白"
   })
-  reason!: string;
+  reason?: string;
 
   @IsOptionalNullableNonBlankText({
     typeMessage: "采购备注必须是文字",

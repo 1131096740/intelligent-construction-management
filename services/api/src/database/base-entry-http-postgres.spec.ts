@@ -10,6 +10,7 @@ import { AppModule } from "../app.module";
 import { PrismaService } from "./prisma.service";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { apiJsonReplacer } from "../api-json-replacer";
+import { TencentSmsGateway } from "../auth/tencent-sms.gateway";
 
 const describePostgres = process.env.RUN_POL113_HTTP_PG16 === "1" ? describe : describe.skip;
 
@@ -21,8 +22,21 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   let token: string;
   const sessions = new Map<string, unknown>();
   let participatingCompanyId: string;
+  const smsInbox = new Map<string, string | null>();
   const password = `Local-${randomUUID()}`;
   const phone = `139${String(Date.now()).slice(-8)}`;
+
+  function configureSyntheticSms() {
+    const keys = ["SMS_ENABLED", "SMS_SECRET_ID", "SMS_SECRET_KEY", "SMS_SDK_APP_ID", "SMS_SIGN_NAME", "SMS_TEMPLATE_ID", "SMS_CODE_SECRET"] as const;
+    const previous = keys.map(key => [key, process.env[key]] as const);
+    for (const key of keys) process.env[key] = key === "SMS_ENABLED" ? "true" : randomUUID();
+    return () => {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    };
+  }
 
   async function request(path: string, method = "GET", body?: unknown, accessToken = token) {
     const response = await fetch(`${base}${path}`, {
@@ -38,7 +52,14 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/pol113") {
       throw new Error("仅允许本机一次性 pol113 数据库");
     }
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(TencentSmsGateway)
+      .useValue({ send: async (recipient: string, code: string) => {
+        // Only the network boundary is synthetic; real SMS challenges and verification remain in PostgreSQL.
+        if (!smsInbox.has(recipient)) throw new Error("未登记的合成短信接收人");
+        smsInbox.set(recipient, code);
+      } })
+      .compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(createApiValidationPipe());
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
@@ -92,13 +113,11 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     } };
   }
 
-  async function participatingCompany() {
-    if (participatingCompanyId) return participatingCompanyId;
+  async function seedCompanyEntity(name: string) {
     const prisma = app.get(PrismaService);
     const suffix = randomUUID().replaceAll("-", "");
-    // Shared synthetic selection fixture; company mutations have separate public HTTP coverage.
     const company = await prisma.companyEntity.create({ data: {
-      name: "参与主体合成验收公司",
+      name,
       unifiedSocialCreditCode: `POL113${suffix.slice(0, 12)}`,
       dataStatus: "complete", currentVersionNo: 1, isActive: true
     } });
@@ -107,6 +126,12 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       unifiedSocialCreditCode: company.unifiedSocialCreditCode,
       isActive: true, action: "test_master", actorUserId: userId
     } });
+    return company;
+  }
+
+  async function participatingCompany() {
+    if (participatingCompanyId) return participatingCompanyId;
+    const company = await seedCompanyEntity("参与主体合成验收公司");
     const contract = await actor("contract_staff");
     const activeCompanies = await request("/company-entities", "GET", undefined, contract);
     expect(activeCompanies.status).toBe(200);
@@ -341,6 +366,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
         userId: financeSession.user.id, positionId: financePosition.id, projectId: retainedProject.body.id
       } });
       const callbackSecret = randomUUID();
+      const settingsAccounts = new Map<string, { phone: string; newPhone: string; password: string }>();
       const roleFixture = createServer(async (incoming, response) => {
         if (incoming.url === `/${callbackSecret}/revoke` && incoming.method === "POST") {
           await prisma.userPosition.deleteMany({ where: {
@@ -360,12 +386,21 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           response.writeHead(204).end();
           return;
         }
+        if (incoming.method === "GET" && incoming.url?.startsWith(`/${callbackSecret}/settings-sms/`)) {
+          const account = settingsAccounts.get(incoming.url.split("/").at(-1) ?? "");
+          const code = account && smsInbox.get(account.newPhone);
+          if (!code) {
+            response.writeHead(404).end();
+            return;
+          }
+          response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ code }));
+          return;
+        }
         response.writeHead(404).end();
       });
       await new Promise<void>((resolveListen) => roleFixture.listen(0, "127.0.0.1", resolveListen));
       const fixtureAddress = roleFixture.address();
       if (!fixtureAddress || typeof fixtureAddress === "string") throw new Error("撤权夹具未监听本机端口");
-      const settingsAccounts: Record<string, { phone: string; newPhone: string; password: string }> = {};
       const participantProjects: Record<string, { id: string; code: string; name: string }> = {};
       const constructionProjects: Record<string, { id: string; code: string; name: string }> = {};
       for (const [index, browser] of ["desktop", "mobile"].entries()) {
@@ -386,16 +421,18 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           name: "本人资料浏览器合成账号", phone: account.phone,
           passwordHash: await bcrypt.hash(account.password, 4), mustChangePassword: false
         } });
-        settingsAccounts[browser] = account;
+        settingsAccounts.set(browser, account);
       }
       await participatingCompany();
       const master = await actor("comprehensive_director");
       const enterpriseIntent = await partyIntent(master, "浏览器施工企业验收");
       expect((await request("/business-parties", "POST", enterpriseIntent.body, master)).status).toBe(201);
       const contractSession = await actor("contract_staff");
+      for (const account of settingsAccounts.values()) smsInbox.set(account.newPhone, null);
+      const restoreSms = configureSyntheticSms();
       try {
         await new Promise<void>((done, reject) => {
-          const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
+          const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(Object.fromEntries(settingsAccounts)) };
           delete browserEnv.JEST_WORKER_ID;
           browserEnv.POL113_CONTRACT_SESSION = JSON.stringify(sessions.get(contractSession));
           browserEnv.POL113_MASTER_DATA_SESSION = JSON.stringify(sessions.get(master));
@@ -414,6 +451,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           child.on("exit", (code) => code === 0 ? done() : reject(new Error("项目档案真实浏览器验证失败")));
         });
       } finally {
+        restoreSms();
+        for (const account of settingsAccounts.values()) smsInbox.delete(account.newPhone);
         await new Promise<void>((resolveClose, rejectClose) => roleFixture.close((error) => error ? rejectClose(error) : resolveClose()));
       }
     }
@@ -547,7 +586,12 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const created = await request("/projects", "POST", { code: `LIFE-${randomUUID()}`, name: "空项目停用验收" }, master);
     expect(created.status).toBe(201);
     const id = created.body.id;
-    for (const denied of [await actor("general_manager"), await actor("super_admin"), await actor("comprehensive_director", id)]) {
+    const generalManager = await actor("general_manager");
+    expect((await request(`/projects/${id}/status`, "POST", { isActive: false }, generalManager)).status).toBe(403);
+    const management = await request("/projects/management", "GET", undefined, generalManager);
+    expect(management.status).toBe(200);
+    expect(management.body).toContainEqual(expect.objectContaining({ id, isActive: true }));
+    for (const denied of [await actor("super_admin"), await actor("comprehensive_director", id)]) {
       expect((await request(`/projects/${id}/status`, "POST", { isActive: false }, denied)).status).toBe(403);
       expect((await request("/projects/management", "GET", undefined, denied)).status).toBe(403);
     }
@@ -627,15 +671,38 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: projectId } })).isActive).toBe(order !== "project-stop-first");
   });
 
-  it("已有项目或付款引用的公司不能停用，保持历史业务可办理", async () => {
+  it("有合同引用的公司可停用，阻止新选用并保留历史引用", async () => {
     const chairman = await actor("chairman");
-    const companyEntityId = await participatingCompany();
+    const { id: companyEntityId, name: companyEntityName } = await seedCompanyEntity("有历史合同的主体");
     const prisma = app.get(PrismaService);
     const project = await request("/projects", "POST", { code: `COREF-${randomUUID()}`, name: "主体引用验收" }, chairman);
-    await prisma.contract.create({ data: { projectId: project.body.id, name: "尾款办理合同", counterparty: "合成单位", companyEntityId } });
+    expect(project.status).toBe(201);
+    const contract = await prisma.contract.create({ data: {
+      projectId: project.body.id, name: "尾款办理合同", counterparty: "合成单位", companyEntityId, companyEntityName
+    } });
+    const historyPath = `/company-entities/${companyEntityId}/history`;
+    const before = await request(historyPath, "GET", undefined, chairman);
+    expect(before.status).toBe(200);
+    expect(before.body.versions).toEqual([expect.objectContaining({ versionNo: 1, isActive: true })]);
+    const selectableBefore = await request("/company-entities", "GET", undefined, chairman);
+    expect(selectableBefore.status).toBe(200);
+    expect(selectableBefore.body).toContainEqual(expect.objectContaining({ id: companyEntityId }));
+
     const result = await request(`/company-entities/${companyEntityId}/status`, "POST", { isActive: false }, chairman);
-    expect(result.status).toBe(409);
-    expect(await prisma.companyEntity.findUnique({ where: { id: companyEntityId } })).toMatchObject({ isActive: true });
+    expect(result.status).toBe(201);
+    expect(result.body).toMatchObject({ entity: { id: companyEntityId, isActive: false, currentVersionNo: 2 }, unchanged: false });
+    const selectable = await request("/company-entities", "GET", undefined, chairman);
+    expect(selectable.status).toBe(200);
+    expect(selectable.body).not.toContainEqual(expect.objectContaining({ id: companyEntityId }));
+    const after = await request(historyPath, "GET", undefined, chairman);
+    expect(after.status).toBe(200);
+    expect(after.body.versions).toEqual([
+      expect.objectContaining({ versionNo: 2, isActive: false, action: "disable" }),
+      ...before.body.versions
+    ]);
+    expect(await prisma.contract.findUnique({ where: { id: contract.id } })).toEqual(contract);
+    expect(await prisma.auditLog.findFirst({ where: { businessId: companyEntityId, action: "company_entity.disable" } }))
+      .toMatchObject({ metadata: { versionNo: 2, actorRoleKey: "chairman", hasExistingBusinessReferences: true } });
   });
 
   it("公司主体仅两类全局岗位可新增修改启停，旧版本和停用档案仍可回读", async () => {
@@ -752,13 +819,26 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const denied = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: "wrong-password" });
     expect(denied.status).toBe(400);
     expect((await request("/auth/login", "POST", { phone, password })).body.user.name).toBe("资料测试经办人");
-    const saved = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: password });
-    expect(saved.status).toBe(200);
-    expect(saved.body.user).toMatchObject({ id: userId, name, phone: newPhone });
-    token = saved.body.tokens.accessToken;
-    expect((await request("/auth/login", "POST", { phone: newPhone, password })).body.user)
-      .toMatchObject({ id: userId, name, phone: newPhone });
-    expect((await request("/auth/login", "POST", { phone, password })).status).toBe(401);
+    smsInbox.set(newPhone, null);
+    const restoreSms = configureSyntheticSms();
+    try {
+      const sent = await request("/account-security/phone-change-sms", "POST", { phone: newPhone });
+      expect(sent.status).toBe(201);
+      const deliveredSmsCode = smsInbox.get(newPhone);
+      if (!deliveredSmsCode) throw new Error("合成短信网关未接收验证码");
+      const saved = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: password, code: deliveredSmsCode });
+      expect(saved.status).toBe(200);
+      expect(saved.body.user).toMatchObject({ id: userId, name, phone: newPhone });
+      token = saved.body.tokens.accessToken;
+      const newLogin = await request("/auth/login", "POST", { phone: newPhone, password });
+      expect(newLogin.status).toBe(201);
+      expect(newLogin.body.user).toMatchObject({ id: userId, name, phone: newPhone });
+      token = newLogin.body.tokens.accessToken;
+      expect((await request("/auth/login", "POST", { phone, password })).status).toBe(401);
+    } finally {
+      smsInbox.delete(newPhone);
+      restoreSms();
+    }
   });
 
   it("综合部主管沿专用创建链成功，重放与并发只返回一个可回读合作单位", async () => {

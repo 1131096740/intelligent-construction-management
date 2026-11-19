@@ -173,9 +173,9 @@ run_pol22_readonly_preflight() {
   "$BASH_BIN" services/api/scripts/run-business-zeroing-cli.sh preflight-dynamic
 }
 
-run_check ci-orchestration "$PNPM_BIN" test:ci-orchestration
 run_check frozen-dependency-install env CI=true "$PNPM_BIN" install --frozen-lockfile
 run_check prisma-client-generation "$PNPM_BIN" --filter @jiangkong/api exec prisma generate
+run_check ci-orchestration "$PNPM_BIN" test:ci-orchestration
 run_check migration-baseline "$PNPM_BIN" check:migration-baseline
 run_check production-dependency-audit "$PNPM_BIN" audit --prod --audit-level high
 run_check workspace-typecheck "$PNPM_BIN" typecheck
@@ -187,7 +187,7 @@ run_check api-and-web-production-build run_production_builds
 run_check web-ui-governance "$PNPM_BIN" --filter @jiangkong/web-admin check:ui
 run_check release-manifests "$PNPM_BIN" inspect:release-manifests
 run_check exact-sha-postgresql-16 "$NODE_BIN" services/api/prisma/run-database-dynamic-gate-local.cjs \
-  --execute --candidate-sha "$CANDIDATE_SHA" --confirm LOCAL_PG16_DYNAMIC_GATE
+  --execute --automatic-only --candidate-sha "$CANDIDATE_SHA" --confirm LOCAL_PG16_DYNAMIC_GATE
 run_check pol22-readonly-preflight run_pol22_readonly_preflight
 run_check playwright-p0 run_playwright_p0
 run_check playwright-rc06-mock "$PNPM_BIN" --filter @jiangkong/web-admin test:e2e:rc06:mock

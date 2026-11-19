@@ -1,3 +1,9 @@
+import { EconomicFinanceNotificationService } from "./economic-finance-notification.service";
+import { UpwardReceiptMatchNotificationService } from "./upward-receipt-match-notification.service";
+import { ContractProxyNotificationService } from "./contract-proxy-notification.service";
+import { UpwardAmountNotificationService } from "./upward-amount-notification.service";
+import { ApprovalModule } from "../approval/approval.module";
+import { ContractBankVerificationNotificationService } from "./contract-bank-verification-notification.service";
 import {ContractBankVerificationController} from "./contract-bank-verification.controller";
 import {ContractBankVerificationService} from "./contract-bank-verification.service";
 import { UpwardReceiptMatchService } from "./upward-receipt-match.service";
@@ -16,5 +22,5 @@ import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { ContractRelationshipLedgerService } from "./contract-relationship-ledger.service";
 import { ContractRelationshipLedgerController } from "./contract-relationship-ledger.controller";
-@Module({ imports: [ProjectFundingModule, AuthModule, AuditModule, OperatingLedgerModule], controllers: [ContractBankVerificationController,UpwardReceiptMatchController,UpwardContractAmountController, ContractProxyExecutionController, ContractRelationshipLedgerController, ContractEconomicReviewController], providers: [ContractBankVerificationService,UpwardReceiptMatchService,ContractClassificationPreflightService,UpwardContractAmountService, ContractProxyExecutionService, ContractRelationshipLedgerService, ContractEconomicReviewService] })
+@Module({ imports: [ProjectFundingModule, AuthModule, AuditModule, OperatingLedgerModule, ApprovalModule], controllers: [ContractBankVerificationController,UpwardReceiptMatchController,UpwardContractAmountController, ContractProxyExecutionController, ContractRelationshipLedgerController, ContractEconomicReviewController], providers: [ContractBankVerificationNotificationService,ContractBankVerificationService,UpwardReceiptMatchNotificationService,UpwardReceiptMatchService,ContractClassificationPreflightService,UpwardAmountNotificationService,UpwardContractAmountService, ContractProxyNotificationService, ContractProxyExecutionService, ContractRelationshipLedgerService, EconomicFinanceNotificationService, ContractEconomicReviewService] })
 export class ContractRelationshipLedgerModule {}

@@ -4,7 +4,7 @@ import { RequirePositions } from "./decorators/require-positions.decorator";
 import { Public } from "./decorators/public.decorator";
 import type { AuthenticatedUser } from "./auth.types";
 import { AccountSecurityService } from "./account-security.service";
-import { AdminResetPasswordDto, ConfirmAccountPasswordDto, RecoveryCodeResetDto, SendSmsDto, SmsPasswordResetDto, SmsPhoneDto } from "./dto/account-security.dto";
+import { AdminChangePhoneDto, AdminResetPasswordDto, ConfirmAccountPasswordDto, RecoveryCodeResetDto, SendSmsDto, SmsPasswordResetDto, SmsPhoneDto } from "./dto/account-security.dto";
 import { accountClientAddress, type AccountHttpRequest } from "./auth-rate-limit.service";
 
 @Controller("account-security")
@@ -19,6 +19,17 @@ export class AccountSecurityController {
   @Post("phone-change-sms")
   phoneChangeSms(@Body() input: SmsPhoneDto, @CurrentUser() actor: AuthenticatedUser, @Req() request: AccountHttpRequest) {
     return this.security.sendPhoneChange(input.phone, actor.id, accountClientAddress(request));
+  }
+  @Post("users/:id/phone-change-sms")
+  @RequirePositions("chairman", "comprehensive_director")
+  adminPhoneChangeSms(@Param("id") id: string, @Body() input: SmsPhoneDto,
+    @CurrentUser() actor: AuthenticatedUser, @Req() request: AccountHttpRequest) {
+    return this.security.sendAdminPhoneChange(id, actor.id, input.phone, accountClientAddress(request));
+  }
+  @Post("users/:id/change-phone")
+  @RequirePositions("chairman", "comprehensive_director")
+  changeUserPhone(@Param("id") id: string, @Body() input: AdminChangePhoneDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.security.changeUserPhone(id, actor.id, input);
   }
   @Public()
   @Post("reset-with-sms")

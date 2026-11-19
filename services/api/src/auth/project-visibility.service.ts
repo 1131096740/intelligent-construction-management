@@ -140,7 +140,7 @@ export class ProjectVisibilityService {
         client.userPosition.findMany({ where: { userId, projectId: null } }),
         client.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
         client.projectMember.findMany({ where: { userId } }),
-        client.projectRosterMember.findMany({ where: { userId } }),
+        client.projectRosterMember.findMany({ where: { userId }, select: { projectId: true } }),
         this.activeProjectIdsWithClient(client)
       ]);
     const positionIds = Array.from(

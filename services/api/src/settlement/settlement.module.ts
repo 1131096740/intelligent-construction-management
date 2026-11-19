@@ -1,3 +1,4 @@
+import { SettlementArchiveNotificationService } from "./settlement-archive-notification.service";
 import { Module } from "@nestjs/common";
 import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -65,6 +66,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
     SettlementFrozenDocumentService,
     SettlementLineAttachmentService,
     SettlementSignedDocumentService,
+    SettlementArchiveNotificationService,
     SettlementRecoveryService
   ],
   exports: [

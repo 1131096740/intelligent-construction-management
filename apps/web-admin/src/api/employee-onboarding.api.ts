@@ -67,5 +67,8 @@ export const resetPasswordWithSms = (body: { phone: string; code: string; newPas
 export const recoverWithCode = (body: { phone: string; recoveryCode: string; newPassword: string }) => publicRequest<{ ok: boolean }>("/account-security/recover", "POST", body);
 export const fetchEmployeeApplications = () => userRequest<{ pendingCount: number; applications: EmployeeApplication[] }>("/employee-onboarding/applications", "GET", undefined);
 export const reviewEmployeeApplication = (id: string, body: EmployeeReview) => userRequest<EmployeeApplication>(`/employee-onboarding/applications/${encodeURIComponent(id)}/review`, "POST", body);
-export const resetEmployeePassword = (id: string, kind: "users" | "applications", confirmationPassword: string) => userRequest<{ temporaryPassword: string; expiresAt?: string }>(`/account-security/${kind}/${encodeURIComponent(id)}/reset-password`, "POST", { confirmationPassword, identityVerified: true });
+export const resetEmployeePassword = (id: string, kind: "users" | "applications", confirmationPassword: string) => userRequest<{ ok: boolean; mustChangePassword: boolean }>(`/account-security/${kind}/${encodeURIComponent(id)}/reset-password`, "POST", { confirmationPassword, identityVerified: true });
 export const generateRecoveryCode = (confirmationPassword: string) => userRequest<{ recoveryCode: string }>("/account-security/recovery-code", "POST", { confirmationPassword });
+
+export const sendAdminPhoneChangeSms = (id: string, phone: string) => userRequest<{ ok: boolean; retryAfterSeconds: number }>(`/account-security/users/${encodeURIComponent(id)}/phone-change-sms`, "POST", { phone });
+export const changeUserPhone = (id: string, body: { phone: string; code: string; confirmationPassword: string }) => userRequest<{ ok: boolean }>(`/account-security/users/${encodeURIComponent(id)}/change-phone`, "POST", body);

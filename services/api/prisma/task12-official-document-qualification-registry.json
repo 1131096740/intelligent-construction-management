@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_MECHANICAL_V1",
+  "qualification": {
+    "machineReceipt": {
+      "path": "/private/tmp/jg-mechqual-fa239-iUiWG8/run/MACHINE-RECEIPT.json",
+      "sha256": "8b304a2ed6290b1f6a0e5f893b222416133c06ffe71824f3227c1bd138f0e047"
+    },
+    "physicalReview": {
+      "path": "/private/tmp/jg-mechfa239-physical-review-ze1wzle1/physical-review.json",
+      "sha256": "db245eb6d75d8d11117875051240e7091534e01484a3e5e167a2a414677a05a4"
+    }
+  }
+}

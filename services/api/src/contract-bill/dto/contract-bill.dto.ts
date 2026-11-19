@@ -90,6 +90,10 @@ export class CancelBillRowRemainderDto {
 }
 
 export class SaveContractBillRowDto {
+  @IsOptional()
+  @IsObject({ message: "撤销来源格式不正确" })
+  restoreRef?: { saveIntentKey: string; oldRowKey: string };
+
   @IsRequiredText({
     requiredMessage: "客户端清单行键不能为空",
     typeMessage: "客户端清单行键必须是文字",
@@ -139,11 +143,9 @@ export class SaveContractBillRowDto {
   @IsString({ message: "清单数量必须是十进制文字" })
   quantity?: string;
 
-  @IsRequiredText({
-    requiredMessage: "清单单价不能为空",
-    typeMessage: "清单单价必须是十进制文字",
-    blankMessage: "清单单价不能为空白"
-  })
+  // v2 permits an unknown draft price; v1 service validation remains required.
+  @IsOptional()
+  @IsString({ message: "清单单价必须是十进制文字" })
   unitPrice!: string;
 
   @IsOptional()

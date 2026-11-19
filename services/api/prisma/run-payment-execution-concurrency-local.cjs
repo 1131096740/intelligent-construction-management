@@ -19,6 +19,7 @@ const {
   runInterruption,
   withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const DATABASE_NAME = "jiangkong_payment_execution_concurrency";
@@ -223,8 +224,10 @@ async function runPrismaMigrate({
   databaseUrl,
   runtimeEnv,
   schemaPath,
-  forwardOutput = true
+  forwardOutput = true,
+  migrationFixture
 }) {
+  if (migrationFixture) return migrationFixture().migrate({ databaseUrl, runtimeEnv, schemaPath });
   const args = [
     "--filter",
     "@jiangkong/api",
@@ -837,7 +840,8 @@ async function verifyRetainedMigration({
   dockerCommand,
   databaseUrl,
   temporaryRoot,
-  runtimeEnv
+  runtimeEnv,
+  migrationFixture
 }) {
   const pre139MigrationRoot =
     await preparePre139MigrationRoot(temporaryRoot);
@@ -953,7 +957,8 @@ async function verifyRetainedMigration({
       databaseUrl,
       RETAINED_MIGRATION_DATABASES.valid
     ),
-    runtimeEnv
+    runtimeEnv,
+    migrationFixture
   });
   const retainedFacts = await runPsql(
     dockerCommand,
@@ -1115,6 +1120,7 @@ async function main() {
     path.join(tmpdir(), "jiangkong-payment-execution-")
   );
   const databasePassword = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl =
     `postgresql://jiangkong:${databasePassword}` +
     `@127.0.0.1:${databasePort}/${DATABASE_NAME}`;
@@ -1175,7 +1181,7 @@ async function main() {
     ]);
     assertLocalDockerEndpoint(dockerEndpoint.stdout);
     await dockerCommand(["info"]);
-    await dockerCommand(
+    const created = await dockerCommand(
       [
         "run",
         "--pull=never",
@@ -1183,6 +1189,8 @@ async function main() {
         "--rm",
         "--name",
         containerName,
+        "--label",
+        CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
         "--env",
         "POSTGRES_USER=jiangkong",
         "--env",
@@ -1204,13 +1212,21 @@ async function main() {
         `（${DATABASE_NAME}，仅 127.0.0.1）`
     );
 
+    let staged;
+    const migrationFixture = () => staged ??= createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_PAYMENT_EXECUTION_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME, RETAINED_MIGRATION_DATABASES.valid],
+      temporaryRoot, dockerCommand, deploy: runPrismaMigrate
+    });
     await verifyRetainedMigration({
       dockerCommand,
       databaseUrl,
       temporaryRoot,
-      runtimeEnv
+      runtimeEnv,
+      migrationFixture
     });
-    await runPrismaMigrate({ databaseUrl, runtimeEnv });
+    await runPrismaMigrate({ databaseUrl, runtimeEnv, migrationFixture });
     await command(
       pnpm,
       ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],

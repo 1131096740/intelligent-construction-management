@@ -39,6 +39,7 @@ const props = defineProps<{
   paymentChannels: SpotProcurementPaymentChannelReadModel[];
   existingExecutions: SpotProcurementPaymentExecutionReadModel[];
   lockedAttempt?: PaymentExecutionLockedAttempt | null;
+  registeredAttempt?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -257,6 +258,7 @@ function setInnerInputLabel(
           :options="channelOptions"
           :disabled="locked"
         /></label>
+        <slot v-if="!locked" name="funding" :paid-at="form.paidAt" />
         <label v-if="!locked"><span>{{ voucherLabel }}</span><t-upload
           v-model="voucherFiles"
           theme="file-flow"
@@ -269,7 +271,7 @@ function setInnerInputLabel(
           tips="凭证将在确认登记时上传并与本次实付一并登记。"
         /></label>
         <t-button
-          v-else
+          v-else-if="!registeredAttempt"
           variant="text"
           theme="primary"
           @click="resetAttempt"
@@ -290,6 +292,7 @@ function setInnerInputLabel(
           <div><dt>冻结渠道</dt><dd>{{ channelOptions.find((item) => item.value === form.paymentChannelId)?.label ?? "待核对" }}</dd></div>
           <div><dt>附件</dt><dd>{{ lockedAttempt?.voucherCount ?? voucherFiles.length }} 份{{ voucherLabel }}</dd></div>
         </dl>
+        <slot name="funding-confirmation" />
         <label><span>当前登录密码</span><t-input
           v-model="form.confirmationPassword"
           v-inner-input-label="'当前登录密码'"

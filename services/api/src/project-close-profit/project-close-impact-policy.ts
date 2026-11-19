@@ -36,6 +36,7 @@ const POLICIES = {
   construction_enterprise_funds_release: financialPolicy("项目资金限制发生变化"),
   company_project_funds_increase: financialPolicy("项目实际资金发生变化"),
   company_project_funds_decrease: financialPolicy("项目实际资金发生变化"),
+  public_cash_funds_decrease: financialPolicy("公共现金支付的项目资金发生变化"),
   temporary_profit_distribution: financialPolicy("暂分利润授权发生变化"),
   final_profit_distribution: distributionPolicy("最终利润分配发生变化"),
   profit_distribution_adjustment: distributionPolicy("利润分配调整发生变化"),

@@ -10,8 +10,9 @@ import { join } from "node:path";
 import PizZip from "pizzip";
 import { PDFDocument } from "pdf-lib";
 import * as ExcelJS from "exceljs";
-import type { BusinessEntryFrozenSnapshot, BusinessEntrySceneDefinition, ContractDetailReadModel, ContractPaymentApplicationPreviewReadModel } from "@jiangkong/shared-domain";
+import type { BusinessEntryFrozenSnapshot, BusinessEntrySceneDefinition, ContractDetailReadModel, ContractPaymentApplicationPreviewReadModel, PaymentDetailReadModel } from "@jiangkong/shared-domain";
 import { AppModule } from "../app.module";
+import { SEED_LAYOUT_FONT } from "../contract-document/seed-layout-docx-source";
 import { PrismaService } from "./prisma.service";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -244,10 +245,15 @@ if (enabled) {
     });
     expect(workbench.settlementModeEntry?.history).toEqual([]);
     expect(workbench.businessEntry?.definition).toMatchObject({
-      key: "contract_basic", entityType: "contract_version",
+      key: "contract_basic", entityType: "contract_version", version: 1,
       fields: [
         { key: "contractName", label: "合同名称", type: "text" },
-        { key: "companyEntityId", label: "我方签约主体", type: "company" }
+        { key: "companyEntityId", label: "我方签约主体", type: "company" },
+        { key: "relationship", label: "合同关系", type: "single_select" },
+        { key: "businessType", label: "业务类型", type: "single_select" },
+        { key: "amountBasis", label: "金额口径", type: "single_select" },
+        { key: "invoiceStatus", label: "发票约定", type: "single_select" },
+        { key: "settlementText", label: "结算约定", type: "long_text" }
       ]
     });
     expect(workbench.templateEntry?.definition).toMatchObject({
@@ -327,20 +333,51 @@ if (enabled) {
     });
 
     const zip = new PizZip(await readFile(join(__dirname, "../../assets/templates/generic-contract-v1.docx")));
-    zip.file("word/styles.xml", '<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:eastAsia="宋体"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>');
-    zip.file("word/document.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{contract.name} {contract.temporaryCode} {document.watermark}</w:t></w:r></w:p><w:sectPr/></w:body></w:document>');
+    zip.file("word/styles.xml", `<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${SEED_LAYOUT_FONT}" w:hAnsi="${SEED_LAYOUT_FONT}" w:eastAsia="${SEED_LAYOUT_FONT}"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>`);
+    const layoutFields = {
+      "contract.name": "合成合同名称",
+      "party.owner.name": "合成甲方",
+      "party.counterparty.name": "合成乙方",
+      "contract.temporaryCode": "合成合同编号",
+      "document.watermark": "合成文档水印"
+    };
+    const sourceParagraphs = Object.values(layoutFields).map((value) => `<w:p><w:r><w:t>${value}</w:t></w:r></w:p>`).join("");
+    zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${sourceParagraphs}<w:sectPr/></w:body></w:document>`);
     const docx = await upload("合成合同版式.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", zip.generate({ type: "nodebuffer" }));
-    const layoutRecord = await prisma.contractLayoutTemplate.create({ data: {
-      name: "合成合同版式", contractTypeKey, createdByUserId: actorUserId
-    } });
-    const layoutVersion = await prisma.contractLayoutTemplateVersion.create({ data: {
-      layoutTemplateId: layoutRecord.id, versionNo: 1, status: "published",
-      docxFileId: docx.id, placeholderSchema: { bills: [] },
-      inspectionReport: { blockingErrors: [], warnings: [] }, inspectionRevision: 1,
-      submittedByUserId: actorUserId, publishedByUserId: actorUserId,
-      publishedAt: new Date(), changeSummary: "合成版式"
-    } });
-    const layout = { version: { id: layoutVersion.id } };
+    const layout = await request<{ version: Identified }>("POST", "/contract-layout-templates", {
+      name: "合成合同版式", contractTypeKey, docxFileId: docx.id, placeholderSchema: { bills: [] }
+    });
+    const layoutPath = `/contract-layout-template-versions/${layout.version.id}`;
+    const positions = await request<{
+      sourceSha256: string;
+      draftRevision: number;
+      positions: Array<{ positionId: string; text: string }>;
+    }>("GET", `${layoutPath}/source-positions`);
+    const bindings = Object.entries(layoutFields).map(([fieldKey, text]) => {
+      const position = positions.positions.find((candidate) => candidate.text === text);
+      if (!position) throw new Error(`合成版式缺少原文位置：${text}`);
+      return { positionId: position.positionId, start: 0, end: text.length, fieldKey };
+    });
+    const sourceIdentity = { sourceFileId: docx.id, sourceSha256: positions.sourceSha256 };
+    const mapping = await request<{ draftRevision: number; mappingFingerprint: string }>("PATCH", `${layoutPath}/source-mapping`, {
+      expectedRevision: positions.draftRevision, ...sourceIdentity, bindings
+    });
+    await request("POST", `${layoutPath}/inspection`);
+    const previewPath = `${layoutPath}/preview-generation`;
+    await request("POST", previewPath, {
+      contract: { name: "合成合同样张" }, party: { owner: { name: "合成甲方" }, counterparty: { name: "合成乙方" } }
+    });
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      const preview = await request<{ status: string; errorMessage?: string }>("GET", previewPath);
+      if (preview.status === "succeeded") break;
+      if (preview.status === "failed") throw new Error(`合成合同版式样张失败：${preview.errorMessage}`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await request("POST", `${layoutPath}/source-mapping-confirmation`, {
+      expectedRevision: mapping.draftRevision, ...sourceIdentity, mappingFingerprint: mapping.mappingFingerprint
+    });
+    await request("POST", `${layoutPath}/submission`);
+    await request("POST", `${layoutPath}/publication`, { changeSummary: "合成版式原文与真实样张确认" });
     if (paymentFinance) {
       await request("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
         expectedRevision: saved.version.draftRevision, settlementMode
@@ -1070,8 +1107,13 @@ if (enabled) {
         const bankReceiptReference = (await prisma.verifiedBankTransactionObservation.findUniqueOrThrow({ where: { id: verified.observationId! } })).reference;
         await loginAs(roleUsers.get("finance_staff")!);
 
-        const executable = await request<{ executionContext: { expectedPaymentUpdatedAt: string } }>("GET", `/payments/${payment.id}`);
+        const executable = await request<PaymentDetailReadModel & { executionContext: { expectedPaymentUpdatedAt: string } }>("GET", `/payments/${payment.id}`);
         expect(executable.executionContext).toMatchObject({ expectedPaymentUpdatedAt: expect.any(String) });
+        if (process.env.COMPANY_TRANSFER_CORE_RECEIPT) {
+          expect(executable.registeredExecutionCapability).toMatchObject({
+            supportedDomain: false, workflowReady: false, canSupplementVoucher: false
+          });
+        }
         const executionBody = {
           ...executable.executionContext, idempotencyKey: randomUUID(), amountCents: amount.toString(),
           paidAt: actualPaidAt, bankReceiptReference, voucherFileId: executionVoucher.id, confirmationPassword: financeIdentity.password

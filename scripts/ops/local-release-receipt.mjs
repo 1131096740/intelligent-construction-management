@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 
 const requiredChecks = Object.freeze([
-  "ci-orchestration",
   "frozen-dependency-install",
   "prisma-client-generation",
+  "ci-orchestration",
   "migration-baseline",
   "production-dependency-audit",
   "workspace-typecheck",

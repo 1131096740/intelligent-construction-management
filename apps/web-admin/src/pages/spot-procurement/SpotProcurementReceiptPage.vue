@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
@@ -1249,6 +1250,13 @@ onBeforeUnmount(() => {
         :loading="busy"
         :error="resetError"
         @confirm="resetReceiptDraft"
+      />
+
+      <DutySmsStatusPanel
+        v-if="receipt.receipt.procurementId === procurementId && actionEnabled('review_receipt')"
+        :key="receipt.receipt.currentRevisionNo"
+        domain="spot-procurements"
+        :business-id="procurementId"
       />
 
       <t-card title="收货照片与乙方送货单">

@@ -129,6 +129,9 @@ importers:
       '@prisma/client':
         specifier: ^5.16.0
         version: 5.22.0(prisma@5.22.0)
+      '@xmldom/xmldom':
+        specifier: 0.9.12
+        version: 0.9.12
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3

@@ -5,6 +5,8 @@ export interface SpotProcurementApprovalNode {
   mode: "any";
   roleKeys: RoleKey[];
   approvedRoleKeys?: RoleKey[];
+  protocolVersion?: 1;
+  executionMode?: "parallel";
 }
 
 export const SPOT_PAYMENT_APPROVAL_SIGNATURE_SLOTS = [
@@ -32,7 +34,7 @@ export function procurementApprovalNodes(
     mode: "any",
     roleKeys: ["project_manager"]
   });
-  return nodes;
+  return nodes.map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel" }));
 }
 
 export function paymentApprovalNodes(): SpotProcurementApprovalNode[] {

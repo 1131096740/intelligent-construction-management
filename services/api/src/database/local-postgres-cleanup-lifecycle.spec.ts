@@ -26,6 +26,10 @@ function loadRunner(file: string, mode: "start-failure" | "cleanup-failure" | "s
       stdout: mode === "preflight-failure" ? "tcp://remote.invalid:2376" : "unix:///fixture/docker.sock",
       stderr: ""
     };
+    if (file === "run-contract-settlement-v2-local.cjs" && _command === (process.platform === "win32" ? "docker.exe" : "docker") &&
+      args.length === 4 && args[0] === "exec" && args[2] === "cat" && args[3] === "/proc/1/comm") {
+      return { stdout: "postgres\n", stderr: "" };
+    }
     if (args[0] === "exec" && args.includes("psql")) {
       const baseline = localRequire("../../prisma/migration-baseline.cjs")
         .loadCanonicalMigrationBaseline({ migrationsRoot: join(process.cwd(), "prisma/migrations") });
@@ -35,6 +39,7 @@ function loadRunner(file: string, mode: "start-failure" | "cleanup-failure" | "s
     if (args[0] === "run") {
       if (mode === "start-failure") throw new Error("injected start failure");
       if (mode === "signal") await new Promise((_, reject) => { interruptRun = reject; });
+      return { stdout: "c".repeat(64), stderr: "" };
     }
     if (args[0] === "rm" && mode === "cleanup-failure") throw new Error("injected cleanup failure");
     return { stdout: "", stderr: "" };
@@ -58,6 +63,19 @@ function loadRunner(file: string, mode: "start-failure" | "cleanup-failure" | "s
       if (name === "./money-bigint-runner-runtime.cjs") return {
         ...runtime, createCommandRuntime: () => ({ command, stopAll })
       };
+      if (name === "./local-staged-ci-dynamic.cjs") {
+        return {
+          CI_DYNAMIC_MIGRATION_LABEL: "jg.local-ci-dynamic-migration",
+          createCiDynamicMigrationFixture: (options: {
+            container: { id: string; name: string };
+            deploy: (request: unknown) => Promise<unknown>;
+          }) => {
+            expect(options.container.id).toBe("c".repeat(64));
+            expect(options.container.name).toMatch(/^jiangkong-/u);
+            return { migrate: (request: unknown) => options.deploy(request) };
+          }
+        };
+      }
       if (name === "node:net") return fakeNet;
       if (name === "node:fs/promises") return {
         mkdtemp: async () => "/fixture/temporary-root", rm: removeRoot

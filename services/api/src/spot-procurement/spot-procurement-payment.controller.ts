@@ -1,3 +1,5 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { SpotPaymentExecutionNotificationService } from "./spot-payment-execution-notification.service";
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
@@ -34,7 +36,8 @@ export class SpotProcurementPaymentController {
     private readonly payments: SpotProcurementPaymentService,
     private readonly reads: SpotProcurementReadService,
     private readonly settlements: SpotProcurementSettlementService,
-    @Optional() private readonly files?: FileService
+    @Optional() private readonly files?: FileService,
+    @Optional() private readonly paymentNotifications?: SpotPaymentExecutionNotificationService
   ) {}
 
   @Get()
@@ -177,6 +180,19 @@ export class SpotProcurementPaymentController {
       user.id,
       body.reason
     );
+  }
+
+  @Get(":paymentId/duty-sms")
+  @RequireProjectRole("spot_procurement.payment.execute")
+  async dutySmsStatus(@Param("paymentId") paymentId:string,@CurrentUser() user:AuthenticatedUser) {
+    return {notice:await this.paymentNotifications?.notificationStatus(paymentId,user.id)??null};
+  }
+
+  @Post(":paymentId/duty-sms/retry")
+  @RequireProjectRole("spot_procurement.payment.execute")
+  retryDutySms(@Param("paymentId") paymentId:string,@CurrentUser() user:AuthenticatedUser,@Body() body:RetryDutyNotificationDto) {
+    if(!this.paymentNotifications)throw new BadRequestException("短信通知暂不可用");
+    return this.paymentNotifications.retry(paymentId,user.id,body.attemptId);
   }
 
   @Post(":paymentId/executions")

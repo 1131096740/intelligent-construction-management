@@ -28,6 +28,7 @@ type GovernedVersion = {
   contractId: string;
   status: string;
   contractGovernanceVersion: number | null;
+  numericProtocolVersion?: number;
   draftRevision?: number;
   documentContentRevision?: number;
   documentContentFingerprint?: string | null;
@@ -245,6 +246,7 @@ export class ContractSealService {
         contractId: true,
         status: true,
         contractGovernanceVersion: true,
+        numericProtocolVersion: true,
         draftRevision: true,
         documentContentRevision: true,
         documentContentFingerprint: true
@@ -460,6 +462,7 @@ export class ContractSealService {
         contractId: true,
         status: true,
         contractGovernanceVersion: true,
+        numericProtocolVersion: true,
         draftRevision: true,
         documentContentRevision: true,
         documentContentFingerprint: true
@@ -803,6 +806,9 @@ export class ContractSealService {
   }
 
   private assertGoverned(version: GovernedVersion) {
+    if (version.numericProtocolVersion === 2) {
+      throw new ConflictException("新版合同请使用当前轮次的盖章确认入口");
+    }
     if (version.contractGovernanceVersion !== 1) {
       throw new BadRequestException("该存量合同沿用原用章与归档流程");
     }
@@ -832,7 +838,7 @@ export class ContractSealService {
       SELECT "id" FROM "Contract" WHERE "id" = ${seed.contractId} FOR UPDATE
     `);
     const [version] = await tx.$queryRaw<GovernedVersion[]>(Prisma.sql`
-      SELECT "id", "contractId", "status", "contractGovernanceVersion"
+      SELECT "id", "contractId", "status", "contractGovernanceVersion", "numericProtocolVersion"
         ${includeSigningFields ? Prisma.sql`, "draftRevision", "documentContentRevision", "documentContentFingerprint", "changeType", "baseVersionId"` : Prisma.empty}
       FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE
     `);

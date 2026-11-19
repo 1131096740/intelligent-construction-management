@@ -3,6 +3,7 @@ import { ProjectService } from "./project.service";
 describe("ProjectService construction-enterprise operating period", () => {
   it("rejects a construction enterprise that starts after an enabled operating ledger", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
       position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
       $queryRaw: jest.fn()

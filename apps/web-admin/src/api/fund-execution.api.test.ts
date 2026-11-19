@@ -152,3 +152,10 @@ describe("fund execution API", () => {
     ]);
   });
 });
+
+it("资金审批自审原因与本人密码随本次确认传输，不混入金额命令",async()=>{
+ mockApiFetch.mockReset();mockApiFetch.mockResolvedValue(new Response("{}",{status:200}));
+ await reviewFundExecutionCase("case-1",{action:"approve",selfReviewReason:"核对本人创建的案件",confirmationPassword:"own-synthetic-password"});
+ const body=JSON.parse(String(mockApiFetch.mock.calls[0]![1]?.body));
+ expect(body).toEqual({action:"approve",selfReviewReason:"核对本人创建的案件",confirmationPassword:"own-synthetic-password"});
+});

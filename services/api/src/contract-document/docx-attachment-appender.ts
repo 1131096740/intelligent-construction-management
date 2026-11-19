@@ -1,3 +1,4 @@
+import { DOMParser, type Element } from "@xmldom/xmldom";
 import PizZip from "pizzip";
 import type { PdfAttachment } from "./pdf-normalizer";
 
@@ -5,6 +6,7 @@ type ImageAttachmentType = "png" | "jpeg";
 type IdentityCardSide = "portrait" | "emblem";
 
 interface ImageAttachment {
+  sourceIndex: number;
   attachment: PdfAttachment;
   type: ImageAttachmentType;
   width: number;
@@ -35,10 +37,17 @@ const IMAGE_RELATIONSHIP_TYPE =
 const CONTENT_WIDTH_TWIPS = 10_470;
 const CONTENT_HEIGHT_TWIPS = 15_390;
 const EMU_PER_TWIP = 635;
+const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const DEFAULT_IMAGE_FRAME = { width: CONTENT_WIDTH_TWIPS, height: CONTENT_HEIGHT_TWIPS };
+// The table renderer needs room for cell padding and the preceding page-break paragraph.
+const CELL_HORIZONTAL_RESERVE = 300;
+const PAGE_BREAK_VERTICAL_RESERVE = 1000;
+type ImageFrame = typeof DEFAULT_IMAGE_FRAME;
 
 export function appendDocxImageAttachments(
   docx: Buffer,
-  attachments: readonly PdfAttachment[]
+  attachments: readonly PdfAttachment[],
+  options: { preserveUploadOrder?: boolean } = {}
 ): Buffer {
   const imageCandidates = attachments
     .map((attachment, index) => ({ attachment, index, type: imageType(attachment) }))
@@ -70,6 +79,7 @@ export function appendDocxImageAttachments(
         : jpegDimensions(item.attachment.buffer);
     zip.file(mediaPath, item.attachment.buffer);
     return {
+      sourceIndex: item.index,
       attachment: item.attachment,
       type: item.type,
       width: dimensions.width,
@@ -79,10 +89,12 @@ export function appendDocxImageAttachments(
     };
   });
 
-  const pages = groupImagePages(images);
+  const pages = groupImagePages(images, options.preserveUploadOrder);
+  const documentXml = documentFile.asText();
+  const frame = imageFrame(documentXml);
   zip.file(
     "word/document.xml",
-    appendBeforeSection(documentFile.asText(), pages.map(pageXml).join(""))
+    appendBeforeSection(documentXml, pages.map(page => pageXml(page, frame)).join(""))
   );
   writeRelationships(zip, images);
   writeContentTypes(zip, images);
@@ -109,19 +121,23 @@ function imageType(attachment: PdfAttachment): ImageAttachmentType | undefined {
   return undefined;
 }
 
-function groupImagePages(images: readonly ImageAttachment[]): ImagePage[] {
+function groupImagePages(images: readonly ImageAttachment[], preserveUploadOrder = false): ImagePage[] {
   const consumed = new Set<number>();
   const pages: ImagePage[] = [];
   for (const [index, image] of images.entries()) {
     if (consumed.has(index)) continue;
     const side = identityCardSide(image.attachment.name);
     if (side) {
-      const pairIndex = images.findIndex(
-        (candidate, candidateIndex) =>
-          candidateIndex > index &&
-          !consumed.has(candidateIndex) &&
-          identityCardSide(candidate.attachment.name) === oppositeSide(side)
-      );
+      const next = images[index + 1];
+      const pairIndex = preserveUploadOrder
+        ? side === "portrait" && next?.sourceIndex === image.sourceIndex + 1 &&
+            identityCardSide(next.attachment.name) === "emblem" ? index + 1 : -1
+        : images.findIndex(
+            (candidate, candidateIndex) =>
+              candidateIndex > index &&
+              !consumed.has(candidateIndex) &&
+              identityCardSide(candidate.attachment.name) === oppositeSide(side)
+          );
       if (pairIndex > -1) {
         const pair = images[pairIndex];
         pages.push({
@@ -140,31 +156,69 @@ function groupImagePages(images: readonly ImageAttachment[]): ImagePage[] {
   return pages;
 }
 
-function pageXml(page: ImagePage): string {
+function imageFrame(documentXml: string): ImageFrame {
+  if (/<!DOCTYPE|<!ENTITY/iu.test(documentXml)) return DEFAULT_IMAGE_FRAME;
+  const direct = (parent: Element, name: string) =>
+    Array.from(parent.getElementsByTagNameNS(WORD_NS, name)).find(node => node.parentNode === parent);
+  let section: Element | undefined;
+  try {
+    const document = new DOMParser({ onError: () => { throw new Error("合同正文 XML 格式不正确"); } })
+      .parseFromString(documentXml, "application/xml");
+    const body = direct(document.documentElement!, "body");
+    section = body && direct(body, "sectPr");
+  } catch {
+    return DEFAULT_IMAGE_FRAME;
+  }
+  if (!section) return DEFAULT_IMAGE_FRAME;
+  const size = direct(section, "pgSz");
+  const margins = direct(section, "pgMar");
+  if (!size || !margins) return DEFAULT_IMAGE_FRAME;
+  const read = (element: Element, name: string) => {
+    const value = element.getAttributeNS(WORD_NS, name);
+    return value !== null && /^\d{1,7}$/u.test(value) ? Number(value) : NaN;
+  };
+  const gutter = margins.hasAttributeNS(WORD_NS, "gutter") ? read(margins, "gutter") : 0;
+  if (gutter !== 0) return DEFAULT_IMAGE_FRAME;
+  const width = read(size, "w") - read(margins, "left") - read(margins, "right") - CELL_HORIZONTAL_RESERVE;
+  const height = read(size, "h") - read(margins, "top") - read(margins, "bottom") - PAGE_BREAK_VERTICAL_RESERVE;
+  if (!(width > 0 && height > 960)) return DEFAULT_IMAGE_FRAME;
+  const fitted = { width: Math.min(CONTENT_WIDTH_TWIPS, width), height: Math.min(CONTENT_HEIGHT_TWIPS, height) };
+  return fitted.width === CONTENT_WIDTH_TWIPS && fitted.height === CONTENT_HEIGHT_TWIPS ? DEFAULT_IMAGE_FRAME : fitted;
+}
+
+function pageXml(page: ImagePage, frame: ImageFrame): string {
+  const { width, height } = frame;
+  const fitToSection = frame !== DEFAULT_IMAGE_FRAME;
   if (page.kind === "identity_card") {
-    const rowHeight = Math.floor(CONTENT_HEIGHT_TWIPS / 2);
+    const rowHeight = Math.floor(height / 2);
     return `${pageBreak()}<w:tbl>${tableProperties()}${tableRowXml(
       rowHeight,
+      width,
       `${labelParagraph("身份证人像面")}${imageParagraph(
         page.portrait,
-        CONTENT_WIDTH_TWIPS,
-        rowHeight - 480
+        width,
+        rowHeight - 480,
+        fitToSection
       )}`
     )}${tableRowXml(
-      CONTENT_HEIGHT_TWIPS - rowHeight,
+      height - rowHeight,
+      width,
       `${labelParagraph("身份证国徽面")}${imageParagraph(
         page.emblem,
-        CONTENT_WIDTH_TWIPS,
-        rowHeight - 480
+        width,
+        height - rowHeight - 480,
+        fitToSection
       )}`
     )}</w:tbl>`;
   }
   return `${pageBreak()}<w:tbl>${tableProperties()}${tableRowXml(
-    CONTENT_HEIGHT_TWIPS,
+    height,
+    width,
     `${page.label ? labelParagraph(page.label) : ""}${imageParagraph(
       page.image,
-      CONTENT_WIDTH_TWIPS,
-      page.label ? CONTENT_HEIGHT_TWIPS - 480 : CONTENT_HEIGHT_TWIPS
+      width,
+      page.label ? height - 480 : height,
+      fitToSection
     )}`
   )}</w:tbl>`;
 }
@@ -183,10 +237,10 @@ function tableProperties(): string {
   );
 }
 
-function tableRowXml(heightTwips: number, content: string): string {
+function tableRowXml(heightTwips: number, widthTwips: number, content: string): string {
   return (
     `<w:tr><w:trPr><w:trHeight w:val="${heightTwips}" w:hRule="exact"/>` +
-    `</w:trPr><w:tc><w:tcPr><w:tcW w:w="${CONTENT_WIDTH_TWIPS}" w:type="dxa"/>` +
+    `</w:trPr><w:tc><w:tcPr><w:tcW w:w="${widthTwips}" w:type="dxa"/>` +
     '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/>' +
     '<w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>' +
     '<w:vAlign w:val="center"/></w:tcPr>' +
@@ -206,7 +260,8 @@ function labelParagraph(label: string): string {
 function imageParagraph(
   image: ImageAttachment,
   maxWidthTwips: number,
-  maxHeightTwips: number
+  maxHeightTwips: number,
+  fitToSection: boolean
 ): string {
   const { cx, cy } = fitImage(
     image.width,
@@ -215,8 +270,10 @@ function imageParagraph(
     maxHeightTwips * EMU_PER_TWIP
   );
   const docPrId = image.relationshipId.replace(/\D/g, "") || "1";
+  const verticalLayout = fitToSection ? '<w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:firstLine="0" w:firstLineChars="0"/>' :
+    '<w:spacing w:line="240" w:lineRule="auto"/>';
   return (
-    '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>' +
+    `<w:p><w:pPr>${verticalLayout}<w:jc w:val="center"/></w:pPr><w:r><w:drawing>` +
     '<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">' +
     `<wp:extent cx="${cx}" cy="${cy}"/>` +
     `<wp:docPr id="${docPrId}" name="${escapeXml(image.attachment.name)}"/>` +

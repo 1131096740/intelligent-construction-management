@@ -92,6 +92,7 @@ function mediaQuery(matches: boolean): MediaQueryList {
 
 async function renderGrid(options: {
   mobile?: boolean;
+  presentation?: "grid" | "cards";
   rows?: ContractBillCandidateRow[];
   errors?: ContractBillCellError[];
   readonly?: boolean;
@@ -108,6 +109,7 @@ async function renderGrid(options: {
     rows: options.rows ?? candidateRows(20),
     errors: options.errors ?? [],
     readonly: options.readonly ?? false,
+    presentation: options.presentation,
     "onUpdate:rows": (rows: ContractBillCandidateRow[]) => updates.push(rows),
     onSelectRow: (clientRowKey: string) => selections.push(clientRowKey)
   });
@@ -270,9 +272,15 @@ describe("ContractBillGrid", () => {
     expect(rendered.selections).toEqual(["client-8"]);
   });
 
+  it("starts narrow screens in the same touch grid before the user chooses cards", async () => {
+    const rendered = await renderGrid({ mobile: true, rows: candidateRows(2) });
+    expect(rendered.html).toContain('data-testid="jg-business-grid"');
+    expect(rendered.html).toContain("切换逐行填写");
+  });
+
   it("renders mobile cards for every editable core and custom field using the same row type", async () => {
     const rows = candidateRows(2);
-    const rendered = await renderGrid({ mobile: true, rows });
+    const rendered = await renderGrid({ mobile: true, presentation: "cards", rows });
 
     expect(rendered.html).not.toContain("data-testid=\"jg-business-grid\"");
     expect(rendered.html).toContain("第 1 行");
@@ -478,7 +486,7 @@ describe("ContractBillGrid", () => {
       }
     };
     const rendered = await renderGrid({
-      mobile: true,
+      mobile: true, presentation: "cards",
       rows,
       bill: triStateBill
     });
@@ -515,7 +523,7 @@ describe("ContractBillGrid", () => {
     expect(rendered.updates.at(-1)?.[0]?.customData).not.toHaveProperty("optionalFlag");
 
     await renderGrid({
-      mobile: true,
+      mobile: true, presentation: "cards",
       rows,
       bill: triStateBill,
       readonly: true
@@ -532,7 +540,7 @@ describe("ContractBillGrid", () => {
       amountLimitType: "unlimited"
     };
     const rendered = await renderGrid({
-      mobile: true,
+      mobile: true, presentation: "cards",
       rows: candidateRows(1),
       bill: unlimitedBill
     });
@@ -545,7 +553,7 @@ describe("ContractBillGrid", () => {
   });
 
   it("disables every mobile editor in readonly mode", async () => {
-    await renderGrid({ mobile: true, rows: candidateRows(1), readonly: true });
+    await renderGrid({ mobile: true, presentation: "cards", rows: candidateRows(1), readonly: true });
 
     expect(componentHarness.controls.length).toBeGreaterThan(0);
     expect(componentHarness.controls.every((control) => control.disabled)).toBe(true);

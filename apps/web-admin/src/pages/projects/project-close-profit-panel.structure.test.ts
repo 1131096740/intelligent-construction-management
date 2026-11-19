@@ -49,7 +49,8 @@ describe("project close profit panel structure", () => {
     expect(panel).toContain("高管只能确认本次提交内容");
     expect(panel).toContain('v-if="canSubmitDistribution"');
     expect(panel).toContain(':data="visibleDistribution.lines"');
-    expect(panel).toContain("expectedProjectionFingerprint: props.workbench!.projection.fingerprint");
+    expect(panel).toContain("expectedProjectionFingerprint: props.workbench!.projection!.fingerprint");
+    expect(panel).toContain('v-if="workbench.writeBlockedReason"');
     expect(panel).not.toContain("roleKeys");
     expect(panel).not.toContain("sourceBusinessId");
     expect(panel).toContain("projection?.view.operating.confirmedIncomeCents");

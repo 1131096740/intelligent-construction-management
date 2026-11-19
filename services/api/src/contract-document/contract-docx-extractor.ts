@@ -200,7 +200,14 @@ function extractBlocks(xml: string): ContractDocxBlock[] {
       if (paragraphCount > CONTRACT_DOCX_EXTRACTION_LIMITS.maxParagraphs) {
         throw new BadRequestException("合同 DOCX 段落数量超过系统限制");
       }
-      activeParagraph = "";
+      if (token.selfClosing) {
+        // A legal empty <w:p/> has the same positional/counting semantics as
+        // <w:p></w:p>; it must not leave an active paragraph waiting to close.
+        if (cellParagraphs) cellParagraphs.push("");
+        else paragraphIndex += 1;
+      } else {
+        activeParagraph = "";
+      }
     } else if ((token.name === "w:tab" || token.name === "w:br") && activeParagraph !== null) {
       activeParagraph += token.name === "w:tab" ? "\t" : "\n";
     }

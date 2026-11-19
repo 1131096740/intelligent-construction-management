@@ -83,15 +83,10 @@ describe("contract workspace responsive governance", () => {
     );
     expect(governance).toContain("await loadExpectedWorkbench(id)");
 
-    const contractIdentityWatcher = workbench.slice(
-      workbench.indexOf("watch(contractId"),
-      workbench.indexOf("watch(() => route.query.versionId")
-    );
-    const versionIdentityWatcher = workbench.slice(
-      workbench.indexOf("watch(() => route.query.versionId"),
-      workbench.indexOf("watch(\n  () => [route.query.contractType")
-    );
-    expect(contractIdentityWatcher).toContain("clearManualSaveMessage()");
-    expect(versionIdentityWatcher).toContain("clearManualSaveMessage()");
+    const identityWatcherStart = workbench.indexOf("watch([contractId, () => route.query.versionId, () => authStore.user?.id]");
+    expect(identityWatcherStart).toBeGreaterThanOrEqual(0);
+    const identityWatcher = workbench.slice(identityWatcherStart, workbench.indexOf("\nwatch(", identityWatcherStart));
+    expect(identityWatcher).toContain("clearManualSaveMessage()");
+    expect(identityWatcher).toContain("clearSessionSaveReceipt()");
   });
 });

@@ -8,6 +8,8 @@ export interface FrozenApprovalAssignment {
 }
 
 export interface FrozenApprovalNode {
+  protocolVersion?: unknown;
+  executionMode?: unknown;
   name?: unknown;
   mode?: unknown;
   roleKeys?: unknown;

@@ -1,0 +1,117 @@
+{
+  "date": "2026-11-05",
+  "purpose": "one-attempt-independent-build-reproduction",
+  "sourceSha": "0893dd16b50c595b0d99761bd33bcd388c16ac3c",
+  "node": "22.23.0",
+  "pnpm": "9.15.9",
+  "platform": "darwin",
+  "arch": "arm64",
+  "typescript": "5.9.3",
+  "prismaClient": "5.22.0",
+  "prismaEngine": "605197351a3c8bdd595af2d2a9bc3025bca48ea2",
+  "productionBuildNode": "UNVERIFIED",
+  "productionBuildEnvironmentEqual": "UNVERIFIED",
+  "sourceTrackedAndUntrackedStatusEntries": 0,
+  "buildAttempts": {
+    "frozenInstall": 1,
+    "prismaGenerate": 1,
+    "apiBuildIncludingSharedPrebuild": 1,
+    "webBuildIncludingSharedPrebuild": 1
+  },
+  "comparisonCaptureCodeSha256": "ebf681241f66c61446422a744404b279d857cb3794f5484b1ae7588a2171a2be",
+  "comparisons": [
+    {
+      "component": "api/dist",
+      "localPath": "/private/tmp/jg-enterprise-prod-source-repro-20261105/services/api/dist",
+      "localSummary": {
+        "entriesSha256": "e0c9d1f716f1d4857fb6912466481b1f02cd1799f8766813b3f95a4c78564e0d",
+        "fileCount": 2055,
+        "bytes": 19251430
+      },
+      "productionRuntimeSummary": {
+        "entriesSha256": "e0c9d1f716f1d4857fb6912466481b1f02cd1799f8766813b3f95a4c78564e0d",
+        "fileCount": 2055,
+        "bytes": 19251430
+      },
+      "summaryEqual": true,
+      "localEntriesSha256": "e0c9d1f716f1d4857fb6912466481b1f02cd1799f8766813b3f95a4c78564e0d"
+    },
+    {
+      "component": "api/prisma",
+      "localPath": "/private/tmp/jg-enterprise-prod-source-repro-20261105/services/api/prisma",
+      "localSummary": {
+        "entriesSha256": "62aa6f3d65c76865d0e0659d6a0ad71e0998bcf003c76b4d6b07a092a986f065",
+        "fileCount": 282,
+        "bytes": 3705737
+      },
+      "productionRuntimeSummary": {
+        "entriesSha256": "62aa6f3d65c76865d0e0659d6a0ad71e0998bcf003c76b4d6b07a092a986f065",
+        "fileCount": 282,
+        "bytes": 3705737
+      },
+      "summaryEqual": true,
+      "localEntriesSha256": "62aa6f3d65c76865d0e0659d6a0ad71e0998bcf003c76b4d6b07a092a986f065"
+    },
+    {
+      "component": "api/scripts",
+      "localPath": "/private/tmp/jg-enterprise-prod-source-repro-20261105/services/api/scripts",
+      "localSummary": {
+        "entriesSha256": "76318429876b8d0dc4f3af6910663fe0f8da82389447b766e4e6b6bc4c68ff80",
+        "fileCount": 49,
+        "bytes": 1000935
+      },
+      "productionRuntimeSummary": {
+        "entriesSha256": "76318429876b8d0dc4f3af6910663fe0f8da82389447b766e4e6b6bc4c68ff80",
+        "fileCount": 49,
+        "bytes": 1000935
+      },
+      "summaryEqual": true,
+      "localEntriesSha256": "76318429876b8d0dc4f3af6910663fe0f8da82389447b766e4e6b6bc4c68ff80"
+    },
+    {
+      "component": "api/assets",
+      "localPath": "/private/tmp/jg-enterprise-prod-source-repro-20261105/services/api/assets",
+      "localSummary": {
+        "entriesSha256": "7fc445b6181ae9c22dce744567f09062324acec0b4bfd8f80e74d8852c257f88",
+        "fileCount": 12,
+        "bytes": 8737448
+      },
+      "productionRuntimeSummary": {
+        "entriesSha256": "7fc445b6181ae9c22dce744567f09062324acec0b4bfd8f80e74d8852c257f88",
+        "fileCount": 12,
+        "bytes": 8737448
+      },
+      "summaryEqual": true,
+      "localEntriesSha256": "7fc445b6181ae9c22dce744567f09062324acec0b4bfd8f80e74d8852c257f88"
+    },
+    {
+      "component": "web/dist",
+      "localPath": "/private/tmp/jg-enterprise-prod-source-repro-20261105/apps/web-admin/dist",
+      "localSummary": {
+        "entriesSha256": "5edf6a977f1d710c08917aff2fad330d36fe06eff8c3879612eaf77ae9a59ff3",
+        "fileCount": 264,
+        "bytes": 9199453
+      },
+      "productionRuntimeSummary": {
+        "entriesSha256": "5edf6a977f1d710c08917aff2fad330d36fe06eff8c3879612eaf77ae9a59ff3",
+        "fileCount": 264,
+        "bytes": 9199453
+      },
+      "summaryEqual": true,
+      "localEntriesSha256": "5edf6a977f1d710c08917aff2fad330d36fe06eff8c3879612eaf77ae9a59ff3"
+    }
+  ],
+  "allComponentSummariesEqual": true,
+  "productionQueriedAgain": false,
+  "migrationsExecuted": false,
+  "businessDataRead": false,
+  "productionWrites": false,
+  "logs": {
+    "/private/tmp/jg-enterprise-prod-source-repro-install-20261105.log": "bbe39aecc9e1245f967f2b21079fdb7d038a1ab7459d3817c332b8cb12edbd37",
+    "/private/tmp/jg-enterprise-prod-source-repro-prisma-20261105.log": "2ce958c122d394791c740cbc8fad8b2d3a88b91c6ac3758143b8a35b99df935d",
+    "/private/tmp/jg-enterprise-prod-source-repro-api-build-20261105.log": "508a53b73d8bda346c101392762318c7e92c249eb1b492a89e36f996a991a501",
+    "/private/tmp/jg-enterprise-prod-source-repro-web-build-20261105.log": "20d992b4415800138046629b1e2b361bcbe01a2659958f4fd988bc273f029552"
+  },
+  "comparisonScriptSha256": "ae7df1aa9433a532f90170b8a9ffc48daad893f8140cad02bee71a28bdf83485",
+  "sourceLockfileSha256": "79130aa849331d0cb3bfc16fc82fbfba74926cfcb42ccc933716b6df9e2ead2f"
+}

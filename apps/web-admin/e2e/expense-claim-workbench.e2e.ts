@@ -122,10 +122,10 @@ test("财务登记带凭证的公司补付，只调用新的受控付款事实�
   await login(page);
 
   await page.goto("/费用与报销工作台");
-  await page.getByText("BX-20260723-001", { exact: true }).click();
+  await page.locator("table").getByText("BX-20260723-001", { exact: true }).click();
   await page.getByRole("button", { name: "登记公司补付" }).click();
   const paymentDrawer = page.locator(".t-drawer").filter({ hasText: "登记费用报销公司补付" });
-  await paymentDrawer.getByPlaceholder("例如 1250").fill("100000");
+  await paymentDrawer.getByPlaceholder("例如 1250").fill("1000");
   await paymentDrawer.getByPlaceholder("YYYY-MM-DD").fill("2026-07-24");
   await paymentDrawer.getByPlaceholder("例如：银行转账").fill("银行转账");
   await paymentDrawer.locator("input[type=file]").setInputFiles({
@@ -145,6 +145,72 @@ test("财务登记带凭证的公司补付，只调用新的受控付款事实�
     voucherFileId: "expense-file-1",
     confirmationPassword: "E2e@2026"
   }]);
+});
+
+test("报销实付选定公司与已核来源，丢响应后刷新仍使用原凭证", async ({ page }) => {
+  await mockExpenseClaimSession(page, [], [], [], [], [], [], false, [], [], true);
+  const requests: unknown[] = [];
+  let uploads = 0;
+  const project = { id: "project-1" };
+  await page.route(url => url.pathname === "/api/fund-accounts", route => {
+    expect(new URL(route.request().url()).searchParams.get("includeSourceOwnership")).toBe("true");
+    const account = { active: true, kind: "company", balanceYuan: "125.5000", asOfDate: "2026-07-20" };
+    return route.fulfill({ json: { accounts: [{
+      ...account, scopeKey: "company:other", name: "核验实际付款乙公司", companyEntityId: "company-other",
+      currentRegistrationId: "registration", sources: [
+        { id: "owned-source", amountYuan: "125.5000", sourceName: "已核公司自有", sourceStatus: "known", projectStatus: "company_daily", isCompanyOwnedUnadvanced: true },
+        { id: "wrong-source", amountYuan: "125.5000", sourceName: "未核公司来源", sourceStatus: "known", projectStatus: "company_daily" },
+      ],
+    }, {
+      ...account, active: false, scopeKey: "company:inactive", name: "已停用公司", companyEntityId: "inactive",
+      currentRegistrationId: "inactive-registration", sources: [
+        { id: "other-batch", amountYuan: "125.5000", projectId: project.id, projectStatus: "project" },
+      ],
+    }] } });
+  });
+  await page.route(url => url.pathname === "/api/expense-claims/expense-claim-1/payment-voucher-file-uploads", route => {
+    uploads++;
+    return route.fulfill({ status: 201, json: { id: "shared-voucher" } });
+  });
+  await page.route(url => url.pathname === "/api/expense-claims/expense-claim-1/payments", route => {
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) return route.abort("failed");
+    return route.fulfill({ status: 201, json: { id: "payment-registered", status: "partially_paid" } });
+  });
+  await login(page);
+  await page.goto("/费用与报销/expense-claim-1");
+  await page.getByRole("button", { name: "登记公司补付" }).click();
+  let drawer = page.locator(".t-drawer:visible").filter({ hasText: /登记费用报销公司补付|核对原实际付款/ });
+  await drawer.getByText("确认使用已登记公司账户和资金来源").click();
+  await drawer.getByPlaceholder("YYYY-MM-DD").fill("2026-07-24");
+  await drawer.getByPlaceholder("请选择实际付款的已登记账户").click();
+  await page.getByText("核验实际付款乙公司", { exact: true }).click();
+  await expect(drawer.getByText("未核公司来源")).toHaveCount(0);
+  await drawer.getByPlaceholder("例如 1250").fill("20");
+  await drawer.locator("label").filter({ hasText: "已核公司自有" }).locator("input").fill("20");
+  await drawer.locator("input[type=file]").setInputFiles({
+    name: "实付凭证.pdf", mimeType: "application/pdf", buffer: Buffer.from("synthetic"),
+  });
+  await drawer.getByPlaceholder("用于确认本次实际付款").fill("E2e@2026");
+  await drawer.getByRole("button", { name: "确认登记", exact: true }).click();
+  await page.getByRole("button", { name: "确认写入", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+
+  await page.reload();
+  await page.getByRole("button", { name: "核对原实际付款" }).click();
+  drawer = page.locator(".t-drawer:visible").filter({ hasText: /登记费用报销公司补付|核对原实际付款/ });
+  await expect(drawer.locator("input[type=file]")).toHaveCount(0);
+  await expect(drawer.getByPlaceholder("例如 1250")).toBeDisabled();
+  await drawer.getByPlaceholder("用于确认本次实际付款").fill("E2e@2026");
+  await drawer.getByRole("button", { name: "继续核对原付款" }).click();
+  await page.getByRole("button", { name: "确认写入", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(uploads).toBe(1);
+  expect(requests[1]).toEqual(requests[0]);
+  expect(requests[0]).toMatchObject({ amountCents: "2000", voucherFileId: "shared-voucher", registeredFunding: {
+    scopeKey: "company:other", expectedRegistrationId: "registration",
+    sourceAllocations: [{ sourceBatchId: "owned-source", amountCents: "2000" }],
+  } });
 });
 
 test("借款资金办理按放款、还款、主管确认和更正依次写入受控接口", async ({ page }) => {
@@ -262,7 +328,7 @@ async function mockLoanFundSession(page: Page, requestedViews: string[], fundWri
   });
 }
 
-async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = [], reviewed: string[] = [], attached: string[] = [], appended: string[] = [], canAdjustPaymentSubject = false, payerAdjustments: unknown[] = [], companyPayments: unknown[] = []) {
+async function mockExpenseClaimSession(page: Page, requestedViews: string[], posted: unknown[] = [], submitted: string[] = [], reviewed: string[] = [], attached: string[] = [], appended: string[] = [], canAdjustPaymentSubject = false, payerAdjustments: unknown[] = [], companyPayments: unknown[] = [], registeredFunding = false) {
   let appendEvidenceAllowed = false;
   let paymentSubjectName = "建工智管有限公司";
   let paymentSubjectReason: string | null = null;
@@ -274,8 +340,8 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
         name: "费用金丝雀",
         phone: "13900000002",
         mustChangePassword: false,
-        roleKeys: ["employee"],
-        globalRoleKeys: []
+        roleKeys: registeredFunding ? ["finance_staff"] : ["employee"],
+        globalRoleKeys: registeredFunding ? ["finance_staff"] : []
       },
       tokens: { accessToken: "access-token", refreshToken: "refresh-token", expiresIn: 900 }
     })
@@ -316,6 +382,7 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       paymentMethod: null, payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null,
       payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: null, approvedAt: null,
       attachmentPermissions: { canAppendEvidence: true },
+      originalDebtorCompanyId: registeredFunding ? "company-1" : undefined,
       paymentSubjectCompanyEntityId: paymentSubjectName === "集团资金公司" ? "company-pay" : "company-1",
       paymentSubjectNameSnapshot: paymentSubjectName,
       paymentSubjectAdjustmentReason: paymentSubjectReason,
@@ -405,6 +472,15 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       body: JSON.stringify({ id: "expense-claim-1", paymentSubjectCompanyEntityId: "company-pay", paymentSubjectNameSnapshot: paymentSubjectName, paymentSubjectAdjustmentReason: paymentSubjectReason })
     });
   });
+  await page.route(url => url.pathname === "/api/expense-claims/expense-claim-1/capability", route => route.fulfill({ json: {
+    claimId: "expense-claim-1", availableActions: ["record_expense_claim_payment"],
+  } }));
+  await page.route(url => url.pathname === "/api/expense-claims/expense-claim-1/payment-voucher-file-uploads", route =>
+    route.fulfill({ status: 201, json: { id: "expense-file-1" } }));
+  await page.route(url => url.pathname === "/api/approval-forms/expense_claim/expense-claim-1/capability", route =>
+    route.fulfill({ json: { canDownload: false } }));
+  await page.route(url => url.pathname === "/api/approval-progress", route =>
+    route.fulfill({ json: { rounds: [] } }));
   await page.route("**/api/expense-claims/expense-claim-1/payments", (route) => {
     companyPayments.push(route.request().postDataJSON());
     return route.fulfill({
@@ -441,4 +517,5 @@ async function login(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000002");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await page.waitForURL(url => url.pathname !== "/login");
 }

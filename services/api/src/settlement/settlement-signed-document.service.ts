@@ -1,3 +1,4 @@
+import { SettlementArchiveNotificationService } from "./settlement-archive-notification.service";
 import { approvalDate } from "../approval/approval-date";
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -171,7 +172,8 @@ export class SettlementSignedDocumentService {
     private readonly audit: AuditService = new AuditService(),
     @Optional() private readonly auth?: AuthService,
     @Optional()
-    private readonly takeoverBalances?: ContractTakeoverBalanceService
+    private readonly takeoverBalances?: ContractTakeoverBalanceService,
+    @Optional() private readonly archiveNotifications?: SettlementArchiveNotificationService
   ) {}
 
   async generateFinal(
@@ -243,14 +245,16 @@ export class SettlementSignedDocumentService {
       const uploadedPageCount = (await PDFDocument.load(uploaded.buffer)).getPageCount();
       failureCode = "activation_failed";
       try {
-        return await this.prisma.$transaction((tx) =>
+        const activated = await this.prisma.$transaction((tx) =>
           this.activate(tx, facts, claimed.claimToken, uploadedFileId!, uploadedPageCount, actorUserId, force, reason)
         );
+        if (!force) void this.archiveNotifications?.afterCommit();
+        return activated;
       } catch (error) {
         if (!this.isUniqueConflict(error)) throw error;
-        return await this.reconcileUniqueWinner(
-          facts, claimed.claimToken, uploadedFileId, actorUserId, force
-        );
+        const reconciled = await this.reconcileUniqueWinner(facts, claimed.claimToken, uploadedFileId, actorUserId, force);
+        if (!force) void this.archiveNotifications?.afterCommit();
+        return reconciled;
       }
     } catch (error) {
       await this.prisma.$transaction(async (tx) => {
@@ -496,9 +500,10 @@ export class SettlementSignedDocumentService {
       where: { settlementId: facts.settlementId },
       data: { status: "completed", finalDocumentId: document.id, safeFailureCode: null }
     });
-    await tx.settlement.update({
+    const pendingArchive = await tx.settlement.update({
       where: { id: facts.settlementId }, data: { status: "pending_archive_confirm" }
     });
+    if (!force) await this.archiveNotifications?.queue(tx, pendingArchive, actorUserId);
     await this.audit.record(tx, {
       actorUserId,
       action: "settlement.signed_document.generated",
@@ -541,9 +546,10 @@ export class SettlementSignedDocumentService {
         data: { status: "completed", finalDocumentId: winner.id, safeFailureCode: null }
       });
       if (settlement.status === "pending_generation") {
-        await tx.settlement.update({
+        const pendingArchive = await tx.settlement.update({
           where: { id: facts.settlementId }, data: { status: "pending_archive_confirm" }
         });
+        await this.archiveNotifications?.queue(tx, pendingArchive, actorUserId);
       }
       await this.audit.record(tx, {
         actorUserId,

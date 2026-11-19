@@ -1,3 +1,4 @@
+import { hasVersionedApprovalNodes, isParallelApprovalRound, isApprovalDutyComplete, isParallelDutyNotificationEvent } from "./parallel-approval-protocol";
 import { BadRequestException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 
@@ -36,6 +37,37 @@ export function finalApprovalEvidence<T extends ApprovalEvidenceAction>(
   frozenNodes: unknown,
   logs: readonly T[]
 ): T[] {
+  if (hasVersionedApprovalNodes(frozenNodes) && !isParallelApprovalRound(frozenNodes)) throw new BadRequestException("审批职责协议版本无效，请联系管理员核对");
+  if (isParallelApprovalRound(frozenNodes)) {
+    if (!["approved", "approval_pending"].includes(status)) throw new BadRequestException("当前审批轮已结束，不能下载审批单");
+    if (logs.some(log => (log.action === "system_notification" && !isParallelDutyNotificationEvent(log)) ||
+      (log.action !== "approve" && Boolean(log.signatureFileIdSnapshot || log.signatureSha256Snapshot || log.signatureVersionIdSnapshot)))) {
+      throw new BadRequestException("并联审批存在无法识别的签批或系统通知记录");
+    }
+    const approvals = logs.filter(log => log.action === "approve");
+    if (logs.some(log => ["reject", "return_to_applicant", "withdraw"].includes(log.action))) throw new BadRequestException("当前审批轮已结束，不能下载审批单");
+    const groups = frozenNodes.map(() => [] as T[]);
+    for (const log of approvals) {
+      const matches = frozenNodes.flatMap((node, index) => (node.roleKeys as string[]).includes(log.approvedRoleKey ?? "") ? [index] : []);
+      if (matches.length !== 1 || groups[matches[0]].some(old => old.approvedRoleKey === log.approvedRoleKey)) throw new BadRequestException("并联审批职责记录缺失、重复或不唯一");
+      groups[matches[0]].push(log);
+    }
+    const completedNodes: Array<Record<string, unknown>> = [];
+    const ordered: T[] = [];
+    for (const [index, node] of frozenNodes.entries()) {
+      const recorded = groups[index].map(log => log.approvedRoleKey);
+      const declared = Array.isArray(node.approvedRoleKeys) ? node.approvedRoleKeys : [];
+      if (recorded.length !== declared.length || recorded.some(role => !declared.includes(role)) || (node.mode === "any" && recorded.length > 1)) throw new BadRequestException("并联职责签名与冻结版本不一致");
+      if (status === "approved" && !isApprovalDutyComplete(node)) throw new BadRequestException("有效审批记录不完整，不能生成正式审批单");
+      if (recorded.length) {
+        // Serial verifier is reused only after a unique duty mapping; partial all-mode previews retain precisely the signed roles.
+        const serialNode = {mode: node.mode, roleKeys: node.mode === "all" ? recorded : node.roleKeys};
+        completedNodes.push(serialNode);
+        ordered.push(...groups[index]);
+      }
+    }
+    return completedNodes.length ? finalApprovalEvidence("approved", completedNodes, ordered) : [];
+  }
   if (status !== "approved") throw new BadRequestException("仅最终审批通过的单据可以生成正式审批单");
   if (!Array.isArray(frozenNodes) || !frozenNodes.length) {
     throw new BadRequestException("审批节点证据缺失，不能生成正式审批单");

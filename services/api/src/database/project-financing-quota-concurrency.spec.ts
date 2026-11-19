@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { createInterface } from "node:readline";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ProjectService } from "../project/project.service";
+
+const nativeComposition = process.env.PFQ_NATIVE_COMPOSITION === "1";
+let nativeClients: PrismaClient[] | undefined;
+let finishNativeSession: (() => Promise<void>) | undefined;
 
 const DATABASE_NAME = "jiangkong_project_financing_quota_concurrency";
 const SHA_A = "a".repeat(64);
@@ -192,8 +197,19 @@ describe("project financing quota PostgreSQL evidence", () => {
     }
   });
 
+  if (nativeComposition) {
+    beforeAll(connectNativeClients, 30_000);
+    afterAll(async () => {
+      try {
+        await finishNativeSession?.();
+      } finally {
+        await Promise.all((nativeClients ?? []).map(client => client.$disconnect()));
+        nativeClients = undefined;
+      }
+    });
+  }
   const integrationTest =
-    process.env.RUN_PROJECT_FINANCING_QUOTA_DATABASE === "1" ? it : it.skip;
+    nativeComposition || process.env.RUN_PROJECT_FINANCING_QUOTA_DATABASE === "1" ? it : it.skip;
 
   integrationTest(
     "F1 serializes one requestIdempotencyKey into one created receipt and one replay",
@@ -1543,7 +1559,66 @@ describe("project financing quota PostgreSQL evidence", () => {
   );
 });
 
+async function connectNativeClients() {
+  const reject = () => new Error("PFQ_NATIVE_COMPOSITION_UNVERIFIED");
+  if (process.env.NODE_ENV !== "test" || process.env.PROJECT_FINANCING_QUOTA_DATABASE_URL) throw reject();
+  const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  const lines = input[Symbol.asyncIterator]();
+  try {
+    const first = await lines.next();
+    if (first.done || Buffer.byteLength(first.value) > 4096) throw reject();
+    const { url, identity, nonce } = JSON.parse(first.value);
+    const parsed = new URL(url);
+    if (!/^[a-f0-9]{32}$/u.test(nonce) || parsed.protocol !== "postgresql:" || parsed.hostname !== "127.0.0.1" ||
+        Number(parsed.port) <= 1024 || parsed.username !== "jg_task01_owner" || !/^[a-f0-9]{96}$/u.test(parsed.password) ||
+        !/^jg_task01_[a-f0-9]{32}$/u.test(identity.database) || parsed.pathname !== `/${identity.database}` ||
+        identity.ownerOid !== "10" || !/^[1-9][0-9]{0,9}$/u.test(identity.databaseOid) ||
+        !/^[1-9][0-9]{0,19}$/u.test(identity.systemIdentifier) ||
+        parsed.searchParams.get("connection_limit") !== "1" || parsed.searchParams.get("sslmode") !== "require" ||
+        parsed.searchParams.get("sslaccept") !== "strict" || !parsed.searchParams.get("sslcert")?.startsWith("/private/tmp/")) throw reject();
+    nativeClients = [0, 1, 2, 3].map(index => {
+      const dsn = new URL(parsed);
+      dsn.searchParams.set("application_name", `jg_pfq_${nonce}_${index}`);
+      return new PrismaClient({ datasources: { db: { url: dsn.toString() } }, log: [] });
+    });
+    const clients = nativeClients;
+    const observe = () => Promise.all(clients.map(async client => {
+      const [row] = await client.$queryRaw<Array<{ pid: number; start: string; verified: boolean }>>`
+        SELECT pg_backend_pid() AS pid, to_char(a.backend_start AT TIME ZONE 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS start,
+          current_database()=${identity.database} AND d.oid::text=${identity.databaseOid} AND
+          current_user='jg_task01_owner' AND session_user=current_user AND d.datdba::text=${identity.ownerOid} AND
+          current_user::regrole::oid=d.datdba AND pg_catalog.host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5432 AND
+          s.ssl AND (SELECT system_identifier::text FROM pg_control_system())=${identity.systemIdentifier} AS verified
+        FROM pg_stat_activity a JOIN pg_stat_ssl s USING (pid) JOIN pg_database d ON d.oid=a.datid
+        WHERE a.pid=pg_backend_pid()`;
+      if (!row?.verified) throw reject();
+      return { pid: row.pid, start: row.start };
+    }));
+    const attest = async (phase: 1 | 2) => {
+      const rows = await observe();
+      process.stdout.write(`JG_PFQ_SESSIONS ${JSON.stringify(rows)}\n`);
+      const ready = await lines.next();
+      if (ready.done || ready.value !== `JG_PFQ_READY ${nonce} ${phase}`) throw reject();
+    };
+    await attest(1);
+    finishNativeSession = async () => {
+      try { await attest(2); } catch { throw reject(); } finally { input.close(); }
+    };
+  } catch {
+    await Promise.allSettled((nativeClients ?? []).map(client => client.$disconnect()));
+    nativeClients = undefined;
+    throw reject();
+  } finally {
+    if (!finishNativeSession) input.close();
+  }
+}
+
 function clientsForTest() {
+  if (nativeComposition) {
+    if (!nativeClients) throw new Error("PFQ_NATIVE_COMPOSITION_UNVERIFIED");
+    return nativeClients;
+  }
   const databaseUrl = projectFinancingQuotaDatabaseUrl(
     process.env.PROJECT_FINANCING_QUOTA_DATABASE_URL
   );
@@ -2374,5 +2449,5 @@ function databaseFailureText(error: unknown) {
 }
 
 async function disconnect(clients: PrismaClient[]) {
-  await Promise.allSettled(clients.map((client) => client.$disconnect()));
+  if (clients !== nativeClients) await Promise.allSettled(clients.map((client) => client.$disconnect()));
 }

@@ -21,6 +21,7 @@ function buildClient({
   projectRoleKeys = []
 }: AccessFixture = {}) {
   return {
+    user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
     userPosition: {
       findMany: jest.fn().mockResolvedValue(
         assignmentIds.map((positionId) => ({ positionId }))

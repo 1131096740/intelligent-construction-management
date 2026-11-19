@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { upwardAmountRevisions } from "./upward-contract-amount.service";
 import { excludedAmount, reviewAppliesToVersion, latestEconomicReviews } from "./contract-economic-coverage";
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
@@ -170,8 +171,8 @@ export class ContractRelationshipLedgerService {
           const matched=matches.filter(m=>m.receiptFactId===bank.id).reduce((sum,m)=>sum+(m.originalId?-m.amountCents:m.amountCents),0n);
           const frozen=matches.find(m=>m.receiptFactId===bank.id)?.frozenSource as {companyName?:string}|undefined;
           const reversalFacts=await tx.operatingFact.findMany({where:{projectId:bank.projectId,sourceType:"fund_execution",occurredAt:{lte:cutoff},impacts:{some:{impactSnapshot:{path:["originalOperatingImpactEntryId"],equals:bank.impacts.find(i=>i.impactKind==="company_project_funds_increase"&&i.direction==="increase")?.id??""}}}},include:{impacts:true}});
-          const reversed=reversalFacts.flatMap(f=>f.impacts).filter(i=>i.direction==="decrease").reduce((sum,i)=>sum+i.amountCents,0n);
-          const available=bank.amountCents-reversed;
+          const reversed=reversalFacts.flatMap(f=>f.impacts).filter(i=>i.direction==="decrease").reduce((sum,i)=>sum+requireLegacyOperatingCents(i),0n);
+          const available=requireLegacyOperatingCents(bank)-reversed;
           for(const [relationship,value] of [["upward",matched],["unclassified",available-matched]] as const){
             if(value===0n)continue;
             rows.push({...base(bank.projectId,`${bank.id}:${relationship}`,relationship),reference:"银行实际到账",name:"公司项目到账",signingParty:bank.affiliateNameSnapshot??"待核对拨款方",counterparty:frozen?.companyName??"到账账户所属公司",companyEntityId:bank.payeeSubjectId,actualPayer:bank.affiliateNameSnapshot,amountCents:value.toString(),occurredAt:bank.occurredAt.toISOString(),accountingEffect:relationship==="upward"?"原到账已匹配对上应收；不重复确认现金或收入":"原实际到账待匹配；保留资金，不假定合同或确认收入",detailPath:`/资金执行案件?projectId=${encodeURIComponent(bank.projectId)}`});

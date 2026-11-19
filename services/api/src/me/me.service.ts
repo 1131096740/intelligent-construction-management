@@ -1,10 +1,29 @@
+import { currentSpotPaymentDuty, spotPaymentDutyAssignments, spotPaymentDutySelect } from "../spot-procurement/spot-payment-execution-duty";
+import { workItemNoticeKey, workItemNoticeSnapshot } from "./work-item-notice-snapshot";
+import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
+import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
+import { readSpotReceiptReviewDuty } from "../spot-procurement/spot-procurement-receipt-review-duty";
+import { IndependentApprovalProgressService } from "../approval/independent-approval-progress.service";
+import { expenseClaimFundingDuty, expenseFundingFacets } from "../expense-claim/expense-claim-funding-duty";
+import { workItemNoticeAt } from "./work-item-notice-order";
+import { contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "../contract/contract-parallel-duty-access";
+import { resolveGovernedFinalArchiveAccess } from "../contract/contract-final-archive-access";
+import { readContractV2LifecycleContext } from "../contract/contract-v2-lifecycle-context";
+import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
+import { spotPurchaseWorkItems } from "../spot-procurement/spot-purchase-work-items";
+import { fundReviewWorkItems, fundTransferWorkItems } from "../fund-account/fund-account-work-items";
+import { principalReturnWorkItems } from "./principal-return-work-items";
+import { generalRequestWorkItems } from "../general-procurement/general-procurement-request-work-items";
+import { generalRequestActor } from "../general-procurement/general-procurement-request-access";
+import {scopedSpotDutyNodeIndexes, SPOT_APPROVAL_DUTY_RESOURCE} from "../approval/spot-approval-duty-access";
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {companyTransferWorkItems} from "../company-transfer/company-transfer-workitems";
 import {contractHandlingWorkItems} from "../contract-ledger/contract-handling-workitems";
 import { addContractRelationshipSummaries } from "../contract-ledger/contract-relationship-summary";
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
-import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
+import { Prisma, type ContractVersion } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import {
   canPerform,
@@ -61,6 +80,11 @@ export interface WorkbenchSummary {
 }
 
 export type WorkItemQueueKey = "pending" | "blocked" | "started" | "drafts";
+
+function isNonInsideContractSubject(signingSubjectType: string) {
+  return signingSubjectType === "affiliate" || signingSubjectType === "upward";
+}
+
 export type ApprovalCenterViewKey =
   | "pendingApproval"
   | "startedByMe"
@@ -73,11 +97,15 @@ export type WorkItemKind =
   | "archive"
   | "approval"
   | "payment_execution"
+  | "procurement"
   | "blocker";
 
 export interface WorkItem {
   contractRelationshipLabel?: string; signingParty?: string; accountingEffect?: string;
   id: string;
+  reminderId?: string;
+  noticeKey?: string;
+  [workItemNoticeAt]?: Date;
   type: WorkItemKind;
   title: string;
   projectName: string;
@@ -160,6 +188,9 @@ function fundsDelegatorCandidates(
 }
 
 export interface WorkItemsReadModel {
+  noticePage?: { offset: number; size: number };
+  noticeIndexVersion?: string;
+  recentNotices?: WorkItem[];
   generatedAt: string;
   visibleProjectCount: number;
   queues: Record<WorkItemQueueKey, WorkItem[]>;
@@ -214,11 +245,12 @@ type ApprovalInstanceForWorkItem = {
 };
 
 interface ApprovalBusinessDetail {
-  projectId: string;
+  requestProtocolVersion?: number;
+  projectId: string | null;
   projectName: string;
   businessCode: string;
   title: string;
-  amountCents: bigint;
+  amountCents: bigint | null;
   targetPath: string;
 }
 
@@ -257,7 +289,9 @@ export class MeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly files: FileService,
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional() private readonly independentApprovals?: IndependentApprovalProgressService,
+    @Optional() private readonly spotPilot?: SpotProcurementPilotService
   ) {}
 
   getCanvasSignatureCapabilities(userId: string) {
@@ -489,37 +523,38 @@ export class MeService {
       "spot_procurement.approve",
       "spot_procurement.payment.approve"
     ]);
-    if (approvalProjects.length) {
+    const scopedSpotMandate = typeof this.prisma.approvalDelegation?.findFirst === "function" ? await this.prisma.approvalDelegation.findFirst({where: {
+      toUserId: userId, enabled: true, actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE,
+      startsAt: {lte: new Date()}, endsAt: {gt: new Date()}
+    }, select: {id: true}}) : null;
+    const fundReviewTodos = await fundReviewWorkItems(this.prisma, userId);
+    if (approvalProjects.length || scopedSpotMandate || fundReviewTodos.length) {
       const approvalCounts = await this.countApprovalTodos(scopes, userId);
+      approvalCounts.total += fundReviewTodos.length;
       cards.push({
         id: "approval_todo",
         title: "待审批",
         count: approvalCounts.total,
-        description: `${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
+        description: `${fundReviewTodos.length ? `余额核对 ${fundReviewTodos.length} · ` : ""}${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
           approvalCounts.spotProcurement || approvalCounts.spotPayment
             ? ` · 零星采购 ${approvalCounts.spotProcurement} · 零星付款 ${approvalCounts.spotPayment}`
             : ""
         }`,
-        targetPath: this.approvalTargetPath(approvalCounts),
+        targetPath: fundReviewTodos.length ? "/审批中心" : this.approvalTargetPath(approvalCounts),
         actionText: "去处理",
         tone: "primary"
       });
     }
 
-    const paymentExecutionProjects = this.projectIdsFor(scopes, ["payment.execution"]);
-    if (paymentExecutionProjects.length) {
+    const paymentExecution = await new RegisteredPaymentExecutionService(this.prisma).visibleWorkItems(userId);
+    if (paymentExecution) {
       cards.push({
         id: "approved_pending_payment",
         title: "已批待付款",
-        count: await this.prisma.paymentRequest.count({
-          where: {
-            projectId: { in: paymentExecutionProjects },
-            status: { in: ["approved_pending_payment", "partially_paid"] }
-          }
-        }),
-        description: "付款审批已通过，等待出纳登记实付和凭证。",
+        count: paymentExecution.total,
+        description: "财务人员和综合部主管共同办理，实际付款后登记，凭证可后补。",
         targetPath: "/付款管理",
-        actionText: "去付款",
+        actionText: "登记实付",
         tone: "warning"
       });
     }
@@ -576,9 +611,138 @@ export class MeService {
       "contract.create",
       "contract.submit"
     ]);
-    const pending = [
+    const contractLifecycleItems = await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById);
+    const pending = await this.collectCurrentPending(userId, scopes, projectNameById, evaluatedAt, contractLifecycleItems.pending);
+
+    const draftResult = await this.myDraftWorkItems(
+      userId,
+      contractDraftProjectIds,
+      projectIds,
+      projectNameById
+    );
+
+    const blocked = [
+      ...(await this.contractTakeoverWorkItems(
+        this.projectIdsFor(scopes, ["contract.create", "contract.archive.confirm", "payment.create"]),
+        activeTakeoverStatuses.filter((status) => status !== "draft"),
+        projectNameById,
+        "历史余额未确认",
+        "确认余额后付款容量才可信",
+        "danger",
+        {
+          OR: [
+            { takeoverStatus: { not: "confirmed" } },
+            { historicalBalanceConfirmedAt: null }
+          ]
+        }
+      )),
+      ...contractLifecycleItems.blocked
+    ];
+
+    const started = await this.approvalWorkItems(scopes, userId, "started", evaluatedAt);
+    const handledByMe = await this.handledApprovalWorkItems(scopes, userId);
+    const delegatedToMe = (
+      await this.approvalWorkItems(scopes, userId, "delegated", evaluatedAt)
+    ).filter(
+      (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
+    );
+
+    await addContractRelationshipSummaries(this.prisma,[...pending,...blocked,...started,...draftResult.items,...handledByMe,...delegatedToMe]);
+
+    return {
+      generatedAt: evaluatedAt.toISOString(),
+      visibleProjectCount: scopes.length,
+      queues: {
+        pending: pending.slice(0, 30),
+        blocked: blocked.slice(0, 30),
+        started: started.slice(0, 30),
+        drafts: draftResult.items
+      },
+      queueMeta: {
+        pending: queueMeta(pending),
+        blocked: queueMeta(blocked),
+        started: queueMeta(started),
+        drafts: {
+          total: draftResult.total,
+          returned: draftResult.items.length,
+          truncated: draftResult.total > draftResult.items.length
+        }
+      },
+      approvalCenter: {
+        pendingApproval: pending.filter((item) => item.type === "approval").slice(0, 30),
+        startedByMe: started.slice(0, 30),
+        handledByMe,
+        delegatedToMe,
+        overdueReminder: []
+      }
+    };
+  }
+
+  async getWorkItemNotices(userId: string, requestedOffset: number): Promise<WorkItemsReadModel> {
+    const pageSize = 30;
+    const { evaluatedAt, scopes, pending, noticeItems } = await this.readAuthorizedNotices(userId);
+    const offset = Math.min(requestedOffset, Math.floor(Math.max(0, pending.length - 1) / pageSize) * pageSize);
+    const items = pending.slice(offset, offset + pageSize);
+    const snapshot = workItemNoticeSnapshot(noticeItems);
+    const recentNotices = [...noticeItems].sort((left, right) =>
+      (right[workItemNoticeAt]?.getTime() ?? 0) - (left[workItemNoticeAt]?.getTime() ?? 0)).slice(0, 10)
+      .map(item => ({ ...item, noticeKey: workItemNoticeKey(item) }));
+    return {
+      generatedAt: evaluatedAt.toISOString(),
+      visibleProjectCount: scopes.length,
+      noticePage: { offset, size: pageSize },
+      noticeIndexVersion: snapshot.version,
+      recentNotices,
+      queues: { pending: items, blocked: [], started: [], drafts: [] },
+      queueMeta: {
+        pending: { total: pending.length, returned: items.length, truncated: items.length < pending.length },
+        blocked: queueMeta([]), started: queueMeta([]), drafts: queueMeta([])
+      },
+      approvalCenter: { pendingApproval: pending.filter(item => item.type === "approval").slice(0, pageSize),
+        startedByMe: [], handledByMe: [], delegatedToMe: [], overdueReminder: [] }
+    };
+  }
+
+  private async readAuthorizedNotices(userId: string) {
+    const evaluatedAt = new Date();
+    const scopes = await this.loadProjectRoleScopes(userId);
+    const projectIds = scopes.map(scope => scope.projectId);
+    const projectNameById = await this.projectNames(projectIds);
+    const lifecycle = await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById);
+    const pending = await this.collectCurrentPending(userId, scopes, projectNameById, evaluatedAt, lifecycle.pending);
+    const independent = await this.attachIndependentApprovalReminders(userId, pending, evaluatedAt);
+    await this.attachActiveApprovalReminders(userId, pending, evaluatedAt);
+    return { evaluatedAt, scopes, pending, noticeItems: [...pending, ...independent] };
+  }
+
+  async getWorkItemNoticeKeys(userId: string, version: string, after?: string) {
+    const snapshot = workItemNoticeSnapshot((await this.readAuthorizedNotices(userId)).noticeItems);
+    if (snapshot.version !== version) return { version: snapshot.version, keys: [], nextCursor: null };
+    const start = after === undefined ? 0 : snapshot.keys.findIndex(key => key > after);
+    const keys = start < 0 ? [] : snapshot.keys.slice(start, start + 100);
+    return { version, keys, nextCursor: start >= 0 && start + keys.length < snapshot.keys.length ? keys.at(-1) ?? null : null };
+  }
+
+  async getWorkItemNoticeDetails(userId: string, version: string, keys: string[]): Promise<{ version: string; items: WorkItem[] }> {
+    const snapshot = workItemNoticeSnapshot((await this.readAuthorizedNotices(userId)).noticeItems);
+    if (snapshot.version !== version) return { version: snapshot.version, items: [] };
+    return { version, items: keys.flatMap(key => {
+      const item = snapshot.entries.get(key);
+      return item ? [{ ...item, noticeKey: key }] : [];
+    }) };
+  }
+
+  private async collectCurrentPending(userId: string, scopes: ProjectRoleScope[], projectNameById: Map<string, string>,
+    evaluatedAt: Date, contractLifecyclePending: WorkItem[]): Promise<WorkItem[]> {
+    const projectIds = scopes.map(scope => scope.projectId);
+    const contractDraftProjectIds = this.projectIdsFor(scopes, ["contract.create", "contract.submit"]);
+    return [
+      ...(await spotPurchaseWorkItems(this.prisma as Prisma.TransactionClient, userId, this.projectIdsFor(scopes, ["spot_procurement.create"]))),
+      ...(await this.spotReceiptReviewWorkItems(scopes)),
+      ...(await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, "procurement")),
       ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
-      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),
+      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient, userId, new ProjectVisibilityService(this.prisma))),
+      ...(await fundTransferWorkItems(this.prisma, userId)),
       ...(await this.contractTakeoverWorkItems(
         contractDraftProjectIds,
         ["needs_supplement"],
@@ -609,13 +773,16 @@ export class MeService {
         "warning"
       )),
       ...(await this.paymentExecutionWorkItems(
-        this.projectIdsFor(scopes, ["payment.execution"]),
+        userId,
         projectNameById
       )),
+      ...(await this.expenseFundingWorkItems(scopes, projectNameById)),
       ...(await this.spotPaymentExecutionWorkItems(
+        userId,
         this.projectIdsFor(scopes, ["spot_procurement.payment.execute"]),
         projectNameById
       )),
+      ...contractLifecyclePending,
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.seal"]),
         ["approved_pending_seal"],
@@ -695,66 +862,6 @@ export class MeService {
       )),
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
-
-    const draftResult = await this.myDraftWorkItems(
-      userId,
-      contractDraftProjectIds,
-      projectIds,
-      projectNameById
-    );
-
-    const blocked = await this.contractTakeoverWorkItems(
-      this.projectIdsFor(scopes, ["contract.create", "contract.archive.confirm", "payment.create"]),
-      activeTakeoverStatuses.filter((status) => status !== "draft"),
-      projectNameById,
-      "历史余额未确认",
-      "确认余额后付款容量才可信",
-      "danger",
-      {
-        OR: [
-          { takeoverStatus: { not: "confirmed" } },
-          { historicalBalanceConfirmedAt: null }
-        ]
-      }
-    );
-
-    const started = await this.approvalWorkItems(scopes, userId, "started", evaluatedAt);
-    const handledByMe = await this.handledApprovalWorkItems(scopes, userId);
-    const delegatedToMe = (
-      await this.approvalWorkItems(scopes, userId, "delegated", evaluatedAt)
-    ).filter(
-      (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
-    );
-
-    await addContractRelationshipSummaries(this.prisma,[...pending,...blocked,...started,...draftResult.items,...handledByMe,...delegatedToMe]);
-
-    return {
-      generatedAt: evaluatedAt.toISOString(),
-      visibleProjectCount: scopes.length,
-      queues: {
-        pending: pending.slice(0, 30),
-        blocked: blocked.slice(0, 30),
-        started: started.slice(0, 30),
-        drafts: draftResult.items
-      },
-      queueMeta: {
-        pending: queueMeta(pending),
-        blocked: queueMeta(blocked),
-        started: queueMeta(started),
-        drafts: {
-          total: draftResult.total,
-          returned: draftResult.items.length,
-          truncated: draftResult.total > draftResult.items.length
-        }
-      },
-      approvalCenter: {
-        pendingApproval: pending.filter((item) => item.type === "approval").slice(0, 30),
-        startedByMe: started.slice(0, 30),
-        handledByMe,
-        delegatedToMe,
-        overdueReminder: []
-      }
-    };
   }
 
   async getFundsPendingWorkItems(userId: string): Promise<WorkItem[]> {
@@ -764,13 +871,15 @@ export class MeService {
     const projectNameById = await this.projectNames(projectIds);
     const pending = [
       ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
-      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),
+      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient, userId, new ProjectVisibilityService(this.prisma))),
+      ...(await fundTransferWorkItems(this.prisma, userId)),
       ...(await this.paymentExecutionWorkItems(
-        this.projectIdsFor(scopes, ["payment.execution"]),
+        userId,
         projectNameById,
         undefined
       )),
       ...(await this.spotPaymentExecutionWorkItems(
+        userId,
         this.projectIdsFor(scopes, ["spot_procurement.payment.execute"]),
         projectNameById,
         undefined
@@ -779,7 +888,8 @@ export class MeService {
     ];
     await addContractRelationshipSummaries(this.prisma,pending);
     return pending.filter((item) =>
-      ["company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") ||
+      ["registered_fund_transfer","company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") ||
+      item.businessType === "registered_principal_return" ||
       item.businessType === "payment_request" ||
       item.businessType === "spot_procurement_payment" ||
       item.businessType === "spot_payment"
@@ -975,7 +1085,7 @@ export class MeService {
       const projectId = instance.businessType === "payment_request"
         ? paymentProjectById.get(instance.businessId)
         : spotProjectById.get(instance.businessId);
-      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex);
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(projectId ?? "") ?? []);
       if (!projectId || !node) continue;
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
@@ -1028,6 +1138,7 @@ export class MeService {
     const projectIds = scopes.map((scope) => scope.projectId);
     const projectNameById = await this.projectNames(projectIds);
     const pending = [
+      ...(await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById)).pending,
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.seal"]), ["approved_pending_seal"], projectNameById,
         "待同意用章", "核对审批结果后同意经办人线下取章", "warning", undefined, "governed", undefined
@@ -1114,7 +1225,8 @@ export class MeService {
       visibleProjectIds.length
         ? this.prisma.settlementDraft.findMany({
             where: { projectId: { in: visibleProjectIds }, ownerUserId: userId, status: "draft" },
-            orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            select: { id: true, projectId: true, periodLabel: true, code: true, updatedAt: true }
           })
         : Promise.resolve([]),
       contractProjectIds.length
@@ -1196,7 +1308,7 @@ export class MeService {
       ? await this.prisma.contractVersion.findMany({
           where: { contractId: { in: contractIds }, status: "draft" },
           orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+          select: { id: true, contractId: true, amountCents: true, amountYuan: true, numericProtocolVersion: true, changeType: true, draftData: true, updatedAt: true }
         })
       : [];
     const contractTotal = contractIds.length
@@ -1226,25 +1338,31 @@ export class MeService {
     const takeoverContractById = new Map(takeoverContracts.map((row) => [row.id, row]));
     const takeoverVersionById = new Map(takeoverVersions.map((row) => [row.id, row]));
 
+    const directPresentations = await this.directDraftPresentations(contractVersions);
+
     const businessDrafts: Array<WorkItem & { updatedAt: Date }> = [
       ...contractVersions.flatMap((version) => {
         const contract = contractById.get(version.contractId);
         if (!contract) return [];
+        const direct = directPresentations.get(version.id);
         return [{
           id: `contract-draft:${version.id}`,
           type: "draft" as const,
           title: contract.name,
           projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
           projectId: contract.projectId,
-          businessCode: contract.code ?? contract.temporaryCode ?? contract.id,
+          businessCode: direct?.businessCode ?? contract.code ?? contract.temporaryCode ?? contract.id,
           businessType: "contract",
           businessId: contract.id,
-          amountText: this.amountText(version.amountCents),
-          currentNode: "合同草稿",
+          amountText: direct?.amountText ?? this.amountText(version.amountCents),
+          currentNode: direct?.invalid ? "资料待核对" : "合同草稿",
+          [workItemNoticeAt]: version.updatedAt,
           stayedText: this.stayedText(version.updatedAt),
-          nextAction: "继续填写合同",
-          targetPath: `/contracts/${encodeURIComponent(contract.id)}/workbench`,
-          tone: "default" as const,
+          nextAction: direct?.invalid ? "请核对合同资料" : "继续填写合同",
+          targetPath: direct?.invalid
+            ? `/合同管理/${encodeURIComponent(contract.id)}?versionId=${encodeURIComponent(version.id)}`
+            : direct ? `/合同工作台/${encodeURIComponent(contract.id)}?versionId=${encodeURIComponent(version.id)}` : `/contracts/${encodeURIComponent(contract.id)}/workbench`,
+          tone: direct?.invalid ? "warning" as const : "default" as const,
           updatedAt: version.updatedAt
         }];
       }),
@@ -1278,6 +1396,7 @@ export class MeService {
           businessId: takeover.id,
           amountText: this.amountText(takeoverVersionById.get(takeover.contractVersionId)?.amountCents ?? 0n),
           currentNode: "历史接管草稿",
+          [workItemNoticeAt]: takeover.updatedAt,
           stayedText: this.stayedText(takeover.updatedAt),
           nextAction: "继续补录后提交复核",
           targetPath: "/历史合同接管",
@@ -1640,6 +1759,7 @@ export class MeService {
         businessCode: code,
         amountText: this.amountText(versionById.get(takeover.contractVersionId)?.amountCents ?? 0n),
         currentNode,
+        [workItemNoticeAt]: takeover.updatedAt,
         stayedText: this.stayedText(takeover.updatedAt),
         nextAction,
         targetPath: "/历史合同接管",
@@ -1688,107 +1808,214 @@ export class MeService {
   }
 
   private async paymentExecutionWorkItems(
-    projectIds: string[],
+    userId: string,
     projectNameById: ReadonlyMap<string, string>,
     limit: number | undefined = 30
   ): Promise<WorkItem[]> {
-    if (!projectIds.length) {
-      return [];
-    }
+    const result = await new RegisteredPaymentExecutionService(this.prisma).visibleWorkItems(userId);
+    const payments = result?.items ?? [];
+    return payments.slice(0, limit).map((payment) => ({
+      id: `payment-execution:${payment.paymentId}`,
+      type: "payment_execution",
+      projectId: payment.projectId,
+      businessType: "payment_request",
+      businessId: payment.paymentId,
+      title: "登记实际付款",
+      projectName: projectNameById.get(payment.projectId) ?? "项目付款",
+      businessCode: payment.code,
+      amountText: this.amountText(BigInt(payment.remainingAmountCents)),
+      currentNode: "财务人员/综合部主管共同办理",
+      [workItemNoticeAt]: new Date(payment.expectedPaymentUpdatedAt),
+      stayedText: this.stayedText(new Date(payment.expectedPaymentUpdatedAt)),
+      nextAction: "实际付款后登记，凭证可后补",
+      targetPath: `/付款管理/${payment.code}`,
+      tone: "warning"
+    }));
+  }
 
-    const payments = await this.prisma.paymentRequest.findMany({
-      where: {
-        projectId: { in: projectIds },
-        status: { in: ["approved_pending_payment", "partially_paid"] }
-      },
-      orderBy: { updatedAt: "desc" },
-      ...(limit === undefined ? {} : { take: limit }),
-      select: {
-        id: true,
-        projectId: true,
-        code: true,
-        requestedAmountCents: true,
-        approvedAmountCents: true,
-        paidAmountCents: true,
-        updatedAt: true
-      }
+  private async spotReceiptReviewWorkItems(scopes: ProjectRoleScope[]): Promise<WorkItem[]> {
+    const pilot = this.spotPilot;
+    if (!pilot) return [];
+    const projectIds = this.projectIdsFor(scopes, ["spot_procurement.receipt.review"]).filter(id => pilot.isEnabled(id));
+    if (!projectIds.length) return [];
+    const receipts = await this.prisma.spotProcurementReceipt.findMany({
+      where: { projectId: { in: projectIds }, status: "submitted", invalidatedAt: null },
+      orderBy: [{ submittedAt: "desc" }, { id: "asc" }], select: { procurementId: true }
     });
+    const items: WorkItem[] = [];
+    for (const candidate of receipts) {
+      const duty = await readSpotReceiptReviewDuty(this.prisma, candidate.procurementId, pilot);
+      if (!duty || !projectIds.includes(duty.receipt.projectId)) continue;
+      items.push({
+        id: `spot-receipt-review:${duty.receipt.id}:${duty.receipt.currentRevisionNo}`, type: "procurement",
+        businessType: "receipt_review", businessId: duty.receipt.id, businessCode: duty.procurement.code,
+        projectId: duty.receipt.projectId, projectName: duty.project.name, title: "零星采购收货复核",
+        amountText: this.amountText(duty.receipt.actualCostCents), currentNode: "物资主管复核收货",
+        stayedText: this.stayedText(duty.submittedAt), nextAction: "复核收货",
+        [workItemNoticeAt]: duty.submittedAt, targetPath: approvalDutyTarget("spotReceipt", duty.procurement.id), tone: "warning"
+      });
+    }
+    return items;
+  }
 
-    return payments.map((payment) => {
-      const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
-      const balance = payableAmountCents - payment.paidAmountCents;
-      const remainingAmountCents = balance > 0n ? balance : 0n;
-
-      return {
-        id: `payment-execution:${payment.id}`,
-        type: "payment_execution",
-        projectId: payment.projectId,
-        businessType: "payment_request",
-        businessId: payment.id,
-        title: "登记实付与凭证",
-        projectName: projectNameById.get(payment.projectId) ?? payment.projectId,
-        businessCode: payment.code,
-        amountText: this.amountText(
-          remainingAmountCents !== 0n ? remainingAmountCents : payableAmountCents
-        ),
-        currentNode: "财务/出纳实付",
-        stayedText: this.stayedText(payment.updatedAt),
-        nextAction: "登记实付并上传凭证",
-        targetPath: `/付款管理/${payment.code}`,
-        tone: "warning"
-      };
+  private async expenseFundingWorkItems(scopes: ProjectRoleScope[], names: ReadonlyMap<string, string>): Promise<WorkItem[]> {
+    const allowed = expenseFundingFacets.map(facet => ({
+      ...facet, projectIds: new Set(this.projectIdsFor(scopes, [facet.action]))
+    }));
+    const filters = allowed.filter(facet => facet.projectIds.size).map(facet => ({
+      projectId: { in: [...facet.projectIds] },
+      claimType: { in: [...facet.claimTypes] },
+      status: { in: [facet.initial, facet.partial] }
+    }));
+    if (!filters.length || !this.prisma.expenseClaim?.findMany) return [];
+    const claims = await this.prisma.expenseClaim.findMany({
+      where: { voidedAt: null, OR: filters },
+      orderBy: [{ approvedAt: "desc" }, { id: "asc" }],
+      select: { id: true, projectId: true, code: true, claimType: true, status: true,
+        requestedAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, approvedAt: true, updatedAt: true }
+    });
+    return claims.flatMap(claim => {
+      const duty = expenseClaimFundingDuty(claim, true);
+      const projectId = claim.projectId;
+      if (!projectId || !duty || !allowed.some(facet => facet.duty === duty.duty && facet.projectIds.has(projectId))) return [];
+      const started = claim.approvedAt ?? claim.updatedAt;
+      return [{
+        id: `expense-funding:${duty.duty}:${claim.id}`,
+        type: "payment_execution" as const,
+        businessType: "expense_claim", businessId: claim.id, businessCode: claim.code, projectId,
+        title: duty.duty === "disbursement" ? "待登记借款放款" : claim.claimType === "reimbursement" ? "待登记报销实付" : "待登记费用实付",
+        projectName: names.get(projectId) ?? "所属项目",
+        amountText: this.amountText(duty.remaining), currentNode: duty.label,
+        stayedText: this.stayedText(started), nextAction: duty.label,
+        [workItemNoticeAt]: started, targetPath: `/费用与报销/${encodeURIComponent(claim.id)}`, tone: "warning" as const
+      }];
     });
   }
 
   private async spotPaymentExecutionWorkItems(
+    userId:string,
     projectIds: string[],
     projectNameById: ReadonlyMap<string, string>,
-    limit: number | undefined = 30
+    limit?: number
   ): Promise<WorkItem[]> {
-    if (!projectIds.length || !supportsSpotPaymentExecutionAggregation(this.prisma)) {
-      return [];
+    const pilot=this.spotPilot;
+    if (!pilot || !projectIds.length || !supportsSpotPaymentExecutionAggregation(this.prisma)) return [];
+    const eligible:string[]=[];
+    for (const projectId of projectIds) {
+      if (pilot.isEnabled(projectId) && (await spotPaymentDutyAssignments(this.prisma,projectId,userId))
+        .some(row=>row.userIsActive && row.projectId===projectId && row.roleKey==="finance_staff" && row.userId===userId)) eligible.push(projectId);
     }
-
+    if (!eligible.length) return [];
     const payments = await this.prisma.spotProcurementPayment.findMany({
-      where: {
-        projectId: { in: projectIds },
-        status: { in: ["approved_pending_payment", "partially_paid"] }
-      },
-      orderBy: { updatedAt: "desc" },
-      ...(limit === undefined ? {} : { take: limit }),
-      select: {
-        id: true,
-        projectId: true,
-        code: true,
-        approvalAmountCents: true,
-        paidAmountCents: true,
-        updatedAt: true
-      }
+      where: {projectId:{in:eligible},status:{in:["approved_pending_payment","partially_paid"]}},
+      orderBy: {updatedAt:"desc"},
+      select: spotPaymentDutySelect
     });
-
-    return payments.map((payment) => {
-      const balance = payment.approvalAmountCents - payment.paidAmountCents;
-      const remainingAmountCents = balance > 0n ? balance : 0n;
-
-      return {
+    const items:WorkItem[]=[];
+    for(const payment of payments) {
+      const remaining=await currentSpotPaymentDuty(this.prisma,pilot,payment);
+      if (remaining===null) continue;
+      items.push({
         id: `spot-payment-execution:${payment.id}`,
         type: "payment_execution",
         title: "登记零星材料实付与凭证",
-        projectName: projectNameById.get(payment.projectId) ?? payment.projectId,
+        projectName: projectNameById.get(payment.projectId) ?? "所属项目",
         projectId: payment.projectId,
         businessCode: payment.code,
         businessType: "spot_payment",
         businessId: payment.id,
-        amountText: this.amountText(
-          remainingAmountCents !== 0n ? remainingAmountCents : payment.approvalAmountCents
-        ),
+        amountText: this.amountText(remaining),
         currentNode: "财务登记实际付款",
+        [workItemNoticeAt]: payment.updatedAt,
         stayedText: this.stayedText(payment.updatedAt),
         nextAction: "登记实付并上传凭证",
         targetPath: `/零星材料付款/${encodeURIComponent(payment.id)}?tab=current`,
         tone: "warning"
-      };
-    });
+      });
+      if (items.length===limit) break;
+    }
+    return items;
+  }
+
+  private async contractV2LegacySigningExclusions(versions: Array<Pick<ContractVersion, "id" | "numericProtocolVersion" | "signingSubjectType">>) {
+    const excluded = new Set<string>();
+    const versionIds: string[] = [];
+    for (const version of versions) {
+      if (version.numericProtocolVersion !== 2) continue;
+      // A missing frozen round cannot restore a legacy signing action for these V2 subjects.
+      if (isNonInsideContractSubject(version.signingSubjectType)) excluded.add(version.id);
+      else versionIds.push(version.id);
+    }
+    if (!versionIds.length) return excluded;
+    const rounds = await this.prisma.approvalInstance.findMany({ where: { businessId: { in: versionIds }, businessType: "contract_version", flowType: "contract.approve", status: "approved" } });
+    for (const round of rounds) {
+      if (contractRoundSubmissionSnapshot(round.frozenNodes)?.contractVersionId === round.businessId) excluded.add(round.businessId);
+    }
+    return excluded;
+  }
+
+  private async contractV2LifecycleWorkItems(userId: string, projectIds: string[], names: ReadonlyMap<string, string>) {
+    const result: { pending: WorkItem[]; blocked: WorkItem[] } = { pending: [], blocked: [] };
+    if (!projectIds.length) return result;
+    const contracts = await this.prisma.contract.findMany({ where: { projectId: { in: projectIds }, voidedAt: null } });
+    const byId = new Map(contracts.map(contract => [contract.id, contract]));
+    const versions = (await this.prisma.contractVersion.findMany({ where: { contractId: { in: contracts.map(contract => contract.id) }, numericProtocolVersion: 2, status: { in: ["approved_pending_seal", "seal_approved_pending_archive"] } } })).filter(version => version.numericProtocolVersion === 2);
+    if (!versions.length || !(await this.prisma.user.findUnique({ where: { id: userId } }))?.isActive) return result;
+    for (const version of versions) {
+      const contract = byId.get(version.contractId);
+      if (!contract) continue;
+      const task = await this.prisma.contractSealTask.findFirst({ where: { contractVersionId: version.id, status: { in: ["in_seal", "completed"] } }, orderBy: { createdAt: "desc" } });
+      if (!task) continue;
+      const round = await this.prisma.approvalInstance.findUnique({ where: { id: task.approvalInstanceId } });
+      const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
+      if (!round || round.status !== "approved" || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || round.businessId !== version.id || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint || round.applicantUserId !== contract.ownerUserId || task.handlerUserId !== contract.ownerUserId) continue;
+      const seal = version.status === "approved_pending_seal" && task.status === "in_seal";
+      const archive = version.status === "seal_approved_pending_archive" && task.status === "completed" && task.completedAt && task.completedByUserId;
+      if (!seal && (!archive || task.handlerUserId !== userId)) continue;
+      const code = contract.code ?? contract.temporaryCode;
+      if (!code) continue;
+      const hasCurrentRole = async (tx: Prisma.TransactionClient) => seal
+        ? hasActiveContractGlobalRole(tx, userId, "comprehensive_director")
+        : (await resolveGovernedFinalArchiveAccess(tx, {
+          actorUserId: userId, projectId: contract.projectId, handlerUserId: task.handlerUserId
+        })).canUpload;
+      const identity = snapshot.signingIdentity;
+      const relationship = identity && typeof identity === "object" && "relationship" in identity ? identity.relationship : null;
+      const external = isNonInsideContractSubject(version.signingSubjectType) || relationship === "outside" || relationship === "upward";
+      const blocked = external ? await this.prisma.$transaction(async tx => {
+        if (!await hasCurrentRole(tx)) return null;
+        const readCurrentContract = async () => {
+          const current = await tx.contract.findUnique({ where: { id: contract.id } });
+          return current && !current.voidedAt && current.projectId === contract.projectId &&
+            current.ownerUserId === contract.ownerUserId ? current : null;
+        };
+        const currentContract = await readCurrentContract();
+        if (!currentContract) return null;
+        const latest = await tx.contractVersion.findFirst({
+          where: { contractId: contract.id, status: { not: "deleting" } }, orderBy: { versionNo: "desc" }
+        });
+        if (latest?.id !== version.id || latest.status !== version.status) return null;
+        const lifecycle = await readContractV2LifecycleContext(tx, currentContract, latest, userId, false);
+        // Readiness can change independently of the right to see this task.
+        const project = await tx.project.findUnique({ where: { id: contract.projectId }, select: { isActive: true } });
+        if (!project?.isActive || !await readCurrentContract() || !await hasCurrentRole(tx)) return null;
+        if (lifecycle?.status !== "ready") return true;
+        const expectedState = seal ? "pending_seal" : "pending_archive";
+        if (lifecycle.approvalInstanceId !== round.id || lifecycle.sealTaskId !== task.id ||
+          lifecycle.state !== expectedState) return null;
+        return !lifecycle.webWriteReleased || !(seal ? lifecycle.sealAction.enabled : lifecycle.archiveAction.enabled);
+      }) : await hasCurrentRole(this.prisma) ? false : null;
+      if (blocked === null) continue;
+      const queue = blocked ? result.blocked : result.pending;
+      queue.push({ id: `contract-v2-${seal ? "seal" : "archive"}:${version.id}`, type: blocked ? "blocker" : "archive", businessType: "contract_version", businessId: version.id,
+        title: contract.name, projectName: names.get(contract.projectId) ?? "所属项目", businessCode: code,
+        amountText: version.amountYuan === null ? "金额待确定" : `${version.amountYuan.toFixed(4)} 元`,
+        currentNode: blocked ? (seal ? "盖章办理暂不可用" : "归档办理暂不可用") : (seal ? "确认已盖章" : "归档双方签章原件"),
+        nextAction: blocked ? "查看合同详情并保留当前资料" : (seal ? "核对线下盖章完成后确认" : "上传双方签章PDF后直接归档生效"),
+        [workItemNoticeAt]: version.updatedAt,
+        stayedText: this.stayedText(version.updatedAt), targetPath: `/合同管理/${code}`, tone: blocked || seal ? "warning" : "primary" });
+    }
+    return result;
   }
 
   private async contractArchiveWorkItems(
@@ -1827,12 +2054,13 @@ export class MeService {
           select: {
             id: true,
             contractId: true,
-            amountCents: true,
+            amountCents: true, numericProtocolVersion: true, signingSubjectType: true,
             updatedAt: true,
             contractGovernanceVersion: true
           }
         })
       : [];
+    const v2Exclusions = await this.contractV2LegacySigningExclusions(versions);
     const governedPendingIds = versions
       .filter((version) =>
         version.contractGovernanceVersion === 1 &&
@@ -1854,6 +2082,7 @@ export class MeService {
     );
 
     return versions.flatMap((version) => {
+      if (v2Exclusions.has(version.id)) return [];
       if (version.contractGovernanceVersion === 1 && statuses.includes("seal_approved_pending_archive")) {
         return [];
       }
@@ -1874,6 +2103,7 @@ export class MeService {
           businessCode: code,
           amountText: this.amountText(version.amountCents),
           currentNode,
+          [workItemNoticeAt]: version.updatedAt,
           stayedText: this.stayedText(version.updatedAt),
           nextAction,
           targetPath: `/合同管理/${code}`,
@@ -1899,8 +2129,9 @@ export class MeService {
         id: { in: tasks.map((item) => item.contractVersionId) },
         status: { in: ["in_seal", "seal_approved_pending_archive"] }
       },
-      select: { id: true, contractId: true, status: true, amountCents: true, updatedAt: true }
+      select: { id: true, contractId: true, status: true, amountCents: true, numericProtocolVersion: true, signingSubjectType: true, updatedAt: true }
     });
+    const v2Exclusions = await this.contractV2LegacySigningExclusions(versions);
     const contracts = versions.length ? await this.prisma.contract.findMany({
       where: {
         id: { in: [...new Set(versions.map((item) => item.contractId))] }
@@ -1909,6 +2140,7 @@ export class MeService {
     }) : [];
     const contractById = new Map(contracts.map((item) => [item.id, item]));
     return versions.flatMap((version) => {
+      if (v2Exclusions.has(version.id)) return [];
       const contract = contractById.get(version.contractId);
       if (!contract) return [];
       const code = contract.code ?? contract.temporaryCode ?? contract.id;
@@ -1923,6 +2155,7 @@ export class MeService {
         businessCode: code,
         amountText: this.amountText(version.amountCents),
         currentNode: completing ? "线下签署盖章" : "上传双方最终版",
+        [workItemNoticeAt]: version.updatedAt,
         stayedText: this.stayedText(version.updatedAt),
         nextAction: completing ? "确认我方签署盖章完成" : "上传双方最终签署 PDF",
         targetPath: `/合同管理/${code}`,
@@ -1972,8 +2205,9 @@ export class MeService {
         contractGovernanceVersion: 1,
         status: "seal_approved_pending_archive"
       },
-      select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+      select: { id: true, contractId: true, amountCents: true, numericProtocolVersion: true, signingSubjectType: true, updatedAt: true }
     });
+    const v2Exclusions = await this.contractV2LegacySigningExclusions(versions);
     const contracts = versions.length ? await this.prisma.contract.findMany({
       where: {
         id: { in: [...new Set(versions.map((item) => item.contractId))] },
@@ -1983,6 +2217,7 @@ export class MeService {
     }) : [];
     const contractById = new Map(contracts.map((item) => [item.id, item]));
     return versions.flatMap((version) => {
+      if (v2Exclusions.has(version.id)) return [];
       const contract = contractById.get(version.contractId);
       if (!contract) return [];
       const code = contract.code ?? contract.temporaryCode ?? contract.id;
@@ -1996,6 +2231,7 @@ export class MeService {
         businessCode: code,
         amountText: this.amountText(version.amountCents),
         currentNode: "上传双方最终版",
+        [workItemNoticeAt]: version.updatedAt,
         stayedText: this.stayedText(version.updatedAt),
         nextAction: "代唯一合同主管上传双方最终签署 PDF",
         targetPath: `/合同管理/${code}`,
@@ -2059,6 +2295,7 @@ export class MeService {
       businessId: settlement.id,
       amountText: this.amountText(settlement.amountCents),
       currentNode,
+      [workItemNoticeAt]: settlement.updatedAt,
       stayedText: this.stayedText(settlement.updatedAt),
       nextAction,
       targetPath: `/结算管理/${settlement.code}`,
@@ -2149,11 +2386,73 @@ export class MeService {
         businessId: settlement.id,
         amountText: this.amountText(settlement.amountCents),
         currentNode: "最终结算文件生成失败",
+        [workItemNoticeAt]: settlement.updatedAt,
         stayedText: this.stayedText(settlement.updatedAt),
         nextAction: "重试生成结算签名合成件",
         targetPath: `/结算管理/${settlement.code}`,
         tone: "danger" as const
       }));
+  }
+
+  private async attachIndependentApprovalReminders(userId: string, pending: WorkItem[], evaluatedAt: Date): Promise<WorkItem[]> {
+    const reminders = await this.independentApprovals?.recentPendingReminders(userId, evaluatedAt) ?? [];
+    const supplemental: WorkItem[] = [];
+    for (const reminder of reminders) {
+      const item = pending.find(candidate => candidate.businessId === reminder.businessId &&
+        (candidate.businessType === reminder.kind
+          || (reminder.kind === "settlement_archive" && candidate.id === `settlement-archive:${reminder.businessId}`)
+          || (reminder.kind === "contract_archive" && candidate.businessType === "contract_version" &&
+            candidate.id === `contract-archive:${reminder.businessId}` && candidate.currentNode === "确认合同归档")
+          || (reminder.kind === "contract_seal" && candidate.businessType === "contract_version" &&
+            candidate.id === `contract-archive:${reminder.businessId}` && ["待同意用章", "待确认用章"].includes(candidate.currentNode))));
+      if (item) {
+        item.reminderId = reminder.reminderId;
+        if (!item[workItemNoticeAt] || reminder.remindedAt > item[workItemNoticeAt]) item[workItemNoticeAt] = reminder.remindedAt;
+      } else {
+        supplemental.push({
+          id: `independent-notice:${reminder.id}`, type: "approval", businessType: reminder.kind, businessId: reminder.businessId,
+          reminderId: reminder.reminderId, title: reminder.title, projectName: reminder.projectName, businessCode: reminder.businessCode,
+          currentNode: reminder.currentNodeName, amountText: "", stayedText: "", nextAction: "查看审核进度",
+          [workItemNoticeAt]: reminder.remindedAt,
+          targetPath: `/审批中心?review=${encodeURIComponent(reminder.id)}`, tone: "warning"
+        });
+      }
+    }
+    return supplemental;
+  }
+
+  private async attachActiveApprovalReminders(userId: string, pending: WorkItem[], evaluatedAt: Date) {
+    const targets = pending.flatMap<{ item: WorkItem; instanceId: string; dutyIndex?: number }>(item => {
+      const general = /^general-request-duty:([^:]+):(\d+)$/.exec(item.id);
+      if (general) return [{ item, instanceId: general[1], dutyIndex: Number(general[2]) }];
+      return item.id.startsWith("approval:") ? [{ item, instanceId: item.id.slice("approval:".length) }] : [];
+    });
+    if (!targets.length) return;
+    const reminders = await this.prisma.approvalActionLog.findMany({
+      where: {
+        approvalInstanceId: { in: [...new Set(targets.map(target => target.instanceId))] },
+        action: "remind",
+        createdAt: { gte: new Date(evaluatedAt.getTime() - 24 * 60 * 60 * 1000) },
+        AND: [
+          { metadata: { path: ["kind"], equals: "sms_request" } },
+          { metadata: { path: ["recipientIds"], array_contains: [userId] } }
+        ]
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true, approvalInstanceId: true, metadata: true, createdAt: true }
+    });
+    for (const { item, instanceId, dutyIndex } of targets) {
+      const reminder = reminders.find(row => {
+        if (row.approvalInstanceId !== instanceId || !row.metadata || typeof row.metadata !== "object" || Array.isArray(row.metadata)) return false;
+        const { kind, recipientIds, dutyIndexes } = row.metadata;
+        return kind === "sms_request" && Array.isArray(recipientIds) && recipientIds.includes(userId)
+          && (dutyIndex === undefined || (Array.isArray(dutyIndexes) && dutyIndexes.includes(dutyIndex)));
+      });
+      if (reminder && (!item.reminderId || !item[workItemNoticeAt] || reminder.createdAt >= item[workItemNoticeAt])) {
+        item.reminderId = reminder.id;
+        if (!item[workItemNoticeAt] || reminder.createdAt > item[workItemNoticeAt]) item[workItemNoticeAt] = reminder.createdAt;
+      }
+    }
   }
 
   private async approvalWorkItems(
@@ -2175,11 +2474,13 @@ export class MeService {
 
     for (const instance of instances) {
       const detail = details.get(`${instance.businessType}:${instance.businessId}`);
-      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex);
+      if (detail?.requestProtocolVersion === 2) continue;
+      const scopedDelegateNode = detail ? await this.scopedSpotDelegateNode(instance, detail.projectId ?? undefined, userId) : null;
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []) ?? scopedDelegateNode;
       if (!detail || !node) {
         continue;
       }
-      const roleKeys = roleKeysByProject.get(detail.projectId) ?? [];
+      const roleKeys = (detail.projectId ? roleKeysByProject.get(detail.projectId) : undefined) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
       const hasRoleTodo = ["general_procurement", "expense_claim"].includes(instance.businessType)
         ? await this.canActOnProcurementNode(node, userId, detail.projectId)
@@ -2187,17 +2488,17 @@ export class MeService {
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
-      const hasDelegatedTodo =
+      const hasDelegatedTodo = Boolean(scopedDelegateNode) || (
         mode === "started" || !supportsIndirect || hasDirectTodo
           ? false
-          : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node, evaluatedAt);
+          : await this.hasDelegatedApprovalTodo(userId, detail.projectId ?? "", node, evaluatedAt));
       if (mode === "pending" && !hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
       if (mode === "delegated" && !this.hasAssignmentTodo(node, userId) && !hasDelegatedTodo) {
         continue;
       }
-      if (mode === "delegated" && !supportsIndirect) {
+      if (mode === "delegated" && !supportsIndirect && !scopedDelegateNode) {
         continue;
       }
 
@@ -2206,12 +2507,13 @@ export class MeService {
         type: "approval",
         title: detail.title,
         projectName: detail.projectName,
-        projectId: detail.projectId,
+        projectId: detail.projectId ?? undefined,
         businessCode: detail.businessCode,
         businessType: instance.businessType,
         businessId: instance.businessId,
-        amountText: this.amountText(detail.amountCents),
+        amountText: detail.amountCents == null ? "预计金额待明确" : this.amountText(detail.amountCents),
         currentNode: this.approvalNodeName(node),
+        [workItemNoticeAt]: instance.updatedAt,
         stayedText: this.stayedText(instance.updatedAt),
         nextAction: mode === "started" ? "查看审批进度" : "处理当前审批",
         targetPath: detail.targetPath,
@@ -2219,6 +2521,9 @@ export class MeService {
       });
     }
 
+    items.push(...await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, mode));
+    items.push(...await fundReviewWorkItems(this.prisma, userId, mode));
+    items.push(...await principalReturnWorkItems(this.prisma, userId, mode));
     return items;
   }
 
@@ -2257,7 +2562,7 @@ export class MeService {
       const detail = instance
         ? details.get(`${instance.businessType}:${instance.businessId}`)
         : undefined;
-      if (!instance || !detail || !visibleProjectIds.has(detail.projectId)) {
+      if (!instance || !detail || (detail.projectId == null || !visibleProjectIds.has(detail.projectId))) {
         continue;
       }
       seen.add(log.approvalInstanceId);
@@ -2266,11 +2571,11 @@ export class MeService {
         type: "approval",
         title: detail.title,
         projectName: detail.projectName,
-        projectId: detail.projectId,
+        projectId: detail.projectId ?? undefined,
         businessCode: detail.businessCode,
         businessType: instance.businessType,
         businessId: instance.businessId,
-        amountText: this.amountText(detail.amountCents),
+        amountText: detail.amountCents == null ? "预计金额待明确" : this.amountText(detail.amountCents),
         currentNode: `已处理：${this.approvalActionLabel(log.action)}`,
         stayedText: this.stayedText(log.createdAt),
         nextAction: "查看业务详情",
@@ -2291,9 +2596,9 @@ export class MeService {
     const claimIds = instances.filter((instance) => instance.businessType === "expense_claim").map((instance) => instance.businessId);
     const generalRows = generalIds.length ? await this.prisma.generalProcurement.findMany({ where: { id: { in: generalIds } } }) : [];
     const claimRows = claimIds.length ? await this.prisma.expenseClaim.findMany({ where: { id: { in: claimIds }, generalProcurementId: { not: null } } }) : [];
-    const procurementProjectNames = await this.projectNames([...generalRows.map((row) => row.projectId), ...claimRows.flatMap((row) => row.projectId ? [row.projectId] : [])]);
-    for (const row of generalRows) result.set(`general_procurement:${row.id}`, { projectId: row.projectId, projectName: procurementProjectNames.get(row.projectId) ?? "所属项目",
-      businessCode: row.code, title: `综合采购申请：${row.reason}`, amountCents: row.requestedAmountCents, targetPath: `/综合采购申请/${row.id}` });
+    const procurementProjectNames = await this.projectNames([...generalRows.flatMap((row) => row.projectId ? [row.projectId] : []), ...claimRows.flatMap((row) => row.projectId ? [row.projectId] : [])]);
+    for (const row of generalRows) result.set(`general_procurement:${row.id}`, { requestProtocolVersion: row.requestProtocolVersion, projectId: row.projectId, projectName: row.projectId ? procurementProjectNames.get(row.projectId) ?? "所属项目" : "公司日常",
+      businessCode: row.code, title: `综合采购申请：${row.reason || "详见采购清单"}`, amountCents: row.requestedAmountCents, targetPath: `/综合采购申请/${row.id}` });
     for (const row of claimRows) if (row.projectId) result.set(`expense_claim:${row.id}`, { projectId: row.projectId, projectName: procurementProjectNames.get(row.projectId) ?? "所属项目",
       businessCode: row.code, title: `综合采购付款：${row.reason}`, amountCents: row.requestedAmountCents, targetPath: `/费用与报销/${row.id}` });
     const contractVersionIds = instances
@@ -2518,10 +2823,12 @@ export class MeService {
       }
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
 
+      const scopedDelegateNode = await this.scopedSpotDelegateNode(instance, projectId, userId);
       const currentNode = this.currentApprovalNode(
         instance.frozenNodes,
-        instance.currentNodeIndex
-      );
+        instance.currentNodeIndex,
+        roleKeys
+      ) ?? scopedDelegateNode;
       if (!currentNode) {
         continue;
       }
@@ -2532,7 +2839,7 @@ export class MeService {
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, currentNode, roleKeys, userId);
-      const hasDelegatedTodo =
+      const hasDelegatedTodo = Boolean(scopedDelegateNode) || (
         supportsIndirect && !hasDirectTodo
           ? await this.hasDelegatedApprovalTodo(
               userId,
@@ -2540,7 +2847,7 @@ export class MeService {
               currentNode,
               evaluatedAt
             )
-          : false;
+          : false);
       if (!hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
@@ -2556,6 +2863,8 @@ export class MeService {
       counts.total += 1;
     }
 
+    const generalDuties = await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId);
+    counts.procurement += generalDuties.length; counts.total += generalDuties.length;
     return counts;
   }
 
@@ -2621,7 +2930,7 @@ export class MeService {
             select: { id: true, projectId: true }
           })
         : Promise.resolve([]),
-      procurementIds.length ? this.prisma.generalProcurement.findMany({ where: { id: { in: procurementIds } }, select: { id: true, projectId: true } }) : Promise.resolve([]),
+      procurementIds.length ? this.prisma.generalProcurement.findMany({ where: { id: { in: procurementIds } }, select: { id: true, projectId: true, requestProtocolVersion: true } }) : Promise.resolve([]),
       procurementPaymentIds.length ? this.prisma.expenseClaim.findMany({ where: { id: { in: procurementPaymentIds }, generalProcurementId: { not: null } }, select: { id: true, projectId: true } }) : Promise.resolve([])
     ]);
     const [contracts, spotProcurements] = await Promise.all([
@@ -2662,13 +2971,23 @@ export class MeService {
       ids.set(`spot_procurement_payment:${payment.id}`, payment.projectId);
     }
 
-    for (const row of procurements) ids.set(`general_procurement:${row.id}`, row.projectId);
+    for (const row of procurements) if (row.projectId && row.requestProtocolVersion !== 2) ids.set(`general_procurement:${row.id}`, row.projectId);
     for (const row of procurementPayments) if (row.projectId) ids.set(`expense_claim:${row.id}`, row.projectId);
 
     return ids;
   }
 
-  private currentApprovalNode(frozenNodes: unknown, index: number): ApprovalNode | null {
+  private async scopedSpotDelegateNode(instance: {id: string; businessType: string; status: string; frozenNodes: unknown; currentNodeIndex: number}, projectId: string | undefined, userId: string): Promise<ApprovalNode | null> {
+    if (instance.businessType !== "spot_procurement_version" || !projectId) return null;
+    const indexes = await scopedSpotDutyNodeIndexes(this.prisma as never, instance, projectId, userId);
+    return indexes.length && Array.isArray(instance.frozenNodes) ? instance.frozenNodes[indexes[0]] as ApprovalNode : null;
+  }
+
+  private currentApprovalNode(frozenNodes: unknown, index: number, roleKeys: RoleKey[] = []): ApprovalNode | null {
+    if (hasVersionedApprovalNodes(frozenNodes) && !isParallelApprovalRound(frozenNodes)) return null;
+    if (isParallelApprovalRound(frozenNodes)) {
+      index = activeApprovalNodeIndexes(frozenNodes, index).find(candidate => this.hasDirectRoleTodo(frozenNodes[candidate] as ApprovalNode, roleKeys)) ?? -1;
+    }
     if (!Array.isArray(frozenNodes)) {
       return null;
     }
@@ -2692,9 +3011,9 @@ export class MeService {
     };
   }
 
-  private async canActOnProcurementNode(node: ApprovalNode, userId: string, projectId: string) {
+  private async canActOnProcurementNode(node: ApprovalNode, userId: string, projectId: string | null) {
     try {
-      const actor = await generalProcurementActor(this.prisma, new ProjectVisibilityService(this.prisma), userId, projectId);
+      const actor = projectId ? await generalProcurementActor(this.prisma, new ProjectVisibilityService(this.prisma), userId, projectId) : await generalRequestActor(this.prisma, new ProjectVisibilityService(this.prisma), userId, null);
       const identity = resolveApprovalReviewIdentity({ node, actorUserId: userId, actorRoleKeys: [...actor.globalRoleKeys, ...actor.projectRoleKeys], actorRoleScopes: actor });
       return Boolean(identity && !identity.viaAssignment);
     } catch (error) {
@@ -2714,7 +3033,7 @@ export class MeService {
   }
 
   private canShowSpotApplicantTodo(
-    instance: Pick<ApprovalInstanceForWorkItem, "businessType" | "applicantUserId">,
+    instance: Pick<ApprovalInstanceForWorkItem, "businessType" | "applicantUserId" | "frozenNodes">,
     node: ApprovalNode,
     roleKeys: RoleKey[],
     userId: string
@@ -2955,6 +3274,81 @@ export class MeService {
       remind: "催办"
     };
     return labels[action] ?? action;
+  }
+
+  private async directDraftPresentations(versions: Array<{
+    id: string; contractId: string; numericProtocolVersion: number; changeType: string;
+    draftData: Prisma.JsonValue; amountYuan: Prisma.Decimal | null;
+  }>) {
+    const inputs = versions.map(version => ({ version, input: this.directDraftInput(version) }));
+    const invalid = { businessCode: "编号待核对", amountText: "金额待核对", invalid: true };
+    const result = new Map<string, { businessCode: string; amountText: string; invalid: boolean }>();
+    for (const { version, input } of inputs) if (input) result.set(version.id, invalid);
+    const candidates = inputs.filter(row => row.input?.valid);
+    // Fixed 30-pair/60-parameter chunks, sequential: no unbounded per-version fan-out.
+    for (let offset = 0; offset < candidates.length; offset += 30) {
+      const chunk = candidates.slice(offset, offset + 30);
+      try {
+        const rows = await this.prisma.$queryRaw<unknown>(Prisma.sql`
+          SELECT "id", "contractId", "originalSignedNumber" FROM public."ContractVersion"
+          WHERE "status" = 'draft' AND ("id", "contractId") IN (${Prisma.join(chunk.map(({ version }) => Prisma.sql`(${version.id}, ${version.contractId})`))})
+        `);
+        if (!Array.isArray(rows) || rows.length !== chunk.length) continue;
+        const numbers = new Map<string, string | null>();
+        let valid = true;
+        for (const row of rows as unknown[]) {
+          if (!row || typeof row !== "object" || Array.isArray(row) ||
+            Object.keys(row).sort().join(",") !== "contractId,id,originalSignedNumber" ||
+            !("id" in row) || typeof row.id !== "string" || numbers.has(row.id) ||
+            !("contractId" in row) || !chunk.some(({ version }) => version.id === row.id && version.contractId === row.contractId) ||
+            !("originalSignedNumber" in row) ||
+            (row.originalSignedNumber !== null && (typeof row.originalSignedNumber !== "string" || row.originalSignedNumber === ""))) {
+            valid = false; break;
+          }
+          numbers.set(row.id, row.originalSignedNumber);
+        }
+        if (!valid) continue;
+        for (const { version, input } of chunk) if (input?.valid && numbers.has(version.id)) {
+          result.set(version.id, { businessCode: numbers.get(version.id) ?? "未注明编号", amountText: input.amountText, invalid: false });
+        }
+      } catch {
+        // A missing column/permission or malformed batch leaves this chunk visibly awaiting verification.
+      }
+    }
+    return result;
+  }
+
+  private directDraftInput(version: {
+    numericProtocolVersion: number; changeType: string; draftData: Prisma.JsonValue; amountYuan: Prisma.Decimal | null;
+  }) {
+    const draft = version.draftData;
+    if (!draft || typeof draft !== "object" || Array.isArray(draft) ||
+      !Object.prototype.hasOwnProperty.call(draft, "directSigningInput")) return null;
+    const invalid = { valid: false as const };
+    const marker = draft.directSigningInput;
+    const basics = draft.contractBasics;
+    if (version.numericProtocolVersion !== 2 || version.changeType !== "original" ||
+      !marker || typeof marker !== "object" || Array.isArray(marker) ||
+      marker.protocolVersion !== 1 || marker.source !== "direct_signed" || marker.relationship !== "outside" ||
+      !basics || typeof basics !== "object" || Array.isArray(basics) || basics.relationship !== "outside") return invalid;
+    if (Object.keys(marker).sort().join(",") !== "counterpartyParty,enterpriseParty,fixedPaymentTermsVersionId,protocolVersion,relationship,signedOn,source") return invalid;
+    const partyShape = (value: Prisma.JsonValue | undefined) => value === null ||
+      (value !== undefined && typeof value === "object" && !Array.isArray(value) &&
+        Object.keys(value).sort().join(",") === "displayOrder,roleKey" &&
+        typeof value.roleKey === "string" && value.roleKey.length > 0 &&
+        typeof value.displayOrder === "number" && Number.isSafeInteger(value.displayOrder) && value.displayOrder >= 0);
+    if (!partyShape(marker.enterpriseParty) || !partyShape(marker.counterpartyParty) ||
+      !(marker.fixedPaymentTermsVersionId === null ||
+        (typeof marker.fixedPaymentTermsVersionId === "string" && marker.fixedPaymentTermsVersionId.length > 0))) return invalid;
+    if (marker.signedOn !== null) {
+      if (typeof marker.signedOn !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u.test(marker.signedOn)) return invalid;
+      const [year, month, day] = marker.signedOn.split("-").map(Number);
+      const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) return invalid;
+    }
+    const amount = version.amountYuan;
+    if (amount !== null && (!amount.isFinite() || amount.isNegative() || amount.decimalPlaces() > 4)) return invalid;
+    return { valid: true as const, amountText: amount === null ? "金额待确定" : `¥${amount.toFixed(4)}` };
   }
 
   private amountText(amountCents: bigint) {

@@ -114,10 +114,28 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(resubmitted.entrySnapshots).toHaveLength(2);
     expect(resubmitted.entrySnapshots[0]).toEqual(detail.entrySnapshots[0]);
     expect(resubmitted.entrySnapshots[1]).toMatchObject({ valuesSnapshot: { reason: "公司项目资金到账", amountCents: "12500", direction: "inflow" } });
-    for (const accessToken of [reviewerToken, generalManagerToken]) {
-      await request(`${path}/approval-actions`, "POST", { action: "approve", comment: "本地逐节点签批核验" }, accessToken);
-    }
-    await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token: reviewerToken, password: accountPassword,
+    const db = app.get(PrismaService);
+    const { approvalInstanceId, submittedByUserId } = await db.fundExecutionCase.findFirstOrThrow({
+      where: { caseKey: created.caseId, revision: resubmitted.revision },
+      select: { approvalInstanceId: true, submittedByUserId: true }
+    });
+    if (!approvalInstanceId || !submittedByUserId) throw new Error("重提审批缺少冻结的提交人或审批实例");
+    const approve = { action: "approve", comment: "本地逐节点签批核验" };
+    const selfReviewReason = "财务主管重提后按当前职责自审核对";
+    const reviewPath = `${path}/approval-actions`;
+    await expect(request(reviewPath, "POST", approve, reviewerToken)).rejects.toThrow(/"status":400.*自审原因/u);
+    await expect(request(reviewPath, "POST", { ...approve, selfReviewReason, confirmationPassword: "wrong-local-password" }, reviewerToken))
+      .rejects.toThrow(/"status":400.*当前密码不正确/u);
+    expect(await db.approvalInstance.findUnique({ where: { id: approvalInstanceId } })).toMatchObject({ status: "in_progress", currentNodeIndex: 0 });
+    expect(await db.approvalActionLog.count({ where: { approvalInstanceId, action: "approve" } })).toBe(0);
+    await request(reviewPath, "POST", { ...approve, selfReviewReason, confirmationPassword: accountPassword }, reviewerToken);
+    expect(await db.approvalActionLog.findFirst({ where: { approvalInstanceId, action: "approve" } })).toMatchObject({
+      actorUserId: submittedByUserId,
+      approvedRoleKey: "finance_director",
+      metadata: { selfReview: true, selfReviewReason }
+    });
+    await request(reviewPath, "POST", approve, generalManagerToken);
+    await verifyApprovedPdf({ db, baseUrl, token: reviewerToken, password: accountPassword,
       businessType: "fund_execution_case", businessId: created.caseId, roles: ["finance_director", "general_manager"], label: "资金执行-退回重提总经理或签" });
   }, 60_000);
 

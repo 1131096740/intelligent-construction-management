@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Res,
   StreamableFile
 } from "@nestjs/common";
@@ -23,6 +24,15 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 export class ContractDraftBillExcelController {
   constructor(private readonly excel: ContractBillExcelService) {}
 
+  @Get("contract-drafts/:contractVersionId/bills/:billKey/export")
+  async exportData(@Param("contractVersionId") contractVersionId: string, @Param("billKey") billKey: string,
+    @CurrentUser() user: AuthenticatedUser, @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }) {
+    const result = await this.excel.exportDraftData(contractVersionId, billKey, user.id);
+    response.set({ "Content-Type": XLSX_MIME, "Content-Length": String(result.buffer.length),
+      "Content-Disposition": `attachment; filename="${this.asciiFallback(result.fileName)}"; filename*=UTF-8''${encodeURIComponent(result.fileName)}` });
+    return new StreamableFile(result.buffer);
+  }
+
   @Get("contract-drafts/:contractVersionId/bills/:billKey/template")
   async downloadTemplate(
     @Param("contractVersionId") contractVersionId: string,
@@ -30,13 +40,12 @@ export class ContractDraftBillExcelController {
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) response: {
       set: (headers: Record<string, string>) => void;
-    }
+    },
+    @Query("numericProtocolVersion") numericProtocol?: string
   ) {
-    const result = await this.excel.exportDraftTemplate(
-      contractVersionId,
-      billKey,
-      user.id
-    );
+    const result = await (numericProtocol === undefined
+      ? this.excel.exportDraftTemplate(contractVersionId, billKey, user.id)
+      : this.excel.exportDraftTemplate(contractVersionId, billKey, user.id, numericProtocol));
     response.set({
       "Content-Type": XLSX_MIME,
       "Content-Length": String(result.buffer.length),

@@ -17,8 +17,10 @@ test("本人资料使用服务端字段和预检，失败保留输入，保存�
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   const definitionRead = page.waitForResponse((response) => response.url().includes("/business-entry-definitions/user_self_profile?") && response.request().method() === "GET");
+  const optionsRead = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/account-security/options");
   await page.goto("/settings");
   expect((await definitionRead).ok()).toBeTruthy();
+  expect(await (await optionsRead).json()).toMatchObject({ smsEnabled: true });
   const form = page.getByRole("region", { name: "本人资料单条业务表单" });
   await expect(form).toBeVisible();
   const name = form.locator('[data-field="name"] input');
@@ -45,6 +47,15 @@ test("本人资料使用服务端字段和预检，失败保留输入，保存�
   expect(unchanged.ok()).toBeTruthy();
   expect((await unchanged.json()).user.name).toBe("本人资料浏览器合成账号");
   await expect(phone).toHaveValue(newPhone);
+
+  const sent = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/account-security/phone-change-sms" && response.request().method() === "POST");
+  await account.getByRole("button", { name: "获取验证码", exact: true }).click();
+  expect((await sent).status()).toBe(201);
+  const delivery = await request.get(`${process.env.POL113_ROLE_FIXTURE_URL}/settings-sms/${testInfo.project.name}`);
+  expect(delivery.status()).toBe(200);
+  const { code } = await delivery.json();
+  expect(/^\d{6}$/u.test(code)).toBe(true);
+  await account.getByPlaceholder("请输入6位验证码", { exact: true }).fill(code);
   await account.locator('input[type="password"]').fill(password);
   const saved = page.waitForResponse((response) => response.url().endsWith("/auth/profile") && response.request().method() === "PATCH");
   await account.getByRole("button", { name: "保存基本资料" }).click();
