@@ -404,6 +404,15 @@ export async function qualifyUpwardPendingSave(
     `);
     const result = rows.length === 1 ? rows[0] : null;
     const hooks = result?.triggerOids;
+    // A verified successor may use the installed registered-file enforcer.
+    // Recover its witness in this transaction before applying the full save gate.
+    if (source === undefined && registeredExclusive === undefined && projection && result?.successorReadable === true
+      && !Object.hasOwn((result.routineBodies ?? {}) as object, "exclusive")
+      && !Object.hasOwn((hooks ?? {}) as object, "jg_direct_pending_attachment_exclusive")) {
+      const installed = await readUpwardRegisteredExclusive(tx);
+      if (!registeredExclusiveOids(tx, installed)) throw unavailable();
+      return await qualifyUpwardPendingSave(tx, installed);
+    }
     const qualifiedSlot = projection?.routines.find(item => item.signature === "public.jg_guard_contract_direct_archive_slot_v1()"
       && item.oid === result?.slotRoutineOid && item.beforeSha256 === "99d80f7a4bb9105acda415aa7cedd6dba0266849cb9b945cb5e7b0aaf6885164");
     const expectedBodies = { ...UPWARD_SAVE_ROUTINE_BODIES,
