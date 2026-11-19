@@ -301,8 +301,8 @@ export class ContractV2SubmissionService {
       }
       await this.audit.record(tx, { actorUserId, action: "contract.approval.submit", businessType: "contract_version", businessId: contractVersionId, metadata: json(response) });
       if (upwardSigning) await assertGeneratedUpwardSubmissionContinuity(tx, upwardSigning.qualification);
-      if (this.notifications && ContractDutyNotificationService.supports(version)) {
-        await this.notifications.queue(tx, contract, { ...version, status: response.status }, round, formalCode);
+      if (this.notifications && ContractDutyNotificationService.supports(formalVersion)) {
+        await this.notifications.queue(tx, contract, { ...formalVersion, status: response.status }, round, formalCode);
         notificationQueued = true;
       }
       return response;

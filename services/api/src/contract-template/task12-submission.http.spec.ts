@@ -15,7 +15,7 @@ import { PrivateFileStorage } from "../file/file.service";
 
 describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私有文件）", () => {
   it("对上生成审批核对真实纸面双方和安装资格，撤回重提后仅当前轮次单次交接", async () => {
-    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: true });
+    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: true, dutyNotifications: true });
     try {
       const layout = await confirmedBodyLayout(server);
       const draft = await createTask09Draft(server, "capped", "material_purchase", "upward");
@@ -203,6 +203,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const response = await submit();
       const result = await response.json();
       expect({ status: response.status, result }).toMatchObject({ status: 201, result: { contractVersionId: draft.version.id, status: "in_approval" } });
+      expect(await approvalNoticeIntents(server, result.approvalInstanceId)).toEqual([]);
       const matchingWrites = versionWrites.mock.calls.filter(([args]) => args.where.id === draft.version.id);
       expect(matchingWrites).toEqual([[expect.objectContaining({ data: expect.objectContaining({
         status: "in_approval", signingSubjectType: "upward", firstSubmittedAt: expect.any(Date),
@@ -428,7 +429,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
     ["party_b", "party_a", true, true]
   ] as const)("表外生成审批冻结当前项目施工企业 %s 和下游 %s，当单录入=%s，归档存储可用=%s",
   async (enterpriseRole, downstreamRole, inlineDownstream, preparationEnabled) => {
-    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: preparationEnabled });
+    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: preparationEnabled, dutyNotifications: true });
     try {
       const layout = await confirmedBodyLayout(server);
       const draft = await createTask09Draft(server, "capped", "material_purchase", "outside");
@@ -495,6 +496,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const response = await submit();
       const result = await response.json();
       expect({ status: response.status, result }).toMatchObject({ status: 201, result: { contractVersionId: draft.version.id, status: "in_approval" } });
+      expect(await approvalNoticeIntents(server, result.approvalInstanceId)).toEqual([]);
       const frozen = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
       expect(frozen).toMatchObject({
         signingSubjectType: "affiliate", affiliateAssignmentId: assignmentId, affiliateBusinessPartyVersionId: enterpriseVersionId,
@@ -679,7 +681,8 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
   ] as const)("%s %s 经营启用=%s，时刻=%s，原经办=%s，原金额=%s 场景=%s 空位已确认后冻结当前资料并创建五职责并联轮次，重放原结果", async (contractType, firstDutyRole, operatingEnabled, archiveInstant, handlerRole, sourceAmount, scenario) => {
     const parallelRace = scenario !== "lifecycle" && scenario !== "rejectLifecycle";
     const verifyGeneratedApprovalPdf = !parallelRace && contractType === "material_purchase" && !operatingEnabled && handlerRole === "project_staff";
-    const server = await createTemplateTestServer({ draftWorkbench: true, generatedApprovalPdf: verifyGeneratedApprovalPdf });
+    const verifyDutyNotices = scenario === "allRoles" && contractType === "material_purchase";
+    const server = await createTemplateTestServer({ draftWorkbench: true, generatedApprovalPdf: verifyGeneratedApprovalPdf, dutyNotifications: verifyDutyNotices });
     const previousWriteSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
     if (operatingEnabled) process.env.OPERATING_LEDGER_DB_WRITE_SECRET = "synthetic-source-only-writer-token";
     try {
@@ -743,6 +746,10 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
             : { actor: "employee", role: "general_manager" };
           await server.store.prisma.userPosition.create({ data: { userId: extra.actor, positionId: extra.role, projectId: null } });
         }
+      }
+      if (verifyDutyNotices) {
+        expect(await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))
+          .toMatchObject({ signingSubjectType: "draft_unconfirmed" });
       }
       let response: Response;
       if (contractType === "other") {
@@ -817,6 +824,18 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       }
       const result = await response.json();
       expect({ status: response.status, result }).toMatchObject({ status: 201, result: { contractVersionId: draft.version.id, status: "in_approval" } });
+      const queuedNotices = verifyDutyNotices ? await approvalNoticeIntents(server, result.approvalInstanceId) : [];
+      if (verifyDutyNotices) {
+        expect(await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))
+          .toMatchObject({ signingSubjectType: "our_company" });
+        expect(queuedNotices).toHaveLength(duties.length);
+        for (const duty of duties) {
+          expect(queuedNotices).toContainEqual(expect.objectContaining({ metadata: expect.objectContaining({
+            stage: "approval", nodeIndex: duty.index, recipientId: duty.actor,
+            contractVersionId: draft.version.id, businessCode: result.formalCode
+          }) }));
+        }
+      }
       const submissionReceipt = await fetch(`${draft.base}/submission-requests/${input.idempotencyKey}`, { headers: draft.headers });
       expect({ status: submissionReceipt.status, body: await submissionReceipt.json() }).toMatchObject({ status: 200, body: { status: "submitted", result, requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u), intent: { expectedRevision: input.expectedRevision, submissionProtocolVersion: 2, documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint, generatedDocumentId: input.generatedDocumentId, sourceSha256: input.sourceSha256, blanksReviewed: true } } });
       const getReceipt = (key = input.idempotencyKey, headers = draft.headers) => fetch(`${draft.base}/submission-requests/${key}`, { headers });
@@ -840,6 +859,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         replayStatus: projectedReplay.status,
         replayResult: await projectedReplay.json()
       }).toEqual({ readStatus: 200, readResult: result, replayStatus: 201, replayResult: result });
+      if (verifyDutyNotices) expect(await approvalNoticeIntents(server, result.approvalInstanceId)).toEqual(queuedNotices);
       expect(await server.store.prisma.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey: input.idempotencyKey } }))
         .toMatchObject({ responseSnapshot: contaminatedResult });
       for (const badResult of [{ ...result, formalCode: "另一正式编号" }, { contractVersionId: result.contractVersionId, approvalInstanceId: result.approvalInstanceId, status: result.status }]) {
@@ -2843,6 +2863,12 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
 }
 
 /** Existing lifecycle cases now use valid inside subject facts, not unfinished upward provenance. */
+function approvalNoticeIntents(server: Awaited<ReturnType<typeof createTemplateTestServer>>, approvalInstanceId: string) {
+  return server.store.prisma.auditLog.findMany({
+    where: { businessType: "contract_v2_inside_duty_notification", businessId: approvalInstanceId, action: "queued" }
+  });
+}
+
 async function saveInsideTask12Draft(server: Awaited<ReturnType<typeof createTemplateTestServer>>, draft: Awaited<ReturnType<typeof createTask09Draft>>, contractType: string, layoutId: string, controlledCounterparty = false) {
   const companyId = randomUUID(), companyVersionId = randomUUID(), joiningVersionId = controlledCounterparty ? randomUUID() : companyVersionId;
   const partyId = randomUUID(), partyVersionId = randomUUID();

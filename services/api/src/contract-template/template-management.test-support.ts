@@ -35,6 +35,8 @@ import { ContractOperatingSourceAdapter } from "../contract/contract-operating-s
 import { NON_RECEIPT_FILE_BINDINGS } from "../file/file-business-binding";
 import { ContractV2ArchiveService } from "../contract/contract-v2-archive.service";
 import { ContractVersionActivationService } from "../contract/contract-version-activation.service";
+import { ContractDutyNotificationService } from "../contract/contract-duty-notification.service";
+import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
 import { ContractApprovalRouteService } from "../contract/contract-approval-route.service";
 import { ContractSealService } from "../contract/contract-seal.service";
@@ -1066,7 +1068,7 @@ export function syntheticWordSource(includeSignatures = false) {
   return zip.generate({ type: "nodebuffer" });
 }
 
-export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean; economicReviewReads?: boolean; generatedArchivePreparation?: boolean; generatedApprovalPdf?: boolean;
+export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean; economicReviewReads?: boolean; generatedArchivePreparation?: boolean; generatedApprovalPdf?: boolean; dutyNotifications?: boolean;
   upwardDirectArchiveAuthority?: (store: TemplateSyntheticStore, storage: PrivateFileStorage) => UpwardDirectArchiveAuthority;
   directArchiveExecutor?: (store: TemplateSyntheticStore, storage: PrivateFileStorage) => DirectArchiveExecutor } = {}) {
   const store = new TemplateSyntheticStore();
@@ -1137,6 +1139,8 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
       { provide: ContractFormalFileService, useFactory: (files: FileService) => new ContractFormalFileService(prisma, audit, files), inject: [FileService] },
       { provide: ContractAuthorizationService, useFactory: (formal: ContractFormalFileService) => new ContractAuthorizationService(prisma, formal, audit), inject: [ContractFormalFileService] },
       ArchiveService, ContractApprovalRouteService, BusinessNumberingService, ContractV2SubmissionService, ContractV2ArchiveService, ContractVersionActivationService,
+      ...(options.dutyNotifications ? [ContractDutyNotificationService,
+        { provide: ApprovalSmsService, useValue: { available: () => false } }] : []),
       { provide: GENERATED_UPWARD_OPERATING_ACTIVATION, useValue: nativeGeneratedUpwardOperatingActivation },
       OperatingLedgerService,
       { provide: OperatingSourceAdapterRegistry, useFactory: () => new OperatingSourceAdapterRegistry([new ContractOperatingSourceAdapter(), new ContractEconomicReviewOperatingSourceAdapter()]) },
