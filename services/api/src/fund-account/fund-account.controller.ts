@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { FUND_REVIEW_ACTION } from "./fund-account-duty";
@@ -11,7 +11,7 @@ export class FundAccountController {
   constructor(private readonly accounts: FundAccountService) {}
   @Get()
   @RequirePositions("finance_staff", "finance_director", "comprehensive_director")
-  list(@CurrentUser() actor: AuthenticatedUser) { return this.accounts.list(actor.id); }
+  list(@CurrentUser() actor: AuthenticatedUser, @Query("includeSourceOwnership") ownership?: string) { return this.accounts.list(actor.id, ownership === "true"); }
   @Get("registrations/:registrationId")
   @RequirePositions("finance_staff", "finance_director", "comprehensive_director")
   readRegistration(@CurrentUser() actor: AuthenticatedUser, @Param("registrationId") id: string) { return this.accounts.readRegistration(actor.id, id); }

@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `45d7d5053bb23e481dad5e46d7c7c553abe1c9ebfc0c0e02a30e6510f82e8d7a` |
-| webApiWrappers | ready | `8031b455a0dc810a12de8617aeab9dcf824efe7e9d697b384ccdbaf6ceed1718` |
-| webPageActions | ready | `2501bc0cb0468cf705da5618f263f1f483fb212ed28c308f57158168e0c99ac5` |
-| routeUsage | ready | `357e2dfc090efcc53cc90267f3d744b3ad87935f444c64575892521f84c004ba` |
+| nestRoutes | ready | `99e05a98fe6907a2f72f2eafda3435e4e568e4b28b53b9155f4b37b9958ba5cd` |
+| webApiWrappers | ready | `7a2cd64c4cc9898211a86b68378d53734ac794cc5dff662977b308a075b35079` |
+| webPageActions | ready | `9faf5ae5edbb8e47212dd4c3984191f79a2d706a7c4e1b0e72c2940b3490f37b` |
+| routeUsage | ready | `1f1e713136b5bdca889e8b92e427b5e06bbf64572fc41873b8a301202797da5b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 753 |
-| pageRouteCount | 554 |
+| routeCount | 756 |
+| pageRouteCount | 557 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 747 |
+| mainRequestBindingCount | 750 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 441 |
-| actionBindingCount | 517 |
-| acceptedActionBindingCount | 474 |
+| registeredActionCount | 443 |
+| actionBindingCount | 519 |
+| acceptedActionBindingCount | 476 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 427 |
-| coveredProductionMutationConsumerPairCount | 427 |
+| productionMutationConsumerPairCount | 429 |
+| coveredProductionMutationConsumerPairCount | 429 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -79,6 +79,7 @@
 | GET | /company-entities/management-capability | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagementCapability | — | not_applicable | — |
 | GET | /company-entities/management | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagement | — | not_applicable | — |
 | GET | /company-transfers/:id/banks | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransferBanks | — | not_applicable | — |
+| GET | /company-transfers/:id/events/:eventId/original-debt-corrections | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransferOriginalDebtCorrections | — | not_applicable | — |
 | GET | /company-transfers | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransferCapabilities<br>apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransfers | — | not_applicable | — |
 | GET | /company-transfers/export | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#exportCompanyTransfers | — | not_applicable | — |
 | GET | /contract-bank-verifications | page | web_api_wrapper | apps/web-admin/src/api/contract-bank-verification.api.ts#fetchBankVerifications | — | not_applicable | — |
@@ -368,6 +369,8 @@
 | POST | /company-entities/:id/status | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | company-entity.status | covered | — |
 | POST | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | company-entity.create | covered | — |
 | POST | /company-transfers/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#decideCompanyTransfer | company-transfer.decideCompanyTransfer | covered | — |
+| POST | /company-transfers/:id/events/:eventId/original-debt-corrections/:correctionId/confirm | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#confirmCompanyTransferOriginalDebtCorrection | company-transfer.confirm-original-debt-correction | covered | — |
+| POST | /company-transfers/:id/events/:eventId/original-debt-corrections | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#requestCompanyTransferOriginalDebtCorrection | company-transfer.request-original-debt-correction | covered | — |
 | POST | /company-transfers/:id/events | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#executeCompanyTransfer | company-transfer.executeCompanyTransfer | covered | — |
 | POST | /company-transfers | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#createCompanyTransfer | company-transfer.createCompanyTransfer | covered | — |
 | POST | /contract-bank-verifications/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/contract-bank-verification.api.ts#decideBankVerification | contract-bank-verification.decideBankVerification | covered | — |

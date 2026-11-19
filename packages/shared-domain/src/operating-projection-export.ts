@@ -27,7 +27,7 @@ export interface OperatingProjectionExportFilters {
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   "owner_settlement", "project_upstream_settlement", "project_owner_settlement_entry", "project_upstream_fund_fact",
   "project_affiliate_contract_fact", "project_affiliate_settlement_fact",
-  "project_affiliate_payment_fact", "project_proxy_payment", "contract_version", "contract_economic_review", "contract_proxy_execution", "company_transfer_event", "upward_receipt_match",
+  "project_affiliate_payment_fact", "project_proxy_payment", "contract_version", "contract_economic_review", "contract_proxy_execution", "company_transfer_event", "company_transfer_debt_correction", "upward_receipt_match",
   "fund_execution_counterparty",
   "settlement", "payment_execution", "expense_claim_approval",
   "expense_claim_payment_execution", "employee_project_loan_entry",
@@ -61,7 +61,7 @@ const history = Object.freeze([takeover] as const);
 export const OPERATING_EXPORT_SOURCE_KINDS = Object.freeze({
   owner_settlement: none, project_upstream_settlement: none, project_owner_settlement_entry: none, project_upstream_fund_fact: none,
   project_affiliate_contract_fact: none, project_affiliate_settlement_fact: none,
-  project_affiliate_payment_fact: none, project_proxy_payment: none, contract_version: none, contract_economic_review: none, contract_proxy_execution: none, company_transfer_event:none, upward_receipt_match: none, fund_execution_counterparty:none,
+  project_affiliate_payment_fact: none, project_proxy_payment: none, contract_version: none, contract_economic_review: none, contract_proxy_execution: none, company_transfer_event:none, company_transfer_debt_correction:none, upward_receipt_match: none, fund_execution_counterparty:none,
   settlement: none, payment_execution: none, expense_claim_approval: none,
   expense_claim_payment_execution: none, employee_project_loan_entry: none,
   spot_procurement_receipt_review: none, spot_procurement_payment_execution: none,

@@ -295,9 +295,12 @@ function dutyName(keys: string[]) {
         <span>在途 ¥{{ source.reservedYuan }}</span>
         <span>可申请 ¥{{ source.availableYuan }}</span>
       </div>
-      <p v-if="source.sourceKind === 'proxy_payment' && !source.delegatedOnly">
-        公司间代付本金在后续公司代付归还流程办理。
-      </p>
+      <router-link
+        v-if="source.sourceKind === 'proxy_payment' && !source.delegatedOnly"
+        :to="{ path: '/公司互转台账', query: { projectId: source.projectId ?? undefined, originalInterEntityRelationshipId: source.sourceId, view: 'history' } }"
+      >
+        查看公司代付归还
+      </router-link>
       <t-button
         v-if="source.canApply"
         :disabled="!storageReady || busy || !!pending"

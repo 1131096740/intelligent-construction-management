@@ -9875,6 +9875,54 @@
       ]
     },
     {
+      "id": "company-transfer.request-original-debt-correction",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "requestWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRequest"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "name": "requestCompanyTransferOriginalDebtCorrection"
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.confirm-original-debt-correction",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canConfirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "name": "confirmCompanyTransferOriginalDebtCorrection"
+        }
+      ]
+    },
+    {
       "id": "company-transfer.createCompanyTransfer",
       "usage": "background",
       "routePaths": [

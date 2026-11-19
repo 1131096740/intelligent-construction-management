@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 427,
+    "activeBusinessActionCount": 429,
     "technicalActionCount": 10,
-    "activeBindingCount": 501,
+    "activeBindingCount": 503,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -382,6 +382,22 @@
       "causalVerified": true
     },
     {
+      "id": "company-transfer.confirm-original-debt-correction",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/events/:param/original-debt-corrections/:param/confirm"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "company-transfer.createCompanyTransfer",
       "status": "unified_candidate",
       "usage": "background",
@@ -441,6 +457,22 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /company-transfers/:param/events"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-transfer.request-original-debt-correction",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/events/:param/original-debt-corrections"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

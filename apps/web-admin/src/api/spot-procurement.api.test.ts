@@ -1423,6 +1423,33 @@ describe("spot procurement API client", () => {
     }
   });
 
+  it("sends an unchanged registered account receipt and source allocation when retrying with a new password", async () => {
+    const frozen = {
+      amountCents: "50000",
+      paidAt: "2026-07-17T08:00:00.000Z",
+      paymentMethod: "bank_transfer" as const,
+      paymentChannelId: "approved-channel",
+      voucherFileIds: ["voucher-1", "voucher-2"],
+      idempotencyKey: "original-attempt",
+      registeredFunding: {
+        scopeKey: "company:actual-payer",
+        expectedRegistrationId: "registered-balance-version",
+        sourceAllocations: [
+          {sourceBatchId: "source-1", amountCents: "30000"},
+          {sourceBatchId: "source-2", amountCents: "20000"}
+        ]
+      }
+    };
+    const url = "/spot-procurement-payments/payment%2F1/executions";
+
+    await recordSpotProcurementPaymentExecution("payment/1", {...frozen, confirmationPassword: "first-password"});
+    await recordSpotProcurementPaymentExecution("payment/1", {...frozen, confirmationPassword: "reentered-password"});
+
+    expect(mockApiFetch.mock.calls).toEqual(["first-password", "reentered-password"].map(confirmationPassword => [
+      url, expect.objectContaining({method: "POST", body: JSON.stringify({...frozen, confirmationPassword})})
+    ]));
+  });
+
   it("surfaces server validation messages and masks technical failures", async () => {
     mockApiFetch
       .mockResolvedValueOnce(

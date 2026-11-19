@@ -6,6 +6,7 @@ import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.modu
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
 import { CompanyTransferService } from "./company-transfer.service";
 import { CompanyTransferReadService } from "./company-transfer-read.service";
+import { CompanyTransferCorrectionService } from "./company-transfer-correction.service";
 import { CompanyTransferController } from "./company-transfer.controller";
-@Module({ imports: [DatabaseModule, AuthModule, AuditModule, OperatingLedgerModule, ProjectFundingModule], controllers: [CompanyTransferController], providers: [CompanyTransferService, CompanyTransferReadService] })
+@Module({ imports: [DatabaseModule, AuthModule, AuditModule, OperatingLedgerModule, ProjectFundingModule], controllers: [CompanyTransferController], providers: [CompanyTransferService, CompanyTransferReadService, CompanyTransferCorrectionService] })
 export class CompanyTransferModule { }

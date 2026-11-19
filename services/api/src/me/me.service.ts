@@ -600,7 +600,7 @@ export class MeService {
       ...(await spotPurchaseWorkItems(this.prisma as Prisma.TransactionClient, userId, this.projectIdsFor(scopes, ["spot_procurement.create"]))),
       ...(await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, "procurement")),
       ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
-      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),
+      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient, userId, new ProjectVisibilityService(this.prisma))),
       ...(await this.contractTakeoverWorkItems(
         contractDraftProjectIds,
         ["needs_supplement"],
@@ -790,7 +790,7 @@ export class MeService {
     const projectNameById = await this.projectNames(projectIds);
     const pending = [
       ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
-      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),
+      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient, userId, new ProjectVisibilityService(this.prisma))),
       ...(await this.paymentExecutionWorkItems(
         userId,
         projectNameById,

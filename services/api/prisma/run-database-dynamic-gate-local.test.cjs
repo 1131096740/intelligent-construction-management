@@ -184,7 +184,7 @@ test("CI classification cannot move an old group out or make the manual operator
 });
 
 test("task398 scenarios dispatch only their exact authorized modes", () => {
-  const cases = [["task398_shared_standard", []], ["task398_browser", ["--browser-real"]], ["task398_browser_completion", ["--browser-completion-real"]], ["task407_public_cash_handover", ["--cash-handover-real"]], ["task409_principal_return", ["--principal-return-real"]]];
+  const cases = [["task398_shared_standard", []], ["task398_browser", ["--browser-real"]], ["task398_browser_completion", ["--browser-completion-real"]], ["task407_public_cash_handover", ["--cash-handover-real"]], ["task409_principal_return", ["--principal-return-real"]], ["task410_company_proxy_repayment", ["--company-proxy-repayment-real"]]];
   const manifest = loadManifest();
   for (const [id, flags] of cases) {
     const group = manifest.coveredGroups.find(item => item.id === id);
@@ -198,8 +198,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 27, files: 83, tests: 546 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 547);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 28, files: 85, tests: 553 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 554);
 });
 
 test("automatic-only lists the complete CI-eligible denominator and defers the manual operator", () => {
@@ -261,7 +261,7 @@ module.exports.executeAutomaticFixture = async argv => {
   createChildEnvironment = () => ({});
   runPreflight = async () => {};
   resolveGroupCommand = group => ({ command: "fixture-only", args: [group.id] });
-  runCommand = async (_command, args, options) => { dispatched.push(args[0]); if (args[0].startsWith("task398_") || ["task407_public_cash_handover", "task409_principal_return"].includes(args[0])) task398Shas[args[0]] = options.env.TASK398_EXPECTED_SHA; };
+  runCommand = async (_command, args, options) => { dispatched.push(args[0]); if (args[0].startsWith("task398_") || ["task407_public_cash_handover", "task409_principal_return", "task410_company_proxy_repayment"].includes(args[0])) task398Shas[args[0]] = options.env.TASK398_EXPECTED_SHA; };
   return { receipt: await main(argv), dispatched, task398Shas };
 };
 `;
@@ -280,11 +280,11 @@ module.exports.executeAutomaticFixture = async argv => {
   assert.deepEqual(receipt.groups.map(group => group.id), groupIds);
   assert.equal(receipt.status, "passed");
   assert.equal(receipt.candidateSha, candidateSha);
-  assert.deepEqual(task398Shas, { task398_shared_standard: candidateSha, task398_browser: candidateSha, task398_browser_completion: candidateSha, task407_public_cash_handover: candidateSha, task409_principal_return: candidateSha });
+  assert.deepEqual(task398Shas, { task398_shared_standard: candidateSha, task398_browser: candidateSha, task398_browser_completion: candidateSha, task407_public_cash_handover: candidateSha, task409_principal_return: candidateSha, task410_company_proxy_repayment: candidateSha });
   assert.equal(receipt.executionScope, "automatic-only");
   assert.deepEqual(receipt.executionInventory.ciEligible, manifest.executionInventory.ciEligible);
-  assert.equal(receipt.coveredFiles, 83);
-  assert.equal(receipt.coveredTests, 546);
+  assert.equal(receipt.coveredFiles, 85);
+  assert.equal(receipt.coveredTests, 553);
   assert.deepEqual(receipt.deferredManualOnly, {
     groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
   });
@@ -556,19 +556,19 @@ test("manifest preserves source inventory and one separately invoked task01 oper
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 84,
-    fullyPendingSuites: 72,
+    pendingFiles: 86,
+    fullyPendingSuites: 74,
     partiallyPendingSuites: 12,
-    pendingTests: 547,
-    coveredFiles: 84,
-    coveredTests: 547,
+    pendingTests: 554,
+    coveredFiles: 86,
+    coveredTests: 554,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 546);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 553);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -673,7 +673,7 @@ test("contract-template readiness waits for the same TCP database endpoint used 
   }
 });
 
-test("canonical manifest executes all 181 entry tests including the template workbench", () => {
+test("canonical manifest executes all 182 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -681,7 +681,7 @@ test("canonical manifest executes all 181 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 181,
+    pendingTests: 182,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -705,7 +705,7 @@ test("canonical manifest executes all 181 entry tests including the template wor
       },
       {
         path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-        pendingTests: 12,
+        pendingTests: 13,
         suiteStatus: "fully_pending"
       },
       {
@@ -999,7 +999,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=547/u
+    /inventory\.coveredTests=26，派生值=554/u
   );
 });
 
@@ -1463,7 +1463,7 @@ test("POL113-POL115 preparation is issued only after the selected gate preflight
 });
 
 test("POL113-POL115 exact gate emits a distinct shard receipt only after that shard returns", async () => {
-  for (const [shard, files, tests] of [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 150]]) {
+  for (const [shard, files, tests] of [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 151]]) {
     const result = await artifactLifecycleFixture(false, "pol113_pol115_business_entries", false, shard);
     assert.equal(result.failure, undefined);
     assert.equal(result.receipt.candidateSha, "a".repeat(40));
@@ -1566,7 +1566,7 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
   }
 });
 
-test("POL113-POL115 shard coverage partitions exactly 181 original cases without changing the aggregate", () => {
+test("POL113-POL115 shard coverage partitions exactly 182 enabled cases without changing the aggregate", () => {
   const { POL113_POL115_GROUP, SHARDS, projectPol113Pol115Shard } = require("./pol113-pol115-shards.cjs");
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(group => group.id === POL113_POL115_GROUP);
@@ -1577,11 +1577,11 @@ test("POL113-POL115 shard coverage partitions exactly 181 original cases without
   };
   const aggregate = listing("--group", group.id);
   assert.equal(aggregate.shard, undefined);
-  assert.equal(aggregate.coveredTests, 181);
+  assert.equal(aggregate.coveredTests, 182);
   const shardNames = Object.keys(SHARDS);
   const shards = shardNames.map(shard => listing("--group", group.id, "--pol113-pol115-shard", shard));
   assert.deepEqual(shards.map(receipt => [receipt.shard, receipt.coveredFiles, receipt.coveredTests]),
-    [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 150]]);
+    [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 151]]);
   const allFiles = shards.flatMap(shard => shard.coveredGroups[0].testFiles);
   assert.equal(new Set(allFiles).size, 10);
   assert.deepEqual(allFiles.sort(), [...aggregate.coveredGroups[0].testFiles].sort());

@@ -35,6 +35,9 @@ export async function repaymentOwnershipDate(
       const root = await tx.fundMovementRelationshipEntry.findUniqueOrThrow({ where: { id: transfer.originalFundMovementRelationshipId } });
       const leg = await tx.fundMovementLeg.findFirst({ where: { movementId: root.movementId, projectId: locator.projectId, ...(marker === "relationship" ? { id: legId } : {}), operatingFactId: { not: null } }, orderBy: { id: "asc" } });
       occurredAt = leg?.operatingFactId ? (await tx.operatingFact.findUniqueOrThrow({ where: { id: leg.operatingFactId } })).occurredAt : undefined;
+    } else if (transfer.originalOperationalPaymentId) {
+      if (debt.sourceProjectId !== locator.projectId) throw new BadRequestException("原代付项目不一致");
+      occurredAt = debt.occurredAt;
     } else if (transfer.originalInterEntityRelationshipId) {
       const root = await tx.interEntityRelationshipEntry.findUniqueOrThrow({ where: { id: transfer.originalInterEntityRelationshipId } });
       if (root.projectId !== locator.projectId) throw new BadRequestException("原代付项目不一致");

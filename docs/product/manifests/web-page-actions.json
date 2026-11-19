@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 441,
+    "registeredActionCount": 443,
     "pageActionCount": 86,
-    "backgroundActionCount": 355,
-    "reachableVueFileCount": 219,
+    "backgroundActionCount": 357,
+    "reachableVueFileCount": 220,
     "routeRootCount": 75,
-    "totalVueFileCount": 232,
-    "parsedVueFileCount": 232,
-    "reachableProductionModuleCount": 383,
-    "templateEventDirectiveCount": 1481,
+    "totalVueFileCount": 233,
+    "parsedVueFileCount": 233,
+    "reachableProductionModuleCount": 384,
+    "templateEventDirectiveCount": 1490,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 427,
-    "candidateProductionMutationConsumerCount": 427,
-    "acceptedProductionMutationConsumerCount": 427,
-    "productionMutationConsumerPairCount": 427,
+    "coveredProductionMutationConsumerCount": 429,
+    "candidateProductionMutationConsumerCount": 429,
+    "acceptedProductionMutationConsumerCount": 429,
+    "productionMutationConsumerPairCount": 429,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 402,
-    "reachableProductionModuleCount": 383,
-    "totalVueFileCount": 232,
-    "parsedVueFileCount": 232
+    "totalProductionModuleCount": 403,
+    "reachableProductionModuleCount": 384,
+    "totalVueFileCount": 233,
+    "parsedVueFileCount": 233
   },
   "actions": [
     {
@@ -1646,6 +1646,70 @@
       ]
     },
     {
+      "id": "company-transfer.confirm-original-debt-correction",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmWithCapability",
+        "kind": "background_call",
+        "sourceLine": 82,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canConfirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "wrapper": "confirmCompanyTransferOriginalDebtCorrection",
+          "method": "POST",
+          "path": "/company-transfers/:param/events/:param/original-debt-corrections/:param/confirm",
+          "normalizedKey": "POST /company-transfers/:param/events/:param/original-debt-corrections/:param/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-transfers/:id/events/:eventId/original-debt-corrections/:correctionId/confirm",
+            "normalizedKey": "POST /company-transfers/:param/events/:param/original-debt-corrections/:param/confirm",
+            "controller": "CompanyTransferController",
+            "handler": "confirmOriginalDebtCorrection",
+            "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmWithCapability",
+              "confirmCompanyTransferOriginalDebtCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "company-transfer.createCompanyTransfer",
       "usage": "background",
       "routePaths": [
@@ -1660,7 +1724,7 @@
         "event": "call",
         "handler": "createCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 28,
+        "sourceLine": 183,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1724,7 +1788,7 @@
         "event": "call",
         "handler": "decideCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 34,
+        "sourceLine": 189,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1788,7 +1852,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 52,
+        "sourceLine": 207,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1908,7 +1972,7 @@
         "event": "call",
         "handler": "executeCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 40,
+        "sourceLine": 195,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1958,6 +2022,70 @@
       ]
     },
     {
+      "id": "company-transfer.request-original-debt-correction",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "requestWithCapability",
+        "kind": "background_call",
+        "sourceLine": 75,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRequest",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "wrapper": "requestCompanyTransferOriginalDebtCorrection",
+          "method": "POST",
+          "path": "/company-transfers/:param/events/:param/original-debt-corrections",
+          "normalizedKey": "POST /company-transfers/:param/events/:param/original-debt-corrections",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-transfers/:id/events/:eventId/original-debt-corrections",
+            "normalizedKey": "POST /company-transfers/:param/events/:param/original-debt-corrections",
+            "controller": "CompanyTransferController",
+            "handler": "requestOriginalDebtCorrection",
+            "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferOriginalDebtCorrections.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "requestWithCapability",
+              "requestCompanyTransferOriginalDebtCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "company-transfer.uploadPrivateFile",
       "usage": "background",
       "routePaths": [
@@ -1972,7 +2100,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 46,
+        "sourceLine": 201,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10542,7 +10670,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 142,
+        "sourceLine": 197,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10607,7 +10735,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 266,
+        "sourceLine": 321,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10672,7 +10800,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 131,
+        "sourceLine": 186,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10737,7 +10865,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 258,
+        "sourceLine": 313,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10802,7 +10930,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 153,
+        "sourceLine": 208,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10932,7 +11060,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 298,
+        "sourceLine": 353,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11033,7 +11161,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 190,
+        "sourceLine": 245,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11098,7 +11226,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 282,
+        "sourceLine": 337,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11163,7 +11291,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 198,
+        "sourceLine": 253,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11228,7 +11356,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 209,
+        "sourceLine": 264,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11293,7 +11421,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 290,
+        "sourceLine": 345,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11358,7 +11486,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 228,
+        "sourceLine": 283,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11423,7 +11551,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 217,
+        "sourceLine": 272,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11488,7 +11616,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 243,
+        "sourceLine": 298,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11553,7 +11681,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 168,
+        "sourceLine": 223,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11622,7 +11750,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 274,
+        "sourceLine": 329,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11687,7 +11815,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 179,
+        "sourceLine": 234,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11752,7 +11880,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 120,
+        "sourceLine": 175,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11817,7 +11945,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 112,
+        "sourceLine": 167,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13249,7 +13377,7 @@
         "event": "confirm",
         "handler": "submit",
         "kind": "event",
-        "sourceLine": 385,
+        "sourceLine": 388,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -27444,7 +27572,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentApprove",
         "kind": "event",
-        "sourceLine": 2303,
+        "sourceLine": 2311,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -27510,7 +27638,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentReturn",
         "kind": "event",
-        "sourceLine": 2332,
+        "sourceLine": 2340,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -27879,7 +28007,7 @@
         "event": "approve",
         "handler": "confirmA5PaymentApprove",
         "kind": "event",
-        "sourceLine": 2273,
+        "sourceLine": 2281,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -27945,7 +28073,7 @@
         "event": "return-to-applicant",
         "handler": "confirmA5PaymentReturn",
         "kind": "event",
-        "sourceLine": 2274,
+        "sourceLine": 2282,
         "sourceColumn": 8
       },
       "semantic": "business_write",

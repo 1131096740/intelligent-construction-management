@@ -690,6 +690,7 @@ const SOURCE_TYPE_LABELS: Readonly<Record<string, string>> = {
   contract_version: "下游合同",
   contract_proxy_execution: "受控代付及往来归还",
   company_transfer_event: "公司互转资金",
+  company_transfer_debt_correction: "公司代付款归还原债更正",
   contract_economic_review: "履约范围复核调整",
   settlement: "下游结算",
   payment_execution: "合同付款执行",

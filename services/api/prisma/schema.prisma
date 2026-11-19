@@ -8,6 +8,9 @@ datasource db {
 }
 
 model User {
+  companyTransferCorrectionRequests CompanyTransferOriginalDebtCorrection[] @relation("CompanyTransferCorrectionApplicant")
+  companyTransferCorrectionReviews CompanyTransferOriginalDebtCorrection[] @relation("CompanyTransferCorrectionReviewer")
+  registeredOperationalPaymentActs RegisteredOperationalPayment[]
   registeredFundAdvanceReceipts RegisteredFundAdvanceReceipt[] @relation("FundAdvanceReceiptActor")
   registeredCashAdvanceReceipts RegisteredFundAdvanceReceipt[] @relation("FundAdvanceReceiptCustodian")
   registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
@@ -171,6 +174,7 @@ model HandwrittenSignatureHandoff {
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
 model RegisteredFundAccount {
+  registeredOperationalPayments RegisteredOperationalPayment[]
   registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   id String @id @default(uuid())
   writeRevision Int @default(0)
@@ -236,6 +240,8 @@ model PublicCashHandoverReceipt {
 }
 
 model FundAccountBalanceRegistration {
+  operationalPayment RegisteredOperationalPayment? @relation("OperationalPaymentRegistration")
+  previousOperationalPayments RegisteredOperationalPayment[] @relation("OperationalPaymentPreviousRegistration")
   principalReturnPayment RegisteredPrincipalReturnPayment?
 
   id String @id @default(uuid())
@@ -274,6 +280,7 @@ model FundAccountBalanceRegistration {
 }
 
 model FundAccountSourceBatch {
+  operationalPaymentAllocations RegisteredOperationalPaymentAllocation[]
   id String @id @default(uuid())
   registrationId String
   lineNo Int
@@ -376,6 +383,9 @@ model RegisteredFundTransferAction {
 }
 
 model CompanyEntity {
+  spotPaymentsAsOriginalDebtor SpotProcurementPayment[] @relation("SpotFirstApprovedDebtor")
+  registeredOperationalDebts RegisteredOperationalPayment[] @relation("OperationalPaymentDebtor")
+  registeredOperationalPayerFacts RegisteredOperationalPayment[] @relation("OperationalPaymentActualPayer")
   registeredCompanyPrincipalReceipts RegisteredFundCompanyOwnedReceipt[]
   registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   registeredFundAccount RegisteredFundAccount?
@@ -490,6 +500,7 @@ model UserPosition {
 }
 
 model Project {
+  registeredOperationalPayments RegisteredOperationalPayment[]
   registeredFundAdvanceReceipts RegisteredFundAdvanceReceipt[]
   registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
   id                                     String                            @id @default(uuid())
@@ -4273,6 +4284,11 @@ model SpotProcurementAttachment {
 }
 
 model SpotProcurementPayment {
+  originalDebtorCompanyId String?
+  originalDebtorCompanyName String?
+  originalDebtorApprovalId String?
+  originalDebtorCompany CompanyEntity? @relation("SpotFirstApprovedDebtor", fields: [originalDebtorCompanyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  originalDebtorApproval ApprovalInstance? @relation("SpotFirstApprovedDebtorApproval", fields: [originalDebtorApprovalId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   id                                   String                   @id @default(uuid())
   projectId                            String
   procurementId                        String
@@ -4335,6 +4351,7 @@ model SpotProcurementPayment {
 }
 
 model SpotProcurementPaymentExecution {
+  registeredOperationalPayment RegisteredOperationalPayment?
   id               String    @id @default(uuid())
   paymentId        String
   amountCents      BigInt
@@ -5216,6 +5233,7 @@ model ExpenseClaimAttachment {
 
 // 公司补付是独立、只追加的实际付款事实；不复用旧项目支出实付记录。
 model ExpenseClaimPaymentExecution {
+  registeredOperationalPayment RegisteredOperationalPayment?
   id               String   @id @default(uuid())
   expenseClaimId   String
   amountCents      BigInt
@@ -5946,6 +5964,7 @@ model ApprovalFlowNode {
 }
 
 model ApprovalInstance {
+  spotPaymentsOriginalDebtor SpotProcurementPayment[] @relation("SpotFirstApprovedDebtorApproval")
   id               String   @id @default(uuid())
   flowType         String
   businessType     String
@@ -7354,6 +7373,9 @@ model CompanyTransfer {
  evidenceSha256 String
  frozenParties Json
  status String @default("submitted")
+ originalOperationalPaymentId String?
+ originalOperationalPayment RegisteredOperationalPayment? @relation(fields: [originalOperationalPaymentId], references: [id], onDelete: Restrict)
+ requiresParallelRepaymentApproval Boolean @default(false)
  approvalInstanceId String? @unique
  applicantUserId String
  approvedByUserId String?
@@ -7365,6 +7387,7 @@ model CompanyTransfer {
  @@index([destinationProjectId,status])
 }
 model CompanyTransferEvent {
+  originalDebtCorrections CompanyTransferOriginalDebtCorrection[]
  id String @id @default(uuid())
  transferId String
  kind String
@@ -7555,4 +7578,69 @@ model RegisteredPrincipalReturnCommand {
   payment            RegisteredPrincipalReturnPayment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
 
   @@unique([applicationId, applicationRevision])
+}
+
+
+model RegisteredOperationalPayment {
+  id                       String @id
+  expenseExecutionId       String? @unique
+  spotExecutionId          String? @unique
+  accountId                String
+  registrationId           String @unique
+  previousRegistrationId   String
+  projectId                String
+  originalDebtorCompanyId  String
+  actualPayerCompanyId     String
+  actualPayerName          String
+  actorUserId              String
+  amountCents              BigInt
+  paidAt                   DateTime
+  payloadFingerprint       String
+  createdAt                DateTime @default(now())
+  expenseExecution         ExpenseClaimPaymentExecution? @relation(fields: [expenseExecutionId], references: [id], onDelete: Restrict)
+  spotExecution            SpotProcurementPaymentExecution? @relation(fields: [spotExecutionId], references: [id], onDelete: Restrict)
+  account                  RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  registration             FundAccountBalanceRegistration @relation("OperationalPaymentRegistration", fields: [registrationId], references: [id], onDelete: Restrict)
+  previousRegistration     FundAccountBalanceRegistration @relation("OperationalPaymentPreviousRegistration", fields: [previousRegistrationId], references: [id], onDelete: Restrict)
+  project                  Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  originalDebtorCompany    CompanyEntity @relation("OperationalPaymentDebtor", fields: [originalDebtorCompanyId], references: [id], onDelete: Restrict)
+  actualPayerCompany       CompanyEntity @relation("OperationalPaymentActualPayer", fields: [actualPayerCompanyId], references: [id], onDelete: Restrict)
+  actor                    User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  allocations              RegisteredOperationalPaymentAllocation[]
+  repayments               CompanyTransfer[]
+
+  @@index([projectId, originalDebtorCompanyId, actualPayerCompanyId], map: "RegisteredOperationalPayment_projectId_debtor_actualPayer_idx")
+}
+
+model RegisteredOperationalPaymentAllocation {
+  paymentId     String
+  sourceBatchId String
+  amountCents   BigInt
+  payment       RegisteredOperationalPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  sourceBatch   FundAccountSourceBatch @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
+
+  @@id([paymentId, sourceBatchId])
+}
+
+model CompanyTransferOriginalDebtCorrection {
+  id                    String @id
+  outgoingEventId        String
+  originalSource         String
+  targetOriginalSource   String
+  reason                 String
+  requestedByUserId      String
+  requestedAt            DateTime @default(now())
+  requestKey             String @unique
+  status                 String @default("pending")
+  confirmedByUserId      String?
+  confirmedAt            DateTime?
+  confirmKey             String? @unique
+  selfReviewReason       String?
+  outgoingEvent          CompanyTransferEvent @relation(fields: [outgoingEventId], references: [id], onDelete: Restrict)
+  requestedBy            User @relation("CompanyTransferCorrectionApplicant", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  confirmedBy            User? @relation("CompanyTransferCorrectionReviewer", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([outgoingEventId])
+  @@index([originalSource])
+  @@index([targetOriginalSource])
 }

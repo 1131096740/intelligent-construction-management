@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 268,
-    "terminalMigration": "20261118200000_registered_principal_returns",
-    "terminalMigrationChecksum": "c404812600e804d7af6b27eca74fe0522e409a569fd3568babb126a804405a99",
+    "expectedDirectoryCount": 272,
+    "terminalMigration": "20261118214000_spot_first_approved_debtor",
+    "terminalMigrationChecksum": "ced8e4224f5977f37852229053b9a781e775b08f80f87d7b4bd174c8b057ef98",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 84,
-    "fullyPendingSuites": 72,
+    "pendingFiles": 86,
+    "fullyPendingSuites": 74,
     "partiallyPendingSuites": 12,
-    "pendingTests": 547,
-    "coveredFiles": 84,
-    "coveredTests": 547,
+    "pendingTests": 554,
+    "coveredFiles": 86,
+    "coveredTests": 554,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -338,7 +338,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 181,
+      "pendingTests": 182,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -362,7 +362,7 @@
         },
         {
           "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-          "pendingTests": 12,
+          "pendingTests": 13,
           "suiteStatus": "fully_pending"
         },
         {
@@ -797,14 +797,37 @@
       "state": "executable_local_runner",
       "issue": 409,
       "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task410_company_proxy_repayment",
+      "pendingTests": 6,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/company-proxy-repayment.http.pg.spec.ts",
+          "pendingTests": 5,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 410,
+      "executionStatus": "NOT_EXECUTED"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 27,
-      "files": 83,
-      "tests": 546
+      "groups": 28,
+      "files": 85,
+      "tests": 553
     },
     "manualOnly": {
       "groups": 1,

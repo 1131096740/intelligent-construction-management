@@ -1305,6 +1305,7 @@ export class SpotProcurementReadService {
       }),
       this.prisma.spotProcurementPaymentExecution.findMany({
         where: { paymentId: payment.id },
+        include: { registeredOperationalPayment: { select: { id: true, actualPayerCompanyId: true, actualPayerName: true, originalDebtorCompanyId: true } } },
         orderBy: [{ paidAt: "asc" }, { id: "asc" }]
       }),
       this.prisma.supplierBalanceReservation.findMany({
@@ -1795,7 +1796,15 @@ export class SpotProcurementReadService {
         reservationStatus: reservations[0]?.status ?? null
             }
           }),
+      originalDebtorCompanyId: payment.originalDebtorCompanyId ?? null,
+      originalDebtorCompanyName: payment.originalDebtorCompanyName ?? null,
       executions: executions.map((execution) => ({
+        ...(execution.registeredOperationalPayment ? {
+          actualPayerCompanyId: execution.registeredOperationalPayment.actualPayerCompanyId,
+          actualPayerCompanyName: execution.registeredOperationalPayment.actualPayerName,
+          relationshipEntryId: execution.registeredOperationalPayment.actualPayerCompanyId !== execution.registeredOperationalPayment.originalDebtorCompanyId
+            ? execution.registeredOperationalPayment.id : null,
+        } : {}),
         id: execution.id,
         amountCents: moneyText(execution.amountCents),
         paidAt: execution.paidAt.toISOString(),

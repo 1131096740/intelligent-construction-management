@@ -317,7 +317,8 @@ export class SpotProcurementPaymentExecutionOperatingSourceAdapter
         paidAt: true,
         executedByUserId: true,
         voucherFileId: true,
-        createdAt: true
+        createdAt: true,
+        registeredOperationalPayment: { select: { id: true, actualPayerCompanyId: true, originalDebtorCompanyId: true } }
       },
       orderBy: [{ paidAt: "asc" }, { id: "asc" }]
     });
@@ -347,7 +348,8 @@ export class SpotProcurementPaymentExecutionOperatingSourceAdapter
         executedByUserId: true,
         voucherFileId: true,
         voidedAt: true,
-        createdAt: true
+        createdAt: true,
+        registeredOperationalPayment: { select: { id: true, actualPayerCompanyId: true, originalDebtorCompanyId: true } }
       }
     });
     if (!execution || execution.voidedAt) return null;
@@ -453,7 +455,9 @@ export class SpotProcurementPaymentExecutionOperatingSourceAdapter
           paymentId: requiredJsonText(source, "paymentId", "零采实际付款"),
           voucherFileIds: source.voucherFileIds
         }),
-        subjects: { actualPayer, payee },
+        subjects: { actualPayer, payee, ...(typeof source.originalDebtorCompanyId === "string" ? {
+          debtor: { kind: "participating_company" as const, id: source.originalDebtorCompanyId },
+        } : {}) },
         impacts: [
           {
             idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
@@ -486,6 +490,7 @@ export class SpotProcurementPaymentExecutionOperatingSourceAdapter
       executedByUserId: string;
       voucherFileId: string | null;
       createdAt: Date;
+      registeredOperationalPayment?: { id: string; actualPayerCompanyId: string; originalDebtorCompanyId: string } | null;
     },
     payment: {
       id: string;
@@ -554,7 +559,11 @@ export class SpotProcurementPaymentExecutionOperatingSourceAdapter
         procurementId: procurement.id,
         procurementCode: procurement.code,
         paymentType: payment.paymentType,
-        payerCompanyEntityId: payment.payerCompanyEntityId,
+        payerCompanyEntityId: execution.registeredOperationalPayment?.actualPayerCompanyId ?? payment.payerCompanyEntityId,
+        ...(execution.registeredOperationalPayment ? {
+          registeredOperationalPaymentId: execution.registeredOperationalPayment.id,
+          originalDebtorCompanyId: execution.registeredOperationalPayment.originalDebtorCompanyId,
+        } : {}),
         payeeId,
         payeeUserId: payment.payeeUserId,
         payeeNameSnapshot: payment.payeeNameSnapshot,

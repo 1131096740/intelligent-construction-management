@@ -5,6 +5,10 @@ import {
 } from "./expense-claim-operating-source.adapter";
 import type { OperatingSourceSnapshot } from "../operating-ledger/operating-source-adapter";
 
+jest.mock("../fund-account/registered-operational-payment", () => ({
+  observeRegisteredOperationalPaymentSource: jest.fn().mockResolvedValue(null)
+}));
+
 describe("POL-06 expense operating source adapters", () => {
   it("creates cost and employee payable only when reimbursement approval is confirmed", () => {
     const mapped = new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput(
@@ -88,6 +92,34 @@ describe("POL-06 expense operating source adapters", () => {
     expect(mapped.input.impacts).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ impactKind: "confirmed_cost" })])
     );
+  });
+
+  it("uses each frozen registered payer without creating a second cost impact", () => {
+    const adapter = new ExpenseClaimPaymentExecutionOperatingSourceAdapter();
+    for (const [executionId, companyId] of [["payment-1", "company-2"], ["payment-2", "company-3"]]) {
+      const mapped = adapter.toOperatingFactInput(snapshot("expense_claim_payment_execution", executionId, {
+        expenseClaimId: "claim-1",
+        claimType: "reimbursement",
+        paymentSubjectCompanyEntityId: "later-claim-payer",
+        registeredFunding: { actualPayerCompanyId: companyId },
+        applicantUserId: "employee-1",
+        applicantNameSnapshot: "张三",
+        applicantPhoneSnapshot: "13800000001",
+        amountCents: "3000",
+        paidAt: "2026-08-15T03:00:00.000Z",
+        confirmedAt: "2026-08-15T03:00:00.000Z",
+        recordedByUserId: "finance-1",
+        voucherFileId: "voucher-1"
+      }));
+      expect(mapped.input.impacts).toMatchObject([
+        { impactKind: "payable_decrease", idempotencyKey: `expense_claim_payment_execution:${executionId}:payable` },
+        {
+          impactKind: "company_project_funds_decrease",
+          idempotencyKey: `expense_claim_payment_execution:${executionId}:funds`,
+          subject: { kind: "participating_company", id: companyId }
+        }
+      ]);
+    }
   });
 
   it("maps only a linked employee repayment reversal as a reversal against its original fact", () => {

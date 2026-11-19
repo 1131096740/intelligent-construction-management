@@ -1,3 +1,4 @@
+import { readRegisteredCompanyOwnedSources } from "./registered-company-owned-fund-source";
 import { readRegisteredFundAdvanceOrigins } from "./registered-fund-advance-origin";
 import { availableRegisteredBalance, registeredPaymentSummaries } from "../payment/registered-payment-funding";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
@@ -21,7 +22,7 @@ const READ_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director", "co
 export class FundAccountService {
   private readonly roles: CompanyRoleResolverService;
   constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly auditLog: AuditService) { this.roles = new CompanyRoleResolverService(prisma); }
-  async list(actorUserId: string) {
+  async list(actorUserId: string, includeSourceOwnership = false) {
     return this.prisma.$transaction(async tx => {
       const roles = await this.authorize(tx, actorUserId, READ_ROLES);
       const [companies, persisted] = await Promise.all([
@@ -37,6 +38,9 @@ export class FundAccountService {
         account.registrations.some(row => row.kind === "advance_receipt"));
       const origins = sourcesWithAdvanceHistory ? await readRegisteredFundAdvanceOrigins(tx,
         [...availableByAccount.values()].flatMap(available => available.sources.map(row => row.id))) : null;
+      const ownership = includeSourceOwnership && sourcesWithAdvanceHistory
+        ? await readRegisteredCompanyOwnedSources(tx, [...availableByAccount.values()]
+          .flatMap(available => available.sources.filter(row => row.projectStatus !== "project").map(row => row.id))) : null;
       const payments = await registeredPaymentSummaries(tx,{accountIds:persisted.map(row=>row.id)});
       const roundIds = persisted.flatMap(account => account.registrations.map(row => row.approvalInstanceId).filter((id): id is string => Boolean(id)));
       const approvalLogs = roundIds.length ? await tx.approvalActionLog.findMany({ where: { approvalInstanceId: { in: roundIds } }, orderBy: { createdAt: "asc" } }) : [];
@@ -67,7 +71,12 @@ export class FundAccountService {
           unallocatedPaymentAmountYuan: new Prisma.Decimal((available?.pendingAllocations.reduce((sum,row)=>sum+row.amountCents,0n)??0n).toString()).div(100).toFixed(4),
           sources: current && available ? this.availableSources(current,available).map(source => {
             const origin = origins?.get(source.id);
-            return origin ? { ...source, originalContributorName: origin.contributorNameSnapshot } : source;
+            return {
+              ...source,
+              ...(origin ? { originalContributorName: origin.contributorNameSnapshot } : {}),
+              ...(includeSourceOwnership && scope.companyEntityId
+                ? { isCompanyOwnedUnadvanced: ownership?.get(source.id) === scope.companyEntityId } : {}),
+            };
           }) : [], projectBalances: this.projectBalances(available?.sources ?? [], available?.pendingAllocations ?? []), history: history.map(row => ({ ...this.registrationView(row), coveredPayments: payments.filter(payment=>(row.coveredExecutionIds??[]).includes(payment.executionId)), pendingConfiguration: row.status === "pending_review" && !reviewerAvailable, approvalEvidence: approvalLogs.filter(log => log.approvalInstanceId === row.approvalInstanceId).map(log => ({ actorUserId: log.actorUserId, representedUserId: log.representedUserId, action: log.action, signed: Boolean(log.signatureVersionIdSnapshot && log.signatureSha256Snapshot && log.signatureFileIdSnapshot), signatureVersionId: log.signatureVersionIdSnapshot, signedAt: log.createdAt.toISOString(), metadata: log.metadata })), createdByName: actorName(row.createdByUserId), confirmedByName: row.confirmedByUserId ? actorName(row.confirmedByUserId) : null, closedByName: row.closedByUserId ? actorName(row.closedByUserId) : null, canWithdraw: validPending.has(row.id) && row.createdByUserId === actorUserId && roles.some(role => role === "finance_staff" || role === "finance_director"), canConfirm: reviewable.has(row.id), requiresSelfPassword: row.createdByUserId === actorUserId })),
           canRegisterBalance: !pendingReview && (roles.includes("finance_director") || (current ? roles.includes("finance_staff") : normalizedOpeningPermission(scope.kind, roles))),
           canRegisterOpening: !history.length && roles.some(role => scope.kind === "public_cash" ? role === "comprehensive_director" || role === "finance_director" : role === "finance_staff" || role === "finance_director"),

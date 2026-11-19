@@ -637,6 +637,9 @@ export interface SpotProcurementDetailReadModel {
 
 export interface SpotProcurementPaymentExecutionReadModel {
   id: string;
+  actualPayerCompanyId?: string;
+  actualPayerCompanyName?: string | null;
+  relationshipEntryId?: string | null;
   amountCents: string;
   paidAt: string;
   paymentMethod: SpotProcurementPaymentMethod;
@@ -741,6 +744,8 @@ export interface SpotProcurementPaymentDetailReadModel {
     executedAmountCents: string;
     reservationStatus: string | null;
   };
+  originalDebtorCompanyId?: string | null;
+  originalDebtorCompanyName?: string | null;
   executions: SpotProcurementPaymentExecutionReadModel[];
   evidenceFiles: EvidenceFileReadModel[];
   invoiceCoverage?: SpotProcurementInvoiceCoverageReadModel;
@@ -1206,7 +1211,14 @@ export interface UpdateSpotProcurementPaymentDraftPayload {
   merchantPaymentProofFileId?: string | null;
 }
 
+export interface SpotRegisteredFundingInput {
+  scopeKey: string;
+  expectedRegistrationId: string;
+  sourceAllocations: Array<{sourceBatchId: string; amountCents: string}>;
+}
+
 export interface RecordSpotProcurementPaymentExecutionPayload {
+  registeredFunding?: SpotRegisteredFundingInput;
   amountCents: string;
   paidAt: string;
   paymentMethod: SpotProcurementPaymentMethod;

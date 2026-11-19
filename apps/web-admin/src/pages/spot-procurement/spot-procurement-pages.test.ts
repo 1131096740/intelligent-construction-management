@@ -659,7 +659,7 @@ describe("spot procurement web pages", () => {
     );
 
     expect(detail).toContain(
-      "executionAttempt.value ?? (await prepareExecutionAttempt(payload))"
+      "executionAttempt.value ?? (await prepareExecutionAttempt(payload, operationPaymentId))"
     );
     expect(detail).toContain("executionOpenedPaymentId");
     expect(detail).toContain("operationPaymentId");

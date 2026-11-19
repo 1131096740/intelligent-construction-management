@@ -15,6 +15,10 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import {
+  appendRegisteredOperationalPayment,
+  readRegisteredOperationalPayment
+} from "../fund-account/registered-operational-payment";
 import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
 import {
   missingOperatingSourceReplayService,
@@ -314,7 +318,7 @@ export class ExpenseClaimService {
     const claim = await this.prisma.expenseClaim.findFirst({
       where: { id: claimId },
       select: {
-        generalProcurementId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityNameSnapshot: true,
+        generalProcurementId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityId: true, companyEntityNameSnapshot: true,
         paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
@@ -389,7 +393,13 @@ export class ExpenseClaimService {
       (claim.claimType === "reimbursement" || claim.claimType === "incidental_expense")
         ? this.prisma.expenseClaimPaymentExecution.findMany({
           where: { expenseClaimId: claim.id },
-          select: { id: true, amountCents: true, paidAt: true, paymentMethod: true, voucherFileId: true, recordedByUserId: true, note: true, createdAt: true },
+          select: {
+            id: true, amountCents: true, paidAt: true, paymentMethod: true, voucherFileId: true,
+            recordedByUserId: true, note: true, createdAt: true,
+            registeredOperationalPayment: {
+              select: { id: true, actualPayerCompanyId: true, actualPayerName: true, originalDebtorCompanyId: true }
+            }
+          },
           orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }]
         })
         : Promise.resolve([]),
@@ -437,8 +447,12 @@ export class ExpenseClaimService {
         }) : Promise.resolve([])
       ])
       : [[], []];
+    const { companyEntityId, ...displayClaim } = claim;
     return {
-      ...claim,
+      ...displayClaim,
+      ...((claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") ? {
+        originalDebtorCompanyId: claim.companyEntityNameSnapshot?.trim() ? companyEntityId : null
+      } : {}),
       canDeleteDraft: claim.status === "draft" && !claim.submittedAt && claim.handledByUserId === actorUserId,
       generalProcurement: claim.generalProcurementId ? await this.prisma.generalProcurement.findUnique({ where: { id: claim.generalProcurementId }, select: { id: true, code: true } }) : null,
       project,
@@ -465,7 +479,20 @@ export class ExpenseClaimService {
         canConfirmLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director"),
         canReverseLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director")
       },
-      paymentExecutions: paymentExecutions.map((execution) => ({ ...execution, amountCents: moneyCentsToApi(execution.amountCents) })),
+      paymentExecutions: paymentExecutions.map(({ registeredOperationalPayment, ...execution }) => ({
+        ...execution,
+        amountCents: moneyCentsToApi(execution.amountCents),
+        ...(registeredOperationalPayment ? {
+          registeredFunding: {
+            actualPayerCompanyId: registeredOperationalPayment.actualPayerCompanyId,
+            actualPayerName: registeredOperationalPayment.actualPayerName,
+            originalDebtorCompanyId: registeredOperationalPayment.originalDebtorCompanyId,
+            relationshipEntryId: registeredOperationalPayment.actualPayerCompanyId === registeredOperationalPayment.originalDebtorCompanyId
+              ? null
+              : registeredOperationalPayment.id
+          }
+        } : {})
+      })),
       loanAccount: loanAccount && {
         ...loanAccount,
         fundedAmountCents: moneyCentsToApi(loanAccount.fundedAmountCents),
@@ -1191,13 +1218,13 @@ export class ExpenseClaimService {
 
     const result = await translateProjectOperatingSerializationConflict(
       this.prisma.$transaction(async (tx) => {
-      const fundingScope = this.projectFunding
+      const fundingScope = this.projectFunding && !input.registeredFunding
         ? await tx.expenseClaim.findUnique({
             where: { id: claimId },
             select: { id: true, claimType: true, projectId: true }
           })
         : null;
-      if (this.projectFunding && !fundingScope?.projectId) {
+      if (this.projectFunding && !input.registeredFunding && !fundingScope?.projectId) {
         throw new BadRequestException(
           fundingScope?.claimType === "incidental_expense"
             ? "零星费用未关联项目，不能登记实际支付"
@@ -1210,7 +1237,7 @@ export class ExpenseClaimService {
           fundingScope.projectId
         );
       }
-      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; companyPayableAmountCents: bigint; fundedAmountCents: bigint }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "companyPayableAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; companyEntityId: string; companyEntityNameSnapshot: string; companyPayableAmountCents: bigint; fundedAmountCents: bigint }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "companyEntityId", "companyEntityNameSnapshot", "companyPayableAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (
@@ -1232,11 +1259,17 @@ export class ExpenseClaimService {
         claim.claimType === "incidental_expense"
           ? "incidental_expense"
           : "expense_claim";
-      const existingExecution = this.projectFunding
-        ? await tx.expenseClaimPaymentExecution.findUnique({
-            where: { voucherFileId }
-          })
-        : null;
+      const existingExecution = await tx.expenseClaimPaymentExecution.findUnique({ where: { voucherFileId } });
+      const registeredSource = (executionId: string) => ({
+        sourceType: "expense_claim_payment_execution" as const,
+        executionId,
+        actorUserId,
+        projectId: claim.projectId,
+        originalDebtorCompanyId: claim.companyEntityId,
+        amountCents,
+        paidAt,
+        funding: input.registeredFunding
+      });
       if (existingExecution) {
         if (
           existingExecution.expenseClaimId !== claim.id ||
@@ -1250,17 +1283,20 @@ export class ExpenseClaimService {
             "该补付凭证已绑定不同的公司补付事实"
           );
         }
-        await this.projectFunding!.allocateExecution(tx, {
-          projectId: claim.projectId!,
-          executionType: "expense_claim_payment_execution",
-          executionId: existingExecution.id,
-          businessType,
-          businessId: claim.id,
-          amountCents,
-          occurredAt: paidAt,
-          actorUserId
-        });
-        if (claim.projectId) {
+        const registered = await readRegisteredOperationalPayment(tx, registeredSource(existingExecution.id));
+        if (!registered && this.projectFunding) {
+          await this.projectFunding.allocateExecution(tx, {
+            projectId: claim.projectId!,
+            executionType: "expense_claim_payment_execution",
+            executionId: existingExecution.id,
+            businessType,
+            businessId: claim.id,
+            amountCents,
+            occurredAt: paidAt,
+            actorUserId
+          });
+        }
+        if (!registered && claim.projectId) {
           await this.appendOperatingExpenseClaimPaymentExecution(
             tx,
             claim.projectId,
@@ -1274,7 +1310,8 @@ export class ExpenseClaimService {
           paidAmountCents: moneyCentsToApi(claim.fundedAmountCents),
           status: claim.status,
           claimType: claim.claimType,
-          replayed: true
+          replayed: true,
+          ...(registered ? { registeredFunding: registered } : {})
         };
       }
       if (!["approved_pending_payment", "partially_paid"].includes(claim.status)) throw new BadRequestException("当前费用申请不可登记实际支付");
@@ -1288,11 +1325,18 @@ export class ExpenseClaimService {
           voucherFileId
         );
       }
+      const funding = input.registeredFunding;
+      if (funding && (!claim.projectId || !claim.companyEntityId || !claim.companyEntityNameSnapshot?.trim())) {
+        throw new ConflictException("原报销债务公司或项目归属待核对，不能登记资金实付");
+      }
       const execution = await tx.expenseClaimPaymentExecution.create({
         data: { expenseClaimId: claim.id, amountCents, paidAt, paymentMethod, voucherFileId, recordedByUserId: actorUserId, note }
       });
+      const registered = funding
+        ? await appendRegisteredOperationalPayment(tx, { ...registeredSource(execution.id), funding })
+        : null;
       const fundingAllocation =
-        this.projectFunding && claim.projectId
+        !registered && this.projectFunding && claim.projectId
           ? await this.projectFunding.allocateExecution(tx, {
               projectId: claim.projectId,
               executionType:
@@ -1316,8 +1360,8 @@ export class ExpenseClaimService {
           actorUserId
         );
       }
-      await this.audit.record(tx, { actorUserId, action: claim.claimType === "incidental_expense" ? "incidental_expense.payment.record" : "expense_claim.reimbursement.payment.record", businessType, businessId: claim.id, metadata: { paymentExecutionId: execution.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
-        return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, claimType: claim.claimType, replayed: false };
+      await this.audit.record(tx, { actorUserId, action: claim.claimType === "incidental_expense" ? "incidental_expense.payment.record" : "expense_claim.reimbursement.payment.record", businessType, businessId: claim.id, metadata: { paymentExecutionId: execution.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, ...(registered ? { registeredFunding: registered } : {}), fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
+        return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, claimType: claim.claimType, replayed: false, ...(registered ? { registeredFunding: registered } : {}) };
       }),
       "费用付款遇到参与公司并发变化，请刷新后重试"
     );
@@ -1330,7 +1374,8 @@ export class ExpenseClaimService {
       id: result.id,
       expenseClaimId: result.expenseClaimId,
       paidAmountCents: result.paidAmountCents,
-      status: result.status
+      status: result.status,
+      ...(result.registeredFunding ? { registeredFunding: result.registeredFunding } : {})
     };
   }
 
@@ -1441,7 +1486,10 @@ export class ExpenseClaimService {
       this.prisma.pdfDocument.findFirst({ where: { businessType: "expense_claim", businessId: claimId, templateKey: "expense_claim_final_payment_a5" } }),
       this.prisma.expenseClaimPaymentExecution.findMany({
         where: { expenseClaimId: claimId },
-        select: { paidAt: true, paymentMethod: true, amountCents: true, note: true },
+        select: {
+          paidAt: true, paymentMethod: true, amountCents: true, note: true,
+          registeredOperationalPayment: { select: { actualPayerName: true } }
+        },
         orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }]
       })
     ]);
@@ -1465,7 +1513,10 @@ export class ExpenseClaimService {
       loanOffsetAmountCents: claim.loanOffsetAmountCents,
       companyPayableAmountCents: claim.companyPayableAmountCents,
       paidAmountCents: paidAmount,
-      payments
+      payments: payments.map(({ registeredOperationalPayment, ...payment }) => ({
+        ...payment,
+        ...(registeredOperationalPayment ? { actualPayerName: registeredOperationalPayment.actualPayerName } : {})
+      }))
     });
     const file = await this.files.uploadPrivateFile({ originalName: `${claim.code}-expense-claim-final-payment-a5.pdf`, mimeType: "application/pdf", sizeBytes: buffer.length, uploadedByUserId: actorUserId, buffer });
     return this.prisma.$transaction(async (tx) => {

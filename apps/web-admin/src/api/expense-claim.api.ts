@@ -42,6 +42,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   payeeAccountNameSnapshot: string | null;
   payeeBankNameSnapshot: string | null;
   payeeBankAccountSnapshot: string | null;
+  originalDebtorCompanyId?: string | null;
   paymentSubjectCompanyEntityId: string | null;
   paymentSubjectNameSnapshot: string | null;
   paymentSubjectAdjustmentReason: string | null;
@@ -90,6 +91,12 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
     recordedByUserId: string;
     note: string | null;
     createdAt: string;
+    registeredFunding?: {
+      actualPayerCompanyId: string;
+      actualPayerName: string;
+      originalDebtorCompanyId: string;
+      relationshipEntryId: string | null;
+    };
   }>;
   loanAccount: { id: string; fundedAmountCents: string; offsetAmountCents: string; repaidAmountCents: string; reservedOffsetAmountCents: string; balanceAmountCents: string } | null;
   loanDisbursements: Array<{ id: string; amountCents: string; occurredAt: string; paymentMethod: string | null; voucherFileId: string | null; note: string | null }>;
@@ -402,14 +409,31 @@ export async function adjustExpenseClaimPaymentSubject(claimId: string, body: { 
   }>;
 }
 
-export async function recordExpenseClaimPayment(claimId: string, body: { amountCents: string; paidAt: string; paymentMethod: string; voucherFileId: string; confirmationPassword: string; note?: string }) {
+export interface ExpenseRegisteredFundingInput {
+  scopeKey: string;
+  expectedRegistrationId: string;
+  sourceAllocations: Array<{ sourceBatchId: string; amountCents: string }>;
+}
+export interface ExpenseClaimPaymentInput {
+  amountCents: string;
+  paidAt: string;
+  paymentMethod: string;
+  voucherFileId: string;
+  confirmationPassword: string;
+  note?: string;
+  registeredFunding?: ExpenseRegisteredFundingInput;
+}
+
+export async function recordExpenseClaimPayment(claimId: string, body: ExpenseClaimPaymentInput) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/payments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
   await ensureOk(response);
-  return response.json() as Promise<{ id: string; expenseClaimId: string; paidAmountCents: string; status: string }>;
+  return response.json() as Promise<{ id: string; expenseClaimId: string; paidAmountCents: string; status: string;
+    registeredFunding?: { actualPayerCompanyId: string; relationshipEntryId: string | null };
+  }>;
 }
 
 export async function generateExpenseClaimFinalPaymentPdf(claimId: string) {

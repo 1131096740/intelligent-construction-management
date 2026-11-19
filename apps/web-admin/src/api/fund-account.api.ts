@@ -10,7 +10,7 @@ export interface FundAccountSource {
   previousSourceBatchId?: string | null;
 }
 export interface FundRegisteredPayment { executionId: string; paymentId: string; code: string; amountCents: string; amountYuan: string; paidAt: string; registeredByName: string; openingEvidence: string }
-export interface FundAvailableSource extends Omit<FundAccountSource, "amountYuan"> { amountYuan: string | null; reconciledAmountYuan?: string | null; pendingAllocation?: boolean; originalContributorName?: string | null }
+export interface FundAvailableSource extends Omit<FundAccountSource, "amountYuan"> { amountYuan: string | null; reconciledAmountYuan?: string | null; pendingAllocation?: boolean; originalContributorName?: string | null; isCompanyOwnedUnadvanced?: boolean }
 export interface FundBalanceRegistration {
   id: string;
   coveredExecutionIds?: string[];
@@ -85,7 +85,10 @@ async function result<T>(response: Response): Promise<T> {
   try { const result = await response.json() as { message?: unknown; errors?: unknown[] }; message = [typeof result.message === "string" ? result.message : "", ...(result.errors ?? []).filter((error): error is string => typeof error === "string")].filter(Boolean).join("；") || message; } catch { /* Keep the Chinese fallback. */ }
   throw new Error(formatApiErrorMessage(message, response.status, "资金账户办理失败"));
 }
-export async function fetchFundAccounts(responseIsCurrent?: () => boolean) { return result<FundAccountsReadModel>(await apiFetch("/fund-accounts", { responseIsCurrent })); }
+export async function fetchFundAccounts(responseIsCurrent?: () => boolean, options?: { includeSourceOwnership: boolean }) {
+  const path = options?.includeSourceOwnership ? "/fund-accounts?includeSourceOwnership=true" : "/fund-accounts";
+  return result<FundAccountsReadModel>(await apiFetch(path, { responseIsCurrent }));
+}
 export async function registerFundOpening(input: RegisterFundBalanceInput) { return result<FundBalanceRegistration>(await apiFetch("/fund-accounts/openings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) })); }
 export async function requestFundCorrection(input: RegisterFundBalanceInput) { return result<FundBalanceRegistration>(await apiFetch("/fund-accounts/corrections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) })); }
 export async function confirmFundCorrection(id: string, input: FundReviewCommandInput) { return result<FundBalanceRegistration>(await apiFetch(`/fund-accounts/registrations/${encodeURIComponent(id)}/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) })); }
