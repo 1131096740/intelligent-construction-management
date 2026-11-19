@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from "pinia";
 import { effectScope, nextTick, reactive } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SpotProcurementDetailPage from "./SpotProcurementDetailPage.vue";
@@ -636,6 +637,7 @@ function setupReviewPage() {
 }
 
 function setupPage() {
+  setActivePinia(createPinia());
   const scope = effectScope();
   const bindings = scope.run(() =>
     (

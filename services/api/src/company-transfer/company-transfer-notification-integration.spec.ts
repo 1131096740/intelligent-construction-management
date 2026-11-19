@@ -36,7 +36,7 @@ it("原公司互转控制器只透传登录人和指定尝试凭据",async()=>{
  const {CompanyTransferController}=await import("./company-transfer.controller");
  const {PATH_METADATA}=await import("@nestjs/common/constants");
  const notices={notificationStatus:jest.fn().mockResolvedValue([{status:"failed"}]),retry:jest.fn().mockResolvedValue({status:"queued"})};
- const controller=new CompanyTransferController({} as never,{} as never,{} as never,{} as never,notices as never);
+ const controller=new CompanyTransferController({} as never,{} as never,{} as never,{} as never,{} as never,notices as never);
  expect(Reflect.getMetadata(PATH_METADATA,CompanyTransferController.prototype.dutySmsStatus)).toBe(":id/duty-sms");
  expect(Reflect.getMetadata(PATH_METADATA,CompanyTransferController.prototype.retryDutySms)).toBe(":id/duty-sms/retry");
  const actor={id:"actor"} as never,attemptId="a".repeat(64);

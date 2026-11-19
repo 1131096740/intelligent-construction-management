@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from "pinia";
 import { effectScope, reactive } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PaymentDetailPage from "./PaymentDetailPage.vue";
@@ -386,6 +387,7 @@ function setupExecutionPage() {
 }
 
 function setupPage() {
+  setActivePinia(createPinia());
   const scope = effectScope();
   const bindings = scope.run(() =>
     (

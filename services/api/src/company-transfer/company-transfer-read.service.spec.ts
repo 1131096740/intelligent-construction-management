@@ -27,6 +27,7 @@ function fixture() {
       !where.transferId || (typeof where.transferId === "string" ? where.transferId === event.transferId : where.transferId.in.includes(event.transferId)))},
     approvalActionLog: {findMany: async () => []}, approvalInstance: {findMany: async () => []}, user: {findMany: async () => []},
     project: {findMany: async ({where}: {where:{id:{in:string[]}}}) => where.id.in.map(id=>({id,name:id}))},
+    registeredOperationalPayment: {findMany: async () => []},
     interEntityRelationshipEntry: {findMany: async () => []}, projectParticipatingCompany: {findMany: async () => []}, companyEntity: {findMany: async () => []}
   };
   const visibility = {

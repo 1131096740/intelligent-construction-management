@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from "pinia";
 import { effectScope, nextTick, reactive } from "vue";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -423,6 +424,7 @@ describe("spot procurement withdrawal page ownership", () => {
 });
 
 function setupWithdrawalPage() {
+  setActivePinia(createPinia());
   const scope = effectScope();
   const bindings = scope.run(() =>
     (

@@ -1,5 +1,6 @@
 jest.mock("../contract-ledger/contract-relationship-summary",()=>({addContractRelationshipSummaries:jest.fn(async(_tx,items)=>items)}));
 jest.mock("../contract-ledger/contract-handling-workitems",()=>({contractHandlingWorkItems:jest.fn().mockResolvedValue([])}));
+import * as principalReturnProjection from "./principal-return-work-items";
 import { createHash } from "node:crypto";
 import { MeService, type WorkItem } from "./me.service";
 
@@ -1463,16 +1464,39 @@ describe("MeService", () => {
     };
     const service = new MeService(prisma as never, {} as never);
 
-    const result = await service.getWorkItems("user-finance");
-
-    expect(result.queues.pending).toContainEqual(
-      expect.objectContaining({
-        id: "payment-execution:payment-1",
-        type: "payment_execution",
-        businessCode: "FK-001",
-        amountText: "¥30,000.00"
-      })
+    const principalItems: WorkItem[] = [
+      {
+        id: "principal-return-review:round:0", type: "approval", title: "本金归还", projectName: "测试项目",
+        businessType: "registered_principal_return", businessCode: "垫资本金归还", businessId: "review", amountText: "¥2.1001",
+        currentNode: "财务审批", stayedText: "", nextAction: "处理当前审批", targetPath: "/垫资本金归还/review", tone: "warning",
+      },
+      {
+        id: "principal-return-pay:part", type: "payment_execution", title: "本金归还", projectName: "公司日常",
+        businessType: "registered_principal_return", businessCode: "垫资本金归还", businessId: "part", amountText: "待归还 ¥1.0001",
+        currentNode: "登记实际归还", stayedText: "", nextAction: "登记实付", targetPath: "/垫资本金归还/part", tone: "warning",
+      },
+    ];
+    const projection = jest.spyOn(principalReturnProjection, "principalReturnWorkItems").mockImplementation(
+      async (_prisma, actorId, mode) => actorId === "user-finance" && mode === "pending" ? principalItems : [],
     );
+    try {
+      const result = await service.getWorkItems("user-finance");
+      const onlyPrincipal = (item: WorkItem) => item.businessType === "registered_principal_return";
+      expect(result.queues.pending.filter(onlyPrincipal)).toEqual(principalItems);
+      expect(result.approvalCenter.pendingApproval.filter(onlyPrincipal)).toEqual([principalItems[0]]);
+      expect((await service.getFundsPendingWorkItems("user-finance")).filter(onlyPrincipal)).toEqual(principalItems);
+      expect((await service.getContractPendingWorkItems("user-finance")).filter(onlyPrincipal)).toEqual([]);
+      expect(result.queues.pending).toContainEqual(
+        expect.objectContaining({
+          id: "payment-execution:payment-1",
+          type: "payment_execution",
+          businessCode: "FK-001",
+          amountText: "¥30,000.00"
+        })
+      );
+    } finally {
+      projection.mockRestore();
+    }
   });
 
   it("shows approved spot-payment execution work items to project finance", async () => {
