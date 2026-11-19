@@ -4,11 +4,14 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { fetchFundReview, fetchFundAccount, fetchFundBalanceRegistration, fetchFundAccounts, registerFundOpening, requestFundCorrection, confirmFundCorrection, returnFundCorrection, withdrawFundCorrection, type FundAccount, type FundAccountSource, type FundRegisteredPayment, type FundAccountsReadModel, type FundBalanceRegistration } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
+import { useAuthStore } from "../../auth/auth.store";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import FundAccountAdvanceReceipt from "./FundAccountAdvanceReceipt.vue";
 import FundPrincipalReturns from "./FundPrincipalReturns.vue";
 import FundAccountTransfers from "./FundAccountTransfers.vue";
 import PublicCashHandoverPanel from "./PublicCashHandoverPanel.vue";
+const auth = useAuthStore();
 const route = useRoute();
 const isTargetReview = computed(() => typeof route.params.registrationId === "string");
 const processedTarget = ref(false);
@@ -552,6 +555,13 @@ onMounted(load);
       :cancel-btn="{ content: '取消', disabled: saving }"
       @close="closeReview"
     >
+      <DutySmsStatusPanel
+        v-if="auth.user?.id && review?.canConfirm && review.approvalInstanceId"
+        :key="`${auth.user.id}:${review.id}:${review.approvalInstanceId}`"
+        domain="fund-accounts/registrations"
+        :business-id="review.id"
+        :expected-approval-instance-id="review.approvalInstanceId"
+      />
       <p>核对余额：{{ amount(review?.balanceYuan ?? null) }}。确认后保留原登记，来源快照不作为新到账或收入。</p>
       <p>仅下列冻结实付已包含在本次核对金额内，待审新增实付仍扣减；未选择表示没有覆盖。</p>
       <ul><li v-for="payment in review?.coveredPayments ?? []" :key="payment.executionId">{{ coveragePaymentLabel(payment) }}</li></ul>

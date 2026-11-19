@@ -141,17 +141,14 @@ test("原债更正沿用出款流水，恢复原申请后由财务主管复核",
   await page.route(url => url.pathname.startsWith("/api/"), async route => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.pathname === "/api/company-transfers") {
-      return route.fulfill({ json: {
-        total: 1, projects: [], companies: [], balances: [], legacyOptions: [], originalLoans: [], originalProxies: [],
-        rows: [{ id: "transfer", code: "归还验收单", kind: "repayment", kindLabel: "归还", statusLabel: "执行完成",
+    if (url.pathname === "/api/company-transfers/transfer") {
+      return route.fulfill({ json: { id: "transfer", code: "归还验收单", kind: "repayment", kindLabel: "归还", statusLabel: "执行完成",
           sourceCompany: "验收甲公司", destinationCompany: "验收乙公司", originalReference: "原债甲",
           amountCents: "400", sentCents: "400", receivedCents: "400", returnedCents: "0", inTransitCents: "0",
           approvalFlow: "proxy_repayment_parallel", canReadOriginalDebtCorrections: canReadCorrections, approvalActions: [], events: [
             { id: "settled-out", kind: "outgoing", amountCents: "400", occurredAt: "2026-07-24T00:00:00Z" },
             { id: "settled-in", kind: "incoming", amountCents: "400", occurredAt: "2026-07-25T00:00:00Z" },
           ],
-        }],
       } });
     }
     if (url.pathname === path && request.method() === "GET") {
@@ -179,7 +176,7 @@ test("原债更正沿用出款流水，恢复原申请后由财务主管复核",
     }
     return route.fulfill({ json: {} });
   });
-  await page.goto("/公司互转台账?transferId=transfer");
+  await page.goto("/公司互转台账?transferId=transfer&correctionEventId=settled-out");
   const open = page.getByRole("button", { name: "查看归还原债与更正" });
   await expect(page.getByText("归还验收单 · 归还 · 执行完成")).toBeVisible();
   await expect(open).toHaveCount(0);
@@ -187,7 +184,6 @@ test("原债更正沿用出款流水，恢复原申请后由财务主管复核",
   canReadCorrections = true;
   await page.reload();
   await expect(open).toHaveCount(1);
-  await open.click();
   const drawer = page.locator(".t-drawer:visible");
   const field = (label: string) => drawer.locator(".t-form__item").filter({ has: page.getByText(label, { exact: true }) });
   await expect(drawer.getByText("登记时归还的原债 原债甲")).toBeVisible();

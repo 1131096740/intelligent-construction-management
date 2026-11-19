@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useAuthStore } from "../../auth/auth.store";
+import MultiDutySmsStatusPanel from "../../components/MultiDutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -14,6 +16,7 @@ import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
 import GeneralProcurementRequestGrid from "./components/GeneralProcurementRequestGrid.vue";
 import ProcurementDraftDrawer from "./components/ProcurementDraftDrawer.vue";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
+const auth = useAuthStore();
 const route = useRoute(); const router = useRouter(); const detail = ref<ProcurementDetail>(); const loading = ref(true); const loadError = ref(""); const error = ref(""); const busy = ref(false);
 const editing = ref(false); const submitVisible = ref(false); const reviewVisible = ref(false); const withdrawVisible = ref(false); const archiveVisible = ref(false); const paymentVisible = ref(false); const downloadVisible = ref(false);
 const review = ref({ comment: "", selfReviewReason: "", confirmationPassword: "" }); const withdrawReason = ref(""); const archiveNote = ref(""); const archiveFiles = ref<UploadFile[]>([]); const uploadKey = ref(""); const uploadedArchive = ref<{ file: File; id: string }>();
@@ -152,6 +155,12 @@ onMounted(load);
       @retry="load"
     >
       <template v-if="detail">
+        <MultiDutySmsStatusPanel
+          v-if="auth.user?.id && detail.id === route.params.procurementId && detail.requestProtocolVersion === 2 && (detail.canReview || detail.canProcure || (detail.status === 'returned' && detail.canEdit))"
+          :key="`${auth.user.id}:${detail.id}:${detail.revision}`"
+          domain="general-procurements"
+          :business-id="detail.id"
+        />
         <JgPageHeader
           :business-code="detail.code"
           title="综合采购申请"

@@ -1,3 +1,5 @@
+import { companyTransferReminderIntent, contractReminderIntent, expenseReminderIntent, paymentReminderIntent, settlementReminderIntent, spotApplicationReminderIntent, spotPaymentReminderIntent } from "./approval-reminder-business-intent";
+import { generalProcurementDutySmsIntent } from "../general-procurement/general-procurement-request-facts";
 import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyId, generalRequestDutyIdentity, generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import {SPOT_APPROVAL_DUTY_RESOURCE, spotApprovalDutyId} from "./spot-approval-duty-access";
@@ -11,10 +13,10 @@ import { frozenCandidateUserIds, isGovernedFrozenApprovalNode, resolveApprovalRe
 import { assertOrdinaryApplicantCannotReview } from "./approval-self-review";
 import { IndependentApprovalProgressService } from "./independent-approval-progress.service";
 import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
-import { ApprovalSmsService } from "./approval-sms.service";
+import { ApprovalSmsService, approvalDutyRichTemplateEnabled } from "./approval-sms.service";
 
 const ACTIVE = new Set(["in_progress", "approval_pending"]);
-const COOLDOWN_MS = 10 * 60 * 1000;
+const COOLDOWN_MS = 60_000;
 const LABELS: Record<string, string> = {
   contract_version: "合同审批", settlement: "结算审批", payment_request: "付款审批",
   expense_claim: "费用审批", project_expense_request: "项目支出审批",
@@ -86,10 +88,10 @@ export class ApprovalProgressService {
     return this.remind(instance.id, actorId, randomUUID(), progress.reminderToken);
   }
 
-  async remind(id: string, actorId: string, requestId: string, expectedToken: string) {
-    if (id.startsWith("independent:") && this.independent) return this.independent.remind(id, actorId, requestId, expectedToken);
+  async remind(id: string, actorId: string, requestId: string, expectedToken: string, selectedRecipientIds?: string[]) {
+    if (id.startsWith("independent:") && this.independent) return this.independent.remind(id, actorId, requestId, expectedToken, selectedRecipientIds);
     const evidenceId = this.independent ? await this.independentEvidenceId(id) : null;
-    if (evidenceId) return this.independent!.remind(evidenceId, actorId, requestId, expectedToken);
+    if (evidenceId) return this.independent!.remind(evidenceId, actorId, requestId, expectedToken, selectedRecipientIds);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
       throw new BadRequestException("催办请求无效，请刷新后重试");
     }
@@ -105,24 +107,43 @@ export class ApprovalProgressService {
       const progress = this.project(context);
       if (expectedToken !== progress.reminderToken) throw new ConflictException("审批进度或待审批人已变化，请刷新后重新确认催办对象");
       if (!progress.canRemind) throw new ConflictException(progress.reminderUnavailableReason ?? "当前不能催办");
+      const recipientIds = selectedRecipientIds ?? progress.remindableRecipients.map(user => user.id);
+      if (!recipientIds.length || recipientIds.some(userId => !progress.remindableRecipients.some(user => user.id === userId))) {
+        throw new ConflictException("待审批人已变化或刚刚已催办，请刷新后重新选择");
+      }
+      const dutyIndexes = progress.nodes.flatMap((node, index) => node.pending.some(user => recipientIds.includes(user.id)) ? [index] : []);
       await tx.approvalActionLog.create({ data: {
         id: requestId, approvalInstanceId: id, actorUserId: actorId, action: "remind",
-        metadata: { kind: "sms_request", currentNodeIndex: context.instance.currentNodeIndex, recipientIds: context.pending.map(u => u.id) }
+        metadata: { kind: "sms_request", currentNodeIndex: context.instance.currentNodeIndex, dutyIndexes, recipientIds }
       } });
-      return { nodeIndex: context.instance.currentNodeIndex, recipientIds: context.pending.map(u => u.id) };
+      return { nodeIndex: context.instance.currentNodeIndex, dutyIndexes, recipientIds };
     });
     if (!reservation) return this.detail(id, actorId);
     const results: Array<{ userId: string; status: string; message: string }> = [];
     for (const userId of reservation.recipientIds) {
-      // Recheck each recipient at dispatch time, holding the same instance lock used by reviewers.
-      const result = await this.prisma.$transaction(async tx => {
+      const message = await this.prisma.$transaction(async tx => {
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${id} FOR UPDATE`);
         const context = await this.context(tx, id, actorId);
         const user = context.pending.find(u => u.id === userId);
-        if (!user || context.instance.currentNodeIndex !== reservation.nodeIndex) return { userId, status: "cancelled", message: "节点或待审批人已变化，本次未发送" };
-        const outcome = await this.sms.send(user.phone ?? "", LABELS[context.instance.businessType], String(context.rawNodes[reservation.nodeIndex]?.name ?? "审批"), "code" in context.business ? context.business.code : `${context.project?.name ?? "项目"}额度申请`);
-        return { userId, status: outcome.status, message: outcome.message };
-      }, { timeout: 15000 });
+        if (!user || context.instance.currentNodeIndex !== reservation.nodeIndex) return null;
+        const duties = this.project(context).nodes.filter((node, index) =>
+          reservation.dutyIndexes.includes(index) && node.pending.some(person => person.id === userId));
+        if (!duties.length) return null;
+        const label = LABELS[context.instance.businessType];
+        const dutyName = duties.map(duty=>duty.name).join("、");
+        const legacy = [user.phone ?? "",label,dutyName,
+          "code" in context.business ? context.business.code : `${context.project?.name ?? "项目"}额度申请`] as const;
+        const rich = approvalDutyRichTemplateEnabled() ? await this.reminderIntent(tx,context,label,dutyName) : null;
+        return {legacy,rich};
+      });
+      let outcome: { status: string; message: string };
+      if (message) {
+        try { outcome = message.rich ? await this.sms.sendDutyIntent(message.legacy[0],message.rich) : await this.sms.send(...message.legacy); }
+        catch { outcome = { status: "unknown", message: "短信发送结果待确认，请勿重复发送" }; }
+      } else {
+        outcome = { status: "cancelled", message: "节点或待审批人已变化，本次未发送" };
+      }
+      const result = { userId, status: outcome.status, message: outcome.message };
       results.push(result);
       // Append per-recipient receipts; if the process stops, completed recipients remain traceable.
       await this.prisma.approvalActionLog.create({ data: {
@@ -159,6 +180,28 @@ export class ApprovalProgressService {
       businessId = review.receiptId;
     }
     return `independent:${kind}:${businessId}`;
+  }
+
+  private async reminderIntent(tx: Db, context: Awaited<ReturnType<ApprovalProgressService["context"]>>,
+      businessLabel:string,dutyName:string) {
+    const {instance,business,project,byId} = context;
+    const scope = {projectId:business.projectId,projectName:project?.name,applicantName:byId.get(instance.applicantUserId)?.name,businessLabel,dutyName};
+    switch (instance.businessType) {
+      case "contract_version": return contractReminderIntent(tx,instance.businessId,scope);
+      case "payment_request": return paymentReminderIntent(tx,instance.businessId,scope);
+      case "expense_claim": return expenseReminderIntent(tx,instance.businessId,scope);
+      case "company_transfer": return instance.flowType === "company_transfer.approve"
+        ? companyTransferReminderIntent(tx, instance.businessId, instance.id, instance.applicantUserId, scope) : null;
+      case "settlement": return instance.flowType === "settlement.approve" ? settlementReminderIntent(tx, instance.businessId, scope) : null;
+      case "spot_procurement_version": return instance.flowType === "spot_procurement.approve" ? spotApplicationReminderIntent(tx, instance.businessId, scope) : null;
+      case "spot_procurement_payment": return instance.flowType === "spot_procurement.payment.approve" ? spotPaymentReminderIntent(tx, instance.businessId, scope) : null;
+      case "general_procurement": {
+        const row=await tx.generalProcurement.findUnique({where:{id:instance.businessId}});
+        return row?.requestProtocolVersion===2 && row.approvalInstanceId===instance.id
+          ? generalProcurementDutySmsIntent(row,project?.name,businessLabel,dutyName) : null;
+      }
+      default: return null;
+    }
   }
 
   private async business(db: Db, instance: ApprovalInstance) {
@@ -328,10 +371,25 @@ export class ApprovalProgressService {
     const { instance, rawNodes, nodeIds, byId, pending, logs, business, project } = context;
     const person = (id: string) => ({ id, name: byId.get(id)?.name ?? "历史人员（姓名缺失）" });
     const requests = logs.filter(l => l.action === "remind" && object(l.metadata).kind === "sms_request");
-    const last = requests.at(-1);
-    const nextRemindAt = last ? new Date(last.createdAt.getTime() + COOLDOWN_MS).toISOString() : null;
     const active = ACTIVE.has(instance.status);
     const parallel = isParallelApprovalRound(instance.frozenNodes);
+    const pendingByDuty = nodeIds.map((ids, index) =>
+      (parallel || index === instance.currentNodeIndex) && (!parallel || !isApprovalDutyComplete(rawNodes[index] as unknown as Record<string, unknown>))
+        ? pending.filter(user => ids.includes(user.id)) : []);
+    const now = Date.now();
+    const cooldowns = new Map<number, number>();
+    for (const request of requests) {
+      const expiry = request.createdAt.getTime() + COOLDOWN_MS;
+      if (expiry <= now) continue;
+      const metadata = object(request.metadata);
+      const duties = Array.isArray(metadata.dutyIndexes) ? metadata.dutyIndexes : [metadata.currentNodeIndex];
+      for (const index of duties) {
+        if (typeof index === "number" && pendingByDuty[index]?.length) cooldowns.set(index, Math.max(expiry, cooldowns.get(index) ?? 0));
+      }
+    }
+    const remindableRecipients = pending.filter(user => !pendingByDuty.some((people, index) =>
+      cooldowns.has(index) && people.some(person => person.id === user.id))).map(user => person(user.id));
+    const nextRemindAt = cooldowns.size ? new Date(Math.min(...cooldowns.values())).toISOString() : null;
     return {
       id: instance.id, businessType: instance.businessType, businessId: instance.businessId,
       title: LABELS[instance.businessType], businessCode: "code" in business ? business.code : "额度申请",
@@ -347,11 +405,12 @@ export class ApprovalProgressService {
           const frozenName = object(evidence?.metadata).approverName;
           return {id, name: typeof frozenName === "string" && frozenName.trim() ? frozenName : person(id).name};
         }), legacyRoster: !parallel && !isGovernedFrozenApprovalNode(node),
-        pending: (parallel || index === instance.currentNodeIndex) ? pending.filter(user => nodeIds[index].includes(user.id) && (!parallel || !isApprovalDutyComplete(node as unknown as Record<string, unknown>))).map(u => person(u.id)) : []
+        pending: pendingByDuty[index].map(u => person(u.id))
       })),
       pendingRecipients: pending.map(u => person(u.id)),
-      canRemind: active && pending.length > 0 && this.sms.available() && (!nextRemindAt || Date.parse(nextRemindAt) <= Date.now()),
-      reminderUnavailableReason: !active ? "流程已结束" : context.businessUnavailable ? (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? "本项目尚未启用零采试点，暂不能催办" : "当前业务未处于可审批状态，暂不能催办") : !pending.length ? "当前没有有效待审批人" : !this.sms.available() ? "短信服务尚未启用" : nextRemindAt && Date.parse(nextRemindAt) > Date.now() ? "刚刚已催办，请稍后再试" : null,
+      remindableRecipients,
+      canRemind: active && remindableRecipients.length > 0 && this.sms.available(),
+      reminderUnavailableReason: !active ? "流程已结束" : context.businessUnavailable ? (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? "本项目尚未启用零采试点，暂不能催办" : "当前业务未处于可审批状态，暂不能催办") : !pending.length ? "当前没有有效待审批人" : !this.sms.available() ? "短信服务尚未启用" : !remindableRecipients.length ? "刚刚已催办，请稍后再试" : null,
       nextRemindAt,
       reminderToken: createHash("sha256").update(JSON.stringify([instance.id, instance.status, instance.currentNodeIndex, instance.updatedAt.toISOString(), pending.map(user => user.id).sort()])).digest("hex"),
       history: logs.filter(log => !["sms_result", "sms_recipient_result"].includes(String(object(log.metadata).kind)) &&

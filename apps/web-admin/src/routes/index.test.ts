@@ -748,6 +748,17 @@ describe("web admin routes", () => {
     expect(visibleAdminNavigationItems(["budget_staff"]).map((item) => item.path)).not.toContain("/历史合同接管");
   });
 
+  it.each([
+    ["合同管理/:contractId", "/合同管理/HT-01"],
+    ["结算管理/:settlementId", "/结算管理/JS-01"],
+    ["费用与报销/:claimId", "/费用与报销/claim-01"]
+  ])("通知直达 %s 先要求登录，并保留原目标", (route, link) => {
+    const record = childRoute(route);
+    expect(record?.component).toBeDefined();
+    expect(resolveRouteAccess({ meta: record?.meta ?? {}, fullPath: link }, { isAuthenticated: false, roleKeys: [] }))
+      .toEqual({ path: "/login", query: { redirect: link } });
+  });
+
   it("keeps read-only ledger users on the contract root while blocking new contract writes", () => {
     const readOnlyRoles = [
       "finance_staff",

@@ -1,3 +1,4 @@
+import type { ApprovalDutySmsIntent } from "../approval/approval-duty-sms-intent";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,6 +47,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
   let app: INestApplication;
   let database: ReturnType<typeof createRegisteredPaymentSyntheticDb>;
   let notificationSmsCalls: string[];
+  let richPaymentIntents: ApprovalDutySmsIntent[];
   let notificationSmsEnabled: boolean;
   let notificationSmsOutcome: "accepted" | "failed" | "unknown";
   let notificationTransactionDepth: number;
@@ -75,6 +77,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
   beforeEach(async () => {
     database = createRegisteredPaymentSyntheticDb();
     notificationSmsCalls = [];
+    richPaymentIntents = [];
     notificationSmsEnabled = false;
     notificationSmsOutcome = "accepted";
     notificationTransactionDepth = 0;
@@ -98,10 +101,20 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     } });
     await startApplication();
   });
+  function recordSyntheticSms(phone:string) {
+    notificationSmsCalls.push(phone);
+    notificationSmsTransactionStates.push(notificationTransactionDepth > 0);
+    return notificationSmsEnabled ? {status:notificationSmsOutcome,message:"Synthetic SMS outcome; no external gateway"}
+      : {status:"failed" as const,message:"合成短信适配器关闭"};
+  }
   async function startApplication(impactReader?: RegisteredPaymentImpactReader | Task16RegisteredPaymentImpactRuntime, realBusinessEntry = false) {
     const builder = realBusinessEntry ? Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}) : Test.createTestingModule({
       controllers: [PaymentController, FileController, RegisteredPaymentExecutionController, MeController, FundAccountController, AuditController],
-      providers: [{ provide: ApprovalSmsService, useValue: { available: () => notificationSmsEnabled, send: async (phone: string) => { notificationSmsCalls.push(phone); notificationSmsTransactionStates.push(notificationTransactionDepth > 0); if (notificationSmsEnabled) return {status:notificationSmsOutcome,message:"Synthetic SMS outcome; no external gateway"}; return {status:"failed",message:"\u5408\u6210\u77ed\u4fe1\u9002\u914d\u5668\u5173\u95ed"}; } } }, PaymentReadService, ProjectVisibilityService, { provide: OperatingSourceReplayService, inject: [PrismaService], useFactory: (prisma: PrismaService) => new OperatingSourceReplayService(prisma,new OperatingLedgerService(prisma),new OperatingSourceAdapterRegistry([new PaymentExecutionOperatingSourceAdapter()])) }, { provide: PaymentRequestService, inject: [PrismaService, AuthService, AuditService, FileService, OperatingSourceReplayService, RegisteredPaymentNotificationService], useFactory: (prisma: PrismaService, auth: AuthService, audit: AuditService, files: FileService, operating: OperatingSourceReplayService, notifications: RegisteredPaymentNotificationService) => new PaymentRequestService(new PaymentAmountService(), prisma, audit, files, auth, undefined, undefined, undefined, undefined, operating, undefined, notifications) }, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, MeService, AuditService, AuthService, JwtTokenService, FundAccountService, { provide: FileService, inject: [PrismaService, AuditService], useFactory: (prisma: PrismaService, audit: AuditService) => new FileService(prisma,audit,new PrivateFileStorage()) }, { provide: PrismaService, useValue: database.prisma },
+      providers: [{ provide: ApprovalSmsService, useValue: { available: () => notificationSmsEnabled, send: async (phone:string) => recordSyntheticSms(phone),
+        sendDutyIntent: async (phone:string,intent:ApprovalDutySmsIntent) => {
+          richPaymentIntents.push(intent);
+          return recordSyntheticSms(phone);
+        } } }, PaymentReadService, ProjectVisibilityService, { provide: OperatingSourceReplayService, inject: [PrismaService], useFactory: (prisma: PrismaService) => new OperatingSourceReplayService(prisma,new OperatingLedgerService(prisma),new OperatingSourceAdapterRegistry([new PaymentExecutionOperatingSourceAdapter()])) }, { provide: PaymentRequestService, inject: [PrismaService, AuthService, AuditService, FileService, OperatingSourceReplayService, RegisteredPaymentNotificationService], useFactory: (prisma: PrismaService, auth: AuthService, audit: AuditService, files: FileService, operating: OperatingSourceReplayService, notifications: RegisteredPaymentNotificationService) => new PaymentRequestService(new PaymentAmountService(), prisma, audit, files, auth, undefined, undefined, undefined, undefined, operating, undefined, notifications) }, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, MeService, AuditService, AuthService, JwtTokenService, FundAccountService, { provide: FileService, inject: [PrismaService, AuditService], useFactory: (prisma: PrismaService, audit: AuditService) => new FileService(prisma,audit,new PrivateFileStorage()) }, { provide: PrismaService, useValue: database.prisma },
         ...(impactReader ? [{ provide: REGISTERED_PAYMENT_IMPACT_READER, useValue: impactReader }] : [])]
     });
     if (realBusinessEntry) {
@@ -578,6 +591,48 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     await get("keeper","/payment-executions/notifications");
     expect(notificationSmsCalls).toHaveLength(2);
   });
+  it("sends rich approved payment only from authenticated frozen payment and settlement facts", async () => {
+    await prepareApprovedPayment();
+    database.setPhone("finance", "13000000001");
+    database.setPhone("keeper", "13000000002");
+    notificationSmsEnabled = true;
+    // Observe only callback lifetime of this synthetic transaction adapter.
+    // This cannot prove a PostgreSQL COMMIT or concurrent claim exclusion.
+    const transaction = database.prisma.$transaction;
+    database.prisma.$transaction = async <T>(run: (client: unknown) => Promise<T>) => transaction(async client => {
+      notificationTransactionDepth++;
+      try { return await run(client); } finally { notificationTransactionDepth--; }
+    });
+    const seed=database.prisma as unknown as Record<string,{update(input:{where:{id:string};data:Record<string,unknown>}):Promise<Record<string,unknown>>}>;
+    await seed.contract.update({where:{id:"contract-a"},data:{name:"合成材料采购合同",counterparty:"合成供应商"}});
+    await seed.settlement.update({where:{id:"settlement-a"},data:{projectId:"project-a",finalCumulativeAmountCents:12345n}});
+    const pending=await seed.paymentRequest.update({where:{id:"payment-a"},data:{
+      status:"approval_pending",approvedAmountCents:null,paymentMatter:"材料阶段付款",
+    }});
+    const round=await seed.approvalInstance.update({where:{id:"approved-round-a"},data:{status:"in_progress",currentNodeIndex:0,updatedAt:new Date("2026-11-05T00:01:00.000Z"),frozenNodes:[{name:"财务主管批准",roleKeys:["finance_director"],mode:"any",approvedRoleKeys:[],protocolVersion:1,executionMode:"parallel",roleScopesByRole:{finance_director:"global"},candidateUserIdsByRole:{finance_director:["director"]},candidateUserIds:["director"]}]}});
+    if (!(pending.updatedAt instanceof Date) || !(round.updatedAt instanceof Date)) throw new Error("Synthetic approval coordinates must contain real dates");
+    const prior = process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+    process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED = "true";
+    try {
+      const approval=await post("director","/payments/payment-a/approval",{decision:"approve",expectedPaymentUpdatedAt:pending.updatedAt.toISOString(),expectedApprovalInstanceId:"approved-round-a",expectedNodeIndex:0,expectedApprovalUpdatedAt:round.updatedAt.toISOString()});
+      expect(approval).toMatchObject({status:201,body:{status:"approved_pending_payment"}});
+    } finally {
+      if (prior === undefined) delete process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+      else process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED = prior;
+    }
+    expect(richPaymentIntents).toEqual(Array(2).fill(expect.objectContaining({
+      businessLabel:"付款申请",businessCode:"FK-16-01",dutyName:"实际付款登记",scopeName:"甲项目",
+      initiatorName:"合成人员",subject:"材料阶段付款",participants:["申请付款主体：甲公司","合同对方：合成供应商"],
+      amountText:"待实付 100.00 元",details:["本申请已付 0.00 元","关联累计结算 123.45 元"],targetPath:"/付款管理/payment-a",
+    })));
+    expect(notificationSmsCalls.sort()).toEqual(["13000000001", "13000000002"]);
+    expect(notificationSmsTransactionStates).toEqual([false, false]);
+    expect((await get("keeper","/payment-executions/payment-a/registration-options")).status).toBe(200);
+    expect((await get("employee","/payment-executions/payment-a/registration-options")).status).toBe(403);
+    expect(await get("keeper","/payment-executions/notifications")).toMatchObject({status:200,body:{items:[expect.objectContaining({status:"accepted"})]}});
+    await get("keeper","/payment-executions/notifications");
+    expect(notificationSmsCalls).toHaveLength(2);
+  });
   it("keeps the genuine approval pending when its same-transaction notification intent cannot be persisted", async () => {
     await prepareApprovedPayment();
     const seed=database.prisma as unknown as Record<string,{update(input:{where:{id:string};data:Record<string,unknown>}):Promise<Record<string,unknown>>}>;
@@ -612,6 +667,76 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     await app.get(RegisteredPaymentNotificationService).dispatchQueued("payment-a");
     expect(notificationSmsCalls).toHaveLength(2);
     expect((await get("keeper")).body.items).toContainEqual(expect.objectContaining({paymentId:"payment-a",remainingAmountCents:"10000"}));
+    const url="/payment-executions/payment-a/duty-sms";
+    const raw=database.prisma.$queryRaw;
+    jest.spyOn(database.prisma,"$queryRaw").mockImplementation(async(query,...values)=>{
+      if (!Array.isArray(query) && "sql" in query && query.sql.includes('FROM "PaymentRequest" WHERE "id"=') &&
+          query.sql.includes("FOR UPDATE")) return [{id:"payment-a"}] as never;
+      return raw(query,...values);
+    });
+    const original=await get("keeper",url);
+    expect(original).toMatchObject({status:200,body:{notice:{status:outcome,canRetry:outcome==="failed"}}});
+    const attemptId=original.body.notice.attemptId as string;
+    expect(attemptId).toMatch(/^[a-f0-9]{64}$/u);
+    expect((await get("employee",url)).status).toBe(403);
+    expect((await post("employee",url+"/retry",{attemptId})).status).toBe(403);
+    expect((await post("finance",url+"/retry",{attemptId})).status).toBe(409);
+    expect((await post("keeper",url+"/retry",{attemptId:"bad-input"})).status).toBe(400);
+    if(outcome==="unknown") {
+      expect((await post("keeper",url+"/retry",{attemptId})).status).toBe(409);
+      expect(notificationSmsCalls).toHaveLength(2);
+      return;
+    }
+
+    await seed.project.update({where:{id:"project-a"},data:{isActive:false}});
+    expect(await get("keeper",url)).toMatchObject({status:200,body:{notice:null}});
+    expect((await post("keeper",url+"/retry",{attemptId})).status).toBe(409);
+    await seed.project.update({where:{id:"project-a"},data:{isActive:true}});
+    database.setRole("keeper","employee");
+    expect((await get("keeper",url)).status).toBe(403);
+    expect((await post("keeper",url+"/retry",{attemptId})).status).toBe(403);
+    database.setRole("keeper","comprehensive_director");
+    await seed.approvalInstance.update({where:{id:"approved-round-a"},data:{status:"returned"}});
+    expect(await get("keeper",url)).toMatchObject({status:200,body:{notice:null}});
+    expect((await post("keeper",url+"/retry",{attemptId})).status).toBe(409);
+    await seed.approvalInstance.update({where:{id:"approved-round-a"},data:{status:"approved"}});
+    const logs=(database.prisma as unknown as {approvalActionLog:{
+      findMany(args:{where:{action:string}}):Promise<Array<{id:string;signatureSha256Snapshot:string}>>
+    }}).approvalActionLog;
+    const [signed]=await logs.findMany({where:{action:"approve"}});
+    await seed.approvalActionLog.update({where:{id:signed.id},data:{signatureSha256Snapshot:"b".repeat(64)}});
+    expect(await get("keeper",url)).toMatchObject({status:200,body:{notice:null}});
+    expect((await post("keeper",url+"/retry",{attemptId})).status).toBe(409);
+    await seed.approvalActionLog.update({where:{id:signed.id},data:{signatureSha256Snapshot:signed.signatureSha256Snapshot}});
+    expect(notificationSmsCalls).toHaveLength(2);
+    await seed.paymentRequest.update({where:{id:"payment-a"},data:{status:"partially_paid",paidAmountCents:2000n}});
+    expect(await get("keeper",url)).toEqual(original);
+    const tx=database.prisma.$transaction;
+    let serial:Promise<unknown>=Promise.resolve();
+    database.prisma.$transaction=(<T>(run:(client:unknown)=>Promise<T>)=>{
+      const next=serial.then(()=>tx(run));serial=next.catch(()=>undefined);return next;
+    }) as typeof tx;
+    const service=app.get(RegisteredPaymentNotificationService);
+    const dispatch=jest.spyOn(service,"dispatchQueued").mockResolvedValue({accepted:0,failed:0,unknown:0,deferred:true});
+    const concurrent=await Promise.all([post("keeper",url+"/retry",{attemptId}),post("keeper",url+"/retry",{attemptId})]);
+    expect(concurrent[0]).toEqual(concurrent[1]);
+    expect(concurrent[0]).toMatchObject({status:201,body:{status:"queued",canRetry:false}});
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const retryId=concurrent[0].body.attemptId as string;
+    expect((await post("keeper",url+"/retry",{attemptId:retryId})).status).toBe(409);
+    expect(await get("keeper","/payment-executions/notifications")).toMatchObject({status:200,body:{total:1,items:[{status:"queued"}]}});
+    dispatch.mockRestore();
+    notificationSmsOutcome="accepted";
+    await service.dispatchQueued("payment-a",retryId);
+    await service.dispatchQueued("payment-a",retryId);
+    expect(notificationSmsCalls).toHaveLength(3);
+    expect(notificationSmsCalls.at(-1)).toBe("13000000002");
+    expect(await post("keeper",url+"/retry",{attemptId})).toMatchObject({status:201,body:{attemptId:retryId,status:"accepted",canRetry:false}});
+    expect((await post("keeper",url+"/retry",{attemptId:retryId})).status).toBe(409);
+    await seed.paymentRequest.update({where:{id:"payment-a"},data:{status:"paid",paidAmountCents:10000n}});
+    expect(await get("keeper",url)).toMatchObject({status:200,body:{notice:null}});
+    expect((await post("keeper",url+"/retry",{attemptId})).status).toBe(409);
+    expect(notificationSmsCalls).toHaveLength(3);
   });
   it("resolves the current phone at dispatch and omits a revoked recipient without leaking phone numbers through notification reads", async () => {
     await prepareApprovedPayment();

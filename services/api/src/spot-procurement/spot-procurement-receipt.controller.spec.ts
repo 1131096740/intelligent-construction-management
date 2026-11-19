@@ -1,8 +1,23 @@
+import { RequestMethod } from "@nestjs/common";
+import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ResetSpotProcurementReceiptDto } from "./dto/reset-spot-procurement-receipt.dto";
 import { SpotProcurementReceiptController } from "./spot-procurement-receipt.controller";
 
 describe("SpotProcurementReceiptController", () => {
+  it("exposes receipt SMS status and retry only under the receipt review role",async()=>{
+    const status=SpotProcurementReceiptController.prototype.dutySmsStatus;
+    const retry=SpotProcurementReceiptController.prototype.retryDutySms;
+    expect(Reflect.getMetadata(PATH_METADATA,status)).toBe(":procurementId/receipt/duty-sms");
+    expect(Reflect.getMetadata(METHOD_METADATA,status)).toBe(RequestMethod.GET);
+    expect(Reflect.getMetadata(PATH_METADATA,retry)).toBe(":procurementId/receipt/duty-sms/retry");
+    expect(Reflect.getMetadata(METHOD_METADATA,retry)).toBe(RequestMethod.POST);
+    for(const method of [status,retry])expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY,method)).toBe("spot_procurement.receipt.review");
+    await expect(createApiValidationPipe().transform({attemptId:"unrecognized"},
+      {type:"body",metatype:RetryDutyNotificationDto})).rejects.toMatchObject({status:400});
+  });
   it("forwards the authenticated actor and exact revision CAS to receipt reset", async () => {
     const receipts = {
       resetDraft: jest.fn().mockResolvedValue({

@@ -675,6 +675,9 @@ export class SpotProcurementApplicationService {
             sourceVersionId: version.id,
             newVersionId: draft.id
           });
+          if (version.requestProtocolVersion === 2) {
+            await this.notifications?.queueCorrectionInTransaction(tx, approval, draft.id, reviewNodeIndex);
+          }
           return this.applicationReadModel({ ...procurement, status: "draft" }, draft);
         }
         const nextNodes = this.approveCurrentNode(approval.frozenNodes, reviewNodeIndex, approvedRoleKey);

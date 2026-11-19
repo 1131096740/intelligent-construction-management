@@ -1,3 +1,4 @@
+import { ContractDutyNotificationService } from "./contract-duty-notification.service";
 import { UPWARD_DIRECT_ARCHIVE_AUTHORITY } from "./contract-upward-direct-registration";
 import { nativeUpwardDirectArchiveAuthority } from "./contract-upward-direct-archive-native";
 import { DIRECT_ARCHIVE_EXECUTOR, DIRECT_ARCHIVE_ISSUER_CLIENT, DIRECT_ARCHIVE_RUNTIME_CLIENT,
@@ -50,6 +51,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
   controllers: [ContractController, ContractNumberRuleController],
   providers: [
     ContractService,
+    ContractDutyNotificationService,
     ContractV2SubmissionService,
     ContractV2ArchiveService,
     { provide: GENERATED_ARCHIVE_PREPARATION_READER, useExisting: PrivateFileStorage },

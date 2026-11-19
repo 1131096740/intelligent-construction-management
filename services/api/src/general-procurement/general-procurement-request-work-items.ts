@@ -1,3 +1,4 @@
+import { workItemNoticeAt } from "../me/work-item-notice-order";
 import { generalRequestEstimateText } from "./general-procurement-request-facts";
 import { Prisma } from "@prisma/client";
 import type { WorkItem } from "../me/me.service";
@@ -19,7 +20,8 @@ export async function generalRequestWorkItems(tx: Prisma.TransactionClient, visi
     const roundIds = [...new Set(mandates.flatMap(mandate => typeof mandate.resourceId === "string" && /^[0-9a-f-]{36}:[01]$/i.test(mandate.resourceId) ? [mandate.resourceId.split(":")[0]] : []))];
     const projectIds = mode === "pending" ? await visibility.businessProjectIdsInTransaction(tx, userId) : [];
     scopeWhere = [{ projectId: { in: projectIds } }, { approvalInstanceId: { in: roundIds } }];
-    if (!projectIds.length && !roundIds.length) return [];
+    if (mode === "pending") scopeWhere.push({ applicantUserId: userId, status: "returned" });
+    else if (!roundIds.length) return [];
   }
   const result: WorkItem[] = [];
   const updatedAtById = new Map<string, number>();
@@ -30,7 +32,9 @@ export async function generalRequestWorkItems(tx: Prisma.TransactionClient, visi
   while (hasMore) {
     const rows = await tx.generalProcurement.findMany({ where: { requestProtocolVersion: 2,
       ...(afterId ? { id: { gt: afterId } } : {}), ...(scopeWhere ? { OR: scopeWhere } : {}),
-      ...(mode === "started" ? { applicantUserId: userId, status: { in: ["approval_pending", "approved_pending_procurement"] } } : { status: mode === "procurement" ? "approved_pending_procurement" : "approval_pending" }) }, orderBy: { id: "asc" }, take: 100 });
+      ...(mode === "started" ? { applicantUserId: userId, status: { in: ["approval_pending", "approved_pending_procurement"] } } : {
+        status: mode === "procurement" ? "approved_pending_procurement" : { in: mode === "pending" ? ["approval_pending", "returned"] : ["approval_pending"] }
+      }) }, orderBy: { id: "asc" }, take: 100 });
     hasMore = rows.length === 100;
     if (!rows.length) break;
     afterId = rows[rows.length - 1].id;
@@ -39,7 +43,7 @@ export async function generalRequestWorkItems(tx: Prisma.TransactionClient, visi
       const round = row.approvalInstanceId ? await tx.approvalInstance.findUnique({ where: { id: row.approvalInstanceId } }) : null;
       if (!round || round.businessType !== "general_procurement" || round.businessId !== row.id || !isParallelApprovalRound(round.frozenNodes)) continue;
       const project = row.projectId ? await tx.project.findUnique({ where: { id: row.projectId }, select: { name: true } }) : null;
-      const common = { title: `综合采购申请：${row.reason || "详见需求清单"}`, projectId: row.projectId ?? undefined, projectName: project?.name ?? "公司日常", businessCode: row.code,
+      const common = { [workItemNoticeAt]: row.updatedAt, title: `综合采购申请：${row.reason || "详见需求清单"}`, projectId: row.projectId ?? undefined, projectName: project?.name ?? "公司日常", businessCode: row.code,
         businessType: "general_procurement", businessId: row.id, amountText: row.estimatedAmount == null ? "预计金额待明确" : `整单独立预计 ¥${generalRequestEstimateText(row.estimatedAmount)}`,
         stayedText: "", targetPath: `/综合采购申请/${encodeURIComponent(row.id)}` };
       if (mode === "procurement") {
@@ -52,6 +56,11 @@ export async function generalRequestWorkItems(tx: Prisma.TransactionClient, visi
         updatedAtById.set(row.id, row.updatedAt.getTime());
         result.push({ ...common, id: `general-request-started:${row.id}`, type: "approval", currentNode: row.status === "approved_pending_procurement" ? "综合部采购" : "并联审批", nextAction: "查看办理进度", tone: "primary" });
         continue;
+      }
+      if (mode === "pending" && row.status === "returned" && round.status === "returned" && row.applicantUserId === userId &&
+          (!row.projectId || (await visibility.visibleRequestedProjectIdsInTransaction(tx, userId, [row.projectId])).includes(row.projectId))) {
+        updatedAtById.set(row.id, row.updatedAt.getTime());
+        result.push({ ...common, id: `general-request-correction:${round.id}`, type: "procurement", currentNode: "修改退回的申请", nextAction: "修改后重新提交", tone: "warning" });
       }
       if (round.status !== "in_progress") continue;
       for (const index of activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex)) {

@@ -1,3 +1,4 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { FileInterceptor, normalizeUploadedOriginalName, type MemoryUploadedFile } from "../file/uploaded-file";
 import { AttachRegisteredPaymentVoucherDto } from "./dto/attach-registered-payment-voucher.dto";
@@ -16,6 +17,16 @@ export class RegisteredPaymentExecutionController {
   @Get("notifications")
   currentNotifications(@CurrentUser() actor: AuthenticatedUser) {
     return this.notifications.forCurrentActor(actor.id);
+  }
+
+  @Get(":paymentId/duty-sms")
+  async dutySmsStatus(@CurrentUser() actor: AuthenticatedUser,@Param("paymentId") paymentId:string) {
+    return {notice:await this.notifications.notificationStatus(paymentId,actor.id)};
+  }
+
+  @Post(":paymentId/duty-sms/retry")
+  retryDutySms(@CurrentUser() actor: AuthenticatedUser,@Param("paymentId") paymentId:string,@Body() input:RetryDutyNotificationDto) {
+    return this.notifications.retry(paymentId,actor.id,input.attemptId);
   }
 
   @Post(":executionId/voucher-file-uploads")

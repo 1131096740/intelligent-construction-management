@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 756,
-    "exactRouteCount": 756,
-    "normalizedRouteCount": 756,
+    "routeCount": 795,
+    "exactRouteCount": 795,
+    "normalizedRouteCount": 795,
     "classificationOverrideCount": 217,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
     "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 539,
-    "pageRouteCount": 557,
+    "derivedProductionPageCount": 578,
+    "pageRouteCount": 596,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 610,
+      "web_api_wrapper": 649,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 610,
+    "productionWrapperRouteCount": 649,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 3
   },
@@ -1691,6 +1691,47 @@
     },
     {
       "method": "GET",
+      "path": "/company-transfers/:id",
+      "normalizedKey": "GET /company-transfers/:param",
+      "controller": "CompanyTransferController",
+      "handler": "detail",
+      "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+            "wrapper": "fetchCompanyTransfer",
+            "method": "GET",
+            "normalizedPath": "/company-transfers/:param",
+            "normalizedKey": "GET /company-transfers/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/company-transfers/:id/banks",
       "normalizedKey": "GET /company-transfers/:param/banks",
       "controller": "CompanyTransferController",
@@ -1720,6 +1761,47 @@
             "normalizedKey": "GET /company-transfers/:param/banks",
             "productionConsumers": [
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/company-transfers/:id/duty-sms",
+      "normalizedKey": "GET /company-transfers/:param/duty-sms",
+      "controller": "CompanyTransferController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "fetchMultiDutySms",
+            "method": "GET",
+            "normalizedPath": "/company-transfers/:param/duty-sms",
+            "normalizedKey": "GET /company-transfers/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -1844,6 +1926,47 @@
             "normalizedKey": "GET /contract-bank-verifications",
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-bank-verifications/:id/duty-sms",
+      "normalizedKey": "GET /contract-bank-verifications/:param/duty-sms",
+      "controller": "ContractBankVerificationController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/contract-ledger/contract-bank-verification.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/contract-bank-verifications/:param/duty-sms",
+            "normalizedKey": "GET /contract-bank-verifications/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -2358,6 +2481,47 @@
     },
     {
       "method": "GET",
+      "path": "/contract-economic-reviews/:id/duty-sms",
+      "normalizedKey": "GET /contract-economic-reviews/:param/duty-sms",
+      "controller": "ContractEconomicReviewController",
+      "handler": "dutySms",
+      "sourceFile": "services/api/src/contract-ledger/contract-economic-review.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/contract-economic-reviews/:param/duty-sms",
+            "normalizedKey": "GET /contract-economic-reviews/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/contract-economic-reviews/counterparties",
       "normalizedKey": "GET /contract-economic-reviews/counterparties",
       "controller": "ContractEconomicReviewController",
@@ -2816,6 +2980,47 @@
             "normalizedKey": "GET /contract-proxy-executions",
             "productionConsumers": [
               "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-proxy-executions/:id/duty-sms",
+      "normalizedKey": "GET /contract-proxy-executions/:param/duty-sms",
+      "controller": "ContractProxyExecutionController",
+      "handler": "dutySms",
+      "sourceFile": "services/api/src/contract-ledger/contract-proxy-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/contract-proxy-executions/:param/duty-sms",
+            "normalizedKey": "GET /contract-proxy-executions/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -3682,6 +3887,47 @@
     },
     {
       "method": "GET",
+      "path": "/contracts/:contractVersionId/duty-sms",
+      "normalizedKey": "GET /contracts/:param/duty-sms",
+      "controller": "ContractController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "fetchMultiDutySms",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param/duty-sms",
+            "normalizedKey": "GET /contracts/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/contracts/:contractVersionId/formal-files/counterparty",
       "normalizedKey": "GET /contracts/:param/formal-files/counterparty",
       "controller": "ContractController",
@@ -4265,6 +4511,47 @@
     },
     {
       "method": "GET",
+      "path": "/expense-claims/:claimId/duty-sms",
+      "normalizedKey": "GET /expense-claims/:param/duty-sms",
+      "controller": "ExpenseClaimController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "expense_claim.payment.execute",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/expense-claims/:param/duty-sms",
+            "normalizedKey": "GET /expense-claims/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/expense-claims/:claimId/repayments/:repaymentId/capability",
       "normalizedKey": "GET /expense-claims/:param/repayments/:param/capability",
       "controller": "ExpenseClaimController",
@@ -4375,7 +4662,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5573,
+            "sourceLine": 5588,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -4591,6 +4878,51 @@
     },
     {
       "method": "GET",
+      "path": "/fund-account-transfers/:id/duty-sms",
+      "normalizedKey": "GET /fund-account-transfers/:param/duty-sms",
+      "controller": "FundAccountTransferController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/fund-account-transfers/:param/duty-sms",
+            "normalizedKey": "GET /fund-account-transfers/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/fund-accounts",
       "normalizedKey": "GET /fund-accounts",
       "controller": "FundAccountController",
@@ -4727,6 +5059,47 @@
     },
     {
       "method": "GET",
+      "path": "/fund-accounts/principal-returns/applications/:id/duty-sms/:dutyKey",
+      "normalizedKey": "GET /fund-accounts/principal-returns/applications/:param/duty-sms/:param",
+      "controller": "FundPrincipalReturnController",
+      "handler": "dutySms",
+      "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param",
+            "normalizedKey": "GET /fund-accounts/principal-returns/applications/:param/duty-sms/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/fund-accounts/principal-returns/results/:key",
       "normalizedKey": "GET /fund-accounts/principal-returns/results/:param",
       "controller": "FundPrincipalReturnController",
@@ -4842,6 +5215,47 @@
             "normalizedKey": "GET /fund-accounts/registrations/:param/review",
             "productionConsumers": [
               "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/registrations/:registrationId/review/duty-sms",
+      "normalizedKey": "GET /fund-accounts/registrations/:param/review/duty-sms",
+      "controller": "FundAccountController",
+      "handler": "reviewDutySms",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts/registrations/:param/review/duty-sms",
+            "normalizedKey": "GET /fund-accounts/registrations/:param/review/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -5409,6 +5823,47 @@
     },
     {
       "method": "GET",
+      "path": "/general-procurements/:id/duty-sms",
+      "normalizedKey": "GET /general-procurements/:param/duty-sms",
+      "controller": "GeneralProcurementController",
+      "handler": "dutySms",
+      "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "fetchMultiDutySms",
+            "method": "GET",
+            "normalizedPath": "/general-procurements/:param/duty-sms",
+            "normalizedKey": "GET /general-procurements/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/general-procurements/create-options",
       "normalizedKey": "GET /general-procurements/create-options",
       "controller": "GeneralProcurementController",
@@ -5764,6 +6219,88 @@
             "normalizedKey": "GET /me/signature/ticket",
             "productionConsumers": [
               "apps/web-admin/src/pages/settings/SettingsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/me/work-item-notice-details",
+      "normalizedKey": "GET /me/work-item-notice-details",
+      "controller": "MeController",
+      "handler": "workItemNoticeDetails",
+      "sourceFile": "services/api/src/me/me.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchWorkItemNoticeDetails",
+            "method": "GET",
+            "normalizedPath": "/me/work-item-notice-details",
+            "normalizedKey": "GET /me/work-item-notice-details",
+            "productionConsumers": [
+              "apps/web-admin/src/app/AdminLayout.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/me/work-item-notice-keys",
+      "normalizedKey": "GET /me/work-item-notice-keys",
+      "controller": "MeController",
+      "handler": "workItemNoticeKeys",
+      "sourceFile": "services/api/src/me/me.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchWorkItemNoticeKeys",
+            "method": "GET",
+            "normalizedPath": "/me/work-item-notice-keys",
+            "normalizedKey": "GET /me/work-item-notice-keys",
+            "productionConsumers": [
+              "apps/web-admin/src/app/AdminLayout.vue"
             ]
           }
         ],
@@ -6781,6 +7318,47 @@
     },
     {
       "method": "GET",
+      "path": "/payment-executions/:paymentId/duty-sms",
+      "normalizedKey": "GET /payment-executions/:param/duty-sms",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/payment-executions/:param/duty-sms",
+            "normalizedKey": "GET /payment-executions/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/payment-executions/:paymentId/existing-source/:type/:id",
       "normalizedKey": "GET /payment-executions/:param/existing-source/:param/:param",
       "controller": "RegisteredPaymentExecutionController",
@@ -7126,6 +7704,47 @@
             "normalizedKey": "GET /payments/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/payments/:paymentId/approval/duty-sms",
+      "normalizedKey": "GET /payments/:param/approval/duty-sms",
+      "controller": "PaymentController",
+      "handler": "approvalDutySms",
+      "sourceFile": "services/api/src/payment/payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/payments/:param/approval/duty-sms",
+            "normalizedKey": "GET /payments/:param/approval/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -10406,6 +11025,47 @@
     },
     {
       "method": "GET",
+      "path": "/settlements/:settlementId/duty-sms",
+      "normalizedKey": "GET /settlements/:param/duty-sms",
+      "controller": "SettlementController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "settlement.archive.confirm",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/settlements/:param/duty-sms",
+            "normalizedKey": "GET /settlements/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/settlements/:settlementId/recovery",
       "normalizedKey": "GET /settlements/:param/recovery",
       "controller": "SettlementController",
@@ -10749,6 +11409,47 @@
     },
     {
       "method": "GET",
+      "path": "/spot-procurement-payments/:paymentId/duty-sms",
+      "normalizedKey": "GET /spot-procurement-payments/:param/duty-sms",
+      "controller": "SpotProcurementPaymentController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.payment.execute",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/spot-procurement-payments/:param/duty-sms",
+            "normalizedKey": "GET /spot-procurement-payments/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/spot-procurements",
       "normalizedKey": "GET /spot-procurements",
       "controller": "SpotProcurementController",
@@ -10854,6 +11555,47 @@
     },
     {
       "method": "GET",
+      "path": "/spot-procurements/:procurementId/duty-sms",
+      "normalizedKey": "GET /spot-procurements/:param/duty-sms",
+      "controller": "SpotProcurementController",
+      "handler": "dutySms",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "fetchMultiDutySms",
+            "method": "GET",
+            "normalizedPath": "/spot-procurements/:param/duty-sms",
+            "normalizedKey": "GET /spot-procurements/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/spot-procurements/:procurementId/receipt",
       "normalizedKey": "GET /spot-procurements/:param/receipt",
       "controller": "SpotProcurementReceiptController",
@@ -10893,6 +11635,47 @@
             "normalizedKey": "GET /spot-procurements/:param/receipt",
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms",
+      "normalizedKey": "GET /spot-procurements/:param/receipt/duty-sms",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "dutySmsStatus",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.receipt.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/spot-procurements/:param/receipt/duty-sms",
+            "normalizedKey": "GET /spot-procurements/:param/receipt/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -11187,6 +11970,47 @@
     },
     {
       "method": "GET",
+      "path": "/upward-contract-amount-revisions/:id/duty-sms",
+      "normalizedKey": "GET /upward-contract-amount-revisions/:param/duty-sms",
+      "controller": "UpwardContractAmountController",
+      "handler": "dutySms",
+      "sourceFile": "services/api/src/contract-ledger/upward-contract-amount.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/upward-contract-amount-revisions/:param/duty-sms",
+            "normalizedKey": "GET /upward-contract-amount-revisions/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/upward-receipt-matches",
       "normalizedKey": "GET /upward-receipt-matches",
       "controller": "UpwardReceiptMatchController",
@@ -11216,6 +12040,47 @@
             "normalizedKey": "GET /upward-receipt-matches",
             "productionConsumers": [
               "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/upward-receipt-matches/:id/duty-sms",
+      "normalizedKey": "GET /upward-receipt-matches/:param/duty-sms",
+      "controller": "UpwardReceiptMatchController",
+      "handler": "dutySms",
+      "sourceFile": "services/api/src/contract-ledger/upward-receipt-match.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "fetchDutySms",
+            "method": "GET",
+            "normalizedPath": "/upward-receipt-matches/:param/duty-sms",
+            "normalizedKey": "GET /upward-receipt-matches/:param/duty-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -14354,6 +15219,47 @@
     },
     {
       "method": "POST",
+      "path": "/company-transfers/:id/duty-sms/retry",
+      "normalizedKey": "POST /company-transfers/:param/duty-sms/retry",
+      "controller": "CompanyTransferController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "retryMultiDutySms",
+            "method": "POST",
+            "normalizedPath": "/company-transfers/:param/duty-sms/retry",
+            "normalizedKey": "POST /company-transfers/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/company-transfers/:id/events",
       "normalizedKey": "POST /company-transfers/:param/events",
       "controller": "CompanyTransferController",
@@ -14547,6 +15453,47 @@
             "normalizedKey": "POST /contract-bank-verifications/:param/decision",
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bank-verifications/:id/duty-sms/retry",
+      "normalizedKey": "POST /contract-bank-verifications/:param/duty-sms/retry",
+      "controller": "ContractBankVerificationController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/contract-ledger/contract-bank-verification.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/contract-bank-verifications/:param/duty-sms/retry",
+            "normalizedKey": "POST /contract-bank-verifications/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -15220,6 +16167,47 @@
             "normalizedKey": "POST /contract-economic-reviews/:param/decision",
             "productionConsumers": [
               "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contract-economic-reviews/:id/duty-sms/retry",
+      "normalizedKey": "POST /contract-economic-reviews/:param/duty-sms/retry",
+      "controller": "ContractEconomicReviewController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/contract-ledger/contract-economic-review.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/contract-economic-reviews/:param/duty-sms/retry",
+            "normalizedKey": "POST /contract-economic-reviews/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -15987,6 +16975,47 @@
             "normalizedKey": "POST /contract-proxy-executions/:param/decision",
             "productionConsumers": [
               "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contract-proxy-executions/:id/duty-sms/retry",
+      "normalizedKey": "POST /contract-proxy-executions/:param/duty-sms/retry",
+      "controller": "ContractProxyExecutionController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/contract-ledger/contract-proxy-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/contract-proxy-executions/:param/duty-sms/retry",
+            "normalizedKey": "POST /contract-proxy-executions/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -17176,6 +18205,47 @@
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/duty-sms/retry",
+      "normalizedKey": "POST /contracts/:param/duty-sms/retry",
+      "controller": "ContractController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "retryMultiDutySms",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/duty-sms/retry",
+            "normalizedKey": "POST /contracts/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -18394,6 +19464,47 @@
     },
     {
       "method": "POST",
+      "path": "/expense-claims/:claimId/duty-sms/retry",
+      "normalizedKey": "POST /expense-claims/:param/duty-sms/retry",
+      "controller": "ExpenseClaimController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "expense_claim.payment.execute",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/expense-claims/:param/duty-sms/retry",
+            "normalizedKey": "POST /expense-claims/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/expense-claims/:claimId/final-disbursement-pdf",
       "normalizedKey": "POST /expense-claims/:param/final-disbursement-pdf",
       "controller": "ExpenseClaimController",
@@ -19104,6 +20215,51 @@
     },
     {
       "method": "POST",
+      "path": "/fund-account-transfers/:id/duty-sms/retry",
+      "normalizedKey": "POST /fund-account-transfers/:param/duty-sms/retry",
+      "controller": "FundAccountTransferController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/fund-account-transfers/:param/duty-sms/retry",
+            "normalizedKey": "POST /fund-account-transfers/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/fund-accounts/corrections",
       "normalizedKey": "POST /fund-accounts/corrections",
       "controller": "FundAccountController",
@@ -19277,6 +20433,47 @@
     },
     {
       "method": "POST",
+      "path": "/fund-accounts/principal-returns/applications/:id/duty-sms/:dutyKey/retry",
+      "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+      "controller": "FundPrincipalReturnController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/fund-accounts/principal-returns/applications/:id/payments",
       "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/payments",
       "controller": "FundPrincipalReturnController",
@@ -19392,6 +20589,47 @@
             "normalizedKey": "POST /fund-accounts/registrations/:param/return",
             "productionConsumers": [
               "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/registrations/:registrationId/review/duty-sms/retry",
+      "normalizedKey": "POST /fund-accounts/registrations/:param/review/duty-sms/retry",
+      "controller": "FundAccountController",
+      "handler": "retryReviewDutySms",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/registrations/:param/review/duty-sms/retry",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/review/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -19997,6 +21235,47 @@
             "normalizedKey": "POST /general-procurements/:param/draft-deletion",
             "productionConsumers": [
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/general-procurements/:id/duty-sms/retry",
+      "normalizedKey": "POST /general-procurements/:param/duty-sms/retry",
+      "controller": "GeneralProcurementController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "retryMultiDutySms",
+            "method": "POST",
+            "normalizedPath": "/general-procurements/:param/duty-sms/retry",
+            "normalizedKey": "POST /general-procurements/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -21822,6 +23101,47 @@
     },
     {
       "method": "POST",
+      "path": "/payment-executions/:paymentId/duty-sms/retry",
+      "normalizedKey": "POST /payment-executions/:param/duty-sms/retry",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/payment-executions/:param/duty-sms/retry",
+            "normalizedKey": "POST /payment-executions/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/payment-executions/:paymentId/recovery-proof",
       "normalizedKey": "POST /payment-executions/:param/recovery-proof",
       "controller": "RegisteredPaymentExecutionController",
@@ -22168,6 +23488,47 @@
             "normalizedKey": "POST /payments/:param/approval-withdrawal",
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payments/:paymentId/approval/duty-sms/retry",
+      "normalizedKey": "POST /payments/:param/approval/duty-sms/retry",
+      "controller": "PaymentController",
+      "handler": "retryApprovalDutySms",
+      "sourceFile": "services/api/src/payment/payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/payments/:param/approval/duty-sms/retry",
+            "normalizedKey": "POST /payments/:param/approval/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -28537,6 +29898,47 @@
     },
     {
       "method": "POST",
+      "path": "/settlements/:settlementId/duty-sms/retry",
+      "normalizedKey": "POST /settlements/:param/duty-sms/retry",
+      "controller": "SettlementController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "settlement.archive.confirm",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/settlements/:param/duty-sms/retry",
+            "normalizedKey": "POST /settlements/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/settlements/:settlementId/pdf-generation",
       "normalizedKey": "POST /settlements/:param/pdf-generation",
       "controller": "SettlementController",
@@ -28971,6 +30373,47 @@
             "normalizedKey": "POST /spot-procurement-payments/:param/draft-file-uploads",
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurement-payments/:paymentId/duty-sms/retry",
+      "normalizedKey": "POST /spot-procurement-payments/:param/duty-sms/retry",
+      "controller": "SpotProcurementPaymentController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.payment.execute",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/spot-procurement-payments/:param/duty-sms/retry",
+            "normalizedKey": "POST /spot-procurement-payments/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -29557,6 +31000,47 @@
     },
     {
       "method": "POST",
+      "path": "/spot-procurements/:procurementId/duty-sms/retry",
+      "normalizedKey": "POST /spot-procurements/:param/duty-sms/retry",
+      "controller": "SpotProcurementController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+            "wrapper": "retryMultiDutySms",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/duty-sms/retry",
+            "normalizedKey": "POST /spot-procurements/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/spot-procurements/:procurementId/invoice-exceptions",
       "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions",
       "controller": "InvoiceLedgerController",
@@ -29900,6 +31384,47 @@
             "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms/retry",
+      "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.receipt.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/receipt/duty-sms/retry",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],
@@ -30623,6 +32148,47 @@
     },
     {
       "method": "POST",
+      "path": "/upward-contract-amount-revisions/:id/duty-sms/retry",
+      "normalizedKey": "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
+      "controller": "UpwardContractAmountController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/contract-ledger/upward-contract-amount.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/upward-contract-amount-revisions/:param/duty-sms/retry",
+            "normalizedKey": "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/upward-receipt-matches",
       "normalizedKey": "POST /upward-receipt-matches",
       "controller": "UpwardReceiptMatchController",
@@ -30693,6 +32259,47 @@
             "normalizedKey": "POST /upward-receipt-matches/:param/decision",
             "productionConsumers": [
               "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/upward-receipt-matches/:id/duty-sms/retry",
+      "normalizedKey": "POST /upward-receipt-matches/:param/duty-sms/retry",
+      "controller": "UpwardReceiptMatchController",
+      "handler": "retryDutySms",
+      "sourceFile": "services/api/src/contract-ledger/upward-receipt-match.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+            "wrapper": "retryDutySms",
+            "method": "POST",
+            "normalizedPath": "/upward-receipt-matches/:param/duty-sms/retry",
+            "normalizedKey": "POST /upward-receipt-matches/:param/duty-sms/retry",
+            "productionConsumers": [
+              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
             ]
           }
         ],

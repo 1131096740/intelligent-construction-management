@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
@@ -10,6 +10,7 @@ import { CompanyTransferReadService } from "./company-transfer-read.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { appendCompanyTransferCanonicalCorrection } from "./company-transfer-canonical-correction";
 import { originalSourceKey } from "./company-transfer-legacy";
+import { CompanyTransferNotificationService } from "./company-transfer-notification.service";
 
 const CORRECTION_KEY = /^[A-Za-z0-9_-]{1,128}$/u;
 const CORRECTION_TARGET = /^(proxy|movement|inter_entity|operational):[A-Za-z0-9_-]{1,128}$/u;
@@ -58,6 +59,7 @@ export class CompanyTransferCorrectionService {
     private readonly funding: ProjectFundingAvailabilityService,
     private readonly reader: CompanyTransferReadService,
     private readonly ledger: OperatingLedgerService,
+    @Optional() private readonly notifications?: CompanyTransferNotificationService,
   ) {}
 
   private async context(tx: Tx, actor: string, transferId: string, eventId: string, confirm = false) {
@@ -131,7 +133,7 @@ export class CompanyTransferCorrectionService {
       throw new BadRequestException("请选择有效的正确原债");
     }
     try {
-      return await this.prisma.$transaction(async tx => {
+      const result = await this.prisma.$transaction(async tx => {
         const { originalSource, projectId } = await this.context(tx, actor, transferId, eventId);
         await this.lock(tx, projectId);
         const prior = await tx.companyTransferOriginalDebtCorrection.findUnique({ where: { requestKey: key } });
@@ -146,8 +148,11 @@ export class CompanyTransferCorrectionService {
         } });
         await this.audit.record(tx, { actorUserId: actor, action: "company_transfer.original_debt_correction.request",
           businessType: "company_transfer", businessId: transferId, metadata: { correctionId: row.id, sourceEventId: eventId, originalSource, targetOriginalSource: row.targetOriginalSource } });
+        await this.notifications?.queueCorrectionDuty(tx,transferId,eventId,actor);
         return { id: row.id, status: row.status };
       });
+      void this.notifications?.afterCommit();
+      return result;
     } catch (error) { return handleCorrectionError(error); }
   }
 

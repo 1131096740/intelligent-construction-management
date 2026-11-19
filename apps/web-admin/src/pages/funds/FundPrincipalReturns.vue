@@ -8,6 +8,7 @@ import {
   type PrincipalReturnCommand,
   type PrincipalReturnSource,
 } from "../../api/fund-principal-return.api";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import { fetchFundAccounts, type FundAccount } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import { useAuthStore } from "../../auth/auth.store";
@@ -353,7 +354,21 @@ function dutyName(keys: string[]) {
             >
               驳回（{{ dutyName(duty.roleKeys) }}）
             </t-button>
+            <DutySmsStatusPanel
+              v-if="actorId"
+              :key="`${actorId}:${application.id}:review-${duty.nodeIndex}`"
+              domain="fund-accounts/principal-returns"
+              :business-id="application.id"
+              :duty-key="`review-${duty.nodeIndex}`"
+            />
           </template>
+          <DutySmsStatusPanel
+            v-if="actorId && application.canPay"
+            :key="`${actorId}:${application.id}:pay`"
+            domain="fund-accounts/principal-returns"
+            :business-id="application.id"
+            duty-key="pay"
+          />
           <t-button
             v-if="application.canWithdraw"
             variant="outline"

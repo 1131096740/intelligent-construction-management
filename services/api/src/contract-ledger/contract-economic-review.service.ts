@@ -1,3 +1,4 @@
+import { EconomicFinanceNotificationService } from "./economic-finance-notification.service";
 import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
 import { hasDirectSigningInput } from "../contract/contract-direct-pending-source";
 import { recordIndependentApproval, invalidateIndependentApproval } from "../approval/independent-approval-evidence";
@@ -5,7 +6,7 @@ import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import { normalizeEconomicScope } from "./contract-economic-scope";
 import { assertSettledScopesPreserved, economicScopeOptions, normalizeSettlementAllocations } from "./contract-economic-settlement";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import type { RoleKey } from "@jiangkong/shared-domain";
@@ -15,7 +16,7 @@ import { AuthService } from "../auth/auth.service";
 import { AuditService } from "../audit/audit.service";
 import { documentFingerprint, economicDocuments, economicDocumentYuan, excludedAmount, excludedAmountYuan, latestEconomicReviews, lockEconomicProject, normalizeCoverage, suspectedOverlap } from "./contract-economic-coverage";
 
-import { CONTRACT_ECONOMIC_REVIEW_PREPARER_ROLES as PREPARERS, CONTRACT_ECONOMIC_REVIEW_READER_ROLES as READERS } from "./contract-economic-review-access";
+import { CONTRACT_ECONOMIC_REVIEW_PREPARER_ROLES as PREPARERS, CONTRACT_ECONOMIC_REVIEW_READER_ROLES as READERS, requireEconomicReviewRoles } from "./contract-economic-review-access";
 import { assertDirectReviewContinuity, assertDirectReviewQualification } from "./contract-direct-review-qualification";
 import { unresolvedDirectReviewPairs } from "./contract-direct-review-overlap";
 import { directReviewPins, hasFrozenDirectReview, lockDirectReviewFiles, readDirectReviewDocuments, readDirectReviewHistory, readProjectDirectReviewDocuments, readStoredDirectReviewPins, rethrowDirectReviewFileContention, reviewDocumentFingerprint, stripInternalDirectReviewProof } from "./contract-direct-review-source";
@@ -31,13 +32,10 @@ export interface PrepareEconomicReview {
 }
 @Injectable()
 export class ContractEconomicReviewService {
- constructor(private readonly prisma: PrismaService, private readonly visibility: ProjectVisibilityService, private readonly auth: AuthService, private readonly audit: AuditService, private readonly operatingSources: OperatingSourceReplayService) {}
+ constructor(private readonly prisma: PrismaService, private readonly visibility: ProjectVisibilityService, private readonly auth: AuthService, private readonly audit: AuditService, private readonly operatingSources: OperatingSourceReplayService,
+  @Optional() private readonly financeNotifications?: EconomicFinanceNotificationService) {}
  private async authorize(tx: Prisma.TransactionClient, actor: string, projectId: string, allowed: readonly RoleKey[]) {
-   const visible = await this.visibility.visibleProjectIdsInTransaction(tx, actor);
-   if (!visible.includes(projectId)) throw new ForbiddenException("当前账号无权办理该项目履约复核");
-   const roles = (await this.visibility.effectiveRoleKeysByProjectInTransaction(tx,actor,[projectId])).get(projectId) ?? [];
-   if (!roles.some(r=>allowed.includes(r))) throw new ForbiddenException("当前岗位没有履约复核权限");
-   return roles;
+   return requireEconomicReviewRoles(tx,this.visibility,actor,projectId,allowed);
  }
  async counterparties(actor:string,projectId:string){return this.prisma.$transaction(async tx=>{
    await this.authorize(tx,actor,projectId,READERS);
@@ -295,9 +293,11 @@ export class ContractEconomicReviewService {
        signedAt: confirmedAt, form: await ledgerApprovalFacts(tx, "contract_economic_review", id) });
      if(finish) for(const d of frozenSources) if(d.formal&&d.operatingBaseline&&("excludedDeltaYuan" in d?d.excludedDeltaYuan!=="0.0000":d.excludedDeltaCents!=="0")) await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx,{projectId:row.projectId,sourceType:"contract_economic_review",sourceBusinessId:`${row.id}:${d.ref}`},actor);
      await this.audit.record(tx,{actorUserId:actor,action:"contract.economic_review.review",businessType:"contract_economic_review",businessId:id,metadata:{projectId:row.projectId,status:updated.status}});
+     if (updated.status==="pending_finance") await this.financeNotifications?.queue(tx,updated,[left,right]);
      if (qualification) await assertDirectReviewContinuity(tx,qualification);
      return { review: presentReview(updated), direct: Boolean(qualification) };
    });
+   if (outcome.review.status==="pending_finance") void this.financeNotifications?.afterCommit();
    if (!outcome.direct) return outcome.review;
    return this.prisma.$transaction(async tx=>{
      const persisted=await tx.contractEconomicReview.findUnique({where:{id}});

@@ -1,13 +1,14 @@
+import { ContractProxyNotificationService } from "./contract-proxy-notification.service";
+import { requireProxyFinance } from "./contract-proxy-access";
 import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import {companyTransferReservedProxy} from "../company-transfer/company-transfer.balance";
 import {contractBankProjectWhere} from "./contract-bank-project";
 import {validateProxyBank,validateProxyReceivingBank,businessDay} from "./contract-proxy-bank";
 import { allocatedProxyAmount } from "./contract-proxy-capacity";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
-import type { RoleKey } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -21,12 +22,10 @@ import { loadProxyDebt, payerKey, proxyPayers, type ProxySource } from "./contra
 export interface PrepareProxyExecution { receivingBankObservationId?:string; bankObservationId?:string; allocations?:Array<{sourceRef:string;amountCents:string}>; projectId:string;sourceRef:string;entryKind:"payment"|"refund"|"repayment";originalId?:string;amountCents:string;occurredAt:string;actualPayerKey:string;bankReference:string;evidenceFileId:string;reason:string;paymentRequestId?:string;idempotencyKey:string;confirmationPassword:string }
 @Injectable()
 export class ContractProxyExecutionService {
- constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService,private readonly sources:OperatingSourceReplayService,private readonly funding:ProjectFundingAvailabilityService){}
+ constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService,private readonly sources:OperatingSourceReplayService,private readonly funding:ProjectFundingAvailabilityService,
+  @Optional() private readonly notifications?:ContractProxyNotificationService){}
  private async authorize(tx:Prisma.TransactionClient,actor:string,projectId:string,confirm=false){
-  if(!(await this.visibility.visibleProjectIdsInTransaction(tx,actor)).includes(projectId))throw new ForbiddenException("无权办理该项目代付");
-  const roles=(await this.visibility.effectiveRoleKeysByProjectInTransaction(tx,actor,[projectId])).get(projectId)??[];
-  if(!roles.some(r=>(confirm?["finance_director"]:["finance_staff","finance_director"]).includes(r)))throw new ForbiddenException("该动作须由所属项目财务岗位办理");
-  return roles as RoleKey[];
+  return requireProxyFinance(tx,this.visibility,actor,projectId,confirm);
  }
  async bankOptions(actor:string,projectId:string){return this.prisma.$transaction(async tx=>{
   await this.authorize(tx,actor,projectId);
@@ -55,7 +54,7 @@ export class ContractProxyExecutionService {
   const occurredAt=new Date(input.occurredAt);if(Number.isNaN(occurredAt.getTime())||occurredAt>new Date())throw new BadRequestException("实际收付日期无效或晚于当前时间");
   await this.auth.confirmPassword(actor,input.confirmationPassword);
   const fingerprint=createHash("sha256").update(JSON.stringify({...input,confirmationPassword:undefined,actor})).digest("hex");
-  return this.prisma.$transaction(async tx=>{
+  const result=await this.prisma.$transaction(async tx=>{
    await this.authorize(tx,actor,input.projectId);await lockEconomicProject(tx,input.projectId);
    const replay=await tx.contractProxyExecution.findUnique({where:{idempotencyKey:input.idempotencyKey}});
    if(replay){if(replay.requestFingerprint!==fingerprint||replay.recordedByUserId!==actor)throw new ConflictException("操作凭据已用于其他付款事实");return {id:replay.id,status:replay.status};}
@@ -115,8 +114,11 @@ export class ContractProxyExecutionService {
    const actualKey=input.entryKind==="repayment"?payerKey(source.debtor):input.entryKind==="refund"?payerKey(source.payee):payerKey(source.actualPayer);
    const row=await tx.contractProxyExecution.create({data:{projectId:input.projectId,sourceRef,entryKind:input.entryKind,originalId:input.originalId??null,amountCents:amount,occurredAt:observation?.occurredAt??occurredAt,bankObservationId:observation?.id??null,receivingBankObservationId:receivingObservation?.id??null,actualPayerKey:actualKey,bankReference:input.bankReference.trim(),evidenceFileId:file.id,evidenceSha256:file.contentSha256,reason:input.reason.trim(),paymentRequestId:requestId,frozenSource:JSON.parse(JSON.stringify(source)),recordedByUserId:actor,idempotencyKey:input.idempotencyKey,requestFingerprint:fingerprint}});
    await this.audit.record(tx,{actorUserId:actor,action:"contract.proxy_execution.prepare",businessType:"contract_proxy_execution",businessId:row.id,metadata:{projectId:input.projectId,entryKind:input.entryKind,postFactException:!requestId}});
+   await this.notifications?.queue(tx,row);
    return {id:row.id,status:row.status};
   });
+  void this.notifications?.afterCommit();
+  return result;
  }
  private async assertReturnCapacity(tx:Prisma.TransactionClient,id:string,original:bigint,amount:bigint){
   const used=await tx.contractProxyExecution.aggregate({where:{originalId:id,status:"confirmed"},_sum:{amountCents:true}});

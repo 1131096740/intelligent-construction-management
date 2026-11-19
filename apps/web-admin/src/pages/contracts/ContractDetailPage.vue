@@ -100,6 +100,12 @@
     />
 
     <template v-if="contractDetail">
+      <MultiDutySmsStatusPanel
+        v-if="auth.user?.id && !contractDetail.historyReadOnly"
+        :key="`${auth.user.id}:${contractDetail.contractVersionId}`"
+        domain="contracts"
+        :business-id="contractDetail.contractVersionId"
+      />
       <ContractSignedArchiveSection
         v-if="contractDetail.v2Lifecycle"
         :detail="contractDetail"
@@ -1296,6 +1302,7 @@ import {
 } from "../../lib/contract-approval-result";
 import { ContractSigningMaterialChangeResultUnknownError } from "../../lib/contract-signing-material-change-result";
 import { useAuthStore } from "../../auth/auth.store";
+import MultiDutySmsStatusPanel from "../../components/MultiDutySmsStatusPanel.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessEntryGrid from "../../components/BusinessEntryGrid.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";

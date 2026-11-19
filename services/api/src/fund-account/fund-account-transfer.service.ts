@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { normalizeBusinessAmount, requiredPastChinaDate, sumBusinessAmounts, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -7,20 +7,20 @@ import { CompanyRoleResolverService } from "../auth/company-role-resolver.servic
 import { PrismaService } from "../database/prisma.service";
 import { availableRegisteredBalance, RegisteredBalanceDecimal, sameTransferSourceIdentity } from "../payment/registered-payment-funding";
 import { assertPublicCashCustodian, currentPublicCashCustodian } from "./public-cash-custodian";
+import { FundAccountTransferNotificationService } from "./fund-account-transfer-notification.service";
 import { ActOnFundAccountTransferDto, RegisterFundAccountTransferDto } from "./fund-account-transfer.dto";
 import { rejectedTransferWithoutWrite, supersededTransferCommand, transferStateAfterAction, type FundAccountTransferState } from "./fund-account-transfer-state";
+import { currentFundTransferDuty, fundTransferCashAccess, fundTransferRoles as rolesFor, FUND_TRANSFER_CASH_ROLES as CASH, FUND_TRANSFER_FINANCE_ROLES as FINANCE } from "./fund-account-transfer-duty";
 
 type Transaction = Prisma.TransactionClient;
 type Registration = Prisma.FundAccountBalanceRegistrationGetPayload<{ include: { sources: true } }>;
-const FINANCE: readonly RoleKey[] = ["finance_staff", "finance_director"];
-const CASH: readonly RoleKey[] = ["comprehensive_director"];
-const rolesFor = (kind: string) => kind === "public_cash" ? CASH : FINANCE;
 const fingerprint = (input: unknown) => createHash("sha256").update(JSON.stringify(input)).digest("hex");
 
 @Injectable()
 export class FundAccountTransferService {
   private readonly roles: CompanyRoleResolverService;
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService,
+    @Optional() private readonly transferNotifications?: FundAccountTransferNotificationService) {
     this.roles = new CompanyRoleResolverService(prisma);
   }
 
@@ -32,27 +32,22 @@ export class FundAccountTransferService {
         orderBy: { createdAt: "desc" }
       });
       const cashAccount = await tx.registeredFundAccount.findUnique({ where: { scopeKey: "public_cash" }, select: { id: true } });
-      const custodian = cashAccount ? await currentPublicCashCustodian(tx, cashAccount.id) : null;
-      const canRegisterCash = roles.some(role => CASH.includes(role)) && (!custodian || custodian === actorId);
-      const handedOverBy = cashAccount && canRegisterCash && custodian === actorId ? new Set(
-        (await tx.publicCashHandover.findMany({
-          where: { accountId: cashAccount.id, fromCustodian: { isActive: false }, receipt: { isNot: null } },
-          select: { fromCustodianId: true }
-        })).map(row => row.fromCustodianId)
-      ) : new Set<string>();
-      return { canRegisterCash, canRegisterCompany: roles.some(role => FINANCE.includes(role)),
-        transfers: rows.map(row => ({
-          id: row.id, sourceScopeKey: row.sourceAccount.scopeKey, destinationScopeKey: row.destinationAccount.scopeKey,
-          amountYuan: row.amountYuan.toFixed(4), status: row.status, revision: row.revision, transferredOn: row.transferredOn,
-          evidenceReference: row.evidenceReference, actions: row.actions.map(action => ({
-            action: action.action, evidenceReference: action.evidenceReference, createdAt: action.createdAt
-          })),
-          canReceive: row.status === "pending_receipt" && (row.destinationAccount.kind === "public_cash"
-            ? canRegisterCash : rolesFor(row.destinationAccount.kind).some(role => roles.includes(role))),
-          canResolveRejection: row.status === "rejected_held" && (row.createdByUserId === actorId ||
-            (row.sourceAccount.kind === "public_cash" && handedOverBy.has(row.createdByUserId))) &&
-            rolesFor(row.sourceAccount.kind).some(role => roles.includes(role))
-        })) };
+      const cashAccess = await fundTransferCashAccess(tx, actorId, cashAccount?.id ?? null);
+      const canRegisterCash = roles.some(role => role === "comprehensive_director") && (!cashAccess.custodian || cashAccess.custodian === actorId);
+      return { canRegisterCash, canRegisterCompany: roles.some(role => role === "finance_staff" || role === "finance_director"),
+        transfers: rows.map(row => {
+          const duty = currentFundTransferDuty(row, actorId, roles, cashAccess);
+          return {
+            id: row.id, sourceScopeKey: row.sourceAccount.scopeKey, destinationScopeKey: row.destinationAccount.scopeKey,
+            amountYuan: row.amountYuan.toFixed(4), status: row.status, revision: row.revision, transferredOn: row.transferredOn,
+            evidenceReference: row.evidenceReference, actions: row.actions.map(action => ({
+              action: action.action, evidenceReference: action.evidenceReference, createdAt: action.createdAt
+            })),
+            canReceive: duty === "receive",
+            canResolveRejection: duty === "resolve_rejection"
+          };
+        })
+      };
     });
   }
 
@@ -74,7 +69,7 @@ export class FundAccountTransferService {
     const requestHash = fingerprint({ action: "register", actorId, sourceScopeKey: input.sourceScopeKey,
       destinationScopeKey: input.destinationScopeKey, expectedRegistrationId: input.expectedRegistrationId,
       transferredOn: input.transferredOn, evidence, lines });
-    return this.transaction(async tx => {
+    const result = await this.transaction(async tx => {
       const source = await tx.registeredFundAccount.findUnique({ where: { scopeKey: input.sourceScopeKey } });
       const destination = await tx.registeredFundAccount.findUnique({ where: { scopeKey: input.destinationScopeKey } });
       if (!source || !destination || new Set([source.kind, destination.kind]).size !== 2 ||
@@ -120,6 +115,8 @@ export class FundAccountTransferService {
       if (!source) throw new NotFoundException("转出账户不存在");
       await this.authorize(tx, actorId, rolesFor(source.kind));
     } });
+    void this.transferNotifications?.afterCommit();
+    return result;
   }
 
   async act(actorId: string, transferId: string, input: ActOnFundAccountTransferDto) {
@@ -129,7 +126,7 @@ export class FundAccountTransferService {
     const authorizeAction = async (tx: Transaction, transfer: { sourceAccount: { kind: string }; destinationAccount: { kind: string } }) => {
       await this.authorize(tx, actorId, rolesFor(forOrigin ? transfer.sourceAccount.kind : transfer.destinationAccount.kind));
     };
-    return this.transaction(async tx => {
+    const result = await this.transaction(async tx => {
       const transfer = await tx.registeredFundTransfer.findUnique({
         where: { id: transferId }, include: { sourceAccount: true, destinationAccount: true, lines: { include: { sourceBatch: true } } }
       });
@@ -202,6 +199,8 @@ export class FundAccountTransferService {
       if (!transfer) throw new NotFoundException("转款记录不存在");
       await authorizeAction(tx, transfer);
     } });
+    void this.transferNotifications?.afterCommit();
+    return result;
   }
 
   private sourceSnapshot(batch: Registration["sources"][number], amountYuan: Prisma.Decimal, previousSourceBatchId: string | null) {
@@ -260,6 +259,9 @@ export class FundAccountTransferService {
     await this.audit.record(tx, { actorUserId: actorId, action: `fund_account.transfer.${action}`, businessType: "registered_fund_transfer",
       businessId: transfer.id, metadata: { revision: transfer.revision, status: transfer.status, evidenceReference: evidence,
         ...(handoverId ? { cashCustodyHandoverId: handoverId } : {}) } });
+    if (transfer.status === "pending_receipt" || transfer.status === "rejected_held") {
+      await this.transferNotifications?.queue(tx, transfer.id, actorId);
+    }
     return { id: transfer.id, revision: transfer.revision, status: transfer.status };
   }
 

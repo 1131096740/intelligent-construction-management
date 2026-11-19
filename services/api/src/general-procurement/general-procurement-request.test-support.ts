@@ -1,3 +1,4 @@
+import type { ApprovalDutySmsIntent } from "../approval/approval-duty-sms-intent";
 import { AuthController } from "../auth/auth.controller";
 import { ApprovalProgressController } from "../approval/approval-progress.controller";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
@@ -108,7 +109,8 @@ export async function createGeneralRequestHarness(port = 0) {
       const kind = query.values[0];
       return structuredClone((tables.approvalActionLog ?? []).filter(row => {
         const data = row.metadata as Row | undefined;
-        return row.action === "system_notification" && data != null && data.kind === kind && data.event === "queued" && !tables.approvalActionLog.some(other => {
+        return (!sql.includes('AND queued."id" =') || row.id === query.values[1])
+          && row.action === "system_notification" && data != null && data.kind === kind && data.event === "queued" && !tables.approvalActionLog.some(other => {
           const receipt = other.metadata as Row | undefined;
           return receipt != null && receipt.kind === kind && receipt.intentId === row.id && ["dispatch_claimed", "accepted", "failed", "unknown", "cancelled"].includes(String(receipt.event));
         });
@@ -142,12 +144,21 @@ export async function createGeneralRequestHarness(port = 0) {
     catch (error) { for (const key of Object.keys(tables)) delete tables[key]; Object.assign(tables, snapshot); throw error; }
     finally { transactionDepth--; release(); }
   } } as unknown as PrismaService;
-  const sent: Array<{ phone: string; label: string; duty: string; code: string; afterCommit: boolean }> = [];
+  const sent: Array<{ phone: string; label: string; duty: string; code: string; afterCommit: boolean; intent?: ApprovalDutySmsIntent }> = [];
   const smsMode: { status: "accepted" | "failed" | "unknown" } = { status: "accepted" };
+  function sentResult(phone: string, label: string, duty: string, code: string, intent?: ApprovalDutySmsIntent) {
+    sent.push({phone,label,duty,code,afterCommit:transactionDepth===0,...(intent ? {intent} : {})});
+    return {status:smsMode.status,message:"模拟发送结果",...(smsMode.status==="accepted" ? {receipt:randomUUID()} : {})};
+  }
+
   const tokens = new JwtTokenService();
   const auth = new AuthService(db, tokens, new AuditService());
   const module = await Test.createTestingModule({ controllers: [GeneralProcurementController, ApprovalDelegationController, ApprovalProgressController, MeController, AuthController], providers: [
-    { provide: ApprovalSmsService, useValue: { available: () => true, send: async (phone: string, label: string, duty: string, code: string) => { sent.push({ phone, label, duty, code, afterCommit: transactionDepth === 0 }); return { status: smsMode.status, message: "模拟发送结果", ...(smsMode.status === "accepted" ? { receipt: randomUUID() } : {}) }; } } },
+    { provide: ApprovalSmsService, useValue: { available: () => true,
+      send: async (phone: string, label: string, duty: string, code: string) => sentResult(phone,label,duty,code),
+      sendDutyIntent: async (phone: string, intent: ApprovalDutySmsIntent) =>
+        sentResult(phone,intent.businessLabel,intent.dutyName,intent.businessCode,intent)
+    } },
     MeService, ApprovalProgressService, ApprovalDelegationService, GeneralProcurementService, GeneralProcurementRequestService, GeneralProcurementRequestNotificationService, { provide: PrismaService, useValue: db },
     { provide: ProjectVisibilityService, useValue: new ProjectVisibilityService(db) },
     BusinessNumberingService,
@@ -158,8 +169,8 @@ export async function createGeneralRequestHarness(port = 0) {
   const reflector = new Reflector(); app.useGlobalGuards(new JwtAuthGuard(reflector, tokens, db), new PermissionGuard(reflector, db), new RetiredWriteEntryGuard());
   await app.listen(port, "127.0.0.1"); const base = await app.getUrl();
   const tokenFor = (id = userId) => tokens.signAccessToken({ id, name: "合成人员", phone: null, sessionVersion: 0 });
-  const request = async (path: string, body?: object, actor = userId, method = body ? "POST" : "GET") => {
-    const response = await fetch(`${base}${path}`, { method, headers: { "content-type": "application/json", authorization: `Bearer ${tokenFor(actor)}` }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(5_000) });
+  const request = async (path: string, body?: object, actor = userId, method = body ? "POST" : "GET", headers: Record<string, string> = {}) => {
+    const response = await fetch(`${base}${path}`, { method, headers: { "content-type": "application/json", authorization: `Bearer ${tokenFor(actor)}`, ...headers }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(5_000) });
     return { status: response.status, body: await response.json() };
   };
   return { app, base, request, tokenFor, userId, directorId, managerId, outsiderId, projectId, tables, db, sent, smsMode };

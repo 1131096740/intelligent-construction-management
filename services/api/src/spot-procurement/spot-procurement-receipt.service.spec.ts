@@ -261,6 +261,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       unitPrice: Prisma.Decimal;
     }>;
     actionProjectRoleKeys?: RoleKey[];
+    reviewNotifications?: { queue: jest.Mock; afterCommit: jest.Mock };
   }) {
     const receiptStatus = options?.receiptStatus ?? "draft";
     const revisionSubmittedAt =
@@ -857,7 +858,10 @@ describe("SpotProcurementReceiptService workflow", () => {
       watermark as never,
       access as never,
       receiptPdfs as never,
-      closure as never
+      closure as never,
+      undefined,
+      undefined,
+      options?.reviewNotifications as never
     );
 
     return {
@@ -1937,6 +1941,30 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(
       harness.tx.spotProcurementReceipt.update
     ).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("提交时在同事务登记复核提醒，回滚时不唤醒（回滚=%s）", async rollback => {
+    const observations: string[] = [];
+    const reviewNotifications = {
+      queue: jest.fn(async () => { observations.push("入队"); return true; }),
+      afterCommit: jest.fn(async () => { observations.push("派发"); })
+    };
+    const harness = createHarness({ reviewNotifications });
+    harness.prisma.$transaction.mockImplementationOnce(async run => {
+      const outcome = await run(harness.tx);
+      if (rollback) throw new Error("合成提交失败");
+      observations.push("提交");
+      return outcome;
+    });
+    const submission = harness.service.submit("procurement-1", "handler-1");
+    if (rollback) {
+      await expect(submission).rejects.toThrow();
+      expect(observations).toEqual(["入队"]);
+    } else {
+      await expect(submission).resolves.toMatchObject({ status: "submitted" });
+      expect(observations).toEqual(["入队", "提交", "派发"]);
+    }
+    expect(reviewNotifications.queue).toHaveBeenCalledWith(harness.tx, "procurement-1", "handler-1");
   });
 
   it("lets the active delegate submit while preserving the handler as business owner", async () => {

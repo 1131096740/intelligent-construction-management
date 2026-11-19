@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { createPinia, setActivePinia } from "pinia";
 import { effectScope, nextTick, reactive } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import SpotProcurementDetailPage from "./SpotProcurementDetailPage.vue";
@@ -181,6 +182,7 @@ type ProcurementDetailPageBindings = {
 };
 
 function setupPage<T extends object>(component: unknown) {
+  setActivePinia(createPinia());
   const scope = effectScope();
   const bindings = scope.run(() =>
     (

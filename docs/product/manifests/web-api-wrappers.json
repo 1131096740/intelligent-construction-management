@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 47,
-    "exportedFunctionCount": 733,
-    "transportWrapperCount": 710,
+    "apiModuleCount": 49,
+    "exportedFunctionCount": 740,
+    "transportWrapperCount": 717,
     "pureExportCount": 23,
-    "mainRequestBindingCount": 750,
+    "mainRequestBindingCount": 789,
     "ticketFollowupCount": 5,
-    "requestEdgeCount": 739,
-    "productionConsumerCount": 623,
+    "requestEdgeCount": 746,
+    "productionConsumerCount": 630,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 403,
-    "reachableProductionModuleCount": 384
+    "productionModuleCount": 409,
+    "reachableProductionModuleCount": 390
   },
   "wrappers": [
     {
@@ -1233,7 +1233,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 20,
+          "sourceLine": 21,
           "method": "GET",
           "path": "/company-transfers/export?:param",
           "normalizedPath": "/company-transfers/export",
@@ -1248,6 +1248,34 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/components/ContractFinancialBalances.vue",
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchCompanyTransfer",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 9,
+          "method": "GET",
+          "path": "/company-transfers/:param",
+          "normalizedPath": "/company-transfers/:param",
+          "normalizedKey": "GET /company-transfers/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyTransfer",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
         "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
       ],
       "testConsumers": [],
@@ -7009,7 +7037,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7286,
+          "sourceLine": 7301,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7041,7 +7069,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7270,
+          "sourceLine": 7285,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -7071,7 +7099,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7270,
+          "sourceLine": 7285,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7101,7 +7129,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5686,
+          "sourceLine": 5701,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7130,7 +7158,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7270,
+          "sourceLine": 7285,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7160,7 +7188,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2792,
+          "sourceLine": 2807,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7222,7 +7250,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5573,
+          "sourceLine": 5588,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7254,7 +7282,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3726,
+          "sourceLine": 3741,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7313,7 +7341,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7313,
+          "sourceLine": 7328,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7342,7 +7370,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7300,
+          "sourceLine": 7315,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7371,7 +7399,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7328,
+          "sourceLine": 7343,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7400,7 +7428,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7270,
+          "sourceLine": 7285,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -9264,6 +9292,62 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchWorkItemNoticeDetails",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/me/work-item-notice-details?:param",
+          "normalizedPath": "/me/work-item-notice-details",
+          "normalizedKey": "GET /me/work-item-notice-details",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWorkItemNoticeDetails",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/app/AdminLayout.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchWorkItemNoticeKeys",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/me/work-item-notice-keys?:param",
+          "normalizedPath": "/me/work-item-notice-keys",
+          "normalizedKey": "GET /me/work-item-notice-keys",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWorkItemNoticeKeys",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/app/AdminLayout.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -12131,6 +12215,428 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchDutySms",
+      "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/contract-bank-verifications/:param/duty-sms",
+          "normalizedPath": "/contract-bank-verifications/:param/duty-sms",
+          "normalizedKey": "GET /contract-bank-verifications/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/contract-economic-reviews/:param/duty-sms",
+          "normalizedPath": "/contract-economic-reviews/:param/duty-sms",
+          "normalizedKey": "GET /contract-economic-reviews/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/contract-proxy-executions/:param/duty-sms",
+          "normalizedPath": "/contract-proxy-executions/:param/duty-sms",
+          "normalizedKey": "GET /contract-proxy-executions/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/expense-claims/:param/duty-sms",
+          "normalizedPath": "/expense-claims/:param/duty-sms",
+          "normalizedKey": "GET /expense-claims/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/fund-account-transfers/:param/duty-sms",
+          "normalizedPath": "/fund-account-transfers/:param/duty-sms",
+          "normalizedKey": "GET /fund-account-transfers/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param",
+          "normalizedPath": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param",
+          "normalizedKey": "GET /fund-accounts/principal-returns/applications/:param/duty-sms/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/fund-accounts/registrations/:param/review/duty-sms",
+          "normalizedPath": "/fund-accounts/registrations/:param/review/duty-sms",
+          "normalizedKey": "GET /fund-accounts/registrations/:param/review/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/payment-executions/:param/duty-sms",
+          "normalizedPath": "/payment-executions/:param/duty-sms",
+          "normalizedKey": "GET /payment-executions/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/payments/:param/approval/duty-sms",
+          "normalizedPath": "/payments/:param/approval/duty-sms",
+          "normalizedKey": "GET /payments/:param/approval/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/settlements/:param/duty-sms",
+          "normalizedPath": "/settlements/:param/duty-sms",
+          "normalizedKey": "GET /settlements/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/spot-procurement-payments/:param/duty-sms",
+          "normalizedPath": "/spot-procurement-payments/:param/duty-sms",
+          "normalizedKey": "GET /spot-procurement-payments/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/spot-procurements/:param/receipt/duty-sms",
+          "normalizedPath": "/spot-procurements/:param/receipt/duty-sms",
+          "normalizedKey": "GET /spot-procurements/:param/receipt/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/upward-contract-amount-revisions/:param/duty-sms",
+          "normalizedPath": "/upward-contract-amount-revisions/:param/duty-sms",
+          "normalizedKey": "GET /upward-contract-amount-revisions/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 49,
+          "method": "GET",
+          "path": "/upward-receipt-matches/:param/duty-sms",
+          "normalizedPath": "/upward-receipt-matches/:param/duty-sms",
+          "normalizedKey": "GET /upward-receipt-matches/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/duty-sms.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "retryDutySms",
+      "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/contract-bank-verifications/:param/duty-sms/retry",
+          "normalizedPath": "/contract-bank-verifications/:param/duty-sms/retry",
+          "normalizedKey": "POST /contract-bank-verifications/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/contract-economic-reviews/:param/duty-sms/retry",
+          "normalizedPath": "/contract-economic-reviews/:param/duty-sms/retry",
+          "normalizedKey": "POST /contract-economic-reviews/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/contract-proxy-executions/:param/duty-sms/retry",
+          "normalizedPath": "/contract-proxy-executions/:param/duty-sms/retry",
+          "normalizedKey": "POST /contract-proxy-executions/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/expense-claims/:param/duty-sms/retry",
+          "normalizedPath": "/expense-claims/:param/duty-sms/retry",
+          "normalizedKey": "POST /expense-claims/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/fund-account-transfers/:param/duty-sms/retry",
+          "normalizedPath": "/fund-account-transfers/:param/duty-sms/retry",
+          "normalizedKey": "POST /fund-account-transfers/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+          "normalizedPath": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/review/duty-sms/retry",
+          "normalizedPath": "/fund-accounts/registrations/:param/review/duty-sms/retry",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/review/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/payment-executions/:param/duty-sms/retry",
+          "normalizedPath": "/payment-executions/:param/duty-sms/retry",
+          "normalizedKey": "POST /payment-executions/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/payments/:param/approval/duty-sms/retry",
+          "normalizedPath": "/payments/:param/approval/duty-sms/retry",
+          "normalizedKey": "POST /payments/:param/approval/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/settlements/:param/duty-sms/retry",
+          "normalizedPath": "/settlements/:param/duty-sms/retry",
+          "normalizedKey": "POST /settlements/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/duty-sms/retry",
+          "normalizedPath": "/spot-procurement-payments/:param/duty-sms/retry",
+          "normalizedKey": "POST /spot-procurement-payments/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/duty-sms/retry",
+          "normalizedPath": "/spot-procurements/:param/receipt/duty-sms/retry",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/upward-contract-amount-revisions/:param/duty-sms/retry",
+          "normalizedPath": "/upward-contract-amount-revisions/:param/duty-sms/retry",
+          "normalizedKey": "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 59,
+          "method": "POST",
+          "path": "/upward-receipt-matches/:param/duty-sms/retry",
+          "normalizedPath": "/upward-receipt-matches/:param/duty-sms/retry",
+          "normalizedKey": "POST /upward-receipt-matches/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/duty-sms.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/DutySmsStatusPanel.vue"
       ],
       "unreachableConsumers": []
     },
@@ -15262,6 +15768,144 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchMultiDutySms",
+      "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 21,
+          "method": "GET",
+          "path": "/company-transfers/:param/duty-sms",
+          "normalizedPath": "/company-transfers/:param/duty-sms",
+          "normalizedKey": "GET /company-transfers/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchMultiDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 21,
+          "method": "GET",
+          "path": "/contracts/:param/duty-sms",
+          "normalizedPath": "/contracts/:param/duty-sms",
+          "normalizedKey": "GET /contracts/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchMultiDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 21,
+          "method": "GET",
+          "path": "/general-procurements/:param/duty-sms",
+          "normalizedPath": "/general-procurements/:param/duty-sms",
+          "normalizedKey": "GET /general-procurements/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchMultiDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 21,
+          "method": "GET",
+          "path": "/spot-procurements/:param/duty-sms",
+          "normalizedPath": "/spot-procurements/:param/duty-sms",
+          "normalizedKey": "GET /spot-procurements/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchMultiDutySms"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "retryMultiDutySms",
+      "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 27,
+          "method": "POST",
+          "path": "/company-transfers/:param/duty-sms/retry",
+          "normalizedPath": "/company-transfers/:param/duty-sms/retry",
+          "normalizedKey": "POST /company-transfers/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryMultiDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 27,
+          "method": "POST",
+          "path": "/contracts/:param/duty-sms/retry",
+          "normalizedPath": "/contracts/:param/duty-sms/retry",
+          "normalizedKey": "POST /contracts/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryMultiDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 27,
+          "method": "POST",
+          "path": "/general-procurements/:param/duty-sms/retry",
+          "normalizedPath": "/general-procurements/:param/duty-sms/retry",
+          "normalizedKey": "POST /general-procurements/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryMultiDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 27,
+          "method": "POST",
+          "path": "/spot-procurements/:param/duty-sms/retry",
+          "normalizedPath": "/spot-procurements/:param/duty-sms/retry",
+          "normalizedKey": "POST /spot-procurements/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryMultiDutySms"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useAuthStore } from "../../auth/auth.store";
+import MultiDutySmsStatusPanel from "../../components/MultiDutySmsStatusPanel.vue";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import {buildApprovalSelfReviewPayload} from "../../components/approval-self-review.config";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
@@ -73,6 +75,7 @@ type ActionKind =
   | "void"
   | "download";
 
+const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const spotProcurementCapability = ref<SpotProcurementDetailReadModel | null>(null);
@@ -1836,6 +1839,12 @@ onBeforeUnmount(() => {
     />
 
     <template v-if="detail">
+      <MultiDutySmsStatusPanel
+        v-if="auth.user?.id && detail.procurement.id === procurementId && detail.currentVersion.requestProtocolVersion === 2 && (actionEnabled('review_approval') || detail.purchaseTask?.canHandle || (detail.procurement.status === 'draft' && detail.currentVersion.versionNo > 1 && actionEnabled('edit_draft')))"
+        :key="`${auth.user.id}:${detail.procurement.id}:${detail.currentVersion.id}:${detail.procurement.status}`"
+        domain="spot-procurements"
+        :business-id="detail.procurement.id"
+      />
       <BusinessDetailHeader
         :business-code="detail.procurement.code"
         :title="detail.procurement.project.name"

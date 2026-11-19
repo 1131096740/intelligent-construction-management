@@ -95,6 +95,12 @@
     />
 
     <template v-if="paymentDetail">
+      <DutySmsStatusPanel
+        v-if="auth.user?.id && paymentReviewEnabled"
+        :key="`${auth.user.id}:${paymentDetail.id}:${paymentApprovalCapability?.reviewApprovalContext?.expectedApprovalInstanceId}:${paymentApprovalCapability?.reviewApprovalContext?.expectedNodeIndex}:${paymentApprovalCapability?.reviewApprovalContext?.expectedApprovalUpdatedAt}`"
+        domain="payments"
+        :business-id="paymentDetail.id"
+      />
       <nav
         class="detail-navigation"
         aria-label="付款详情分区"
@@ -802,6 +808,8 @@ import BusinessDraftAction, {
 } from "../../components/BusinessDraftAction.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import { useAuthStore } from "../../auth/auth.store";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import MoneyInput from "../../components/MoneyInput.vue";
@@ -882,6 +890,7 @@ interface PaymentExecutionSelection {
   attemptState: PaymentExecutionRecordAttemptState;
 }
 
+const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const currentPaymentRouteId = computed(routePaymentId);

@@ -4,7 +4,7 @@ import { approvalEvidenceMetadata } from "../approval/approval-evidence";
 import { appendLegacyProxyBalances } from "./company-transfer-legacy-balances";
 import { readLegacyTransferDebt, transferRepaymentUsage } from "./company-transfer-legacy";
 import { summarizeCompanyTransfers } from "./company-transfer-summary";
-import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -12,9 +12,27 @@ import { companyTransferRoles } from "./company-transfer.access";
 import { TRANSFER_LABELS, transferTotals } from "./company-transfer.domain";
 import { resolveApprovalReviewIdentity } from "../approval/approval-review-identity";
 import type { RoleKey } from "@jiangkong/shared-domain";
+
 @Injectable()
 export class CompanyTransferReadService {
   constructor(private readonly prisma: PrismaService, private readonly visibility: ProjectVisibilityService) { }
+  private today() {
+    return new Date().toLocaleDateString("en-CA", {timeZone: "Asia/Shanghai"});
+  }
+
+  async detail(actor: string, id: string) {
+    const missing = () => new NotFoundException("互转记录不存在或当前账号无权查看");
+    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(id)) throw missing();
+    try {
+      const { rows } = await this.list(actor, {transferId: id});
+      const row = rows.find(item => item.id === id);
+      if (!row) throw missing();
+      return row;
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw missing();
+      throw error;
+    }
+  }
   async list(actor: string, query: { projectId?: string; companyId?: string; asOf?: string; projectsOnly?: string; page?: string; transferId?: string; originalSource?: string } = {}, allRows = false) {
 return this.prisma.$transaction(async tx => {
       const global = await companyTransferRoles(tx, actor), finance = global.some(r => ["finance_staff", "finance_director"].includes(r)), leader = global.some(r => ["chairman", "general_manager"].includes(r));
@@ -30,7 +48,7 @@ return this.prisma.$transaction(async tx => {
       }] : [];
       const all = finance || leader, projectsOnly = query.projectsOnly === "true"; const authorizedProjects = all ? visible : allowed; if (!all && !allowed.length) throw new ForbiddenException("无权读取公司互转台账");
       if (query.projectId && !all && !allowed.includes(query.projectId)) throw new ForbiddenException("无权读取该项目互转");
-      const date = query.asOf ?? new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" }), until = new Date(`${date}T23:59:59.999+08:00`), page = Number(query.page ?? 1);
+      const date = query.asOf ?? this.today(), until = new Date(`${date}T23:59:59.999+08:00`), page = Number(query.page ?? 1);
       if (!/^\d{4}-\d{2}-\d{2}$/u.test(date) || Number.isNaN(until.getTime()) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date || !Number.isSafeInteger(page) || page < 1) throw new BadRequestException("台账基准日或页码无效");
       const originalSource = typeof query.originalSource === "string"
         ? query.originalSource.match(/^(proxy|inter_entity|movement|operational):([A-Za-z0-9_-]{1,128})$/u) : null;

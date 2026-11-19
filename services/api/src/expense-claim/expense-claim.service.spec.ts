@@ -7,7 +7,7 @@ jest.mock("../fund-account/registered-operational-payment", () => ({
   readRegisteredOperationalPayment: jest.fn().mockResolvedValue(null)
 }));
 
-function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock }; operatingSources?: { appendConfirmedSourceIfEnabledInTransaction: jest.Mock } }) {
+function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock }; operatingSources?: { appendConfirmedSourceIfEnabledInTransaction: jest.Mock }; fundingNotifications?: { queue: jest.Mock; afterCommit: jest.Mock } }) {
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
@@ -40,7 +40,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { businessProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]) };
-  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never);
+  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never, undefined, options?.fundingNotifications as never);
   return { service, tx, prisma, numbering, audit, visibility };
 }
 
@@ -990,6 +990,37 @@ describe("ExpenseClaimService", () => {
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ metadata: { selfReview: true, selfReviewReason: "职责兼任", approverName: "签批人甲" }, signatureFileIdSnapshot: "file-1", signatureVersionIdSnapshot: "signature-1" })
     });
+  });
+
+  it.each([
+    ["reimbursement", "approved_pending_payment"],
+    ["loan", "approved_pending_disbursement"]
+  ])("终审 %s 在原事务登记资金待办，提交后才唤醒派发", async (claimType, status) => {
+    const claim = { id: "funding-claim", claimType, status: "approval_pending", projectId: "project-1", applicantUserId: "applicant",
+      handledByUserId: "applicant", requestedAmountCents: 100n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 100n };
+    const instance = { id: "round", currentNodeIndex: 0, applicantUserId: "applicant", frozenNodes: [{
+      name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["reviewer"],
+      candidateUserIdsByRole: { comprehensive_director: ["reviewer"] }
+    }] };
+    const events: string[] = [];
+    const fundingNotifications = { queue: jest.fn(async () => { events.push("queued"); return true; }),
+      afterCommit: jest.fn(async () => { events.push("dispatch"); }) };
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
+    const { service, tx, prisma } = createHarness({ roles: ["comprehensive_director"], fundingNotifications, operatingSources });
+    prisma.$transaction.mockImplementationOnce(async run => {
+      const result = await run(tx);
+      events.push("commit");
+      return result;
+    });
+    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ id: "reviewer", isActive: true, name: "签批人" }])
+      .mockResolvedValueOnce([{ id: "signature", fileId: "file", contentSha256: "a".repeat(64) }])
+      .mockResolvedValueOnce([{ id: "file", contentSha256: "a".repeat(64), storageStatus: "active" }]);
+    const approved = { ...claim, status };
+    tx.expenseClaim.update.mockResolvedValue(approved);
+    await expect(service.review(claim.id, "reviewer", { decision: "approve" })).resolves.toMatchObject({ status, completed: true });
+    expect(events).toEqual(["queued", "commit", "dispatch"]);
+    expect(fundingNotifications.queue).toHaveBeenCalledWith(tx, approved, "reviewer");
   });
 
   it("approves an incidental expense into payment instead of loan disbursement", async () => {

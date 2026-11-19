@@ -1,3 +1,5 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { PaymentApprovalNotificationService } from "./payment-approval-notification.service";
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
 import {
@@ -10,6 +12,7 @@ import {
   Param,
   Post,
   Query,
+  ServiceUnavailableException,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -44,7 +47,8 @@ export class PaymentController {
     private readonly payments: PaymentRequestService,
     private readonly projectVisibility: ProjectVisibilityService,
     @Optional() private readonly files?: FileService,
-    @Optional() private readonly approvalProgress?: ApprovalProgressService
+    @Optional() private readonly approvalProgress?: ApprovalProgressService,
+    @Optional() private readonly approvalNotifications?: PaymentApprovalNotificationService
   ) {}
 
   @Post()
@@ -83,6 +87,18 @@ export class PaymentController {
       return this.paymentRead.listLedger({ view, page, pageSize }, visibleProjectIds, user.id);
     }
     return this.paymentRead.listRecent(limit, visibleProjectIds, {actorUserId: user.id});
+  }
+
+  @Get(":paymentId/approval/duty-sms")
+  approvalDutySms(@Param("paymentId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+    return this.approvalNotifications.status(id, user.id);
+  }
+
+  @Post(":paymentId/approval/duty-sms/retry")
+  retryApprovalDutySms(@Param("paymentId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+    return this.approvalNotifications.retry(id, user.id, body.attemptId);
   }
 
   @Post(":paymentId/approval")

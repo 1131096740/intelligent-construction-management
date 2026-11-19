@@ -1,5 +1,7 @@
 import { appendRegisteredOperationalPayment, readRegisteredOperationalPayment } from "../fund-account/registered-operational-payment";
 import { assertRegisteredPaymentActor } from "../payment/registered-payment-funding";
+import { SpotPaymentExecutionNotificationService } from "./spot-payment-execution-notification.service";
+import { effectiveSpotCompanyPaymentAmount } from "./spot-payment-execution-duty";
 import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import {
@@ -9,7 +11,8 @@ import {
   HttpException,
   Inject,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -234,7 +237,8 @@ export class SpotProcurementPaymentService {
     private readonly archives?: SpotProcurementPaymentArchiveService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
-      missingOperatingSourceReplayService()
+      missingOperatingSourceReplayService(),
+    @Optional() private readonly paymentNotifications?: SpotPaymentExecutionNotificationService
   ) {}
 
   async recordExecution(
@@ -1872,6 +1876,7 @@ export class SpotProcurementPaymentService {
           approvedRoleKey,
           selfReviewMetadata
         );
+        await this.paymentNotifications?.queue(tx,updated,approval.id,actorUserId);
         return this.paymentReadModel(updated);
       });
       await this.approvalForms.tryRefreshLatestForBusiness(
@@ -1881,6 +1886,7 @@ export class SpotProcurementPaymentService {
         `approval.${input.decision}`
       );
       if (result.status === "approved_pending_payment") {
+        void this.paymentNotifications?.afterCommit();
         await this.archives?.tryCreateVersion(
           paymentId,
           actorUserId,
@@ -2619,10 +2625,7 @@ export class SpotProcurementPaymentService {
       | "canceledCompanyPaymentAmountCents"
     >
   ) {
-    const amount =
-      payment.companyPaymentAmountCents -
-      payment.canceledCompanyPaymentAmountCents;
-    return amount > 0n ? amount : 0n;
+    return effectiveSpotCompanyPaymentAmount(payment);
   }
 
   private assertSameExecutionFacts(

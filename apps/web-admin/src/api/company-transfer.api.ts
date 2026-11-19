@@ -13,6 +13,7 @@ async function read<T>(path: string): Promise<T> {
 }
 async function request<T>(path: string, body?: unknown): Promise<T> { const response = await apiFetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}); const value = await response.json(); if (!response.ok) throw Object.assign(new Error(formatApiErrorMessage(value?.message, response.status, "公司互转办理失败")), { status: response.status, code: value?.code }); return value as T; }
 export function fetchCompanyTransfers(query: Record<string, string>) { return read<TransferData>(`/company-transfers?${new URLSearchParams(query)}`); }
+export function fetchCompanyTransfer(id: string) { return read<TransferRow>(`/company-transfers/${encodeURIComponent(id)}`); }
 export function createCompanyTransfer(body: unknown) { return request<{ id: string }>("/company-transfers", body); }
 export function decideCompanyTransfer(id: string, body: unknown) { return request(`/company-transfers/${encodeURIComponent(id)}/decision`, body); }
 export function executeCompanyTransfer(id: string, body: unknown) { return request(`/company-transfers/${encodeURIComponent(id)}/events`, body); }

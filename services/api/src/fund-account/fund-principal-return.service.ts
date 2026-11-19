@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { normalizeBusinessAmount, requiredPastChinaDate, sumBusinessAmounts, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
@@ -15,6 +15,7 @@ import { availableRegisteredBalance, RegisteredBalanceDecimal } from "../payment
 import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
 import { currentFundCompanyRoles } from "./fund-account-duty";
 import { ActPrincipalReturnDto, ApplyPrincipalReturnDto, PayPrincipalReturnDto } from "./fund-principal-return.dto";
+import { FundPrincipalReturnNotificationService } from "./fund-principal-return-notification.service";
 import { principalReturnAmounts, principalReturnDuties, type PrincipalReturnStatus } from "./fund-principal-return-state";
 import { assertPublicCashCustodian } from "./public-cash-custodian";
 
@@ -41,7 +42,8 @@ const fingerprint = (value: unknown) => createHash("sha256").update(JSON.stringi
 
 @Injectable()
 export class FundPrincipalReturnService {
-  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly audit: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly audit: AuditService,
+    @Optional() private readonly notices?: FundPrincipalReturnNotificationService) {}
 
   async apply(actor: string, input: ApplyPrincipalReturnDto) {
     const amountYuan = normalize(input.amountYuan);
@@ -65,6 +67,7 @@ export class FundPrincipalReturnService {
         id,sourceKind:input.sourceKind,sourceId:input.sourceId,projectId:origin.projectId,contributorName:origin.contributorName,
         requestedYuan:amountYuan,reason,status:"pending",approvalInstanceId,createdByUserId:actor,
       }});
+      await this.notices?.queueReview(tx, application, actor);
       return {application};
     });
   }
@@ -133,6 +136,7 @@ export class FundPrincipalReturnService {
       const application = await tx.registeredPrincipalReturnApplication.update({where:{id},data:{
         status,approvedYuan,revision:{increment:1},
       }});
+      if (row.status === "pending" && status === "approved") await this.notices?.queuePayment(tx, application, actor);
       return {application};
     });
   }
@@ -390,6 +394,7 @@ export class FundPrincipalReturnService {
     }
     const row = await this.prisma.$transaction(found,{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
     if (!row) throw new ConflictException({code:"REGISTERED_PRINCIPAL_RETURN_UNCONFIRMED",message:"归还结果暂未确认，请用原请求查询"});
+    if (action === "apply" || action === "approve") void this.notices?.afterCommit();
     return this.receipt(row);
   }
 

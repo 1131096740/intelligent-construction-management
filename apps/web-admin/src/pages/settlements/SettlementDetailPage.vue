@@ -759,6 +759,11 @@
       :error="sensitiveAction.error"
       @confirm="executeSensitiveAction"
     />
+    <DutySmsStatusPanel
+      v-if="settlementDetail?.settlementId && isSettlementActionEnabled('confirm_archive')"
+      domain="settlements"
+      :business-id="settlementDetail.settlementId"
+    />
     <ApprovalProgressPanel
       business-type="settlement"
       :business-id="settlementDetail?.id"
@@ -775,6 +780,7 @@ import type {
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";

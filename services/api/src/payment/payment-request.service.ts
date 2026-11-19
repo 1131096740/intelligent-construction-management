@@ -1,3 +1,4 @@
+import { PaymentApprovalNotificationService } from "./payment-approval-notification.service";
 import { currentPublicCashCustodian } from "../fund-account/public-cash-custodian";
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -409,7 +410,8 @@ export class PaymentRequestService {
     @Optional()
     private readonly sharedAllocations?: PaymentExecutionSharedAllocationService,
     @Optional()
-    private readonly registeredNotifications?: RegisteredPaymentNotificationService
+    private readonly registeredNotifications?: RegisteredPaymentNotificationService,
+    @Optional() private readonly approvalNotifications?: PaymentApprovalNotificationService
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -796,7 +798,7 @@ export class PaymentRequestService {
 
       if (applicantUserId) {
         await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
-        await tx.approvalInstance.create({
+        const round = await tx.approvalInstance.create({
           data: {
             flowType: "payment.approve",
             businessType: "payment_request",
@@ -807,6 +809,7 @@ export class PaymentRequestService {
             applicantUserId
           }
         });
+        await this.approvalNotifications?.queue(tx, payment, round, null);
       }
 
       await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
@@ -821,6 +824,7 @@ export class PaymentRequestService {
       return { ...payment, businessEntrySnapshot };
     });
 
+    await this.approvalNotifications?.afterCommit(payment.id);
     return paymentPostResponseToApi(payment);
   }
 
@@ -973,7 +977,7 @@ export class PaymentRequestService {
 
     if (applicantUserId) {
       await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
-      await tx.approvalInstance.create({
+      const round = await tx.approvalInstance.create({
         data: {
           flowType: "payment.approve",
           businessType: "payment_request",
@@ -984,6 +988,7 @@ export class PaymentRequestService {
           applicantUserId
         }
       });
+      await this.approvalNotifications?.queue(tx, payment, round, null);
     }
 
     await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
@@ -1286,7 +1291,7 @@ export class PaymentRequestService {
 
     if (applicantUserId) {
       await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
-      await tx.approvalInstance.create({
+      const round = await tx.approvalInstance.create({
         data: {
           flowType: "payment.approve",
           businessType: "payment_request",
@@ -1297,6 +1302,7 @@ export class PaymentRequestService {
           applicantUserId
         }
       });
+      await this.approvalNotifications?.queue(tx, payment, round, null);
     }
 
     await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
@@ -2395,7 +2401,7 @@ export class PaymentRequestService {
           data: { status: "approval_pending" }
         });
 
-        await tx.approvalInstance.update({
+        const nextRound = await tx.approvalInstance.update({
           where: { id: instance.id },
           data: {
             currentNodeIndex: previousNodeIndex,
@@ -2404,7 +2410,7 @@ export class PaymentRequestService {
           }
         });
 
-        await tx.approvalActionLog.create({
+        const transition = await tx.approvalActionLog.create({
           data: {
             approvalInstanceId: instance.id,
             action: "reject_previous",
@@ -2432,6 +2438,7 @@ export class PaymentRequestService {
           }
         });
 
+        await this.approvalNotifications?.queue(tx, updated, nextRound, transition);
         return updated;
       }
 
@@ -2597,7 +2604,7 @@ export class PaymentRequestService {
             }
           : { status: "approval_pending" }
       });
-      await tx.approvalInstance.update({
+      const nextRound = await tx.approvalInstance.update({
         where: { id: instance.id },
         data: {
           currentNodeIndex: nextNodeIndex,
@@ -2619,6 +2626,9 @@ export class PaymentRequestService {
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
         }, signature)
       });
+      if (!flowCompleted && nodeCompleted) {
+        await this.approvalNotifications?.queue(tx, approved, nextRound, finalApprovalAction);
+      }
       if (flowCompleted && payerFacts.paymentSubjectType === "our_company") {
         await queueApprovedRegisteredPaymentNotifications(tx, payment.id, instance.id, finalApprovalAction);
       }
@@ -2670,6 +2680,7 @@ export class PaymentRequestService {
       return approved;
     });
 
+    if (result.status === "approval_pending") await this.approvalNotifications?.afterCommit(result.id);
     if (completedInstanceId) {
       // Approval is already committed. Notification failure cannot turn this
       // result into an apparent failed approval or repeat the business action.

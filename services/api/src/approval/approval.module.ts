@@ -23,6 +23,6 @@ import { ApprovalSmsService } from "./approval-sms.service";
   imports: [GeneralProcurementRequestNotificationModule, AuditModule, AuthModule, FileModule, SpotProcurementAccessModule],
   controllers: [ApprovalRuleAssignmentsController, ApprovalDelegationController, ApprovalFormController, ApprovalProgressController],
   providers: [ApprovalRuleAssignmentsService, SpotProcurementApprovalNotificationService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
-  exports: [SpotProcurementApprovalNotificationService, ApprovalSmsService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService]
+  exports: [SpotProcurementApprovalNotificationService, ApprovalSmsService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService, IndependentApprovalProgressService, SpotProcurementPilotService]
 })
 export class ApprovalModule {}

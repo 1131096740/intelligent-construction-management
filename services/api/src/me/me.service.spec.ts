@@ -1136,23 +1136,35 @@ describe("MeService", () => {
     };
     const service = new MeService(prisma as never, {} as never);
 
+    const reminderLookup = prisma.approvalActionLog.findMany.mockImplementation(({ where }) => where.action === "remind"
+      ? [
+        { id: "reminder-for-other", createdAt: new Date(), approvalInstanceId: "approval-1", metadata: { kind: "sms_request", recipientIds: ["other"], dutyIndexes: [0] } },
+        { id: "reminder-for-me", createdAt: new Date(), approvalInstanceId: "approval-1", metadata: { kind: "sms_request", recipientIds: ["delegatee-1"], dutyIndexes: [0] } }
+      ]
+      : []
+    );
+    const notices = await service.getWorkItemNotices("delegatee-1", 0);
     const result = await service.getWorkItems("delegatee-1");
 
-    expect(result.queues.pending).toContainEqual(
+    expect(notices.queues.pending).toContainEqual(
       expect.objectContaining({
         id: "approval:approval-1",
+        reminderId: "reminder-for-me",
         type: "approval",
         projectName: "测试项目",
         businessCode: "JS-001",
         currentNode: "项目经理审批"
       })
     );
+    expect(reminderLookup).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      approvalInstanceId: { in: ["approval-1"] }, action: "remind"
+    }) }));
     expect(result.approvalCenter.pendingApproval[0].id).toBe("approval:approval-1");
     expect(result.approvalCenter.delegatedToMe[0].id).toBe("approval:approval-1");
     expect(result.approvalCenter.startedByMe[0].id).toBe("approval:approval-started");
-    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledTimes(2);
-    const firstEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[0]?.[0].where.startsAt.lte;
-    const secondEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[1]?.[0].where.startsAt.lte;
+    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledTimes(3);
+    const firstEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[1]?.[0].where.startsAt.lte;
+    const secondEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[2]?.[0].where.startsAt.lte;
     expect(firstEvaluatedAt).toBe(secondEvaluatedAt);
     expect(result.generatedAt).toBe(firstEvaluatedAt.toISOString());
 
@@ -1465,29 +1477,34 @@ describe("MeService", () => {
 
   it("shows approved spot-payment execution work items to project finance", async () => {
     const prisma = {
-      $queryRaw:jest.fn().mockResolvedValue([]),
+      $queryRaw:jest.fn().mockResolvedValue([{projectId:"project-1",userId:"finance",roleKey:"finance_staff",userIsActive:true}]),
+      spotProcurement:{findUnique:jest.fn().mockResolvedValue({currentVersionId:"version",status:"approved_in_progress",projectId:"project-1"})},
+      spotProcurementVersion:{findUnique:jest.fn().mockResolvedValue({id:"version",procurementId:"procurement",status:"approved"})},
+      spotProcurementDiscrepancy:{findFirst:jest.fn().mockResolvedValue(null)},
       spotProcurementPayment: {
         findMany: jest.fn().mockResolvedValue([
           {
             id: "spot-payment-1",
             projectId: "project-1",
             code: "LXCG-001-V1-P001",
-            approvalAmountCents: 410000n,
+            procurementId:"procurement",procurementVersionId:"version",status:"approved_pending_payment",
+            companyPaymentAmountCents:410000n,canceledCompanyPaymentAmountCents:0n,
             paidAmountCents: 0n,
             updatedAt: new Date("2026-07-21T08:00:00.000Z")
           }
         ])
       }
     };
-    const service = new MeService(prisma as never, {} as never) as unknown as {
+    const service = new MeService(prisma as never, {} as never,undefined,undefined,{isEnabled:()=>true} as never) as unknown as {
       spotPaymentExecutionWorkItems(
+        userId:string,
         projectIds: string[],
         projectNames: ReadonlyMap<string, string>
       ): Promise<WorkItem[]>;
     };
 
     await expect(service.spotPaymentExecutionWorkItems(
-      ["project-1"],
+      "finance",["project-1"],
       new Map([["project-1", "测试项目"]])
     )).resolves.toEqual([
       expect.objectContaining({
@@ -1497,6 +1514,10 @@ describe("MeService", () => {
         targetPath: "/零星材料付款/spot-payment-1?tab=current"
       })
     ]);
+    prisma.spotProcurementDiscrepancy.findFirst.mockResolvedValue({id:"pending-discrepancy"});
+    await expect(service.spotPaymentExecutionWorkItems("finance",["project-1"],new Map())).resolves.toEqual([]);
+    prisma.$queryRaw.mockResolvedValue([]);
+    await expect(service.spotPaymentExecutionWorkItems("removed",["project-1"],new Map())).resolves.toEqual([]);
     expect(prisma.spotProcurementPayment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -1984,6 +2005,62 @@ describe("MeService", () => {
     expect(after.cards.find(card=>card.id==="approval_todo")?.count).toBe(0);
   });
 
+  it("独立催办复用当前业务待办，无对应项时只出现于近期提示且保持正常分页计数", async () => {
+    const time = new Date();
+    const base = { projectName: "合成项目", businessCode: "JS-1", title: "结算归档", currentNodeName: "确认归档", remindedAt: time };
+    const service = new MeService({} as never, {} as never, undefined, {
+      recentPendingReminders: jest.fn().mockResolvedValue([
+        { ...base, id: "independent:settlement_archive:settlement-1", businessId: "settlement-1", kind: "settlement_archive", reminderId: "matched" },
+        { ...base, id: "independent:no_invoice:source-1", businessId: "source-1", kind: "no_invoice", reminderId: "recent-only",
+          remindedAt: new Date(time.getTime() + 1) }
+      ])
+    } as never);
+    jest.spyOn(service as never, "loadProjectRoleScopes" as never).mockResolvedValue([] as never);
+    jest.spyOn(service as never, "collectCurrentPending" as never).mockResolvedValue([{
+      id: "settlement-archive:settlement-1", businessId: "settlement-1", businessType: "settlement",
+      targetPath: "/结算管理/JS-1", type: "archive"
+    }] as never);
+    const result = await service.getWorkItemNotices("reviewer", 0);
+    expect(result.queueMeta.pending.total).toBe(1);
+    expect(result.queues.pending).toEqual([expect.objectContaining({ reminderId: "matched", targetPath: "/结算管理/JS-1" })]);
+    expect(result.recentNotices).toEqual([
+      expect.objectContaining({ reminderId: "recent-only", targetPath: "/审批中心?review=independent%3Ano_invoice%3Asource-1" }),
+      expect.objectContaining({ reminderId: "matched", targetPath: "/结算管理/JS-1" })
+    ]);
+  });
+
+  it("费用资金待办只展示可办项目的非零余额，办结或撤岗后消失", async () => {
+    const approvedAt = new Date();
+    const row = { id: "loan/1", code: "JK-01", claimType: "loan", status: "partially_disbursed", projectId: "project-1",
+      approvedAt, updatedAt: approvedAt, requestedAmountCents: 1000n, companyPayableAmountCents: 0n, fundedAmountCents: 100n };
+    const findMany = jest.fn().mockResolvedValue([
+      row,
+      { ...row, id: "expense-1", code: "BX-01", claimType: "reimbursement", status: "approved_pending_payment", companyPayableAmountCents: 300n },
+      { ...row, id: "wrong-project", projectId: "project-2" },
+      { ...row, id: "zero", fundedAmountCents: 1000n },
+      { ...row, id: "final", status: "disbursed" }
+    ]);
+    const service = new MeService({ expenseClaim: { findMany } } as never, {} as never) as unknown as {
+      expenseFundingWorkItems(scopes: Array<{ projectId: string; roleKeys: string[] }>, names: Map<string, string>): Promise<WorkItem[]>
+    };
+    const scopes = [{ projectId: "project-1", roleKeys: ["finance_staff"] }];
+    const names = new Map([["project-1", "合成项目"]]);
+    await expect(service.expenseFundingWorkItems(scopes, names)).resolves.toEqual([
+      expect.objectContaining({ id: "expense-funding:disbursement:loan/1", targetPath: "/费用与报销/loan%2F1",
+        type: "payment_execution", currentNode: "登记借款放款", amountText: "¥9.00" }),
+      expect.objectContaining({ id: "expense-funding:payment:expense-1", targetPath: "/费用与报销/expense-1",
+        type: "payment_execution", currentNode: "登记实际付款", amountText: "¥2.00" })
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { voidedAt: null, OR: [
+      { projectId: { in: ["project-1"] }, claimType: { in: ["loan"] }, status: { in: ["approved_pending_disbursement", "partially_disbursed"] } },
+      { projectId: { in: ["project-1"] }, claimType: { in: ["reimbursement", "incidental_expense"] }, status: { in: ["approved_pending_payment", "partially_paid"] } }
+    ] } }));
+    await expect(service.expenseFundingWorkItems([{ projectId: "project-1", roleKeys: ["finance_director"] }], names)).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    findMany.mockResolvedValueOnce([{ ...row, status: "disbursed" }]);
+    await expect(service.expenseFundingWorkItems(scopes, names)).resolves.toEqual([]);
+  });
+
   it("reuses canonical pending work-item sources for the untruncated funds queue", async () => {
     const service = new MeService({$queryRaw:jest.fn().mockResolvedValue([])} as never, {} as never) as unknown as {
       getFundsPendingWorkItems(userId: string): Promise<WorkItem[]>;
@@ -2023,7 +2100,7 @@ describe("MeService", () => {
       undefined
     );
     expect(spotPaymentExecutionWorkItems).toHaveBeenCalledWith(
-      ["project-1"],
+      "finance-1",["project-1"],
       expect.any(Map),
       undefined
     );

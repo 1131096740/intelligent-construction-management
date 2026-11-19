@@ -7,6 +7,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import { fetchFundAccounts, type FundAccount } from "../../api/fund-account.api";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -1377,6 +1378,11 @@ onMounted(() => void loadDetail());
         </t-card>
       </template>
     </JgResultState>
+    <DutySmsStatusPanel
+      v-if="detail?.id && (detail.fundsPermissions?.canRecordPayment || detail.fundsPermissions?.canRecordLoanDisbursement)"
+      domain="expense-claims"
+      :business-id="detail.id"
+    />
     <ApprovalProgressPanel
       business-type="expense_claim"
       :business-id="detail?.id"

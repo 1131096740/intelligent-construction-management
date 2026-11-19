@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `99e05a98fe6907a2f72f2eafda3435e4e568e4b28b53b9155f4b37b9958ba5cd` |
-| webApiWrappers | ready | `74b83c467f74947f5be733bf17d6162cc9f342f15af72e36daf7c11f735861e7` |
-| webPageActions | ready | `23ad7b31161dc82a6e30c78a2be79529fb4ce2e589887bfe1b701e3d8c97dd9f` |
-| routeUsage | ready | `dd63dbf98347b0ae8b18e495622e96bf85f2c83b93f4c135cb472b728497c664` |
+| nestRoutes | ready | `5c1265870c03964090750898ee228b43853c7c6b30a193705573f6850a1f501a` |
+| webApiWrappers | ready | `efa98be661a8643d69608dd6a15d1e8793d3f261c4777a8f9d94c64a6a169843` |
+| webPageActions | ready | `e155074c05581a0808b82ab1c8cc8072f574463bd3481e82901545566f432587` |
+| routeUsage | ready | `f720e7cfd254cb4a41906137ea559b604ce07b42e9292f4020b3bb30550ccf1e` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 756 |
-| pageRouteCount | 557 |
+| routeCount | 795 |
+| pageRouteCount | 596 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 750 |
+| mainRequestBindingCount | 789 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 443 |
-| actionBindingCount | 519 |
-| acceptedActionBindingCount | 476 |
+| registeredActionCount | 445 |
+| actionBindingCount | 537 |
+| acceptedActionBindingCount | 494 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 429 |
-| coveredProductionMutationConsumerPairCount | 429 |
+| productionMutationConsumerPairCount | 431 |
+| coveredProductionMutationConsumerPairCount | 431 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -79,9 +79,12 @@
 | GET | /company-entities/management-capability | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagementCapability | — | not_applicable | — |
 | GET | /company-entities/management | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagement | — | not_applicable | — |
 | GET | /company-transfers/:id/banks | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransferBanks | — | not_applicable | — |
+| GET | /company-transfers/:id | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransfer | — | not_applicable | — |
+| GET | /company-transfers/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#fetchMultiDutySms | — | not_applicable | — |
 | GET | /company-transfers/:id/events/:eventId/original-debt-corrections | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransferOriginalDebtCorrections | — | not_applicable | — |
 | GET | /company-transfers | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransferCapabilities<br>apps/web-admin/src/api/company-transfer.api.ts#fetchCompanyTransfers | — | not_applicable | — |
 | GET | /company-transfers/export | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#exportCompanyTransfers | — | not_applicable | — |
+| GET | /contract-bank-verifications/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /contract-bank-verifications | page | web_api_wrapper | apps/web-admin/src/api/contract-bank-verification.api.ts#fetchBankVerifications | — | not_applicable | — |
 | GET | /contract-bills/:billId/excel-template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadBillExcelTemplate | — | not_applicable | — |
 | GET | /contract-business-scenarios/available | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#listAvailableContractBusinessScenarios | — | not_applicable | — |
@@ -93,6 +96,7 @@
 | GET | /contract-drafts/:contractVersionId/save-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftSaveResult<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchDirectPendingSaveResult | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/submission-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftSubmissionResult | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftOperationCapabilities<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
+| GET | /contract-economic-reviews/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /contract-economic-reviews | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchEconomicReviews | — | not_applicable | — |
 | GET | /contract-economic-reviews/counterparties | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchContractCounterparties | — | not_applicable | — |
 | GET | /contract-ended-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#fetchContractEndedApplicationRetentionPreview | — | not_applicable | — |
@@ -104,6 +108,7 @@
 | GET | /contract-layout-templates/creation-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#getLayoutCreationCapability | — | not_applicable | — |
 | GET | /contract-layout-templates/maintenance | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#listMaintainedLayouts | — | not_applicable | — |
 | GET | /contract-number-rules | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listContractNumberRules<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchActiveContractNumberRules | — | not_applicable | — |
+| GET | /contract-proxy-executions/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /contract-proxy-executions/bank-options | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#fetchCompanyBankEvents | — | not_applicable | — |
 | GET | /contract-proxy-executions | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#fetchContractProxyExecutions | — | not_applicable | — |
 | GET | /contract-relationship-ledger | page | web_api_wrapper | apps/web-admin/src/api/contract-relationship-ledger.api.ts#fetchContractRelationshipLedger | — | not_applicable | — |
@@ -123,6 +128,7 @@
 | GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
 | GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalWithdrawalAction | contract-seal-v2.lookup-original<br>contract.signing-material-change | not_applicable | — |
+| GET | /contracts/:contractVersionId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#fetchMultiDutySms | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/formal-files/counterparty | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listCounterpartySignedFiles | — | not_applicable | — |
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
 | GET | /contracts/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractCreateCapabilities | — | not_applicable | — |
@@ -135,6 +141,7 @@
 | GET | /employee-onboarding/applications | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchEmployeeApplications | — | not_applicable | — |
 | GET | /employee-onboarding/mine | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchMyApplication | — | not_applicable | — |
 | GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#deleteExpenseClaimDraft<br>apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | expense-claim.delete-draft | not_applicable | — |
+| GET | /expense-claims/:claimId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
 | GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
@@ -143,12 +150,15 @@
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /fund-account-advance-receipts/company-owned-bank-options | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#fetchCompanyOwnedBankOptions | — | not_applicable | — |
 | GET | /fund-account-advance-receipts/contributor-options | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#fetchFundAdvanceContributorOptions | — | not_applicable | — |
+| GET | /fund-account-transfers/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /fund-account-transfers | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#fetchFundAccountTransfers | — | not_applicable | — |
 | GET | /fund-accounts/:scopeKey | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccount | — | not_applicable | — |
 | GET | /fund-accounts | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccounts | — | not_applicable | — |
+| GET | /fund-accounts/principal-returns/applications/:id/duty-sms/:dutyKey | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /fund-accounts/principal-returns | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#fetchPrincipalReturns | — | not_applicable | — |
 | GET | /fund-accounts/principal-returns/results/:key | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#fetchPrincipalReturnResult | fund-principal-return.lookup-original | not_applicable | — |
 | GET | /fund-accounts/registrations/:registrationId | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundBalanceRegistration | — | not_applicable | — |
+| GET | /fund-accounts/registrations/:registrationId/review/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /fund-accounts/registrations/:registrationId/review | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundReview | — | not_applicable | — |
 | GET | /fund-executions/capabilities | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCapabilities | — | not_applicable | — |
 | GET | /fund-executions/cases/:caseId/classification-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseOptions | — | not_applicable | — |
@@ -159,6 +169,7 @@
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
+| GET | /general-procurements/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#fetchMultiDutySms | — | not_applicable | — |
 | GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.delete-draft<br>general-procurement.legacy.updateProcurement<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
 | GET | /general-procurements/create-options | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#createProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementOptions | general-procurement.createProcurement | not_applicable | — |
 | GET | /general-procurements | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementList | — | not_applicable | — |
@@ -170,6 +181,8 @@
 | GET | /me/signature/canvas-capabilities | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureCapabilities | — | not_applicable | — |
 | GET | /me/signature/canvas-handoffs/:token | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureHandoff | — | not_applicable | — |
 | GET | /me/signature/ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getSignatureTicket | — | not_applicable | — |
+| GET | /me/work-item-notice-details | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkItemNoticeDetails | — | not_applicable | — |
+| GET | /me/work-item-notice-keys | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkItemNoticeKeys | — | not_applicable | — |
 | GET | /me/work-items | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkItems | — | not_applicable | — |
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | — |
 | GET | /necessary-expense-reserves/capabilities | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#fetchNecessaryExpenseReserveCapabilities | — | not_applicable | — |
@@ -192,6 +205,7 @@
 | GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchWagePayableCases | — | not_applicable | — |
 | GET | /payable-settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementWorkbench | — | not_applicable | — |
+| GET | /payment-executions/:paymentId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /payment-executions/:paymentId/existing-source/:type/:id | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /payment-executions/:paymentId/registration-options | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentOptions | — | not_applicable | — |
 | GET | /payment-executions/:executionId/voucher-ticket | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#downloadRegisteredPaymentVoucher | — | not_applicable | — |
@@ -199,6 +213,7 @@
 | GET | /payment-executions/recorded-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRecordedPaymentItems | — | not_applicable | — |
 | GET | /payment-executions/results/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentResult | registered-payment.lookup-original | not_applicable | — |
 | GET | /payment-executions/work-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentWorkItems | — | not_applicable | — |
+| GET | /payments/:paymentId/approval/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /payments/:paymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentActionCapability | — | not_applicable | — |
 | GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
@@ -271,14 +286,18 @@
 | GET | /settlements/:settlementId/attachment-templates/:templateKey/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementAttachmentTemplate | — | not_applicable | — |
 | GET | /settlements/:settlementId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementActionCapability | — | not_applicable | — |
 | GET | /settlements/:settlementId/draft-excel | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementDraftExcel | — | not_applicable | — |
+| GET | /settlements/:settlementId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /settlements/:settlementId/recovery | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#fetchSettlementRecovery | — | not_applicable | — |
 | GET | /settlements/:settlementId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareSettlementApprovalWithdrawalAction | — | not_applicable | — |
 | GET | /settlements/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLedgerExport | — | not_applicable | — |
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | — |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
 | GET | /settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementWorkbenchLedger | — | not_applicable | — |
+| GET | /spot-procurement-payments/:paymentId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefundForPayment<br>apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherForPayment | spot-procurement-payment.refund.record<br>spot-procurement-payment.refund.record<br>spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurement-payments | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPayments | — | not_applicable | — |
+| GET | /spot-procurements/:procurementId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#fetchMultiDutySms | — | not_applicable | — |
+| GET | /spot-procurements/:procurementId/receipt/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /spot-procurements/:procurementId/receipt | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementReceipt | spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurements/:procurementId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementWithdrawalAction | — | not_applicable | — |
 | GET | /spot-procurements/application-text-suggestions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationTextSuggestions | — | not_applicable | — |
@@ -288,7 +307,9 @@
 | GET | /spot-procurements | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurements | — | not_applicable | — |
 | GET | /standard-clauses/history | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listStandardClauseHistory | — | not_applicable | — |
 | GET | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedStandardClauses | — | not_applicable | — |
+| GET | /upward-contract-amount-revisions/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /upward-contract-amount-revisions | page | web_api_wrapper | apps/web-admin/src/api/upward-contract-amount.api.ts#fetchUpwardAmounts | — | not_applicable | — |
+| GET | /upward-receipt-matches/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /upward-receipt-matches | page | web_api_wrapper | apps/web-admin/src/api/upward-receipt-match.api.ts#fetchReceiptMatches | — | not_applicable | — |
 | GET | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | GET | /wage-statements/:statementId/import-preview | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementImportPreview | — | not_applicable | — |
@@ -369,11 +390,13 @@
 | POST | /company-entities/:id/status | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | company-entity.status | covered | — |
 | POST | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | company-entity.create | covered | — |
 | POST | /company-transfers/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#decideCompanyTransfer | company-transfer.decideCompanyTransfer | covered | — |
+| POST | /company-transfers/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#retryMultiDutySms | multi-duty-sms.retry | covered | — |
 | POST | /company-transfers/:id/events/:eventId/original-debt-corrections/:correctionId/confirm | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#confirmCompanyTransferOriginalDebtCorrection | company-transfer.confirm-original-debt-correction | covered | — |
 | POST | /company-transfers/:id/events/:eventId/original-debt-corrections | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#requestCompanyTransferOriginalDebtCorrection | company-transfer.request-original-debt-correction | covered | — |
 | POST | /company-transfers/:id/events | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#executeCompanyTransfer | company-transfer.executeCompanyTransfer | covered | — |
 | POST | /company-transfers | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#createCompanyTransfer | company-transfer.createCompanyTransfer | covered | — |
 | POST | /contract-bank-verifications/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/contract-bank-verification.api.ts#decideBankVerification | contract-bank-verification.decideBankVerification | covered | — |
+| POST | /contract-bank-verifications/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /contract-bank-verifications | page | web_api_wrapper | apps/web-admin/src/api/contract-bank-verification.api.ts#prepareBankVerification | contract-bank-verification.prepareBankVerification | covered | — |
 | POST | /contract-bill-imports/:importId/apply | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-bills/:billId/excel-imports | exit_candidate | none | — | — | not_applicable | — |
@@ -392,6 +415,7 @@
 | POST | /contract-drafts/:contractVersionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDraftPreview | contract-draft.body-paper-generate<br>contract-draft.preview-queue | covered | — |
 | POST | /contract-drafts/:contractVersionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft | contract-workbench.submit | covered | — |
 | POST | /contract-economic-reviews/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#decideEconomicReview | contract-economic-review.decideEconomicReview | covered | — |
+| POST | /contract-economic-reviews/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /contract-economic-reviews | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#prepareEconomicReview | contract-economic-review.prepareEconomicReview | covered | — |
 | POST | /contract-economic-reviews/settlement-coverage | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#prepareEconomicSettlement | contract-economic-review.prepareEconomicSettlement | covered | — |
 | POST | /contract-ended-retention/:contractVersionId/hold-release | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#releaseContractEndedApplicationRetentionHold | contract-ended-retention.release-hold | covered | — |
@@ -412,6 +436,7 @@
 | POST | /contract-offline-revisions/:revisionId/preview-download-ticket | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#openContractRevisionPreview | — | not_applicable | — |
 | POST | /contract-offline-revisions/:revisionId/retry | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#retryContractOfflineRevision | — | not_applicable | — |
 | POST | /contract-proxy-executions/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#decideContractProxyExecution | contract-proxy-execution.decideContractProxyExecution | covered | — |
+| POST | /contract-proxy-executions/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /contract-proxy-executions | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#prepareContractProxyExecution | contract-proxy-execution.prepareContractProxyExecution | covered | — |
 | POST | /contract-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#cloneContractTemplateVersion | — | not_applicable | — |
 | POST | /contract-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#discardContractTemplateVersion | — | not_applicable | — |
@@ -445,6 +470,7 @@
 | POST | /contracts/:contractVersionId/authorizations | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization | contract-authorization.set | covered | — |
 | POST | /contracts/:contractVersionId/change-drafts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft | contract-change.create-draft | covered | — |
 | POST | /contracts/:contractVersionId/copies | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft | — | not_applicable | — |
+| POST | /contracts/:contractVersionId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#retryMultiDutySms | multi-duty-sms.retry | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/approval | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractFormalApprovalFile | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/formal-files/counterparty/confirmation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmCounterpartySignedFile | contract-counterparty-signed.confirm | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/counterparty | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadCounterpartySignedFiles | contract-counterparty-signed.submit-files | covered | — |
@@ -475,6 +501,7 @@
 | POST | /expense-claims/:claimId/disbursements | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanDisbursement | expense-claim.loan.disbursement.record | covered | — |
 | POST | /expense-claims/:claimId/draft-attachment-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimDraftAttachmentFile | expense-claim.attachment.draft-upload | covered | — |
 | POST | /expense-claims/:claimId/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#deleteExpenseClaimDraft | expense-claim.delete-draft | covered | — |
+| POST | /expense-claims/:claimId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /expense-claims/:claimId/final-disbursement-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalDisbursementPdf | expense-claim.loan.final-disbursement-pdf.generate | covered | — |
 | POST | /expense-claims/:claimId/final-payment-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalPaymentPdf | expense-claim.final-payment-pdf.generate | covered | — |
 | POST | /expense-claims/:claimId/payment-subject | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject | expense-claim.payment-subject.adjust | covered | — |
@@ -491,14 +518,17 @@
 | POST | /fund-account-advance-receipts/company-owned | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerCompanyOwnedFund | fund-advance.recover-original<br>fund-advance.register | covered | — |
 | POST | /fund-account-advance-receipts | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerFundAdvance | fund-advance.recover-original<br>fund-advance.register | covered | — |
 | POST | /fund-account-transfers/:id/actions | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#actOnFundAccountTransfer | fund-transfer.act<br>fund-transfer.recover-original | covered | — |
+| POST | /fund-account-transfers/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /fund-account-transfers | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#registerFundAccountTransfer | fund-transfer.recover-original<br>fund-transfer.register | covered | — |
 | POST | /fund-accounts/corrections | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#requestFundCorrection | fund-account.requestFundCorrection | covered | — |
 | POST | /fund-accounts/openings | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#registerFundOpening | fund-account.registerFundOpening | covered | — |
 | POST | /fund-accounts/principal-returns/applications/:id/actions | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#actOnPrincipalReturn | fund-principal-return.recover-original<br>fund-principal-return.submit | covered | — |
+| POST | /fund-accounts/principal-returns/applications/:id/duty-sms/:dutyKey/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /fund-accounts/principal-returns/applications/:id/payments | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#payPrincipalReturn | fund-principal-return.recover-original<br>fund-principal-return.submit | covered | — |
 | POST | /fund-accounts/principal-returns/applications | page | web_api_wrapper | apps/web-admin/src/api/fund-principal-return.api.ts#applyPrincipalReturn | fund-principal-return.recover-original<br>fund-principal-return.submit | covered | — |
 | POST | /fund-accounts/registrations/:registrationId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#confirmFundCorrection | fund-account.confirm-correction | covered | — |
 | POST | /fund-accounts/registrations/:registrationId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#returnFundCorrection | fund-account.returnFundCorrection | covered | — |
+| POST | /fund-accounts/registrations/:registrationId/review/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /fund-accounts/registrations/:registrationId/withdraw | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#withdrawFundCorrection | fund-account.withdrawFundCorrection | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
@@ -513,6 +543,7 @@
 | POST | /general-procurements/:id/archive | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement | general-procurement.archiveProcurement | covered | — |
 | POST | /general-procurements/:id/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft | general-procurement.delete-draft | covered | — |
 | POST | /general-procurements/:id/draft | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#updateProcurement | general-procurement.legacy.updateProcurement<br>general-procurement.updateProcurement | covered | — |
+| POST | /general-procurements/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#retryMultiDutySms | multi-duty-sms.retry | covered | — |
 | POST | /general-procurements/:id/payments/:claimId/cancellation | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment | general-procurement.cancelProcurementPayment | covered | — |
 | POST | /general-procurements/:id/review | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement | general-procurement.reviewProcurement | covered | — |
 | POST | /general-procurements/:id/submission | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#submitProcurement | general-procurement.submitProcurement | covered | — |
@@ -556,6 +587,7 @@
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#uploadInterEntityRelationshipEvidence | payable-settlement.inter-entity-return.upload-evidence | covered | — |
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnInterEntityRelationship | payable-settlement.inter-entity-return | covered | — |
 | POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
+| POST | /payment-executions/:paymentId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /payment-executions/:paymentId/recovery-proof | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#verifyRegisteredPaymentRecovery | registered-payment.lookup-original | covered | — |
 | POST | /payment-executions/:paymentId/registrations | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#recordRegisteredPayment | registered-payment.register | covered | — |
 | POST | /payment-executions/:executionId/voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
@@ -565,6 +597,7 @@
 | POST | /payments/:paymentId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | — | not_applicable | — |
 | POST | /payments/:paymentId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferPaymentApproval | payment-detail.transfer | covered | — |
 | POST | /payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval | payment-detail.withdraw | covered | — |
+| POST | /payments/:paymentId/approval/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executePaymentApprovalReviewAction | payment-approval.approve<br>payment-approval.reject | covered | — |
 | POST | /payments/:paymentId/execution-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPaymentExecutionPrivateFile | payment-execution.record | covered | — |
 | POST | /payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | covered | — |
@@ -725,6 +758,7 @@
 | POST | /settlements/:settlementId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmSettlementArchive | settlement-detail.archive-confirm-or-regenerate | covered | — |
 | POST | /settlements/:settlementId/archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchivePrivateFile | settlement-detail.archive-upload | covered | — |
 | POST | /settlements/:settlementId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchiveFile | settlement-detail.archive-upload | covered | — |
+| POST | /settlements/:settlementId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /settlements/:settlementId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generateSettlementPdfArchive | settlement-detail.pdf-generation | covered | — |
 | POST | /settlements/:settlementId/recovery-entries/:entryId/reversal | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#reverseSettlementRecovery | settlement-recovery.reverse | covered | — |
 | POST | /settlements/:settlementId/recovery-entries | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#recordSettlementRecovery | settlement-recovery.record | covered | — |
@@ -737,6 +771,7 @@
 | POST | /spot-procurement-payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementPaymentReviewAction | spot-procurement-payment.legacy-review-approve<br>spot-procurement-payment.legacy-review-return-to-applicant<br>spot-procurement-payment.review-approve<br>spot-procurement-payment.review-return-to-applicant | covered | — |
 | POST | /spot-procurement-payments/:paymentId/balance-execution | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurement-payments/:paymentId/draft-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementPaymentDraftFile | spot-procurement-payment.draft-file.upload | covered | — |
+| POST | /spot-procurement-payments/:paymentId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /spot-procurement-payments/:paymentId/execution-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementExecutionVoucherFile | spot-procurement-payment.execution-voucher.upload | covered | — |
 | POST | /spot-procurement-payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementPaymentExecution | spot-procurement-payment.execution.record | covered | — |
 | POST | /spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#invalidateSpotProcurementPaymentInvoice | spot-procurement.invoice-invalidate | covered | — |
@@ -750,6 +785,7 @@
 | POST | /spot-procurements/:procurementId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementReviewAction | spot-procurement.review-approve<br>spot-procurement.review-reject<br>spot-procurement.review-return-to-applicant | covered | — |
 | POST | /spot-procurements/:procurementId/discrepancy | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDiscrepancy | spot-procurement-receipt.discrepancy.confirm<br>spot-procurement-receipt.discrepancy.initiate | covered | — |
 | POST | /spot-procurements/:procurementId/draft-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementDraftFile | spot-procurement.draft-file.upload | covered | — |
+| POST | /spot-procurements/:procurementId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#retryMultiDutySms | multi-duty-sms.retry | covered | — |
 | POST | /spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/invoice-exceptions | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/invoice-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementInvoiceFile | spot-procurement-receipt.invoice-file.upload | covered | — |
@@ -760,6 +796,7 @@
 | POST | /spot-procurements/:procurementId/receipt-photo-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementReceiptPhotoFile | spot-procurement-receipt.photo-file.upload | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/delegations | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementReceiptDelegation | spot-procurement-receipt.delegate | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/draft-reset | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#resetSpotProcurementReceiptDraft | spot-procurement-receipt.draft.reset | covered | — |
+| POST | /spot-procurements/:procurementId/receipt/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/pdf-refresh | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#refreshSpotProcurementReceiptPdf | spot-procurement.receipt-pdf-refresh | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/photos | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#attachSpotProcurementReceiptPhoto | spot-procurement-receipt.photo.attach | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/review-revocation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#revokeSpotProcurementReceiptReview | spot-procurement-receipt.review.revoke | covered | — |
@@ -778,8 +815,10 @@
 | POST | /standard-clause-versions/:versionId/submission | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#submitStandardClauseVersion | — | not_applicable | — |
 | POST | /standard-clauses | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createStandardClause | — | not_applicable | — |
 | POST | /upward-contract-amount-revisions/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/upward-contract-amount.api.ts#decideUpwardAmount | upward-contract-amount.decideUpwardAmount | covered | — |
+| POST | /upward-contract-amount-revisions/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /upward-contract-amount-revisions | page | web_api_wrapper | apps/web-admin/src/api/upward-contract-amount.api.ts#prepareUpwardAmount | upward-contract-amount.prepareUpwardAmount | covered | — |
 | POST | /upward-receipt-matches/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/upward-receipt-match.api.ts#decideReceiptMatch | upward-receipt-match.decideReceiptMatch | covered | — |
+| POST | /upward-receipt-matches/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /upward-receipt-matches | page | web_api_wrapper | apps/web-admin/src/api/upward-receipt-match.api.ts#prepareReceiptMatch | upward-receipt-match.prepareReceiptMatch | covered | — |
 | POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/confirm | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#confirmWageStatement | wage-statement.confirm | covered | — |

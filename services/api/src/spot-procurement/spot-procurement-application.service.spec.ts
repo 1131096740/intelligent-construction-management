@@ -105,7 +105,7 @@ function frozenRealFormLine(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function context(roleKey = "material_staff") {
+function context(roleKey = "material_staff", notifications?: unknown) {
   const tx = {
     project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" }) },
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -210,7 +210,7 @@ function context(roleKey = "material_staff") {
       balances as never,
       entryTransactions as never,
       entryDefinitions as never,
-      undefined,
+      notifications as never,
       new AuthService(prisma as never, {} as never)
     )
   };
@@ -2471,4 +2471,27 @@ it("PUR-01 v2末岗仅进入项目采购待办，不创建收货或付款草稿"
   })).resolves.toMatchObject({ status: "approved_in_progress", versionStatus: "approved" });
   expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
   expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+});
+
+it.each(["reject", "return_to_applicant"] as const)("v2 %s 与新草稿在同事务记入退回通知，完成后才尝试发送", async (decision) => {
+  const notifications = {
+    queueCorrectionInTransaction: jest.fn().mockResolvedValue(undefined),
+    dispatchQueued: jest.fn().mockResolvedValue(undefined)
+  };
+  const {service, tx} = context("material_director", notifications);
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")])
+    .mockResolvedValueOnce([{...version("approval_pending"), requestProtocolVersion: 2}])
+    .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"}
+    ]}])
+    .mockResolvedValueOnce([{projectId: "project-1", userId: "director-1", roleKey: "material_director", userIsActive: true}])
+    .mockResolvedValueOnce([]);
+  tx.spotProcurementVersion.create.mockResolvedValueOnce({...version("draft"), id: "version-2", versionNo: 2, requestProtocolVersion: 2});
+
+  await expect(service.review("procurement-1", "director-1", {
+    decision, comment: "需要补充说明", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 0
+  })).resolves.toMatchObject({status: "draft", currentVersionId: "version-2"});
+  expect(notifications.queueCorrectionInTransaction).toHaveBeenCalledWith(tx,
+    expect.objectContaining({id: "approval-1", applicantUserId: "material-1"}), "version-2", 0);
+  expect(notifications.queueCorrectionInTransaction.mock.invocationCallOrder[0]).toBeLessThan(notifications.dispatchQueued.mock.invocationCallOrder[0]);
 });

@@ -1,3 +1,4 @@
+import type { ApprovalDutySmsIntent } from "../approval/approval-duty-sms-intent";
 import {runPreparedSpotRequestV2HttpCases} from "./spot-request-v2.http.pg.prepared";
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
@@ -73,6 +74,9 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     enabled: false,
     calls: [] as Array<{phone: string; businessCode: string; dutyName: string}>,
     available() { return this.enabled; },
+    async sendDutyIntent(phone: string,intent: ApprovalDutySmsIntent) {
+      return this.send(phone,intent.businessLabel,intent.dutyName,intent.businessCode);
+    },
     async send(phone: string, _label: string, dutyName: string, businessCode: string) {
       this.calls.push({phone, businessCode, dutyName});
       return {status: "accepted" as const, message: "受控网关已接收", receipt: `controlled-${this.calls.length}`};

@@ -16,6 +16,7 @@ import { ApprovalDelegationController } from "../approval/approval-delegation.co
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { AuditController } from "../audit/audit.controller";
 import { AuditService } from "../audit/audit.service";
+import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
 import { FundAccountController } from "./fund-account.controller";
 import { createFundAccountSyntheticDb } from "./testing/fund-account.synthetic-db";
 import { FundAccountService } from "./fund-account.service";
@@ -27,15 +28,19 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
   const tokens = new JwtTokenService();
   const database = createFundAccountSyntheticDb();
   const { prisma } = database;
+  const notifications = {
+    queue: jest.fn(), afterCommit: jest.fn(), status: jest.fn().mockResolvedValue({notice: null}),
+    retry: jest.fn()
+  };
   beforeAll(async () => {
-    const module = await Test.createTestingModule({ controllers: [FundAccountController, AuditController, ApprovalDelegationController, MeController], providers: [FundAccountService, ApprovalDelegationService, AuthService, JwtProvider, AuditService, MeService, { provide: FileService, useValue: {} }, { provide: PrismaService, useValue: prisma }] }).compile();
+    const module = await Test.createTestingModule({ controllers: [FundAccountController, AuditController, ApprovalDelegationController, MeController], providers: [{ provide: FundBalanceReviewNotificationService, useValue: notifications }, FundAccountService, ApprovalDelegationService, AuthService, JwtProvider, AuditService, MeService, { provide: FileService, useValue: {} }, { provide: PrismaService, useValue: prisma }] }).compile();
     app = module.createNestApplication({ logger: false });
     const reflector = new Reflector();
     app.useGlobalGuards(new JwtAuthGuard(reflector, tokens, prisma as never), new RetiredWriteEntryGuard(), new PermissionGuard(reflector, prisma as never));
     app.useGlobalPipes(createApiValidationPipe());
     await app.listen(0, "127.0.0.1");
   });
-  beforeEach(() => database.reset());
+  beforeEach(() => { database.reset(); notifications.status.mockClear(); notifications.retry.mockReset(); });
   afterAll(async () => { await app?.close(); });
   async function get(actor = "finance", path = "/fund-accounts") {
     const token = tokens.signAccessToken({ id: actor, name: "合成人员", phone: null, sessionVersion: 0 });
@@ -265,6 +270,26 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     expect((await post({ expectedApprovalInstanceId: round, reviewNote: "受托人实核余额与凭据" }, "delegate", `/fund-accounts/registrations/${pending.body.id}/confirm`)).status).toBe(201);
     expect((await get("director", `/fund-accounts/registrations/${pending.body.id}`)).body.approvalEvidence).toContainEqual(expect.objectContaining({ actorUserId: "delegate", representedUserId: "director", signed: true, signatureVersionId: "signature-version:delegate" }));
   });
+  it("restricts notification status and retry to the same exact delegated balance review", async () => {
+    const opening = await post(basis);
+    const pending = await post({ ...basis, idempotencyKey: "sms-review-delegated-correction", previousRegistrationId: opening.body.id }, "finance", "/fund-accounts/corrections");
+    const round = pending.body.approvalInstanceId;
+    const registrationId = pending.body.id;
+    expect((await post({ toUserId: "delegate", startsAt: new Date(Date.now() - 1000).toISOString(),
+      endsAt: new Date(Date.now() + 60000).toISOString(), actionKey: "fund_account.balance.review",
+      resourceType: "fund_account_balance_review_duty", resourceId: `${round}:0` }, "director", "/approval-delegations")).status).toBe(201);
+    const path = `/fund-accounts/registrations/${registrationId}/review/duty-sms`;
+    expect(await get("delegate", path)).toEqual({status: 200, body: {notice: null}});
+    expect(notifications.status).toHaveBeenCalledWith(registrationId, "delegate");
+    expect((await get("employee", path)).status).toBe(403);
+    const attemptId = "a".repeat(64);
+    expect((await post({ attemptId, expectedApprovalInstanceId: "other-round" }, "delegate", `${path}/retry`)).status).toBe(403);
+    expect(notifications.retry).not.toHaveBeenCalled();
+    notifications.retry.mockResolvedValue({ attemptId, status: "accepted", canRetry: false });
+    expect((await post({ attemptId, expectedApprovalInstanceId: round }, "delegate", `${path}/retry`)).status).toBe(201);
+    expect(notifications.retry).toHaveBeenCalledWith(registrationId, "delegate", attemptId, round);
+  });
+
   async function delegatedPending(toUserId = "delegate") {
     const opening = await post(basis);
     const payload = { ...basis, idempotencyKey: "negative-delegate-correction", previousRegistrationId: opening.body.id };

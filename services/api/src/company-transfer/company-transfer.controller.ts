@@ -1,9 +1,11 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { CompanyTransferNotificationService } from "./company-transfer-notification.service";
 import * as ExcelJS from "exceljs";
 import { buildLedgerWorkbook, XLSX_MIME } from "../core-flow/ledger-excel";
 import { formatMoneyCentsAsYuan } from "../money/decimal-money";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
-import { Body, Controller, Get, Param, Post, Query, Res, StreamableFile } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, Res, StreamableFile } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CompanyTransferService, type CreateCompanyTransfer } from "./company-transfer.service";
@@ -11,7 +13,8 @@ import { CompanyTransferCorrectionService } from "./company-transfer-correction.
 import { CompanyTransferReadService } from "./company-transfer-read.service";
 @Controller("company-transfers")
 export class CompanyTransferController {
-  constructor(private readonly service: CompanyTransferService, private readonly reader: CompanyTransferReadService, private readonly audit: AuditService, private readonly prisma: PrismaService, private readonly corrections: CompanyTransferCorrectionService) { }
+  constructor(private readonly service: CompanyTransferService, private readonly reader: CompanyTransferReadService, private readonly audit: AuditService, private readonly prisma: PrismaService, private readonly corrections: CompanyTransferCorrectionService,
+    @Optional() private readonly notifications?: CompanyTransferNotificationService) { }
   @Get() list(@CurrentUser() u: AuthenticatedUser, @Query() q: { projectId?: string; companyId?: string; asOf?: string; projectsOnly?: string; page?: string; transferId?: string; originalSource?: string }) { return this.reader.list(u.id, q); }
   @Get("export") async export(@CurrentUser() u: AuthenticatedUser, @Query() q: { projectId?: string; companyId?: string; asOf?: string; projectsOnly?: string }, @Res({ passthrough: true }) response: { set: (v: Record<string, string>) => void }) {
     const result = await this.reader.list(u.id, q, true), amount = (s: string) => formatMoneyCentsAsYuan(BigInt(s));
@@ -24,7 +27,20 @@ export class CompanyTransferController {
     await this.audit.record(this.prisma, { actorUserId: u.id, action: "company_transfer.export", businessType: "company_transfer", metadata: { projectId: q.projectId, companyId: q.companyId, asOf: result.asOf, rows: result.rows.length } });
     response.set({ "Content-Type": XLSX_MIME, "Content-Length": String(output.length), "Content-Disposition": "attachment; filename=company-transfers.xlsx" }); return new StreamableFile(output);
   }
+  @Get(":id")
+  detail(@CurrentUser() actor: AuthenticatedUser, @Param("id") id: string) {
+    return this.reader.detail(actor.id, id);
+  }
   @Get(":id/banks") banks(@CurrentUser() u: AuthenticatedUser, @Param("id") id: string, @Query("kind") kind: string) { return this.reader.banks(u.id, id, kind); }
+  @Get(":id/duty-sms")
+  async dutySmsStatus(@CurrentUser() actor: AuthenticatedUser, @Param("id") id: string) {
+    return {notices:await this.notifications?.notificationStatus(id,actor.id)??[]};
+  }
+  @Post(":id/duty-sms/retry")
+  retryDutySms(@CurrentUser() actor: AuthenticatedUser, @Param("id") id: string, @Body() input: RetryDutyNotificationDto) {
+    if(!this.notifications)throw new BadRequestException("短信通知暂不可用");
+    return this.notifications.retry(id,actor.id,input.attemptId);
+  }
   @Post() create(@CurrentUser() u: AuthenticatedUser, @Body() b: CreateCompanyTransfer) { return this.service.create(u.id, b); }
   @Post(":id/decision") decide(@CurrentUser() u: AuthenticatedUser, @Param("id") id: string, @Body() b: Parameters<CompanyTransferService["decide"]>[2]) { return this.service.decide(u.id, id, b); }
   @Post(":id/events") execute(@CurrentUser() u: AuthenticatedUser, @Param("id") id: string, @Body() b: Parameters<CompanyTransferService["execute"]>[2]) { return this.service.execute(u.id, id, b); }

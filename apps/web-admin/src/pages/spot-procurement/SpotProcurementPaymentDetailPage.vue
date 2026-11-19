@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -2558,6 +2559,11 @@ watch(
         @cancel="cancelConfirmation"
       />
     </template>
+    <DutySmsStatusPanel
+      v-if="payment?.id && detail?.availableActions.some(action => action.key === 'record_execution' && action.enabled)"
+      domain="spot-procurement-payments"
+      :business-id="payment.id"
+    />
     <ApprovalProgressPanel
       business-type="spot_procurement_payment"
       :business-id="payment?.id"

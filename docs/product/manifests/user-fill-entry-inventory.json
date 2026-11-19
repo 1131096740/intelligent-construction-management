@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 429,
+    "activeBusinessActionCount": 431,
     "technicalActionCount": 10,
-    "activeBindingCount": 503,
+    "activeBindingCount": 521,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -2127,6 +2127,45 @@
       "causalVerified": true
     },
     {
+      "id": "duty-sms.retry",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId",
+        "/公司互转台账",
+        "/垫资本金归还/:applicationId",
+        "/结算管理/:settlementId",
+        "/统一资金办理工作台",
+        "/费用与报销/:claimId",
+        "/资金余额复核/:registrationId",
+        "/资金账户",
+        "/零星材料付款/:paymentId",
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-bank-verifications/:param/duty-sms/retry",
+        "POST /contract-economic-reviews/:param/duty-sms/retry",
+        "POST /contract-proxy-executions/:param/duty-sms/retry",
+        "POST /expense-claims/:param/duty-sms/retry",
+        "POST /fund-account-transfers/:param/duty-sms/retry",
+        "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+        "POST /fund-accounts/registrations/:param/review/duty-sms/retry",
+        "POST /payment-executions/:param/duty-sms/retry",
+        "POST /payments/:param/approval/duty-sms/retry",
+        "POST /settlements/:param/duty-sms/retry",
+        "POST /spot-procurement-payments/:param/duty-sms/retry",
+        "POST /spot-procurements/:param/receipt/duty-sms/retry",
+        "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
+        "POST /upward-receipt-matches/:param/duty-sms/retry"
+      ],
+      "bindingCount": 14,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "employee.admin-phone-change",
       "status": "unified_candidate",
       "usage": "background",
@@ -3523,6 +3562,28 @@
         "POST /contract-layout-template-versions/:param/submission"
       ],
       "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "multi-duty-sms.retry",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/公司互转台账",
+        "/合同管理/:contractId",
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/duty-sms/retry",
+        "POST /contracts/:param/duty-sms/retry",
+        "POST /general-procurements/:param/duty-sms/retry",
+        "POST /spot-procurements/:param/duty-sms/retry"
+      ],
+      "bindingCount": 4,
       "productionConsumerCount": 1,
       "causalVerified": true
     },

@@ -1,5 +1,5 @@
 import { companyRepaymentCorrectionDelta, originalSourceKey, readLegacyTransferDebt } from "./company-transfer-legacy";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma, type CompanyTransfer } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
@@ -13,25 +13,32 @@ import type { RoleKey } from "@jiangkong/shared-domain";
 import { acquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
-import { companyTransferRoles } from "./company-transfer.access";
-import { accountIdentity, TRANSFER_APPROVAL_NODES, transferScope, transferTotals } from "./company-transfer.domain";
+import { companyTransferCashAccess, companyTransferRoles } from "./company-transfer.access";
+import { accountIdentity, lockCompanyTransfers, TRANSFER_APPROVAL_NODES, transferScope, transferTotals } from "./company-transfer.domain";
 import { companyRepaymentApprovals, companyRepaymentDuties, isProjectProxyRepayment } from "./company-transfer-repayment-approval";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
+import { CompanyTransferNotificationService } from "./company-transfer-notification.service";
 export interface CreateCompanyTransfer { kind: "storage" | "loan" | "repayment"; sourceCompanyId: string; destinationCompanyId: string; sourceProjectId?: string | null; destinationProjectId?: string | null; sourceAccount: string; destinationAccount: string; amountCents: string; originalTransferId?: string; originalProxyId?: string; originalFundMovementRelationshipId?: string; originalInterEntityRelationshipId?: string; originalOperationalPaymentId?: string; reason: string; evidenceFileId: string; confirmationPassword: string; idempotencyKey: string }
 const hash = (s: unknown) => createHash("sha256").update(JSON.stringify(s)).digest("hex");
 @Injectable()
 export class CompanyTransferService {
-  constructor(private readonly prisma: PrismaService, private readonly visibility: ProjectVisibilityService, private readonly auth: AuthService, private readonly audit: AuditService, private readonly funding: ProjectFundingAvailabilityService, private readonly replay: OperatingSourceReplayService) { }
+  constructor(private readonly prisma: PrismaService, private readonly visibility: ProjectVisibilityService, private readonly auth: AuthService, private readonly audit: AuditService, private readonly funding: ProjectFundingAvailabilityService, private readonly replay: OperatingSourceReplayService,
+    @Optional() private readonly notifications?: CompanyTransferNotificationService) { }
   private async access(tx: Prisma.TransactionClient, actor: string, projects: Array<string | null>, write = false) {
-    const roles = await companyTransferRoles(tx, actor); if (roles.some(r => (write ? ["finance_staff", "finance_director"] : ["finance_staff", "finance_director", "chairman", "general_manager"]).includes(r))) return roles;
+    const roles = await companyTransferRoles(tx, actor);
+    if (write) {
+      if (!await companyTransferCashAccess(tx,this.visibility,actor,projects,roles)) throw new ForbiddenException("公司互转须由所属资金范围的财务办理");
+      return roles;
+    }
+    if (roles.some(r => ["finance_staff", "finance_director", "chairman", "general_manager"].includes(r))) return roles;
     if (projects.some(p => !p)) throw new ForbiddenException("无权查看或办理公司自有资金互转");
     const visible = await this.visibility.visibleProjectIdsInTransaction(tx, actor); if (projects.some(p => !visible.includes(p!))) throw new ForbiddenException("无权访问本次互转项目");
     const byProject = await this.visibility.effectiveRoleKeysByProjectInTransaction(tx, actor, projects as string[]);
-    if (projects.some(p => !(byProject.get(p!) ?? []).some(r => (write ? ["finance_staff", "finance_director"] : ["finance_staff", "finance_director", "project_manager"]).includes(r)))) throw new ForbiddenException("公司互转须由财务办理，项目负责人可查询所属项目"); return roles;
+    if (projects.some(p => !(byProject.get(p!) ?? []).some(r => ["finance_staff", "finance_director", "project_manager"].includes(r)))) throw new ForbiddenException("公司互转须由财务办理，项目负责人可查询所属项目"); return roles;
   }
-  private async lock(tx: Prisma.TransactionClient, projects: Array<string | null>) { for (const p of [...new Set(projects.filter((p): p is string => !!p))].sort()) await this.funding.lockFundingContext(tx, p); await tx.$executeRaw`SELECT pg_advisory_xact_lock(190731,91)`; }
+  private async lock(tx: Prisma.TransactionClient, projects: Array<string | null>) { for (const p of [...new Set(projects.filter((p): p is string => !!p))].sort()) await this.funding.lockFundingContext(tx, p); await lockCompanyTransfers(tx); }
   private async company(tx: Prisma.TransactionClient, id: string, projectId: string | null, date = new Date(), existingDebt = false) {
     const c = await tx.companyEntity.findUnique({ where: { id } }); if (!c || (!existingDebt && !c.isActive) || !c.unifiedSocialCreditCode) throw new BadRequestException("请选择有完整法人档案的启用公司");
     if (projectId && !existingDebt && !await tx.projectParticipatingCompany.findFirst({ where: { projectId, companyEntityId: id, effectiveFrom: { lte: date }, OR: [{ endedAt: null }, { endedAt: { gt: date } }] } })) throw new BadRequestException("公司在资金发生日不属于该项目的有效参与公司"); return { id: c.id, name: c.name, creditCode: c.unifiedSocialCreditCode };
@@ -61,7 +68,7 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
     const sourceProjectId = input.sourceProjectId || null, destinationProjectId = input.destinationProjectId || null; transferScope(input.kind, sourceProjectId, destinationProjectId);
     const source = accountIdentity(input.sourceAccount), destination = accountIdentity(input.destinationAccount), amount = BigInt(input.amountCents);
     const fingerprint = hash({ ...input, sourceAccount: source.hash, destinationAccount: destination.hash, confirmationPassword: undefined, actor }); await this.auth.confirmPassword(actor, input.confirmationPassword);
-    return this.prisma.$transaction(async tx => {
+    const result = await this.prisma.$transaction(async tx => {
       const lineage = { kind: input.kind, sourceCompanyId: input.sourceCompanyId, destinationCompanyId: input.destinationCompanyId, sourceProjectId, destinationProjectId, originalTransferId: input.originalTransferId ?? null, originalProxyId: input.originalProxyId ?? null, originalFundMovementRelationshipId: input.originalFundMovementRelationshipId ?? null, originalInterEntityRelationshipId: input.originalInterEntityRelationshipId ?? null, originalOperationalPaymentId: input.originalOperationalPaymentId ?? null };
       const movementEntryKind = lineage.originalFundMovementRelationshipId
         ? (await tx.fundMovementRelationshipEntry.findUnique({
@@ -81,6 +88,7 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       const remaining = await this.original(tx, lineage); if (remaining !== undefined && amount > remaining) throw new ConflictException("归还超过原往来尚未清偿及未被申请占用的金额");
       await acquireFileBusinessBindingTransactionLock(tx); const evidence = await tx.fileObject.findUnique({ where: { id: input.evidenceFileId } }); if (!evidence || evidence.uploadedByUserId !== actor || evidence.storageStatus !== "active" || !evidence.contentSha256) throw new BadRequestException("请上传本人持有的有效互转申请依据");
       const id = randomUUID(), code = `HZ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${id.slice(0, 8).toUpperCase()}`;
+      let candidateIds: string[] = [];
       let nodes: Prisma.InputJsonValue;
       if (proxyRepayment) {
         const duties = companyRepaymentDuties();
@@ -88,17 +96,23 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
         nodes = duties;
       } else {
         const candidates = await tx.$queryRaw<Array<{ id: string; key: string }>>`SELECT u."id",p."key" FROM "User" u JOIN "UserPosition" up ON up."userId"=u."id" JOIN "Position" p ON p."id"=up."positionId" WHERE u."isActive"=TRUE AND up."projectId" IS NULL AND p."key" IN ('chairman','general_manager') AND u."id"<>${actor}`;
+        candidateIds = candidates.map(candidate => candidate.id);
         if (!candidates.length) throw new ConflictException("尚无独立的董事长或总经理可审批，请先配置审批岗位");
         nodes = TRANSFER_APPROVAL_NODES.map(n => ({ ...n, candidateUserIdsByRole: Object.fromEntries(n.roleKeys.map(role => [role, candidates.filter(c => c.key === role).map(c => c.id)])) }));
       }
       const approval = await tx.approvalInstance.create({ data: { flowType: "company_transfer.approve", businessType: "company_transfer", businessId: id, status: "in_progress", currentNodeIndex: 0, frozenNodes: nodes, applicantUserId: actor } });
       const row = await tx.companyTransfer.create({ data: { id, code, ...lineage, requiresParallelRepaymentApproval: proxyRepayment, sourceAccountHash: source.hash, sourceAccountLast4: source.last4, destinationAccountHash: destination.hash, destinationAccountLast4: destination.last4, amountCents: amount, reason: input.reason.trim(), evidenceFileId: evidence.id, evidenceSha256: evidence.contentSha256, frozenParties: parties, approvalInstanceId: approval.id, applicantUserId: actor, idempotencyKey: input.idempotencyKey, requestFingerprint: fingerprint } });
-      await this.audit.record(tx, { actorUserId: actor, action: "company_transfer.submit", businessType: "company_transfer", businessId: id, metadata: { code, kind: input.kind } }); return { id, code, status: row.status };
+      await this.audit.record(tx, { actorUserId: actor, action: "company_transfer.submit", businessType: "company_transfer", businessId: id, metadata: { code, kind: input.kind } });
+      if (proxyRepayment) await this.notifications?.queueParallelReview(tx,row,approval);
+      else await this.notifications?.queueFinalReview(tx,row,approval,candidateIds);
+      return { id, code, status: row.status };
     }, { timeout: 30000 });
+    void this.notifications?.afterCommit();
+    return result;
   }
   async decide(actor: string, id: string, input: { action: "approve" | "reject" | "withdraw"; comment?: string; confirmationPassword: string; nodeIndex?: number; selfReviewReason?: string }) {
     if (!input || !["approve", "reject", "withdraw"].includes(input.action)) throw new BadRequestException("审批动作不正确"); await this.auth.confirmPassword(actor, input.confirmationPassword);
-    return this.prisma.$transaction(async tx => {
+    const result = await this.prisma.$transaction(async tx => {
       const initial = await tx.companyTransfer.findUnique({ where: { id } }); if (!initial) throw new NotFoundException("互转申请不存在"); if (!initial.requiresParallelRepaymentApproval) await this.access(tx, actor, [initial.sourceProjectId, initial.destinationProjectId]); await this.lock(tx, [initial.sourceProjectId, initial.destinationProjectId]);
       const row = await tx.companyTransfer.findUniqueOrThrow({ where: { id } }), approval = await tx.approvalInstance.findUniqueOrThrow({ where: { id: row.approvalInstanceId! } });
       const nodes = approval.frozenNodes;
@@ -163,12 +177,16 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       if (status !== "submitted") await tx.companyTransfer.update({ where: { id }, data: {
         status, ...(leader ? { approvedByUserId: leader.actorUserId, approvedAt: confirmedAt } : {}),
       } });
-      await this.audit.record(tx, { actorUserId: actor, action: `company_transfer.${action}`, businessType: "company_transfer", businessId: id, metadata: { status } }); return { id, status };
+      await this.audit.record(tx, { actorUserId: actor, action: `company_transfer.${action}`, businessType: "company_transfer", businessId: id, metadata: { status } });
+      if (status === "approved") await this.notifications?.queueCashDuty(tx,{...row,status,approvedAt:confirmedAt},"outgoing",actor);
+      return { id, status };
     });
+    if (result.status==="approved") void this.notifications?.afterCommit();
+    return result;
   }
   async execute(actor: string, id: string, input: { kind: "outgoing" | "incoming" | "returned"; outgoingEventId?: string; observationId: string; idempotencyKey: string; confirmationPassword: string }) {
     if (!input || !["outgoing", "incoming", "returned"].includes(input.kind) || !input.observationId || !input.idempotencyKey) throw new BadRequestException("请选择实际银行流水及收付动作"); await this.auth.confirmPassword(actor, input.confirmationPassword);
-    return this.prisma.$transaction(async tx => {
+    const result = await this.prisma.$transaction(async tx => {
       const initial = await tx.companyTransfer.findUnique({ where: { id } }); if (!initial) throw new NotFoundException("互转申请不存在"); const canRegisterProxyOutgoing = input.kind === "outgoing" && initial.requiresParallelRepaymentApproval &&
         (await companyTransferRoles(tx, actor)).includes("comprehensive_director") &&
         (await this.visibility.visibleProjectIdsInTransaction(tx, actor)).includes(initial.sourceProjectId!);
@@ -207,7 +225,11 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       await tx.companyTransferBankClaim.create({ data: { observationId: observation.id, eventId: event.id } });
       if (project) { await this.funding.assertPersistedProjectFundingLedgerCoverage(tx, project); await this.replay.appendConfirmedSourceIfEnabledInTransaction(tx, { projectId: project, sourceType: "company_transfer_event", sourceBusinessId: event.id }, actor); }
       if (input.kind === "incoming" && row.originalFundMovementRelationshipId) { const root = await tx.fundMovementRelationshipEntry.findUniqueOrThrow({ where: { id: row.originalFundMovementRelationshipId } }); for (const leg of await tx.fundMovementLeg.findMany({ where: { movementId: root.movementId } })) { await this.replay.appendConfirmedSourceIfEnabledInTransaction(tx, { projectId: leg.projectId, sourceType: "company_transfer_event", sourceBusinessId: `${event.id}:relationship:${leg.id}` }, actor); } }
-      await this.audit.record(tx, { actorUserId: actor, action: `company_transfer.${input.kind}`, businessType: "company_transfer", businessId: id, metadata: { eventId: event.id, amountCents: event.amountCents.toString() } }); return { id: event.id };
+      await this.audit.record(tx, { actorUserId: actor, action: `company_transfer.${input.kind}`, businessType: "company_transfer", businessId: id, metadata: { eventId: event.id, amountCents: event.amountCents.toString() } });
+      if (input.kind==="outgoing") await this.notifications?.queueCashDuty(tx,row,event.id,actor);
+      return { id: event.id };
     }, { timeout: 30000 });
+    if (input.kind==="outgoing") void this.notifications?.afterCommit();
+    return result;
   }
 }

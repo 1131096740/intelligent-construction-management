@@ -1,3 +1,4 @@
+import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain";
@@ -84,7 +85,8 @@ export class ExpenseClaimService {
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService(),
-    @Optional() private readonly approvalProgress?: ApprovalProgressService
+    @Optional() private readonly approvalProgress?: ApprovalProgressService,
+    @Optional() private readonly fundingNotifications?: ExpenseClaimFundingNotificationService
   ) {}
 
   async createOptions(actorUserId: string) {
@@ -923,6 +925,7 @@ export class ExpenseClaimService {
   }
 
   async review(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
+    let notificationQueued = false;
     const result = await translateProjectOperatingSerializationConflict(
       this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
@@ -1021,10 +1024,14 @@ export class ExpenseClaimService {
         businessId: claim.id,
         metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, completed, postedAmountCents: postedAmountCents.toString(), ...selfReview.metadata }
       });
+      if (completed && this.fundingNotifications) {
+        notificationQueued = await this.fundingNotifications.queue(tx, updated, actorUserId);
+      }
       return { id: updated.id, status: updated.status, completed, approvalInstanceId: completed ? instance.id : null };
       }),
       "费用审批遇到参与公司并发变化，请刷新后重试"
     );
+    if (notificationQueued) void this.fundingNotifications?.afterCommit();
     if (result.completed && result.approvalInstanceId) {
       await this.approvalForms
         ?.generateForInstance(result.approvalInstanceId, actorUserId)

@@ -1,3 +1,4 @@
+import { SpotProcurementReceiptReviewNotificationService } from "./spot-procurement-receipt-review-notification.service";
 import { invalidateIndependentApproval, recordIndependentApproval } from "../approval/independent-approval-evidence";
 import {
   BadRequestException,
@@ -7,7 +8,8 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -339,7 +341,8 @@ export class SpotProcurementReceiptService {
     private readonly archives?: SpotProcurementPaymentArchiveService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
-      missingOperatingSourceReplayService()
+      missingOperatingSourceReplayService(),
+    @Optional() private readonly receiptReviewNotifications?: SpotProcurementReceiptReviewNotificationService
   ) {}
 
   async getReceipt(procurementId: string, actorUserId: string) {
@@ -1937,6 +1940,7 @@ export class SpotProcurementReceiptService {
 
   submit(procurementId: string, actorUserId: string) {
     return this.runWrite(async () => {
+      let reviewNoticeQueued = false;
       const result = await this.runSerializable(async (tx) => {
         const context = await this.requireLockedContext(
           tx,
@@ -2072,6 +2076,9 @@ export class SpotProcurementReceiptService {
             actualCostCents: totalActualCostCents.toString()
           }
         });
+        if (this.receiptReviewNotifications) {
+          reviewNoticeQueued = await this.receiptReviewNotifications.queue(tx, procurementId, actorUserId);
+        }
         return {
           receiptId: context.receipt.id,
           procurementId,
@@ -2085,6 +2092,7 @@ export class SpotProcurementReceiptService {
           submittedAt: submittedAt.toISOString()
         };
       });
+      if (reviewNoticeQueued) void this.receiptReviewNotifications?.afterCommit();
       await this.receiptPdfs.tryRefreshLatest(
         result.receiptId,
         actorUserId,

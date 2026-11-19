@@ -1,7 +1,8 @@
 import { readRegisteredCompanyOwnedSources } from "./registered-company-owned-fund-source";
+import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
 import { readRegisteredFundAdvanceOrigins } from "./registered-fund-advance-origin";
 import { availableRegisteredBalance, registeredPaymentSummaries } from "../payment/registered-payment-funding";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { normalizeBusinessAmount, sumBusinessAmounts, requiredPastChinaDate, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
@@ -21,7 +22,8 @@ const READ_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director", "co
 @Injectable()
 export class FundAccountService {
   private readonly roles: CompanyRoleResolverService;
-  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly auditLog: AuditService) { this.roles = new CompanyRoleResolverService(prisma); }
+  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly auditLog: AuditService,
+    @Optional() private readonly balanceReviewNotifications?: FundBalanceReviewNotificationService) { this.roles = new CompanyRoleResolverService(prisma); }
   async list(actorUserId: string, includeSourceOwnership = false) {
     return this.prisma.$transaction(async tx => {
       const roles = await this.authorize(tx, actorUserId, READ_ROLES);
@@ -146,7 +148,7 @@ export class FundAccountService {
     const coveredExecutionIds = [...(input.coveredExecutionIds ?? [])].sort();
     if (new Set(coveredExecutionIds).size !== coveredExecutionIds.length) throw new BadRequestException("核对已包含实付清单不能重复");
     const fingerprint = this.fingerprint({ ...normalized, kind: "correction", previousRegistrationId: input.previousRegistrationId, ...(input.coveredExecutionIds === undefined ? {} : { coveredExecutionIds }) });
-    return this.command(async tx => {
+    const result = await this.command(async tx => {
       await this.authorize(tx, actorUserId, ["finance_staff", "finance_director"]);
       const prior = await tx.fundAccountBalanceRegistration.findUnique({ where: { idempotencyKey: input.idempotencyKey }, include: { sources: true } });
       if (prior) return this.replay(prior, actorUserId, fingerprint);
@@ -169,8 +171,11 @@ export class FundAccountService {
       const row = await tx.fundAccountBalanceRegistration.create({ data: { id: registrationId, ...this.registrationData(normalized), coveredExecutionIds, accountId: account.id, version: Math.max(...versions.map(row => row.version)) + 1, kind: "correction", status: "pending_review", previousRegistrationId: current.id, approvalInstanceId: round.id, payloadFingerprint: fingerprint, createdByUserId: actorUserId } });
       const sources = await this.writeSources(tx, row.id, normalized.sources);
       await this.audit(tx, actorUserId, "fund_account.correction.request", row.id, { previousRegistrationId: current.id, previousBalanceYuan: current.balanceYuan?.toFixed(4) ?? null, balanceYuan: normalized.balanceYuan, coveredExecutionIds, reason: normalized.reason, evidenceReference: normalized.evidenceReference });
+      await this.balanceReviewNotifications?.queue(tx, row.id, round.id, actorUserId);
       return this.registrationView({ ...row, sources });
     });
+    void this.balanceReviewNotifications?.afterCommit();
+    return result;
   }
   async confirmCorrection(actorUserId: string, registrationId: string, input: ConfirmFundBalanceDto) {
     if (!input.reviewNote?.trim()) throw new BadRequestException("请填写财务主管复核依据与结论");

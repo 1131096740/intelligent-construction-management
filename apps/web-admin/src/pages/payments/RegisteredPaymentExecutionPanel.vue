@@ -9,6 +9,7 @@ import { fetchRegisteredPaymentOptions, fetchRegisteredPaymentWorkItems, fetchRe
 import { fetchFundAccounts, type FundAccountsReadModel } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import {withSharedPaymentStorage,type PaymentLockPort} from "./registered-payment-shared-storage";
 import { transportCommand, makePendingPaymentAttempt, readPendingPaymentAttempt, writePendingPaymentAttempt, updatePreparedPaymentAttempt, discardPreparedPaymentAttempt, inspectPendingPaymentStorage, clearPendingPaymentAttemptIfSameKey, type PendingPaymentDraft, type PendingPaymentAttempt } from "./registered-payment-pending-attempt";
@@ -711,6 +712,12 @@ onMounted(async () => {
       aria-label="实际付款登记"
     >
       <h3>{{ selected.code }} · 实际付款登记</h3>
+      <DutySmsStatusPanel
+        v-if="registrationAllowed"
+        :key="`${auth.user?.id}:${selected.paymentId}`"
+        domain="payment-executions"
+        :business-id="selected.paymentId"
+      />
       <t-alert
         theme="info"
         message="系统外实际支付后登记，电子凭证可以稍后补充。"

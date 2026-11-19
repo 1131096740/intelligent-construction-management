@@ -17352,7 +17352,952 @@ function provePrincipalReturnPageAction({ action, wrapper, context }) {
     capabilitySourceFile: PRINCIPAL_RETURN_COMMAND };
 }
 
+const DUTY_SMS_PANEL = `${WEB_SOURCE_ROOT}/components/DutySmsStatusPanel.vue`;
+const DUTY_SMS_API = `${WEB_SOURCE_ROOT}/api/duty-sms.api.ts`;
+const DUTY_SMS_ACTION = "duty-sms.retry";
+const DUTY_SMS_DOMAINS = [
+  ["contract-bank-verifications", "components/ContractBankVerificationPanel.vue", "r.id"],
+  ["contract-economic-reviews", "components/ContractEconomicReviewPanel.vue", "r.id"],
+  ["contract-proxy-executions", "components/ContractProxyExecutionPanel.vue", "entry.id"],
+  ["expense-claims", "pages/expense-claims/ExpenseClaimDetailPage.vue", "detail.id"],
+  ["fund-account-transfers", "pages/funds/FundAccountTransfers.vue", "transfer.id"],
+  ["fund-accounts/principal-returns", "pages/funds/FundPrincipalReturns.vue", "application.id"],
+  ["fund-accounts/registrations", "pages/funds/FundAccountsPage.vue", "review.id", "/review"],
+  ["payment-executions", "pages/payments/RegisteredPaymentExecutionPanel.vue", "selected.paymentId"],
+  ["payments", "pages/payments/PaymentDetailPage.vue", "paymentDetail.id", "/approval"],
+  ["settlements", "pages/settlements/SettlementDetailPage.vue", "settlementDetail.settlementId"],
+  ["spot-procurement-payments", "pages/spot-procurement/SpotProcurementPaymentDetailPage.vue", "payment.id"],
+  ["spot-procurements", "pages/spot-procurement/SpotProcurementReceiptPage.vue", "procurementId", "/receipt"],
+  ["upward-contract-amount-revisions", "components/UpwardContractAmountPanel.vue", "row.id"],
+  ["upward-receipt-matches", "components/UpwardReceiptMatchPanel.vue", "row.id"]
+];
+
+const PAYMENT_SMS_CONTROLLER = "services/api/src/payment/registered-payment-execution.controller.ts";
+const PAYMENT_SMS_SERVICE = "services/api/src/payment/registered-payment-notification.service.ts";
+
+async function dutySmsMethods(root, file) {
+  const ast = parseSource(file, await readFile(resolve(root, file), "utf8"));
+  const methods = new Map();
+  walkEstree(ast, node => {
+    const name = node.type === "MethodDefinition" && !node.computed && node.key.type === "Identifier" ? node.key.name :
+      node.type === "FunctionDeclaration" ? node.id?.name : null;
+    if (name) methods.set(name, methods.has(name) ? null : (node.value ?? node).body);
+  });
+  return methods;
+}
+
+async function registeredPaymentSmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([dutySmsMethods(root, PAYMENT_SMS_CONTROLLER), dutySmsMethods(root, PAYMENT_SMS_SERVICE)]);
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notice:await this.notifications.notificationStatus(paymentId,actor.id)}; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), "{ return this.notifications.retry(paymentId,actor.id,input.attemptId); }") ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          return this.prisma.$transaction(async tx=>{
+            const current=await this.currentNotice(tx,paymentId,actorId);
+            return current ? {attemptId:current.attempt.id,status:current.status,canRetry:current.status==="failed" && this.sms.available()}:null;
+          },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+        }`)) return false;
+    if (!directRegistrationMatches(service.get("mayReadPaymentDuty"), `{
+      return (await new ProjectVisibilityService(tx as PrismaService).visibleProjectIdsInTransaction(tx,actorId)).includes(projectId) &&
+        await sensitiveBusinessReadAllowed(tx,"payment_request",paymentId,actorId,roles);
+    }`)) return false;
+    const authority = service.get("currentNotice")?.body ?? [];
+    const guarded = [
+      "const roles=await assertRegisteredPaymentActor(tx,actorId);",
+      "const round=await currentRegisteredPaymentApproval(tx,paymentId);",
+      "if(!round)return null;",
+      "const origin=rows.get(originKey(paymentId,round.id,actorId));",
+      "const source=origin ? await notificationPayment(tx,origin,actorId):null;",
+      "if(!origin || !source || !await mayReadPaymentDuty(tx,actorId,paymentId,source.payment.projectId,roles))return null;",
+      "return {...this.currentAttempt(rows,origin),rows,origin};"
+    ];
+    const positions = guarded.map(statement => authority.findIndex(node => directRegistrationMatches(node, statement)));
+    if (positions[0] !== 0 || !positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1]))) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    if (!directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") ||
+        !directRegistrationMatches(retry[0], "await assertRegisteredPaymentActor(tx,actorId);") ||
+        !directRegistrationMatches(retry[2], "const current=await this.currentNotice(tx,paymentId,actorId);") ||
+        !directRegistrationMatches(retry[3], 'if(!current)throw new ConflictException("当前待办或短信记录已变化，请刷新");')) return false;
+    const guard = retry.findIndex(node => directRegistrationMatches(node, 'if(!status.canRetry)throw new ConflictException("仅确认发送失败的短信可以重试");'));
+    const write = retry.findIndex(node => staticMemberPath(node.declarations?.[0]?.init?.argument?.callee) === "tx.approvalActionLog.createMany");
+    return guard > 3 && write === guard + 1;
+  } catch {
+    return false;
+  }
+}
+
+const FUND_TRANSFER_SMS_CONTROLLER = "services/api/src/fund-account/fund-account-transfer.controller.ts";
+const FUND_TRANSFER_SMS_SERVICE = "services/api/src/fund-account/fund-account-transfer-notification.service.ts";
+const AUDIT_SMS_DELIVERY = "services/api/src/approval/audit-duty-notification-delivery.ts";
+const FUND_TRANSFER_SMS_POSITIONS = ["comprehensive_director", "finance_director", "finance_staff"];
+
+async function fundTransferSmsAuthorityIsProven(root) {
+  try {
+    const [controller, service, delivery] = await Promise.all(
+      [FUND_TRANSFER_SMS_CONTROLLER, FUND_TRANSFER_SMS_SERVICE, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return { notice: await this.notifications?.notificationStatus(id, actor.id) ?? null }; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if (!this.notifications) throw new BadRequestException("短信通知暂不可用");
+          return this.notifications.retry(id, actor.id, input.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), "{ return auditDutyNoticeStatus(this.noticeAccess(), id, actorId); }") ||
+        !directRegistrationMatches(service.get("noticeAccess"), `{
+          return { prisma: this.prisma, sms: this.sms, kind,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent) };
+        }`) ||
+        !directRegistrationMatches(service.get("currentDuty"), `{
+          const roles = await currentFundCompanyRoles(tx, recipientId);
+          const cashId = row.sourceAccount.kind === "public_cash" ? row.sourceAccount.id : row.destinationAccount.id;
+          const cash = await fundTransferCashAccess(tx, recipientId, cashId);
+          return currentFundTransferDuty(row, recipientId, roles, cash);
+        }`)) return false;
+    const message = service.get("currentMessage")?.body ?? [];
+    if (!directRegistrationMatches(message[3], "if (!row || row.revision !== revision) return null;") ||
+        !directRegistrationMatches(message[4], "const duty = await this.currentDuty(tx, row, recipientId);") ||
+        !directRegistrationMatches(message[5], "if (!duty) return null;")) return false;
+    const retryBody = service.get("retry")?.body ?? [];
+    const retry = retryBody[1]?.declarations?.[0]?.init?.argument;
+    const check = retry?.arguments?.[0]?.properties?.[1]?.value?.body?.body ?? [];
+    return directRegistrationMatches(retryBody[0], "const access = this.noticeAccess();") &&
+      directRegistrationExpression(retry?.callee, "retryFailedAuditDutyNotice") &&
+      retry?.arguments?.slice(1).map(arg => arg.name).join() === "id,actorId,attemptId" &&
+      directRegistrationMatches(check[0], `if (current.id !== attemptId) {
+          const expected = await tx.auditLog.findUnique({ where: { id: attemptId } });
+          const previous = expected?.metadata as Prisma.JsonObject | null | undefined;
+          const latest = current.metadata as Prisma.JsonObject | null;
+          if (expected?.businessType !== kind || expected.businessId !== id || expected.action !== "queued" ||
+              previous?.recipientId !== actorId || previous.revision !== latest?.revision) return null;
+        }`) &&
+      directRegistrationMatches(check[1], "return access.currentMessage(tx, current);") &&
+      auditDutyDeliveryAuthorityIsProven(delivery);
+  } catch {
+    return false;
+  }
+}
+
+const BANK_SMS_CONTROLLER = "services/api/src/contract-ledger/contract-bank-verification.controller.ts";
+const BANK_SMS_SERVICE = "services/api/src/contract-ledger/contract-bank-verification-notification.service.ts";
+const BANK_SMS_ACCESS = "services/api/src/contract-ledger/contract-bank-verification-access.ts";
+
+function auditDutyDeliveryAuthorityIsProven(delivery) {
+  return directRegistrationMatches(delivery.get("canAccessNotice"), `{
+      return access.canAccess ? access.canAccess(tx,intent) : access.currentMessage(tx,intent);
+    }`) &&
+    directRegistrationMatches(delivery.get("auditDutyNoticeStatus"), `{
+      return access.prisma.$transaction(async tx => {
+        const attempt = await currentAuditDutyAttempt(tx, access, businessId, actorId);
+        return attempt && await canAccessNotice(access, tx, attempt)
+          ? readAuditDutyStatus(tx, access.kind, attempt, access.sms.available()) : null;
+      });
+    }`) &&
+    delivery.get("retryFailedAuditDutyNotice")?.body?.[0]?.argument?.arguments?.[0]?.body?.body?.some(
+      statement => directRegistrationMatches(statement, `if (!attempt || !await canAccessNotice(access, tx, attempt)) {
+        throw new ConflictException("当前待办或短信记录已变化，请刷新");
+      }`));
+}
+
+async function bankDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service, access, delivery] = await Promise.all(
+      [BANK_SMS_CONTROLLER, BANK_SMS_SERVICE, BANK_SMS_ACCESS, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    if (!auditDutyDeliveryAuthorityIsProven(delivery) ||
+        !directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notice:await this.notifications?.notificationStatus(id,actor.id)??null}; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if(!this.notifications)throw new BadRequestException("短信通知暂不可用");
+          return this.notifications.retry(id,actor.id,input.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          const scope = await this.prisma.contractBankVerificationRequest.findUnique({where:{id},select:{projectId:true,status:true}});
+          if (scope?.status !== "pending_confirm") return null;
+          return auditDutyNoticeStatus(this.noticeAccess(scope.projectId===null ? ownedKind : projectKind),id,actorId);
+        }`) ||
+        !directRegistrationMatches(service.get("noticeAccess"), `{
+          return { prisma: this.prisma, sms: this.sms, kind,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent, kind),
+            canAccess: async (tx: Prisma.TransactionClient, intent: AuditLog) => {
+              if (!intent.businessId) return false;
+              const row=await tx.contractBankVerificationRequest.findUnique({where:{id:intent.businessId},select:{
+                id:true,projectId:true,status:true,recordedByUserId:true
+              }});
+              return this.authorized(tx,intent,kind,row);
+            } };
+        }`) ||
+        !directRegistrationMatches(service.get("authorized"), `{
+          const {recipientId,projectId}=(intent.metadata??{}) as Prisma.JsonObject;
+          return Boolean(row && intent.businessType===kind && row.id===intent.businessId && typeof recipientId==="string" &&
+            (kind===ownedKind ? row.projectId===null : !!row.projectId && row.projectId===projectId) &&
+            await canReviewPendingBankVerification(tx,this.visibility,recipientId,row));
+        }`) ||
+        !directRegistrationMatches(access.get("canReviewPendingBankVerification"), `{
+          if (row.status !== "pending_confirm" || row.recordedByUserId === recipientId ||
+              !(await companyTransferRoles(tx,recipientId)).includes("finance_director")) return false;
+          if (!row.projectId) return true;
+          try { await assertBankVerificationProjectFinance(tx,visibility,recipientId,row.projectId); return true; }
+          catch(error) { if (error instanceof ForbiddenException) return false; throw error; }
+        }`)) return false;
+    const retry = service.get("retry")?.body ?? [];
+    return directRegistrationMatches(retry[3], `if ((kind!==ownedKind && kind!==projectKind) || attempt?.businessId!==id || attempt.action!=="queued" ||
+        data.recipientId!==actorId) throw new ConflictException("当前待办或短信记录已变化，请刷新");`) &&
+      directRegistrationMatches(retry[4], "const result=await retryFailedAuditDutyNotice(this.noticeAccess(kind),id,actorId,attemptId);");
+  } catch {
+    return false;
+  }
+}
+
+const BALANCE_SMS_CONTROLLER = "services/api/src/fund-account/fund-account.controller.ts";
+const BALANCE_SMS_SERVICE = "services/api/src/fund-account/fund-balance-review-notification.service.ts";
+const INDEPENDENT_SMS_SERVICE = "services/api/src/contract-ledger/independent-ledger-duty-sms.ts";
+const LEDGER_SMS_AUTHORITIES = {
+  "contract-economic-reviews": ["contract-economic-review", "ContractEconomicReviewController", "economic-finance",
+    "canReviewEconomicFinance", true, "auth.user?.id && data?.canReview && r.canFinanceReview"],
+  "contract-proxy-executions": ["contract-proxy-execution", "ContractProxyExecutionController", "contract-proxy",
+    "canConfirmProxyPending", false, "auth.user?.id && data?.canReview && entry.canConfirm"],
+  "upward-contract-amount-revisions": ["upward-contract-amount", "UpwardContractAmountController", "upward-amount",
+    "canReviewUpwardAmount", false, "auth.user?.id && data?.canReview && row.canConfirm"],
+  "upward-receipt-matches": ["upward-receipt-match", "UpwardReceiptMatchController", "upward-receipt-match",
+    "canConfirmUpwardReceipt", false, "auth.user?.id && data?.canReview && row.canConfirm"]
+};
+const ledgerSmsController = name => `services/api/src/contract-ledger/${name}.controller.ts`;
+
+async function ledgerDutySmsAuthorityIsProven(root) {
+  try {
+    const [shared, delivery] = await Promise.all(
+      [INDEPENDENT_SMS_SERVICE, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    const retry = shared.get("retryLedgerDutySms")?.body ?? [];
+    if (!auditDutyDeliveryAuthorityIsProven(delivery) ||
+        !directRegistrationMatches(shared.get("scopedAccess"), `{
+          return {
+            ...access,
+            canAccess: async (tx, attempt) => await matchesOriginal(access, tx, attempt, expected)
+              && Boolean(await access.currentMessage(tx, attempt))
+          };
+        }`) ||
+        !directRegistrationMatches(shared.get("ledgerDutySmsStatus"), `{
+          return { notice: await auditDutyNoticeStatus(scopedAccess(access), id, actorId) };
+        }`) ||
+        !directRegistrationMatches(retry[0], "const result = await retryFailedAuditDutyNotice(scopedAccess(access, attemptId), id, actorId, attemptId);")) return false;
+    return (await Promise.all(Object.values(LEDGER_SMS_AUTHORITIES).map(async ([name, , serviceName, guard, revision]) => {
+      const [controller, service] = await Promise.all([
+        ledgerSmsController(name), `services/api/src/contract-ledger/${serviceName}-notification.service.ts`
+      ].map(file => dutySmsMethods(root, file)));
+      const authority = service.get("currentMessage")?.body ?? [];
+      const noticeAccess = service.get("noticeAccess")?.body?.[0]?.argument;
+      const binding = noticeAccess?.properties?.find(property => property.key?.name === "currentMessage");
+      return directRegistrationMatches(controller.get("dutySms"), `{
+          if (!this.notifications) throw new ServiceUnavailableException("待办短信状态暂不可用");
+          return this.notifications.status(id, user.id);
+        }`) &&
+        directRegistrationMatches(controller.get("retryDutySms"), `{
+          if (!this.notifications) throw new ServiceUnavailableException("待办短信状态暂不可用");
+          return this.notifications.retry(id, user.id, body.attemptId);
+        }`) &&
+        directRegistrationMatches(service.get("status"), "{ return ledgerDutySmsStatus(this.noticeAccess(), id, actorId); }") &&
+        directRegistrationMatches(service.get("retry"), "{ return retryLedgerDutySms(this.noticeAccess(), () => this.afterCommit(), id, actorId, attemptId); }") &&
+        directRegistrationExpression(binding?.value, "(tx: Prisma.TransactionClient, attempt: AuditLog) => this.currentMessage(tx, attempt)") &&
+        authority.some(statement => directRegistrationMatches(statement, `if(!row || row.projectId!==projectId ||
+          ${revision ? "row.revision!==revision ||" : ""} !await ${guard}(tx,this.visibility,recipientId,row))return null;`));
+    }))).every(Boolean);
+  } catch {
+    return false;
+  }
+}
+
+async function balanceDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service, delivery] = await Promise.all(
+      [BALANCE_SMS_CONTROLLER, BALANCE_SMS_SERVICE, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    const retry = service.get("retry")?.body ?? [];
+    const notice = service.get("currentNoticeDuty")?.body ?? [];
+    const access = service.get("noticeAccess")?.body?.[0]?.argument?.properties
+      ?.find(property => property.key?.name === "canAccess");
+    return auditDutyDeliveryAuthorityIsProven(delivery) &&
+      directRegistrationMatches(controller.get("reviewDutySms"), `{
+        if (!this.balanceNotifications) throw new ServiceUnavailableException("资金复核短信状态暂不可用");
+        return this.balanceNotifications.status(id, actor.id);
+      }`) &&
+      directRegistrationMatches(controller.get("retryReviewDutySms"), `{
+        if (!this.balanceNotifications) throw new ServiceUnavailableException("资金复核短信状态暂不可用");
+        return this.balanceNotifications.retry(id, actor.id, body.attemptId, body.expectedApprovalInstanceId);
+      }`) &&
+      directRegistrationMatches(service.get("status"), "{ return { notice: await auditDutyNoticeStatus(this.noticeAccess(), registrationId, actorId) }; }") &&
+      directRegistrationMatches(retry[0], "const result = await retryFailedAuditDutyNotice(this.noticeAccess(expectedRoundId), registrationId, actorId, attemptId);") &&
+      directRegistrationExpression(access?.value, "async (tx: Prisma.TransactionClient, intent: AuditLog) => (expectedRoundId === undefined || metadata(intent).roundId === expectedRoundId) && Boolean(await this.currentNoticeDuty(tx, intent))") &&
+      directRegistrationMatches(notice[2], "const duty = await this.currentDuty(tx, intent.businessId, roundId, recipientId);") &&
+      directRegistrationMatches(notice[3], "if (!duty || duty.round.id !== roundId) return null;") &&
+      directRegistrationMatches(service.get("currentDuty")?.body?.[0]?.block?.body?.[0], "return await resolveFundReviewIdentity(tx, registrationId, recipientId, roundId);");
+  } catch {
+    return false;
+  }
+}
+
+const PAYMENT_APPROVAL_SMS_CONTROLLER = "services/api/src/payment/payment.controller.ts";
+const PAYMENT_APPROVAL_SMS_SERVICE = "services/api/src/payment/payment-approval-notification.service.ts";
+
+async function paymentApprovalSmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all(
+      [PAYMENT_APPROVAL_SMS_CONTROLLER, PAYMENT_APPROVAL_SMS_SERVICE].map(file => dutySmsMethods(root, file))
+    );
+    if (!directRegistrationMatches(controller.get("approvalDutySms"), `{
+      if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+      return this.approvalNotifications.status(id, user.id);
+    }`) ||
+        !directRegistrationMatches(controller.get("retryApprovalDutySms"), `{
+          if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+          return this.approvalNotifications.retry(id, user.id, body.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("status"), `{
+          return this.prisma.$transaction(async tx => ({
+            notice: (await this.currentNotice(tx, paymentId, actorId))?.status ?? null
+          }));
+        }`)) return false;
+    const loop = service.get("currentNotice")?.body?.find(statement => statement.type === "ForOfStatement");
+    const context = service.get("currentContext")?.body ?? [];
+    const recipient = service.get("currentRecipient")?.body ?? [];
+    if (!directRegistrationExpression(loop?.right, "entries") ||
+        !directRegistrationMatches(loop.body.body[1], "if (data?.recipientId !== actorId || data.paymentId !== paymentId || !this.isBaseAttempt(original)) continue;") ||
+        !directRegistrationMatches(loop.body.body[2], "const context = await this.currentContext(tx, original);") ||
+        !directRegistrationMatches(loop.body.body[3], "if (!context) continue;") ||
+        !context.some(statement => directRegistrationMatches(statement, `if (!round || !node || !payment || !user?.isActive || payment.status !== "approval_pending" ||
+          round.businessId !== payment.id || payment.projectId !== data.projectId || round.applicantUserId !== intent.actorUserId ||
+          round.currentNodeIndex !== data.nodeIndex || round.updatedAt.toISOString() !== data.roundRevision ||
+          !await this.currentRecipient(tx, payment, round, node, data.recipientId)) {
+          return null;
+        }`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, "const identity = resolveApprovalReviewIdentity({ node, actorUserId: actorId, actorRoleKeys, activeDelegators });")) ||
+        !recipient.some(statement => directRegistrationMatches(statement, "if (!identity) return false;")) ||
+        !directRegistrationMatches(recipient.at(-1), `return (await this.visibility.visibleRequestedProjectIdsInTransaction(tx, actorId, [payment.projectId])).includes(payment.projectId)
+          && await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorId, actorRoleKeys);`)) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[2], `if (!requested || data?.kind !== KIND || data.event !== "queued" || data.paymentId !== paymentId || data.recipientId !== actorId) {
+        throw new ConflictException("当前待办或短信记录已变化，请刷新");
+      }`) &&
+      directRegistrationMatches(retry[3], "await this.lockRound(tx, requested.approvalInstanceId);") &&
+      directRegistrationMatches(retry[4], "const current = await this.currentNotice(tx, paymentId, actorId);") &&
+      directRegistrationMatches(retry[5], 'if (!current || !current.chain.includes(attemptId)) throw new ConflictException("当前待办或短信记录已变化，请刷新");') &&
+      directRegistrationMatches(retry[6], 'if (current.attempt.id !== attemptId) return { kind: "replay", status: current.status } as const;') &&
+      directRegistrationMatches(retry[7], 'if (!current.status.canRetry) throw new ConflictException("仅确认发送失败的短信可以重试");') &&
+      staticMemberPath(retry[9]?.declarations?.[0]?.init?.argument?.callee) === "tx.approvalActionLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+const PRINCIPAL_SMS_DOMAIN = "fund-accounts/principal-returns";
+const PRINCIPAL_SMS_CONTROLLER = "services/api/src/fund-account/fund-principal-return.controller.ts";
+const PRINCIPAL_SMS_SERVICE = "services/api/src/fund-account/fund-principal-return-notification.service.ts";
+
+function dutySmsRoute(method, [domain, , , scope = ""], suffix = "") {
+  const path = domain === PRINCIPAL_SMS_DOMAIN
+    ? "/fund-accounts/principal-returns/applications/:param/duty-sms/:param"
+    : `/${domain}/:param${scope}/duty-sms`;
+  return `${method} ${path}${suffix}`;
+}
+
+async function principalDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([PRINCIPAL_SMS_CONTROLLER, PRINCIPAL_SMS_SERVICE].map(file => dutySmsMethods(root, file)));
+    const retry = service.get("retry")?.body ?? [];
+    const resolve = service.get("readCurrentDuty")?.body ?? [];
+    const current = service.get("currentDuty")?.body ?? [];
+    const access = service.get("noticeAccess")?.body?.[0]?.argument?.properties ?? [];
+    const checked = (body, statement) => body.some(node => directRegistrationMatches(node, statement));
+    return directRegistrationMatches(controller.get("dutySms"), "{ return this.notices.status(id, actor.id, dutyKey); }") &&
+      directRegistrationMatches(controller.get("retryDutySms"), "{ return this.notices.retry(id, actor.id, dutyKey, input.attemptId); }") &&
+      directRegistrationMatches(service.get("status"), "{ return {notice: await auditDutyNoticeStatus(this.noticeAccess(this.parseDuty(key)), applicationId, actorId)}; }") &&
+      directRegistrationMatches(service.get("parseDuty"), `{
+        if (key === "pay") return {kind: "pay"};
+        const node = /^review-([0-3])$/u.exec(key);
+        if (!node) throw new BadRequestException("短信职责无法核对");
+        return {kind: "review", nodeIndex: Number(node[1])};
+      }`) &&
+      access.some(item => item.type === "SpreadElement" &&
+        directRegistrationExpression(item.argument, "duty ? {scope: {...duty}} : {}")) &&
+      directRegistrationMatches(retry[0], "const access = this.noticeAccess(this.parseDuty(key));") &&
+      directRegistrationMatches(retry[2], "const result = await retryFailedAuditDutyNotice(access, applicationId, actorId, attemptId);") &&
+      directRegistrationExpression(access.find(item => item.key?.name === "canAccess")?.value,
+        "async (tx: Tx, intent: AuditLog) => Boolean(await this.readCurrentDuty(tx, intent))") &&
+      checked(resolve, `if (!row || row.approvalInstanceId !== roundId || !round || round.businessId !== row.id ||
+        round.businessType !== PRINCIPAL_RETURN_BUSINESS_TYPE) return null;`) &&
+      checked(resolve, "const dutyName = await this.currentDuty(tx, row, round, duty, recipientId);") &&
+      checked(resolve, "if (!dutyName) return null;") &&
+      checked(current, `if (duty.kind === "pay") {
+        return round.status === "approved" && ["approved", "partially_paid"].includes(row.status) &&
+          row.approvedYuan?.gt(row.paidYuan) && (await principalReturnPayableScopeKeys(tx, recipientId)).length > 0
+          ? "登记实际归还" : null;
+      }`) &&
+      checked(current, `if (row.status !== "pending" || round.status !== "approval_pending" || !isParallelApprovalRound(round.frozenNodes) ||
+        !activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(duty.nodeIndex)) return null;`) &&
+      checked(current, "const review = await resolvePrincipalReturnReviewIdentity(tx, recipientId, row.projectId, round.id, duty.nodeIndex, node);") &&
+      checked(current, "if (!review || (row.createdByUserId === recipientId && review.identity.viaAssignment)) return null;");
+  } catch { return false; }
+}
+
+function proveDutySmsRetry({ action, wrapper, context }) {
+  const keys = (method, suffix) => DUTY_SMS_DOMAINS.map(row => dutySmsRoute(method, row, suffix));
+  if (action.id !== DUTY_SMS_ACTION || action.sourceFile !== DUTY_SMS_PANEL ||
+      action.trigger.handler !== "retry" || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== "notice.canRetry" ||
+      wrapper.apiFile !== DUTY_SMS_API || wrapper.name !== "retryDutySms" ||
+      normalizedMainRequests(wrapper).map(request => request.normalizedKey).sort().join() !== keys("POST", "/retry").join()) return null;
+  const page = context.symbols;
+  const retry = fundAdvanceNode(page, "retry");
+  const refresh = fundAdvanceNode(page, "refresh");
+  const notice = fundAdvanceNode(page, "notice");
+  if (!directRegistrationExpression(notice, "ref<DutySmsStatus | null>(null)") ||
+      !directRegistrationMatches(retry, `async function retry() {
+        if (!notice.value?.canRetry || notice.value.status !== "failed" || busy.value) return;
+        const request = generation;
+        busy.value = true;
+        message.value = "";
+        try {
+          const next = await retryDutySms(props.domain, props.businessId, notice.value.attemptId, props.expectedApprovalInstanceId, props.dutyKey);
+          if (request === generation) notice.value = next;
+        } catch (error) {
+          if (request === generation) message.value = formatUnknownApiError(error, "重试申请未能确认，请刷新状态");
+        } finally {
+          busy.value = false;
+        }
+      }`) ||
+      !directRegistrationMatches(refresh, `async function refresh() {
+        const request = ++generation;
+        const next = await fetchDutySms(props.domain, props.businessId, props.dutyKey).catch(() => null);
+        if (request === generation) notice.value = next;
+      }`) ||
+      importedWrapperCalls([retry], wrapper, context).length !== 1) return null;
+  const previousCoordinateReset = [];
+  walkEstree(page.ast, node => {
+    if (node.type === "ExpressionStatement" && directRegistrationMatches(node, `watch(() => [props.domain, props.businessId, props.expectedApprovalInstanceId, props.dutyKey], () => {
+      notice.value = null;
+      message.value = "";
+      void refresh();
+    }, { immediate: true });`)) previousCoordinateReset.push(node);
+  });
+  if (previousCoordinateReset.length !== 1) return null;
+  const read = { apiFile: DUTY_SMS_API, name: "fetchDutySms" };
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const readWrapper = context.wrapperIndex.get(readIdentity);
+  if (!readWrapper || normalizedMainRequests(readWrapper).map(request => request.normalizedKey).sort().join() !== keys("GET", "").join() ||
+      importedWrapperCalls([refresh], read, context).length !== 1) return null;
+  const readerAst = context.asts.get(DUTY_SMS_API);
+  if (!readerAst) return null;
+  const reader = fundAdvanceNode(buildSymbolContext(readerAst, DUTY_SMS_API, context.sourceFileSet), "fetchDutySms");
+  if (!directRegistrationMatches(reader, `async function fetchDutySms(domain: DutySmsDomain, id: string, dutyKey?: string): Promise<DutySmsStatus | null> {
+    const response = await apiFetch(path(domain, id, dutyKey));
+    if (!response.ok) return null;
+    return ((await response.json()) as { notice: DutySmsStatus | null }).notice;
+  }`)) return null;
+  const writer = fundAdvanceNode(buildSymbolContext(readerAst, DUTY_SMS_API, context.sourceFileSet), "retryDutySms");
+  if (!directRegistrationMatches(writer?.body?.body?.[0], `if (domain === "fund-accounts/registrations" && !expectedApprovalInstanceId) {
+        throw new Error("当前余额复核轮次无法确认，请刷新状态");
+      }`) ||
+      !directRegistrationMatches(writer?.body?.body?.[1], 'const body = domain === "fund-accounts/registrations" ? { attemptId, expectedApprovalInstanceId } : { attemptId };') ||
+      !directRegistrationMatches(writer?.body?.body?.[2], `const response = await apiFetch(\`\${path(domain, id, dutyKey)}/retry\`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });`)) return null;
+  for (const [domain, relativeFile, id] of DUTY_SMS_DOMAINS) {
+    const file = `${WEB_SOURCE_ROOT}/${relativeFile}`;
+    const ast = context.asts.get(file);
+    if (!ast) return null;
+    const parent = buildSymbolContext(ast, file, context.sourceFileSet);
+    const bindings = topLevelScopeVariables(parent.scopeManager, "DutySmsStatusPanel");
+    const actualImport = bindings.length === 1 && parent.importsByBinding.get(bindings[0]);
+    const instances = [];
+    walkEstree(ast.templateBody, node => {
+      if (node.type === "VElement" && node.rawName === "DutySmsStatusPanel") instances.push(node);
+    });
+    const domainAttribute = instances[0]?.startTag?.attributes?.find(attr => !attr.directive && attr.key.name === "domain");
+    if (domain === PRINCIPAL_SMS_DOMAIN) {
+      const [review, payment] = instances;
+      const attribute = (node, name) => node?.startTag?.attributes?.find(attr => !attr.directive && attr.key.name === name)?.value?.value;
+      if (actualImport?.kind !== "default" || actualImport.sourceFile !== DUTY_SMS_PANEL || instances.length !== 2 ||
+          !instances.every(node => attribute(node, "domain") === domain && directRegistrationExpression(
+            directiveExpression(elementDirective(node, "bind", "business-id")), id)) ||
+          !directRegistrationExpression(directiveExpression(elementDirective(review, "if")), "actorId") ||
+          !directRegistrationExpression(directiveExpression(elementDirective(review, "bind", "duty-key")), '`review-${duty.nodeIndex}`') ||
+          !directRegistrationExpression(directiveExpression(elementDirective(payment, "if")), "actorId && application.canPay") ||
+          attribute(payment, "duty-key") !== "pay") return null;
+      continue;
+    }
+    const ledgerGate = LEDGER_SMS_AUTHORITIES[domain]?.[5];
+    if (ledgerGate && !directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), ledgerGate)) return null;
+    if (domain === "fund-accounts/registrations" &&
+        (!directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), "auth.user?.id && review?.canConfirm && review.approvalInstanceId") ||
+         !directRegistrationExpression(directiveExpression(elementDirective(instances[0], "bind", "expected-approval-instance-id")), "review.approvalInstanceId"))) return null;
+    if (domain === "contract-bank-verifications" && !directRegistrationExpression(
+      directiveExpression(elementDirective(instances[0], "if")), 'auth.user?.id && data?.canReview && r.canConfirm && r.status === "pending_confirm"')) return null;
+    if (domain === "fund-account-transfers" && !directRegistrationExpression(
+      directiveExpression(elementDirective(instances[0], "if")), "actorId && (transfer.canReceive || transfer.canResolveRejection)")) return null;
+    if (domain === "payments" &&
+        (!directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), "auth.user?.id && paymentReviewEnabled") ||
+         !directRegistrationExpression(fundAdvanceNode(parent, "paymentReviewEnabled"), `computed(() => {
+            const coordinates = paymentApprovalCapability.value?.reviewApprovalContext;
+            return (
+              paymentDetail.value?.id === paymentApprovalCapability.value?.id &&
+              Boolean(paymentApprovalCapability.value?.lifecycleUpdatedAt) &&
+              paymentApprovalCapability.value?.lifecycleUpdatedAt === coordinates?.expectedPaymentUpdatedAt &&
+              Boolean(coordinates?.expectedApprovalInstanceId) &&
+              Number.isInteger(coordinates?.expectedNodeIndex) &&
+              (coordinates?.expectedNodeIndex ?? -1) >= 0 &&
+              Boolean(coordinates?.expectedApprovalUpdatedAt) &&
+              paymentReviewActionEnabled("review_approval")
+            );
+         })`))) return null;
+    if (domain === "payment-executions" &&
+        (!directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), "registrationAllowed") ||
+         !directRegistrationExpression(fundAdvanceNode(parent, "registrationAllowed"), `computed(() =>
+            registrationPermission.value?.canRegisterPayment === true && registrationPermissionOwner.value === auth.user?.id &&
+            registrationPermissionRoute.value === route.fullPath && registrationPermission.value.paymentId === selected.value?.paymentId)`))) return null;
+    if (actualImport?.kind !== "default" || actualImport.sourceFile !== DUTY_SMS_PANEL || instances.length !== 1 ||
+        domainAttribute?.value?.value !== domain ||
+        !directRegistrationExpression(directiveExpression(elementDirective(instances[0], "bind", "business-id")), id)) return null;
+  }
+  return { verified: true, kind: "duty_sms_retry", capabilityWitness: true, capabilitySources: new Set([readIdentity]), capabilitySourceFile: DUTY_SMS_PANEL };
+}
+
+function dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority }) {
+  const readKeys = DUTY_SMS_DOMAINS.map(row => dutySmsRoute("GET", row));
+  const association = { apiFile: DUTY_SMS_API, wrapper: "fetchDutySms", normalizedKeys: readKeys,
+    productionConsumers: [DUTY_SMS_PANEL] };
+  const wrapper = trustedWebWrapperForAssociation({ manifest: webManifest, association });
+  if (!wrapper || mutationBindings.length !== readKeys.length ||
+      normalizedMainRequests(wrapper).map(request => request.normalizedKey).sort().join() !== readKeys.join()) return false;
+  const index = buildNestRouteIndex(nestManifest.routes);
+  const requiredProjectAction = {
+    "expense-claims": "expense_claim.payment.execute",
+    "settlements": "settlement.archive.confirm",
+    "spot-procurement-payments": "spot_procurement.payment.execute",
+    "spot-procurements": "spot_procurement.receipt.review"
+  };
+  return readKeys.every((key, i) => {
+    const binding = mutationBindings.find(row => row.normalizedKey === key.replace("GET ", "POST ") + "/retry");
+    const read = index.get(key);
+    const write = binding && index.get(binding.normalizedKey);
+    const [domain] = DUTY_SMS_DOMAINS[i];
+    const ledger = LEDGER_SMS_AUTHORITIES[domain];
+    if (ledger) {
+      const [file, controller] = ledger;
+      return ledgerDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySms"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === ledgerSmsController(file) && route.handler === handler &&
+          route.controller === controller && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (domain === PRINCIPAL_SMS_DOMAIN) {
+      return principalDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySms"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === PRINCIPAL_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "FundPrincipalReturnController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (domain === "fund-accounts/registrations") {
+      return balanceDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "reviewDutySms"], [write, "retryReviewDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === BALANCE_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "FundAccountController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "project_action" && route.requiredProjectAction === "fund_account.balance.review" &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (key === "GET /contract-bank-verifications/:param/duty-sms") {
+      return bankDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySmsStatus"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === BANK_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "ContractBankVerificationController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (key === "GET /fund-account-transfers/:param/duty-sms") {
+      return fundTransferSmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySmsStatus"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === FUND_TRANSFER_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "FundAccountTransferController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "positions" && route.requiredProjectAction === null && route.authorizationCombination === null &&
+          [...route.requiredPositions].sort().join() === FUND_TRANSFER_SMS_POSITIONS.join());
+    }
+    if (domain === "payments") {
+      return paymentApprovalSmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "approvalDutySms"], [write, "retryApprovalDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === PAYMENT_APPROVAL_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "PaymentController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (domain === "payment-executions") {
+      return registeredPaymentSmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySmsStatus"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === PAYMENT_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "RegisteredPaymentExecutionController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    return binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+      [read, write].every(route => route?.authentication === "authenticated" && !route.isPublic &&
+        route.guardAuthorization === "project_action" && route.requiredProjectAction === requiredProjectAction[domain] &&
+        route.authorizationCombination === null && !route.requiredPositions.length);
+  });
+}
+
+const MULTI_SMS_ACTION = "multi-duty-sms.retry";
+const MULTI_SMS_PANEL = `${WEB_SOURCE_ROOT}/components/MultiDutySmsStatusPanel.vue`;
+const MULTI_SMS_API = `${WEB_SOURCE_ROOT}/api/multi-duty-sms.api.ts`;
+const CONTRACT_SMS_CONTROLLER = "services/api/src/contract/contract.controller.ts";
+const CONTRACT_SMS_SERVICE = "services/api/src/contract/contract-duty-notification.service.ts";
+const COMPANY_SMS_CONTROLLER = "services/api/src/company-transfer/company-transfer.controller.ts";
+const COMPANY_SMS_SERVICE = "services/api/src/company-transfer/company-transfer-notification.service.ts";
+const GENERAL_PROCUREMENT_SMS_CONTROLLER = "services/api/src/general-procurement/general-procurement.controller.ts";
+const GENERAL_PROCUREMENT_SMS_SERVICE = "services/api/src/general-procurement/general-procurement-request-notification.service.ts";
+const SPOT_REQUEST_SMS_CONTROLLER = "services/api/src/spot-procurement/spot-procurement.controller.ts";
+const SPOT_REQUEST_SMS_SERVICE = "services/api/src/spot-procurement/spot-procurement-approval-notification.service.ts";
+const MULTI_SMS_DOMAINS = [
+  ["company-transfers", `${WEB_SOURCE_ROOT}/pages/fund-movements/CompanyTransferPage.vue`,
+    "r.id", "auth.user?.id && (r.canApprove || r.canExecute)", COMPANY_SMS_CONTROLLER, "CompanyTransferController"],
+  ["contracts", `${WEB_SOURCE_ROOT}/pages/contracts/ContractDetailPage.vue`,
+    "contractDetail.contractVersionId", "auth.user?.id && !contractDetail.historyReadOnly", CONTRACT_SMS_CONTROLLER, "ContractController"],
+  ["general-procurements", `${WEB_SOURCE_ROOT}/pages/general-procurement/GeneralProcurementDetailPage.vue`,
+    "detail.id", 'auth.user?.id && detail.id === route.params.procurementId && detail.requestProtocolVersion === 2 && (detail.canReview || detail.canProcure || (detail.status === "returned" && detail.canEdit))',
+    GENERAL_PROCUREMENT_SMS_CONTROLLER, "GeneralProcurementController", "dutySms"],
+  ["spot-procurements", `${WEB_SOURCE_ROOT}/pages/spot-procurement/SpotProcurementDetailPage.vue`,
+    "detail.procurement.id", 'auth.user?.id && detail.procurement.id === procurementId && detail.currentVersion.requestProtocolVersion === 2 && (actionEnabled("review_approval") || detail.purchaseTask?.canHandle || (detail.procurement.status === "draft" && detail.currentVersion.versionNo > 1 && actionEnabled("edit_draft")))',
+    SPOT_REQUEST_SMS_CONTROLLER, "SpotProcurementController", "dutySms"]
+];
+const multiSmsKeys = (method, suffix = "") =>
+  MULTI_SMS_DOMAINS.map(([domain]) => `${method} /${domain}/:param/duty-sms${suffix}`);
+
+async function companyDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all(
+      [COMPANY_SMS_CONTROLLER, COMPANY_SMS_SERVICE].map(file => dutySmsMethods(root, file))
+    );
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notices:await this.notifications?.notificationStatus(id,actor.id)??[]}; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if(!this.notifications)throw new BadRequestException("短信通知暂不可用");
+          return this.notifications.retry(id,actor.id,input.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          return this.prisma.$transaction(async tx=>(await this.currentNotices(tx,id,actorId)).map(row=>row.notice));
+        }`) ||
+        !directRegistrationMatches(service.get("currentTarget"), `{
+          if (row.businessType === correctionKind) return this.currentCorrectionMessage(tx,row);
+          if (row.businessType !== finalReviewKind) return this.currentCashMessage(tx,row);
+          return noticeMetadata(row).nodeIndex === undefined ? this.currentMessage(tx,row) : this.currentParallelMessage(tx,row);
+        }`) ||
+        !directRegistrationMatches(service.get("canHandleCash"), `{
+          return companyTransferCashAccess(tx,this.visibility,recipientId,[transfer.sourceProjectId,transfer.destinationProjectId],
+            await companyTransferRoles(tx,recipientId));
+        }`)) return false;
+    const has = (name, statement) => (service.get(name)?.body ?? []).some(node => directRegistrationMatches(node, statement));
+    if (!has("currentMessage", "if (!transfer || transfer.requiresParallelRepaymentApproval || !companyTransferFinalReviewer(transfer,round,recipientId,await companyTransferRoles(tx,recipientId))) return null;") ||
+        !has("currentCashMessage", 'if (!transfer || transfer.status !== "approved" || !await this.canHandleCashDuty(tx,transfer,recipientId,key)) return null;') ||
+        !has("currentCashMessage", "const duty=currentCompanyTransferCashDuties(transfer,events,recipientId).find(item=>item.key===key);") ||
+        !has("currentCashMessage", "if (!duty) return null;") ||
+        !directRegistrationMatches(service.get("canHandleCashDuty"), `{
+          if (await this.canHandleCash(tx,transfer,recipientId)) return true;
+          return key==="outgoing" && transfer.requiresParallelRepaymentApproval && !!transfer.sourceProjectId &&
+            (await companyTransferRoles(tx,recipientId)).includes("comprehensive_director") &&
+            (await this.visibility.visibleProjectIdsInTransaction(tx,recipientId)).includes(transfer.sourceProjectId);
+        }`) ||
+        !has("currentParallelMessage", "if (!transfer || !this.isCurrentParallelRound(transfer,round)) return null;") ||
+        !has("currentParallelMessage", `const eligible = await companyRepaymentApprovals(tx,this.visibility,recipientId,transfer.sourceProjectId!,
+          transfer.applicantUserId,round.frozenNodes,round.currentNodeIndex);`) ||
+        !has("currentParallelMessage", "if (!eligible.some(duty=>duty.nodeIndex===nodeIndex)) return null;") ||
+        !has("currentCorrectionMessage", `if (!intent.businessId || typeof recipientId!=="string" || typeof key!=="string" ||
+          !(await companyTransferRoles(tx,recipientId)).includes("finance_director")) return null;`) ||
+        !has("currentCorrectionMessage", "const duty = transfer && await this.correctionDuty(tx,transfer,key);") ||
+        !has("currentCorrectionMessage", "if (!transfer || !duty) return null;")) return false;
+    const current = service.get("currentNotices")?.body ?? [];
+    if (!directRegistrationMatches(current[0], `const rows=await tx.$queryRaw<AuditLog[]>(Prisma.sql\`
+      SELECT queued.* FROM "AuditLog" queued
+      WHERE queued."businessType" IN (\${finalReviewKind},\${cashDutyKind},\${correctionKind}) AND queued."businessId"=\${id}
+        AND queued."action"='queued' AND queued."metadata"->>'recipientId'=\${actorId}
+      ORDER BY queued."createdAt",queued."id"
+    \`);`)) return false;
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    if (!directRegistrationExpression(loop?.right, "rows") ||
+        !directRegistrationMatches(loop.body.body[1], "if(!noticeKind(kind) || originalNoticeId(origin)!==origin.id)continue;") ||
+        !directRegistrationMatches(loop.body.body[2], "const message=await this.currentTarget(tx,origin);") ||
+        !directRegistrationMatches(loop.body.body[3], "if(!message)continue;")) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[1], `if(!previous || !noticeKind(previous.businessType) || previous.action!=="queued" || previous.businessId!==id ||
+        noticeMetadata(previous).recipientId!==actorId)throw new ConflictException("当前待办或短信记录已变化，请刷新");`) &&
+      directRegistrationMatches(retry[2], "await lockCompanyTransfers(tx);") &&
+      directRegistrationMatches(retry[3], "const current=(await this.currentNotices(tx,id,actorId)).find(row=>row.chain.includes(attemptId));") &&
+      directRegistrationMatches(retry[4], 'if(!current)throw new ConflictException("当前待办或短信记录已变化，请刷新");') &&
+      directRegistrationMatches(retry[5], "if(current.notice.attemptId!==attemptId)return {notice:current.notice,enqueued:false};") &&
+      directRegistrationMatches(retry[6], 'if(!current.notice.canRetry)throw new ConflictException("仅确认发送失败的短信可以重试");') &&
+      staticMemberPath(retry[8]?.declarations?.[0]?.init?.argument?.callee) === "tx.auditLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+async function generalProcurementDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([GENERAL_PROCUREMENT_SMS_CONTROLLER, GENERAL_PROCUREMENT_SMS_SERVICE]
+      .map(file => dutySmsMethods(root, file)));
+    if (!directRegistrationMatches(controller.get("dutySms"), "{ return this.notifications.status(id, user.id); }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), "{ return this.notifications.retry(id, user.id, body.attemptId); }") ||
+        !directRegistrationMatches(service.get("status"), `{
+          return this.prisma.$transaction(async tx => ({
+            notices: (await this.currentNotices(tx, id, actorId)).map(notice => notice.status)
+          }));
+        }`) ||
+        !directRegistrationMatches(service.get("canHandleIntent"), `{
+          if (row.requestProtocolVersion !== 2 || row.approvalInstanceId !== round.id || round.businessType !== "general_procurement" || round.businessId !== row.id
+            || typeof data.recipientId !== "string" || typeof data.nodeIndex !== "number") return false;
+          if (data.stage === "approval") {
+            return row.status === "approval_pending" && round.status === "in_progress"
+              && Boolean(await generalRequestDutyIdentity(tx, this.visibility, row, round, data.nodeIndex, data.recipientId));
+          }
+          if (!Array.isArray(round.frozenNodes) || data.nodeIndex !== round.frozenNodes.length) return false;
+          if (data.stage === "procurement") {
+            return row.status === "approved_pending_procurement" && round.status === "approved"
+              && (await generalRequestActor(tx, this.visibility, data.recipientId, null)).globalRoleKeys.includes("comprehensive_director");
+          }
+          return data.stage === "correction" && row.status === "returned" && round.status === "returned" && data.recipientId === row.applicantUserId
+            && (!row.projectId || (await this.visibility.visibleRequestedProjectIdsInTransaction(tx, row.applicantUserId, [row.projectId])).includes(row.projectId));
+        }`)) return false;
+    const current = service.get("currentNotices")?.body ?? [];
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    if (!directRegistrationMatches(current[3], 'if (!round || round.businessType !== "general_procurement" || round.businessId !== id) return [];') ||
+        !directRegistrationMatches(current[5], "if (!user?.isActive) return [];") ||
+        !directRegistrationMatches(current[6], `const events = await tx.approvalActionLog.findMany({ where: {
+          approvalInstanceId: round.id, action: "system_notification", AND: [
+            { metadata: { path: ["kind"], equals: KIND } },
+            { metadata: { path: ["recipientId"], equals: actorId } }
+          ]
+        } });`) ||
+        !directRegistrationExpression(loop?.right, "events") ||
+        !directRegistrationMatches(loop.body.body[1], "if (!this.isOriginal(original) || !await this.canHandleIntent(tx, row, round, data)) continue;")) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[0], `await tx.$queryRaw(Prisma.sql\`SELECT "id" FROM "GeneralProcurement" WHERE "id" = \${id} FOR UPDATE\`);`) &&
+      directRegistrationMatches(retry[1], "const notice = (await this.currentNotices(tx, id, actorId)).find(item => item.chain.includes(attemptId));") &&
+      directRegistrationMatches(retry[2], 'if (!notice) throw new ConflictException("当前没有可重试的采购待办短信");') &&
+      directRegistrationMatches(retry[3], 'if (notice.attempt.id !== attemptId) return { kind: "replay", status: notice.status } as const;') &&
+      directRegistrationMatches(retry[4], 'if (!notice.status.canRetry) throw new ConflictException("仅可重试明确发送失败的采购待办短信");') &&
+      staticMemberPath(retry[6]?.expression?.argument?.callee) === "tx.approvalActionLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+async function spotProcurementDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([SPOT_REQUEST_SMS_CONTROLLER, SPOT_REQUEST_SMS_SERVICE]
+      .map(file => dutySmsMethods(root, file)));
+    if (!directRegistrationMatches(controller.get("dutySms"), `{
+          if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+          return this.approvalNotifications.status(id, user.id);
+        }`) ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+          return this.approvalNotifications.retry(id, user.id, body.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("status"), `{
+          return this.prisma.$transaction(async tx => ({
+            notices: (await this.currentNotices(tx, id, actorId)).map(notice => notice.status)
+          }));
+        }`)) return false;
+    const current = service.get("currentNotices")?.body ?? [];
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    const recipient = service.get("currentRecipient")?.body ?? [];
+    const correction = service.get("currentCorrection")?.body ?? [];
+    if (!directRegistrationExpression(loop?.right, "events") ||
+        !directRegistrationMatches(loop.body.body[1], "if (original.approvalInstanceId !== round.id || data.recipientId !== actorId || !this.isOriginal(original)) continue;") ||
+        !directRegistrationMatches(loop.body.body[2], "const current = await this.currentRecipient(tx, round, data);") ||
+        !directRegistrationMatches(loop.body.body[3], "if (current?.business.id !== id) continue;") ||
+        !recipient.some(node => directRegistrationMatches(node, `const snapshot = correction
+          ? await this.currentCorrection(tx, round, data) : await this.currentBusiness(tx, round, purchase);`)) ||
+        !recipient.some(node => directRegistrationMatches(node, `const assignments = eligible ? purchase
+          ? await loadProjectApprovalAssignments(tx, business.projectId, roles, String(data.recipientId))
+          : await loadEffectiveProjectApprovalAssignments(tx, business.projectId, roles, String(data.recipientId)) : [];`)) ||
+        !recipient.some(node => directRegistrationMatches(node, "const direct = assignments.some(row => row.userIsActive && row.userId === data.recipientId && roles.includes(row.roleKey) && (!purchase || row.projectId === business.projectId));")) ||
+        !recipient.some(node => directRegistrationMatches(node, `const delegated = !purchase && !direct && eligible ? await delegatedSpotApprovalIdentity(tx, {instanceId: round.id, nodeIndex: index,
+          actorUserId: String(data.recipientId), projectId: business.projectId, pendingRoleKeys: node!.roleKeys as RoleKey[]}) : null;`)) ||
+        !directRegistrationMatches(recipient.at(-2), `const user = correction || direct || delegated
+          ? await tx.user.findUnique({ where: { id: data.recipientId }, select: { isActive: true } }) : null;`) ||
+        !directRegistrationMatches(recipient.at(-1), "return user?.isActive ? snapshot : null;") ||
+        !directRegistrationMatches(correction[0], `if (round.businessType !== "spot_procurement_version" || !["rejected", "returned_to_applicant"].includes(round.status)
+          || data.recipientId !== round.applicantUserId || typeof data.draftVersionId !== "string") return null;`)) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[1], `if (!requested || metadata(requested.metadata).recipientId !== actorId) {
+        throw new ConflictException("当前没有可重试的零采待办短信");
+      }`) &&
+      directRegistrationMatches(retry[2], `await tx.$queryRaw(Prisma.sql\`SELECT "id" FROM "ApprovalInstance" WHERE "id" = \${requested.approvalInstanceId} FOR UPDATE\`);`) &&
+      directRegistrationMatches(retry[3], "const notice = (await this.currentNotices(tx, id, actorId)).find(item => item.chain.includes(attemptId));") &&
+      directRegistrationMatches(retry[4], 'if (!notice) throw new ConflictException("当前没有可重试的零采待办短信");') &&
+      directRegistrationMatches(retry[5], 'if (notice.attempt.id !== attemptId) return { kind: "replay", status: notice.status } as const;') &&
+      directRegistrationMatches(retry[6], 'if (!notice.status.canRetry) throw new ConflictException("仅可重试明确发送失败的零采待办短信");') &&
+      staticMemberPath(retry[8]?.expression?.argument?.callee) === "tx.approvalActionLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+async function contractDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([
+      dutySmsMethods(root, CONTRACT_SMS_CONTROLLER), dutySmsMethods(root, CONTRACT_SMS_SERVICE)
+    ]);
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notices:await this.dutyNotifications?.notificationStatus(versionId,user.id)??[]}; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if(!this.dutyNotifications)throw new BadRequestException("短信通知暂不可用");
+          return this.dutyNotifications.retry(versionId,user.id,input.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          return this.prisma.$transaction(async tx=>(await this.currentNoticeAttempts(tx,versionId,actor)).notices.map(row=>row.status));
+        }`) ||
+        !directRegistrationMatches(service.get("authorized"), `{
+          if (stage === "approval") return Boolean(await contractParallelDutyIdentity(tx, round, contract.projectId, actor, index, false));
+          if (stage === "seal") return hasActiveContractGlobalRole(tx, actor, "comprehensive_director");
+          return actor === contract.ownerUserId && (await resolveGovernedFinalArchiveAccess(tx, {
+            actorUserId: actor, projectId: contract.projectId, handlerUserId: round.applicantUserId
+          })).canUpload;
+        }`)) return false;
+    const message = service.get("currentMessage")?.body ?? [];
+    if (!message.some(statement => directRegistrationMatches(statement,
+      "if(!project?.isActive || !await this.authorized(tx,contract,round,stage,index,actor))return null;"))) return false;
+    const current = service.get("currentNoticeAttempts")?.body ?? [];
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    if (!directRegistrationExpression(loop?.right, "rows") ||
+        !directRegistrationMatches(loop.body.body[1], `if(!data || data.retryOf!==undefined || data.contractVersionId!==versionId || data.recipientId!==actor ||
+          origin.id!==digest(origin.businessId,data.stage,data.nodeIndex,actor) || !await this.currentMessage(tx,origin,true))continue;`) ||
+        !directRegistrationMatches(loop.body.body.at(-1), "notices.push({origin,status});")) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[0], "await this.lockVersion(tx,versionId);") &&
+      directRegistrationMatches(retry[1], "const {notices,byId}=await this.currentNoticeAttempts(tx,versionId,actor);") &&
+      directRegistrationMatches(retry[4], `const current=notices.find(item=>item.status.attemptId===attemptId ||
+          (previous && this.matchesRetry(previous,item.origin,attemptId)));`) &&
+      directRegistrationMatches(retry[5], 'if(!current)throw new ConflictException("当前待办或短信记录已变化，请刷新");') &&
+      directRegistrationMatches(retry[6], "if(current.status.attemptId!==attemptId)return {status:current.status,enqueued:false};") &&
+      directRegistrationMatches(retry[7], 'if(!current.status.canRetry)throw new ConflictException("仅确认发送失败的短信可以重试");') &&
+      staticMemberPath(retry[8]?.declarations?.[0]?.init?.argument?.callee) === "tx.auditLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+function proveMultiDutySmsRetry({ action, wrapper, context }) {
+  if (action.id !== MULTI_SMS_ACTION || action.sourceFile !== MULTI_SMS_PANEL ||
+      action.trigger.handler !== "retry" || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== "notice.canRetry" || wrapper.apiFile !== MULTI_SMS_API ||
+      wrapper.name !== "retryMultiDutySms" ||
+      normalizedMainRequests(wrapper).map(request => request.normalizedKey).sort().join() !== multiSmsKeys("POST", "/retry").join()) return null;
+  const page = context.symbols;
+  const retry = fundAdvanceNode(page, "retry");
+  const refresh = fundAdvanceNode(page, "refresh");
+  if (!directRegistrationExpression(fundAdvanceNode(page, "notices"), "ref<MultiDutySmsNotice[]>([])") ||
+      !directRegistrationMatches(retry, `async function retry(attemptId: string) {
+        const notice = notices.value.find(row => row.attemptId === attemptId);
+        if (!notice?.canRetry || notice.status !== "failed" || busy.value) return;
+        busy.value = true;
+        message.value = "";
+        try {
+          const next = await retryMultiDutySms(props.domain, props.businessId, notice.attemptId);
+          notices.value = notices.value.map(row => row.attemptId === notice.attemptId ? next : row);
+        } catch (error) {
+          message.value = formatUnknownApiError(error, "重试申请未能确认，请刷新状态");
+        } finally {
+          busy.value = false;
+        }
+      }`) ||
+      !directRegistrationMatches(refresh, `async function refresh() {
+        if (busy.value) return;
+        busy.value = true;
+        message.value = "";
+        try {
+          notices.value = await fetchMultiDutySms(props.domain, props.businessId);
+        } catch (error) {
+          message.value = formatUnknownApiError(error, "未能刷新短信状态");
+        } finally {
+          busy.value = false;
+        }
+      }`)) return null;
+  const read = { apiFile: MULTI_SMS_API, name: "fetchMultiDutySms" };
+  if (importedWrapperCalls([retry], wrapper, context).length !== 1 ||
+      importedWrapperCalls([refresh], read, context).length !== 1) return null;
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const reader = context.wrapperIndex.get(readIdentity);
+  if (!reader || normalizedMainRequests(reader).map(request => request.normalizedKey).sort().join() !== multiSmsKeys("GET").join()) return null;
+  const readerAst = context.asts.get(MULTI_SMS_API);
+  if (!readerAst || !directRegistrationMatches(
+    fundAdvanceNode(buildSymbolContext(readerAst, MULTI_SMS_API, context.sourceFileSet), "fetchMultiDutySms"),
+    `async function fetchMultiDutySms(domain: MultiDutySmsDomain, businessId: string): Promise<MultiDutySmsNotice[]> {
+      const response = await apiFetch(path(domain, businessId));
+      if (!response.ok) return [];
+      return ((await response.json()) as { notices: MultiDutySmsNotice[] }).notices;
+    }`)) return null;
+  const buttons = [];
+  walkEstree(page.ast.templateBody, node => {
+    if (node.type === "VElement" && node.rawName === "t-button" &&
+        directRegistrationExpression(variantEventCall(directiveExpression(elementDirective(node, "on", "click")), "retry"), "retry(notice.attemptId)")) buttons.push(node);
+  });
+  if (buttons.length !== 1 || !directRegistrationExpression(
+    directiveExpression(elementDirective(buttons[0], "if")), 'notice.canRetry && notice.status === "failed"')) return null;
+  for (const [domain, file, businessId, gate] of MULTI_SMS_DOMAINS) {
+    const parentAst = context.asts.get(file);
+    if (!parentAst) return null;
+    const parent = buildSymbolContext(parentAst, file, context.sourceFileSet);
+    const bindings = topLevelScopeVariables(parent.scopeManager, "MultiDutySmsStatusPanel");
+    const actualImport = bindings.length === 1 && parent.importsByBinding.get(bindings[0]);
+    const instances = [];
+    walkEstree(parentAst.templateBody, node => {
+      if (node.type === "VElement" && node.rawName === "MultiDutySmsStatusPanel") instances.push(node);
+    });
+    const [instance] = instances;
+    const domainAttribute = instance?.startTag?.attributes?.find(attr => !attr.directive && attr.key.name === "domain");
+    if (actualImport?.kind !== "default" || actualImport.sourceFile !== MULTI_SMS_PANEL || instances.length !== 1 ||
+        domainAttribute?.value?.value !== domain ||
+        !directRegistrationExpression(directiveExpression(elementDirective(instance, "if")), gate) ||
+        !directRegistrationExpression(directiveExpression(elementDirective(instance, "bind", "business-id")), businessId)) return null;
+  }
+  return { verified: true, kind: "multi_duty_sms_retry", capabilityWitness: true, capabilitySources: new Set([readIdentity]), capabilitySourceFile: MULTI_SMS_PANEL };
+}
+
+function multiDutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, contractDutySmsAuthority, companyDutySmsAuthority, generalProcurementDutySmsAuthority, spotProcurementDutySmsAuthority }) {
+  const readKeys = multiSmsKeys("GET");
+  if (!contractDutySmsAuthority || !companyDutySmsAuthority || !generalProcurementDutySmsAuthority || !spotProcurementDutySmsAuthority || mutationBindings.length !== readKeys.length ||
+      !trustedWebWrapperForAssociation({ manifest: webManifest, association: {
+        apiFile: MULTI_SMS_API, wrapper: "fetchMultiDutySms",
+        normalizedKeys: readKeys, productionConsumers: [MULTI_SMS_PANEL]
+      } })) return false;
+  const index = buildNestRouteIndex(nestManifest.routes);
+  return MULTI_SMS_DOMAINS.every(([domain, , , , controllerFile, controllerName, readHandler = "dutySmsStatus"]) => {
+    const read = `GET /${domain}/:param/duty-sms`;
+    const write = `POST /${domain}/:param/duty-sms/retry`;
+    if (!mutationBindings.some(binding => binding.normalizedKey === write && binding.causalVerified) ||
+        !nestRouteAssociationIsTrusted(nestManifest, read)) return false;
+    return [[read, readHandler], [write, "retryDutySms"]].every(([key, handler]) => {
+      const route = index.get(key);
+      return route?.sourceFile === controllerFile && route.handler === handler &&
+        route.controller === controllerName && route.authentication === "authenticated" && !route.isPublic &&
+        route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+        route.authorizationCombination === null && !route.requiredPositions.length;
+    });
+  });
+}
+
 function proveBusinessActionPipeline({ action, wrapper, context }) {
+  if (action.id === DUTY_SMS_ACTION) return proveDutySmsRetry({ action, wrapper, context });
+  if (action.id === MULTI_SMS_ACTION) return proveMultiDutySmsRetry({ action, wrapper, context });
   if (PRINCIPAL_RETURN_ACTIONS.has(action.id)) return provePrincipalReturnPageAction({ action, wrapper, context });
   if (FUND_ADVANCE_ACTIONS.has(action.id)) return proveFundAdvancePageAction({ action, wrapper, context });
   if (FUND_TRANSFER_ACTIONS.has(action.id)) return proveFundTransferPageAction({ action, wrapper, context });
@@ -22160,6 +23105,28 @@ export async function inspectWholeSitePageActionManifest({
   );
   const paymentRecoveryReadOnly = registryActions.some(action => action.id === PAYMENT_LOOKUP_ACTION) && await proveReadOnlyPaymentRecovery(resolvedRoot);
   const principalReturnReadOnly = registryActions.some(action => PRINCIPAL_RETURN_ACTIONS.has(action.id)) && await proveReadOnlyPrincipalReturnResult(resolvedRoot);
+  const registeredPaymentSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await registeredPaymentSmsAuthorityIsProven(resolvedRoot);
+  const fundTransferSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await fundTransferSmsAuthorityIsProven(resolvedRoot);
+  const bankDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await bankDutySmsAuthorityIsProven(resolvedRoot);
+  const ledgerDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await ledgerDutySmsAuthorityIsProven(resolvedRoot);
+  const balanceDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await balanceDutySmsAuthorityIsProven(resolvedRoot);
+  const paymentApprovalSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await paymentApprovalSmsAuthorityIsProven(resolvedRoot);
+  const principalDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await principalDutySmsAuthorityIsProven(resolvedRoot);
+  const contractDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await contractDutySmsAuthorityIsProven(resolvedRoot);
+  const companyDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await companyDutySmsAuthorityIsProven(resolvedRoot);
+  const generalProcurementDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await generalProcurementDutySmsAuthorityIsProven(resolvedRoot);
+  const spotProcurementDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await spotProcurementDutySmsAuthorityIsProven(resolvedRoot);
   for (const action of registryActions) {
     const source = sources.get(action.sourceFile);
     const ast = asts.get(action.sourceFile);
@@ -22450,12 +23417,18 @@ export async function inspectWholeSitePageActionManifest({
           }
         : null);
     const capabilitySources = capabilityProvenance?.sources ?? null;
+    const dutySmsProofs = [...(capabilityContext.pipelineProofs?.values() ?? [])];
+    const provenDutySmsAuthority = (action.id === DUTY_SMS_ACTION &&
+      dutySmsProofs.some(proof => proof.kind === "duty_sms_retry") &&
+      dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority })) ||
+      (action.id === MULTI_SMS_ACTION && dutySmsProofs.some(proof => proof.kind === "multi_duty_sms_retry") &&
+      multiDutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, contractDutySmsAuthority, companyDutySmsAuthority, generalProcurementDutySmsAuthority, spotProcurementDutySmsAuthority }));
     const capabilityProvenanceTrusted =
       SERVER_CAPABILITY_KINDS.has(
         action.capability.kind
       ) &&
       capabilitySources?.size === 1 &&
-      [...capabilitySources].every((sourceIdentity) =>
+      (provenDutySmsAuthority || [...capabilitySources].every((sourceIdentity) =>
         capabilitySourceUpstreamAssociationIsTrusted({
           sourceIdentity,
           sourceFile:
@@ -22464,7 +23437,7 @@ export async function inspectWholeSitePageActionManifest({
           webManifest,
           nestManifest
         })
-      );
+      ));
     const serverDefinitionFreshReadVerified =
       serverDefinitionHandlerFreshRead({
         action,
@@ -22492,7 +23465,7 @@ export async function inspectWholeSitePageActionManifest({
         rolesByAction: actionRequiredRoles
       });
     const capabilityAuthorizationCompatible =
-      !writes ||
+      !writes || provenDutySmsAuthority ||
       (Boolean(effectiveMutationActors) &&
         capabilityProvenanceTrusted &&
         [...capabilitySources].every((sourceIdentity) =>

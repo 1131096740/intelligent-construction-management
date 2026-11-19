@@ -1,3 +1,5 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { SpotProcurementReceiptReviewNotificationService } from "./spot-procurement-receipt-review-notification.service";
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
@@ -29,7 +31,8 @@ import { SpotProcurementReceiptService } from "./spot-procurement-receipt.servic
 export class SpotProcurementReceiptController {
   constructor(
     private readonly receipts: SpotProcurementReceiptService,
-    @Optional() private readonly files?: FileService
+    @Optional() private readonly files?: FileService,
+    @Optional() private readonly reviewNotifications?: SpotProcurementReceiptReviewNotificationService
   ) {}
 
   @Get(":procurementId/receipt")
@@ -178,6 +181,19 @@ export class SpotProcurementReceiptController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.receipts.submit(procurementId, user.id);
+  }
+
+  @Get(":procurementId/receipt/duty-sms")
+  @RequireProjectRole("spot_procurement.receipt.review")
+  async dutySmsStatus(@Param("procurementId") procurementId: string, @CurrentUser() user: AuthenticatedUser) {
+    return { notice: await this.reviewNotifications?.notificationStatus(procurementId, user.id) ?? null };
+  }
+
+  @Post(":procurementId/receipt/duty-sms/retry")
+  @RequireProjectRole("spot_procurement.receipt.review")
+  retryDutySms(@Param("procurementId") procurementId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.reviewNotifications) throw new BadRequestException("短信通知暂不可用");
+    return this.reviewNotifications.retry(procurementId, user.id, body.attemptId);
   }
 
   @Post(":procurementId/receipt/review")

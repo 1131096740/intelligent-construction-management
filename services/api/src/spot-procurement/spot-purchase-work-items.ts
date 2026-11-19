@@ -1,3 +1,4 @@
+import { workItemNoticeAt } from "../me/work-item-notice-order";
 import { Prisma } from "@prisma/client";
 import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import type { WorkItem } from "../me/me.service";
@@ -31,7 +32,7 @@ export async function spotPurchaseWorkItems(tx: Prisma.TransactionClient, userId
       if (!current || current.status !== "approved_in_progress" || current.currentVersionId !== row.currentVersionId ||
         !version || version.procurementId !== row.id || version.requestProtocolVersion !== 2 || version.status !== "approved") continue;
       result.push({updatedAt: row.updatedAt.getTime(), item: {
-        id: `spot-procurement-purchase:${version.id}`, type: "procurement", title: `生产材料采购：${version.reason || "详见需求清单"}`,
+        [workItemNoticeAt]: current.updatedAt, id: `spot-procurement-purchase:${version.id}`, type: "procurement", title: `生产材料采购：${version.reason || "详见需求清单"}`,
         projectId: row.projectId, projectName: project?.name ?? "所属项目", businessCode: row.code,
         businessType: "spot_procurement", businessId: row.id,
         amountText: version.estimatedTotalAmount == null ? "预计金额待确定" : `整单独立预计 ¥${normalizeBusinessAmount(version.estimatedTotalAmount.toString())}`,

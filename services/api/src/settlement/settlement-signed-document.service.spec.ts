@@ -173,6 +173,30 @@ describe("SettlementSignedDocumentService", () => {
     }));
   });
 
+  it.each([false, true])("在合成件首次激活的事务入队，纯渲染修复不产生新职责（force=%s）", async force => {
+    const pending = { id: facts.settlementId, projectId: "project-1", governanceVersion: 1, status: "pending_archive_confirm" };
+    const tx = {
+      $queryRaw: jest.fn(),
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({ ...pending, status: force ? pending.status : "pending_generation" }),
+        update: jest.fn().mockResolvedValue(pending)
+      },
+      settlementSignedDocumentGenerationClaim: {
+        findUnique: jest.fn().mockResolvedValue({ claimToken: "token-1", uploadedFileId: "file-1", status: "uploaded" }),
+        update: jest.fn()
+      },
+      settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "final-1" }) },
+      fileObject: { findUnique: jest.fn().mockResolvedValue({ contentSha256: "c".repeat(64) }) }
+    };
+    const notices = { queue: jest.fn() };
+    const service = new SettlementSignedDocumentService({} as never, {} as never, { record: jest.fn() } as never, undefined, undefined, notices as never);
+    jest.spyOn(service as never, "loadFacts" as never).mockResolvedValue(facts as never);
+    const entry = service as unknown as { activate(...args: unknown[]): Promise<unknown> };
+    await expect(entry.activate(tx, facts, "token-1", "file-1", 1, "generator", force)).resolves.toEqual({ id: "final-1" });
+    if (force) expect(notices.queue).not.toHaveBeenCalled();
+    else expect(notices.queue).toHaveBeenCalledWith(tx, pending, "generator");
+  });
+
   it("maps a mismatched unique winner to a stable conflict without losing the uploaded claim", async () => {
     const tx = {
       $queryRaw: jest.fn(),

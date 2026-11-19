@@ -1,10 +1,11 @@
+import { ContractDutyNotificationService } from "./contract-duty-notification.service";
 import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { freezeGeneratedContractSigningIdentity } from "./contract-v2-signing-identity";
 import { assertGeneratedArchiveSealSources, generatedArchiveSealScope } from "./contract-generated-archive-seal-authority";
 import { assertGeneratedArchiveSealContinuity, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-installation";
 import { assertGeneratedUpwardSealCompletionContinuity, assertGeneratedUpwardSealHandoffContinuity,
   assertGeneratedUpwardSubmissionContinuity, qualifyGeneratedUpwardSealCompletion, qualifyGeneratedUpwardSealHandoff } from "./contract-upward-pending-save-profile";
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractDraftSubmissionRequest, type ContractVersion } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
@@ -43,9 +44,11 @@ type SubmissionIdentity = { contractVersionId: string; actorUserId: string; requ
 export class ContractV2SubmissionService {
   constructor(private readonly prisma: PrismaService, private readonly files: FileService,
     private readonly routes: ContractApprovalRouteService, private readonly numbers: BusinessNumberingService,
-    private readonly audit: AuditService, private readonly auth: AuthService) {}
+    private readonly audit: AuditService, private readonly auth: AuthService,
+    @Optional() private readonly notifications?: ContractDutyNotificationService) {}
 
   async reviewIfV2(contractVersionId: string, actorUserId: string, input: ReviewContractApprovalDto) {
+    let notificationQueued = false;
     return this.prisma.$transaction(async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE`);
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
@@ -82,7 +85,7 @@ export class ContractV2SubmissionService {
         signatureFileIdSnapshot: signature?.fileId, signatureSha256Snapshot: signature?.sha256, signatureVersionIdSnapshot: signature?.versionId,
         metadata: json({ nodeIndex: input.expectedNodeIndex, delegationId: identity.delegationId, ...selfReview.metadata })
       }, signature) });
-      await tx.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: json(nodes), currentNodeIndex: pending[0] ?? nodes.length, status: input.decision !== "approve" ? "rejected" : pending.length ? "in_progress" : "approved" } });
+      const updatedRound = await tx.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: json(nodes), currentNodeIndex: pending[0] ?? nodes.length, status: input.decision !== "approve" ? "rejected" : pending.length ? "in_progress" : "approved" } });
       await tx.contractVersion.update({ where: { id: version.id }, data: { status } });
       if (status === "draft") await clearApprovalRoundSignatureSnapshots(tx, round.id);
       if (status === "approved_pending_seal") {
@@ -91,17 +94,25 @@ export class ContractV2SubmissionService {
         const active = await tx.contractSealTask.findFirst({ where: { contractVersionId: version.id, status: { not: "cancelled" } } });
         if (existing || active) conflict("当前合同已有盖章办理任务，请刷新后核对");
         const task = await tx.contractSealTask.create({ data: { contractVersionId: version.id, approvalInstanceId: round.id, handlerUserId: round.applicantUserId, status: "in_seal", approvedByUserId: approvalAction.actorUserId, approvedAt: approvalAction.createdAt } });
+        if (this.notifications && contract.code && ContractDutyNotificationService.supports(version)) {
+          await this.notifications.queue(tx, contract, { ...version, status }, updatedRound, contract.code, task);
+          notificationQueued = true;
+        }
         await this.audit.record(tx, { actorUserId, action: "contract.seal_task.create", businessType: "contract_version", businessId: version.id,
           metadata: json({ submissionProtocolVersion: 2, sealTaskId: task.id, approvalInstanceId: round.id, handlerUserId: round.applicantUserId, pendingRoleKey: "comprehensive_director", handoffKind: "parallel_approval_released_for_offline_seal", internalApprovalActionId: approvalAction.id, internalApproverUserId: approvalAction.actorUserId }) });
       }
       await this.audit.record(tx, { actorUserId, action: `contract.approval.${input.decision}`, businessType: "contract_version", businessId: version.id, metadata: json({ approvalInstanceId: round.id, nodeIndex: input.expectedNodeIndex, approvedRoleKey: identity.approvedRoleKey, representedUserId: identity.representedUserId }) });
       if (upwardSealHandoff) await assertGeneratedUpwardSealHandoffContinuity(tx, upwardSealHandoff);
       return { contractVersionId, approvalInstanceId: round.id, status };
+    }).then(result => {
+      if (notificationQueued) void this.notifications?.afterCommit();
+      return result;
     });
   }
 
   async confirmSeal(contractVersionId: string, actorUserId: string, input: ConfirmContractSealV2Dto) {
     if (!input.confirmed) throw new BadRequestException("请核对线下盖章已完成后再确认");
+    let notificationQueued = false;
     return this.prisma.$transaction(async tx => {
       const located = await tx.contractVersion.findUnique({ where: { id: contractVersionId },
         select: { contractId: true, signingSubjectType: true, numericProtocolVersion: true } });
@@ -135,8 +146,12 @@ export class ContractV2SubmissionService {
       const archiveAuthority = scope && await qualifyGeneratedArchiveSealAuthority(tx, scope);
       if (scope) await assertGeneratedArchiveSealSources(tx, scope, snapshot);
       const completedAt = new Date();
-      await tx.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: actorUserId, completedAt } });
+      const completedTask = await tx.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: actorUserId, completedAt } });
       await tx.contractVersion.update({ where: { id: version.id }, data: { status: "seal_approved_pending_archive" } });
+      if (this.notifications && contract.code && ContractDutyNotificationService.supports(version)) {
+        await this.notifications.queue(tx, contract, { ...version, status: result.status }, round, contract.code, completedTask);
+        notificationQueued = true;
+      }
       await this.audit.record(tx, { actorUserId, action: "contract.seal.complete", businessType: "contract_version", businessId: version.id,
         metadata: json({ ...result, documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint, confirmed: true, confirmationRoleKey: "comprehensive_director", handlerUserId: task.handlerUserId }) });
       await this.audit.record(tx, { actorUserId, action: "contract.archive_task.create", businessType: "contract_version", businessId: version.id,
@@ -147,6 +162,9 @@ export class ContractV2SubmissionService {
         if (upwardCompletion) await assertGeneratedUpwardSealCompletionContinuity(tx, upwardCompletion);
         if (archiveAuthority) await assertGeneratedArchiveSealContinuity(tx, scope, archiveAuthority);
       }
+      return result;
+    }).then(result => {
+      if (notificationQueued) void this.notifications?.afterCommit();
       return result;
     });
   }
@@ -207,6 +225,7 @@ export class ContractV2SubmissionService {
       documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint,
       generatedDocumentId: input.generatedDocumentId, sourceSha256: input.sourceSha256, blanksReviewed: input.blanksReviewed }));
     const expected = { contractVersionId, actorUserId, requestSha256 };
+    let notificationQueued = false;
     return this.prisma.$transaction(async tx => {
       const boundary = await lockContractDraftMutationBoundary<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>(tx, contractVersionId);
       if (!boundary) conflict("未找到当前合同，请刷新后重试");
@@ -282,6 +301,10 @@ export class ContractV2SubmissionService {
       }
       await this.audit.record(tx, { actorUserId, action: "contract.approval.submit", businessType: "contract_version", businessId: contractVersionId, metadata: json(response) });
       if (upwardSigning) await assertGeneratedUpwardSubmissionContinuity(tx, upwardSigning.qualification);
+      if (this.notifications && ContractDutyNotificationService.supports(version)) {
+        await this.notifications.queue(tx, contract, { ...version, status: response.status }, round, formalCode);
+        notificationQueued = true;
+      }
       return response;
     }).catch(error => {
       if (!(error instanceof SubmissionKeyCollision)) throw error;
@@ -296,6 +319,9 @@ export class ContractV2SubmissionService {
         if (readError instanceof HttpException) throw readError;
         throw submissionReceiptUnavailable();
       });
+    }).then(result => {
+      if (notificationQueued) void this.notifications?.afterCommit();
+      return result;
     });
   }
 }

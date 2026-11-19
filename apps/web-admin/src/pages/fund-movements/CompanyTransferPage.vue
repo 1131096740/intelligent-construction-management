@@ -2,15 +2,29 @@
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import {computed,onBeforeUnmount,reactive,ref,watch} from "vue";
 import {useRoute} from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
+import MultiDutySmsStatusPanel from "../../components/MultiDutySmsStatusPanel.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import ContractBankVerificationPanel from "../../components/ContractBankVerificationPanel.vue";
 import CompanyTransferOriginalDebtCorrections from "./CompanyTransferOriginalDebtCorrections.vue";
-import {fetchCompanyTransferCapabilities,exportCompanyTransfers,fetchCompanyTransfers,createCompanyTransfer,decideCompanyTransfer,executeCompanyTransfer,fetchCompanyTransferBanks,type TransferData,type TransferRow,type TransferApprovalDuty,type TransferEvent} from "../../api/company-transfer.api";
+import {fetchCompanyTransferCapabilities,exportCompanyTransfers,fetchCompanyTransfer,fetchCompanyTransfers,createCompanyTransfer,decideCompanyTransfer,executeCompanyTransfer,fetchCompanyTransferBanks,type TransferData,type TransferRow,type TransferApprovalDuty,type TransferEvent} from "../../api/company-transfer.api";
 import {uploadPrivateFile,downloadPrivateFileByTicket} from "../../api/core-flow-read.api";
 import {formatUnknownApiError} from "../../api/error-message";
 import {centsTextToYuanText,yuanTextToCentsText} from "../../lib/money";
 import { roleLabels } from "../settings/approval-flow-readonly.config";
+const auth = useAuthStore();
 const route=useRoute(),data=ref<TransferData|null>(null),error=ref(""),busy=ref(false),page=ref(1),project=ref(typeof route.query.projectId==="string"?route.query.projectId:""),company=ref(typeof route.query.companyId==="string"?route.query.companyId:""),asOf=ref(typeof route.query.asOf==="string"?route.query.asOf:""),bankProject=ref<string|null>(null);
+const transferLink = computed(() => route.query.transferId);
+const isTransferDetail = computed(() => transferLink.value !== undefined);
+const detail = ref<TransferRow | null>(null);
+const detailLoading = ref(false);
+const detailError = ref("");
+const visibleRows = computed(() => isTransferDetail.value ? (detail.value ? [detail.value] : []) : data.value?.rows ?? []);
+const ledgerLink = computed(() => {
+  const query = { ...route.query };
+  delete query.transferId;
+  return { query };
+});
 const mode=ref(""),selected=ref<TransferRow|null>(null),password=ref(""),comment=ref(""),bank=ref(""),outgoing=ref(""),banks=ref<Array<{value:string;label:string}>>([]),file=ref<File|null>(null),fileId=ref("");let openedOriginal=false,generation=0,key=crypto.randomUUID();
 const form=reactive({kind:"storage",sourceCompanyId:"",destinationCompanyId:"",sourceProjectId:"",destinationProjectId:"",sourceAccount:"",destinationAccount:"",amountYuan:"",original:"",reason:""});
 const projectOptions=computed(()=>[...(data.value?.canUseOwnFunds?[{value:"",label:"公司自有资金"}]:[]),...(data.value?.projects??[]).map(p=>({value:p.id,label:p.name}))]);
@@ -50,7 +64,6 @@ const correctionSelection = ref<{ row: TransferRow; event: TransferEvent } | nul
 const linkedTransfer = computed(() => typeof route.query.transferId === "string" ? route.query.transferId : "");
 const hasTransferLink = computed(() => route.query.transferId !== undefined);
 const hasOriginalLink = computed(() => !hasTransferLink.value && linkedSources.value.length > 0);
-const rows = computed(() => (data.value?.rows ?? []).filter(row => !hasTransferLink.value || row.id === linkedTransfer.value));
 const approvalDuty = ref<TransferApprovalDuty | null>(null);
 function isProjectRepayment(value: string) {
   return originals.value.some(option => option.value === value && option.approvalFlow === "proxy_repayment_parallel");
@@ -65,6 +78,9 @@ function startDuty(action: "approve" | "reject", row: TransferRow, duty: Transfe
 }
 
 async function load() {
+  if (isTransferDetail.value) {
+    return loadTransferDetail();
+  }
   const request = ++generation;
   error.value = "";
   const source = hasOriginalLink.value ? linkedSource.value : "";
@@ -107,6 +123,38 @@ function openOriginalApplication() {
   form.original = source;
   originalChanged();
   void start("create", null, true);
+}
+async function loadTransferDetail() {
+  const request = ++generation;
+  const id = transferLink.value;
+  const actor = auth.user?.id;
+  error.value = "";
+  detail.value = null;
+  detailError.value = "";
+  detailLoading.value = false;
+  if (!actor || typeof id !== "string" || !id) {
+    detailError.value = "互转记录不存在或当前账号无权查看";
+    return;
+  }
+  detailLoading.value = true;
+  try {
+    const row = await fetchCompanyTransfer(id);
+    if (request !== generation || actor !== auth.user?.id) return;
+    if (row.id !== id) {
+      detailError.value = "互转记录不存在或当前账号无权查看";
+      return;
+    }
+    detail.value = row;
+    const eventId = route.query.correctionEventId;
+    if (row.canReadOriginalDebtCorrections && typeof eventId === "string") {
+      const event = row.events.find(item => item.id === eventId && item.kind === "outgoing");
+      if (event) correctionSelection.value = {row,event};
+    }
+  } catch (cause) {
+    if (request === generation) detailError.value = formatUnknownApiError(cause, "互转记录读取失败，请刷新");
+  } finally {
+    if (request === generation) detailLoading.value = false;
+  }
 }
 function originalChanged(){const legacy=data.value?.legacyOptions.find(r=>`${r.legacyType}:${r.id}`===form.original);if(legacy)Object.assign(form,{sourceCompanyId:legacy.sourceCompanyId,destinationCompanyId:legacy.destinationCompanyId,sourceProjectId:legacy.sourceProjectId,destinationProjectId:legacy.destinationProjectId});const [kind,id]=form.original.split(":");const loan=data.value?.originalLoans.find(r=>r.id===id),proxy=data.value?.originalProxies.find(r=>r.id===id);if(kind==="loan"&&loan)Object.assign(form,{sourceCompanyId:loan.destinationCompanyId,destinationCompanyId:loan.sourceCompanyId,sourceProjectId:loan.destinationProjectId??"",destinationProjectId:loan.sourceProjectId??""});if(kind==="proxy"&&proxy)Object.assign(form,{sourceCompanyId:proxy.source.debtor.id,destinationCompanyId:proxy.source.actualPayer.id,sourceProjectId:proxy.projectId,destinationProjectId:proxy.projectId});}
 async function start(action:string,row:TransferRow|null=null,fromOriginal=false){fixedOriginal.value=fromOriginal;approvalDuty.value=null;selected.value=row;password.value="";comment.value="";bank.value="";outgoing.value="";file.value=null;fileId.value="";form.sourceAccount="";form.destinationAccount="";key=crypto.randomUUID();mode.value=action;if(row&&["outgoing","incoming","returned"].includes(action)){try{banks.value=await fetchCompanyTransferBanks(row.id,action);}catch(e){error.value=formatUnknownApiError(e,"银行流水读取失败");}}}
@@ -177,7 +225,17 @@ watch([project,company,asOf],()=>{page.value=1;void load();},{immediate:true});w
   }
   void load();
 });
-watch(linkedTransfer, () => { page.value = 1; void load(); });
+watch([transferLink, () => route.query.correctionEventId, () => auth.user?.id], () => {
+  mode.value = "";
+  selected.value = null;
+  correctionSelection.value = null;
+  password.value = "";
+  banks.value = [];
+  data.value = null;
+  detail.value = null;
+  page.value = 1;
+  void load();
+}, { flush: "sync" });
 onBeforeUnmount(()=>{generation++;password.value="";form.sourceAccount="";form.destinationAccount="";});
 
 async function createCompanyTransferWithCapability(arg0: Parameters<typeof createCompanyTransfer>[0], originalSource: string) {
@@ -215,7 +273,13 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
   <section class="company-transfer-page">
     <BusinessPageHeader title="公司互转审批与台账" description="查看互转申请、实际出款、到账及往来核销。项目代付归还按原往来办理。" />
     <t-alert v-if="error" theme="error" :message="error" />
-    <router-link v-if="hasTransferLink || hasOriginalLink" to="/公司互转台账">返回全部互转台账</router-link>
+    <template v-if="isTransferDetail">
+      <router-link :to="ledgerLink">返回公司互转台账</router-link>
+      <p v-if="detailLoading" role="status">正在读取互转记录</p>
+      <t-alert v-else-if="detailError" theme="error" :message="detailError" />
+    </template>
+    <div v-if="!isTransferDetail">
+    <router-link v-if="hasOriginalLink" to="/公司互转台账">返回全部互转台账</router-link>
     <div class="transfer-filters">
       <t-select v-model="project" :options="[{value:'',label:'全部授权项目及资金'},...(data?.projects??[]).map(p=>({value:p.id,label:p.name}))]" aria-label="筛选互转项目" />
       <t-select v-model="company" :options="[{value:'',label:'全部公司'},...companyOptions]" aria-label="筛选互转公司" />
@@ -232,8 +296,9 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
     <t-button v-if="hasOriginalLink && data?.canCreate" @click="openOriginalApplication">申请归还该往来</t-button>
     <p v-else-if="hasOriginalLink && data?.originalSourceFound">当前不可发起归还，已有记录仍可查看。</p>
     <t-pagination v-if="data && !hasTransferLink && !hasOriginalLink" v-model="page" :total="data.total" :page-size="50" :show-page-size="false" @current-change="load" />
-    <p v-if="data && !rows.length">{{ hasTransferLink ? '互转记录不存在或当前账号无权查看。' : hasOriginalLink ? '该往来暂无归还记录。' : '当前范围暂无公司互转。' }}</p>
-    <article v-for="r in rows" :key="r.id">
+    <p v-if="data && !visibleRows.length">{{ hasTransferLink ? '互转记录不存在或当前账号无权查看。' : hasOriginalLink ? '该往来暂无归还记录。' : '当前范围暂无公司互转。' }}</p>
+    </div>
+    <article v-for="r in visibleRows" :key="r.id">
       <h4>{{ r.code }} · {{ r.kindLabel }} · {{ r.statusLabel }}</h4>
       <p>{{ r.sourceCompany }}（{{ r.sourceScope }}） → {{ r.destinationCompany }}（{{ r.destinationScope }}）</p>
       <p>申请 {{ money(r.amountCents) }} · 已出款 {{ money(r.sentCents) }} · 已到账 {{ money(r.receivedCents) }} · 已退回 {{ money(r.returnedCents) }} · 在途 {{ money(r.inTransitCents) }} 元</p>
@@ -254,6 +319,12 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
       </template>
       <t-button v-if="r.canWithdraw" variant="outline" @click="start('withdraw',r)">撤回申请</t-button>
       <template v-if="r.canExecute"><t-button v-if="BigInt(r.sentCents)<BigInt(r.amountCents)" @click="start('outgoing',r)">登记实际出款</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" @click="start('incoming',r)">独立确认到账</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" variant="outline" @click="start('returned',r)">登记未到账退回</t-button></template>
+      <MultiDutySmsStatusPanel
+        v-if="auth.user?.id && (r.canApprove || r.canExecute)"
+        :key="`${auth.user.id}:${r.id}:${r.status}:${r.sentCents}:${r.inTransitCents}`"
+        domain="company-transfers"
+        :business-id="r.id"
+      />
       <div v-for="event in r.events" :key="event.id">
         <p>{{ event.kind === 'outgoing' ? '出款' : event.kind === 'incoming' ? '到账' : '未到账退回' }}
           {{ money(event.amountCents) }} 元 · {{ new Date(event.occurredAt).toLocaleDateString('zh-CN') }}</p>

@@ -2637,9 +2637,11 @@ export type ApprovalCenterViewKey =
   | "overdueReminder";
 
 export interface WorkItemReadModel {
+  reminderId?: string;
+  noticeKey?: string;
   contractRelationshipLabel?: string; signingParty?: string; accountingEffect?: string;
   id: string;
-  type: "draft" | "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
+  type: "draft" | "contract_takeover" | "archive" | "approval" | "payment_execution" | "procurement" | "blocker";
   title: string;
   projectName: string;
   projectId?: string;
@@ -2657,6 +2659,9 @@ export interface WorkItemReadModel {
 }
 
 export interface WorkItemsReadModel {
+  noticePage?: { offset: number; size: number };
+  noticeIndexVersion?: string;
+  recentNotices?: WorkItemReadModel[];
   generatedAt: string;
   visibleProjectCount: number;
   queues: Record<WorkItemQueueKey, WorkItemReadModel[]>;
@@ -2672,8 +2677,18 @@ export function fetchWorkbenchSummary() {
   return readJson<WorkbenchSummaryReadModel>("/me/workbench-summary");
 }
 
-export function fetchWorkItems() {
-  return readJson<WorkItemsReadModel>("/me/work-items");
+export function fetchWorkItems(noticeOffset?: number) {
+  return readJson<WorkItemsReadModel>("/me/work-items", noticeOffset === undefined ? undefined : { "x-work-item-notices": String(noticeOffset) });
+}
+
+export function fetchWorkItemNoticeKeys(version: string, after?: string) {
+  const query = new URLSearchParams({ version, ...(after ? { after } : {}) });
+  return readJson<{ version: string; keys: string[]; nextCursor: string | null }>(`/me/work-item-notice-keys?${query}`);
+}
+
+export function fetchWorkItemNoticeDetails(version: string, keys: string[]) {
+  const query = new URLSearchParams({ version, keys: keys.join(",") });
+  return readJson<{ version: string; items: WorkItemReadModel[] }>(`/me/work-item-notice-details?${query}`);
 }
 
 export interface DraftRetentionPreviewReadModel {

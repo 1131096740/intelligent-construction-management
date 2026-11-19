@@ -10143,6 +10143,50 @@
       ]
     },
     {
+      "id": "duty-sms.retry",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算管理/:settlementId",
+        "/费用与报销/:claimId",
+        "/零星材料付款/:paymentId",
+        "/零星采购收货/:procurementId",
+        "/付款管理",
+        "/付款管理/:paymentId",
+        "/资金账户",
+        "/资金余额复核/:registrationId",
+        "/公司互转台账",
+        "/统一资金办理工作台",
+        "/垫资本金归还/:applicationId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retry"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "notice.canRetry"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "name": "retryDutySms"
+        }
+      ]
+    },
+    {
+      "id": "multi-duty-sms.retry",
+      "usage": "page_action",
+      "routePaths": ["/合同管理/:contractId", "/公司互转台账", "/综合采购申请/:procurementId", "/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue",
+      "trigger": { "element": "t-button", "event": "click", "handler": "retry" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "notice.canRetry" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts", "name": "retryMultiDutySms" }]
+    },
+    {
       "id": "approval-progress.remind-by-sms",
       "usage": "background",
       "routePaths": [

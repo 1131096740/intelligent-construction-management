@@ -1,8 +1,10 @@
+import { UpwardReceiptMatchNotificationService } from "./upward-receipt-match-notification.service";
+import { requireUpwardReceiptFinance } from "./upward-receipt-match-access";
 import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import {businessDay} from "./contract-proxy-bank";
-import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from "@nestjs/common";
+import {BadRequestException,ConflictException,Injectable,NotFoundException,Optional} from "@nestjs/common";
 import {Prisma} from "@prisma/client";
 import {createHash} from "node:crypto";
 import {PrismaService} from "../database/prisma.service";
@@ -16,11 +18,10 @@ import {matchedUpwardReceipts} from "./upward-receipt-capacity";
 export interface PrepareReceiptMatch {projectId:string;receiptFactId:string;settlementLedgerId:string;originalId?:string;amountCents:string;occurredAt:string;reason:string;confirmationPassword:string;idempotencyKey:string}
 @Injectable()
 export class UpwardReceiptMatchService {
- constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService,private readonly sources:OperatingSourceReplayService){}
+ constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService,private readonly sources:OperatingSourceReplayService,
+  @Optional() private readonly notifications?:UpwardReceiptMatchNotificationService){}
  private async authorize(tx:Prisma.TransactionClient,actor:string,projectId:string,confirm=false){
-  if(!(await this.visibility.visibleProjectIdsInTransaction(tx,actor)).includes(projectId))throw new ForbiddenException("无权核对该项目到账");
-  const roles=(await this.visibility.effectiveRoleKeysByProjectInTransaction(tx,actor,[projectId])).get(projectId)??[];
-  if(!roles.some(r=>(confirm?["finance_director"]:["finance_staff","finance_director"]).includes(r)))throw new ForbiddenException("到账核销由项目财务办理");return roles;
+  return requireUpwardReceiptFinance(tx,this.visibility,actor,projectId,confirm);
  }
  async list(actor:string,projectId:string){return this.prisma.$transaction(async tx=>{
   const roles=await this.authorize(tx,actor,projectId);
@@ -64,13 +65,17 @@ export class UpwardReceiptMatchService {
   const amount=money(input.amountCents,"核销金额"),date=new Date(input.occurredAt);if(amount<=0n||Number.isNaN(date.getTime())||date>new Date())throw new BadRequestException("金额或核销日期无效");
   await this.auth.confirmPassword(actor,input.confirmationPassword);
   const fingerprint=createHash("sha256").update(JSON.stringify({...input,confirmationPassword:undefined,actor})).digest("hex");
-  return this.prisma.$transaction(async tx=>{
+  const result=await this.prisma.$transaction(async tx=>{
    await this.authorize(tx,actor,input.projectId);await lockEconomicProject(tx,input.projectId);
    const replay=await tx.upwardReceiptMatch.findUnique({where:{idempotencyKey:input.idempotencyKey}});if(replay){if(replay.requestFingerprint!==fingerprint)throw new ConflictException("操作凭据已用于其他核销");return {id:replay.id,status:replay.status};}
    const frozenSource=await this.context(tx,input,amount);
    const row=await tx.upwardReceiptMatch.create({data:{projectId:input.projectId,receiptFactId:input.receiptFactId,settlementLedgerId:input.settlementLedgerId,originalId:input.originalId??null,amountCents:amount,occurredAt:date,reason:input.reason.trim(),frozenSource,recordedByUserId:actor,idempotencyKey:input.idempotencyKey,requestFingerprint:fingerprint}});
-   await this.audit.record(tx,{actorUserId:actor,action:"contract.receipt_match.prepare",businessType:"upward_receipt_match",businessId:row.id,metadata:{projectId:row.projectId}});return {id:row.id,status:row.status};
+   await this.audit.record(tx,{actorUserId:actor,action:"contract.receipt_match.prepare",businessType:"upward_receipt_match",businessId:row.id,metadata:{projectId:row.projectId}});
+   await this.notifications?.queue(tx,row);
+   return {id:row.id,status:row.status};
   });
+  void this.notifications?.afterCommit();
+  return result;
  }
  async decide(actor:string,id:string,input:{decision:"confirm"|"return";confirmationPassword:string}){
   if(!input||!["confirm","return"].includes(input.decision))throw new BadRequestException("核销动作无效");await this.auth.confirmPassword(actor,input.confirmationPassword);

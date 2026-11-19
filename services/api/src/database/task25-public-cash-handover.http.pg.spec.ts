@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { FundAccountTransferNotificationService } from "../fund-account/fund-account-transfer-notification.service";
+import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import type { INestApplication } from "@nestjs/common";
@@ -9,8 +11,9 @@ import { PrismaService } from "./prisma.service";
 import { Task16SharedPaymentApplicationModule } from "./task16-shared-payment-application";
 import { syntheticCreditCode } from "./task16-shared-standard-fixture";
 
+const notices = process.env.TASK419_REAL_FUND_NOTICES === "1";
 const live = process.env.RUN_TASK407_HANDOVER_PG16 === "1" ? it : it.skip;
-live("hands over real registered cash without rewriting balances, and takes over a departed custodian's held transfers", async () => {
+live(notices ? "sends one matching duty notice to the named custodian and cancels a revoked intent" : "hands over real registered cash without rewriting balances, and takes over a departed custodian's held transfers", async () => {
   const runId = process.env.TASK398_RUN_ID ?? "";
   const db = "/jiangkong_payment_execution_concurrency";
   const urls = [process.env.TASK398_OWNER_URL, process.env.DATABASE_URL, process.env.TASK398_OBSERVER_URL].map(s => new URL(s ?? ""));
@@ -45,8 +48,12 @@ live("hands over real registered cash without rewriting balances, and takes over
         currentVersionNo: 1, unifiedSocialCreditCode: syntheticCreditCode(runId.slice(0, 12), 0) } });
     });
 
-    const module = await Test.createTestingModule({ imports: [Task16SharedPaymentApplicationModule] })
-      .overrideProvider(PrismaService).useValue(runtime).compile();
+    let smsAvailable = false;
+    const sender = jest.fn().mockResolvedValue({status: "accepted"});
+    const builder = Test.createTestingModule({ imports: [Task16SharedPaymentApplicationModule] })
+      .overrideProvider(PrismaService).useValue(runtime);
+    if (notices) builder.overrideProvider(ApprovalSmsService).useValue({available: () => smsAvailable, sendDutyIntent: sender});
+    const module = await builder.compile();
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
@@ -85,6 +92,59 @@ live("hands over real registered cash without rewriting balances, and takes over
     expect(claim).toMatchObject({ status: 201, body: { custodianId: ids.previous } });
     expect(await request(initial, previous, initialInput)).toEqual(claim);
     expect((await request(initial, next, { idempotencyKey: randomUUID(), expectedRevision: 1 })).status).toBe(409);
+
+    if (notices) {
+      const register = () => request(transfers, finance, {
+        sourceScopeKey: companyScope, destinationScopeKey: cashScope, expectedRegistrationId: company.body.id,
+        idempotencyKey: randomUUID(), transferredOn: "2026-11-06", evidenceReference: "合成公司转现金",
+        lines: [{sourceBatchId: company.body.sources[0].id, amountYuan: "2.1251"}]
+      });
+      const businessType = "registered_fund_transfer_duty_notification";
+      const evidence = (id:string) => observer.$transaction(async tx => {
+        await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+        const transfer = await tx.registeredFundTransfer.findUniqueOrThrow({where:{id},select:{status:true,revision:true}});
+        const actions = await tx.registeredFundTransferAction.count({where:{transferId:id}});
+        const events = await tx.auditLog.findMany({where:{businessId:id,businessType},select:{action:true,metadata:true}});
+        return {transfer,actions,events};
+      });
+      const duty = async (token:string,id:string) => {
+        const response = await request("/me/work-items",token);
+        expect(response.status).toBe(200);
+        return response.body.queues.pending.find((row:{businessId:string}) => row.businessId === id);
+      };
+      const first = await register();
+      expect(first).toMatchObject({status:201,body:{status:"pending_receipt",revision:1}});
+      const id = first.body.id as string;
+      expect(await evidence(id)).toMatchObject({transfer:{status:"pending_receipt",revision:1},actions:1,
+        events:[{action:"queued",metadata:{recipientId:ids.previous,revision:1}}]});
+      expect(await duty(previous,id)).toMatchObject({targetPath:"/资金账户",amountText:"2.1251 元"});
+      expect(await duty(next,id)).toBeUndefined();
+      const consumer = app.get(FundAccountTransferNotificationService);
+      smsAvailable=true;
+      await consumer.afterCommit();
+      await consumer.afterCommit();
+      expect(sender).toHaveBeenCalledTimes(1);
+      expect(sender).toHaveBeenCalledWith(accounts[0][1],expect.objectContaining({targetPath:"/资金账户",amountText:"2.1251 元"}));
+      expect((await evidence(id)).events.map(event=>event.action).sort()).toEqual(["accepted","dispatch_claimed","queued"]);
+
+      smsAvailable=false;
+      const second = await register();
+      expect(second).toMatchObject({status:201,body:{status:"pending_receipt",revision:1}});
+      const secondId = second.body.id as string;
+      expect(await duty(previous,secondId)).toBeDefined();
+      await owner.userPosition.deleteMany({where:{userId:ids.previous,projectId:null}});
+      expect(await duty(previous,secondId)).toBeUndefined();
+      expect(await duty(unrelated,secondId)).toBeUndefined();
+      smsAvailable=true;
+      await consumer.afterCommit();
+      await consumer.afterCommit();
+      expect(sender).toHaveBeenCalledTimes(1);
+      const final = await evidence(secondId);
+      expect(final).toMatchObject({transfer:{status:"pending_receipt",revision:1},actions:1});
+      expect(final.events.map(event=>event.action).sort()).toEqual(["cancelled","queued"]);
+      console.log("TASK419_FUND_TRANSFER_NOTICE_PASS named=1 revoked=0 transfer-revisions=1,1 actions=1,1");
+      return;
+    }
 
     const firstBatch = cash.body.sources[0].id as string;
     const send = async (amountYuan: string, token = previous) => {

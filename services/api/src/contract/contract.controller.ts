@@ -1,3 +1,5 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { ContractDutyNotificationService } from "./contract-duty-notification.service";
 import { ContractV2ArchiveService } from "./contract-v2-archive.service";
 import { SignedContractArchiveV2Pipe, type SignedContractArchiveV2Request } from "./dto/contract-lifecycle-v2.dto";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
@@ -88,8 +90,20 @@ export class ContractController {
     @Optional() private readonly pristineDeletion?: PristineDraftDeletionService,
     @Optional() private readonly approvalProgress?: ApprovalProgressService,
     @Optional() private readonly preciseLifecycle?: ContractV2SubmissionService,
-    @Optional() private readonly signedArchives?: ContractV2ArchiveService
+    @Optional() private readonly signedArchives?: ContractV2ArchiveService,
+    @Optional() private readonly dutyNotifications?: ContractDutyNotificationService
   ) {}
+
+  @Get(":contractVersionId/duty-sms")
+  async dutySmsStatus(@Param("contractVersionId") versionId:string,@CurrentUser() user:AuthenticatedUser) {
+    return {notices:await this.dutyNotifications?.notificationStatus(versionId,user.id)??[]};
+  }
+
+  @Post(":contractVersionId/duty-sms/retry")
+  retryDutySms(@Param("contractVersionId") versionId:string,@CurrentUser() user:AuthenticatedUser,@Body() input:RetryDutyNotificationDto) {
+    if(!this.dutyNotifications)throw new BadRequestException("短信通知暂不可用");
+    return this.dutyNotifications.retry(versionId,user.id,input.attemptId);
+  }
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
   @Post()

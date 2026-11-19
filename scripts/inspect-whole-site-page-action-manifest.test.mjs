@@ -11109,3 +11109,319 @@ for (const [label, from, to] of [
   assert.equal(result.status, "blocked");
   assert.ok(result.blockers.unresolvedWrappers.some(item => item.actionId.startsWith("fund-advance.")));
 });
+
+test("duty SMS retry needs the actual server attempt capability and the fixed domain consumers", async () => {
+  const panel = "apps/web-admin/src/components/DutySmsStatusPanel.vue";
+  const api = "apps/web-admin/src/api/duty-sms.api.ts";
+  const settlement = "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue";
+  const expense = "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue";
+  const procurement = "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue";
+  const receipt = "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue";
+  const payment = "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue";
+  const controller = "services/api/src/payment/registered-payment-execution.controller.ts";
+  const service = "services/api/src/payment/registered-payment-notification.service.ts";
+  const serviceSource = await readFile(service, "utf8");
+  const transfer = "apps/web-admin/src/pages/funds/FundAccountTransfers.vue";
+  const transferController = "services/api/src/fund-account/fund-account-transfer.controller.ts";
+  const transferService = "services/api/src/fund-account/fund-account-transfer-notification.service.ts";
+  const transferDelivery = "services/api/src/approval/audit-duty-notification-delivery.ts";
+  const transferServiceSource = await readFile(transferService, "utf8");
+  const bank = "apps/web-admin/src/components/ContractBankVerificationPanel.vue";
+  const bankController = "services/api/src/contract-ledger/contract-bank-verification.controller.ts";
+  const bankService = "services/api/src/contract-ledger/contract-bank-verification-notification.service.ts";
+  const bankAccess = "services/api/src/contract-ledger/contract-bank-verification-access.ts";
+  const bankAccessSource = await readFile(bankAccess, "utf8");
+  const reviewConsumers = [
+    ["contract-economic-reviews", "ContractEconomicReviewPanel", "contract-economic-review", "ContractEconomicReviewController", "economic-finance", "/履约复核"],
+    ["contract-proxy-executions", "ContractProxyExecutionPanel", "contract-proxy-execution", "ContractProxyExecutionController", "contract-proxy", "/代付原件"],
+    ["upward-contract-amount-revisions", "UpwardContractAmountPanel", "upward-contract-amount", "UpwardContractAmountController", "upward-amount", "/金额修订"],
+    ["upward-receipt-matches", "UpwardReceiptMatchPanel", "upward-receipt-match", "UpwardReceiptMatchController", "upward-receipt-match", "/对上核销"]
+  ];
+  const balance = "apps/web-admin/src/pages/funds/FundAccountsPage.vue";
+  const balanceController = "services/api/src/fund-account/fund-account.controller.ts";
+  const balanceService = "services/api/src/fund-account/fund-balance-review-notification.service.ts";
+  const balanceSource = await readFile(balanceService, "utf8");
+  const independent = "services/api/src/contract-ledger/independent-ledger-duty-sms.ts";
+  const independentSource = await readFile(independent, "utf8");
+  const ledgerFiles = reviewConsumers.flatMap(([, component, controller, , service]) => [
+    `apps/web-admin/src/components/${component}.vue`,
+    `services/api/src/contract-ledger/${controller}.controller.ts`,
+    `services/api/src/contract-ledger/${service}-notification.service.ts`
+  ]);
+  const ledgerSources = Object.fromEntries(await Promise.all(ledgerFiles.map(async file => [file, await readFile(file, "utf8")])));
+  const paymentDetail = "apps/web-admin/src/pages/payments/PaymentDetailPage.vue";
+  const approvalController = "services/api/src/payment/payment.controller.ts";
+  const approvalService = "services/api/src/payment/payment-approval-notification.service.ts";
+  const approvalSource = await readFile(approvalService, "utf8");
+  const principal = "apps/web-admin/src/pages/funds/FundPrincipalReturns.vue";
+  const principalController = "services/api/src/fund-account/fund-principal-return.controller.ts";
+  const principalService = "services/api/src/fund-account/fund-principal-return-notification.service.ts";
+  const principalSource = await readFile(principalService, "utf8");
+  const domains = ["contract-bank-verifications", "contract-economic-reviews", "contract-proxy-executions", "expense-claims", "fund-account-transfers", "fund-accounts/principal-returns", "fund-accounts/registrations", "payment-executions", "payments", "settlements", "spot-procurement-payments", "spot-procurements", "upward-contract-amount-revisions", "upward-receipt-matches"];
+  const routePaths = ["/结算管理/:settlementId", "/费用与报销/:claimId", "/零星材料付款/:paymentId", "/零星采购收货/:procurementId", "/付款管理", "/资金账户", "/统一资金办理工作台", "/资金余额复核/:registrationId", "/付款管理/:paymentId", "/垫资本金归还/:applicationId", ...reviewConsumers.map(consumer => consumer[5])];
+  const parent = (domain, id) => `<script setup lang="ts">
+    import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
+    </script><template><DutySmsStatusPanel domain="${domain}" :business-id="${id}" /></template>`;
+  const names = ["fetchDutySms", "retryDutySms"];
+  const routeSets = ["GET", "POST"].map(method => domains.map(domain =>
+    method + (domain === "fund-accounts/principal-returns" ? " /fund-accounts/principal-returns/applications/:param/duty-sms/:param" : ` /${domain}/:param${domain === "spot-procurements" ? "/receipt" : domain === "fund-accounts/registrations" ? "/review" : domain === "payments" ? "/approval" : ""}/duty-sms`) + (method === "POST" ? "/retry" : "")));
+  const source = await readFile(panel, "utf8");
+  const root = await fixture({
+    actions: [registryAction({
+      id: "duty-sms.retry", routePaths, sourceFile: panel,
+      trigger: { element: "t-button", event: "click", handler: "retry" },
+      capability: { kind: "server_boolean", source: "notice.canRetry" },
+      wrappers: [{ apiFile: api, name: names[1] }]
+    })],
+    wrappers: names.map((name, index) => wrapper({
+      apiFile: api, name, productionConsumers: [panel],
+      requests: routeSets[index].map(normalizedKey => wrapper({ normalizedKey }).requests[0])
+    })),
+    routes: routeSets.flat().map(key => {
+      const ledger = reviewConsumers.find(([domain]) => key.includes(` /${domain}/`));
+      if (ledger) return {
+        ...route(key), controller: ledger[3], sourceFile: `services/api/src/contract-ledger/${ledger[2]}.controller.ts`,
+        handler: key.startsWith("GET ") ? "dutySms" : "retryDutySms", requiredProjectAction: null, guardAuthorization: "authenticated_only"
+      };
+      if (key.includes("/payments/")) return {
+        ...route(key), controller: "PaymentController", sourceFile: approvalController,
+        handler: key.startsWith("GET ") ? "approvalDutySms" : "retryApprovalDutySms", requiredProjectAction: null,
+        guardAuthorization: "authenticated_only"
+      };
+      if (key.includes("/fund-accounts/principal-returns/")) return {
+        ...route(key), controller: "FundPrincipalReturnController", sourceFile: principalController,
+        handler: key.startsWith("GET ") ? "dutySms" : "retryDutySms", requiredProjectAction: null,
+        guardAuthorization: "authenticated_only"
+      };
+      if (key.includes("/fund-accounts/registrations/")) return {
+        ...route(key), controller: "FundAccountController", sourceFile: balanceController,
+        handler: key.startsWith("GET ") ? "reviewDutySms" : "retryReviewDutySms", requiredProjectAction: "fund_account.balance.review"
+      };
+      return {
+      ...route(key),
+      ...(key.includes("/payment-executions/") ? {
+        controller: "RegisteredPaymentExecutionController",
+        handler: key.startsWith("GET ") ? "dutySmsStatus" : "retryDutySms",
+        sourceFile: controller, guardAuthorization: "authenticated_only", requiredProjectAction: null
+      } : {}),
+      ...(key.includes("/fund-account-transfers/") ? {
+        controller: "FundAccountTransferController",
+        handler: key.startsWith("GET ") ? "dutySmsStatus" : "retryDutySms",
+        sourceFile: transferController, guardAuthorization: "positions",
+        requiredPositions: ["comprehensive_director", "finance_director", "finance_staff"]
+      } : {}),
+      ...(key.includes("/contract-bank-verifications/") ? {
+        controller: "ContractBankVerificationController",
+        handler: key.startsWith("GET ") ? "dutySmsStatus" : "retryDutySms",
+        sourceFile: bankController, guardAuthorization: "authenticated_only"
+      } : {}),
+      requiredProjectAction: /\/(?:payment-executions|fund-account-transfers|contract-bank-verifications)\//u.test(key) ? null : key.includes("/expense-claims/") ? "expense_claim.payment.execute" :
+        key.includes("/spot-procurement-payments/") ? "spot_procurement.payment.execute" :
+          key.includes("/spot-procurements/") ? "spot_procurement.receipt.review" : "settlement.archive.confirm"
+      };
+    }),
+    routeRecords: `export const webAdminRoutes = [
+      { path: "${routePaths[0]}", component: () => import("../pages/settlements/SettlementDetailPage.vue") },
+      { path: "${routePaths[1]}", component: () => import("../pages/expense-claims/ExpenseClaimDetailPage.vue") },
+      { path: "${routePaths[2]}", component: () => import("../pages/spot-procurement/SpotProcurementPaymentDetailPage.vue") },
+      { path: "${routePaths[3]}", component: () => import("../pages/spot-procurement/SpotProcurementReceiptPage.vue") },
+      { path: "${routePaths[4]}", component: () => import("../pages/payments/RegisteredPaymentExecutionPanel.vue") },
+      { path: "${routePaths[5]}", component: () => import("../pages/funds/FundAccountTransfers.vue") },
+      { path: "${routePaths[6]}", component: () => import("../components/ContractBankVerificationPanel.vue") },
+      { path: "${routePaths[7]}", component: () => import("../pages/funds/FundAccountsPage.vue") },
+      { path: "${routePaths[8]}", component: () => import("../pages/payments/PaymentDetailPage.vue") },
+      { path: "${routePaths[9]}", component: () => import("../pages/funds/FundPrincipalReturns.vue") },
+      ${reviewConsumers.map(([, component, , , , path]) =>
+        `{ path: "${path}", component: () => import("../components/${component}.vue") }`).join(",\n")}
+    ];`,
+    extraFiles: {
+      [panel]: source,
+      [api]: await readFile(api, "utf8"),
+      [settlement]: parent("settlements", "settlementDetail.settlementId"),
+      [expense]: parent("expense-claims", "detail.id"),
+      [procurement]: parent("spot-procurement-payments", "payment.id"),
+      [receipt]: parent("spot-procurements", "procurementId"),
+      [payment]: await readFile(payment, "utf8"),
+      [controller]: await readFile(controller, "utf8"),
+      [service]: serviceSource,
+      [transfer]: await readFile(transfer, "utf8"),
+      [transferController]: await readFile(transferController, "utf8"),
+      [transferService]: transferServiceSource,
+      [transferDelivery]: await readFile(transferDelivery, "utf8"),
+      [bank]: await readFile(bank, "utf8"),
+      [bankController]: await readFile(bankController, "utf8"),
+      [bankService]: await readFile(bankService, "utf8"),
+      [bankAccess]: bankAccessSource,
+      [balance]: await readFile(balance, "utf8"),
+      [balanceController]: await readFile(balanceController, "utf8"),
+      [balanceService]: balanceSource,
+      [independent]: independentSource,
+      [paymentDetail]: await readFile(paymentDetail, "utf8"),
+      [approvalController]: await readFile(approvalController, "utf8"),
+      [approvalService]: approvalSource,
+      [principal]: await readFile(principal, "utf8"),
+      [principalController]: await readFile(principalController, "utf8"),
+      [principalService]: principalSource,
+      ...ledgerSources
+    }
+  });
+  try {
+    const inspect = () => inspectWholeSitePageActionManifest({ root });
+    const allowed = await inspect();
+    assert.equal(allowed.actions.find(action => action.id === "duty-sms.retry")?.capability.serverDerived, true);
+    await write(root, principalService, principalSource.replace(
+      "const dutyName = await this.currentDuty(tx, row, round, duty, recipientId);", 'const dutyName = "固定文字";'));
+    const missingPrincipalAuthority = await inspect();
+    assert.ok(missingPrincipalAuthority.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, principalService, principalSource);
+    await write(root, service, serviceSource.replace("const roles=await assertRegisteredPaymentActor(tx,actorId);", "const roles=[];"));
+    const missingPaymentAuthority = await inspect();
+    assert.ok(missingPaymentAuthority.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, service, serviceSource);
+    await write(root, transferService, transferServiceSource.replace("row.revision !== revision", "false"));
+    const bypassedRevision = await inspect();
+    assert.ok(bypassedRevision.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, transferService, transferServiceSource);
+    await write(root, bankAccess, bankAccessSource.replace("row.recordedByUserId === recipientId", "false"));
+    const selfReviewBypass = await inspect();
+    assert.ok(selfReviewBypass.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, bankAccess, bankAccessSource);
+    await write(root, balanceService, balanceSource.replace("metadata(intent).roundId === expectedRoundId", "true"));
+    const missingRound = await inspect();
+    assert.ok(missingRound.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, balanceService, balanceSource);
+    await write(root, independent, independentSource.replace("Boolean(await access.currentMessage(tx, attempt))", "true"));
+    const missingCurrentLedgerDuty = await inspect();
+    assert.ok(missingCurrentLedgerDuty.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, independent, independentSource);
+    await write(root, approvalService, approvalSource.replace('&& await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorId, actorRoleKeys)', ""));
+    const bypassedPaymentVisibility = await inspect();
+    assert.ok(bypassedPaymentVisibility.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, approvalService, approvalSource);
+    await write(root, panel, source.replace('!notice.value?.canRetry || notice.value.status !== "failed" || busy.value', "busy.value"));
+    const missingGuard = await inspect();
+    assert.ok(missingGuard.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, panel, source);
+    await write(root, expense, parent("settlements", "detail.id"));
+    const wrongDomain = await inspect();
+    assert.ok(wrongDomain.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, expense, parent("expense-claims", "detail.id"));
+    const manifestPath = "docs/product/manifests/nest-business-routes.json";
+    const nest = JSON.parse(await readFile(join(root, manifestPath), "utf8"));
+    nest.routes.find(row => row.normalizedKey === "GET /expense-claims/:param/duty-sms").requiredProjectAction = "settlement.archive.confirm";
+    await write(root, manifestPath, JSON.stringify(nest));
+    const mismatchedAuthority = await inspect();
+    assert.ok(mismatchedAuthority.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("multi-duty SMS retry binds to the failed attempt and enforces the same current stage for read and write", async () => {
+  const panel = "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue";
+  const detail = "apps/web-admin/src/pages/contracts/ContractDetailPage.vue";
+  const api = "apps/web-admin/src/api/multi-duty-sms.api.ts";
+  const controller = "services/api/src/contract/contract.controller.ts";
+  const service = "services/api/src/contract/contract-duty-notification.service.ts";
+  const [panelSource, apiSource, controllerSource, serviceSource] = await Promise.all(
+    [panel, api, controller, service].map(file => readFile(file, "utf8"))
+  );
+  const company = "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue";
+  const companyController = "services/api/src/company-transfer/company-transfer.controller.ts";
+  const companyService = "services/api/src/company-transfer/company-transfer-notification.service.ts";
+  const companyServiceSource = await readFile(companyService, "utf8");
+  const actionId = "multi-duty-sms.retry";
+  const path = "/合同管理/:contractId";
+  const read = "GET /contracts/:param/duty-sms";
+  const writeKey = "POST /contracts/:param/duty-sms/retry";
+  const companyRead = "GET /company-transfers/:param/duty-sms";
+  const companyWrite = "POST /company-transfers/:param/duty-sms/retry";
+  const procurement = "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue";
+  const procurementController = "services/api/src/general-procurement/general-procurement.controller.ts";
+  const procurementService = "services/api/src/general-procurement/general-procurement-request-notification.service.ts";
+  const procurementServiceSource = await readFile(procurementService, "utf8");
+  const procurementRead = "GET /general-procurements/:param/duty-sms";
+  const procurementWrite = "POST /general-procurements/:param/duty-sms/retry";
+  const spot = "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue";
+  const spotController = "services/api/src/spot-procurement/spot-procurement.controller.ts";
+  const spotService = "services/api/src/spot-procurement/spot-procurement-approval-notification.service.ts";
+  const spotServiceSource = await readFile(spotService, "utf8");
+  const spotRead = "GET /spot-procurements/:param/duty-sms";
+  const spotWrite = "POST /spot-procurements/:param/duty-sms/retry";
+  const root = await fixture({
+    actions: [registryAction({
+      id: actionId, routePaths: [path, "/公司互转台账", "/综合采购申请/:procurementId", "/零星采购/:procurementId"], sourceFile: panel,
+      trigger: { element: "t-button", event: "click", handler: "retry" },
+      capability: { kind: "server_boolean", source: "notice.canRetry" },
+      wrappers: [{ apiFile: api, name: "retryMultiDutySms" }]
+    })],
+    wrappers: [wrapper({ apiFile: api, name: "fetchMultiDutySms", requests: [companyRead, read, procurementRead, spotRead].flatMap(normalizedKey => wrapper({ normalizedKey }).requests), productionConsumers: [panel] }),
+      wrapper({ apiFile: api, name: "retryMultiDutySms", requests: [companyWrite, writeKey, procurementWrite, spotWrite].flatMap(normalizedKey => wrapper({ normalizedKey }).requests), productionConsumers: [panel] })],
+    routes: [read, writeKey, companyRead, companyWrite, procurementRead, procurementWrite, spotRead, spotWrite].map(key => ({
+      ...route(key), controller: key.includes("/contracts/") ? "ContractController" : key.includes("/company-transfers/") ? "CompanyTransferController" : key.includes("/general-procurements/") ? "GeneralProcurementController" : "SpotProcurementController",
+      sourceFile: key.includes("/contracts/") ? controller : key.includes("/company-transfers/") ? companyController : key.includes("/general-procurements/") ? procurementController : spotController,
+      handler: key === procurementRead || key === spotRead ? "dutySms" : key.startsWith("GET ") ? "dutySmsStatus" : "retryDutySms",
+      guardAuthorization: "authenticated_only", requiredProjectAction: null
+    })),
+    routeRecords: `export const webAdminRoutes = [
+      { path: "${path}", component: () => import("../pages/contracts/ContractDetailPage.vue") },
+      { path: "/公司互转台账", component: () => import("../pages/fund-movements/CompanyTransferPage.vue") },
+      { path: "/综合采购申请/:procurementId", component: () => import("../pages/general-procurement/GeneralProcurementDetailPage.vue") },
+      { path: "/零星采购/:procurementId", component: () => import("../pages/spot-procurement/SpotProcurementDetailPage.vue") }
+    ];`,
+    extraFiles: {
+      [panel]: panelSource, [api]: apiSource, [controller]: controllerSource, [service]: serviceSource,
+      [company]: await readFile(company, "utf8"),
+      [companyController]: await readFile(companyController, "utf8"),
+      [companyService]: companyServiceSource,
+      [procurement]: await readFile(procurement, "utf8"),
+      [procurementController]: await readFile(procurementController, "utf8"),
+      [procurementService]: procurementServiceSource,
+      [spot]: await readFile(spot, "utf8"),
+      [spotController]: await readFile(spotController, "utf8"),
+      [spotService]: spotServiceSource,
+      [detail]: `<script setup lang="ts">
+        import MultiDutySmsStatusPanel from "../../components/MultiDutySmsStatusPanel.vue";
+        </script><template>
+        <MultiDutySmsStatusPanel v-if="auth.user?.id && !contractDetail.historyReadOnly"
+          domain="contracts" :business-id="contractDetail.contractVersionId" />
+        </template>`
+    }
+  });
+  try {
+    const inspect = () => inspectWholeSitePageActionManifest({ root });
+    const valid = await inspect();
+    assert.equal(valid.actions.find(action => action.id === actionId)?.capability.serverDerived, true);
+    await write(root, service, serviceSource.replace("!await this.authorized(tx,contract,round,stage,index,actor)", "false"));
+    const bypassedStage = await inspect();
+    assert.ok(bypassedStage.blockers.writeWithoutServerCapability.some(row => row.actionId === actionId));
+    await write(root, service, serviceSource);
+    await write(root, companyService, companyServiceSource.replace('transfer.status !== "approved" || !await this.canHandleCashDuty(tx,transfer,recipientId,key)', 'transfer.status !== "approved"'));
+    const bypassedCashAuthority = await inspect();
+    assert.ok(bypassedCashAuthority.blockers.writeWithoutServerCapability.some(row => row.actionId === actionId));
+    await write(root, companyService, companyServiceSource);
+    await write(root, companyService, companyServiceSource.replace(
+      "if (!eligible.some(duty=>duty.nodeIndex===nodeIndex)) return null;", ""));
+    const bypassedParallel = await inspectWholeSitePageActionManifest({root});
+    assert.ok(bypassedParallel.blockers.writeWithoutServerCapability.some(row => row.actionId === actionId));
+    await write(root, companyService, companyServiceSource);
+    await write(root, companyService, companyServiceSource.replace(
+      "if (!transfer || !duty) return null;", "if (!transfer) return null;"));
+    const bypassedCorrectionDuty = await inspectWholeSitePageActionManifest({root});
+    assert.ok(bypassedCorrectionDuty.blockers.writeWithoutServerCapability.some(row => row.actionId === actionId));
+    await write(root, companyService, companyServiceSource);
+    await write(root, procurementService, procurementServiceSource.replace("data.recipientId === row.applicantUserId", "true"));
+    const bypassedCorrection = await inspect();
+    assert.ok(bypassedCorrection.blockers.writeWithoutServerCapability.some(row => row.actionId === actionId));
+    await write(root, procurementService, procurementServiceSource);
+    await write(root, spotService, spotServiceSource.replace("data.recipientId !== actorId || !this.isOriginal(original)", "!this.isOriginal(original)"));
+    const bypassedSpotRecipient = await inspect();
+    assert.ok(bypassedSpotRecipient.blockers.writeWithoutServerCapability.some(row => row.actionId === actionId));
+    await write(root, spotService, spotServiceSource);
+    await write(root, panel, panelSource.replace("retry(notice.attemptId)", "retry(notices[0].attemptId)"));
+    const mismatchedAttempt = await inspect();
+    assert.ok(mismatchedAttempt.blockers.writeWithoutServerCapability.some(row => row.actionId === actionId));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

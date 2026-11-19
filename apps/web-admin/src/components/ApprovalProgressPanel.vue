@@ -8,7 +8,8 @@ const loading = ref(false);
 const sending = ref(false);
 const error = ref("");
 let generation = 0;
-const requests = new Map<string, { requestId: string; reminderToken: string }>();
+const requests = new Map<string, { requestId: string; reminderToken: string; recipientIds: string[] }>();
+const selections = ref<Record<string, { token: string; recipientIds: string[] }>>({});
 const names = (people: ApprovalPerson[]) => people.map(p => p.name).join("、") || "暂无有效人员";
 const time = (value: string) => new Date(value).toLocaleString("zh-CN");
 
@@ -40,26 +41,41 @@ async function load() {
   finally { if (own === generation) loading.value = false; }
 }
 
+function eligibleRecipients(flow: ApprovalProgress) {
+  return flow.remindableRecipients ?? flow.pendingRecipients;
+}
+
+function selectedRecipients(flow: ApprovalProgress) {
+  const selection = selections.value[flow.id];
+  return eligibleRecipients(flow).filter(user => selection?.token !== flow.reminderToken || selection.recipientIds.includes(user.id));
+}
+
+function selectRecipients(flow: ApprovalProgress, values: Array<string | number>) {
+  selections.value[flow.id] = { token: flow.reminderToken, recipientIds: values.map(String) };
+}
+
 class ReminderStateChangedError extends Error {}
 
-async function sendReminderWithCapability(instanceId: string, requestId: string, reminderToken: string) {
+async function sendReminderWithCapability(instanceId: string, requestId: string, reminderToken: string, recipientIds: string[]) {
   const capability = await fetchApprovalProgress(instanceId);
   const operationAllowed = capability.canRemind;
   if (!operationAllowed) throw new ReminderStateChangedError("审批状态已变化，请刷新进度");
   // Keep the recipient version confirmed on screen; the POST rejects any intervening change.
-  return remindApprovalBySms(instanceId, requestId, reminderToken);
+  return remindApprovalBySms(instanceId, requestId, reminderToken, recipientIds);
 }
 
 async function remind(flow: ApprovalProgress) {
   if (sending.value || !flow.canRemind) return;
+  const recipientIds = selectedRecipients(flow).map(user => user.id);
+  if (!recipientIds.length) return;
   const own = generation;
   sending.value = true;
   error.value = "";
   // Retain the key on network failure, so retrying an uncertain response cannot send again.
-  const request = requests.get(flow.id) ?? { requestId: crypto.randomUUID(), reminderToken: flow.reminderToken };
+  const request = requests.get(flow.id) ?? { requestId: crypto.randomUUID(), reminderToken: flow.reminderToken, recipientIds };
   requests.set(flow.id, request);
   try {
-    const result = await sendReminderWithCapability(flow.id, request.requestId, request.reminderToken);
+    const result = await sendReminderWithCapability(flow.id, request.requestId, request.reminderToken, request.recipientIds);
     if (result.reminders.some(reminder => reminder.id === request.requestId)) requests.delete(flow.id);
     if (own === generation) flows.value = flows.value.map(item => item.id === result.id ? result : item);
   } catch (cause) {
@@ -125,14 +141,22 @@ watch(() => [props.instanceId, props.businessType, props.businessId, props.refre
           <small v-if="node.legacyRoster">此历史节点未保存人员名单，以上为当前岗位人员；实际处理人以处理记录为准。</small>
         </li>
       </ol>
+      <t-checkbox-group
+        v-if="flow.canRemind && eligibleRecipients(flow).length > 1"
+        :value="selectedRecipients(flow).map(user => user.id)"
+        :options="eligibleRecipients(flow).map(user => ({label: user.name, value: user.id}))"
+        :disabled="sending"
+        aria-label="选择催办对象"
+        @change="selectRecipients(flow, $event)"
+      />
       <t-popconfirm
-        :content="`向${names(flow.pendingRecipients)}发送审批催办短信？`"
+        :content="`向${names(selectedRecipients(flow))}发送审批催办短信？`"
         confirm-btn="发送短信"
         @confirm="remind(flow)"
       >
         <t-button
           theme="primary"
-          :disabled="!flow.canRemind || sending"
+          :disabled="!flow.canRemind || !selectedRecipients(flow).length || sending"
           :loading="sending"
         >
           短信催办

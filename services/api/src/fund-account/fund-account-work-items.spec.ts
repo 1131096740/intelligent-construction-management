@@ -13,6 +13,6 @@ it("lists correction duties using only fields in the base balance registration",
   expect(findMany).toHaveBeenCalledWith({
     where: { kind: "correction", status: "pending_review" },
     orderBy: { createdAt: "desc" },
-    select: { id: true, approvalInstanceId: true, balanceYuan: true }
+    select: { id: true, approvalInstanceId: true, balanceYuan: true, createdAt: true }
   });
 });

@@ -70,7 +70,7 @@ describe("任务20综合采购申请公开HTTP（合成持久层，无PG）", ()
   });
 
   it("项目两项审批同时通知，全部通过后仅产生综合部采购待办且无收货前置", async () => {
-    const created = await harness.request("/general-procurements", { ...draft(), scope: "project", projectId: harness.projectId });
+    const created = await harness.request("/general-procurements", { ...draft(), scope: "project", projectId: harness.projectId,reason:"项目需要办公软件" });
     const root = `/general-procurements/${created.body.id}`;
     expect((await harness.request(`${root}/submission`, { revision: 1 })).status).toBe(201);
     expect(harness.sent.map(item => item.duty).sort()).toEqual(["综合部主管", "项目经理"].sort());
@@ -79,10 +79,41 @@ describe("任务20综合采购申请公开HTTP（合成持久层，无PG）", ()
     expect((await harness.request(`${root}/review`, { revision: 3, expectedNodeIndex: 0, decision: "approve" }, harness.directorId)).status).toBe(201);
     expect(harness.sent).toHaveLength(3);
     expect(harness.sent[2].duty).toBe("综合部采购");
+    expect(harness.sent.map(item=>item.intent)).toEqual(Array(3).fill(expect.objectContaining({
+      scopeName:"合成办公项目",initiatorName:"合成员工",subject:"项目需要办公软件",participants:[],
+      amountText:"待确定",targetPath:`/综合采购申请/${created.body.id}`,
+    })));
     const tasks = await harness.request("/general-procurements?status=approved_pending_procurement", undefined, harness.directorId);
     expect(tasks.status).toBe(200); expect(tasks.body.items.map((row: { id: string }) => row.id)).toContain(created.body.id);
     expect((await harness.request(`${root}/review`, { revision: 3, expectedNodeIndex: 0, decision: "approve" }, harness.directorId)).status).toBe(409);
     expect(harness.sent).toHaveLength(3);
+  });
+
+  it("富模板手动催办只发给所选当前综合采购职责，且使用原申请摘要",async()=>{
+    const created = await harness.request("/general-procurements",{...draft(),scope:"project",projectId:harness.projectId,reason:"采购合成办公材料",estimatedAmount:"12.0001"});
+    expect((await harness.request(`/general-procurements/${created.body.id}/submission`,{revision:1})).status).toBe(201);
+    const round = harness.tables.approvalInstance.find(row=>row.businessId===created.body.id)!;
+    const path = `/approval-progress/${round.id}`;
+    const current = await harness.request(path);
+    expect(current.status).toBe(200);
+    process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED="true";
+    const input = {requestId:randomUUID(),reminderToken:current.body.reminderToken,recipientIds:[harness.managerId]};
+    expect((await harness.request(path+"/remind",input)).status).toBe(201);
+    expect((await harness.request(path+"/remind",input)).status).toBe(201);
+    expect(harness.sent).toHaveLength(3);
+    expect(harness.sent[2]).toMatchObject({afterCommit:true,intent:{
+      businessLabel:"综合采购审批",dutyName:"项目经理",scopeName:"合成办公项目",initiatorName:"合成员工",
+      subject:"采购合成办公材料",amountText:"预计 12.0001 元",targetPath:`/综合采购申请/${created.body.id}`,
+    }});
+  });
+
+  it("公司日常待办携带已录四位预计，未知相关方留空", async () => {
+    const created = await harness.request("/general-procurements",{...draft(),estimatedAmount:"10.0001"});
+    expect(created.status).toBe(201);
+    expect((await harness.request(`/general-procurements/${created.body.id}/submission`,{revision:1})).status).toBe(201);
+    expect(harness.sent).toEqual([expect.objectContaining({intent:expect.objectContaining({
+      scopeName:"公司日常",amountText:"预计 10.0001 元",participants:[],
+    })})]);
   });
 
   it("综合主管只能把本轮具体职责委托启用人员，受托人不获得其它申请列表读取权", async () => {
@@ -246,8 +277,55 @@ describe("任务20综合采购申请公开HTTP（合成持久层，无PG）", ()
     expect(todos.status).toBe(200); expect(todos.body.queueMeta.pending.total).toBe(102);
     expect(todos.body.queues.pending).toHaveLength(30);
     expect(todos.body.queues.pending[0].businessId).toBe(harness.tables.generalProcurement.at(-1)!.id);
+    const firstNotices = await harness.request("/me/work-items", undefined, harness.managerId, "GET", { "x-work-item-notices": "0" });
+    const lastNotices = await harness.request("/me/work-items", undefined, harness.managerId, "GET", { "x-work-item-notices": "90" });
+    expect(firstNotices.body.queueMeta.pending).toEqual({ total: 102, returned: 30, truncated: true });
+    expect(firstNotices.body.noticePage).toEqual({ offset: 0, size: 30 });
+    expect(lastNotices.body.queueMeta.pending).toEqual({ total: 102, returned: 12, truncated: true });
+    expect(lastNotices.body.noticePage).toEqual({ offset: 90, size: 30 });
+    expect(lastNotices.body.queues.pending).not.toContainEqual(firstNotices.body.queues.pending[0]);
+    const version = firstNotices.body.noticeIndexVersion;
+    const indexRoot = `/me/work-item-notice-keys?version=${version}`;
+    const firstKeys = await harness.request(indexRoot, undefined, harness.managerId);
+    expect(firstKeys.status).toBe(200);
+    expect(firstKeys.body.keys).toHaveLength(100);
+    const lastKeys = await harness.request(`${indexRoot}&after=${firstKeys.body.nextCursor}`, undefined, harness.managerId);
+    expect(Object.keys(lastKeys.body).sort()).toEqual(["keys", "nextCursor", "version"]);
+    expect(lastKeys.body.version).toBe(version);
+    expect(lastKeys.body.nextCursor).toBeNull();
+    expect(lastKeys.body.keys).toHaveLength(2);
+    expect(new Set([...firstKeys.body.keys, ...lastKeys.body.keys]).size).toBe(102);
+    const detailsPath = `/me/work-item-notice-details?version=${version}&keys=${firstNotices.body.recentNotices[0].noticeKey}`;
+    expect((await harness.request(detailsPath, undefined, harness.managerId)).body.items).toEqual([firstNotices.body.recentNotices[0]]);
+    const unrelatedDetails = await harness.request(detailsPath, undefined, harness.directorId);
+    expect(unrelatedDetails.status).toBe(200);
+    expect(unrelatedDetails.body.version).not.toBe(version);
+    expect(unrelatedDetails.body.items).toEqual([]);
+    const newlySubmitted = await harness.request("/general-procurements", { ...draft(), scope: "project", projectId: harness.projectId });
+    const newRoot = `/general-procurements/${newlySubmitted.body.id}`;
+    expect((await harness.request(`${newRoot}/submission`, { revision: 1 })).status).toBe(201);
+    const lastWithNew = await harness.request("/me/work-items", undefined, harness.managerId, "GET", { "x-work-item-notices": "90" });
+    expect(lastWithNew.body.queues.pending).not.toContainEqual(expect.objectContaining({ businessId: newlySubmitted.body.id }));
+    expect(lastWithNew.body.recentNotices).toContainEqual(expect.objectContaining({ businessId: newlySubmitted.body.id }));
+    expect(lastWithNew.body.recentNotices).toHaveLength(10);
+    expect((await harness.request(indexRoot, undefined, harness.managerId)).body).toEqual({
+      version: lastWithNew.body.noticeIndexVersion, keys: [], nextCursor: null,
+    });
+    expect((await harness.request(detailsPath, undefined, harness.managerId)).body).toEqual({
+      version: lastWithNew.body.noticeIndexVersion, items: [],
+    });
+    expect((await harness.request(`${newRoot}/review`, { revision: 2, expectedNodeIndex: 1, decision: "approve" }, harness.managerId)).status).toBe(201);
+    const afterApproval = await harness.request("/me/work-items", undefined, harness.managerId, "GET", { "x-work-item-notices": "90" });
+    expect(afterApproval.body.recentNotices).not.toContainEqual(expect.objectContaining({ businessId: newlySubmitted.body.id }));
     const summary = await harness.request("/me/workbench-summary", undefined, harness.managerId);
     expect(summary.status).toBe(200); expect(summary.body.cards).toEqual(expect.arrayContaining([expect.objectContaining({ id: "approval_todo", count: 102 })]));
+    const currentDetail = afterApproval.body.recentNotices[0];
+    harness.tables.userPosition = harness.tables.userPosition.filter(row => row.userId !== harness.managerId);
+    const revokedPath = `/me/work-item-notice-details?version=${afterApproval.body.noticeIndexVersion}&keys=${currentDetail.noticeKey}`;
+    const revokedDetails = await harness.request(revokedPath, undefined, harness.managerId);
+    expect(revokedDetails.status).toBe(200);
+    expect(revokedDetails.body.version).not.toBe(afterApproval.body.noticeIndexVersion);
+    expect(revokedDetails.body.items).toEqual([]);
   });
 
   it("同一自然人兼综合主管和项目经理仍分别两次自审与当前签名，不按人合并职责", async () => {
@@ -277,6 +355,80 @@ describe("任务20综合采购申请公开HTTP（合成持久层，无PG）", ()
     expect(harness.sent.map(item => item.duty)).toEqual(["综合部主管", "综合部采购"]);
     expect((await harness.request(`${root}/review`, { revision: 2, expectedNodeIndex: 0, decision: "approve" }, harness.directorId)).status).toBe(409);
     expect(harness.sent).toHaveLength(2);
+  });
+
+  it("综合采购的失败短信按原人、当前并联节点和原尝试重试，旧键并发只发一次", async () => {
+    harness.smsMode.status = "failed";
+    const created = await harness.request("/general-procurements", { ...draft(), scope: "project", projectId: harness.projectId });
+    const root = `/general-procurements/${created.body.id}`;
+    expect((await harness.request(`${root}/submission`, { revision: 1 })).status).toBe(201);
+    const path = `${root}/duty-sms`;
+    const manager = await harness.request(path, undefined, harness.managerId);
+    const director = await harness.request(path, undefined, harness.directorId);
+    expect(manager).toMatchObject({ status: 200, body: { notices: [{ status: "failed", canRetry: true, dutyName: "项目经理" }] } });
+    expect(director).toMatchObject({ status: 200, body: { notices: [{ status: "failed", canRetry: true, dutyName: "综合部主管" }] } });
+    const { attemptId } = manager.body.notices[0];
+    const retry = () => harness.request(`${path}/retry`, { attemptId }, harness.managerId);
+    expect(await harness.request(path, undefined, harness.outsiderId)).toMatchObject({ status: 200, body: { notices: [] } });
+    expect((await harness.request(`${path}/retry`, { attemptId }, harness.directorId)).status).toBe(409);
+    const other = await harness.request("/general-procurements", draft());
+    expect((await harness.request(`/general-procurements/${other.body.id}/duty-sms/retry`, { attemptId }, harness.managerId)).status).toBe(409);
+    harness.smsMode.status = "accepted";
+    expect((await Promise.all([retry(), retry()])).map(result => result.status)).toEqual([201, 201]);
+    expect(await retry()).toMatchObject({ status: 201, body: { status: "accepted", canRetry: false, dutyName: "项目经理" } });
+    expect(harness.sent.filter(item => item.duty === "项目经理").map(item => item.afterCommit)).toEqual([true, true]);
+    expect(harness.sent.filter(item => item.duty === "综合部主管")).toHaveLength(1);
+    expect((await harness.request(path, undefined, harness.directorId)).body).toEqual(director.body);
+    expect((await harness.request(`${root}/review`, { revision: 2, expectedNodeIndex: 1, decision: "approve" }, harness.managerId)).status).toBe(201);
+    expect((await harness.request(path, undefined, harness.managerId)).body).toEqual({ notices: [] });
+    expect((await retry()).status).toBe(409);
+    expect(harness.sent).toHaveLength(3);
+  });
+
+  it.each(["approve", "return"] as const)("采购决定%s仅开放后续职责，未知结果和撤权禁止重试", async decision => {
+    const created = await harness.request("/general-procurements", { ...draft(), scope: "project", projectId: harness.projectId });
+    const root = `/general-procurements/${created.body.id}`;
+    await harness.request(`${root}/submission`, { revision: 1 });
+    if (decision === "approve") {
+      expect((await harness.request(`${root}/review`, { revision: 2, expectedNodeIndex: 1, decision: "approve" }, harness.managerId)).status).toBe(201);
+    }
+    harness.smsMode.status = "failed";
+    expect((await harness.request(`${root}/review`, { revision: decision === "approve" ? 3 : 2, expectedNodeIndex: 0, decision, comment: "补充采购规格" }, harness.directorId)).status).toBe(201);
+    const actor = decision === "approve" ? harness.directorId : harness.userId;
+    const dutyName = decision === "approve" ? "综合部采购" : "修改退回的申请";
+    const path = `${root}/duty-sms`;
+    const current = await harness.request(path, undefined, actor);
+    expect(current).toMatchObject({ status: 200, body: { notices: [{ status: "failed", canRetry: true, dutyName }] } });
+    const { attemptId } = current.body.notices[0];
+    harness.smsMode.status = "unknown";
+    const result = await harness.request(`${path}/retry`, { attemptId }, actor);
+    expect(result).toMatchObject({ status: 201, body: { status: "unknown", canRetry: false, dutyName } });
+    expect(await harness.request(`${path}/retry`, { attemptId }, actor)).toEqual(result);
+    expect((await harness.request(`${path}/retry`, { attemptId: result.body.attemptId }, actor)).status).toBe(409);
+    harness.tables.userPosition = harness.tables.userPosition.filter(row => row.userId !== actor);
+    expect((await harness.request(path, undefined, actor)).body).toEqual({ notices: [] });
+    expect((await harness.request(`${path}/retry`, { attemptId }, actor)).status).toBe(409);
+    expect(harness.sent.filter(item => item.duty === dutyName).map(item => item.afterCommit)).toEqual([true, true]);
+  });
+
+  it("草稿不发短信，退回时仅给原申请人发送一次并保留待修改", async () => {
+    const created = await harness.request("/general-procurements", draft());
+    const root = `/general-procurements/${created.body.id}`;
+    expect(harness.sent).toHaveLength(0);
+    expect((await harness.request(`${root}/submission`, { revision: 1 })).status).toBe(201);
+    const decision = { revision: 2, expectedNodeIndex: 0, decision: "return", comment: "请补充规格" };
+    expect((await harness.request(`${root}/review`, decision, harness.directorId)).status).toBe(201);
+    expect(harness.sent.map(item => [item.duty, item.afterCommit])).toEqual([["综合部主管", true], ["修改退回的申请", true]]);
+    expect((await harness.request(`${root}/review`, decision, harness.directorId)).status).toBe(409);
+    expect(harness.sent).toHaveLength(2);
+    expect((await harness.request("/me/work-items")).body.queues.pending).toContainEqual(expect.objectContaining({
+      businessId: created.body.id, currentNode: "修改退回的申请"
+    }));
+    expect((await harness.request("/me/work-items", undefined, harness.directorId)).body.queues.pending).not.toContainEqual(
+      expect.objectContaining({ businessId: created.body.id }));
+    expect((await harness.request(`${root}/submission`, { revision: 3 })).status).toBe(201);
+    expect((await harness.request("/me/work-items")).body.queues.pending).not.toContainEqual(
+      expect.objectContaining({ businessId: created.body.id }));
   });
 
   it("部分已知行小计与整单独立预计分开，不补未知行、不强制二者相等", async () => {

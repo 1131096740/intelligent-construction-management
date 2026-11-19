@@ -1,3 +1,5 @@
+import { SettlementArchiveNotificationService } from "./settlement-archive-notification.service";
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
 import {
@@ -69,7 +71,8 @@ export class SettlementController {
     @Optional() private readonly signedDocuments?: SettlementSignedDocumentService,
     @Optional() private readonly recoveries?: SettlementRecoveryService,
     @Optional() private readonly files?: FileService,
-    @Optional() private readonly approvalProgress?: ApprovalProgressService
+    @Optional() private readonly approvalProgress?: ApprovalProgressService,
+    @Optional() private readonly dutyNotifications?: SettlementArchiveNotificationService
   ) {}
 
   @Post()
@@ -329,6 +332,19 @@ export class SettlementController {
       "当前结算状态或操作权限不允许上传归档资料"
     );
     return this.uploadPrivateFile(file, user, idempotencyKey);
+  }
+
+  @Get(":settlementId/duty-sms")
+  @RequireProjectRole("settlement.archive.confirm")
+  async dutySmsStatus(@Param("settlementId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return { notice: await this.dutyNotifications?.notificationStatus(id, user.id) ?? null };
+  }
+
+  @Post(":settlementId/duty-sms/retry")
+  @RequireProjectRole("settlement.archive.confirm")
+  retryDutySms(@Param("settlementId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.dutyNotifications) throw new BadRequestException("短信通知暂不可用");
+    return this.dutyNotifications.retry(id, user.id, body.attemptId);
   }
 
   @Post(":settlementId/archive-confirmation")

@@ -1,5 +1,7 @@
 import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { companyTransferWorkItems } from "../company-transfer/company-transfer-workitems";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import "reflect-metadata";
@@ -147,6 +149,23 @@ run("project company proxy repayment on real PostgreSQL", () => {
     expect((await call(finance, sourcePath)).canCreate).toBe(false);
     const submitted = await call(applicant, "/company-transfers", request);
     expect(await call(applicant, "/company-transfers", request)).toEqual(submitted);
+    const dutyPath = `/company-transfers/${submitted.id}/duty-sms`;
+    const queued = (businessType: string) => db.auditLog.findMany({
+      where:{businessType,businessId:submitted.id,action:"queued"},
+    });
+    const reviewRows = await queued("company_transfer_final_review_duty_notification");
+    const recipients = reviewRows.map(row => row.metadata as {nodeIndex:number;recipientId:string});
+    expect(recipients).toEqual(expect.arrayContaining([
+      expect.objectContaining({nodeIndex:0,recipientId:applicant}),expect.objectContaining({nodeIndex:1,recipientId:manager}),
+      expect.objectContaining({nodeIndex:2,recipientId:finance}),expect.objectContaining({nodeIndex:3,recipientId:leader}),
+    ]));
+    expect(new Set(recipients.map(row=>`${row.nodeIndex}:${row.recipientId}`)).size).toBe(reviewRows.length);
+    expect(recipients.some(row=>row.recipientId===otherProjectManager)).toBe(false);
+    expect((await call(manager,dutyPath)).notices).toEqual([
+      expect.objectContaining({dutyName:"项目经理",status:"queued",canRetry:false}),
+    ]);
+    expect((await call(otherProjectManager,dutyPath)).notices).toEqual([]);
+
     const evidenceCapability = `/files/${request.evidenceFileId}/download-ticket-capability`;
     expect((await call(manager, evidenceCapability)).action.enabled).toBe(true);
     expect((await call(applicant, evidenceCapability)).action.enabled).toBe(true);
@@ -162,10 +181,19 @@ run("project company proxy repayment on real PostgreSQL", () => {
     await call(applicant, `/company-transfers/${submitted.id}/events`, { kind: "outgoing", observationId: randomUUID(),
       idempotencyKey: randomUUID(), confirmationPassword: password }, 409);
     await call(manager, decision, { ...approve, nodeIndex: 1 });
+    expect((await call(manager,dutyPath)).notices).toEqual([]);
+
     await call(manager, evidenceCapability, undefined, 403);
     await call(applicant, decision, { ...approve, nodeIndex: 0, selfReviewReason: "合成职责自审" });
     const final = await call(finance, decision, { ...approve, nodeIndex: 2 });
     expect(final.status).toBe("approved");
+    expect((await call(applicant,dutyPath)).notices).toEqual([
+      expect.objectContaining({dutyName:"登记实际出款",status:"queued",canRetry:false}),
+    ]);
+    expect((await queued("company_transfer_cash_duty_notification")).map(row=>row.metadata)).toContainEqual(
+      {key:"outgoing",recipientId:applicant},
+    );
+
 
     const row = await db.companyTransfer.findUniqueOrThrow({ where: { id: submitted.id } });
     expect(row).toMatchObject({ requiresParallelRepaymentApproval: true, approvedByUserId: leader, originalProxyId: original.id });
@@ -180,6 +208,10 @@ run("project company proxy repayment on real PostgreSQL", () => {
       const outgoingInput = { kind: "outgoing", observationId: await verified(a.companyId, aAccount, "outflow", amount),
         idempotencyKey: randomUUID(), confirmationPassword: password };
       const outgoing = await call(applicant, eventPath, outgoingInput);
+      const cashIntents = (await queued("company_transfer_cash_duty_notification")).map(row=>row.metadata);
+      expect(cashIntents).toContainEqual({key:outgoing.id,recipientId:finance});
+      expect(cashIntents).not.toContainEqual({key:outgoing.id,recipientId:applicant});
+
       outgoingIds.push(outgoing.id);
       if (index === 0) {
         await call(finance, `${eventPath}/${outgoing.id}/original-debt-corrections`, {
@@ -207,6 +239,23 @@ run("project company proxy repayment on real PostgreSQL", () => {
     const pending = await call(finance, correctionPath, correctionIntent);
     expect(pending.status).toBe("pending");
     expect(await call(finance, correctionPath, correctionIntent)).toEqual(pending);
+    const correctionKind = "company_transfer_correction_duty_notification";
+    const correctionDuties = async (actorId: string) =>
+      (await companyTransferWorkItems(db,actorId,new ProjectVisibilityService(db))).filter(row=>row.id.startsWith("company_transfer_correction:"));
+    const noticeIntents = await queued(correctionKind);
+    expect(noticeIntents.map(row=>row.metadata)).toEqual([{recipientId:finance,key:outgoingIds[0]}]);
+    expect(await correctionDuties(finance)).toMatchObject([{
+      id:`company_transfer_correction:${outgoingIds[0]}`,
+      targetPath:`/公司互转台账?transferId=${submitted.id}&correctionEventId=${outgoingIds[0]}`,
+    }]);
+    expect(await correctionDuties(applicant)).toEqual([]);
+    expect((await call(finance,dutyPath)).notices).toContainEqual(
+      expect.objectContaining({dutyName:"复核归还原债更正",status:"queued",canRetry:false}),
+    );
+    expect((await call(applicant,dutyPath)).notices).not.toContainEqual(
+      expect.objectContaining({dutyName:"复核归还原债更正"}),
+    );
+
     expect((await call(finance, `${correctionPath}?idempotencyKey=${correctionIntent.idempotencyKey}`)).result).toEqual(pending);
     expect((await call(applicant, sourcePath)).originalProxies[0].remainingCents).toBe("300");
     const decisionPath = `${correctionPath}/${pending.id}/confirm`;
@@ -217,6 +266,11 @@ run("project company proxy repayment on real PostgreSQL", () => {
     expect(confirmed.status).toBe("confirmed");
     expect(await call(finance, decisionPath, command)).toEqual(confirmed);
     expect((await call(finance, `${correctionPath}?idempotencyKey=${confirm.idempotencyKey}`)).result).toEqual(confirmed);
+    expect(await correctionDuties(finance)).toEqual([]);
+    expect((await call(finance,dutyPath)).notices).not.toContainEqual(
+      expect.objectContaining({dutyName:"复核归还原债更正"}),
+    );
+
     expect(await db.companyTransferEvent.findUniqueOrThrow({ where: { id: outgoingIds[0] } })).toEqual(mistakenEvent);
     expect((await call(applicant, sourcePath)).originalProxies[0]).toMatchObject({ remainingCents: "500", availableCents: "500" });
     const correctedPath = `/company-transfers?projectId=${a.projectId}&originalSource=proxy:${correctionTarget.id}`;

@@ -22,28 +22,122 @@ function fixture() {
   const logs: AuditLog[] = [];
   const project = { name: '本地项目', isActive: true };
   const db = {
-    user: { findMany: jest.fn(async () => users) },
+    user: { findMany: jest.fn(async () => users),findUnique:jest.fn(async ({where}:{where:{id:string}})=>users.find(user=>user.id===where.id)) },
+    settlement:{findUnique:jest.fn(async()=>({id:"business-1",code:"JS-TEST",projectId:"project-1",contractId:"c-1",status:"pending_archive_confirm",
+      governanceVersion:1,preparedByUserId:"owner",amountCents:12345n}))},
+    contract:{findUnique:jest.fn(async()=>({name:"合成合同",companyEntityName:"合成甲方",counterparty:"合成乙方",projectId:"project-1",code:"HT-TEST"}))},
     position: { findMany: jest.fn(async () => [{ id: 'p1', key: 'comprehensive_director' }, { id: 'p2', key: 'project_manager' }, { id: 'p3', key: 'super_admin' }]) },
     userPosition: { findMany: jest.fn(async () => [{ userId: 'first', positionId: 'p1', projectId: null }, { userId: 'later', positionId: 'p2', projectId: 'project-1' }, { userId: 'foreign', positionId: 'p2', projectId: 'project-2' }, { userId: 'technical', positionId: 'p3', projectId: null }, { userId: 'global-manager', positionId: 'p2', projectId: null }]) },
     projectMember: { findMany: jest.fn(async (): Promise<Array<{ userId: string; projectId: string; positionKey: string }>> => []) },
     project: { findUnique: jest.fn(async () => project) },
     auditLog: {
-      findMany: jest.fn(async ({ where }: { where: { businessId: string } }) => logs.filter(log => log.businessId === where.businessId)),
+      findMany: jest.fn(async ({ where }: { where: { businessId?: string; action?: string; metadata?: { array_contains: string[] } } }) =>
+        where.businessId ? logs.filter(log => log.businessId === where.businessId) :
+          logs.filter(log => log.action === where.action && (log.metadata as { recipientIds?: string[] }).recipientIds?.includes(where.metadata!.array_contains[0]))),
       findUnique: jest.fn(async ({ where }: { where: { id: string } }) => logs.find(log => log.id === where.id) ?? null),
       create: jest.fn(async ({ data }: { data: Partial<AuditLog> }) => { const log = { id: data.id ?? `log-${logs.length}`, createdAt: new Date(), ...data } as AuditLog; logs.push(log); return log; })
     },
     $queryRaw: jest.fn(async () => [{ id: subject.id }])
   };
-  const client = Object.assign(db, { $transaction: async (run: (tx: typeof db) => Promise<unknown>) => run(db) });
-  const sms = { available: jest.fn(() => true), send: jest.fn(async () => ({ status: 'accepted', message: '短信已提交发送' })) };
+  let insideTransaction = false;
+  const client = Object.assign(db, { $transaction: async (run: (tx: typeof db) => Promise<unknown>) => {
+    insideTransaction = true;
+    try { return await run(db); } finally { insideTransaction = false; }
+  } });
+  const outcome = {status:"accepted",message:"短信已提交发送"};
+  const sms = {available:jest.fn(()=>true),send:jest.fn(async()=>outcome),sendDutyIntent:jest.fn(async()=>outcome)};
   source.load.mockReset().mockImplementation(async (_db, key) => key === subject.id ? subject : null);
   source.listIds.mockReset().mockImplementation(async (_db, cursor) => cursor ? [] : [subject.id]);
-  return { subject, users, db, sms, logs, project, service: new IndependentApprovalProgressService(client as unknown as PrismaService, sms as unknown as ApprovalSmsService) };
+  return { subject, users, db, sms, logs, project, insideTransaction: () => insideTransaction, service: new IndependentApprovalProgressService(client as unknown as PrismaService, sms as unknown as ApprovalSmsService) };
 }
 async function send(service: IndependentApprovalProgressService, actor = 'owner', key = requestId) {
   const detail = await service.detail(id, actor);
   return service.remind(id, actor, key, detail.reminderToken);
 }
+
+it("独立结算归档手动催办使用当前领取职责和业务摘要，重复请求不再发",async()=>{
+  const {service,subject,sms,insideTransaction} = fixture();
+  source.kind="settlement_archive";
+  subject.kind="settlement_archive";
+  subject.title="结算归档确认";
+  subject.businessCode="JS-TEST";
+  const id="independent:settlement_archive:business-1";
+  const view=await service.detail(id,"owner");
+  const before=process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+  process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED="true";
+  sms.sendDutyIntent.mockImplementation(async()=>{
+    expect(insideTransaction()).toBe(false);
+    return {status:"accepted",message:"短信已提交发送"};
+  });
+  try {
+    await service.remind(id,"owner",requestId,view.reminderToken,["first"]);
+    await service.remind(id,"owner",requestId,view.reminderToken,["first"]);
+  } finally {
+    if (before===undefined) delete process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+    else process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED=before;
+  }
+  expect(sms.send).not.toHaveBeenCalled();
+  expect(sms.sendDutyIntent).toHaveBeenCalledTimes(1);
+  expect(sms.sendDutyIntent).toHaveBeenCalledWith("13800000001",expect.objectContaining({
+    businessLabel:"结算归档确认",dutyName:"综合部主管",scopeName:"本地项目",initiatorName:"人员0",
+    subject:"合成合同结算",participants:["合成甲方","合成乙方"],amountText:"123.45 元",targetPath:"/结算管理/JS-TEST",
+  }));
+});
+
+it.each(["contract_seal","contract_archive"])("独立 %s 只通知当前获准岗位并沿原合同追溯",async kind=>{
+  const {service,subject,sms,db}=fixture();
+  source.kind=kind;
+  subject.kind=kind;
+  Object.assign(db,{contractVersion:{findUnique:async()=>({contractId:"contract-1",amountCents:50n,amountLimitType:"capped"})}});
+  const id=`independent:${kind}:business-1`;
+  const view=await service.detail(id,"owner");
+  const prior=process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+  process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED="true";
+  try { await service.remind(id,"owner",requestId,view.reminderToken,["first"]); }
+  finally {
+    if (prior===undefined) delete process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+    else process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED=prior;
+  }
+  expect(sms.send).not.toHaveBeenCalled();
+  expect(sms.sendDutyIntent).toHaveBeenCalledTimes(1);
+  expect(sms.sendDutyIntent).toHaveBeenCalledWith("13800000001",expect.objectContaining({
+    targetPath:"/合同管理/HT-TEST",amountText:"0.50 元",
+  }));
+});
+
+it("银行核验催办引用授权的单条审批中心详情，失去职责后拒绝与原键不重发",async()=>{
+  const {service,subject,sms,db,insideTransaction}=fixture();
+  source.kind="contract_bank_verification";
+  subject.kind="contract_bank_verification";
+  subject.title="银行流水核验";
+  subject.businessCode="银行流水核验";
+  Object.assign(db,{contractBankVerificationRequest:{findUnique:async()=>({
+    projectId:"project-1",status:"pending_confirm",direction:"outflow",companyName:"合成公司",amountCents:1001n,
+  })}});
+  const id="independent:contract_bank_verification:business-1";
+  const initial=await service.detail(id,"owner");
+  const before=process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+  process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED="true";
+  sms.sendDutyIntent.mockImplementation(async()=>{
+    expect(insideTransaction()).toBe(false);
+    return {status:"accepted",message:"短信已提交发送"};
+  });
+  try {
+    await service.remind(id,"owner",requestId,initial.reminderToken,["first"]);
+    await service.remind(id,"owner",requestId,initial.reminderToken,["first"]);
+    expect(sms.sendDutyIntent).toHaveBeenCalledTimes(1);
+    expect(sms.sendDutyIntent).toHaveBeenCalledWith("13800000001",expect.objectContaining({
+      subject:"银行出款核验",amountText:"10.01 元",participants:["合成公司"],
+      targetPath:"/审批中心?review=independent%3Acontract_bank_verification%3Abusiness-1",
+    }));
+    db.userPosition.findMany.mockResolvedValue([]);
+    await expect(service.detail(id,"first")).rejects.toThrow("无权查看");
+    expect(sms.send).not.toHaveBeenCalled();
+  } finally {
+    if (before===undefined) delete process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED;
+    else process.env.APPROVAL_SMS_RICH_TEMPLATE_ENABLED=before;
+  }
+});
 
 describe('独立审核进度权限', () => {
   it('发起人及后续项目审批人可看全流程，当前仅综合主管接收短信', async () => {
@@ -124,15 +218,48 @@ describe('独立审核进度权限', () => {
 
 describe('独立审核短信事务与幂等', () => {
   it('先持久化申请再发送，结果回读；相同请求不重发并共享冷却', async () => {
-    const { service, sms, logs } = fixture();
-    sms.send.mockImplementation(async () => { expect(logs.some(log => log.id === requestId)).toBe(true); return { status: 'accepted', message: '短信已提交发送' }; });
+    const { service, sms, logs, insideTransaction } = fixture();
+    let dispatch: { insideTransaction: boolean; reserved: boolean } | undefined;
+    sms.send.mockImplementation(async () => {
+      dispatch = { insideTransaction: insideTransaction(), reserved: logs.some(log => log.id === requestId) };
+      return { status: 'accepted', message: '短信已提交发送' };
+    });
     const first = await send(service, 'later');
+    expect(dispatch).toEqual({ insideTransaction: false, reserved: true });
     expect(first.reminders[0].results[0].status).toBe('accepted');
+    expect(Date.parse(first.nextRemindAt!) - logs[0].createdAt.getTime()).toBe(60_000);
     await service.remind(id, 'later', requestId, '0'.repeat(64));
     await expect(send(service, 'owner', secondId)).rejects.toThrow('刚刚已催办');
     expect(sms.send).toHaveBeenCalledTimes(1);
     expect(sms.send).toHaveBeenCalledWith('13800000001', '用章审批', '综合部主管', 'HT-LOCAL');
   });
+  it('未知催办只提示被选的当前办理人，撤岗、办结和轮次变化立即清除', async () => {
+    const { service, sms, db, subject } = fixture();
+    sms.send.mockRejectedValue(new Error('合成超时'));
+    const result = await send(service);
+    expect(result.reminders[0].results[0].status).toBe('unknown');
+    const read = (actor: string) => service.recentPendingReminders(actor, new Date());
+    expect(await read('first')).toEqual([expect.objectContaining({
+      id, reminderId: requestId, businessId: subject.id, currentNodeName: '综合部主管'
+    })]);
+    expect(await read('later')).toEqual([]);
+    expect(await read('owner')).toEqual([]);
+    expect(db.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ action: 'approval_progress.sms_request', metadata: { path: ['recipientIds'], array_contains: ['first'] } }),
+      take: 60, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+    }));
+    subject.updatedAt = new Date(subject.updatedAt.getTime() + 1);
+    expect(await read('first')).toEqual([]);
+    subject.updatedAt = new Date('2026-10-01');
+    const assignments = await db.userPosition.findMany();
+    db.userPosition.findMany.mockResolvedValue(assignments.filter(row => row.userId !== 'first'));
+    expect(await read('first')).toEqual([]);
+    db.userPosition.findMany.mockResolvedValue(assignments);
+    subject.status = 'approved';
+    expect(await read('first')).toEqual([]);
+    expect(sms.send).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['failed', 'unknown'])('供应商%s留痕，同键重试不会自动重发', async status => {
     const { service, sms } = fixture(); sms.send.mockResolvedValue({ status, message: '发送结果待核查' });
     expect((await send(service)).reminders[0].results[0].status).toBe(status);

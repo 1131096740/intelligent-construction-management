@@ -1,3 +1,4 @@
+import { PaymentApprovalNotificationService } from "./payment-approval-notification.service";
 import { Module } from "@nestjs/common";
 import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -29,7 +30,7 @@ import { RegisteredPaymentNotificationService } from "./registered-payment-notif
     ProjectFundingModule
   ],
   controllers: [PaymentController, RegisteredPaymentExecutionController],
-  providers: [PaymentAmountService, PaymentRequestService, PaymentReadService, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService],
+  providers: [PaymentAmountService, PaymentRequestService, PaymentReadService, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, PaymentApprovalNotificationService],
   exports: [PaymentAmountService, PaymentRequestService, PaymentReadService]
 })
 export class PaymentModule {}

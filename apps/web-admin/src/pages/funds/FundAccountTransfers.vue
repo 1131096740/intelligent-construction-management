@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { fetchFundAccountTransfers, type FundTransfer, type FundTransferAction, type FundTransferReadModel, type FundTransferStatus } from "../../api/fund-account-transfer.api";
 import type { FundAccount, FundAvailableSource } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import { useAuthStore } from "../../auth/auth.store";
 import { readFundTransferCommand, submitFundTransferCommand, type FundTransferCommand } from "./fund-transfer-command";
 
@@ -308,6 +309,12 @@ async function submit(proposal: FundTransferCommand | null) {
             {{ actionLabel[item.action] }} · {{ chinaDateTimeInput(new Date(item.createdAt)) }} · {{ item.evidenceReference }}
           </li>
         </ul>
+        <DutySmsStatusPanel
+          v-if="actorId && (transfer.canReceive || transfer.canResolveRejection)"
+          :key="`${actorId}:${transfer.id}:${transfer.revision}`"
+          domain="fund-account-transfers"
+          :business-id="transfer.id"
+        />
         <div
           v-if="transfer.canReceive || transfer.canResolveRejection"
           class="fund-transfers__actions"

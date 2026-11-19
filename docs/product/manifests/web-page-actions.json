@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 443,
-    "pageActionCount": 86,
+    "registeredActionCount": 445,
+    "pageActionCount": 88,
     "backgroundActionCount": 357,
-    "reachableVueFileCount": 220,
+    "reachableVueFileCount": 223,
     "routeRootCount": 75,
-    "totalVueFileCount": 233,
-    "parsedVueFileCount": 233,
-    "reachableProductionModuleCount": 384,
-    "templateEventDirectiveCount": 1490,
+    "totalVueFileCount": 236,
+    "parsedVueFileCount": 236,
+    "reachableProductionModuleCount": 390,
+    "templateEventDirectiveCount": 1502,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 429,
-    "candidateProductionMutationConsumerCount": 429,
-    "acceptedProductionMutationConsumerCount": 429,
-    "productionMutationConsumerPairCount": 429,
+    "coveredProductionMutationConsumerCount": 431,
+    "candidateProductionMutationConsumerCount": 431,
+    "acceptedProductionMutationConsumerCount": 431,
+    "productionMutationConsumerPairCount": 431,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 403,
-    "reachableProductionModuleCount": 384,
-    "totalVueFileCount": 233,
-    "parsedVueFileCount": 233
+    "totalProductionModuleCount": 409,
+    "reachableProductionModuleCount": 390,
+    "totalVueFileCount": 236,
+    "parsedVueFileCount": 236
   },
   "actions": [
     {
@@ -433,7 +433,7 @@
         "event": "call",
         "handler": "sendReminderWithCapability",
         "kind": "background_call",
-        "sourceLine": 45,
+        "sourceLine": 59,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1724,7 +1724,7 @@
         "event": "call",
         "handler": "createCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 183,
+        "sourceLine": 241,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1788,7 +1788,7 @@
         "event": "call",
         "handler": "decideCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 189,
+        "sourceLine": 247,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1852,7 +1852,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 207,
+        "sourceLine": 265,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1902,7 +1902,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1948,7 +1948,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1972,7 +1972,7 @@
         "event": "call",
         "handler": "executeCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 195,
+        "sourceLine": 253,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2100,7 +2100,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 201,
+        "sourceLine": 259,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2171,7 +2171,7 @@
         "event": "call",
         "handler": "delegateContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1388,
+        "sourceLine": 1395,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2236,7 +2236,7 @@
         "event": "call",
         "handler": "downloadContractApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1358,
+        "sourceLine": 1365,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2303,7 +2303,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewApprove",
         "kind": "event",
-        "sourceLine": 1009,
+        "sourceLine": 1015,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2371,7 +2371,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewReject",
         "kind": "event",
-        "sourceLine": 1022,
+        "sourceLine": 1028,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2439,7 +2439,7 @@
         "event": "call",
         "handler": "transferContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1373,
+        "sourceLine": 1380,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2504,7 +2504,7 @@
         "event": "confirm",
         "handler": "confirmContractWithdrawal",
         "kind": "event",
-        "sourceLine": 1034,
+        "sourceLine": 1040,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2571,7 +2571,7 @@
         "event": "call",
         "handler": "associateContractArchiveFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1463,
+        "sourceLine": 1470,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2636,7 +2636,7 @@
         "event": "call",
         "handler": "confirmContractArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1478,
+        "sourceLine": 1485,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2701,7 +2701,7 @@
         "event": "call",
         "handler": "generateContractPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1493,
+        "sourceLine": 1500,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2766,7 +2766,7 @@
         "event": "call",
         "handler": "uploadContractArchivePrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1447,
+        "sourceLine": 1454,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2976,7 +2976,7 @@
         "event": "call",
         "handler": "decideBankVerificationWithCapability",
         "kind": "background_call",
-        "sourceLine": 30,
+        "sourceLine": 33,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3048,7 +3048,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 42,
+        "sourceLine": 45,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3096,7 +3096,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3140,7 +3140,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3172,7 +3172,7 @@
         "event": "call",
         "handler": "prepareBankVerificationWithCapability",
         "kind": "background_call",
-        "sourceLine": 24,
+        "sourceLine": 27,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3244,7 +3244,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 36,
+        "sourceLine": 39,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3746,7 +3746,7 @@
         "event": "call",
         "handler": "createContractChangeDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1600,
+        "sourceLine": 1607,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4768,7 +4768,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -4812,7 +4812,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5485,7 +5485,7 @@
         "event": "call",
         "handler": "decideEconomicReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 43,
+        "sourceLine": 46,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5556,7 +5556,7 @@
         "event": "call",
         "handler": "prepareEconomicReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 37,
+        "sourceLine": 40,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5627,7 +5627,7 @@
         "event": "call",
         "handler": "prepareEconomicSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 49,
+        "sourceLine": 52,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5823,7 +5823,7 @@
         "event": "call",
         "handler": "downloadContractPrivateFileByTicket",
         "kind": "background_call",
-        "sourceLine": 1633,
+        "sourceLine": 1640,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5872,7 +5872,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5916,7 +5916,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5940,7 +5940,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1621,
+        "sourceLine": 1628,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6005,7 +6005,7 @@
         "event": "call",
         "handler": "associateContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1535,
+        "sourceLine": 1542,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6070,7 +6070,7 @@
         "event": "call",
         "handler": "confirmContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1584,
+        "sourceLine": 1591,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6135,7 +6135,7 @@
         "event": "call",
         "handler": "returnContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1569,
+        "sourceLine": 1576,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6200,7 +6200,7 @@
         "event": "call",
         "handler": "uploadContractFinalPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1507,
+        "sourceLine": 1514,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6514,7 +6514,7 @@
         "event": "call",
         "handler": "decideContractProxyExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 44,
+        "sourceLine": 47,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6585,7 +6585,7 @@
         "event": "call",
         "handler": "prepareContractProxyExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 38,
+        "sourceLine": 41,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6656,7 +6656,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 50,
+        "sourceLine": 53,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6915,7 +6915,7 @@
         "event": "call",
         "handler": "approveGovernedContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1417,
+        "sourceLine": 1424,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6980,7 +6980,7 @@
         "event": "call",
         "handler": "approveLegacyContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1403,
+        "sourceLine": 1410,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7045,7 +7045,7 @@
         "event": "call",
         "handler": "completeContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1432,
+        "sourceLine": 1439,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9653,7 +9653,7 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 1178,
+        "sourceLine": 1184,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -9737,6 +9737,568 @@
               "executeContractSigningMaterialChange",
               "fetchContractDetail",
               "assertContractSigningMaterialChangePreflight"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "duty-sms.retry",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId",
+        "/公司互转台账",
+        "/垫资本金归还/:applicationId",
+        "/结算管理/:settlementId",
+        "/统一资金办理工作台",
+        "/费用与报销/:claimId",
+        "/资金余额复核/:registrationId",
+        "/资金账户",
+        "/零星材料付款/:paymentId",
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId",
+        "/公司互转台账",
+        "/历史经营接管",
+        "/合同工作台",
+        "/垫资本金归还/:applicationId",
+        "/清分工作台",
+        "/结算工作台",
+        "/结算管理/:settlementId",
+        "/统一资金办理工作台",
+        "/费用与报销/:claimId",
+        "/资金余额复核/:registrationId",
+        "/资金执行案件",
+        "/资金账户",
+        "/零星材料付款/:paymentId",
+        "/零星采购收货/:procurementId",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retry",
+        "kind": "event",
+        "sourceLine": 60,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "notice.canRetry",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/contract-bank-verifications/:param/duty-sms/retry",
+          "normalizedKey": "POST /contract-bank-verifications/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-bank-verifications/:id/duty-sms/retry",
+            "normalizedKey": "POST /contract-bank-verifications/:param/duty-sms/retry",
+            "controller": "ContractBankVerificationController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/contract-ledger/contract-bank-verification.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/contract-economic-reviews/:param/duty-sms/retry",
+          "normalizedKey": "POST /contract-economic-reviews/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-economic-reviews/:id/duty-sms/retry",
+            "normalizedKey": "POST /contract-economic-reviews/:param/duty-sms/retry",
+            "controller": "ContractEconomicReviewController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/contract-ledger/contract-economic-review.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/contract-proxy-executions/:param/duty-sms/retry",
+          "normalizedKey": "POST /contract-proxy-executions/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-proxy-executions/:id/duty-sms/retry",
+            "normalizedKey": "POST /contract-proxy-executions/:param/duty-sms/retry",
+            "controller": "ContractProxyExecutionController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/contract-ledger/contract-proxy-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/expense-claims/:param/duty-sms/retry",
+          "normalizedKey": "POST /expense-claims/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/expense-claims/:claimId/duty-sms/retry",
+            "normalizedKey": "POST /expense-claims/:param/duty-sms/retry",
+            "controller": "ExpenseClaimController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "expense_claim.payment.execute"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/fund-account-transfers/:param/duty-sms/retry",
+          "normalizedKey": "POST /fund-account-transfers/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-account-transfers/:id/duty-sms/retry",
+            "normalizedKey": "POST /fund-account-transfers/:param/duty-sms/retry",
+            "controller": "FundAccountTransferController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/fund-account/fund-account-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+          "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/principal-returns/applications/:id/duty-sms/:dutyKey/retry",
+            "normalizedKey": "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
+            "controller": "FundPrincipalReturnController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/fund-account/fund-principal-return.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/review/duty-sms/retry",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/review/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/registrations/:registrationId/review/duty-sms/retry",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/review/duty-sms/retry",
+            "controller": "FundAccountController",
+            "handler": "retryReviewDutySms",
+            "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "fund_account.balance.review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/payment-executions/:param/duty-sms/retry",
+          "normalizedKey": "POST /payment-executions/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payment-executions/:paymentId/duty-sms/retry",
+            "normalizedKey": "POST /payment-executions/:param/duty-sms/retry",
+            "controller": "RegisteredPaymentExecutionController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/payments/:param/approval/duty-sms/retry",
+          "normalizedKey": "POST /payments/:param/approval/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/approval/duty-sms/retry",
+            "normalizedKey": "POST /payments/:param/approval/duty-sms/retry",
+            "controller": "PaymentController",
+            "handler": "retryApprovalDutySms",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/settlements/:param/duty-sms/retry",
+          "normalizedKey": "POST /settlements/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/duty-sms/retry",
+            "normalizedKey": "POST /settlements/:param/duty-sms/retry",
+            "controller": "SettlementController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/duty-sms/retry",
+          "normalizedKey": "POST /spot-procurement-payments/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/duty-sms/retry",
+            "normalizedKey": "POST /spot-procurement-payments/:param/duty-sms/retry",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.execute"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/duty-sms/retry",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/duty-sms/retry",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/upward-contract-amount-revisions/:param/duty-sms/retry",
+          "normalizedKey": "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/upward-contract-amount-revisions/:id/duty-sms/retry",
+            "normalizedKey": "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
+            "controller": "UpwardContractAmountController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/contract-ledger/upward-contract-amount.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/upward-receipt-matches/:param/duty-sms/retry",
+          "normalizedKey": "POST /upward-receipt-matches/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/upward-receipt-matches/:id/duty-sms/retry",
+            "normalizedKey": "POST /upward-receipt-matches/:param/duty-sms/retry",
+            "controller": "UpwardReceiptMatchController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/contract-ledger/upward-receipt-match.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryDutySms"
             ]
           },
           "ticketFollowups": []
@@ -10670,7 +11232,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 197,
+        "sourceLine": 198,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10735,7 +11297,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 321,
+        "sourceLine": 322,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10800,7 +11362,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 186,
+        "sourceLine": 187,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10865,7 +11427,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 313,
+        "sourceLine": 314,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10930,7 +11492,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 208,
+        "sourceLine": 209,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11060,7 +11622,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 353,
+        "sourceLine": 354,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11161,7 +11723,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 245,
+        "sourceLine": 246,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11226,7 +11788,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 337,
+        "sourceLine": 338,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11291,7 +11853,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 253,
+        "sourceLine": 254,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11356,7 +11918,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 264,
+        "sourceLine": 265,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11421,7 +11983,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 345,
+        "sourceLine": 346,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11486,7 +12048,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 283,
+        "sourceLine": 284,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11551,7 +12113,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 272,
+        "sourceLine": 273,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11616,7 +12178,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 298,
+        "sourceLine": 299,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11681,7 +12243,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 223,
+        "sourceLine": 224,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11750,7 +12312,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 329,
+        "sourceLine": 330,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11815,7 +12377,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 234,
+        "sourceLine": 235,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11880,7 +12442,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 175,
+        "sourceLine": 176,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11945,7 +12507,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 167,
+        "sourceLine": 168,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12012,7 +12574,7 @@
         "event": "click",
         "handler": "confirm",
         "kind": "event",
-        "sourceLine": 605,
+        "sourceLine": 615,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12077,7 +12639,7 @@
         "event": "click",
         "handler": "submitOpeningBalance",
         "kind": "event",
-        "sourceLine": 532,
+        "sourceLine": 535,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12146,7 +12708,7 @@
         "event": "click",
         "handler": "submitCorrectionBalance",
         "kind": "event",
-        "sourceLine": 539,
+        "sourceLine": 542,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12215,7 +12777,7 @@
         "event": "click",
         "handler": "returnBalanceCorrection",
         "kind": "event",
-        "sourceLine": 598,
+        "sourceLine": 608,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -12281,7 +12843,7 @@
         "event": "confirm",
         "handler": "withdrawBalanceCorrection",
         "kind": "event",
-        "sourceLine": 619,
+        "sourceLine": 629,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -13167,7 +13729,7 @@
         "event": "click",
         "handler": "checkOriginal",
         "kind": "event",
-        "sourceLine": 260,
+        "sourceLine": 261,
         "sourceColumn": 10
       },
       "semantic": "read_only",
@@ -13232,7 +13794,7 @@
         "event": "click",
         "handler": "retryOriginal",
         "kind": "event",
-        "sourceLine": 266,
+        "sourceLine": 267,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -13377,7 +13939,7 @@
         "event": "confirm",
         "handler": "submit",
         "kind": "event",
-        "sourceLine": 388,
+        "sourceLine": 403,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -13520,7 +14082,7 @@
         "event": "confirm",
         "handler": "submitAction",
         "kind": "event",
-        "sourceLine": 418,
+        "sourceLine": 425,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -13589,7 +14151,7 @@
         "event": "click",
         "handler": "retryPending",
         "kind": "event",
-        "sourceLine": 278,
+        "sourceLine": 279,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -13698,7 +14260,7 @@
         "event": "confirm",
         "handler": "submitRegistration",
         "kind": "event",
-        "sourceLine": 356,
+        "sourceLine": 363,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -13766,7 +14328,7 @@
         "event": "call",
         "handler": "archiveProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 111,
+        "sourceLine": 114,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13866,7 +14428,7 @@
         "event": "call",
         "handler": "cancelProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 123,
+        "sourceLine": 126,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13966,7 +14528,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 129,
+        "sourceLine": 132,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14132,7 +14694,7 @@
         "event": "call",
         "handler": "deleteProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 41,
+        "sourceLine": 44,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14232,7 +14794,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 135,
+        "sourceLine": 138,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14281,7 +14843,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -14325,7 +14887,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -14450,7 +15012,7 @@
         "event": "call",
         "handler": "reviewProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 99,
+        "sourceLine": 102,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14550,7 +15112,7 @@
         "event": "call",
         "handler": "submitProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 93,
+        "sourceLine": 96,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14756,7 +15318,7 @@
         "event": "call",
         "handler": "uploadProcurementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 117,
+        "sourceLine": 120,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14856,7 +15418,7 @@
         "event": "call",
         "handler": "withdrawProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 105,
+        "sourceLine": 108,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15538,7 +16100,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15582,7 +16144,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5573,
+              "sourceLine": 5588,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16336,6 +16898,184 @@
             "localCallChain": [
               "submitCurrentWithCapability",
               "submitLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "multi-duty-sms.retry",
+      "usage": "page_action",
+      "routePaths": [
+        "/公司互转台账",
+        "/合同管理/:contractId",
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账",
+        "/合同管理/:contractId",
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retry",
+        "kind": "event",
+        "sourceLine": 67,
+        "sourceColumn": 10
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "notice.canRetry",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+          "wrapper": "retryMultiDutySms",
+          "method": "POST",
+          "path": "/company-transfers/:param/duty-sms/retry",
+          "normalizedKey": "POST /company-transfers/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-transfers/:id/duty-sms/retry",
+            "normalizedKey": "POST /company-transfers/:param/duty-sms/retry",
+            "controller": "CompanyTransferController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryMultiDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+          "wrapper": "retryMultiDutySms",
+          "method": "POST",
+          "path": "/contracts/:param/duty-sms/retry",
+          "normalizedKey": "POST /contracts/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/duty-sms/retry",
+            "normalizedKey": "POST /contracts/:param/duty-sms/retry",
+            "controller": "ContractController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryMultiDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+          "wrapper": "retryMultiDutySms",
+          "method": "POST",
+          "path": "/general-procurements/:param/duty-sms/retry",
+          "normalizedKey": "POST /general-procurements/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/duty-sms/retry",
+            "normalizedKey": "POST /general-procurements/:param/duty-sms/retry",
+            "controller": "GeneralProcurementController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryMultiDutySms"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+          "wrapper": "retryMultiDutySms",
+          "method": "POST",
+          "path": "/spot-procurements/:param/duty-sms/retry",
+          "normalizedKey": "POST /spot-procurements/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/duty-sms/retry",
+            "normalizedKey": "POST /spot-procurements/:param/duty-sms/retry",
+            "controller": "SpotProcurementController",
+            "handler": "retryDutySms",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retry",
+              "retryMultiDutySms"
             ]
           },
           "ticketFollowups": []
@@ -18358,7 +19098,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalApprove",
         "kind": "event",
-        "sourceLine": 700,
+        "sourceLine": 706,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -18423,7 +19163,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalReject",
         "kind": "event",
-        "sourceLine": 715,
+        "sourceLine": 721,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -18488,7 +19228,7 @@
         "event": "call",
         "handler": "abandonPaymentRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2116,
+        "sourceLine": 2125,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18553,7 +19293,7 @@
         "event": "call",
         "handler": "downloadPaymentApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 2140,
+        "sourceLine": 2149,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18618,7 +19358,7 @@
         "event": "call",
         "handler": "delegatePaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2128,
+        "sourceLine": 2137,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18683,7 +19423,7 @@
         "event": "call",
         "handler": "downloadPaymentPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2213,
+        "sourceLine": 2222,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18748,7 +19488,7 @@
         "event": "call",
         "handler": "recordPaymentFinanceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2163,
+        "sourceLine": 2172,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18813,7 +19553,7 @@
         "event": "call",
         "handler": "recordPaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2175,
+        "sourceLine": 2184,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18914,7 +19654,7 @@
         "event": "call",
         "handler": "generatePaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2154,
+        "sourceLine": 2163,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18979,7 +19719,7 @@
         "event": "call",
         "handler": "transferPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2192,
+        "sourceLine": 2201,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19044,7 +19784,7 @@
         "event": "call",
         "handler": "withdrawPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2204,
+        "sourceLine": 2213,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19109,7 +19849,7 @@
         "event": "confirm",
         "handler": "confirmPaymentExecution",
         "kind": "event",
-        "sourceLine": 730,
+        "sourceLine": 736,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -24649,7 +25389,7 @@
         "event": "click",
         "handler": "queryOriginal",
         "kind": "event",
-        "sourceLine": 687,
+        "sourceLine": 688,
         "sourceColumn": 6
       },
       "semantic": "read_only",
@@ -24749,7 +25489,7 @@
         "event": "confirm",
         "handler": "submit",
         "kind": "event",
-        "sourceLine": 1058,
+        "sourceLine": 1065,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -24815,7 +25555,7 @@
         "event": "click",
         "handler": "saveVoucher",
         "kind": "event",
-        "sourceLine": 995,
+        "sourceLine": 1002,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -25000,7 +25740,7 @@
         "event": "call",
         "handler": "downloadSettlementApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 1313,
+        "sourceLine": 1319,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25065,7 +25805,7 @@
         "event": "call",
         "handler": "confirmSettlementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1347,
+        "sourceLine": 1353,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25130,7 +25870,7 @@
         "event": "call",
         "handler": "uploadSettlementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1330,
+        "sourceLine": 1336,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25231,7 +25971,7 @@
         "event": "call",
         "handler": "delegateSettlementApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1301,
+        "sourceLine": 1307,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25296,7 +26036,7 @@
         "event": "call",
         "handler": "downloadSettlementPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1400,
+        "sourceLine": 1406,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25361,7 +26101,7 @@
         "event": "call",
         "handler": "retrySettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1378,
+        "sourceLine": 1384,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25426,7 +26166,7 @@
         "event": "call",
         "handler": "generateSettlementPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1389,
+        "sourceLine": 1395,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25491,7 +26231,7 @@
         "event": "call",
         "handler": "reviewSettlementApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1277,
+        "sourceLine": 1283,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25556,7 +26296,7 @@
         "event": "call",
         "handler": "regenerateSettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1362,
+        "sourceLine": 1368,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25621,7 +26361,7 @@
         "event": "call",
         "handler": "transferSettlementApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1289,
+        "sourceLine": 1295,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27247,7 +27987,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementPaymentDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1511,
+        "sourceLine": 1512,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27312,7 +28052,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1427,
+        "sourceLine": 1428,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27377,7 +28117,7 @@
         "event": "call",
         "handler": "updateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1399,
+        "sourceLine": 1400,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27442,7 +28182,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementExecutionVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 1530,
+        "sourceLine": 1531,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27507,7 +28247,7 @@
         "event": "call",
         "handler": "recordSpotProcurementPaymentExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1454,
+        "sourceLine": 1455,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27572,7 +28312,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentApprove",
         "kind": "event",
-        "sourceLine": 2486,
+        "sourceLine": 2487,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -27638,7 +28378,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentReturn",
         "kind": "event",
-        "sourceLine": 2515,
+        "sourceLine": 2516,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -27704,7 +28444,7 @@
         "event": "call",
         "handler": "updateSpotProcurementPaymentPayerWithCapability",
         "kind": "background_call",
-        "sourceLine": 1413,
+        "sourceLine": 1414,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27769,7 +28509,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementPaymentApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1495,
+        "sourceLine": 1496,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27834,7 +28574,7 @@
         "event": "confirm",
         "handler": "submitRefund",
         "kind": "event",
-        "sourceLine": 2012,
+        "sourceLine": 2013,
         "sourceColumn": 59
       },
       "semantic": "business_write",
@@ -28007,7 +28747,7 @@
         "event": "approve",
         "handler": "confirmA5PaymentApprove",
         "kind": "event",
-        "sourceLine": 2427,
+        "sourceLine": 2428,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -28073,7 +28813,7 @@
         "event": "return-to-applicant",
         "handler": "confirmA5PaymentReturn",
         "kind": "event",
-        "sourceLine": 2428,
+        "sourceLine": 2429,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -28139,7 +28879,7 @@
         "event": "call",
         "handler": "submitSpotProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1468,
+        "sourceLine": 1469,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28204,7 +28944,7 @@
         "event": "call",
         "handler": "voidSpotProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1481,
+        "sourceLine": 1482,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28269,7 +29009,7 @@
         "event": "call",
         "handler": "withdrawSpotProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1441,
+        "sourceLine": 1442,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28334,7 +29074,7 @@
         "event": "call",
         "handler": "createSpotProcurementReceiptDelegationWithCapability",
         "kind": "background_call",
-        "sourceLine": 505,
+        "sourceLine": 506,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28399,7 +29139,7 @@
         "event": "call",
         "handler": "confirmSpotProcurementDiscrepancyWithCapability",
         "kind": "background_call",
-        "sourceLine": 607,
+        "sourceLine": 608,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28464,7 +29204,7 @@
         "event": "call",
         "handler": "initiateSpotProcurementDiscrepancyWithCapability",
         "kind": "background_call",
-        "sourceLine": 589,
+        "sourceLine": 590,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28529,7 +29269,7 @@
         "event": "call",
         "handler": "resetSpotProcurementReceiptDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 522,
+        "sourceLine": 523,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28594,7 +29334,7 @@
         "event": "call",
         "handler": "updateSpotProcurementReceiptDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 461,
+        "sourceLine": 462,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28659,7 +29399,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementInvoiceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 676,
+        "sourceLine": 677,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28724,7 +29464,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementReceiptPhotoWithCapability",
         "kind": "background_call",
-        "sourceLine": 639,
+        "sourceLine": 640,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28789,7 +29529,7 @@
         "event": "call",
         "handler": "attachSpotProcurementReceiptPhotoWithCapability",
         "kind": "background_call",
-        "sourceLine": 475,
+        "sourceLine": 476,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28854,7 +29594,7 @@
         "event": "call",
         "handler": "deleteSpotProcurementReceiptPhotoWithCapability",
         "kind": "background_call",
-        "sourceLine": 489,
+        "sourceLine": 490,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28919,7 +29659,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementRefundVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 657,
+        "sourceLine": 658,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28984,7 +29724,7 @@
         "event": "call",
         "handler": "recordSpotProcurementRefundWithCapability",
         "kind": "background_call",
-        "sourceLine": 625,
+        "sourceLine": 626,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29049,7 +29789,7 @@
         "event": "call",
         "handler": "reviewSpotProcurementReceiptWithCapability",
         "kind": "background_call",
-        "sourceLine": 539,
+        "sourceLine": 540,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29114,7 +29854,7 @@
         "event": "call",
         "handler": "revokeSpotProcurementReceiptReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 553,
+        "sourceLine": 554,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29179,7 +29919,7 @@
         "event": "call",
         "handler": "submitSpotProcurementReceiptWithCapability",
         "kind": "background_call",
-        "sourceLine": 567,
+        "sourceLine": 568,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29244,7 +29984,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2369,
+        "sourceLine": 2378,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -29309,7 +30049,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2356,
+        "sourceLine": 2365,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -29374,7 +30114,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1504,
+        "sourceLine": 1507,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29634,7 +30374,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1522,
+        "sourceLine": 1525,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29699,7 +30439,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementApplicationWithCapability",
         "kind": "background_call",
-        "sourceLine": 1454,
+        "sourceLine": 1457,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29765,7 +30505,7 @@
         "event": "call",
         "handler": "deletePristineSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1435,
+        "sourceLine": 1438,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29831,7 +30571,7 @@
         "event": "call",
         "handler": "updateSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1394,
+        "sourceLine": 1397,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -29896,7 +30636,7 @@
         "event": "click",
         "handler": "appendInvoice",
         "kind": "event",
-        "sourceLine": 1459,
+        "sourceLine": 1467,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -30033,7 +30773,7 @@
         "event": "confirm",
         "handler": "invalidateInvoice",
         "kind": "event",
-        "sourceLine": 1493,
+        "sourceLine": 1501,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -30098,7 +30838,7 @@
         "event": "call",
         "handler": "recreateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1473,
+        "sourceLine": 1476,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -30163,7 +30903,7 @@
         "event": "confirm",
         "handler": "refreshReceiptPdf",
         "kind": "event",
-        "sourceLine": 1401,
+        "sourceLine": 1409,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -30228,7 +30968,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 2268,
+        "sourceLine": 2277,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -30294,7 +31034,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 2288,
+        "sourceLine": 2297,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -30360,7 +31100,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 2308,
+        "sourceLine": 2317,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -30426,7 +31166,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1998,
+        "sourceLine": 2007,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -30491,7 +31231,7 @@
         "event": "call",
         "handler": "createSpotProcurementVersionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1410,
+        "sourceLine": 1413,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -30556,7 +31296,7 @@
         "event": "call",
         "handler": "voidSpotProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1488,
+        "sourceLine": 1491,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -30621,7 +31361,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 2328,
+        "sourceLine": 2337,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -31669,7 +32409,7 @@
         "event": "call",
         "handler": "decideUpwardAmountWithCapability",
         "kind": "background_call",
-        "sourceLine": 37,
+        "sourceLine": 40,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -31740,7 +32480,7 @@
         "event": "call",
         "handler": "prepareUpwardAmountWithCapability",
         "kind": "background_call",
-        "sourceLine": 31,
+        "sourceLine": 34,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -31811,7 +32551,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 43,
+        "sourceLine": 46,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -31887,7 +32627,7 @@
         "event": "call",
         "handler": "decideReceiptMatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 25,
+        "sourceLine": 28,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -31958,7 +32698,7 @@
         "event": "call",
         "handler": "prepareReceiptMatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 19,
+        "sourceLine": 22,
         "sourceColumn": 0
       },
       "semantic": "business_write",

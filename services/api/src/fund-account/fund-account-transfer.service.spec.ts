@@ -101,3 +101,24 @@ it("does not mark a key collision with an existing receipt as a definite rejecti
     response: { statusCode: 409, error: "Conflict" }
   });
 });
+
+it("资金转款短信沿台账的公司级岗位授权，只转发已登录的原收件人坐标", async () => {
+  const { FundAccountTransferController }=await import("./fund-account-transfer.controller");
+  const { REQUIRED_POSITIONS_KEY }=await import("../auth/decorators/require-positions.decorator");
+  const { PATH_METADATA }=await import("@nestjs/common/constants");
+  const { RetryDutyNotificationDto }=await import("../approval/retry-duty-notification.dto");
+  const { createApiValidationPipe }=await import("../validation/api-validation");
+  expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY,FundAccountTransferController))
+    .toEqual(["finance_staff","finance_director","comprehensive_director"]);
+  expect(Reflect.getMetadata(PATH_METADATA,FundAccountTransferController.prototype.dutySmsStatus)).toBe(":id/duty-sms");
+  expect(Reflect.getMetadata(PATH_METADATA,FundAccountTransferController.prototype.retryDutySms)).toBe(":id/duty-sms/retry");
+  const notifications={notificationStatus:jest.fn().mockResolvedValue({status:"failed"}),retry:jest.fn().mockResolvedValue({status:"queued"})};
+  const controller=new FundAccountTransferController({} as never,notifications as never);
+  const actor={id:"keeper"} as never,attemptId="a".repeat(64);
+  await expect(controller.dutySmsStatus(actor,"transfer")).resolves.toEqual({notice:{status:"failed"}});
+  await expect(controller.retryDutySms(actor,"transfer",{attemptId})).resolves.toEqual({status:"queued"});
+  expect(notifications.notificationStatus).toHaveBeenCalledWith("transfer","keeper");
+  expect(notifications.retry).toHaveBeenCalledWith("transfer","keeper",attemptId);
+  await expect(createApiValidationPipe().transform({attemptId:"invalid"},
+    {type:"body",metatype:RetryDutyNotificationDto})).rejects.toMatchObject({status:400});
+});

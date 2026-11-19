@@ -614,6 +614,8 @@ describe("SpotProcurementPaymentController", () => {
     const expectations = [
       ["list", RequestMethod.GET, "/", undefined],
       ["detail", RequestMethod.GET, ":paymentId", undefined],
+      ["dutySmsStatus", RequestMethod.GET, ":paymentId/duty-sms", "spot_procurement.payment.execute"],
+      ["retryDutySms", RequestMethod.POST, ":paymentId/duty-sms/retry", "spot_procurement.payment.execute"],
       [
         "updateDraft",
         RequestMethod.PATCH,

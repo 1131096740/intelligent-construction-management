@@ -4121,10 +4121,23 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
         .mockResolvedValueOnce([{ id: "sig-pm", contentSha256: "c".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("comprehensive_director")
     };
+    const nextRound = { id: "approval-instance-1", currentNodeIndex: 1 };
+    const transition = { id: "signed-action", action: "approve", signatureSha256Snapshot: "c".repeat(64) };
+    tx.approvalInstance.update.mockResolvedValue(nextRound);
+    tx.approvalActionLog.create.mockResolvedValue(transition);
+    let inTransaction = false;
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => {
+        inTransaction = true;
+        try { return await callback(tx); } finally { inTransaction = false; }
+      })
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const notices = {
+      queue: jest.fn(async () => { expect(inTransaction).toBe(true); }),
+      afterCommit: jest.fn(async () => { expect(inTransaction).toBe(false); })
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, notices as never);
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "pm-1", {
       ...paymentReviewCoordinates,
@@ -4132,6 +4145,8 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
     });
 
     expect(approved.status).toBe("approval_pending");
+    expect(notices.queue).toHaveBeenCalledWith(tx, approved, nextRound, transition);
+    expect(notices.afterCommit).toHaveBeenCalledWith(approved.id);
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
       where: { id: "payment-1" },
       data: { status: "approval_pending" }

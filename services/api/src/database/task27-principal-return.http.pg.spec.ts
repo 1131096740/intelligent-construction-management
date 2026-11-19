@@ -5,6 +5,8 @@ import { Catch, HttpException, type ArgumentsHost, type INestApplication } from 
 import { HttpAdapterHost } from "@nestjs/core";
 import { PrismaClient } from "@prisma/client";
 import { Test } from "@nestjs/testing";
+import { auditDutyNoticeId } from "../approval/audit-duty-notification-delivery";
+import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts } from "../payment/registered-payment-impact-reader";
@@ -18,6 +20,7 @@ import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture"
 
 const enabled = process.env.RUN_TASK409_PRINCIPAL_PG16 === "1";
 const roleCoverage = process.env.TASK409_PRINCIPAL_ROLE_ONLY === "1";
+const proveRetry = process.env.TASK419_PRINCIPAL_RETRY_PROOF === "1";
 const principalPath = "/fund-accounts/principal-returns";
 
 @Catch()
@@ -66,8 +69,11 @@ class Task27FailureCapture extends Task16RegistrationErrorFilter {
       await owner.user.create({data:{id:leaderId,phone:leaderPhone,name:"合成公司负责人",passwordHash:secrets[3].hash,isActive:true,mustChangePassword:false}});
       const position = await owner.position.upsert({where:{key:"general_manager"},create:{key:"general_manager",name:"合成公司负责人"},update:{}});
       await owner.userPosition.create({data:{userId:leaderId,positionId:position.id,projectId:null}});
+      let smsAvailable = false;
+      const mockSms = {available: () => smsAvailable, sendDutyIntent: jest.fn().mockResolvedValue({status: "accepted"})};
       const module = await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService)
-        .useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
+        .useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts)
+        .overrideProvider(ApprovalSmsService).useValue(mockSms).compile();
       app = module.createNestApplication({logger:false});
       app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);
       app.useGlobalPipes(createApiValidationPipe());
@@ -137,7 +143,8 @@ class Task27FailureCapture extends Task16RegistrationErrorFilter {
         managerSignature.append("file",new Blob([png],{type:"image/png"}),"signature.png");
         expect((await fetch(origin+"/me/signature/canvas",{method:"POST",headers:{authorization:`Bearer ${manager}`},body:managerSignature})).status).toBe(201);
         expect((await json("/public-cash-handovers/initial-custodian","POST",{idempotencyKey:randomUUID(),expectedRevision:0},keeper)).status).toBe(201);
-        const request = await submit(apply("1.0001"));
+        const intent = apply("1.0001");
+        const request = await submit(intent);
         expect(request).toMatchObject({status:201,body:{status:"recorded"}});
         const id = request.body.applicationId as string;
         const appRow = await observer.registeredPrincipalReturnApplication.findUniqueOrThrow({where:{id}});
@@ -147,6 +154,45 @@ class Task27FailureCapture extends Task16RegistrationErrorFilter {
           expect.objectContaining({roleKeys:["comprehensive_director"]}),expect.objectContaining({roleKeys:["project_manager"]}),
           expect.objectContaining({roleKeys:["finance_director"]}),expect.objectContaining({roleKeys:["general_manager","chairman"]}),
         ]);
+        const queued = () => owner.auditLog.findMany({where: {businessType: "principal_return_duty_notification", businessId: id, action: "queued"}});
+        const notices = await queued();
+        const reviewMetadata = notices.map(notice => notice.metadata as {kind:string; roundId:string; recipientId:string; nodeIndex:number});
+        expect(reviewMetadata.map(item => item.nodeIndex)).toEqual(expect.arrayContaining([0, 1, 2, 3]));
+        expect(reviewMetadata.every(item => item.kind === "review" && item.roundId === round.id)).toBe(true);
+        expect(new Set(reviewMetadata.map(item => `${item.nodeIndex}:${item.recipientId}`)).size).toBe(notices.length);
+        expect(await submit(intent)).toEqual(request);
+        expect((await queued()).map(row => row.id).sort()).toEqual(notices.map(row => row.id).sort());
+        if (proveRetry) {
+          const kind = "principal_return_duty_notification";
+          const original = notices.find(notice => {
+            const data = notice.metadata as {nodeIndex:number;recipientId:string};
+            return data.nodeIndex === 2 && data.recipientId === seeded.director;
+          })!;
+          expect(original).toBeDefined();
+          await owner.auditLog.createMany({data: notices.map(notice => ({
+            id: auditDutyNoticeId(kind, notice.id, "terminal"),
+            businessType: kind, businessId: id,
+            action: notice.id === original.id ? "failed" : "unknown", metadata: {intentId: notice.id},
+          }))});
+          smsAvailable = true;
+          const smsPath = `${applications}/${id}/duty-sms`;
+          const retryPath = `${smsPath}/review-2/retry`;
+          expect(await json(`${smsPath}/review-2`, "GET", undefined, keeper)).toMatchObject({status: 200, body: {notice: null}});
+          expect(await json(`${smsPath}/review-1`, "GET", undefined, manager))
+            .toMatchObject({status: 200, body: {notice: {status: "unknown", canRetry: false}}});
+          const status = await json(`${smsPath}/review-2`, "GET", undefined, director);
+          expect(status).toMatchObject({status: 200, body: {notice: {attemptId: original.id, status: "failed", canRetry: true}}});
+          expect((await json(`${smsPath}/review-1/retry`, "POST", {attemptId: original.id}, manager)).status).toBe(409);
+          const retry = () => json(retryPath, "POST", {attemptId: original.id}, director);
+          const results = await Promise.all([retry(), retry()]);
+          expect(results.map(result => result.status)).toEqual([201, 201]);
+          const successor = auditDutyNoticeId(kind, original.id, "retry");
+          expect(mockSms.sendDutyIntent).toHaveBeenCalledTimes(1);
+          expect(await json(`${smsPath}/review-2`, "GET", undefined, director))
+            .toMatchObject({status: 200, body: {notice: {attemptId: successor, status: "accepted", canRetry: false}}});
+          expect((await json(retryPath, "POST", {attemptId: successor}, director)).status).toBe(409);
+          smsAvailable = false;
+        }
         const actions = `${applications}/${id}/actions`;
         const approveProject = (token:string,expectedRevision:number,nodeIndex:number,password?:string)=>json(actions,"POST",{
           action:"approve",expectedRevision,nodeIndex,reason:"项目本金归还核对",confirmationPassword:password,idempotencyKey:randomUUID(),
@@ -162,6 +208,11 @@ class Task27FailureCapture extends Task16RegistrationErrorFilter {
         },token);
         expect((await payFromCash(keeper,1,4)).status).toBe(409);
         expect((await approveProject(leader,4,3)).status).toBe(201);
+        const payNotices = (await queued()).filter(notice => (notice.metadata as {kind:string}).kind === "pay");
+        expect(payNotices.length).toBeGreaterThan(0);
+        expect(payNotices.map(notice => notice.metadata)).toContainEqual({kind: "pay", roundId: round.id, recipientId: seeded.keeper});
+        expect(new Set(payNotices.map(notice => (notice.metadata as {recipientId:string}).recipientId)).size).toBe(payNotices.length);
+
         expect((await payFromCash(nonCustodian,5,5)).status).toBe(403);
         expect(await observer.registeredPrincipalReturnPayment.count()).toBe(0);
         const payable = async(token:string)=>(await json(principalPath,"GET",undefined,token)).body.payableScopeKeys;

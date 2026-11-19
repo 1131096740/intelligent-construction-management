@@ -1,3 +1,5 @@
+import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { DeleteExpenseClaimDraftDto } from "./dto/delete-expense-claim-draft.dto";
 import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -19,7 +21,8 @@ import { ExpenseClaimService } from "./expense-claim.service";
 export class ExpenseClaimController {
   constructor(
     private readonly claims: ExpenseClaimService,
-    @Optional() private readonly files?: FileService
+    @Optional() private readonly files?: FileService,
+    @Optional() private readonly dutyNotifications?: ExpenseClaimFundingNotificationService
   ) {}
 
   // All active accounts may apply for themselves. JwtAuthGuard checks account state;
@@ -236,6 +239,19 @@ export class ExpenseClaimController {
     @Body() body: RemoveExpenseClaimAttachmentDto
   ) {
     return this.claims.removeAttachment(claimId, attachmentId, user.id, body);
+  }
+
+  @Get(":claimId/duty-sms")
+  @RequireProjectRole("expense_claim.payment.execute")
+  async dutySmsStatus(@Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return { notice: await this.dutyNotifications?.notificationStatus(id, user.id) ?? null };
+  }
+
+  @Post(":claimId/duty-sms/retry")
+  @RequireProjectRole("expense_claim.payment.execute")
+  retryDutySms(@Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.dutyNotifications) throw new BadRequestException("短信通知暂不可用");
+    return this.dutyNotifications.retry(id, user.id, body.attemptId);
   }
 
   @Post(":claimId/disbursements")
