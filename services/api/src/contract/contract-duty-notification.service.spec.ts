@@ -2,7 +2,7 @@ import type { Prisma, ApprovalInstance, Contract } from "@prisma/client";
 import type { PrismaService } from "../database/prisma.service";
 import type { ApprovalSmsService } from "../approval/approval-sms.service";
 import { ContractDutyNotificationService } from "./contract-duty-notification.service";
-import { contractParallelDutyIdentity, hasActiveContractGlobalRole } from "./contract-parallel-duty-access";
+import { contractParallelDutyIdentity, hasActiveContractGlobalRole, CONTRACT_PARALLEL_DUTY_RESOURCE, contractParallelDutyId } from "./contract-parallel-duty-access";
 
 jest.mock("./contract-parallel-duty-access", () => ({
   ...jest.requireActual("./contract-parallel-duty-access"),
@@ -12,14 +12,16 @@ jest.mock("./contract-parallel-duty-access", () => ({
 
 it("同一人员承担两个并联职责分别入队，重复入队保持同一标识，不通知无权人员", async () => {
   jest.mocked(contractParallelDutyIdentity).mockImplementation(async (_tx, _round, _project, actor) =>
-    actor === "reviewer" ? { approvedRoleKey: "contract_director", representedUserId: actor, viaAssignment: false, delegationId: null } : null);
+    actor === "reviewer" || actor === "delegate" ? { approvedRoleKey: "contract_director", representedUserId: actor, viaAssignment: false, delegationId: null } : null);
   const createMany = jest.fn();
+  const groupBy = jest.fn().mockResolvedValue([{ toUserId: "delegate" }, { toUserId: "reviewer" }, { toUserId: "outsider" }]);
+  const findMany = jest.fn().mockRejectedValue(new Error("42501 ApprovalDelegation.id"));
   const tx = {
     project: { findUnique: jest.fn().mockResolvedValue({ isActive: true, name: "合同项目" }) },
     position: { findMany: jest.fn().mockResolvedValue([{ id: "contract-director" }]) },
     userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "reviewer" }, { userId: "outsider" }]) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-    approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+    approvalDelegation: { findMany, groupBy },
     auditLog: { createMany }
   } as unknown as Prisma.TransactionClient;
   const round = { id: "round", status: "in_progress", businessType: "contract_version", businessId: "version", flowType: "contract.approve",
@@ -31,15 +33,25 @@ it("同一人员承担两个并联职责分别入队，重复入队保持同一�
   const service = new ContractDutyNotificationService({} as PrismaService, sms);
   await service.queue(tx, contract, { id: "version", numericProtocolVersion: 2, signingSubjectType: "our_company", status: "in_approval" }, round, "HT-01");
   await service.queue(tx, contract, { id: "version", numericProtocolVersion: 2, signingSubjectType: "our_company", status: "in_approval" }, round, "HT-01");
+  expect(findMany).not.toHaveBeenCalled();
+  expect(groupBy).toHaveBeenCalledTimes(4);
+  for (const [index, [{ where, by }]] of groupBy.mock.calls.entries()) {
+    expect(by).toEqual(["toUserId"]);
+    expect(where).toEqual({ enabled: true, actionKey: "contract.approve", resourceType: CONTRACT_PARALLEL_DUTY_RESOURCE,
+      resourceId: contractParallelDutyId(round.id, index % 2), startsAt: { lte: expect.any(Date) }, endsAt: { gt: expect.any(Date) } });
+    expect(where.startsAt.lte).toBe(where.endsAt.gt);
+  }
   expect(createMany).toHaveBeenCalledTimes(2);
   const [first, replay] = createMany.mock.calls.map(([command]) => command);
   expect(first).toEqual(replay);
   expect(first.skipDuplicates).toBe(true);
   expect(first.data.map((row: Prisma.AuditLogCreateManyInput) => row.metadata)).toMatchObject([
     { recipientId: "reviewer", nodeIndex: 0, dutyName: "合同主管" },
-    { recipientId: "reviewer", nodeIndex: 1, dutyName: "并联合同复核" }
+    { recipientId: "delegate", nodeIndex: 0, dutyName: "合同主管" },
+    { recipientId: "reviewer", nodeIndex: 1, dutyName: "并联合同复核" },
+    { recipientId: "delegate", nodeIndex: 1, dutyName: "并联合同复核" }
   ]);
-  expect(new Set(first.data.map((row: Prisma.AuditLogCreateManyInput) => row.id)).size).toBe(2);
+  expect(new Set(first.data.map((row: Prisma.AuditLogCreateManyInput) => row.id)).size).toBe(4);
   expect(sms.sendDutyIntent).not.toHaveBeenCalled();
 });
 
@@ -189,7 +201,7 @@ it.each(["approval","seal","archive"] as const)("只重试现阶段本人明确�
     $queryRaw:jest.fn(async({strings,values}:{strings:string[];values:unknown[]})=>strings.join("").includes("SELECT queued.*")?
       rows.filter(row=>row.action==="queued"&&values.includes(row.metadata.recipientId)&&values.includes(row.metadata.contractVersionId)):[]),
     project:{findUnique:async()=>({isActive:true,name:"合成项目"})},position:{findMany:async()=>[{id:"role"}]},
-    userPosition:{findMany:async()=>[{userId:actor}]},projectMember:{findMany:async()=>[]},approvalDelegation:{findMany:async()=>[]},
+    userPosition:{findMany:async()=>[{userId:actor}]},projectMember:{findMany:async()=>[]},approvalDelegation:{groupBy:async()=>[]},
     contractVersion:{findUnique:async()=>version},contract:{findUnique:async()=>contract},
     contractSealTask:{findUnique:async()=>task},approvalInstance:{findUnique:async()=>round,findMany:async()=>[{id:round.id}]},
     user:{findUnique:async()=>({isActive:true,name:"合成用户",phone:"13800000000"})},

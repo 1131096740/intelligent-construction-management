@@ -58,10 +58,10 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
       stage === "approval" ? tx.projectMember.findMany({
         where: { projectId: contract.projectId, positionKey: { in: keys } }, select: { userId: true }
       }) : [],
-      stage === "approval" ? tx.approvalDelegation.findMany({
+      stage === "approval" ? tx.approvalDelegation.groupBy({
+        by: ["toUserId"],
         where: { enabled: true, actionKey: "contract.approve", resourceType: CONTRACT_PARALLEL_DUTY_RESOURCE,
-          resourceId: contractParallelDutyId(round.id, index), startsAt: { lte: now }, endsAt: { gt: now } },
-        select: { toUserId: true }
+          resourceId: contractParallelDutyId(round.id, index), startsAt: { lte: now }, endsAt: { gt: now } }
       }) : []
     ]);
     return [...new Set([...assignments.map(row => row.userId), ...memberships.map(row => row.userId), ...delegations.map(row => row.toUserId)])];

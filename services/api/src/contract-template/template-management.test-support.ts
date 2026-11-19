@@ -361,7 +361,14 @@ export class TemplateSyntheticStore {
     // Explicitly empty adjacent-domain bindings for the real private-file policy.
     approvalActionLog: this.table("approvalActionLog"),
     approvalInstance: this.table("approvalInstance"),
-    approvalDelegation: this.table("approvalDelegation"),
+    approvalDelegation: {
+      ...this.table("approvalDelegation"),
+      groupBy: async ({ by, where }: { by: ["toUserId"]; where: Row }) => {
+        if (by.length !== 1 || by[0] !== "toUserId") throw new Error("合成审批委托仅支持按受托人分组");
+        const rows = await this.table("approvalDelegation").findMany({ where });
+        return [...new Set(rows.map((row) => row.toUserId))].map((toUserId) => ({ toUserId }));
+      }
+    },
     handwrittenSignatureVersion: this.table("handwrittenSignatureVersion"),
     contractArchiveFile: this.table("contractArchiveFile"), archiveRecord: this.table("archiveRecord"),
     contractArchiveEvidenceFile: this.table("contractArchiveEvidenceFile"),
