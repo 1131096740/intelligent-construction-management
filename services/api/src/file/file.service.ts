@@ -1812,7 +1812,8 @@ export class FileService {
     tx: Prisma.TransactionClient,
     contractVersionId: string,
     fileIds: string[],
-    actorUserId: string
+    actorUserId: string,
+    scope?: "upward_direct"
   ) {
     const normalizedIds = [...new Set(fileIds.map((fileId) => fileId.trim()))].sort();
     if (normalizedIds.some((fileId) => !fileId)) {
@@ -1855,7 +1856,7 @@ export class FileService {
       }),
       nonReceiptBusinessFileBindingIds(tx, normalizedIds, [
         { table: "ContractDraftAttachment", column: "fileId" }
-      ])
+      ], scope === "upward_direct" ? contractVersionId : undefined)
     ]);
     if (otherDraftBinding || receiptPhotoBinding || otherBindingIds.length) {
       throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);

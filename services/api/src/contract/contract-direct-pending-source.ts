@@ -1,3 +1,4 @@
+import { A08_DRAFT_VOUCHER_CHECK_SHA256, UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
 import { markTask12DirectSourceDiagnostic as mark, recordTask12DirectSourceDiagnostic as recordDiagnostic } from "./task12-direct-source-diagnostic";
 import { assertDirectPendingCatalogInputs, factAppendSignature, readActualCatalog, readBindingCatalog, readDeparseEnvironment, readExpectedBinding } from "./contract-direct-pending-catalog";
 import { discoverUpwardLegacyProjection, isQualifiedUpwardDefiner } from "./contract-upward-archive-catalog";
@@ -123,6 +124,15 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
         const allowedBody = descriptor.signature === factAppendSignature ? bootstrap.anchorSourceSha256 : descriptor.bodySha256;
         return known && known.oid === definer.oid && definer.bodySha256 === allowedBody;
       })) continue;
+      if (definer.bodySha256 === A08_DRAFT_VOUCHER_CHECK_SHA256 && upwardProjection?.definers.some(item =>
+        item.signature === "public.jg_upward_archive_catalog_projection_v2()" &&
+        item.bodySha256 === UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256)) {
+        const [scope] = await tx.$queryRaw<Array<{ oid: string | null }>>(Prisma.sql`
+          SELECT pg_catalog.to_regprocedure('public.jg_check_a08_direct_original_voucher_v1(text,text)')::oid::text AS oid
+        `);
+        if (scope?.oid === definer.oid) continue;
+        unavailable();
+      }
       const completionOid = dispatch?.native?.completionOid;
       if (definer.bodySha256 !== directOutsideOperatingReaderBody) unavailable();
       mark("DEFINER_READER_BINDING_ABSENT");

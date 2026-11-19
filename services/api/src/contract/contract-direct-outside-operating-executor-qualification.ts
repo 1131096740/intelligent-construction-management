@@ -1,7 +1,7 @@
 import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { Prisma } from "@prisma/client";
 import { enabledDirectVersionBody, type readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
-import { UPWARD_NORMAL_GENERATED_LOCK_SHA256, UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
+import { UPWARD_NORMAL_GENERATED_LOCK_SHA256, UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256, UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
 import { enabledDirectCompletionCatalog } from "./contract-direct-outside-completion-catalog";
 
 type Admission = NonNullable<Awaited<ReturnType<typeof readDirectArchiveNativeAdmission>>>;
@@ -11,7 +11,7 @@ export async function hasDirectOutsideOperatingExecutor(tx: Prisma.TransactionCl
   const projection = await discoverUpwardLegacyProjection(tx);
   const qualifiedNormalLock = projection?.definers.some(item =>
     item.signature === "public.jg_upward_archive_catalog_projection_v2()"
-    && (item.bodySha256 === UPWARD_NORMAL_GENERATED_PROJECTION_SHA256 || item.bodySha256 === UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256));
+    && (item.bodySha256 === UPWARD_NORMAL_GENERATED_PROJECTION_SHA256 || item.bodySha256 === UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256 || item.bodySha256 === UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256));
   if (native.versionGuardBodySha256 !== enabledDirectVersionBody || native.outsideSlotQualified !== true) return false;
   try {
     const rows = await tx.$queryRaw<Array<{ qualified: boolean; backendPid: number; transactionId: string }>>(Prisma.sql`

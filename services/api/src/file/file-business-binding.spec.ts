@@ -55,6 +55,22 @@ describe("non-receipt file binding registry", () => {
     expect(query).toHaveBeenCalledTimes(2);
   });
 
+  it.each([true, false])("uses the fixed upward original voucher check only when executable (%s)", async executable => {
+    const query = jest.fn(async (sql: Prisma.Sql) => {
+      if (sql.text.includes("registered_payment_voucher_catalog")) return [{ state: "installed", ownerSettlementVoucher: true }];
+      if (sql.text.includes("has_function_privilege")) return [{ executable }];
+      expect(sql.text).toContain('FROM public."RegisteredPaymentVoucher"');
+      expect(sql.text).toContain(executable ? "jg_check_a08_direct_original_voucher_v1" : "jg_project_owner_settlement_voucher_bound");
+      expect(sql.text).not.toContain(executable ? "jg_project_owner_settlement_voucher_bound" : "jg_check_a08_direct_original_voucher_v1");
+      expect(sql.values.includes("fixed-version")).toBe(executable);
+      return [{ fileId: "existing-binding" }];
+    });
+    const tx = { $queryRaw: query } as unknown as Prisma.TransactionClient;
+    await expect(nonReceiptBusinessFileBindingIds(tx, ["existing-binding"], [], "fixed-version"))
+      .resolves.toEqual(["existing-binding"]);
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
   it("stops before looking up bindings when the voucher installation is incomplete", async () => {
     const query = jest.fn().mockResolvedValue([{ state: "unavailable" }]);
     const tx = { $queryRaw: query } as unknown as Prisma.TransactionClient;

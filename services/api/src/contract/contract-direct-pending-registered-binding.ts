@@ -13,6 +13,8 @@ const settlementRegistryBody = "6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99
 const settlementPath = ["search_path=pg_catalog, public"];
 const settlementEnforcerBody = "2525f5adb08dac1a782f8bb689c68fa2073f5b72c4cd13df26808fd4660e42b1";
 const normalVoucherEnforcerBody = "2743ad737af5f75986dd94508e6e0d8a998c8a78b3ce08f023db56b2e7324505";
+const a08DraftVoucherEnforcerBody = "c8b62d1c944bfbcdb541713bd366e2e148e530ea9fd5ea13200feb4372e3d915";
+const settlementEnforcerBodies: readonly string[] = [settlementEnforcerBody, normalVoucherEnforcerBody, a08DraftVoucherEnforcerBody];
 const voucherGuardBody = "91b57f66e67bb1d888d1d0e8803cabbe08c289b01d2a6e810bfa69fe82a48d62";
 const voucherColumns = ["executionId", "fileId", "uploadedByUserId", "contentSha256", "createdAt"];
 const record = (value: unknown): Catalog | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Catalog : null;
@@ -132,7 +134,7 @@ export function projectRegisteredFileBinding(actual: Catalog, bound: Catalog, ex
     !alias || !wrapper || !oid(prior.oid) || prior.oid === wrapper.oid ||
     Object.values(original ?? {}).some(value => record(value)?.oid === prior.oid) ||
     !isDeepStrictEqual(prior, { ...alias, oid: prior.oid, acl: wrapper.acl, bodySha256: wrapperBody }) ||
-    (enforcerBody !== settlementEnforcerBody && enforcerBody !== normalVoucherEnforcerBody))) return null;
+    (typeof enforcerBody !== "string" || !settlementEnforcerBodies.includes(enforcerBody)))) return null;
   const guard = record(observed.voucherGuard), voucher = record(observed.voucher);
   const fileTrigger = record(observed.fileTrigger), exclusive = record(voucher?.exclusiveTrigger);
   const owner = expected.anchorOwnerOid, namespace = expected.anchorNamespaceOid;
@@ -212,7 +214,7 @@ export async function qualifyDirectPendingFileBinding(
   if (Object.hasOwn(fileBinding, enforcer) && (!oid(routineOid) || !oid(triggerOid) || directAttachment?.functionOid !== routineOid)) return null;
   const liveBody = record(record(actual.routines)?.[enforcer])?.bodySha256;
   const successorBodySha256 = settlementInstalled &&
-    (liveBody === settlementEnforcerBody || liveBody === normalVoucherEnforcerBody) ? liveBody : undefined;
+    typeof liveBody === "string" && settlementEnforcerBodies.includes(liveBody) ? liveBody : undefined;
   const exclusive: RegisteredExclusiveWitness | undefined = oid(routineOid) && oid(triggerOid)
     ? Object.freeze({ [witnessKey]: true as const, transaction: tx, routineOid, triggerOid, ...(successorBodySha256 ? { successorBodySha256 } : {}) })
     : undefined;

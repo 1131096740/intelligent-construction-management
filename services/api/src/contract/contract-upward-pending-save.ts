@@ -125,7 +125,7 @@ export async function saveUpwardPendingAggregate(
     throw new ConflictException("我方公司当前版本、项目参与资格或签约身份不符");
   }
   const filesToBind = input.attachments.map(file => file.fileId);
-  await files.assertCanBindContractDraftAttachments(tx, version.id, filesToBind, actor);
+  await files.assertCanBindContractDraftAttachments(tx, version.id, filesToBind, actor, "upward_direct");
   const fileRows = await tx.fileObject.findMany({ where: { id: { in: filesToBind } } });
   if (fileRows.length !== filesToBind.length || fileRows.some(file => !["application/pdf", "image/jpeg", "image/png"].includes(file.mimeType)
     || file.sizeBytes <= 0 || !file.contentSha256 || !/^[a-f0-9]{64}$/u.test(file.contentSha256)

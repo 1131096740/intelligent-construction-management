@@ -254,7 +254,8 @@ export async function hasAnyBusinessFileBinding(
 export async function nonReceiptBusinessFileBindingIds(
   tx: Prisma.TransactionClient,
   fileIds: string[],
-  excludedBindings: readonly NonReceiptFileBindingExclusion[] = []
+  excludedBindings: readonly NonReceiptFileBindingExclusion[] = [],
+  upwardDirectVersionId?: string
 ): Promise<string[]> {
   const uniqueIds = [...new Set(fileIds)].sort();
   if (!uniqueIds.length) return [];
@@ -278,6 +279,12 @@ export async function nonReceiptBusinessFileBindingIds(
   const catalog = await readFileBindingCatalog(tx);
   const includeVoucher = catalog.registeredPayment && !excludedBindingKeys.has("RegisteredPaymentVoucher.fileId");
   const includeOwnerSettlement = catalog.ownerSettlementVoucher && !excludedBindingKeys.has("ProjectOwnerSettlementEntry.voucherFileId");
+  const scopedVoucherCheck = includeOwnerSettlement && upwardDirectVersionId !== undefined
+    ? await tx.$queryRaw<Array<{ executable: boolean }>>(Prisma.sql`
+      SELECT COALESCE(pg_catalog.has_function_privilege(current_user,
+        pg_catalog.to_regprocedure('public.jg_check_a08_direct_original_voucher_v1(text,text)'), 'EXECUTE'), false) AS executable
+    `)
+    : [];
   const bindingQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
     ({ table, columns }) =>
       columns
@@ -285,8 +292,10 @@ export async function nonReceiptBusinessFileBindingIds(
           table === "ProjectOwnerSettlementEntry" ? includeOwnerSettlement : !excludedBindingKeys.has(`${table}.${column}`))
         .map((column) => {
           if (table === "ProjectOwnerSettlementEntry") {
-            return Prisma.sql`SELECT c."id" AS "fileId" FROM candidates c
-              WHERE public.jg_project_owner_settlement_voucher_bound(c."id")`;
+            const referenced = scopedVoucherCheck[0]?.executable
+              ? Prisma.sql`public.jg_check_a08_direct_original_voucher_v1(${upwardDirectVersionId}, c."id")`
+              : Prisma.sql`public.jg_project_owner_settlement_voucher_bound(c."id")`;
+            return Prisma.sql`SELECT c."id" AS "fileId" FROM candidates c WHERE ${referenced}`;
           }
           const field = sqlIdentifier(column);
           const relation = table === "RegisteredPaymentVoucher"
