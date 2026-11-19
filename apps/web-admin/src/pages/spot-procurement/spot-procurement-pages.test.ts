@@ -658,8 +658,9 @@ describe("spot procurement web pages", () => {
       "components/PaymentExecutionDrawer.vue"
     );
 
+    expect(detail).toContain("const retryAttempt = executionAttempt.value;");
     expect(detail).toContain(
-      "executionAttempt.value ?? (await prepareExecutionAttempt(payload, operationPaymentId))"
+      "retryAttempt ?? (await prepareExecutionAttempt(payload, operationPaymentId))"
     );
     expect(detail).toContain("executionOpenedPaymentId");
     expect(detail).toContain("operationPaymentId");
