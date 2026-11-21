@@ -9,7 +9,7 @@ temp=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-task12-290.XXXXXXXX")
 mkdir -m 0755 "$temp/product"
 (umask 022; node "$input/materialize.cjs" --materialize "$root" "$temp/product" "$CI_SOURCE_SHA")
 node "$previous/verify.cjs" "$temp/product/predecessor"
-python3 "$previous/produce.py" "$root" "$CI_SOURCE_SHA" "$previous/historical-install-inputs.tar.gz" "$previous/installer.cjs" "$temp/admission"
+(umask 022; python3 "$previous/produce.py" "$root" "$CI_SOURCE_SHA" "$previous/historical-install-inputs.tar.gz" "$previous/installer.cjs" "$temp/admission")
 mkdir "$temp/context"
 cp -R "$temp/admission/source" "$temp/context/"
 cp "$temp/admission"/{source-seal.txt,source-admission.json} "$temp/context/"
