@@ -1,0 +1,66 @@
+--- services/api/src/database/task16-shared-standard.http.pg.spec.ts
++++ services/api/src/database/task16-shared-standard.http.pg.spec.ts
+@@ -0,0 +1,2 @@
++import { activateOwned281VoucherCheck, activateOwned282VoucherRead, releaseOwned281VoucherCheck } from "./task398-voucher281.test-support";
++import { validTask398Database } from "./task398-owned-database.test-support";
+@@ -186 +188 @@
+-  if(process.env.NODE_ENV!=="test"||![ownerUrl,runtimeUrl,observerUrl].every(url=>url.hostname==="127.0.0.1"&&url.port===ownerUrl.port&&url.pathname===db)||db!=="/jiangkong_payment_execution_concurrency"||!/^[a-f0-9]{32}$/u.test(runId)||ownerUrl.username!=="jg_task01_owner"||runtimeUrl.username!=="jg_task01_runtime"||observerUrl.username!=="jg_task01_observer")throw new Error("TASK398_ISOLATED_DATABASE_REQUIRED");
++  if(process.env.NODE_ENV!=="test"||![ownerUrl,runtimeUrl,observerUrl].every(url=>url.hostname==="127.0.0.1"&&url.port===ownerUrl.port&&url.pathname===db)||!validTask398Database(ownerUrl,runId)||!/^[a-f0-9]{32}$/u.test(runId)||ownerUrl.username!=="jg_task01_owner"||runtimeUrl.username!=="jg_task01_runtime"||observerUrl.username!=="jg_task01_observer")throw new Error("TASK398_ISOLATED_DATABASE_REQUIRED");
+@@ -738,2 +740,55 @@
+-   expect((await json(`/payment-executions/${final.id}/voucher`,"POST",{fileId:file.id},keeper)).status).toBe(201);
+-   const ticket=await json(`/payment-executions/${final.id}/voucher-ticket`,"GET",undefined,keeper);expect(ticket.status).toBe(200);const download=await fetch(new URL(ticket.body.downloadUrl,origin));expect(download.status).toBe(200);expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
++   if(process.env.TASK398_OWNED_282_VOUCHER==="1"){
++    const route=`/payment-executions/${final.id}/voucher`;
++    const digest=createHash("sha256").update(png).digest("hex");
++    await activateOwned281VoucherCheck(owner,runId,final.id,plan.ids.payment,plan.ids.project,seeded.keeper,file.id,digest,png.length);
++    try {
++     await expect(runtime.$queryRaw`SELECT public.jg_check_registered_payment_voucher_binding_v1(${final.id},${"wrong-"+file.id},${seeded.keeper})`).rejects.toMatchObject({meta:{code:"55000"}});
++     await expect(runtime.$queryRaw`SELECT public.jg_project_owner_settlement_voucher_bound(${file.id})`).rejects.toMatchObject({meta:{code:"42501"}});
++     expect((await json(route,"POST",{fileId:file.id},outsider)).status).toBe(403);
++     expect((await json(route,"POST",{fileId:file.id},keeper)).status).toBe(201);
++     expect(await owner.registeredPaymentVoucher.findUniqueOrThrow({where:{executionId:final.id}})).toMatchObject({
++      executionId:final.id,fileId:file.id,uploadedByUserId:seeded.keeper,contentSha256:digest
++     });
++     expect(await owner.auditLog.count({where:{businessId:plan.ids.payment,action:"payment.execution.voucher.attach"}})).toBe(1);
++     expect((await json(route,"POST",{fileId:file.id},keeper)).status).toBe(201);
++     expect(await owner.auditLog.count({where:{businessId:plan.ids.payment,action:"payment.execution.voucher.attach"}})).toBe(1);
++     console.log("TASK398_OWNED_281_VOUCHER_ATTACH_PROVED");
++     await activateOwned282VoucherRead(owner, final.id, file.id, seeded.keeper);
++     await expect(runtime.$queryRaw`SELECT public.jg_check_registered_payment_voucher_binding_v1(${final.id},${file.id},${seeded.keeper})`).rejects.toMatchObject({meta:{code:"42501"}});
++     await expect(runtime.$queryRaw`SELECT public.jg_read_registered_payment_voucher_binding_v1(${final.id},${"wrong-"+file.id},${seeded.keeper})`).rejects.toMatchObject({meta:{code:"55000"}});
++     await expect(runtime.$queryRaw`SELECT public.jg_read_registered_payment_voucher_binding_v1(${final.id},${file.id},${seeded.director})`).rejects.toMatchObject({meta:{code:"55000"}});
++     await expect(observer.$queryRaw`SELECT public.jg_read_registered_payment_voucher_binding_v1(${final.id},${file.id},${seeded.keeper})`).rejects.toMatchObject({meta:{code:"42501"}});
++     const ticketRoute=`${route}-ticket`;
++     expect((await json(ticketRoute,"GET",undefined,outsider)).status).toBe(403);
++     const ticket=await json(ticketRoute,"GET",undefined,keeper);
++     expect(ticket.status).toBe(200);
++     const downloadUrl=new URL(ticket.body.downloadUrl,origin);
++     const download=await fetch(downloadUrl);
++     expect(download.status).toBe(200);
++     expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
++     const expiration=Date.parse(ticket.body.expiresAt);
++     expect(Number.isFinite(expiration)).toBe(true);
++     const clock=jest.spyOn(Date,"now").mockReturnValue(expiration+1);
++     try {
++      expect((await fetch(downloadUrl)).status).toBe(400);
++     } finally {
++      clock.mockRestore();
++     }
++     const role=await owner.position.findUniqueOrThrow({where:{key:"comprehensive_director"},select:{id:true}});
++     const roleCoordinates={userId:seeded.keeper,positionId:role.id,projectId:null};
++     const previousRole=await owner.userPosition.findMany({where:roleCoordinates,select:{id:true}});
++     expect(previousRole).toHaveLength(1);
++     await owner.userPosition.delete({where:{id:previousRole[0].id}});
++     expect(await owner.userPosition.count({where:roleCoordinates})).toBe(0);
++     expect((await fetch(downloadUrl)).status).toBe(403);
++     expect((await json(ticketRoute,"GET",undefined,keeper)).status).toBe(403);
++     expect(await owner.auditLog.count({where:{businessId:file.id,action:"file.download"}})).toBe(1);
++     console.log("TASK398_OWNED_282_VOUCHER_READ_PROVED");
++    } finally {
++     await releaseOwned281VoucherCheck(owner,final.id,file.id);
++    }
++    await expect(runtime.$queryRaw`SELECT public.jg_read_registered_payment_voucher_binding_v1(${final.id},${file.id},${seeded.keeper})`).rejects.toMatchObject({meta:{code:"42501"}});
++   } else {
++    expect((await json(`/payment-executions/${final.id}/voucher`,"POST",{fileId:file.id},keeper)).status).toBe(201);
++    const ticket=await json(`/payment-executions/${final.id}/voucher-ticket`,"GET",undefined,keeper);expect(ticket.status).toBe(200);const download=await fetch(new URL(ticket.body.downloadUrl,origin));expect(download.status).toBe(200);expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
++   }

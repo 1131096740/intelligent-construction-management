@@ -1,0 +1,108 @@
+--- installer.cjs
++++ installer.cjs
+@@ -241 +241,7 @@
+-async function installer(receipt, probeOnly, consume, release=stableRelease) {
++const installOnly290 = Symbol('install-only290');
++const correction290 = Symbol('correction290');
++const standard290 = Symbol('standard290');
++async function installer(receipt, probeOnly, consume, release=stableRelease, purpose) {
++  if(purpose===standard290) need(!probeOnly && typeof consume==='function' && release===outsideRelease,'STANDARD_290_PREDECESSOR');
++  if(purpose===installOnly290 || purpose===correction290) need(!probeOnly && Boolean(consume)===(purpose===correction290) && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++
+@@ -577,0 +584,28 @@
++    let deployed290;
++    const deploy290 = async () => {
++      need(!deployed290,'INSTALL_ONLY_290_CONSUMED');
++      const successor=require('./successor.cjs');
++      enter('INSTALL_ONLY_290_FORWARD');
++      const expected=successor.expectedLedger(ledger);
++      fs.copyFileSync('/qualification/successor.sql',successor.stage(folder));
++      await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
++        {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
++        PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
++      if(purpose===correction290) enter('CORRECTION_290_LEDGER_READBACK');
++      const installed=await jsonSql(control.inspectSql());
++      need(equal(installed.ledger,expected)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++        .every(key=>installed[key]===roleIdentity[key]),'INSTALL_ONLY_290_LEDGER_IDENTITY');
++      if(purpose===correction290) enter('CORRECTION_290_B7_READBACK');
++      need(equal(await jsonSql(finalSql),final),'INSTALL_ONLY_290_PROTECTED_289_CONTINUITY');
++      if(purpose===correction290) enter('CORRECTION_290_OUTSIDE_READBACK');
++      assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++      if(purpose===correction290) enter('CORRECTION_290_ACL_READBACK');
++      const shape=await jsonSql(successor.catalogSql);
++      need(successor.exactCatalog(shape),'INSTALL_ONLY_290_CATALOG');
++      receipt.installOnly290={ledgerSha256:hash(JSON.stringify(installed.ledger)),count:installed.ledger.length,exactPrior289:true,shape};
++      deployed290=expected;
++      return receipt.installOnly290;
++    };
++    if(purpose===installOnly290||purpose===correction290) await deploy290();
++    if(purpose===standard290) await deploy290();
++    let correctionApplicationAdmitted=false;
+@@ -591 +625 @@
+-          {candidateTree:release.tree,sourceBaseSha:stableRelease.sha}),
++          {candidateTree:(purpose===correction290||purpose===standard290)?require('./scope.json').tree:release.tree,sourceBaseSha:stableRelease.sha}),
+@@ -595,0 +630,15 @@
++        ...(purpose===correction290?{verifyCorrectionReady: async()=>{
++          onlyWhileOwned();
++          need(!correctionApplicationAdmitted,'CORRECTION_290_APPLICATION_CONSUMED');
++          correctionApplicationAdmitted=true;
++          enter('CORRECTION_290_PRE_APP_CATALOG');
++          const successor=require('./successor.cjs');
++          need(deployed290?.length===290,'CORRECTION_290_PRE_APP_NOT_DEPLOYED');
++          const current=await jsonSql(control.inspectSql());
++          need(equal(current.ledger,deployed290)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++            .every(key=>current[key]===roleIdentity[key]),'CORRECTION_290_PRE_APP_IDENTITY');
++          const shape=await jsonSql(successor.catalogSql);
++          need(successor.exactCatalog(shape),'CORRECTION_290_PRE_APP_CATALOG');
++          receipt.preApp290={ledgerSha256:hash(JSON.stringify(current.ledger)),shape};
++          return receipt.preApp290;
++        }}:{}),
+@@ -618 +667 @@
+-      need(equal(afterConsumer.ledger,ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      need(equal(afterConsumer.ledger,(purpose===correction290||purpose===standard290)?deployed290:ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+@@ -619,0 +669,16 @@
++      if(purpose===correction290){
++        need(correctionApplicationAdmitted,'CORRECTION_290_APPLICATION_NOT_ADMITTED');
++        assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++        const successor=require('./successor.cjs'), shape=await jsonSql(successor.catalogSql);
++        need(shape.keyUnprovisioned===false&&successor.exactCatalog({...shape,keyUnprovisioned:true})&&
++         (await jsonSql("SELECT jsonb_build_object('one',count(*)=1) FROM public.jg_fund_balance_correction_witness_key")).one===true,
++         'CORRECTION_290_FINAL_CATALOG');
++        receipt.postBehavior290={catalogPreserved:true,syntheticSingleton:true};
++      }
++      if(purpose===standard290){
++        enter('STANDARD_290_POST_CONSUMER');
++        assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++        const successor=require('./successor.cjs');
++        need(successor.exactCatalog(await jsonSql(successor.catalogSql)),'STANDARD_290_FINAL_CATALOG');
++        receipt.postBehavior290={catalogPreserved:true,keyUnprovisioned:true};
++      }
+@@ -907,0 +973,28 @@
++
++module.exports.withOutside290InstallOnly = receipt => {
++  const {contract289, verifyMaterialized}=require('./checkout.cjs');
++  verifyMaterialized('/qualification/product',contract289);
++  const {scope,verifySql}=require('./successor.cjs');
++  verifySql('/qualification/successor.sql');
++  Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,undefined,outsideRelease,installOnly290);
++};
++
++module.exports.withExact290Correction = (receipt, consume) => {
++  need(receipt?.purpose==='NTF04_CONTROLLED_ROUND_EXACT_290' && typeof consume==='function','CORRECTION_290_PURPOSE');
++  const {contract289, verifyMaterialized}=require('./checkout.cjs');
++  verifyMaterialized('/qualification/product',contract289);
++  const {scope,verifySql}=require('./successor.cjs');
++  verifySql('/qualification/successor.sql');
++  Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,consume,outsideRelease,correction290);
++};
++module.exports.withExact290Standard = (receipt, consume) => {
++  need(receipt?.purpose==='TASK398_STANDARD_EXACT_290' && typeof consume==='function','STANDARD_290_PURPOSE');
++  const {contract289, verifyMaterialized}=require('./checkout.cjs');
++  verifyMaterialized('/qualification/product',contract289);
++  const {scope,verifySql}=require('./successor.cjs');
++  verifySql('/qualification/successor.sql');
++  Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,consume,outsideRelease,standard290);
++};

@@ -1,0 +1,1 @@
+Hypothesis: the legitimate original paid_mismatch marker is in a retained diagnostic origin even if absent from the previous composite field. Observe finite Prisma or PG marker, one failed target row, unchanged completed ledger and zero rollback residue. Stop after this single negative.

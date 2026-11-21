@@ -1,0 +1,1 @@
+Hypothesis: the original OID10 fresh fixture still produces identical original readback after two seed invocations and passes both original concurrent cases at exact 290. Observe installOnly290, seedChecks, scope and first diagnostic.

@@ -1,0 +1,29 @@
+{
+  "installerBase": "4b437af29d00007324e4dd4beec8e64f3c2f5748770a72bab858be01cb41be67",
+  "inputs": {
+    "database-dynamic-gate-manifest.json": "36ee597fa9634a0563bf381339da3d53b4c6a930d931fb32832561a0559154d6",
+    "fresh-hypothesis.txt": "967a599cf03cd9a29abe1735dbdcd76a32e50e073e50d7ee9d23bd58329eb8fc",
+    "fresh.cjs": "effbef68f331a11ea2aad1052b6232e413f4b90d485b12dc22f5772b3c2fd7bb",
+    "negative-installer.patch": "c99ac97b813f68ebff42669b57ece6131c23558dc73f1f460fc24569364ae149",
+    "other/payment-retained-ci.cjs": "3218a6bf65af6d98f55b806d59546fe3f38e83ec31dd3a446ede9ad704a4206f",
+    "other/retained-payment.cjs": "8eb29e8d5956e7be8e2e982af545b06219aabfb0188a9a33b357b00d5429bdd2",
+    "other/retained-payment.json": "65abe64ccd8d0d3f2a169d783317930514a5200855c0f8a92d5d540dfe1a6d80",
+    "other-hypothesis.txt": "7841e16bf3c1771f6ab604e9cf3c0e25d9a1f91ecff83543928d3ad5fe80b83b",
+    "paid/payment-retained-ci.cjs": "bae05254a65f1a246ea1f2d434b6fe87bb5ed970c4004a3d9cf713e9e1ecd511",
+    "paid/retained-payment.cjs": "5fa1e25e9963f1796becb54a630cc41f5d54bc0d55d2ed0ff9161b336a70b354",
+    "paid/retained-payment.json": "65abe64ccd8d0d3f2a169d783317930514a5200855c0f8a92d5d540dfe1a6d80",
+    "paid-hypothesis.txt": "9727543edfbf76680b1bcffeb634a2ac991a23097f8019fc708d4e6c221b8b81",
+    "payment-execution-concurrency.spec.ts": "dec95edf4b47e88398d295063843afbe3b9a061f8b60235a2e9a77eeda8d91b1",
+    "positive-installer.patch": "6c5b518a4389f673fd09f6d7b8d05a2bea5f8e0c38795d0507e79a66df3d40c9",
+    "retained-payment.cjs": "92a57c8f027e9d21b9919466bba267d5e051a41fb14f84a9c405099f811f431c",
+    "retained-payment.json": "65abe64ccd8d0d3f2a169d783317930514a5200855c0f8a92d5d540dfe1a6d80",
+    "seed-readback.sql": "298413ce4de87a37ef5d4fe15d700b4292cea3f2383af42ab01831d895444554",
+    "task12-owned-280.test-support.ts": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7",
+    "valid-hypothesis.txt": "07b4b29bbbf1eb0a847674cc9032f5c692b950754bca01b4f6870f7afb5f5d14",
+    "valid.cjs": "0599c98a256a15a6a4f063d336394a044b99ff3d63933287b2626024a5b77d24"
+  },
+  "installerResults": {
+    "positive": "727359d33e3d11b836ecf572c8990c1b0cdbc256203462776c36ef9aa3b5d5be",
+    "negative": "8e64c1e2873ac236f23f31064c1cd616797823abf4f58e1d3902b47a04905572"
+  }
+}

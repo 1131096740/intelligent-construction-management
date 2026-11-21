@@ -1,0 +1,38 @@
+--- installer.cjs
++++ installer.cjs
+@@ -656,0 +657,20 @@
++    let consumerLedger=ledger;
++    if (pfqMode) {
++      const successor=require('./successor.cjs');
++      enter('INSTALL_ONLY_290_FORWARD');
++      const expected=successor.expectedLedger(ledger);
++      consumerLedger=expected;
++      fs.copyFileSync('/qualification/successor.sql',successor.stage(folder));
++      await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
++        {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
++        PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
++      const installed=await jsonSql(control.inspectSql());
++      if(retained)retained.assertLedger(installed.ledger,expected,expected.length);
++      need((retained||equal(installed.ledger,expected))&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++        .every(key=>installed[key]===roleIdentity[key]),'INSTALL_ONLY_290_LEDGER_IDENTITY');
++      need(equal(await jsonSql(finalSql),final),'INSTALL_ONLY_290_PROTECTED_289_CONTINUITY');
++      assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++      const shape=await jsonSql(successor.catalogSql);
++      need(successor.exactCatalog(shape),'INSTALL_ONLY_290_CATALOG');
++      receipt.installOnly290={ledgerSha256:hash(JSON.stringify(expected)),count:expected.length,exactPrior289:true,shape};
++    }
+@@ -662 +682 @@
+-        need(marker.test(result.stdout)&&equal((await jsonSql(control.inspectSql())).ledger,ledger),'PFQ_APP_MIGRATION_'+operation.toUpperCase());
++        need(marker.test(result.stdout)&&equal((await jsonSql(control.inspectSql())).ledger,consumerLedger),'PFQ_APP_MIGRATION_'+operation.toUpperCase());
+@@ -707,2 +727,2 @@
+-      if(retained)retained.assertLedger(afterConsumer.ledger,ledger,ledger.length);
+-      need((retained||equal(afterConsumer.ledger,ledger)) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      if(retained)retained.assertLedger(afterConsumer.ledger,consumerLedger,consumerLedger.length);
++      need((retained||equal(afterConsumer.ledger,consumerLedger)) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+@@ -709,0 +730 @@
++      if (pfqMode) need(require('./successor.cjs').exactCatalog(await jsonSql(require('./successor.cjs').catalogSql)),'PFQ_290_CATALOG_CONTINUITY');
+@@ -1006,0 +1028 @@
++  require('./successor.cjs').verifySql('/qualification/successor.sql');
+@@ -1041 +1063 @@
+-    receipt.pfqPostconsume={count:289,exactB7:true};
++    receipt.pfqPostconsume={count:290,exactB7:true};

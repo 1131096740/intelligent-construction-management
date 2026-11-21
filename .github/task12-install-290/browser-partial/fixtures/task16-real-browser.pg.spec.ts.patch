@@ -1,0 +1,41 @@
+--- task16-real-browser.pg.spec.ts
++++ task16-real-browser.pg.spec.ts
+@@ -5 +5 @@
+-import { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, realpathSync, writeFileSync } from "node:fs";
++import { closeSync, constants, copyFileSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, mkdtempSync, openSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+@@ -19,0 +20 @@
++import { validTask398Database } from "./task398-owned-database.test-support";
+@@ -39 +40,4 @@
+-  if(process.env.NODE_ENV!=="test"||!/^[a-f0-9]{32}$/u.test(runId)||!/^[a-f0-9]{40}$/u.test(candidate)||!output.startsWith("/private/tmp/")||!urls.every(url=>url.hostname==="127.0.0.1"&&url.port===urls[0]!.port&&url.pathname==="/jiangkong_payment_execution_concurrency")||urls.map(url=>url.username).join(",")!=="jg_task01_owner,jg_task01_runtime,jg_task01_observer")throw new Error("TASK398_BROWSER_ISOLATION");
++  const owned=process.env.TASK398_OWNED_280==="1";
++  const expectedEvidenceRoot=owned?"/run/task398-browser/jg398-browser-evidence-":"/private/tmp/jg398-browser-evidence-";
++  const database=owned?`jg_task01_${runId}`:"jiangkong_payment_execution_concurrency";
++  if(process.env.NODE_ENV!=="test"||!/^[a-f0-9]{32}$/u.test(runId)||!/^[a-f0-9]{40}$/u.test(candidate)||!output.startsWith(expectedEvidenceRoot)||!urls.every(url=>url.hostname==="127.0.0.1"&&url.port===urls[0]!.port&&validTask398Database(url,runId))||urls.map(url=>url.username).join(",")!=="jg_task01_owner,jg_task01_runtime,jg_task01_observer")throw new Error("TASK398_BROWSER_ISOLATION");
+@@ -52 +56 @@
+-   if(!evidenceDir.startsWith("/private/tmp/jg398-browser-evidence-")||realpathSync(evidenceDir)!==evidenceDir||!directory.isDirectory()||directory.isSymbolicLink()||directory.uid!==process.getuid?.()||(directory.mode&0o777)!==0o700||path.basename(output)!=="receipt.json")throw new Error("TASK398_BROWSER_EVIDENCE_DIR");
++   if(!evidenceDir.startsWith(expectedEvidenceRoot)||realpathSync(evidenceDir)!==evidenceDir||!directory.isDirectory()||directory.isSymbolicLink()||directory.uid!==process.getuid?.()||(directory.mode&0o777)!==0o700||path.basename(output)!=="receipt.json")throw new Error("TASK398_BROWSER_EVIDENCE_DIR");
+@@ -63 +67 @@
+-   const checkIdentity=async(client:PrismaClient,role:string)=>{const rows=await client.$queryRaw<ClientIdentity[]>`SELECT current_database() AS database,(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database()) AS "databaseOid",current_user::text AS role,session_user::text AS "loginRole",current_setting('jg.task398_run_id',true) AS "runId",pg_backend_pid() AS pid,(SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=current_user) AS superuser`;expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({database:"jiangkong_payment_execution_concurrency",role,loginRole:role,runId,superuser:role==="jg_task01_owner"});return rows[0]!;};
++   const checkIdentity=async(client:PrismaClient,role:string)=>{const rows=await client.$queryRaw<ClientIdentity[]>`SELECT current_database() AS database,(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database()) AS "databaseOid",current_user::text AS role,session_user::text AS "loginRole",current_setting('jg.task398_run_id',true) AS "runId",pg_backend_pid() AS pid,(SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=current_user) AS superuser`;expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({database,role,loginRole:role,runId,superuser:role==="jg_task01_owner"});return rows[0]!;};
+@@ -118,2 +122,19 @@
+-   vite=spawn(process.execPath,[path.join(web,"node_modules/vite/bin/vite.js"),"--host","127.0.0.1","--port",String(port),"--strictPort"],{cwd:web,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,VITE_API_PROXY_TARGET:origin},stdio:"ignore"});
+-   const end=Date.now()+30000;let ready=false;while(Date.now()<=end&&!ready){if(vite.exitCode!==null||vite.signalCode!==null)throw new Error("TASK398_BROWSER_VITE_START");try{const response=await fetch(`http://127.0.0.1:${port}/`);ready=response.ok;}catch{/* wait for owned Vite listener */}if(!ready)await new Promise(resolve=>setTimeout(resolve,100));}if(!ready)throw new Error("TASK398_BROWSER_VITE_START");
++   let configArgs: string[]=[];
++   if(owned){
++    const ownedTmp=process.env.TMPDIR??"", cache=process.env.TASK398_OWNED_VITE_CACHE;
++    if(!/^\/tmp\/jg394-[A-Za-z0-9]+\/cash-storage-[A-Za-z0-9]+$/u.test(ownedTmp)||cache!==path.join(ownedTmp,"vite-cache"))throw new Error("TASK398_BROWSER_VITE_TEMP_SCOPE");
++    const configDir=mkdtempSync(path.join(ownedTmp,"vite-config-"));
++    const config=path.join(configDir,"vite.config.mts");
++    copyFileSync(path.join(web,"vite.config.ts"),config,constants.COPYFILE_EXCL);
++    symlinkSync(path.join(web,"node_modules"),path.join(configDir,"node_modules"),"dir");
++    configArgs=["--config",config];
++   }
++   let viteErrors="";
++   vite=spawn(process.execPath,[path.join(web,"node_modules/vite/bin/vite.js"),"--host","127.0.0.1","--port",String(port),"--strictPort",...configArgs],{cwd:web,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,VITE_API_PROXY_TARGET:origin,...(owned?{TASK398_OWNED_VITE_CACHE:process.env.TASK398_OWNED_VITE_CACHE}:{})},stdio:["ignore","ignore","pipe"]});
++   vite.stderr?.on("data",(bytes:Buffer)=>{if(viteErrors.length<32768)viteErrors=(viteErrors+bytes.toString("utf8",0,Math.min(bytes.length,32768))).slice(0,32768);});
++   const failVite=()=>{
++    const codes=[[/Unknown option/u,"UNKNOWN_OPTION"],[/EROFS|read-only file system/u,"READ_ONLY"],[/EACCES|Permission denied/u,"PERMISSION"],[/Cannot find (?:module|package)|MODULE_NOT_FOUND/u,"MODULE_NOT_FOUND"],[/failed to load config/u,"CONFIG_LOAD"]] as const;
++    console.error("TASK398_BROWSER_VITE_OBSERVATION",JSON.stringify({code:codes.find(([pattern])=>pattern.test(viteErrors))?.[1]??"OTHER",exit:vite?.exitCode??null,signal:vite?.signalCode??null}));
++    return new Error("TASK398_BROWSER_VITE_START");
++   };
++   const end=Date.now()+30000;let ready=false;while(Date.now()<=end&&!ready){if(vite.exitCode!==null||vite.signalCode!==null)throw failVite();try{const response=await fetch(`http://127.0.0.1:${port}/`);ready=response.ok;}catch{/* wait for owned Vite listener */}if(!ready)await new Promise(resolve=>setTimeout(resolve,100));}if(!ready)throw failVite();

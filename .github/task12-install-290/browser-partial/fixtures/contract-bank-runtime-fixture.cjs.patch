@@ -1,0 +1,32 @@
+--- contract-bank-runtime-fixture.cjs
++++ contract-bank-runtime-fixture.cjs
+@@ -33,0 +34,7 @@
++function renderTask398Owned280FileGuardGrant(database) {
++  if (typeof database !== "string" || !/^jg_task01_[a-f0-9]{32}$/u.test(database)) {
++    throw new Error("Task398 file guard requires the owned 280 fixture");
++  }
++  return renderFixtureFileGuardGrant("jg_task01_runtime", database, "HandwrittenSignatureVersion", "fileId", true);
++}
++
+@@ -38 +45 @@
+-function renderFixtureFileGuardGrant(role, database, table, column) {
++function renderFixtureFileGuardGrant(role, database, table, column, owned280 = false) {
+@@ -50 +57 @@
+-    OR current_user <> 'jiangkong' OR session_user <> current_user
++    OR current_user <> '${owned280 ? "jg_task01_owner" : "jiangkong"}' OR session_user <> current_user
+@@ -91 +98,7 @@
+-    EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement(), public.jg_project_owner_settlement_voucher_bound(pg_catalog.text) TO %I',fixture_role);
++    ${owned280 ? `IF has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')
++      OR EXISTS (SELECT FROM pg_catalog.pg_proc p
++        CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
++        WHERE p.oid=owner_settlement_lookup AND (a.grantee<>owner_oid OR a.grantor<>owner_oid OR a.is_grantable))
++      THEN RAISE EXCEPTION 'Owned 280 settlement lookup must remain owner-only'; END IF;
++    EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement() TO %I',fixture_role);` :
++    `EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement(), public.jg_project_owner_settlement_voucher_bound(pg_catalog.text) TO %I',fixture_role);`}
+@@ -93 +106,3 @@
+-      OR NOT pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')
++      OR ${owned280
++        ? "pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')"
++        : "NOT pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')"}
+@@ -154,0 +170 @@
++  renderTask398Owned280FileGuardGrant,

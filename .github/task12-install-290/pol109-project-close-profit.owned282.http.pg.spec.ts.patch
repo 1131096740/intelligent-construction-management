@@ -1,0 +1,11 @@
+--- project-close-profit.owned282.http.pg.spec.ts
++++ project-close-profit.owned282.http.pg.spec.ts
+@@ -107,2 +107,6 @@
+-          (SELECT count(*) = 289 FROM public._prisma_migrations
+-            WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL),false) AS accepted
++          (SELECT count(*) = 290 FROM public._prisma_migrations
++            WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AND
++          EXISTS (SELECT FROM public._prisma_migrations
++            WHERE migration_name = '20261119003500_fund_balance_correction_controlled_round'
++              AND checksum = '8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60'
++              AND finished_at IS NOT NULL AND rolled_back_at IS NULL),false) AS accepted

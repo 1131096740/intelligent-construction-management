@@ -1,0 +1,44 @@
+{
+  "workspace": {
+    "services/api/prisma/run-task398-shared-standard-local.cjs": {
+      "base": "3d5f55c074ad69c96d13adb3a36b2184f7a7502d57a667c52dca31965e3c31ff",
+      "result": "70dee2be60b6226636ca47e19ff57db6f16daf1b18ce30ad3ba815740a99c062",
+      "file": "run-task398-shared-standard-local.cjs"
+    },
+    "services/api/src/database/task16-browser-completion-evidence.ts": {
+      "base": "bdd432147d440e4375dce457040a355eeae82747ef5823440f8568e98dc90834",
+      "result": "ee705b81740ea6698a2299418065ac63faf053b49d814910ab7c61c322a1af7a",
+      "file": "task16-browser-completion-evidence.ts"
+    },
+    "services/api/src/database/task16-real-browser-completion.pg.spec.ts": {
+      "base": "6ce5c4b814e62add34925621598cdb11a8707a84902d79433ffc4f231efda313",
+      "result": "b47eeea2babdae165a50b068701e8c154e87d10507e77fe6434b7701b85d2544",
+      "file": "task16-real-browser-completion.pg.spec.ts"
+    },
+    "services/api/src/database/task16-real-browser.pg.spec.ts": {
+      "base": "f1d73217d4a308e3bd8bb436f1b7f62ff3b00c1a22228c1e19c16e59ae551477",
+      "result": "bf4da64241aca7ccc198ed01df7af575b68586e54bdcd3ec872cbd0dda5fe9b9",
+      "file": "task16-real-browser.pg.spec.ts"
+    },
+    "services/api/src/database/task398-voucher281.test-support.ts": {
+      "base": null,
+      "result": "27262f4a6c6166b797b7da68faa7f9d401f0d76e0c2f3053f39de8adb996c355",
+      "file": "task398-voucher281.test-support.ts"
+    }
+  },
+  "harness": {
+    "installer.cjs": {
+      "base": "804f5facf011c73fb321a4d84fae9629f7aad778dcb66ee2d939d356d0f80eb8",
+      "result": "6ba8aa5e9f82de85c978c65f729cb2cde09451aa11bd43b63c7f5969b18e4627",
+      "file": "installer.cjs"
+    },
+    "install-only.cjs": {
+      "base": "d4873f3bceac7ea893509990a287742136d08878b1bac2301390946d99db5beb",
+      "result": "c35a87d197ee429bbf681919df81d000b0a0b865dbfdd5632d558a64c5d53a05",
+      "file": "install-only.cjs"
+    }
+  },
+  "count": 3691,
+  "priorInventory": "fef8797390085c779ddb0f55cc431f1d85e0ddb5fa8572fa7b2180c3baa49afb",
+  "closure": "6fce969b9340a0385ff45bb7ff9dea401465ff52988edc348bbce4333674bb01"
+}

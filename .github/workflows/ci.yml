@@ -378,15 +378,50 @@ jobs:
           TASK12_289_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 428 }}
         run: |
           if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == contract_settlement_v2 && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              exec bash .github/task12-install-290/run.sh settlement
+            fi
             exec bash .github/task12-install-289/run.sh settlement
           fi
           if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == contract_template_scenario && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              exec bash .github/task12-install-290/run.sh template
+            fi
             exec bash .github/task12-install-289/run.sh template
           fi
           if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == settlement_draft_lifecycle && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              exec bash .github/task12-install-290/run.sh draft
+            fi
             exec bash .github/task12-install-289/run.sh draft
           fi
           if [[ "$TASK12_289_PR" == true && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              case "$DYNAMIC_GROUP" in
+                project_expense_execution) exec bash .github/task12-install-290/run.sh expense-execution ;;
+                project_expense_finance) exec bash .github/task12-install-290/run.sh expense-finance ;;
+                project_expense_receipt) exec bash .github/task12-install-290/run.sh expense-receipt ;;
+                payment_execution) exec bash .github/task12-install-290/run.sh payment-execution ;;
+                fund_execution_v7) exec bash .github/task12-install-290/run.sh v7 ;;
+                invoice_ledger_pol260) exec bash .github/task12-install-290/run.sh invoice ;;
+                necessary_expense_reserve_pol279) exec bash .github/task12-install-290/run.sh pol279 ;;
+                project_fund_dispute_pol280) exec bash .github/task12-install-290/run.sh pol280 ;;
+                project_financing_quota) exec bash .github/task12-install-290/run.sh pfq ;;
+                operating_projection_pol108) exec bash .github/task12-install-290/run.sh pol108-core ;;
+                operating_projection_pol108_facts) exec bash .github/task12-install-290/run.sh pol108-facts ;;
+                operating_projection_pol108_impacts) exec bash .github/task12-install-290/run.sh pol108-impacts ;;
+                project_close_profit_pol109) exec bash .github/task12-install-290/run.sh pol109 ;;
+                clearing_reconciliation_pol275) exec bash .github/task12-install-290/run.sh pol275 ;;
+                task398_shared_standard) exec bash .github/task12-install-290/standard/run.sh ;;
+                task407_public_cash_handover) exec bash .github/task12-install-290/cash-principal/run.sh cash-handover ;;
+                task409_principal_return) exec bash .github/task12-install-290/cash-principal/run.sh principal-return ;;
+                task410_company_proxy_repayment) exec bash .github/task12-install-290/company-proxy/run.sh ;;
+                task398_browser) exec bash .github/task12-install-290/browser-partial/run.sh ;;
+                task398_browser_completion) exec bash .github/task12-install-290/browser-completion/ci.sh ;;
+                general_procurement) exec bash .github/task12-install-290/procurement/run-all.sh ;;
+                employee_onboarding) exec bash .github/task12-install-290/onboarding/run.sh ;;
+              esac
+            fi
             case "$DYNAMIC_GROUP" in
               fund_execution_v7) exec bash .github/task12-install-289/run.sh v7 ;;
               invoice_ledger_pol260) exec bash .github/task12-install-289/run.sh invoice ;;
@@ -467,7 +502,11 @@ jobs:
         with:
           node-version: '20.20.2'
       - name: Verify sealed inputs and cold install exact 289 ledger
-        run: bash .github/task12-install-289/run.sh
+        run: |
+          if [[ -f .github/task12-install-290/profile.json ]]; then
+            exec bash .github/task12-install-290/run.sh predecessor
+          fi
+          exec bash .github/task12-install-289/run.sh
 
   task12-install-290:
     name: Task12 290 Linux cold install

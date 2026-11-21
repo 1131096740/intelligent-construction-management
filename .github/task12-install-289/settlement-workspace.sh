@@ -5,7 +5,7 @@ root=$1
 ref=$2
 workspace=$3
 mode=$4
-case "$mode" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts) ;; *) exit 2 ;; esac
+case "$mode" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|settlement290) ;; *) exit 2 ;; esac
 git -C "$root" archive "$ref" \
  package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/pnpm-workspace.mjs packages/shared-domain \
  services/api/package.json services/api/tsconfig.json services/api/jest.config.cjs services/api/tsconfig.build.json services/api/nest-cli.json \
@@ -23,7 +23,10 @@ for file in task12-owned-280.test-support.ts contract-bill-batch-replace-concurr
 done
 inventory="$input/workspace-inputs.json"
 seal=18bd7ffdd2ac95daa5ffac1ef69e7e6deadd372f9cc7298d3f149a84340c91f0
-if [[ $mode == template ]]; then
+if [[ $mode == settlement290 ]]; then
+  inventory=-
+  seal=e36f3b846e6180a318244f19978494694e852b1285b2b3772a22d738e83d96f9
+elif [[ $mode == template ]]; then
   file=contract-template-scenario-concurrency.spec.ts
   install -m 644 "$input/fixtures/$file" "$workspace/services/api/src/database/$file"
   inventory="$input/template-workspace-inputs.json"
@@ -51,12 +54,15 @@ fi
 python3 - "$inventory" "$workspace" "$seal" <<'PY'
 import hashlib,json,pathlib,sys
 inventory, workspace = map(pathlib.Path,sys.argv[1:3])
-if hashlib.sha256(inventory.read_bytes()).hexdigest()!=sys.argv[3]:
+if str(inventory)!="-" and hashlib.sha256(inventory.read_bytes()).hexdigest()!=sys.argv[3]:
     raise SystemExit('SETTLEMENT_289_WORKSPACE_MANIFEST')
 paths=sorted(workspace.rglob('*'))
 if any(path.is_symlink() for path in paths):
     raise SystemExit('SETTLEMENT_289_WORKSPACE_LINK')
 actual=[dict(path=p.relative_to(workspace).as_posix(),sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for p in paths if p.is_file()]
-if actual != json.loads(inventory.read_bytes()):
+if str(inventory)=="-":
+    if hashlib.sha256((json.dumps(actual,indent=2)+"\n").encode()).hexdigest()!=sys.argv[3]:
+        raise SystemExit("SETTLEMENT_290_WORKSPACE_BYTES")
+elif actual != json.loads(inventory.read_bytes()):
     raise SystemExit('SETTLEMENT_289_WORKSPACE_BYTES')
 PY

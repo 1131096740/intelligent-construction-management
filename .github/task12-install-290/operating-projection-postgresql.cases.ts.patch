@@ -1,0 +1,10 @@
+--- operating-projection-postgresql.cases.ts
++++ operating-projection-postgresql.cases.ts
+@@ -830 +830 @@
+-                AND (SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 289
++                AND (SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 290
+@@ -837,0 +838,4 @@
++                    AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
++                AND EXISTS (SELECT FROM "_prisma_migrations"
++                  WHERE migration_name = '20261119003500_fund_balance_correction_controlled_round'
++                    AND checksum = '8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60'

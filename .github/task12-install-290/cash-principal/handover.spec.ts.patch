@@ -1,0 +1,208 @@
+--- handover.spec.ts
++++ handover.spec.ts
+@@ -2 +2 @@
+-import { randomUUID, randomBytes } from "node:crypto";
++import { randomUUID } from "node:crypto";
+@@ -6,3 +6,2 @@
+-import { Prisma, PrismaClient } from "@prisma/client";
+-import type { CallHandler, ExecutionContext, INestApplication, NestInterceptor } from "@nestjs/common";
+-import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
++import { PrismaClient } from "@prisma/client";
++import type { INestApplication } from "@nestjs/common";
+@@ -11,4 +9,0 @@
+-import { tap } from "rxjs";
+-import { JwtTokenService } from "../auth/jwt-token.service";
+-import { createFundAccountSyntheticDb } from "../fund-account/testing/fund-account.synthetic-db";
+-import { FundAccountService } from "../fund-account/fund-account.service";
+@@ -20,39 +14,0 @@
+-const correctionStates = new Set(["23514","42883","0A000","22P02"]);
+-function projectCorrectionError(error: unknown) {
+-  const detail = projectTask16RegistrationError(error);
+-  const field = error instanceof Prisma.PrismaClientKnownRequestError && error.meta?.code;
+-  return { ...detail, ...(typeof field === "string" && correctionStates.has(field) ? { serverSqlState: field } : {}) };
+-}
+-class CorrectionObserver implements NestInterceptor {
+-  constructor(private readonly key: () => string | undefined,
+-    private readonly capture: (detail: ReturnType<typeof projectCorrectionError>) => void) {}
+-  intercept(context: ExecutionContext, next: CallHandler) {
+-    const key = this.key();
+-    const req = context.switchToHttp().getRequest<{ method?: string; route?: { path?: string }; body?: { idempotencyKey?: string } }>();
+-    if (key === undefined || req.method !== "POST" || req.route?.path !== "/fund-accounts/corrections" ||
+-      req.body?.idempotencyKey !== key) return next.handle();
+-    return next.handle().pipe(tap({error: (error: unknown) => {
+-      try { this.capture(projectCorrectionError(error)); } catch { /* Original error continues unchanged. */ }
+-    }}));
+-  }
+-}
+-type CorrectionPhase = "CATALOG" | "WITNESS_CLOCK" | "WITNESS_SET" | "AUDIT" | "REGISTRATION" | "SOURCE" | "RECIPIENTS" | "RECIPIENT_LOCK" | "RECIPIENT_ROUND" | "OUTBOX";
+-function correctionObservation(model: string | undefined, operation: string, args: unknown): CorrectionPhase | undefined {
+-  if (model === "AuditLog" && operation === "create") return "AUDIT";
+-  if (model === "AuditLog" && operation === "createMany") return "OUTBOX";
+-  if (model === "FundAccountBalanceRegistration" && operation === "create") return "REGISTRATION";
+-  if (model === "FundAccountSourceBatch" && operation === "create") return "SOURCE";
+-  if (model === "Position" && operation === "findMany") return "RECIPIENTS";
+-  if (model === "ApprovalInstance" && operation === "findUnique") return "RECIPIENT_ROUND";
+-  if (model !== undefined || (operation !== "$queryRaw" && operation !== "$executeRaw")) return undefined;
+-  const raw = args as { strings?: string[]; sql?: string; text?: string } | readonly [TemplateStringsArray] | undefined;
+-  const names = Array.isArray(raw) && Array.isArray(raw[0]) ? raw[0].join("?")
+-    : (raw as { strings?: string[] } | undefined)?.strings?.join("?") ?? "";
+-  if (names.includes("WITH new_key AS")) return "CATALOG";
+-  if (names.includes("AS expires") && names.includes("pg_current_xact_id()")) return "WITNESS_CLOCK";
+-  if (names.includes("SELECT set_config('jg.fund_balance_correction_witness'")) return "WITNESS_SET";
+-  if (names.includes("FOR SHARE") && /"User"|"UserPosition"|"ApprovalDelegation"/u.test(names)) return "RECIPIENT_LOCK";
+-  return undefined;
+-}
+-
+-const controlled = process.env.RUN_TASK419_CONTROLLED_ROUND === "1";
+@@ -70 +25,0 @@
+-  let witnessKey: Buffer | undefined;
+@@ -79,16 +33,0 @@
+-    if (controlled) {
+-      const { fundBalanceCorrectionRoundMode } = await import("../fund-account/fund-balance-correction-round-mode");
+-      const mode = await runtime.$transaction(tx => fundBalanceCorrectionRoundMode(tx));
+-      expect(mode).toBe("controlled");
+-      witnessKey = randomBytes(32);
+-      await owner.$executeRaw`INSERT INTO public.jg_fund_balance_correction_witness_key ("key") VALUES (${witnessKey})`;
+-      process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY = witnessKey.toString("hex");
+-      for (const [statement, code] of [
+-        ["SELECT singleton FROM public.jg_fund_balance_correction_witness_key", "42501"],
+-        ["INSERT INTO public.\"ApprovalInstance\" (id) VALUES ('isolated-unauthorized')", "42501"],
+-        ["DELETE FROM public.\"AuditLog\" WHERE false", "42501"],
+-      ]) {
+-        await expect(runtime.$executeRawUnsafe(statement)).rejects.toMatchObject({code:"P2010",meta:{code}});
+-      }
+-      console.log("NTF04_CONTROLLED_MODE_AND_DENIALS");
+-    }
+@@ -100,2 +39 @@
+-      [ids.unrelated, "19500000003", "comprehensive_director"], [ids.finance, "19500000004", "finance_staff"],
+-      ...(controlled ? [[randomUUID(), "19500000005", "finance_director"]] : [])
++      [ids.unrelated, "19500000003", "comprehensive_director"], [ids.finance, "19500000004", "finance_staff"]
+@@ -115,21 +52,0 @@
+-    let correctionKey: string | undefined;
+-    let lastPhase: CorrectionPhase | undefined;
+-    let failedPhase: CorrectionPhase | undefined;
+-    let correctionError: ReturnType<typeof projectCorrectionError> | undefined;
+-    let injectRollback = false;
+-    let rollbackRegistrationId: string | undefined;
+-    let rollbackSawOutbox = false;
+-    const observedRuntime = controlled ? runtime.$extends({query: {$allOperations: async ({model,operation,args,query}) => {
+-      const phase = correctionKey === undefined ? undefined : correctionObservation(model, operation, args);
+-      if (phase) lastPhase = phase;
+-      try {
+-        const result = await query(args);
+-        if (injectRollback && phase === "REGISTRATION") rollbackRegistrationId = (result as { id: string }).id;
+-        if (injectRollback && phase === "OUTBOX" && (result as { count: number }).count === 1) {
+-          rollbackSawOutbox = true;
+-          throw new Error("NTF04_TEST_ROLLBACK_AFTER_OUTBOX");
+-        }
+-        return result;
+-      }
+-      catch(error) { if (phase && !failedPhase) failedPhase = phase; throw error; }
+-    }}}) : runtime;
+@@ -137,2 +54,2 @@
+-      .overrideProvider(PrismaService).useValue(observedRuntime);
+-    if (notices || controlled) builder.overrideProvider(ApprovalSmsService).useValue({available: () => smsAvailable, sendDutyIntent: sender});
++      .overrideProvider(PrismaService).useValue(runtime);
++    if (notices) builder.overrideProvider(ApprovalSmsService).useValue({available: () => smsAvailable, sendDutyIntent: sender});
+@@ -141 +57,0 @@
+-    if (controlled) app.useGlobalInterceptors(new CorrectionObserver(() => correctionKey, detail => { correctionError = detail; }));
+@@ -172,64 +87,0 @@
+-    if (controlled) {
+-      const correction = { scopeKey: companyScope, previousRegistrationId: company.body.id,
+-        idempotencyKey: randomUUID(), asOfDate: "2026-11-06", balanceYuan: "99.1234",
+-        reason: "合成更正", evidenceReference: "合成依据", reconciliationNote: "合成核对",
+-        sources:[{amountYuan:"99.1234",sourceStatus:"pending",projectStatus:"pending",previousSourceBatchId:company.body.sources[0].id}] };
+-      const endpoint="/fund-accounts/corrections";
+-      const rollbackKey = randomUUID();
+-      injectRollback = true;
+-      correctionKey = rollbackKey;
+-      const aborted = await request(endpoint,finance,{...correction,idempotencyKey:rollbackKey});
+-      injectRollback = false;
+-      correctionKey = undefined;
+-      expect(aborted.status).toBe(500);
+-      expect(rollbackSawOutbox).toBe(true);
+-      expect(rollbackRegistrationId).toEqual(expect.any(String));
+-      const [rolledBack] = await owner.$queryRaw<Array<{ clean: boolean }>>`
+-        SELECT NOT EXISTS (SELECT FROM public."FundAccountBalanceRegistration" WHERE id=${rollbackRegistrationId})
+-          AND NOT EXISTS (SELECT FROM public."ApprovalInstance" WHERE "businessId"=${rollbackRegistrationId})
+-          AND NOT EXISTS (SELECT FROM public."FundAccountSourceBatch" WHERE "registrationId"=${rollbackRegistrationId})
+-          AND NOT EXISTS (SELECT FROM public."AuditLog" WHERE "businessId"=${rollbackRegistrationId}) AS clean`;
+-      expect(rolledBack?.clean).toBe(true);
+-      lastPhase = undefined;
+-      failedPhase = undefined;
+-      correctionError = undefined;
+-      correctionKey = correction.idempotencyKey;
+-      const success=await request(endpoint,finance,correction);
+-      correctionKey = undefined;
+-      console.log("NTF04_CORRECTION_OBSERVATION", JSON.stringify({ status:success.status,lastPhase,failedPhase,...correctionError }));
+-      expect(success.status).toBe(201);
+-      expect(success.body.status).toBe("pending_review");
+-      const id=success.body.id as string;
+-      const replay=await request(endpoint,finance,correction);
+-      expect(replay.status).toBe(201);
+-      expect(replay.body.id).toBe(id);
+-      const observed=await observer.$transaction(async tx=>{
+-        await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+-        const registration=await tx.fundAccountBalanceRegistration.findUniqueOrThrow({where:{id},select:{approvalInstanceId:true,status:true}});
+-        const before=await tx.fundAccountBalanceRegistration.findUniqueOrThrow({where:{id:company.body.id},select:{status:true,balanceYuan:true}});
+-        const round=await tx.approvalInstance.findUniqueOrThrow({where:{id:registration.approvalInstanceId!},select:{status:true}});
+-        const intents=await tx.auditLog.findMany({where:{businessId:id,businessType:"fund_balance_review_duty_notification"},select:{action:true,metadata:true}});
+-        return {registration,oldStatus:before.status,oldBalance:before.balanceYuan?.toFixed(4),round,intents,
+-          requests:await tx.auditLog.count({where:{businessId:id,action:"fund_account.correction.request"}})};
+-      });
+-      expect(observed).toMatchObject({registration:{status:"pending_review"},oldStatus:"confirmed",oldBalance:"100.0000",
+-        round:{status:"approval_pending"},intents:[{action:"queued",metadata:{recipientId:accounts[4][0]}}],requests:1});
+-      expect(observed.intents).toHaveLength(1);
+-      const [footprint] = await owner.$queryRaw<Array<{ sources: bigint; requests: bigint; notices: bigint; sameTransaction: boolean }>>`
+-        SELECT (SELECT count(*) FROM public."FundAccountSourceBatch" s WHERE s."registrationId"=r.id) AS "sources",
+-          (SELECT count(*) FROM public."AuditLog" q WHERE q."businessId"=r.id AND q.action='fund_account.correction.request') AS "requests",
+-          (SELECT count(*) FROM public."AuditLog" q WHERE q."businessId"=r.id AND q."businessType"='fund_balance_review_duty_notification') AS "notices",
+-          r.xmin=a.xmin
+-          AND EXISTS (SELECT FROM public."FundAccountSourceBatch" s WHERE s."registrationId"=r.id AND s.xmin=r.xmin)
+-          AND EXISTS (SELECT FROM public."AuditLog" q WHERE q."businessId"=r.id AND q.action='fund_account.correction.request' AND q.xmin=r.xmin)
+-          AND EXISTS (SELECT FROM public."AuditLog" q WHERE q."businessId"=r.id AND q."businessType"='fund_balance_review_duty_notification' AND q.action='queued' AND q.xmin=r.xmin)
+-          AS "sameTransaction"
+-        FROM public."FundAccountBalanceRegistration" r
+-        JOIN public."ApprovalInstance" a ON a.id=r."approvalInstanceId"
+-        WHERE r.id=${id}`;
+-      expect(footprint).toEqual({sources:1n,requests:1n,notices:1n,sameTransaction:true});
+-      expect(sender).not.toHaveBeenCalled();
+-      console.log("NTF04_SAME_TRANSACTION_AND_ROLLBACK_PROVED");
+-      console.log("NTF04_CORRECTION_201_REPLAY_201_QUEUED_ONE_SENT_ZERO");
+-      return;
+-    }
+@@ -406 +257,0 @@
+-    if (witnessKey) { witnessKey.fill(0); delete process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY; }
+@@ -411,32 +261,0 @@
+-
+-const diagnosticSelfTest = process.env.TASK419_DIAGNOSTIC_SELF_TEST === "1" ? it : it.skip;
+-diagnosticSelfTest("preserves a real Nest 500 response while projecting only exact private correction diagnostics", async () => {
+-  const token = randomUUID();
+-  const captured: Array<ReturnType<typeof projectCorrectionError>> = [];
+-  const access = new JwtTokenService().signAccessToken({id:"finance",name:"合成身份",phone:null,sessionVersion:0});
+-  const module = await Test.createTestingModule({ imports:[Task16SharedPaymentApplicationModule] })
+-    .overrideProvider(PrismaService).useValue(createFundAccountSyntheticDb().prisma)
+-    .overrideProvider(ApprovalSmsService).useValue({available:()=>false})
+-    .overrideProvider(FundAccountService).useValue({requestCorrection:()=> {
+-      throw new Prisma.PrismaClientKnownRequestError("private-witness-never-return", {
+-        clientVersion: "fixture", code: "P2010", meta: { code:"23514", credential:"private-payload-never-return" },
+-      });
+-    }})
+-    .compile();
+-  const app = module.createNestApplication({logger:false});
+-  app.useGlobalInterceptors(new CorrectionObserver(()=>token, detail=>captured.push(detail)));
+-  try {
+-    await app.listen(0,"127.0.0.1");
+-    for (const idempotencyKey of [randomUUID(),token]) {
+-      const response=await fetch((await app.getUrl())+"/fund-accounts/corrections",{
+-        method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${access}`},body:JSON.stringify({idempotencyKey}),
+-      });
+-      expect(response.status).toBe(500);
+-      expect(await response.json()).toEqual({statusCode:500,message:"Internal server error"});
+-    }
+-    expect(captured).toEqual([{serverErrorKind:"KNOWN_REQUEST_ERROR",serverPrismaCode:"P2010",serverSqlState:"23514"}]);
+-    expect(correctionObservation(undefined,"$queryRaw",{strings:['WITH new_key AS ( SELECT 1 )']})).toBe("CATALOG");
+-    expect(correctionObservation(undefined,"$queryRaw",{strings:['SELECT up."userId" FROM "UserPosition" up FOR SHARE']})).toBe("RECIPIENT_LOCK");
+-    expect(correctionObservation(undefined,"$queryRaw",{strings:['SELECT private_payload']})).toBeUndefined();
+-  } finally { await app.close(); }
+-});

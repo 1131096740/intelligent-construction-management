@@ -1,0 +1,21 @@
+{
+  "entry.cjs": {
+    "base": "0fec328a09781cd4a1a11ffffe675b8f80f4e9cf95de7727d027860f4866b34f",
+    "patch": "7b1dc64df49ddcf4347b7ec7d09edaa823924044e17e0b2bd8188602f10d40ed",
+    "result": "e7df3180fbf4c78e7000185f32b2eb91447ad2aaff0d1bc054eef7d175e58da7"
+  },
+  "runner.cjs": {
+    "base": "02926806d5a2c92276ccb37a210a279fb61c7c491ddf5f2e77c8d671e92986ae",
+    "patch": "72dd81f5f93e1f23b5026b118de3b6bcca9e5687d9ea76d5fdc8dd6bde6dc77e",
+    "result": "becea15780b5f380ee053dcd809309f9f53eb52efb437bdf8b7897d8f30bba73"
+  },
+  "handover.spec.ts": {
+    "base": "e1e257e269942c3659a8a407efe77467f73697265e5fab94c12c92456787f6fd",
+    "patch": "f19469f498aa4b6911ba32f6e42cf8e2d05847b9acf7aa6b6ffff316dc6a01fd",
+    "result": "69ae9c107a37cb946cc1d32ca93490109abcca7140a508d1890b8b41c520e28b"
+  },
+  "appInputs": {
+    "base": "4e9f2e44b9e0eb3bd0e7a1c2cb4fb37338f83a21a04034d0d921ddefa32c89ca",
+    "result": "f7860f77f06bb3f2ba7953e3234133d8eee8342682ffd71b4973255466ad5400"
+  }
+}

@@ -1,0 +1,16 @@
+--- entry.cjs
++++ entry.cjs
+@@ -7 +7,3 @@
+-const receipt={schemaVersion:1,purpose:'TASK398_STANDARD_EXACT_290',business:'NOT_ENTERED',stages:[]};
++const lane=process.argv[2];
++assert.ok(process.argv.length===3&&['cash-handover','principal-return'].includes(lane));
++const receipt={schemaVersion:1,lane,purpose:'TASK398_STANDARD_EXACT_290',business:'NOT_ENTERED',stages:[]};
+@@ -9 +11 @@
+- await runTask398Owned282Voucher(context,'standard-290',receipt);
++ await runTask398Owned282Voucher(context,lane+'-290',receipt);
+@@ -14 +16 @@
+- assert.deepEqual(receipt.original,{business:1,passed:8,skipped:0});
++ assert.deepEqual(receipt.original,{business:1,passed:1,skipped:0});
+@@ -17 +19 @@
+- receipt.status='TASK398_STANDARD_EXACT_290_PASSED';
++ receipt.status=lane==='cash-handover'?'ORIGINAL_CASH_HANDOVER_EXACT_290_PASSED':'ORIGINAL_PRINCIPAL_RETURN_EXACT_290_PASSED';

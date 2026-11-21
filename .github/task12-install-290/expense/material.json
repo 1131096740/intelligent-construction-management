@@ -1,0 +1,52 @@
+{
+  "app": {
+    "installerBase": "937514f648e63326fdf40d91b95ac4f4188259a4b2e1fb863f0dd6386531a56c",
+    "installerPatch": "81e7bd1a61d0797859fba47d4de6c14f9b286cdded2ba950971ced9193061e72",
+    "installerResult": "6dad67ed2ad7994d7d9c5e914f0b9b55dd198256d46e1d5cba71da3dbc9fb7b2",
+    "inputs": {
+      "entry.cjs": "dd32ca854b7c1a5fad1c31024afd4933ec4c3f2b08d772a2d1f670c52c427464",
+      "expense-app.cjs": "0acdffc0ee2a48254c20a2c1cc0a645ddfbccb44d694815b9a7c7d2fc9d0e598",
+      "profiles.json": "fad23c062329dd591f161b103b98a243cf3850c27bad82a2c7d18c96f0f46845",
+      "execution/project-expense-execution-concurrency.owned282.spec.ts": "ae0417f654b069c45750cf6defd3a269f98153e19601769c85884e3802601006",
+      "finance/project-expense-finance-concurrency.owned282.spec.ts": "94305a122c4abdb484fb29eb416bdb178572626e86c316fa55f4f3a61dbe364e",
+      "receipt/project-expense-receipt-concurrency.spec.ts": "c54a84a4b522b1ed999db844ecbf644da094b0a225eeb6904e16e23c210ffdd7"
+    }
+  },
+  "valid": {
+    "installerBase": "937514f648e63326fdf40d91b95ac4f4188259a4b2e1fb863f0dd6386531a56c",
+    "installerPatch": "a882e6f2f08cba93dfce11aa139374716504c87c77dfa8fcb666309868e01bb5",
+    "installerResult": "8054be1f7f37399756f2046dbcf9f5741adf4464b76d011de5e11e94b3878a6b",
+    "inputs": {
+      "entry.cjs": "70d65b7531e4e25ec4e6f1e1864f707f8aaa47889221e45d998d57e431538d65",
+      "task12-expense-execution-retained-valid.json": "6628e9cd7512d80a1c078f9d816a6e6397a0c54c8bfeca11f291cb6d54b9cce4",
+      "task12-expense-finance-retained-valid.json": "7bd2f78236db2c38d0e7a616f1569f45bf6907daaa772c7a9d85a11ef6c4ce42",
+      "task12-expense-receipt-retained-seed.json": "19a02261145cce67ef8250e89020e1aa55b1015f30d19d7e97c3acb979a761b8"
+    }
+  },
+  "negative": {
+    "installerBase": "937514f648e63326fdf40d91b95ac4f4188259a4b2e1fb863f0dd6386531a56c",
+    "installerPatch": "511056506ba2d8248903ab27ece4f05bffeab3a6c7263320d53c8a29b3e1127c",
+    "installerResult": "ba5ac0e9063bef14864e961a79e3d834c95f306a8c64f605f6c2e72d1bf7101b",
+    "inputs": {
+      "entry.cjs": "2f0ba741381a1332935eddd5285a6dabe26af20a85bb176d114bcf9a9cefa8fe",
+      "receipt-negative.cjs": "dd46518cb3af3f5a47131bf1ab0e70772a11ebafd837c6bb2b710f3a46da9476",
+      "receipt-seed.cjs": "570c8e7c346e6e65a2da0bcbc0a0e8f570f16827c2c7df11c2b1e4e5de899a08",
+      "task12-expense-execution-retained-negative.cjs": "a5092f5ad1232e27b1e9cc24ea58751fa2dc2321b1fd3dce0f72e2aa199f8d2c",
+      "task12-expense-finance-retained-negative.cjs": "177a6f16806540a56060d8d271fbb6ac7cf2a46a8ce68e1a5bd466fe547e2d7e",
+      "task12-expense-execution-retained-negative.json": "39830ed9512bfa269f19547608945ec612f33c053c8d86390d6b7a24e4ca34b6",
+      "task12-expense-finance-retained-negative.json": "c2ee555adc46318dc78e64ce0e9489ea97def10f6d34d8a091a393545327eefe"
+    }
+  },
+  "recovery": {
+    "installerBase": "937514f648e63326fdf40d91b95ac4f4188259a4b2e1fb863f0dd6386531a56c",
+    "installerPatch": "d836d89a4d1e22f0ec1b5a38051e0645f1691e840b92679c27dfe0a5776c23d8",
+    "installerResult": "8c2301ea65f5f3adb195ed26736972b0e16b9278f95940cc924c4af0d11657f5",
+    "inputs": {
+      "entry.cjs": "eda178731ff18e803f252620c84caf8723a30882418e5910eb59c18750559445",
+      "task12-expense-execution-recovery.cjs": "1af16f07d094ec18f85025c1b5c15352ff48e2e3fffa1735b32d9acd2f6aa224",
+      "task12-expense-finance-recovery.cjs": "132f52f374dd40b62bc737beef5d68866fbd5b61bd00ac026397fb1e5f6f706c",
+      "task12-expense-execution-recovery.json": "a7a852fb53dcada5be21fe5283342ed0a2c26952311f9453dd6f1cab107dff09",
+      "task12-expense-finance-recovery.json": "645d1c45aaa1f2e55392bc6665467d01b57ea22e98cf2dae31fad1dec1ffa577"
+    }
+  }
+}
