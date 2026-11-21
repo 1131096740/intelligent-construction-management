@@ -144,6 +144,14 @@ export function createFundAccountSyntheticDb() {
       throw new Error("Synthetic database received an unexpected SQL boundary query");
     },
     projectMember: { findMany: async () => [] },
+    projectRosterMember: {
+      ...delegate("projectRosterMember"),
+      groupBy: async ({ by, where }: { by: ["projectId"]; where?: Row }) => {
+        if (by.length !== 1 || by[0] !== "projectId") throw new Error("Unsupported synthetic roster grouping");
+        const rows = tables.projectRosterMember.filter(row => matches(row, where));
+        return [...new Set(rows.map(row => row.projectId))].map(projectId => ({ projectId }));
+      }
+    },
     $transaction: async <T>(run: (client: unknown) => Promise<T>) => {
       if (conflictNextTransaction) { conflictNextTransaction = false; throw new Prisma.PrismaClientKnownRequestError("synthetic committed transaction conflict", {code:"P2034",clientVersion:"synthetic"}); }
       const snapshot = Object.fromEntries(Object.entries(tables).map(([key, rows]) => [key, rows.map(row => ({ ...row }))]));

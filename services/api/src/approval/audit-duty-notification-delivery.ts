@@ -1,8 +1,7 @@
 import { ConflictException } from "@nestjs/common";
 import type { ApprovalDutySmsIntent } from "./approval-duty-sms-intent";
-import { Prisma, type AuditLog } from "@prisma/client";
+import { Prisma, type AuditLog, type PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
-import type { PrismaService } from "../database/prisma.service";
 import type { ApprovalSmsService } from "./approval-sms.service";
 
 export function auditDutyNoticeId(kind: string, ...identity: string[]) {
@@ -10,13 +9,15 @@ export function auditDutyNoticeId(kind: string, ...identity: string[]) {
 }
 
 export type AuditDutySmsMessage = { phone: string; intent: ApprovalDutySmsIntent };
+type PrepareNoticeAudit = (tx: Prisma.TransactionClient, intent: AuditLog, id: string, action: string) => Promise<void>;
 
 export async function dispatchAuditDutyNotices(
-  prisma: PrismaService,
+  prisma: PrismaClient,
   sms: ApprovalSmsService,
   kind: string,
-  lockDuty: (tx: Prisma.TransactionClient, businessId: string) => Promise<void>,
-  currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<AuditDutySmsMessage | null>
+  lockDuty: (tx: Prisma.TransactionClient, businessId: string, intent: AuditLog) => Promise<boolean | void>,
+  currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<AuditDutySmsMessage | null>,
+  prepareAudit?: PrepareNoticeAudit
 ) {
   if (!sms.available()) return;
   const intents = await prisma.$queryRaw<AuditLog[]>(Prisma.sql`
@@ -31,16 +32,18 @@ export async function dispatchAuditDutyNotices(
     if (!businessId) continue;
     const claimId = auditDutyNoticeId(kind, intent.id, "claim");
     const terminalId = auditDutyNoticeId(kind, intent.id, "terminal");
-    const record = (db: Pick<Prisma.TransactionClient, "auditLog">, id: string, action: string) =>
-      db.auditLog.createMany({ skipDuplicates: true, data: [{
+    const record = async (db: Prisma.TransactionClient, id: string, action: string) => {
+      await prepareAudit?.(db, intent, id, action);
+      return db.auditLog.createMany({ skipDuplicates: true, data: [{
         id, action, businessType: kind, businessId: intent.businessId,
         actorUserId: intent.actorUserId, metadata: { intentId: intent.id }
       }] });
+    };
     const message = await prisma.$transaction(async tx => {
-      await lockDuty(tx, businessId);
+      const locked = await lockDuty(tx, businessId, intent);
       const previous = await tx.auditLog.findFirst({ where: { id: { in: [claimId, terminalId] } } });
       if (previous) return null;
-      const current = await currentMessage(tx, intent);
+      const current = locked === false ? null : await currentMessage(tx, intent);
       if (!current) {
         await record(tx, terminalId, "cancelled");
         return null;
@@ -49,16 +52,21 @@ export async function dispatchAuditDutyNotices(
     });
     if (!message) continue;
     const result = await sms.sendDutyIntent(message.phone, message.intent).catch(() => ({ status: "unknown" as const }));
-    await record(prisma, terminalId, result.status);
+    if (prepareAudit) {
+      await prisma.$transaction(tx => record(tx, terminalId, result.status));
+    } else {
+      await record(prisma, terminalId, result.status);
+    }
   }
 }
 
 type NoticeAccess = {
-  prisma: PrismaService;
-  sms: ApprovalSmsService;
+  prisma: PrismaClient;
+  sms: Pick<ApprovalSmsService, "available">;
   kind: string;
   lockDuty: (tx: Prisma.TransactionClient, businessId: string) => Promise<void>;
   currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<AuditDutySmsMessage | null>;
+  prepareAudit?: PrepareNoticeAudit;
   canAccess?: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<boolean>;
   scope?: Readonly<Record<string, string | number>>;
 };
@@ -125,6 +133,7 @@ export function retryFailedAuditDutyNotice(access: NoticeAccess, businessId: str
     }
     if (!status.canRetry) throw new ConflictException("仅确认发送失败的短信可以重试");
     const attemptId = auditDutyNoticeId(access.kind, expectedAttempt, "retry");
+    await access.prepareAudit?.(tx, attempt, attemptId, "queued");
     const inserted = await tx.auditLog.createMany({ skipDuplicates: true, data: [{
       id: attemptId, action: "queued", businessType: access.kind, businessId, actorUserId: actorId,
       metadata: { ...attempt.metadata as Prisma.InputJsonObject, retryOf: expectedAttempt }

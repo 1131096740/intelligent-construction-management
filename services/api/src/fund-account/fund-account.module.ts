@@ -1,3 +1,4 @@
+import { FundBalanceNoticeWorker } from "./fund-balance-notice-worker";
 import { ApprovalModule } from "../approval/approval.module";
 import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
 import { Module } from "@nestjs/common";
@@ -19,7 +20,7 @@ import { PublicCashHandoverService } from "./public-cash-handover.service";
 @Module({
   imports: [AuthModule, AuditModule, ApprovalModule],
   controllers: [FundPrincipalReturnController, FundAccountController, FundAccountTransferController, FundAccountAdvanceController, PublicCashHandoverController],
-  providers: [FundBalanceReviewNotificationService, FundAccountTransferNotificationService, FundAccountService, FundAccountTransferService, FundAccountAdvanceService, PublicCashHandoverService, FundPrincipalReturnService, FundPrincipalReturnNotificationService],
+  providers: [FundBalanceNoticeWorker, FundBalanceReviewNotificationService, FundAccountTransferNotificationService, FundAccountService, FundAccountTransferService, FundAccountAdvanceService, PublicCashHandoverService, FundPrincipalReturnService, FundPrincipalReturnNotificationService],
   exports: [FundAccountService],
 })
 export class FundAccountModule {}

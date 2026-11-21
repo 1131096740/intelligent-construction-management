@@ -1,9 +1,11 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
-import { Prisma, type AuditLog } from "@prisma/client";
+import type { Prisma, AuditLog } from "@prisma/client";
 import { auditDutyNoticeId, auditDutyNoticeStatus, dispatchAuditDutyNotices, retryFailedAuditDutyNotice, type AuditDutySmsMessage } from "../approval/audit-duty-notification-delivery";
 import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { PrismaService } from "../database/prisma.service";
+import { FundBalanceNoticeWorker } from "./fund-balance-notice-worker";
+import { fundBalanceNoticeLocks, prepareFundBalanceNoticeAudit, type FundNoticeLock, type NoticeLockOperation } from "./fund-balance-notice-locks";
 import { resolveFreshCorrectionRecipient, resolveFundReviewIdentity } from "./fund-account-duty";
 
 const metadata = (intent: AuditLog) => (intent.metadata ?? {}) as Prisma.JsonObject;
@@ -14,10 +16,14 @@ export class FundBalanceReviewNotificationService implements OnModuleInit, OnMod
   private timer?: ReturnType<typeof setInterval>;
   private readonly logger = new Logger(FundBalanceReviewNotificationService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly sms: ApprovalSmsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sms: ApprovalSmsService,
+    private readonly worker: FundBalanceNoticeWorker
+  ) {}
 
   onModuleInit() {
-    if (process.env.NODE_ENV === "test" || process.env.SKIP_DATABASE_CONNECT === "true" || !this.sms.available()) return;
+    if (process.env.NODE_ENV === "test" || process.env.SKIP_DATABASE_CONNECT === "true" || !this.sms.available() || !this.worker.client) return;
     this.timer = setInterval(() => { void this.afterCommit(); }, 60_000);
     this.timer.unref();
     void this.afterCommit();
@@ -45,7 +51,7 @@ export class FundBalanceReviewNotificationService implements OnModuleInit, OnMod
   }
 
   async retry(registrationId: string, actorId: string, attemptId: string, expectedRoundId: string) {
-    const result = await retryFailedAuditDutyNotice(this.noticeAccess(expectedRoundId), registrationId, actorId, attemptId);
+    const result = await retryFailedAuditDutyNotice(this.noticeAccess({ attemptId, expectedRoundId, actorId }), registrationId, actorId, attemptId);
     if (!result.enqueued) return result.status;
     await this.afterCommit();
     const { notice } = await this.status(registrationId, actorId);
@@ -54,30 +60,47 @@ export class FundBalanceReviewNotificationService implements OnModuleInit, OnMod
 
   async afterCommit() {
     try {
-      const access = this.noticeAccess();
-      await dispatchAuditDutyNotices(this.prisma, this.sms, kind, access.lockDuty, access.currentMessage);
+      if (!this.worker.client) return;
+      await dispatchAuditDutyNotices(this.worker.client, this.sms, kind,
+        async (tx, id, intent) => {
+          const lock = this.locks(tx, "dispatch", id, intent);
+          return lock ? lock("round") : false;
+        },
+        (tx, intent) => this.currentMessage(tx, intent), prepareFundBalanceNoticeAudit);
     } catch {
       this.logger.warn("资金余额复核通知暂未完成，保留记录以供核对");
     }
   }
 
-  private noticeAccess(expectedRoundId?: string) {
+  private noticeAccess(retry?: { attemptId: string; expectedRoundId: string; actorId: string }) {
     return {
-      prisma: this.prisma, sms: this.sms, kind,
+      prisma: this.prisma, sms: { available: () => Boolean(this.worker.client) && this.sms.available() }, kind,
       lockDuty: async (tx: Prisma.TransactionClient, registrationId: string) => {
-        await tx.$queryRaw(Prisma.sql`SELECT a."id" FROM "ApprovalInstance" a
-          JOIN "FundAccountBalanceRegistration" r ON r."approvalInstanceId" = a."id"
-          WHERE r."id" = ${registrationId} FOR UPDATE OF a`);
+        if (retry && !await fundBalanceNoticeLocks(tx, "retry", registrationId, retry.expectedRoundId,
+          retry.attemptId, retry.actorId)("round")) {
+          throw new ConflictException("当前待办或短信记录已变化，请刷新");
+        }
       },
-      canAccess: async (tx: Prisma.TransactionClient, intent: AuditLog) => (expectedRoundId === undefined || metadata(intent).roundId === expectedRoundId) && Boolean(await this.currentNoticeDuty(tx, intent)),
+      prepareAudit: prepareFundBalanceNoticeAudit,
+      canAccess: async (tx: Prisma.TransactionClient, intent: AuditLog) =>
+        (retry === undefined || metadata(intent).roundId === retry.expectedRoundId) &&
+        Boolean(await this.currentNoticeDuty(tx, intent, retry ? "retry" : "status")),
       currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent)
     };
   }
 
-  private async currentNoticeDuty(tx: Prisma.TransactionClient, intent: AuditLog) {
+  private locks(tx: Prisma.TransactionClient, operation: NoticeLockOperation, registrationId: string, intent: AuditLog) {
+    const { recipientId, roundId } = metadata(intent);
+    if (typeof recipientId !== "string" || typeof roundId !== "string") return null;
+    return fundBalanceNoticeLocks(tx, operation, registrationId, roundId, intent.id, recipientId);
+  }
+
+  private async currentNoticeDuty(tx: Prisma.TransactionClient, intent: AuditLog, operation: NoticeLockOperation) {
     const { recipientId, roundId } = metadata(intent);
     if (!intent.businessId || typeof recipientId !== "string" || typeof roundId !== "string") return null;
-    const duty = await this.currentDuty(tx, intent.businessId, roundId, recipientId);
+    const lock = this.locks(tx, operation, intent.businessId, intent);
+    if (!lock) return null;
+    const duty = await this.currentDuty(tx, intent.businessId, roundId, recipientId, false, lock);
     if (!duty || duty.round.id !== roundId) return null;
     const originalId = auditDutyNoticeId(kind, roundId, recipientId);
     const checked = new Set<string>();
@@ -99,11 +122,13 @@ export class FundBalanceReviewNotificationService implements OnModuleInit, OnMod
     }
   }
 
-  private async currentDuty(tx: Prisma.TransactionClient, registrationId: string, roundId: string, recipientId: string, freshControlledRound = false) {
+  private async currentDuty(tx: Prisma.TransactionClient, registrationId: string, roundId: string, recipientId: string, freshControlledRound = false, noticeLock?: FundNoticeLock) {
     try {
       return await (freshControlledRound
         ? resolveFreshCorrectionRecipient(tx, registrationId, roundId, recipientId)
-        : resolveFundReviewIdentity(tx, registrationId, recipientId, roundId));
+        : noticeLock
+          ? resolveFundReviewIdentity(tx, registrationId, recipientId, roundId, false, noticeLock)
+          : resolveFundReviewIdentity(tx, registrationId, recipientId, roundId));
     }
     catch (error) {
       if (error instanceof ForbiddenException || error instanceof ConflictException) return null;
@@ -112,7 +137,7 @@ export class FundBalanceReviewNotificationService implements OnModuleInit, OnMod
   }
 
   private async currentMessage(tx: Prisma.TransactionClient, intent: AuditLog): Promise<AuditDutySmsMessage | null> {
-    const duty = await this.currentNoticeDuty(tx, intent);
+    const duty = await this.currentNoticeDuty(tx, intent, "dispatch");
     const { recipientId } = metadata(intent);
     if (!duty || !intent.businessId || typeof recipientId !== "string") return null;
     const [recipient, applicant, company] = await Promise.all([

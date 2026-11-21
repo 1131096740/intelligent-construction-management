@@ -202,10 +202,17 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       const events = await tx.companyTransferEvent.findMany({ where: { transferId: id } });
       if (input.kind === "outgoing") {
         if (row.kind === "repayment") {
-          const key = originalSourceKey(row);
-          const checkpoints = await tx.$queryRaw<Array<{ checkpoint: Date }>>`
-            SELECT checkpoint FROM public.jg_company_transfer_original_checkpoints(${key}, ${observation.occurredAt}::timestamp)
-          `;
+          const [scope] = row.originalTransferId ? await tx.$queryRaw<Array<{ isolated: boolean }>>`
+            SELECT current_database() ~ '^jg_task01_[0-9a-f]{32}$'
+              AND session_user ~ '^finance_runtime_[0-9a-f]{32}$' AS isolated
+          ` : [];
+          const checkpoints = scope?.isolated
+            ? await tx.$queryRaw<Array<{ checkpoint: Date }>>`
+                SELECT checkpoint FROM public.jg_company_transfer_ordinary_payout_checkpoints(${row.id}, ${observation.id}, ${actor})
+              `
+            : await tx.$queryRaw<Array<{ checkpoint: Date }>>`
+                SELECT checkpoint FROM public.jg_company_transfer_original_checkpoints(${originalSourceKey(row)}, ${observation.occurredAt}::timestamp)
+              `;
           for (const { checkpoint } of checkpoints) {
             const available = await this.original(tx, row, undefined, checkpoint);
             if (available !== undefined && observation.amountCents > available) {

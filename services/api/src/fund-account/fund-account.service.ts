@@ -1,3 +1,4 @@
+import { fundBalanceWitnessBinding, fundBalanceWitnessFields, signFundBalanceWitness } from "./fund-balance-witness-signing";
 import { fundBalanceCorrectionRoundMode } from "./fund-balance-correction-round-mode";
 import { readRegisteredCompanyOwnedSources } from "./registered-company-owned-fund-source";
 import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
@@ -6,7 +7,7 @@ import { availableRegisteredBalance, registeredPaymentSummaries } from "../payme
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { normalizeBusinessAmount, sumBusinessAmounts, requiredPastChinaDate, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
-import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { readFundReviewReceipt, makeFundReviewReceipt, fundReviewReceiptMetadata } from "./fund-account-receipt";
@@ -177,7 +178,7 @@ export class FundAccountService {
       if (authority === "controlled") {
         const sourceCount = normalized.sources.length;
         const sourceDigest = createHash("sha256").update(normalized.sources.map((source, index) =>
-          this.correctionFields([String(index + 1), source.amountYuan, source.sourceStatus, source.sourceName,
+          fundBalanceWitnessFields([String(index + 1), source.amountYuan, source.sourceStatus, source.sourceName,
             source.projectStatus, source.projectId, source.previousSourceBatchId])).join("|")).digest("hex");
         verifyRecipientLocks = await this.authorizeCorrectionRound(tx, registrationId, [actorUserId, account.id, current.id, registrationId, String(nextVersion),
           normalized.idempotencyKey, fingerprint, normalized.balanceYuan, normalized.asOfDate, normalized.evidenceReference,
@@ -334,27 +335,14 @@ export class FundAccountService {
     if (!roles.some(role => allowed.includes(role))) throw new ForbiddenException("当前公司级岗位无权办理该资金事项");
     return roles;
   }
-  private correctionFields(fields: readonly (string | null)[]) {
-    return fields.map(value => value === null ? "-" : Buffer.from(value, "utf8").toString("hex")).join(":");
-  }
   private async authorizeCorrectionRound(tx: Prisma.TransactionClient, registrationId: string, fields: readonly (string | null)[]) {
     const keyValue = process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY;
     if (!keyValue || !/^[a-f0-9]{64}$/u.test(keyValue)) {
       throw new ServiceUnavailableException("资金更正审批轮次授权未配置");
     }
-    const [binding] = await tx.$queryRaw<Array<{ database: string; role: string; xid: string; backend: string; expires: string }>>`
-      SELECT current_database()::text AS database, session_user::text AS role,
-        pg_current_xact_id()::text AS xid, pg_backend_pid()::text AS backend,
-        (floor(extract(epoch FROM clock_timestamp()))::bigint + 30)::text AS expires`;
+    const binding = await fundBalanceWitnessBinding(tx);
     const scope = [binding.database, binding.role, binding.xid, binding.backend];
-    const sign = (payload: readonly (string | null)[]) => {
-      const key = Buffer.from(keyValue, "hex");
-      try {
-        return createHmac("sha256", key).update(this.correctionFields(payload)).digest("hex");
-      } finally {
-        key.fill(0);
-      }
-    };
+    const sign = (payload: readonly (string | null)[]) => signFundBalanceWitness(keyValue, payload);
     const proof = sign(["fund_balance_correction_round_v1", ...scope, binding.expires, ...fields]);
     await tx.$queryRaw`SELECT set_config('jg.fund_balance_correction_witness', ${binding.expires + ":" + proof}, true)`;
     return async (roundId: string) => {

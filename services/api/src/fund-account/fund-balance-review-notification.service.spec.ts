@@ -1,8 +1,11 @@
+import { fundBalanceNoticeLocks, prepareFundBalanceNoticeAudit } from "./fund-balance-notice-locks";
 import { createHmac, randomBytes } from "node:crypto";
 import { FundAccountService } from "./fund-account.service";
 import { ForbiddenException } from "@nestjs/common";
 import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
 import { resolveFreshCorrectionRecipient, resolveFundReviewIdentity } from "./fund-account-duty";
+
+jest.mock("./fund-balance-notice-locks");
 
 jest.mock("./fund-account-duty", () => ({
   resolveFundReviewIdentity: jest.fn(),
@@ -11,6 +14,11 @@ jest.mock("./fund-account-duty", () => ({
 
 function fixture() {
   const resolve = jest.mocked(resolveFundReviewIdentity);
+  jest.mocked(prepareFundBalanceNoticeAudit).mockReset().mockResolvedValue(undefined);
+  jest.mocked(fundBalanceNoticeLocks).mockReset().mockImplementation((_tx, operation, id, round, attempt, actor) =>
+    async () => id === "registration" && round === "round" && actor === "finance" && (
+      operation !== "retry" || rows.has(attempt)
+    ));
   const duty = {row: {balanceYuan: {toFixed: () => "120.1234"}, version: 2, createdByUserId: "applicant"},
     round: {id: "round"}, account: {companyEntityId: null}} as never;
   resolve.mockReset().mockResolvedValue(duty);
@@ -51,8 +59,9 @@ function fixture() {
     return result;
   }};
   const sms = {available: () => true, sendDutyIntent: jest.fn()};
-  const service = new FundBalanceReviewNotificationService(prisma as never, sms as never);
-  return {service, db, rows, sms, resolve};
+  const worker = {client: {...prisma, $transaction: jest.fn(prisma.$transaction)}};
+  const service = new FundBalanceReviewNotificationService(prisma as never, sms as never, worker as never);
+  return {service, db, rows, sms, resolve, worker};
 }
 
 it("新受控余额更正仅确认本事务锁，未确认时拒绝且不入队", async () => {
@@ -120,7 +129,7 @@ it.each(["accepted", "revoked", "unknown"])("余额更正复核按当前处理�
 });
 
 it("当前原收件人可重试明确失败，并发旧键与响应重放同一结果", async () => {
-  const {service, db, sms, resolve} = fixture();
+  const {service, db, sms, resolve, worker} = fixture();
   sms.sendDutyIntent.mockResolvedValueOnce({status: "failed"}).mockResolvedValueOnce({status: "accepted"});
   await service.queue(db as never, "registration", "round", "applicant");
   await service.afterCommit();
@@ -134,8 +143,14 @@ it("当前原收件人可重试明确失败，并发旧键与响应重放同一�
   const retry = () => service.retry("registration", "finance", attemptId, "round");
   await Promise.all([retry(), retry()]);
   expect(await retry()).toMatchObject({status: "accepted", canRetry: false});
-  expect(resolve).toHaveBeenCalledWith(expect.anything(), "registration", "finance", "round");
+  expect(resolve).toHaveBeenCalledWith(expect.anything(), "registration", "finance", "round", false, expect.any(Function));
   expect(sms.sendDutyIntent).toHaveBeenCalledTimes(2);
+  expect(worker.client.$transaction).toHaveBeenCalledTimes(4);
+  expect(jest.mocked(prepareFundBalanceNoticeAudit).mock.calls.map(call => call[3]))
+    .toEqual(["dispatch_claimed", "failed", "queued", "dispatch_claimed", "accepted"]);
+  expect(fundBalanceNoticeLocks).toHaveBeenCalledWith(db, "dispatch", "registration", "round", expect.any(String), "finance");
+  expect(fundBalanceNoticeLocks).toHaveBeenCalledWith(db, "status", "registration", "round", expect.any(String), "finance");
+  expect(fundBalanceNoticeLocks).toHaveBeenCalledWith(db, "retry", "registration", "round", attemptId, "finance");
 });
 
 it("轮次或当前职责失效时隐藏通知，结果未知不再发短信", async () => {

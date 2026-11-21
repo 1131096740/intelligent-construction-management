@@ -1,3 +1,4 @@
+import type { FundNoticeLock } from "./fund-balance-notice-locks";
 import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
@@ -25,10 +26,14 @@ export async function fundReviewerAvailable(tx: Prisma.TransactionClient) {
 
 /** This is a bounded adapter for one company-level fund duty, reusing the
  * established protocol and identity resolver. It grants no account-list access. */
-export async function loadFundReviewDuty(tx: Prisma.TransactionClient, resourceId: string) {
+export async function loadFundReviewDuty(tx: Prisma.TransactionClient, resourceId: string, noticeLock?: FundNoticeLock) {
   const match = /^([^:]+):0$/.exec(resourceId);
   if (!match) throw new ForbiddenException("资金复核职责选择无效，请刷新后重试");
-  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${match[1]} FOR UPDATE`);
+  if (noticeLock) {
+    if (!await noticeLock("round")) throw new ForbiddenException("资金复核轮次已变化或不匹配");
+  } else {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${match[1]} FOR UPDATE`);
+  }
   const round = await tx.approvalInstance.findUnique({ where: { id: match[1] } });
   if (!round || round.businessType !== FUND_REVIEW_BUSINESS_TYPE || round.flowType !== "fund_account_balance_correction" || round.status !== "approval_pending" || !isParallelApprovalRound(round.frozenNodes) || round.frozenNodes.length !== 1 || !activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(0)) throw new ForbiddenException("该资金复核职责已结束或不匹配，请刷新后重试");
   const node = round.frozenNodes[0];
@@ -42,8 +47,8 @@ export async function loadFundReviewDuty(tx: Prisma.TransactionClient, resourceI
   const company = account.companyEntityId ? await tx.companyEntity.findUnique({ where: { id: account.companyEntityId } }) : null;
   return { round, row, account, node, label: `${company?.name ?? "公共现金"} · 余额核对更正 · 财务主管复核` };
 }
-export function resolveFundReviewIdentity(tx: Prisma.TransactionClient, registrationId: string, actorUserId: string, expectedRoundId?: string, directHolderOnly = false) {
-  return resolveIdentity(tx, registrationId, actorUserId, expectedRoundId, directHolderOnly, false);
+export function resolveFundReviewIdentity(tx: Prisma.TransactionClient, registrationId: string, actorUserId: string, expectedRoundId?: string, directHolderOnly = false, noticeLock?: FundNoticeLock) {
+  return resolveIdentity(tx, registrationId, actorUserId, expectedRoundId, directHolderOnly, false, noticeLock);
 }
 
 /** Queue-only path after the caller verifies the owner trigger's same-transaction lock receipt. */
@@ -53,28 +58,36 @@ export function resolveFreshCorrectionRecipient(tx: Prisma.TransactionClient, re
 
 async function resolveIdentity(
   tx: Prisma.TransactionClient, registrationId: string, actorUserId: string,
-  expectedRoundId: string | undefined, directHolderOnly: boolean, freshRecipientsLocked: boolean
+  expectedRoundId: string | undefined, directHolderOnly: boolean, freshRecipientsLocked: boolean, noticeLock?: FundNoticeLock
 ) {
   const row = await tx.fundAccountBalanceRegistration.findUnique({ where: { id: registrationId } });
   if (!row?.approvalInstanceId || (expectedRoundId !== undefined && row.approvalInstanceId !== expectedRoundId)) throw new ConflictException("资金复核轮次已变化，请刷新后重试");
-  const duty = await loadFundReviewDuty(tx, fundReviewDutyId(row.approvalInstanceId));
-  if (!freshRecipientsLocked) {
-    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${actorUserId} FOR SHARE`);
-    await tx.$queryRaw(Prisma.sql`SELECT up."userId" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" WHERE up."userId" = ${actorUserId} AND up."projectId" IS NULL FOR SHARE OF up, p`);
-  }
+  const duty = await loadFundReviewDuty(tx, fundReviewDutyId(row.approvalInstanceId), noticeLock);
+  const lockRecipient = async (userId: string) => {
+    if (noticeLock) {
+      if (!await noticeLock("user", userId) || !await noticeLock("positions", userId)) {
+        throw new ForbiddenException("资金复核通知办理权限已变化");
+      }
+      return;
+    }
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR SHARE`);
+    await tx.$queryRaw(Prisma.sql`SELECT up."userId" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" WHERE up."userId" = ${userId} AND up."projectId" IS NULL FOR SHARE OF up, p`);
+  };
+  if (!freshRecipientsLocked) await lockRecipient(actorUserId);
   const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
   if (!actor?.isActive) throw new ForbiddenException("当前办理账号已停用");
   const actorRoles = await currentFundCompanyRoles(tx, actorUserId);
   if (actorRoles.includes("super_admin") && actorRoles.every(role => role === "super_admin")) throw new ForbiddenException("技术管理员不能办理业务复核");
   const scope = { actionKey: FUND_REVIEW_ACTION, resourceType: FUND_REVIEW_RESOURCE, resourceId: fundReviewDutyId(duty.round.id) };
-  if (!freshRecipientsLocked) {
+  if (noticeLock) {
+    if (!await noticeLock("delegations")) throw new ForbiddenException("资金复核通知委托已变化");
+  } else if (!freshRecipientsLocked) {
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalDelegation" WHERE "toUserId" = ${actorUserId} AND "actionKey" = ${FUND_REVIEW_ACTION} AND "resourceType" = ${FUND_REVIEW_RESOURCE} AND "resourceId" = ${scope.resourceId} FOR SHARE`);
   }
   const ids = directHolderOnly ? [] : await activeScopedApprovalDelegatorIds(tx, actorUserId, scope);
   const activeDelegators = [];
   for (const userId of ids) {
-    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR SHARE`);
-    await tx.$queryRaw(Prisma.sql`SELECT up."userId" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" WHERE up."userId" = ${userId} AND up."projectId" IS NULL FOR SHARE OF up, p`);
+    await lockRecipient(userId);
     const roles = await currentFundCompanyRoles(tx, userId); activeDelegators.push({ userId, roleKeys: roles, roleScopes: { globalRoleKeys: roles, projectRoleKeys: [] } }); }
   const identity = resolveApprovalReviewIdentity({ node: duty.node as FrozenApprovalNode, actorUserId, actorRoleKeys: actorRoles, actorRoleScopes: { globalRoleKeys: actorRoles, projectRoleKeys: [] }, activeDelegators });
   if (!identity || identity.approvedRoleKey !== "finance_director" || (directHolderOnly && identity.representedUserId !== actorUserId)) throw new ForbiddenException("当前账号不是该轮资金复核职责的有效处理人");
