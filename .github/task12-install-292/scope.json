@@ -1,0 +1,12 @@
+{
+  "tree": "67644d9465a0ab4ee80ede099139d9c129d66f14",
+  "prefixCount": 291,
+  "prefixLedgerSha256": "95a67fca88067c689dd59d13d0b7d0eea7c7375fffe7ba91868a7cf6bfdcbd1f",
+  "terminal": {
+    "name": "20261119003500_fund_balance_correction_controlled_round",
+    "sha256": "8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60",
+    "finished": true,
+    "rolledBack": false
+  },
+  "expectedLedgerSha256": "739451e0ff81740db53707acc013709436a746a2b019f99059c6375a5039a775"
+}
