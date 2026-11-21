@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { ApprovalDutySmsIntent } from "../approval/approval-duty-sms-intent";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -55,6 +56,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
   let frozenPaymentEntries: unknown[];
   const tokens = new JwtTokenService();
   const previousOperatingWriteSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+  const previousCorrectionWitnessKey = process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY;
   const previousStorageDriver = process.env.FILE_STORAGE_DRIVER;
   const previousStorageRoot = process.env.FILE_STORAGE_ROOT;
   let voucherStorageRoot: string | undefined;
@@ -63,6 +65,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     voucherStorageRoot = await mkdtemp(join(tmpdir(), "jg-task16-voucher-fixture-"));
     process.env.FILE_STORAGE_DRIVER = "local";
     process.env.FILE_STORAGE_ROOT = voucherStorageRoot;
+    process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY = randomBytes(32).toString("hex");
   });
 
   afterAll(async () => {
@@ -70,6 +73,8 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     else process.env.FILE_STORAGE_DRIVER = previousStorageDriver;
     if (previousStorageRoot === undefined) delete process.env.FILE_STORAGE_ROOT;
     else process.env.FILE_STORAGE_ROOT = previousStorageRoot;
+    if (previousCorrectionWitnessKey === undefined) delete process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY;
+    else process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY = previousCorrectionWitnessKey;
     if (voucherStorageRoot) await rm(voucherStorageRoot, { recursive: true, force: true });
   });
   beforeAll(() => { process.env.OPERATING_LEDGER_DB_WRITE_SECRET = "synthetic-local-payment16-not-a-database-credential"; });

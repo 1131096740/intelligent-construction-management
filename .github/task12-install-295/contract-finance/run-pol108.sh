@@ -1,0 +1,65 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+[[ $# == 5 ]] || exit 64
+repo=$(cd "$1" && pwd -P)
+prepared=$(cd "$2" && pwd -P)
+sha=$3
+build=$(cd "$4" && pwd -P)
+[[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
+plan=$(cd "$(dirname "$0")" && pwd -P)
+common="$plan/common"
+shard=$5
+case "$shard" in core) size=512m ;; facts) size=1g ;; impacts) size=2g ;; *) exit 64 ;; esac
+scope=pol108-$shard
+
+node -e '
+  const source=require(process.argv[1]);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
+' "$prepared/source.json" "$sha"
+image=$(cat "$build/image.id")
+fingerprint=$(cat "$build/context.sha256")
+[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+
+work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
+material="$work/material"
+python3 "$plan/stage-pol108.py" "$repo/.github/task12-install-289" "$repo/.github/task12-install-290" "$common" "$material" "$shard"
+
+args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
+  --security-opt no-new-privileges --user postgres --init --pids-limit 128 --memory 4g
+  --tmpfs "/tmp:rw,noexec,nosuid,nodev,size=$size" --env HOME=/tmp --env PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
+  --mount "type=bind,src=$prepared/prepared/product/predecessor,dst=/qualification/product289,readonly"
+  --mount "type=bind,src=$prepared/prepared/product/intermediate,dst=/qualification/product,readonly"
+  --mount "type=bind,src=$prepared/prepared/context/successor.sql,dst=/qualification/successor.sql,readonly"
+  --mount "type=bind,src=$prepared/source.json,dst=/qualification/contract-finance-source.json,readonly"
+  --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
+  --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
+  --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
+  --mount "type=bind,src=$material/installer.cjs,dst=/qualification/installer.cjs,readonly")
+for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
+  args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
+done
+[[ -z $(docker ps -q) ]] || exit 65
+if pgrep -x postgres >/dev/null; then exit 65; fi
+
+for file in pol108-289.cjs pol108-observability.cjs pol108-shards.cjs; do
+  args+=(--mount "type=bind,src=$material/$file,dst=/qualification/$file,readonly")
+done
+args+=(--mount "type=bind,src=$plan/pol108-295-entry.cjs,dst=/qualification/pol108-295-entry.cjs,readonly"
+  --mount "type=bind,src=$material/jest.runtime.config.cjs,dst=/qualification/workspace/services/api/jest.runtime.config.cjs,readonly")
+if [[ $shard == core ]]; then
+  args+=(--mount "type=bind,src=$material/operating-projection-postgresql.cases.ts,dst=/qualification/workspace/services/api/src/database/operating-projection-postgresql.cases.ts,readonly")
+fi
+printf '%s\n' '验证原参与角色、账务报表与规模断言在 295 的同库行为。观察原用例状态、PG 采样、业务阶段和清理。' > "$work/hypothesis.txt"
+exit_code=0
+docker run "${args[@]}" --entrypoint node "$image" /qualification/pol108-295-entry.cjs "$shard" \
+  > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
+tail -n 1 "$work/private.stdout" > "$work/receipt.json"
+node -e '
+  const row=require(process.argv[1]); console.log(JSON.stringify(row));
+  if(row.status!=="ORIGINAL_POL108_EXACT_295_PASSED"||row.sourceSha!==process.argv[2]||row.shard!==process.argv[3]||process.argv[4]!=="0")process.exit(1);
+' "$work/receipt.json" "$sha" "$shard" "$exit_code" ||
+  { printf 'POL108_295_STOPPED %s %s\n' "$shard" "$work" >&2; exit 1; }

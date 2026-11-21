@@ -8,7 +8,7 @@ sha=$2
 profile=$3
 destination=$4
 case "$profile" in
-  api|browser|restore) ;;
+  api|browser|restore|mobile) ;;
   *) exit 64 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65

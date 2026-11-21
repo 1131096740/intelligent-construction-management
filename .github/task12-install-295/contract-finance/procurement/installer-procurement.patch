@@ -1,0 +1,46 @@
+--- original
++++ ported
+@@ -247,7 +247,7 @@
+ 
+ const installOnly292 = Symbol('install-only292');
+ const exactMultiWitness295 = Symbol('exact-multi-witness295');
+-async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false) {
++async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false, procurementLane) {
+   const combined = purpose===installOnly292 || purpose===exactMultiWitness295;
+   if(combined) need(!probeOnly && release===ordinaryApprovalRelease,'INSTALL_ONLY_292_MODE');
+   const historical = '/qualification/source/services/api/prisma';
+@@ -323,7 +323,7 @@
+ hostnossl all all 127.0.0.1/32 reject
+ hostssl all ${owner} 127.0.0.1/32 scram-sha-256
+ hostssl ${database} jg_task01_runtime,jg_task01_observer 127.0.0.1/32 scram-sha-256
+-${release.procurementScope ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release.projectBusinessScope ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release === ordinaryApprovalRelease ? `hostssl ${database} /^finance_runtime_[a-f0-9]{32}$ 127.0.0.1/32 scram-sha-256\n` : ''}${purpose===exactMultiWitness295 ? `hostssl ${database} contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n${restore ? 'hostssl contract_restored contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n' : ''}` : ''}hostssl all all 127.0.0.1/32 reject
++${(release.procurementScope || procurementLane==="general16") ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${(release.projectBusinessScope || procurementLane==="project11") ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release === ordinaryApprovalRelease ? `hostssl ${database} /^finance_runtime_[a-f0-9]{32}$ 127.0.0.1/32 scram-sha-256\n` : ''}${purpose===exactMultiWitness295 ? `hostssl ${database} contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n${restore ? 'hostssl contract_restored contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n' : ''}` : ''}hostssl all all 127.0.0.1/32 reject
+ `;
+     fs.writeFileSync(abs('data/pg_hba.conf'), hba);
+     const config = `listen_addresses='127.0.0.1,::1'
+@@ -1174,7 +1174,7 @@
+ module.exports.verifyOrdinaryLoan291Inputs = (historical,product,seal) =>
+   verifyPinnedInputs(historical,product,seal,ordinaryApprovalRelease);
+ 
+-function withCombinedOrdinaryLoan(receipt,consume,purpose,restore=false) {
++function withCombinedOrdinaryLoan(receipt,consume,purpose,restore=false,procurementLane) {
+   const {contract289,verifyMaterialized}=require('./checkout.cjs');
+   const {scope,verifySql}=require('./successor.cjs');
+   verifyMaterialized('/qualification/product289',contract289);
+@@ -1183,10 +1183,15 @@
+     && scope.prefixLedgerSha256===ordinaryApprovalRelease.ledgerSha256,'INSTALL_ONLY_292_ARGUMENTS');
+   Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:ordinaryApprovalRelease.tree,
+     sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
+-  return installer(receipt,false,consume,ordinaryApprovalRelease,purpose,restore);
++  return installer(receipt,false,consume,ordinaryApprovalRelease,purpose,restore,procurementLane);
+ }
+ module.exports.withCombined292ApprovalOnly = (receipt,consume) => withCombinedOrdinaryLoan(receipt,consume,installOnly292);
+ module.exports.withCombined295MultiWitness = (receipt,consume) => withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295);
+ 
+ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);
++
++module.exports.withCombined295GeneralProcurement = (receipt,consume) =>
++  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,'general16');
++module.exports.withCombined295ProjectProcurement = (receipt,consume) =>
++  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,'project11');

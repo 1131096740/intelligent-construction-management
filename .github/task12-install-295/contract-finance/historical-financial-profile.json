@@ -1,0 +1,17 @@
+{
+  "financial": {
+    "spec": "src/operating-takeover/historical-financial-takeover.pg.spec.ts",
+    "sha": "65d2cd7d16d219bf387a5ce94caec0be41d7e87e335adbe65e271d4b9a495e58",
+    "titles": [
+      "keeps apply inactive, activates only A/B, then compensates in reverse causality",
+      "rejects manifest drift and keeps mapping rows append-only",
+      "rejects canonical read-set drift and atomically blocks conflicting duplicate groups",
+      "does not expose historical wage summary payable refs as payable targets"
+    ],
+    "flags": {
+      "RUN_POL224_HISTORICAL_FINANCIAL_PG": "1",
+      "POL224_HISTORICAL_FINANCIAL_DATABASE_URL": "databaseUrl",
+      "DATABASE_URL": "databaseUrl"
+    }
+  }
+}

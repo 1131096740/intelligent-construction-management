@@ -7,6 +7,7 @@ const { execFileSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
 const profile = require('./profile.json');
 
+const historicalCommit = '9674881d5fb328561b348ba8c5823b3fbc680980';
 const assets = /^services\/api\/prisma\/(?:schema\.prisma|migrations\/(?:migration_lock\.toml|[0-9]{14}_[a-z0-9_]+\/migration\.sql))$/u;
 const tail = 'services/api/prisma/migrations/' + profile.terminal.name + '/migration.sql';
 const digest = (bytes, algorithm = 'sha256') => createHash(algorithm).update(bytes).digest('hex');
@@ -35,7 +36,12 @@ function materialize(root, target, candidateSha) {
     git('ls-files','--others','--exclude-standard','-z').length===0 &&
     git('ls-files','-v','-z').toString().split('\0').filter(Boolean).every(row=>row.startsWith('H ')),
   'EXACT_290_DIRTY');
-  return {...materializeFiles(root,target,git('ls-files','--stage','-z')),candidateSha};
+  git('merge-base','--is-ancestor',historicalCommit,candidateSha);
+  // Keep the frozen installer index and verify its selected files against the current checkout.
+  const historicalTree = git('ls-tree','-r','-z','--full-tree',historicalCommit).toString('utf8');
+  const historicalIndex = historicalTree.replace(/(?:^|\x00)([0-7]{6}) (?:blob|commit) ([0-9a-f]{40})\t/gu,
+    (record,mode,oid) => (record.startsWith('\0') ? '\0' : '') + `${mode} ${oid} 0\t`);
+  return {...materializeFiles(root,target,Buffer.from(historicalIndex)),candidateSha};
 }
 
 function materializeFiles(root,target,index) {

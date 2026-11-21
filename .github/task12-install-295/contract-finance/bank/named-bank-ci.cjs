@@ -15,7 +15,7 @@ const file='src/database/project-affiliate-company-contract-db.spec.ts';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
 function verifyExecutionFiles() {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));
-  assert.equal(sha(raw),'505f3cfb9e8c8723eb1fdc6abbfcdaef161fb1c93e569441987965fe3c205c5f','BANK_295_EXECUTION_MANIFEST');
+  assert.equal(sha(raw),'b317116eb809b23c8d6d27f094d0b4e9eeba433469aa98c424b8b406010dd6a5','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
   assert.equal(files.length,1814,'BANK_295_EXECUTION_COUNT');
   for(const [relative,digest] of files) {

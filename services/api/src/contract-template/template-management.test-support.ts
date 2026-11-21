@@ -484,8 +484,10 @@ export class TemplateSyntheticStore {
         return observed.length ? observed.map(row => ({ proof: row.proof })) : [{ proof: null }];
       }
       if (text.startsWith("/* contract_direct_outside_operating_archive_read_v2 */ WITH")) {
-        if (query.values.length !== 1 || typeof query.values[0] !== "string") throw new Error("合成经营直签只接受原归档ID");
-        const observed = await this.table("directOutsideOperatingArchiveProof").findFirst({ where: { archiveId: query.values[0] } });
+        const [readerBody, archiveId] = query.values;
+        if (query.values.length !== 2 || readerBody !== "97187bfe8ea4afecec7836dfaa984f4afd095a58456b433879f485e107fb1776" ||
+          typeof archiveId !== "string") throw new Error("合成经营直签只接受固定读取器摘要及原归档ID");
+        const observed = await this.table("directOutsideOperatingArchiveProof").findFirst({ where: { archiveId } });
         return observed?.qualified === true ? [{ routineOid: "30000", ownerOid: "9001", namespaceOid: "2200",
           completionOid: "29901", databaseOid: "13000", currentRoleOid: "7001", sessionRoleOid: "7001",
           backendPid: 71201, transactionId: "500001", envelope: { proof: observed.proof, originals: observed.originals } }] : [];

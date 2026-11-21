@@ -28,6 +28,7 @@ describe("project fund dispute evidence file access", () => {
     const tx = new Proxy(
       {
         $queryRaw: rawLookup,
+        contractTakeoverCorrection: { groupBy: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         projectFundDisputeEntry: {
           findFirst: jest.fn().mockResolvedValue({

@@ -44,7 +44,7 @@ function precisionReadDatabase(empty = false, amounts: ReadonlyArray<string | nu
     userPosition: { findMany: jest.fn(async () => []) },
     position: { findMany: jest.fn(async () => []) },
     projectMember: { findMany: jest.fn(async () => [{ projectId: "project-1", positionKey }]) },
-    projectRosterMember: { findMany: jest.fn(async () => []) },
+    projectRosterMember: { groupBy: jest.fn(async () => []) },
     project: { findUnique: jest.fn(async () => ({ id: "project-1", isActive: true, operatingLedgerEffectiveDate: new Date("2026-09-01") })), findMany: jest.fn(async () => [{ id: "project-1", code: "XM-1", name: "项目一", isActive: true }]) },
     operatingFact: { findUnique: jest.fn(async ({ where }: { where: { id?: string; sourceType_sourceBusinessId?: Record<string, unknown> } }) => {
       const row = facts.find(f => where.id ? f.id === where.id : Object.entries(where.sourceType_sourceBusinessId ?? {}).every(([key, value]) => f[key] === value));

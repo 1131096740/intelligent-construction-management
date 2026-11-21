@@ -1,0 +1,45 @@
+--- install-only.cjs
++++ install-only.cjs
+@@ -5,7 +5,7 @@
+ const path=require('node:path');
+ const {createHash,randomUUID}=require('node:crypto');
+ const {spawnSync}=require('node:child_process');
+-const {withNamedPol113Pol114292}=require('./installer.cjs');
++const {withNamedPol113Pol114295}=require('./installer.cjs');
+ const {scope}=require('./named292/successor.cjs');
+ const {stageBrowser}=require('./stage-named-browser.cjs');
+ const {collectBrowserEvidence,bootSummary}=require('./browser-evidence.cjs');
+@@ -105,24 +105,29 @@
+ 
+ const mode=process.argv[2];
+ const admission=require('./candidate-admission.json');
+-const receipt={schemaVersion:1,purpose:'NAMED_POL113_POL114_EXACT_292',mode,business:'NOT_ENTERED',stages:[],candidateSha:admission.candidateSha};
++const receipt={schemaVersion:1,purpose:'NAMED_POL113_POL114_EXACT_295',mode,business:'NOT_ENTERED',stages:[],candidateSha:admission.candidateSha};
+ Promise.resolve().then(async()=>{
+   assert.ok(process.argv.length===3&&Object.hasOwn(recipes,mode));
+   assert.equal(admission.tree,scope.tree);
+   assert.equal(admission.ledger292,scope.expectedLedgerSha256);
++  assert.equal(admission.ledger295,require('./multi-witness.cjs').final);
++  assert.match(admission.candidateSha,/^[a-f0-9]{40}$/u);
++  assert.equal(admission.candidateSha,process.env.JG_NAMED_CANDIDATE_SHA);
+   const workspaceProof=spawnSync('sha256sum',['-c','--quiet','/qualification/workspace.sha256'],{
+     cwd:workspace,encoding:'utf8',timeout:60_000,maxBuffer:1024*1024,
+   });
+   assert.equal(workspaceProof.status,0,'POL113_POL114_EXACT_WORKSPACE');
+   receipt.workspaceBytesVerified=true;
+-  await withNamedPol113Pol114292(receipt,mode,context=>consume(context,receipt,mode));
++  await withNamedPol113Pol114295(receipt,mode,context=>consume(context,receipt,mode));
+   assert.equal(receipt.releaseTree,scope.tree);
+   assert.equal(receipt.business,'CALLBACK_COMPLETED');
+-  assert.deepEqual(receipt.orderedTails.slice(-3).map(({size})=>size),[290,291,292]);
++  assert.deepEqual(receipt.orderedTails.slice(-6).map(({size})=>size),[290,291,292,293,294,295]);
+   assert.equal(receipt.installOnly292?.ledgerSha256,scope.expectedLedgerSha256);
+   assert.deepEqual(receipt.postBehavior292,{catalogPreserved:true,keyUnprovisioned:true});
++  assert.equal(receipt.installOnly295?.ledgerSha256,admission.ledger295);
++  assert.deepEqual(receipt.postBehavior295,{catalogPreserved:true,keyUnprovisioned:true,exactB7:true,sameIdentity:true});
+   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+-  receipt.status='POL113_POL114_NAMED_EXACT_292_PASSED';
++  receipt.status='POL113_POL114_NAMED_EXACT_295_PASSED';
+ }).catch(error=>{
+   const code=error.code??error.message;
+   receipt.status='STOPPED';

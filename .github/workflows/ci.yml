@@ -217,7 +217,7 @@ jobs:
     name: PostgreSQL 16 dynamic gate (${{ matrix.shard && format('{0}/{1}', matrix.group, matrix.shard) || matrix.group }})
     runs-on: ${{ matrix.group == 'pol113_pol115_business_entries' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
-    timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
+    timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || matrix.group == 'remaining_dynamic_postgresql16' && 45 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -379,6 +379,49 @@ jobs:
         run: |
           if [[ "$DYNAMIC_GROUP" == contract_finance_acceptance && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run.sh ]]; then
             exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA"
+          fi
+          if [[ "$DYNAMIC_GROUP" == remaining_dynamic_postgresql16 && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run-remaining.sh ]]; then
+            exec bash .github/task12-install-295/contract-finance/run-remaining.sh "$CI_SOURCE_SHA"
+          fi
+          if [[ "$DYNAMIC_GROUP" == pol113_pol115_business_entries && "$DYNAMIC_SHARD" == pol113_pol114 && -f .github/task12-install-295/named-pol113-pol114/ci.sh ]]; then
+            bash .github/task12-install-295/named-pol113-pol114/ci.sh pol113
+            exec bash .github/task12-install-295/named-pol113-pol114/ci.sh pol114
+          fi
+          if [[ "$DYNAMIC_GROUP" == pol113_pol115_business_entries && "$DYNAMIC_SHARD" == pol115_workbench && -f .github/task12-install-295/contract-finance/workbench/run-workbench295.sh ]]; then
+            exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" pol115-workbench
+          fi
+          if [[ -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh ]]; then
+            case "$DYNAMIC_GROUP" in
+              contract_settlement_v2) lane=settlement ;;
+              contract_template_scenario) lane=template ;;
+              settlement_draft_lifecycle) lane=draft ;;
+              task398_shared_standard) lane=task398-standard ;;
+              task407_public_cash_handover) lane=cash-handover ;;
+              task409_principal_return) lane=principal-return ;;
+              project_expense_execution) lane=expense-execution ;;
+              project_expense_finance) lane=expense-finance ;;
+              project_expense_receipt) lane=expense-receipt ;;
+              payment_execution) lane=payment-execution ;;
+              task410_company_proxy_repayment) lane=company-proxy ;;
+              task398_browser) lane=browser-partial ;;
+              task398_browser_completion) lane=browser-completion ;;
+              fund_execution_v7) lane=v7 ;;
+              invoice_ledger_pol260) lane=invoice ;;
+              necessary_expense_reserve_pol279) lane=pol279 ;;
+              project_fund_dispute_pol280) lane=pol280 ;;
+              operating_projection_pol108) lane=pol108-core ;;
+              operating_projection_pol108_facts) lane=pol108-facts ;;
+              operating_projection_pol108_impacts) lane=pol108-impacts ;;
+              project_close_profit_pol109) lane=pol109 ;;
+              project_financing_quota) lane=pfq ;;
+              clearing_reconciliation_pol275) lane=pol275 ;;
+              employee_onboarding) lane=onboarding ;;
+              general_procurement) lane=procurement ;;
+              *) lane= ;;
+            esac
+            if [[ -n "$lane" ]]; then
+              exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane"
+            fi
           fi
           if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == contract_settlement_v2 && -z "$DYNAMIC_SHARD" ]]; then
             if [[ -f .github/task12-install-290/profile.json ]]; then

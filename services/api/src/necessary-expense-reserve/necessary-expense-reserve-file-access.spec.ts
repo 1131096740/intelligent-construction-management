@@ -28,6 +28,7 @@ describe("necessary-expense reserve evidence file access", () => {
     const tx = new Proxy(
       {
         $queryRaw: rawLookup,
+        contractTakeoverCorrection: { groupBy: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         projectNecessaryExpenseReserveEntry: {
           findFirst: jest.fn().mockResolvedValue({

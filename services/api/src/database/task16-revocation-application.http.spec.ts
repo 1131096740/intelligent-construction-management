@@ -14,7 +14,7 @@ it("mounts the real project list in the revocation app and reflects scoped membe
     userPosition: { findMany: async () => [] },
     position: { findMany: async () => [] },
     projectMember: { findMany: async () => memberIds.map((projectId) => ({ userId: actor.id, projectId, positionKey: "project_manager" })) },
-    projectRosterMember: { findMany: async () => [] },
+    projectRosterMember: { groupBy: async () => [] },
     project: { findMany: async (input: { where?: { id?: { in?: string[] } } }) => projects.filter((p) => !input.where?.id?.in || input.where.id.in.includes(p.id)) }
   };
   const module = await Test.createTestingModule({ imports: [Task16RevocationApplicationModule] }).overrideProvider(PrismaService).useValue(prisma).compile();

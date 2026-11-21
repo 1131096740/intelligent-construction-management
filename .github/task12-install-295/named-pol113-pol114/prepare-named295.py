@@ -1,0 +1,137 @@
+from hashlib import sha256
+from pathlib import Path
+import gzip
+import os
+import json
+import subprocess
+import sys
+import tempfile
+import shutil
+
+os.umask(0o022)
+repo, prepared, out = map(Path, sys.argv[1:])
+plan = donor = Path(__file__).resolve().parent
+native = repo / '.github/task12-install-289'
+common = repo / '.github/task12-install-295/contract-finance/common'
+historical = prepared / 'prepared/context'
+source = json.loads((prepared / 'source.json').read_bytes())
+ref = source['sourceSha']
+assert subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip() == ref
+admission = subprocess.check_output(['node',str(common.parent/'check-ledger.cjs'),str(repo),ref])
+assert json.loads(admission) == source
+assert source['migrationCount'] == 295 and len(source['tails']) == 3
+proof = json.loads((common/'tree-proof.json').read_bytes())
+
+
+def digest(data):
+    return sha256(data).hexdigest()
+
+
+def read_pinned(path, expected):
+    data = path.read_bytes()
+    assert not path.is_symlink() and digest(data) == expected, str(path)
+    return data
+
+
+def write(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    path.chmod(0o644)
+
+
+def patch(material, delta):
+    with tempfile.TemporaryDirectory(dir=out) as scratch:
+        target = Path(scratch) / 'source'
+        write(target, material)
+        subprocess.run(['patch','--batch','--fuzz=0','--silent',str(target)],input=delta,check=True)
+        return target.read_bytes()
+
+
+def overlay(material, pin):
+    assert digest(material) == pin['base']
+    result = patch(material, gzip.decompress((donor/pin['file']).read_bytes()))
+    assert digest(result) == pin['result']
+    return result
+
+
+out.mkdir()
+context = out/'context'
+context.mkdir()
+workspace = context/'workspace'
+workspace.mkdir()
+shutil.copytree(historical/'source',context/'source')
+write(context/'checkout.cjs',read_pinned(native/'checkout.cjs','77eaa09f4dd25bb0c1b2a6da987d7b1b976188295f1be3a5d2d83f2c44990268'))
+for name in ['source-admission.json','source-seal.txt','exact-source.json']:
+    write(context/name,(historical/name).read_bytes())
+pins = json.loads(read_pinned(donor/'pins.json','df1b3f765cb12a452e21d8e6ab1ba4a0495702c282607877d67ff102416bf69e'))
+old_installer = overlay((native/'installer.cjs').read_bytes(),pins['installer'])
+new_installer = patch(old_installer,(plan/'installer-named295.patch').read_bytes())
+assert digest(new_installer) == 'e94bd046c552817cbd49cfb86c693ea0e0496d93f677f99801f90dfad835a7ef'
+write(context/'installer.cjs',new_installer)
+for name, pin in pins['runtime'].items():
+    material = read_pinned(repo/pin['repoFile'] if 'repoFile' in pin else donor/pin['file'],pin['digest'])
+    if name == 'install-only.cjs':
+        material = patch(material,(plan/'entry-named295.patch').read_bytes())
+        assert digest(material) == '25ecadbca109001a672b9879d34bebedbdc14a964506ab5eed539b6ff4d5f47d'
+    write(context/name,material)
+for name, pin in pins['named'].items():
+    material = overlay((historical/'source/services/api/prisma'/name).read_bytes(),pin) if 'base' in pin else read_pinned(donor/pin['file'],pin['result'])
+    write(context/'named-authority-modules'/name,material)
+for name in ['scope.json','successor.cjs','successor.sql','tree-proof.json']:
+    write(context/'named292'/name,(historical/name).read_bytes())
+for name in ['terminal.cjs','terminal.json','payout-terminal.cjs','multi-witness.cjs']:
+    write(context/name,(common/name).read_bytes())
+write(context/'named295-tail.cjs',(plan/'named295-tail.cjs').read_bytes())
+for candidate, alias in zip(source['tails'],('terminal.sql','payout-terminal.sql','multi-witness.sql')):
+    write(context/alias,read_pinned(prepared/'tails'/candidate['name']/'migration.sql',candidate['sha256']))
+subprocess.run(['node','-e',"""
+const {join}=require('node:path');
+const root=process.argv[1];
+require(join(root,'terminal.cjs')).verify(join(root,'terminal.sql'));
+require(join(root,'payout-terminal.cjs')).verify(join(root,'payout-terminal.sql'));
+require(join(root,'multi-witness.cjs')).verify(join(root,'multi-witness.sql'));
+""",str(context.resolve())],check=True)
+
+# Stream the exact current Git archive once. Preserve original fixture patches on their matching preimages.
+with subprocess.Popen(['git','-C',str(repo),'archive',ref,'--','package.json','pnpm-lock.yaml','pnpm-workspace.yaml',
+                       'scripts','packages/shared-domain','apps/web-admin','services/api'],stdout=subprocess.PIPE) as archive:
+    subprocess.run(['tar','xf','-','-C',str(workspace)],stdin=archive.stdout,check=True)
+    archive.stdout.close()
+    assert archive.wait() == 0
+
+for name,pin in pins['workspace'].items():
+    path = workspace/name
+    material = path.read_bytes()
+    if name.endswith('/database-dynamic-gate-manifest.json'):
+        # The original named fixture qualifies a 289-era business profile. Its original
+        # overlay replaced only these three scalars, independently of installation ledger.
+        before = json.loads(material)
+        keys = ('expectedDirectoryCount','terminalMigration','terminalMigrationChecksum')
+        last = source['tails'][-1]
+        assert tuple(before['migrationBaseline'][key] for key in keys) == (295,last['name'],last['sha256'])
+        historical_base = subprocess.check_output(['git','-C',str(repo),'show',
+            f'233e0d6808352e4b169ec0a82909afc0d3b8f8fa:{name}'])
+        original = json.loads(overlay(historical_base,pin))
+        for key in keys:
+            before['migrationBaseline'][key] = original['migrationBaseline'][key]
+        write(path,(json.dumps(before,ensure_ascii=False,indent=2)+'\n').encode())
+    else:
+        write(path,overlay(material,pin))
+
+files=sorted(p for p in workspace.rglob('*') if p.is_file())
+assert not any(p.is_symlink() for p in workspace.rglob('*'))
+write(context/'workspace.sha256',''.join(f'{digest(p.read_bytes())}  ./{p.relative_to(workspace).as_posix()}\n' for p in files).encode())
+write(context/'candidate-admission.json',(json.dumps({
+    'tree':proof['tree'],'candidateSha':ref,'ledger292':proof['combined292'],'ledger295':source['ledgerSha256'],
+    'migrationCount':source['migrationCount'],
+})+'\n').encode())
+docker = read_pinned(donor/'Dockerfile.in','7a99ba7b82ad0ede0ca3aaedb16783a49b6a4b3f393754bdb336cd730f4c2aae').decode()
+copy = read_pinned(donor/'runtime-copy.txt','de9a7b69c406aa307423a7231ec086b8c6995bd435bfc1fae0bb0dab5d4b40e6').decode().strip()
+docker = docker.replace('@RUNTIME_COPY@',copy+'\nCOPY --chmod=0644 named295-tail.cjs terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs terminal.sql payout-terminal.sql multi-witness.sql /qualification/')
+write(context/'Dockerfile',docker.encode())
+for file in context.glob('*.cjs'):
+    subprocess.run(['node','--check',str(file)],check=True)
+assert not any(p.is_symlink() for p in context.rglob('*'))
+write(out/'context.sha256',''.join(f'{digest(p.read_bytes())}  ./{p.relative_to(context).as_posix()}\n'
+    for p in sorted(context.rglob('*')) if p.is_file()).encode())
+print(json.dumps({'status':'NAMED_295_PORTABLE_MATERIAL_READY','sourceSha':ref,'workspaceFiles':len(files),'workspaceOverlays':len(pins['workspace'])}))

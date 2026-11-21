@@ -1,0 +1,26 @@
+{
+  "wage": {
+    "spec": "src/operating-takeover/historical-wage-takeover.pg.spec.ts",
+    "sha": "9cced06f63fc1ee4911244a3f45bfc0a043f4966ca5c754c321a8c489daa4519",
+    "titles": [
+      "prepares A with one exact immutable reservation and no early canonical wage writes",
+      "keeps inactive apply receipt-only and leaves every formal target absent",
+      "accepts legal B dual attestation, rejects identity reuse with zero writes, and creates reconciliation-only refs",
+      "rejects a receipt whose canonical binding disagrees with its actor even when the snapshot hash is recomputed",
+      "activates one multi-project A scope atomically at the reserved UUID without duplicating legacy facts",
+      "replays exact activation without writes and rejects changed payload reuse without writes",
+      "links a mixed signed A correction to one net legacy impact without losing canonical cell directions",
+      "materializes C only as an unresolved gap and never creates a formal wage target",
+      "fails activation with zero writes when the reserved A target baseline drifts",
+      "serializes two real concurrent activation attempts so exactly one scope commit wins",
+      "compensates A eligibility without deleting canonical wages or reversing legacy facts",
+      "rolls back the whole multi-project activation after an injected final-envelope database failure"
+    ],
+    "flags": {
+      "RUN_HISTORICAL_WAGE_TAKEOVER_DATABASE": "1",
+      "HISTORICAL_WAGE_TAKEOVER_DATABASE_URL": "databaseUrl",
+      "DATABASE_URL": "databaseUrl"
+    },
+    "diagnosticOverlaySha": "696096a30aaf82a25dd8c4d71008ae53016e5e4f5b7246bc7bcad278227a0727"
+  }
+}

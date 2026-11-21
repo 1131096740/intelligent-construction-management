@@ -65,6 +65,7 @@ const {ledgerSha256:ledger294}=require(source);
 require('node:fs').writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE',head,ledger294}),
   {flag:'wx',mode:0o644});
 JS
+  chmod 0644 "$out/committed-admission.json"
   readonly_mount "$out/committed-admission.json" /qualification/committed-admission.json
   readonly_mount "$overlay/restore/app-inputs.json" /qualification/app-inputs.json
   readonly_mount "$overlay/restore/loan-relocated-manifest.json" /qualification/loan-relocated-manifest.json
@@ -94,7 +95,12 @@ require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx
 if(r.candidateSha!==sha||r.status!==expected)process.exit(1);
 JS
   fi
-  if (( status != 0 )); then return "$status"; fi
+  if (( status != 0 )); then
+    printf 'CONTRACT_FINANCE_CONTAINER_FAILED lane=%s phase=%s status=%d\n' "$lane" "$mode" "$status" >&2
+    # Node can fail before a receipt exists. Print the error class only.
+    grep -m1 -oE "code: '(EACCES|EPERM|ENOENT|MODULE_NOT_FOUND)'" "$out/$mode.stderr" >&2 || true
+    return "$status"
+  fi
   return "$proof_status"
 }
 capture preflight --preflight

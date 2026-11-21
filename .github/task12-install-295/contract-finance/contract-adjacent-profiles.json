@@ -1,0 +1,34 @@
+{
+  "runnerSha256": "540543e501ff906d07827bf213215e833157a15b635c25dd7d0627bd4ad4df11",
+  "profiles": {
+    "settlement": {
+      "verifyMode": "--contract-settlement-ci",
+      "count": 2,
+      "specs": [
+        "contract-bill-batch-replace-concurrency.spec.ts",
+        "contract-bill-transition-confirm-concurrency.spec.ts"
+      ]
+    },
+    "template": {
+      "verifyMode": "--contract-template-ci",
+      "count": 7,
+      "specs": [
+        "contract-template-scenario-concurrency.spec.ts"
+      ]
+    },
+    "draft": {
+      "verifyMode": "--settlement-draft-282-ci",
+      "count": 1,
+      "specs": [
+        "settlement-draft-lifecycle-concurrency.spec.ts"
+      ]
+    }
+  },
+  "fixtures": {
+    "task12-owned-280.test-support.ts": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7",
+    "contract-bill-batch-replace-concurrency.spec.ts": "224758ab9e34ec43fba6ecadf30b5b000c94d8305af7c11ec135569b7ae6c375",
+    "contract-bill-transition-confirm-concurrency.spec.ts": "a7ba4396881dbbf7cedd5c6adcafaa6e9570c013ab895b63c598d16fe1dd3b93",
+    "contract-template-scenario-concurrency.spec.ts": "1237f6557bc1505625d0368c23cb68ca41f869afe0b8b61103af20bd9ba9d08a",
+    "settlement-draft-lifecycle-concurrency.spec.ts": "b61fe7baf4ed3459c710b9634585f1f611367256137010bf79dadad5e6ce7685"
+  }
+}

@@ -47,6 +47,8 @@ const ALLOWED_INTERNAL_ERRORS = [
   { file: "src/contract-workbench/contract-draft-aggregate.service.ts", kind: "Error", message: "empty tax rate transport", expectedOccurrences: 1, reason: "默认税率解析异常由中文坏请求包装" },
   { file: "src/fund-account/fund-account.service.ts", kind: "Error", message: "unbalanced reconciliation", expectedOccurrences: 1, reason: "资金核对输入异常由中文坏请求包装" },
   { file: "src/fund-account/fund-account.service.ts", kind: "Error", message: "date-only reconciliation required", expectedOccurrences: 1, reason: "资金核对输入异常由中文坏请求包装" },
+  { file: "src/fund-account/testing/fund-account.synthetic-db.ts", kind: "Error", message: "Synthetic correction request evidence missing", expectedOccurrences: 1, reason: "合成资金账适配器边界的测试诊断" },
+  { file: "src/fund-account/testing/fund-account.synthetic-db.ts", kind: "Error", message: "Unsupported synthetic roster grouping", expectedOccurrences: 1, reason: "合成资金账适配器边界的测试诊断" },
   { file: "src/fund-account/testing/fund-account.synthetic-db.ts", kind: "Error", message: "synthetic audit persistence failure", expectedOccurrences: 1, reason: "合成资金账适配器边界的测试诊断" },
   { file: "src/fund-account/testing/fund-account.synthetic-db.ts", kind: "Error", message: "Synthetic row not found", expectedOccurrences: 1, reason: "合成资金账适配器边界的测试诊断" },
   { file: "src/fund-account/testing/fund-account.synthetic-db.ts", kind: "Error", message: "Synthetic database received an unexpected SQL boundary query", expectedOccurrences: 1, reason: "合成资金账适配器边界的测试诊断" },

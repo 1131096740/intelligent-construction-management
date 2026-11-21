@@ -27,8 +27,17 @@ describe("表外已签合同的正式登记", () => {
         intentId = randomUUID();
         return [{ intentId }];
       }), { $transaction: async operation => {
+        let orderedEvidence: unknown;
         await store.prisma.$transaction(async () => operation(client(async query => {
+          if (query.sql.includes("app.jg_outside_archive_ordered_evidence")) {
+            expect(useOperatingTransport).toBe(false);
+            expect(query.sql).toContain("pg_catalog.set_config");
+            expect(query.values).toEqual([issuedCoordinates?.at(-1)]);
+            orderedEvidence = query.values[0];
+            return [{ set_config: orderedEvidence }];
+          }
           expect(query.sql).toContain(useOperatingTransport ? "jg_execute_direct_outside_operating_v2" : "jg_execute_contract_direct_archive_outside_v1");
+          if (!useOperatingTransport) expect(orderedEvidence).toBe(issuedCoordinates?.at(-1));
           const prefix = useOperatingTransport ? [nonce, nonce, intentId] : [nonce, intentId];
           expect(query.values).toEqual([...prefix, ...issuedCoordinates!]);
           invocations.executed++;

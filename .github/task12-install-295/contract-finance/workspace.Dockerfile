@@ -20,3 +20,6 @@ RUN pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chrom
 
 FROM contract-finance-browser AS contract-finance-restore
 COPY --from=contract-finance-api /qualification/workspace/ /qualification/loan-workspace/
+
+FROM contract-finance-browser AS contract-finance-mobile
+RUN pnpm --filter @jiangkong/web-admin exec playwright install --with-deps webkit

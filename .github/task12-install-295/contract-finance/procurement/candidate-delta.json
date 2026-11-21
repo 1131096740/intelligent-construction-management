@@ -1,0 +1,117 @@
+[
+  {
+    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
+    "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
+    "candidate": "1dae45a9859f4cb3c81c5c1a7660a1ea38d28042c3f87fe99b32cdaff416cad7"
+  },
+  {
+    "path": "services/api/scripts/check-business-errors.cjs",
+    "expected": "35a9a218cf4f411f22417cb5970a483e2723de303fc59d4133c9562780ca0339",
+    "candidate": "6213ee00aef1b59ccf6dfda74899d286d92d0ac92e5daf56d2ce35eea4664c70"
+  },
+  {
+    "path": "services/api/src/approval/approval-rule-assignments.http.spec.ts",
+    "expected": "9b482307f923277a6b2d32e1c3115ab12174b5236a3e20f66f6d4c0666a54d01",
+    "candidate": "d90d681e295ffa599c1b5ee351187cb8f6a138b2621701bdb35296b7aaa220c2"
+  },
+  {
+    "path": "services/api/src/approval/audit-duty-notification-delivery.ts",
+    "expected": "21567fb5659dfe37e5a71470ca5650dea7d1395979e7669fe5f4f2f90a080ad0",
+    "candidate": "40017e852db29daa4ec4f9e82535a3e936c7b45a9699d52f47f0d4d8dbb56467"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer.service.ts",
+    "expected": "4daee34470bf135380922d9d610673a8e748f521006ec4fe3dca1031bb532c23",
+    "candidate": "11083f57d8f43035698c9be3cca51c2b4d35c882fd39c2a734e77ff8a37a4b72"
+  },
+  {
+    "path": "services/api/src/contract-ledger/contract-classification-preflight.service.spec.ts",
+    "expected": "ea9acef7b673ba35a345008892d1d5bc29cfd250b0f1a3809cdd735b52e8e442",
+    "candidate": "0a7d73e3212a49cf659d757b3e9ff32472b0ab7daa48e03e8820f6acd45957a3"
+  },
+  {
+    "path": "services/api/src/contract-template/task12-direct-registration.http.spec.ts",
+    "expected": "c0eb413de99d9cb61623fb8081e30e7ae27ae411dd5cebcc714a6f2d1ed9908e",
+    "candidate": "ba2fe1954a9e1bc467efcd9c04d41ec4fb9353e84eab47a4a7dc86284e315601"
+  },
+  {
+    "path": "services/api/src/contract-template/template-management.test-support.ts",
+    "expected": "a456d498881dddabcfbf987fa46ce69fb9b3f9c3e41f39d3ec7fc9758da5852f",
+    "candidate": "40c329ae90b2da21e1107c47fedf9d2069b085f8f0be12f06046a51269ae37cb"
+  },
+  {
+    "path": "services/api/src/database/task16-revocation-application.http.spec.ts",
+    "expected": "db6b0b445608b74f71283d4dd91ba33accbf3e411df939802b78d4ad6a2708cd",
+    "candidate": "5ee9a246ff170a3cd7afc7c95eb748048469cc684a9316144ae225d6fd85f419"
+  },
+  {
+    "path": "services/api/src/file/personnel-private-file-access.service.spec.ts",
+    "expected": "34d87790e60a89c9ca030e5062e0d84e6b3ddca4f1676c7dcff0cc4388223a9e",
+    "candidate": "f22f8193b139d22428f1fe15f36fc894542cfe503b3d4097a7a30e360a5fa2d9"
+  },
+  {
+    "path": "services/api/src/fund-account/fund-account-duty.ts",
+    "expected": "d233dd7814ac1cc026c808ddffa86404b7ffa3952eb507c3c2e919147f6fadad",
+    "candidate": "adb0f532f02cc617b28ca7cd2ffc6076e0fc88c9ecb7c16cead4369fc7fd215c"
+  },
+  {
+    "path": "services/api/src/fund-account/fund-account.module.ts",
+    "expected": "0649c1404affd340e1db1e7215afabd691f793d2aee5060c47168fdb0cf93607",
+    "candidate": "7d9eb5476b05f5d1f993dfd8c2f867dec40410e7dc8c9c649f5959abe9a0d82a"
+  },
+  {
+    "path": "services/api/src/fund-account/fund-account.service.ts",
+    "expected": "c9b0a59a9bb8344f92b44424cf6ad3a96e238d6b66cdc13db6958a23da67372c",
+    "candidate": "b5d2fcc51e2630151e7650ac6af80c3e9bc2db51c491dce03201036b16904324"
+  },
+  {
+    "path": "services/api/src/fund-account/fund-balance-review-notification.service.spec.ts",
+    "expected": "0e3aadf8c82ec153a30c7fe3379f28a4543741d3a82239215ae1e54245aa3a23",
+    "candidate": "3d307db44b3247aa6999f3fba2946eec802ce872d7d9797dfb29783c40aa469c"
+  },
+  {
+    "path": "services/api/src/fund-account/fund-balance-review-notification.service.ts",
+    "expected": "19014d0b7422b70d6f03db76ae5a65a868466718fe6ca73bf6676c8200789e63",
+    "candidate": "d16250e1a1793d0adfaa9d13179d7ef4b2b7a94462525f886dab675abf6eb4e6"
+  },
+  {
+    "path": "services/api/src/fund-account/testing/fund-account.synthetic-db.ts",
+    "expected": "97c72e64db6a4867a4c7c03420d11df4523b1a05c9034ec88d0bebcf9638e6ab",
+    "candidate": "868f114158419828c6ff27a5ad4eab5c23d76c8d4063116ca43a642057e3aa15"
+  },
+  {
+    "path": "services/api/src/general-procurement/general-procurement-request.test-support.ts",
+    "expected": "f1a873d8a3a6aef9bed1a4df52b595eaeb47aac9ae45addec095f33a4398854e",
+    "candidate": "86a42435b49949d2915c28d8354f6b38d896e92bd834984acdefd646027ac3e3"
+  },
+  {
+    "path": "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts",
+    "expected": "490548640fbe32ca3b27b0980e9b4ffc7c600a416d4946edf35a9fa79643ab68",
+    "candidate": "3d20aef5f2d47d334c77e66ad990e01f2feec35acc4b8bcf1b6585d57f66baac"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-precision-read.service.spec.ts",
+    "expected": "e4209670b3581c126248229f5fac657dfa1bf2ed875122d4155a14af00e0913c",
+    "candidate": "df6087b1d6eee1a8cf482c273de6e895f59912e011eb5e98ef7b1f4ab46fa2ac"
+  },
+  {
+    "path": "services/api/src/payment/registered-payment-execution.http.spec.ts",
+    "expected": "059c800519149aa499f8f444d7f40c78f04f5556d8959578cb903802421211da",
+    "candidate": "be4645647dc86753b4fac235244b1aef0c7ea7c005159d601c54c16858c3d18d"
+  },
+  {
+    "path": "services/api/src/project-fund-dispute/project-fund-dispute-file-access.spec.ts",
+    "expected": "418f0325d57e61ce5450c515d1fbec4d276d9a9638385e52be2a887152f8e1a6",
+    "candidate": "16998a80acc469cc940de446a3d26997fc57e2c92036ae6724a498120cc28d0d"
+  },
+  {
+    "path": "services/api/src/project/project-completion-public.spec.ts",
+    "expected": "912e50354e715ada4696d0ea3b833adcdccd4619896e1d0f62d422f37fe90a5a",
+    "candidate": "fb6647393f4ffa0506ab4f25fa162b2619961af67eb3e519710b8fbd88afdcc2"
+  },
+  {
+    "path": "services/api/src/project/project.service.spec.ts",
+    "expected": "8284bff946691a6aadff8d635dcdbeaaee26376960607af5d455a4f9d78d7693",
+    "candidate": "ded09fb719d52501d70d2ac71645f920ba329aa6a344107e4c3c361e8cb5784b"
+  }
+]

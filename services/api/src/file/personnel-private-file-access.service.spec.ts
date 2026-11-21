@@ -8,6 +8,7 @@ function fixture(kind:"settlement"|"payment",role:string,participant=false, ownP
   fileObject:{...empty,findUnique:async()=>file},
   userPosition:{findMany:async({where}:{where:{projectId:string|null}})=>where.projectId===null && role!=="employee" && role!=="project_manager" || where.projectId==="project-1" && ownProject ? [{positionId:"role"}] : []},
   position:{findMany:async()=>[{id:"role",key:role}]},
+  contractTakeoverCorrection:{groupBy:async()=>[]},
   settlementArchiveFile:{findFirst:async()=>kind==="settlement"?{status:"confirmed",settlementId:"settlement"}:null},
   settlement:{...empty,findUnique:async()=>({id:"settlement",projectId:"project-1",preparedByUserId:"other"})},
   paymentExecution:{...empty,findFirst:async()=>kind==="payment"?{paymentRequestId:"payment"}:null},

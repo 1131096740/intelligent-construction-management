@@ -96,6 +96,12 @@ export async function createGeneralRequestHarness(port = 0) {
       findUniqueOrThrow: async (query: { where?: Row }) => { const row = find(query)[0]; if (!row) throw new Error("合成记录不存在"); return structuredClone(row); },
       findFirst: async (query: Query) => structuredClone(queryRows(query)[0] ?? null),
       findMany: async (query: Query = {}) => structuredClone(queryRows(query)), count: async (query: { where?: Row } = {}) => find(query).length,
+      ...(name === "projectRosterMember" && {
+        groupBy: async ({ by, where }: { by: ["projectId"]; where?: Row }) => {
+          if (by.length !== 1 || by[0] !== "projectId") throw new Error("合成项目人员目录仅支持按项目分组");
+          return [...new Set(find({ where }).map(row => row.projectId))].map(projectId => ({ projectId }));
+        }
+      }),
       create: async ({ data }: { data: Row }) => { const row = { id: randomUUID(), enabled: true, revision: 1, status: "draft", requestProtocolVersion: 1, scope: "project", lines: [], submissions: [], approvalInstanceId: null, createdAt: new Date(), updatedAt: new Date(), ...data }; rows().push(row); return structuredClone(row); },
       createMany: async ({ data, skipDuplicates }: { data: Row[]; skipDuplicates?: boolean }) => { let count = 0; for (const row of data) { if (skipDuplicates && rows().some(old => old.id === row.id)) continue; rows().push({ createdAt: new Date(), ...row }); count++; } return { count }; },
       update: async ({ where, data }: { where: Row; data: Row }) => { const row = find({ where })[0]; if (!row) throw new Error("合成记录不存在"); return update(row, data); },

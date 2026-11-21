@@ -351,7 +351,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-finance", key: "finance_director" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -387,7 +387,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-manager", key: "project_manager" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([
           { projectId: "project-1", positionKey: "employee" },
@@ -424,7 +424,7 @@ describe("ProjectService", () => {
           { id: "position-contract-director", key: "contract_director" }
         ])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -454,7 +454,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-budget", key: "budget_staff" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -477,7 +477,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([
           { projectId: "project-1", positionKey: "contract_staff" },
@@ -519,7 +519,7 @@ describe("ProjectService", () => {
           { id: "position-project-manager", key: "project_manager" }
         ])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([
           { projectId: "project-3", positionKey: "contract_director" },
@@ -559,7 +559,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-employee", key: "employee" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-2", positionKey: "employee" }])
       },
@@ -583,6 +583,7 @@ describe("ProjectService", () => {
         })
       },
       projectRosterMember: {
+        groupBy: jest.fn().mockResolvedValue([]),
         findMany: jest.fn(({ where }) => {
           if (where.userId === "leader") return Promise.resolve([]);
           return Promise.resolve([
@@ -671,6 +672,7 @@ describe("ProjectService", () => {
         })
       },
       projectRosterMember: {
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-2" }]),
         findMany: jest.fn(({ where }) => {
           if (where.userId === "employee") {
             return Promise.resolve([{ projectId: "project-2", userId: "employee" }]);

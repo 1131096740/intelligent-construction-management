@@ -1,0 +1,26 @@
+'use strict';
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const root=process.argv[2]??'/qualification/named-source/services/api/prisma';
+const {functionProofSql}=require(path.join(root,'task16-registered-access-check.cjs'));
+const {bindNamedSevenFunctionProofs}=require(path.join(root,'task16-seven-preimage-named-owner.cjs'));
+const source=require(path.join(root,'task16-registered-access.json'));
+const newRoutines=source.functionProofs.filter(row=>/^public\."?jg_(registered|assert_registered)_/u.test(row.signature)&&!row.signature.includes('jg_registered_fund_immutable'));
+const changedRoutines=source.functionProofs.filter(row=>/^public\.(guard_inter_entity_relationship_|"(?:validateOperating(?:Fact|ImpactEntry)References|jg_registered_fund_immutable))/u.test(row.signature));
+assert.equal(newRoutines.length,35);
+assert.equal(changedRoutines.length,6);
+const proofs=[...newRoutines,...changedRoutines];
+const original=functionProofSql({functionProofs:proofs});
+const named=bindNamedSevenFunctionProofs(proofs,functionProofSql);
+const repairedJoin='JOIN pg_catalog.pg_roles r ON r.oid=p.proowner AND r.oid=10 JOIN';
+assert.equal(named.replace(repairedJoin,'JOIN pg_catalog.pg_roles r ON r.oid=p.proowner JOIN')
+  .replaceAll('"owner":"jiangkong"','"owner":"jg_task01_owner"'),original);
+assert.equal(named.split(repairedJoin).length,2);
+assert.equal(named.split('"owner":"jiangkong"').length,42);
+assert.equal(original.split('"owner":"jg_task01_owner"').length,42);
+assert.ok(named.includes("r.rolname=proof->>'owner'"));
+assert.throws(()=>bindNamedSevenFunctionProofs(proofs.slice(1),functionProofSql),/NAMED_SEVEN_FUNCTION_PROOF_OWNER_PREIMAGE/);
+assert.throws(()=>bindNamedSevenFunctionProofs([{...proofs[0],owner:'other'},...proofs.slice(1)],functionProofSql),/NAMED_SEVEN_FUNCTION_PROOF_OWNER_PREIMAGE/);
+assert.throws(()=>bindNamedSevenFunctionProofs(proofs,()=>''),/NAMED_SEVEN_FUNCTION_PROOF_OID_PREIMAGE/);
+assert.equal(functionProofSql({functionProofs:proofs}),original);
+console.log('NAMED_290_SEVEN_POSTIMAGE_PROOFS_OFFLINE_PASSED');

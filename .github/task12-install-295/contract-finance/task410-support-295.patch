@@ -1,0 +1,21 @@
+--- support
++++ support
+@@ -1,7 +1,7 @@
+ import type { PrismaService } from "./prisma.service";
+ 
+-const terminalMigration = "20261119003500_fund_balance_correction_controlled_round";
+-const terminalChecksum = "8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60";
++const terminalMigration = "20261119003800_company_transfer_ordinary_loan_multi_witness";
++const terminalChecksum = "e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25";
+ 
+ export function task410TestDatabase(target: URL) {
+   if (process.env.TASK410_OWNED_290 === undefined) {
+@@ -34,7 +34,7 @@
+         JOIN pg_catalog.pg_database d ON d.datdba = r.oid
+         WHERE d.datname = current_database() AND r.oid = 10 AND r.rolsuper AND r.rolname = current_user
+       )
+-      AND (SELECT count(*) = 290 AND count(*) FILTER (
++      AND (SELECT count(*) = 295 AND count(*) FILTER (
+         WHERE migration_name = ${terminalMigration} AND checksum = ${terminalChecksum}
+       ) = 1 FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AS accepted
+   `;

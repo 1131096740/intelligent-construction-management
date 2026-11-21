@@ -1,0 +1,77 @@
+'use strict';
+
+const assert=require('node:assert/strict');
+const {admitSource}=require('./install-only292.cjs');
+const {withCombined295MultiWitness}=require('./installer.cjs');
+const {final,digest}=require('./multi-witness.cjs');
+const plan=require('./finance-adjacent-profiles.json');
+const {readFileSync}=require('node:fs');
+const {createHash}=require('node:crypto');
+const {spawnSync}=require('node:child_process');
+const {isDeepStrictEqual}=require('node:util');
+const source=require('./contract-finance-source.json');
+const root='/qualification';
+const lane=process.argv[2];
+const receipt={schemaVersion:1,purpose:'ORIGINAL_FINANCE_ADJACENT_EXACT_295',lane,sourceSha:source.sourceSha,
+  migrationSha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
+
+async function main(){
+  assert.equal(process.argv.length,3);
+  assert.notEqual(process.getuid(),0);
+  assert.equal(process.env.DATABASE_URL,undefined);
+  assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
+  assert.equal(source.migrationCount,295);
+  assert.equal(source.ledgerSha256,final);
+  assert.equal(source.tails.at(-1).sha256,digest);
+  assert.ok(Object.hasOwn(plan,lane));
+  const profile=plan[lane];
+  const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
+  assert.equal(hash(root+'/'+profile.runner),profile.runnerSha256);
+  assert.equal(hash(root+'/workspace/services/api/'+profile.suite),profile.suiteSha256);
+  const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
+  assert.equal(baseline.expectedDirectoryCount,295);
+  assert.equal(baseline.terminalMigrationChecksum,digest);
+  receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
+  const need=(ok,code)=>assert.ok(ok,code);
+  await withCombined295MultiWitness(receipt,async context=>{
+    function runCommand(file,args,{cwd,timeoutMs,allowFailure,extra}){
+      const result=spawnSync(file,args,{cwd,encoding:'utf8',timeout:timeoutMs,maxBuffer:16*1024*1024,
+        env:{PATH:'/usr/local/bin:/usr/bin:/bin:/usr/lib/postgresql/16/bin',LANG:'C',LC_ALL:'C',TZ:'UTC',
+          HOME:context.workDir,TMPDIR:context.workDir,...extra}});
+      if(result.status!==0&&!allowFailure)throw Object.assign(new Error('FINANCE_ADJACENT_COMMAND_FAILED'),{
+        exit:result.status,prismaCode:/\bP[0-9]{4}\b/u.exec(result.stderr??'')?.[0],
+        sqlstate:/(?:Database error code:\s*|ERROR:\s+)([0-9A-Z]{5})(?=[:\s]|$)/u.exec(result.stderr??'')?.[1]});
+      return {stdout:result.stdout??'',code:result.status};
+    }
+    const run=require('./'+profile.runner)[profile.method];
+    if(lane==='pol280')await run(context,receipt);
+    else await run(context,receipt,runCommand,need,isDeepStrictEqual);
+  });
+  const original=receipt[profile.receipt];
+  assert.equal(original.suite,profile.suite);
+  assert.equal(original.passed,profile.count);
+  assert.equal(original.skipped,0);
+  if(lane==='v7')assert.deepEqual(
+    [original.connectionLimit,original.deadlock40P01,original.lockSessions],[2,true,2]);
+  if(lane==='pol279')assert.equal(original.replaySeed,true);
+  if(lane==='pol280')assert.deepEqual([original.replayNoop,original.seed,original.lockSessionCapacity],[true,true,3]);
+  assert.deepEqual(receipt.orderedTails.slice(-6).map(row=>row.size),[290,291,292,293,294,295]);
+  assert.equal(receipt.installOnly295.ledgerSha256,final);
+  assert.equal(receipt.installOnly295.nonOwnerDenied,true);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,final);
+  assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
+  assert.equal(receipt.combinedAfterBusiness.exactB7,true);
+  assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
+  assert.equal(receipt.business,'CALLBACK_COMPLETED');
+  assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+  receipt.status='ORIGINAL_FINANCE_ADJACENT_295_PASSED';
+}
+
+main().catch(error=>{
+  const code=error.code??error.message;
+  receipt.failure={stage:receipt.stages.at(-1),
+    code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'ORIGINAL_FINANCE_ADJACENT_295_FAILED',
+    sqlstate:error.sqlstate,prismaCode:error.prismaCode,migrationCause:error.migrationCause,
+    prismaOutput:error.prismaOutput,migrationLedger:error.migrationLedger,exit:error.exit};
+  process.exitCode=1;
+}).finally(()=>console.log(JSON.stringify(receipt)));

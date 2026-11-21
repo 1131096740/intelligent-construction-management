@@ -5,7 +5,7 @@ import {ProjectVisibilityService} from "../auth/project-visibility.service";
 
 it("固定流程当前人员只在有权项目读取，缺岗如实返回且无手机号或密码",async()=>{
  const db={
-  userPosition:{findMany:async()=>[]},projectMember:{findMany:async()=>[{projectId:"p1"}]},projectRosterMember:{findMany:async()=>[]},position:{findMany:async()=>[]},
+  userPosition:{findMany:async()=>[]},projectMember:{findMany:async()=>[{projectId:"p1"}]},projectRosterMember:{groupBy:async()=>[]},position:{findMany:async()=>[]},
   project:{findMany:async({where}:{where:{id?:{in:string[]}}})=>[{id:"p1",name:"一号项目"},{id:"p2",name:"无权项目"}].filter(row=>!where.id||where.id.in.includes(row.id))},
   user:{findMany:async()=>[{id:"manager",name:"当前经理"}]},
   $queryRaw:async(query:{strings:readonly string[]})=>query.strings.join("").includes("WITH members")?[{projectId:"p1",userId:"manager",roleKey:"project_manager",userIsActive:true}]:[]

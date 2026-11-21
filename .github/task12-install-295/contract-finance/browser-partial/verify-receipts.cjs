@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {readFileSync}=require('node:fs');
+const {join}=require('node:path');
+const read=file=>JSON.parse(readFileSync(file,'utf8'));
+const outer=read(process.argv[2]);
+const evidence=read(join(process.argv[3],'receipt.json'));
+assert.equal(outer.status,'TASK398_BROWSER_PARTIAL_EXACT_295_PASSED');
+assert.equal(evidence.status,'BROWSER_PARTIAL_CASE_RETURNED_NOT_FULL_ACCEPTANCE');
+assert.equal(evidence.candidate,outer.sourceSha);
+assert.equal(evidence.runId,outer.runId.replaceAll('-',''));
+assert.match(evidence.requestKeySha256,/^[a-f0-9]{64}$/u);
+assert.equal(outer.installOnly295.ledgerSha256,'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d');
+console.log('TASK398_BROWSER_PARTIAL_295_RECEIPTS_VERIFIED');

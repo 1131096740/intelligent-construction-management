@@ -1,0 +1,11 @@
+--- receipt.spec.ts
++++ receipt.spec.ts
+@@ -160,7 +160,7 @@
+     `;
+     return row;
+   }));
+-  assert(EXPECTED_MIGRATION_COUNT === 290 && identity.every(row => row?.ok === true) &&
++  assert(EXPECTED_MIGRATION_COUNT === 295 && identity.every(row => row?.ok === true) &&
+     new Set(identity.map(row => row?.oid)).size === 1 && new Set(identity.map(row => row?.pid)).size === clients.length,
+     "RECEIPT_282_OWNED_CONNECTIONS");
+ }

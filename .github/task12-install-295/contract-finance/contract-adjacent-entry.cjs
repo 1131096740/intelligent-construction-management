@@ -1,0 +1,61 @@
+'use strict';
+
+const assert=require('node:assert/strict');
+const {admitSource}=require('./install-only292.cjs');
+const {withCombined295MultiWitness}=require('./installer.cjs');
+const {final,digest}=require('./multi-witness.cjs');
+const plan=require('./contract-adjacent-profiles.json');
+const {verify}=require('./contract-ci.cjs');
+const source=require('./contract-finance-source.json');
+const root='/qualification';
+const lane=process.argv[2];
+const receipt={schemaVersion:1,purpose:'ORIGINAL_CONTRACT_ADJACENT_EXACT_295',lane,sourceSha:source.sourceSha,
+  migrationSha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
+
+async function main(){
+  assert.equal(process.argv.length,3);
+  assert.notEqual(process.getuid(),0);
+  assert.equal(process.env.DATABASE_URL,undefined);
+  assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
+  assert.equal(source.migrationCount,295);
+  assert.equal(source.ledgerSha256,final);
+  assert.equal(source.tails.at(-1).sha256,digest);
+  assert.ok(Object.hasOwn(plan.profiles,lane));
+  const profile=plan.profiles[lane];
+  const fs=require('node:fs'),{createHash}=require('node:crypto');
+  const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  assert.equal(hash(root+'/contract-ci.cjs'),plan.runnerSha256);
+  for(const file of ['task12-owned-280.test-support.ts',...profile.specs])
+    assert.equal(hash(root+'/workspace/services/api/src/database/'+file),plan.fixtures[file]);
+  const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
+  assert.equal(baseline.expectedDirectoryCount,295);
+  assert.equal(baseline.terminalMigrationChecksum,digest);
+  receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
+  await withCombined295MultiWitness(receipt,async context=>{
+    receipt.stages.push('ORIGINAL_CONTRACT_ADJACENT_'+lane.toUpperCase());
+    receipt.settlement=verify(profile.verifyMode,context);
+  });
+  assert.equal(receipt.settlement.tests,profile.count);
+  assert.equal(receipt.settlement.skipped,0);
+  assert.deepEqual(receipt.settlement.suites,profile.specs.map(file=>'services/api/src/database/'+file));
+  if(lane==='settlement')assert.match(receipt.settlement.precheckSha256,/^[a-f0-9]{64}$/u);
+  assert.deepEqual(receipt.orderedTails.slice(-6).map(row=>row.size),[290,291,292,293,294,295]);
+  assert.equal(receipt.installOnly295.ledgerSha256,final);
+  assert.equal(receipt.installOnly295.nonOwnerDenied,true);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,final);
+  assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
+  assert.equal(receipt.combinedAfterBusiness.exactB7,true);
+  assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
+  assert.equal(receipt.business,'CALLBACK_COMPLETED');
+  assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+  receipt.status='ORIGINAL_CONTRACT_ADJACENT_295_PASSED';
+}
+
+main().catch(error=>{
+  const code=error.code??error.message;
+  receipt.failure={stage:receipt.stages.at(-1),
+    code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'ORIGINAL_CONTRACT_ADJACENT_295_FAILED',
+    sqlstate:error.sqlstate,prismaCode:error.prismaCode,migrationCause:error.migrationCause,
+    prismaOutput:error.prismaOutput,migrationLedger:error.migrationLedger,exit:error.exit};
+  process.exitCode=1;
+}).finally(()=>console.log(JSON.stringify(receipt)));

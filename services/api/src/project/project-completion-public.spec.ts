@@ -23,7 +23,7 @@ function completionFixture() {
     project: { findMany: async ({where}: {where?: {id?: {in?:string[]}}}={}) => !where?.id?.in || where.id.in.includes(project.id) ? [{...project}] : [], findUnique: async ({where}: {where:{id:string}}) => where.id===project.id ? {...project} : null },
     userPosition: { findMany: async () => [] }, position: { findMany: async () => [] },
     projectMember: {findMany: async ({where}: {where:{userId:string;projectId?:string|{in:string[]}}}) => where.userId === "manager" ? [{projectId:"p1",userId:"manager",positionKey:"project_manager"}] : []},
-    projectRosterMember: empty(), projectAffiliateAssignment: empty(), projectParticipatingCompany: empty(), companyEntityVersion:empty(),
+    projectRosterMember: { groupBy: async () => [] }, projectAffiliateAssignment: empty(), projectParticipatingCompany: empty(), companyEntityVersion:empty(),
     clearingCase:empty(), operatingFact:empty(),operatingImpactEntry:empty(), interEntityRelationshipEntry:empty(),registeredOperationalPayment:empty(),companyTransfer:empty(),companyTransferEvent:empty(),
     projectNecessaryExpenseReserveEntry:empty(),projectFundDisputeEntry:empty(),projectNecessaryExpenseReserveReplacement:empty(),projectFundDisputeReplacement:empty(),
     $queryRaw: async (query: { strings: readonly string[] }) => {
