@@ -61,6 +61,15 @@ node -e '
   console.log(JSON.stringify(row));
 ' "$work/receipt.json" "$sha" || { printf 'TASK398_BROWSER_COMPLETION_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
-marker=$(find "$work/owned" -type f -name receipt-complete.json)
-[[ -n $marker && $marker != *$'\n'* ]] || exit 65
-node "$plan/verify-receipts.cjs" "$work/receipt.json" "$(dirname "$marker")"
+# The evidence directory belongs to postgres and stays private on the host.
+docker run --rm -i --platform linux/amd64 --pull never --network none --read-only \
+  --cap-drop ALL --security-opt no-new-privileges --user postgres \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1m \
+  --mount "type=bind,src=$work/owned,dst=/evidence,readonly" \
+  --mount "type=bind,src=$plan/verify-receipts.cjs,dst=/verify-receipts.cjs,readonly" \
+  --entrypoint bash "$image" -ec '
+    cat > /tmp/outer.json
+    marker=$(find /evidence -type f -name "$1")
+    [[ -n $marker && $marker != *$'\''\n'\''* ]] || exit 65
+    node /verify-receipts.cjs /tmp/outer.json "$(dirname "$marker")"
+  ' _ "receipt-complete.json" < "$work/receipt.json"
