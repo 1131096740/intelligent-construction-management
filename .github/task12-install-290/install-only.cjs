@@ -13,6 +13,12 @@ require('./installer.cjs').withOutside290InstallOnly(receipt).then(()=>{
   console.log(JSON.stringify({...receipt,status:'STOPPED',failure:{
     stage:receipt.stages.at(-1)??'INPUTS',code:/^[A-Z0-9_]+$/u.test(candidate)?candidate:'INSTALL_ONLY_290_FAILED',
     sqlstate:error.sqlstate,prismaCode:error.prismaCode,exit:error.exit,
+    syscall:typeof error.syscall==='string' && /^[a-zA-Z0-9_ ]{1,40}$/u.test(error.syscall)
+      ? error.syscall : undefined,
+    inputPath:typeof error.path==='string' && /^\/(qualification|sys\/fs\/cgroup|usr\/local|usr\/lib)(\/[a-zA-Z0-9_@.+-]+)*$/u.test(error.path)
+      ? error.path : undefined,
+    frames:typeof error.stack==='string' ? error.stack.split('\n').slice(1,6)
+      .map(line=>line.match(/\/qualification\/[a-zA-Z0-9_./-]+:\d+:\d+/u)?.[0]).filter(Boolean) : undefined,
   }}));
   process.exitCode=1;
 });
