@@ -7,7 +7,7 @@ input="$root/.github/task12-install-290"
 previous="$root/.github/task12-install-289"
 temp=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-task12-290.XXXXXXXX")
 mkdir -m 0755 "$temp/product"
-node "$input/materialize.cjs" --materialize "$root" "$temp/product" "$CI_SOURCE_SHA"
+(umask 022; node "$input/materialize.cjs" --materialize "$root" "$temp/product" "$CI_SOURCE_SHA")
 node "$previous/verify.cjs" "$temp/product/predecessor"
 python3 "$previous/produce.py" "$root" "$CI_SOURCE_SHA" "$previous/historical-install-inputs.tar.gz" "$previous/installer.cjs" "$temp/admission"
 mkdir "$temp/context"
