@@ -331,6 +331,10 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(dynamic, /pnpm check:migration-baseline/u);
   assert.match(
     dynamic,
+    /"\$DYNAMIC_GROUP" == contract_finance_acceptance[^\n]*\.github\/task12-install-295\/contract-finance\/run\.sh[^\n]*\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA"/u
+  );
+  assert.match(
+    dynamic,
     /if: \$\{\{ matrix\.group == 'pol113_pol115_business_entries' \}\}[\s\S]*?browser_path="\$RUNNER_TEMP\/pol113-pol115-playwright"[\s\S]*?echo "PLAYWRIGHT_BROWSERS_PATH=\$browser_path" >> "\$GITHUB_ENV"[\s\S]*?PLAYWRIGHT_BROWSERS_PATH="\$browser_path" pnpm --filter @jiangkong\/web-admin exec playwright install --with-deps chromium webkit/u
   );
   assert.match(

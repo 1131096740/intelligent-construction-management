@@ -1,0 +1,32 @@
+{
+  "status": "OFFLINE_292_PRODUCT_TREE",
+  "base": "23b1c98bc15f36e986d17059579e6673315b9be8",
+  "tree": "67644d9465a0ab4ee80ede099139d9c129d66f14",
+  "prefix289": "5c5e77dc94502b706c6e52c5761f52573e27cca46efb812f9b8b22216ec52f67",
+  "intermediate291": "95a67fca88067c689dd59d13d0b7d0eea7c7375fffe7ba91868a7cf6bfdcbd1f",
+  "combined292": "739451e0ff81740db53707acc013709436a746a2b019f99059c6375a5039a775",
+  "tail": [
+    {
+      "name": "20261119000600_company_transfer_ordinary_loan_repayment_check",
+      "sha256": "c9f590d5ce2d57ba44a371461e58e1dd6d65cc631e97a77fc382e2fb749aa22c",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261119000700_company_transfer_ordinary_loan_repayment_approval",
+      "sha256": "341990cbd21419631b0751031fda54e57579e35a0d84d0c0cc1f790718cd1af0",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261119003500_fund_balance_correction_controlled_round",
+      "sha256": "8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60",
+      "finished": true,
+      "rolledBack": false
+    }
+  ],
+  "changes": [
+    "A\tservices/api/prisma/migrations/20261119000600_company_transfer_ordinary_loan_repayment_check/migration.sql",
+    "A\tservices/api/prisma/migrations/20261119000700_company_transfer_ordinary_loan_repayment_approval/migration.sql"
+  ]
+}

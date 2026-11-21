@@ -1,0 +1,106 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+[[ $# == 4 ]] || exit 64
+
+prepared=$(cd "$1" && pwd -P)
+sha=$2
+image_dir=$(cd "$3" && pwd -P)
+lane=$4
+plan=$(cd "$(dirname "$0")" && pwd -P)
+case "$lane" in
+  bank) pids=128; memory=1g; entry=named-bank-ci.cjs;;
+  restore) pids=256; memory=4g; entry=run.cjs;;
+  *) exit 64;;
+esac
+[[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
+image=$(cat "$image_dir/image.id")
+context_sha=$(cat "$image_dir/context.sha256")
+[[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
+[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
+node - "$prepared/source.json" "$sha" "$plan" <<'JS'
+const [source,sha,plan]=process.argv.slice(2);
+const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
+if(candidate.sourceSha!==sha||candidate.migrationCount!==295||candidate.ledgerSha256!==m.final)process.exit(65);
+JS
+[[ -z $(docker ps -q) ]] || exit 65
+if pgrep -x postgres >/dev/null; then exit 65; fi
+out=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-finance-$lane.XXXXXXXX")
+printf '%s\n' "$out"
+overlay="$out/overlay"
+python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane"
+
+mounts=()
+readonly_mount(){
+  [[ ( -f $1 || -d $1 ) && ! -L $1 ]] || exit 65
+  mounts+=(--mount "type=bind,src=$1,dst=$2,readonly")
+}
+mount_tree(){
+  local directory=$1 target=$2 file
+  while IFS= read -r -d '' file; do
+    readonly_mount "$file" "$target/${file#"$directory/"}"
+  done < <(find "$directory" -type f -print0)
+}
+readonly_mount "$prepared/prepared/product/predecessor" /qualification/product289
+readonly_mount "$prepared/prepared/product/intermediate" /qualification/product
+readonly_mount "$prepared/prepared/product/successor.sql" /qualification/successor.sql
+readonly_mount "$prepared/source.json" /qualification/hosted-source.json
+readonly_mount "$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql" /qualification/terminal.sql
+readonly_mount "$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql" /qualification/payout-terminal.sql
+readonly_mount "$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql" /qualification/multi-witness.sql
+mount_tree "$plan/common" /qualification
+if [[ $lane == bank ]]; then
+  for file in named-bank-ci.cjs original-titles.json failure-projection.cjs; do
+    readonly_mount "$plan/bank/$file" "/qualification/$file"
+  done
+  readonly_mount "$overlay/bank/execution-files.json" /qualification/execution-files.json
+  mount_tree "$overlay/bank/overlay" /qualification/workspace
+else
+  for file in run.cjs backup-fixture.cjs settlement-history.cjs restore.cjs archive-contract.cjs restore-diagnostic.cjs named-data.cjs technical-relations.json backup-original.sql business-readback.cjs approval-round-catalog.cjs controlled-correction.cjs verify-behavior.cjs combined294-source.json; do
+    readonly_mount "$plan/restore/$file" "/qualification/$file"
+  done
+  node - "$out/committed-admission.json" "$sha" "$plan/restore/combined294-source.json" <<'JS'
+const [file,head,source]=process.argv.slice(2);
+const {ledgerSha256:ledger294}=require(source);
+require('node:fs').writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE',head,ledger294}),
+  {flag:'wx',mode:0o644});
+JS
+  readonly_mount "$out/committed-admission.json" /qualification/committed-admission.json
+  readonly_mount "$overlay/restore/app-inputs.json" /qualification/app-inputs.json
+  readonly_mount "$overlay/restore/loan-relocated-manifest.json" /qualification/loan-relocated-manifest.json
+  readonly_mount "$overlay/restore/named-roles" /qualification/named-roles
+  mount_tree "$overlay/restore/correction" /qualification/workspace
+  mount_tree "$overlay/restore/loan" /qualification/loan-workspace
+fi
+
+run(){
+  docker run --platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges --user postgres --init --pids-limit "$pids" --memory "$memory" \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m "${mounts[@]}" \
+    --entrypoint node "$image" "/qualification/$entry" "$@"
+}
+capture(){
+  local mode=$1 status=0 proof_status=0
+  shift
+  run "$@" > "$out/$mode.stdout" 2> "$out/$mode.stderr" || status=$?
+  if [[ $lane == restore ]]; then
+    node "$plan/restore/extract-receipt.cjs" "--$mode" "$out/$mode.stdout" "$out/$mode.json" "$status" "$out/committed-admission.json" || proof_status=$?
+  else
+    node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" <<'JS' || proof_status=$?
+const [file,receipt,mode,sha]=process.argv.slice(2);
+const r=JSON.parse(require('node:fs').readFileSync(file,'utf8').trimEnd().split('\n').at(-1));
+const expected=mode==='preflight'?'BANK_295_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'BANK_295_ORIGINAL_FULL_12_PASSED';
+require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx',mode:0o600});
+if(r.candidateSha!==sha||r.status!==expected)process.exit(1);
+JS
+  fi
+  if (( status != 0 )); then return "$status"; fi
+  return "$proof_status"
+}
+capture preflight --preflight
+case "$lane" in
+  bank) hypothesis='原 12 个具名银行场景在最终 SHA 上均通过，双归还见证和角色按原契约清理。';;
+  restore) hypothesis='具名角色在同一独占集群恢复完整业务数据并撤回临时权限，保留四类历史读回。';;
+esac
+printf '%s\n' "$hypothesis" > "$out/hypothesis.txt"
+capture once

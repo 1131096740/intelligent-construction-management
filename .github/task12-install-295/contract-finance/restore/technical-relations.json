@@ -1,0 +1,13 @@
+{
+  "key": "jg_fund_balance_correction_witness_key",
+  "emptyBindings": [
+    "jg_company_transfer_loan_repayment_scope_v1",
+    "jg_general_procurement_archive_binding_v1",
+    "jg_legacy_procurement_expense_voucher_binding_v1",
+    "jg_project_scope_initial_contract_binding_v1",
+    "jg_project_scope_legacy_review_binding_v1",
+    "jg_fund_balance_notice_witness"
+  ],
+  "operatingVerifier": "OperatingLedgerWriteSecret",
+  "operatingContext": "OperatingLedgerWriteContext"
+}

@@ -17608,6 +17608,45 @@ async function ledgerDutySmsAuthorityIsProven(root) {
   }
 }
 
+function balanceDutySmsControlledAuthorityIsProven(service, retry, notice) {
+  const returnDuty = service.get("currentDuty")?.body?.[0]?.block?.body?.[0];
+  return directRegistrationMatches(retry[0], `const result = await retryFailedAuditDutyNotice(
+    this.noticeAccess({ attemptId, expectedRoundId, actorId }), registrationId, actorId, attemptId);`) &&
+    directRegistrationMatches(service.get("noticeAccess"), `{
+      return {
+        prisma: this.prisma, sms: { available: () => Boolean(this.worker.client) && this.sms.available() }, kind,
+        lockDuty: async (tx: Prisma.TransactionClient, registrationId: string) => {
+          if (retry && !await fundBalanceNoticeLocks(tx, "retry", registrationId, retry.expectedRoundId,
+            retry.attemptId, retry.actorId)("round")) {
+            throw new ConflictException("当前待办或短信记录已变化，请刷新");
+          }
+        },
+        prepareAudit: prepareFundBalanceNoticeAudit,
+        canAccess: async (tx: Prisma.TransactionClient, intent: AuditLog) =>
+          (retry === undefined || metadata(intent).roundId === retry.expectedRoundId) &&
+          Boolean(await this.currentNoticeDuty(tx, intent, retry ? "retry" : "status")),
+        currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent)
+      };
+    }`) &&
+    directRegistrationMatches(service.get("locks"), `{
+      const { recipientId, roundId } = metadata(intent);
+      if (typeof recipientId !== "string" || typeof roundId !== "string") return null;
+      return fundBalanceNoticeLocks(tx, operation, registrationId, roundId, intent.id, recipientId);
+    }`) &&
+    directRegistrationMatches(notice[0], "const { recipientId, roundId } = metadata(intent);") &&
+    directRegistrationMatches(notice[1], 'if (!intent.businessId || typeof recipientId !== "string" || typeof roundId !== "string") return null;') &&
+    directRegistrationMatches(notice[2], "const lock = this.locks(tx, operation, intent.businessId, intent);") &&
+    directRegistrationMatches(notice[3], "if (!lock) return null;") &&
+    directRegistrationMatches(notice[4], "const duty = await this.currentDuty(tx, intent.businessId, roundId, recipientId, false, lock);") &&
+    directRegistrationMatches(notice[5], "if (!duty || duty.round.id !== roundId) return null;") &&
+    returnDuty?.type === "ReturnStatement" && returnDuty.argument?.type === "AwaitExpression" &&
+    directRegistrationExpression(returnDuty.argument.argument, `freshControlledRound
+      ? resolveFreshCorrectionRecipient(tx, registrationId, roundId, recipientId)
+      : noticeLock
+        ? resolveFundReviewIdentity(tx, registrationId, recipientId, roundId, false, noticeLock)
+        : resolveFundReviewIdentity(tx, registrationId, recipientId, roundId)`);
+}
+
 async function balanceDutySmsAuthorityIsProven(root) {
   try {
     const [controller, service, delivery] = await Promise.all(
@@ -17615,8 +17654,6 @@ async function balanceDutySmsAuthorityIsProven(root) {
     );
     const retry = service.get("retry")?.body ?? [];
     const notice = service.get("currentNoticeDuty")?.body ?? [];
-    const access = service.get("noticeAccess")?.body?.[0]?.argument?.properties
-      ?.find(property => property.key?.name === "canAccess");
     return auditDutyDeliveryAuthorityIsProven(delivery) &&
       directRegistrationMatches(controller.get("reviewDutySms"), `{
         if (!this.balanceNotifications) throw new ServiceUnavailableException("资金复核短信状态暂不可用");
@@ -17627,11 +17664,7 @@ async function balanceDutySmsAuthorityIsProven(root) {
         return this.balanceNotifications.retry(id, actor.id, body.attemptId, body.expectedApprovalInstanceId);
       }`) &&
       directRegistrationMatches(service.get("status"), "{ return { notice: await auditDutyNoticeStatus(this.noticeAccess(), registrationId, actorId) }; }") &&
-      directRegistrationMatches(retry[0], "const result = await retryFailedAuditDutyNotice(this.noticeAccess(expectedRoundId), registrationId, actorId, attemptId);") &&
-      directRegistrationExpression(access?.value, "async (tx: Prisma.TransactionClient, intent: AuditLog) => (expectedRoundId === undefined || metadata(intent).roundId === expectedRoundId) && Boolean(await this.currentNoticeDuty(tx, intent))") &&
-      directRegistrationMatches(notice[2], "const duty = await this.currentDuty(tx, intent.businessId, roundId, recipientId);") &&
-      directRegistrationMatches(notice[3], "if (!duty || duty.round.id !== roundId) return null;") &&
-      directRegistrationMatches(service.get("currentDuty")?.body?.[0]?.block?.body?.[0], "return await resolveFundReviewIdentity(tx, registrationId, recipientId, roundId);");
+      balanceDutySmsControlledAuthorityIsProven(service, retry, notice);
   } catch {
     return false;
   }

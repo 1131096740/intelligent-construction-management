@@ -11286,9 +11286,15 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
     const selfReviewBypass = await inspect();
     assert.ok(selfReviewBypass.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
     await write(root, bankAccess, bankAccessSource);
-    await write(root, balanceService, balanceSource.replace("metadata(intent).roundId === expectedRoundId", "true"));
+    await write(root, balanceService, balanceSource.replace("metadata(intent).roundId === retry.expectedRoundId", "true"));
     const missingRound = await inspect();
     assert.ok(missingRound.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, balanceService, balanceSource.replace(
+      "this.currentDuty(tx, intent.businessId, roundId, recipientId, false, lock)",
+      "this.currentDuty(tx, intent.businessId, roundId, recipientId)"
+    ));
+    const missingLock = await inspect();
+    assert.ok(missingLock.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
     await write(root, balanceService, balanceSource);
     await write(root, independent, independentSource.replace("Boolean(await access.currentMessage(tx, attempt))", "true"));
     const missingCurrentLedgerDuty = await inspect();

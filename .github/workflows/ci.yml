@@ -339,7 +339,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec node scripts/verify-linux-webkit-runtime.cjs
 
       - name: Install contract finance browser and document runtimes
-        if: ${{ matrix.group == 'contract_finance_acceptance' }}
+        if: ${{ matrix.group == 'contract_finance_acceptance' && hashFiles('.github/task12-install-295/contract-finance/run.sh') == '' }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk
@@ -377,6 +377,9 @@ jobs:
           DYNAMIC_SHARD: ${{ matrix.shard }}
           TASK12_289_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 428 }}
         run: |
+          if [[ "$DYNAMIC_GROUP" == contract_finance_acceptance && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run.sh ]]; then
+            exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA"
+          fi
           if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == contract_settlement_v2 && -z "$DYNAMIC_SHARD" ]]; then
             if [[ -f .github/task12-install-290/profile.json ]]; then
               exec bash .github/task12-install-290/run.sh settlement
