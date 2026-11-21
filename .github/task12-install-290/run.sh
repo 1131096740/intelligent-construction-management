@@ -11,7 +11,7 @@ mkdir -m 0755 "$temp/product"
 node "$previous/verify.cjs" "$temp/product/predecessor"
 (umask 022; python3 "$previous/produce.py" "$root" "$CI_SOURCE_SHA" "$previous/historical-install-inputs.tar.gz" "$previous/installer.cjs" "$temp/admission")
 mkdir "$temp/context"
-cp -R "$temp/admission/source" "$temp/context/"
+(umask 022; cp -R "$temp/admission/source" "$temp/context/")
 cp "$temp/admission"/{source-seal.txt,source-admission.json} "$temp/context/"
 cp "$previous"/{Dockerfile,checkout.cjs,installer.cjs,exact-source.json} "$temp/context/"
 cp "$input"/{successor.cjs,install-only.cjs} "$temp/context/"
