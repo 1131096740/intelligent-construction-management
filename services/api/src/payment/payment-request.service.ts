@@ -3156,7 +3156,7 @@ export class PaymentRequestService {
         if (prior.fileId !== fileId) throw new ConflictException("原实付已补充凭证，不能覆盖已冻结证据");
         return {executionId,voucherPending:false};
       }
-      const locked = await this.files!.assertFileHasNoBusinessBinding(tx,fileId);
+      const locked = await this.files!.assertFileHasNoBusinessBinding(tx,fileId,{executionId,actorUserId});
       if (locked.uploadedByUserId !== actorUserId) throw new ForbiddenException("后补凭证须由当前办理人上传");
       const file = await tx.fileObject.findUnique({where:{id:fileId}});
       if (!file || !file.contentSha256 || !/^[a-f0-9]{64}$/.test(file.contentSha256)) throw new BadRequestException("付款凭证内容校验信息不完整，请重新上传");

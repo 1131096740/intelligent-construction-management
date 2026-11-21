@@ -1,0 +1,134 @@
+--- original
++++ installed
+@@ -180 +180 @@
+- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
++ for(const size of [...new Set(plan.stopAt205 ? [203,205] : [...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length])]){
+@@ -182 +182 @@
+-  fs.writeFileSync(path.join(dir,'schema.prisma'),schema,{flag:'wx',mode:0o600});
++  fs.writeFileSync(path.join(dir,'schema.prisma'),size<=126&&plan.profileUpgrade ? plan.profileSchema : schema,{flag:'wx',mode:0o600});
+@@ -194,0 +195,15 @@
++ let profileIdentity;
++ if(plan.profileUpgrade){
++  need(ledger[125]?.name==='20260814010000_project_operating_profile'&&
++    ledger[125].sha256==='af512609e42dc1b2f026e3fb51c2cbafccd16d7e8b945e1281b725ca1acc9f4a','REMAINING_PROFILE_126_SOURCE');
++  await deploy(125);
++  const before=await jsonSql(controls.inspectSql());profileIdentity=identity(before);checkLedger(before,125);
++  enter('REMAINING_PROFILE_ORIGINAL_SEED');
++  const seed=capture(path.join(__dirname,'project-profile-original-seed.sql'));
++  need(seed.sha256==='43e2dd735b37852e1021d795906c3327db71524030c7ae11c92387643392ff99','REMAINING_PROFILE_ORIGINAL_SEED_SHA');
++  await sql(seed.bytes.toString('utf8'));
++  await deploy(126);
++  const after=await jsonSql(controls.inspectSql());
++  need(equal(identity(after),profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');checkLedger(after,126);
++  plan.profileUpgrade.profileHistory={prefix:125,backfill:126,sameInstance:true,originalSeedSha256:seed.sha256};
++ }
+@@ -195,0 +211 @@
++ if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
+@@ -200,0 +217,5 @@
++ if(plan.stopAt205){
++  const pre206=await jsonSql(controls.inspectSql());
++  need(equal(identity(pre206),bound),'REMAINING_PRE206_IDENTITY');checkLedger(pre206,205);
++  return {pre206,expectedLedger:ledger.slice(0,205),legacyAppOid:setup.appOid};
++ }
+@@ -241 +262 @@
+-async function installer(receipt, probeOnly, consume, release=stableRelease) {
++async function installer(receipt, probeOnly, consume, release=stableRelease, remainingMode) {
+@@ -274 +295,2 @@
+-  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000}};
++  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
++    ...(remainingMode==='profile'?{profileUpgrade:receipt,profileSchema:schema.bytes}:{})};
+@@ -398,0 +421 @@
++    let cleanupLegacy;
+@@ -400 +422,0 @@
+-
+@@ -576,0 +599,34 @@
++    if(remainingMode==='cleanup'){
++      enter('REMAINING_PRE206_AFTER_PRIMARY_289_B7');
++      const primaryAcl=await jsonSql(cleanupPrimaryDatabaseAclSql(database));
++      const legacyRunId=randomUUID(), legacyDatabase='jg_task01_'+legacyRunId.replaceAll('-','');
++      need(legacyDatabase!==database,'REMAINING_LEGACY_DATABASE_DISTINCT');
++      await sql(`CREATE DATABASE ${legacyDatabase} OWNER ${owner} ENCODING 'UTF8' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C';`,{database:'postgres'});
++      await sql(`REVOKE ALL PRIVILEGES ON DATABASE ${legacyDatabase} FROM PUBLIC;`,{database:'postgres'});
++      const legacySql=(text,options)=>sql(text,{...options,database:legacyDatabase});
++      const legacyJson=(text,options)=>jsonSql(text,{...options,database:legacyDatabase});
++      const legacyRoot=path.join(root,'cleanup-pre206-prefixes'); fs.mkdirSync(legacyRoot,{mode:0o700});
++      fs.mkdirSync(path.join(legacyRoot,'prefixes'),{mode:0o700});
++      fs.symlinkSync(path.join(root,'ca.crt'),path.join(legacyRoot,'ca.crt'));
++      cleanupLegacy=await migrateNativeTask16(
++        {...plan,runId:legacyRunId,database:legacyDatabase,stopAt205:true},legacyRoot,port,credentials.owner,
++        legacySql,legacyJson,command,enter,fromHistory);
++      need(cleanupLegacy.pre206.ledger.length===205&&
++        cleanupLegacy.pre206.ledger.at(-1)?.name==='20261109100000_contract_direct_pending_input_v1'&&
++        cleanupLegacy.pre206.ledger.at(-1)?.sha256==='2ca118b29e8e75745a1ac7d6f8de3fbfa70fa5774b3d95c48c6119caff8b316a',
++        'REMAINING_PRE206_TERMINAL_WITNESS');
++      cleanupLegacy.database=legacyDatabase;
++      cleanupLegacy.runId=legacyRunId;
++      cleanupLegacy.primaryAcl=primaryAcl;
++    }
++    if(cleanupLegacy){
++      need(cleanupLegacy.pre206.databaseOid!==receipt.databaseIdentity.databaseOid&&
++        cleanupLegacy.pre206.systemIdentifier===receipt.databaseIdentity.systemIdentifier,'REMAINING_CLEANUP_DUAL_DATABASE');
++      need(equal(await jsonSql(cleanupPrimaryDatabaseAclSql(database)),cleanupLegacy.primaryAcl),'REMAINING_PRIMARY_DB_ACL_CHANGED');
++      const acl=await jsonSql(cleanupLegacyAclSql(cleanupLegacy.database,cleanupLegacy.legacyAppOid));
++      need(isCleanupLegacyAcl(acl),'REMAINING_PRE206_LEAST_ACL');
++      cleanupLegacy.acl=acl;
++      need(equal(await jsonSql(finalSql),final),'REMAINING_PRIMARY_CATALOG_CHANGED');
++      assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++      receipt.cleanupLegacy={count:205,exactTerminal:true,distinctDatabase:true,samePostmaster:true};
++    }
+@@ -595,0 +652,2 @@
++        ...(cleanupLegacy?{legacyOwnerUrl:(()=>{const url=new URL(endpoint);url.pathname='/'+cleanupLegacy.database;return url.toString();})(),
++          legacyRunId:cleanupLegacy.runId}:{}),
+@@ -619,0 +678,11 @@
++      if(cleanupLegacy){
++        const legacy=await jsonSql(control.inspectSql(),{database:cleanupLegacy.database});
++        need(equal(legacy.ledger,cleanupLegacy.expectedLedger)&&
++          ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(
++            key=>legacy[key]===cleanupLegacy.pre206[key]),'REMAINING_PRE206_POSTCONSUME');
++        need(equal(await jsonSql(cleanupPrimaryDatabaseAclSql(database)),cleanupLegacy.primaryAcl),'REMAINING_PRIMARY_DB_ACL_CHANGED');
++        need(equal(await jsonSql(cleanupLegacyAclSql(cleanupLegacy.database,cleanupLegacy.legacyAppOid)),cleanupLegacy.acl),'REMAINING_PRE206_POSTCONSUME_ACL');
++        receipt.cleanupLegacy.postconsume=true;
++        receipt.cleanupLegacyAcl={primaryUnchanged:true,legacyOwnerAndQualifiedAppOnly:true,publicDenied:true,
++          unrelatedLoginDenied:true,postconsume:true};
++      }
+@@ -907,0 +977,40 @@
++
++module.exports.withOutside289RemainingRetained = (receipt, mode) => {
++  const {contract289,verifyMaterialized}=require('./checkout.cjs');
++  verifyMaterialized('/qualification/product',contract289);
++  need(mode==='cleanup'||mode==='profile','REMAINING_RETAINED_MODE');
++  Object.assign(receipt,{releaseTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,async context=>{
++    need(context.candidateTree===outsideRelease.tree,'REMAINING_RETAINED_SOURCE');
++    await require('./remaining-retained.cjs').runRetained(context,receipt,mode,runCommand);
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289))).stdout.trim()));
++    receipt.postconsume={count:289,exactB7:true};
++  },outsideRelease,mode);
++};
++
++
++function cleanupPrimaryDatabaseAclSql(database) {
++  need(/^jg_task01_[a-f0-9]{32}$/u.test(database),'REMAINING_PRIMARY_DB_NAME');
++  return `SELECT jsonb_agg(jsonb_build_object('name',datname,'oid',oid::text,'owner',datdba::text,'acl',datacl::text)
++    ORDER BY datname COLLATE "C") FROM pg_catalog.pg_database
++    WHERE datname IN ('${database}','postgres','template0','template1');`;
++}
++
++function cleanupLegacyAclSql(database,appOid) {
++  need(/^jg_task01_[a-f0-9]{32}$/u.test(database)&&/^[1-9][0-9]{0,9}$/u.test(appOid)&&appOid!=='10','REMAINING_PRE206_DB_SCOPE');
++  return `SELECT jsonb_build_object(
++    'legacyOwner',d.datdba=10,
++    'exactAcl',d.datacl IS NOT NULL AND
++      (SELECT count(*)=4 AND bool_and(ac.grantor=10 AND NOT ac.is_grantable AND
++        ((ac.grantee=10 AND ac.privilege_type IN ('CONNECT','CREATE','TEMPORARY')) OR
++         (ac.grantee='${appOid}'::oid AND ac.privilege_type='CONNECT'))) FROM aclexplode(d.datacl) ac),
++    'publicDenied',NOT EXISTS(SELECT FROM aclexplode(d.datacl) WHERE grantee=0),
++    'unrelatedLoginDenied',NOT EXISTS(SELECT FROM pg_roles r WHERE r.rolcanlogin AND r.oid NOT IN (10,'${appOid}'::oid)
++      AND (has_database_privilege(r.oid,d.oid,'CONNECT') OR has_database_privilege(r.oid,d.oid,'TEMPORARY') OR
++           has_database_privilege(r.oid,d.oid,'CREATE'))))
++    FROM pg_database d WHERE d.datname='${database}';`;
++}
++const isCleanupLegacyAcl=value=>equal(value,{legacyOwner:true,exactAcl:true,publicDenied:true,unrelatedLoginDenied:true});
++module.exports.cleanupPrimaryDatabaseAclSql=cleanupPrimaryDatabaseAclSql;
++module.exports.cleanupLegacyAclSql=cleanupLegacyAclSql;
++module.exports.isCleanupLegacyAcl=isCleanupLegacyAcl;

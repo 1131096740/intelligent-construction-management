@@ -4,7 +4,7 @@ import { auditDutyNoticeId, auditDutyNoticeStatus, dispatchAuditDutyNotices, ret
 import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { PrismaService } from "../database/prisma.service";
-import { resolveFundReviewIdentity } from "./fund-account-duty";
+import { resolveFreshCorrectionRecipient, resolveFundReviewIdentity } from "./fund-account-duty";
 
 const metadata = (intent: AuditLog) => (intent.metadata ?? {}) as Prisma.JsonObject;
 const kind = "fund_balance_review_duty_notification";
@@ -25,14 +25,14 @@ export class FundBalanceReviewNotificationService implements OnModuleInit, OnMod
 
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
-  async queue(tx: Prisma.TransactionClient, registrationId: string, roundId: string, actorUserId: string) {
+  async queue(tx: Prisma.TransactionClient, registrationId: string, roundId: string, actorUserId: string, freshControlledRound = false) {
     const positions = await tx.position.findMany({where: {key: "finance_director"}, select: {id: true}});
     const assignments = await tx.userPosition.findMany({
       where: {projectId: null, positionId: {in: positions.map(position => position.id)}}, select: {userId: true}
     });
     const eligible = [];
     for (const recipientId of new Set(assignments.map(assignment => assignment.userId))) {
-      if (await this.currentDuty(tx, registrationId, roundId, recipientId)) eligible.push(recipientId);
+      if (await this.currentDuty(tx, registrationId, roundId, recipientId, freshControlledRound)) eligible.push(recipientId);
     }
     if (eligible.length) await tx.auditLog.createMany({skipDuplicates: true, data: eligible.map(recipientId => ({
       id: auditDutyNoticeId(kind, roundId, recipientId), actorUserId, action: "queued", businessType: kind,
@@ -99,8 +99,12 @@ export class FundBalanceReviewNotificationService implements OnModuleInit, OnMod
     }
   }
 
-  private async currentDuty(tx: Prisma.TransactionClient, registrationId: string, roundId: string, recipientId: string) {
-    try { return await resolveFundReviewIdentity(tx, registrationId, recipientId, roundId); }
+  private async currentDuty(tx: Prisma.TransactionClient, registrationId: string, roundId: string, recipientId: string, freshControlledRound = false) {
+    try {
+      return await (freshControlledRound
+        ? resolveFreshCorrectionRecipient(tx, registrationId, roundId, recipientId)
+        : resolveFundReviewIdentity(tx, registrationId, recipientId, roundId));
+    }
     catch (error) {
       if (error instanceof ForbiddenException || error instanceof ConflictException) return null;
       throw error;

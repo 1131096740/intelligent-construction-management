@@ -8,7 +8,7 @@ import type { SaveContractDraftAggregateDto } from "../contract-workbench/dto/co
 import { BusinessPartyService } from "../business-party/business-party.service";
 import { FileService } from "../file/file.service";
 import { AuditService } from "../audit/audit.service";
-import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity } from "./contract-direct-pending-source";
+import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity, type OutsideOriginalPairSourceScope } from "./contract-direct-pending-source";
 
 function record(value: unknown): Record<string, unknown> | null { return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null; }
 const roles = new Set(["party_a", "party_b", "party_c", "guarantor", "consortium_member", "other"]);
@@ -42,7 +42,17 @@ export async function readDirectPendingInput(tx: Prisma.TransactionClient, versi
 /** Direct originals use aggregate R; generated-document R/F are inapplicable. */
 export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, contract: Contract, version: ContractVersion,
   actorUserId: string, input: SaveContractDraftAggregateDto, requestSha256: string, audit: AuditService, parties: BusinessPartyService, files: FileService, transportFingerprint?: string) {
-  const qualification = await assertDirectPendingSourceQualification(tx);
+  const [firstOriginal, secondOriginal] = input.attachments;
+  const outsidePair: OutsideOriginalPairSourceScope | undefined =
+    contract.contractTypeKey === "material_purchase" && contract.ownerUserId === actorUserId &&
+    record(input.draft.draftData.contractBasics)?.businessType === "material_purchase" &&
+    input.attachments.length === 2 && firstOriginal.fileId !== secondOriginal.fileId &&
+    input.attachments.every((attachment, index) =>
+      attachment.slotKey === "direct_signed_originals_v1" && attachment.displayOrder === index)
+      ? { projectId: contract.projectId, versionId: version.id, applicantId: actorUserId,
+        fileIds: [firstOriginal.fileId, secondOriginal.fileId] }
+      : undefined;
+  const qualification = await assertDirectPendingSourceQualification(tx, outsidePair);
   if (version.numericProtocolVersion !== 2 || version.changeType !== "original" || input.draft.numericProtocolVersion !== 2) throw new ConflictException("已签合同来源格式不匹配，请保留资料刷新后重试");
   const current = record(version.draftData), old = record(current?.directSigningInput), desired = record(input.draft.draftData.directSigningInput);
   if (!current || !old || !desired || Object.keys(old).sort().join(",") !== "counterpartyParty,enterpriseParty,fixedPaymentTermsVersionId,protocolVersion,relationship,signedOn,source" || Object.keys(desired).sort().join(",") !== "counterpartyParty,enterpriseParty,fixedPaymentTermsVersionId,protocolVersion,relationship,signedOn,source"
@@ -69,7 +79,7 @@ export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, c
     amount = input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(persistedBills) : input.draft.manualAmountYuan === undefined ? version.amountYuan?.toFixed(4) ?? null : normalizeBusinessAmount(input.draft.manualAmountYuan);
     taxRate = input.draft.taxFacts.defaultTaxRatePercent === null ? null : new Prisma.Decimal(normalizeTaxRatePercent(input.draft.taxFacts.defaultTaxRatePercent)).toFixed(6);
   } catch { throw new BadRequestException("合同金额或税率格式不正确，请保留原文后核对"); }
-  await assertDirectPendingSourceContinuity(tx, qualification);
+  await assertDirectPendingSourceContinuity(tx, qualification, outsidePair);
   const partyResult = await parties.replaceContractPartiesInTransaction(tx, version.id, input.parties);
   const savedParties = await tx.contractPartySnapshot.findMany({ where: { contractVersionId: version.id } });
   const enterprise = enterpriseParty ? savedParties.find(row => row.roleKey === enterpriseParty.roleKey && row.displayOrder === enterpriseParty.displayOrder) : null;
@@ -84,7 +94,8 @@ export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, c
   const signing = { signingSubjectType: assignment ? "affiliate" : "draft_unconfirmed", affiliateAssignmentId: assignment?.id ?? null, affiliateBusinessPartyVersionId: assignment?.businessPartyVersionId ?? null,
     affiliateNameSnapshot: assignment?.affiliateNameSnapshot ?? null, affiliateCreditCodeSnapshot: assignment?.affiliateCreditCodeSnapshot ?? null };
   if (input.attachments.length > 20 || input.attachments.some((file,index) => file.slotKey !== "direct_signed_originals_v1" || file.displayOrder !== index) || new Set(input.attachments.map(file => file.fileId)).size !== input.attachments.length) throw new BadRequestException("签章原件应按连续顺序保存至专用位置，最多二十份且不能重复");
-  await files.assertCanBindContractDraftAttachments(tx, version.id, input.attachments.map(file => file.fileId), actorUserId);
+  await files.assertCanBindContractDraftAttachments(tx, version.id, input.attachments.map(file => file.fileId),
+    actorUserId, outsidePair ? "outside_material_pair" : undefined);
   const otherSlots = input.attachments.length ? await tx.contractDraftAttachment.findMany({ where: { contractVersionId: version.id, fileId: { in: input.attachments.map(file => file.fileId) }, slotKey: { not: "direct_signed_originals_v1" } } }) : [];
   if (otherSlots.length) throw new ConflictException("该原件已用于本合同其他资料位置，请选择独立原件");
   const fileRows = input.attachments.length ? await tx.fileObject.findMany({ where: { id: { in: input.attachments.map(file => file.fileId) } } }) : [];
@@ -131,7 +142,7 @@ export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, c
   const contractTypeChanged = contractTypeKey !== contract.contractTypeKey;
   const changed = contractTypeChanged || input.draft.taxFacts.invoiceType !== version.invoiceType || input.draft.taxFacts.taxMode !== version.taxMode || taxRate !== (version.defaultTaxRatePercent?.toFixed(6) ?? null) || paymentChanged || partyResult.changed || attachmentChanged || Object.entries(signing).some(([key,value]) => record(version)?.[key] !== value) || originalSignedNumber !== stored.originalSignedNumber || !isDeepStrictEqual(draftData, current) || input.draft.pricingNature !== version.pricingNature
     || input.draft.amountSource !== version.amountSource || amount !== (version.amountYuan?.toFixed(4) ?? null);
-  await assertDirectPendingSourceContinuity(tx, qualification);
+  await assertDirectPendingSourceContinuity(tx, qualification, outsidePair);
   if (changed) {
     await tx.contract.update({
       where: { id: contract.id },
@@ -153,6 +164,6 @@ export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, c
     savedAt: new Date().toISOString(), ...(transportFingerprint ? { requestFingerprint: transportFingerprint } : {}), originalSignedNumber, directSigningInput, effectiveChangedSections: changed ? ["draft"] : [], availableActions: [], documentsOutdated: false };
   await tx.contractDraftSaveRequest.create({ data: { idempotencyKey: input.idempotencyKey, contractVersionId: version.id, expectedRevision: input.expectedRevision, resultRevision: revision,
     saveKind: input.saveKind, requestSha256, responseSnapshot: response as Prisma.InputJsonObject, createdByUserId: actorUserId, expiresAt: new Date(Date.now()+7*86400000) } });
-  await assertDirectPendingSourceContinuity(tx, qualification);
+  await assertDirectPendingSourceContinuity(tx, qualification, outsidePair);
   return response;
 }

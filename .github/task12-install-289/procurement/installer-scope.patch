@@ -1,0 +1,30 @@
+--- a/.github/task12-install-289/settlement-installer.cjs
++++ b/.github/task12-install-289/settlement-installer.cjs
+@@ -241 +241,3 @@
+-async function installer(receipt, probeOnly, consume, release=stableRelease) {
++async function installer(receipt, probeOnly, consume, release=stableRelease, namedProcurement) {
++  need(namedProcurement === undefined || release === outsideRelease &&
++    ['procurement','project'].includes(namedProcurement), 'OWNED_289_NAMED_PROCUREMENT_SCOPE');
+@@ -315 +317 @@
+-${release.procurementScope ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release.projectBusinessScope ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}hostssl all all 127.0.0.1/32 reject
++${release.procurementScope || namedProcurement === "procurement" ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release.projectBusinessScope || namedProcurement === "project" ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}hostssl all all 127.0.0.1/32 reject
+@@ -937,0 +940,19 @@
++
++function withOutside289NamedProcurement(receipt, namedScope, consume) {
++  const {contract289, verifyMaterialized} = require('./checkout.cjs');
++  verifyMaterialized('/qualification/product', contract289);
++  Object.assign(receipt,{releaseTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,async context => {
++    need(context.candidateTree===outsideRelease.tree,'OWNED_289_NAMED_PROCUREMENT_SOURCE');
++    const verify = async () =>
++      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289))).stdout.trim()));
++    await verify();
++    await consume(context);
++    await verify();
++    receipt.sameInstancePostConsume=true;
++  },outsideRelease,namedScope);
++}
++module.exports.withOutside289GeneralProcurement = (receipt,consume) =>
++  withOutside289NamedProcurement(receipt,'procurement',consume);
++module.exports.withOutside289ProjectProcurement = (receipt,consume) =>
++  withOutside289NamedProcurement(receipt,'project',consume);

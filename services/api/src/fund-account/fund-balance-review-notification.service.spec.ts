@@ -1,9 +1,12 @@
+import { createHmac, randomBytes } from "node:crypto";
+import { FundAccountService } from "./fund-account.service";
 import { ForbiddenException } from "@nestjs/common";
 import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
-import { resolveFundReviewIdentity } from "./fund-account-duty";
+import { resolveFreshCorrectionRecipient, resolveFundReviewIdentity } from "./fund-account-duty";
 
 jest.mock("./fund-account-duty", () => ({
-  resolveFundReviewIdentity: jest.fn()
+  resolveFundReviewIdentity: jest.fn(),
+  resolveFreshCorrectionRecipient: jest.fn()
 }));
 
 function fixture() {
@@ -11,6 +14,7 @@ function fixture() {
   const duty = {row: {balanceYuan: {toFixed: () => "120.1234"}, version: 2, createdByUserId: "applicant"},
     round: {id: "round"}, account: {companyEntityId: null}} as never;
   resolve.mockReset().mockResolvedValue(duty);
+  jest.mocked(resolveFreshCorrectionRecipient).mockReset().mockResolvedValue(duty);
   const rows = new Map();
   const db = {
     position: {findMany: async () => [{id: "position"}]},
@@ -50,6 +54,50 @@ function fixture() {
   const service = new FundBalanceReviewNotificationService(prisma as never, sms as never);
   return {service, db, rows, sms, resolve};
 }
+
+it("新受控余额更正仅确认本事务锁，未确认时拒绝且不入队", async () => {
+  const {service, db, rows, sms, resolve} = fixture();
+  const fresh = jest.mocked(resolveFreshCorrectionRecipient);
+  fresh.mockRejectedValueOnce(new Error("资金更正通知缺少同事务收件人锁"));
+  await expect(service.queue(db as never, "registration", "round", "applicant", true))
+    .rejects.toThrow("资金更正通知缺少同事务收件人锁");
+  expect(rows.size).toBe(0);
+  await service.queue(db as never, "registration", "round", "applicant", true);
+  await service.queue(db as never, "registration", "round", "applicant", true);
+  expect(fresh).toHaveBeenCalledWith(db, "registration", "round", "finance");
+  expect(resolve).not.toHaveBeenCalled();
+  expect([...rows.values()]).toEqual([
+    expect.objectContaining({action: "queued", metadata: {roundId: "round", recipientId: "finance"}})
+  ]);
+  expect(sms.sendDutyIntent).not.toHaveBeenCalled();
+});
+
+it("收件人锁签名仅接受当前事务和审批轮次", async () => {
+  const originalKey = process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY;
+  const key = randomBytes(32);
+  process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY = key.toString("hex");
+  try {
+    const binding = {database: "test", role: "runtime", xid: "204", backend: "123", expires: "1234567890"};
+    const query = jest.fn().mockResolvedValueOnce([binding]).mockResolvedValueOnce([]);
+    const service = new FundAccountService({} as never, {} as never, {} as never);
+    const verify = await service["authorizeCorrectionRound"]({$queryRaw: query} as never, "registration", []);
+    const sign = (xid: string) => createHmac("sha256", key).update(
+      ["fund_balance_correction_recipient_locks_v1", binding.database, binding.role, xid,
+        binding.backend, "registration", "round"].map(value => Buffer.from(value).toString("hex")).join(":")
+    ).digest("hex");
+    query.mockResolvedValue([{proof: sign(binding.xid)}]);
+    await expect(verify("round")).resolves.toBeUndefined();
+    await expect(verify("other-round")).rejects.toThrow("资金更正收件人锁定证明不可用");
+    query.mockResolvedValue([{proof: sign("205")}]);
+    await expect(verify("round")).rejects.toThrow("资金更正收件人锁定证明不可用");
+    query.mockResolvedValue([{proof: null}]);
+    await expect(verify("round")).rejects.toThrow("资金更正收件人锁定证明不可用");
+  } finally {
+    key.fill(0);
+    if (originalKey === undefined) delete process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY;
+    else process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY = originalKey;
+  }
+});
 
 it.each(["accepted", "revoked", "unknown"])("余额更正复核按当前处理权及短信回执消费 (%s)", async (state) => {
   const {service, db, rows, sms, resolve} = fixture();

@@ -211,7 +211,9 @@ export class GeneralProcurementService {
       const actor = await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
       if (!actor.globalRoleKeys.includes("comprehensive_director")) throw new ForbiddenException("只有综合部主管可以归档采购申请");
       if (row.status !== "approved_pending_archive") throw new ConflictException("请先完成综合部主管、项目经理、董事长/总经理或签审批");
-      const file = await this.files.assertFileHasNoBusinessBinding(tx, input.fileId);
+      const file = await this.files.assertFileHasNoBusinessBinding(tx, input.fileId, undefined, {
+        procurementId: row.id, projectId: row.projectId, actorUserId, revision: row.revision
+      });
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("请使用本人上传的归档依据");
       const updated = await tx.generalProcurement.update({ where: { id }, data: { status: "archived", archiveFileId: file.id, archivedAt: new Date(),
         archivedByUserId: actorUserId, archiveNote: input.note.trim(), revision: { increment: 1 } } });

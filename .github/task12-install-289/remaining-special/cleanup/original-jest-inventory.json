@@ -1,0 +1,192 @@
+[
+  {
+    "file": "src/database/contract-draft-aggregate-concurrency.spec.ts",
+    "source282": "3df16963a0453176bf0c82f1d1ab4fb99b342c34beaeca13a60f820e3892442c",
+    "source289": "3df16963a0453176bf0c82f1d1ab4fb99b342c34beaeca13a60f820e3892442c",
+    "byteIdentical": true,
+    "flags": [
+      "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE"
+    ],
+    "registered": [
+      {
+        "type": "pg",
+        "title": "persists an explicitly selected company bank binding and invalidates documents across company version changes"
+      },
+      {
+        "type": "pg",
+        "title": "creates a pending v2 draft without a legacy template and preserves its four-place or unknown facts under the real subject CHECK"
+      },
+      {
+        "type": "pg",
+        "title": "keeps four-decimal draft facts across HTTP save/read/export and rejects lossy legacy writes atomically"
+      },
+      {
+        "type": "pg",
+        "title": "restores deleted legacy/null/zero facts once under the version lock and replays only public receipts"
+      },
+      {
+        "type": "pg",
+        "title": "allows one revision winner and rolls back an earlier section after a later failure"
+      },
+      {
+        "type": "pg",
+        "title": "records 100, 500 and 1000 row aggregate-save budgets without no-op rewrites"
+      },
+      {
+        "type": "pg",
+        "title": "reads formal blockers from a fresh PostgreSQL snapshot after waiting for the version lock"
+      },
+      {
+        "type": "pg",
+        "title": "maps a Serializable aggregate save to conflict when formalization commits while it waits"
+      }
+    ]
+  },
+  {
+    "file": "src/database/contract-draft-retention-script.spec.ts",
+    "source282": "caf638f591f28fda31b5a9794beed4f3a4b513b6c33b7318c5d848d403bb2e8a",
+    "source289": "caf638f591f28fda31b5a9794beed4f3a4b513b6c33b7318c5d848d403bb2e8a",
+    "byteIdentical": true,
+    "flags": [
+      "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE"
+    ],
+    "registered": [
+      {
+        "type": "model",
+        "title": "defaults to preview and requires database/report/batch confirmation gates"
+      },
+      {
+        "type": "model",
+        "title": "keeps timer mode temporary-only and rejects manual apply or business purge flags"
+      },
+      {
+        "type": "model",
+        "title": "blocks all deletion when a scan is truncated or the preview expired"
+      },
+      {
+        "type": "model",
+        "title": "performs a fresh binding/replacement scan before deleting a file"
+      },
+      {
+        "type": "model",
+        "title": "keeps FileObject retryable when COS deletion fails"
+      },
+      {
+        "type": "model",
+        "title": "never treats temporary retention as business draft purge authorization"
+      },
+      {
+        "type": "model",
+        "title": "writes once for an expired autosave receipt and zero times on the second cleanup"
+      },
+      {
+        "type": "model",
+        "title": "installs a disabled-by-default timer without enabling or starting it during deploy"
+      },
+      {
+        "type": "model",
+        "title": "requires the physical-purge candidate to remain an original pristine draft without shared files"
+      },
+      {
+        "type": "pg",
+        "title": "blocks current-catalog physical cleanup and deletes expired legacy files and receipts once"
+      }
+    ]
+  },
+  {
+    "file": "src/database/contract-lifecycle-route.spec.ts",
+    "source282": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d",
+    "source289": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d",
+    "byteIdentical": true,
+    "flags": [
+      "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE"
+    ],
+    "registered": [
+      {
+        "type": "pg",
+        "title": "projects lifecycle capabilities and executes governed workbench submission routes"
+      },
+      {
+        "type": "model",
+        "title": "rejects non-local database targets"
+      },
+      {
+        "type": "pg",
+        "title": "keeps contract ledgers readable after submitting and abandoning a historical takeover without ordinary approval records"
+      }
+    ]
+  },
+  {
+    "file": "src/database/contract-ended-application-retention.spec.ts",
+    "source282": "d38d0e4065972c3af0524a06addcaf5a3f4f9fa56e2d4f20c2f951d30745616a",
+    "source289": "d38d0e4065972c3af0524a06addcaf5a3f4f9fa56e2d4f20c2f951d30745616a",
+    "byteIdentical": true,
+    "flags": [
+      "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE"
+    ],
+    "registered": [
+      {
+        "type": "pg",
+        "title": "calculates calendar-month retention and audits director holds without deleting data"
+      }
+    ]
+  },
+  {
+    "file": "src/database/contract-ended-application-purge.spec.ts",
+    "source282": "7b7e2381f6a76758ea1ad67bed63df4c24812559a3cd77dc2f24302476d25c68",
+    "source289": "7b7e2381f6a76758ea1ad67bed63df4c24812559a3cd77dc2f24302476d25c68",
+    "byteIdentical": true,
+    "flags": [
+      "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE"
+    ],
+    "registered": [
+      {
+        "type": "pg",
+        "title": "blocks current-catalog physical cleanup and retries legacy cleanup with shared evidence preserved"
+      },
+      {
+        "type": "pg",
+        "title": "refuses a historical bucket mismatch before any COS deletion and leaves a retryable technical receipt"
+      },
+      {
+        "type": "pg",
+        "title": "rejects active or recently released holds, effective or historical records, and non-deletable contract audit without deleting business data"
+      },
+      {
+        "type": "pg",
+        "title": "retries after COS converges but final technical receipt persistence fails"
+      },
+      {
+        "type": "pg",
+        "title": "fails closed when the ended-application retention policy is absent"
+      },
+      {
+        "type": "pg",
+        "title": "executes only an explicitly authorized legacy abandoned candidate"
+      },
+      {
+        "type": "pg",
+        "title": "deletes only the explicitly reviewed authorization-update audit exception"
+      }
+    ]
+  },
+  {
+    "file": "src/database/legacy-contract-cleanup-preflight-postgres.spec.ts",
+    "source282": "8ab6dc8b472285eac068009ac5d30d96b63bf6eb5da33a0ac7aa6b9b0c636cd2",
+    "source289": "8ab6dc8b472285eac068009ac5d30d96b63bf6eb5da33a0ac7aa6b9b0c636cd2",
+    "byteIdentical": true,
+    "flags": [
+      "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE"
+    ],
+    "registered": [
+      {
+        "type": "pg",
+        "title": "reads retention activation as the same absolute instant as PostgreSQL"
+      },
+      {
+        "type": "pg",
+        "title": "uses a read-only transaction and lists exact COS versions without deleting"
+      }
+    ]
+  }
+]

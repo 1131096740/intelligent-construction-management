@@ -1,0 +1,33 @@
+{
+  "originalSpecSha256": "a7233a69444ddf18b3873c9cdd5403ce01e2b12d514fca03da16eac69625c210",
+  "fixtureSpecSha256": "588bc9f9a7a27aa01aa0fb70cedecc24f0cdd180014b28c3a59e4b9062bf87c3",
+  "totalTests": 25,
+  "originalDatabaseTests": 24,
+  "originalNames": [
+    "rejects a production or non-local database target",
+    "allows exactly one statement for a contended employment-company month",
+    "makes one statement command idempotency key resolve to one durable receipt",
+    "allows exactly one version for a statement revision under contention",
+    "serializes same-key source and draft creation before natural uniqueness can preempt replay",
+    "keeps approved sources and submitted wage facts immutable in PostgreSQL",
+    "edits only the new draft after review return and preserves the returned version history",
+    "rolls back every draft row when a controlled batch insert fails",
+    "confirms an ordinary canonical wage source without an envelope payee",
+    "rejects forged canonical coordinates, envelope payees and payable-ref drift",
+    "rolls back payable refs and the version transition when the canonical project context fails",
+    "rejects evidence drift committed while confirmation waits in the stable lock sequence",
+    "linearizes a sensitive wage read against concurrent global-role revocation",
+    "rejects confirmation after a concurrent global-role revocation linearizes first",
+    "rechecks a wage-evidence ticket after role revocation or account disable and persists reason-only deny audits",
+    "audits an expired wage-evidence ticket attempt without sensitive metadata",
+    "audits an invalid wage-evidence token attempt without sensitive metadata",
+    "prevents a second public wage source from creating an ambiguous evidence binding",
+    "keeps SoD, active identity, idempotency and concurrent confirmation intact",
+    "applies SoD only to active standing or exact current-version delegation closures",
+    "keeps the existing payee requirement for every other project wage source",
+    "keeps multiple people, creditors and projects balanced under the employment company",
+    "isolates two service snapshots for one employee, project and month through correction and full reversal",
+    "binds correction deltas and permits only a target-bound explicit-zero full reversal",
+    "fails closed on invalid full-reversal bindings, batch input and lock-after evidence drift"
+  ]
+}

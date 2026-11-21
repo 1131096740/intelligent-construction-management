@@ -255,7 +255,28 @@ describe("OrganizationService", () => {
     });
     const service = new OrganizationService(prisma as never);
 
-    const result = await service.getDirectory();
+    let releaseFirstBatch: () => void = () => undefined;
+    const firstBatch = new Promise<void>((resolve) => { releaseFirstBatch = resolve; });
+    const originalUserPositions = await prisma.userPosition.findMany();
+    prisma.userPosition.findMany.mockClear().mockImplementationOnce(async () => {
+      await firstBatch;
+      return originalUserPositions;
+    });
+
+    const resultPromise = service.getDirectory();
+    expect(prisma.department.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.position.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.userPosition.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.projectMember.findMany).not.toHaveBeenCalled();
+    expect(prisma.projectRosterMember.findMany).not.toHaveBeenCalled();
+    expect(prisma.project.findMany).not.toHaveBeenCalled();
+
+    releaseFirstBatch();
+    const result = await resultPromise;
+    expect(prisma.projectMember.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.projectRosterMember.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.project.findMany).toHaveBeenCalledTimes(1);
 
     expect(result.departments[0].children[0].name).toBe("合同部");
     expect(result.users[0]).toMatchObject({

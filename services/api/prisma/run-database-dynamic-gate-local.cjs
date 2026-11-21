@@ -715,10 +715,37 @@ async function runPreflight(environment) {
   process.stdout.write(`[database-dynamic-timing] ${JSON.stringify({ phase: "prepare.generate-and-build", durationMs: Math.round(performance.now() - started) })}\n`);
 }
 
+function postgres289Preflight(manifest, groups) {
+  if (manifest.migrationBaseline.expectedDirectoryCount !== 289 ||
+      manifest.migrationBaseline.terminalMigration !== "20261119000500_contract_outside_archive_evidence_voucher_check" ||
+      manifest.migrationBaseline.terminalMigrationChecksum !== "90c194e51d72760db01145dca0678fdf4ff427c017074d1728c76e6dc876c0e4") return undefined;
+  return groups.map(group => ({
+    id: group.id,
+    ...(group.pol113Pol115Shard ? { shard: group.pol113Pol115Shard } : {}),
+    runner: group.runner.path,
+    originalTestFiles: group.testFiles.map(file => file.path),
+    execution: "blocked",
+    reason: group.id === TASK01_GROUP ? "manual_only_289_not_qualified" :
+      group.id === "contract_settlement_v2" ? "use_sealed_289_settlement_runner" :
+      group.id === "contract_template_scenario" ? "use_sealed_289_template_runner" :
+      group.id === "settlement_draft_lifecycle" ? "use_sealed_289_draft_runner" :
+      group.id === "fund_execution_v7" ? "use_sealed_289_v7_runner" :
+      group.id === "invoice_ledger_pol260" ? "use_sealed_289_invoice_runner" :
+      group.id === "necessary_expense_reserve_pol279" ? "use_sealed_289_pol279_runner" :
+      group.id === "project_fund_dispute_pol280" ? "use_sealed_289_pol280_runner" :
+      group.id === "operating_projection_pol108" ? "use_sealed_289_pol108_core_runner" :
+      group.id === "operating_projection_pol108_facts" ? "use_sealed_289_pol108_facts_runner" :
+      group.id === "operating_projection_pol108_impacts" ? "use_sealed_289_pol108_impacts_runner" : group.id === "project_close_profit_pol109" ? "use_sealed_289_pol109_runner" : group.id === "clearing_reconciliation_pol275" ? "use_sealed_289_pol275_runner" : group.id === "project_financing_quota" ? "use_sealed_289_pfq_runner" :
+      group.id === "employee_onboarding" ? "onboarding_static_material_staged_not_admitted" : "same_instance_289_handoff_missing"
+  }));
+}
+
 async function executeGate({ manifest, options, sourceEnv = process.env }) {
   assertExecutionArguments(options, manifest);
   assertSafeExecutionEnvironment(sourceEnv);
   const coveredGroups = groupsForInvocation(manifest, options);
+  const mapping = postgres289Preflight(manifest, coveredGroups);
+  if (mapping) fail(`289 runner preflight rejected: ${JSON.stringify(mapping.map(({id, shard, reason}) => ({id, shard, reason})))}`);
   const coverage = selectedCoverage(coveredGroups);
   if (coveredGroups.length === 1 && coveredGroups[0].id === TASK01_GROUP) {
     if (sourceEnv.GITHUB_ACTIONS === "true") fail("任务01仅限本机独立授权，禁止GitHub Actions自动执行");
@@ -855,6 +882,10 @@ function preview(manifest, validation, options) {
     remainingFiles: validation.remainingFiles,
     remainingTests: validation.remainingTests
   };
+  if (options.mode === "list") {
+    const mapping = postgres289Preflight(manifest, coveredGroups);
+    if (mapping) payload.postgres289Preflight = mapping;
+  }
   if (options.mode === "list") {
     payload.coveredGroups = coveredGroups.map((group) => ({
       id: group.id,

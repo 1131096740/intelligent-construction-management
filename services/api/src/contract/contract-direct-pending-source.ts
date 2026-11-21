@@ -1,4 +1,4 @@
-import { A08_DRAFT_VOUCHER_CHECK_SHA256, UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
+import { A08_DRAFT_VOUCHER_CHECK_SHA256, UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256, UPWARD_REGISTERED_VOUCHER_PROJECTION_SHA256, UPWARD_INITIAL_DRAFT_GUARD_PROJECTION_SHA256, UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256, UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
 import { markTask12DirectSourceDiagnostic as mark, recordTask12DirectSourceDiagnostic as recordDiagnostic } from "./task12-direct-source-diagnostic";
 import { assertDirectPendingCatalogInputs, factAppendSignature, readActualCatalog, readBindingCatalog, readDeparseEnvironment, readExpectedBinding } from "./contract-direct-pending-catalog";
 import { discoverUpwardLegacyProjection, isQualifiedUpwardDefiner } from "./contract-upward-archive-catalog";
@@ -30,6 +30,16 @@ export function hasDirectSigningInput(draftData: unknown): boolean {
   return !!draftData && typeof draftData === "object" && !Array.isArray(draftData) && Object.prototype.hasOwnProperty.call(draftData, "directSigningInput");
 }
 
+const OUTSIDE_PAIR_HELPER = "public.jg_check_a08_outside_original_pair_v1(text,text,text,integer)";
+const OUTSIDE_PAIR_HELPER_BODY = "1e2a2c2eb9191178796cac4c10dad4f9c5a09403584fbe47d8e7be00a9b7f802";
+
+export type OutsideOriginalPairSourceScope = Readonly<{
+  projectId: string;
+  versionId: string;
+  applicantId: string;
+  fileIds: readonly [string, string];
+}>;
+
 interface DirectPendingSourceQualification {
   environment: ObjectValue; bootstrap: ObjectValue; expected: ObjectValue; actual: ObjectValue;
   transition: Awaited<ReturnType<typeof readPreparedDirectArchiveTransition>> | null;
@@ -37,7 +47,7 @@ interface DirectPendingSourceQualification {
   dispatch: Awaited<ReturnType<typeof readDirectArchiveDispatchQualification>> | null;
 }
 
-export async function assertDirectPendingSourceQualification(tx: Prisma.TransactionClient): Promise<DirectPendingSourceQualification> {
+export async function assertDirectPendingSourceQualification(tx: Prisma.TransactionClient, outsidePair?: OutsideOriginalPairSourceScope): Promise<DirectPendingSourceQualification> {
   mark("UPWARD_PROJECTION");
   let upwardProjection;
   try { upwardProjection = await discoverUpwardLegacyProjection(tx); }
@@ -126,11 +136,40 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
       })) continue;
       if (definer.bodySha256 === A08_DRAFT_VOUCHER_CHECK_SHA256 && upwardProjection?.definers.some(item =>
         item.signature === "public.jg_upward_archive_catalog_projection_v2()" &&
-        item.bodySha256 === UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256)) {
+        (item.bodySha256 === UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256 || item.bodySha256 === UPWARD_REGISTERED_VOUCHER_PROJECTION_SHA256 || item.bodySha256 === UPWARD_INITIAL_DRAFT_GUARD_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256))) {
         const [scope] = await tx.$queryRaw<Array<{ oid: string | null }>>(Prisma.sql`
           SELECT pg_catalog.to_regprocedure('public.jg_check_a08_direct_original_voucher_v1(text,text)')::oid::text AS oid
         `);
         if (scope?.oid === definer.oid) continue;
+        unavailable();
+      }
+      if (outsidePair && definer.bodySha256 === OUTSIDE_PAIR_HELPER_BODY && upwardProjection?.definers.some(item =>
+        item.signature === "public.jg_upward_archive_catalog_projection_v2()" &&
+        (item.bodySha256 === UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256))) {
+        const [scope, ...extra] = await tx.$queryRaw<Array<{ oid: string }>>(Prisma.sql`
+          /* contract_direct_outside_original_pair_source */
+          SELECT helper.oid::text AS oid
+          FROM pg_catalog.pg_proc helper
+          JOIN pg_catalog.pg_database d ON d.datname=current_database() AND d.datdba=helper.proowner
+          JOIN public."ContractVersion" v ON v.id=${outsidePair.versionId}
+          JOIN public."Contract" c ON c.id=v."contractId" AND c."projectId"=${outsidePair.projectId}
+            AND c."ownerUserId"=${outsidePair.applicantId} AND c."contractTypeKey"='material_purchase'
+          WHERE current_user=session_user AND current_user::text ~ '^jg_fixture_app_[a-f0-9]{24}$'
+            AND current_user::regrole::oid::text=${expected.applicationRoleOid}
+            AND v.status='draft' AND v."versionNo"=1 AND v."changeType"='original'
+            AND v."numericProtocolVersion"=2 AND v."draftData"#>>'{directSigningInput,source}'='direct_signed'
+            AND v."draftData"#>>'{directSigningInput,relationship}'='outside'
+            AND v."draftData"#>>'{directSigningInput,protocolVersion}'='1'
+            AND ${outsidePair.fileIds[0]}::text<>${outsidePair.fileIds[1]}::text
+            AND helper.oid=pg_catalog.to_regprocedure(${OUTSIDE_PAIR_HELPER})
+            AND helper.pronamespace=pg_catalog.to_regnamespace('public') AND helper.prosecdef
+            AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(helper.prosrc,'UTF8')),'hex')=${OUTSIDE_PAIR_HELPER_BODY}
+            AND pg_catalog.has_function_privilege(current_user,helper.oid,'EXECUTE')
+            AND NOT pg_catalog.has_function_privilege(current_user,helper.oid,'EXECUTE WITH GRANT OPTION')
+            AND NOT pg_catalog.has_function_privilege(current_user,
+              'public.jg_project_owner_settlement_voucher_bound(text)','EXECUTE')
+        `);
+        if (!extra.length && scope?.oid === definer.oid) continue;
         unavailable();
       }
       const completionOid = dispatch?.native?.completionOid;
@@ -172,7 +211,7 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
   }
 }
 
-export async function assertDirectPendingSourceContinuity(tx: Prisma.TransactionClient, before: DirectPendingSourceQualification): Promise<void> {
-  const after = await assertDirectPendingSourceQualification(tx);
+export async function assertDirectPendingSourceContinuity(tx: Prisma.TransactionClient, before: DirectPendingSourceQualification, outsidePair?: OutsideOriginalPairSourceScope): Promise<void> {
+  const after = await assertDirectPendingSourceQualification(tx, outsidePair);
   if (!isDeepStrictEqual(after, before)) unavailable();
 }

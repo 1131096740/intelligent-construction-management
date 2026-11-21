@@ -1,0 +1,37 @@
+{
+  "tree": "23b1c98bc15f36e986d17059579e6673315b9be8",
+  "prefixCount": 289,
+  "prefixLedgerSha256": "5c5e77dc94502b706c6e52c5761f52573e27cca46efb812f9b8b22216ec52f67",
+  "terminal": {
+    "name": "20261119003500_fund_balance_correction_controlled_round",
+    "sha256": "8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60",
+    "finished": true,
+    "rolledBack": false
+  },
+  "expectedLedgerSha256": "8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5",
+  "mode": "EXACT_290_HOSTED_INSTALL_ONLY_V1",
+  "indexRows": 4599,
+  "indexSha256": "2c0763abe34fb58bc3c965d570d795e50a52c16351517664f566abc8309c3bf2",
+  "predecessorAttestation": {
+    "mode": "EXACT_289_CHECKOUT_INSTALLER_INPUT_V1",
+    "tree": "a1be083076018686dd8afba68c44ff9c75502014",
+    "indexRows": 4285,
+    "indexSha256": "3c5823b2cbf95802ebf90716f8a6fed5ac203747cc619b8bf0a5af11f6b6a01b",
+    "materializedFiles": 291,
+    "materializedSha256": "de505917cda4131a6fe3f162575a2e72338dfb81eb70d3db92dd6313ce64e289"
+  },
+  "originals": [
+    ".github/task12-install-290/profile.json",
+    ".github/task12-install-290/materialize.cjs",
+    ".github/task12-install-290/materialize.test.cjs",
+    ".github/task12-install-290/installer.patch",
+    ".github/task12-install-290/successor.cjs",
+    ".github/task12-install-290/install-only.cjs",
+    ".github/task12-install-290/run.sh"
+  ],
+  "installerAssembly": {
+    "baseSha256": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "patchSha256": "7227f7ec21cfa04b42fa4936fc7acd846797709fad39d07a8e474fa406b0f5de",
+    "resultSha256": "937514f648e63326fdf40d91b95ac4f4188259a4b2e1fb863f0dd6386531a56c"
+  }
+}

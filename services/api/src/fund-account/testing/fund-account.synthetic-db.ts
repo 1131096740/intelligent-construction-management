@@ -1,4 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { fundReviewNodes, FUND_REVIEW_BUSINESS_TYPE } from "../fund-account-duty";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { hashSync } from "bcryptjs";
 import { Prisma } from "@prisma/client";
 
@@ -24,6 +26,9 @@ function matches(row: Row, where: Row = {}): boolean {
  * Never opens a database, object store, bank connection or SMS gateway. */
 export function createFundAccountSyntheticDb() {
   let conflictNextTransaction = false;
+  let balanceRoundMode = "controlled";
+  let nextXid = 0;
+  const correctionBinding = new AsyncLocalStorage<{ xid: string; proof?: string }>();
   const tables: Record<string, Row[]> = {
     companyEntity: [{ id: "company-a", name: "甲公司", isActive: true }, { id: "company-b", name: "乙公司", isActive: true }],
     project: [{ id: "project-a", name: "甲项目", isActive: true }],
@@ -70,6 +75,26 @@ export function createFundAccountSyntheticDb() {
         throw new Prisma.PrismaClientKnownRequestError("synthetic unique constraint", { code: "P2002", clientVersion: "synthetic" });
       }
       const row = { id: randomUUID(), createdAt: new Date(), ...(table === "approvalDelegation" ? { enabled: true } : {}), ...data };
+      if (table === "fundAccountBalanceRegistration" && data.kind === "correction" && !data.approvalInstanceId) {
+        const audit = tables.auditLog.find(item => item.businessId === row.id && item.action === "fund_account.correction.request");
+        if (!audit || audit.actorUserId !== data.createdByUserId) throw new Error("Synthetic correction request evidence missing");
+        const roundId = randomUUID();
+        const binding = correctionBinding.getStore()!;
+        const key = Buffer.from(process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY!, "hex");
+        try {
+          const fields = ["fund_balance_correction_recipient_locks_v1", "synthetic", "synthetic",
+            binding.xid, "1", row.id, roundId];
+          binding.proof = createHmac("sha256", key)
+            .update(fields.map(value => Buffer.from(value).toString("hex")).join(":")).digest("hex");
+        } finally {
+          key.fill(0);
+        }
+        tables.approvalInstance.push({ id: roundId, flowType: "fund_account_balance_correction", businessType: FUND_REVIEW_BUSINESS_TYPE,
+          businessId: row.id, applicantUserId: data.createdByUserId, status: "approval_pending",
+          currentNodeIndex: 0, frozenNodes: fundReviewNodes(), createdAt: new Date(), updatedAt: new Date() });
+        tables[table].push({ ...row, approvalInstanceId: roundId });
+        return { ...row, approvalInstanceId: roundId };
+      }
       tables[table].push(row);
       return { ...row };
     },
@@ -96,6 +121,15 @@ export function createFundAccountSyntheticDb() {
     $queryRaw: async (query: Prisma.Sql | TemplateStringsArray, ...values: unknown[]) => {
       const sql = Array.isArray(query) ? query.join("?") : (query as Prisma.Sql).sql;
       const id = String(Array.isArray(query) ? values[0] : (query as Prisma.Sql).values[0]);
+      if (sql.includes("WITH new_key AS (")) return [{mode: balanceRoundMode}];
+      if (sql.includes("pg_current_xact_id()::text AS xid")) return [{
+        database: "synthetic", role: "synthetic", xid: correctionBinding.getStore()!.xid, backend: "1",
+        expires: String(Math.floor(Date.now() / 1000) + 30),
+      }];
+      if (sql.includes("current_setting('jg.fund_balance_correction_recipient_locks'")) {
+        return [{proof: correctionBinding.getStore()?.proof ?? null}];
+      }
+      if (sql.includes("set_config('jg.fund_balance_correction_witness'")) return [];
       if (sql.includes('SELECT p."key" FROM "UserPosition"')) return roles[id] && !inactiveUsers.has(id) && id !== "project_finance" ? [{ key: roles[id] }] : [];
       if (sql.includes('SELECT DISTINCT up."projectId"')) return id === "project_finance" ? [{ projectId: "project-a" }] : [];
       if (sql.includes('FROM "HandwrittenSignatureVersion"')) return missingSignatures.has(id) ? [] : [{ id: `signature-version:${id}`, fileId: `signature-file:${id}`, contentSha256: createHash("sha256").update(`synthetic-signature:${id}`).digest("hex") }];
@@ -113,9 +147,9 @@ export function createFundAccountSyntheticDb() {
     $transaction: async <T>(run: (client: unknown) => Promise<T>) => {
       if (conflictNextTransaction) { conflictNextTransaction = false; throw new Prisma.PrismaClientKnownRequestError("synthetic committed transaction conflict", {code:"P2034",clientVersion:"synthetic"}); }
       const snapshot = Object.fromEntries(Object.entries(tables).map(([key, rows]) => [key, rows.map(row => ({ ...row }))]));
-      try { return await run(db); }
+      try { return await correctionBinding.run({xid: String(++nextXid)}, () => run(db)); }
       catch (error) { Object.assign(tables, snapshot); throw error; }
     }
   };
-  return { prisma: db, conflictNextTransaction() { conflictNextTransaction = true; }, reset() { for (const key of ["registeredFundAccount", "fundAccountBalanceRegistration", "fundAccountSourceBatch", "auditLog", "approvalInstance", "approvalActionLog", "approvalDelegation"]) tables[key] = []; conflictNextTransaction = false; failAudit = false; missingSignatures.clear(); inactiveUsers.clear(); sessionVersions.clear(); Object.assign(roles, initialRoles); }, setSessionVersion(actor: string, version: number) { sessionVersions.set(actor, version); }, setSignature(actor: string, present: boolean) { if (present) missingSignatures.delete(actor); else missingSignatures.add(actor); }, setActive(actor: string, active: boolean) { if (active) inactiveUsers.delete(actor); else inactiveUsers.add(actor); }, setRole(actor: string, role: string) { roles[actor] = role; }, failAudit(value: boolean) { failAudit = value; } };
+  return { prisma: db, setBalanceRoundMode(value: "legacy" | "controlled" | "unknown") { balanceRoundMode = value; }, conflictNextTransaction() { conflictNextTransaction = true; }, reset() { balanceRoundMode = "controlled"; for (const key of ["registeredFundAccount", "fundAccountBalanceRegistration", "fundAccountSourceBatch", "auditLog", "approvalInstance", "approvalActionLog", "approvalDelegation"]) tables[key] = []; conflictNextTransaction = false; failAudit = false; missingSignatures.clear(); inactiveUsers.clear(); sessionVersions.clear(); Object.assign(roles, initialRoles); }, setSessionVersion(actor: string, version: number) { sessionVersions.set(actor, version); }, setSignature(actor: string, present: boolean) { if (present) missingSignatures.delete(actor); else missingSignatures.add(actor); }, setActive(actor: string, active: boolean) { if (active) inactiveUsers.delete(actor); else inactiveUsers.add(actor); }, setRole(actor: string, role: string) { roles[actor] = role; }, failAudit(value: boolean) { failAudit = value; } };
 }

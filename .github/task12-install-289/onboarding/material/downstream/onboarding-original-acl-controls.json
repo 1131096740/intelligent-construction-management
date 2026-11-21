@@ -1,0 +1,60 @@
+{
+  "sourceSha256": "f464690717f06da758324ef22577966236f60776e355ab1f5c2cc7ad77af988e",
+  "acl": "\n    SELECT c.relname, c.relacl::text, a.attname, a.attacl::text\n      FROM pg_class c LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0\n      WHERE c.relnamespace = 'public'::regnamespace AND c.relname IN\n        ('EmployeeRegistration', 'AuthRateLimit', 'SmsChallenge', 'PersonnelChange', 'EmploymentPeriod', 'PersonnelChange_sequence_seq')\n      ORDER BY c.relname, a.attnum;",
+  "negatives": [
+    [
+      "GRANT UPDATE ON TABLE public.\"PersonnelChange\" TO PUBLIC;",
+      "REVOKE UPDATE ON TABLE public.\"PersonnelChange\" FROM PUBLIC;",
+      "unexpected effective table privileges"
+    ],
+    [
+      "CREATE ROLE onboarding_legacy_writer NOLOGIN; GRANT UPDATE (\"id\") ON TABLE public.\"EmploymentPeriod\" TO onboarding_legacy_writer;\n      GRANT onboarding_legacy_writer TO onboarding_runtime WITH INHERIT TRUE;",
+      "REVOKE onboarding_legacy_writer FROM onboarding_runtime; REVOKE UPDATE (\"id\") ON TABLE public.\"EmploymentPeriod\" FROM onboarding_legacy_writer;\n      DROP ROLE onboarding_legacy_writer;",
+      "unexpected effective column privileges"
+    ],
+    [
+      "CREATE ROLE onboarding_set_writer NOLOGIN; GRANT UPDATE ON TABLE public.\"PersonnelChange\" TO onboarding_set_writer;\n      GRANT onboarding_set_writer TO onboarding_runtime WITH INHERIT FALSE, SET TRUE;",
+      "REVOKE onboarding_set_writer FROM onboarding_runtime; REVOKE UPDATE ON TABLE public.\"PersonnelChange\" FROM onboarding_set_writer;\n      DROP ROLE onboarding_set_writer;",
+      "unexpected effective table privileges"
+    ],
+    [
+      "CREATE ROLE onboarding_admin_writer NOLOGIN; GRANT TRUNCATE ON TABLE public.\"PersonnelChange\" TO onboarding_admin_writer;\n      GRANT onboarding_admin_writer TO onboarding_runtime WITH INHERIT FALSE, SET FALSE, ADMIN TRUE;",
+      "REVOKE onboarding_admin_writer FROM onboarding_runtime; REVOKE TRUNCATE ON TABLE public.\"PersonnelChange\" FROM onboarding_admin_writer;\n      DROP ROLE onboarding_admin_writer;",
+      "role administration privileges"
+    ],
+    [
+      "CREATE ROLE onboarding_inherited_admin NOLOGIN; CREATE ROLE onboarding_indirect_writer NOLOGIN;\n      GRANT TRUNCATE ON TABLE public.\"PersonnelChange\" TO onboarding_indirect_writer;\n      GRANT onboarding_indirect_writer TO onboarding_inherited_admin WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;\n      GRANT onboarding_inherited_admin TO onboarding_runtime WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;",
+      "REVOKE onboarding_inherited_admin FROM onboarding_runtime; REVOKE onboarding_indirect_writer FROM onboarding_inherited_admin;\n      REVOKE TRUNCATE ON TABLE public.\"PersonnelChange\" FROM onboarding_indirect_writer;\n      DROP ROLE onboarding_inherited_admin; DROP ROLE onboarding_indirect_writer;",
+      "role administration privileges"
+    ],
+    [
+      "CREATE ROLE onboarding_set_bridge NOLOGIN; CREATE ROLE onboarding_set_admin NOLOGIN; CREATE ROLE onboarding_set_admin_writer NOLOGIN;\n      GRANT TRUNCATE ON TABLE public.\"PersonnelChange\" TO onboarding_set_admin_writer;\n      GRANT onboarding_set_admin_writer TO onboarding_set_admin WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;\n      GRANT onboarding_set_admin TO onboarding_set_bridge WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;\n      GRANT onboarding_set_bridge TO onboarding_runtime WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;",
+      "REVOKE onboarding_set_bridge FROM onboarding_runtime; REVOKE onboarding_set_admin FROM onboarding_set_bridge;\n      REVOKE onboarding_set_admin_writer FROM onboarding_set_admin;\n      REVOKE TRUNCATE ON TABLE public.\"PersonnelChange\" FROM onboarding_set_admin_writer;\n      DROP ROLE onboarding_set_bridge; DROP ROLE onboarding_set_admin; DROP ROLE onboarding_set_admin_writer;",
+      "role administration privileges"
+    ],
+    [
+      "GRANT pg_execute_server_program TO onboarding_runtime WITH INHERIT TRUE, SET FALSE;",
+      "REVOKE pg_execute_server_program FROM onboarding_runtime;",
+      "server mutation privileges"
+    ],
+    [
+      "GRANT pg_write_server_files TO onboarding_runtime WITH INHERIT FALSE, SET TRUE;",
+      "REVOKE pg_write_server_files FROM onboarding_runtime;",
+      "server mutation privileges"
+    ],
+    [
+      "GRANT UPDATE ON SEQUENCE public.\"PersonnelChange_sequence_seq\" TO PUBLIC;",
+      "REVOKE UPDATE ON SEQUENCE public.\"PersonnelChange_sequence_seq\" FROM PUBLIC;",
+      "unexpected effective sequence privileges"
+    ]
+  ],
+  "positives": [
+    "CREATE ROLE onboarding_unreachable_writer NOLOGIN;\n    GRANT UPDATE ON TABLE public.\"PersonnelChange\" TO onboarding_unreachable_writer;\n    GRANT onboarding_unreachable_writer TO onboarding_runtime WITH INHERIT FALSE, SET FALSE, ADMIN FALSE;",
+    "DO $$ BEGIN\n      IF pg_has_role('onboarding_runtime', 'onboarding_unreachable_writer', 'SET')\n          OR has_table_privilege('onboarding_runtime', 'public.\"PersonnelChange\"', 'UPDATE')\n          OR EXISTS (SELECT 1 FROM pg_auth_members WHERE member = 'onboarding_runtime'::regrole\n            AND roleid = 'onboarding_unreachable_writer'::regrole AND admin_option)\n          OR NOT has_table_privilege('onboarding_unreachable_writer', 'public.\"PersonnelChange\"', 'UPDATE') THEN\n        RAISE EXCEPTION 'SET FALSE control or other role ACL changed';\n      END IF;\n    END $$;",
+    "REVOKE onboarding_unreachable_writer FROM onboarding_runtime;\n      REVOKE UPDATE ON TABLE public.\"PersonnelChange\" FROM onboarding_unreachable_writer;\n      DROP ROLE onboarding_unreachable_writer;",
+    "CREATE ROLE onboarding_unreachable_admin NOLOGIN; CREATE ROLE onboarding_unreachable_admin_writer NOLOGIN;\n    GRANT TRUNCATE ON TABLE public.\"PersonnelChange\" TO onboarding_unreachable_admin_writer;\n    GRANT onboarding_unreachable_admin_writer TO onboarding_unreachable_admin WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;\n    GRANT onboarding_unreachable_admin TO onboarding_runtime WITH INHERIT FALSE, SET FALSE, ADMIN FALSE;",
+    "DO $$ BEGIN\n      IF pg_has_role('onboarding_runtime', 'onboarding_unreachable_admin', 'SET')\n          OR pg_has_role('onboarding_runtime', 'onboarding_unreachable_admin', 'USAGE')\n          OR NOT has_table_privilege('onboarding_unreachable_admin_writer', 'public.\"PersonnelChange\"', 'TRUNCATE') THEN\n        RAISE EXCEPTION 'unreachable ADMIN control or other role ACL changed';\n      END IF;\n    END $$;",
+    "REVOKE onboarding_unreachable_admin FROM onboarding_runtime;\n      REVOKE onboarding_unreachable_admin_writer FROM onboarding_unreachable_admin;\n      REVOKE TRUNCATE ON TABLE public.\"PersonnelChange\" FROM onboarding_unreachable_admin_writer;\n      DROP ROLE onboarding_unreachable_admin; DROP ROLE onboarding_unreachable_admin_writer;"
+  ],
+  "rollback": "\n    BEGIN;\n    SET LOCAL ROLE onboarding_runtime;\n    DO $$\n    DECLARE tab TEXT; col RECORD;\n    BEGIN\n      IF current_user <> 'onboarding_runtime' OR (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)\n          OR EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('PersonnelChange', 'EmploymentPeriod') AND relowner = current_user::regrole) THEN\n        RAISE EXCEPTION 'personnel probe must use non-owner runtime';\n      END IF;\n      FOREACH tab IN ARRAY ARRAY['PersonnelChange', 'EmploymentPeriod'] LOOP\n        IF NOT has_table_privilege(current_user, format('public.%I', tab), 'SELECT')\n            OR NOT has_table_privilege(current_user, format('public.%I', tab), 'INSERT')\n            OR has_table_privilege(current_user, format('public.%I', tab), 'UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') THEN\n          RAISE EXCEPTION 'personnel table ACL mismatch';\n        END IF;\n        FOR col IN SELECT attname FROM pg_attribute WHERE attrelid = format('public.%I', tab)::regclass AND attnum > 0 AND NOT attisdropped LOOP\n          IF has_column_privilege(current_user, format('public.%I', tab), col.attname, 'REFERENCES')\n              OR has_column_privilege(current_user, format('public.%I', tab), col.attname, 'UPDATE')\n                IS DISTINCT FROM (tab = 'EmploymentPeriod' AND col.attname = ANY\n                  (ARRAY['startedOn', 'companyEntityId', 'verified', 'endedOn', 'endedAt', 'revision'])) THEN\n            RAISE EXCEPTION 'personnel column ACL mismatch';\n          END IF;\n        END LOOP;\n      END LOOP;\n      IF NOT has_sequence_privilege(current_user, 'public.\"PersonnelChange_sequence_seq\"', 'USAGE')\n          OR has_sequence_privilege(current_user, 'public.\"PersonnelChange_sequence_seq\"', 'SELECT, UPDATE') THEN\n        RAISE EXCEPTION 'personnel sequence ACL mismatch';\n      END IF;\n      INSERT INTO \"User\" (id, name, \"updatedAt\") VALUES ('acl-probe-user', '合成权限校验', CURRENT_TIMESTAMP);\n      INSERT INTO \"EmploymentPeriod\" (id, \"userId\") VALUES ('acl-probe-period', 'acl-probe-user');\n      UPDATE \"EmploymentPeriod\" SET \"startedOn\" = '2026-01-01', verified = TRUE, revision = 2 WHERE id = 'acl-probe-period';\n      UPDATE \"EmploymentPeriod\" SET \"endedOn\" = '2026-01-02', \"endedAt\" = CURRENT_TIMESTAMP, revision = 3 WHERE id = 'acl-probe-period';\n      INSERT INTO \"PersonnelChange\" (id, \"commandKey\", \"payloadFingerprint\", \"userId\", \"actorUserId\", action, reason, before, after, result)\n        VALUES ('acl-probe-change', 'acl-probe-command', 'synthetic', 'acl-probe-user', 'acl-probe-user', 'offboard', '合成权限校验', '{}', '{}', '{}');\n      BEGIN\n        UPDATE \"PersonnelChange\" SET reason = 'forbidden' WHERE id = 'acl-probe-change';\n        RAISE EXCEPTION 'personnel update unexpectedly allowed';\n      EXCEPTION WHEN insufficient_privilege THEN NULL; END;\n      BEGIN\n        DELETE FROM \"PersonnelChange\" WHERE id = 'acl-probe-change';\n        RAISE EXCEPTION 'personnel delete unexpectedly allowed';\n      EXCEPTION WHEN insufficient_privilege THEN NULL; END;\n      BEGIN\n        UPDATE \"EmploymentPeriod\" SET id = id WHERE id = 'acl-probe-period';\n        RAISE EXCEPTION 'identity update unexpectedly allowed';\n      EXCEPTION WHEN insufficient_privilege THEN NULL; END;\n      BEGIN\n        DELETE FROM \"EmploymentPeriod\" WHERE id = 'acl-probe-period';\n        RAISE EXCEPTION 'period delete unexpectedly allowed';\n      EXCEPTION WHEN insufficient_privilege THEN NULL; END;\n      BEGIN\n        PERFORM setval('public.\"PersonnelChange_sequence_seq\"', 1);\n        RAISE EXCEPTION 'sequence reset unexpectedly allowed';\n      EXCEPTION WHEN insufficient_privilege THEN NULL; END;\n    END $$;\n    RESET ROLE;\n    SET LOCAL ROLE onboarding_backup_reader;\n    SELECT count(*) FROM \"PersonnelChange\";\n    SELECT count(*) FROM \"EmploymentPeriod\";\n    SELECT last_value FROM \"PersonnelChange_sequence_seq\";\n    DO $$ BEGIN\n      IF has_table_privilege(current_user, 'public.\"PersonnelChange\"', 'INSERT, UPDATE, DELETE')\n          OR has_table_privilege(current_user, 'public.\"EmploymentPeriod\"', 'INSERT, UPDATE, DELETE')\n          OR has_sequence_privilege(current_user, 'public.\"PersonnelChange_sequence_seq\"', 'USAGE, UPDATE') THEN\n        RAISE EXCEPTION 'backup reader privileges changed';\n      END IF;\n    END $$;\n    ROLLBACK;"
+}

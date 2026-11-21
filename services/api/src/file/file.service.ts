@@ -43,6 +43,8 @@ import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-de
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding,
+  type ProcurementFileBindingScope,
+  type RegisteredVoucherBindingScope,
   nonReceiptBusinessFileBindingIds,
   registeredPaymentVoucherInstalled
 } from "./file-business-binding";
@@ -1767,7 +1769,9 @@ export class FileService {
   // 业务绑定前必须在同一事务内调用：文件行锁使“检查+写入绑定”串行化。
   async assertFileHasNoBusinessBinding(
     tx: Prisma.TransactionClient,
-    fileId: string
+    fileId: string,
+    registeredVoucher?: RegisteredVoucherBindingScope,
+    procurementBinding?: ProcurementFileBindingScope
   ): Promise<LockedUnboundFileRow> {
     const normalizedFileId = fileId.trim();
     if (!normalizedFileId) {
@@ -1799,7 +1803,7 @@ export class FileService {
         },
         select: { id: true }
       }),
-      hasNonReceiptBusinessFileBinding(tx, [normalizedFileId])
+      hasNonReceiptBusinessFileBinding(tx, [normalizedFileId], [], registeredVoucher, procurementBinding)
     ]);
     if (receiptPhotoBinding || hasOtherBinding) {
       throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);
@@ -1813,7 +1817,7 @@ export class FileService {
     contractVersionId: string,
     fileIds: string[],
     actorUserId: string,
-    scope?: "upward_direct"
+    scope?: "upward_direct" | "outside_material_pair"
   ) {
     const normalizedIds = [...new Set(fileIds.map((fileId) => fileId.trim()))].sort();
     if (normalizedIds.some((fileId) => !fileId)) {
@@ -1856,7 +1860,8 @@ export class FileService {
       }),
       nonReceiptBusinessFileBindingIds(tx, normalizedIds, [
         { table: "ContractDraftAttachment", column: "fileId" }
-      ], scope === "upward_direct" ? contractVersionId : undefined)
+      ], scope === "upward_direct" ? contractVersionId : undefined, undefined, undefined,
+      scope === "outside_material_pair" && normalizedIds.length === 2 ? { contractVersionId, actorUserId, orderedFileIds: [fileIds[0].trim(), fileIds[1].trim()] } : undefined)
     ]);
     if (otherDraftBinding || receiptPhotoBinding || otherBindingIds.length) {
       throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);
@@ -2178,11 +2183,18 @@ export class FileService {
       const actor = await tx.user.findUnique({where:{id:actorUserId},select:{isActive:true}});
       if (actor?.isActive !== true) throw new ForbiddenException("当前账号已停用或不存在，不能读取付款凭证");
       const binding = registeredVoucher[0];
-      if (registeredVoucher.length !== 1 || !binding.verifiedExecutionId || !binding.paymentRequestId || file.storageStatus !== "active" || binding.contentSha256 !== file.contentSha256 || await hasNonReceiptBusinessFileBinding(tx,[file.id],[{table:"RegisteredPaymentVoucher",column:"fileId"}])) throw new ForbiddenException("付款凭证正式来源或内容校验不一致，暂不能下载");
+      if (registeredVoucher.length !== 1 || !binding.verifiedExecutionId || !binding.paymentRequestId ||
+        file.storageStatus !== "active" || binding.contentSha256 !== file.contentSha256) {
+        throw new ForbiddenException("付款凭证正式来源或内容校验不一致，暂不能下载");
+      }
       const payment = await tx.paymentRequest.findUnique({where:{id:binding.paymentRequestId}});
       if (!payment || !(await new ProjectVisibilityService(this.prisma).visibleProjectIdsInTransaction(tx,actorUserId)).includes(payment.projectId) ||
         !(await sensitiveBusinessReadAllowed(tx,"payment_request",payment.id,actorUserId,await this.loadActorRoleKeys(tx,actorUserId,payment.projectId)))) {
         throw new ForbiddenException("当前账号无权读取该付款凭证");
+      }
+      if (await hasNonReceiptBusinessFileBinding(tx, [file.id], [{ table: "RegisteredPaymentVoucher", column: "fileId" }],
+        { executionId: binding.executionId, actorUserId, read: true })) {
+        throw new ForbiddenException("付款凭证正式来源或内容校验不一致，暂不能下载");
       }
       return;
     }

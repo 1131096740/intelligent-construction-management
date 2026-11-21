@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { MeController } from "../me/me.controller";
 import { MeService } from "../me/me.service";
 import { FileService } from "../file/file.service";
@@ -32,7 +33,10 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     queue: jest.fn(), afterCommit: jest.fn(), status: jest.fn().mockResolvedValue({notice: null}),
     retry: jest.fn()
   };
+  const witnessEnv = "FUND_BALANCE_CORRECTION_WITNESS_KEY";
+  const previousWitness = process.env[witnessEnv];
   beforeAll(async () => {
+    process.env[witnessEnv] = randomBytes(32).toString("hex");
     const module = await Test.createTestingModule({ controllers: [FundAccountController, AuditController, ApprovalDelegationController, MeController], providers: [{ provide: FundBalanceReviewNotificationService, useValue: notifications }, FundAccountService, ApprovalDelegationService, AuthService, JwtProvider, AuditService, MeService, { provide: FileService, useValue: {} }, { provide: PrismaService, useValue: prisma }] }).compile();
     app = module.createNestApplication({ logger: false });
     const reflector = new Reflector();
@@ -41,7 +45,11 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     await app.listen(0, "127.0.0.1");
   });
   beforeEach(() => { database.reset(); notifications.status.mockClear(); notifications.retry.mockReset(); });
-  afterAll(async () => { await app?.close(); });
+  afterAll(async () => {
+    if (previousWitness === undefined) delete process.env[witnessEnv];
+    else process.env[witnessEnv] = previousWitness;
+    await app?.close();
+  });
   async function get(actor = "finance", path = "/fund-accounts") {
     const token = tokens.signAccessToken({ id: actor, name: "合成人员", phone: null, sessionVersion: 0 });
     const response = await fetch(`${await app.getUrl()}${path}`, { headers: { authorization: `Bearer ${token}` } });
@@ -73,6 +81,29 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     expect(await post(body, "keeper")).toMatchObject({ status: 201, body: { balanceYuan: "80000.0000" } });
     const result = await get();
     expect(result.body.accounts.find((account: { scopeKey: string }) => account.scopeKey === "public_cash")).toMatchObject({ balanceYuan: "80000.0000", history: [expect.objectContaining({ reason: "首次启用核对" })] });
+  });
+  it.each([["controlled", 503], ["unknown", 503], ["legacy", 201]] as const)(
+    "applies the %s round policy when the dedicated signer is absent", async (mode, status) => {
+    const basis = { scopeKey: "company:company-a", balanceYuan: "50000", asOfDate: "2026-11-05",
+      evidenceReference: "合成依据", reconciliationNote: "合成核对", reason: "期初", idempotencyKey: "opening-no-witness",
+      sources: [{ amountYuan: "50000", sourceStatus: "pending", projectStatus: "pending" }] };
+    const opening = await post(basis);
+    expect(opening.status).toBe(201);
+    const key = process.env[witnessEnv]!;
+    delete process.env[witnessEnv];
+    database.setBalanceRoundMode(mode);
+    try {
+      const result = await post({ ...basis, idempotencyKey: "correction-no-witness", previousRegistrationId: opening.body.id,
+        sources: [{ ...basis.sources[0], previousSourceBatchId: opening.body.sources[0].id }] }, "finance", "/fund-accounts/corrections");
+      expect(result.status).toBe(status);
+      const observed = prisma as unknown as PrismaService;
+      const created = mode === "legacy" ? 1 : 0;
+      expect(await observed.approvalInstance.count()).toBe(created);
+      expect(await observed.fundAccountBalanceRegistration.count()).toBe(1 + created);
+      expect(await observed.auditLog.count({ where: { action: "fund_account.correction.request" } })).toBe(created);
+    } finally {
+      process.env[witnessEnv] = key;
+    }
   });
   it("corrects registered 50000 to verified 80000 only after finance director review, retaining the original and source lineage", async () => {
     const basis = { scopeKey: "company:company-a", balanceYuan: "50000", asOfDate: "2026-11-05", evidenceReference: "甲公司财务核对表", reconciliationNote: "已扣历史支出", reason: "期初", idempotencyKey: "company-opening", sources: [{ amountYuan: "50000", sourceStatus: "pending", projectStatus: "pending" }] };

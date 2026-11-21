@@ -1,0 +1,12 @@
+[Unit]
+Description=Run JiangKong contract draft temporary retention daily
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+AccuracySec=5min
+RandomizedDelaySec=15min
+Persistent=true
+Unit=jiangkong-draft-retention.service
+
+[Install]
+WantedBy=timers.target

@@ -288,7 +288,8 @@ export class ContractV2ArchiveService {
         }
         const command: DirectArchiveExecution = { actor, projectId: project.id, contractId: owner.id, versionId,
           revision: input.expectedDraftRevision, inputSha256: input.expectedInputSha256, key: input.idempotencyKey, nativeNonce: admission.nonce,
-          originals, ...(operating ? { operating: true as const } : {}) };
+          originals, ...(operating ? { operating: true as const } :
+            owner.contractTypeKey === "material_purchase" && originals.length === 2 ? { outsideMaterialPair: true as const } : {}) };
         return { requestSha256: directArchiveRequestSha(owner.id, versionId, actor, input), execute: () => executor.execute(command) };
       }
       throw new ServiceUnavailableException("正式登记暂不可办理，请保留原件和本次标识");

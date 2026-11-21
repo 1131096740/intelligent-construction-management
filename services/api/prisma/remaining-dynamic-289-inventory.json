@@ -1,0 +1,647 @@
+{
+  "format": 1,
+  "candidateTree": "a1be083076018686dd8afba68c44ff9c75502014",
+  "groups": [
+    {
+      "id": "contract_draft_aggregate",
+      "database": "jiangkong_contract_draft_aggregate_test",
+      "files": [
+        "src/database/contract-draft-aggregate-concurrency.spec.ts",
+        "src/database/contract-draft-retention-script.spec.ts",
+        "src/database/contract-lifecycle-route.spec.ts",
+        "src/database/contract-ended-application-retention.spec.ts",
+        "src/database/contract-ended-application-purge.spec.ts",
+        "src/database/legacy-contract-cleanup-preflight-postgres.spec.ts"
+      ],
+      "flags": {
+        "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE": "1",
+        "CONTRACT_DRAFT_AGGREGATE_DATABASE_URL": "databaseUrl",
+        "DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 22,
+      "requirements": {
+        "kind": "dual_database",
+        "primary": 289,
+        "legacyDatabase": "jiangkong_contract_cleanup_pre_m206_test",
+        "legacy": {
+          "ordinal": 205,
+          "name": "20261109100000_contract_direct_pending_input_v1",
+          "sha256": "2ca118b29e8e75745a1ac7d6f8de3fbfa70fa5774b3d95c48c6119caff8b316a"
+        },
+        "firstExcluded": {
+          "ordinal": 206,
+          "name": "20261109110000_contract_direct_review_retention_v1",
+          "sha256": "df73ffa2861318e571c6c8bba5c4d226808f00f65684d2953a0d5937d6d4bb92"
+        },
+        "legacyUrlFlag": "CONTRACT_LEGACY_CLEANUP_DATABASE_URL"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/contract-draft-aggregate-concurrency.spec.ts",
+          "pending": 10,
+          "sha256": "3df16963a0453176bf0c82f1d1ab4fb99b342c34beaeca13a60f820e3892442c"
+        },
+        {
+          "file": "src/database/contract-draft-retention-script.spec.ts",
+          "pending": 1,
+          "sha256": "caf638f591f28fda31b5a9794beed4f3a4b513b6c33b7318c5d848d403bb2e8a"
+        },
+        {
+          "file": "src/database/contract-lifecycle-route.spec.ts",
+          "pending": 2,
+          "sha256": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d"
+        },
+        {
+          "file": "src/database/contract-ended-application-retention.spec.ts",
+          "pending": 1,
+          "sha256": "d38d0e4065972c3af0524a06addcaf5a3f4f9fa56e2d4f20c2f951d30745616a"
+        },
+        {
+          "file": "src/database/contract-ended-application-purge.spec.ts",
+          "pending": 6,
+          "sha256": "7b7e2381f6a76758ea1ad67bed63df4c24812559a3cd77dc2f24302476d25c68"
+        },
+        {
+          "file": "src/database/legacy-contract-cleanup-preflight-postgres.spec.ts",
+          "pending": 2,
+          "sha256": "8ab6dc8b472285eac068009ac5d30d96b63bf6eb5da33a0ac7aa6b9b0c636cd2"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "c8929e6d335099d0d0813182d3b3a26aa187d40971ed9206bcc0a44fde120810"
+        ]
+      }
+    },
+    {
+      "id": "project_funding_availability",
+      "database": "jiangkong_project_funding_integration_test",
+      "files": [
+        "src/database/project-funding-availability-concurrency.spec.ts"
+      ],
+      "flags": {
+        "RUN_PROJECT_FUNDING_DATABASE": "1",
+        "PROJECT_FUNDING_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 1,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/project-funding-availability-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "75930479985594bb97c417545eccf403e0d0f5587c79404e0c0fd85d23e3613d"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "e67b0581a04e4ddf14fe51008a46e46100396c55adaa948e23a804ec00b0442e"
+        ]
+      }
+    },
+    {
+      "id": "takeover_task1",
+      "database": "jiangkong_contract_takeover_task1_20260729",
+      "files": [
+        "src/database/contract-takeover-confirmation-concurrency.spec.ts",
+        "src/database/contract-takeover-balance-concurrency.spec.ts"
+      ],
+      "flags": {
+        "RUN_CONTRACT_TAKEOVER_CONFIRMATION_CONCURRENCY": "1",
+        "CONTRACT_TAKEOVER_CONFIRMATION_DATABASE_URL": "databaseUrl",
+        "RUN_CONTRACT_TAKEOVER_BALANCE_CONCURRENCY": "1",
+        "CONTRACT_TAKEOVER_BALANCE_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 3,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/contract-takeover-confirmation-concurrency.spec.ts",
+          "pending": 2,
+          "sha256": "333c2b8f879674ce0bfdfca6fac7e3f0c9b729a6455bc503b0a3a78709e51253"
+        },
+        {
+          "file": "src/database/contract-takeover-balance-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "7519d841bdef236cde121a9b7cea00bf14f68080ece7cd2fd9c90aae021e983f"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "5ce6ef5175a280581732a6473b32d6692d3d786ac4c4005254cd745fcb9acd48"
+        ]
+      }
+    },
+    {
+      "id": "affiliate_company_contract",
+      "requiresOperatingLedgerWriteSecret": true,
+      "database": "jiangkong_project_affiliate_company_contract_test",
+      "files": [
+        "src/database/project-affiliate-company-contract-db.spec.ts"
+      ],
+      "flags": {
+        "RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS": "1",
+        "PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 11,
+      "requirements": {
+        "kind": "fresh_with_named_bank_runtime",
+        "requiresIndependentBankRole": true
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/project-affiliate-company-contract-db.spec.ts",
+          "pending": 11,
+          "sha256": "16461e7680018c3370fb9000caa096f191c2cbca5762651c40ff91d2feeb8cf8"
+        }
+      ],
+      "localEvidence": {
+        "status": "blocked",
+        "receiptSha256": []
+      }
+    },
+    {
+      "id": "spot_material_classification",
+      "database": "jiangkong_spot_incidental_task11",
+      "files": [
+        "src/database/spot-material-classification-concurrency.spec.ts"
+      ],
+      "flags": {
+        "RUN_SPOT_MATERIAL_CLASSIFICATION_DATABASE": "1",
+        "SPOT_MATERIAL_CLASSIFICATION_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 1,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/spot-material-classification-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "9ae4261cb8b92a7d58fadac63b71500d0c610f9e7b5acba25c82e03bbb83fe54"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "eebbad19a32c9cab7c360b8eba8c4c91a6cd1fe2ba8bcdcdb5a8abdf94664042"
+        ]
+      }
+    },
+    {
+      "id": "direct_payment_capacity",
+      "database": "jiangkong_direct_payment_task13",
+      "files": [
+        "src/database/direct-payment-capacity-concurrency.spec.ts"
+      ],
+      "flags": {
+        "RUN_DIRECT_PAYMENT_CAPACITY_CONCURRENCY": "1",
+        "DIRECT_PAYMENT_CAPACITY_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 1,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/direct-payment-capacity-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "de31ee9d13952de4b0a03e239e490703bc2787662bdb7f167f0a39b1535e0f6d"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "851f498076864bac8ce7368c3272c2c7e55691bfeb72842ba7b8477992660db6"
+        ]
+      }
+    },
+    {
+      "id": "takeover_correction",
+      "database": "jiangkong_contract_takeover_task8_final_20260729",
+      "files": [
+        "src/database/contract-takeover-correction-concurrency.spec.ts"
+      ],
+      "flags": {
+        "RUN_CONTRACT_TAKEOVER_CORRECTION_CONCURRENCY": "1",
+        "CONTRACT_TAKEOVER_CORRECTION_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 1,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/contract-takeover-correction-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "001270e494cc6ad3049e5d484eddad2cbaa7f03790fe33a333469cda475d2d7a"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "fa52d7f369f6d43151a076e26e061cf9d332e9e6c4fcda71f411eb5a6a1b92ec"
+        ]
+      }
+    },
+    {
+      "id": "file_binding_manifest",
+      "database": "jiangkong_file_binding_manifest_test",
+      "files": [
+        "src/database/file-binding-manifest.spec.ts"
+      ],
+      "flags": {
+        "RUN_FILE_BINDING_MANIFEST_DATABASE": "1",
+        "FILE_BINDING_MANIFEST_DATABASE_URL": "databaseUrl",
+        "DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 1,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/file-binding-manifest.spec.ts",
+          "pending": 1,
+          "sha256": "9da2b748db9fd014a718c36722e3c459895b84cac80ade88809e93ebd4b05218"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "afa37e8c963dc0688c6eb44afd2616d90a5ef623663c9a1453d6a03fb144a609"
+        ]
+      }
+    },
+    {
+      "id": "project_operating_profile_upgrade",
+      "database": "jiangkong_project_operating_profile_upgrade_test",
+      "files": [
+        "src/database/project-operating-profile-upgrade.spec.ts"
+      ],
+      "flags": {
+        "DATABASE_URL": "databaseUrl",
+        "RUN_PROJECT_OPERATING_PROFILE_UPGRADE": "1"
+      },
+      "pendingTests": 2,
+      "preTerminalMigrationFixture": "project_operating_profile",
+      "requirements": {
+        "kind": "retained_prefix_then_seed_and_forward",
+        "retainedCount": 125,
+        "next": {
+          "ordinal": 126,
+          "name": "20260814010000_project_operating_profile",
+          "sha256": "af512609e42dc1b2f026e3fb51c2cbafccd16d7e8b945e1281b725ca1acc9f4a"
+        }
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/project-operating-profile-upgrade.spec.ts",
+          "pending": 2,
+          "sha256": "a9f90c38e0d89698ff86be5577bc920cfdc3605e2d92c21229028089a39c1abd"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "a359fcd7ab3a7b242b02545737ab6c6c2352209331eabcedbb7b51754ad19787"
+        ]
+      }
+    },
+    {
+      "id": "generic_database_constraints",
+      "database": "jiangkong_database_dynamic_misc",
+      "files": [
+        "src/contract/contract-approval-route.service.spec.ts",
+        "src/database/settlement-contract-cap-concurrency.spec.ts",
+        "src/database/contract-change-limit-transaction.spec.ts",
+        "src/database/project-affiliate-business-fact-db.spec.ts",
+        "src/database/approval-review-concurrency.spec.ts",
+        "src/database/contract-change-baseline-concurrency.spec.ts",
+        "src/database/project-upstream-fund-fact-db.spec.ts",
+        "src/database/business-entry-definition-postgres.spec.ts",
+        "src/database/operating-ledger-concurrency.spec.ts",
+        "src/database/clearing-concurrency.spec.ts",
+        "src/database/operating-source-replay-consistency.spec.ts",
+        "src/database/pol05-operating-source-facts.spec.ts",
+        "src/database/contract-governance-file-concurrency.spec.ts",
+        "src/database/project-external-upstream-db.spec.ts",
+        "src/database/project-affiliate-subject-db.spec.ts",
+        "src/database/operating-takeover-constraints.spec.ts",
+        "src/database/fund-account-postgres.spec.ts"
+      ],
+      "flags": {
+        "DATABASE_URL": "databaseUrl",
+        "RUN_CONTRACT_ROUTE_CONCURRENCY": "1",
+        "RUN_SETTLEMENT_CONTRACT_CAP_CONCURRENCY": "1",
+        "RUN_CONTRACT_CHANGE_LIMIT_DATABASE": "1",
+        "RUN_PROJECT_AFFILIATE_BUSINESS_DB_TESTS": "1",
+        "RUN_APPROVAL_REVIEW_CONCURRENCY": "1",
+        "RUN_CONTRACT_CHANGE_BASELINE_CONCURRENCY": "1",
+        "RUN_PROJECT_UPSTREAM_FUND_DB_TESTS": "1",
+        "RUN_OPERATING_LEDGER_DATABASE": "1",
+        "RUN_CLEARING_DATABASE": "1",
+        "RUN_OPERATING_SOURCE_REPLAY_DATABASE": "1",
+        "RUN_POL05_OPERATING_SOURCE_DATABASE": "1",
+        "OPERATING_LEDGER_DATABASE_URL": "databaseUrl",
+        "RUN_CONTRACT_GOVERNANCE_CONCURRENCY": "1",
+        "RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS": "1",
+        "RUN_PROJECT_AFFILIATE_DB_TESTS": "1",
+        "RUN_POL215_DATABASE": "1",
+        "RUN_REGISTERED_FUND_ACCOUNT_DATABASE": "1"
+      },
+      "pendingTests": 42,
+      "requiresOperatingLedgerWriteSecret": true,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/contract/contract-approval-route.service.spec.ts",
+          "pending": 1,
+          "sha256": "dd1615acc9226c90a12eb516678e6810000b8b566dcf5bb2886334e788ba07c7"
+        },
+        {
+          "file": "src/database/settlement-contract-cap-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "567e513c06cac85b00a01e4f77a9d1f77f9d12055f86997f35f2de97faeeaf00"
+        },
+        {
+          "file": "src/database/contract-change-limit-transaction.spec.ts",
+          "pending": 1,
+          "sha256": "a6bf19dcd563e6df416b88a7a0037148d76368cf566bc90ca6c0bc4020117fa3"
+        },
+        {
+          "file": "src/database/project-affiliate-business-fact-db.spec.ts",
+          "pending": 3,
+          "sha256": "c94c3abe5a8928ba64f758c7d5a36751fd18ac025457f9da964c9052e72b3c2f"
+        },
+        {
+          "file": "src/database/approval-review-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "5db371ad4c38a2c484f6da108d9b3bbc9a71bd740f21b0a0ac5ba77e3adb2332"
+        },
+        {
+          "file": "src/database/contract-change-baseline-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "fa1b9f5fa222a458f1219d98e0f03f48b2fdb3f4cd7913411ca1dcfe96e42db9"
+        },
+        {
+          "file": "src/database/project-upstream-fund-fact-db.spec.ts",
+          "pending": 2,
+          "sha256": "024eabfd2fc18c36e38d678251741ae24d83cdb5629faf311a4f870868c16a0a"
+        },
+        {
+          "file": "src/database/business-entry-definition-postgres.spec.ts",
+          "pending": 8,
+          "sha256": "894b142f271cd2abbb20ff4cec166eeac7cbd6fc645d8f14e83192f5b5477076"
+        },
+        {
+          "file": "src/database/operating-ledger-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "ddddb0633d7d8fa25cdfa1575d4665f3cb25193d4ddeb0742cfe4ad0417d73a8"
+        },
+        {
+          "file": "src/database/clearing-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "ca01e76a1143b4f426a9bcaaccc9ab186ae88c771980a58b93c542e9a6ac702e"
+        },
+        {
+          "file": "src/database/operating-source-replay-consistency.spec.ts",
+          "pending": 1,
+          "sha256": "4395b3a57e7958a57b1f4c404d32a073bc8314762ed1ee450920e0410a98d9e5"
+        },
+        {
+          "file": "src/database/pol05-operating-source-facts.spec.ts",
+          "pending": 1,
+          "sha256": "69274687bd6891689ff91f91446ac010e184cb6e6162ff6155012ca05892f403"
+        },
+        {
+          "file": "src/database/contract-governance-file-concurrency.spec.ts",
+          "pending": 1,
+          "sha256": "a1b83a6d3acc22231e46b4707e3b1b332cea566318d6a484f11b505e469fdc64"
+        },
+        {
+          "file": "src/database/project-external-upstream-db.spec.ts",
+          "pending": 2,
+          "sha256": "cc5974bb3c652c0381c3e325c2636aa2aa9d831ec545416159a758d5abbac9bc"
+        },
+        {
+          "file": "src/database/project-affiliate-subject-db.spec.ts",
+          "pending": 2,
+          "sha256": "a43e914924b6821a06665cdaee141446fc91f3801b4f9660b31785f6225e1545"
+        },
+        {
+          "file": "src/database/operating-takeover-constraints.spec.ts",
+          "pending": 3,
+          "sha256": "88a44969d79432d4f699a719623868182f3f6dfe5bb94bbb08fbdf79a0f71b96"
+        },
+        {
+          "file": "src/database/fund-account-postgres.spec.ts",
+          "pending": 12,
+          "sha256": "4db03ade2cdc9854fd55cc97fd6625cbc900253459edab187cc42aaf6c1ad1de"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "886852e72e09e73ed2feea61c58a3afd0669b57c98dccd8cb20805141c560205",
+          "2a1c7b54d38de3389f8517803631376a7d346d2fcd9a948bbbc5dd0e123b2e2f",
+          "7a815be7f79af773cc36883a82ba1bf24394fcb101aad75438b39569d293c1d4",
+          "736262acd4c0ca650238b62c743b41a7729db63833f95b0baa3515e47e83149e",
+          "5ffedc8d2aa636009742b67e6364ec13bd4b56b9626fc014016995d02b027422"
+        ]
+      }
+    },
+    {
+      "id": "participant_history_integrity",
+      "database": "jiangkong_participant_history_integrity_test",
+      "files": [
+        "src/database/project-operating-profile-db.spec.ts"
+      ],
+      "flags": {
+        "DATABASE_URL": "databaseUrl",
+        "RUN_PROJECT_OPERATING_PROFILE_DB_TESTS": "1",
+        "RUN_PARTICIPANT_HISTORY_INTEGRITY_DATABASE": "1",
+        "PARTICIPANT_HISTORY_INTEGRITY_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 30,
+      "requiresOperatingLedgerWriteSecret": true,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/project-operating-profile-db.spec.ts",
+          "pending": 30,
+          "sha256": "136fcdae151ff89f50fc87d08c3e4fb31b1935bf8ee2a06e7306e50a020d867d"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "71972ad9d589cc99d19d683b1d07d396bd9b5e65e5f63894e6af5b4626991501"
+        ]
+      }
+    },
+    {
+      "id": "payable_settlement",
+      "database": "jiangkong_payable_settlement_dynamic_test",
+      "files": [
+        "src/database/payable-settlement-concurrency.spec.ts"
+      ],
+      "flags": {
+        "RUN_PAYABLE_SETTLEMENT_DATABASE": "1",
+        "PAYABLE_SETTLEMENT_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 20,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/payable-settlement-concurrency.spec.ts",
+          "pending": 20,
+          "sha256": "84e6b408a89ecb417db3f5c781cf55c60825a1d8557f542e4a6b84adb96719f2"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "e2dd043a020cdd30561fb99bce6d510f2e6f9b4808ca8d35a0e4110d5e810a18"
+        ]
+      }
+    },
+    {
+      "id": "wage_statement",
+      "database": "jiangkong_wage_statement_dynamic_test",
+      "files": [
+        "src/database/wage-statement-constraints.spec.ts"
+      ],
+      "flags": {
+        "RUN_WAGE_STATEMENT_DATABASE": "1",
+        "WAGE_STATEMENT_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 24,
+      "requiresOperatingLedgerWriteSecret": true,
+      "preTerminalMigrationFixture": "terminal_migration",
+      "requirements": {
+        "kind": "exact_current_terminal_predecessor_then_one_forward",
+        "previous": {
+          "ordinal": 288,
+          "name": "20261118235900_contract_outside_original_pair_voucher_check",
+          "sha256": "8f9b15f73ef8234aecc35a16517f4351fa883ebf5d98b31e1483502012a31253"
+        },
+        "next": {
+          "ordinal": 289,
+          "name": "20261119000500_contract_outside_archive_evidence_voucher_check",
+          "sha256": "90c194e51d72760db01145dca0678fdf4ff427c017074d1728c76e6dc876c0e4"
+        }
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/wage-statement-constraints.spec.ts",
+          "pending": 24,
+          "sha256": "a7233a69444ddf18b3873c9cdd5403ce01e2b12d514fca03da16eac69625c210"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "0fc0fa0ec3998ae662300c2836759c03c9d110e6806908909b2973c5183cc0e0"
+        ]
+      }
+    },
+    {
+      "id": "historical_wage_takeover",
+      "database": "jiangkong_historical_wage_takeover_dynamic_test",
+      "files": [
+        "src/operating-takeover/historical-wage-takeover.pg.spec.ts"
+      ],
+      "flags": {
+        "RUN_HISTORICAL_WAGE_TAKEOVER_DATABASE": "1",
+        "HISTORICAL_WAGE_TAKEOVER_DATABASE_URL": "databaseUrl",
+        "DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 6,
+      "requiresCandidateBaselineSha": true,
+      "requirements": {
+        "kind": "fresh_with_actual_candidate_git_baseline"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/operating-takeover/historical-wage-takeover.pg.spec.ts",
+          "pending": 6,
+          "sha256": "9cced06f63fc1ee4911244a3f45bfc0a043f4966ca5c754c321a8c489daa4519"
+        }
+      ],
+      "localEvidence": {
+        "status": "pending",
+        "receiptSha256": []
+      }
+    },
+    {
+      "id": "historical_financial_takeover",
+      "database": "jiangkong_historical_financial_takeover_dynamic_test",
+      "files": [
+        "src/operating-takeover/historical-financial-takeover.pg.spec.ts"
+      ],
+      "flags": {
+        "RUN_POL224_HISTORICAL_FINANCIAL_PG": "1",
+        "POL224_HISTORICAL_FINANCIAL_DATABASE_URL": "databaseUrl",
+        "DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 4,
+      "requiresCandidateBaselineSha": true,
+      "requirements": {
+        "kind": "fresh_with_actual_candidate_git_baseline"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/operating-takeover/historical-financial-takeover.pg.spec.ts",
+          "pending": 4,
+          "sha256": "65d2cd7d16d219bf387a5ce94caec0be41d7e87e335adbe65e271d4b9a495e58"
+        }
+      ],
+      "localEvidence": {
+        "status": "pending",
+        "receiptSha256": []
+      }
+    },
+    {
+      "id": "fund_movement",
+      "database": "jiangkong_fund_movement_dynamic_test",
+      "files": [
+        "src/database/fund-movement-concurrency.spec.ts"
+      ],
+      "flags": {
+        "RUN_FUND_MOVEMENT_DATABASE": "1",
+        "FUND_MOVEMENT_DATABASE_URL": "databaseUrl"
+      },
+      "pendingTests": 5,
+      "requiresOperatingLedgerWriteSecret": true,
+      "requirements": {
+        "kind": "fresh_owned_original_suite"
+      },
+      "sourceFiles": [
+        {
+          "file": "src/database/fund-movement-concurrency.spec.ts",
+          "pending": 5,
+          "sha256": "02eb5a5db54f5eee8a511bc43de68ce96dfd96e37da2dfd4bdc9cd336942be50"
+        }
+      ],
+      "localEvidence": {
+        "status": "verified",
+        "receiptSha256": [
+          "22acbec81ed5e1a85303aa1608ee0f37d21fab02c37ab876f9d8ce670518cfd6"
+        ]
+      }
+    }
+  ]
+}

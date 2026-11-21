@@ -16,7 +16,7 @@ type Original = Readonly<Pick<FileObject, "bucket" | "objectKey" | "mimeType" | 
 }>;
 export type DirectArchiveExecution = Readonly<{
   actor: string; projectId: string; contractId: string; versionId: string; revision: number;
-  inputSha256: string; key: string; nativeNonce: string; originals: readonly Original[]; operating?: true;
+  inputSha256: string; key: string; nativeNonce: string; originals: readonly Original[]; operating?: true; outsideMaterialPair?: true;
 }>;
 export type DirectArchiveExecutor = Readonly<{ execute(command: DirectArchiveExecution): Promise<void> }>;
 
@@ -28,7 +28,7 @@ function unavailable(): never {
 export function nativeDirectArchiveExecutor(reader: GeneratedArchivePreparationReader,
   issuer: DirectArchiveSqlClient, executor: DirectArchiveRuntimeClient): DirectArchiveExecutor {
   return {
-    async execute({ actor, projectId, contractId, versionId, revision, inputSha256, key, nativeNonce, originals, operating }) {
+    async execute({ actor, projectId, contractId, versionId, revision, inputSha256, key, nativeNonce, originals, operating, outsideMaterialPair }) {
       if (Object.is(issuer, executor)) unavailable();
       const evidence = [];
       for (const original of originals) {
@@ -62,10 +62,17 @@ export function nativeDirectArchiveExecutor(reader: GeneratedArchivePreparationR
       const execute = operating
         ? Prisma.sql`public.jg_execute_direct_outside_operating_v2(${nativeNonce}::uuid,${intent.intentId}::uuid,${source})`
         : Prisma.sql`public.jg_execute_contract_direct_archive_outside_v1(${intent.intentId}::uuid,${source})`;
-      const rows = await executor.$transaction(tx => tx.$queryRaw<Array<{ archiveId: string }>>(Prisma.sql`
-        WITH admitted AS MATERIALIZED (${admission})
-        SELECT ${execute} AS "archiveId" FROM admitted
-      `));
+      const rows = await executor.$transaction(async tx => {
+        if (!operating && outsideMaterialPair === true && evidence.length === 2) {
+          await tx.$queryRaw(Prisma.sql`
+            SELECT pg_catalog.set_config('app.jg_outside_archive_ordered_evidence', ${ordered}, true)
+          `);
+        }
+        return tx.$queryRaw<Array<{ archiveId: string }>>(Prisma.sql`
+          WITH admitted AS MATERIALIZED (${admission})
+          SELECT ${execute} AS "archiveId" FROM admitted
+        `);
+      });
       if (rows.length !== 1 || !rows[0].archiveId) unavailable();
     }
   };

@@ -8,7 +8,7 @@ import {
   ServiceUnavailableException
 } from "@nestjs/common";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -30,7 +30,9 @@ function isRoleKey(value: string): value is RoleKey {
 }
 
 type RefreshTokenPersistence = Pick<PrismaService, "refreshToken">;
-type PasswordConfirmationPersistence = Pick<PrismaService, "user">;
+type PasswordConfirmationPersistence = {
+  user: { findUnique(args: { where: { id: string } }): Promise<Pick<User, "isActive" | "passwordHash"> | null> };
+};
 
 @Injectable()
 export class AuthService {

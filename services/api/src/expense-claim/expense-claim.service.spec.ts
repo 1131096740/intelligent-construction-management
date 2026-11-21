@@ -971,22 +971,45 @@ describe("ExpenseClaimService", () => {
     expect(tx.expenseClaim.update).not.toHaveBeenCalled();
   });
 
-  it("requires password and Canvas signature snapshot before a frozen applicant self-review", async () => {
+  it.each([
+    ["current", { isActive: true, passwordHash: "verified-hash" }, 0],
+    ["rotated", { isActive: true, passwordHash: "rotated-hash" }, 0],
+    ["inactive", { isActive: false, passwordHash: "verified-hash" }, 0],
+    ["advanced", { isActive: true, passwordHash: "verified-hash" }, 1]
+  ] as const)("rechecks a %s self-review after confirming the password outside the write transaction", async (state, lockedAccount, lockedNode) => {
     const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", applicantUserId: "leader-1", handledByUserId: "leader-1", factWitnessUserId: null, requestedAmountCents: 1200n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 1200n };
     const instance = { id: "approval-1", currentNodeIndex: 0, applicantUserId: "leader-1", frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["general_manager"], candidateUserIds: ["leader-1"], candidateUserIdsByRole: { general_manager: ["leader-1"] } }] };
-    const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
-    const { service, tx } = createHarness({ roles: ["general_manager"], auth });
+    instance.frozenNodes.push(instance.frozenNodes[0]!);
+    const auth = { confirmPassword: jest.fn() };
+    const { service, tx, prisma } = createHarness({ roles: ["general_manager"], auth });
+    auth.confirmPassword.mockImplementation(async (_id, _password, persistence) => {
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(await persistence.user.findUnique({ where: { id: "leader-1" } }))
+        .toEqual({ isActive: true, passwordHash: "verified-hash" });
+      return { ok: true };
+    });
+    tx.approvalInstance.findFirst.mockResolvedValue(instance);
+    tx.expenseClaim.findUnique.mockResolvedValue(claim);
+    tx.user.findUnique.mockResolvedValue({ isActive: true, passwordHash: "verified-hash" });
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
-      .mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ ...instance, currentNodeIndex: lockedNode }])
+      .mockResolvedValueOnce([lockedAccount])
       .mockResolvedValueOnce([{ id: "leader-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([{ id: "signature-1", fileId: "file-1", contentSha256: "a".repeat(64) }])
       .mockResolvedValueOnce([{ id: "file-1", contentSha256: "a".repeat(64), storageStatus: "active" }]);
-    tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approved_pending_payment" });
+    tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approval_pending" });
 
-    await expect(service.review("claim-1", "leader-1", { decision: "approve", selfReviewReason: "职责兼任", confirmationPassword: "current-password" })).resolves.toEqual({ id: "claim-1", status: "approved_pending_payment", completed: true });
+    const review = service.review("claim-1", "leader-1", { decision: "approve", selfReviewReason: "职责兼任", confirmationPassword: "current-password" });
+    if (state !== "current") {
+      await expect(review).rejects.toThrow(ConflictException);
+      expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      return;
+    }
+    await expect(review).resolves.toEqual({ id: "claim-1", status: "approval_pending", completed: false });
 
-    expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "current-password");
+    expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "current-password", expect.anything());
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ metadata: { selfReview: true, selfReviewReason: "职责兼任", approverName: "签批人甲" }, signatureFileIdSnapshot: "file-1", signatureVersionIdSnapshot: "signature-1" })
     });

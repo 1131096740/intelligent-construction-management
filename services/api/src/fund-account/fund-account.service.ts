@@ -1,11 +1,12 @@
+import { fundBalanceCorrectionRoundMode } from "./fund-balance-correction-round-mode";
 import { readRegisteredCompanyOwnedSources } from "./registered-company-owned-fund-source";
 import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
 import { readRegisteredFundAdvanceOrigins } from "./registered-fund-advance-origin";
 import { availableRegisteredBalance, registeredPaymentSummaries } from "../payment/registered-payment-funding";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { normalizeBusinessAmount, sumBusinessAmounts, requiredPastChinaDate, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { readFundReviewReceipt, makeFundReviewReceipt, fundReviewReceiptMetadata } from "./fund-account-receipt";
@@ -167,11 +168,35 @@ export class FundAccountService {
       }
       await this.validateProjects(tx, normalized.sources);
       const registrationId = randomUUID();
-      const round = await tx.approvalInstance.create({ data: { flowType: "fund_account_balance_correction", businessType: FUND_REVIEW_BUSINESS_TYPE, businessId: registrationId, status: "approval_pending", currentNodeIndex: 0, frozenNodes: fundReviewNodes(), applicantUserId: actorUserId } });
-      const row = await tx.fundAccountBalanceRegistration.create({ data: { id: registrationId, ...this.registrationData(normalized), coveredExecutionIds, accountId: account.id, version: Math.max(...versions.map(row => row.version)) + 1, kind: "correction", status: "pending_review", previousRegistrationId: current.id, approvalInstanceId: round.id, payloadFingerprint: fingerprint, createdByUserId: actorUserId } });
+      const nextVersion = Math.max(...versions.map(row => row.version)) + 1;
+      const authority = await fundBalanceCorrectionRoundMode(tx);
+      const audit = { previousRegistrationId: current.id, previousBalanceYuan: current.balanceYuan?.toFixed(4) ?? null,
+        balanceYuan: normalized.balanceYuan, coveredExecutionIds, reason: normalized.reason, evidenceReference: normalized.evidenceReference };
+      let legacyRoundId: string | undefined;
+      let verifyRecipientLocks: ((roundId: string) => Promise<void>) | undefined;
+      if (authority === "controlled") {
+        const sourceCount = normalized.sources.length;
+        const sourceDigest = createHash("sha256").update(normalized.sources.map((source, index) =>
+          this.correctionFields([String(index + 1), source.amountYuan, source.sourceStatus, source.sourceName,
+            source.projectStatus, source.projectId, source.previousSourceBatchId])).join("|")).digest("hex");
+        verifyRecipientLocks = await this.authorizeCorrectionRound(tx, registrationId, [actorUserId, account.id, current.id, registrationId, String(nextVersion),
+          normalized.idempotencyKey, fingerprint, normalized.balanceYuan, normalized.asOfDate, normalized.evidenceReference,
+          normalized.reconciliationNote, normalized.reason, coveredExecutionIds.join(","), String(sourceCount), sourceDigest]);
+        await this.audit(tx, actorUserId, "fund_account.correction.request", registrationId,
+          { ...audit, roundCreationProtocol: 1, sourceCount, sourceDigest });
+      } else {
+        const round = await tx.approvalInstance.create({ data: { flowType: "fund_account_balance_correction", businessType: FUND_REVIEW_BUSINESS_TYPE,
+          businessId: registrationId, status: "approval_pending", currentNodeIndex: 0, frozenNodes: fundReviewNodes(), applicantUserId: actorUserId } });
+        legacyRoundId = round.id;
+      }
+      const row = await tx.fundAccountBalanceRegistration.create({ data: { id: registrationId, ...this.registrationData(normalized), coveredExecutionIds,
+        accountId: account.id, version: nextVersion, kind: "correction", status: "pending_review", previousRegistrationId: current.id,
+        ...(legacyRoundId ? { approvalInstanceId: legacyRoundId } : {}), payloadFingerprint: fingerprint, createdByUserId: actorUserId } });
+      if (!row.approvalInstanceId) throw new Error("资金更正登记缺少同事务审批轮次");
+      await verifyRecipientLocks?.(row.approvalInstanceId);
       const sources = await this.writeSources(tx, row.id, normalized.sources);
-      await this.audit(tx, actorUserId, "fund_account.correction.request", row.id, { previousRegistrationId: current.id, previousBalanceYuan: current.balanceYuan?.toFixed(4) ?? null, balanceYuan: normalized.balanceYuan, coveredExecutionIds, reason: normalized.reason, evidenceReference: normalized.evidenceReference });
-      await this.balanceReviewNotifications?.queue(tx, row.id, round.id, actorUserId);
+      if (authority === "legacy") await this.audit(tx, actorUserId, "fund_account.correction.request", row.id, audit);
+      await this.balanceReviewNotifications?.queue(tx, row.id, row.approvalInstanceId, actorUserId, authority === "controlled");
       return this.registrationView({ ...row, sources });
     });
     void this.balanceReviewNotifications?.afterCommit();
@@ -308,6 +333,39 @@ export class FundAccountService {
     catch { throw new ForbiddenException("当前账号缺少有效公司级资金岗位"); }
     if (!roles.some(role => allowed.includes(role))) throw new ForbiddenException("当前公司级岗位无权办理该资金事项");
     return roles;
+  }
+  private correctionFields(fields: readonly (string | null)[]) {
+    return fields.map(value => value === null ? "-" : Buffer.from(value, "utf8").toString("hex")).join(":");
+  }
+  private async authorizeCorrectionRound(tx: Prisma.TransactionClient, registrationId: string, fields: readonly (string | null)[]) {
+    const keyValue = process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY;
+    if (!keyValue || !/^[a-f0-9]{64}$/u.test(keyValue)) {
+      throw new ServiceUnavailableException("资金更正审批轮次授权未配置");
+    }
+    const [binding] = await tx.$queryRaw<Array<{ database: string; role: string; xid: string; backend: string; expires: string }>>`
+      SELECT current_database()::text AS database, session_user::text AS role,
+        pg_current_xact_id()::text AS xid, pg_backend_pid()::text AS backend,
+        (floor(extract(epoch FROM clock_timestamp()))::bigint + 30)::text AS expires`;
+    const scope = [binding.database, binding.role, binding.xid, binding.backend];
+    const sign = (payload: readonly (string | null)[]) => {
+      const key = Buffer.from(keyValue, "hex");
+      try {
+        return createHmac("sha256", key).update(this.correctionFields(payload)).digest("hex");
+      } finally {
+        key.fill(0);
+      }
+    };
+    const proof = sign(["fund_balance_correction_round_v1", ...scope, binding.expires, ...fields]);
+    await tx.$queryRaw`SELECT set_config('jg.fund_balance_correction_witness', ${binding.expires + ":" + proof}, true)`;
+    return async (roundId: string) => {
+      const [observed] = await tx.$queryRaw<Array<{ proof: string | null }>>`
+        SELECT current_setting('jg.fund_balance_correction_recipient_locks', true) AS proof`;
+      const expected = sign(["fund_balance_correction_recipient_locks_v1", ...scope, registrationId, roundId]);
+      if (!observed?.proof || !/^[a-f0-9]{64}$/u.test(observed.proof) ||
+          !timingSafeEqual(Buffer.from(observed.proof, "hex"), Buffer.from(expected, "hex"))) {
+        throw new ServiceUnavailableException("资金更正收件人锁定证明不可用");
+      }
+    };
   }
   private async validateProjects(tx: Prisma.TransactionClient, sources: ReturnType<FundAccountService["normalize"]>["sources"]) {
     for (const source of sources) if (source.projectId && !await tx.project.findUnique({ where: { id: source.projectId } })) throw new BadRequestException("来源所属项目不存在，请核对原始资料");

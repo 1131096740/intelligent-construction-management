@@ -42,18 +42,34 @@ export async function loadFundReviewDuty(tx: Prisma.TransactionClient, resourceI
   const company = account.companyEntityId ? await tx.companyEntity.findUnique({ where: { id: account.companyEntityId } }) : null;
   return { round, row, account, node, label: `${company?.name ?? "公共现金"} · 余额核对更正 · 财务主管复核` };
 }
-export async function resolveFundReviewIdentity(tx: Prisma.TransactionClient, registrationId: string, actorUserId: string, expectedRoundId?: string, directHolderOnly = false) {
+export function resolveFundReviewIdentity(tx: Prisma.TransactionClient, registrationId: string, actorUserId: string, expectedRoundId?: string, directHolderOnly = false) {
+  return resolveIdentity(tx, registrationId, actorUserId, expectedRoundId, directHolderOnly, false);
+}
+
+/** Queue-only path after the caller verifies the owner trigger's same-transaction lock receipt. */
+export function resolveFreshCorrectionRecipient(tx: Prisma.TransactionClient, registrationId: string, roundId: string, recipientId: string) {
+  return resolveIdentity(tx, registrationId, recipientId, roundId, true, true);
+}
+
+async function resolveIdentity(
+  tx: Prisma.TransactionClient, registrationId: string, actorUserId: string,
+  expectedRoundId: string | undefined, directHolderOnly: boolean, freshRecipientsLocked: boolean
+) {
   const row = await tx.fundAccountBalanceRegistration.findUnique({ where: { id: registrationId } });
   if (!row?.approvalInstanceId || (expectedRoundId !== undefined && row.approvalInstanceId !== expectedRoundId)) throw new ConflictException("资金复核轮次已变化，请刷新后重试");
   const duty = await loadFundReviewDuty(tx, fundReviewDutyId(row.approvalInstanceId));
-  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${actorUserId} FOR SHARE`);
-  await tx.$queryRaw(Prisma.sql`SELECT up."userId" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" WHERE up."userId" = ${actorUserId} AND up."projectId" IS NULL FOR SHARE OF up, p`);
+  if (!freshRecipientsLocked) {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${actorUserId} FOR SHARE`);
+    await tx.$queryRaw(Prisma.sql`SELECT up."userId" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" WHERE up."userId" = ${actorUserId} AND up."projectId" IS NULL FOR SHARE OF up, p`);
+  }
   const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
   if (!actor?.isActive) throw new ForbiddenException("当前办理账号已停用");
   const actorRoles = await currentFundCompanyRoles(tx, actorUserId);
   if (actorRoles.includes("super_admin") && actorRoles.every(role => role === "super_admin")) throw new ForbiddenException("技术管理员不能办理业务复核");
   const scope = { actionKey: FUND_REVIEW_ACTION, resourceType: FUND_REVIEW_RESOURCE, resourceId: fundReviewDutyId(duty.round.id) };
-  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalDelegation" WHERE "toUserId" = ${actorUserId} AND "actionKey" = ${FUND_REVIEW_ACTION} AND "resourceType" = ${FUND_REVIEW_RESOURCE} AND "resourceId" = ${scope.resourceId} FOR SHARE`);
+  if (!freshRecipientsLocked) {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalDelegation" WHERE "toUserId" = ${actorUserId} AND "actionKey" = ${FUND_REVIEW_ACTION} AND "resourceType" = ${FUND_REVIEW_RESOURCE} AND "resourceId" = ${scope.resourceId} FOR SHARE`);
+  }
   const ids = directHolderOnly ? [] : await activeScopedApprovalDelegatorIds(tx, actorUserId, scope);
   const activeDelegators = [];
   for (const userId of ids) {

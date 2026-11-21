@@ -1222,7 +1222,7 @@ export class OrganizationService {
   }
 
   async getDirectory(): Promise<OrganizationDirectoryReadModel> {
-    const [departments, users, rawPositions, userPositions, projectMembers, rosterMembers, projects] =
+    const [departments, users, rawPositions, userPositions] =
       await Promise.all([
         this.prisma.department.findMany({
           select: { id: true, name: true, parentId: true, isActive: true }
@@ -1240,17 +1240,19 @@ export class OrganizationService {
         this.prisma.position.findMany({ select: { id: true, key: true, name: true } }),
         this.prisma.userPosition.findMany({
           select: { userId: true, positionId: true, projectId: true }
-        }),
-        this.prisma.projectMember.findMany({
-          select: { userId: true, projectId: true, positionKey: true }
-        }),
-        this.prisma.projectRosterMember.findMany({
-          select: { userId: true, projectId: true }
-        }),
-        this.prisma.project.findMany({
-          select: { id: true, code: true, name: true, isActive: true }
         })
       ]);
+    const [projectMembers, rosterMembers, projects] = await Promise.all([
+      this.prisma.projectMember.findMany({
+        select: { userId: true, projectId: true, positionKey: true }
+      }),
+      this.prisma.projectRosterMember.findMany({
+        select: { userId: true, projectId: true }
+      }),
+      this.prisma.project.findMany({
+        select: { id: true, code: true, name: true, isActive: true }
+      })
+    ]);
 
     const positions = rawPositions
       .filter((position): position is typeof position & { key: RoleKey } =>

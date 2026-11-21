@@ -925,6 +925,7 @@ export class ExpenseClaimService {
   }
 
   async review(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
+    const confirmation = await this.prepareSelfReviewConfirmation(claimId, actorUserId, input);
     let notificationQueued = false;
     const result = await translateProjectOperatingSerializationConflict(
       this.prisma.$transaction(async (tx) => {
@@ -945,7 +946,16 @@ export class ExpenseClaimService {
       const roles = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
       const identity = resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
       if (!identity) throw new ForbiddenException("当前用户不是费用申请的冻结审批人");
-      const selfReview = await this.confirmSelfReview(instance.applicantUserId, actorUserId, identity, input);
+      const selfReview = this.selfReviewMetadata(instance.applicantUserId, actorUserId, identity, input);
+      if (selfReview.isSelfReview) {
+        const [current] = await tx.$queryRaw<Array<{ isActive: boolean; passwordHash: string | null }>>(Prisma.sql`
+          SELECT "isActive", "passwordHash" FROM "User" WHERE "id" = ${actorUserId} FOR UPDATE
+        `);
+        if (!confirmation || confirmation.instanceId !== instance.id || confirmation.nodeIndex !== instance.currentNodeIndex ||
+            !current?.isActive || !confirmation.passwordHash || current.passwordHash !== confirmation.passwordHash) {
+          throw new ConflictException("自审资格或登录凭据已变化，请刷新后重新确认");
+        }
+      }
 
       if (input.decision === "reject") {
         const releasedAmountCents = await this.releaseLoanOffsetReservations(tx, claim.id, actorUserId, "审批驳回");
@@ -1244,7 +1254,7 @@ export class ExpenseClaimService {
           fundingScope.projectId
         );
       }
-      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; companyEntityId: string; companyEntityNameSnapshot: string; companyPayableAmountCents: bigint; fundedAmountCents: bigint }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "companyEntityId", "companyEntityNameSnapshot", "companyPayableAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; generalProcurementId: string | null; companyEntityId: string; companyEntityNameSnapshot: string; companyPayableAmountCents: bigint; fundedAmountCents: bigint }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "generalProcurementId", "companyEntityId", "companyEntityNameSnapshot", "companyPayableAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (
@@ -1327,10 +1337,13 @@ export class ExpenseClaimService {
       if (!voucher) throw new NotFoundException("补付凭证不存在");
       if (voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("补付凭证必须由登记人本人上传");
       if (this.files) {
-        await this.files.assertFileHasNoBusinessBinding(
-          tx,
-          voucherFileId
-        );
+        if (!input.registeredFunding && claim.claimType === "incidental_expense" && claim.generalProcurementId && claim.projectId) {
+          await this.files.assertFileHasNoBusinessBinding(tx, voucherFileId, undefined, {
+            claimId: claim.id, projectId: claim.projectId, actorUserId
+          });
+        } else {
+          await this.files.assertFileHasNoBusinessBinding(tx, voucherFileId);
+        }
       }
       const funding = input.registeredFunding;
       if (funding && (!claim.projectId || !claim.companyEntityId || !claim.companyEntityNameSnapshot?.trim())) {
@@ -1798,7 +1811,7 @@ export class ExpenseClaimService {
     return amountCents;
   }
 
-  private async confirmSelfReview(
+  private selfReviewMetadata(
     applicantUserId: string,
     actorUserId: string,
     identity: { representedUserId: string; viaAssignment: boolean },
@@ -1812,8 +1825,32 @@ export class ExpenseClaimService {
     if (!reason) throw new BadRequestException("审批自己发起的费用申请时，请填写自审原因");
     if (!input.confirmationPassword?.trim()) throw new BadRequestException("自审前，请输入当前密码完成二次确认");
     if (!this.auth) throw new ServiceUnavailableException("审批身份确认服务暂不可用，请稍后重试");
-    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
-    return { isSelfReview: true as const, metadata: { selfReview: true, selfReviewReason: reason } };
+    return { isSelfReview: true as const, auth: this.auth, metadata: { selfReview: true, selfReviewReason: reason } };
+  }
+
+  private async prepareSelfReviewConfirmation(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
+    if (!input.confirmationPassword?.trim()) return;
+    const instance = await this.prisma.approvalInstance.findFirst({
+      where: { businessType: "expense_claim", businessId: claimId, status: "in_progress" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, applicantUserId: true, currentNodeIndex: true, frozenNodes: true }
+    });
+    if (instance?.applicantUserId !== actorUserId) return;
+    const claim = await this.prisma.expenseClaim.findUnique({ where: { id: claimId }, select: { status: true, projectId: true } });
+    const nodes = instance.frozenNodes as unknown as ExpenseClaimApprovalNode[];
+    const node = nodes[instance.currentNodeIndex];
+    if (claim?.status !== "approval_pending" || !node) return;
+    const roles = await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined);
+    const identity = resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
+    if (!identity) return;
+    const selfReview = this.selfReviewMetadata(instance.applicantUserId, actorUserId, identity, input);
+    if (!selfReview.isSelfReview) return;
+    const account = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { isActive: true, passwordHash: true }
+    });
+    await selfReview.auth.confirmPassword(actorUserId, input.confirmationPassword, { user: { findUnique: async () => account } });
+    return { instanceId: instance.id, nodeIndex: instance.currentNodeIndex, passwordHash: account?.passwordHash };
   }
 
   private async loadRoleKeys(tx: Prisma.TransactionClient, userId: string, projectId?: string): Promise<RoleKey[]> {

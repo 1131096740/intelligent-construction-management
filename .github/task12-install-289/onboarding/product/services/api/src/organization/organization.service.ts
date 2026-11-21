@@ -1,0 +1,1501 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
+import {
+  DUAL_SCOPE_ROLE_KEYS,
+  GLOBAL_USER_POSITION_ROLE_KEYS,
+  ROLE_KEYS,
+  type RoleKey
+} from "@jiangkong/shared-domain";
+import { Prisma } from "@prisma/client";
+import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
+import { PrismaService } from "../database/prisma.service";
+import type { CreateDepartmentDto } from "./dto/create-department.dto";
+import type { CreateOrganizationUserDto } from "./dto/create-organization-user.dto";
+import type { UpdateDepartmentDto } from "./dto/update-department.dto";
+import type { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
+import { configuredInitialUserTemporaryPassword } from "./initial-user-temporary-password";
+import { employeeManagerRoles, employeeTargetNeedsChairman, IMPORTANT_EMPLOYEE_ROLES } from "./employee-management-policy";
+import { recordPersonnelFact, startUnverifiedEmployment } from "./personnel-fact";
+import { evaluateEmployeeDeparture } from "./employee-departure-policy";
+import {
+  canManageRole,
+  ORGANIZATION_MANAGER_ROLE_KEYS,
+  requiresDepartmentBoundary,
+  resolveRoleAssignmentScope
+} from "./organization-management-policy";
+import { assertEngineeringDirectorAvailable } from "./organization-role-assignment-policy";
+
+const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
+
+export type PermissionIntegrityClient = Pick<
+  Prisma.TransactionClient,
+  "user" | "position" | "project" | "userPosition" | "projectMember"
+>;
+
+function isRoleKey(value: string): value is RoleKey {
+  return ROLE_KEY_SET.has(value);
+}
+
+export interface DepartmentTreeNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+  isActive: boolean;
+  children: DepartmentTreeNode[];
+}
+
+export interface OrganizationDirectoryReadModel {
+  summary: {
+    departments: number;
+    activeUsers: number;
+    inactiveUsers: number;
+    positions: number;
+  };
+  departments: DepartmentTreeNode[];
+  users: Array<{
+    id: string;
+    name: string;
+    phone: string;
+    departmentId: string | null;
+    departmentName: string;
+    status: "active" | "inactive";
+    mustChangePassword: boolean;
+    globalPositions: Array<{ key: RoleKey; name: string }>;
+    projectPositions: Array<{
+      projectId: string;
+      projectCode: string;
+      projectName: string;
+      keys: RoleKey[];
+      names: string[];
+      needsReconciliation?: true;
+      legacySource?: "user_position";
+      legacyPositionKeys?: RoleKey[];
+      legacyPositionNames?: string[];
+    }>;
+    rosterProjects: Array<{
+      projectId: string;
+      projectCode: string;
+      projectName: string;
+      needsReconciliation?: true;
+      legacySource?: "user_position";
+      legacyPositionKeys?: RoleKey[];
+      legacyPositionNames?: string[];
+    }>;
+  }>;
+  positions: Array<{ id: string; key: RoleKey; name: string }>;
+  projects: Array<{ id: string; code: string; name: string; isActive: boolean }>;
+}
+
+export type PermissionIntegrityIssueCode =
+  | "duplicate_global_assignment"
+  | "legacy_project_user_position"
+  | "dual_source_project_role"
+  | "invalid_role"
+  | "project_super_admin"
+  | "global_scope_mismatch"
+  | "project_scope_mismatch"
+  | "orphan_user"
+  | "orphan_position"
+  | "orphan_project";
+
+export interface PermissionIntegrityIssue {
+  code: PermissionIntegrityIssueCode;
+  severity: "blocking" | "warning";
+  source: "user_position" | "project_member";
+  assignmentIds: string[];
+  userId?: string;
+  projectId?: string;
+  positionId?: string;
+  roleKey?: string;
+  message: string;
+}
+
+export interface PermissionIntegrityReadModel {
+  policy: {
+    globalWriteSource: "UserPosition(projectId=null)";
+    projectWriteSource: "ProjectMember";
+    legacyProjectUserPositionReadCompatibility: true;
+    projectSuperAdminAllowed: false;
+  };
+  readiness: {
+    canonicalRoleWritesReady: boolean;
+    legacyMigrationReady: boolean;
+  };
+  summary: {
+    globalAssignments: number;
+    canonicalProjectAssignments: number;
+    legacyProjectAssignments: number;
+    duplicateGlobalGroups: number;
+    dualSourceOverlaps: number;
+    invalidRoleAssignments: number;
+    orphanAssignments: number;
+    blockingIssues: number;
+    warningIssues: number;
+  };
+  issues: PermissionIntegrityIssue[];
+}
+
+const PERMISSION_INTEGRITY_MESSAGES: Record<PermissionIntegrityIssueCode, string> = {
+  duplicate_global_assignment: "同一人员存在重复的全局岗位分配",
+  legacy_project_user_position: "检测到项目级 UserPosition 遗留岗位事实",
+  dual_source_project_role: "同一项目岗位同时存在于 UserPosition 和 ProjectMember",
+  invalid_role: "岗位键不在系统固定岗位范围内",
+  project_super_admin: "super_admin 不允许分配到项目范围",
+  global_scope_mismatch: "项目级岗位被错误写入全局范围，不会获得全项目权限",
+  project_scope_mismatch: "全局岗位仍停留在项目范围，请受控迁移到全局岗位",
+  orphan_user: "岗位分配关联的人员不存在",
+  orphan_position: "UserPosition 关联的固定岗位不存在",
+  orphan_project: "项目岗位分配关联的项目不存在"
+};
+
+function compareStableText(left: string | undefined, right: string | undefined) {
+  const normalizedLeft = left ?? "";
+  const normalizedRight = right ?? "";
+  return normalizedLeft < normalizedRight ? -1 : normalizedLeft > normalizedRight ? 1 : 0;
+}
+
+function comparePermissionIntegrityIssues(
+  left: PermissionIntegrityIssue,
+  right: PermissionIntegrityIssue
+) {
+  const severityOrder = { blocking: 0, warning: 1 } as const;
+  return (
+    severityOrder[left.severity] - severityOrder[right.severity] ||
+    compareStableText(left.code, right.code) ||
+    compareStableText(left.userId, right.userId) ||
+    compareStableText(left.projectId, right.projectId) ||
+    compareStableText(left.roleKey, right.roleKey) ||
+    compareStableText(left.assignmentIds.join("\u0000"), right.assignmentIds.join("\u0000"))
+  );
+}
+
+interface DepartmentRow {
+  id: string;
+  name: string;
+  parentId: string | null;
+  isActive: boolean;
+}
+
+function compareText(left: string, right: string) {
+  return left.localeCompare(right, "zh-CN");
+}
+
+function maskPhone(phone: string) {
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+}
+
+function findCyclicDepartmentIds(departments: DepartmentRow[]) {
+  const departmentsById = new Map(departments.map((department) => [department.id, department]));
+  const cyclicIds = new Set<string>();
+
+  for (const department of departments) {
+    const path: string[] = [];
+    const pathIndexes = new Map<string, number>();
+    let current: DepartmentRow | undefined = department;
+
+    while (current) {
+      const repeatedAt = pathIndexes.get(current.id);
+      if (repeatedAt !== undefined) {
+        for (const cyclicId of path.slice(repeatedAt)) {
+          cyclicIds.add(cyclicId);
+        }
+        break;
+      }
+
+      pathIndexes.set(current.id, path.length);
+      path.push(current.id);
+      current = current.parentId ? departmentsById.get(current.parentId) : undefined;
+    }
+  }
+
+  return cyclicIds;
+}
+
+function buildDepartmentTree(departments: DepartmentRow[]): DepartmentTreeNode[] {
+  const nodesById = new Map<string, DepartmentTreeNode>();
+  for (const department of departments) {
+    nodesById.set(department.id, { ...department, children: [] });
+  }
+
+  const cyclicIds = findCyclicDepartmentIds(departments);
+  const roots: DepartmentTreeNode[] = [];
+
+  for (const department of departments) {
+    const node = nodesById.get(department.id);
+    const parent = department.parentId ? nodesById.get(department.parentId) : undefined;
+    if (!node) {
+      continue;
+    }
+
+    if (!parent || cyclicIds.has(department.id)) {
+      roots.push(node);
+    } else {
+      parent.children.push(node);
+    }
+  }
+
+  const sortNodes = (nodes: DepartmentTreeNode[]) => {
+    nodes.sort((left, right) => compareText(left.name, right.name) || compareText(left.id, right.id));
+    for (const node of nodes) {
+      sortNodes(node.children);
+    }
+  };
+  sortNodes(roots);
+
+  return roots;
+}
+
+@Injectable()
+export class OrganizationService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auth?: AuthService,
+    private readonly audit: AuditService = new AuditService()
+  ) {}
+
+  async createUser(actorUserId: string, input: CreateOrganizationUserDto) {
+    const name = input.initialRoleKey
+      ? "待本人确认"
+      : requiredTrimmed(input.name ?? "", "请填写人员姓名");
+    const phone = requiredTrimmed(input.phone, "请填写手机号");
+    if (!/^1[3-9]\d{9}$/u.test(phone)) {
+      throw new BadRequestException("手机号格式不正确");
+    }
+    const departmentId = requiredTrimmed(input.departmentId, "请选择部门");
+    await this.confirmPassword(actorUserId, input.confirmationPassword);
+    if (!this.auth) {
+      throw new Error("组织写入缺少认证服务");
+    }
+    const passwordHash = await this.auth.hashPassword(configuredInitialUserTemporaryPassword());
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const actorRoles = await employeeManagerRoles(tx, actorUserId);
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-phone:${phone}`}))`;
+          if (await tx.employeeRegistration.findFirst({ where: { phone, status: { not: "approved" } }, select: { id: true } })) {
+            throw new ConflictException("该手机号已有入职申请，请在入职审核中处理，不能重复代建");
+          }
+          const department = await tx.department.findUnique({
+            where: { id: departmentId },
+            select: { id: true, isActive: true }
+          });
+          assertActiveDepartment(department, "部门");
+          await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
+          if (input.initialRoleKey === "super_admin") {
+            throw new BadRequestException("该岗位必须通过独立岗位预览与授岗流程办理");
+          }
+          if (input.initialRoleKey && !canManageRole(actorRoles, input.initialRoleKey)) {
+            throw new ForbiddenException("当前岗位不能创建或授予该初始岗位");
+          }
+          const projectId = input.projectId?.trim() || null;
+          const scope = input.initialRoleKey ? resolveRoleAssignmentScope(input.initialRoleKey, {
+            scope: input.initialRoleScope, projectId: input.projectId
+          }) : null;
+          if (input.initialRoleKey === "engineering_department_director") {
+            await assertEngineeringDirectorAvailable(tx);
+          }
+          if (projectId) {
+            const project = await tx.project.findUnique({
+              where: { id: projectId },
+              select: { id: true, isActive: true }
+            });
+            if (!project?.isActive) throw new BadRequestException("项目不存在或已停用，请重新选择");
+          }
+
+          const user = await tx.user.create({
+            data: {
+              name,
+              phone,
+              departmentId,
+              passwordHash,
+              isActive: true,
+              mustChangePassword: true,
+              requiresChairmanManagement: Boolean(input.initialRoleKey && IMPORTANT_EMPLOYEE_ROLES.includes(input.initialRoleKey))
+            },
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              departmentId: true,
+              isActive: true,
+              mustChangePassword: true
+            }
+          });
+          let assignmentId: string | null = null;
+          if (input.initialRoleKey && scope === "global") {
+            const position = await tx.position.findUnique({
+              where: { key: input.initialRoleKey },
+              select: { id: true }
+            });
+            if (!position) throw new BadRequestException("初始岗位不存在，请刷新后重试");
+            const assignment = await tx.userPosition.create({
+              data: { userId: user.id, positionId: position.id, projectId: null },
+              select: { id: true }
+            });
+            assignmentId = assignment.id;
+          } else if (input.initialRoleKey && projectId) {
+            const assignment = await tx.projectMember.create({
+              data: { userId: user.id, projectId, positionKey: input.initialRoleKey },
+              select: { id: true }
+            });
+            await tx.projectRosterMember.upsert({
+              where: { projectId_userId: { projectId, userId: user.id } },
+              create: { projectId, userId: user.id },
+              update: {}
+            });
+            assignmentId = assignment.id;
+          }
+          await startUnverifiedEmployment(tx, user.id);
+          await recordPersonnelFact(tx, { userId: user.id, actorUserId, action: "account_create", reason: "管理人员代建账号",
+            before: {}, after: { departmentId, isActive: true,
+              roles: input.initialRoleKey ? [{ roleKey: input.initialRoleKey, scope, projectId }] : [] } });
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "permission.user.create",
+            businessType: "user",
+            businessId: user.id,
+            metadata: {
+              name: user.name,
+              maskedPhone: maskPhone(phone),
+              departmentId: user.departmentId,
+              isActive: user.isActive,
+              mustChangePassword: user.mustChangePassword,
+              initialRoleCount: input.initialRoleKey ? 1 : 0,
+              ...(input.initialRoleKey
+                ? { initialRoleKey: input.initialRoleKey, projectId, assignmentId }
+                : {})
+            }
+          });
+          return user;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      const code = prismaErrorCode(error);
+      if (code === "P2002") {
+        throw new ConflictException("该手机号已存在，请核对后重试");
+      }
+      if (code === "P2034") {
+        throw new ConflictException("组织数据已变化，请刷新后重试");
+      }
+      throw error;
+    }
+  }
+
+  async assertCanMaintainBusinessEntryOrganization(
+    actorUserId: string,
+    sceneKey: "department" | "organization_user",
+    targetId: string | undefined,
+    values: Record<string, unknown>
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const actorRoles = sceneKey === "organization_user"
+        ? await employeeManagerRoles(tx, actorUserId)
+        : await this.assertOrganizationManager(tx, actorUserId);
+      if (sceneKey === "department") {
+        await this.assertDepartmentManager(tx, actorUserId);
+        const departmentId = targetId ?? this.optionalString(values.parentId);
+        if (departmentId) {
+          await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
+        }
+        return;
+      }
+      const departmentId = this.optionalString(values.departmentId);
+      if (departmentId) {
+        await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
+      }
+      if (!targetId) return;
+      if (targetId === actorUserId) {
+        throw new ForbiddenException("不能通过组织管理入口修改或停用自己");
+      }
+      if (!actorRoles.includes("chairman") && await employeeTargetNeedsChairman(tx, targetId)) {
+        throw new ForbiddenException("管理层和财务人员仅由董事长调整");
+      }
+      const target = await tx.user.findUnique({
+        where: { id: targetId },
+        select: { id: true, departmentId: true, isActive: true }
+      });
+      if (!target) throw new NotFoundException("人员不存在，请刷新后重试");
+      if (target.departmentId) {
+        await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, target.departmentId);
+      }
+    });
+  }
+
+  async createDepartment(actorUserId: string, input: CreateDepartmentDto) {
+    const name = requiredTrimmed(input.name, "请填写部门名称");
+    const parentId = normalizedNullableId(input.parentId);
+    await this.confirmPassword(actorUserId, input.confirmationPassword);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertDepartmentManager(tx, actorUserId);
+          if (parentId) {
+            const parent = await tx.department.findUnique({
+              where: { id: parentId },
+              select: { id: true, isActive: true }
+            });
+            assertActiveDepartment(parent, "上级部门");
+          }
+
+          const department = await tx.department.create({
+            data: { name, parentId },
+            select: { id: true, name: true, parentId: true, isActive: true }
+          });
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "permission.department.create",
+            businessType: "department",
+            businessId: department.id,
+            metadata: {
+              name: department.name,
+              parentId: department.parentId,
+              isActive: department.isActive
+            }
+          });
+          return department;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      const code = prismaErrorCode(error);
+      if (code === "P2002") {
+        throw new BadRequestException("部门名称已存在");
+      }
+      if (code === "P2034") {
+        throw new BadRequestException("组织数据已变化，请刷新后重试");
+      }
+      throw error;
+    }
+  }
+
+  async updateDepartment(
+    departmentId: string,
+    actorUserId: string,
+    input: UpdateDepartmentDto
+  ) {
+    const data: { name?: string; parentId?: string | null; isActive?: boolean } = {};
+    if (input.name !== undefined) data.name = requiredTrimmed(input.name, "请填写部门名称");
+    if (input.parentId !== undefined) data.parentId = normalizedNullableId(input.parentId);
+    if (input.isActive !== undefined) data.isActive = input.isActive;
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException("请至少提交一项部门变更");
+    }
+    await this.confirmPassword(actorUserId, input.confirmationPassword);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertDepartmentManager(tx, actorUserId);
+          const before = await tx.department.findUnique({
+            where: { id: departmentId },
+            select: { id: true, name: true, parentId: true, isActive: true }
+          });
+          if (!before) {
+            throw new NotFoundException("部门不存在，请刷新后重试");
+          }
+
+          let departmentGraph:
+            | Array<{ id: string; parentId: string | null; isActive: boolean }>
+            | undefined;
+          const effectiveParentId =
+            data.parentId !== undefined ? data.parentId : before.parentId;
+          const parentIdToValidate =
+            data.parentId !== undefined || (data.isActive === true && !before.isActive)
+              ? effectiveParentId
+              : null;
+          if (parentIdToValidate) {
+            if (parentIdToValidate === departmentId) {
+              throw new BadRequestException("上级部门不能选择当前部门或其下级部门");
+            }
+            const parent = await tx.department.findUnique({
+              where: { id: parentIdToValidate },
+              select: { id: true, isActive: true }
+            });
+            assertActiveDepartment(parent, "上级部门");
+            departmentGraph = await tx.department.findMany({
+              select: { id: true, parentId: true, isActive: true }
+            });
+            if (wouldCreateDepartmentCycle(departmentId, parentIdToValidate, departmentGraph)) {
+              throw new BadRequestException("上级部门不能选择当前部门或其下级部门");
+            }
+          }
+
+          if (data.isActive === false && before.isActive) {
+            const activeUsers = await tx.user.count({
+              where: { departmentId, isActive: true }
+            });
+            if (activeUsers > 0) {
+              throw new BadRequestException("该部门仍有启用人员，不能停用");
+            }
+            departmentGraph ??= await tx.department.findMany({
+              select: { id: true, parentId: true, isActive: true }
+            });
+            if (hasActiveDepartmentDescendant(departmentId, departmentGraph)) {
+              throw new BadRequestException("该部门仍有启用下级部门，不能停用");
+            }
+          }
+
+          const after = await tx.department.update({
+            where: { id: departmentId },
+            data,
+            select: { id: true, name: true, parentId: true, isActive: true }
+          });
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "permission.department.update",
+            businessType: "department",
+            businessId: departmentId,
+            metadata: {
+              before: departmentAuditSnapshot(before),
+              after: departmentAuditSnapshot(after)
+            }
+          });
+          return after;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      const code = prismaErrorCode(error);
+      if (code === "P2002") {
+        throw new BadRequestException("部门名称已存在");
+      }
+      if (code === "P2034") {
+        throw new BadRequestException("组织数据已变化，请刷新后重试");
+      }
+      throw error;
+    }
+  }
+
+  async updateUser(userId: string, actorUserId: string, input: UpdateOrganizationUserDto) {
+    const data: { departmentId?: string | null; isActive?: boolean } = {};
+    if (input.departmentId !== undefined) {
+      data.departmentId = normalizedNullableId(input.departmentId);
+    }
+    if (input.isActive !== undefined) data.isActive = input.isActive;
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException("请至少提交一项人员变更");
+    }
+    await this.confirmPassword(actorUserId, input.confirmationPassword);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const actorRoles = await employeeManagerRoles(tx, actorUserId);
+          if (!actorRoles.includes("chairman") && await employeeTargetNeedsChairman(tx, userId)) {
+            throw new ForbiddenException("管理层和财务人员的部门、启停状态仅由董事长调整");
+          }
+          if (userId === actorUserId) {
+            throw new ForbiddenException("不能通过组织管理入口修改或停用自己");
+          }
+          const before = await tx.user.findUnique({
+            where: { id: userId },
+            select: { id: true, departmentId: true, isActive: true }
+          });
+          if (!before) {
+            throw new NotFoundException("人员不存在，请刷新后重试");
+          }
+
+          const effectiveDepartmentId =
+            data.departmentId !== undefined ? data.departmentId : before.departmentId;
+          if (before.departmentId) {
+            await this.assertDepartmentBoundary(
+              tx,
+              actorUserId,
+              actorRoles,
+              before.departmentId
+            );
+          } else if (requiresDepartmentBoundary(actorRoles)) {
+            throw new ForbiddenException("不能管理当前未归属本部门的人员");
+          }
+          if (!effectiveDepartmentId && requiresDepartmentBoundary(actorRoles)) {
+            throw new BadRequestException("人员必须归属启用部门");
+          }
+          if (effectiveDepartmentId) {
+            await this.assertDepartmentBoundary(
+              tx,
+              actorUserId,
+              actorRoles,
+              effectiveDepartmentId
+            );
+          }
+          const departmentIdToValidate =
+            data.departmentId !== undefined || (data.isActive === true && !before.isActive)
+              ? effectiveDepartmentId
+              : null;
+          if (departmentIdToValidate) {
+            const department = await tx.department.findUnique({
+              where: { id: departmentIdToValidate },
+              select: { id: true, isActive: true }
+            });
+            assertActiveDepartment(department, "部门");
+          }
+
+          const mutationAt = new Date();
+          if (data.isActive === false && before.isActive) {
+            const [remainingGlobalRole, remainingProjectRole, activeDelegation, activeApplication] =
+              await Promise.all([
+                tx.userPosition.findFirst({
+                  where: { userId },
+                  select: { id: true }
+                }),
+                tx.projectMember.findFirst({
+                  where: { userId },
+                  select: { id: true }
+                }),
+                tx.approvalDelegation.findFirst({
+                  where: {
+                    enabled: true,
+                    OR: [{ fromUserId: userId }, { toUserId: userId }],
+                    startsAt: { lte: mutationAt },
+                    endsAt: { gte: mutationAt }
+                  },
+                  select: { id: true }
+                }),
+                tx.approvalInstance.findFirst({
+                  where: { applicantUserId: userId, status: "in_progress" },
+                  select: { id: true }
+                })
+              ]);
+            if (remainingGlobalRole || remainingProjectRole) {
+              throw new BadRequestException("该人员仍有全局或项目岗位，请先完成撤岗与交接");
+            }
+            if (activeDelegation) {
+              throw new BadRequestException("该人员仍有生效中的审批委托，请先结束委托");
+            }
+            if (activeApplication) {
+              throw new BadRequestException("该人员仍有审批中的申请，请先完成或转交");
+            }
+            const departureBlockingReasons = await evaluateEmployeeDeparture(tx, userId, mutationAt);
+            if (departureBlockingReasons.length) throw new BadRequestException(departureBlockingReasons.join("；"));
+            const superAdminPosition = await tx.position.findUnique({
+              where: { key: "super_admin" },
+              select: { id: true }
+            });
+            if (superAdminPosition) {
+              const globalAssignments = await tx.userPosition.findMany({
+                where: { positionId: superAdminPosition.id, projectId: null },
+                select: { userId: true }
+              });
+              const globalAdminUserIds = [
+                ...new Set(globalAssignments.map((assignment) => assignment.userId))
+              ];
+              if (globalAdminUserIds.includes(userId)) {
+                const activeGlobalAdmins = await tx.user.count({
+                  where: { id: { in: globalAdminUserIds }, isActive: true }
+                });
+                if (activeGlobalAdmins <= 1) {
+                  throw new BadRequestException("必须保留至少一个启用的全局超级管理员");
+                }
+              }
+            }
+          }
+
+          if (data.isActive === true && !before.isActive) {
+            const [currentEmployment, endedEmployment] = await Promise.all([
+              tx.employmentPeriod.findFirst({ where: { userId, endedAt: null }, select: { id: true } }),
+              tx.employmentPeriod.findFirst({ where: { userId, endedAt: { not: null } }, select: { id: true } })
+            ]);
+            if (!currentEmployment && endedEmployment) {
+              throw new ConflictException("该员工已确认离职，请通过返聘重新安排任职");
+            }
+            const engineeringDirector = await tx.position.findUnique({
+              where: { key: "engineering_department_director" }, select: { id: true }
+            });
+            if (engineeringDirector && await tx.userPosition.findFirst({
+              where: { userId, positionId: engineeringDirector.id, projectId: null }, select: { id: true }
+            })) await assertEngineeringDirectorAvailable(tx, userId);
+          }
+
+          const after = await tx.user.update({
+            where: { id: userId },
+            data: { ...data, sessionVersion: { increment: 1 } },
+            select: { id: true, departmentId: true, isActive: true }
+          });
+          if (data.isActive !== undefined || data.departmentId !== undefined) {
+            await tx.refreshToken.updateMany({
+              where: { userId, revokedAt: null },
+              data: { revokedAt: mutationAt }
+            });
+          }
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "permission.user.update",
+            businessType: "user",
+            businessId: userId,
+            metadata: {
+              before: userAuditSnapshot(before),
+              after: userAuditSnapshot(after)
+            }
+          });
+          await recordPersonnelFact(tx, { actorUserId, userId, action: "account_adjust", reason: "调整人员部门或账号状态",
+            before: userAuditSnapshot(before), after: userAuditSnapshot(after) });
+          return after;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      if (prismaErrorCode(error) === "P2034") {
+        throw new BadRequestException("组织数据已变化，请刷新后重试");
+      }
+      throw error;
+    }
+  }
+
+  private confirmPassword(actorUserId: string, password: string) {
+    if (!this.auth) {
+      throw new Error("组织写入缺少认证服务");
+    }
+    return this.auth.confirmPassword(actorUserId, password);
+  }
+
+  private async assertActiveGlobalSuperAdmin(
+    tx: Prisma.TransactionClient,
+    actorUserId: string
+  ) {
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) {
+      throw new ForbiddenException("当前账号已停用，不能创建人员");
+    }
+    const position = await tx.position.findUnique({
+      where: { key: "super_admin" },
+      select: { id: true }
+    });
+    if (!position) {
+      throw new ForbiddenException("当前账号已不具备全局超级管理员权限");
+    }
+    const assignment = await tx.userPosition.findFirst({
+      where: { userId: actorUserId, positionId: position.id, projectId: null },
+      select: { id: true }
+    });
+    if (!assignment) {
+      throw new ForbiddenException("当前账号已不具备全局超级管理员权限");
+    }
+  }
+
+  private async assertOrganizationManager(
+    tx: Prisma.TransactionClient,
+    actorUserId: string
+  ): Promise<RoleKey[]> {
+    try {
+      await this.assertActiveGlobalSuperAdmin(tx, actorUserId);
+      return ["super_admin"];
+    } catch (error) {
+      if (!(error instanceof ForbiddenException)) throw error;
+    }
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) throw new ForbiddenException("当前账号已停用，不能管理人员");
+    const assignments = await tx.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null },
+      select: { positionId: true }
+    });
+    const positions = assignments.length
+      ? await tx.position.findMany({
+          where: { id: { in: assignments.map((row) => row.positionId) } },
+          select: { key: true }
+        })
+      : [];
+    const roles = positions
+      .map((position) => position.key)
+      .filter((role): role is RoleKey => ROLE_KEY_SET.has(role));
+    if (!roles.some((role) => ORGANIZATION_MANAGER_ROLE_KEYS.includes(role))) {
+      throw new ForbiddenException("当前账号没有人员账号管理权限");
+    }
+    return roles;
+  }
+
+  private async assertDepartmentBoundary(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    actorRoles: readonly RoleKey[],
+    targetDepartmentId: string
+  ) {
+    if (!requiresDepartmentBoundary(actorRoles)) return;
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { departmentId: true }
+    });
+    if (!actor?.departmentId) {
+      throw new ForbiddenException("当前主管账号未归属部门，不能管理人员");
+    }
+    const departments = await tx.department.findMany({
+      select: { id: true, parentId: true }
+    });
+    const allowed = new Set([actor.departmentId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const department of departments) {
+        if (department.parentId && allowed.has(department.parentId) && !allowed.has(department.id)) {
+          allowed.add(department.id);
+          changed = true;
+        }
+      }
+    }
+    if (!allowed.has(targetDepartmentId)) {
+      throw new ForbiddenException("只能管理本部门及下属部门人员");
+    }
+  }
+
+  private optionalString(value: unknown) {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  getPermissionIntegrity(): Promise<PermissionIntegrityReadModel> {
+    return this.evaluatePermissionIntegrity(this.prisma);
+  }
+
+  async evaluatePermissionIntegrity(
+    client: PermissionIntegrityClient
+  ): Promise<PermissionIntegrityReadModel> {
+    const [users, positions, projects, userPositions, projectMembers] = await Promise.all([
+      client.user.findMany({ select: { id: true } }),
+      client.position.findMany({ select: { id: true, key: true } }),
+      client.project.findMany({ select: { id: true } }),
+      client.userPosition.findMany({
+        select: { id: true, userId: true, positionId: true, projectId: true }
+      }),
+      client.projectMember.findMany({
+        select: { id: true, userId: true, projectId: true, positionKey: true }
+      })
+    ]);
+
+    const userIds = new Set(users.map((user) => user.id));
+    const positionsById = new Map(positions.map((position) => [position.id, position]));
+    const projectIds = new Set(projects.map((project) => project.id));
+    const globalAssignments = userPositions.filter(
+      (assignment) => assignment.projectId === null
+    );
+    const legacyProjectAssignments = userPositions.filter(
+      (assignment) => assignment.projectId !== null
+    );
+    const invalidAssignmentIds = new Set<string>();
+    const orphanAssignmentIds = new Set<string>();
+    const issues: PermissionIntegrityIssue[] = [];
+    const issueFacts = new Set<string>();
+    const addIssue = (
+      issue: Omit<PermissionIntegrityIssue, "assignmentIds" | "message"> & {
+        assignmentIds: string[];
+      }
+    ) => {
+      const assignmentIds = [...new Set(issue.assignmentIds)].sort(compareStableText);
+      const factKey = `${issue.code}\u0000${issue.source}\u0000${assignmentIds.join("\u0000")}`;
+      if (issueFacts.has(factKey)) return;
+      issueFacts.add(factKey);
+      issues.push({
+        ...issue,
+        assignmentIds,
+        message: PERMISSION_INTEGRITY_MESSAGES[issue.code]
+      });
+    };
+
+    const globalGroups = new Map<string, typeof globalAssignments>();
+    for (const assignment of globalAssignments) {
+      const key = `${assignment.userId}\u0000${assignment.positionId}`;
+      const group = globalGroups.get(key) ?? [];
+      group.push(assignment);
+      globalGroups.set(key, group);
+    }
+    for (const group of globalGroups.values()) {
+      if (group.length < 2) continue;
+      const assignment = group[0];
+      const position = positionsById.get(assignment.positionId);
+      addIssue({
+        code: "duplicate_global_assignment",
+        severity: "blocking",
+        source: "user_position",
+        assignmentIds: group.map((item) => item.id),
+        userId: assignment.userId,
+        positionId: assignment.positionId,
+        ...(position ? { roleKey: position.key } : {})
+      });
+    }
+
+    type ProjectRoleFact = {
+      id: string;
+      userId: string;
+      projectId: string;
+      roleKey: RoleKey;
+    };
+    const legacyProjectRoles = new Map<string, ProjectRoleFact[]>();
+    const canonicalProjectRoles = new Map<string, ProjectRoleFact[]>();
+    const addProjectRoleFact = (target: Map<string, ProjectRoleFact[]>, fact: ProjectRoleFact) => {
+      const key = `${fact.userId}\u0000${fact.projectId}\u0000${fact.roleKey}`;
+      const facts = target.get(key) ?? [];
+      facts.push(fact);
+      target.set(key, facts);
+    };
+
+    for (const assignment of userPositions) {
+      const position = positionsById.get(assignment.positionId);
+      if (!userIds.has(assignment.userId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_user",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId ?? undefined,
+          positionId: assignment.positionId,
+          ...(position ? { roleKey: position.key } : {})
+        });
+      }
+      if (!position) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_position",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId ?? undefined,
+          positionId: assignment.positionId
+        });
+      } else if (!isRoleKey(position.key)) {
+        invalidAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "invalid_role",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId ?? undefined,
+          positionId: assignment.positionId,
+          roleKey: position.key
+        });
+      }
+
+      if (
+        assignment.projectId === null &&
+        position &&
+        isRoleKey(position.key) &&
+        !GLOBAL_USER_POSITION_ROLE_KEYS.includes(position.key)
+      ) {
+        addIssue({
+          code: "global_scope_mismatch",
+          severity: "warning",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          positionId: assignment.positionId,
+          roleKey: position.key
+        });
+      }
+
+      if (assignment.projectId === null) continue;
+
+      addIssue({
+        code: "legacy_project_user_position",
+        severity: "warning",
+        source: "user_position",
+        assignmentIds: [assignment.id],
+        userId: assignment.userId,
+        projectId: assignment.projectId,
+        positionId: assignment.positionId,
+        ...(position ? { roleKey: position.key } : {})
+      });
+      if (!projectIds.has(assignment.projectId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_project",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          positionId: assignment.positionId,
+          ...(position ? { roleKey: position.key } : {})
+        });
+      }
+      if (position && isRoleKey(position.key)) {
+        if (position.key === "super_admin") {
+          addIssue({
+            code: "project_super_admin",
+            severity: "blocking",
+            source: "user_position",
+            assignmentIds: [assignment.id],
+            userId: assignment.userId,
+            projectId: assignment.projectId,
+            positionId: assignment.positionId,
+            roleKey: position.key
+          });
+        }
+        addProjectRoleFact(legacyProjectRoles, {
+          id: assignment.id,
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: position.key
+        });
+      }
+    }
+
+    for (const assignment of projectMembers) {
+      if (!userIds.has(assignment.userId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_user",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      if (!projectIds.has(assignment.projectId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_project",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      if (!isRoleKey(assignment.positionKey)) {
+        invalidAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "invalid_role",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+        continue;
+      }
+      if (assignment.positionKey === "super_admin") {
+        addIssue({
+          code: "project_super_admin",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      if (
+        GLOBAL_USER_POSITION_ROLE_KEYS.includes(assignment.positionKey) &&
+        !DUAL_SCOPE_ROLE_KEYS.includes(assignment.positionKey)
+      ) {
+        addIssue({
+          code: "project_scope_mismatch",
+          severity: "warning",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      addProjectRoleFact(canonicalProjectRoles, {
+        id: assignment.id,
+        userId: assignment.userId,
+        projectId: assignment.projectId,
+        roleKey: assignment.positionKey
+      });
+    }
+
+    for (const [key, legacyFacts] of legacyProjectRoles) {
+      const canonicalFacts = canonicalProjectRoles.get(key);
+      if (!canonicalFacts) continue;
+      const fact = legacyFacts[0];
+      addIssue({
+        code: "dual_source_project_role",
+        severity: "blocking",
+        source: "user_position",
+        assignmentIds: [...legacyFacts, ...canonicalFacts].map((item) => item.id),
+        userId: fact.userId,
+        projectId: fact.projectId,
+        roleKey: fact.roleKey
+      });
+    }
+
+    issues.sort(comparePermissionIntegrityIssues);
+    const blockingIssues = issues.filter((issue) => issue.severity === "blocking").length;
+    const warningIssues = issues.length - blockingIssues;
+    const migrationBlockingCodes = new Set<PermissionIntegrityIssueCode>([
+      "invalid_role",
+      "project_super_admin",
+      "orphan_user",
+      "orphan_position",
+      "orphan_project"
+    ]);
+
+    return {
+      policy: {
+        globalWriteSource: "UserPosition(projectId=null)",
+        projectWriteSource: "ProjectMember",
+        legacyProjectUserPositionReadCompatibility: true,
+        projectSuperAdminAllowed: false
+      },
+      readiness: {
+        canonicalRoleWritesReady:
+          blockingIssues === 0 && legacyProjectAssignments.length === 0,
+        legacyMigrationReady: !issues.some((issue) => migrationBlockingCodes.has(issue.code))
+      },
+      summary: {
+        globalAssignments: globalAssignments.length,
+        canonicalProjectAssignments: projectMembers.length,
+        legacyProjectAssignments: legacyProjectAssignments.length,
+        duplicateGlobalGroups: issues.filter(
+          (issue) => issue.code === "duplicate_global_assignment"
+        ).length,
+        dualSourceOverlaps: issues.filter(
+          (issue) => issue.code === "dual_source_project_role"
+        ).length,
+        invalidRoleAssignments: invalidAssignmentIds.size,
+        orphanAssignments: orphanAssignmentIds.size,
+        blockingIssues,
+        warningIssues
+      },
+      issues
+    };
+  }
+
+  private async assertDepartmentManager(tx: Prisma.TransactionClient, actorUserId: string) {
+    const roles = await this.assertOrganizationManager(tx, actorUserId);
+    if (!roles.includes("super_admin") && !roles.includes("chairman")) {
+      throw new ForbiddenException("只有董事长或系统管理员可以调整部门");
+    }
+  }
+
+  async getManagementCapabilities(actorUserId: string) {
+    const directory = await this.getDirectory();
+    const actor = directory.users.find((user) => user.id === actorUserId);
+    const roles = actor?.globalPositions.map((position) => position.key) ?? [];
+    if (actor?.status !== "active" || !roles.some((role) => ORGANIZATION_MANAGER_ROLE_KEYS.includes(role))) {
+      throw new ForbiddenException("当前账号没有人员账号管理权限");
+    }
+    const bounded = requiresDepartmentBoundary(roles);
+    const allowedDepartments = new Set<string>();
+    const visit = (nodes: DepartmentTreeNode[], parentAllowed = false) => {
+      for (const department of nodes) {
+        const allowed = !bounded || parentAllowed || department.id === actor.departmentId;
+        if (allowed) allowedDepartments.add(department.id);
+        visit(department.children, allowed);
+      }
+    };
+    visit(directory.departments);
+    const employeeManager = roles.includes("chairman") || roles.includes("comprehensive_director");
+    const protectedUsers = new Set((await this.prisma.user.findMany({
+      where: { requiresChairmanManagement: true }, select: { id: true }
+    })).map((user) => user.id));
+    const canManagePerson = (user: OrganizationDirectoryReadModel["users"][number]) => {
+      const targetRoles = [...user.globalPositions.map((role) => role.key), ...user.projectPositions.flatMap((project) => project.keys)];
+      const important = protectedUsers.has(user.id) || targetRoles.some((role) => role === "super_admin" || IMPORTANT_EMPLOYEE_ROLES.includes(role));
+      return user.id !== actorUserId && employeeManager && (roles.includes("chairman") || !important);
+    };
+    return {
+      canCreateUser: (!bounded || allowedDepartments.size > 0) && ROLE_KEYS.some((role) => !["super_admin", "engineering_department_member", "engineering_department_director"].includes(role) && canManageRole(roles, role)),
+      canManageUsers: employeeManager,
+      canReviewApplications: employeeManager,
+      canApproveImportantEmployees: roles.includes("chairman"),
+      canGenerateRecoveryCode: roles.includes("chairman"),
+      importantEmployeeRoleKeys: [...IMPORTANT_EMPLOYEE_ROLES],
+      canManageRoles: ROLE_KEYS.some((role) => canManageRole(roles, role)),
+      canManageDepartments: roles.includes("super_admin") || roles.includes("chairman"),
+      manageableDepartmentIds: [...allowedDepartments],
+      manageableUserIds: directory.users.filter(canManagePerson).map((user) => user.id),
+      manageableRoleUserIds: directory.users.filter((user) => user.id !== actorUserId && (roles.includes("super_admin") || canManagePerson(user))).map((user) => user.id),
+      manageableRoleKeys: ROLE_KEYS.filter((role) => canManageRole(roles, role))
+    };
+  }
+
+  async getDirectory(): Promise<OrganizationDirectoryReadModel> {
+    const [departments, users, rawPositions, userPositions] =
+      await Promise.all([
+        this.prisma.department.findMany({
+          select: { id: true, name: true, parentId: true, isActive: true }
+        }),
+        this.prisma.user.findMany({
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            departmentId: true,
+            isActive: true,
+            mustChangePassword: true
+          }
+        }),
+        this.prisma.position.findMany({ select: { id: true, key: true, name: true } }),
+        this.prisma.userPosition.findMany({
+          select: { userId: true, positionId: true, projectId: true }
+        })
+      ]);
+    const [projectMembers, rosterMembers, projects] = await Promise.all([
+      this.prisma.projectMember.findMany({
+        select: { userId: true, projectId: true, positionKey: true }
+      }),
+      this.prisma.projectRosterMember.findMany({
+        select: { userId: true, projectId: true }
+      }),
+      this.prisma.project.findMany({
+        select: { id: true, code: true, name: true, isActive: true }
+      })
+    ]);
+
+    const positions = rawPositions
+      .filter((position): position is typeof position & { key: RoleKey } =>
+        isRoleKey(position.key)
+      )
+      .sort((left, right) => compareText(left.name, right.name) || compareText(left.key, right.key));
+    const positionById = new Map(positions.map((position) => [position.id, position]));
+    const positionByKey = new Map(positions.map((position) => [position.key, position]));
+    const departmentById = new Map(
+      departments.map((department) => [department.id, department] as const)
+    );
+    const projectById = new Map(projects.map((project) => [project.id, project] as const));
+    const rosterProjectIdsByUser = new Map<string, Set<string>>();
+    for (const member of [...rosterMembers, ...projectMembers]) {
+      if (!projectById.has(member.projectId)) continue;
+      const projectIds = rosterProjectIdsByUser.get(member.userId) ?? new Set<string>();
+      projectIds.add(member.projectId);
+      rosterProjectIdsByUser.set(member.userId, projectIds);
+    }
+    const legacyByUserAndProject = new Map<string, { keys: Set<RoleKey>; names: Set<string> }>();
+    for (const assignment of userPositions) {
+      if (!assignment.projectId || !projectById.has(assignment.projectId)) continue;
+      const mapKey = `${assignment.userId}\u0000${assignment.projectId}`;
+      const legacy = legacyByUserAndProject.get(mapKey) ?? { keys: new Set<RoleKey>(), names: new Set<string>() };
+      const position = positionById.get(assignment.positionId);
+      if (position) legacy.keys.add(position.key);
+      legacy.names.add(position?.name ?? "未识别旧岗位");
+      legacyByUserAndProject.set(mapKey, legacy);
+      const projectIds = rosterProjectIdsByUser.get(assignment.userId) ?? new Set<string>();
+      projectIds.add(assignment.projectId);
+      rosterProjectIdsByUser.set(assignment.userId, projectIds);
+    }
+
+    const globalRolesByUser = new Map<string, Set<RoleKey>>();
+    const projectRolesByUserAndProject = new Map<string, Set<RoleKey>>();
+    const addProjectRole = (userId: string, projectId: string, key: RoleKey) => {
+      if (key === "super_admin" || !projectById.has(projectId)) {
+        return;
+      }
+      const mapKey = `${userId}\u0000${projectId}`;
+      const keys = projectRolesByUserAndProject.get(mapKey) ?? new Set<RoleKey>();
+      keys.add(key);
+      projectRolesByUserAndProject.set(mapKey, keys);
+    };
+
+    for (const userPosition of userPositions) {
+      const position = positionById.get(userPosition.positionId);
+      if (!position) {
+        continue;
+      }
+      if (userPosition.projectId !== null) {
+        addProjectRole(userPosition.userId, userPosition.projectId, position.key);
+      } else {
+        const keys = globalRolesByUser.get(userPosition.userId) ?? new Set<RoleKey>();
+        keys.add(position.key);
+        globalRolesByUser.set(userPosition.userId, keys);
+      }
+    }
+
+    for (const member of projectMembers) {
+      if (!isRoleKey(member.positionKey) || !positionByKey.has(member.positionKey)) {
+        continue;
+      }
+      addProjectRole(member.userId, member.projectId, member.positionKey);
+    }
+
+    const directoryUsers = users
+      .map((user) => {
+        const department = user.departmentId ? departmentById.get(user.departmentId) : undefined;
+        const globalPositions = [...(globalRolesByUser.get(user.id) ?? [])]
+          .map((key) => positionByKey.get(key))
+          .filter((position): position is NonNullable<typeof position> => Boolean(position))
+          .map((position) => ({ key: position.key, name: position.name }))
+          .sort(
+            (left, right) =>
+              compareText(left.name, right.name) || compareText(left.key, right.key)
+          );
+        const projectPositions = projects
+          .map((project) => {
+            const keys = [
+              ...(projectRolesByUserAndProject.get(`${user.id}\u0000${project.id}`) ?? [])
+            ].sort((left, right) => {
+              const leftName = positionByKey.get(left)?.name ?? left;
+              const rightName = positionByKey.get(right)?.name ?? right;
+              return compareText(leftName, rightName);
+            });
+            const legacy = legacyByUserAndProject.get(`${user.id}\u0000${project.id}`);
+            return {
+              projectId: project.id,
+              projectCode: project.code,
+              projectName: project.name,
+              keys,
+              names: keys.map((key) => positionByKey.get(key)?.name ?? key),
+              ...(legacy ? { needsReconciliation: true as const, legacySource: "user_position" as const,
+                legacyPositionKeys: [...legacy.keys].sort(), legacyPositionNames: [...legacy.names].sort() } : {})
+            };
+          })
+          .filter((projectPosition) => projectPosition.keys.length > 0)
+          .sort(
+            (left, right) =>
+              compareText(left.projectCode, right.projectCode) ||
+              compareText(left.projectName, right.projectName)
+          );
+        const rosterProjects = [...(rosterProjectIdsByUser.get(user.id) ?? [])]
+          .map((projectId) => projectById.get(projectId))
+          .filter((project): project is NonNullable<typeof project> => Boolean(project))
+          .map((project) => {
+            const legacy = legacyByUserAndProject.get(`${user.id}\u0000${project.id}`);
+            return { projectId: project.id, projectCode: project.code, projectName: project.name,
+              ...(legacy ? { needsReconciliation: true as const, legacySource: "user_position" as const,
+                legacyPositionKeys: [...legacy.keys].sort(), legacyPositionNames: [...legacy.names].sort() } : {}) };
+          })
+          .sort(
+            (left, right) =>
+              compareText(left.projectCode, right.projectCode) ||
+              compareText(left.projectName, right.projectName)
+          );
+
+        return {
+          id: user.id,
+          name: user.name,
+          phone: user.phone ?? "",
+          departmentId: user.departmentId,
+          departmentName: department?.name ?? "未分配部门",
+          status: user.isActive ? ("active" as const) : ("inactive" as const),
+          mustChangePassword: user.mustChangePassword,
+          globalPositions,
+          projectPositions,
+          rosterProjects
+        };
+      })
+      .sort((left, right) => compareText(left.name, right.name) || compareText(left.id, right.id));
+
+    return {
+      summary: {
+        departments: departments.length,
+        activeUsers: users.filter((user) => user.isActive).length,
+        inactiveUsers: users.filter((user) => !user.isActive).length,
+        positions: positions.length
+      },
+      departments: buildDepartmentTree(departments),
+      users: directoryUsers,
+      positions: positions.map((position) => ({
+        id: position.id,
+        key: position.key,
+        name: position.name
+      })),
+      projects: projects
+        .map((project) => ({
+          id: project.id,
+          code: project.code,
+          name: project.name,
+          isActive: project.isActive
+        }))
+        .sort(
+          (left, right) =>
+            compareText(left.code, right.code) ||
+            compareText(left.name, right.name) ||
+            compareText(left.id, right.id)
+        )
+    };
+  }
+}
+
+function requiredTrimmed(value: string, message: string) {
+  const trimmed = value.trim();
+  if (!trimmed) throw new BadRequestException(message);
+  return trimmed;
+}
+
+function normalizedNullableId(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  if (!trimmed) throw new BadRequestException("组织标识不能为空白");
+  return trimmed;
+}
+
+function assertActiveDepartment(
+  department: { id: string; isActive: boolean } | null,
+  label: "上级部门" | "部门"
+) {
+  if (!department) throw new BadRequestException(`${label}不存在，请重新选择`);
+  if (!department.isActive) throw new BadRequestException(`${label}已停用，请重新选择`);
+}
+
+function wouldCreateDepartmentCycle(
+  departmentId: string,
+  parentId: string,
+  departments: Array<{ id: string; parentId: string | null }>
+) {
+  const parentById = new Map(departments.map((department) => [department.id, department.parentId]));
+  const visited = new Set<string>();
+  let currentId: string | null = parentId;
+  while (currentId) {
+    if (currentId === departmentId) return true;
+    if (visited.has(currentId)) return true;
+    visited.add(currentId);
+    currentId = parentById.get(currentId) ?? null;
+  }
+  return false;
+}
+
+function hasActiveDepartmentDescendant(
+  departmentId: string,
+  departments: Array<{ id: string; parentId: string | null; isActive: boolean }>
+) {
+  const descendants = new Set([departmentId]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const department of departments) {
+      if (
+        department.parentId &&
+        descendants.has(department.parentId) &&
+        !descendants.has(department.id)
+      ) {
+        descendants.add(department.id);
+        added = true;
+      }
+    }
+  }
+  return departments.some(
+    (department) => department.id !== departmentId && descendants.has(department.id) && department.isActive
+  );
+}
+
+function departmentAuditSnapshot(department: {
+  name: string;
+  parentId: string | null;
+  isActive: boolean;
+}) {
+  return {
+    name: department.name,
+    parentId: department.parentId,
+    isActive: department.isActive
+  };
+}
+
+function userAuditSnapshot(user: { departmentId: string | null; isActive: boolean }) {
+  return { departmentId: user.departmentId, isActive: user.isActive };
+}
+
+function prismaErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return undefined;
+  return typeof error.code === "string" ? error.code : undefined;
+}

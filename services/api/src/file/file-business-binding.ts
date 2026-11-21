@@ -225,12 +225,29 @@ function sqlIdentifier(value: string): Prisma.Sql {
   return Prisma.raw(`"${value}"`);
 }
 
+export type ProcurementFileBindingScope = Readonly<{
+  procurementId: string;
+  projectId: string;
+  actorUserId: string;
+  revision: number;
+}> | Readonly<{
+  claimId: string;
+  projectId: string;
+  actorUserId: string;
+}>;
+
+export type RegisteredVoucherBindingScope = Readonly<{ executionId: string; actorUserId: string; read?: true }>;
+
 export async function hasNonReceiptBusinessFileBinding(
   tx: Prisma.TransactionClient,
   fileIds: string[],
-  excludedBindings: readonly NonReceiptFileBindingExclusion[] = []
+  excludedBindings: readonly NonReceiptFileBindingExclusion[] = [],
+  registeredVoucher?: RegisteredVoucherBindingScope,
+  procurementBinding?: ProcurementFileBindingScope
 ): Promise<boolean> {
-  return (await nonReceiptBusinessFileBindingIds(tx, fileIds, excludedBindings)).length > 0;
+  return (await nonReceiptBusinessFileBindingIds(
+    tx, fileIds, excludedBindings, undefined, registeredVoucher, procurementBinding
+  )).length > 0;
 }
 
 export async function hasAnyBusinessFileBinding(
@@ -255,7 +272,10 @@ export async function nonReceiptBusinessFileBindingIds(
   tx: Prisma.TransactionClient,
   fileIds: string[],
   excludedBindings: readonly NonReceiptFileBindingExclusion[] = [],
-  upwardDirectVersionId?: string
+  upwardDirectVersionId?: string,
+  registeredVoucher?: RegisteredVoucherBindingScope,
+  procurementBinding?: ProcurementFileBindingScope,
+  outsideOriginalPair?: Readonly<{ contractVersionId: string; actorUserId: string; orderedFileIds: readonly [string, string] }>
 ): Promise<string[]> {
   const uniqueIds = [...new Set(fileIds)].sort();
   if (!uniqueIds.length) return [];
@@ -285,6 +305,36 @@ export async function nonReceiptBusinessFileBindingIds(
         pg_catalog.to_regprocedure('public.jg_check_a08_direct_original_voucher_v1(text,text)'), 'EXECUTE'), false) AS executable
     `)
     : [];
+  const outsideOriginalCheck = includeOwnerSettlement && outsideOriginalPair && uniqueIds.length === 2
+    ? await tx.$queryRaw<Array<{ executable: boolean }>>(Prisma.sql`
+      SELECT current_user=session_user AND current_user::text ~ '^jg_fixture_app_[a-f0-9]{24}$'
+        AND COALESCE(pg_catalog.has_function_privilege(current_user,
+          pg_catalog.to_regprocedure('public.jg_check_a08_outside_original_pair_v1(text,text,text,integer)'), 'EXECUTE'), false) AS executable
+    `)
+    : [];
+  const registeredVoucherRoutine = registeredVoucher?.read
+    ? "public.jg_read_registered_payment_voucher_binding_v1(text,text,text)"
+    : "public.jg_check_registered_payment_voucher_binding_v1(text,text,text)";
+  const registeredVoucherCheck = includeOwnerSettlement && registeredVoucher
+    ? await tx.$queryRaw<Array<{ executable: boolean }>>(Prisma.sql`
+      SELECT current_user=session_user AND current_user='jg_task01_runtime'
+        AND COALESCE(pg_catalog.has_function_privilege(current_user,
+          pg_catalog.to_regprocedure(${registeredVoucherRoutine}), 'EXECUTE'), false) AS executable
+    `)
+    : [];
+  const procurementRoutine = procurementBinding && "claimId" in procurementBinding
+    ? "public.jg_check_legacy_procurement_expense_voucher_v1(text,text,text,text)"
+    : "public.jg_check_general_procurement_archive_voucher_v1(text,text,text,text,integer)";
+  const procurementBindingCheck = includeOwnerSettlement && procurementBinding
+    ? await tx.$queryRaw<Array<{ executable: boolean }>>(Prisma.sql`
+      SELECT current_user=session_user
+        AND (current_user='general_procurement_runtime' OR
+          (current_user='project_business_scope_runtime'
+            AND ${!("claimId" in procurementBinding) && procurementBinding.projectId === "legacy-project-business-scope"}::boolean))
+        AND COALESCE(pg_catalog.has_function_privilege(current_user,
+          pg_catalog.to_regprocedure(${procurementRoutine}), 'EXECUTE'), false) AS executable
+    `)
+    : [];
   const bindingQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
     ({ table, columns }) =>
       columns
@@ -294,7 +344,23 @@ export async function nonReceiptBusinessFileBindingIds(
           if (table === "ProjectOwnerSettlementEntry") {
             const referenced = scopedVoucherCheck[0]?.executable
               ? Prisma.sql`public.jg_check_a08_direct_original_voucher_v1(${upwardDirectVersionId}, c."id")`
-              : Prisma.sql`public.jg_project_owner_settlement_voucher_bound(c."id")`;
+              : outsideOriginalPair && outsideOriginalCheck[0]?.executable
+                ? Prisma.sql`public.jg_check_a08_outside_original_pair_v1(
+                    ${outsideOriginalPair.contractVersionId}, c."id", ${outsideOriginalPair.actorUserId},
+                    CASE WHEN c."id"=${outsideOriginalPair.orderedFileIds[0]} THEN 0
+                         WHEN c."id"=${outsideOriginalPair.orderedFileIds[1]} THEN 1 ELSE -1 END)`
+              : registeredVoucher && registeredVoucherCheck[0]?.executable
+                ? registeredVoucher.read
+                  ? Prisma.sql`public.jg_read_registered_payment_voucher_binding_v1(${registeredVoucher.executionId}, c."id", ${registeredVoucher.actorUserId})`
+                  : Prisma.sql`public.jg_check_registered_payment_voucher_binding_v1(${registeredVoucher.executionId}, c."id", ${registeredVoucher.actorUserId})`
+                : procurementBinding && procurementBindingCheck[0]?.executable
+                  ? "claimId" in procurementBinding
+                    ? Prisma.sql`public.jg_check_legacy_procurement_expense_voucher_v1(
+                        ${procurementBinding.claimId}, ${procurementBinding.projectId}, c."id", ${procurementBinding.actorUserId})`
+                    : Prisma.sql`public.jg_check_general_procurement_archive_voucher_v1(
+                        ${procurementBinding.procurementId}, ${procurementBinding.projectId}, c."id",
+                        ${procurementBinding.actorUserId}, ${procurementBinding.revision}::integer)`
+                  : Prisma.sql`public.jg_project_owner_settlement_voucher_bound(c."id")`;
             return Prisma.sql`SELECT c."id" AS "fileId" FROM candidates c WHERE ${referenced}`;
           }
           const field = sqlIdentifier(column);

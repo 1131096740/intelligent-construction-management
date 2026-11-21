@@ -125,6 +125,7 @@ interface ContractApprovalNode {
 }
 
 interface ContractApprovalActorRoles {
+  projectId: string;
   roleKeys: RoleKey[];
   roleScopes: ApprovalActorRoleScopes;
 }
@@ -398,7 +399,28 @@ export class ContractService {
       const randomPart = Math.floor(Math.random() * 100_000_000).toString().padStart(8, "0");
       const temporaryCode = `草稿-${datePart}-${randomPart}`;
 
-      const contract = await tx.contract.create({
+      const [projectScopeDraft] = input.projectId === "legacy-project-business-scope" &&
+        input.contractTypeKey === "generic_contract" && signingSubjectType === "our_company" &&
+        (input.amountLimitType ?? "capped") === "capped" && !input.businessScenarioId && !input.scenarioTemplateMappingId &&
+        !input.paymentTermsOriginalText?.trim() && normalizedPaymentStages.length === 0
+        ? await tx.$queryRaw<Array<{ enabled: boolean }>>`
+            SELECT current_user=session_user AND current_user='project_business_scope_runtime'
+              AND COALESCE(pg_catalog.has_function_privilege(current_user,
+                pg_catalog.to_regprocedure('public.jg_create_project_scope_initial_contract_version_v1(text,text,text)'),
+                'EXECUTE'), false) AS enabled
+          `
+        : [];
+      const [scopeDraftIds] = projectScopeDraft?.enabled
+        ? await tx.$queryRaw<Array<{ contract_id: string; version_id: string }>>`
+            SELECT contract_id, version_id FROM public.jg_create_project_scope_initial_contract_version_v1(
+              ${temporaryCode}, ${actorUserId}, ${input.businessTemplateVersionId})
+          `
+        : [];
+      if (projectScopeDraft?.enabled && !scopeDraftIds) throw new Error("合同草稿未登记初始版本");
+      const scopedContract = scopeDraftIds
+        ? await tx.contract.findUniqueOrThrow({ where: { id: scopeDraftIds.contract_id } })
+        : undefined;
+      const contract = scopedContract ?? await tx.contract.create({
         data: {
           projectId: input.projectId,
           contractTypeKey: input.contractTypeKey,
@@ -413,7 +435,10 @@ export class ContractService {
         }
       });
 
-      const version = await tx.contractVersion.create({
+      const scopedVersion = scopeDraftIds
+        ? await tx.contractVersion.findUniqueOrThrow({ where: { id: scopeDraftIds.version_id } })
+        : undefined;
+      const version = scopedVersion ?? await tx.contractVersion.create({
         data: {
           contractId: contract.id,
           versionNo: 1,
@@ -3094,7 +3119,19 @@ export class ContractService {
         ? isFinalApproval ? "approved_pending_seal" : "in_approval"
         : "approval_rejected";
       const endedAt = nextStatus === "approval_rejected" ? new Date() : null;
-      const updated = await tx.contractVersion.update({
+      const [scopedReview] = actorRoles.projectId === "legacy-project-business-scope" && version.numericProtocolVersion === 1 &&
+        input.decision === "approve" && !isFinalApproval && instance.currentNodeIndex === 0 && approvedRoleKey === "project_manager" && identity.representedUserId === actorUserId && !identity.viaAssignment
+        ? await tx.$queryRaw<Array<{ enabled: boolean }>>`
+            SELECT current_user=session_user AND current_user='project_business_scope_runtime'
+              AND EXISTS (SELECT FROM public."Contract" WHERE id=${version.contractId}
+                AND "projectId"='legacy-project-business-scope' AND "contractTypeKey"='generic_contract')
+              AND COALESCE(pg_catalog.has_function_privilege(current_user,
+                pg_catalog.to_regprocedure('public.jg_touch_project_scope_legacy_review_v1(text,text,text,timestamptz)'),
+                'EXECUTE'), false) AS enabled
+          `
+        : [];
+      const scopedUpdatedAt = scopedReview?.enabled ? new Date() : null;
+      const updated = scopedUpdatedAt ? version : await tx.contractVersion.update({
         where: { id: version.id },
         data:
           nextStatus === "approval_rejected"
@@ -3179,6 +3216,17 @@ export class ContractService {
         }
       });
 
+      if (scopedUpdatedAt) {
+        // The nonfinal status is unchanged. Keep the original round/action/audit sequence
+        // and attach the owner-checked version timestamp once those facts exist in this transaction.
+        const [touched] = await tx.$queryRaw<Array<{ updated: boolean }>>`
+          SELECT public.jg_touch_project_scope_legacy_review_v1(
+            ${version.id}, ${instance.id}, ${actorUserId}, ${scopedUpdatedAt}::timestamptz
+          ) AS updated
+        `;
+        if (!touched?.updated) throw contractApprovalReviewConflict();
+        return tx.contractVersion.findUniqueOrThrow({ where: { id: version.id } });
+      }
       return updated;
     });
 
@@ -3988,6 +4036,7 @@ export class ContractService {
     };
 
     return {
+      projectId: contract.projectId,
       roleKeys: resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys),
       roleScopes
     };
