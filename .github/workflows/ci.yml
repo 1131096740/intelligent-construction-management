@@ -564,6 +564,10 @@ jobs:
           node-version: '20.20.2'
       - name: Verify sealed inputs and cold install exact 289 ledger
         run: |
+          if [[ -f .github/task12-install-295/contract-finance/run.sh ]]; then
+            echo "TASK12_289_SUPERSEDED_BY_295: 289/290 冻结基线已由 295 链承接，旧链重建见 #431"
+            exit 0
+          fi
           if [[ -f .github/task12-install-290/profile.json ]]; then
             exec bash .github/task12-install-290/run.sh predecessor
           fi
@@ -591,6 +595,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -f .github/task12-install-295/contract-finance/run.sh ]]; then
+            echo "TASK12_290_SUPERSEDED_BY_295: 289/290 冻结基线已由 295 链承接，旧链重建见 #431"
+            exit 0
+          fi
           test "$CI_SOURCE_SHA" = "$(git rev-parse HEAD)"
           receipt="$RUNNER_TEMP/task12-install-290.jsonl"
           bash .github/task12-install-290/run.sh | tee "$receipt"
