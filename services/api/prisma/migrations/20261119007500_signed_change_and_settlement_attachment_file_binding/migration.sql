@@ -61,5 +61,91 @@ FOR EACH ROW EXECUTE FUNCTION public.jg_enforce_exclusive_file_business_binding(
   'appendixFormalFileId',
   'true'
 );
+-- 新触发器与 registry 换代必须同步进 upward 闭包登记：闭包门
+-- jg_require_contract_direct_upward_source_v2() 仍以精确接线与源码摘要校验
+-- 原守卫，不能容忍漂移；这里只把本迁移产生的后继状态如实登记进去。
+DO $closure$
+DECLARE
+  owner_oid OID := current_user::regrole::oid;
+  function_oid OID := to_regprocedure('public.jg_require_contract_direct_upward_source_v2()');
+  old_body TEXT;
+  old_metadata JSONB;
+  new_body TEXT;
+  registration TEXT := $registration$  -- 07500: the signed-change appendix trigger is additionally sealed as the
+  -- sixth central file-binding caller. The immutable 292 trigger array cannot
+  -- be extended, so register its exact wiring here.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger t
+    JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+    WHERE t.tgrelid='public."ContractSignedChange"'::regclass
+      AND t.tgname='jg_efb_contract_signed_change_appendix'
+      AND t.tgenabled='O' AND NOT t.tgisinternal
+      AND t.tgtype=23 AND t.tgnargs=2
+      AND encode(t.tgargs,'hex')='617070656e646978466f726d616c46696c654964007472756500'
+      AND t.tgattr::text=(SELECT a.attnum::text FROM pg_catalog.pg_attribute a
+        WHERE a.attrelid='public."ContractSignedChange"'::regclass
+          AND a.attname='appendixFormalFileId' AND a.attnum>0 AND NOT a.attisdropped)
+      AND NOT(t.tgdeferrable OR t.tginitdeferred) AND t.tgconstraint=0
+      AND t.tgconstrrelid=0 AND t.tgconstrindid=0 AND t.tgparentid=0
+      AND t.tgqual IS NULL AND t.tgoldtable IS NULL AND t.tgnewtable IS NULL
+      AND p.oid=to_regprocedure('public.jg_enforce_exclusive_file_business_binding()')
+      AND p.proowner=binding."anchorOwnerOid" AND p.pronamespace=binding."namespaceOid"
+      AND p.prokind='f' AND p.prorettype='pg_catalog.trigger'::regtype
+      AND p.provolatile='v' AND p.proparallel='u'
+      AND NOT(p.prosecdef OR p.proisstrict OR p.proleakproof OR p.proretset)
+      AND encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex')='c70ff547812539fabd41f9fb0dc65cbc79550992121cfd994a489895cb40fb8b'
+  ) THEN
+    RAISE EXCEPTION '对上登记原守卫接线或源码已变化' USING ERRCODE='55000';
+  END IF;
+$registration$;
+  definition TEXT;
+BEGIN
+  IF current_user<>session_user OR current_setting('session_replication_role')<>'origin'
+    OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_database WHERE datname=current_database() AND datdba=owner_oid)
+    OR function_oid IS NULL
+    OR (SELECT count(*) FROM public.jg_contract_direct_upward_closure_v2)<>1 THEN
+    RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_SCOPE' USING ERRCODE='55000';
+  END IF;
+
+  LOCK TABLE public.jg_contract_direct_upward_closure_v2 IN SHARE ROW EXCLUSIVE MODE;
+
+  SELECT p.prosrc, to_jsonb(p)-'prosrc' INTO STRICT old_body, old_metadata
+  FROM pg_catalog.pg_proc p
+  WHERE p.oid=function_oid AND p.proowner=owner_oid AND p.pronamespace=pg_catalog.to_regnamespace('public');
+  IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(old_body,'UTF8')),'hex')
+      <>'607cc42deccbb17f6de375976b5ed0ef0cbb30805c24ab6d3fb7cf6be74fc5fe' THEN
+    RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_PREIMAGE' USING ERRCODE='55000';
+  END IF;
+  IF pg_catalog.cardinality(pg_catalog.string_to_array(old_body,
+        '6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f'))<>2
+    OR pg_catalog.cardinality(pg_catalog.string_to_array(old_body,E'  RETURN result;\nEND;'))<>2 THEN
+    RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_ANCHOR' USING ERRCODE='55000';
+  END IF;
+
+  new_body := pg_catalog.replace(old_body,
+    '6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f',
+    '2a2b941651afd8763a7932f8ea110e845eb0851783ea86726b1da78ed20ded85');
+  new_body := pg_catalog.replace(new_body,E'  RETURN result;\nEND;',
+    registration || E'  RETURN result;\nEND;');
+  IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(new_body,'UTF8')),'hex')
+      <>'41fec2c922c53810fcd1cc619487479b98dbce479b8408fc4e8473c338e2be62' THEN
+    RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_DIGEST' USING ERRCODE='55000';
+  END IF;
+
+  definition := pg_catalog.pg_get_functiondef(function_oid);
+  IF pg_catalog.cardinality(pg_catalog.string_to_array(definition, old_body))<>2 THEN
+    RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_DEFINITION' USING ERRCODE='55000';
+  END IF;
+  EXECUTE pg_catalog.replace(definition, old_body, new_body);
+  IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=function_oid AND p.prosrc=new_body
+    AND to_jsonb(p)-'prosrc'=old_metadata) THEN
+    RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_POSTIMAGE' USING ERRCODE='55000';
+  END IF;
+  IF public.jg_require_contract_direct_upward_source_v2() IS NULL THEN
+    RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_REQUIRE' USING ERRCODE='55000';
+  END IF;
+END;
+$closure$;
 
 COMMIT;

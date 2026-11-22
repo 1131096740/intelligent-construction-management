@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 323,
     "terminalMigration": "20261119007500_signed_change_and_settlement_attachment_file_binding",
-    "terminalMigrationChecksum": "27683ee90f5681cde92177e406e24a23599bbb75cc6fe90012c4737a5d6b3c83",
+    "terminalMigrationChecksum": "3bdcfce59c40a19d1c13a0ba1cc1c641a184bded64c9e3c698702eb7153541c3",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

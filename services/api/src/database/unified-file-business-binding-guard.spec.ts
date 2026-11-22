@@ -488,6 +488,12 @@ describe("unified file business binding migration", () => {
     expect(signedSettlementBindingMigration).toContain(
       "EXECUTE FUNCTION public.jg_enforce_exclusive_file_business_binding(\n  'appendixFormalFileId',\n  'true'\n)"
     );
+    expect(signedSettlementBindingMigration).toContain(
+      "public.jg_require_contract_direct_upward_source_v2()"
+    );
+    expect(signedSettlementBindingMigration).toContain(
+      "41fec2c922c53810fcd1cc619487479b98dbce479b8408fc4e8473c338e2be62"
+    );
     // The signed-settlement attachment already enforces the same exclusive
     // binding from its own migration; this one must not stack a second trigger.
     expect(signedSettlementBindingMigration).not.toContain(
