@@ -7,7 +7,7 @@ const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&['cash-handover','principal-return'].includes(lane));
 const current320=source.mode==='current-320';
-const count=current320?320:295;
+const count=current320?322:295;
 const purpose='TASK398_CASH_PRINCIPAL_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){

@@ -3,7 +3,7 @@ set -euo pipefail
 umask 022
 [[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
 count=295
-if [[ $# == 5 ]]; then count=320; fi
+if [[ $# == 5 ]]; then count=322; fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -13,7 +13,7 @@ pol="$repo/.github/task12-install-289/pol275"
 legacy=3cf11b6c46b301856b554598522213f0839ef595
 [[ $(git -C "$repo" rev-parse "$legacy^{tree}") == 886c3bb47cd65aae6f54b7eb46f24b026f240a64 ]]
 git -C "$repo" merge-base --is-ancestor "$legacy" 0a5b607cf912ffbb50237af2608ac8b2a5360c16
-node -e 'const p=require(process.argv[1]);if(p.sourceSha!==process.argv[2]||p.migrationCount!==Number(process.argv[3])||(process.argv[3]==="320"&&p.mode!=="current-320"))process.exit(1)' "$prepared/source.json" "$sha" "$count"
+node -e 'const p=require(process.argv[1]);if(p.sourceSha!==process.argv[2]||p.migrationCount!==Number(process.argv[3])||(process.argv[3]==="322"&&p.mode!=="current-320"))process.exit(1)' "$prepared/source.json" "$sha" "$count"
 mkdir "$out"
 out=$(cd "$out" && pwd -P)
 cp -R "$prepared/prepared/context" "$out/context"

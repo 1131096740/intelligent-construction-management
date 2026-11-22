@@ -10,14 +10,14 @@ try {
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   const current320=process.argv[2]==='--current-320';
   assert.equal(process.argv.length,current320?3:2);
-  const count=current320?320:295;
+  const count=current320?322:295;
   assert.equal(source.migrationCount,count);
   if(current320) {
     assert.equal(source.mode,'current-320');
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,multi.final);
-    assert.equal(source.tails.length,25);
+    assert.equal(source.tails.length,27);
   }
   if(!current320) assert.equal(source.ledgerSha256,multi.final);
   const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();

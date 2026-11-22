@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const current320=process.argv.at(-1)==='--current-320';
-const count=current320?320:295;
+const count=current320?322:295;
 const {withPol108At295,withPol108At320}=require('./installer.cjs');
 const {selectShards}=require('./pol108-shards.cjs');
 const [shard]=process.argv.slice(2);

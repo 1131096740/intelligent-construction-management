@@ -19,7 +19,7 @@
     "overlays": {
       "services/api/prisma/database-dynamic-gate-manifest.json": {
         "after": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-        "candidate": "36ee597fa9634a0563bf381339da3d53b4c6a930d931fb32832561a0559154d6"
+        "candidate": "093f083a1ce113b58d175c00e4b88cd5b37616969818f4fc89b885f0728cdb64"
       },
       "services/api/prisma/general-procurement-owned-ci.cjs": {
         "after": "02d8c4285fc26cf301243e513e6409931fc77737501b8b0aab9d1b4a0bbed0f7",
@@ -78,7 +78,7 @@
     "overlays": {
       "services/api/prisma/database-dynamic-gate-manifest.json": {
         "after": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-        "candidate": "36ee597fa9634a0563bf381339da3d53b4c6a930d931fb32832561a0559154d6"
+        "candidate": "093f083a1ce113b58d175c00e4b88cd5b37616969818f4fc89b885f0728cdb64"
       },
       "services/api/prisma/general-procurement-owned-ci.cjs": {
         "after": "02d8c4285fc26cf301243e513e6409931fc77737501b8b0aab9d1b4a0bbed0f7",

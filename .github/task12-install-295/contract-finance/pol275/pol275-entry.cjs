@@ -6,7 +6,7 @@ const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./in
 const lane=process.argv[2];
 assert.ok(['warm','collision'].includes(lane));
 const current320=process.argv[3]==='--current-320';
-const count=current320?320:295;
+const count=current320?322:295;
 const purpose='ORIGINAL_POL275_'+lane.toUpperCase()+'_EXACT_'+count;
 const receipt={schemaVersion:1,sourceSha,purpose,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
