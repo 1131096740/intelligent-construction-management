@@ -33,7 +33,6 @@ const witnessKeys = {
 let containerId;
 let endpoint;
 const migrationOnly = process.argv.includes("--migrate-only");
-const candidateOnly = process.argv.includes("--candidate-only");
 const skippedCandidates = new Set((process.env.LINE_A_SKIP_CANDIDATE ?? "").split(",").filter(Boolean));
 const requireClean = process.env.LINE_A_REQUIRE_CLEAN === "1";
 
@@ -100,62 +99,96 @@ async function main() {
       }
     });
     const installerGate = "20261118221000_contract_legacy_guard_relation_namespace";
+    const diagnoseGate = process.argv.includes("--diagnose-archive-gate");
+    const terminalMigration = "20261119006400_contract_work_completion_original_subject";
+    let fullLedger;
     await phase("migrate-staged-prefix-and-tail", async () => {
       try {
         await migration.migrate({ databaseUrl: ownerUrl, runtimeEnv: env });
+        fullLedger = { status: "applied", ledgerMode: "FULL_STAGED_320" };
       } catch (error) {
         // The source-owned staged fixture stops when the clean ledger reaches
-        // the archive-installer gate at index 276. Production runs
-        // 20261111060000/20261111070000 installers before this boundary; the
-        // finite replay shim below re-applies their three pinned guard-body
-        // transformations and refuses any other preimage.
+        // the archive-installer gate at index 276. Production runs the
+        // 20261111060000/20261111070000 archive installers before this boundary;
+        // no migration in this repository creates their binding rows.
         const failed = docker(["exec", containerId, "psql", "-X", "-A", "-t", "-U", "jiangkong", "-d", database, "-c",
           `SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;`],
           { quiet: true }).stdout;
         if (failed !== installerGate) throw error;
-      }
-      if (candidateOnly) return;
-      const shim = require("node:fs").readFileSync(path.join(__dirname, "line-a-replay-archive-install-shim.sql"), "utf8");
-      docker(["exec", "-i", containerId, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", database, "-f", "-"],
-        { quiet: true, input: shim });
-      command(pnpm(), ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "resolve", "--rolled-back", installerGate],
-        { ...env, DATABASE_URL: ownerUrl }, { quiet: true });
-      command(pnpm(), ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"],
-        { ...env, DATABASE_URL: ownerUrl }, { quiet: true });
-    });
-    let candidateApply;
-    if (candidateOnly) {
-      const migrationRoot = path.join(__dirname, "migrations");
-      const baseCandidates = ["20261119003500_fund_balance_correction_controlled_round",
-        "20261119003600_fund_balance_notice_lock"];
-      const candidateMigrations = [...baseCandidates, ...require("node:fs").readdirSync(migrationRoot)
-        .filter(name => name.startsWith("20261119004") || /^2026111900(?:4|5|6)[0-9]{3}_/u.test(name))
-        .sort()];
-      const appliedCandidates = [];
-      const skipped = [];
-      for (const name of candidateMigrations) {
-        if ([...skippedCandidates].some(prefix => name.startsWith(prefix))) { skipped.push(name); continue; }
-        const sql = require("node:fs").readFileSync(path.join(migrationRoot, name, "migration.sql"), "utf8");
-        try {
+        fullLedger = { status: "blocked", ledgerMode: "PREFIX_275_PLUS_CANDIDATE", gate: installerGate,
+          cause: "20261118221000 要求生产归档安装器已执行的 requireActiveProjectParticipatingCompany 前态；仓库内无迁移写入归档闭包/意图绑定行",
+          productionInstaller: ".github/task12-install-295/contract-finance" };
+        process.stdout.write(`LINE_A_FULL_LEDGER_GATE_BLOCKED ${installerGate}; candidate flows continue\n`);
+        if (diagnoseGate) {
+          // Diagnostic only: apply the source-pinned guard-body shim, then show
+          // the next installer-gated migration. This path is never used for the
+          // candidate HTTP pass and never fakes archive binding rows.
+          const shim = require("node:fs").readFileSync(path.join(__dirname, "line-a-replay-archive-install-shim.sql"), "utf8");
           docker(["exec", "-i", containerId, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", database, "-f", "-"],
-            { quiet: true, input: sql });
-          appliedCandidates.push(name);
-        } catch (error) {
-          throw new Error(`候选迁移失败 ${name}: ${error.message}`);
+            { quiet: true, input: shim });
+          command(pnpm(), ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "resolve", "--rolled-back", installerGate],
+            { ...env, DATABASE_URL: ownerUrl }, { quiet: true });
+          try {
+            command(pnpm(), ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"],
+              { ...env, DATABASE_URL: ownerUrl }, { quiet: true });
+            fullLedger = { ...fullLedger, status: "applied", ledgerMode: "FULL_STAGED_320_WITH_REPLAY_SHIM" };
+          } catch {
+            const next = docker(["exec", containerId, "psql", "-X", "-A", "-t", "-U", "jiangkong", "-d", database, "-c",
+              `SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;`],
+              { quiet: true }).stdout;
+            fullLedger = { ...fullLedger, nextGate: next,
+              nextCause: "20261118223000 要求真实 jg_contract_direct_upward_closure_v2 归档闭包行；伪造该行会使 jg_require_contract_direct_upward_source_v2() 的 INTO STRICT 失败" };
+            process.stdout.write(`LINE_A_FULL_LEDGER_NEXT_GATE ${next || "UNKNOWN"}\n`);
+          }
         }
       }
-      candidateApply = { applied: appliedCandidates.length, skipped,
-        firstApplied: appliedCandidates[0], lastApplied: appliedCandidates.at(-1) };
-      process.stdout.write(`LINE_A_CANDIDATE_MIGRATIONS applied=${appliedCandidates.length} skipped=${JSON.stringify(skipped)}\n`);
+    });
+    if (diagnoseGate) {
+      const count = docker(["exec", containerId, "psql", "-X", "-A", "-t", "-U", "jiangkong", "-d", database, "-c",
+        `SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;`], { quiet: true }).stdout;
+      const receipt = {
+        schemaVersion: 1, status: fullLedger.status === "applied" ? "passed_full_320" : "full_ledger_blocked",
+        candidateSha, worktreeClean: dirty.length === 0, containerImage, imageId, database,
+        migrationCount: Number(count), ledgerMode: fullLedger.ledgerMode, fullLedgerReplay: fullLedger,
+        startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAt.getTime()
+      };
+      process.stdout.write(`LINE_A_DIAGNOSE_RECEIPT ${JSON.stringify(receipt)}\n`);
+      if (fullLedger.status !== "applied") process.exitCode = 2;
+      return;
     }
+    const migrationRoot = path.join(__dirname, "migrations");
+    const baseCandidates = ["20261119003500_fund_balance_correction_controlled_round",
+      "20261119003600_fund_balance_notice_lock"];
+    const candidateMigrations = [...baseCandidates, ...require("node:fs").readdirSync(migrationRoot)
+      .filter(name => name.startsWith("20261119004") || /^2026111900(?:4|5|6)[0-9]{3}_/u.test(name))
+      .sort()];
+    const appliedCandidates = [];
+    const skipped = [];
+    if (fullLedger?.status !== "applied") for (const name of candidateMigrations) {
+      if ([...skippedCandidates].some(prefix => name.startsWith(prefix))) { skipped.push(name); continue; }
+      const sql = require("node:fs").readFileSync(path.join(migrationRoot, name, "migration.sql"), "utf8");
+      try {
+        docker(["exec", "-i", containerId, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", database, "-f", "-"],
+          { quiet: true, input: sql });
+        appliedCandidates.push(name);
+      } catch (error) {
+        throw new Error(`候选迁移失败 ${name}: ${error.message}`);
+      }
+    }
+    const candidateApply = { applied: appliedCandidates.length, skipped,
+      firstApplied: appliedCandidates[0], lastApplied: appliedCandidates.at(-1) };
+    process.stdout.write(`LINE_A_CANDIDATE_MIGRATIONS applied=${appliedCandidates.length} skipped=${JSON.stringify(skipped)}\n`);
     const ledger = docker(["exec", containerId, "psql", "-X", "-A", "-t", "-U", "jiangkong", "-d", database, "-c",
-      `SELECT count(*), max(migration_name) FILTER (WHERE migration_name='20261119006400_contract_work_completion_original_subject') FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;`],
+      `SELECT count(*), max(migration_name) FILTER (WHERE migration_name='${terminalMigration}') FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;`],
       { quiet: true }).stdout;
     const [migrationCount, terminal] = ledger.split("|");
-    if (candidateOnly) {
-      if (Number(migrationCount) !== 275) throw new Error(`候选流程重放应停在 275，实际 ${migrationCount}`);
-    } else if (Number(migrationCount) !== 320 || terminal !== "20261119006400_contract_work_completion_original_subject") {
-      throw new Error(`迁移终点证明不完整：count=${migrationCount} terminal=${terminal}`);
+    if (fullLedger?.status === "applied") {
+      if (Number(migrationCount) !== 320 || terminal !== terminalMigration) {
+        throw new Error(`迁移终点证明不完整：count=${migrationCount} terminal=${terminal}`);
+      }
+    } else if (Number(migrationCount) < 275) {
+      throw new Error(`候选流程重放前置不足：count=${migrationCount}`);
     }
 
     await phase("provision-runtime-role-and-witnesses", () => {
@@ -212,17 +245,22 @@ async function main() {
       command(pnpm(), ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath", specFile],
         specEnv, { timeout: 600_000 }));
 
+    const fullApplied = fullLedger?.status === "applied" && Number(migrationCount) === 320;
     const receipt = {
-      schemaVersion: 1, status: "passed", mode: "local_disposable_postgresql16",
-      candidateSha, worktreeClean: dirty.length === 0, containerImage, imageId, database, appRole,
-      migrationCount: Number(migrationCount), terminalMigration: terminal,
-      ...(candidateOnly ? { candidateApply, ledgerMode: "PREFIX_275_PLUS_CANDIDATE",
-        fullLedgerReplay: { status: "blocked", gate: installerGate,
-          reason: "干净 320 重放在 20261118221000 处要求生产归档安装器已执行；候选迁移 20261119004200 同样要求该安装前置，已按显式清单跳过并记录" } } : {}),
+      schemaVersion: 1,
+      status: fullApplied ? "passed_full_320" : "candidate_http_passed_full_320_blocked",
+      mode: "local_disposable_postgresql16", candidateSha, worktreeClean: dirty.length === 0,
+      containerImage, imageId, database, appRole, migrationCount: Number(migrationCount),
+      terminalMigration: terminal || null, candidateApply, ledgerMode: fullApplied ? "FULL_STAGED_320" : "PREFIX_275_PLUS_CANDIDATE",
+      fullLedgerReplay: fullLedger,
       migrationPhases: phases, startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(), durationMs: Date.now() - startedAt.getTime()
     };
     process.stdout.write(`LINE_A_RECEIPT ${JSON.stringify(receipt)}\n`);
+    if (!fullApplied) {
+      process.stdout.write("LINE_A_SCOPE_WARNING 完整 320 迁移重放仍被归档安装器前置阻断；本次通过的是 275 前缀 + 候选迁移的 4 条业务链，未伪造 320 通过\n");
+      if (process.env.LINE_A_REQUIRE_FULL_LEDGER === "1") throw new Error("LINE_A_FULL_LEDGER_REQUIRED");
+    }
   } finally {
     if (process.env.LINE_A_KEEP === "1") {
       process.stderr.write(`LINE_A_KEEP container=${containerName} storage=${storageRoot}\n`);
