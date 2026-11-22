@@ -9,6 +9,7 @@ const ciDatabases=Object.freeze({
  DYNAMIC_SETTLEMENT_DRAFT_LIFECYCLE_V1:Object.freeze(['jiangkong_settlement_draft_lifecycle_concurrency']),
  DYNAMIC_EMPLOYEE_ONBOARDING_V1:Object.freeze(['onboarding']),
  DYNAMIC_GENERAL_PROCUREMENT_V1:Object.freeze(['general_procurement']),
+ DYNAMIC_LINE_A_V1:Object.freeze(['jiangkong_line_a_real_db']),
  DYNAMIC_PROJECT_BUSINESS_SCOPE_V1:Object.freeze(['project_business_scope']),
  DYNAMIC_POL108_V1:Object.freeze(['jiangkong_pol108']),
  DYNAMIC_POL109_V1:Object.freeze(['jiangkong_pol109']),
