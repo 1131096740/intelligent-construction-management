@@ -13,7 +13,7 @@
 -const receipt={schemaVersion:1,purpose:"PAYMENT_EXECUTION_ORIGINAL_FRESH_290",status:"STOPPED",stages:[]};
 +const source=require('./contract-finance-source.json');
 +const current320=source.mode==='current-320';
-+const count=current320?322:295;
++const count=current320?323:295;
 +const install=(receipt,consume)=>current320
 +  ? withCombined320ContractPayment(receipt,consume,{sourceTree:source.sourceTree,
 +    migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
@@ -65,7 +65,7 @@
      PATH:"/usr/local/bin:/usr/bin:/bin",HOME:workDir,TMPDIR:workDir,COREPACK_HOME:"/opt/corepack",
      COREPACK_ENABLE_NETWORK:"0",COREPACK_DEFAULT_TO_LATEST:"0",NODE_ENV:"test",CI:"true",
      DATABASE_URL:ownerUrl,FILE_STORAGE_DRIVER:"local", FILE_STORAGE_ROOT:path.join(workDir,"storage","private"),
-+    ...(current320?{JG_CONTRACT_FINANCE_LEDGER:"322",JG_CONTRACT_FINANCE_SCOPE:"payment"}:{}),
++    ...(current320?{JG_CONTRACT_FINANCE_LEDGER:"323",JG_CONTRACT_FINANCE_SCOPE:"payment"}:{}),
      RUN_PAYMENT_EXECUTION_CONCURRENCY:"1",JG_TASK12_OWNED_280_RUN_ID:runId,
      OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(),SEED_PASSWORD:randomUUID()
    }};
@@ -85,7 +85,7 @@
 -}).then(()=>{receipt.status="PAYMENT_EXECUTION_FRESH_290_PASSED";}).catch(error=>{
 +}).then(()=>{
 +  if(current320 && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
-+    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==322))
++    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==323))
 +    throw new Error("PAYMENT_FORWARD_320_LEDGER");
 +  receipt.status="PAYMENT_EXECUTION_FRESH_"+count+"_PASSED";
 +}).catch(error=>{

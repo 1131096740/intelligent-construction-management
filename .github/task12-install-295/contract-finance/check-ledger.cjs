@@ -20,9 +20,9 @@ const ledger=git('ls-tree','-r','--name-only','-z',sha,'--',migrationsPath).toSt
 const digest=ledgerHash(ledger);
 const predecessor295Sha256='b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d';
 if(current320) {
-  assert.equal(ledger.length,322,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
+  assert.equal(ledger.length,323,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
-  assert.equal(digest,'9919038b0d6ae339ab72f5c7d6221a569bd6ae16b082df476faa9282b5e62d51',
+  assert.equal(digest,'749a60a89f234a4650dcb6c9b1d52c1f025ed90ac9e2b70670c62347edc640bc',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');
@@ -40,7 +40,7 @@ assert.equal(migrationBaseline.terminalMigrationChecksum,terminal.sha256);
 if (current320) {
   console.log(JSON.stringify({
     mode:'current-320',sourceSha:sha,sourceTree:git('rev-parse',sha+'^{tree}').toString().trim(),
-    migrationCount:322,ledgerSha256:digest,
+    migrationCount:323,ledgerSha256:digest,
     predecessor:{migrationCount:295,ledgerSha256:predecessor295Sha256,tails:ledger.slice(292,295)},
     tails:ledger.slice(295)
   }));

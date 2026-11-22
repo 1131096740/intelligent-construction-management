@@ -29,13 +29,13 @@ async function verifyLease(context,forward320) {
   `);
   const observed=JSON.parse(stdout);
   assert.equal(observed.ownedTls,true);
-  assert.equal(observed.ledger.length,forward320?322:295);
+  assert.equal(observed.ledger.length,forward320?323:295);
   const ledger=observed.ledger.map(({name,sha256,finished,rolledBack})=>({name,sha256,finished,rolledBack}));
   assert.equal(sha(JSON.stringify(ledger.slice(0,295))),finalLedger,'BACKUP294_LIVE_LEDGER');
   if(forward320) {
     assert.equal(sha(JSON.stringify(ledger)),forwardInventory.ledgerSha256,'BACKUP320_LIVE_LEDGER');
     assert.equal(forward320.ledgerSha256,forwardInventory.ledgerSha256,'BACKUP320_FORWARD_LEDGER');
-    assert.equal(forward320.count,322,'BACKUP320_FORWARD_COUNT');
+    assert.equal(forward320.count,323,'BACKUP320_FORWARD_COUNT');
     assert.equal(forward320.sameIdentity,true,'BACKUP320_FORWARD_INSTANCE');
     assert.equal(forward320.sameBaseB7,true,'BACKUP320_FORWARD_B7');
     assert.equal(context.candidateTree,forward320.sourceTree,'BACKUP320_CANDIDATE_TREE');

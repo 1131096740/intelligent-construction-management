@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 historical, archive, common, out, shard, count = sys.argv[1:]
-if count not in {'295', '322'}:
+if count not in {'295', '323'}:
     raise SystemExit('POL108_MIGRATION_COUNT')
 historical,archive,common,out=map(Path,(historical,archive,common,out))
 plan=Path(__file__).parent
@@ -35,7 +35,7 @@ for name in ['pol108-289.cjs','pol108-observability.cjs','pol108-shards.cjs',
 if shard=='core':
     cases = out/'operating-projection-postgresql.cases.ts'
     patch(cases, plan/'pol108-core-cases.patch')
-    if count == '322':
+    if count == '323':
         text = cases.read_text()
         original = 'COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 295'
         if text.count(original) != 1:

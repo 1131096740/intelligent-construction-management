@@ -87,9 +87,20 @@ export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, 
               AND reader.proconfig=ARRAY['search_path=pg_catalog, public']
               AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(reader.prosrc,'UTF8')),'hex')
                 ='fdeab4bf7fe58fc59edc88ed38ce5b2950b3f8ce049983d8b3521f219ec8da14'
-              AND (SELECT count(*)=1 AND bool_and(a.grantor=owner AND a.grantee=owner
-                    AND a.privilege_type='EXECUTE' AND NOT a.is_grantable)
-                FROM pg_catalog.aclexplode(coalesce(reader.proacl,pg_catalog.acldefault('f',owner))) a)
+              /* reader 的 body/owner/search_path 已被上面的哈希钉住；ACL 只约束
+                 可达范围：owner 保留 EXECUTE，禁止 PUBLIC、第三方 grantor 与
+                 GRANT OPTION。受限 app 角色由 owner 授予非转授 EXECUTE 是产品
+                 调用该只读旁路的正常授权，不得因此判定安装不可核验。 */
+              AND EXISTS (
+                SELECT FROM pg_catalog.aclexplode(coalesce(reader.proacl,pg_catalog.acldefault('f',owner))) a
+                WHERE a.grantor=owner AND a.grantee=owner
+                  AND a.privilege_type='EXECUTE' AND NOT a.is_grantable
+              )
+              AND NOT EXISTS (
+                SELECT FROM pg_catalog.aclexplode(coalesce(reader.proacl,pg_catalog.acldefault('f',owner))) a
+                WHERE a.grantee=0 OR a.grantor<>owner OR a.privilege_type<>'EXECUTE'
+                  OR (a.grantee<>owner AND a.is_grantable)
+              )
               AND NOT EXISTS (
                 SELECT FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',owner))) a
                 WHERE a.grantee=0 OR a.grantor<>owner OR a.privilege_type<>'EXECUTE'

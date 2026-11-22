@@ -10,11 +10,11 @@ out.mkdir()
 profile=json.loads((old/'profile.json').read_text())['pol109Assembly']
 source_record=json.loads(source.read_text())
 count = source_record['migrationCount']
-if count == 322 and source_record.get('mode') == 'current-320':
+if count == 323 and source_record.get('mode') == 'current-320':
     terminal = source_record['tails'][-1]
     source_tree = source_record['sourceTree']
     import re
-    if (terminal['name'] != '20261119007000_signed_settlement_payment_basis' or
+    if (terminal['name'] != '20261119007500_signed_change_and_settlement_attachment_file_binding' or
             not re.fullmatch('[0-9a-f]{64}',terminal['sha256']) or not re.fullmatch('[0-9a-f]{40}',source_tree)):
         raise SystemExit('POL109_320_SOURCE')
 else:

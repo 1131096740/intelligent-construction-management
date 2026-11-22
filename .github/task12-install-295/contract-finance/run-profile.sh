@@ -19,7 +19,7 @@ node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historic
 const [sourceFile,sha,profilesFile,prior,workspace,terminalFile]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 const current=source.mode==='current-320';
-if(source.sourceSha!==sha||source.migrationCount!==(current?322:295)||
+if(source.sourceSha!==sha||source.migrationCount!==(current?323:295)||
   (current?source.predecessor.ledgerSha256:source.ledgerSha256)!==terminal.final)process.exit(65);
 const pins=require(profilesFile).profile.mounts;
 const fs=require('node:fs'),assert=require('node:assert/strict'),{createHash}=require('node:crypto');

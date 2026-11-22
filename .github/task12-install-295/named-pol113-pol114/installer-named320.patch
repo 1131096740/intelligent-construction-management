@@ -53,8 +53,8 @@
 +      if(named320){
 +        const material=require('./candidate-admission.json');
 +        const rows=material.tails;
-+        need(material.migrationCount===322 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
-+          Array.isArray(rows) && rows.length===27,'NAMED_320_SOURCE');
++        need(material.migrationCount===323 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
++          Array.isArray(rows) && rows.length===28,'NAMED_320_SOURCE');
 +        const predecessor=consumerLedger;
 +        enter('NAMED_INSTALL_320_CONTRACT_DETAIL_READERS');
 +        let previous=39;
@@ -114,4 +114,4 @@
  module.exports.withNamedPol113Pol114292=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,292);
  module.exports.withNamedPol113Pol114295=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,295);
 +
-+module.exports.withNamedPol113Pol114320=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,322);
++module.exports.withNamedPol113Pol114320=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,323);

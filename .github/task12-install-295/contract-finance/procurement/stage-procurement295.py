@@ -97,12 +97,12 @@ if current320:
             'context.candidateTree===require("./contract-finance-source.json").sourceTree',
         'receipt.combinedAfterBusiness?.ledgerSha256===terminal.final':
             "receipt.combinedAfterBusiness?.ledgerSha256===require('./contract-finance-source.json').ledgerSha256 && "
-            "receipt.forward320?.count===322 && "
+            "receipt.forward320?.count===323 && "
             "receipt.forward320?.sourceTree===require('./contract-finance-source.json').sourceTree && "
-            "receipt.forward320?.sameBaseB7===true && receipt.combinedAfterBusiness?.count===322",
+            "receipt.forward320?.sameBaseB7===true && receipt.combinedAfterBusiness?.count===323",
     }
     status = ('GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1' if lane=='general16' else 'PROJECT_SCOPE_ORIGINAL_11')
-    replacements[status+'_295_PASSED'] = status+'_322_PASSED'
+    replacements[status+'_295_PASSED'] = status+'_323_PASSED'
     for old, new in replacements.items():
         if text.count(old)!=1:
             raise ValueError('PROCUREMENT_320_CONSUMER_ANCHOR')

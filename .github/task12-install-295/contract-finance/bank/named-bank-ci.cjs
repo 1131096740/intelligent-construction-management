@@ -15,11 +15,11 @@ const file='src/database/project-affiliate-company-contract-db.spec.ts';
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
 const runArgs=current320?args.slice(1):args;
-const candidateDigest320='9919038b0d6ae339ab72f5c7d6221a569bd6ae16b082df476faa9282b5e62d51';
+const candidateDigest320='749a60a89f234a4650dcb6c9b1d52c1f025ed90ac9e2b70670c62347edc640bc';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
 function verifyExecutionFiles() {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));
-  assert.equal(sha(raw),current320?'222cc429f4cf4fe8bf73c9e9993386343a1fed4fc7dff100f40a19f461d6ded8':'8ab945297128e7723516f5eb9d266af064eba009533ca2807ab1aeb42ac66ba9','BANK_295_EXECUTION_MANIFEST');
+  assert.equal(sha(raw),current320?'44def5e2f144a44ac820a9726157c401d73713aea4a4b9ff5c0afc30420fadef':'6678bac1631bd4468099bd12e6df5c6c259de916705056aa5c0a9ad15a2cf5b7','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
   assert.equal(files.length,current320?1833:1814,'BANK_295_EXECUTION_COUNT');
   for(const [relative,digest] of files) {
@@ -58,12 +58,12 @@ Promise.resolve().then(async()=>{
   assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'),'BANK_RUN_MODE');
   if(current320) {
     assert.equal(source.mode,'current-320');
-    assert.equal(source.migrationCount,322);
+    assert.equal(source.migrationCount,323);
     assert.equal(source.ledgerSha256,candidateDigest320);
     assert.match(source.sourceTree,/^[0-9a-f]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,require('./multi-witness.cjs').final);
-    assert.equal(source.tails.length,27);
+    assert.equal(source.tails.length,28);
   } else {
     assert.equal(source.migrationCount,295);
     assert.equal(source.ledgerSha256,require('./multi-witness.cjs').final);
@@ -71,13 +71,13 @@ Promise.resolve().then(async()=>{
   verifyExecutionFiles();
   if(runArgs.length){
     verifyJestRegisteredWithoutDb();
-    receipt.status=current320?'BANK_322_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'BANK_295_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED';
+    receipt.status=current320?'BANK_323_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'BANK_295_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED';
     return;
   }
   const {verifyNamedBank}=require('./workspace/services/api/prisma/contract-finance-owned-ci.cjs');
   const consume=async context=>{
     if(current320) {
-      assert.equal(receipt.forward320?.count,322);
+      assert.equal(receipt.forward320?.count,323);
       assert.equal(receipt.forward320.ledgerSha256,candidateDigest320);
       assert.equal(receipt.forward320.sameBaseB7,true);
       assert.equal(receipt.forward320.sourceTree,source.sourceTree);
@@ -101,7 +101,7 @@ Promise.resolve().then(async()=>{
   assert.equal(receipt.namedBank.original.passed,12);
   assert.equal(receipt.namedBank.scopedAliasReleased,true);
   assert.equal(receipt.namedBank.rolesReleased,true);
-  receipt.status=current320?'BANK_322_ORIGINAL_FULL_12_PASSED':'BANK_295_ORIGINAL_FULL_12_PASSED';
+  receipt.status=current320?'BANK_323_ORIGINAL_FULL_12_PASSED':'BANK_295_ORIGINAL_FULL_12_PASSED';
 }).catch(error=>{
   receipt.status='STOPPED';
   const code=error.code??error.message;

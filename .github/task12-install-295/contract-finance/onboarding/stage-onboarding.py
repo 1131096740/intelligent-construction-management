@@ -15,7 +15,7 @@ for name, expected in pins['resources'].items():
 source_record=json.loads(source.read_text())
 count=source_record['migrationCount']
 current320=source_record.get('mode')=='current-320'
-if count!=(322 if current320 else 295):
+if count!=(323 if current320 else 295):
     raise SystemExit('ONBOARDING_SOURCE_LEDGER')
 application_tree=source_record['sourceTree'] if current320 else '67644d9465a0ab4ee80ede099139d9c129d66f14'
 if current320:
@@ -56,7 +56,7 @@ for lane in pins['lanes']:
     if current320:
         if text.count('_295_PASSED')!=1:
             raise SystemExit('ONBOARDING_320_STATUS_ANCHOR')
-        text=text.replace('_295_PASSED','_322_PASSED')
+        text=text.replace('_295_PASSED','_323_PASSED')
     entry.write_text(text)
     runner=lane_root/'onboarding-full.cjs'
     text=runner.read_text()

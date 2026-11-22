@@ -100,11 +100,6 @@
     "candidate": "b27192e86c0edcc5571c7269d047b76786384ec2e91ee45f757f43cc7e858427"
   },
   {
-    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
-    "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "093f083a1ce113b58d175c00e4b88cd5b37616969818f4fc89b885f0728cdb64"
-  },
-  {
     "path": "services/api/prisma/local-staged-technical-profile-policy.cjs",
     "expected": "80d8fea098b44ef2a07a91ff1e9d0b87854f7c74d7201ff11524263c95b31d50",
     "candidate": "431f15e6e5a99aacd19241e6d1e665a2cf15c5a6beeb9b8abe75ad56b804baae"
@@ -220,6 +215,11 @@
     "candidate": "2d8c2d0c74ddc3c3bd8fca516c813ba909de4cef198e9ab0347f25d07f60b83d"
   },
   {
+    "path": "services/api/src/contract/contract-direct-pending-registered-binding.ts",
+    "expected": "f9324975144236acc9da54bf2dfe0e27dcd5a6adbc1b32330f7ebce9cb24a215",
+    "candidate": "606694c9d217a41fcd034ec3492893008d2206f4aba091502689914175d2d0b2"
+  },
+  {
     "path": "services/api/src/contract/contract-direct-pending-source.ts",
     "expected": "ad35320e61478c6076a1b3af5b407b7eeb8c24243ec98196eb4812a40e9921df",
     "candidate": "aaf291afdf3f9f68c1d98ca021dee212d3c17b763261716b974fc10b3b957d64"
@@ -275,9 +275,34 @@
     "candidate": "28d335f79d767fad7ff711cd04e6b2d04d6a8693f6925ac285938d9782e5b58b"
   },
   {
+    "path": "services/api/src/database/registered-payment-catalog.ts",
+    "expected": "a68f8f1eccbedaf444770aed90923194b37ee542499f1589fc140fb3bfd67335",
+    "candidate": "121b00319df30f72468707163bb532f3b6189b77b2b23528bfd9cde49b11c27b"
+  },
+  {
+    "path": "services/api/src/database/spot-procurement-core-schema.spec.ts",
+    "expected": "efd954880086b4309bcdf31a15a63e74180f5bb9b81e899b8d821f270d294b30",
+    "candidate": "7fa6bfb5b3e0ec40f6ddaf28baecfcda2fcf3b4ea258952e7ba1efb285469aeb"
+  },
+  {
     "path": "services/api/src/database/task16-revocation-application.http.spec.ts",
     "expected": "db6b0b445608b74f71283d4dd91ba33accbf3e411df939802b78d4ad6a2708cd",
     "candidate": "5ee9a246ff170a3cd7afc7c95eb748048469cc684a9316144ae225d6fd85f419"
+  },
+  {
+    "path": "services/api/src/database/unified-file-business-binding-guard.spec.ts",
+    "expected": "ea240b5c26789a3e92d41bbdb2c81e0ea04e5eda184750a85de2c01d895285aa",
+    "candidate": "c9427e83a7d9f3fdd3d6859d27fb4840b09bab800249ef02bf25613b2e13cbce"
+  },
+  {
+    "path": "services/api/src/file/file-business-binding.spec.ts",
+    "expected": "362f2f0ab861b255b4a5a6af1ca06157b80acaf10abf9cb562378eed01eda907",
+    "candidate": "1705eb812033610f8b0c461d3ff6fa7f75199328aa22f8d86af75f9d32e2b7a3"
+  },
+  {
+    "path": "services/api/src/file/file-business-binding.ts",
+    "expected": "e10b01a2f74fe88fc1015e7c3d4528073f7af90ffba5fce7d7b20ad2feb9f38a",
+    "candidate": "143edf08fd271f9921118c3d02682d8aa9abd1f6f85af5d9da66107267901430"
   },
   {
     "path": "services/api/src/file/file.service.spec.ts",
