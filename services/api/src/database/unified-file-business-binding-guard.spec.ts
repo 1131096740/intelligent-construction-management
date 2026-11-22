@@ -492,7 +492,7 @@ describe("unified file business binding migration", () => {
       "public.jg_require_contract_direct_upward_source_v2()"
     );
     expect(signedSettlementBindingMigration).toContain(
-      "41fec2c922c53810fcd1cc619487479b98dbce479b8408fc4e8473c338e2be62"
+      "c86b37cc155cb5cf424dd682f9767363da264eed8630a0dee9f02acde0dc3f49"
     );
     // The signed-settlement attachment already enforces the same exclusive
     // binding from its own migration; this one must not stack a second trigger.

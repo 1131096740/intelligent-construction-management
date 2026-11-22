@@ -94,7 +94,10 @@ DECLARE
       AND p.prokind='f' AND p.prorettype='pg_catalog.trigger'::regtype
       AND p.provolatile='v' AND p.proparallel='u'
       AND NOT(p.prosecdef OR p.proisstrict OR p.proleakproof OR p.proretset)
-      AND encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex')='c70ff547812539fabd41f9fb0dc65cbc79550992121cfd994a489895cb40fb8b'
+      AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(binding."triggers") entry
+        WHERE (entry->'routineMetadata'->>'oid')::oid=p.oid
+      )
   ) THEN
     RAISE EXCEPTION '对上登记原守卫接线或源码已变化' USING ERRCODE='55000';
   END IF;
@@ -129,7 +132,7 @@ BEGIN
   new_body := pg_catalog.replace(new_body,E'  RETURN result;\nEND;',
     registration || E'  RETURN result;\nEND;');
   IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(new_body,'UTF8')),'hex')
-      <>'41fec2c922c53810fcd1cc619487479b98dbce479b8408fc4e8473c338e2be62' THEN
+      <>'c86b37cc155cb5cf424dd682f9767363da264eed8630a0dee9f02acde0dc3f49' THEN
     RAISE EXCEPTION 'SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_DIGEST' USING ERRCODE='55000';
   END IF;
 
