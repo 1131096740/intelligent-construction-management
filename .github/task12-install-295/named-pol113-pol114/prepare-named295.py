@@ -22,7 +22,7 @@ mode = ['--current-320'] if current320 else []
 previous = source['predecessor'] if current320 else source
 assert previous['migrationCount'] == 295 and len(previous['tails']) == 3
 if current320:
-    assert count == 322 and len(source['tails']) == 27
+    assert count == 323 and len(source['tails']) == 28
 assert subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip() == ref
 admission = subprocess.check_output(['node',str(common.parent/'check-ledger.cjs'),str(repo),ref,*mode])
 assert json.loads(admission) == source
@@ -87,11 +87,11 @@ for name, pin in pins['runtime'].items():
                 b"NAMED_POL113_POL114_EXACT_295',mode": b"NAMED_POL113_POL114_EXACT_320',mode",
                 b'await withNamedPol113Pol114295(receipt': b'await withNamedPol113Pol114320(receipt',
                 b"receipt.orderedTails.slice(-6).map(({size})=>size),[290,291,292,293,294,295]":
-                    b"receipt.orderedTails.slice(-7).map(({size})=>size),[290,291,292,293,294,295,322]",
+                    b"receipt.orderedTails.slice(-7).map(({size})=>size),[290,291,292,293,294,295,323]",
                 b"  receipt.status='POL113_POL114_NAMED_EXACT_295_PASSED';": b'''  assert.equal(receipt.forward320?.sourceTree,admission.sourceTree);
   assert.equal(receipt.forward320?.ledgerSha256,admission.ledger320);
-  assert.deepEqual(receipt.postBehavior320,{exactB7:true,sameIdentity:true,count:322,ledgerSha256:admission.ledger320});
-  receipt.status='POL113_POL114_NAMED_EXACT_322_PASSED';''',
+  assert.deepEqual(receipt.postBehavior320,{exactB7:true,sameIdentity:true,count:323,ledgerSha256:admission.ledger320});
+  receipt.status='POL113_POL114_NAMED_EXACT_323_PASSED';''',
             }
             for old, new in replacements.items():
                 assert material.count(old) == 1
