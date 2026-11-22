@@ -1,8 +1,8 @@
 {
   "bank/overlay/services/api/src/database/contract-finance-owned.test-support.ts": {
     "kind": "full",
-    "material": "e20c2570e619319f49a293656e7843aca9000fac6699f5e05c0f7ccd6fb1501e.gz",
-    "sha256": "e20c2570e619319f49a293656e7843aca9000fac6699f5e05c0f7ccd6fb1501e"
+    "material": "b3b4760c68140e3d6f13fbd247e0829075b43470a083cfb7e3bf5ee1384340d4.gz",
+    "sha256": "b3b4760c68140e3d6f13fbd247e0829075b43470a083cfb7e3bf5ee1384340d4"
   },
   "bank/overlay/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
     "kind": "patch",
@@ -19,6 +19,6 @@
   "bank/execution-files.json": {
     "kind": "execution-manifest",
     "material": "adbbcb38d099fd399ab7bbd4abc9c18b13c91747c791b639a54bbfacb1316e20.gz",
-    "sha256": "44def5e2f144a44ac820a9726157c401d73713aea4a4b9ff5c0afc30420fadef"
+    "sha256": "d05e27411b80f10b3c524eac8f13d46ebef15e5aaea83fc3812762ca38ea12e4"
   }
 }
