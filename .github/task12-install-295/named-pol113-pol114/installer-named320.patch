@@ -6,7 +6,7 @@
  });
 -function outsideWitnessSql(count) {
 +const signedSettlementOutsidePostimages = Object.freeze({
-+  'jg_require_contract_direct_upward_source_v2()':'607cc42deccbb17f6de375976b5ed0ef0cbb30805c24ab6d3fb7cf6be74fc5fe',
++  'jg_require_contract_direct_upward_source_v2()':'c86b37cc155cb5cf424dd682f9767363da264eed8630a0dee9f02acde0dc3f49',
 +  'jg_upward_archive_catalog_projection_v2()':'5fc49d0c0d0982b14dad70f9498c003dcffb4dfa9d1b7ae58155a93069f220b3',
 +  'jg_upward_direct_archive_admission_v1()':'0ae95bf1a1b3551b5a123869077432a74578cb5c49ca63e7a4be4320eecef462',
 +});

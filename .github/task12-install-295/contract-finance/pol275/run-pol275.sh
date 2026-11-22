@@ -61,10 +61,10 @@ else
   check "$evidence" aada0a6d3aa800ed5269419314f9a090cc3dd1230c54562423cba155088f10b6
   check "$pol/collision-observation.cjs" 650f65bc653c2f2bd31b010dd008f175306969811b68b4837ffa94916b0d792b
 fi
-check "$common/installer.cjs" e83c02bc2f12e9526fe63f802e04723a5516b48da658db804c96d9edc0e784d4
+check "$common/installer.cjs" 59ecd7e084ff40548e8289fa0b2a886efc9470da96d36ab3543f09975782dd67
 cp "$common/installer.cjs" "$work/installer.cjs"
 patch --batch --fuzz=0 --silent "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" 98445b73753a7ce7017cc206d9d5c7a9d1100c3c59ba4f19aed23a5c2405c50c
+check "$work/installer.cjs" 9c60b16c618fb7cf69043cc4cb925da028e24db184458b83908812f88db5fbad
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

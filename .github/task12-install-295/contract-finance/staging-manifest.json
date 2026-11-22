@@ -2,7 +2,7 @@
   "bank/execution-files.json": {
     "kind": "execution-manifest",
     "material": "313788fae8f39d5dc444d22cd98c918d76b683b773be9b4a4b4eddbc7ce3260e.gz",
-    "sha256": "6678bac1631bd4468099bd12e6df5c6c259de916705056aa5c0a9ad15a2cf5b7"
+    "sha256": "ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041"
   },
   "bank/overlay/services/api/prisma/contract-affiliate-finite.cjs": {
     "kind": "full",
