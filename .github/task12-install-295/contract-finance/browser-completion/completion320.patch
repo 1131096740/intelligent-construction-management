@@ -5,13 +5,13 @@
  }
  async function runTask398Owned282Voucher(context, mode="standard", receipt){
 - const modes=new Map([["browser-completion-295",["--browser-completion-real"]],["browser-completion-290",["--browser-completion-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
-+ const modes=new Map([["browser-completion-320",["--browser-completion-real"]],["browser-completion-295",["--browser-completion-real"]],["browser-completion-290",["--browser-completion-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["browser-completion-322",["--browser-completion-real"]],["browser-completion-295",["--browser-completion-real"]],["browser-completion-290",["--browser-completion-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
   const completion295=mode==="browser-completion-295";
-+ const current320=mode==="browser-completion-320";
++ const current320=mode==="browser-completion-322";
 + const forward=current320?receipt?.forward320:undefined;
-+ if(current320&&(receipt?.purpose!=="TASK398_BROWSER_COMPLETION_EXACT_320"||
-+  !/^[a-f0-9]{40}$/u.test(receipt.sourceSha)||forward?.count!==320||forward.sameIdentity!==true||
-+  forward.sameBaseB7!==true||forward.tails?.length!==25))throw Error("TASK398_BROWSER_320_SCOPE");
++ if(current320&&(receipt?.purpose!=="TASK398_BROWSER_COMPLETION_EXACT_322"||
++  !/^[a-f0-9]{40}$/u.test(receipt.sourceSha)||forward?.count!==322||forward.sameIdentity!==true||
++  forward.sameBaseB7!==true||forward.tails?.length!==27))throw Error("TASK398_BROWSER_320_SCOPE");
   if(completion295&&(receipt?.purpose!=="TASK398_BROWSER_COMPLETION_EXACT_295"||!(/^[a-f0-9]{40}$/u.test(receipt.sourceSha)))) throw Error("TASK398_BROWSER_295_SCOPE");
   if(!modes.has(mode))throw new Error("TASK398_OWNED_282_SCENARIO");
   if(mode==="browser-completion-290"&&receipt?.purpose!=="TASK398_BROWSER_COMPLETION_EXACT_290") throw Error("TASK398_BROWSER_290_SCOPE");
@@ -30,7 +30,7 @@
   if(readback.database!==database||readback.actor!=="jg_task01_owner"||readback.ownerOid!=="10"
 -   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(completion295?295:(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-completion-290")?290:282)
 -   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(completion295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-completion-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
-+   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(current320?320:completion295?295:(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-completion-290")?290:282)
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(current320?322:completion295?295:(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-completion-290")?290:282)
 +   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(current320?forward.ledgerSha256:completion295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-completion-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
   const protectedExec=await snapshotOwned280CashProfile(sql,fences);
   const storage=mkdtempSync(path.join(workDir,"cash-storage-"));
@@ -41,7 +41,7 @@
   const catalog=await runBusiness(options,{candidate,short,storage,url,sql,env,current280:true,readPostgresLog,
 -  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:mode==="standard-290"?receipt:undefined,browser290:completion295||mode==="browser-completion-290"?receipt:undefined,ownedMigrationBaseline:{
 +  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:mode==="standard-290"?receipt:undefined,browser290:current320||completion295||mode==="browser-completion-290"?receipt:undefined,ownedMigrationBaseline:current320?{
-+  expectedDirectoryCount:320,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256
++  expectedDirectoryCount:322,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256
 + }:{
    expectedDirectoryCount:282,terminalMigration:"20261118231000_registered_payment_voucher_fixed_read",
    terminalMigrationChecksum:"e1ff36a191e8173a2cf06db3c20aa386db58360bfceba39eed010f9444da196e"

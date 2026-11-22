@@ -46,21 +46,22 @@
          assertOutsideWitness(289,outside);
          receipt.orderedTails.push({size:installed.ledger.length,ledgerSha256:hash(JSON.stringify(installed.ledger))});
          return outside;
-@@ -715,8 +724,33 @@
+@@ -715,8 +724,34 @@
          });
          consumerLedger=named295Tail.ledger;
        }
 +      if(named320){
 +        const material=require('./candidate-admission.json');
 +        const rows=material.tails;
-+        need(material.migrationCount===320 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
-+          Array.isArray(rows) && rows.length===25,'NAMED_320_SOURCE');
++        need(material.migrationCount===322 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
++          Array.isArray(rows) && rows.length===27,'NAMED_320_SOURCE');
 +        const predecessor=consumerLedger;
 +        enter('NAMED_INSTALL_320_CONTRACT_DETAIL_READERS');
-+        for(const [index,row] of rows.entries()){
-+          const timestamp='2026111900'+String(index+40)+'00';
-+          need(row && new RegExp('^'+timestamp+'_[a-z0-9_]+$','u').test(row.name) &&
-+            /^[0-9a-f]{64}$/u.test(row.sha256),'NAMED_320_TAIL_SEQUENCE');
++        let previous=39;
++        for(const row of rows){
++          const match=/^2026111900(\d{2})00_[a-z0-9_]+$/u.exec(row&&typeof row.name==='string'?row.name:'');
++          need(match&&Number(match[1])>previous&&/^[0-9a-f]{64}$/u.test(row.sha256),'NAMED_320_TAIL_SEQUENCE');
++          previous=Number(match[1]);
 +          const bytes=capture(path.join('/qualification/workspace/services/api/prisma/migrations',row.name,'migration.sql')).bytes;
 +          need(hash(bytes)===row.sha256,'NAMED_320_TAIL_DIGEST');
 +          const dir=path.join(folder,'migrations',row.name);
@@ -113,4 +114,4 @@
  module.exports.withNamedPol113Pol114292=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,292);
  module.exports.withNamedPol113Pol114295=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,295);
 +
-+module.exports.withNamedPol113Pol114320=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,320);
++module.exports.withNamedPol113Pol114320=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,322);

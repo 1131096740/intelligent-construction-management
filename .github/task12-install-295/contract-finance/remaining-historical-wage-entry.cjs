@@ -9,7 +9,7 @@ const {runHistoricalWage}=require('./remaining-historical-wage-runner.cjs');
 const root='/qualification';
 const source=require('./contract-finance-source.json');
 const current320=process.argv[2]==='--current-320';
-const count=current320?320:295;
+const count=current320?322:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_HISTORICAL_WAGE_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -24,7 +24,7 @@ async function main(){
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,final);
-    assert.equal(source.tails.length,25);
+    assert.equal(source.tails.length,27);
     const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
     assert.equal(baseline.terminalMigration,source.tails.at(-1).name);

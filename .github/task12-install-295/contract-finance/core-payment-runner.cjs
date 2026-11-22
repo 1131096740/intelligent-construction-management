@@ -30,7 +30,7 @@ async function verify(scope, context, current320 = false, settlementReadKey) {
     INITIAL_USER_TEMPORARY_PASSWORD: "Local-Transfer-Initial-01",
     OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID(),
     JG_TASK12_OWNED_280_RUN_ID: context.runId, JG_CONTRACT_FINANCE_SCOPE: scope,
-    ...(current320 ? {JG_CONTRACT_FINANCE_LEDGER: "320"} : {}),
+    ...(current320 ? {JG_CONTRACT_FINANCE_LEDGER: "322"} : {}),
     ...(settlementReadKey ? {SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY: settlementReadKey} : {}),
     ...Object.fromEntries(profile.flags.map(flag=>[flag,"1"])),
   };

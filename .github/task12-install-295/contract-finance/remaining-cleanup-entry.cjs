@@ -9,7 +9,7 @@ const {runRetained} = require('./remaining-retained.cjs');
 const root = '/qualification';
 const source = require('./contract-finance-source.json');
 const current320=source.mode==='current-320';
-const count=current320?320:295;
+const count=current320?322:295;
 const receipt = {schemaVersion:1,purpose:'REMAINING_RETAINED_CLEANUP_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 

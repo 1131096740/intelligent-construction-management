@@ -1326,11 +1326,13 @@ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
 function readForward320({sourceTree,migrations,tails}) {
   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
     typeof migrations==='string' && path.isAbsolute(migrations) &&
-    Array.isArray(tails) && tails.length===25,'FORWARD_320_SOURCE');
-  const rows=tails.map((row,index) => {
-    const timestamp='2026111900'+String(index+40)+'00';
-    need(row && typeof row.name==='string' && new RegExp('^'+timestamp+'_[a-z0-9_]+$','u').test(row.name)
-      && typeof row.sha256==='string' && /^[0-9a-f]{64}$/u.test(row.sha256),'FORWARD_320_TAIL_SEQUENCE');
+    Array.isArray(tails) && tails.length===27,'FORWARD_320_SOURCE');
+  let previous=39;
+  const rows=tails.map(row => {
+    const match=row && typeof row.name==='string' ? /^2026111900(\d{2})00_[a-z0-9_]+$/u.exec(row.name) : null;
+    const minute=match?Number(match[1]):-1;
+    need(minute>previous && typeof row.sha256==='string' && /^[0-9a-f]{64}$/u.test(row.sha256),'FORWARD_320_TAIL_SEQUENCE');
+    previous=minute;
     return {name:row.name,sha256:row.sha256};
   });
   const sql=rows.map(row => {
