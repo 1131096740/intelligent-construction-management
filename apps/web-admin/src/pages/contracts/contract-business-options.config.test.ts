@@ -83,6 +83,31 @@ describe("contract business options configuration", () => {
     });
   });
 
+  it("builds a signed settlement payment payload from the server-selected latest confirmation", () => {
+    const selectedContract = findContractOption([contract()], "version-1");
+
+    expect(
+      buildPaymentCreatePayload(selectedContract, null, {
+        sourceType: "signed_settlement",
+        signedSettlementId: " signed-settlement-1 ",
+        code: " FK-005 ",
+        requestedAmountYuan: "1200"
+      })
+    ).toEqual({
+      sourceType: "signed_settlement",
+      signedSettlementId: "signed-settlement-1",
+      code: "FK-005",
+      requestedAmountCents: "120000"
+    });
+    expect(() =>
+      buildPaymentCreatePayload(selectedContract, null, {
+        sourceType: "signed_settlement",
+        code: "FK-006",
+        requestedAmountYuan: "1"
+      })
+    ).toThrow("最近确认的已签结算不能为空");
+  });
+
   it("carries the construction-enterprise payment subject from the signed contract", () => {
     const selectedContract = findContractOption(
       [{ ...contract(), paymentSubjectType: "affiliate" }],

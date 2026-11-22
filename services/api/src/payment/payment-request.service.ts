@@ -103,6 +103,10 @@ import {
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
 import { loadSettlementPaymentConfirmationFacts } from "./settlement-confirmation-facts";
 import {
+  loadSignedSettlementPaymentBasis,
+  SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND
+} from "./signed-settlement-payment-capacity";
+import {
   allocateContractDuePaymentExecution,
   buildContractPaymentApplicationPreview,
   calculateContractAdvancePaymentCapacityBigInt,
@@ -176,6 +180,7 @@ interface PaymentExecutionLockRow {
   paymentTermsVersionId?: string;
   paymentTermsStageId?: string | null;
   settlementId: string | null;
+  signedSettlementId: string | null;
   sourceType?: string;
   updatedAt: Date;
   paymentSubjectType: string;
@@ -434,7 +439,7 @@ export class PaymentRequestService {
     input: {
       contractId: string;
       contractVersionId: string;
-      sourceType: "settlement" | "contract_advance" | "contract_due";
+      sourceType: "settlement" | "signed_settlement" | "contract_advance" | "contract_due";
       actorUserId?: string;
       actionLabel?: string;
     }
@@ -695,8 +700,16 @@ export class PaymentRequestService {
         return this.createContractDuePaymentRequest(tx, normalizedInput, applicantUserId);
       }
 
+      if (sourceType === "signed_settlement") {
+        return this.createSignedSettlementPaymentRequest(tx, normalizedInput, applicantUserId);
+      }
+
       if (sourceType !== "settlement") {
         throw new Error("不支持的付款申请来源，请从结算或合同付款入口发起");
+      }
+
+      if (normalizedInput.signedSettlementId) {
+        throw new BadRequestException("已签结算依据只能用于已签结算付款来源");
       }
 
       if (!normalizedInput.settlementId) {
@@ -826,6 +839,155 @@ export class PaymentRequestService {
 
     await this.approvalNotifications?.afterCommit(payment.id);
     return paymentPostResponseToApi(payment);
+  }
+
+  /**
+   * 已签结算付款：只锁定“最近确认的一期”，金额上限按合同累计结算
+   * （含负数、旧结算与历史起点）扣减全部已占用额度后计算。依据选择、
+   * 合同/条款版本和金额校验全部在本事务内完成。
+   */
+  private async createSignedSettlementPaymentRequest(
+    tx: Prisma.TransactionClient,
+    input: NormalizedCreatePaymentRequest,
+    applicantUserId?: string
+  ) {
+    if (input.settlementId) {
+      throw new BadRequestException("已签结算付款不能同时选择旧结算单");
+    }
+    if (!input.signedSettlementId) {
+      throw new BadRequestException("请选择最近确认的已签结算后再发起付款申请");
+    }
+
+    const signedSettlement = await tx.signedContractSettlement.findUnique({
+      where: { id: input.signedSettlementId }
+    });
+    if (!signedSettlement) {
+      throw new Error("未找到已签结算记录，请刷新结算台账后重试");
+    }
+    if (signedSettlement.contractKind !== SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND) {
+      throw new BadRequestException("表外或对上结算不产生我方付款申请，请从对应关系台账办理");
+    }
+    if (signedSettlement.state !== "confirmed") {
+      throw new Error("当前已签结算尚未复核确认，不能发起付款申请");
+    }
+
+    const contract = await tx.contract.findUnique({
+      where: { id: signedSettlement.contractId },
+      select: { projectId: true, contractTypeKey: true, voidedAt: true }
+    });
+    if (!contract) {
+      throw new Error("未找到关联合同，请刷新合同台账后重试");
+    }
+    if (contract.projectId !== signedSettlement.projectId) {
+      throw new BadRequestException("已签结算与关联合同的项目归属不一致，请先核对结算登记");
+    }
+    if (contract.voidedAt) {
+      throw new BadRequestException("关联合同已作废，不能发起付款申请");
+    }
+    if (!SETTLEMENT_PAYMENT_CONTRACT_TYPES.has(contract.contractTypeKey ?? "")) {
+      throw new BadRequestException("该合同类型应从合同已冻结的付款阶段发起付款");
+    }
+
+    const contractVersion = await tx.contractVersion.findFirst({
+      where: { contractId: signedSettlement.contractId, status: "effective" },
+      orderBy: { versionNo: "desc" },
+      select: { id: true, signingSubjectType: true }
+    });
+    if (!contractVersion) {
+      throw new Error("合同尚未归档生效，不能发起付款申请");
+    }
+    const paymentTermsVersion = await tx.paymentTermsVersion.findFirst({
+      where: { contractId: signedSettlement.contractId, contractVersionId: contractVersion.id, status: "effective" },
+      orderBy: { versionNo: "desc" },
+      select: { id: true }
+    });
+    if (!paymentTermsVersion) {
+      throw new Error("未找到已生效的付款条款，请先补齐合同付款条款");
+    }
+    const paymentSubjectType = paymentSubjectForSigningSubject(
+      input.paymentSubjectType,
+      contractVersion.signingSubjectType
+    );
+    await this.assertHistoricalTakeoverPaymentReady(tx, {
+      contractId: signedSettlement.contractId,
+      contractVersionId: contractVersion.id,
+      sourceType: "signed_settlement",
+      actorUserId: applicantUserId
+    });
+
+    await this.lockContractPaymentCapacityRows(tx, signedSettlement.contractId);
+    const basis = await loadSignedSettlementPaymentBasis(tx, signedSettlement.contractId, {
+      lock: true
+    });
+    if (basis.latestConfirmed.id !== signedSettlement.id) {
+      throw new ConflictException(
+        "付款只可选择最近确认的一期已签结算，请刷新结算依据后重新选择"
+      );
+    }
+    if (input.requestedAmountCents > basis.remainingCents) {
+      throw new BadRequestException(
+        `合同已签结算累计可付金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
+          basis.remainingCents
+        )} 元`
+      );
+    }
+
+    const basisAt = new Date();
+    const payment = await tx.paymentRequest.create({
+      data: {
+        projectId: signedSettlement.projectId,
+        settlementId: null,
+        signedSettlementId: signedSettlement.id,
+        signedSettlementConfirmationNo: basis.latestConfirmed.confirmationNo,
+        signedSettlementConfirmedYuan: basis.latestConfirmed.amountYuan,
+        signedSettlementContractConfirmedYuan: basis.confirmedContractYuan,
+        signedSettlementOccupiedCents: basis.occupiedCents,
+        signedSettlementBasisAt: basisAt,
+        sourceType: "signed_settlement",
+        paymentSubjectType,
+        contractId: signedSettlement.contractId,
+        contractVersionId: contractVersion.id,
+        paymentTermsVersionId: paymentTermsVersion.id,
+        code: input.code,
+        status: "approval_pending",
+        requestedAmountCents: input.requestedAmountCents,
+        approvedAmountCents: null,
+        paidAmountCents: 0n,
+        ...(optionalTrimmedText(input.paymentMatter)
+          ? { paymentMatter: optionalTrimmedText(input.paymentMatter) }
+          : {}),
+        ...(optionalTrimmedText(input.amountCalculationExplanation)
+          ? { amountCalculationExplanation: optionalTrimmedText(input.amountCalculationExplanation) }
+          : {})
+      }
+    });
+
+    if (applicantUserId) {
+      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
+      const round = await tx.approvalInstance.create({
+        data: {
+          flowType: "payment.approve",
+          businessType: "payment_request",
+          businessId: payment.id,
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+          applicantUserId
+        }
+      });
+      await this.approvalNotifications?.queue(tx, payment, round, null);
+    }
+
+    await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
+    if (!applicantUserId || !this.businessEntry) return payment;
+    const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+      sceneKey: PAYMENT_REQUEST_ENTRY_DEFINITION.key,
+      definitionVersion: PAYMENT_REQUEST_ENTRY_DEFINITION.version,
+      target: { projectId: payment.projectId, entityType: "payment_request", entityId: payment.id },
+      expectedRevision: 0,
+      values: paymentRequestEntryValues(payment)
+    });
+    return { ...payment, businessEntrySnapshot };
   }
 
   private async createContractDuePaymentRequest(
@@ -1500,6 +1662,60 @@ export class PaymentRequestService {
     }
   }
 
+  /**
+   * 实付时再次校验已签结算依据：同一合同 advisory lock 下重读累计结算与全部占用，
+   * 当前申请自身在途金额先还原，再判断本次实付是否仍可被合同累计覆盖。
+   */
+  private async assertSignedSettlementPaymentExecutionCapacity(
+    tx: Prisma.TransactionClient,
+    payment: PaymentExecutionLockRow,
+    amountCents: bigint,
+    actorUserId: string
+  ): Promise<void> {
+    if (!payment.signedSettlementId) {
+      throw new ConflictException("付款申请缺少已签结算依据，请刷新并核对原申请");
+    }
+    const signedSettlement = await tx.signedContractSettlement.findUnique({
+      where: { id: payment.signedSettlementId },
+      select: { id: true, contractKind: true, contractId: true, state: true }
+    });
+    if (!signedSettlement) {
+      throw new ConflictException("未找到付款申请关联的已签结算，请刷新后核对");
+    }
+    if (
+      signedSettlement.contractKind !== SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND ||
+      signedSettlement.contractId !== payment.contractId
+    ) {
+      throw new ConflictException("付款申请的已签结算依据与合同不一致，请核对原申请");
+    }
+    if (signedSettlement.state !== "confirmed") {
+      throw new Error("已签结算依据已失效，不能登记实付");
+    }
+    await this.assertHistoricalTakeoverPaymentReady(tx, {
+      contractId: payment.contractId,
+      contractVersionId: payment.contractVersionId,
+      sourceType: "signed_settlement",
+      actorUserId,
+      actionLabel: "登记实付"
+    });
+
+    await this.lockContractPaymentCapacityRows(tx, payment.contractId);
+    const basis = await loadSignedSettlementPaymentBasis(tx, payment.contractId, {
+      lock: true
+    });
+    // 新确认一期可能调增或调减累计；不因“已不是最新”直接阻止旧申请实付，
+    // 但本次实付仍须被最新合同累计覆盖（自身在途先还原）。
+    const currentOutstanding = this.paymentRequestOutstandingCents(payment);
+    const availableCents = basis.rawRemainingCents + currentOutstanding;
+    if (amountCents > availableCents) {
+      throw new Error(
+        `合同已签结算累计可付金额不足，当前最多可实付 ${
+          availableCents > 0n ? formatMoneyCentsAsYuan(availableCents) : "0.00"
+        } 元`
+      );
+    }
+  }
+
   private async lockContractPaymentCapacityRows(
     tx: Prisma.TransactionClient,
     contractId: string
@@ -1835,6 +2051,7 @@ export class PaymentRequestService {
         payment."paymentTermsVersionId",
         payment."paymentTermsStageId",
         payment."settlementId",
+        payment."signedSettlementId",
         payment."sourceType",
         payment."updatedAt",
         payment."paymentSubjectType",
@@ -3477,6 +3694,15 @@ export class PaymentRequestService {
           const message = `实付金额超过付款申请剩余可实付金额，当前最多可实付 ${this.formatYuan(remainingAmountCents > 0n ? remainingAmountCents : 0n)} 元`;
           if (registered) throw new BadRequestException(message);
           throw new Error(message);
+        }
+
+        if (payment.sourceType === "signed_settlement") {
+          await this.assertSignedSettlementPaymentExecutionCapacity(
+            tx,
+            payment,
+            amountCents,
+            actorUserId
+          );
         }
 
         const newPaymentPaidAmountCents = payment.paidAmountCents + amountCents;

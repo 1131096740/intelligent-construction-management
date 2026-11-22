@@ -1128,8 +1128,9 @@ export interface CreateSettlementReadModel {
 }
 
 export interface CreatePaymentRequestPayload {
-  sourceType?: "settlement" | "contract_advance" | "contract_due";
+  sourceType?: "settlement" | "signed_settlement" | "contract_advance" | "contract_due";
   settlementId?: string;
+  signedSettlementId?: string;
   contractVersionId?: string;
   paymentTermsVersionId?: string;
   paymentTermsStageId?: string;

@@ -1,6 +1,7 @@
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { ContractWorkCompletionOperatingSourceAdapter } from "./contract-work-completion-operating-source.adapter";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ContractWorkCompletionNotificationService } from "./contract-work-completion-notification.service";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
@@ -39,7 +40,9 @@ type Snapshot = {
 
 @Injectable()
 export class ContractWorkCompletionApprovalService {
-  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly ledger: OperatingLedgerService) {}
+  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService,
+    private readonly ledger: OperatingLedgerService,
+    @Optional() private readonly notifications?: ContractWorkCompletionNotificationService) {}
 
   view(versionId: string, actorId: string) {
     return this.inTransaction(async tx => {
@@ -101,7 +104,10 @@ export class ContractWorkCompletionApprovalService {
         return { name, protocolVersion: 1, executionMode: "parallel", mode: "any",
           roleKeys, approvedRoleKeys: [] as string[], candidateUserIdsByRole: byRole };
       });
-      return this.call<Result>(tx, "submit", versionId, completionId, actorId, { nodes });
+      const result = await this.call<Result>(tx, "submit", versionId, completionId, actorId, { nodes });
+      // 与业务同事务写入待办短信 outbox；提交失败或回滚时不会留下通知。
+      await this.notifications?.queueDuty(tx, completionId, result.approvalInstanceId);
+      return result;
     });
   }
 
@@ -143,6 +149,9 @@ export class ContractWorkCompletionApprovalService {
         roundId: round.id, decision: input.decision, dutyIndex: input.dutyIndex, ...identity, comment,
         nodes, nextIndex: pending[0] ?? duties.length, metadata: selfReview.metadata
       });
+      if (result.status === "draft") {
+        await this.notifications?.queueCorrection(tx, completionId, round.id);
+      }
       if (result.status === "confirmed") {
         const adapter = new ContractWorkCompletionOperatingSourceAdapter();
         const source = await adapter.readCompletionSnapshot(tx, projectId, completionId);
