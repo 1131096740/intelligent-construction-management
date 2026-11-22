@@ -10,7 +10,7 @@ import { CONTRACT_PARALLEL_DUTY_RESOURCE, contractParallelDutyId, contractParall
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 
 const KIND = "contract_v2_inside_duty_notification";
-type Stage = "approval" | "seal" | "archive";
+type Stage = "approval" | "seal" | "archive" | "correction";
 type Version = Pick<ContractVersion, "id" | "numericProtocolVersion" | "signingSubjectType" | "status">;
 type Task = Pick<ContractSealTask, "id" | "status" | "handlerUserId">;
 type ContractNoticeStatus = AuditDutyNoticeStatus & {dutyName:string};
@@ -36,9 +36,16 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
     return version.numericProtocolVersion === 2 && version.signingSubjectType === "our_company";
   }
 
+  /** 驳回/退回修改只提醒原申请人，与用章主体是否本公司无关。 */
+  static supportsCorrection(version: Version) {
+    return version.numericProtocolVersion === 2;
+  }
+
   private stage(version: Version, round: ApprovalInstance, task?: Task): Stage | null {
-    if (!ContractDutyNotificationService.supports(version) || round.businessType !== "contract_version" ||
+    if (round.businessType !== "contract_version" ||
         round.businessId !== version.id || round.flowType !== "contract.approve" || !isParallelApprovalRound(round.frozenNodes)) return null;
+    if (version.status === "draft" && round.status === "rejected") return "correction";
+    if (!ContractDutyNotificationService.supports(version)) return null;
     if (version.status === "in_approval" && round.status === "in_progress") return "approval";
     if (round.status !== "approved" || task?.handlerUserId !== round.applicantUserId) return null;
     if (version.status === "approved_pending_seal" && task.status === "in_seal") return "seal";
@@ -70,6 +77,7 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
   private async authorized(tx: Prisma.TransactionClient, contract: Contract, round: ApprovalInstance, stage: Stage, index: number, actor: string) {
     if (stage === "approval") return Boolean(await contractParallelDutyIdentity(tx, round, contract.projectId, actor, index, false));
     if (stage === "seal") return hasActiveContractGlobalRole(tx, actor, "comprehensive_director");
+    if (stage === "correction") return actor === round.applicantUserId && contract.ownerUserId === round.applicantUserId;
     return actor === contract.ownerUserId && (await resolveGovernedFinalArchiveAccess(tx, {
       actorUserId: actor, projectId: contract.projectId, handlerUserId: round.applicantUserId
     })).canUpload;
@@ -91,6 +99,20 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
       }
     }
     if (intents.length) await tx.auditLog.createMany({ data: intents, skipDuplicates: true });
+  }
+
+  /** 最终驳回/退回后只提醒原申请人修改重提，共用同一 claimed/terminal 幂等与失败重试。 */
+  async queueCorrection(tx: Prisma.TransactionClient, contract: Contract, version: Version, round: ApprovalInstance, code: string) {
+    if (!ContractDutyNotificationService.supportsCorrection(version) || this.stage(version, round) !== "correction" ||
+        contract.voidedAt || contract.ownerUserId !== round.applicantUserId) return;
+    if (!(await tx.project.findUnique({ where: { id: contract.projectId }, select: { isActive: true } }))?.isActive) return;
+    const recipientId = round.applicantUserId;
+    await tx.auditLog.createMany({ skipDuplicates: true, data: [{
+      id: digest(round.id, "correction", -1, recipientId), businessType: KIND, businessId: round.id,
+      actorUserId: recipientId, action: "queued",
+      metadata: { kind: KIND, event: "queued", stage: "correction", nodeIndex: -1, recipientId,
+        dutyName: "审批退回，请修改后重新提交", businessCode: code, contractVersionId: version.id, sealTaskId: null }
+    }] });
   }
 
   async afterCommit(attemptId?:string) {
@@ -132,6 +154,11 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
     if(!stage || stage!==data.stage || !contract?.code || contract.voidedAt ||
       (task && (task.approvalInstanceId!==round.id || task.contractVersionId!==version.id || contract.ownerUserId!==round.applicantUserId)))return null;
     if(strict) {
+      if(stage==="correction") {
+        const latest=await tx.approvalInstance.findFirst({where:{businessType:"contract_version",businessId:version.id,flowType:"contract.approve"},
+          orderBy:[{createdAt:"desc"},{id:"desc"}],select:{id:true}});
+        if(latest?.id!==round.id)return null;
+      } else {
       const snapshot=contractRoundSubmissionSnapshot(round.frozenNodes);
       if(!snapshot || snapshot.contractVersionId!==version.id || snapshot.documentContentRevision!==version.documentContentRevision ||
          snapshot.documentContentFingerprint!==version.documentContentFingerprint)return null;
@@ -142,6 +169,7 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
         if(!task?.approvedByUserId || !task.approvedAt || activeApprovalNodeIndexes(round.frozenNodes,0).length)return null;
         if(stage==="archive" && (version.changeType!=="original" || version.supersedesVersionId || !task.completedByUserId || !task.completedAt))return null;
       }
+      }
     }
     const project=await tx.project.findUnique({where:{id:contract.projectId},select:{isActive:true,name:true}});
     if(!project?.isActive || !await this.authorized(tx,contract,round,stage,index,actor))return null;
@@ -149,7 +177,7 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
     if(!user?.isActive)return null;
     const applicant=await tx.user.findUnique({where:{id:round.applicantUserId},select:{name:true}});
     const message:ApprovalDutySmsIntent={
-      businessLabel:"合同待办",dutyName:data.dutyName,businessCode:contract.code,
+      businessLabel:stage==="correction"?"合同退回修改":"合同待办",dutyName:data.dutyName,businessCode:contract.code,
       scopeName:project.name,initiatorName:applicant?.name??"发起人待核对",subject:contract.name,
       participants:[version.companyEntityNameSnapshot??contract.companyEntityName,contract.counterparty].filter((name):name is string=>Boolean(name)),
       amountText:version.amountYuan!=null&&version.amountLimitType!=="uncapped"?`${version.amountYuan.toFixed(4)} 元`:"金额待确定",
