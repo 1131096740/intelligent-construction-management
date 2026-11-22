@@ -339,3 +339,51 @@ it("合同最终驳回或退回经办人时入队一条修改提醒，重提后�
   expect(send).not.toHaveBeenCalled();
   expect(rows.some(row => row.action === "cancelled")).toBe(true);
 });
+
+it.each(["reject", "return_to_applicant"] as const)("真实合同审批服务在事务内为原申请人入队%s修改提醒，提交后才派发", async decision => {
+  const { ContractV2SubmissionService } = await import("./contract-v2-submission.service");
+  jest.mocked(contractParallelDutyIdentity).mockResolvedValue({
+    approvedRoleKey: "contract_director", representedUserId: "reviewer", viaAssignment: false, delegationId: null
+  } as never);
+  const now = new Date("2026-11-22T12:00:00.000Z");
+  const fingerprint = "b".repeat(64);
+  const version = { id: "version", contractId: "contract", numericProtocolVersion: 2, signingSubjectType: "our_company",
+    status: "in_approval", changeType: "original", documentContentRevision: 2, documentContentFingerprint: fingerprint,
+    updatedAt: now };
+  const round = { id: "round", businessType: "contract_version", businessId: version.id, flowType: "contract.approve",
+    status: "in_progress", applicantUserId: "handler", currentNodeIndex: 0, updatedAt: now,
+    frozenNodes: [{ name: "合同主管", executionMode: "parallel", protocolVersion: 1, mode: "any",
+      roleKeys: ["contract_director"], approvedRoleKeys: [], originatorUserIds: ["handler"],
+      submissionSnapshot: { submissionProtocolVersion: 2, contractVersionId: version.id,
+        documentContentRevision: 2, documentContentFingerprint: fingerprint } }] };
+  const contract = { id: "contract", ownerUserId: "handler", projectId: "project", code: "HT-09", voidedAt: null };
+  const decisionRow = { id: "decision", action: decision, approvalInstanceId: round.id, actorUserId: "reviewer" };
+  const updatedRound = { ...round, status: "rejected", currentNodeIndex: 1 };
+  const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    contractVersion: { findUnique: jest.fn().mockResolvedValue(version),
+      update: jest.fn().mockResolvedValue({ ...version, status: "draft" }) },
+    approvalInstance: { findUnique: jest.fn().mockResolvedValue(round), findMany: jest.fn().mockResolvedValue([round]),
+      update: jest.fn().mockResolvedValue(updatedRound) },
+    contract: { findUnique: jest.fn().mockResolvedValue(contract) },
+    approvalActionLog: { create: jest.fn().mockResolvedValue(decisionRow), updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
+  };
+  let insideTransaction = false;
+  const prisma = { $transaction: async (operation: (client: typeof tx) => Promise<unknown>) => {
+    insideTransaction = true;
+    try { return await operation(tx); } finally { insideTransaction = false; }
+  } };
+  const observed: string[] = [];
+  const notifications = {
+    queueCorrection: jest.fn(async () => { observed.push(insideTransaction ? "queued-in-transaction" : "queued-outside"); }),
+    afterCommit: jest.fn(async () => { observed.push(insideTransaction ? "dispatch-in-transaction" : "dispatch-after-commit"); })
+  };
+  const service = new ContractV2SubmissionService(prisma as never, {} as never, {} as never, {} as never,
+    { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never, notifications as never);
+  await expect(service.reviewIfV2(version.id, "reviewer", { decision, comment: "请补充资料",
+    expectedContractUpdatedAt: now.toISOString(), expectedApprovalInstanceId: round.id, expectedNodeIndex: 0,
+    expectedApprovalUpdatedAt: now.toISOString() } as never)).resolves.toMatchObject({ status: "draft" });
+  expect(observed).toEqual(["queued-in-transaction", "dispatch-after-commit"]);
+  expect(notifications.queueCorrection).toHaveBeenCalledWith(tx, contract,
+    expect.objectContaining({ status: "draft" }), expect.objectContaining({ id: round.id, status: "rejected" }), "HT-09");
+});
