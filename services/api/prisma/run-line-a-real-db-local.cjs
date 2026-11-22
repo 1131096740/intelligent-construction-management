@@ -161,7 +161,7 @@ async function main() {
     const baseCandidates = ["20261119003500_fund_balance_correction_controlled_round",
       "20261119003600_fund_balance_notice_lock"];
     const candidateMigrations = [...baseCandidates, ...require("node:fs").readdirSync(migrationRoot)
-      .filter(name => name.startsWith("20261119004") || /^2026111900(?:4|5|6)[0-9]{3}_/u.test(name))
+      .filter(name => /^2026111900[4-9][0-9]{3}_/u.test(name))
       .sort()];
     const appliedCandidates = [];
     const skipped = [];
