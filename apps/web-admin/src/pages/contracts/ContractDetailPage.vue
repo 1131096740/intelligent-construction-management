@@ -16,16 +16,18 @@
     >
       <template #actions>
 <ApprovalDocumentDownload v-if="contractDetail?.sealTask && !contractDetail.v2Lifecycle" business-type="contract_seal" :business-id="contractDetail.sealTask.id" :refresh-key="contractDetail.sealTask" />
-        <t-button
-          v-if="changeEligibility && contractChangeActionEnabled()"
-          variant="outline"
-          :loading="changeEligibilityLoading"
-          :disabled="detailLoading || !changeEligibility.eligible"
-          :title="changeEligibility.reason ?? '从当前生效版本发起合同变更'"
-          @click="openChangeDialog"
-        >
-          发起合同变更
-        </t-button>
+        <EffectiveContractTaxFacts
+          v-if="contractDetail && !contractDetail.historyReadOnly && normalizedChangeVersions.some(row => row.status === 'effective')
+            && canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])"
+          :version-id="contractDetail.contractVersionId"
+        />
+        <SignedContractChanges
+          v-if="contractDetail && !contractDetail.historyReadOnly && normalizedChangeVersions.some(row => row.status === 'effective')
+            && canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])"
+          :version-id="contractDetail.contractVersionId"
+          :disabled="detailLoading"
+          :open-requested="route.query.signedChange === '1'"
+        />
         <t-button
           variant="outline"
           :disabled="detailLoading"
@@ -42,14 +44,6 @@
         </t-button>
       </template>
     </JgPageHeader>
-
-    <t-alert
-      v-if="changeEligibility && !changeEligibility.eligible"
-      theme="warning"
-      class="change-eligibility-alert"
-      title="当前不能发起合同变更"
-      :message="changeEligibility.reason || '请核对合同当前状态后重试'"
-    />
 
     <section
       v-if="detailLoading && !contractDetail"
@@ -132,6 +126,11 @@
         class="tab-content"
         aria-label="合同概览"
       >
+        <ContractWorkCompletionSection
+          v-if="!contractDetail.historyReadOnly"
+          :key="contractDetail.contractVersionId"
+          :version-id="contractDetail.contractVersionId"
+        />
         <section
           v-if="contractDetail.businessEntrySubmissions?.length"
           class="content-panel"
@@ -1184,65 +1183,6 @@
       @confirm="confirmSigningMaterialChange"
     />
 
-    <t-dialog
-      v-if="contractChangeActionEnabled()"
-      v-model:visible="changeDialogVisible"
-      header="发起合同变更"
-      :confirm-btn="{ content: '创建变更草稿', loading: changeSubmitting }"
-      cancel-btn="取消"
-      :close-on-overlay-click="false"
-      @confirm="submitChangeDraft"
-    >
-      <t-alert
-        theme="info"
-        class="change-dialog-alert"
-      >
-        变更草稿、审批和用章不会改变当前有效合同；只有新版本归档确认后才会替代旧版本生效。
-      </t-alert>
-      <dl
-        v-if="changeEligibility?.currentEffective"
-        class="change-base-summary"
-      >
-        <dt>当前有效基版</dt>
-        <dd>合同 v{{ changeEligibility.currentEffective.versionNo }}</dd>
-        <dt>当前合同金额</dt>
-        <dd>{{ moneyText(changeEligibility.currentEffective.amountCents) }}</dd>
-        <dt>金额上限性质</dt>
-        <dd>{{ changeEligibility.currentEffective.amountLimitType === 'unlimited' ? '无限额框架合同' : '有金额上限' }}（继承且不可修改）</dd>
-      </dl>
-      <div class="change-form-grid">
-        <label class="change-field">
-          <span>金额方向</span>
-          <t-select
-            v-model="changeForm.changeDirection"
-            :options="changeDirectionOptions"
-            @change="onChangeDirection"
-          />
-        </label>
-        <label class="change-field">
-          <span>变更金额（元）</span>
-          <t-input
-            v-model="changeForm.changeAmountYuan"
-            :disabled="changeForm.changeDirection === 'unchanged'"
-            :maxlength="19"
-            placeholder="请输入金额，最多两位小数"
-          />
-        </label>
-        <label class="change-field change-reason">
-          <span>变更原因</span>
-          <t-textarea
-            v-model="changeForm.changeReason"
-            :autosize="{ minRows: 3, maxRows: 6 }"
-          />
-        </label>
-      </div>
-      <p
-        v-if="changeError"
-        class="change-error"
-      >
-        {{ changeError }}
-      </p>
-    </t-dialog>
     <ApprovalProgressPanel
       business-type="contract_version"
       :business-id="contractDetail?.contractVersionId"
@@ -1253,6 +1193,9 @@
 
 <script setup lang="ts">
 import type { ContractSigningCompletion } from "./use-contract-signed-archive";
+import EffectiveContractTaxFacts from "./EffectiveContractTaxFacts.vue";
+import SignedContractChanges from "./SignedContractChanges.vue";
+import ContractWorkCompletionSection from "./ContractWorkCompletionSection.vue";
 import ContractSignedArchiveSection from "./ContractSignedArchiveSection.vue";
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
@@ -1267,7 +1210,6 @@ import {
   completeContractSeal,
   confirmContractArchive,
   confirmMutuallySignedContract,
-  createContractChangeDraft,
   createPrivateFileDownloadTicket,
   downloadPrivateFileByTicket,
   delegateContractApproval,
@@ -1276,7 +1218,6 @@ import {
   executeContractApprovalReviewAction,
   executeContractSigningMaterialChange,
   fetchApprovalDelegationUserOptions,
-  fetchContractChangeEligibility,
   fetchContractDetail,
   generateContractPdfArchive,
   getPrivateFileDownloadTicketCapability,
@@ -1320,7 +1261,7 @@ import {
   FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY
 } from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText } from "../../lib/money";
 import { contractDetailChainLinks } from "../business-chain-links.config";
 import type { DetailTone } from "./contract-detail.config";
 import {
@@ -1342,12 +1283,7 @@ import {
 import {
   contractApprovalRouteText,
   contractChangeTypeLabel,
-  isCurrentChangeSubmission,
-  isPostgresBigIntText,
-  normalizeChangeEligibility,
-  normalizeChangeVersion,
   normalizeContractChangeVersions,
-  type NormalizedChangeEligibility,
   type NormalizedContractChangeVersion
 } from "./contract-change.state";
 import { contractVersionStatusLabel } from "./contract-labels";
@@ -1604,27 +1540,6 @@ async function confirmContractFinalFileWithCapability(
   return confirmMutuallySignedContract(contractVersionId, body);
 }
 
-async function createContractChangeDraftWithCapability(
-  contractVersionId: string,
-  contractId: string,
-  body: Parameters<typeof createContractChangeDraft>[1]
-) {
-  const capability = await fetchContractChangeEligibility(contractVersionId);
-  const currentEffective = capability.currentEffective;
-  if (!currentEffective) throw new Error("当前合同没有可变更的生效基版");
-  const eligible = capability.eligible;
-  if (!eligible) throw new Error("当前用户不能发起合同变更");
-  const matchesRequestedVersion = currentEffective.id === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同变更基版已变化，请刷新后重试");
-  const matchesRequestedContract = currentEffective.contractId === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes(
-    "create_contract_change_draft"
-  );
-  if (!operationAllowed) throw new Error("当前用户不能发起合同变更");
-  return createContractChangeDraft(contractVersionId, body);
-}
-
 async function createContractFileDownloadTicketWithCapability(
   fileId: string,
   body: Parameters<typeof createPrivateFileDownloadTicket>[1]
@@ -1728,17 +1643,8 @@ const formalPreviewUrl = ref("");
 const detailLoading = ref(false);
 const contractDetailError = ref("");
 const activeTab = ref("overview");
-const changeEligibility = ref<NormalizedChangeEligibility | null>(null);
-const contractChangeAvailableActions = shallowRef<
-  Array<"create_contract_change_draft"> | null
->(null);
 const normalizedChangeVersions = ref<NonNullable<ReturnType<typeof normalizeContractChangeVersions>>>([]);
-const changeEligibilityLoading = ref(false);
-const changeDialogVisible = ref(false);
-const changeSubmitting = ref(false);
-const changeError = ref("");
 let detailRequestId = 0;
-let changeSubmissionToken = 0;
 let signingMaterialChangeSubmissionToken = 0;
 let contractReviewSubmissionToken = 0;
 let contractReviewDialogGeneration = 0;
@@ -1752,17 +1658,6 @@ let contractWithdrawalOperationId = 0;
 let contractWithdrawalDialogContext: ContractWithdrawalDialogContext | null = null;
 let contractWithdrawalInFlight: Promise<boolean> | null = null;
 let contractWithdrawalResultUnknown = false;
-let changeDialogBaseVersionId = "";
-const changeForm = reactive({
-  changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
-  changeAmountYuan: "0",
-  changeReason: ""
-});
-const changeDirectionOptions = [
-  { label: "增加金额", value: "increase" },
-  { label: "减少金额", value: "decrease" },
-  { label: "金额不变", value: "unchanged" }
-];
 const finalConfirmationOptions = [
   { value: "firstPartySignedOrStamped", label: "我方签字或签章已完成" },
   { value: "companySealCompleted", label: "对应我方公司公章已加盖" },
@@ -2188,12 +2083,6 @@ function isContractActionEnabled(key: string) {
   );
 }
 
-function contractChangeActionEnabled() {
-  if (v2LifecycleLocked.value) return false;
-  return contractChangeAvailableActions.value !== null &&
-    contractChangeAvailableActions.value.includes("create_contract_change_draft");
-}
-
 function contractReviewActionEnabled() {
   if (v2LifecycleLocked.value) return false;
   return Boolean(contractLifecycleAvailableActionKeys.value?.includes("review_approval")) &&
@@ -2311,7 +2200,6 @@ async function reloadContractDetail() {
   contractReviewCapability.value = null;
   contractLifecycleAvailableActions.value = null;
   contractLifecycleAvailableActionKeys.value = null;
-  contractChangeAvailableActions.value = null;
   contractReviewResultUnknown = false;
   contractWithdrawalResultUnknown = false;
   detailLoading.value = true;
@@ -2330,22 +2218,6 @@ async function reloadContractDetail() {
     contractReviewCapability.value = structuredClone(serverDetail);
     contractDetail.value = detail;
     normalizedChangeVersions.value = versions;
-    changeEligibility.value = null;
-    if (
-      !serverDetail.historyReadOnly &&
-      canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])
-    ) {
-      changeEligibilityLoading.value = true;
-      const eligibilityPayload = await fetchContractChangeEligibility(detail.contractVersionId).catch(() => null);
-      if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
-      contractChangeAvailableActions.value = eligibilityPayload?.availableActions ?? null;
-      changeEligibility.value = eligibilityPayload === null
-        ? null
-        : normalizeChangeEligibility(structuredClone(eligibilityPayload), detail.contractVersionId);
-      changeEligibilityLoading.value = false;
-    } else {
-      changeEligibilityLoading.value = false;
-    }
     const archiveFileIds = detail.archiveFiles
       .filter((file) => file.canDownload)
       .map((file) => file.fileId);
@@ -2362,11 +2234,8 @@ async function reloadContractDetail() {
     contractReviewCapability.value = null;
     contractLifecycleAvailableActions.value = null;
     contractLifecycleAvailableActionKeys.value = null;
-    contractChangeAvailableActions.value = null;
     contractDetail.value = null;
     normalizedChangeVersions.value = [];
-    changeEligibility.value = null;
-    changeEligibilityLoading.value = false;
     const reason = formatUnknownApiError(error, "未知错误");
     contractDetailError.value = `未能读取合同详情：${reason}。当前页面数据不能用于审批、归档、结算或付款判断，请确认账号权限和网络状态后重试。`;
     return false;
@@ -2379,7 +2248,6 @@ watch(
   () => [route.params.contractId, route.query?.versionId],
   (next, previous) => {
     if (next[0] === previous[0] && next[1] === previous[1]) return;
-    clearChangeTransientState();
     clearContractActionTransientState();
     activeTab.value = "overview";
     contractDetail.value = null;
@@ -2399,24 +2267,6 @@ function routeVersionId() {
   return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
 }
 
-function resetChangeForm() {
-  changeForm.changeDirection = "unchanged";
-  changeForm.changeAmountYuan = "0";
-  changeForm.changeReason = "";
-}
-
-function clearChangeTransientState() {
-  changeSubmissionToken += 1;
-  changeEligibility.value = null;
-  contractChangeAvailableActions.value = null;
-  changeEligibilityLoading.value = false;
-  changeDialogVisible.value = false;
-  changeSubmitting.value = false;
-  changeDialogBaseVersionId = "";
-  changeError.value = "";
-  resetChangeForm();
-}
-
 function clearContractActionTransientState() {
   signingMaterialChangeSubmissionToken += 1;
   contractReviewSubmissionToken += 1;
@@ -2427,7 +2277,6 @@ function clearContractActionTransientState() {
   contractReviewCapability.value = null;
   contractLifecycleAvailableActions.value = null;
   contractLifecycleAvailableActionKeys.value = null;
-  contractChangeAvailableActions.value = null;
   contractWithdrawalSubmissionToken += 1;
   contractWithdrawalDialogGeneration += 1;
   contractWithdrawalDialogContext = null;
@@ -2450,90 +2299,12 @@ function clearContractActionTransientState() {
   sealCompletionConfirmations.value = [];
 }
 
-function moneyText(cents: string) {
-  return `¥${centsTextToYuanText(cents)}`;
-}
-
 function approvalRouteLabel(roleKeys: string[]) {
   return contractApprovalRouteText(roleKeys);
 }
 
 function changeTypeLabel(value: unknown) {
   return contractChangeTypeLabel(value);
-}
-
-function onChangeDirection(value: "increase" | "decrease" | "unchanged") {
-  if (value === "unchanged") changeForm.changeAmountYuan = "0";
-}
-
-function openChangeDialog() {
-  const current = changeEligibility.value?.currentEffective;
-  if (!changeEligibility.value?.eligible || !contractChangeActionEnabled() || !current) return;
-  changeDialogBaseVersionId = current.id;
-  resetChangeForm();
-  changeError.value = "";
-  changeDialogVisible.value = true;
-}
-
-async function submitChangeDraft() {
-  if (changeSubmitting.value) return;
-  const reason = changeForm.changeReason.trim();
-  if (!reason) return void (changeError.value = "请填写变更原因");
-  let amountCents: string;
-  try {
-    amountCents = yuanTextToCentsText(changeForm.changeAmountYuan.trim());
-  } catch {
-    return void (changeError.value = "变更金额必须按元填写，且最多保留两位小数");
-  }
-  if (!isPostgresBigIntText(amountCents)) {
-    return void (changeError.value = "变更金额超出系统可处理范围，请核对后重试");
-  }
-  if (changeForm.changeDirection === "unchanged" && amountCents !== "0") {
-    return void (changeError.value = "金额不变时变更金额必须为 0");
-  }
-  if (changeForm.changeDirection !== "unchanged" && BigInt(amountCents) <= 0n) {
-    return void (changeError.value = "增减金额必须大于 0");
-  }
-  changeSubmitting.value = true;
-  changeError.value = "";
-  const submissionToken = ++changeSubmissionToken;
-  const capturedRouteContractId = routeContractId();
-  const capturedBaseVersionId = changeDialogBaseVersionId;
-  const capturedBaseContractId = changeEligibility.value?.currentEffective?.contractId ?? "";
-  const capturedChangeDirection = changeForm.changeDirection;
-  const submissionIsCurrent = () => isCurrentChangeSubmission(
-    submissionToken,
-    changeSubmissionToken,
-    capturedRouteContractId,
-    routeContractId()
-  );
-  try {
-    const createdPayload = await createContractChangeDraftWithCapability(
-      capturedBaseVersionId,
-      capturedBaseContractId,
-      {
-      changeType: "change",
-      changeReason: reason,
-      changeDirection: capturedChangeDirection,
-      changeAmountCents: amountCents
-      }
-    );
-    if (!submissionIsCurrent()) return;
-    const created = normalizeChangeVersion(createdPayload);
-    if (!created || created.baseVersionId !== capturedBaseVersionId ||
-      created.contractId !== capturedBaseContractId) {
-      throw new Error("变更草稿响应与当前基版不一致，请刷新合同详情");
-    }
-    if (!submissionIsCurrent()) return;
-    changeDialogVisible.value = false;
-    await router.push(`/contracts/${created.contractId}/workbench?versionId=${created.id}`);
-  } catch (error) {
-    if (submissionIsCurrent()) {
-      changeError.value = formatUnknownApiError(error, "创建变更草稿失败");
-    }
-  } finally {
-    if (submissionIsCurrent()) changeSubmitting.value = false;
-  }
 }
 
 function requiredText(raw: string, label: string) {
@@ -4007,7 +3778,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   detailRequestId += 1;
-  clearChangeTransientState();
   clearContractActionTransientState();
 });
 </script>
@@ -4451,58 +4221,6 @@ onBeforeUnmount(() => {
   font-size: var(--jg-font-size-body);
 }
 
-.change-dialog-alert {
-  margin-bottom: var(--jg-space-md);
-}
-
-.change-base-summary {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: var(--jg-space-xs) var(--jg-space-lg);
-  margin: 0 0 var(--jg-space-lg);
-  padding: var(--jg-space-md);
-  border-radius: var(--jg-radius-panel);
-  background: var(--jg-color-bg-muted);
-}
-
-.change-base-summary dt {
-  color: var(--jg-color-text-tertiary);
-  font-size: var(--jg-font-size-meta);
-}
-
-.change-base-summary dd {
-  margin: 0;
-  font-weight: var(--jg-font-weight-semibold);
-}
-
-.change-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--jg-space-md);
-}
-
-.change-field {
-  display: grid;
-  gap: var(--jg-space-sm);
-}
-
-.change-field > span {
-  color: var(--jg-color-text-secondary);
-  font-size: var(--jg-font-size-meta);
-  font-weight: var(--jg-font-weight-semibold);
-}
-
-.change-reason {
-  grid-column: 1 / -1;
-}
-
-.change-error {
-  margin: var(--jg-space-md) 0 0;
-  color: var(--jg-color-danger);
-  font-size: var(--jg-font-size-body);
-  font-weight: var(--jg-font-weight-semibold);
-}
-
 :deep(.t-button:focus-visible),
 :deep(.t-link:focus-visible),
 :deep(.t-input:focus-within),
@@ -4518,8 +4236,7 @@ onBeforeUnmount(() => {
   .overview-grid,
   .money-summary,
   .detail-loading-skeleton__grid,
-  .version-history-row,
-  .change-form-grid {
+  .version-history-row {
     grid-template-columns: 1fr;
   }
 

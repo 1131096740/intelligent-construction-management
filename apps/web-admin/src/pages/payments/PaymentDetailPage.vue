@@ -182,7 +182,9 @@
                 :key="item.label"
               >
                 <dt>{{ item.label }}</dt>
-                <dd>{{ item.value }}</dd>
+                <dd :class="{ 'payment-agreement-text': item.label.includes('付款约定') }">
+                  {{ item.value }}
+                </dd>
               </template>
             </dl>
           </div>
@@ -2526,6 +2528,10 @@ function frozenSnapshotDraft(snapshot: BusinessEntryFrozenSnapshot): BusinessEnt
   color: var(--jg-color-text-secondary);
   font-size: var(--jg-font-size-body);
   overflow-wrap: anywhere;
+}
+
+.payment-agreement-text {
+  white-space: pre-wrap;
 }
 
 .rule-list {

@@ -325,7 +325,7 @@ export class ContractWorkbenchService {
         : Promise.resolve([]),
       version.contractGovernanceVersion === 1
         ? this.prisma.contractFormalFile.findMany({
-            where: { contractVersionId: version.id, status: "active" },
+            where: { contractVersionId: version.id, status: "active", purpose: { not: "signed_change_appendix" } },
             orderBy: { createdAt: "desc" }
           })
         : Promise.resolve([])

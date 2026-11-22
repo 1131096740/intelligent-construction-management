@@ -70,6 +70,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ProjectController: "project",
   ProjectExpenseController: "expense",
   SettlementController: "settlement",
+  SignedContractSettlementController: "settlement",
   SettlementDraftController: "settlement",
   SettlementImportController: "settlement",
   SettlementTemplateGovernanceController: "settlement",

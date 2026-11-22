@@ -54,6 +54,8 @@ import { readDirectArchiveGeneration } from "./contract-archive-generation-read"
 import { requiresGeneratedArchiveOriginals } from "../contract/contract-generated-archive-original-read";
 import { readGeneratedArchiveDownloadGeneration } from "../contract/contract-v2-archive-persistent-proof";
 import { assertDirectReviewQualification } from "../contract-ledger/contract-direct-review-qualification";
+import { fundBalanceWitnessBinding, signFundBalanceWitness } from "../fund-account/fund-balance-witness-signing";
+import { isSignedSettlementFileMime, isSignedSettlementObjectKey, signedSettlementUploadPrefix } from "./signed-settlement-file";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -62,6 +64,7 @@ export interface UploadPrivateFileInput {
   uploadedByUserId: string;
   buffer: Buffer;
   idempotencyKey?: string;
+  signedSettlementProjectId?: string;
   approvalFormGenerationClaim?: {
     approvalInstanceId: string;
     claimToken: string;
@@ -93,6 +96,15 @@ export interface CreateFileDownloadTicketInput {
   downloadReason?: string;
   accessMode?: FileTicketAccessMode;
 }
+
+export interface SignedSettlementDownloadScope {
+  projectId: string;
+  settlementId: string;
+  fileId: string;
+}
+
+type SignedSettlementDownloadFile = Pick<FileObject,
+  "id" | "bucket" | "objectKey" | "originalName" | "mimeType" | "sizeBytes" | "contentSha256" | "storageStatus">;
 
 export interface LinkFileReplacementInput {
   newFileId: string;
@@ -870,6 +882,8 @@ export class FileService {
     return createHash("sha256").update(objectKey).digest("hex").slice(0, 16);
   }
 
+  async uploadPrivateFile(input: UploadPrivateFileInput & { signedSettlementProjectId: string }): Promise<Pick<FileObject, "id" | "originalName" | "mimeType">>;
+  async uploadPrivateFile(input: UploadPrivateFileInput & { signedSettlementProjectId?: undefined }): Promise<FileObject>;
   async uploadPrivateFile(input: UploadPrivateFileInput) {
     if (!input.uploadedByUserId.trim()) {
       throw new BadRequestException("上传人信息缺失，请重新登录后再上传资料");
@@ -910,7 +924,12 @@ export class FileService {
       throw new BadRequestException("结算签名合成任务令牌无效，请重新发起生成");
     }
     const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
-    const objectKey = settlementClaimToken
+    const signedSettlementPrefix = input.signedSettlementProjectId === undefined
+      ? null
+      : signedSettlementUploadPrefix(input.signedSettlementProjectId);
+    const objectKey = signedSettlementPrefix
+      ? `${signedSettlementPrefix}${randomUUID()}-${this.safeFileName(input.originalName)}`
+      : settlementClaimToken
       ? `uploads/settlement-signed-generation/${settlementClaimToken}.pdf`
       : idempotencyKey
         ? `uploads/idempotent/${idempotencyKey}/${randomUUID()}-${contentSha256}-${this.safeFileName(input.originalName)}`
@@ -927,14 +946,17 @@ export class FileService {
       file.uploadedByUserId === input.uploadedByUserId &&
       file.contentSha256 === contentSha256 &&
       file.storageStatus === "active" &&
-      file.supersedesFileObjectId === null;
+      file.supersedesFileObjectId === null &&
+      (signedSettlementPrefix ? file.objectKey.startsWith(signedSettlementPrefix) : !isSignedSettlementObjectKey(file.objectKey));
 
     if (idempotencyKey) {
       const existing = await this.prisma.fileObject.findUnique({
         where: { id: fileId }
       });
       if (existing) {
-        if (matchesExpectedUploadFingerprint(existing)) return existing;
+        if (matchesExpectedUploadFingerprint(existing)) {
+          return signedSettlementPrefix ? { id: existing.id, originalName: existing.originalName, mimeType: existing.mimeType } : existing;
+        }
         throw new ConflictException(UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE);
       }
     }
@@ -973,20 +995,20 @@ export class FileService {
     let transactionCallbackCompleted = false;
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const file = await tx.fileObject.create({
-          data: {
-            id: fileId,
-            bucket,
-            objectKey,
-            originalName: input.originalName,
-            mimeType: input.mimeType,
-            sizeBytes: input.sizeBytes,
-            uploadedByUserId: input.uploadedByUserId,
-            contentSha256,
-            storageStatus: "active",
-            supersedesFileObjectId: null
-          }
-        });
+        const data = {
+          id: fileId,
+          bucket,
+          objectKey,
+          originalName: input.originalName,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          uploadedByUserId: input.uploadedByUserId,
+          contentSha256,
+          storageStatus: "active",
+          supersedesFileObjectId: null
+        };
+        const fullFile = signedSettlementPrefix ? null : await tx.fileObject.create({ data });
+        const file = fullFile ?? await tx.fileObject.create({ data, select: { id: true, originalName: true, mimeType: true } });
 
         await this.audit.record(tx, {
           actorUserId: input.uploadedByUserId,
@@ -994,10 +1016,10 @@ export class FileService {
           businessType: "file_object",
           businessId: file.id,
           metadata: {
-            bucket: file.bucket,
-            objectKey: file.objectKey,
+            bucket: fullFile?.bucket ?? bucket,
+            objectKey: fullFile?.objectKey ?? objectKey,
             originalName: file.originalName,
-            sizeBytes: file.sizeBytes
+            sizeBytes: fullFile?.sizeBytes ?? input.sizeBytes
           }
         });
 
@@ -1106,7 +1128,9 @@ export class FileService {
           if (idempotencyKey && !physicalObjectMatches) {
             await cleanupWrittenObject(transactionError);
           }
-          return committedFile;
+          return signedSettlementPrefix
+            ? { id: committedFile.id, originalName: committedFile.originalName, mimeType: committedFile.mimeType }
+            : committedFile;
         }
         if (idempotencyKey) {
           if (!physicalObjectMatches) {
@@ -1237,6 +1261,73 @@ export class FileService {
     throw new BadRequestException("新文件已关联其他被替换文件");
   }
 
+  private async signedSettlementDownloadFile(tx: Prisma.TransactionClient, scope: SignedSettlementDownloadScope, actor: string) {
+    const key = process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY;
+    if (!key || !/^[a-f0-9]{64}$/u.test(key) ||
+        key === process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY || key === process.env.FUND_BALANCE_NOTICE_WITNESS_KEY) {
+      throw new ServiceUnavailableException("已签结算附件查阅暂不可用");
+    }
+    const { database, role, xid, backend, expires } = await fundBalanceWitnessBinding(tx);
+    const { projectId, settlementId, fileId } = scope;
+    const proof = signFundBalanceWitness(key, [
+      "signed_settlement_attachment_download_v1", database, role, xid, backend, expires, projectId, settlementId, fileId, actor
+    ]);
+    const [file] = await tx.$queryRaw<SignedSettlementDownloadFile[]>`
+      SELECT * FROM public.jg_read_signed_settlement_attachment_download_v1(
+        ${projectId},${settlementId},${fileId},${actor},${expires},${proof}
+      )
+    `;
+    if (!file) throw new ForbiddenException("当前账号无权读取该已签结算附件");
+    return file;
+  }
+
+  async createSignedSettlementDownloadTicket(scope: SignedSettlementDownloadScope, input: CreateFileDownloadTicketInput) {
+    if (input.delegatorUserId) throw new BadRequestException("已签结算附件须由本人查阅");
+    const downloadReason = normalizeDownloadReason(input.downloadReason);
+    const accessMode = input.accessMode ?? "download";
+    return this.prisma.$transaction(async tx => {
+      const file = await this.signedSettlementDownloadFile(tx, scope, input.actorUserId);
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const token = this.signDownloadToken(file.id, input.actorUserId, expiresAt, downloadReason, accessMode, undefined, scope);
+      await this.audit.record(tx, {
+        actorUserId: input.actorUserId,
+        action: accessMode === "preview" ? "file.preview.ticket" : "file.download.ticket",
+        businessType: "file_object",
+        businessId: file.id,
+        metadata: { expiresAt, downloadReason, ...(accessMode === "preview" ? { accessMode } : {}) }
+      });
+      const query = new URLSearchParams({ expiresAt, downloadReason, accessMode, token });
+      const path = `/projects/${encodeURIComponent(scope.projectId)}/signed-contract-settlements/${encodeURIComponent(scope.settlementId)}/attachments/${encodeURIComponent(file.id)}/download`;
+      return { fileId: file.id, fileName: file.originalName, mimeType: file.mimeType, sizeBytes: file.sizeBytes,
+        expiresAt, downloadUrl: `${path}?${query}` };
+    });
+  }
+
+  async readSignedSettlementFile(scope: SignedSettlementDownloadScope, input: ReadPrivateFileInput) {
+    if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) {
+      throw new BadRequestException("下载链接已过期，请重新申请下载");
+    }
+    const downloadReason = normalizeDownloadReason(input.downloadReason);
+    const accessMode = input.accessMode ?? "download";
+    if (!this.verifyDownloadToken(scope.fileId, input.actorUserId, input.expiresAt, downloadReason, accessMode, undefined, input.token, scope)) {
+      throw new BadRequestException("下载链接校验失败，请重新申请下载");
+    }
+    const file = await this.prisma.$transaction(tx => this.signedSettlementDownloadFile(tx, scope, input.actorUserId));
+    if (!file.contentSha256 || file.bucket !== this.storage.bucketName()) {
+      throw new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    }
+    const buffer = await this.readVerifiedFileBuffer(file);
+    if (buffer.length !== file.sizeBytes) {
+      throw new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    }
+    await this.prisma.$transaction(tx => this.audit.record(tx, {
+      actorUserId: input.actorUserId, action: accessMode === "preview" ? "file.preview" : "file.download",
+      businessType: "file_object", businessId: file.id,
+      metadata: { originalName: file.originalName, sizeBytes: file.sizeBytes, downloadReason, ...(accessMode === "preview" ? { accessMode } : {}) }
+    }));
+    return { buffer, originalName: file.originalName, mimeType: file.mimeType, accessMode };
+  }
+
   async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketInput) {
     if (!input.actorUserId.trim()) {
       throw new Error("下载人信息缺失，请重新登录后再下载资料");
@@ -1254,7 +1345,7 @@ export class FileService {
         throw new Error("资料文件不存在或已被移除");
       }
 
-      if (accessMode === "preview" && file.mimeType !== "application/pdf") {
+      if (accessMode === "preview" && !this.canPreviewPrivateFile(file)) {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
 
@@ -1403,7 +1494,7 @@ export class FileService {
         delegatorUserId,
         "ticket"
       );
-      if (accessMode === "preview" && found.mimeType !== "application/pdf") {
+      if (accessMode === "preview" && !this.canPreviewPrivateFile(found)) {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
       const generation = await this.archiveDownloadGeneration(
@@ -2135,7 +2226,7 @@ export class FileService {
     return name || "private-file";
   }
 
-  private async readVerifiedFileBuffer(file: FileObject): Promise<Buffer> {
+  private async readVerifiedFileBuffer(file: Pick<FileObject, "id" | "objectKey" | "storageStatus" | "contentSha256">): Promise<Buffer> {
     if (file.storageStatus !== "active") {
       throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
     }
@@ -2163,6 +2254,29 @@ export class FileService {
     return buffer;
   }
 
+  private canPreviewPrivateFile(file: FileObject) {
+    return file.mimeType === "application/pdf" ||
+      (isSignedSettlementObjectKey(file.objectKey) && isSignedSettlementFileMime(file.mimeType));
+  }
+
+  private async assertSignedSettlementFileAccess(tx: Prisma.TransactionClient, file: FileObject, actorUserId: string) {
+    const denied = () => new ForbiddenException("当前账号无权读取该已签结算附件");
+    const attachment = await tx.signedContractSettlementAttachment.findUnique({
+      where: { fileId: file.id },
+      select: { sha256: true, settlement: { select: { projectId: true, ownerUserId: true, state: true } } }
+    });
+    if (!attachment || file.storageStatus !== "active" || attachment.sha256 !== file.contentSha256 ||
+      !file.objectKey.startsWith(signedSettlementUploadPrefix(attachment.settlement.projectId))) throw denied();
+    const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (actor?.isActive !== true) throw denied();
+    const { projectId, ownerUserId, state } = attachment.settlement;
+    const visibility = new ProjectVisibilityService(this.prisma);
+    if (!(await visibility.visibleProjectIdsInTransaction(tx, actorUserId)).includes(projectId)) throw denied();
+    const roles = (await visibility.effectiveRoleKeysByProjectInTransaction(tx, actorUserId, [projectId])).get(projectId) ?? [];
+    if (roles.includes("contract_director") || (roles.includes("contract_staff") && (ownerUserId === actorUserId || state === "confirmed"))) return;
+    throw denied();
+  }
+
   private async assertCanDownloadFileObject(
     tx: Prisma.TransactionClient,
     file: FileObject,
@@ -2170,6 +2284,10 @@ export class FileService {
     delegatorUserId?: string,
     purpose?: "ticket"
   ): Promise<GlobalInvoiceFileAccessContext | ContractReviewFileAccess | undefined> {
+    if (isSignedSettlementObjectKey(file.objectKey)) {
+      await this.assertSignedSettlementFileAccess(tx, file, actorUserId);
+      return;
+    }
     const registeredVoucher = await registeredPaymentVoucherInstalled(tx)
       ? await tx.$queryRaw<Array<{executionId:string;verifiedExecutionId:string|null;paymentRequestId:string|null;contentSha256:string}>>(Prisma.sql`
       /* registered_payment_voucher_download */
@@ -3739,11 +3857,13 @@ export class FileService {
     expiresAt: string,
     downloadReason: string,
     accessMode: FileTicketAccessMode,
-    delegatorUserId?: string
+    delegatorUserId?: string,
+    scope?: SignedSettlementDownloadScope
   ) {
     return createHmac("sha256", this.downloadSecret())
-      .update(
-        `${fileId}.${actorUserId}.${expiresAt}.${downloadReason}.${accessMode}${
+      .update(scope
+        ? JSON.stringify(["signed-settlement-download-v1", scope.projectId, scope.settlementId, fileId, actorUserId, expiresAt, downloadReason, accessMode])
+        : `${fileId}.${actorUserId}.${expiresAt}.${downloadReason}.${accessMode}${
           delegatorUserId ? `.${delegatorUserId}` : ""
         }`
       )
@@ -3757,7 +3877,8 @@ export class FileService {
     downloadReason: string,
     accessMode: FileTicketAccessMode,
     delegatorUserId: string | undefined,
-    token: string
+    token: string,
+    scope?: SignedSettlementDownloadScope
   ) {
     const expected = Buffer.from(
       this.signDownloadToken(
@@ -3766,7 +3887,8 @@ export class FileService {
         expiresAt,
         downloadReason,
         accessMode,
-        delegatorUserId
+        delegatorUserId,
+        scope
       )
     );
     const actual = Buffer.from(token);

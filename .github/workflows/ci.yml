@@ -377,18 +377,30 @@ jobs:
           DYNAMIC_SHARD: ${{ matrix.shard }}
           TASK12_289_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 428 }}
         run: |
+          count=$(node -p "require('./services/api/prisma/database-dynamic-gate-manifest.json').migrationBaseline.expectedDirectoryCount")
+          mode_args=()
+          if [[ "$count" == 320 ]]; then
+            mode_args=(--current-320)
+            predecessor=a187dc73a133114e1cfbbc891a4aec923abe2545
+          fi
           if [[ "$DYNAMIC_GROUP" == contract_finance_acceptance && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run.sh ]]; then
+            if [[ "$count" == 320 ]]; then
+              exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA" --current-320 "$predecessor"
+            fi
             exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA"
           fi
           if [[ "$DYNAMIC_GROUP" == remaining_dynamic_postgresql16 && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run-remaining.sh ]]; then
+            if [[ "$count" == 320 ]]; then
+              exec bash .github/task12-install-295/contract-finance/run-remaining.sh "$CI_SOURCE_SHA" --current-320
+            fi
             exec bash .github/task12-install-295/contract-finance/run-remaining.sh "$CI_SOURCE_SHA"
           fi
           if [[ "$DYNAMIC_GROUP" == pol113_pol115_business_entries && "$DYNAMIC_SHARD" == pol113_pol114 && -f .github/task12-install-295/named-pol113-pol114/ci.sh ]]; then
-            bash .github/task12-install-295/named-pol113-pol114/ci.sh pol113
-            exec bash .github/task12-install-295/named-pol113-pol114/ci.sh pol114
+            bash .github/task12-install-295/named-pol113-pol114/ci.sh pol113 ${mode_args[@]+"${mode_args[@]}"}
+            exec bash .github/task12-install-295/named-pol113-pol114/ci.sh pol114 ${mode_args[@]+"${mode_args[@]}"}
           fi
           if [[ "$DYNAMIC_GROUP" == pol113_pol115_business_entries && "$DYNAMIC_SHARD" == pol115_workbench && -f .github/task12-install-295/contract-finance/workbench/run-workbench295.sh ]]; then
-            exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" pol115-workbench
+            exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" pol115-workbench ${mode_args[@]+"${mode_args[@]}"}
           fi
           if [[ -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh ]]; then
             case "$DYNAMIC_GROUP" in
@@ -420,7 +432,10 @@ jobs:
               *) lane= ;;
             esac
             if [[ -n "$lane" ]]; then
-              exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane"
+              if [[ "$count" == 320 && "$lane" == pol275 ]]; then
+                exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane" --current-320 "$predecessor"
+              fi
+              exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane" ${mode_args[@]+"${mode_args[@]}"}
             fi
           fi
           if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == contract_settlement_v2 && -z "$DYNAMIC_SHARD" ]]; then

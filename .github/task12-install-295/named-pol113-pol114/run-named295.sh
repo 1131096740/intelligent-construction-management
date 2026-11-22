@@ -11,8 +11,12 @@ evidence=$5
 node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" <<'JS'
 const [candidateFile,sourceFile,sha]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);
-if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==295||
-  a.migrationCount!==295||a.ledger295!==s.ledgerSha256)process.exit(65);
+const current320=s.mode==='current-320';
+const count=current320?320:295;
+if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==count||a.migrationCount!==count||
+  a.ledger295!==(current320?s.predecessor.ledgerSha256:s.ledgerSha256))process.exit(65);
+if(current320&&(a.ledger320!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
+  JSON.stringify(a.tails)!==JSON.stringify(s.tails)))process.exit(65);
 JS
 (cd "$generated/context" && shasum -a 256 -c ../context.sha256 >/dev/null)
 [[ -z $(docker ps -q) ]]
@@ -42,9 +46,9 @@ status=0
 docker run "${sandbox[@]}" --entrypoint node "$image" /qualification/install-only.cjs "$mode" \
   > "$evidence/receipt.json" 2> "$evidence/private.stderr" || status=$?
 (( status == 0 )) || exit "$status"
-node - "$evidence/receipt.json" "$mode" "$ref" <<'JS'
+node - "$evidence/receipt.json" "$mode" "$ref" "$prepared/source.json" <<'JS'
 const assert=require('node:assert/strict');
-const [receipt,mode,sha]=process.argv.slice(2),r=require(receipt);
+const [receipt,mode,sha,source]=process.argv.slice(2),r=require(receipt);
 assert.equal(r.mode,mode); assert.equal(r.candidateSha,sha);
-assert.equal(r.status,'POL113_POL114_NAMED_EXACT_295_PASSED');
+assert.equal(r.status,'POL113_POL114_NAMED_EXACT_'+require(source).migrationCount+'_PASSED');
 JS

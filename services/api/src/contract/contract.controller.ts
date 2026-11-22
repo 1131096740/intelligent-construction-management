@@ -1,3 +1,6 @@
+import { ContractWorkCompletionService } from "./contract-work-completion.service";
+import { ContractWorkCompletionApprovalService } from "./contract-work-completion-approval.service";
+import { CreateContractWorkCompletionDraftDto, ReviewContractWorkCompletionDto } from "./dto/contract-work-completion.dto";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { ContractDutyNotificationService } from "./contract-duty-notification.service";
 import { ContractV2ArchiveService } from "./contract-v2-archive.service";
@@ -43,6 +46,8 @@ import {
   ContractCutoverSurface
 } from "../contract-cutover/contract-cutover.decorators";
 import { ContractReadService } from "./contract-read.service";
+import { ContractEffectiveTaxService } from "./contract-effective-tax.service";
+import { ContractSignedChangeService } from "./contract-signed-change.service";
 import { ContractService } from "./contract.service";
 import { AssignContractApprovalDto } from "./dto/assign-contract-approval.dto";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
@@ -57,6 +62,7 @@ import { WithdrawContractApprovalDto } from "./dto/withdraw-contract-approval.dt
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
+import { ReviewSignedContractChangeDto, SubmitSignedContractChangeDto, SubmitContractTaxRevisionDto } from "./dto/signed-contract-change.dto";
 import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
 import { CopyContractDraftDto } from "./dto/copy-contract-draft.dto";
 import {
@@ -91,7 +97,11 @@ export class ContractController {
     @Optional() private readonly approvalProgress?: ApprovalProgressService,
     @Optional() private readonly preciseLifecycle?: ContractV2SubmissionService,
     @Optional() private readonly signedArchives?: ContractV2ArchiveService,
-    @Optional() private readonly dutyNotifications?: ContractDutyNotificationService
+    @Optional() private readonly dutyNotifications?: ContractDutyNotificationService,
+    @Optional() private readonly signedChanges?: ContractSignedChangeService,
+    @Optional() private readonly effectiveTax?: ContractEffectiveTaxService,
+    @Optional() private readonly workCompletion?: ContractWorkCompletionService,
+    @Optional() private readonly workCompletionApproval?: ContractWorkCompletionApprovalService
   ) {}
 
   @Get(":contractVersionId/duty-sms")
@@ -130,6 +140,46 @@ export class ContractController {
     return { projectId, availableActions };
   }
 
+  @Get(":contractVersionId/work-completions")
+  @ContractCutoverSurface()
+  viewWorkCompletions(@Param("contractVersionId") versionId: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.workCompletionApproval) throw new InternalServerErrorException("履约确认服务尚未就绪");
+    return this.workCompletionApproval.view(versionId, user.id);
+  }
+
+  @Post(":contractVersionId/work-completion-drafts")
+  @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
+  createWorkCompletionDraft(
+    @Param("contractVersionId") versionId: string,
+    @Body() body: CreateContractWorkCompletionDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.workCompletion) throw new InternalServerErrorException("履约登记服务尚未就绪");
+    return this.workCompletion.createDraft(versionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/work-completions/:completionId/submission")
+  @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
+  submitWorkCompletion(
+    @Param("contractVersionId") versionId: string, @Param("completionId") completionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.workCompletionApproval) throw new InternalServerErrorException("履约确认服务尚未就绪");
+    return this.workCompletionApproval.submit(versionId, completionId, user.id);
+  }
+
+  @Post(":contractVersionId/work-completions/:completionId/approval")
+  @ContractCutoverSurface()
+  reviewWorkCompletion(
+    @Param("contractVersionId") versionId: string, @Param("completionId") completionId: string,
+    @Body() body: ReviewContractWorkCompletionDto, @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.workCompletionApproval) throw new InternalServerErrorException("履约确认服务尚未就绪");
+    return this.workCompletionApproval.review(versionId, completionId, user.id, body);
+  }
+
   @Post(":contractVersionId/change-drafts")
   @ContractCutoverSurface()
   // 合同变更草稿：合同员或合同部主管作为合同经办人发起。
@@ -140,6 +190,59 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.contracts.createChangeDraft(contractVersionId, body, user.id);
+  }
+
+  @Get(":contractVersionId/tax-revisions")
+  listTaxRevisions(@Param("contractVersionId") versionId: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.effectiveTax) throw new InternalServerErrorException("合同税务服务尚未就绪");
+    return this.effectiveTax.list(versionId, user.id);
+  }
+
+  @Post(":contractVersionId/tax-revisions")
+  submitTaxRevision(
+    @Param("contractVersionId") versionId: string, @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SubmitContractTaxRevisionDto
+  ) {
+    if (!this.effectiveTax) throw new InternalServerErrorException("合同税务服务尚未就绪");
+    return this.effectiveTax.submit(versionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/tax-revisions/:revisionId/review")
+  reviewTaxRevision(
+    @Param("contractVersionId") versionId: string, @Param("revisionId") revisionId: string,
+    @CurrentUser() user: AuthenticatedUser, @Body() body: ReviewSignedContractChangeDto
+  ) {
+    if (!this.effectiveTax) throw new InternalServerErrorException("合同税务服务尚未就绪");
+    return this.effectiveTax.review(versionId, revisionId, user.id, body);
+  }
+
+  @Get(":contractVersionId/signed-changes")
+  listSignedChanges(@Param("contractVersionId") versionId: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.signedChanges) throw new InternalServerErrorException("补充协议服务尚未就绪");
+    return this.signedChanges.list(versionId, user.id);
+  }
+
+  @Post(":contractVersionId/signed-changes")
+  @RequireProjectRole("contract.create")
+  submitSignedChange(
+    @Param("contractVersionId") versionId: string,
+    @Body() body: SubmitSignedContractChangeDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.signedChanges) throw new InternalServerErrorException("补充协议服务尚未就绪");
+    return this.signedChanges.submit(versionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/signed-changes/:changeId/review")
+  @RequireProjectRole("contract.archive.confirm")
+  reviewSignedChange(
+    @Param("contractVersionId") versionId: string,
+    @Param("changeId") changeId: string,
+    @Body() body: ReviewSignedContractChangeDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.signedChanges) throw new InternalServerErrorException("补充协议服务尚未就绪");
+    return this.signedChanges.review(versionId, changeId, user.id, body);
   }
 
   @Post(":contractVersionId/copies")

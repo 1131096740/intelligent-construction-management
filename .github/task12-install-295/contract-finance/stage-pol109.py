@@ -9,8 +9,20 @@ prev, old, common, workspace, source, out = map(Path,sys.argv[1:])
 out.mkdir()
 profile=json.loads((old/'profile.json').read_text())['pol109Assembly']
 source_record=json.loads(source.read_text())
-if source_record['migrationCount']!=295:
-    raise SystemExit('POL109_295_SOURCE')
+count = source_record['migrationCount']
+if count == 320 and source_record.get('mode') == 'current-320':
+    terminal = source_record['tails'][-1]
+    source_tree = source_record['sourceTree']
+    import re
+    if (terminal['name'] != '20261119006400_contract_work_completion_original_subject' or
+            not re.fullmatch('[0-9a-f]{64}',terminal['sha256']) or not re.fullmatch('[0-9a-f]{40}',source_tree)):
+        raise SystemExit('POL109_320_SOURCE')
+else:
+    if count != 295 or source_record.get('mode') is not None:
+        raise SystemExit('POL109_295_SOURCE')
+    terminal = {'name':'20261119003800_company_transfer_ordinary_loan_multi_witness',
+                'sha256':'e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25'}
+    source_tree = '67644d9465a0ab4ee80ede099139d9c129d66f14'
 sha=lambda path:hashlib.sha256(path.read_bytes()).hexdigest()
 def patch(file,delta):
     subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(file),str(delta)],check=True)
@@ -41,15 +53,15 @@ def exactly(text,needle,new):
 for target in [out/'project-close-profit.owned282.http.pg.spec.ts',out/'task12-pol109-ci.cjs']:
     text=target.read_text()
     text=exactly(text,'count(*) = 290' if target.suffix=='.ts' else 'count(*)=290',
-                      'count(*) = 295' if target.suffix=='.ts' else 'count(*)=295')
+                      f'count(*) = {count}' if target.suffix=='.ts' else f'count(*)={count}')
     old_terminal="'20261119003500_fund_balance_correction_controlled_round'"
     old_hash="'8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60'"
-    text=exactly(text,old_terminal,"'20261119003800_company_transfer_ordinary_loan_multi_witness'")
-    text=exactly(text,old_hash,"'e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25'")
+    text=exactly(text,old_terminal,"'"+terminal['name']+"'")
+    text=exactly(text,old_hash,"'"+terminal['sha256']+"'")
     if target.suffix=='.cjs':
         old_spec=profile['inputs']['project-close-profit.owned282.http.pg.spec.ts']['resultSha256']
         text=exactly(text,old_spec,sha(out/'project-close-profit.owned282.http.pg.spec.ts'))
-        text=exactly(text,'a1be083076018686dd8afba68c44ff9c75502014','67644d9465a0ab4ee80ede099139d9c129d66f14')
+        text=exactly(text,'a1be083076018686dd8afba68c44ff9c75502014',source_tree)
         text=exactly(text,"path.join(context.workDir,'prefixes/combined289/schema.prisma')",'context.combinedSchemaPath')
     target.write_text(text)
 

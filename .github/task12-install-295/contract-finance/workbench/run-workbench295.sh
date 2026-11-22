@@ -2,11 +2,14 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
+mode_args=()
+count=295
+if [[ $# == 5 ]]; then mode_args=(--current-320); count=320; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 base="$repo/.github/task12-install-295/contract-finance"
@@ -15,8 +18,8 @@ scope=pol115-workbench
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="320"&&source.mode!=="current-320"))process.exit(1);
+' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -51,18 +54,18 @@ if pgrep -x postgres >/dev/null; then exit 65; fi
 docker run "${args[@]}" --env NODE_ENV=test --entrypoint node "$image" /qualification/browser-preflight.cjs   >"$work/browser-preflight.json" 2>"$work/browser-preflight.stderr"
 node -e 'if(require(process.argv[1]).status!=="POL115_290_REUSED_BROWSER_PRECHECK_PASSED")process.exit(1)' "$work/browser-preflight.json"
 printf '%s\n' "$work"
-printf '%s\n' '检验原工作台九项在准确 295 的动态角色下通过。观察 workbench、combinedAfterBusiness 和 cleanup。' > "$work/hypothesis.txt"
+printf '%s\n' "检验原工作台九项在准确 $count 的动态角色下通过。观察 workbench、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/workbench-entry.cjs   > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/workbench-entry.cjs ${mode_args[@]+"${mode_args[@]}"}   > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
-  if(row.purpose!=="POL115_WORKBENCH_ORIGINAL_295"||row.sourceSha!==process.argv[2])process.exit(1);
+  if(row.purpose!=="POL115_WORKBENCH_ORIGINAL_"+process.argv[3]||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
-' "$work/receipt.json" "$sha" || { printf 'POL115_WORKBENCH_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
+' "$work/receipt.json" "$sha" "$count" || { printf 'POL115_WORKBENCH_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="POL115_WORKBENCH_ORIGINAL_295_PASSED";
+  const expected="POL115_WORKBENCH_ORIGINAL_"+process.argv[4]+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$scope" "$sha" "$count"

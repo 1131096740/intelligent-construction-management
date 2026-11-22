@@ -1,3 +1,4 @@
+import { CONTRACT_WORK_COMPLETION_SOURCE, ContractWorkCompletionOperatingSourceAdapter } from "../contract/contract-work-completion-operating-source.adapter";
 import { CompanyTransferCanonicalCorrectionSource, COMPANY_TRANSFER_DEBT_CORRECTION_SOURCE } from "../company-transfer/company-transfer-canonical-correction";
 import {CompanyTransferOperatingSourceAdapter} from "../company-transfer/company-transfer-operating-source.adapter";
 import {FundCounterpartyCashAdapter} from "../contract-ledger/fund-counterparty-cash.adapter";
@@ -76,6 +77,7 @@ import {
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   "contract_version",
   "contract_economic_review",
+  CONTRACT_WORK_COMPLETION_SOURCE,
   "contract_proxy_execution",
   "company_transfer_event",
   COMPANY_TRANSFER_DEBT_CORRECTION_SOURCE,
@@ -109,6 +111,7 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
     [
       new ContractOperatingSourceAdapter(),
       new ContractEconomicReviewOperatingSourceAdapter(),
+      new ContractWorkCompletionOperatingSourceAdapter(),
   new ContractProxyOperatingSourceAdapter(),
   new CompanyTransferOperatingSourceAdapter(),
       new CompanyTransferCanonicalCorrectionSource(),

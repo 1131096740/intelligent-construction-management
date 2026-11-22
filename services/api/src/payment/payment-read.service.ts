@@ -152,6 +152,11 @@ function directPaymentSummary(
   };
 }
 
+type PaymentDetailActivity =
+  | { kind: "execution"; id: string; amountCents: bigint; paidAt: Date; createdAt: Date;
+      executedByUserId: string; voucherFileId: string | null }
+  | { kind: "finance"; id: string; amountCents: bigint };
+
 @Injectable()
 export class PaymentReadService {
   constructor(
@@ -187,7 +192,7 @@ export class PaymentReadService {
   }
 
   private async paymentEvidenceFiles(
-    paymentId: string,
+    payment: { id: string; projectId: string; contractId: string },
     executions: Array<{
       id: string;
       voucherFileId?: string | null;
@@ -196,21 +201,8 @@ export class PaymentReadService {
     }>
   ): Promise<PaymentDetailReadModel["evidenceFiles"]> {
     const client = this.prisma as unknown as {
-      pdfDocument?: {
-        findMany(args: {
-          where: { businessType: string; businessId: string };
-          orderBy: { createdAt: "desc" };
-        }): Promise<
-          Array<{
-            id: string;
-            fileId: string;
-            templateKey: string;
-            createdAt: Date;
-          }>
-        >;
-      };
       fileObject?: {
-        findMany(args: { where: { id: { in: string[] } } }): Promise<
+        findMany(args: { where: { id: { in: string[] } }; select: Record<string, boolean> }): Promise<
           Array<{
             id: string;
             originalName: string;
@@ -232,12 +224,11 @@ export class PaymentReadService {
       return [];
     }
 
-    const pdfDocuments = client.pdfDocument
-      ? await client.pdfDocument.findMany({
-          where: { businessType: "payment_request", businessId: paymentId },
-          orderBy: { createdAt: "desc" }
-        })
-      : [];
+    const pdfDocuments = await this.prisma.$queryRaw<Array<{
+      id: string; fileId: string; templateKey: string; createdAt: Date;
+    }>>`
+      SELECT * FROM public.jg_read_payment_detail_pdf_v1(${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text)
+    `;
     const executionVoucherViews = await Promise.all(
       executions.map(async (execution) => ({
         ...execution,
@@ -258,7 +249,10 @@ export class PaymentReadService {
       return [];
     }
 
-    const files = await client.fileObject.findMany({ where: { id: { in: fileIds } } });
+    const files = await client.fileObject.findMany({
+      where: { id: { in: fileIds } },
+      select: { id: true, originalName: true, mimeType: true, sizeBytes: true, uploadedByUserId: true, createdAt: true }
+    });
     const fileById = new Map(files.map((file) => [file.id, file]));
     const userIds = Array.from(
       new Set(files.map((file) => file.uploadedByUserId))
@@ -920,7 +914,7 @@ export class PaymentReadService {
 
     const isContractAdvance = payment.sourceType === "contract_advance";
     const isContractLevelPayment = isContractAdvance || payment.sourceType === "contract_due" || !payment.settlementId;
-    const [settlement, contract, contractVersion, terms, executions, financeRecords] = await Promise.all([
+    const [settlement, contract, contractVersion, terms, activity] = await Promise.all([
       payment.settlementId
         ? this.prisma.settlement.findUnique({ where: { id: payment.settlementId } })
         : Promise.resolve(null),
@@ -931,14 +925,12 @@ export class PaymentReadService {
       this.prisma.paymentTermsVersion.findUnique({
         where: { id: payment.paymentTermsVersionId }
       }),
-      this.prisma.paymentExecution.findMany({
-        where: { paymentRequestId: payment.id },
-        orderBy: { paidAt: "desc" }
-      }),
-      this.prisma.financeRecord.findMany({
-        where: { paymentRequestId: payment.id }
-      })
+      this.prisma.$queryRaw<PaymentDetailActivity[]>`
+        SELECT * FROM public.jg_read_payment_detail_activity_v1(${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text)
+      `
     ]);
+    const executions = activity.filter(row => row.kind === "execution");
+    const financeRecords = activity.filter(row => row.kind === "finance");
 
     if (payment.settlementId && !settlement) {
       throw new NotFoundException("未找到关联结算，请先核对结算归档记录");
@@ -951,6 +943,20 @@ export class PaymentReadService {
     if (!terms) {
       throw new NotFoundException("未找到合同付款条款版本，请先核对合同归档记录");
     }
+    const [agreement] = await this.prisma.$queryRaw<Array<{ submittedText: string | null; currentText: string | null }>>`
+      SELECT "submittedText", "currentText"
+      FROM public.jg_read_payment_contract_agreement_detail_v1(${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text)
+    `;
+    const effectiveTerms = !agreement?.currentText && terms.status === "superseded"
+      ? await this.prisma.paymentTermsVersion.findFirst({
+          where: { contractId: payment.contractId, status: "effective" },
+          orderBy: { versionNo: "desc" },
+          select: { originalText: true }
+        })
+      : null;
+    const submittedAgreement = agreement?.submittedText ?? terms.originalText;
+    const currentAgreement = agreement?.currentText ?? effectiveTerms?.originalText ?? terms.originalText;
+    const agreementChanged = currentAgreement !== submittedAgreement;
     const stage = payment.paymentTermsStageId
       ? await this.prisma.paymentTermsStage.findUnique({
           where: { id: payment.paymentTermsStageId }
@@ -1022,10 +1028,12 @@ export class PaymentReadService {
       executions.map((execution) => execution.amountCents),
       "付款实付金额"
     );
-    const executionAllocations = await this.prisma.paymentExecutionAllocation.findMany({
-      where: { paymentRequestId: payment.id },
-      orderBy: [{ createdAt: "asc" }, { allocationOrder: "asc" }]
-    });
+    const executionAllocations = await this.prisma.$queryRaw<Array<{
+      id: string; paymentExecutionId: string; settlementId: string | null; stageName: string | null;
+      stageType: string; allocationType: string; amountCents: bigint; allocationOrder: number;
+    }>>`
+      SELECT * FROM public.jg_read_payment_detail_allocations_v1(${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text)
+    `;
     const allocationSettlementIds = [
       ...new Set(
         executionAllocations
@@ -1050,7 +1058,7 @@ export class PaymentReadService {
       "财务入账金额"
     );
     const [evidenceFiles, approvalTimeline, latestApproval] = await Promise.all([
-      this.paymentEvidenceFiles(payment.id, executions),
+      this.paymentEvidenceFiles(payment, executions),
       approvalTimelineForBusiness(this.prisma, "payment_request", payment.id),
       this.latestPaymentApproval(payment.id)
     ]);
@@ -1185,11 +1193,16 @@ export class PaymentReadService {
       blockedReasons.push("付款申请版本信息未读取，刷新详情后再试");
     }
 
+    const readSnapshots = (financeHistory: boolean) => this.prisma.$queryRaw<Array<{
+      sceneKey: string; entityType: string; entityId: string; revision: number; definitionVersion: number;
+      definitionSnapshot: Prisma.JsonValue; valuesSnapshot: Prisma.JsonValue; frozenAt: Date;
+    }>>`
+      SELECT * FROM public.jg_read_payment_detail_snapshots_v1(
+        ${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text, ${financeHistory}::boolean
+      )
+    `;
     const financeSnapshots = financeRecords.length && canPerform("payment.finance_record", roleKeys)
-      ? await this.prisma.businessEntrySubmissionSnapshot.findMany({
-          where: { projectId: payment.projectId, sceneKey: "payment_finance_record", entityType: "finance_record", entityId: { in: financeRecords.map((record) => record.id) } },
-          orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
-        }) : [];
+      ? await readSnapshots(true) : [];
     const financeHistory: BusinessEntryFrozenSnapshot[] = financeSnapshots.map((snapshot) => ({
       sceneKey: snapshot.sceneKey,
       target: { projectId: payment.projectId, entityType: snapshot.entityType, entityId: snapshot.entityId },
@@ -1197,16 +1210,7 @@ export class PaymentReadService {
       definition: snapshot.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
       values: snapshot.valuesSnapshot as unknown as Record<string, unknown>, frozenAt: snapshot.frozenAt.toISOString()
     }));
-    const requestSnapshotStore = (this.prisma as unknown as { businessEntrySubmissionSnapshot?: {
-      findMany(args: object): Promise<Array<{
-        sceneKey: string; entityType: string; entityId: string; revision: number; definitionVersion: number;
-        definitionSnapshot: unknown; valuesSnapshot: unknown; frozenAt: Date;
-      }>>;
-    } }).businessEntrySubmissionSnapshot;
-    const requestSnapshots = requestSnapshotStore ? await requestSnapshotStore.findMany({
-      where: { projectId: payment.projectId, sceneKey: { in: ["payment_request", "payment_approval_amount"] }, entityType: "payment_request", entityId: payment.id },
-      orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
-    }) : [];
+    const requestSnapshots = await readSnapshots(false);
     const businessEntryHistory: BusinessEntryFrozenSnapshot[] = requestSnapshots.map((snapshot) => ({
       sceneKey: snapshot.sceneKey,
       target: { projectId: payment.projectId, entityType: snapshot.entityType, entityId: snapshot.entityId },
@@ -1230,6 +1234,9 @@ export class PaymentReadService {
         { label: "审批状态", value: approval.label, tone: approval.tone },
         { label: "实付状态", value: execution.label, tone: execution.tone },
         { label: "付款条款版本", value: `v${terms.versionNo} 随合同生效` },
+        ...(agreementChanged
+          ? [{ label: "付款约定", value: "约定已更新，请核对提交时和最新约定" }]
+          : []),
         { label: "关联合同版本", value: `合同 v${contractVersion.versionNo}` },
         { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(contractVersion)] },
         { label: "责任部门", value: "财务部" },
@@ -1257,6 +1264,12 @@ export class PaymentReadService {
               },
               { label: "结算状态", value: this.settlementStatusLabel(settlement?.status ?? "") }
             ]),
+        ...(agreementChanged
+          ? [
+              { label: "提交时付款约定", value: submittedAgreement || "未填写" },
+              { label: "最新付款约定", value: currentAgreement || "未填写" }
+            ]
+          : currentAgreement ? [{ label: "付款约定原文", value: currentAgreement }] : []),
         { label: "付款阶段", value: stage?.name ?? "按付款条款执行" },
         { label: "付款比例", value: this.ratioLabel(stage?.ratioBps ?? null) },
         { label: "付款账期", value: stage ? `${stage.dueDays}天` : "-" },

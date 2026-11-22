@@ -5,10 +5,22 @@ const {join}=require('node:path');
 const read=file=>JSON.parse(readFileSync(file,'utf8'));
 const outer=read(process.argv[2]);
 const evidence=read(join(process.argv[3],'receipt.json'));
-assert.equal(outer.status,'TASK398_BROWSER_PARTIAL_EXACT_295_PASSED');
+const count=Number(process.argv[4]??295);
+assert.ok(count===295||count===320);
+assert.equal(outer.status,'TASK398_BROWSER_PARTIAL_EXACT_'+count+'_PASSED');
+if(count===320){
+  assert.equal(outer.forward320?.count,320);
+  assert.equal(outer.forward320?.sameIdentity,true);
+  assert.equal(outer.forward320?.sameBaseB7,true);
+  assert.match(outer.forward320?.sourceTree??'',/^[a-f0-9]{40}$/u);
+  assert.match(outer.forward320?.ledgerSha256??'',/^[a-f0-9]{64}$/u);
+  assert.equal(outer.combinedAfterBusiness?.count,320);
+  assert.equal(outer.combinedAfterBusiness?.ledgerSha256,outer.forward320.ledgerSha256);
+  assert.equal(outer.combinedAfterBusiness?.exactB7,true);
+}
 assert.equal(evidence.status,'BROWSER_PARTIAL_CASE_RETURNED_NOT_FULL_ACCEPTANCE');
 assert.equal(evidence.candidate,outer.sourceSha);
 assert.equal(evidence.runId,outer.runId.replaceAll('-',''));
 assert.match(evidence.requestKeySha256,/^[a-f0-9]{64}$/u);
 assert.equal(outer.installOnly295.ledgerSha256,'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d');
-console.log('TASK398_BROWSER_PARTIAL_295_RECEIPTS_VERIFIED');
+console.log('TASK398_BROWSER_PARTIAL_'+count+'_RECEIPTS_VERIFIED');

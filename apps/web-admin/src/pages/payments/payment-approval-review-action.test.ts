@@ -103,6 +103,8 @@ type PaymentPageBindings = {
   };
   paymentApprovalCapability: MutableValue<unknown>;
   paymentDetail: MutableValue<unknown>;
+  paymentOverviewMetaView: MutableValue<Array<{ label: string; value: string }>>;
+  paymentBaseInfoUniqueView: MutableValue<Array<{ label: string; value: string }>>;
   reloadPaymentDetail: () => Promise<boolean>;
   requestApproval: (decision: ReviewDecision) => void;
   sensitiveAction: {
@@ -152,6 +154,26 @@ describe("payment approve/reject page ownership", () => {
         input.finish(context);
       }
     });
+  });
+
+  it("shows both payment agreements without restricting the current approver", () => {
+    const { bindings, scope } = setupPage();
+    const agreementStatus = { label: "付款约定", value: "约定已更新，请核对提交时和最新约定" };
+    const agreements = [
+      { label: "提交时付款约定", value: "按合同结算支付 85%" },
+      { label: "最新付款约定", value: "按合同结算支付 90%" }
+    ];
+    const detail = { ...paymentDetail(), meta: [agreementStatus], baseInfo: agreements };
+    bindings.paymentDetail.value = detail;
+    bindings.paymentApprovalCapability.value = detail;
+    try {
+      expect(bindings.paymentOverviewMetaView.value).toContainEqual(agreementStatus);
+      expect(bindings.paymentBaseInfoUniqueView.value).toEqual(agreements);
+      bindings.requestApproval("approve");
+      expect(bindings.sensitiveAction.kind).toBe("approvalApprove");
+    } finally {
+      scope.stop();
+    }
   });
 
   it("opens only from the raw authoritative capability and complete four-coordinate context", () => {

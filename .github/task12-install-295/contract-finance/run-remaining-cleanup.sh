@@ -15,7 +15,8 @@ scope=cleanup
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
+  const current=source.mode==="current-320";
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(current?320:295))process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -24,10 +25,6 @@ fingerprint=$(cat "$build/context.sha256")
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
-cp "$common/installer.cjs" "$work/installer.cjs"
-gzip -dc "$plan/remaining-cleanup-installer.patch.gz" | patch --batch --forward --fuzz=0 --silent "$work/installer.cjs"
-chmod 0644 "$work/installer.cjs"
-
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1024m --env HOME=/tmp --env PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
@@ -42,7 +39,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
-args+=(--mount "type=bind,src=$work/installer.cjs,dst=/qualification/installer.cjs,readonly")
+args+=(--mount "type=bind,src=$common/installer.cjs,dst=/qualification/installer.cjs,readonly")
 node - "$archive" > "$work/cleanup-mounts.tsv" <<'JS'
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const archive=process.argv[2];
@@ -67,6 +64,7 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/remaining-clea
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="REMAINING_RETAINED_CLEANUP_295_PASSED";
+  const count=require(process.argv[4]).migrationCount;
+  const expected="REMAINING_RETAINED_CLEANUP_"+count+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$scope" "$sha" "$prepared/source.json"

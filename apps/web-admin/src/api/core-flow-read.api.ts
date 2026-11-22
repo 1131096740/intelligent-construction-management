@@ -390,6 +390,79 @@ export function fetchContractChangeEligibility(contractVersionId: string) {
   );
 }
 
+export interface SignedContractChange {
+  id: string;
+  baseVersionId: string;
+  sequenceNo: number;
+  status: "pending_review" | "approved" | "rejected";
+  summary: string;
+  paymentAgreementText: string | null;
+  amountDeltaYuan: string;
+  precedingAmountYuan: string | null;
+  effectiveAmountYuan: string | null;
+  appendixFileId: string;
+  requiresSelfReview: boolean;
+  reviewReason: string | null;
+}
+
+export interface SignedContractChanges {
+  baseVersionId: string;
+  originalAmountYuan: string | null;
+  currentPaymentAgreementText: string | null;
+  effectiveAmountYuan: string | null;
+  canSubmit: boolean;
+  canReview: boolean;
+  changes: SignedContractChange[];
+}
+
+export function fetchSignedContractChanges(versionId: string) {
+  return readJson<SignedContractChanges>(`/contracts/${encodeURIComponent(versionId)}/signed-changes`);
+}
+
+export function submitSignedContractChange(versionId: string, body: {
+  fileId: string; summary: string; amountDeltaYuan: string; paymentAgreementText?: string;
+}) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/signed-changes`, body);
+}
+
+export function reviewSignedContractChange(versionId: string, changeId: string, body: {
+  decision: "approve" | "reject"; reason?: string; selfReviewReason?: string; confirmationPassword?: string;
+}) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/signed-changes/${encodeURIComponent(changeId)}/review`, body);
+}
+
+export interface EffectiveTaxFacts {
+  invoiceType: string | null;
+  taxRate: string | null;
+}
+
+export interface ContractTaxRevision {
+  id: string;
+  kind: "supplement" | "correction";
+  status: "pending_contract_confirmation" | "confirmed" | "rejected";
+  before: EffectiveTaxFacts;
+  proposed: EffectiveTaxFacts;
+  explanation: string | null;
+  reviewComment: string | null;
+  requiresSelfReview: boolean;
+}
+
+export function fetchContractTaxRevisions(versionId: string) {
+  return readJson<{ versionId: string; current: EffectiveTaxFacts; revisions: ContractTaxRevision[]; canSubmit: boolean; canReview: boolean }>(
+    `/contracts/${encodeURIComponent(versionId)}/tax-revisions`
+  );
+}
+
+export function submitContractTaxRevision(versionId: string, body: { explanation: string; invoiceType?: string; taxRate?: string }) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/tax-revisions`, body);
+}
+
+export function reviewContractTaxRevision(versionId: string, revisionId: string, body: {
+  decision: "approve" | "reject"; reason?: string; selfReviewReason?: string; confirmationPassword?: string;
+}) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/tax-revisions/${encodeURIComponent(revisionId)}/review`, body);
+}
+
 export function createContractChangeDraft(
   contractVersionId: string,
   body: CreateContractChangeDraftPayload
@@ -1784,7 +1857,8 @@ export interface OperatingProjectionAggregateReadModel {
   relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string; receivableCents: string; payableCents: string; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
   operating: {
     confirmedIncomeCents: string;
-    confirmedCostCents: string;
+    confirmedCostCents: string | null;
+    confirmedCostYuan?: string;
     internalReceivableCents?: string;
     receivableCents: string;
     payableCents: string;
@@ -1858,6 +1932,7 @@ export interface ProjectOperatingOverviewReadModel {
     operatingIncomeYuan?: string | null;
     affiliateDownstreamPaymentCents: string | null;
     operatingCostCents: string | null;
+    operatingCostYuan?: string | null;
     grossProfitCents: string | null;
     grossProfitYuan?: string | null;
   };
@@ -5592,14 +5667,7 @@ export async function downloadPrivateFileByTicket(
   }
   const blob = await response.blob();
   if (delivery === "pdf-blob") return { blob, fileName: ticket.fileName };
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = ticket.fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  saveBlob(blob, ticket.fileName);
 }
 
 export function listContractTakeovers(projectId: string) {
@@ -7265,7 +7333,7 @@ export function delegatePaymentApproval(paymentId: string, body: AssignSettlemen
   return postJson<unknown>(`/payments/${paymentId}/approval-delegation`, body);
 }
 
-function saveBlob(blob: Blob, fileName: string): void {
+export function saveBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -7508,4 +7576,42 @@ export function fetchApprovalDelegationDutyCapability(dutyId: string) {
 }
 export function fetchApprovalDelegationRevokeCapability(id: string) {
   return readJson<{canRevoke: boolean}>(`/approval-delegations/${encodeURIComponent(id)}/revoke-capability`);
+}
+
+export interface WorkCompletionEntry {
+  id: string;
+  status: string;
+  work: string;
+  amountYuan: string;
+  exceedsContractAmount: boolean;
+  approvalInstanceId: string | null;
+  canSubmit: boolean;
+  duties: { index: number; name: string; selfReview: boolean }[];
+}
+
+export function fetchWorkCompletions(versionId: string) {
+  return readJson<{ canRegister: boolean; entries: WorkCompletionEntry[] }>(
+    `/contracts/${encodeURIComponent(versionId)}/work-completions`
+  );
+}
+
+export function saveWorkCompletionDraft(versionId: string, body: { work: string; amountYuan: string; requestKey: string }) {
+  return postJson<{ id: string; exceedsContractAmount: boolean }>(
+    `/contracts/${encodeURIComponent(versionId)}/work-completion-drafts`, body
+  );
+}
+
+export function submitWorkCompletion(versionId: string, entryId: string) {
+  return postJson<{ status: string }>(`/contracts/${encodeURIComponent(versionId)}/work-completions/${encodeURIComponent(entryId)}/submission`, {});
+}
+
+export function reviewWorkCompletion(versionId: string, entryId: string, body: {
+  approvalInstanceId: string;
+  dutyIndex: number;
+  decision: "approve" | "reject";
+  comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
+}) {
+  return postJson<{ status: string }>(`/contracts/${encodeURIComponent(versionId)}/work-completions/${encodeURIComponent(entryId)}/approval`, body);
 }

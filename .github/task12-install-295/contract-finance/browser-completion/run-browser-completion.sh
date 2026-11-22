@@ -13,10 +13,12 @@ base="$repo/.github/task12-install-295/contract-finance"
 common="$base/common"
 scope=task398-browser-completion
 
-node -e '
+count=$(node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  const count=source.mode==="current-320"?320:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  console.log(count);
+' "$prepared/source.json" "$sha")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -57,9 +59,9 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/task398-comple
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
-  if(row.purpose!=="TASK398_BROWSER_COMPLETION_EXACT_295"||row.sourceSha!==process.argv[2])process.exit(1);
+  if(row.purpose!=="TASK398_BROWSER_COMPLETION_EXACT_"+process.argv[3]||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
-' "$work/receipt.json" "$sha" || { printf 'TASK398_BROWSER_COMPLETION_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
+' "$work/receipt.json" "$sha" "$count" || { printf 'TASK398_BROWSER_COMPLETION_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 # The evidence directory belongs to postgres and stays private on the host.
 docker run --rm -i --platform linux/amd64 --pull never --network none --read-only \
@@ -71,5 +73,5 @@ docker run --rm -i --platform linux/amd64 --pull never --network none --read-onl
     cat > /tmp/outer.json
     marker=$(find /evidence -type f -name "$1")
     [[ -n $marker && $marker != *$'\''\n'\''* ]] || exit 65
-    node /verify-receipts.cjs /tmp/outer.json "$(dirname "$marker")"
-  ' _ "receipt-complete.json" < "$work/receipt.json"
+    node /verify-receipts.cjs /tmp/outer.json "$(dirname "$marker")" "$2"
+  ' _ "receipt-complete.json" "$count" < "$work/receipt.json"

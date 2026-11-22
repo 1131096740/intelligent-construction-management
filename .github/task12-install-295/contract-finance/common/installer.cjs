@@ -77,10 +77,18 @@ const outsideBodies = Object.freeze({
   'jg_upward_archive_catalog_projection_v2()': Object.freeze(['ebf786dd48b05ab47c62b283d702521ceb8edc00a0a8aa54f7194461560604b9', '105281430d2bd723a93626bc129ca497486787d6f8476b95f324a8b1d0324c9e']),
   'jg_upward_direct_archive_admission_v1()': Object.freeze(['eed377ea62bedf5b75e8d9b75afcb2ce132b8a1281d4fe0564525f836743c20e', 'bfbe61100be1d1705095a03e11c9ef6db48ca05d282aeff03c2d21ea137cb411']),
 });
-function outsideWitnessSql(count) {
+const signedSettlementOutsidePostimages = Object.freeze({
+  'jg_require_contract_direct_upward_source_v2()':'607cc42deccbb17f6de375976b5ed0ef0cbb30805c24ab6d3fb7cf6be74fc5fe',
+  'jg_upward_archive_catalog_projection_v2()':'5fc49d0c0d0982b14dad70f9498c003dcffb4dfa9d1b7ae58155a93069f220b3',
+  'jg_upward_direct_archive_admission_v1()':'0ae95bf1a1b3551b5a123869077432a74578cb5c49ca63e7a4be4320eecef462',
+});
+function outsideWitnessSql(count, signedSettlementInstalled = false) {
   need(count===288 || count===289,'UNKNOWN_OUTSIDE_CATALOG_MILESTONE');
-  const checks = Object.entries(outsideBodies).map(([name,bodies]) =>
-    `(to_regprocedure('public.${name}')::oid, '${bodies[count-288]}')`).join(', ');
+  need(!signedSettlementInstalled || count===289,'FORWARD_320_OUTSIDE_MILESTONE');
+  const checks = Object.entries(outsideBodies).map(([name,bodies]) => {
+    const digest=(signedSettlementInstalled ? signedSettlementOutsidePostimages[name] : undefined) ?? bodies[count-288];
+    return `(to_regprocedure('public.${name}')::oid, '${digest}')`;
+  }).join(', ');
   return `SELECT jsonb_build_object(
     'upward',public.jg_require_contract_direct_upward_source_v2() IS NOT NULL,
     'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),
@@ -182,9 +190,11 @@ async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,e
  const {cli,engine}=plan.prismaTools;
  const schema=capture(path.join(plan.historical,'schema.prisma')).bytes;
  const roots=new Map();
- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
+ for(const size of [...new Set(plan.stopAt205 ? [203,205] : [
+   ...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
+ ])]){
   const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
-  fs.writeFileSync(path.join(dir,'schema.prisma'),schema,{flag:'wx',mode:0o600});
+  fs.writeFileSync(path.join(dir,'schema.prisma'),size<=126&&plan.profileUpgrade?plan.profileSchema:schema,{flag:'wx',mode:0o600});
   fs.writeFileSync(path.join(dir,'migrations/migration_lock.toml'),'provider = "postgresql"\n',{flag:'wx',mode:0o600});
   for(const row of ledger.slice(0,size)){
    const bytes=capture(path.join(plan.historical,'migrations',row.name,'migration.sql')).bytes;need(hash(bytes)===row.sha256,'NATIVE_DIRECT_MIGRATION_SOURCE');
@@ -197,12 +207,21 @@ async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,e
  const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
  const identity=row=>{need(row.database===database&&row.ownerOid==='10'&&row.actorOid==='10'&&row.actor==='jg_task01_owner'&&row.sessionActor==='jg_task01_owner'&&row.version===160015&&row.encoding==='UTF8'&&row.replication==='origin','NATIVE_DIRECT_MIGRATION_IDENTITY');return Object.fromEntries(['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'].map(k=>[k,row[k]]));};
  const checkLedger=(row,size)=>{need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');};
+ const profileIdentity=plan.profileUpgrade?await require('./profile-history.cjs').runProfileHistory({
+   ledger,deploy,read:()=>jsonSql(controls.inspectSql()),identity,checkLedger,enter,sql,receipt:plan.profileUpgrade,
+ }):undefined;
  await deploy(203);const first=await jsonSql(controls.inspectSql());const bound=identity(first);checkLedger(first,203);
+ if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
  const migrationPlan={...bound,runId:randomUUID(),nonce:randomBytes(32).toString('hex'),appName:'jg_fixture_app_'+randomBytes(12).toString('hex'),schemaName:'jg_fixture_'+randomBytes(12).toString('hex'),technicalProfile:'CURRENT259_OWNED_TECHNICAL_V1',resourceRunId:plan.runId,migrations:migrations.slice(0,205)};
  const setup=await jsonSql(controls.setupSql(migrationPlan));controls.checkSetup(setup,migrationPlan);
  const qualified=new URL(baseUrl);qualified.searchParams.set('options','-c app.contract_archive_v2_application_role_oid='+setup.appOid+' -c app.contract_archive_v2_file_caller_oids='+JSON.stringify(setup.fileCallerOids)+' -c app.local_migration_nonce='+migrationPlan.nonce);
  await deploy(205,qualified);const completed=controls.parseReadback((await sql(controls.readbackSql(migrationPlan,setup))).stdout);need(equal(identity(completed),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(completed,205);controls.checkCompletion(completed,migrationPlan,setup);
  await sql(controls.cleanupSql(migrationPlan,setup));const clean=await jsonSql(controls.cleanReadSql(migrationPlan,setup));need(clean.schemaAbsent===true&&clean.eventAbsent===true&&clean.appOid===setup.appOid&&clean.applicationQualified===true,'NATIVE_DIRECT_QUALIFICATION_CLEANUP');
+ if(plan.stopAt205){
+  const pre206=await jsonSql(controls.inspectSql());
+  need(equal(identity(pre206),bound),'REMAINING_PRE206_IDENTITY');checkLedger(pre206,205);
+  return {pre206,expectedLedger:ledger.slice(0,205),legacyAppOid:setup.appOid};
+ }
  const materials=[];const tail=createLocalTailQualification({plan:migrationPlan,setup,migrations},{read:async(_phase,text)=>jsonSql(text),write:async(_phase,text)=>jsonSql(text),recordMaterial:row=>{need(hash(Buffer.from(row.sql))===row.afterSha256,'NATIVE_DIRECT_SQL_MATERIAL');materials.push({kind:row.kind,beforeSha256:row.beforeSha256,afterSha256:row.afterSha256});}});
  for(const size of [213,215,218,221]){await deploy(size);const row=await jsonSql(controls.inspectSql());need(equal(identity(row),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(row,size);await tail.qualify(size);}
  await deploy(ledger.length);const final=await jsonSql(controls.inspectSql());need(equal(identity(final),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(final,ledger.length);
@@ -247,9 +266,12 @@ function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure
 
 const installOnly292 = Symbol('install-only292');
 const exactMultiWitness295 = Symbol('exact-multi-witness295');
-async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false) {
+async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false, forward320, retainedMode) {
   const combined = purpose===installOnly292 || purpose===exactMultiWitness295;
   if(combined) need(!probeOnly && release===ordinaryApprovalRelease,'INSTALL_ONLY_292_MODE');
+  const retainedCleanup=retainedMode==='cleanup', profileUpgrade=retainedMode==='profile';
+  need(retainedMode===undefined || (purpose===exactMultiWitness295 && !restore && !probeOnly
+    && (retainedCleanup || profileUpgrade)), 'REMAINING_RETAINED_MODE');
   const historical = '/qualification/source/services/api/prisma';
   const product = '/qualification/product/services/api/prisma';
   need(process.platform === 'linux' && process.getuid() !== 0 && process.version === 'v20.20.2'
@@ -282,7 +304,8 @@ async function installer(receipt, probeOnly, consume, release=stableRelease, pur
       {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
   const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
   const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
-  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000}};
+  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
+    ...(profileUpgrade?{profileUpgrade:receipt,profileSchema:schema.bytes}:{})};
   receipt.runId = runId;
   const credentials = Object.fromEntries(['owner','runtime','observer'].map(k => [k,randomBytes(48).toString('hex')]));
   let pg, lifetime, postmaster;
@@ -747,6 +770,78 @@ statement_timeout='60s'
         receipt.orderedTails.push({size:installed.ledger.length,ledgerSha256:receipt.installOnly295.ledgerSha256});
       }
     }
+    let cleanupLegacy;
+    if(retainedCleanup){
+      enter('REMAINING_PRE206_AFTER_PRIMARY_295_B7');
+      const primaryAcl=await jsonSql(cleanupPrimaryDatabaseAclSql(database));
+      const legacyRunId=randomUUID(), legacyDatabase='jg_task01_'+legacyRunId.replaceAll('-','');
+      need(legacyDatabase!==database,'REMAINING_LEGACY_DATABASE_DISTINCT');
+      await sql(`CREATE DATABASE ${legacyDatabase} OWNER ${owner} ENCODING 'UTF8' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C';`,{database:'postgres'});
+      await sql(`REVOKE ALL PRIVILEGES ON DATABASE ${legacyDatabase} FROM PUBLIC;`,{database:'postgres'});
+      const legacySql=(text,options)=>sql(text,{...options,database:legacyDatabase});
+      const legacyJson=(text,options)=>jsonSql(text,{...options,database:legacyDatabase});
+      const legacyRoot=path.join(root,'cleanup-pre206-prefixes'); fs.mkdirSync(legacyRoot,{mode:0o700});
+      fs.mkdirSync(path.join(legacyRoot,'prefixes'),{mode:0o700});
+      fs.symlinkSync(path.join(root,'ca.crt'),path.join(legacyRoot,'ca.crt'));
+      cleanupLegacy=await migrateNativeTask16(
+        {...plan,runId:legacyRunId,database:legacyDatabase,stopAt205:true},legacyRoot,port,credentials.owner,
+        legacySql,legacyJson,command,enter,fromHistory);
+      need(cleanupLegacy.pre206.ledger.length===205&&
+        cleanupLegacy.pre206.ledger.at(-1)?.name==='20261109100000_contract_direct_pending_input_v1'&&
+        cleanupLegacy.pre206.ledger.at(-1)?.sha256==='2ca118b29e8e75745a1ac7d6f8de3fbfa70fa5774b3d95c48c6119caff8b316a',
+        'REMAINING_PRE206_TERMINAL_WITNESS');
+      cleanupLegacy.database=legacyDatabase;
+      cleanupLegacy.runId=legacyRunId;
+      cleanupLegacy.primaryAcl=primaryAcl;
+    }
+    if(cleanupLegacy){
+      need(cleanupLegacy.pre206.databaseOid!==receipt.databaseIdentity.databaseOid&&
+        cleanupLegacy.pre206.systemIdentifier===receipt.databaseIdentity.systemIdentifier,'REMAINING_CLEANUP_DUAL_DATABASE');
+      need(equal(await jsonSql(cleanupPrimaryDatabaseAclSql(database)),cleanupLegacy.primaryAcl),'REMAINING_PRIMARY_DB_ACL_CHANGED');
+      const acl=await jsonSql(cleanupLegacyAclSql(cleanupLegacy.database,cleanupLegacy.legacyAppOid));
+      need(isCleanupLegacyAcl(acl),'REMAINING_PRE206_LEAST_ACL');
+      cleanupLegacy.acl=acl;
+      need(equal(await jsonSql(finalSql),final),'REMAINING_PRIMARY_CATALOG_CHANGED');
+      assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
+      receipt.cleanupLegacy={count:205,exactTerminal:true,distinctDatabase:true,samePostmaster:true};
+    }
+    async function installForward320() {
+      enter('INSTALL_320_CONTRACT_DETAIL_READERS');
+      need(purpose===exactMultiWitness295 && qualifiedLedger.length===295,'FORWARD_320_REQUIRES_295');
+      const {tails,sourceTree,sql:tailSources}=forward320;
+      for (const [index,row] of tails.entries()) {
+        const source=tailSources[index];
+        const migrationDir=path.join(folder,'migrations',row.name);
+        fs.mkdirSync(migrationDir,{mode:0o700});
+        fs.writeFileSync(path.join(migrationDir,'migration.sql'),source,{flag:'wx',mode:0o600});
+      }
+      qualifiedLedger=[...qualifiedLedger,...tails.map(row=>({...row,finished:true,rolledBack:false}))];
+      try {
+        await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
+          {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
+            PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
+      } catch(error) {
+        receipt.forwardFailedLedger=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+          'name',migration_name,'checksum',checksum,'finished',finished_at IS NOT NULL,
+          'rolledBack',rolled_back_at IS NOT NULL,
+          'sqlstate',substring(logs FROM 'Database error code: ([0-9A-Z]{5})')
+        )), '[]'::jsonb) FROM public._prisma_migrations
+        WHERE migration_name IN (${tails.map(row=>"'"+row.name+"'").join(',')});`);
+        throw error;
+      }
+      const current=await jsonSql(control.inspectSql());
+      need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+        .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
+      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
+      receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
+      ) ORDER BY t.tgname),'[]'::jsonb) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+      WHERE t.tgrelid='public."FileObject"'::regclass AND t.tgname IN (
+        'FileObject_signed_settlement_replacement_target','FileObject_signed_settlement_retention');`);
+      need(equal(await jsonSql(finalSql),final),'FORWARD_320_BASE_B7');
+      receipt.forward320.sameBaseB7=true;
+    }
+    if (forward320 && !restore) await installForward320();
     if (consume) {
       let active = true;
       const onlyWhileOwned = () => {
@@ -759,37 +854,45 @@ statement_timeout='60s'
         return url.toString();
       };
       let correctionReady=false;
-      const context = Object.freeze({
-        ...(release.count === 280 ? {candidate:release.sha} :
-          {candidateTree:combined ? require('./successor.cjs').scope.tree : release.tree,sourceBaseSha:stableRelease.sha}),
-        ...(combined ? {combinedSchemaPath:path.join(folder,'schema.prisma')} : {}),
-        runId, database, workDir:root,
-        ownerUrl:connection(owner, credentials.owner),
-        runtimeUrl:connection('jg_task01_runtime', credentials.runtime),
-        observerUrl:connection('jg_task01_observer', credentials.observer),
-        sql:statement => { onlyWhileOwned(); return sql(statement); },
-        ...(restore?{verifyCorrectionReady:async()=>{
+      const context = (candidateTree, allowCorrection, phaseOpen=()=>true) => {
+        const assertLive=()=>{
           onlyWhileOwned();
-          need(!correctionReady,'CORRECTION_295_PRE_APP_REPEAT');
-          correctionReady=true;
-          enter('CORRECTION_295_PRE_APP_CATALOG');
-          const current=await jsonSql(control.inspectSql());
-          need(equal(current.ledger,qualifiedLedger)
-             && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-                 .every(key=>current[key]===roleIdentity[key]),'CORRECTION_295_PRE_APP_IDENTITY');
-          const correction=require('./successor.cjs');
-          const shape=await jsonSql(correction.catalogSql);
-          const notice=require('./terminal.cjs');
-          const payout=require('./payout-terminal.cjs');
-          const multi=require('./multi-witness.cjs');
-          need(correction.exactCatalog(shape)&&equal(shape,receipt.installOnly292.balance)
-            &&equal(await jsonSql(notice.catalogSql),receipt.installOnly293.catalog)
-            &&equal(await jsonSql(payout.catalogSql),receipt.installOnly294.catalog)
-            &&equal(await jsonSql(multi.catalogSql),receipt.installOnly295.after),'CORRECTION_295_PRE_APP_CATALOG');
-          return {count:current.ledger.length,ledgerSha256:multi.final,correctionShape:shape};
-        }}:{}),
-        readPostgresLog:() => { onlyWhileOwned(); return fs.readFileSync(logPath, 'utf8'); },
-      });
+          need(phaseOpen(),'FORWARD_320_PREPARE_LEASE_EXPIRED');
+        };
+        return Object.freeze({
+          ...(release.count === 280 ? {candidate:release.sha} :
+            {candidateTree,sourceBaseSha:stableRelease.sha}),
+          ...(combined ? {combinedSchemaPath:path.join(folder,'schema.prisma')} : {}),
+          ...(cleanupLegacy?{legacyOwnerUrl:(()=>{const url=new URL(endpoint);url.pathname='/'+cleanupLegacy.database;return url.toString();})(),
+            legacyRunId:cleanupLegacy.runId}:{}),
+          runId, database, workDir:root,
+          ownerUrl:connection(owner, credentials.owner),
+          runtimeUrl:connection('jg_task01_runtime', credentials.runtime),
+          observerUrl:connection('jg_task01_observer', credentials.observer),
+          sql:statement => { assertLive(); return sql(statement); },
+          ...(allowCorrection?{verifyCorrectionReady:async()=>{
+            assertLive();
+            need(!correctionReady,'CORRECTION_295_PRE_APP_REPEAT');
+            correctionReady=true;
+            enter('CORRECTION_295_PRE_APP_CATALOG');
+            const current=await jsonSql(control.inspectSql());
+            need(equal(current.ledger,qualifiedLedger)
+               && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+                   .every(key=>current[key]===roleIdentity[key]),'CORRECTION_295_PRE_APP_IDENTITY');
+            const correction=require('./successor.cjs');
+            const shape=await jsonSql(correction.catalogSql);
+            const notice=require('./terminal.cjs');
+            const payout=require('./payout-terminal.cjs');
+            const multi=require('./multi-witness.cjs');
+            need(correction.exactCatalog(shape)&&equal(shape,receipt.installOnly292.balance)
+              &&equal(await jsonSql(notice.catalogSql),receipt.installOnly293.catalog)
+              &&equal(await jsonSql(payout.catalogSql),receipt.installOnly294.catalog)
+              &&equal(await jsonSql(multi.catalogSql),receipt.installOnly295.after),'CORRECTION_295_PRE_APP_CATALOG');
+            return {count:current.ledger.length,ledgerSha256:multi.final,correctionShape:shape};
+          }}:{}),
+          readPostgresLog:() => { assertLive(); return fs.readFileSync(logPath, 'utf8'); },
+        });
+      };
       enter(purpose===exactMultiWitness295 ? 'EXACT_295_MULTI_WITNESS_CONSUMER' : combined ? 'EXACT_294_PAYOUT_CONSUMER' : 'EXACT_'+release.count+'_CONSUMER');
       for (const [key,role] of [['runtime','jg_task01_runtime'], ['observer','jg_task01_observer']]) {
         const observed = await jsonSql(`SELECT jsonb_build_object(
@@ -803,7 +906,22 @@ statement_timeout='60s'
           serverPort:port,ledgerRead:false}), 'OWNED_'+release.count+'_CONSUMER_ROLE');
       }
       try {
-        await consume(context);
+        const originalTree=combined ? require('./successor.cjs').scope.tree : release.tree;
+        if (restore && forward320) {
+          let preparationOpen=true;
+          enter('EXACT_295_RESTORE_PREPARATION');
+          try {
+            await forward320.prepare295(context(originalTree,true,()=>preparationOpen));
+            onlyWhileOwned();
+            need(correctionReady,'FORWARD_320_RESTORE_CORRECTION_NOT_PREPARED');
+          } finally {
+            preparationOpen=false;
+          }
+          await installForward320();
+          onlyWhileOwned();
+          enter('EXACT_320_RESTORE_CONSUMER');
+        }
+        await consume(context(forward320?.sourceTree ?? originalTree,restore && !forward320));
         onlyWhileOwned();
       } finally {
         active = false;
@@ -811,8 +929,21 @@ statement_timeout='60s'
       const afterConsumer = await jsonSql(control.inspectSql());
       need(equal(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
       need(equal(await jsonSql(finalSql), final), 'CONSUMER_PROTECTED_CATALOG_CONTINUITY');
+      if(cleanupLegacy){
+        const legacy=await jsonSql(control.inspectSql(),{database:cleanupLegacy.database});
+        need(equal(legacy.ledger,cleanupLegacy.expectedLedger)&&
+          ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(
+            key=>legacy[key]===cleanupLegacy.pre206[key]),'REMAINING_PRE206_POSTCONSUME');
+        need(equal(await jsonSql(cleanupPrimaryDatabaseAclSql(database)),cleanupLegacy.primaryAcl),'REMAINING_PRIMARY_DB_ACL_CHANGED');
+        need(equal(await jsonSql(cleanupLegacyAclSql(cleanupLegacy.database,cleanupLegacy.legacyAppOid)),cleanupLegacy.acl),'REMAINING_PRE206_POSTCONSUME_ACL');
+        receipt.cleanupLegacy.postconsume=true;
+        receipt.cleanupLegacyAcl={primaryUnchanged:true,legacyOwnerAndQualifiedAppOnly:true,publicDenied:true,
+          unrelatedLoginDenied:true,postconsume:true};
+      }
       if (release === ordinaryApprovalRelease) {
-        assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
+        const afterOutside=await jsonSql(outsideWitnessSql(289,Boolean(forward320)));
+        assertOutsideWitness(289,afterOutside);
+        if (forward320) receipt.forwardOutsideWitness=afterOutside;
         const after = await jsonSql(ordinaryClosedSql(true));
         need(equal(after,receipt.ordinaryApprovalWitnesses.at(-1).ordinary),'ORDINARY_LOAN_291_CALLBACK_CONTINUITY');
         receipt.ordinaryAfterBusiness = after;
@@ -1174,7 +1305,7 @@ module.exports.withOrdinaryLoan291 = (receipt,consume) => {
 module.exports.verifyOrdinaryLoan291Inputs = (historical,product,seal) =>
   verifyPinnedInputs(historical,product,seal,ordinaryApprovalRelease);
 
-function withCombinedOrdinaryLoan(receipt,consume,purpose,restore=false) {
+function withCombinedOrdinaryLoan(receipt,consume,purpose,restore=false,forward320,retainedMode) {
   const {contract289,verifyMaterialized}=require('./checkout.cjs');
   const {scope,verifySql}=require('./successor.cjs');
   verifyMaterialized('/qualification/product289',contract289);
@@ -1183,10 +1314,77 @@ function withCombinedOrdinaryLoan(receipt,consume,purpose,restore=false) {
     && scope.prefixLedgerSha256===ordinaryApprovalRelease.ledgerSha256,'INSTALL_ONLY_292_ARGUMENTS');
   Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:ordinaryApprovalRelease.tree,
     sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
-  return installer(receipt,false,consume,ordinaryApprovalRelease,purpose,restore);
+  return installer(receipt,false,consume,ordinaryApprovalRelease,purpose,restore,forward320,retainedMode);
 }
 module.exports.withCombined292ApprovalOnly = (receipt,consume) => withCombinedOrdinaryLoan(receipt,consume,installOnly292);
 module.exports.withCombined295MultiWitness = (receipt,consume) => withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295);
 
 module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);
+
+
+function readForward320({sourceTree,migrations,tails}) {
+  need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
+    typeof migrations==='string' && path.isAbsolute(migrations) &&
+    Array.isArray(tails) && tails.length===25,'FORWARD_320_SOURCE');
+  const rows=tails.map((row,index) => {
+    const timestamp='2026111900'+String(index+40)+'00';
+    need(row && typeof row.name==='string' && new RegExp('^'+timestamp+'_[a-z0-9_]+$','u').test(row.name)
+      && typeof row.sha256==='string' && /^[0-9a-f]{64}$/u.test(row.sha256),'FORWARD_320_TAIL_SEQUENCE');
+    return {name:row.name,sha256:row.sha256};
+  });
+  const sql=rows.map(row => {
+    const bytes=capture(path.join(migrations,row.name,'migration.sql')).bytes;
+    need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
+    return bytes;
+  });
+  return {sourceTree,tails:rows,sql};
+}
+
+module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
+  need(typeof consume==='function' && material && typeof material==='object','FORWARD_320_ARGUMENTS');
+  const forward320=readForward320(material);
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,forward320);
+};
+
+
+module.exports.withCombined320ContractPaymentForRestore = (receipt,prepare295,consume,material) => {
+  need(typeof prepare295==='function' && typeof consume==='function'
+    && material && typeof material==='object','FORWARD_320_RESTORE_ARGUMENTS');
+  const forward320=readForward320(material);
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...forward320,prepare295});
+};
+
+
+function cleanupPrimaryDatabaseAclSql(database) {
+  need(/^jg_task01_[a-f0-9]{32}$/u.test(database),'REMAINING_PRIMARY_DB_NAME');
+  return `SELECT jsonb_agg(jsonb_build_object('name',datname,'oid',oid::text,'owner',datdba::text,'acl',datacl::text)
+    ORDER BY datname COLLATE "C") FROM pg_catalog.pg_database
+    WHERE datname IN ('${database}','postgres','template0','template1');`;
+}
+
+function cleanupLegacyAclSql(database,appOid) {
+  need(/^jg_task01_[a-f0-9]{32}$/u.test(database)&&/^[1-9][0-9]{0,9}$/u.test(appOid)&&appOid!=='10','REMAINING_PRE206_DB_SCOPE');
+  return `SELECT jsonb_build_object(
+    'legacyOwner',d.datdba=10,
+    'exactAcl',d.datacl IS NOT NULL AND
+      (SELECT count(*)=4 AND bool_and(ac.grantor=10 AND NOT ac.is_grantable AND
+        ((ac.grantee=10 AND ac.privilege_type IN ('CONNECT','CREATE','TEMPORARY')) OR
+         (ac.grantee='${appOid}'::oid AND ac.privilege_type='CONNECT'))) FROM aclexplode(d.datacl) ac),
+    'publicDenied',NOT EXISTS(SELECT FROM aclexplode(d.datacl) WHERE grantee=0),
+    'unrelatedLoginDenied',NOT EXISTS(SELECT FROM pg_roles r WHERE r.rolcanlogin AND r.oid NOT IN (10,'${appOid}'::oid)
+      AND (has_database_privilege(r.oid,d.oid,'CONNECT') OR has_database_privilege(r.oid,d.oid,'TEMPORARY') OR
+           has_database_privilege(r.oid,d.oid,'CREATE'))))
+    FROM pg_database d WHERE d.datname='${database}';`;
+}
+const isCleanupLegacyAcl=value=>equal(value,{legacyOwner:true,exactAcl:true,publicDenied:true,unrelatedLoginDenied:true});
+
+module.exports.withCombined295RetainedCleanup=(receipt,consume)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,undefined,'cleanup');
+module.exports.withCombined295MultiWitnessForProfile=(receipt,consume)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,undefined,'profile');
+
+module.exports.withCombined320RetainedCleanup=(receipt,consume,material)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
+module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');

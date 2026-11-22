@@ -1,6 +1,6 @@
 --- installer.cjs
 +++ installer.cjs
-@@ -176,13 +176,15 @@
+@@ -184,14 +184,16 @@
    return verifyPinnedInputs(historical, product, seal, stableRelease);
  }
  
@@ -11,14 +11,15 @@
   const {cli,engine}=plan.prismaTools;
   const schema=capture(path.join(plan.historical,'schema.prisma')).bytes;
   const roots=new Map();
-- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
-+ const historicalNegative=['PAYMENT_EXECUTION_ORIGINAL_REMAINING_13_NEGATIVES','PAYMENT_EXECUTION_ORIGINAL_PAID_MISMATCH_DIAGNOSTIC'].includes(receipt.purpose);
-+ const historicalValid=receipt.purpose==="PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_295";
-+ for(const size of [...new Set([...(historicalNegative||historicalValid?[109,110]:[]),203,205,213,215,218,221,ledger.length])]){
++ const historicalNegative=['PAYMENT_EXECUTION_ORIGINAL_REMAINING_13_NEGATIVES','PAYMENT_EXECUTION_ORIGINAL_PAID_MISMATCH_DIAGNOSTIC'].includes(receipt?.purpose);
++ const historicalValid=/^PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|320)$/u.test(receipt?.purpose??"");
+  for(const size of [...new Set(plan.stopAt205 ? [203,205] : [
+-   ...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
++   ...(historicalNegative||historicalValid?[109,110]:[]),...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
+  ])]){
    const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
-   fs.writeFileSync(path.join(dir,'schema.prisma'),schema,{flag:'wx',mode:0o600});
-   fs.writeFileSync(path.join(dir,'migrations/migration_lock.toml'),'provider = "postgresql"\n',{flag:'wx',mode:0o600});
-@@ -194,10 +196,37 @@
+   fs.writeFileSync(path.join(dir,'schema.prisma'),size<=126&&plan.profileUpgrade?plan.profileSchema:schema,{flag:'wx',mode:0o600});
+@@ -204,13 +206,40 @@
   }
   const baseUrl=new URL('postgresql://jg_task01_owner@127.0.0.1:'+port+'/'+database);baseUrl.password=password;
   for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5'}))baseUrl.searchParams.set(key,value);
@@ -43,7 +44,7 @@
 +  throw new Error(receipt.purpose==='PAYMENT_EXECUTION_ORIGINAL_PAID_MISMATCH_DIAGNOSTIC'
 +    ?'PAYMENT_RETAINED_PAID_MISMATCH_ONLY_COMPLETED':'PAYMENT_RETAINED_OTHER_NEGATIVES_COMPLETED');
 + }
-+ if(receipt.purpose==='PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_295'){
++ if(historicalValid){
 +  const {load,verifyPrefix}=require('/qualification/retained-payment.cjs');
 +  receipt.retainedPayment=await verifyPrefix({
 +    data:load('/qualification/retained-payment.json'),database,deploy:(size,target)=>{
@@ -52,21 +53,15 @@
 +    },sql,jsonSql,inspect:controls.inspectSql(),ledger,identity,onPhase:enter
 +  });
 + }
+  const profileIdentity=plan.profileUpgrade?await require('./profile-history.cjs').runProfileHistory({
+    ledger,deploy,read:()=>jsonSql(controls.inspectSql()),identity,checkLedger,enter,sql,receipt:plan.profileUpgrade,
+  }):undefined;
   await deploy(203);const first=await jsonSql(controls.inspectSql());const bound=identity(first);checkLedger(first,203);
-+ if(receipt.retainedPayment)need(equal(bound,receipt.retainedPayment.identity),"PAYMENT_RETAINED_POST203_IDENTITY");
++ if(receipt?.retainedPayment) need(equal(bound,receipt.retainedPayment.identity),'PAYMENT_RETAINED_POST203_IDENTITY');
+  if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
   const migrationPlan={...bound,runId:randomUUID(),nonce:randomBytes(32).toString('hex'),appName:'jg_fixture_app_'+randomBytes(12).toString('hex'),schemaName:'jg_fixture_'+randomBytes(12).toString('hex'),technicalProfile:'CURRENT259_OWNED_TECHNICAL_V1',resourceRunId:plan.runId,migrations:migrations.slice(0,205)};
   const setup=await jsonSql(controls.setupSql(migrationPlan));controls.checkSetup(setup,migrationPlan);
-  const qualified=new URL(baseUrl);qualified.searchParams.set('options','-c app.contract_archive_v2_application_role_oid='+setup.appOid+' -c app.contract_archive_v2_file_caller_oids='+JSON.stringify(setup.fileCallerOids)+' -c app.local_migration_nonce='+migrationPlan.nonce);
-@@ -241,7 +270,7 @@
-         .filter(reason => (result.stderr || '').toLowerCase().includes(reason.toLowerCase())),
-     });
-   }
--  return {stdout:result.stdout, code:result.status,
-+  return {stdout:result.stdout, code:result.status,...(allowFailure?{stderr:result.stderr??""}:{}),
-     ...(allowFailure && {scopePermissionDenied:/42501:[^\n]*permission denied for table jg_company_transfer_loan_repayment_scope_v1/u.test(result.stderr??'')})};
- }
- 
-@@ -859,7 +888,7 @@
+@@ -990,7 +1019,7 @@
  
  async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
  const {runId}=plan;
@@ -75,10 +70,10 @@
  enter('ROLES');const roles=fromHistory('./task16-current259-role-provision.cjs');
    const roleIdentity=await jsonSql(`SELECT jsonb_build_object('database',current_database(),'databaseOid',d.oid::text,'namespaceOid',to_regnamespace('public')::oid::text,'ownerOid',d.datdba::text,'actorOid',current_user::regrole::oid::text,'actor',current_user,'sessionActor',session_user,'systemIdentifier',(SELECT system_identifier::text FROM pg_control_system()),'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),'clientAddress',host(inet_client_addr()),'serverAddress',host(inet_server_addr()),'serverPort',inet_server_port()) FROM pg_database d WHERE d.datname=current_database();`);
    need(roleIdentity.ownerOid==='10'&&roleIdentity.actorOid==='10'&&roleIdentity.tls===true&&roleIdentity.clientAddress==='127.0.0.1'&&roleIdentity.serverAddress==='127.0.0.1'&&roleIdentity.serverPort===port,'NATIVE_DIRECT_OWNER');
-@@ -1190,3 +1219,6 @@
- 
- module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);
+@@ -1388,3 +1417,6 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
+ module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
 +
-+// The historical negative consumers terminate at original migration 110.
++// The historical negatives terminate at the original migration 110.
 +module.exports.withRetainedPayment282 = module.exports.withCombined295MultiWitness;

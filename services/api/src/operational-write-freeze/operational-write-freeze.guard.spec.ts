@@ -1,5 +1,6 @@
 import type { ExecutionContext } from "@nestjs/common";
 import { HttpException } from "@nestjs/common";
+import { SignedContractSettlementController } from "../settlement/signed-contract-settlement.controller";
 import { OperationalWriteFreezeGuard } from "./operational-write-freeze.guard";
 import { OperationalWriteFreezeService } from "./operational-write-freeze.service";
 
@@ -296,6 +297,26 @@ describe("OperationalWriteFreezeGuard", () => {
         })
       )
     ).toBe(true);
+  });
+
+  it("keeps signed settlement mutations under settlement freeze and leaves reads available", () => {
+    const controller = SignedContractSettlementController;
+    const mutations = ["upload", "create", "update", "submit", "review", "attachmentDownloadTicket"] as const;
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "settlement";
+    for (const action of mutations) {
+      expectHttpFailure(() => guard.canActivate(contextFor({
+        controller, handler: controller.prototype[action], method: action === "update" ? "PATCH" : "POST"
+      })), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    expect(guard.canActivate(contextFor({ controller, handler: controller.prototype.contracts, method: "GET" }))).toBe(true);
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "off";
+    delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+    for (const action of mutations) {
+      expect(guard.canActivate(contextFor({
+        controller, handler: controller.prototype[action], method: action === "update" ? "PATCH" : "POST"
+      }))).toBe(true);
+    }
   });
 
   it("fails closed for every unclassified mutation even when the configured mode is off", () => {

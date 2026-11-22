@@ -2,7 +2,14 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
+count=295
+mode=()
+if [[ $# == 5 ]]; then
+  count=320
+  mode=(--current-320)
+fi
+purpose="ORIGINAL_POL275_COLD_EXACT_$count"
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -15,8 +22,10 @@ scope=pol275-cold
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  const count=Number(process.argv[3]);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  if(count===320 && (source.mode!=="current-320" || source.predecessor?.migrationCount!==295))process.exit(1);
+' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -44,16 +53,16 @@ done
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/pol275-cold-entry.cjs   > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/pol275-cold-entry.cjs ${mode[@]+"${mode[@]}"} > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
-  if(row.purpose!=="ORIGINAL_POL275_COLD_EXACT_295"||row.sourceSha!==process.argv[2])process.exit(1);
+  if(row.purpose!==process.argv[3]||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
-' "$work/receipt.json" "$sha" || { printf 'ORIGINAL_POL275_COLD_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
+' "$work/receipt.json" "$sha" "$purpose" || { printf '%s_NO_RECEIPT %s\n' "$purpose" "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="ORIGINAL_POL275_COLD_EXACT_295_PASSED";
+  const expected=process.argv[2]+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$purpose" "$sha"

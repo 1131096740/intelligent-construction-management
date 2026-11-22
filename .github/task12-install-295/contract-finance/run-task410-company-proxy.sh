@@ -14,7 +14,7 @@ scope=company-proxy-repayment
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="current-320"?320:295))process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -54,12 +54,14 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/task410-entry.
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
-  if(row.purpose!=="TASK410_COMPANY_PROXY_EXACT_295"||row.sourceSha!==process.argv[2])process.exit(1);
+  const count=require(process.argv[3]).migrationCount;
+  if(row.purpose!=="TASK410_COMPANY_PROXY_EXACT_"+count||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
-' "$work/receipt.json" "$sha" || { printf 'TASK410_COMPANY_PROXY_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
+' "$work/receipt.json" "$sha" "$prepared/source.json" || { printf 'TASK410_COMPANY_PROXY_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="TASK410_COMPANY_PROXY_EXACT_295_PASSED";
+  const count=require(process.argv[4]).migrationCount;
+  const expected="TASK410_COMPANY_PROXY_EXACT_"+count+"_PASSED";
   if(proof.status!==expected||proof.lane!==process.argv[2]||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$scope" "$sha" "$prepared/source.json"

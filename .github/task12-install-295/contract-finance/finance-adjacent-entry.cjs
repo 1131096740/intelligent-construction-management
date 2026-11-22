@@ -2,7 +2,7 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const plan=require('./finance-adjacent-profiles.json');
 const {readFileSync}=require('node:fs');
@@ -12,28 +12,40 @@ const {isDeepStrictEqual}=require('node:util');
 const source=require('./contract-finance-source.json');
 const root='/qualification';
 const lane=process.argv[2];
-const receipt={schemaVersion:1,purpose:'ORIGINAL_FINANCE_ADJACENT_EXACT_295',lane,sourceSha:source.sourceSha,
-  migrationSha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
+const current320=process.argv[3]==='--current-320';
+const count=current320?320:295;
+const receipt={schemaVersion:1,purpose:'ORIGINAL_FINANCE_ADJACENT_EXACT_'+count,lane,sourceSha:source.sourceSha,
+  migrationSha256:current320?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
 async function main(){
-  assert.equal(process.argv.length,3);
+  assert.equal(process.argv.length,current320?4:3);
   assert.notEqual(process.getuid(),0);
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
-  assert.equal(source.migrationCount,295);
-  assert.equal(source.ledgerSha256,final);
-  assert.equal(source.tails.at(-1).sha256,digest);
+  assert.equal(source.migrationCount,count);
+  if(current320){
+    assert.equal(source.mode,'current-320');
+    assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
+    assert.equal(source.predecessor.migrationCount,295);
+    assert.equal(source.predecessor.ledgerSha256,final);
+    assert.equal(source.tails.length,25);
+  } else {
+    assert.equal(source.ledgerSha256,final);
+    assert.equal(source.tails.at(-1).sha256,digest);
+  }
   assert.ok(Object.hasOwn(plan,lane));
   const profile=plan[lane];
   const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
   assert.equal(hash(root+'/'+profile.runner),profile.runnerSha256);
   assert.equal(hash(root+'/workspace/services/api/'+profile.suite),profile.suiteSha256);
   const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
-  assert.equal(baseline.expectedDirectoryCount,295);
-  assert.equal(baseline.terminalMigrationChecksum,digest);
+  assert.equal(baseline.expectedDirectoryCount,count);
+  assert.equal(baseline.terminalMigrationChecksum,receipt.migrationSha256);
+  if(current320) assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const need=(ok,code)=>assert.ok(ok,code);
-  await withCombined295MultiWitness(receipt,async context=>{
+  const consume=async context=>{
+    if(current320) assert.equal(context.candidateTree,source.sourceTree);
     function runCommand(file,args,{cwd,timeoutMs,allowFailure,extra}){
       const result=spawnSync(file,args,{cwd,encoding:'utf8',timeout:timeoutMs,maxBuffer:16*1024*1024,
         env:{PATH:'/usr/local/bin:/usr/bin:/bin:/usr/lib/postgresql/16/bin',LANG:'C',LC_ALL:'C',TZ:'UTC',
@@ -46,7 +58,19 @@ async function main(){
     const run=require('./'+profile.runner)[profile.method];
     if(lane==='pol280')await run(context,receipt);
     else await run(context,receipt,runCommand,need,isDeepStrictEqual);
-  });
+  };
+  if(current320){
+    await withCombined320ContractPayment(receipt,consume,{
+      sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails
+    });
+    assert.equal(receipt.forward320.count,count);
+    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.forward320.sameBaseB7,true);
+    assert.equal(receipt.combinedAfterBusiness.count,count);
+  } else {
+    await withCombined295MultiWitness(receipt,consume);
+  }
   const original=receipt[profile.receipt];
   assert.equal(original.suite,profile.suite);
   assert.equal(original.passed,profile.count);
@@ -58,13 +82,13 @@ async function main(){
   assert.deepEqual(receipt.orderedTails.slice(-6).map(row=>row.size),[290,291,292,293,294,295]);
   assert.equal(receipt.installOnly295.ledgerSha256,final);
   assert.equal(receipt.installOnly295.nonOwnerDenied,true);
-  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,final);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
   assert.equal(receipt.combinedAfterBusiness.exactB7,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status='ORIGINAL_FINANCE_ADJACENT_295_PASSED';
+  receipt.status='ORIGINAL_FINANCE_ADJACENT_'+count+'_PASSED';
 }
 
 main().catch(error=>{

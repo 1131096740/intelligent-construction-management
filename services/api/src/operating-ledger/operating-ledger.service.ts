@@ -1,9 +1,11 @@
+import { CONTRACT_WORK_COMPLETION_SOURCE } from "../contract/contract-work-completion-operating-source.adapter";
 import { normalizeOperatingMoney, normalizeOperatingSourceSnapshot, operatingNumericSnapshot, requireLegacyOperatingCents, sameOperatingMoney, type OperatingMoneyInput } from "./operating-money-protocol";
 import { repaymentOwnershipDate } from "../company-transfer/company-transfer-ownership";
 import { randomUUID } from "node:crypto";
 
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -611,6 +613,58 @@ export class OperatingLedgerService {
       );
     }
 
+    const factData = {
+      id: randomUUID(),
+      projectId: input.projectId,
+      sourceType: input.sourceType,
+      sourceBusinessId: input.sourceBusinessId,
+      sourceVersion: input.sourceVersion,
+      sourceBusinessCode: input.sourceBusinessCode,
+      occurredAt: input.occurredAt,
+      confirmedAt: input.confirmedAt,
+      affiliateAssignmentId: input.affiliateAssignmentId,
+      affiliateBusinessPartyVersionId: input.affiliateBusinessPartyVersionId,
+      affiliateNameSnapshot: input.affiliateNameSnapshot,
+      affiliateCreditCodeSnapshot: input.affiliateCreditCodeSnapshot,
+      operatingLedgerEffectiveDateSnapshot: writeScope.effectiveDate,
+      isBeforeOperatingLedgerEffectiveDate: input.isBeforeOperatingLedgerEffectiveDate,
+      historicalTakeoverBatchId: input.historicalTakeoverBatchId,
+      factKind: input.factKind,
+      operatingLevel: input.operatingLevel,
+      evidenceLevel: input.evidenceLevel,
+      amountCents: input.amountCents,
+      numericProtocolVersion: input.numericProtocolVersion ?? 1,
+      amountYuan: input.numericProtocolVersion === 2 ? input.amountYuan : null,
+      currencyCode: input.currencyCode,
+      direction: input.direction,
+      ...subjectColumns(input.subjects),
+      subjectSnapshot,
+      sourceSnapshot: input.sourceSnapshot,
+      basisSnapshot: input.basisSnapshot,
+      entryKind,
+      adjustsFactId,
+      idempotencyKey: input.idempotencyKey,
+      confirmedByUserId: input.confirmedByUserId,
+      status: "confirmed",
+      paymentExecutionId: input.paymentExecutionId,
+      fundExecutionId: input.fundExecutionId,
+      fundExecutionCaseId: input.fundExecutionCaseId
+    };
+    if (input.sourceType === CONTRACT_WORK_COMPLETION_SOURCE) {
+      if (confirmationAuthority !== "source_actor") {
+        throw new ForbiddenException("履约成本只能在末次确认事务内登记");
+      }
+      const [impact] = input.impacts;
+      const impactSnapshot = await this.impactSnapshotWithSubject(tx, input, impact, ownershipOccurredAt);
+      const impactData = this.buildImpactData(factData.id, input.projectId, input, impact, impactSnapshot);
+      const [posted] = await translateOperatingLedgerWriteConstraint(tx.$queryRaw<(OperatingFactWriteRow & { impactId: string })[]>`
+        SELECT * FROM public.jg_post_contract_work_completion_cost_v1(
+          ${JSON.stringify(factData)}::jsonb, ${JSON.stringify(impactData)}::jsonb, ${actorUserId}::text,
+          ${this.operatingLedgerWriteSecret()}::text)
+      `);
+      if (!posted) throw new ConflictException("履约成本写入未返回确认记录");
+      return toWriteResult(posted, true, [posted.impactId]);
+    }
     const existing = await tx.operatingFact.findUnique({
       where: {
         sourceType_sourceBusinessId: {
@@ -669,47 +723,7 @@ export class OperatingLedgerService {
       throw new BadRequestException("同一原经营事实不允许重复冲销");
     }
 
-    const created = await this.appendFactRow(
-      tx,
-      {
-        id: randomUUID(),
-        projectId: input.projectId,
-        sourceType: input.sourceType,
-        sourceBusinessId: input.sourceBusinessId,
-        sourceVersion: input.sourceVersion,
-        sourceBusinessCode: input.sourceBusinessCode,
-        occurredAt: input.occurredAt,
-        confirmedAt: input.confirmedAt,
-        affiliateAssignmentId: input.affiliateAssignmentId,
-        affiliateBusinessPartyVersionId: input.affiliateBusinessPartyVersionId,
-        affiliateNameSnapshot: input.affiliateNameSnapshot,
-        affiliateCreditCodeSnapshot: input.affiliateCreditCodeSnapshot,
-        operatingLedgerEffectiveDateSnapshot: writeScope.effectiveDate,
-        isBeforeOperatingLedgerEffectiveDate: input.isBeforeOperatingLedgerEffectiveDate,
-        historicalTakeoverBatchId: input.historicalTakeoverBatchId,
-        factKind: input.factKind,
-        operatingLevel: input.operatingLevel,
-        evidenceLevel: input.evidenceLevel,
-        amountCents: input.amountCents,
-        numericProtocolVersion: input.numericProtocolVersion ?? 1,
-        amountYuan: input.numericProtocolVersion === 2 ? input.amountYuan : null,
-        currencyCode: input.currencyCode,
-        direction: input.direction,
-        ...subjectColumns(input.subjects),
-        subjectSnapshot,
-        sourceSnapshot: input.sourceSnapshot,
-        basisSnapshot: input.basisSnapshot,
-        entryKind,
-        adjustsFactId,
-        idempotencyKey: input.idempotencyKey,
-        confirmedByUserId: input.confirmedByUserId,
-        status: "confirmed",
-        paymentExecutionId: input.paymentExecutionId,
-        fundExecutionId: input.fundExecutionId,
-        fundExecutionCaseId: input.fundExecutionCaseId
-      },
-      actorUserId
-    );
+    const created = await this.appendFactRow(tx, factData, actorUserId);
 
     const impactIds: string[] = [];
     for (const impact of input.impacts) {
@@ -759,33 +773,7 @@ export class OperatingLedgerService {
     }
 
     const created = await this.appendImpactRow(
-      tx,
-      {
-        id: randomUUID(),
-        factId,
-        projectId,
-        sourceType: input.sourceType,
-        sourceBusinessId: input.sourceBusinessId,
-        sourceImpactKey: impact.sourceImpactKey,
-        idempotencyKey: impact.idempotencyKey,
-        impactKind: impact.impactKind,
-        amountCents: impact.amountCents,
-        numericProtocolVersion: impact.numericProtocolVersion ?? 1,
-        amountYuan: impact.numericProtocolVersion === 2 ? impact.amountYuan : null,
-        direction: impact.direction,
-        subjectRole: impact.subjectRole,
-        subjectKind: impact.subject?.kind,
-        subjectId: impact.subject?.id,
-        costCategoryCode: impact.costCategoryCode,
-        fundPurpose: impact.fundPurpose,
-        description: impact.description,
-        impactSnapshot,
-        paymentExecutionId: impact.paymentExecutionId,
-        fundExecutionId: impact.fundExecutionId,
-        fundExecutionCaseId: impact.fundExecutionCaseId,
-        executionAllocationLineId: impact.executionAllocationLineId
-      },
-      actorUserId
+      tx, this.buildImpactData(factId, projectId, input, impact, impactSnapshot), actorUserId
     );
     const persisted = created.createdAt
       ? created
@@ -812,6 +800,37 @@ export class OperatingLedgerService {
       actorUserId
     });
     return created;
+  }
+
+  private buildImpactData(
+    factId: string, projectId: string, input: AppendOperatingFactInput, impact: OperatingImpactInput,
+    impactSnapshot: Prisma.InputJsonObject
+  ) {
+    return {
+      id: randomUUID(),
+      factId,
+      projectId,
+      sourceType: input.sourceType,
+      sourceBusinessId: input.sourceBusinessId,
+      sourceImpactKey: impact.sourceImpactKey,
+      idempotencyKey: impact.idempotencyKey,
+      impactKind: impact.impactKind,
+      amountCents: impact.amountCents,
+      numericProtocolVersion: impact.numericProtocolVersion ?? 1,
+      amountYuan: impact.numericProtocolVersion === 2 ? impact.amountYuan : null,
+      direction: impact.direction,
+      subjectRole: impact.subjectRole,
+      subjectKind: impact.subject?.kind,
+      subjectId: impact.subject?.id,
+      costCategoryCode: impact.costCategoryCode,
+      fundPurpose: impact.fundPurpose,
+      description: impact.description,
+      impactSnapshot,
+      paymentExecutionId: impact.paymentExecutionId,
+      fundExecutionId: impact.fundExecutionId,
+      fundExecutionCaseId: impact.fundExecutionCaseId,
+      executionAllocationLineId: impact.executionAllocationLineId
+    };
   }
 
   private async impactSnapshotWithSubject(
@@ -1154,6 +1173,19 @@ async function assertV2EconomicReviewSource(tx: OperatingLedgerTransaction, inpu
 
 function validateOperatingMoneyScope(input: AppendOperatingFactInput, entryKind: OperatingFactEntryKind) {
   if (input.impacts.some(impact => (impact.numericProtocolVersion ?? 1) !== (input.numericProtocolVersion ?? 1))) throw new BadRequestException("经营事实与影响分录必须使用同一金额协议");
+  if (input.sourceType === CONTRACT_WORK_COMPLETION_SOURCE) {
+    const [impact] = input.impacts;
+    if (entryKind !== "original" || input.numericProtocolVersion !== 2 || !input.amountYuan || input.amountYuan === "0.0000" ||
+      input.factKind !== "expense" || input.direction !== "neutral" || input.paymentExecutionId || input.fundExecutionId ||
+      input.fundExecutionCaseId || input.impacts.length !== 1 || impact.impactKind !== "confirmed_cost" ||
+      impact.sourceImpactKey !== "confirmed_cost" || impact.amountYuan !== input.amountYuan || impact.direction !== "increase" ||
+      impact.subjectRole !== "debtor" || impact.subject?.id !== input.subjects.debtor?.id ||
+      impact.subject?.kind !== input.subjects.debtor?.kind || impact.costCategoryCode !== "other_project_cost" ||
+      impact.paymentExecutionId || impact.fundExecutionId || impact.fundExecutionCaseId || impact.executionAllocationLineId) {
+      throw new BadRequestException("履约确认只能按原四位金额登记一次成本");
+    }
+    return;
+  }
   if (input.numericProtocolVersion !== 2) return;
   if (input.sourceType === "project_owner_settlement_entry") {
     const reduction = input.direction === "outflow";

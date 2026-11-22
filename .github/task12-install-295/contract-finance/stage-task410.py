@@ -67,6 +67,10 @@ for name in ('runner.cjs','handover.spec.ts','company.spec.ts','expense.spec.ts'
 for target, delta in [('services/api/prisma/run-task398-shared-standard-local.cjs','task410-runner-295.patch'),
                       ('services/api/src/database/task410-owned-test-database.ts','task410-support-295.patch')]:
     subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(work/target),str(Path(__file__).with_name(delta))],check=True)
+for relative, delta in [('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-320.patch'),
+                        ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-320.patch')]:
+    subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                    str(work / relative), str(Path(__file__).with_name(delta))], check=True)
 for name in names:
     (work / name).chmod(0o644)
     print(name)

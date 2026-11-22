@@ -3,6 +3,9 @@ const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const old=process.argv[4];
+const source=process.argv[6] ? require(process.argv[6]) : null;
+const current320=source?.mode==='current-320';
+const count=current320?320:295;
 const scopes=require(path.join(old,'lanes.json'));
 const {lanes}=require(path.join(old,'pins.json'));
 const scope={tree:'67644d9465a0ab4ee80ede099139d9c129d66f14',expectedLedgerSha256:'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d'};
@@ -18,13 +21,22 @@ const status={
 function verifyLane(lane,receipt) {
   const expected=scopes[lane];
   assert.ok(Object.hasOwn(status,lane)&&expected,'ONBOARDING_295_RECEIPT_LANE');
-  assert.equal(receipt.status,status[lane]);
-  assert.equal(receipt.applicationSource.tree,scope.tree);
+  assert.equal(receipt.status,status[lane].replace(/_295_PASSED$/u,"_"+count+"_PASSED"));
+  assert.equal(receipt.applicationSource.tree,current320?source.sourceTree:scope.tree);
   assert.equal(receipt.applicationSource.lane,lane);
   assert.equal(receipt.applicationSource.fixtureMounts,Object.keys(expected.fixturePins).length);
   assert.equal(receipt.releaseTree,scope.tree);
   assert.equal(receipt.installOnly295.count,295);
   assert.equal(receipt.installOnly295.ledgerSha256,scope.expectedLedgerSha256);
+  if(current320){
+    assert.equal(receipt.forward320.count,320);
+    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+    assert.equal(receipt.forward320.sameBaseB7,true);
+    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.combinedAfterBusiness.count,320);
+    assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
+  }
   assert.equal(receipt.sameInstancePostConsume,true);
   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
   assert.equal(receipt.applicationSource.sourceSha,process.argv[5]);
@@ -46,7 +58,7 @@ function verifyAll(root) {
   const results=lanes.map(lane=>verifyLane(lane,load(path.join(root,lane,'receipt.json'))));
   const canonical=results.filter(result=>result.lane!=='lifecycle-mobile').reduce((sum,result)=>sum+result.passed,0);
   assert.equal(canonical,59);
-  return {status:'EMPLOYEE_ONBOARDING_295_ORIGINAL_DATABASE_SCOPES_PASSED',logicalScopes:6,
+  return {status:'EMPLOYEE_ONBOARDING_'+count+'_ORIGINAL_DATABASE_SCOPES_PASSED',logicalScopes:6,
     lanes:results,canonical,standalonePersonnelFeedback:'SEPARATE_CI_STEP'};
 }
 if(require.main===module){

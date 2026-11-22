@@ -18,7 +18,9 @@ workspace="$prepared/prepared/context/workspace"
 node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" <<'JS'
 const [sourceFile,sha,profilesFile,prior,workspace,terminalFile]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-if(source.sourceSha!==sha||source.migrationCount!==295||source.ledgerSha256!==terminal.final)process.exit(65);
+const current=source.mode==='current-320';
+if(source.sourceSha!==sha||source.migrationCount!==(current?320:295)||
+  (current?source.predecessor.ledgerSha256:source.ledgerSha256)!==terminal.final)process.exit(65);
 const pins=require(profilesFile).profile.mounts;
 const fs=require('node:fs'),assert=require('node:assert/strict'),{createHash}=require('node:crypto');
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -33,11 +35,8 @@ fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
-printf '%s  %s\n' '8e69f8328f7e67d07679bdcb8638a5a87f5184805d798f837552392fb69c7623' "$common/installer.cjs" | shasum -a 256 -c >/dev/null
-cp "$common/installer.cjs" "$work/installer.cjs"
-gzip -dc "$plan/installer-profile.patch.gz" | patch --batch --fuzz=0 --no-backup-if-mismatch "$work/installer.cjs" >/dev/null
-printf '%s  %s\n' '9d28b476548760f593d537fd60cb6c75680aadaa4ab1892d3dc108ffcecb4266' "$work/installer.cjs" | shasum -a 256 -c >/dev/null
-chmod 0644 "$work/installer.cjs"
+git -C "$root" show "$sha:.github/task12-install-295/contract-finance/common/installer.cjs" |
+  cmp -s - "$common/installer.cjs" || exit 65
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -51,7 +50,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/profile-entry.cjs,dst=/qualification/profile-entry.cjs,readonly"
   --mount "type=bind,src=$plan/profile-history.cjs,dst=/qualification/profile-history.cjs,readonly"
-  --mount "type=bind,src=$work/installer.cjs,dst=/qualification/installer.cjs,readonly")
+  --mount "type=bind,src=$common/installer.cjs,dst=/qualification/installer.cjs,readonly")
 for file in remaining-retained.cjs fixtures.json project-profile-original-seed.sql; do
   args+=(--mount "type=bind,src=$historical/$file,dst=/qualification/$file,readonly")
 done
@@ -62,15 +61,16 @@ done
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
-printf '%s\n' "假设原项目经营档案种子在同一实例从 125 升至 126 并保留到 295。观察 profileHistory、retainedOriginal、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
+printf '%s\n' "假设原项目经营档案种子在同一实例从 125 升至 126 并保留到本轮已验证迁移终点。观察 profileHistory、retainedOriginal、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/profile-entry.cjs \
   > "$work/receipt.json" 2> "$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$lane" <<'JS'
-const [file,sha,lane]=process.argv.slice(2);
+node - "$work/receipt.json" "$sha" "$lane" "$prepared/source.json" <<'JS'
+const [file,sha,lane,sourceFile]=process.argv.slice(2);
 const r=require(file);
-if(r.status!=='REMAINING_PROFILE_WARM_295_PASSED'||r.sourceSha!==sha||r.lane!==lane)process.exit(1);
+const count=require(sourceFile).migrationCount;
+if(r.status!=='REMAINING_PROFILE_WARM_'+count+'_PASSED'||r.sourceSha!==sha||r.lane!==lane)process.exit(1);
 JS

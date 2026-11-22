@@ -875,6 +875,7 @@ export class ProjectService {
         operatingIncomeYuan: projection.operating.confirmedIncomeYuan,
         affiliateDownstreamPaymentCents: null,
         operatingCostCents: projection.operating.confirmedCostCents,
+        operatingCostYuan: projection.operating.confirmedCostYuan,
         grossProfitCents: projection.profitAndLoss.currentOperatingProfitCents,
         grossProfitYuan: projection.profitAndLoss.currentOperatingProfitYuan
       },

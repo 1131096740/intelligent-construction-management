@@ -13,10 +13,17 @@ for name, expected in pins['resources'].items():
     if hashlib.sha256((archive/name).read_bytes()).hexdigest()!=expected:
         raise SystemExit('ONBOARDING_295_ARCHIVE_PIN '+name)
 source_record=json.loads(source.read_text())
-if source_record['migrationCount']!=295:
-    raise SystemExit('ONBOARDING_295_SOURCE_LEDGER')
+count=source_record['migrationCount']
+current320=source_record.get('mode')=='current-320'
+if count!=(320 if current320 else 295):
+    raise SystemExit('ONBOARDING_SOURCE_LEDGER')
+application_tree=source_record['sourceTree'] if current320 else '67644d9465a0ab4ee80ede099139d9c129d66f14'
+if current320:
+    import re
+    if not re.fullmatch('[0-9a-f]{40}',application_tree):
+        raise SystemExit('ONBOARDING_320_SOURCE_TREE')
 old=json.loads(gzip.decompress((archive/'workspace-inputs.json.gz').read_bytes()))
-expected_drift=json.loads((plan/'onboarding-295-source-drift.json').read_text())
+expected_drift=json.loads((plan/f'onboarding-{count}-source-drift.json').read_text())
 actual={}
 changes={}
 for name, previous in old['files'].items():
@@ -46,25 +53,29 @@ for lane in pins['lanes']:
     lane_root=out/'lanes'/lane
     entry=lane_root/'entry.cjs'
     text=entry.read_text().replace('290','295').replace('?.size!==289','?.size!==295')
+    if current320:
+        if text.count('_295_PASSED')!=1:
+            raise SystemExit('ONBOARDING_320_STATUS_ANCHOR')
+        text=text.replace('_295_PASSED','_320_PASSED')
     entry.write_text(text)
     runner=lane_root/'onboarding-full.cjs'
     text=runner.read_text()
     if text.count('a1be083076018686dd8afba68c44ff9c75502014')!=1:
         raise SystemExit('ONBOARDING_295_RUNTIME_ANCHOR')
-    runner.write_text(text.replace('a1be083076018686dd8afba68c44ff9c75502014','67644d9465a0ab4ee80ede099139d9c129d66f14'))
+    runner.write_text(text.replace('a1be083076018686dd8afba68c44ff9c75502014',application_tree))
     if lane=='roster':
         seed=lane_root/'onboarding-roster-seed.cjs'
         material=seed.read_bytes()
         if hashlib.sha256(material).hexdigest()!='9646d99e10a4aa3fde4bf7d9c5f4e9bd6a24cae83b5ae2bbeaa3a02e51b01b91' or material.count(b'a1be083076018686dd8afba68c44ff9c75502014')!=1:
             raise SystemExit('ONBOARDING_295_ROSTER_SEED_PREIMAGE')
-        seed.write_bytes(material.replace(b'a1be083076018686dd8afba68c44ff9c75502014',b'67644d9465a0ab4ee80ede099139d9c129d66f14'))
+        seed.write_bytes(material.replace(b'a1be083076018686dd8afba68c44ff9c75502014',application_tree.encode()))
         subprocess.run(['node','--check',str(seed)],check=True)
     for file in [entry,runner]:
         subprocess.run(['node','--check',str(file)],check=True)
-(out/'workspace-inputs.json').write_text(json.dumps({'tree':'67644d9465a0ab4ee80ede099139d9c129d66f14',
+(out/'workspace-inputs.json').write_text(json.dumps({'tree':application_tree,
     'sourceSha':source_record['sourceSha'],'files':actual},ensure_ascii=False)+'\n')
 verifier=(archive/'verify-application-source.cjs').read_text()
-(out/'verify-application-source.cjs').write_text(verifier.replace(old['tree'],'67644d9465a0ab4ee80ede099139d9c129d66f14')
+(out/'verify-application-source.cjs').write_text(verifier.replace(old['tree'],application_tree)
     .replace('return {tree:manifest.tree,',"assert.equal(manifest.sourceSha,require('./contract-finance-source.json').sourceSha);\n  return {sourceSha:manifest.sourceSha,tree:manifest.tree,"))
 (out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
 installer=out/'installer.cjs'

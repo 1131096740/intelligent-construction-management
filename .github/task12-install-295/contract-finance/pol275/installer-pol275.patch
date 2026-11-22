@@ -1,18 +1,19 @@
 --- installer.cjs
 +++ installer.cjs
-@@ -182,9 +182,9 @@
-  const {cli,engine}=plan.prismaTools;
+@@ -191,10 +191,10 @@
   const schema=capture(path.join(plan.historical,'schema.prisma')).bytes;
   const roots=new Map();
-- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
-+ for(const size of [...new Set([...(plan.pol275Warm ? [165,166] : []),203,205,213,215,218,221,ledger.length])]){
+  for(const size of [...new Set(plan.stopAt205 ? [203,205] : [
+-   ...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
++   ...(plan.pol275Warm?[165,166]:[]),...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
+  ])]){
    const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
--  fs.writeFileSync(path.join(dir,'schema.prisma'),schema,{flag:'wx',mode:0o600});
-+  fs.writeFileSync(path.join(dir,'schema.prisma'),size<=166 && plan.pol275Warm ? plan.pol275Warm.schema : schema,{flag:'wx',mode:0o600});
+-  fs.writeFileSync(path.join(dir,'schema.prisma'),size<=126&&plan.profileUpgrade?plan.profileSchema:schema,{flag:'wx',mode:0o600});
++  fs.writeFileSync(path.join(dir,'schema.prisma'),size<=166&&plan.pol275Warm?plan.pol275Warm.schema:size<=126&&plan.profileUpgrade?plan.profileSchema:schema,{flag:'wx',mode:0o600});
    fs.writeFileSync(path.join(dir,'migrations/migration_lock.toml'),'provider = "postgresql"\n',{flag:'wx',mode:0o600});
    for(const row of ledger.slice(0,size)){
     const bytes=capture(path.join(plan.historical,'migrations',row.name,'migration.sql')).bytes;need(hash(bytes)===row.sha256,'NATIVE_DIRECT_MIGRATION_SOURCE');
-@@ -197,7 +197,48 @@
+@@ -207,10 +207,50 @@
   const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
   const identity=row=>{need(row.database===database&&row.ownerOid==='10'&&row.actorOid==='10'&&row.actor==='jg_task01_owner'&&row.sessionActor==='jg_task01_owner'&&row.version===160015&&row.encoding==='UTF8'&&row.replication==='origin','NATIVE_DIRECT_MIGRATION_IDENTITY');return Object.fromEntries(['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'].map(k=>[k,row[k]]));};
   const checkLedger=(row,size)=>{need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');};
@@ -55,31 +56,33 @@
 +  need(equal(identity(terminal),retainedIdentity),'POL275_HISTORY_IDENTITY');checkLedger(terminal,166);
 +  plan.pol275Warm.receipt.pol275History={sameInstance:true,prefix:165,terminal:166};
 + }
+  const profileIdentity=plan.profileUpgrade?await require('./profile-history.cjs').runProfileHistory({
+    ledger,deploy,read:()=>jsonSql(controls.inspectSql()),identity,checkLedger,enter,sql,receipt:plan.profileUpgrade,
+  }):undefined;
   await deploy(203);const first=await jsonSql(controls.inspectSql());const bound=identity(first);checkLedger(first,203);
 + if (retainedIdentity) need(equal(bound,retainedIdentity),'POL275_HISTORY_IDENTITY');
-+
+  if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
   const migrationPlan={...bound,runId:randomUUID(),nonce:randomBytes(32).toString('hex'),appName:'jg_fixture_app_'+randomBytes(12).toString('hex'),schemaName:'jg_fixture_'+randomBytes(12).toString('hex'),technicalProfile:'CURRENT259_OWNED_TECHNICAL_V1',resourceRunId:plan.runId,migrations:migrations.slice(0,205)};
   const setup=await jsonSql(controls.setupSql(migrationPlan));controls.checkSetup(setup,migrationPlan);
-  const qualified=new URL(baseUrl);qualified.searchParams.set('options','-c app.contract_archive_v2_application_role_oid='+setup.appOid+' -c app.contract_archive_v2_file_caller_oids='+JSON.stringify(setup.fileCallerOids)+' -c app.local_migration_nonce='+migrationPlan.nonce);
-@@ -248,6 +289,7 @@
+@@ -267,6 +307,9 @@
  const installOnly292 = Symbol('install-only292');
  const exactMultiWitness295 = Symbol('exact-multi-witness295');
- async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false) {
-+  const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
+ async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false, forward320, retainedMode) {
++  const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_WARM_EXACT_320:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
++  if (pol275Mode) need(Boolean(forward320)===(receipt.purpose==='ORIGINAL_POL275_WARM_EXACT_320'),
++    'POL275_ORIGINAL_MODE_SCOPE');
    const combined = purpose===installOnly292 || purpose===exactMultiWitness295;
    if(combined) need(!probeOnly && release===ordinaryApprovalRelease,'INSTALL_ONLY_292_MODE');
-   const historical = '/qualification/source/services/api/prisma';
-@@ -282,7 +324,8 @@
-       {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
+   const retainedCleanup=retainedMode==='cleanup', profileUpgrade=retainedMode==='profile';
+@@ -305,6 +348,7 @@
    const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
    const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
--  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000}};
-+  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
-+    ...(pol275Mode ? {pol275Warm:{schema:schema.bytes,receipt,collision:pol275Mode==='collision'}} : {})};
+   const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
++    ...(pol275Mode ? {pol275Warm:{schema:schema.bytes,receipt,collision:pol275Mode==='collision'}} : {}),
+     ...(profileUpgrade?{profileUpgrade:receipt,profileSchema:schema.bytes}:{})};
    receipt.runId = runId;
    const credentials = Object.fromEntries(['owner','runtime','observer'].map(k => [k,randomBytes(48).toString('hex')]));
-   let pg, lifetime, postmaster;
-@@ -319,11 +362,12 @@
+@@ -342,11 +386,12 @@
        });
      });
      need(port > 1024 && port !== 5432, 'INVALID_POSTMASTER_PORT');
@@ -93,7 +96,7 @@
  `;
      fs.writeFileSync(abs('data/pg_hba.conf'), hba);
      const config = `listen_addresses='127.0.0.1,::1'
-@@ -407,6 +451,11 @@
+@@ -430,6 +475,11 @@
      await sql(`CREATE DATABASE ${database} OWNER ${owner} ENCODING 'UTF8' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C';`,{database:'postgres'});
      const locale = await jsonSql("SELECT jsonb_build_object('encoding',pg_encoding_to_char(encoding),'collate',datcollate,'ctype',datctype,'provider',datlocprovider) FROM pg_database WHERE datname=current_database();");
      need(equal(locale,{encoding:'UTF8',collate:'C',ctype:'C',provider:'c'}),'INVALID_DB_LOCALE');
@@ -105,10 +108,11 @@
      receipt.migrationMaterials = (await installHistory(plan, root, port, credentials, sql, jsonSql, command, enter, fromHistory, stageTree, receipt)).materials;
  
      const roleIdentity = receipt.databaseIdentity;
-@@ -1190,3 +1239,14 @@
- 
- module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);
+@@ -1388,3 +1438,15 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
+ module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
++
 +
 +function projectOriginalPol275Collision(result) {
 +  need(result.membershipGuardSqlstate==='42501' && result.unsafeMembershipRejected===true &&

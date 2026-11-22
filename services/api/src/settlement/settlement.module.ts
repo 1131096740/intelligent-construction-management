@@ -32,6 +32,9 @@ import { SettlementFrozenDocumentService } from "./settlement-frozen-document.se
 import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
 import { SettlementRecoveryService } from "./settlement-recovery.service";
 
+import { SignedContractSettlementController } from "./signed-contract-settlement.controller";
+import { SignedContractSettlementService } from "./signed-contract-settlement.service";
+
 @Module({
   imports: [
     BusinessEntryTransactionModule,
@@ -45,6 +48,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
   ],
   controllers: [
     SettlementController,
+    SignedContractSettlementController,
     SettlementDraftController,
     SettlementWorkbenchController,
     SettlementImportController,
@@ -54,6 +58,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
   ],
   providers: [
     SettlementService,
+    SignedContractSettlementService,
     SettlementDraftService,
     ContractSettlementProcessService,
     SettlementSubmissionService,

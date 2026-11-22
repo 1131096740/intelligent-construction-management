@@ -58,19 +58,23 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(createApiValidationPipe());
     if (ownedRun !== undefined) {
+      const current320 = process.env.TASK_POL115_WORKBENCH_EXACT_320 === "1";
       const [witness] = await app.get(PrismaService).$queryRaw<Array<{ accepted: boolean }>>`
         SELECT (d.datname = ${url.pathname.slice(1)} AND d.datdba = 10 AND
           current_user = 'jg_task01_owner' AND current_user::regrole::oid = 10 AND current_user = session_user AND
           inet_server_addr() = '127.0.0.1'::inet AND inet_client_addr() = '127.0.0.1'::inet AND
           inet_server_port() = ${Number(url.port)}::integer AND
           EXISTS (SELECT FROM pg_catalog.pg_stat_ssl WHERE pid = pg_backend_pid() AND ssl) AND
-          (SELECT COUNT(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 295 AND
+          (SELECT COUNT(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = ${current320 ? 320 : 295} AND
           EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
             AND migration_name = '20261119003500_fund_balance_correction_controlled_round'
             AND checksum = '8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60') AND
           EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
             AND migration_name = '20261119003800_company_transfer_ordinary_loan_multi_witness'
-            AND checksum = 'e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25')) AS accepted
+            AND checksum = 'e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25') AND
+          (NOT ${current320} OR EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+            AND migration_name = '20261119006400_contract_work_completion_original_subject'
+            AND checksum = '3934fe52a90ff38df2a9560631d21e290b9efacdba84a7844d9e7978124465ae'))) AS accepted
         FROM pg_catalog.pg_database d WHERE d.datname = current_database()
       `;
       if (witness?.accepted !== true) throw new Error("POL115_WORKBENCH_OWNED_282_DATABASE");

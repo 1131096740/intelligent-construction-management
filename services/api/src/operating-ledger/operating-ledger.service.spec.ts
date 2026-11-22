@@ -102,6 +102,39 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
+  it("只在末次确认的受控成本入口写账，不查询经营整行或调用通用写函数", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord() });
+    const scoped = jest.fn(async (parts: TemplateStringsArray, ...args: unknown[]) => {
+      expect(parts.join("?")).toContain("jg_post_contract_work_completion_cost_v1");
+      const fact = JSON.parse(String(args[0]));
+      const impact = JSON.parse(String(args[1]));
+      expect(fact).toMatchObject({ sourceType: "contract_work_completion", sourceBusinessId: "fact-1", amountYuan: "0.0123" });
+      expect(impact).toMatchObject({ factId: fact.id, impactKind: "confirmed_cost", amountYuan: "0.0123" });
+      return [{ id: fact.id, projectId: "project-1", sourceType: fact.sourceType, sourceBusinessId: "fact-1", impactId: "impact-1" }];
+    });
+    const tx = { ...prisma, $queryRaw: scoped } as never;
+    const service = new OperatingLedgerService(prisma as never);
+    const input = { ...baseInput(), sourceType: "contract_work_completion", sourceBusinessId: "fact-1",
+      idempotencyKey: "contract_work_completion:fact-1", factKind: "expense", direction: "neutral",
+      numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0123",
+      sourceSnapshot: { numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "0.0123" } },
+      subjects: { debtor: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        costBearingCompany: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } },
+      impacts: [{ idempotencyKey: "contract_work_completion:fact-1:confirmed_cost", sourceImpactKey: "confirmed_cost",
+        impactKind: "confirmed_cost", amountCents: null, numericProtocolVersion: 2, amountYuan: "0.0123",
+        direction: "increase", subjectRole: "debtor", subject: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        costCategoryCode: "other_project_cost" }] } as const;
+    await expect(service.appendConfirmedSourceInTransaction(tx, input as never, "actor-1"))
+      .resolves.toMatchObject({ created: true, impactIds: ["impact-1"] });
+    expect(scoped).toHaveBeenCalledTimes(1);
+    expect(prisma.operatingFact.findUnique).not.toHaveBeenCalled();
+    expect(prisma.operatingImpactEntry.findUnique).not.toHaveBeenCalled();
+    await expect(service.replayFromSourceInTransaction(tx, input as never, "actor-1")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(scoped).toHaveBeenCalledTimes(1);
+  });
+
   it("经公开经营写入与读取保留合同承诺1.5340元，事实及影响均不冒充分", async () => {
     const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
     const service = new OperatingLedgerService(prisma as never);

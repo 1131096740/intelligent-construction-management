@@ -6,6 +6,13 @@
     >
       <template #actions>
         <t-button
+          v-if="canRegisterSignedSettlement"
+          theme="primary"
+          @click="router.push('/结算工作台/已签登记')"
+        >
+          已签结算登记
+        </t-button>
+        <t-button
           v-if="canExportLedger"
           variant="outline"
           :loading="exportLoading"
@@ -298,6 +305,9 @@ const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 const roleKeys = computed(() => auth.user?.roleKeys ?? []);
+const canRegisterSignedSettlement = computed(() =>
+  roleKeys.value.some(role => role === "contract_staff" || role === "contract_director")
+);
 const canManageSettlements = computed(() =>
   canManageSettlementRecords(roleKeys.value)
 );

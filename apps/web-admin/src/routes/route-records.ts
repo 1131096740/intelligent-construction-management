@@ -486,6 +486,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },
       {
+        path: "结算工作台/已签登记",
+        component: () => import("../pages/settlements/SignedContractSettlementPage.vue"),
+        meta: { requiredRoleKeys: ["contract_staff", "contract_director"], title: "已签结算登记" }
+      },
+      {
         path: "结算工作台/新建",
         component: () => import("../pages/settlements/SettlementWorkbenchPage.vue"),
         meta: { requiredRoleKeys: settlementMaintenanceRoleKeys, title: "新建结算" }

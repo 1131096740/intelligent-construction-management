@@ -15,6 +15,7 @@ import { CompanyRoleResolverService } from "../auth/company-role-resolver.servic
 import { PrismaService } from "../database/prisma.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { FileService, PrivateFileStorage } from "./file.service";
+import { signedSettlementUploadPrefix } from "./signed-settlement-file";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 
 const STORAGE_ENV_KEYS = [
@@ -5697,6 +5698,61 @@ describe("FileService", () => {
     }
   );
 
+  it("rechecks scope at signed attachment ticket consumption and returns the same original bytes", async () => {
+    const keySetting = "SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY";
+    const oldKey = process.env[keySetting];
+    process.env[keySetting] = "a".repeat(64);
+    try {
+      const original = Buffer.from("%PDF-1.4 signed original");
+      const binding = { database: "isolated", role: "attachment_runtime", xid: "88", backend: "5", expires: "1795370000" };
+      const file = { id: "file", bucket: "private-local", objectKey: "uploads/signed-contract-settlement/fixture/original",
+        originalName: "已签原件.pdf", mimeType: "application/pdf", sizeBytes: original.length,
+        contentSha256: createHash("sha256").update(original).digest("hex"), storageStatus: "active" };
+      const scope = { projectId: "project", settlementId: "settlement", fileId: "file" };
+      const tx = { $queryRaw: jest.fn().mockResolvedValueOnce([binding]).mockResolvedValueOnce([file])
+        .mockResolvedValueOnce([binding]).mockResolvedValueOnce([file]).mockResolvedValueOnce([binding]).mockResolvedValueOnce([]) };
+      const prisma = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+      const service = new FileService(prisma as unknown as PrismaService, audit as never, storage as never);
+      storage.read.mockResolvedValue(original);
+      const issued = await service.createSignedSettlementDownloadTicket(scope, { actorUserId: "actor", downloadReason: "核对原件" });
+      expect(issued).not.toHaveProperty("objectKey");
+      const query = new URL(issued.downloadUrl, "http://localhost").searchParams;
+      const input = { actorUserId: "actor", downloadReason: query.get("downloadReason")!, expiresAt: query.get("expiresAt")!, token: query.get("token")! };
+      await expect(service.readSignedSettlementFile({ ...scope, projectId: "other" }, input)).rejects.toThrow("下载链接校验失败");
+      await expect(service.readSignedSettlementFile(scope, { ...input, actorUserId: "other" })).rejects.toThrow("下载链接校验失败");
+      expect((await service.readSignedSettlementFile(scope, input)).buffer).toEqual(original);
+      expect(storage.read).toHaveBeenCalledWith(file.objectKey);
+      expect(audit.record.mock.calls.map(([, f]) => f.action)).toEqual(["file.download.ticket", "file.download"]);
+      await expect(service.readSignedSettlementFile(scope, input)).rejects.toThrow("当前账号无权");
+      expect(storage.read).toHaveBeenCalledTimes(1);
+    } finally {
+      if (oldKey === undefined) delete process.env[keySetting];
+      else process.env[keySetting] = oldKey;
+    }
+  });
+
+  it("returns only signed-settlement upload metadata and audits the storage key written in the transaction", async () => {
+    const uploaded = { id: "file-signed", originalName: "已签原件.pdf", mimeType: "application/pdf" };
+    const tx = { fileObject: { create: jest.fn().mockResolvedValue(uploaded) } };
+    const prisma = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const service = new FileService(prisma as unknown as PrismaService, audit as never, storage as never);
+    const buffer = Buffer.from("%PDF-1.4");
+
+    await expect(service.uploadPrivateFile({
+      originalName: uploaded.originalName, mimeType: uploaded.mimeType, sizeBytes: buffer.length,
+      uploadedByUserId: "contract-staff", signedSettlementProjectId: "project-1", buffer
+    })).resolves.toEqual(uploaded);
+
+    expect(tx.fileObject.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ objectKey: expect.stringMatching(/^uploads\/signed-contract-settlement\//) }),
+      select: { id: true, originalName: true, mimeType: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "file.upload",
+      metadata: expect.objectContaining({ objectKey: storage.write.mock.calls[0][0], bucket: "private-local", sizeBytes: buffer.length })
+    }));
+  });
+
   it("rejects DOCM and XLSM macro files", async () => {
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
@@ -5888,6 +5944,42 @@ describe("FileService", () => {
       expect(storage.read).not.toHaveBeenCalled();
     }
   );
+
+  it("binds a signed-settlement photo ticket to current project authority and rejects a stale ticket after revocation", async () => {
+    const buffer = Buffer.from("isolated PNG content");
+    const file = {
+      id: "settlement-photo", bucket: "private-local", objectKey: `${signedSettlementUploadPrefix("project")}photo.png`,
+      originalName: "已签单.png", mimeType: "image/png", sizeBytes: buffer.length, uploadedByUserId: "staff",
+      storageStatus: "active", contentSha256: createHash("sha256").update(buffer).digest("hex")
+    };
+    const settlement = { projectId: "project", ownerUserId: "staff", state: "pending_review" };
+    let hasRole = true;
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      signedContractSettlementAttachment: { findUnique: jest.fn().mockImplementation(async () => ({ sha256: file.contentSha256, settlement })) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockImplementation(async () => hasRole ? [{ projectId: "project", positionKey: "contract_director" }] : []) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project" }]) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx))) } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
+    storage.read.mockResolvedValue(buffer);
+    const request = { actorUserId: "director", downloadReason: "主管复核已签结算", accessMode: "preview" as const };
+    const ticket = await service.createDownloadTicket(file.id, request);
+    const token = new URL(ticket.downloadUrl, "https://fixture.invalid").searchParams.get("token")!;
+    const issued = { ...request, token, expiresAt: ticket.expiresAt };
+    const result = await service.readPrivateFile(file.id, issued);
+    expect(result.buffer.equals(buffer)).toBe(true);
+    expect(result.accessMode).toBe("preview");
+    storage.read.mockClear();
+    hasRole = false;
+    await expect(service.readPrivateFile(file.id, issued)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.createDownloadTicket(file.id, { ...request, actorUserId: "staff" })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(storage.read).not.toHaveBeenCalled();
+  });
 
   it("creates a short-lived download ticket for a private file", async () => {
     const tx = {

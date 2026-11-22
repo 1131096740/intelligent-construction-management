@@ -18,17 +18,23 @@
    const state=JSON.parse((await context.sql(`SELECT jsonb_build_object(
      'role', current_user, 'sameSession', current_user=session_user,
      'ownerOid', (SELECT datdba::integer FROM pg_database WHERE datname=current_database()),
-@@ -37,21 +37,21 @@
+@@ -37,21 +37,26 @@
    assert.equal(state.ownerOid,10);
    assert.equal(state.tls,true);
    assert.equal(state.database,context.database);
 -  assert.equal(state.ledger.length,290);
 -  assert.deepEqual(state.ledger,expectedLedger(state.ledger.slice(0,-1)));
-+  assert.equal(state.ledger.length,295);
-+  assert.equal(digest(JSON.stringify(state.ledger)),expectedLedgerSha256);
++  const forward=receipt.forward320;
++  assert.equal(state.ledger.length,forward?320:295);
++  assert.equal(digest(JSON.stringify(state.ledger.slice(0,295))),expectedLedgerSha256);
++  if(forward) {
++    assert.equal(context.candidateTree,forward.sourceTree);
++    assert.equal(digest(JSON.stringify(state.ledger)),forward.ledgerSha256);
++  }
    const extra={COREPACK_HOME:'/opt/corepack',COREPACK_DEFAULT_TO_LATEST:'0',COREPACK_ENABLE_NETWORK:'0',
      NODE_ENV:'test',CI:'true',DATABASE_URL:context.ownerUrl,[config.runIdKey]:context.runId.replaceAll('-',''),
-     [config.runFlag]:'1'};
+-    [config.runFlag]:'1'};
++    [config.runFlag]:'1',...(forward?{JG_CONTRACT_FINANCE_LEDGER:'320'}:{})};
    const invoke=['--dir',workspace,'--filter','@jiangkong/api','exec'];
    if (lane !== 'execution') {
 -    receipt.stages.push('EXPENSE_290_MIGRATION_NOOP');
@@ -45,7 +51,7 @@
    const run=runCommand('pnpm',[...invoke,'jest','--runInBand','--runTestsByPath',spec,'--json'],
      {cwd:workspace,extra,timeoutMs:lane==='receipt'?180_000:900_000,allowFailure:true});
    const summary=run.stdout.split('\n').find(line=>line.startsWith('{"numFailedTestSuites":'));
-@@ -63,7 +63,7 @@
+@@ -63,7 +68,7 @@
        prismaCodes:[...new Set((test.failureMessages??[]).join(' ').match(/\bP[0-9]{4}\b/gu)??[])],
        frames:[...(test.failureMessages??[]).join(' ').matchAll(/project-expense-(?:execution|finance|receipt)-concurrency(?:\.owned282)?\.spec\.ts:(\d+):(\d+)/gu)].slice(0,5).map(m=>[Number(m[1]),Number(m[2])]),
      })))};

@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 022
 
-[[ $# == 3 ]] || exit 64
+[[ $# == 3 || ( $# == 4 && $4 == --current-320 ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 sha=$2
 out=$3
@@ -13,7 +13,7 @@ git -C "$root" merge-base --is-ancestor "$historical_sha" "$sha"
 mkdir "$out"
 out=$(cd "$out" && pwd -P)
 plan=$(cd "$(dirname "$0")" && pwd -P)
-node "$plan/check-ledger.cjs" "$root" "$sha" > "$out/source.json"
+node "$plan/check-ledger.cjs" "$root" "$sha" "${@:4}" > "$out/source.json"
 historical="$out/historical-checkout"
 git -C "$root" worktree add --detach "$historical" "$historical_sha"
 trap 'git -C "$root" worktree remove "$historical"' EXIT
@@ -30,7 +30,8 @@ const path=require('node:path');
 const {createHash}=require('node:crypto');
 const assert=require('node:assert/strict');
 const output=process.argv[2];
-const {tails}=require(path.join(output,'source.json'));
+const source=require(path.join(output,'source.json'));
+const tails=source.mode==='current-320' ? [...source.predecessor.tails,...source.tails] : source.tails;
 for(const {name,sha256} of tails){
   const relative=path.join('services/api/prisma/migrations',name,'migration.sql');
   const bytes=fs.readFileSync(path.join(output,'prepared/context/workspace',relative));

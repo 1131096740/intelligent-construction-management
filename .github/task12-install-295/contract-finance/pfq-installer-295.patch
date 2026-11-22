@@ -1,9 +1,9 @@
 --- installer.cjs
 +++ installer.cjs
-@@ -176,13 +176,24 @@
+@@ -184,13 +184,26 @@
    return verifyPinnedInputs(historical, product, seal, stableRelease);
  }
- 
+
 -async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
 - const controls=fromHistory('./local-staged-migration-controls.cjs'),{createLocalTailQualification}=fromHistory('./local-staged-tail-qualification.cjs');
 +const pfqRecoveryModule='./task12-pfq-recovery.cjs';
@@ -19,16 +19,17 @@
 + const controls=fromHistory('./local-staged-migration-controls.cjs');
 + const retained=plan.recoveryProfile?require(plan.recoveryProfile.module):undefined;
 + const {createLocalTailQualification}=retained?retained.tailModule(plan.historical):fromHistory('./local-staged-tail-qualification.cjs');
++
   const ledger=plan.source.witness.profile.ledger,migrations=ledger.map(({name,sha256})=>({name,sha256})),database=plan.database;
   const {cli,engine}=plan.prismaTools;
   const schema=capture(path.join(plan.historical,'schema.prisma')).bytes;
   const roots=new Map();
-- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
-+ for(const size of [...new Set([...(plan.recoveryProfile?[114,115]:[]),...(plan.pfqPositive?[plan.pfqPositive.prefix]:[]),203,205,213,215,218,221,ledger.length])]){
+  for(const size of [...new Set(plan.stopAt205 ? [203,205] : [
++   ...(plan.recoveryProfile?[114,115]:[]),...(plan.pfqPositive?[plan.pfqPositive.prefix]:[]),
+    ...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
+  ])]){
    const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
-   fs.writeFileSync(path.join(dir,'schema.prisma'),schema,{flag:'wx',mode:0o600});
-   fs.writeFileSync(path.join(dir,'migrations/migration_lock.toml'),'provider = "postgresql"\n',{flag:'wx',mode:0o600});
-@@ -194,10 +205,49 @@
+@@ -204,13 +217,52 @@
   }
   const baseUrl=new URL('postgresql://jg_task01_owner@127.0.0.1:'+port+'/'+database);baseUrl.password=password;
   for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5'}))baseUrl.searchParams.set(key,value);
@@ -75,23 +76,24 @@
 +  need(equal(identity(after),retainedIdentity),'PFQ_POSITIVE_IDENTITY');
 +  checkLedger(after,prefix);
 + }
+  const profileIdentity=plan.profileUpgrade?await require('./profile-history.cjs').runProfileHistory({
+    ledger,deploy,read:()=>jsonSql(controls.inspectSql()),identity,checkLedger,enter,sql,receipt:plan.profileUpgrade,
+  }):undefined;
   await deploy(203);const first=await jsonSql(controls.inspectSql());const bound=identity(first);checkLedger(first,203);
 + if(retainedIdentity)need(equal(bound,retainedIdentity),'PFQ_HISTORY_IDENTITY');
+  if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
   const migrationPlan={...bound,runId:randomUUID(),nonce:randomBytes(32).toString('hex'),appName:'jg_fixture_app_'+randomBytes(12).toString('hex'),schemaName:'jg_fixture_'+randomBytes(12).toString('hex'),technicalProfile:'CURRENT259_OWNED_TECHNICAL_V1',resourceRunId:plan.runId,migrations:migrations.slice(0,205)};
   const setup=await jsonSql(controls.setupSql(migrationPlan));controls.checkSetup(setup,migrationPlan);
-  const qualified=new URL(baseUrl);qualified.searchParams.set('options','-c app.contract_archive_v2_application_role_oid='+setup.appOid+' -c app.contract_archive_v2_file_caller_oids='+JSON.stringify(setup.fileCallerOids)+' -c app.local_migration_nonce='+migrationPlan.nonce);
-@@ -206,13 +256,14 @@
+@@ -225,13 +277,14 @@
   const materials=[];const tail=createLocalTailQualification({plan:migrationPlan,setup,migrations},{read:async(_phase,text)=>jsonSql(text),write:async(_phase,text)=>jsonSql(text),recordMaterial:row=>{need(hash(Buffer.from(row.sql))===row.afterSha256,'NATIVE_DIRECT_SQL_MATERIAL');materials.push({kind:row.kind,beforeSha256:row.beforeSha256,afterSha256:row.afterSha256});}});
   for(const size of [213,215,218,221]){await deploy(size);const row=await jsonSql(controls.inspectSql());need(equal(identity(row),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(row,size);await tail.qualify(size);}
   await deploy(ledger.length);const final=await jsonSql(controls.inspectSql());need(equal(identity(final),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(final,ledger.length);
 - return {plan:migrationPlan,setup,materials};
--}
--
--function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
 + if(recovery)await recovery.verify();
 + return {plan:migrationPlan,setup,materials,recovery};
-+}
-+
+ }
+
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
 +function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
    const result = spawnSync(file, args, {
      input: stdin, encoding:'utf8', timeout:timeoutMs, maxBuffer:16 * 1024 * 1024,
@@ -100,7 +102,7 @@
    });
    if (result.status !== 0 && !allowFailure) {
      if (process.argv[2] === '--tls-probe' && typeof result.stderr === 'string') {
-@@ -241,7 +292,7 @@
+@@ -260,7 +313,7 @@
          .filter(reason => (result.stderr || '').toLowerCase().includes(reason.toLowerCase())),
      });
    }
@@ -108,22 +110,20 @@
 +  return {stdout:result.stdout, code:result.status,...(allowFailure?{stderr:result.stderr??""}:{}),
      ...(allowFailure && {scopePermissionDenied:/42501:[^\n]*permission denied for table jg_company_transfer_loan_repayment_scope_v1/u.test(result.stderr??'')})};
  }
- 
-@@ -282,8 +333,11 @@
+
+@@ -304,7 +357,11 @@
        {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
    const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
    const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
--  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000}};
--  receipt.runId = runId;
-+  const pfqMode=receipt.purpose==='ORIGINAL_PFQ_EXACT_295'?'--pfq-'+receipt.lane+'-289-local':undefined;
-+  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_320'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
+   const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
 +    ...(pfqPositiveModes.includes(pfqMode)?{pfqPositive:require(pfqPositiveFixtures)[pfqMode]}:{}),
 +    ...(Object.hasOwn(pfqConflicts,pfqMode)?{recoveryProfile:{module:pfqRecoveryModule,kind:pfqConflicts[pfqMode],prefix:114,terminal:115,
-+      marker:pfqConflicts[pfqMode]==='duplicate'?'project_financing_quota_duplicate_attachment':'project_financing_quota_cross_business_attachment'}}:{})};
++      marker:pfqConflicts[pfqMode]==='duplicate'?'project_financing_quota_duplicate_attachment':'project_financing_quota_cross_business_attachment'}}:{}),
+     ...(profileUpgrade?{profileUpgrade:receipt,profileSchema:schema.bytes}:{})};
+   receipt.runId = runId;
    const credentials = Object.fromEntries(['owner','runtime','observer'].map(k => [k,randomBytes(48).toString('hex')]));
-   let pg, lifetime, postmaster;
-   const enter = stage => {
-@@ -407,7 +461,32 @@
+@@ -430,7 +487,32 @@
      await sql(`CREATE DATABASE ${database} OWNER ${owner} ENCODING 'UTF8' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C';`,{database:'postgres'});
      const locale = await jsonSql("SELECT jsonb_build_object('encoding',pg_encoding_to_char(encoding),'collate',datcollate,'ctype',datctype,'provider',datlocprovider) FROM pg_database WHERE datname=current_database();");
      need(equal(locale,{encoding:'UTF8',collate:'C',ctype:'C',provider:'c'}),'INVALID_DB_LOCALE');
@@ -154,10 +154,10 @@
 +    const migrationLedgerMatches=(observed,expected,size=expected.length)=>equal(observed,
 +      retained ? retained.expectedLedger(expected,size) : expected.slice(0,size));
 +    const retained=installed.recovery&&require(plan.recoveryProfile.module);
- 
+
      const roleIdentity = receipt.databaseIdentity;
      const endpoint = new URL(`postgresql://${owner}@127.0.0.1:${port}/${database}`);
-@@ -422,7 +501,7 @@
+@@ -445,7 +527,7 @@
        await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
          {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
        const observed = await jsonSql(control.inspectSql());
@@ -166,7 +166,7 @@
        receipt.orderedTails.push({size,ledgerSha256:hash(JSON.stringify(observed.ledger))});
        if(isOutsideFamily(release) && size>=288 && size<=289) {
          enter(`OUTSIDE_CATALOG_WITNESS_${size}`);
-@@ -655,7 +734,7 @@
+@@ -678,7 +760,7 @@
          {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
            PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
        const installed=await jsonSql(control.inspectSql());
@@ -175,7 +175,7 @@
          .every(key=>installed[key]===roleIdentity[key]),'INSTALL_ONLY_292_LEDGER_IDENTITY');
        need(equal(await jsonSql(finalSql),final),'INSTALL_ONLY_292_B7_CONTINUITY');
        const outside=await jsonSql(outsideWitnessSql(289));
-@@ -664,21 +743,21 @@
+@@ -687,21 +769,21 @@
        need(equal(ordinary,receipt.ordinaryApprovalWitnesses.at(-1).ordinary),'INSTALL_ONLY_292_ORDINARY_CATALOG_CONTINUITY');
        const balance=await jsonSql(successor.catalogSql);
        need(successor.exactCatalog(balance),'INSTALL_ONLY_292_BALANCE_CATALOG');
@@ -201,7 +201,7 @@
          .every(key=>noticeInstalled[key]===roleIdentity[key]),'NOTICE_293_LEDGER_IDENTITY');
        const noticeCatalog=await jsonSql(notice.catalogSql);
        need(notice.exact(noticeCatalog)&&equal(await jsonSql(finalSql),final),'NOTICE_293_CATALOG');
-@@ -692,13 +771,13 @@
+@@ -715,14 +797,14 @@
          {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
            PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
        const payout=await jsonSql(control.inspectSql());
@@ -213,11 +213,13 @@
        need(terminal.valid(payoutCatalog),'ORDINARY_PAYOUT_294_CATALOG');
        need(equal(await jsonSql(notice.catalogSql),noticeCatalog),'NOTICE_294_CATALOG_AFTER_PAYOUT_INSTALL');
 -      receipt.installOnly294={count:payout.ledger.length,ledgerSha256:terminal.ledgerHash(payout.ledger),catalog:payoutCatalog};
-+      receipt.installOnly294={count:payout.ledger.length,ledgerSha256:terminal.ledgerHash(payoutLedger),catalog:payoutCatalog};
-       receipt.orderedTails.push({size:payout.ledger.length,ledgerSha256:receipt.installOnly294.ledgerSha256});
+-      receipt.orderedTails.push({size:payout.ledger.length,ledgerSha256:receipt.installOnly294.ledgerSha256});
++      receipt.installOnly294={count:payoutLedger.length,ledgerSha256:terminal.ledgerHash(payoutLedger),catalog:payoutCatalog};
++      receipt.orderedTails.push({size:payoutLedger.length,ledgerSha256:receipt.installOnly294.ledgerSha256});
        qualifiedLedger=payoutLedger;
        if (purpose===exactMultiWitness295) {
-@@ -726,7 +805,7 @@
+         const multi=require('./multi-witness.cjs');
+@@ -749,7 +831,7 @@
            throw error;
          }
          const installed=await jsonSql(control.inspectSql());
@@ -226,7 +228,7 @@
            .every(key=>installed[key]===roleIdentity[key]),'MULTI_WITNESS_295_LEDGER_IDENTITY');
          const after=await jsonSql(multi.catalogSql);
          need(multi.valid(after,true)&&equal(await jsonSql(finalSql),final),'MULTI_WITNESS_295_CATALOG_B7');
-@@ -742,11 +821,21 @@
+@@ -765,9 +847,9 @@
            need(denied.code===3&&denied.scopePermissionDenied===true,
              'MULTI_WITNESS_295_NON_OWNER_DENIAL');
          }
@@ -237,6 +239,23 @@
 +        receipt.orderedTails.push({size:qualifiedLedger.length,ledgerSha256:receipt.installOnly295.ledgerSha256});
        }
      }
+     let cleanupLegacy;
+@@ -830,9 +912,9 @@
+         throw error;
+       }
+       const current=await jsonSql(control.inspectSql());
+-      need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++      need(migrationLedgerMatches(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+         .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
+-      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
++      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),observedLedgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
+       receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+         'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
+       ) ORDER BY t.tgname),'[]'::jsonb) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+@@ -842,6 +924,15 @@
+       receipt.forward320.sameBaseB7=true;
+     }
+     if (forward320 && !restore) await installForward320();
 +    if(pfqMode==='--pfq-app-289-local'){
 +      for(const [operation,marker] of [['deploy',/No pending migrations to apply\.?/u],['status',/Database schema is up to date/u]]){
 +        enter('PFQ_APP_MIGRATION_'+operation.toUpperCase());
@@ -246,20 +265,19 @@
 +      }
 +      receipt.pfqAppMigrationStatus=true;
 +    }
-+    receipt.status = 'INSTALLED_'+release.count+'_NOT_BUSINESS_ADMISSION';
      if (consume) {
        let active = true;
        const onlyWhileOwned = () => {
-@@ -809,7 +898,7 @@
+@@ -927,7 +1018,7 @@
          active = false;
        }
        const afterConsumer = await jsonSql(control.inspectSql());
 -      need(equal(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
 +      need(migrationLedgerMatches(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
        need(equal(await jsonSql(finalSql), final), 'CONSUMER_PROTECTED_CATALOG_CONTINUITY');
-       if (release === ordinaryApprovalRelease) {
-         assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
-@@ -841,9 +930,10 @@
+       if(cleanupLegacy){
+         const legacy=await jsonSql(control.inspectSql(),{database:cleanupLegacy.database});
+@@ -972,9 +1063,10 @@
            need(equal(await jsonSql(multi.catalogSql),receipt.installOnly295.after),'MULTI_WITNESS_295_CATALOG_AFTER_CONSUMER');
            receipt.multiWitnessCatalogAfterBusiness=true;
          }
@@ -272,10 +290,10 @@
        receipt.business = 'CALLBACK_COMPLETED';
      }
    } finally {
-@@ -857,19 +947,26 @@
+@@ -988,19 +1080,26 @@
    }
  }
- 
+
 -async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
 +async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,observePfqFailure){
  const {runId}=plan;
@@ -303,19 +321,22 @@
   const source={candidateSha:stageSha,sourceSealSha256:plan.source.witness.profile.sealSha256,profile:plan.source.witness.profile,tree:stageTree};
   const archive=fromHistory('./task16-current259-archive-install.cjs').beginNativeTask12ArchiveProtocol(JSON.stringify({source,completion:provisioned,serverPort:port}));
   const seven=archive.acceptBefore(await run('ARCHIVE_BEFORE',archive.beforeSql));
-@@ -1190,3 +1287,42 @@
- 
- module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);
+@@ -1388,3 +1487,49 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
+ module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
 +
 +
-+async function withPfq295(receipt,mode) {
-+  need(receipt.purpose==='ORIGINAL_PFQ_EXACT_295' && mode==='--pfq-'+receipt.lane+'-289-local','PFQ_295_SCOPE');
++
++async function withPfq(receipt,mode,material) {
++  const current320=material!==undefined;
++  const count=current320?320:295;
++  need(receipt.purpose==='ORIGINAL_PFQ_EXACT_'+count && mode==='--pfq-'+receipt.lane+'-289-local','PFQ_295_SCOPE');
 +  const pfqPositiveMode=pfqPositiveModes.includes(mode)?mode:undefined;
 +  const pfqConflict=Object.hasOwn(pfqConflicts,mode)?pfqConflicts[mode]:undefined;
 +  need(pfqPositiveMode || pfqConflict || mode==='--pfq-app-289-local','PFQ_EXACT_289_MODE');
-+  return module.exports.withCombined295MultiWitness(receipt,async context=>{
-+    need(context.candidateTree===require('./scope.json').tree&&receipt.orderedTails?.at(-1)?.size===295,'PFQ_EXACT_295_CONTEXT');
++  const consume=async context=>{
++    need(context.candidateTree===(current320?material.sourceTree:require('./scope.json').tree)&&receipt.orderedTails?.at(-1)?.size===295,'PFQ_EXACT_295_CONTEXT');
 +    if(mode==='--pfq-app-289-local')await require('./workspace/services/api/prisma/task12-pfq-app.cjs').runPfqApp(context,receipt);
 +    else if(pfqConflict){
 +      const observed=receipt.pfqRecovery;
@@ -341,8 +362,12 @@
 +      receipt.pfqPositive={mode:pfqPositiveMode,prefix:fixture.prefix,exactOriginalValues:true,
 +        ...(fixture.immutable&&{immutable:true})};
 +    }
-+    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289))).stdout.trim()));
-+    receipt.pfqPostconsume={count:295,exactB7:true};
-+  });
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320))).stdout.trim()));
++    receipt.pfqPostconsume={count,exactB7:true};
++  };
++  return current320
++    ? module.exports.withCombined320ContractPayment(receipt,consume,material)
++    : module.exports.withCombined295MultiWitness(receipt,consume);
 +}
-+module.exports.withPfq295=withPfq295;
++module.exports.withPfq295=(receipt,mode)=>withPfq(receipt,mode);
++module.exports.withPfq320=(receipt,mode,material)=>withPfq(receipt,mode,material);

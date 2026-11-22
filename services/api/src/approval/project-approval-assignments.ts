@@ -40,9 +40,9 @@ export function loadProjectApprovalAssignments(
 
 /** Current effective assignments, with the same valid global-role scope as business authorization. */
 export async function loadEffectiveProjectApprovalAssignments(
-  tx: Prisma.TransactionClient, projectId: string, roleKeys: readonly string[], userId?: string
+  tx: Prisma.TransactionClient, projectId: string, roleKeys: readonly string[], userId?: string, lockAssignments = true
 ): Promise<ProjectApprovalAssignment[]> {
-  const scoped = await loadProjectApprovalAssignments(tx, projectId, roleKeys, userId);
+  const scoped = await loadProjectApprovalAssignments(tx, projectId, roleKeys, userId, lockAssignments);
   const globalRoles = roleKeys.filter(role => GLOBAL_BUSINESS_ROLE_KEYS.includes(role as RoleKey));
   const globals = globalRoles.length ? await tx.$queryRaw<ProjectApprovalAssignment[]>(Prisma.sql`
     SELECT ${projectId} AS "projectId", up."userId", p."key" AS "roleKey", u."isActive" AS "userIsActive"
@@ -50,7 +50,7 @@ export async function loadEffectiveProjectApprovalAssignments(
     INNER JOIN "User" u ON u."id" = up."userId"
     WHERE up."projectId" IS NULL AND u."isActive" = TRUE AND p."key" IN (${Prisma.join(globalRoles)})
     ${userId ? Prisma.sql`AND up."userId" = ${userId}` : Prisma.empty}
-    FOR SHARE OF up, p, u
+    ${lockAssignments ? Prisma.sql`FOR SHARE OF up, p, u` : Prisma.empty}
   `) : [];
   return [...scoped, ...globals];
 }

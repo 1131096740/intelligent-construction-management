@@ -18,7 +18,8 @@ workspace="$prepared/prepared/context/workspace"
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
+  const expected=source.mode==="current-320"?320:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==expected)process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -37,6 +38,9 @@ for relative in "${tests[@]}"; do
   cp "$workspace/$relative" "$work/$relative"
 done
 gzip -dc "$plan/core-payment-tests.patch.gz" | patch --batch --forward --fuzz=0 --silent -p1 -d "$work"
+if node -e 'process.exit(require(process.argv[1]).mode==="current-320"?0:1)' "$prepared/source.json"; then
+  patch --batch --forward --fuzz=0 --silent -p1 -d "$work" < "$plan/payment-concurrency-320.patch"
+fi
 for relative in "${tests[@]}"; do chmod 0644 "$work/$relative"; done
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -72,6 +76,7 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/core-payment-e
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected=process.argv[2]==="core"?"CONTRACT_FINANCE_CORE_295_PASSED":"CONTRACT_FINANCE_PAYMENT_295_PASSED";
+  const source=require(process.argv[4]);
+  const expected="CONTRACT_FINANCE_"+process.argv[2].toUpperCase()+"_"+source.migrationCount+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$scope" "$sha" "$prepared/source.json"

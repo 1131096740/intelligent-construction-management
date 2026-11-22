@@ -138,6 +138,12 @@
         :message="contractPaymentRouteDescription"
       />
 
+      <SignedSettlementPaymentBasisPanel
+        v-if="selectedContract && createForm.projectId && contractPaymentRoute === 'settlement_required'"
+        :project-id="createForm.projectId"
+        :contract-id="selectedContract.contractId"
+      />
+
       <div
         v-if="createForm.sourceType === 'contract_due'"
         class="preview-actions"
@@ -311,6 +317,7 @@ import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import MoneyInput from "../../components/MoneyInput.vue";
 import PaymentConfirmationSummary from "../../components/PaymentConfirmationSummary.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import SignedSettlementPaymentBasisPanel from "./SignedSettlementPaymentBasisPanel.vue";
 import type { PaymentConfirmationSummaryItem } from "../../components/payment-confirmation-summary.config";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";

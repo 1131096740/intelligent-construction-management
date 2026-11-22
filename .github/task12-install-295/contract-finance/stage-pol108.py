@@ -5,7 +5,9 @@ import shutil
 import subprocess
 import sys
 
-historical, archive, common, out, shard = sys.argv[1:]
+historical, archive, common, out, shard, count = sys.argv[1:]
+if count not in {'295', '320'}:
+    raise SystemExit('POL108_MIGRATION_COUNT')
 historical,archive,common,out=map(Path,(historical,archive,common,out))
 plan=Path(__file__).parent
 pins=json.loads((archive/'profile.json').read_text())['pol108Assembly']
@@ -31,7 +33,14 @@ for name in ['pol108-289.cjs','pol108-observability.cjs','pol108-shards.cjs',
         if digest(target)!=pin['resultSha256']:
             raise SystemExit('POL108_ARCHIVE_POSTIMAGE')
 if shard=='core':
-    patch(out/'operating-projection-postgresql.cases.ts',plan/'pol108-core-cases.patch')
+    cases = out/'operating-projection-postgresql.cases.ts'
+    patch(cases, plan/'pol108-core-cases.patch')
+    if count == '320':
+        text = cases.read_text()
+        original = 'COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 295'
+        if text.count(original) != 1:
+            raise SystemExit('POL108_320_LEDGER_COUNT_ANCHOR')
+        cases.write_text(text.replace(original, original.removesuffix('295') + count))
 installer=out/'installer.cjs'
 shutil.copyfile(common/'installer.cjs',installer)
 patch(installer,plan/'pol108-installer.patch')

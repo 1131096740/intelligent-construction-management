@@ -19,7 +19,9 @@ export async function activeApprovalDelegatorIds(
 ): Promise<string[]> {
   const maybeClient = client as Partial<ActiveApprovalDelegationClient>;
   if (!maybeClient.approvalDelegation || !maybeClient.user) return [];
-  const rows = await client.approvalDelegation.findMany({
+  // A findMany projection also reads id; the role only needs the delegator and filter columns.
+  const rows = await client.approvalDelegation.groupBy({
+    by: ["fromUserId"],
     where: {
       toUserId,
       actionKey: null,
@@ -30,8 +32,7 @@ export async function activeApprovalDelegatorIds(
       // Delegation is a half-open interval: a mandate expiring at `now` is
       // already unavailable to an atomic confirmation transaction.
       endsAt: { gt: now }
-    },
-    select: { fromUserId: true }
+    }
   });
   const delegatorIds = Array.from(new Set(rows.map((row) => row.fromUserId)));
   if (!delegatorIds.length) return [];

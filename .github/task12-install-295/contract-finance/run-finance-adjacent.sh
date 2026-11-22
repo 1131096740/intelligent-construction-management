@@ -2,23 +2,28 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
 lane=$5
+mode_args=()
+if [[ $# == 6 ]]; then mode_args=(--current-320); fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 prior="$root/.github/task12-install-289"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$plan/finance-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" <<'JS'
-const [sourceFile,sha,profilesFile,lane,terminalFile]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$plan/finance-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
+const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-if(source.sourceSha!==sha||source.migrationCount!==295||source.ledgerSha256!==terminal.final||
-  !Object.hasOwn(require(profilesFile),lane))process.exit(65);
+if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
+if(mode==='--current-320') {
+  if(source.mode!=='current-320'||source.migrationCount!==320||source.predecessor?.migrationCount!==295||
+     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==25) process.exit(65);
+} else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -59,15 +64,17 @@ done < "$work/mounts.tsv"
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
-printf '%s\n' "假设原 $lane 业务断言、角色及并发行为可在同一 295 隔离库保持。观察原用例统计、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
+count=295
+if [[ $# == 6 ]]; then count=320; fi
+printf '%s\n' "假设原 $lane 业务断言、角色及并发行为可在同一 $count 隔离库保持。观察原用例统计、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/finance-adjacent-entry.cjs "$lane" \
+docker run "${args[@]}" --entrypoint node "$image" /qualification/finance-adjacent-entry.cjs "$lane" ${mode_args[@]+"${mode_args[@]}"} \
   > "$work/receipt.json" 2> "$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$lane" <<'JS'
-const [file,sha,lane]=process.argv.slice(2);
+node - "$work/receipt.json" "$sha" "$lane" "$count" <<'JS'
+const [file,sha,lane,count]=process.argv.slice(2);
 const r=require(file);
-if(r.status!=='ORIGINAL_FINANCE_ADJACENT_295_PASSED'||r.sourceSha!==sha||r.lane!==lane)process.exit(1);
+if(r.status!=='ORIGINAL_FINANCE_ADJACENT_'+count+'_PASSED'||r.sourceSha!==sha||r.lane!==lane)process.exit(1);
 JS

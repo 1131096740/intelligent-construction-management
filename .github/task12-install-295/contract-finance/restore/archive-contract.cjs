@@ -1,10 +1,10 @@
 'use strict';
 const assert=require('node:assert/strict');
-const tables=require('./technical-relations.json');
-const technical=Object.freeze([tables.key,tables.operatingVerifier,tables.operatingContext,...tables.emptyBindings]);
+const {legacy}=require('./restore-profile.cjs');
+const {technical}=legacy;
 const pattern=name=>/[A-Z]/u.test(name)?'public."'+name+'"':'public.'+name;
 const safeName=/^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
-function classifyArchive(toc, expectedTables, mode) {
+function classifyArchive(toc, expectedTables, mode, profile=legacy) {
   assert.ok(mode==='business'||mode==='owner-schema');
   assert.ok(Array.isArray(expectedTables)&&expectedTables.every(name=>safeName.test(name)));
   const entries=(toc.match(/[^\r\n]+/gu)??[]).flatMap(line=>{
@@ -19,17 +19,17 @@ function classifyArchive(toc, expectedTables, mode) {
     assert.deepEqual(payload,[...expectedTables].sort(),'BACKUP292_TOC_BUSINESS_PAYLOADS');
     // Detect table-owned indexes and ACL entries that would make the role archive
     // depend on a private relation even if data had been filtered independently.
-    assert.ok(technical.every(name=>!new RegExp('(^|[^A-Za-z0-9_])'+name+'([^A-Za-z0-9_]|$)','mu').test(toc)),'BACKUP292_PRIVATE_ARCHIVE_MEMBER');
+    assert.ok(profile.technical.every(name=>!new RegExp('(^|[^A-Za-z0-9_])'+name+'([^A-Za-z0-9_]|$)','mu').test(toc)),'BACKUP292_PRIVATE_ARCHIVE_MEMBER');
   }else{
     assert.deepEqual(payload,[],'BACKUP292_OWNER_ARCHIVE_HAS_DATA');
   }
   return {tables:declared.length,payloads:payload.length};
 }
-function pgDumpArgs(db,filename,mode) {
+function pgDumpArgs(db,filename,mode,profile=legacy) {
   assert.match(db,/^jg_task01_[a-f0-9]{32}$/u);
   const argv=['--dbname',db,'--format=custom','--file',filename];
-  if(mode==='business') return [...argv,...technical.map(name=>'--exclude-table='+pattern(name))];
+  if(mode==='business') return [...argv,...profile.technical.map(name=>'--exclude-table='+pattern(name))];
   assert.equal(mode,'owner-schema');
-  return [...argv,'--schema-only',...technical.map(name=>'--table='+pattern(name))];
+  return [...argv,'--schema-only',...profile.technical.map(name=>'--table='+pattern(name))];
 }
 module.exports={technical,pgDumpArgs,classifyArchive};

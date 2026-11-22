@@ -120,6 +120,30 @@ describe("经营金额双协议", () => {
     expect(result.evidence.A).toMatchObject({ factCount: 2, amountCents: null, amountYuan: "0.0100" });
   });
 
+  it("按同一精度合并一次履约成本，付款不影响成本或利润", () => {
+    const basis = { scope: { kind: "project" as const, projectIds: ["project-1"] },
+      readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", riskByProject: [] };
+    const completion = fact({ id: "completion", sourceType: "contract_work_completion", factKind: "expense",
+      numericProtocolVersion: 2, amountCents: null, amountYuan: "100.0123",
+      impacts: [{ id: "cost", impactKind: "confirmed_cost", numericProtocolVersion: 2, amountCents: null,
+        amountYuan: "100.0123", direction: "increase", costCategoryCode: "other_project_cost" }] } as never);
+    const payment = fact({ id: "payment", sourceType: "payment_execution", factKind: "downstream_payment",
+      impacts: [{ id: "payable", impactKind: "payable_decrease", amountCents: 2500n, direction: "decrease" }] });
+    const direct = reduceOperatingProjection({ ...basis, numericProtocolVersion: 2, facts: [completion, payment] });
+    const stream = new OperatingProjectionStreamAccumulator({ ...basis, numericProtocolVersion: 2 });
+    stream.startFacts([completion, payment]);
+    stream.addImpacts([{ ...completion.impacts[0], factId: completion.id }, { ...payment.impacts[0], factId: payment.id }]);
+    stream.finishFacts();
+    const paged = reduceOperatingProjection({ ...basis, numericProtocolVersion: 2, facts: [], ...stream.result() });
+    for (const result of [direct, paged]) {
+      expect(result.operating).toMatchObject({ confirmedCostCents: null, confirmedCostYuan: "100.0123" });
+      expect(result.profitAndLoss.currentOperatingProfitYuan).toBe("-100.0123");
+      expect(result.sourceDrilldown).toContainEqual(expect.objectContaining({
+        sourceType: "contract_work_completion", impactCount: 1, amountYuan: "100.0123"
+      }));
+    }
+  });
+
   it("V1读取不得误消费V2分页摘要后返回零承诺", () => {
     const accumulator = new OperatingProjectionStreamAccumulator({ scope: { kind: "project", projectIds: ["project-1"] }, cutoffAt: "2026-10-19T00:00:00.000Z", numericProtocolVersion: 2 });
     accumulator.startFacts([fact({ id: "unknown", sourceType: "contract_version", factKind: "downstream_contract", numericProtocolVersion: 2, amountCents: null, amountYuan: null } as never)]);

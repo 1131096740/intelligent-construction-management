@@ -29,7 +29,7 @@ export class ContractRelationshipLedgerController {
       { header: "计入汇总金额（元）", key: "amount" }, { header: "原文书金额（元）", key: "documentAmount" }, { header: "统计基准日", key: "asOf" }, { header: "实际付款方", key: "payer" },
       { header: "经营影响", key: "accountingEffect" }, { header: "事实日期", key: "occurredAt" },
       { header: "读取时间", key: "readAt" }, { header: "范围说明", key: "notice" }
-    ], rows: result.rows.map((row) => ({ ...row, amount: row.amountCents === null ? "未定/待确认金额" : formatMoneyCentsAsYuan(BigInt(row.amountCents)),
+    ], rows: result.rows.map((row) => ({ ...row, amount: row.amountYuan ?? (row.amountCents === null ? "未定/待确认金额" : formatMoneyCentsAsYuan(BigInt(row.amountCents))),
       asOf: result.asOf, documentAmount: row.documentAmountCents ? formatMoneyCentsAsYuan(BigInt(row.documentAmountCents)) : "", payer: row.actualPayer ?? "不适用", readAt: result.readAt, notice: result.notice })) });
     await this.audit.record(this.prisma, { actorUserId: user.id, action: "contract.relationship_ledger.export", businessType: "contract_ledger",
       metadata: { section: query.section ?? "contracts", projectId: query.projectId ?? null, relationship: query.relationship ?? null,

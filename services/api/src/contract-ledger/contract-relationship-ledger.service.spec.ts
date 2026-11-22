@@ -13,6 +13,9 @@ function harness() {
     projectAffiliateSettlementFact: { findMany: jest.fn().mockResolvedValue([]) },
     projectOwnerContract: { findMany: jest.fn().mockResolvedValue([]) },
     settlement: { findMany: jest.fn().mockResolvedValue([]) },
+    $queryRaw: jest.fn((sql: TemplateStringsArray): Promise<unknown[]> => Promise.resolve(sql.join("").includes("pg_current_xact_id")
+      ? [{ database: "local", role: "application", xid: "1", backend: "2", expires: "1234567890" }]
+      : [{ rows: [] }])),
     projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
     paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
     paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
@@ -28,6 +31,12 @@ function harness() {
   return { tx, visibility, service: new ContractRelationshipLedgerService(prisma as never, visibility as never) };
 }
 describe("跨页面统一签约关系台账", () => {
+  const originalKey = process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY;
+  beforeEach(() => { process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY = "a".repeat(64); });
+  afterAll(() => {
+    if (originalKey === undefined) delete process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY;
+    else process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY = originalKey;
+  });
   it("有效版本只计一次，表内500、表外200、对上800分别列示", async () => {
     const { service } = harness(); const result = await service.list("actor");
     expect(result.rows).toHaveLength(3);
@@ -65,6 +74,21 @@ describe("跨页面统一签约关系台账", () => {
     const result = await service.list("actor", { section: "settlements" });
     expect(result.totals.map((r) => [r.relationship, r.knownAmountCents])).toEqual([["inside", "400000000"], ["upward", "600000000"], ["owner", "900000000"]]);
     expect(result.rows.find((r) => r.id === "s2")?.accountingEffect).toContain("不计收入或成本");
+  });
+  it("确认的新结算保留四位精度，原整数分台账字段不被四舍五入覆盖", async () => {
+    const { service, tx } = harness();
+    tx.settlement.findMany.mockResolvedValue([{ id: "legacy", contractId: "c", contractVersionId: "v2", code: "JS1", amountCents: 1000n, createdAt: date }]);
+    tx.$queryRaw.mockResolvedValueOnce([{ database: "local", role: "application", xid: "1", backend: "2", expires: "1234567890" }]);
+    tx.$queryRaw.mockResolvedValueOnce([{ rows: [{ id: "signed", projectId: "p", contractKind: "downstream", number: "纸质编号", reviewedAt: date.toISOString(),
+      confirmedContractSource: {
+        relationship: "inside", sourceRecordId: "confirmed-version", sourceVersion: 2, contractTypeKey: "equipment_rental",
+        name: "确认时合同名", signingParty: "历史付款主体", counterparty: "历史供应商", companyEntityId: "origin-company",
+        payerKind: "participating_company", payerVersionId: "company-version", counterpartyKind: "downstream_counterparty",
+        counterpartyVersionId: null, affiliateAssignmentId: null, affiliateBusinessPartyVersionId: null
+      }, amountYuan: "-8.0001" }] }]);
+    const result = await service.list("actor", { section: "settlements" });
+    expect(result.rows.find(r => r.id === "signed")).toMatchObject({ amountYuan: "-8.0001", amountCents: null, reference: "纸质编号", name: "确认时合同名", signingParty: "历史付款主体", counterparty: "历史供应商" });
+    expect(result.totals).toEqual([expect.objectContaining({ knownAmountCents: "1000", knownAmountYuan: "1.9999", count: 2, unknownAmountCount: 0 })]);
   });
   it("支付分类跟随签约版本；历史实付保留，未找到生效版本的金额进入待确认", async () => {
     const { service, tx } = harness();

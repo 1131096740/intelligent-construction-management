@@ -2,12 +2,15 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
 lane=$5
+mode_args=()
+count=295
+if [[ $# == 6 ]]; then mode_args=(--current-320); count=320; fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 prior="$root/.github/task12-install-289"
@@ -15,18 +18,47 @@ owner="$prior/remaining-owner.cjs"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$prior/remaining-owner-modes.json" "$lane" "$common/multi-witness.cjs" <<'JS'
-const [sourceFile,sha,profilesFile,lane,terminalFile]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$prior/remaining-owner-modes.json" "$lane" "$common/multi-witness.cjs" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
+const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-if(source.sourceSha!==sha||source.migrationCount!==295||source.ledgerSha256!==terminal.final||
-  !Object.hasOwn(require(profilesFile),lane))process.exit(65);
+if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
+if(mode==='--current-320') {
+  if(source.mode!=='current-320'||source.migrationCount!==320||source.predecessor?.migrationCount!==295||
+     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==25) process.exit(65);
+} else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
+profiles="$prior/remaining-owner-modes.json"
 node "$owner" --mounts "$lane" "$workspace" > "$work/fixture-mounts.tsv"
+if [[ $count == 320 && $lane == generic-batch ]]; then
+  spec=src/database/pol05-operating-source-facts.spec.ts
+  fixture="$work/pol05-operating-source-facts.spec.ts"
+  cp "$prior/remaining-fixtures/$spec" "$fixture"
+  patch --batch --forward --fuzz=0 --silent "$fixture" < "$plan/pol05-owner-comparison-320.patch"
+  node - "$profiles" "$work" "$spec" "$fixture" <<'JS'
+const fs=require('node:fs'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
+const [input,work,spec,fixture]=process.argv.slice(2);
+const profile=require(input);
+const sha=createHash('sha256').update(fs.readFileSync(fixture)).digest('hex');
+assert.equal(sha,'e22999bfe33cbab9b963e0d61d94ac5bd27762dadda606f7838274de74a8cd04');
+profile['generic-batch'].files[spec].sha=sha;
+fs.writeFileSync(work+'/remaining-owner-modes.json',JSON.stringify(profile));
+const mounts=work+'/fixture-mounts.tsv';
+const rows=fs.readFileSync(mounts,'utf8').split('\n').map(row=>row.endsWith('\t'+spec)?fixture+'\t'+spec:row);
+assert.equal(rows.filter(row=>row===fixture+'\t'+spec).length,1);
+fs.writeFileSync(mounts,rows.join('\n'));
+JS
+  profiles="$work/remaining-owner-modes.json"
+fi
+if [[ $count == 320 ]]; then
+  cp "$owner" "$work/remaining-owner.cjs"
+  owner="$work/remaining-owner.cjs"
+  patch --batch --forward --fuzz=0 --silent "$owner" < "$plan/remaining-owner-320-observation.patch"
+fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -40,7 +72,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/remaining-owner-entry.cjs,dst=/qualification/remaining-owner-entry.cjs,readonly"
   --mount "type=bind,src=$owner,dst=/qualification/remaining-owner.cjs,readonly"
-  --mount "type=bind,src=$prior/remaining-owner-modes.json,dst=/qualification/remaining-owner-modes.json,readonly")
+  --mount "type=bind,src=$profiles,dst=/qualification/remaining-owner-modes.json,readonly")
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
@@ -51,15 +83,15 @@ done < "$work/fixture-mounts.tsv"
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
-printf '%s\n' "假设原 $lane 业务断言可在同一 295 隔离库保持。观察 originalScope、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
+printf '%s\n' "假设原 $lane 业务断言可在同一 $count 隔离库保持。观察 originalScope、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/remaining-owner-entry.cjs "$lane" \
+docker run "${args[@]}" --entrypoint node "$image" /qualification/remaining-owner-entry.cjs "$lane" ${mode_args[@]+"${mode_args[@]}"} \
   > "$work/receipt.json" 2> "$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$lane" <<'JS'
-const [file,sha,lane]=process.argv.slice(2);
+node - "$work/receipt.json" "$sha" "$lane" "$count" <<'JS'
+const [file,sha,lane,count]=process.argv.slice(2);
 const r=require(file);
-if(r.status!=='REMAINING_OWNER_295_PASSED'||r.sourceSha!==sha||r.lane!==lane)process.exit(1);
+if(r.status!=='REMAINING_OWNER_'+count+'_PASSED'||r.sourceSha!==sha||r.lane!==lane)process.exit(1);
 JS

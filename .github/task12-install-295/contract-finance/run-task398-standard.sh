@@ -12,10 +12,12 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 scope=task398-standard
 
-node -e '
+count=$(node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  const count=source.mode==="current-320"?320:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  console.log(count);
+' "$prepared/source.json" "$sha")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -28,6 +30,9 @@ python3 "$plan/stage-task398-standard.py" \
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 6 ]] || exit 65
+if [[ $count == 320 ]]; then
+  patch --batch --forward --fuzz=0 --silent "$work/services/api/prisma/run-task398-shared-standard-local.cjs" < "$plan/task398-standard-320.patch"
+fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -54,12 +59,12 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/task398-standa
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
-  if(row.purpose!=="TASK398_STANDARD_EXACT_295"||row.sourceSha!==process.argv[2])process.exit(1);
+  if(row.purpose!=="TASK398_STANDARD_EXACT_"+process.argv[3]||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
-' "$work/receipt.json" "$sha" || { printf 'TASK398_STANDARD_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
+' "$work/receipt.json" "$sha" "$count" || { printf 'TASK398_STANDARD_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="TASK398_STANDARD_EXACT_295_PASSED";
+  const expected="TASK398_STANDARD_EXACT_"+process.argv[4]+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$scope" "$sha" "$count"

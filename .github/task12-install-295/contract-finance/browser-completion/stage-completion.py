@@ -53,5 +53,7 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
     if source.name == 'run-task398-shared-standard-local.cjs':
         patch = Path(__file__).with_name('completion295.patch')
         subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(patch)], check=True)
+        forward = Path(__file__).with_name('completion320.patch')
+        subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(forward)], check=True)
     target.chmod(0o644)
     print(name)

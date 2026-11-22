@@ -2,21 +2,44 @@
 const assert=require('node:assert/strict');
 const {createHash}=require('node:crypto');
 const {readFileSync}=require('node:fs');
-const {sourceSha}=require('./contract-finance-source.json');
+const source=require('./contract-finance-source.json');
+const {sourceSha}=source;
+const current320=process.argv[2]==='--current-320';
+const count=current320?320:295;
 const installer=require('./installer.cjs');
 const original='/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs';
-const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL275_COLD_EXACT_295',business:'NOT_ENTERED',stages:[]};
+const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL275_COLD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
+  assert.equal(process.argv.length,current320?3:2);
+  assert.equal(source.migrationCount,count);
+  if(current320) {
+    assert.equal(source.mode,'current-320');
+    assert.equal(source.predecessor.migrationCount,295);
+  }
   assert.equal(createHash('sha256').update(readFileSync(original)).digest('hex'),'a338dcd1817f5dc6dacdea62cb36b3357d7933bc58587e61b4b71dec7a91d2db');
-  return installer.withCombined295MultiWitness(receipt,async context=>{
+  const consume=async context=>{
     receipt.stages.push('POL275_ORIGINAL_CATALOG');
-    const catalog=await require(original).collectEvidence(context.ownerUrl,295);
+    const catalog=await require(original).collectEvidence(context.ownerUrl,count);
     receipt.pol275={migrationCount:catalog.migrationCount,originalTerminal:catalog.terminalMigration};
-  });
+  };
+  return current320
+    ? installer.withCombined320ContractPayment(receipt,consume,{
+      sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+    })
+    : installer.withCombined295MultiWitness(receipt,consume);
 }).then(()=>{
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.installOnly295.count,295);
-  assert.equal(receipt.pol275.migrationCount,295);
+  assert.equal(receipt.pol275.migrationCount,count);
+  if(current320) {
+    assert.equal(receipt.installOnly295.ledgerSha256,source.predecessor.ledgerSha256);
+    assert.equal(receipt.forward320.count,count);
+    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.forward320.sameBaseB7,true);
+    assert.equal(receipt.combinedAfterBusiness.count,count);
+    assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
+  }
   assert.equal(receipt.combinedAfterBusiness.exactB7,true);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
@@ -27,7 +50,7 @@ Promise.resolve().then(()=>{
   const sqlstate=error.psqlObservation?.sqlstate??error.sqlstate;
   receipt.status='STOPPED';
   receipt.failure={stage:receipt.stages.at(-1)??'INPUTS',
-    code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'POL275_COLD_295_FAILED',
+    code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'POL275_COLD_'+count+'_FAILED',
     ...(/^[0-9A-Z]{5}$/u.test(sqlstate??'')?{sqlstate}:{})};
   process.exitCode=1;
 }).finally(()=>process.stdout.write(JSON.stringify(receipt)+'\n'));

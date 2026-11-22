@@ -2366,6 +2366,23 @@ describe("ContractReadService", () => {
       paymentStatus: "未付款"
     });
     expect(detail.settlementPayment.calculationNote).toContain("系统内金额与历史接管余额分列");
+
+    const effective = new ContractReadService(prisma as never, undefined, undefined, undefined, {
+      readEffectiveContractFacts: jest.fn().mockResolvedValue({
+        amount: { effectiveAmountYuan: new Prisma.Decimal("229999.9999") },
+        tax: { invoiceType: "vat_special", defaultTaxRatePercent: new Prisma.Decimal("6.123456") }
+      })
+    } as never);
+    const updated = await effective.getDetail("HT-2026-009");
+    expect(updated.baseInfo).toEqual(expect.arrayContaining([
+      { label: "合同金额", value: "¥229999.9999" },
+      { label: "合同税率", value: "6.123456%" }
+    ]));
+    expect(updated.settlementPayment.summary).toEqual(expect.arrayContaining([
+      { label: "最新合同剩余额度", value: "¥0.0000", tone: "primary" },
+      { label: "合同金额提示", value: "变更后合同金额低于累计生效结算、累计实付", tone: "warning" }
+    ]));
+    expect(updated.settlementPayment.paymentRows).toEqual(detail.settlementPayment.paymentRows);
   });
 
   it("separates historical takeover amounts in contract settlement payment summary", async () => {
@@ -2700,7 +2717,7 @@ describe("ContractReadService", () => {
         }])
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -2757,7 +2774,7 @@ describe("ContractReadService", () => {
           updatedAt: new Date("2026-08-02T01:00:01.000Z")
         }])
       },
-      approvalDelegation: { findMany: jest.fn() }
+      approvalDelegation: { groupBy: jest.fn() }
     };
     const service = new ContractReadService(prisma as never, {} as never) as unknown as {
       canReviewCurrentApproval(
@@ -2778,7 +2795,7 @@ describe("ContractReadService", () => {
     );
 
     expect(review.access.canReview).toBe(true);
-    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
+    expect(prisma.approvalDelegation.groupBy).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -2799,7 +2816,7 @@ describe("ContractReadService", () => {
           updatedAt: new Date("2026-08-02T01:00:01.000Z")
         }])
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ContractReadService(prisma as never, {

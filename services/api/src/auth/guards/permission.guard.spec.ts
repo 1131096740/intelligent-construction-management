@@ -406,7 +406,7 @@ describe("PermissionGuard", () => {
           }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "former-finance-1", isActive: true }]) }
     };
     const guard = new PermissionGuard({
@@ -559,7 +559,7 @@ describe("PermissionGuard", () => {
           frozenNodes: [{ roleKeys: ["finance_director"], candidateUserIds: ["finance-1"] }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "finance-2", isActive: true }]) }
     };
     const guard = new PermissionGuard({
@@ -586,7 +586,7 @@ describe("PermissionGuard", () => {
           }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "witness-1", isActive: true }]) }
     };
     const context = (userId: string) => contextWithRequest({
@@ -629,7 +629,7 @@ describe("PermissionGuard", () => {
           }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const guard = new PermissionGuard({
@@ -669,7 +669,7 @@ describe("PermissionGuard", () => {
         })
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "finance-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -708,7 +708,7 @@ describe("PermissionGuard", () => {
           Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))
       },
       approvalInstance: { findFirst: approvalFindFirst },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const guard = new PermissionGuard({
@@ -745,7 +745,7 @@ describe("PermissionGuard", () => {
         findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -772,7 +772,8 @@ describe("PermissionGuard", () => {
         })
       )
     ).resolves.toBe(true);
-    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
+    expect(prisma.approvalDelegation.groupBy).toHaveBeenCalledWith({
+      by: ["fromUserId"],
       where: {
         toUserId: "delegatee-1",
         actionKey: null,
@@ -781,8 +782,7 @@ describe("PermissionGuard", () => {
         enabled: true,
         startsAt: { lte: expect.any(Date) },
         endsAt: { gt: expect.any(Date) }
-      },
-      select: { fromUserId: true }
+      }
     });
   });
 
@@ -1105,7 +1105,7 @@ describe("PermissionGuard", () => {
       position: { findMany: jest.fn().mockResolvedValue([]) },
       paymentRequest: { findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([

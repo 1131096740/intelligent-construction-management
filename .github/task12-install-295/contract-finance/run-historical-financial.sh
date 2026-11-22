@@ -2,21 +2,35 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
+count=$(node -e '
+  const source=require(process.argv[1]);
+  if(source.sourceSha!==process.argv[2])process.exit(65);
+  if(source.mode==="current-320"&&source.migrationCount===320)console.log(320);
+  else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
+  else process.exit(65);
+' "$prepared/source.json" "$sha")
+mode_args=()
+if [[ $count == 320 ]]; then mode_args=(--current-320)
+elif [[ $# == 5 ]]; then exit 65
+fi
 lane=historical-financial
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$common/multi-witness.cjs" "$plan/historical-financial-profile.json" "$workspace" <<'JS'
-const [sourceFile,sha,terminalFile,profileFile,workspace]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$common/multi-witness.cjs" "$plan/historical-financial-profile.json" "$workspace" "$count" <<'JS'
+const [sourceFile,sha,terminalFile,profileFile,workspace,count]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-if(source.sourceSha!==sha||source.migrationCount!==295||source.ledgerSha256!==terminal.final)process.exit(65);
+if(source.sourceSha!==sha||source.migrationCount!==Number(count))process.exit(65);
+if(count==='320'){
+  if(source.mode!=='current-320'||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
+} else if(source.ledgerSha256!==terminal.final)process.exit(65);
 const {spec,sha:digest}=require(profileFile).financial;
 const bytes=require('node:fs').readFileSync(workspace+'/services/api/'+spec);
 if(require('node:crypto').createHash('sha256').update(bytes).digest('hex')!==digest)process.exit(65);
@@ -51,15 +65,15 @@ done
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
-printf '%s\n' "假设 POL-224 原四项业务在批准的隔离 295 实例按当前 Git SHA 保持。观察 candidateBaseline、originalSlice、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
+printf '%s\n' "假设 POL-224 原四项业务在批准的隔离 $count 实例按当前 Git SHA 保持。观察 candidateBaseline、originalSlice、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/historical-financial-entry.cjs \
+docker run "${args[@]}" --entrypoint node "$image" /qualification/historical-financial-entry.cjs ${mode_args[@]+"${mode_args[@]}"} \
   > "$work/receipt.json" 2> "$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" <<'JS'
-const [file,sha]=process.argv.slice(2);
+node - "$work/receipt.json" "$sha" "$count" <<'JS'
+const [file,sha,count]=process.argv.slice(2);
 const r=require(file);
-if(r.status!=='ORIGINAL_HISTORICAL_FINANCIAL_295_PASSED'||r.sourceSha!==sha||r.candidateBaseline!==sha)process.exit(1);
+if(r.status!=='ORIGINAL_HISTORICAL_FINANCIAL_'+count+'_PASSED'||r.sourceSha!==sha||r.candidateBaseline!==sha)process.exit(1);
 JS

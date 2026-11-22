@@ -2,10 +2,13 @@
 
 const {readFileSync,writeFileSync,statSync}=require('node:fs');
 const {scope}=require('../common/successor.cjs');
-const {technical}=require('./archive-contract.cjs');
+const {legacy,successor}=require('./restore-profile.cjs');
+const current=process.argv[7]?require(process.argv[7]):undefined;
+const count=current?320:295;
+const {technical}=current?successor:legacy;
 
-const identity=row=>row&&row.schemaVersion===1&&row.purpose==='NTF04_NAMED_RESTORE_EXACT_295'&&row.candidateSha===require(process.argv[6]).head&&
-  row.operation==='NAMED_BANK_BACKUP_AND_RECOVERY';
+const identity=row=>row&&row.schemaVersion===1&&row.purpose==='NTF04_NAMED_RESTORE_EXACT_'+count&&row.candidateSha===(current?.sourceSha??require(process.argv[6]).head)&&
+  row.operation==='NAMED_BANK_BACKUP_AND_RECOVERY'&&(!current||row.fixturePredecessorSha===require(process.argv[6]).head);
 const restoreStages=[
   'BACKUP294_NAMED_EXPORT_IMPORT','BACKUP292_RESTORE_BUSINESS_PRE_DATA',
   'BACKUP292_RESTORE_BUSINESS_DATA','BACKUP292_RESTORE_BUSINESS_POST_DATA',
@@ -31,16 +34,20 @@ function qualified(row,mode){
   const exactInput=row.input?.baseCount===289&&row.input.intermediateCount===291&&row.input.finalCount===292&&
     row.input.ledgerSha256===scope.expectedLedgerSha256;
   if(row.inputMigrationSha256!==require('../common/multi-witness.cjs').digest||!identity(row)||!exactInput||row.failure||!Array.isArray(row.stages)) return false;
-  if(mode==='--preflight') return row.status==='BACKUP295_NO_DB_PREFLIGHT_PASSED'&&
+  if(mode==='--preflight') return row.status==='BACKUP'+count+'_NO_DB_PREFLIGHT_PASSED'&&
     row.stages.at(-1)==='BACKUP292_BOTH_WORKSPACE_CLOSURES';
   if(mode!=='--once') return false;
   const data=row.restore;
-  return row.status==='BACKUP295_RESTORED_AND_VERIFIED'&&row.business==='CALLBACK_COMPLETED'&&
+  const forwardValid=!current||(row.forward320?.count===320&&row.forward320.sameIdentity===true&&
+    row.forward320.sameBaseB7===true&&row.forward320.sourceTree===current.sourceTree&&
+    row.forward320.ledgerSha256===current.ledgerSha256&&row.combinedAfterBusiness?.ledgerSha256===current.ledgerSha256&&
+    row.combinedAfterBusiness.exactB7===true&&data?.businessTables===successor.businessCount);
+  return forwardValid&&row.status==='BACKUP'+count+'_RESTORED_AND_VERIFIED'&&row.business==='CALLBACK_COMPLETED'&&
     row.releaseTree===scope.tree&&row.cleanup==='POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT'&&
     row.installOnly292?.count===292&&row.installOnly292.ledgerSha256===scope.expectedLedgerSha256&&
     row.installOnly294?.ledgerSha256===require('./combined294-source.json').ledgerSha256&&
     row.installOnly295?.ledgerSha256===require('../common/multi-witness.cjs').final&&
-    restoreStages.every(stage=>row.stages.filter(value=>value===stage).length===1)&&
+    restoreStages.every(stage=>row.stages.filter(value=>value===(current&&stage==='BACKUP294_NAMED_EXPORT_IMPORT'?'BACKUP320_NAMED_EXPORT_IMPORT':stage)).length===1)&&
     exactlyTrue(row.backupFixtureCleanup,['rolesWithdrawn','restoredDatabaseRemoved'])&&
     data&&data.namedDataImport?.role==='contract_backup'&&
     exactlyTrue(data.namedDataImport,['tls','targetWritesRevoked'])&&
@@ -64,7 +71,7 @@ function extract(raw,mode,containerStatus,write){
 if(require.main===module){
   try{
     const [mode,source,target,status]=process.argv.slice(2);
-    if(process.argv.length!==7||!/^\d{1,3}$/u.test(status)||Number(status)>255||
+    if(![7,8].includes(process.argv.length)||!/^\d{1,3}$/u.test(status)||Number(status)>255||
       statSync(source).size>4*1024*1024) throw Error('BACKUP292_RECEIPT_ARGS');
     if(!extract(readFileSync(source,'utf8'),mode,Number(status),row=>
       writeFileSync(target,JSON.stringify(row,null,2)+'\n',{flag:'wx',mode:0o600}))){

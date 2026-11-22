@@ -4,16 +4,21 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const {createHash} = require('node:crypto');
 const {spawnSync} = require('node:child_process');
-const {runBackup295,verifyLease} = require('./backup-fixture.cjs');
+const {runBackup295,prepareBackup295,runBackup320,verifyLease} = require('./backup-fixture.cjs');
 const admission=require('./committed-admission.json');
 const {admitSource} = require('./install-only292.cjs');
 const {checkClosure} = require('./verify-behavior.cjs');
-const {withCombined295MultiWitnessForRestore} = require('./installer.cjs');
+const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore} = require('./installer.cjs');
 const bank = require('./named-roles/contract-finance-owned-ci.cjs');
 const correctionRoot='/qualification/workspace', loanRoot='/qualification/loan-workspace';
 const correction=require(correctionRoot+'/services/api/prisma/run-task398-shared-standard-local.cjs').runTask398Owned282Voucher;
 const loan=require(loanRoot+'/services/api/prisma/contract-finance-owned-ci.cjs').verify;
-const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_295',candidateSha:admission.head,operation:'NAMED_BANK_BACKUP_AND_RECOVERY',stages:[]};
+const args=process.argv.slice(2);
+const current320=args[0]==='--current-320';
+const runArgs=current320?args.slice(1):args;
+const source=current320?require('./current320-source.json'):undefined;
+const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+(current320?320:295),
+  candidateSha:source?.sourceSha??admission.head,...(current320?{fixturePredecessorSha:admission.head}:{}),operation:'NAMED_BANK_BACKUP_AND_RECOVERY',stages:[]};
 
 function requireNoCrossLinks(root){
   for(const relative of ['services/api/node_modules/@prisma/client','services/api/node_modules/jest','node_modules/.pnpm']) {
@@ -38,8 +43,8 @@ function preflight(){
   for(const root of [correctionRoot,loanRoot]) requireNoCrossLinks(root);
   receipt.stages.push('BACKUP292_BOTH_WORKSPACE_CLOSURES');
 }
-async function namedRoles(context){
-  await verifyLease(context);
+async function namedRoles(context,forward320){
+  await verifyLease(context,forward320);
   const backup=await bank.prepareDiagnosticBackupIdentity(context);
   try {
     const url=new URL(await bank.prepareBankRuntime(context,backup));
@@ -59,9 +64,18 @@ async function namedRoles(context){
   }
 }
 async function main(){
+  assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'));
+  if(current320){
+    assert.equal(source.mode,'current-320');
+    assert.equal(source.migrationCount,320);
+    assert.equal(source.predecessor.migrationCount,295);
+    assert.equal(source.predecessor.ledgerSha256,require('./multi-witness.cjs').final);
+    assert.equal(source.ledgerSha256,require('./forward-320-inventory.json').ledgerSha256);
+    assert.match(source.sourceSha,/^[0-9a-f]{40}$/u);
+    assert.match(source.sourceTree,/^[0-9a-f]{40}$/u);
+  }
   preflight();
-  if(process.argv[2]==='--preflight'){
-    assert.equal(process.argv.length,3);
+  if(runArgs.length){
     const name='公司互转真实PG：独立领导OR终审、两侧流水、在途、借款归还、自有资金与项目权限';
     const check=spawnSync('pnpm',['--filter','@jiangkong/api','exec','jest','--runInBand','--runTestsByPath',
       'src/database/project-affiliate-company-contract-db.spec.ts','--testNamePattern',name,'--json'],{
@@ -73,21 +87,35 @@ async function main(){
     assert.equal(check.status,0,'BACKUP292_RELOCATED_JEST_PREFLIGHT');
     const tests=JSON.parse(check.stdout).testResults.flatMap(row=>row.assertionResults);
     assert.equal(tests.filter(test=>test.title===name&&test.status==='pending').length,1,'BACKUP292_LOAN_CASE_PREFLIGHT');
-    receipt.status='BACKUP295_NO_DB_PREFLIGHT_PASSED';
+    receipt.status=current320?'BACKUP320_NO_DB_PREFLIGHT_PASSED':'BACKUP295_NO_DB_PREFLIGHT_PASSED';
     return;
   }
-  assert.equal(process.argv.length,2);
-  await withCombined295MultiWitnessForRestore(receipt,async context=>{
-    await verifyLease(context);
-    await runBackup295(context,receipt,admission,{
-      correction:(ctx,proof)=>correction(ctx,'correction-catalog',proof),
-      loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
-      namedRoles,
+  const fixtures={
+    correction:async(ctx,proof)=>{
+      if(!current320) return correction(ctx,'correction-catalog',proof);
+      const predecessorProof={...proof,purpose:'NTF04_NAMED_RESTORE_EXACT_295',candidateSha:admission.head};
+      await correction(ctx,'correction-catalog',predecessorProof);
+      for(const field of ['before','successor','businessOracle']) proof[field]=predecessorProof[field];
+    },
+    loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
+  };
+  if(current320){
+    await withCombined320ContractPaymentForRestore(receipt,
+      context=>prepareBackup295(context,receipt,admission,fixtures),
+      context=>runBackup320(context,receipt,{namedRoles:ctx=>namedRoles(ctx,receipt.forward320)}),
+      {sourceTree:source.sourceTree,migrations:'/qualification/current320/migrations',tails:source.tails});
+    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+    assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.combinedAfterBusiness.exactB7,true);
+  } else {
+    await withCombined295MultiWitnessForRestore(receipt,async context=>{
+      await verifyLease(context);
+      await runBackup295(context,receipt,admission,{...fixtures,namedRoles});
     });
-  });
+  }
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status='BACKUP295_RESTORED_AND_VERIFIED';
+  receipt.status=current320?'BACKUP320_RESTORED_AND_VERIFIED':'BACKUP295_RESTORED_AND_VERIFIED';
 }
 main().catch(error=>{
   receipt.status='STOPPED';

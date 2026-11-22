@@ -12,10 +12,12 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 scope=payment-execution
 
-node -e '
+count=$(node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  const count=source.mode==="current-320"?320:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  console.log(count);
+'  "$prepared/source.json" "$sha")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -44,8 +46,8 @@ done
 if pgrep -x postgres >/dev/null; then exit 65; fi
 for lane in fresh valid paid other; do
   case "$lane" in
-    fresh) entry=fresh.cjs; inputs=$material; expected=PAYMENT_EXECUTION_FRESH_295_PASSED ;;
-    valid) entry=valid.cjs; inputs=$material; expected=PAYMENT_EXECUTION_RETAINED_VALID_295_PASSED ;;
+    fresh) entry=fresh.cjs; inputs=$material; expected=PAYMENT_EXECUTION_FRESH_${count}_PASSED ;;
+    valid) entry=valid.cjs; inputs=$material; expected=PAYMENT_EXECUTION_RETAINED_VALID_${count}_PASSED ;;
     paid) entry=payment-retained-ci.cjs; inputs="$material/paid"; expected=PAYMENT_RETAINED_PAID_MISMATCH_ROLLBACK_PASSED ;;
     other) entry=payment-retained-ci.cjs; inputs="$material/other"; expected=PAYMENT_RETAINED_OTHER_13_NEGATIVES_PASSED ;;
   esac
@@ -58,18 +60,19 @@ for lane in fresh valid paid other; do
     for file in payment-execution-concurrency.spec.ts task12-owned-280.test-support.ts; do
       lane_args+=(--mount "type=bind,src=$material/$file,dst=/qualification/workspace/services/api/src/database/$file,readonly")
     done
+    lane_args+=(--mount "type=bind,src=$plan/contract-finance-owned.test-support.ts,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly")
   fi
   exit_code=0
   docker run "${lane_args[@]}" --entrypoint node "$image" "/qualification/$entry" \
     > "$work/$lane.stdout" 2> "$work/$lane.stderr" || exit_code=$?
   tail -n 1 "$work/$lane.stdout" > "$work/$lane.json"
   node -e '
-    const row=require(process.argv[1]); const [lane,sha,expected,code]=process.argv.slice(2);
+    const row=require(process.argv[1]); const [lane,sha,expected,code,count]=process.argv.slice(2);
     console.log(JSON.stringify(row));
     const positive=lane==="fresh"||lane==="valid";
     if(code!=="0"||row.status!==expected||row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
-      (positive&&(row.sourceSha!==sha||row.installOnly295?.count!==295||row.combinedAfterBusiness?.exactB7!==true))||
+      (positive&&(row.sourceSha!==sha||row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true))||
       (!positive&&(row.retainedPaymentNegatives?.length!==(lane==="paid"?1:13)||row.installOnly295!==undefined)))process.exit(1);
-  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" ||
-    { printf 'PAYMENT_EXECUTION_295_STOPPED %s %s\n' "$lane" "$work" >&2; exit 1; }
+  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" ||
+    { printf 'PAYMENT_EXECUTION_%s_STOPPED %s %s\n' "$count" "$lane" "$work" >&2; exit 1; }
 done

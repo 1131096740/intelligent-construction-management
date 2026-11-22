@@ -1,15 +1,30 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {sourceSha} = require('./contract-finance-source.json');
-const {withCombined295MultiWitness} = require('./installer.cjs');
+const source = require('./contract-finance-source.json');
+const {withCombined295MultiWitness,withCombined320ContractPayment} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const [lane] = process.argv.slice(2);
-assert.ok(process.argv.length===3&&lane==="company-proxy-repayment");
-const receipt = {schemaVersion:1,sourceSha,lane,purpose:'TASK410_COMPANY_PROXY_EXACT_295',business:'NOT_ENTERED',stages:[]};
-withCombined295MultiWitness(receipt, async context => {
-  await runTask398Owned282Voucher(context,lane+'-295',receipt);
-}).then(() => {
+assert.ok(process.argv.length===3&&lane==='company-proxy-repayment');
+const current320=source.mode==='current-320';
+const count=current320?320:295;
+const purpose='TASK410_COMPANY_PROXY_EXACT_'+count;
+const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
+async function main(){
+  assert.equal(source.migrationCount,count);
+  assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
+  const consume=context=>runTask398Owned282Voucher(context,lane+'-'+count,receipt);
+  if(current320){
+    await withCombined320ContractPayment(receipt,consume,{sourceTree:source.sourceTree,
+      migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails});
+    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.forward320.sameBaseB7,true);
+  } else {
+    await withCombined295MultiWitness(receipt,consume);
+  }
+  assert.equal(receipt.combinedAfterBusiness.count,count);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
   assert.equal(receipt.installOnly295?.count,295);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.deepEqual(receipt.original,{business:1,passed:6,skipped:0});
@@ -17,14 +32,15 @@ withCombined295MultiWitness(receipt, async context => {
   assert.equal(receipt.combinedAfterBusiness?.balance.keyUnprovisioned,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status = 'TASK410_COMPANY_PROXY_EXACT_295_PASSED';
-}).catch(error => {
+  receipt.status = purpose+'_PASSED';
+}
+main().catch(error => {
   const code = error.code ?? error.message;
   const state = error.psqlObservation?.sqlstate ?? error.sqlstate;
   receipt.status = 'STOPPED';
   receipt.failure = {
     stage:error.cashPhase ?? receipt.stages.at(-1),
-    code:typeof code === 'string' && /^[A-Z0-9_]+$/u.test(code) ? code : 'TASK410_COMPANY_PROXY_295_BEHAVIOR_FAILED',
+    code:typeof code === 'string' && /^[A-Z0-9_]+$/u.test(code) ? code : 'TASK410_COMPANY_PROXY_'+count+'_BEHAVIOR_FAILED',
     ...(/^[0-9A-Z]{5}$/u.test(state ?? '') ? {sqlstate:state} : {}),
     ...(error.psqlObservation?.permissionDenied === true ? {permissionDenied:true} : {}),
   };

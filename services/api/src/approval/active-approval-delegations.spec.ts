@@ -10,7 +10,10 @@ function client(
   users: Array<{ id: string; isActive: boolean }>
 ) {
   return {
-    approvalDelegation: { findMany: jest.fn().mockResolvedValue(delegations) },
+    approvalDelegation: {
+      findMany: jest.fn().mockResolvedValue(delegations),
+      groupBy: jest.fn().mockResolvedValue(delegations)
+    },
     user: { findMany: jest.fn().mockResolvedValue(users) }
   };
 }
@@ -33,7 +36,8 @@ describe("activeApprovalDelegatorIds", () => {
     await expect(
       activeApprovalDelegatorIds(prisma as never, "to-1", NOW)
     ).resolves.toEqual(["from-2", "from-1"]);
-    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
+    expect(prisma.approvalDelegation.groupBy).toHaveBeenCalledWith({
+      by: ["fromUserId"],
       where: {
         toUserId: "to-1",
         actionKey: null,
@@ -42,8 +46,7 @@ describe("activeApprovalDelegatorIds", () => {
         enabled: true,
         startsAt: { lte: NOW },
         endsAt: { gt: NOW }
-      },
-      select: { fromUserId: true }
+      }
     });
     expect(prisma.user.findMany).toHaveBeenCalledWith({
       where: { id: { in: ["to-1", "from-2", "from-1"] } },

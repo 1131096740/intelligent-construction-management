@@ -2,20 +2,27 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
+count=$(node -e '
+  const source=require(process.argv[1]);
+  if(source.sourceSha!==process.argv[2])process.exit(65);
+  if(source.mode==="current-320"&&source.migrationCount===320)console.log(320);
+  else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
+  else process.exit(65);
+' "$prepared/source.json" "$sha")
+mode_args=()
+if [[ $count == 320 ]]; then mode_args=(--current-320)
+elif [[ $# == 5 ]]; then exit 65
+fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 scope=historical-wage
 
-node -e '
-  const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -56,11 +63,11 @@ args+=(--mount "type=bind,src=$work/$relative,dst=/qualification/workspace/$rela
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/remaining-historical-wage-entry.cjs   > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/remaining-historical-wage-entry.cjs ${mode_args[@]+"${mode_args[@]}"}   > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="REMAINING_HISTORICAL_WAGE_295_PASSED";
+  const expected="REMAINING_HISTORICAL_WAGE_"+process.argv[4]+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$scope" "$sha" "$count"

@@ -17,7 +17,7 @@ const profiles = Object.freeze({
   },
 });
 
-async function verify(scope, context) {
+async function verify(scope, context, current320 = false, settlementReadKey) {
   const profile = Object.hasOwn(profiles, scope) ? profiles[scope] : undefined;
   if (!profile) throw new Error("CONTRACT_FINANCE_MODE");
   const storage = path.join(context.workDir, "contract-finance-files");
@@ -30,6 +30,8 @@ async function verify(scope, context) {
     INITIAL_USER_TEMPORARY_PASSWORD: "Local-Transfer-Initial-01",
     OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID(),
     JG_TASK12_OWNED_280_RUN_ID: context.runId, JG_CONTRACT_FINANCE_SCOPE: scope,
+    ...(current320 ? {JG_CONTRACT_FINANCE_LEDGER: "320"} : {}),
+    ...(settlementReadKey ? {SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY: settlementReadKey} : {}),
     ...Object.fromEntries(profile.flags.map(flag=>[flag,"1"])),
   };
   const suites = [];
@@ -59,14 +61,20 @@ async function verify(scope, context) {
         passed: summary?.numPassedTests,
         diagnostic: (() => {
           const clean = message.replace(/\x1b\[[0-9;]*m/gu, "");
-          const frames = [...clean.matchAll(/(?:contract-business-entry-http\.spec\.ts|approval-pdf-acceptance\.test-support\.ts):(\d+):(\d+)/gu)];
-          const exactStatus = /(?:状态码\s+|POST \/contracts\/[^/\s]+\/approval: )([1-5][0-9]{2})/u.exec(clean)?.[1];
+          const frames = [...clean.matchAll(/(?:contract-business-entry-http\.spec\.ts|company-transfer-http-postgres\.spec\.ts|approval-pdf-acceptance\.test-support\.ts):(\d+):(\d+)/gu)];
+          const contractChainLine = /company-transfer-contract-acceptance\.ts:(\d+):\d+/u.exec(clean)?.[1];
+          const failedRequest = /\b([a-z_]+) (\/[^\s]*): ([1-5][0-9]{2}) (\{[^\n]*\})/u.exec(clean);
+          const knownGroups = /\/(affiliate-contract-facts|affiliate-company-contracts|affiliate-settlement-facts|contract-proxy-executions|fund-executions|contract-bank-verifications|upward-receipt-matches|contract-relationship-ledger)(?:[/?]|$)/u;
+          const exactStatus = /(?:状态码\s+|POST \/contracts\/[^/\s]+\/approval: |\b(?:upload|[a-z_]+ \/[^\s]+:) )([1-5][0-9]{2})/u.exec(clean)?.[1];
           const expected = /Expected:\s+([1-5][0-9]{2})/u.exec(clean)?.[1];
           const received = /Received:\s+([1-5][0-9]{2})/u.exec(clean)?.[1];
           const moduleMissing = /Cannot find module|MODULE_NOT_FOUND/u.test(clean);
           const assertion = /expect\(received\)|AssertionError/u.test(clean);
           return {
             frames: frames.slice(0,4).map(frame=>[Number(frame[1]),Number(frame[2])]),
+            contractChainLine: contractChainLine ? Number(contractChainLine) : undefined,
+            requestGroup: failedRequest ? knownGroups.exec(failedRequest[2])?.[1] : undefined,
+            responseFingerprint: failedRequest ? createHash("sha256").update(failedRequest[4]).digest("hex") : undefined,
             status: exactStatus ? Number(exactStatus) : undefined,
             expected: expected ? Number(expected) : undefined,
             received: received ? Number(received) : undefined,

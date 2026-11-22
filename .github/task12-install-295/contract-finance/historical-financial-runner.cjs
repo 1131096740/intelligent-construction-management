@@ -7,14 +7,15 @@ const {spawnSync}=require('node:child_process');
 const profiles=require('./historical-financial-profile.json');
 const api='/qualification/workspace/services/api';
 
-async function runSlice(context,receipt,baseline){
+async function runSlice(context,receipt,baseline,sourceTree){
  const profile=profiles.financial;
  const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
  const {ownerUrl,runId,database,workDir}=context;
  assert.match(baseline.commit,/^[a-f0-9]{40}$/u);
  assert.match(baseline.tree,/^[a-f0-9]{40}$/u);
  assert.equal(baseline.commit,receipt.sourceSha);
- assert.equal(context.candidateTree,require('./scope.json').tree);
+ if(sourceTree!==undefined) assert.equal(baseline.tree,sourceTree);
+ assert.equal(context.candidateTree,sourceTree??require('./scope.json').tree);
  receipt.candidateGitTree=baseline.tree;
  const endpoint=new URL(ownerUrl);
  assert.ok(endpoint.protocol==='postgresql:'&&endpoint.hostname==='127.0.0.1'&&endpoint.username==='jg_task01_owner'&&

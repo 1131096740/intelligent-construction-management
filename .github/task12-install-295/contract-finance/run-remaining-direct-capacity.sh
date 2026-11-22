@@ -15,7 +15,8 @@ scope=direct-capacity
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
+  const expected=source.mode==="current-320"?320:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==expected)process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -56,6 +57,6 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/remaining-dire
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="REMAINING_DIRECT_CAPACITY_295_PASSED";
+  const expected="REMAINING_DIRECT_CAPACITY_"+require(process.argv[4]).migrationCount+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha"
+' "$work/receipt.json" "$scope" "$sha" "$prepared/source.json"

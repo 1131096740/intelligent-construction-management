@@ -1,16 +1,19 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const {randomBytes} = require('node:crypto');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295MultiWitness} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {verify} = require('./workspace/services/api/prisma/core-payment-runner.cjs');
 
 const root = '/qualification';
 const source = require('./contract-finance-source.json');
 const mode = process.argv[2];
-const receipt = {schemaVersion:1,purpose:'CONTRACT_FINANCE_CORE_OR_PAYMENT_EXACT_295',
-  scope:mode,sourceSha:source.sourceSha,migrationSha256:digest,stages:['INPUTS'],status:'STOPPED'};
+const current320=source.mode==='current-320';
+const count=current320?320:295;
+const receipt = {schemaVersion:1,purpose:'CONTRACT_FINANCE_CORE_OR_PAYMENT_EXACT_'+count,
+  scope:mode,sourceSha:source.sourceSha,migrationSha256:current320?source.tails.at(-1).sha256:digest,stages:['INPUTS'],status:'STOPPED'};
 
 async function main() {
   assert.equal(process.argv.length,3);
@@ -18,17 +21,31 @@ async function main() {
   assert.notEqual(process.getuid(),0);
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
-  assert.equal(source.migrationCount,295);
-  assert.equal(source.ledgerSha256,final);
+  assert.equal(source.migrationCount,count);
+  assert.equal(current320?source.predecessor.ledgerSha256:source.ledgerSha256,final);
   const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
-  assert.equal(baseline.expectedDirectoryCount,295);
+  assert.equal(baseline.expectedDirectoryCount,count);
   assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
-  assert.equal(baseline.terminalMigrationChecksum,digest);
+  assert.equal(baseline.terminalMigrationChecksum,receipt.migrationSha256);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
-  await withCombined295MultiWitness(receipt,async context=>{
+  const consume=async context=>{
     assert.equal(context.database,'jg_task01_'+context.runId.replaceAll('-',''));
     receipt.stages.push(mode==='core'?'ORIGINAL_AGGREGATE_THEN_COMPANY_TRANSFER':'ORIGINAL_PAYMENT_CONCURRENCY');
-    receipt.finance=await verify(mode,context);
+    if(current320&&mode==='core'){
+      const key=randomBytes(32).toString('hex');
+      const table='public.jg_signed_settlement_attachment_witness_key';
+      await context.sql(`INSERT INTO ${table}("key") VALUES(decode('${key}','hex'));`);
+      try {
+        receipt.finance=await verify(mode,context,true,key);
+      } finally {
+        await context.sql(`DELETE FROM ${table} WHERE "key"=decode('${key}','hex');`);
+        const {stdout}=await context.sql(`SELECT NOT EXISTS(SELECT FROM ${table});`);
+        assert.equal(stdout.trim(),'t');
+        receipt.settlementReadWitnessCleared=true;
+      }
+    } else {
+      receipt.finance=await verify(mode,context,current320);
+    }
     const found=receipt.finance.suites.map(({file,passed,skipped})=>[file.split('/').at(-1),passed,skipped]);
     assert.deepEqual(found,mode==='core'
       ? [['contract-business-entry-http.spec.ts',1,7],['company-transfer-http-postgres.spec.ts',1,0]]
@@ -47,24 +64,36 @@ async function main() {
         [['desktop','passed'],['desktop','passed'],['mobile','passed'],['mobile','passed']]);
       assert.deepEqual(rows[4],{event:'child-exit',code:0,signal:null});
     }
-  });
+  };
+  if(current320){
+    await withCombined320ContractPayment(receipt,consume,{sourceTree:source.sourceTree,
+      migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
+    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.forward320.sameBaseB7,true);
+  } else {
+    await withCombined295MultiWitness(receipt,consume);
+  }
   assert.deepEqual(receipt.orderedTails.slice(-6).map(row=>row.size),[290,291,292,293,294,295]);
   assert.equal(receipt.installOnly295.ledgerSha256,final);
   assert.equal(receipt.installOnly295.nonOwnerDenied,true);
-  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,final);
+  assert.equal(receipt.combinedAfterBusiness.count,count);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
   assert.equal(receipt.combinedAfterBusiness.exactB7,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status=mode==='core'?'CONTRACT_FINANCE_CORE_295_PASSED':'CONTRACT_FINANCE_PAYMENT_295_PASSED';
+  receipt.status='CONTRACT_FINANCE_'+mode.toUpperCase()+'_'+count+'_PASSED';
 }
 
 main().catch(error=>{
+  receipt.status='STOPPED';
   const code=error.code??error.message;
   receipt.failure={stage:receipt.stages.at(-1),code:/^[A-Z0-9_]+$/u.test(code)?code:'CONTRACT_FINANCE_295_FAILED',
     exit:error.exit,sqlstate:error.sqlstate,prismaCode:error.prismaCode,failedTest:error.failedTest,
-    diagnostic:error.diagnostic,denied:error.denied,passed:error.passed,browserObservation:error.browserObservation,
+    diagnostic:error.diagnostic,denied:error.denied,passed:error.passed,browserObservation:error.browserObservation,completedSuites:error.completedSuites,
+    approvals:error.approvals,paymentCapabilities:error.paymentCapabilities,
     migrationCause:error.migrationCause,psqlObservation:error.psqlObservation};
   process.exitCode=1;
 }).finally(()=>process.stdout.write(JSON.stringify(receipt)+'\n'));

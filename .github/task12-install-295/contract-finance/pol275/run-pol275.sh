@@ -2,7 +2,13 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $5 == warm && $6 == --current-320 ) ]] || exit 64
+count=295
+mode=()
+if [[ $# == 6 ]]; then
+  count=320
+  mode=(--current-320)
+fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -14,7 +20,7 @@ common="$base/common"
 lane=$5
 case "$lane" in
   warm)
-    purpose=ORIGINAL_POL275_WARM_EXACT_295
+    purpose=ORIGINAL_POL275_WARM_EXACT_$count
     context="$build/context"
     ;;
   collision)
@@ -27,8 +33,10 @@ scope=pol275-$lane
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  const count=Number(process.argv[3]);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  if(count===320 && (source.mode!=="current-320" || source.predecessor?.migrationCount!==295))process.exit(1);
+' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -53,10 +61,10 @@ else
   check "$evidence" aada0a6d3aa800ed5269419314f9a090cc3dd1230c54562423cba155088f10b6
   check "$pol/collision-observation.cjs" 650f65bc653c2f2bd31b010dd008f175306969811b68b4837ffa94916b0d792b
 fi
-check "$common/installer.cjs" 8e69f8328f7e67d07679bdcb8638a5a87f5184805d798f837552392fb69c7623
+check "$common/installer.cjs" 008e3a805b937a137f168dd03949d419c74dc15a6d3041c34509c7cf88866110
 cp "$common/installer.cjs" "$work/installer.cjs"
 patch --batch --fuzz=0 --silent "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" dec6ba186188047cc9be84796da0e05bda46c3e0951623ecd1c1ed74d0b3ce28
+check "$work/installer.cjs" 69ad4607585e0f7acfc42302274bef6c0f01e21c032bb5db3527cb0fb735e36b
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -84,13 +92,13 @@ fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/pol275-entry.cjs "$lane" > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/pol275-entry.cjs "$lane" ${mode[@]+"${mode[@]}"} > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
   if(row.purpose!==process.argv[3]||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
-' "$work/receipt.json" "$sha" "$purpose" || { printf 'ORIGINAL_POL275_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
+' "$work/receipt.json" "$sha" "$purpose" || { printf '%s_NO_RECEIPT %s\n' "$purpose" "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);

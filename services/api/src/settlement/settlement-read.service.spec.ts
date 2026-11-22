@@ -1161,7 +1161,7 @@ describe("SettlementReadService", () => {
         })
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -1212,7 +1212,7 @@ describe("SettlementReadService", () => {
           currentNodeIndex: 0
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new SettlementReadService(prisma as never, {

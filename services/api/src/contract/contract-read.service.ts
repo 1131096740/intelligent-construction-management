@@ -3,11 +3,12 @@ import { directPendingNumbers, directPendingNumberLabel } from "./contract-direc
 import { hasDirectSigningInput } from "./contract-direct-pending-source";
 import { readContractV2LifecycleContext } from "./contract-v2-lifecycle-context";
 import { readQualifiedGeneratedUpwardReference } from "./contract-generated-upward-operating";
+import { ContractEffectiveTaxService } from "./contract-effective-tax.service";
 import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import { Prisma } from "@prisma/client";
 import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
-import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS, type ContractSigningIdentity } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, downstreamContractRelationship, sumBusinessAmounts, CONTRACT_RELATIONSHIP_LABELS, type ContractSigningIdentity } from "@jiangkong/shared-domain";
 import {
   BadRequestException,
   ConflictException,
@@ -135,7 +136,9 @@ export class ContractReadService {
     @Optional()
     private readonly audit?: AuditService,
     @Optional()
-    private readonly me?: MeService
+    private readonly me?: MeService,
+    @Optional()
+    private readonly effectiveFacts?: ContractEffectiveTaxService
   ) {}
 
   /** The existing sensitive contract read decision, evaluated on the file transaction.
@@ -1701,6 +1704,11 @@ export class ContractReadService {
       });
     });
     const executionVoucherViews = await Promise.all(paymentExecutions.map(async row=>({...row,voucherFileId:await paymentExecutionVoucherFileId(this.prisma,row)})));
+    const effectiveFacts = version.id === effectiveDefault?.id && version.status === "effective" && !readOnlyHistory
+      ? await this.effectiveFacts?.readEffectiveContractFacts(version.id, contract.projectId, contract.id)
+      : undefined;
+    const effectiveAmount = effectiveFacts?.amount?.effectiveAmountYuan;
+    const currentTax = effectiveFacts?.tax ?? version;
     const precisionDraft = version.numericProtocolVersion === 2 && version.status === "draft";
     const directEnded = directPending && draftLifecycle.contractLifecycleStage === "ended_retained";
     const financialReadModel = precisionDraft || directEnded ? {
@@ -1709,7 +1717,7 @@ export class ContractReadService {
         ? "合同资料已结束并保留，财务余额不适用。"
         : "合同草稿尚未生效，财务余额不适用；请进入合同草稿工作台查看并保存精确金额。"
     } : this.settlementPayment(version.amountCents, settlements, settlementArchiveFiles,
-      paymentRequests, executionVoucherViews, projectProxyPayments, historicalBalance);
+      paymentRequests, executionVoucherViews, projectProxyPayments, historicalBalance, effectiveAmount);
     if (!precisionDraft && !directEnded && actorUserId && (!hasSensitiveLedgerReadRole("settlement", roleKeys) || !hasSensitiveLedgerReadRole("payment_request", roleKeys))) {
       financialReadModel.summary = [];
       financialReadModel.calculationNote = "仅展示本人发起或参与的结算及付款记录；因资料权限范围有限，不展示汇总余额，请由有权岗位核对。";
@@ -1735,16 +1743,19 @@ export class ContractReadService {
         { label: "相对方", value: contract.counterparty },
         ...(upwardReference ? [{ label: "对上内部依据",
           value: `我方公司：${upwardReference.company.name}；施工企业：${upwardReference.enterprise.name}` }] : []),
-        { label: "合同金额", value: this.formatContractAmount(version, numericProtocol) },
+        { label: "合同金额", value: effectiveFacts?.amount
+          ? effectiveAmount == null ? "待确定" : `¥${effectiveAmount.toFixed(4)}`
+          : this.formatContractAmount(version, numericProtocol) },
+        ...(effectiveFacts?.amount ? [{ label: "原版本合同金额", value: this.formatContractAmount(version, numericProtocol) }] : []),
         {
           label: "发票类型",
-          value: this.formatContractInvoiceType(version.invoiceType)
+          value: this.formatContractInvoiceType(currentTax.invoiceType)
         },
         {
           label: "合同税率",
-          value: version.defaultTaxRatePercent == null
+          value: currentTax.defaultTaxRatePercent == null
             ? "未明确"
-            : `${version.defaultTaxRatePercent.toString()}%`
+            : `${currentTax.defaultTaxRatePercent.toString()}%`
         },
         { label: "创建人", value: "合同部" }
       ],
@@ -1970,7 +1981,8 @@ export class ContractReadService {
       settlementId: string | null;
       amountCents: bigint;
     }>,
-    historicalBalance?: HistoricalContractPaymentBalance
+    historicalBalance?: HistoricalContractPaymentBalance,
+    effectiveAmount?: Prisma.Decimal | null
   ): ContractSettlementPaymentReadModel {
     const historicalSettledCents = this.toBigIntCents(historicalBalance?.settledCents ?? 0n);
     const historicalApprovalPendingCents = this.toBigIntCents(
@@ -2211,11 +2223,32 @@ export class ContractReadService {
       );
     }
 
-    summary.push({
-      label: "最新合同剩余额度",
-      value: this.formatMoney(remainingContractCents > 0n ? remainingContractCents : 0n),
-      tone: "primary"
-    });
+    if (effectiveAmount === undefined) {
+      summary.push({
+        label: "最新合同剩余额度",
+        value: this.formatMoney(remainingContractCents > 0n ? remainingContractCents : 0n),
+        tone: "primary"
+      });
+    } else if (effectiveAmount !== null) {
+      const effectiveYuan = effectiveAmount.toFixed(4);
+      const effectiveTenThousandths = BigInt(effectiveYuan.replace(".", ""));
+      const belowSettled = effectiveTenThousandths < totalEffectiveSettlementCents * 100n;
+      const belowPaid = effectiveTenThousandths < cumulativePaidCents * 100n;
+      const remaining = belowSettled ? "0.0000"
+        : sumBusinessAmounts([effectiveYuan, businessAmountFromLegacyCents(-totalEffectiveSettlementCents)]);
+      summary.push({
+        label: "最新合同剩余额度",
+        value: `¥${remaining}`,
+        tone: "primary"
+      });
+      const below = [
+        ...(belowSettled ? ["累计生效结算"] : []),
+        ...(belowPaid ? ["累计实付"] : [])
+      ];
+      if (below.length) {
+        summary.push({ label: "合同金额提示", value: `变更后合同金额低于${below.join("、")}`, tone: "warning" });
+      }
+    }
 
     return {
       summary,

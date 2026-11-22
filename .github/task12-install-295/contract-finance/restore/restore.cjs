@@ -4,8 +4,9 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {randomBytes}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
-const {technical,pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
-const {key,emptyBindings,operatingVerifier,operatingContext}=require('./technical-relations.json');
+const {pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
+const {key,operatingVerifier,operatingContext}=require('./technical-relations.json');
+const {legacy,successor}=require('./restore-profile.cjs');
 const {scope,exactCatalog,catalogSql}=require('./successor.cjs');
 const notice=require('./terminal.cjs');
 const payout=require('./payout-terminal.cjs');
@@ -18,18 +19,17 @@ const restoreDb='contract_restored';
 const owner='jg_task01_owner', backupRole='contract_backup', bankRuntime='contract_runtime';
 const simple=/^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
 const quote=name=>{assert.match(name,simple);return '"'+name+'"';};
-const sqlnames=technical.map(name=>"'"+name+"'").join(',');
 const originalBackupGuard=fs.readFileSync(path.join(__dirname,'backup-original.sql'),'utf8');
 const coverage="AND ((c.relkind IN ('r', 'p', 'm') AND NOT has_table_privilege(current_user, c.oid, 'SELECT'))";
 assert.equal(originalBackupGuard.split(coverage).length,2);
-const diagnosticGuard=originalBackupGuard.replace(coverage,
-  "AND ((c.relkind IN ('r', 'p', 'm') AND NOT (n.nspname='public' AND c.relname IN ("+sqlnames+"))"+
+const diagnosticGuard=profile=>originalBackupGuard.replace(coverage,
+  "AND ((c.relkind IN ('r', 'p', 'm') AND NOT (n.nspname='public' AND c.relname IN ("+profile.sqlnames+"))"+
   " AND NOT has_table_privilege(current_user, c.oid, 'SELECT'))");
 
-function connection(context,credentials) {
+function connection(context,credentials,expectedTree) {
   const endpoint=new URL(context.ownerUrl);
   const ca=endpoint.searchParams.get('sslcert');
-  assert.equal(context.candidateTree,scope.tree);
+  assert.equal(context.candidateTree,expectedTree);
   assert.equal(context.database,'jg_task01_'+context.runId.replaceAll('-',''));
   assert.match(context.database,/^jg_task01_[a-f0-9]{32}$/u);
   assert.equal(endpoint.hostname,'127.0.0.1');
@@ -80,7 +80,7 @@ function instanceProof(sql,db) {
   return proof;
 }
 
-function catalogTables(sql,db) {
+function catalogTables(sql,db,{technical,addedBusiness}) {
   const rows=JSON.parse(sql(owner,db,`
     SELECT coalesce(jsonb_agg(jsonb_build_object('schema',n.nspname,'name',c.relname,'kind',c.relkind)
       ORDER BY n.nspname COLLATE "C",c.relname COLLATE "C"),'[]')
@@ -90,9 +90,11 @@ function catalogTables(sql,db) {
   assert.ok(rows.length>100&&rows.length<1000&&rows.every(row=>row.schema==='public'&&simple.test(row.name)&&row.kind==='r'),'BACKUP292_CATALOG_PROFILE');
   const names=rows.map(row=>row.name);
   assert.ok(technical.every(name=>names.includes(name)),'BACKUP292_PRIVATE_RELATIONS_MISSING');
-  return names.filter(name=>!technical.includes(name));
+  const business=names.filter(name=>!technical.includes(name));
+  assert.ok(addedBusiness.every(name=>business.includes(name)),'BACKUP320_NEW_BUSINESS_RELATIONS');
+  return business;
 }
-function technicalIntegrity(sql,db,expectedKeyRows) {
+function technicalIntegrity(sql,db,expectedKeyRows,{technical,emptyBindings,sqlnames}) {
   const ownerOnly=JSON.parse(sql(owner,db,`
     SELECT jsonb_build_object('privateCount',count(*),
       'ownerOnly',bool_and(c.relowner=10 AND NOT EXISTS (
@@ -144,7 +146,7 @@ function requiredHistory(sql,db) {
   return result;
 }
 
-function verifyNamedAccess(sql,db) {
+function verifyNamedAccess(sql,db,profile) {
   for(const role of [backupRole,bankRuntime]){
     const check=sql(role,db,`SELECT current_database()='${db}' AND current_user='${role}'
       AND session_user=current_user AND current_user <> '${owner}'
@@ -157,7 +159,7 @@ function verifyNamedAccess(sql,db) {
   }
   sql(backupRole,db,"SELECT public.issue_contract_bank_holder('missing','missing','missing','missing','missing','missing');",
     /42501:[^\n]*permission denied for function issue_contract_bank_holder/u);
-  sql(backupRole,db,diagnosticGuard);
+  sql(backupRole,db,diagnosticGuard(profile));
 }
 
 function provisionRestoredKey(sql,db,source) {
@@ -222,7 +224,7 @@ function sequenceNames(sql,db) {
   return items;
 }
 
-function verifyTargetImportAcl(sql, tables, sequences, active) {
+function verifyTargetImportAcl(sql, tables, sequences, active, {sqlnames}) {
   const expected=active?'TRUE':'FALSE';
   const reply=sql(owner,restoreDb,`
     SELECT current_database()='contract_restored' AND EXISTS(
@@ -253,7 +255,8 @@ function verifyTargetImportAcl(sql, tables, sequences, active) {
   assert.equal(reply,'t','BACKUP292_TARGET_IMPORT_ACL');
 }
 
-function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList) {
+function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,profile) {
+  const {sqlnames}=profile;
   const tablesSql=tables.map(name=>'public.'+quote(name)).join(',');
   const sequencesSql=sequences.map(name=>'public.'+quote(name)).join(',');
   const constraints=sql(owner,restoreDb,`
@@ -262,7 +265,7 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList) {
         AND (c.relrowsecurity OR c.relforcerowsecurity OR EXISTS(
           SELECT FROM pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal))); `);
   assert.equal(constraints,'t','BACKUP292_DATA_PRELOAD_GUARDS');
-  verifyTargetImportAcl(sql,tables,sequences,false);
+  verifyTargetImportAcl(sql,tables,sequences,false,profile);
   sql(owner,restoreDb,`BEGIN;
     GRANT CONNECT ON DATABASE contract_restored TO contract_backup;
     GRANT USAGE ON SCHEMA public TO contract_backup;
@@ -270,7 +273,7 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList) {
     ${sequences.length?`GRANT UPDATE ON SEQUENCE ${sequencesSql} TO contract_backup;`:''}
     COMMIT;`);
   try {
-    verifyTargetImportAcl(sql,tables,sequences,true);
+    verifyTargetImportAcl(sql,tables,sequences,true,profile);
     assert.equal(sql(backupRole,restoreDb,`
       SELECT current_database()='contract_restored' AND current_user='contract_backup'
         AND session_user=current_user AND inet_client_addr()='127.0.0.1'::inet
@@ -285,22 +288,26 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList) {
       ${sequences.length?`REVOKE UPDATE ON SEQUENCE ${sequencesSql} FROM contract_backup;`:''}
       COMMIT;`);
   }
-  verifyTargetImportAcl(sql,tables,sequences,false);
+  verifyTargetImportAcl(sql,tables,sequences,false,profile);
   return {role:backupRole,tls:true,restoredTables:tables.length,restoredSequences:sequences.length,targetWritesRevoked:true};
 }
 
-async function restoreBusinessDatabase(context,credentials,enter) {
+async function restoreBusinessDatabase(context,credentials,enter,forward320) {
+  const profile=forward320 ? successor : legacy;
+  const expectedTree=forward320?.sourceTree ?? scope.tree;
+  assert.match(expectedTree,/^[a-f0-9]{40}$/u);
+  const {technical}=profile;
   assert.equal(typeof enter,'function','BACKUP292_STAGE_RECORDER_REQUIRED');
   const {database:source}=context;
-  const invoke=connection(context,credentials);
+  const invoke=connection(context,credentials,expectedTree);
   const sql=sqlRunner(invoke);
   const stage=context.workDir;
   const sourceInstance=instanceProof(sql,source);
   const originalOperating=operatingState(sql,source);
   assert.equal(originalOperating.verifiers,1,'BACKUP292_SOURCE_OPERATING_VERIFIER');
   assert.equal(originalOperating.validVerifiers,true,'BACKUP292_SOURCE_OPERATING_VERIFIER_SHAPE');
-  const beforeKeys=technicalIntegrity(sql,source,[1]);
-  const business=catalogTables(sql,source);
+  const beforeKeys=technicalIntegrity(sql,source,[1],profile);
+  const business=catalogTables(sql,source,profile);
   const history=requiredHistory(sql,source);
   const expectedHistory=readBusinessHistory(statement=>sql(owner,source,statement));
   validateHistory(expectedHistory);
@@ -319,7 +326,7 @@ async function restoreBusinessDatabase(context,credentials,enter) {
   const technicalArchive=path.join(stage,'owner-technical-schema.dump');
   const dataList=path.join(stage,'named-business-data.list');
   const sequences=sequenceNames(sql,source);
-  assert.equal(business.length,356,'BACKUP294_BUSINESS_TABLE_COUNT');
+  assert.equal(business.length,profile.businessCount,'BACKUP294_BUSINESS_TABLE_COUNT');
   assert.deepEqual(sequences,['PersonnelChange_sequence_seq'],'BACKUP294_SEQUENCE_COUNT');
   const sequenceSnapshot=(db)=>sql(owner,db,`SELECT last_value::text,is_called FROM public.${quote(sequences[0])};`);
   const originalSequence=sequenceSnapshot(source);
@@ -343,18 +350,18 @@ async function restoreBusinessDatabase(context,credentials,enter) {
       GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${backupRole};
       COMMIT;`);
     granted=true;
-    verifyNamedAccess(sql,source);
+    verifyNamedAccess(sql,source,profile);
     for(const table of technical){
       sql(backupRole,source,`SELECT 1 FROM public.${quote(table)} LIMIT 1;`,/42501:[^\n]*permission denied/u);
     }
-    invoke(backupRole,source,'pg_dump',pgDumpArgs(source,dataArchive,'business'));
+    invoke(backupRole,source,'pg_dump',pgDumpArgs(source,dataArchive,'business',profile));
     const dataToc=outline(backupRole,dataArchive);
-    const dataCount=classifyArchive(dataToc,business,'business');
+    const dataCount=classifyArchive(dataToc,business,'business',profile);
     fs.writeFileSync(dataList,dataOnlyList(dataToc,business,sequences),{mode:0o600,flag:'wx'});
-    invoke(owner,source,'pg_dump',pgDumpArgs(source,technicalArchive,'owner-schema'));
-    const technicalCount=classifyArchive(outline(owner,technicalArchive),technical,'owner-schema');
+    invoke(owner,source,'pg_dump',pgDumpArgs(source,technicalArchive,'owner-schema',profile));
+    const technicalCount=classifyArchive(outline(owner,technicalArchive),technical,'owner-schema',profile);
     assert.deepEqual(businessFingerprint(sql,source,business),before,'BACKUP292_SOURCE_CHANGED_DURING_EXPORT');
-    technicalIntegrity(sql,source,[beforeKeys.keyCount]);
+    technicalIntegrity(sql,source,[beforeKeys.keyCount],profile);
     sql(owner,source,`CREATE DATABASE ${restoreDb} OWNER ${owner} TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C';`);
     created=true;
     sql(owner,source,`REVOKE ALL ON DATABASE ${restoreDb} FROM PUBLIC;`);
@@ -369,7 +376,7 @@ async function restoreBusinessDatabase(context,credentials,enter) {
     ]) {
       enter('BACKUP292_RESTORE_'+label);
       if(label==='BUSINESS_DATA'){
-        namedDataImport=importAsNamedBackup(sql,invoke,business,sequences,dataArchive,dataList);
+        namedDataImport=importAsNamedBackup(sql,invoke,business,sequences,dataArchive,dataList,profile);
       }else{
         invoke(owner,restoreDb,'pg_restore',[...options,'--section='+section,file],undefined,undefined,label);
       }
@@ -377,9 +384,9 @@ async function restoreBusinessDatabase(context,credentials,enter) {
     const restoredInstance=instanceProof(sql,restoreDb);
     assert.ok(restoredInstance.system===sourceInstance.system && restoredInstance.port===sourceInstance.port &&
       restoredInstance.oid!==sourceInstance.oid,'BACKUP292_SAME_INSTANCE_REQUIRED');
-    technicalIntegrity(sql,restoreDb,[0]);
-    verifyTargetImportAcl(sql,business,sequences,false);
-    assert.deepEqual(catalogTables(sql,restoreDb),business,'BACKUP292_RESTORED_TABLES');
+    technicalIntegrity(sql,restoreDb,[0],profile);
+    verifyTargetImportAcl(sql,business,sequences,false,profile);
+    assert.deepEqual(catalogTables(sql,restoreDb,profile),business,'BACKUP292_RESTORED_TABLES');
     assert.deepEqual(sequenceNames(sql,restoreDb),sequences,'BACKUP294_RESTORED_SEQUENCE_INVENTORY');
     assert.equal(sequenceSnapshot(restoreDb),originalSequence,'BACKUP294_RESTORED_SEQUENCE_VALUE');
     assert.equal(sequenceSnapshot(source),originalSequence,'BACKUP294_SOURCE_SEQUENCE_CHANGED');
@@ -387,17 +394,22 @@ async function restoreBusinessDatabase(context,credentials,enter) {
     assert.deepEqual(businessFingerprint(sql,restoreDb,business),before,'BACKUP292_RESTORED_BUSINESS_FINGERPRINT');
     assert.deepEqual(requiredHistory(sql,restoreDb),history,'BACKUP292_RESTORED_HISTORICAL_CLASSES');
     sql(owner,restoreDb,`GRANT CONNECT ON DATABASE ${restoreDb} TO ${backupRole},${bankRuntime};`);
-    verifyNamedAccess(sql,restoreDb);
+    verifyNamedAccess(sql,restoreDb,profile);
     restoredKey=provisionRestoredKey(sql,restoreDb,source);
     rebuildOperatingVerifier(sql,restoreDb);
     assert.deepEqual(operatingState(sql,source), originalOperating, 'BACKUP292_SOURCE_OPERATING_STATE_CHANGED');
     assert.deepEqual(businessFingerprint(sql,restoreDb,business),before,'BACKUP292_REKEY_CHANGED_BUSINESS');
-    technicalIntegrity(sql,restoreDb,[1]);
+    technicalIntegrity(sql,restoreDb,[1],profile);
     const shape=JSON.parse(sql(owner,restoreDb,catalogSql));
     assert.equal(shape.keyUnprovisioned,false,'BACKUP292_REKEY_NOT_INSTALLED');
     assert.equal(exactCatalog({...shape,keyUnprovisioned:true}),true,'BACKUP292_RESTORED_BALANCE_CATALOG');
     const probes=validateHistory(readBusinessHistory(statement=>sql(owner,restoreDb,statement)),expectedHistory);
-    verifyNamedAccess(sql,restoreDb);
+    verifyNamedAccess(sql,restoreDb,profile);
+    if (forward320) {
+      for (const role of [backupRole,bankRuntime])
+        for (const table of profile.technical)
+          sql(role,restoreDb,`SELECT 1 FROM public.${quote(table)} LIMIT 1;`,/42501:[^\n]*permission denied/u);
+    }
     for (const role of [backupRole,bankRuntime]) {
       for (const table of [operatingVerifier,operatingContext])
         sql(role,restoreDb,`SELECT 1 FROM public.${quote(table)} LIMIT 1;`,/42501:[^\n]*permission denied/u);
@@ -419,7 +431,7 @@ async function restoreBusinessDatabase(context,credentials,enter) {
           REVOKE SELECT ON TABLE ${readTargets} FROM ${backupRole};
           REVOKE SELECT ON ALL SEQUENCES IN SCHEMA public FROM ${backupRole};
           COMMIT;`);
-        technicalIntegrity(sql,source,[beforeKeys.keyCount]);
+        technicalIntegrity(sql,source,[beforeKeys.keyCount],profile);
       }
       for(const file of [dataArchive,technicalArchive,dataList]){
         if(fs.existsSync(file))fs.unlinkSync(file);

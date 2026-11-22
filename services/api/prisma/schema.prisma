@@ -8,6 +8,9 @@ datasource db {
 }
 
 model User {
+  submittedSignedContractChanges ContractSignedChange[] @relation("SignedChangeSubmitter")
+  reviewedSignedContractChanges  ContractSignedChange[] @relation("SignedChangeReviewer")
+  workCompletions ContractWorkCompletion[]
   companyTransferCorrectionRequests CompanyTransferOriginalDebtCorrection[] @relation("CompanyTransferCorrectionApplicant")
   companyTransferCorrectionReviews CompanyTransferOriginalDebtCorrection[] @relation("CompanyTransferCorrectionReviewer")
   registeredOperationalPaymentActs RegisteredOperationalPayment[]
@@ -500,6 +503,7 @@ model UserPosition {
 }
 
 model Project {
+  signedContractSettlements              SignedContractSettlement[]
   registeredOperationalPayments RegisteredOperationalPayment[]
   registeredFundAdvanceReceipts RegisteredFundAdvanceReceipt[]
   registeredProjectPaymentAdvances RegisteredPaymentProjectAdvance[]
@@ -2506,6 +2510,7 @@ model ProjectRosterMember {
 }
 
 model Contract {
+  signedChanges             ContractSignedChange[]
   registeredHistoryRevision RegisteredContractHistoryRevision?
   id                        String    @id @default(uuid())
   projectId                 String
@@ -2533,6 +2538,8 @@ model Contract {
 }
 
 model ContractVersion {
+  signedChanges                          ContractSignedChange[]
+  workCompletions ContractWorkCompletion[]
   id                                     String    @id @default(uuid())
   contractId                             String
   versionNo                              Int
@@ -3162,6 +3169,7 @@ model ContractArchiveEvidenceFile {
 }
 
 model ContractFormalFile {
+  signedChange       ContractSignedChange?
   id                   String    @id @default(uuid())
   contractVersionId    String
   purpose              String
@@ -3185,6 +3193,33 @@ model ContractFormalFile {
   @@index([contractVersionId, purpose, status])
   @@index([fileId])
   @@index([supersedesId])
+}
+
+model ContractSignedChange {
+  id                  String    @id @default(uuid())
+  contractId          String
+  baseVersionId       String
+  appendixFormalFileId String   @unique
+  sequenceNo          Int
+  status              String    @default("pending_review")
+  summary             String
+  paymentAgreementText String?
+  amountDeltaYuan     Decimal   @db.Decimal(24, 4)
+  precedingAmountYuan Decimal?  @db.Decimal(24, 4)
+  effectiveAmountYuan Decimal?  @db.Decimal(24, 4)
+  submittedByUserId   String
+  reviewedByUserId    String?
+  reviewReason        String?
+  reviewedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  contract            Contract           @relation(fields: [contractId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  baseVersion         ContractVersion    @relation(fields: [baseVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  appendixFormalFile  ContractFormalFile @relation(fields: [appendixFormalFileId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  submittedBy         User               @relation("SignedChangeSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  reviewedBy          User?              @relation("SignedChangeReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([contractId, sequenceNo])
+  @@index([contractId, status, sequenceNo])
 }
 
 model ContractAuthorization {
@@ -3334,6 +3369,42 @@ model Settlement {
   @@index([settlementTemplateVersionId])
   @@index([contractId, status])
   @@index([contractId, periodEnd])
+}
+
+model SignedContractSettlement {
+  id               String   @id @default(uuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contractKind     String
+  contractId       String
+  ownerUserId      String
+  number           String?
+  amountYuan       Decimal? @db.Decimal(24, 4)
+  state            String   @default("draft")
+  revision         Int      @default(1)
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  reviewReason     String?
+  confirmationNo   BigInt?
+  confirmedContractSource Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  attachments      SignedContractSettlementAttachment[]
+
+  @@unique([contractKind, contractId, confirmationNo], map: "SignedContractSettlement_contract_confirmation_key")
+  @@index([projectId, state], map: "SignedContractSettlement_project_state_idx")
+  @@index([contractKind, contractId, number], map: "SignedContractSettlement_contract_number_idx")
+}
+
+model SignedContractSettlementAttachment {
+  settlementId String
+  settlement   SignedContractSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  fileId       String @unique
+  file         FileObject @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  sha256       String
+
+  @@id([settlementId, fileId])
 }
 
 model SettlementSignedDocument {
@@ -3597,8 +3668,16 @@ model PaymentRequest {
   updatedAt                    DateTime           @updatedAt
   paymentTermsStage            PaymentTermsStage? @relation("PaymentRequestFrozenStage", fields: [paymentTermsStageId, paymentTermsVersionId], references: [id, paymentTermsVersionId], onDelete: Restrict, onUpdate: Restrict)
 
+  agreementSnapshot            PaymentRequestAgreementSnapshot?
+
   @@index([paymentTermsStageId], map: "PaymentRequest_paymentTermsStageId_idx")
   @@index([status, updatedAt])
+}
+
+model PaymentRequestAgreementSnapshot {
+  paymentRequestId String @id
+  agreementText    String
+  paymentRequest   PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 }
 
 model PaymentExecution {
@@ -6010,6 +6089,7 @@ model ApprovalDelegation {
 }
 
 model FileObject {
+  signedContractSettlements              SignedContractSettlementAttachment[]
   economicReviewFileReferences            ContractEconomicReviewFileReference[]
   registeredPaymentVouchers RegisteredPaymentVoucher[]
   id                                     String                                @id @default(uuid())
@@ -7643,4 +7723,35 @@ model CompanyTransferOriginalDebtCorrection {
   @@index([outgoingEventId])
   @@index([originalSource])
   @@index([targetOriginalSource])
+}
+
+model ContractWorkCompletion {
+  id                String          @id @default(uuid())
+  contractVersionId String
+  createdByUserId   String
+  requestKey        String
+  work              String
+  amountYuan        Decimal         @db.Decimal(24, 4)
+  status            String          @default("draft")
+  approvalInstanceId String?
+  fact              ContractWorkCompletionFact?
+  createdAt         DateTime        @default(now())
+  contractVersion   ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Restrict, map: "ContractWorkCompletion_version_fkey")
+  createdBy         User            @relation(fields: [createdByUserId], references: [id], onDelete: Restrict, map: "ContractWorkCompletion_creator_fkey")
+
+  @@unique([contractVersionId, createdByUserId, requestKey], map: "ContractWorkCompletion_idempotency_key")
+}
+
+model ContractWorkCompletionFact {
+  costSnapshot Json?
+  id                 String                 @id @default(uuid())
+  completionId        String                 @unique
+  contractVersionId   String
+  projectId           String
+  approvalInstanceId  String
+  finalActionId       String
+  work                String
+  amountYuan          Decimal                @db.Decimal(24, 4)
+  createdAt           DateTime               @default(now())
+  completion          ContractWorkCompletion @relation(fields: [completionId], references: [id], onDelete: Restrict)
 }

@@ -22,6 +22,8 @@ for name, delta in [('installer.cjs','payment-execution-installer.patch'),
                     *[(name, name + '.patch') for name in
                       ('fresh.cjs','valid.cjs','payment-execution-concurrency.spec.ts')]]:
     subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/name),str(plan/delta)],check=True)
+subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/'payment-execution-concurrency.spec.ts'),
+                str(plan/'payment-concurrency-320.patch')],check=True)
 for file in stage.rglob('*'):
     if file.is_file():
         file.chmod(0o644)

@@ -6,7 +6,10 @@ import subprocess
 import sys
 
 plan = Path(__file__).resolve().parent
-lane, repo_name, workspace_name, out_name = sys.argv[1:]
+lane, repo_name, workspace_name, out_name, *opts = sys.argv[1:]
+if opts not in ([], ['--current-320']):
+    sys.exit('PROCUREMENT_MODE')
+current320 = bool(opts)
 if lane not in ('general16', 'project11'):
     sys.exit('PROCUREMENT_295_MODE')
 repo, workspace, out = map(Path, (repo_name, workspace_name, out_name))
@@ -14,7 +17,8 @@ prior = repo / '.github/task12-install-290/procurement'
 common = repo / '.github/task12-install-295/contract-finance/common'
 port = json.loads((plan / 'port-pins.json').read_bytes())
 original = json.loads((prior / 'pins.json').read_bytes())[lane]
-delta = {row['path']: row for row in json.loads((plan / 'candidate-delta.json').read_bytes())}
+delta_file = 'candidate-delta320.json' if current320 else 'candidate-delta.json'
+delta = {row['path']: row for row in json.loads((plan / delta_file).read_bytes())}
 digest = lambda data: sha256(data).hexdigest()
 out.mkdir()
 
@@ -85,6 +89,38 @@ if seen != set(delta):
 patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')
 for name, pin in port[lane].items():
     patch(runtime / name, out / name, pin, pin['patch'])
+if current320:
+    consumer = out/'consumer.cjs'
+    text = consumer.read_text()
+    replacements = {
+        'context.candidateTree===require("./scope.json").tree':
+            'context.candidateTree===require("./contract-finance-source.json").sourceTree',
+        'receipt.combinedAfterBusiness?.ledgerSha256===terminal.final':
+            "receipt.combinedAfterBusiness?.ledgerSha256===require('./contract-finance-source.json').ledgerSha256 && "
+            "receipt.forward320?.count===320 && "
+            "receipt.forward320?.sourceTree===require('./contract-finance-source.json').sourceTree && "
+            "receipt.forward320?.sameBaseB7===true && receipt.combinedAfterBusiness?.count===320",
+    }
+    status = ('GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1' if lane=='general16' else 'PROJECT_SCOPE_ORIGINAL_11')
+    replacements[status+'_295_PASSED'] = status+'_320_PASSED'
+    for old, new in replacements.items():
+        if text.count(old)!=1:
+            raise ValueError('PROCUREMENT_320_CONSUMER_ANCHOR')
+        text = text.replace(old,new)
+    if lane == 'project11':
+        anchor = '    const ownerTarget=new URL(context.ownerUrl);'
+        observation = '''    const detailAcl=await context.sql(`SELECT jsonb_build_object(
+      'activity',has_function_privilege('project_business_scope_runtime','public.jg_read_payment_detail_activity_v1(text,text,text)','EXECUTE'),
+      'agreement',has_function_privilege('project_business_scope_runtime','public.jg_read_payment_contract_agreement_detail_v1(text,text,text)','EXECUTE'),
+      'allocations',has_function_privilege('project_business_scope_runtime','public.jg_read_payment_detail_allocations_v1(text,text,text)','EXECUTE'),
+      'snapshots',has_function_privilege('project_business_scope_runtime','public.jg_read_payment_detail_snapshots_v1(text,text,text,boolean)','EXECUTE')
+    );`);
+    receipt.paymentDetailExecute=JSON.parse(detailAcl.stdout);
+'''
+        if text.count(anchor) != 1:
+            raise ValueError('PROCUREMENT_320_PAYMENT_DETAIL_OBSERVATION_ANCHOR')
+        text = text.replace(anchor, observation + anchor)
+    write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']
     if lane == 'project11' else []

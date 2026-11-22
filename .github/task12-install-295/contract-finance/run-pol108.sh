@@ -2,11 +2,14 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
+mode_args=()
+count=295
+if [[ $# == 6 ]]; then mode_args=(--current-320); count=320; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
@@ -16,8 +19,8 @@ scope=pol108-$shard
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="320"&&source.mode!=="current-320"))process.exit(1);
+' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -26,7 +29,7 @@ fingerprint=$(cat "$build/context.sha256")
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 material="$work/material"
-python3 "$plan/stage-pol108.py" "$repo/.github/task12-install-289" "$repo/.github/task12-install-290" "$common" "$material" "$shard"
+python3 "$plan/stage-pol108.py" "$repo/.github/task12-install-289" "$repo/.github/task12-install-290" "$common" "$material" "$shard" "$count"
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 128 --memory 4g
@@ -53,13 +56,13 @@ args+=(--mount "type=bind,src=$plan/pol108-295-entry.cjs,dst=/qualification/pol1
 if [[ $shard == core ]]; then
   args+=(--mount "type=bind,src=$material/operating-projection-postgresql.cases.ts,dst=/qualification/workspace/services/api/src/database/operating-projection-postgresql.cases.ts,readonly")
 fi
-printf '%s\n' '验证原参与角色、账务报表与规模断言在 295 的同库行为。观察原用例状态、PG 采样、业务阶段和清理。' > "$work/hypothesis.txt"
+printf '%s\n' "验证原参与角色、账务报表与规模断言在 $count 的同库行为。观察原用例状态、PG 采样、业务阶段和清理。" > "$work/hypothesis.txt"
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/pol108-295-entry.cjs "$shard" \
+docker run "${args[@]}" --entrypoint node "$image" /qualification/pol108-295-entry.cjs "$shard" ${mode_args[@]+"${mode_args[@]}"} \
   > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]); console.log(JSON.stringify(row));
-  if(row.status!=="ORIGINAL_POL108_EXACT_295_PASSED"||row.sourceSha!==process.argv[2]||row.shard!==process.argv[3]||process.argv[4]!=="0")process.exit(1);
-' "$work/receipt.json" "$sha" "$shard" "$exit_code" ||
-  { printf 'POL108_295_STOPPED %s %s\n' "$shard" "$work" >&2; exit 1; }
+  if(row.status!==("ORIGINAL_POL108_EXACT_"+process.argv[5]+"_PASSED")||row.sourceSha!==process.argv[2]||row.shard!==process.argv[3]||process.argv[4]!=="0")process.exit(1);
+' "$work/receipt.json" "$sha" "$shard" "$exit_code" "$count" ||
+  { printf "POL108_${count}_STOPPED %s %s\n" "$shard" "$work" >&2; exit 1; }

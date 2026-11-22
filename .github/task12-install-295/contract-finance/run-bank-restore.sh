@@ -1,12 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $4 == bank && $5 == --current-320 ) ||
+  ( $# == 6 && $4 == restore && $5 == --current-320 ) ]] || exit 64
 
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 image_dir=$(cd "$3" && pwd -P)
 lane=$4
+mode=${5-}
+bank_args=()
+if [[ $lane == bank && $mode == --current-320 ]]; then bank_args=(--current-320); fi
+restore_args=()
+restore_source=()
+if [[ $lane == restore && $mode == --current-320 ]]; then
+  current_prepared=$(cd "$6" && pwd -P)
+  restore_args=(--current-320)
+  restore_source=("$current_prepared/source.json")
+fi
 plan=$(cd "$(dirname "$0")" && pwd -P)
 case "$lane" in
   bank) pids=128; memory=1g; entry=named-bank-ci.cjs;;
@@ -18,17 +29,23 @@ image=$(cat "$image_dir/image.id")
 context_sha=$(cat "$image_dir/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
-node - "$prepared/source.json" "$sha" "$plan" <<'JS'
-const [source,sha,plan]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$plan" ${bank_args[@]+"${bank_args[@]}"} <<'JS'
+const [source,sha,plan,mode]=process.argv.slice(2);
 const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
-if(candidate.sourceSha!==sha||candidate.migrationCount!==295||candidate.ledgerSha256!==m.final)process.exit(65);
+if(candidate.sourceSha!==sha)process.exit(65);
+if(mode==='--current-320') {
+  if(candidate.mode!=='current-320'||candidate.migrationCount!==320||candidate.predecessor?.migrationCount!==295||
+      candidate.predecessor.ledgerSha256!==m.final||candidate.tails.length!==25||
+      typeof candidate.sourceTree!=='string'||!/^[0-9a-f]{40}$/u.test(candidate.sourceTree)||
+      candidate.ledgerSha256!=='e86ce2f53bb9ceaace66836c79f178ef073fd6cb3b74a8641afdce246dfee07e')process.exit(65);
+} else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 out=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-finance-$lane.XXXXXXXX")
 printf '%s\n' "$out"
 overlay="$out/overlay"
-python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane"
+python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane" ${bank_args[@]+"${bank_args[@]}"}
 
 mounts=()
 readonly_mount(){
@@ -56,7 +73,7 @@ if [[ $lane == bank ]]; then
   readonly_mount "$overlay/bank/execution-files.json" /qualification/execution-files.json
   mount_tree "$overlay/bank/overlay" /qualification/workspace
 else
-  for file in run.cjs backup-fixture.cjs settlement-history.cjs restore.cjs archive-contract.cjs restore-diagnostic.cjs named-data.cjs technical-relations.json backup-original.sql business-readback.cjs approval-round-catalog.cjs controlled-correction.cjs verify-behavior.cjs combined294-source.json; do
+  for file in run.cjs backup-fixture.cjs settlement-history.cjs restore.cjs archive-contract.cjs restore-profile.cjs forward-320-inventory.json restore-diagnostic.cjs named-data.cjs technical-relations.json backup-original.sql business-readback.cjs approval-round-catalog.cjs controlled-correction.cjs verify-behavior.cjs combined294-source.json; do
     readonly_mount "$plan/restore/$file" "/qualification/$file"
   done
   node - "$out/committed-admission.json" "$sha" "$plan/restore/combined294-source.json" <<'JS'
@@ -67,6 +84,10 @@ require('node:fs').writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITT
 JS
   chmod 0644 "$out/committed-admission.json"
   readonly_mount "$out/committed-admission.json" /qualification/committed-admission.json
+  if [[ $mode == --current-320 ]]; then
+    readonly_mount "$current_prepared/source.json" /qualification/current320-source.json
+    readonly_mount "$current_prepared/prepared/context/workspace/services/api/prisma/migrations" /qualification/current320/migrations
+  fi
   readonly_mount "$overlay/restore/app-inputs.json" /qualification/app-inputs.json
   readonly_mount "$overlay/restore/loan-relocated-manifest.json" /qualification/loan-relocated-manifest.json
   readonly_mount "$overlay/restore/named-roles" /qualification/named-roles
@@ -83,14 +104,16 @@ run(){
 capture(){
   local mode=$1 status=0 proof_status=0
   shift
-  run "$@" > "$out/$mode.stdout" 2> "$out/$mode.stderr" || status=$?
+  run ${bank_args[@]+"${bank_args[@]}"} ${restore_args[@]+"${restore_args[@]}"} "$@" > "$out/$mode.stdout" 2> "$out/$mode.stderr" || status=$?
   if [[ $lane == restore ]]; then
-    node "$plan/restore/extract-receipt.cjs" "--$mode" "$out/$mode.stdout" "$out/$mode.json" "$status" "$out/committed-admission.json" || proof_status=$?
+    node "$plan/restore/extract-receipt.cjs" "--$mode" "$out/$mode.stdout" "$out/$mode.json" "$status" "$out/committed-admission.json" ${restore_source[@]+"${restore_source[@]}"} || proof_status=$?
   else
-    node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" <<'JS' || proof_status=$?
-const [file,receipt,mode,sha]=process.argv.slice(2);
+    node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" ${bank_args[@]+"${bank_args[@]}"} <<'JS' || proof_status=$?
+const [file,receipt,mode,sha,sourceMode]=process.argv.slice(2);
 const r=JSON.parse(require('node:fs').readFileSync(file,'utf8').trimEnd().split('\n').at(-1));
-const expected=mode==='preflight'?'BANK_295_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'BANK_295_ORIGINAL_FULL_12_PASSED';
+const count=sourceMode==='--current-320'?320:295;
+const result=mode==='preflight'?'DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'ORIGINAL_FULL_12_PASSED';
+const expected='BANK_'+count+'_'+result;
 require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx',mode:0o600});
 if(r.candidateSha!==sha||r.status!==expected)process.exit(1);
 JS

@@ -10,8 +10,14 @@ plan = Path(__file__).resolve().parent
 workspace, destination = map(Path, sys.argv[1:3])
 lane = sys.argv[3]
 assert lane in ('bank', 'restore')
+mode = sys.argv[4:]
+assert mode == [] or (lane == 'bank' and mode == ['--current-320'])
 os.umask(0o022)
 rows = json.loads((plan / 'staging-manifest.json').read_bytes())
+if mode:
+    current = json.loads((plan / 'bank/staging-320.json').read_bytes())
+    assert all(name.startswith('bank/') and name in rows for name in current)
+    rows.update(current)
 destination.mkdir()
 for name, row in sorted(rows.items(), key=lambda item: item[1]['kind'].endswith('-manifest')):
     if not name.startswith(lane + '/'):

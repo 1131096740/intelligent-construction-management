@@ -1,3 +1,5 @@
+import { ContractWorkCompletionApprovalService } from "./contract-work-completion-approval.service";
+import { ContractWorkCompletionService } from "./contract-work-completion.service";
 import { ContractDutyNotificationService } from "./contract-duty-notification.service";
 import { UPWARD_DIRECT_ARCHIVE_AUTHORITY } from "./contract-upward-direct-registration";
 import { nativeUpwardDirectArchiveAuthority } from "./contract-upward-direct-archive-native";
@@ -27,6 +29,8 @@ import {
 } from "./contract.controller";
 import { ContractReadService } from "./contract-read.service";
 import { ContractV2SubmissionService } from "./contract-v2-submission.service";
+import { ContractEffectiveTaxService } from "./contract-effective-tax.service";
+import { ContractSignedChangeService } from "./contract-signed-change.service";
 import { ContractService } from "./contract.service";
 import { ContractStatusService } from "./contract-status.service";
 import { ContractApprovalRouteService } from "./contract-approval-route.service";
@@ -51,7 +55,11 @@ import { ContractVersionActivationService } from "./contract-version-activation.
   controllers: [ContractController, ContractNumberRuleController],
   providers: [
     ContractService,
+    ContractSignedChangeService,
+    ContractEffectiveTaxService,
     ContractDutyNotificationService,
+    ContractWorkCompletionService,
+    ContractWorkCompletionApprovalService,
     ContractV2SubmissionService,
     ContractV2ArchiveService,
     { provide: GENERATED_ARCHIVE_PREPARATION_READER, useExisting: PrivateFileStorage },

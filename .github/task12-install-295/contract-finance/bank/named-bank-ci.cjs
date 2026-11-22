@@ -5,19 +5,23 @@ const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
 const tree=require('./tree-proof.json');
 const titles=require('./original-titles.json');
 const prefix='/qualification';
 const workspace=path.join(prefix,'workspace');
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const file='src/database/project-affiliate-company-contract-db.spec.ts';
+const args=process.argv.slice(2);
+const current320=args[0]==='--current-320';
+const runArgs=current320?args.slice(1):args;
+const candidateDigest320='e86ce2f53bb9ceaace66836c79f178ef073fd6cb3b74a8641afdce246dfee07e';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
 function verifyExecutionFiles() {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));
-  assert.equal(sha(raw),'b317116eb809b23c8d6d27f094d0b4e9eeba433469aa98c424b8b406010dd6a5','BANK_295_EXECUTION_MANIFEST');
+  assert.equal(sha(raw),current320?'afa854c4d7ea289ecfd272d2585522eaf87d5b6cee4acd81f3417fa60a696aff':'b317116eb809b23c8d6d27f094d0b4e9eeba433469aa98c424b8b406010dd6a5','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
-  assert.equal(files.length,1814,'BANK_295_EXECUTION_COUNT');
+  assert.equal(files.length,current320?1833:1814,'BANK_295_EXECUTION_COUNT');
   for(const [relative,digest] of files) {
     assert.ok(!path.isAbsolute(relative)&&!relative.split('/').includes('..'),'BANK_295_EXECUTION_PATH');
     assert.equal(sha(fs.readFileSync(path.join(workspace,relative))),digest,'BANK_295_EXECUTION_BYTES');
@@ -49,25 +53,55 @@ function verifyJestRegisteredWithoutDb() {
   receipt.preflight={originalRegistered:12,realDatabaseCasesNotEntered:11};
 }
 Promise.resolve().then(async()=>{
-  receipt.candidateSha=require('./hosted-source.json').sourceSha;
+  const source=require('./hosted-source.json');
+  receipt.candidateSha=source.sourceSha;
+  assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'),'BANK_RUN_MODE');
+  if(current320) {
+    assert.equal(source.mode,'current-320');
+    assert.equal(source.migrationCount,320);
+    assert.equal(source.ledgerSha256,candidateDigest320);
+    assert.match(source.sourceTree,/^[0-9a-f]{40}$/u);
+    assert.equal(source.predecessor.migrationCount,295);
+    assert.equal(source.predecessor.ledgerSha256,require('./multi-witness.cjs').final);
+    assert.equal(source.tails.length,25);
+  } else {
+    assert.equal(source.migrationCount,295);
+    assert.equal(source.ledgerSha256,require('./multi-witness.cjs').final);
+  }
   verifyExecutionFiles();
-  if(process.argv.length===3&&process.argv[2]==='--preflight'){
+  if(runArgs.length){
     verifyJestRegisteredWithoutDb();
-    receipt.status='BANK_295_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED';
+    receipt.status=current320?'BANK_320_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'BANK_295_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED';
     return;
   }
-  assert.equal(process.argv.length,2);
   const {verifyNamedBank}=require('./workspace/services/api/prisma/contract-finance-owned-ci.cjs');
-  await withCombined295MultiWitness(receipt,async context=>verifyNamedBank(context,receipt,titles));
+  const consume=async context=>{
+    if(current320) {
+      assert.equal(receipt.forward320?.count,320);
+      assert.equal(receipt.forward320.ledgerSha256,candidateDigest320);
+      assert.equal(receipt.forward320.sameBaseB7,true);
+      assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+      assert.deepEqual(receipt.forward320.tails,source.tails.map(({name,sha256})=>({name,sha256})));
+    }
+    return verifyNamedBank(context,receipt,titles,current320?{sourceTree:source.sourceTree}:undefined);
+  };
+  if(current320) {
+    await withCombined320ContractPayment(receipt,consume,{
+      sourceTree:source.sourceTree,migrations:path.join(workspace,'services/api/prisma/migrations'),tails:source.tails
+    });
+  } else {
+    await withCombined295MultiWitness(receipt,consume);
+  }
   assert.equal(receipt.releaseTree,tree.tree);
-  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,require('./multi-witness.cjs').final);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256,current320?candidateDigest320:require('./multi-witness.cjs').final);
+  if(current320) assert.equal(receipt.combinedAfterBusiness.exactB7,true);
   assert.equal(receipt.installOnly295.nonOwnerDenied,true);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   assert.equal(receipt.namedBank.original.passed,12);
   assert.equal(receipt.namedBank.scopedAliasReleased,true);
   assert.equal(receipt.namedBank.rolesReleased,true);
-  receipt.status='BANK_295_ORIGINAL_FULL_12_PASSED';
+  receipt.status=current320?'BANK_320_ORIGINAL_FULL_12_PASSED':'BANK_295_ORIGINAL_FULL_12_PASSED';
 }).catch(error=>{
   receipt.status='STOPPED';
   const code=error.code??error.message;

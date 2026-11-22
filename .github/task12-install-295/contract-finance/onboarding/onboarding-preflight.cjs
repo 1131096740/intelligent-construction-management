@@ -16,4 +16,5 @@ for(const browser of [chromium,webkit]) fs.accessSync(browser.executablePath(),f
 assert.ok(['dist/main.js','dist/src/main.js'].some(p=>fs.existsSync(workspace+'/services/api/'+p)));
 assert.equal(spawnSync('soffice',['--version']).status,0);
 assert.equal(spawnSync('fc-match',['--format=%{family}','Noto Sans CJK SC'],{encoding:'utf8'}).stdout,'Noto Sans CJK SC');
-console.log(JSON.stringify({status:'ONBOARDING_295_CONTEXT_NO_DATABASE_VERIFIED',application:lane}));
+const count=require('./contract-finance-source.json').migrationCount;
+console.log(JSON.stringify({status:'ONBOARDING_'+count+'_CONTEXT_NO_DATABASE_VERIFIED',application:lane}));

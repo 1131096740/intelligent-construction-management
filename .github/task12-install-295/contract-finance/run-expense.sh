@@ -14,10 +14,12 @@ lane=$5
 case "$lane" in execution|finance|receipt) ;; *) exit 64 ;; esac
 scope=expense-$lane
 
-node -e '
+count=$(node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  const count=source.mode==="current-320"?320:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  console.log(count);
+'  "$prepared/source.json" "$sha")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -77,13 +79,13 @@ for mode in "${modes[@]}"; do
     > "$work/$mode.stdout" 2> "$work/$mode.stderr" || exit_code=$?
   tail -n 1 "$work/$mode.stdout" > "$work/$mode.json"
   node -e '
-    const row=require(process.argv[1]); const [mode,lane,sha,code]=process.argv.slice(2);
-    const status={app:"ORIGINAL_EXPENSE_295_APPLICATION_PASSED",valid:"ORIGINAL_EXPENSE_295_RETAINED_VALID_PASSED",
-      negative:"ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_PASSED",recovery:"ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_PASSED"}[mode];
+    const row=require(process.argv[1]); const [mode,lane,sha,code,count]=process.argv.slice(2);
+    const status={app:"ORIGINAL_EXPENSE_"+count+"_APPLICATION_PASSED",valid:"ORIGINAL_EXPENSE_"+count+"_RETAINED_VALID_PASSED",
+      negative:"ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_PASSED",recovery:"ORIGINAL_EXPENSE_"+count+"_SAME_INSTANCE_RECOVERY_PASSED"}[mode];
     console.log(JSON.stringify(row));
     if(code!=="0"||row.status!==status||row.lane!==lane||row.sourceSha!==sha||
       row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
-      (mode!=="negative"&&(row.installOnly295?.count!==295||row.combinedAfterBusiness?.exactB7!==true)))process.exit(1);
-  ' "$work/$mode.json" "$mode" "$lane" "$sha" "$exit_code" ||
-    { printf 'EXPENSE_295_STOPPED %s %s %s\n' "$lane" "$mode" "$work" >&2; exit 1; }
+      (mode!=="negative"&&(row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true)))process.exit(1);
+  ' "$work/$mode.json" "$mode" "$lane" "$sha" "$exit_code" "$count" ||
+    { printf 'EXPENSE_%s_STOPPED %s %s %s\n' "$count" "$lane" "$mode" "$work" >&2; exit 1; }
 done

@@ -1,0 +1,24 @@
+--- owner.cjs
++++ owner.cjs
+@@ -72,6 +72,21 @@
+       exactTitles:!value.titles||value.titles.every(title=>rows.filter(row=>row.title===title&&row.status==='passed').length===1)};
+   });
+   receipt.originalScope={lane,suites,skipped:report?.numPendingTests,exit:result.status};
++  const failedSuite=report?.testResults?.find(suite=>suite.assertionResults.some(row=>row.status==='failed'));
++  const failed=failedSuite?.assertionResults.find(row=>row.status==='failed');
++  if(failed){
++    const message=failed.failureMessages?.[0]??'';
++    const denial=/permission denied for (?:table|function|schema|relation) ([A-Za-z_][A-Za-z0-9_]*)/u.exec(message);
++    const frame=/(?:src\/database\/)?[A-Za-z0-9_.-]+\.spec\.ts:(\d+):(\d+)/u.exec(message);
++    receipt.originalFailure={
++      file:path.relative(api,failedSuite.name),
++      titleSha256:createHash('sha256').update(failed.fullName).digest('hex'),
++      frame:frame?.slice(1).map(Number),
++      sqlstate:/\b(?:code|SQLSTATE)\W+([A-Z0-9]{5})\b/u.exec(message)?.[1],
++      prismaCode:/\bP[0-9]{4}\b/u.exec(message)?.[0],
++      permissionObject:denial?.[1]
++    };
++  }
+   assert.ok(result.status===0&&report?.success&&report.numPendingTests===0&&report.testResults.length===files.length&&
+     suites.every(row=>row.total===row.expected&&row.passed===row.expected&&row.exactTitles),'REMAINING_OWNER_289_COVERAGE');
+ }

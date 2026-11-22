@@ -39,5 +39,6 @@ entry.write_text(text.replace('withOutside289Pfq','withPfq295')
 installer=out/'installer.cjs'
 shutil.copyfile(common/'installer.cjs',installer)
 patch(installer,plan/'pfq-installer-295.patch')
+patch(entry,plan/'pfq-entry-modes.patch')
 for file in out.iterdir():
     file.chmod(0o644)

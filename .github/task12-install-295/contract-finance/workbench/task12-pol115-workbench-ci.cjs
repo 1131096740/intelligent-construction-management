@@ -36,8 +36,10 @@ function stageBrowser(workDir) {
   return web;
 }
 
-async function runWorkbench(context, receipt) {
-  if (receipt.purpose !== 'POL115_WORKBENCH_ORIGINAL_295' || context.candidateTree !== tree ||
+async function runWorkbench(context, receipt, source) {
+  const current320=source?.mode==='current-320';
+  const count=current320?320:295;
+  if (receipt.purpose !== 'POL115_WORKBENCH_ORIGINAL_'+count || context.candidateTree !== (current320?source.sourceTree:tree) ||
       context.database !== 'jg_task01_'+context.runId.replaceAll('-','')) {
     throw new Error('POL115_WORKBENCH_OWNED_SCOPE');
   }
@@ -61,6 +63,7 @@ async function runWorkbench(context, receipt) {
     PLAYWRIGHT_BROWSERS_PATH:'/opt/jg-playwright', PLAYWRIGHT_JSON_OUTPUT_FILE:browserReport,
     FILE_STORAGE_DRIVER:'local', FILE_STORAGE_ROOT:files,
     OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(), RUN_TEMPLATE_WORKBENCH_PG16:'1',
+    ...(current320?{TASK_POL115_WORKBENCH_EXACT_320:'1'}:{}),
     TASK_POL115_WORKBENCH_290_RUN_ID:context.runId.replaceAll('-',''), TASK_POL115_WORKBENCH_290_WEB_ROOT:web,
   };
 

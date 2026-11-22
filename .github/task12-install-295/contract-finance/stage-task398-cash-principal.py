@@ -55,6 +55,8 @@ for target, name in [(runner, 'runner.cjs'), (work / names[0], 'handover.spec.ts
 
 delta = Path(__file__).with_name('task398-cash-principal-295.patch')
 subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(runner), str(delta)], check=True)
+forward = Path(__file__).with_name('task398-cash-principal-320.patch')
+subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(runner), str(forward)], check=True)
 for name in names:
     (work / name).chmod(0o644)
     print(name)

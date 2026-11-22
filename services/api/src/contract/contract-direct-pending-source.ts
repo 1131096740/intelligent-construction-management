@@ -1,4 +1,4 @@
-import { A08_DRAFT_VOUCHER_CHECK_SHA256, UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256, UPWARD_REGISTERED_VOUCHER_PROJECTION_SHA256, UPWARD_INITIAL_DRAFT_GUARD_PROJECTION_SHA256, UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256, UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
+import { A08_DRAFT_VOUCHER_CHECK_SHA256, UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256, UPWARD_REGISTERED_VOUCHER_PROJECTION_SHA256, UPWARD_INITIAL_DRAFT_GUARD_PROJECTION_SHA256, UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256, UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256, UPWARD_SIGNED_SETTLEMENT_FILE_PROJECTION_SHA256 } from "./contract-upward-direct-source-pins";
 import { markTask12DirectSourceDiagnostic as mark, recordTask12DirectSourceDiagnostic as recordDiagnostic } from "./task12-direct-source-diagnostic";
 import { assertDirectPendingCatalogInputs, factAppendSignature, readActualCatalog, readBindingCatalog, readDeparseEnvironment, readExpectedBinding } from "./contract-direct-pending-catalog";
 import { discoverUpwardLegacyProjection, isQualifiedUpwardDefiner } from "./contract-upward-archive-catalog";
@@ -136,7 +136,7 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
       })) continue;
       if (definer.bodySha256 === A08_DRAFT_VOUCHER_CHECK_SHA256 && upwardProjection?.definers.some(item =>
         item.signature === "public.jg_upward_archive_catalog_projection_v2()" &&
-        (item.bodySha256 === UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256 || item.bodySha256 === UPWARD_REGISTERED_VOUCHER_PROJECTION_SHA256 || item.bodySha256 === UPWARD_INITIAL_DRAFT_GUARD_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256))) {
+        (item.bodySha256 === UPWARD_A08_DRAFT_VOUCHER_PROJECTION_SHA256 || item.bodySha256 === UPWARD_REGISTERED_VOUCHER_PROJECTION_SHA256 || item.bodySha256 === UPWARD_INITIAL_DRAFT_GUARD_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256 || item.bodySha256 === UPWARD_SIGNED_SETTLEMENT_FILE_PROJECTION_SHA256))) {
         const [scope] = await tx.$queryRaw<Array<{ oid: string | null }>>(Prisma.sql`
           SELECT pg_catalog.to_regprocedure('public.jg_check_a08_direct_original_voucher_v1(text,text)')::oid::text AS oid
         `);
@@ -145,7 +145,7 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
       }
       if (outsidePair && definer.bodySha256 === OUTSIDE_PAIR_HELPER_BODY && upwardProjection?.definers.some(item =>
         item.signature === "public.jg_upward_archive_catalog_projection_v2()" &&
-        (item.bodySha256 === UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256))) {
+        (item.bodySha256 === UPWARD_OUTSIDE_PAIR_PROJECTION_SHA256 || item.bodySha256 === UPWARD_OUTSIDE_EVIDENCE_PROJECTION_SHA256 || item.bodySha256 === UPWARD_SIGNED_SETTLEMENT_FILE_PROJECTION_SHA256))) {
         const [scope, ...extra] = await tx.$queryRaw<Array<{ oid: string }>>(Prisma.sql`
           /* contract_direct_outside_original_pair_source */
           SELECT helper.oid::text AS oid

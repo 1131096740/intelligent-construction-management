@@ -2,7 +2,12 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || $# == 5 ]] || exit 64
+[[ $# == 4 || $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
+mode=295
+selected_lane=${5-}
+if [[ $selected_lane == --current-320 ]]; then mode=320; selected_lane=''
+elif [[ $# == 6 ]]; then mode=320
+fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -14,8 +19,8 @@ scope=onboarding
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==295)process.exit(1);
-' "$prepared/source.json" "$sha"
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="320"&&source.mode!=="current-320"))process.exit(1);
+' "$prepared/source.json" "$sha" "$mode"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -43,12 +48,12 @@ done
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 old="$repo/.github/task12-install-290/onboarding"
-if [[ $# == 5 ]]; then
+if [[ -n $selected_lane ]]; then
   lane_names=$(node -e '
     const names=require(process.argv[1]).lanes;
     if(!names.includes(process.argv[2]))process.exit(64);
     console.log(process.argv[2]);
-  ' "$old/pins.json" "$5")
+  ' "$old/pins.json" "$selected_lane")
 else
   lane_names=$(node -e 'console.log(require(process.argv[1]).lanes.join("\n"))' "$old/pins.json")
 fi
@@ -75,19 +80,19 @@ while IFS= read -r lane; do
   mkdir "$work/$lane"
   docker run "${lane_args[@]}" --entrypoint node "$image" /qualification/onboarding-preflight.cjs |
     tee "$work/$lane/preflight.json"
-  node -e 'const p=require(process.argv[1]);if(p.status!=="ONBOARDING_295_CONTEXT_NO_DATABASE_VERIFIED"||
+  node -e 'const p=require(process.argv[1]);if(p.status!=="ONBOARDING_"+process.argv[4]+"_CONTEXT_NO_DATABASE_VERIFIED"||
     p.application.lane!==process.argv[2]||p.application.sourceSha!==process.argv[3])process.exit(1)' \
-    "$work/$lane/preflight.json" "$lane" "$sha"
+    "$work/$lane/preflight.json" "$lane" "$sha" "$mode"
   [[ -z $(docker ps -q) ]]
-  printf '%s\n' '验证原具名角色行为可延续到 295。观察同库账本、两项撤权、所选原用例与清理。' > "$work/$lane/hypothesis.txt"
+  printf '%s\n' "验证原具名角色行为可延续到 ${mode}。观察同库账本、两项撤权、所选原用例与清理。" > "$work/$lane/hypothesis.txt"
   code=0
   docker run "${lane_args[@]}" --entrypoint node "$image" /qualification/entry.cjs \
     > "$work/$lane/private.stdout" 2> "$work/$lane/private.stderr" || code=$?
   tail -n 1 "$work/$lane/private.stdout" > "$work/$lane/receipt.json"
   [[ ! -s "$work/$lane/receipt.json" ]] || cat "$work/$lane/receipt.json"
   (( code == 0 )) || exit "$code"
-  node "$plan/verify-onboarding-receipts.cjs" "$work" "$lane" "$old" "$sha"
+  node "$plan/verify-onboarding-receipts.cjs" "$work" "$lane" "$old" "$sha" "$prepared/source.json"
 done <<< "$lane_names"
-if [[ $# == 4 ]]; then
-  node "$plan/verify-onboarding-receipts.cjs" "$work" '' "$old" "$sha"
+if [[ -z $selected_lane ]]; then
+  node "$plan/verify-onboarding-receipts.cjs" "$work" '' "$old" "$sha" "$prepared/source.json"
 fi

@@ -1630,7 +1630,7 @@ const businessItems = computed(() => {
       label: "施工企业对下付款",
       value: formatCents(business?.affiliateDownstreamPaymentCents ?? null)
     },
-    { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
+    { label: "经营成本", value: business?.operatingCostYuan ? `¥${business.operatingCostYuan}` : formatCents(business?.operatingCostCents ?? null) },
     { label: "毛利", value: business?.grossProfitYuan ? `¥${business.grossProfitYuan}` : formatCents(business?.grossProfitCents ?? null) }
   ];
 });
@@ -1639,7 +1639,7 @@ const receivablePayableItems = computed(() => {
   const operating = overview.value?.operatingProjection.operating;
   return [
     { label: "已确认收入", value: formatCents(operating?.confirmedIncomeCents ?? null) },
-    { label: "已确认成本", value: formatCents(operating?.confirmedCostCents ?? null) },
+    { label: "已确认成本", value: operating?.confirmedCostYuan ? `¥${operating.confirmedCostYuan}` : formatCents(operating?.confirmedCostCents ?? null) },
     ...(overview.value?.operatingProjection.relationshipTotals ?? []).filter((row) => ["inside", "outside", "unclassified", "non_contract"].includes(row.relationship)).map((row) => ({ label: `${row.label}确认成本`, value: formatCents(row.confirmedCostCents) })),
     { label: "对上内部应收（项目合并抵销）", value: formatCents(operating?.internalReceivableCents ?? null) },
     { label: "业主及其他应收", value: formatCents(operating?.receivableCents ?? null) },

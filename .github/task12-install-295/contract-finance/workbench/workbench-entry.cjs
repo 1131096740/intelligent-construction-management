@@ -2,20 +2,31 @@
 const assert=require('node:assert/strict');
 const {verifyInputs}=require('./workbench-inputs.cjs');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
 const terminal=require('./multi-witness.cjs');
 const source=require('./contract-finance-source.json');
-const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'POL115_WORKBENCH_ORIGINAL_295',business:'NOT_ENTERED',stages:['INPUTS']};
+const current320=process.argv[2]==='--current-320';
+const count=current320?320:295;
+const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'POL115_WORKBENCH_ORIGINAL_'+count,business:'NOT_ENTERED',stages:['INPUTS']};
 Promise.resolve().then(()=>{
   assert.notEqual(process.getuid(),0);
   assert.equal(process.env.DATABASE_URL,undefined);
-  assert.equal(source.migrationCount,295);
-  assert.equal(source.ledgerSha256,terminal.final);
+  assert.equal(process.argv.length,current320?3:2);
+  assert.equal(source.migrationCount,count);
+  if(current320){
+    assert.equal(source.mode,'current-320');
+    assert.equal(source.predecessor.migrationCount,295);
+    assert.equal(source.predecessor.ledgerSha256,terminal.final);
+  } else assert.equal(source.ledgerSha256,terminal.final);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   verifyInputs();
   admitSource('/qualification','/qualification/source/services/api/prisma','/qualification/source-seal.txt');
   const {runWorkbench}=require('./task12-pol115-workbench-ci.cjs');
-  return withCombined295MultiWitness(receipt,context=>runWorkbench(context,receipt));
+  const consume=context=>runWorkbench(context,receipt,current320?source:undefined);
+  if(current320) return withCombined320ContractPayment(receipt,consume,{
+    sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+  });
+  return withCombined295MultiWitness(receipt,consume);
 }).then(()=>{
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.workbench?.tests,9);
@@ -23,13 +34,20 @@ Promise.resolve().then(()=>{
   assert.deepEqual(receipt.workbench?.browserProjects,['desktop','mobile']);
   assert.deepEqual(receipt.orderedTails.slice(-6).map(row=>row.size),[290,291,292,293,294,295]);
   assert.equal(receipt.installOnly295?.ledgerSha256,terminal.final);
-  assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,terminal.final);
+  if(current320){
+    assert.equal(receipt.forward320.count,count);
+    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+    assert.equal(receipt.forward320.sameBaseB7,true);
+    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
+    assert.equal(receipt.combinedAfterBusiness.count,count);
+  }
+  assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness?.balance.keyUnprovisioned,true);
   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
   assert.equal(receipt.combinedAfterBusiness?.sameIdentity,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status='POL115_WORKBENCH_ORIGINAL_295_PASSED';
+  receipt.status='POL115_WORKBENCH_ORIGINAL_'+count+'_PASSED';
 }).catch(error=>{
   const code=error.code??error.message;
   const sqlstate=error.psqlObservation?.sqlstate??error.sqlstate;

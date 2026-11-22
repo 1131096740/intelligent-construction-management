@@ -192,6 +192,13 @@
                 ? historicalTakeoverLedgerOperationLabel(row)
                 : '查看详情' }}
             </t-link>
+            <t-link
+              v-if="activeTab === 'formal_ledger' && canManageContracts && !isHistoricalTakeoverLedgerRow(row)"
+              theme="primary"
+              @click="openDetail(row.id, undefined, true)"
+            >
+              补充/变更
+            </t-link>
           </template>
         </t-table>
 
@@ -508,10 +515,10 @@ function goNewContract() {
   void router.push("/合同工作台/新建");
 }
 
-function openDetail(contractId: string, versionId?: string) {
+function openDetail(contractId: string, versionId?: string, signedChange = false) {
   void router.push({
     path: `/合同管理/${contractId}`,
-    query: versionId ? { versionId } : undefined
+    query: signedChange ? { signedChange: "1" } : versionId ? { versionId } : undefined
   });
 }
 
