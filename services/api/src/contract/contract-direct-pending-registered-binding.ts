@@ -9,7 +9,12 @@ const registry = "public.jg_file_business_binding_columns()";
 const enforcer = "public.jg_enforce_exclusive_file_business_binding()";
 const postPath = ["search_path=pg_catalog, public, pg_temp"];
 const wrapperBody = "46e6f6acb43b69175637009a272eec11a945928f055272aeea13ea86c384a4a3";
-const settlementRegistryBody = "6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f";
+// Registry generations that still pass the owner-settlement witness: the
+// owner-settlement-only registry and the signed-change/settlement registry.
+const settlementRegistryBodies: readonly string[] = [
+  "6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f",
+  "2a2b941651afd8763a7932f8ea110e845eb0851783ea86726b1da78ed20ded85"
+];
 const settlementPath = ["search_path=pg_catalog, public"];
 const settlementEnforcerBody = "2525f5adb08dac1a782f8bb689c68fa2073f5b72c4cd13df26808fd4660e42b1";
 const normalVoucherEnforcerBody = "2743ad737af5f75986dd94508e6e0d8a998c8a78b3ce08f023db56b2e7324505";
@@ -132,11 +137,13 @@ export function projectRegisteredFileBinding(actual: Catalog, bound: Catalog, ex
   const historicalAcl = (signature: string, row: Catalog | null) =>
     row && Object.hasOwn(collisionAcls, signature) ? { ...row, acl: collisionAcls[signature] } : row;
   const settlement = prior !== null;
+  const settlementRegistryBody = record(wrapper)?.bodySha256;
   const enforcerBody = settlement ? enforce?.bodySha256 : oldEnforcer?.bodySha256;
   if (settlement && (!ownerSettlementVoucher || observed.settlementPriorShape !== true ||
     !alias || !wrapper || !oid(prior.oid) || prior.oid === wrapper.oid ||
     Object.values(original ?? {}).some(value => record(value)?.oid === prior.oid) ||
     !isDeepStrictEqual(prior, { ...alias, oid: prior.oid, acl: wrapper.acl, bodySha256: wrapperBody }) ||
+    (typeof settlementRegistryBody !== "string" || !settlementRegistryBodies.includes(settlementRegistryBody)) ||
     (typeof enforcerBody !== "string" || !settlementEnforcerBodies.includes(enforcerBody)))) return null;
   const guard = record(observed.voucherGuard), voucher = record(observed.voucher);
   const fileTrigger = record(observed.fileTrigger), exclusive = record(voucher?.exclusiveTrigger);

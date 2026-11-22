@@ -72,7 +72,10 @@ export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, 
             JOIN pg_catalog.pg_proc reader ON reader.oid=settlement_reader
             JOIN pg_catalog.pg_language language ON language.oid=reader.prolang
             WHERE p.oid=registry AND p.oid<>prior.oid
-              AND p.body_sha='6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f'
+              AND p.body_sha IN (
+                '6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f',
+                '2a2b941651afd8763a7932f8ea110e845eb0851783ea86726b1da78ed20ded85'
+              )
               AND p.proconfig=ARRAY['search_path=pg_catalog, public']
               AND reader.pronamespace=pg_catalog.to_regnamespace('public') AND reader.proowner=owner
               AND language.lanname='sql' AND reader.prokind='f' AND reader.prosecdef
