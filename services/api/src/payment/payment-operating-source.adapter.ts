@@ -320,6 +320,7 @@ export class PaymentExecutionOperatingSourceAdapter
         companyEntityVersionId: version.companyEntityVersionId,
         companyEntityIdSnapshot: version.companyEntityIdSnapshot,
         settlementId: request.settlementId,
+        signedSettlementId: request.signedSettlementId,
         approvedAmountCents: approvedAmountCents.toString(),
         amountCents: row.amountCents.toString(),
         paidAt: row.paidAt.toISOString(),
@@ -366,6 +367,7 @@ interface PaymentRequestRow {
   id: string;
   projectId: string;
   settlementId: string | null;
+  signedSettlementId?: string | null;
   sourceType: string;
   contractId: string;
   contractVersionId: string;

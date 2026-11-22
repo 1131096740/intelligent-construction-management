@@ -98,6 +98,39 @@
           <small>{{ selectedSettlementHint }}</small>
         </label>
 
+        <div
+          v-if="createForm.sourceType === 'signed_settlement'"
+          class="signed-settlement-basis"
+          aria-label="已签结算付款依据"
+        >
+          <p v-if="signedSettlementBasisBusy">
+            正在读取最近确认的已签结算…
+          </p>
+          <t-alert
+            v-else-if="signedSettlementBasisError"
+            theme="error"
+            :message="signedSettlementBasisError"
+          />
+          <template v-else-if="latestSignedSettlement">
+            <strong>
+              最近确认：{{ latestSignedSettlement.number }} · 本期 {{ latestSignedSettlement.amountYuan }} 元
+            </strong>
+            <span v-if="signedSettlementBasis">
+              合同累计结算 {{ signedSettlementBasis.confirmedYuan }} 元
+              <template v-if="signedSettlementBasis.downstreamCapacity">
+                · 已登记付款及代付 {{ signedSettlementBasis.downstreamCapacity.recordedPaidYuan }} 元
+                · 未结占用 {{ signedSettlementBasis.downstreamCapacity.outstandingYuan }} 元
+              </template>
+            </span>
+            <p>
+              付款上限按合同累计结算扣减已占用计算；本期为负数时不直接当作可付金额，合同约定比例也不会单独阻断。
+            </p>
+          </template>
+          <p v-else>
+            该合同暂无已确认的已签结算，请先在结算工作台完成主管复核。
+          </p>
+        </div>
+
         <label
           v-if="contractPaymentRoute === 'generic_direct' && createForm.sourceType === 'contract_due'"
           class="create-field create-field--wide"
@@ -318,6 +351,10 @@ import MoneyInput from "../../components/MoneyInput.vue";
 import PaymentConfirmationSummary from "../../components/PaymentConfirmationSummary.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import SignedSettlementPaymentBasisPanel from "./SignedSettlementPaymentBasisPanel.vue";
+import {
+  fetchSignedSettlementPaymentBasis,
+  type ConfirmedPaymentSettlement
+} from "../../api/signed-contract-settlement.api";
 import type { PaymentConfirmationSummaryItem } from "../../components/payment-confirmation-summary.config";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
@@ -363,11 +400,19 @@ const createForm = reactive({
   projectId: "",
   contractOptionValue: "",
   settlementOptionValue: "",
+  signedSettlementId: "",
   paymentTermsStageId: "",
   sourceType: "contract_due" as PaymentCreateSourceType,
   code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
   requestedAmountYuan: ""
 });
+const signedSettlementBasis = ref<Awaited<ReturnType<typeof fetchSignedSettlementPaymentBasis>> | null>(null);
+const signedSettlementBasisBusy = ref(false);
+const signedSettlementBasisError = ref("");
+const latestSignedSettlement = computed<ConfirmedPaymentSettlement | null>(
+  () => signedSettlementBasis.value?.latestConfirmed ?? null
+);
+let signedSettlementBasisGeneration = 0;
 
 const projectSelectOptions = computed(() =>
   projects.value.map((project) => ({
@@ -406,7 +451,7 @@ const availablePaymentSourceOptions = computed(() => {
   if (["unselected", "unsupported"].includes(contractPaymentRoute.value)) return [];
   const allowed = contractPaymentRoute.value === "generic_direct"
     ? new Set<PaymentCreateSourceType>(["contract_due", "contract_advance"])
-    : new Set<PaymentCreateSourceType>(["settlement", "contract_advance"]);
+    : new Set<PaymentCreateSourceType>(["settlement", "signed_settlement", "contract_advance"]);
   return paymentCreateSourceOptions
     .filter((option) => allowed.has(option.value))
     .map((option) => option.value === "contract_due"
@@ -554,6 +599,13 @@ const submitDisabledReason = computed(() => {
     return selectedPaymentStage.value.disabledReason;
   }
   if (createForm.sourceType === "settlement" && !selectedSettlement.value) return "请选择可付款结算单。";
+  if (createForm.sourceType === "signed_settlement") {
+    if (signedSettlementBasisBusy.value) return "正在读取最近确认的已签结算，请稍候。";
+    if (signedSettlementBasisError.value) return "已签结算依据读取失败，请刷新后重试。";
+    if (!latestSignedSettlement.value) {
+      return "该合同暂无已确认的已签结算，请先在结算工作台完成主管复核。";
+    }
+  }
   if (createForm.sourceType === "contract_due" && !visibleContractPaymentPreview.value) {
     return "请先校验可付款额度，确认当前可申请金额。";
   }
@@ -583,6 +635,9 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
   const directStageInvoiceRequirement = contractPaymentRoute.value === "generic_direct" && selectedPaymentStage.value
     ? selectedPaymentStage.value.requiresInvoice ? "需提供发票" : "不要求发票"
     : "";
+  const signedCapacity = createForm.sourceType === "signed_settlement"
+    ? signedSettlementBasis.value?.downstreamCapacity ?? null
+    : null;
 
   return [
     { label: "收款方", value: selectedContract.value?.counterparty ?? "" },
@@ -595,6 +650,8 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
       label: "可申请额度",
       value: directStageCapacity
         ? formatCents(directStageCapacity)
+        : signedCapacity
+        ? formatCents(signedCapacity.wholeCentLimit)
         : preview
         ? formatCents(preview.capacity.maxRequestableCents)
         : settlement
@@ -605,6 +662,8 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
       label: contractPaymentRoute.value === "generic_direct" ? "合同累计占用" : "已付金额",
       value: contractPaymentRoute.value === "generic_direct" && preview
         ? formatCents(preview.genericContractCapacity.contractOccupiedCents)
+        : signedCapacity
+        ? `¥${signedCapacity.recordedPaidYuan}`
         : preview
         ? formatCents(preview.capacity.actualPaidCents)
         : settlement
@@ -615,6 +674,8 @@ const confirmationItems = computed<PaymentConfirmationSummaryItem[]>(() => {
       label: "待付金额",
       value: directStageCapacity
         ? formatCents(directStageCapacity)
+        : signedCapacity
+        ? formatCents(signedCapacity.wholeCentLimit)
         : preview
         ? formatCents(preview.capacity.maxRequestableCents)
         : settlement
@@ -659,6 +720,11 @@ function paymentSourceText() {
     return selectedSettlement.value
       ? `${contract.contractNo} / ${selectedSettlement.value.settlementNo} · ${selectedSettlement.value.periodLabel}`
       : contract.contractNo;
+  }
+  if (createForm.sourceType === "signed_settlement") {
+    return latestSignedSettlement.value
+      ? `${contract.contractNo} / ${latestSignedSettlement.value.number} · 已签结算最近确认一期`
+      : `${contract.contractNo} · 已签结算依据待读取`;
   }
   return `${contract.contractNo} · ${paymentSourceLabel(createForm.sourceType)}`;
 }
@@ -708,12 +774,48 @@ function clearContractSelectionState() {
   createForm.sourceType = contractPaymentRoute.value === "generic_direct"
     ? "contract_due"
     : "settlement";
+  void loadSignedSettlementBasis();
 }
 
 function clearSourceState() {
   clearPaymentPreview();
   createForm.settlementOptionValue = "";
   createForm.paymentTermsStageId = "";
+  void loadSignedSettlementBasis();
+}
+
+async function loadSignedSettlementBasis() {
+  signedSettlementBasisGeneration += 1;
+  const generation = signedSettlementBasisGeneration;
+  signedSettlementBasis.value = null;
+  signedSettlementBasisError.value = "";
+  signedSettlementBasisBusy.value = false;
+  createForm.signedSettlementId = "";
+  if (
+    createForm.sourceType !== "signed_settlement" ||
+    !createForm.projectId ||
+    !selectedContract.value
+  ) return;
+  signedSettlementBasisBusy.value = true;
+  try {
+    const basis = await fetchSignedSettlementPaymentBasis(
+      createForm.projectId,
+      selectedContract.value.contractId
+    );
+    if (generation !== signedSettlementBasisGeneration) return;
+    signedSettlementBasis.value = basis;
+    createForm.signedSettlementId = basis.latestConfirmed?.id ?? "";
+  } catch (error) {
+    if (generation !== signedSettlementBasisGeneration) return;
+    signedSettlementBasisError.value = formatUnknownApiError(
+      error,
+      "已签结算依据读取失败"
+    );
+  } finally {
+    if (generation === signedSettlementBasisGeneration) {
+      signedSettlementBasisBusy.value = false;
+    }
+  }
 }
 
 async function loadProjects() {
@@ -914,6 +1016,28 @@ onMounted(() => {
   border: var(--jg-border-width-base) solid var(--jg-color-border);
   border-radius: var(--jg-radius-panel);
   background: var(--jg-color-bg-muted);
+}
+
+.signed-settlement-basis {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin-top: var(--jg-space-lg);
+  padding: var(--jg-space-md);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-muted);
+}
+
+.signed-settlement-basis p {
+  margin: 0;
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.signed-settlement-basis span {
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
+  overflow-wrap: anywhere;
 }
 
 .direct-payment-basis > div:first-child {

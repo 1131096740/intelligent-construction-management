@@ -3,7 +3,7 @@ import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 
 type PaymentRequestFacts = {
   code: string; sourceType: string; paymentSubjectType: string;
-  settlementId: string | null; contractId: string; contractVersionId: string;
+  settlementId: string | null; signedSettlementId?: string | null; contractId: string; contractVersionId: string;
   paymentTermsVersionId: string; paymentTermsStageId: string | null;
   paymentMatter: string | null; amountCalculationExplanation: string | null;
   requestedAmountCents: bigint | string;
@@ -26,9 +26,9 @@ export function paymentRequestEntryDefinition(facts?: PaymentRequestFacts): Busi
     key: "payment_request", entityType: "payment_request", version: 1, name: "付款申请", description: "付款申请创建时冻结的业务事实。", rules: [],
     fields: [
       field("code", "付款编号", "text", 1, true),
-      field("sourceType", "付款来源", "single_select", 2, true, [{ value: "settlement", label: "已生效结算" }]),
+      field("sourceType", "付款来源", "single_select", 2, true, [{ value: "settlement", label: "已生效结算" }, { value: "signed_settlement", label: "已签结算最近确认一期" }]),
       field("paymentSubjectType", "付款主体", "single_select", 3, true, [{ value: "our_company", label: "我方公司" }, { value: "affiliate", label: "施工企业" }]),
-      field("settlementId", "关联结算", "single_select", 4, true, selected(facts?.settlementId ?? null, "已选结算")),
+      field("settlementId", "关联结算", "single_select", 4, true, selected(facts?.settlementId ?? facts?.signedSettlementId ?? null, facts?.settlementId ? "已选结算" : "已选已签结算")),
       field("contractId", "关联合同", "single_select", 5, true, selected(facts?.contractId ?? null, "已选合同")),
       field("contractVersionId", "合同版本", "single_select", 6, true, selected(facts?.contractVersionId ?? null, "已选合同版本")),
       field("paymentTermsVersionId", "付款条款版本", "single_select", 7, true, selected(facts?.paymentTermsVersionId ?? null, "已选付款条款")),
@@ -42,7 +42,7 @@ export function paymentRequestEntryDefinition(facts?: PaymentRequestFacts): Busi
 export function paymentRequestEntryValues(facts: PaymentRequestFacts): Record<string, unknown> {
   const values: Record<string, unknown> = {
     code: facts.code, sourceType: facts.sourceType, paymentSubjectType: facts.paymentSubjectType,
-    settlementId: facts.settlementId, contractId: facts.contractId, contractVersionId: facts.contractVersionId,
+    settlementId: facts.settlementId ?? facts.signedSettlementId ?? null, contractId: facts.contractId, contractVersionId: facts.contractVersionId,
     paymentTermsVersionId: facts.paymentTermsVersionId, paymentTermsStageId: facts.paymentTermsStageId,
     paymentMatter: facts.paymentMatter, amountCalculationExplanation: facts.amountCalculationExplanation,
     requestedAmountYuan: formatMoneyCentsAsPlainYuan(typeof facts.requestedAmountCents === "bigint" ? facts.requestedAmountCents : BigInt(facts.requestedAmountCents))

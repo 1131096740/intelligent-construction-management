@@ -55,6 +55,7 @@ import {
   sumMoneyCents
 } from "./settlement-payment-capacity";
 import { loadSettlementPaymentConfirmationFacts } from "./settlement-confirmation-facts";
+import { loadSignedSettlementPaymentBasis } from "./signed-settlement-payment-capacity";
 import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
 
 type RegisteredExecutionCapability = {
@@ -913,12 +914,17 @@ export class PaymentReadService {
     const registeredExecutionCapability = await this.registeredDetailCapability(payment.id,actorUserId);
 
     const isContractAdvance = payment.sourceType === "contract_advance";
-    const isContractLevelPayment = isContractAdvance || payment.sourceType === "contract_due" || !payment.settlementId;
-    const [settlement, contract, contractVersion, terms, activity] = await Promise.all([
+    const isSignedSettlementPayment = payment.sourceType === "signed_settlement";
+    const isContractLevelPayment = isContractAdvance || payment.sourceType === "contract_due" ||
+      (!payment.settlementId && !isSignedSettlementPayment);
+    const [settlement, signedSettlement, contract, contractVersion, terms, activity] = await Promise.all([
       payment.settlementId
         ? this.prisma.settlement.findUnique({ where: { id: payment.settlementId } })
         : Promise.resolve(null),
-      isContractLevelPayment
+      payment.signedSettlementId
+        ? this.prisma.signedContractSettlement.findUnique({ where: { id: payment.signedSettlementId } })
+        : Promise.resolve(null),
+      isContractLevelPayment || isSignedSettlementPayment
         ? this.prisma.contract.findUnique({ where: { id: payment.contractId } })
         : Promise.resolve(null),
       this.prisma.contractVersion.findUnique({ where: { id: payment.contractVersionId } }),
@@ -935,6 +941,9 @@ export class PaymentReadService {
     if (payment.settlementId && !settlement) {
       throw new NotFoundException("未找到关联结算，请先核对结算归档记录");
     }
+    if (payment.signedSettlementId && !signedSettlement) {
+      throw new NotFoundException("未找到关联的已签结算，请先核对结算登记记录");
+    }
 
     if (!contractVersion) {
       throw new NotFoundException("未找到关联合同版本，请先核对合同归档记录");
@@ -943,6 +952,12 @@ export class PaymentReadService {
     if (!terms) {
       throw new NotFoundException("未找到合同付款条款版本，请先核对合同归档记录");
     }
+    const currentSignedSettlementBasis = payment.signedSettlementId
+      ? await loadSignedSettlementPaymentBasis(
+          this.prisma as unknown as Prisma.TransactionClient,
+          payment.contractId
+        )
+      : null;
     const [agreement] = await this.prisma.$queryRaw<Array<{ submittedText: string | null; currentText: string | null }>>`
       SELECT "submittedText", "currentText"
       FROM public.jg_read_payment_contract_agreement_detail_v1(${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text)
@@ -1229,7 +1244,9 @@ export class PaymentReadService {
           ? payment.paymentTermsStageId
             ? `${payment.code} · 合同冻结阶段直接付款申请`
             : `${payment.code} · 合同累计结算付款申请`
-        : `${payment.code} · ${settlement?.periodLabel}付款申请`,
+        : isSignedSettlementPayment
+          ? `${payment.code} · ${signedSettlement?.number ?? "已签结算"}付款申请`
+          : `${payment.code} · ${settlement?.periodLabel}付款申请`,
       meta: [
         { label: "审批状态", value: approval.label, tone: approval.tone },
         { label: "实付状态", value: execution.label, tone: execution.tone },
@@ -1244,7 +1261,43 @@ export class PaymentReadService {
       ],
       baseInfo: [
         { label: "付款编号", value: payment.code },
-        ...(isContractLevelPayment
+        ...(isSignedSettlementPayment
+          ? [
+              { label: "付款来源", value: "已签结算最近确认一期" },
+              {
+                label: "关联合同",
+                value: `${contract?.code ?? payment.contractId} · ${contract?.name ?? payment.contractId}`
+              },
+              {
+                label: "已签结算依据",
+                value: `${signedSettlement?.number ?? payment.signedSettlementId} · 确认序号 ${
+                  payment.signedSettlementConfirmationNo?.toString() ?? "-"
+                }`
+              },
+              {
+                label: "依据快照",
+                value: `本期 ${payment.signedSettlementConfirmedYuan?.toFixed(4) ?? "-"} 元 · 发起时合同累计 ${
+                  payment.signedSettlementContractConfirmedYuan?.toFixed(4) ?? "-"
+                } 元`
+              },
+              ...(currentSignedSettlementBasis
+                ? [
+                    {
+                      label: "当前合同累计",
+                      value: `${currentSignedSettlementBasis.confirmedContractYuan.toFixed(4)} 元${
+                        currentSignedSettlementBasis.latestConfirmed.id === payment.signedSettlementId
+                          ? ""
+                          : " · 最新确认已变化"
+                      }${
+                        currentSignedSettlementBasis.remainingCents === 0n
+                          ? " · 当前无可付余额"
+                          : ""
+                      }`
+                    }
+                  ]
+                : [])
+            ]
+          : isContractLevelPayment
           ? [
               {
                 label: "付款来源",
@@ -1376,9 +1429,14 @@ export class PaymentReadService {
         ? { directPaymentSummary: paymentDirectSummary }
         : {}),
       chainLinks: [
-        isContractLevelPayment
-          ? { label: "关联合同", to: `/contracts/${contract?.code ?? payment.contractId}` }
-          : { label: "关联结算", to: `/settlements/${settlement?.code ?? payment.settlementId}` },
+        isSignedSettlementPayment
+          ? {
+              label: "关联已签结算",
+              to: `/结算工作台/已签登记?projectId=${encodeURIComponent(payment.projectId)}&settlementId=${encodeURIComponent(payment.signedSettlementId ?? "")}`
+            }
+          : isContractLevelPayment
+            ? { label: "关联合同", to: `/contracts/${contract?.code ?? payment.contractId}` }
+            : { label: "关联结算", to: `/settlements/${settlement?.code ?? payment.settlementId}` },
         { label: "付款凭证", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ]
@@ -2362,6 +2420,10 @@ export class PaymentReadService {
 
     if (sourceType === "contract_due") {
       return "合同累计结算付款";
+    }
+
+    if (sourceType === "signed_settlement") {
+      return "已签结算最近确认一期";
     }
 
     return "未关联结算";

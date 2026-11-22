@@ -55,6 +55,15 @@ describe("payment workbench structure", () => {
     expect(workbench).toContain("toGenericDirectCapacityItems(preview, selectedPaymentStage.value)");
   });
 
+  it("uses the server-selected latest confirmed signed settlement as a legal payment basis", () => {
+    expect(workbench).toContain("fetchSignedSettlementPaymentBasis");
+    expect(workbench).toContain('sourceType === "signed_settlement"');
+    expect(workbench).toContain("signedSettlementId");
+    expect(workbench).toContain("合同累计结算");
+    expect(workbench).toContain("已签结算付款依据");
+    expect(workbench).toContain("该合同暂无已确认的已签结算，请先在结算工作台完成主管复核。");
+  });
+
   it("keeps system capacity validation and manual requested amount before creation", () => {
     expect(workbench).toContain("fetchContractPaymentApplication");
     expect(workbench).toContain("visibleContractPaymentPreview");
