@@ -98,6 +98,16 @@
 - 首因：`public.jg_contract_work_completion_cost_sources_v1` 的资格门（迁移 `20261119005800_…`，line 209-218）要求 `jg_contract_work_completion_witness.runtimeRoleOid = session_user::regrole::oid`、`session_user <> current_user`、`session_user` 对 `public` 无 `CREATE`。task410 harness 的 app 连接用 `context.ownerUrl`（owner，且 `session_user=current_user`），必然 42501。
 - 与 322 重基线的关系：**无关**。该函数与 `ContractWorkCompletionOperatingSourceAdapter` 都来自 `e717ba4c6`（320 时代同一提交）；新增的 `20261119006500`/`20261119007000` 不触碰该函数、witness 表或角色授权；task410 的连接角色由 289/292 链固定。此前 CI 先卡在账长断言，所以该 lane 的资格门问题一直未暴露。修复需要 harness 角色模型（以 witness 运行时登录角色执行 replay）或产品资格门口径的产品决策，不属于本轮 320→322 数字重基线。
 
+### 5.2 (a) harness 角色模型的尝试与未收敛结论
+
+用户裁决走 (a)「改 harness 角色模型」。本轮按下列边界做了尝试（未触碰 05800 迁移、资格门、产品代码），但**未跑绿**，已回退所有实验性 harness 改动（工作树恢复为仅 322 重基线）：
+
+- 在 `task410-runner-320.patch` 中新增真实登录角色 `jg_task01_login`（NOSUPERUSER/NOINHERIT、无 public CREATE），`GRANT jg_task01_owner TO` 它并 `ALTER ROLE ... SET role = jg_task01_owner`，把 app 的 `DATABASE_URL` 切到该登录角色；并插入绑定真实 `session_user` 的 witness 行（不伪造 OID，若已存在其它绑定则显式报错）。
+- 在 `task410-support-320.patch` 中把 `task410TestDatabase` 与 `assertTask410Owner290` 调整为「有效角色 owner + 专用登录 session_user + 无 CREATE + witness 绑定」，295 分支保持 `session_user=current_user` 原证明。
+- 实测证据：容器内 `pg_db_role_setting` 为 `{role=jg_task01_owner}|true`（角色设置与成员关系都在）；同一内置镜像 + 一个加固过的 postgres:16（`REVOKE ALL ON SCHEMA public FROM PUBLIC`、`REVOKE CONNECT ... FROM PUBLIC`、仅给登录角色 USAGE/CONNECT）下，Prisma 5.22 以该登录角色连接得到 `session_user=lg,current_user=owner`（`HARDENED [{"s":"lg","c":"own"}]`）。
+- 但 lane 内 app 的 Prisma 连接仍报 `User jg_task01_login was denied access on the database <db>.public`，连 `SELECT session_user` 都到不了；说明 lane 里 app 实际使用的连接与 psql/独立 Prisma 路径存在未定位差异（TLS/`sslmode=require&sslaccept=strict`、连接池复用或 env 注入时序）。这不是资格门本身不可满足（psql 与独立 Prisma 都已证明可满足），也不是 320→322 数字问题。
+- 结论：*(a) 未在本次时限内收敛*，已回退实验改动，task410 仍红且首因不变；下一步应单独定位「lane 内 app 连接为何不继承该登录角色的 role 设置」，再决定是否继续 (a)，否则交回产品口径 (b)。
+
 ## 6. 资源清理核对
 
 - 开工时机器上有 3 个他人遗留容器（`jiangkong-line-a-real-db-a4f57764…`、`jiangkong-line-a-real-db-6634ee1e…`、`jga-mig-check`，均空闲 postgres）；经 lead 授权后已 `docker rm -f` 这三个，未动其他任何容器。
