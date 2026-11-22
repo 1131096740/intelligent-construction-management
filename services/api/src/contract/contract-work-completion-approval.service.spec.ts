@@ -4,16 +4,16 @@ import { ContractWorkCompletionApprovalService } from "./contract-work-completio
 
 const witnessKey = "a".repeat(64);
 
-const assignments = [
-  { userId: "contract", roleKey: "contract_director" },
-  { userId: "manager", roleKey: "project_manager" },
-  { userId: "finance", roleKey: "finance_staff" }
-].map(row => ({ ...row, projectId: "project", userIsActive: true }));
-
-function fixture(author = "author") {
+function fixture(author = "author", financeRoleKeys = ["finance_staff"]) {
+  const assignments = [
+    { userId: "contract", roleKey: "contract_director" },
+    { userId: "manager", roleKey: "project_manager" },
+    ...financeRoleKeys.map(roleKey => ({ userId: "finance", roleKey }))
+  ].map(row => ({ ...row, projectId: "project", userIsActive: true }));
   const draft = { id: "report", work: "试运行", amountYuan: new Prisma.Decimal("100.0123"),
     contractVersionId: "version", createdByUserId: author, status: "draft", approvalInstanceId: null as string | null };
   let round: Record<string, unknown> | null = null;
+  let rejectionReason: string | null = null;
   const fact = jest.fn();
   const action = jest.fn();
   const submit = jest.fn();
@@ -42,7 +42,8 @@ function fixture(author = "author") {
           expect(proof).toBe(signFundBalanceWitness(witnessKey, ["contract_work_completion_view_v1",
             "synthetic", "runtime", "123", "42", expiry, version, actor]));
           return [{ result: { projectId: "project", entries: [{ ...draft, amountYuan: draft.amountYuan.toFixed(4),
-            exceedsContractAmount: true, applicantUserId: round?.applicantUserId, frozenNodes: round?.frozenNodes }] } }];
+            exceedsContractAmount: true, applicantUserId: round?.applicantUserId, frozenNodes: round?.frozenNodes,
+            rejectionReason }] } }];
         }
         const [operation, version, completion, actor, payload, expiry, proof] = params as (string | null)[];
         expect(sql).toContain("public.jg_contract_work_completion_approval_v1");
@@ -52,6 +53,7 @@ function fixture(author = "author") {
         const command = JSON.parse(payload!);
         if (operation === "submit") {
           submit();
+          rejectionReason = null;
           round = { id: "round", businessType: "contract_work_completion", businessId: draft.id,
             flowType: "contract.work_completion.approve", applicantUserId: actor, frozenNodes: command.nodes, status: "in_progress" };
           Object.assign(draft, { approvalInstanceId: "round", status: "in_approval" });
@@ -59,6 +61,7 @@ function fixture(author = "author") {
           action({ actorUserId: actor, ...command });
           const final = command.nodes.every((node: { approvedRoleKeys: string[] }) => node.approvedRoleKeys.length);
           draft.status = command.decision === "reject" ? "draft" : final ? "confirmed" : "in_approval";
+          if (command.decision === "reject") rejectionReason = command.comment ?? null;
           round = { ...round, frozenNodes: command.nodes };
           if (draft.status === "confirmed") fact(draft.amountYuan);
         }
@@ -147,6 +150,31 @@ describe("其他合同履约的三个并联职责", () => {
     expect(fact).toHaveBeenCalledTimes(1);
   });
 
+  it("财务同一人兼任两岗时按冻结顺序只确认一次，三项齐全才计一次成本", async () => {
+    const { service, fact, action, ledger } = fixture("author", ["finance_staff", "finance_director"]);
+    await service.submit("version", "report", "author");
+
+    const visible = await service.view("version", "finance");
+    expect(visible.entries).toEqual([expect.objectContaining({
+      duties: [{ index: 2, name: "财务", selfReview: false }]
+    })]);
+
+    const financeApproval = { approvalInstanceId: "round", dutyIndex: 2, decision: "approve" } as const;
+    await expect(service.review("version", "report", "finance", financeApproval)).resolves.toMatchObject({ status: "in_approval" });
+    expect(action).toHaveBeenLastCalledWith(expect.objectContaining({
+      approvedRoleKey: "finance_staff", representedUserId: "finance"
+    }));
+    await expect(service.review("version", "report", "finance", financeApproval)).rejects.toMatchObject({ status: 409 });
+    expect(action).toHaveBeenCalledTimes(1);
+
+    await service.review("version", "report", "contract", { approvalInstanceId: "round", dutyIndex: 0, decision: "approve" });
+    await expect(service.review("version", "report", "manager", {
+      approvalInstanceId: "round", dutyIndex: 1, decision: "approve"
+    })).resolves.toMatchObject({ status: "confirmed" });
+    expect(fact).toHaveBeenCalledTimes(1);
+    expect(ledger.appendConfirmedSourceInTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it("末岗没有写入成本时，具名约束在成功返回前拒绝该事务", async () => {
     const { service, tx } = fixture();
     await service.submit("version", "report", "author");
@@ -208,6 +236,18 @@ describe("其他合同履约的三个并联职责", () => {
       { confirmPassword: jest.fn() } as never, rollback.ledger as never, rollback.notifications as never);
     await expect(rebased.submit("version", "report", "author")).rejects.toMatchObject({ status: 409 });
     expect(rollback.notifications.queueDuty).toHaveBeenCalledWith(rollback.tx, "report", "round");
+  });
+
+  it("驳回后制单人看到原因并可修订，确认后不可再修订", async () => {
+    const { service } = fixture();
+    await service.submit("version", "report", "author");
+    await service.review("version", "report", "manager", {
+      approvalInstanceId: "round", dutyIndex: 1, decision: "reject", comment: "请核对工作量"
+    });
+    const returned = await service.view("version", "author");
+    expect(returned.entries).toEqual([expect.objectContaining({
+      status: "draft", canRevise: true, canSubmit: true, rejectionReason: "请核对工作量"
+    })]);
   });
 
   it("任一职责驳回退回原草稿，项目外无法操作", async () => {

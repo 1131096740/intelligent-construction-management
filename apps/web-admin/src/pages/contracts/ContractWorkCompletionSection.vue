@@ -54,11 +54,24 @@
       <p>{{ entry.work }}</p>
       <span>{{ entry.amountYuan }} 元 · {{ statusLabels[entry.status] || "状态待刷新" }}</span>
       <t-alert
+        v-if="entry.rejectionReason"
+        theme="warning"
+        :message="`驳回原因：${entry.rejectionReason}`"
+      />
+      <t-alert
         v-if="entry.exceedsContractAmount"
         theme="warning"
         message="本次履约金额超过合同金额上限，请核对后再提交或确认。"
       />
       <div class="work-completion__actions">
+        <t-button
+          v-if="entry.canRevise"
+          variant="outline"
+          :disabled="busy"
+          @click="openRevise(entry)"
+        >
+          修订草稿
+        </t-button>
         <t-button
           v-if="entry.canSubmit"
           variant="outline"
@@ -131,14 +144,47 @@
         </div>
       </form>
     </t-dialog>
+    <t-dialog
+      v-model:visible="reviseVisible"
+      header="修订履约草稿"
+      :footer="false"
+    >
+      <form
+        v-if="reviseTarget"
+        class="work-completion__form"
+        @submit.prevent="saveRevision"
+      >
+        <label>已完成工作<t-textarea
+          v-model="reviseWork"
+          :maxlength="2000"
+        /></label>
+        <label>履约金额（元）<t-input
+          v-model="reviseAmount"
+          placeholder="最多四位小数"
+        /></label>
+        <t-alert
+          v-if="error"
+          theme="error"
+          :message="error"
+        />
+        <div class="work-completion__actions">
+          <t-button
+            type="submit"
+            :loading="busy"
+          >
+            保存修订
+          </t-button>
+        </div>
+      </form>
+    </t-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
-import { fetchWorkCompletions, reviewWorkCompletion, saveWorkCompletionDraft, submitWorkCompletion,
-  type WorkCompletionEntry } from "../../api/core-flow-read.api";
+import { fetchWorkCompletions, reviewWorkCompletion, reviseWorkCompletionDraft, saveWorkCompletionDraft,
+  submitWorkCompletion, type WorkCompletionEntry } from "../../api/core-flow-read.api";
 import { formatUnknownApiError } from "../../api/error-message";
 
 const props = defineProps<{ versionId: string }>();
@@ -153,6 +199,10 @@ const work = ref("");
 const amount = ref("");
 let attempt: { work: string; amountYuan: string; requestKey: string } | null = null;
 const reviewVisible = ref(false);
+const reviseVisible = ref(false);
+const reviseTarget = ref<WorkCompletionEntry | null>(null);
+const reviseWork = ref("");
+const reviseAmount = ref("");
 const reviewTarget = ref<{ entry: WorkCompletionEntry; duty: WorkCompletionEntry["duties"][number] } | null>(null);
 const comment = ref("");
 const selfReviewReason = ref("");
@@ -212,6 +262,35 @@ async function save() {
     amount.value = "";
     attempt = null;
     showDraft.value = false;
+  });
+}
+
+function openRevise(entry: WorkCompletionEntry) {
+  reviseTarget.value = entry;
+  reviseWork.value = entry.work;
+  reviseAmount.value = entry.amountYuan;
+  error.value = "";
+  reviseVisible.value = true;
+}
+
+async function saveRevision() {
+  const target = reviseTarget.value;
+  if (!target) return;
+  const trimmedWork = reviseWork.value.trim();
+  let amountYuan: string | null;
+  try {
+    amountYuan = normalizeBusinessAmount(reviseAmount.value);
+  } catch {
+    amountYuan = null;
+  }
+  if (!trimmedWork || !amountYuan || amountYuan === "0.0000") {
+    error.value = "请输入已完成工作和正数金额，金额最多四位小数";
+    return;
+  }
+  await run(async () => {
+    const saved = await reviseWorkCompletionDraft(props.versionId, target.id, { work: trimmedWork, amountYuan });
+    reviseVisible.value = false;
+    notice.value = saved.exceedsContractAmount ? "草稿已修订。金额超过合同上限，请核对后再提交。" : "履约草稿已修订";
   });
 }
 

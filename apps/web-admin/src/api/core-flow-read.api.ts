@@ -7587,6 +7587,8 @@ export interface WorkCompletionEntry {
   exceedsContractAmount: boolean;
   approvalInstanceId: string | null;
   canSubmit: boolean;
+  canRevise: boolean;
+  rejectionReason: string | null;
   duties: { index: number; name: string; selfReview: boolean }[];
 }
 
@@ -7599,6 +7601,12 @@ export function fetchWorkCompletions(versionId: string) {
 export function saveWorkCompletionDraft(versionId: string, body: { work: string; amountYuan: string; requestKey: string }) {
   return postJson<{ id: string; exceedsContractAmount: boolean }>(
     `/contracts/${encodeURIComponent(versionId)}/work-completion-drafts`, body
+  );
+}
+
+export function reviseWorkCompletionDraft(versionId: string, entryId: string, body: { work: string; amountYuan: string }) {
+  return patchJson<{ id: string; status: string; work: string; amountYuan: string; exceedsContractAmount: boolean }>(
+    `/contracts/${encodeURIComponent(versionId)}/work-completions/${encodeURIComponent(entryId)}`, body
   );
 }
 

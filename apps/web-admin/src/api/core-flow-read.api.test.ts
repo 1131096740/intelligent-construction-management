@@ -82,6 +82,7 @@ import {
   createContractChangeDraft,
   fetchWorkCompletions,
   saveWorkCompletionDraft,
+  reviseWorkCompletionDraft,
   submitWorkCompletion,
   reviewWorkCompletion,
   createContractTakeover,
@@ -451,17 +452,21 @@ describe("core flow read API client", () => {
     });
     const draft = { work: "核对履约", amountYuan: "100.0123", requestKey: "one" };
     await saveWorkCompletionDraft("version/1", draft);
+    await reviseWorkCompletionDraft("version/1", "entry/1", { work: "修正履约", amountYuan: "99.0100" });
     await submitWorkCompletion("version/1", "entry/1");
     const review = { approvalInstanceId: "round", decision: "reject", dutyIndex: 2, comment: "需要更正" } as const;
     await reviewWorkCompletion("version/1", "entry/1", review);
     expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
       "/api/contracts/version%2F1/work-completions",
       "/api/contracts/version%2F1/work-completion-drafts",
+      "/api/contracts/version%2F1/work-completions/entry%2F1",
       "/api/contracts/version%2F1/work-completions/entry%2F1/submission",
       "/api/contracts/version%2F1/work-completions/entry%2F1/approval"
     ]);
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST", body: JSON.stringify(draft) });
-    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({ method: "POST", body: JSON.stringify(review) });
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: "PATCH",
+      body: JSON.stringify({ work: "修正履约", amountYuan: "99.0100" }) });
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: "POST", body: JSON.stringify(review) });
   });
 
   it("confirms a historical change baseline with canonical cents and password", async () => {
