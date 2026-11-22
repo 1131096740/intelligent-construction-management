@@ -9,7 +9,7 @@ function profile(count,businessCount,added,extra){
     addedBusiness:Object.freeze(added),sqlnames:technical.map(name=>"'"+name+"'").join(',')});
 }
 const legacy=profile(295,356,[],[]);
-const successor=profile(322,forward.businessTables,forward.businessAdditions.map(([,name])=>name),
+const successor=profile(323,forward.businessTables,forward.businessAdditions.map(([,name])=>name),
   forward.ownerSchemaOnlyEmptyAdditions.map(([,name])=>name));
 
 module.exports={legacy,successor};

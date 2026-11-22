@@ -34,10 +34,10 @@ const [source,sha,plan,mode]=process.argv.slice(2);
 const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
 if(candidate.sourceSha!==sha)process.exit(65);
 if(mode==='--current-320') {
-  if(candidate.mode!=='current-320'||candidate.migrationCount!==322||candidate.predecessor?.migrationCount!==295||
-      candidate.predecessor.ledgerSha256!==m.final||candidate.tails.length!==27||
+  if(candidate.mode!=='current-320'||candidate.migrationCount!==323||candidate.predecessor?.migrationCount!==295||
+      candidate.predecessor.ledgerSha256!==m.final||candidate.tails.length!==28||
       typeof candidate.sourceTree!=='string'||!/^[0-9a-f]{40}$/u.test(candidate.sourceTree)||
-      candidate.ledgerSha256!=='9919038b0d6ae339ab72f5c7d6221a569bd6ae16b082df476faa9282b5e62d51')process.exit(65);
+      candidate.ledgerSha256!=='749a60a89f234a4650dcb6c9b1d52c1f025ed90ac9e2b70670c62347edc640bc')process.exit(65);
 } else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
 [[ -z $(docker ps -q) ]] || exit 65
@@ -111,7 +111,7 @@ capture(){
     node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" ${bank_args[@]+"${bank_args[@]}"} <<'JS' || proof_status=$?
 const [file,receipt,mode,sha,sourceMode]=process.argv.slice(2);
 const r=JSON.parse(require('node:fs').readFileSync(file,'utf8').trimEnd().split('\n').at(-1));
-const count=sourceMode==='--current-320'?322:295;
+const count=sourceMode==='--current-320'?323:295;
 const result=mode==='preflight'?'DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'ORIGINAL_FULL_12_PASSED';
 const expected='BANK_'+count+'_'+result;
 require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx',mode:0o600});

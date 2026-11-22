@@ -5,7 +5,7 @@ const {readFileSync}=require('node:fs');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const current320=process.argv[2]==='--current-320';
-const count=current320?322:295;
+const count=current320?323:295;
 const installer=require('./installer.cjs');
 const original='/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs';
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL275_COLD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};

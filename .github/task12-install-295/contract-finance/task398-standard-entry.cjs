@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const source = require('./contract-finance-source.json');
 const {sourceSha} = source;
 const current320=source.mode==='current-320';
-const count=current320?322:295;
+const count=current320?323:295;
 const {withCombined295MultiWitness,withCombined320ContractPayment} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 

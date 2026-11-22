@@ -5,8 +5,8 @@ umask 077
 [[ $# == 4 || $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
 mode=295
 selected_lane=${5-}
-if [[ $selected_lane == --current-320 ]]; then mode=322; selected_lane=''
-elif [[ $# == 6 ]]; then mode=322
+if [[ $selected_lane == --current-320 ]]; then mode=323; selected_lane=''
+elif [[ $# == 6 ]]; then mode=323
 fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -19,7 +19,7 @@ scope=onboarding
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="322"&&source.mode!=="current-320"))process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="323"&&source.mode!=="current-320"))process.exit(1);
 ' "$prepared/source.json" "$sha" "$mode"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")

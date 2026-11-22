@@ -115,7 +115,7 @@
        {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
    const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
    const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
-+  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_322'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_323'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
    const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
 +    ...(pfqPositiveModes.includes(pfqMode)?{pfqPositive:require(pfqPositiveFixtures)[pfqMode]}:{}),
 +    ...(Object.hasOwn(pfqConflicts,pfqMode)?{recoveryProfile:{module:pfqRecoveryModule,kind:pfqConflicts[pfqMode],prefix:114,terminal:115,
@@ -330,7 +330,7 @@
 +
 +async function withPfq(receipt,mode,material) {
 +  const current320=material!==undefined;
-+  const count=current320?322:295;
++  const count=current320?323:295;
 +  need(receipt.purpose==='ORIGINAL_PFQ_EXACT_'+count && mode==='--pfq-'+receipt.lane+'-289-local','PFQ_295_SCOPE');
 +  const pfqPositiveMode=pfqPositiveModes.includes(mode)?mode:undefined;
 +  const pfqConflict=Object.hasOwn(pfqConflicts,mode)?pfqConflicts[mode]:undefined;

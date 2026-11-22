@@ -7,7 +7,7 @@ const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&lane==='company-proxy-repayment');
 const current320=source.mode==='current-320';
-const count=current320?322:295;
+const count=current320?323:295;
 const purpose='TASK410_COMPANY_PROXY_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){

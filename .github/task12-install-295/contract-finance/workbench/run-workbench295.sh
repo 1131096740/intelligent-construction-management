@@ -9,7 +9,7 @@ sha=$3
 build=$(cd "$4" && pwd -P)
 mode_args=()
 count=295
-if [[ $# == 5 ]]; then mode_args=(--current-320); count=322; fi
+if [[ $# == 5 ]]; then mode_args=(--current-320); count=323; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 base="$repo/.github/task12-install-295/contract-finance"
@@ -18,7 +18,7 @@ scope=pol115-workbench
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="322"&&source.mode!=="current-320"))process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="323"&&source.mode!=="current-320"))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
