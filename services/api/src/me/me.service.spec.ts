@@ -10,6 +10,53 @@ const PNG = Buffer.from(
 );
 
 describe("MeService", () => {
+  it("合同履约确认轮次进入合同待办：职责人直接可办，被委托人凭全局委托可办，办结后消失", async () => {
+    const instance = {
+      id: "wc-flow", businessType: "contract_work_completion", businessId: "completion-1",
+      status: "in_progress", currentNodeIndex: 0, applicantUserId: "creator", createdAt: new Date(), updatedAt: new Date(),
+      frozenNodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"], approvedRoleKeys: [],
+        protocolVersion: 1, executionMode: "parallel", candidateUserIdsByRole: { contract_director: ["director"] } }]
+    };
+    const prisma = {
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([instance]) },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
+      contractWorkCompletion: { findMany: jest.fn().mockResolvedValue([{ id: "completion-1", contractVersionId: "version-1",
+        work: "主体结构完成", amountYuan: { toString: () => "125.5000" } }]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([{ id: "version-1", contractId: "contract-1" }]) },
+      contract: { findMany: jest.fn().mockResolvedValue([{ id: "contract-1", projectId: "project-1", code: "HT-100" }]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "一号项目" }]) },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "director", isActive: true }, { id: "delegate", isActive: true },
+        { id: "outsider", isActive: true }, { id: "creator", isActive: true }]) },
+      approvalDelegation: { groupBy: jest.fn(async ({ where }: { where: { toUserId: string } }) =>
+        where.toUserId === "delegate" ? [{ fromUserId: "director" }] : []) },
+      userPosition: { findMany: jest.fn(async ({ where }: { where: { userId: string } }) =>
+        where.userId === "director" ? [{ positionId: "p-director" }] : []) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "p-director", key: "contract_director" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      approvalWorkItems(scopes: Array<{ projectId: string; roleKeys: string[] }>, userId: string,
+        mode: "pending" | "started" | "delegated", evaluatedAt: Date, scope?: "contract"): Promise<WorkItem[]>;
+    };
+    const now = new Date();
+    const directorScopes = [{ projectId: "project-1", roleKeys: ["contract_director"] }];
+    const delegateScopes = [{ projectId: "project-1", roleKeys: [] as string[] }];
+
+    const direct = await service.approvalWorkItems(directorScopes, "director", "pending", now, "contract");
+    expect(direct).toEqual([expect.objectContaining({
+      businessType: "contract_work_completion", businessId: "completion-1", businessCode: "HT-100",
+      title: "履约确认：主体结构完成", projectName: "一号项目", amountText: "¥125.50",
+      targetPath: "/合同管理/HT-100", currentNode: "合同部主管"
+    })]);
+    expect(await service.approvalWorkItems(delegateScopes, "outsider", "pending", now, "contract")).toEqual([]);
+    const delegated = await service.approvalWorkItems(delegateScopes, "delegate", "pending", now, "contract");
+    expect(delegated).toEqual([expect.objectContaining({ businessType: "contract_work_completion", businessId: "completion-1" })]);
+
+    instance.frozenNodes = [{ ...instance.frozenNodes[0], approvedRoleKeys: ["contract_director"] }] as unknown as typeof instance.frozenNodes;
+    expect(await service.approvalWorkItems(directorScopes, "director", "pending", now, "contract")).toEqual([]);
+    expect(await service.approvalWorkItems(delegateScopes, "delegate", "pending", now, "contract")).toEqual([]);
+  });
+
   it("keeps legacy upload work separate from governed archive confirmation", async () => {
     const prisma = {
       $queryRaw:jest.fn().mockResolvedValue([]),
@@ -2252,7 +2299,8 @@ describe("MeService", () => {
 
     await expect(service.getContractPendingWorkItems("handler")).resolves.toEqual([]);
     expect(findApprovals).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ businessType: "contract_version" })
+      // 合同履约确认属于合同域待办，仍不得读取结算、付款或资金登记来源。
+      where: expect.objectContaining({ businessType: { in: ["contract_version", "contract_work_completion"] } })
     }));
     expect(findFundRegistrations).not.toHaveBeenCalled();
   });

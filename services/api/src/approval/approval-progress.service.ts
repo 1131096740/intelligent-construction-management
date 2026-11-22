@@ -22,7 +22,8 @@ const LABELS: Record<string, string> = {
   expense_claim: "费用审批", project_expense_request: "项目支出审批",
   spot_procurement_version: "零采申请审批", spot_procurement_payment: "零采付款审批",
   project_financing_quota: "垫资额度审批", project_settlement_exception_quota: "结算例外额度审批",
-  general_procurement: "综合采购审批", company_transfer: "公司互转审批", fund_execution_case: "资金执行审批"
+  general_procurement: "综合采购审批", company_transfer: "公司互转审批", fund_execution_case: "资金执行审批",
+  contract_work_completion: "履约确认审批"
 };
 type Db = Prisma.TransactionClient;
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -222,6 +223,12 @@ export class ApprovalProgressService {
       }
       case "settlement": return db.settlement.findUnique({ where: { id }, select: { projectId: true, code: true } });
       case "payment_request": return db.paymentRequest.findUnique({ where: { id }, select: { projectId: true, code: true } });
+      case "contract_work_completion": {
+        const completion = await db.contractWorkCompletion.findUnique({ where: { id }, select: { contractVersionId: true } });
+        const version = completion ? await db.contractVersion.findUnique({ where: { id: completion.contractVersionId }, select: { contractId: true } }) : null;
+        const contract = version ? await db.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true, code: true } }) : null;
+        return contract ? { projectId: contract.projectId, code: contract.code ?? "合同履约确认", contractVersionId: completion!.contractVersionId } : null;
+      }
       case "project_expense_request": return db.projectExpenseRequest.findUnique({ where: { id }, select: { projectId: true, code: true } });
       case "expense_claim": return db.expenseClaim.findUnique({ where: { id }, select: { projectId: true, code: true, applicantUserId: true, handledByUserId: true } });
       case "spot_procurement_version": {
@@ -265,7 +272,7 @@ export class ApprovalProgressService {
       projectRoleKeys: [...assignments.filter(a => a.userId === user.id && a.projectId === projectId && projectId).flatMap(a => positionKeys.get(a.positionId) ? [positionKeys.get(a.positionId)!] : []), ...members.filter(m => m.userId === user.id).map(m => m.positionKey as RoleKey)]
     });
     const allRoles = (userId: string) => ["project_expense_request", "spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? resolveEffectiveRoleKeys(roles.get(userId)?.globalRoleKeys ?? [], roles.get(userId)?.projectRoleKeys ?? []) : [...(roles.get(userId)?.globalRoleKeys ?? []), ...(roles.get(userId)?.projectRoleKeys ?? [])];
-    const supportsGlobalDelegation = ["contract_version", "settlement", "payment_request", "fund_execution_case"].includes(instance.businessType);
+    const supportsGlobalDelegation = ["contract_version", "settlement", "payment_request", "fund_execution_case", "contract_work_completion"].includes(instance.businessType);
     const parallelSpot = instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes);
     const activeDelegatorsFor = (userId: string, nodeIndex = instance.currentNodeIndex) => supportsGlobalDelegation || parallelSpot ? delegations
       .filter(d => d.toUserId === userId && byId.get(d.fromUserId)?.isActive && (parallelSpot
@@ -280,7 +287,7 @@ export class ApprovalProgressService {
     });
     const validAssignment = (node: FrozenApprovalNode, value: unknown) => {
       const assignment = object(value);
-      if (!["contract_version", "settlement", "payment_request", "expense_claim", "fund_execution_case"].includes(instance.businessType)) return false;
+      if (!["contract_version", "settlement", "payment_request", "expense_claim", "fund_execution_case", "contract_work_completion"].includes(instance.businessType)) return false;
       if (typeof assignment.fromUserId !== "string" || typeof assignment.toUserId !== "string" || typeof assignment.fromRoleKey !== "string") return false;
       if (!strings(node.roleKeys).includes(assignment.fromRoleKey)) return false;
       if (!isGovernedFrozenApprovalNode(node)) return allRoles(assignment.fromUserId).includes(assignment.fromRoleKey as RoleKey) || hasAssignmentReceipt(assignment);
@@ -316,6 +323,11 @@ export class ApprovalProgressService {
       })).map(user => user.id)
     ])]);
     const participants = new Set([instance.applicantUserId, ...nodeIds.flat(), ...logs.filter(l => ["approve", "reject", "reject_previous", "return_to_applicant", "transfer", "delegate"].includes(l.action)).map(l => l.actorUserId)]);
+    // 实办人代表委托人/被转审人办理后，原委托人仍可查看本轮结果，事务内已记录 representedUserId。
+    for (const log of logs) {
+      if (log.action !== "approve" || typeof log.representedUserId !== "string" || log.representedUserId === log.actorUserId) continue;
+      participants.add(log.representedUserId);
+    }
     for (const log of logs) {
       if (!["transfer", "delegate"].includes(log.action)) continue;
       const assignment = object(log.metadata);

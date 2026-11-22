@@ -81,6 +81,20 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     if (data.length) await tx.approvalActionLog.createMany({ data, skipDuplicates: true });
   }
 
+  /** 最终驳回/退回申请人时提醒原申请人修改重提，共用审批待办的 claimed/terminal 幂等与失败重试。 */
+  async queueCorrection(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, transition: ApprovalActionLog) {
+    if (round.businessType !== "payment_request" || round.flowType !== "payment.approve" || round.businessId !== payment.id) return;
+    if (!["reject", "return_to_applicant"].includes(transition.action)) return;
+    if (!["approval_rejected", "draft"].includes(payment.status)) return;
+    const recipientId = round.applicantUserId;
+    await tx.approvalActionLog.createMany({ skipDuplicates: true, data: [{
+      id: idFor(payment.id, round.id, "correction", transition.id, recipientId),
+      approvalInstanceId: round.id, actorUserId: recipientId, action: "system_notification",
+      metadata: { kind: KIND, event: "queued", phase: "correction", paymentId: payment.id, projectId: payment.projectId,
+        anchorId: transition.id, recipientId }
+    }] });
+  }
+
   async status(paymentId: string, actorId: string) {
     return this.prisma.$transaction(async tx => ({
       notice: (await this.currentNotice(tx, paymentId, actorId))?.status ?? null
@@ -119,6 +133,45 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
   }
 
   private async currentNotice(tx: Prisma.TransactionClient, paymentId: string, actorId: string) {
+    const active = await this.inProgressNotice(tx, paymentId, actorId);
+    return active ?? this.correctionNotice(tx, paymentId, actorId);
+  }
+
+  private async correctionNotice(tx: Prisma.TransactionClient, paymentId: string, actorId: string) {
+    const round = await tx.approvalInstance.findFirst({ where: {
+      businessType: "payment_request", businessId: paymentId, flowType: "payment.approve",
+      status: { in: ["rejected", "returned_to_applicant"] }
+    }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+    if (!round) return null;
+    const entries = await tx.approvalActionLog.findMany({ where: {
+      approvalInstanceId: round.id, action: "system_notification", AND: [
+        { metadata: { path: ["kind"], equals: KIND } },
+        { metadata: { path: ["event"], equals: "queued" } },
+        { metadata: { path: ["recipientId"], equals: actorId } }
+      ]
+    } });
+    const byId = new Map(entries.map(entry => [entry.id, entry]));
+    for (const original of entries) {
+      const data = original.metadata as Prisma.JsonObject | null;
+      if (data?.phase !== "correction" || data.recipientId !== actorId || data.paymentId !== paymentId || data.retryOf !== undefined) continue;
+      const context = await this.currentContext(tx, original);
+      if (!context) continue;
+      const chain = [original.id];
+      let attempt = original;
+      let status = await this.attemptStatus(tx, attempt);
+      while (status.status === "failed") {
+        const next = byId.get(idFor(attempt.id, "retry"));
+        if (!next || !this.matchesRetry(next, attempt, original)) break;
+        chain.push(next.id);
+        attempt = next;
+        status = await this.attemptStatus(tx, attempt);
+      }
+      return { attempt, chain, context, status };
+    }
+    return null;
+  }
+
+  private async inProgressNotice(tx: Prisma.TransactionClient, paymentId: string, actorId: string) {
     const rounds = await tx.approvalInstance.findMany({ where: {
       businessType: "payment_request", businessId: paymentId, flowType: "payment.approve", status: "in_progress"
     }, take: 2 });
@@ -164,7 +217,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     const frozen = original.metadata as Prisma.JsonObject;
     return retry.id === idFor(previous.id, "retry") && retry.approvalInstanceId === original.approvalInstanceId &&
       retry.actorUserId === original.actorUserId && retry.action === "system_notification" && data?.retryOf === previous.id &&
-      ["kind", "event", "paymentId", "projectId", "nodeIndex", "roundRevision", "anchorId", "recipientId"].every(key => data[key] === frozen[key]);
+      ["kind", "event", "phase", "paymentId", "projectId", "nodeIndex", "roundRevision", "anchorId", "recipientId"].every(key => data[key] === frozen[key]);
   }
 
   private async attemptStatus(tx: Prisma.TransactionClient, attempt: ApprovalActionLog): Promise<AuditDutyNoticeStatus> {
@@ -204,7 +257,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
         if (!dispatch) continue;
         const result = await (dispatch.rich
           ? this.sms.sendDutyIntent(dispatch.phone, dispatch.rich)
-          : this.sms.send(dispatch.phone, "付款申请", dispatch.dutyName, dispatch.code)).catch(() => ({ status: "unknown" }));
+          : this.sms.send(dispatch.phone, dispatch.label, dispatch.dutyName, dispatch.code)).catch(() => ({ status: "unknown" }));
         await this.append(this.prisma, intent, result.status, "terminal");
       }
     } catch {
@@ -217,7 +270,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     if ((await this.attemptStatus(tx, intent)).status !== "queued") return null;
     const data = intent.metadata as Prisma.JsonObject;
     let context = null;
-    if (this.isBaseAttempt(intent)) {
+    if (data?.phase === "correction" || this.isBaseAttempt(intent)) {
       context = await this.currentContext(tx, intent);
     } else if (typeof data?.paymentId === "string" && typeof data.recipientId === "string") {
       const current = await this.currentNotice(tx, data.paymentId, data.recipientId);
@@ -233,9 +286,9 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
       await this.append(tx, intent, "cancelled", "terminal");
       return null;
     }
-    const dutyName = String(node.name);
+    const dutyName = node ? String(node.name) : "审批退回，请修改后重新提交";
     let rich: ApprovalDutySmsIntent | null = null;
-    if (approvalDutyRichTemplateEnabled()) {
+    if (node && approvalDutyRichTemplateEnabled()) {
       const [project, applicant] = await Promise.all([
         tx.project.findUnique({ where: { id: payment.projectId }, select: { name: true } }),
         tx.user.findUnique({ where: { id: round.applicantUserId }, select: { name: true } })
@@ -249,11 +302,13 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
       };
     }
     const claim = await this.append(tx, intent, "dispatch_claimed", "claim");
-    return claim.count === 1 ? { phone: user.phone ?? "", code: payment.code, dutyName, rich } : null;
+    return claim.count === 1 ? { phone: user.phone ?? "", code: payment.code, dutyName, rich,
+      label: node ? "付款申请" : "付款申请退回修改" } : null;
   }
 
   private async currentContext(tx: Prisma.TransactionClient, intent: ApprovalActionLog) {
     const data = intent.metadata as Prisma.JsonObject;
+    if (data?.phase === "correction") return this.currentCorrectionContext(tx, intent, data);
     if (typeof data?.paymentId !== "string" || typeof data.recipientId !== "string" || typeof data.anchorId !== "string") return null;
     const [round, payment, user] = await Promise.all([
       tx.approvalInstance.findUnique({ where: { id: intent.approvalInstanceId } }),
@@ -274,6 +329,27 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
       return null;
     }
     return { node, payment, round };
+  }
+
+  private async currentCorrectionContext(tx: Prisma.TransactionClient, intent: ApprovalActionLog, data: Prisma.JsonObject) {
+    if (typeof data.paymentId !== "string" || typeof data.recipientId !== "string" || typeof data.anchorId !== "string") return null;
+    const [round, payment, user, anchor] = await Promise.all([
+      tx.approvalInstance.findUnique({ where: { id: intent.approvalInstanceId } }),
+      tx.paymentRequest.findUnique({ where: { id: data.paymentId }, select: { id: true, projectId: true, status: true, code: true } }),
+      tx.user.findUnique({ where: { id: data.recipientId }, select: { isActive: true } }),
+      tx.approvalActionLog.findUnique({ where: { id: data.anchorId } })
+    ]);
+    if (!round || !payment || !user?.isActive || !anchor) return null;
+    if (!["rejected", "returned_to_applicant"].includes(round.status)) return null;
+    if (!["approval_rejected", "draft"].includes(payment.status)) return null;
+    if (!["reject", "return_to_applicant"].includes(anchor.action) || anchor.approvalInstanceId !== round.id) return null;
+    if (round.businessId !== payment.id || payment.projectId !== data.projectId) return null;
+    if (round.applicantUserId !== intent.actorUserId || intent.actorUserId !== data.recipientId) return null;
+    const latest = await tx.approvalInstance.findFirst({ where: {
+      businessType: "payment_request", businessId: payment.id, flowType: "payment.approve"
+    }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+    if (latest?.id !== round.id) return null;
+    return { node: null, payment, round };
   }
 
   private async currentRecipient(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, node: FrozenApprovalNode, actorId: string) {

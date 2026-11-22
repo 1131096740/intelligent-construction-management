@@ -407,6 +407,7 @@ export class TemplateSyntheticStore {
     contractAuthorization: this.table("contractAuthorization"),
     businessEntrySubmissionSnapshot: this.table("businessEntrySubmissionSnapshot"),
     contractSealTask: this.table("contractSealTask"),
+    contractWorkCompletion: this.table("contractWorkCompletion"),
     contractVersionCodeAllocation: this.table("contractVersionCodeAllocation"),
     businessDailySequence: this.table("businessDailySequence"),
     contractNumberTombstone: this.table("contractNumberTombstone"),
@@ -884,12 +885,13 @@ export class TemplateSyntheticStore {
       // Existing audit/approval participant projection, with only its bound
       // contract-list arity normalized for exact synthetic dispatch.
       const participantParams = /^SELECT DISTINCT v\."contractId" FROM "ContractVersion" v WHERE v\."contractId" IN \((\?(?:,\?)*)\)/u.exec(text);
-      if (participantParams && createHash("sha256").update(text.replace(participantParams[1], "?")).digest("hex") === "d600870300bbe7561e1b2c5b09efb160a203677722461258a58711490198d01d") {
+      if (participantParams && createHash("sha256").update(text.replace(participantParams[1], "?")).digest("hex") === "cc354625bce3416cd09fc0dc3c4cf39eb9b2d40ce606cf676ab3df6d7099e9f9") {
         this.participantProjectionCount += 1;
         const count = participantParams[1].split(",").length;
         const contractIds = query.values.slice(0, count);
         const [actorId, ...actorChecks] = query.values.slice(count);
-        if (query.values.length !== count + 4 || contractIds.some(id => typeof id !== "string") || typeof actorId !== "string" || !actorChecks.every(value => value === actorId)) throw new Error("合成参与读取投影参数不符");
+        // 合同版本审批动作 4 处 + 履约确认轮次 4 处均绑定同一读取人。
+        if (query.values.length !== count + 8 || contractIds.some(id => typeof id !== "string") || typeof actorId !== "string" || !actorChecks.every(value => value === actorId)) throw new Error("合成参与读取投影参数不符");
         const audits = await this.prisma.auditLog.findMany({ where: { actorUserId: actorId } });
         const matched = [];
         for (const contractId of contractIds) {
@@ -897,7 +899,10 @@ export class TemplateSyntheticStore {
           const ids = versions.map(version => version.id);
           const approvals = await this.prisma.approvalInstance.findMany({ where: { businessType: "contract_version", businessId: { in: ids } } });
           const actions = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: { in: approvals.map(approval => approval.id) } } });
-          const participated = audits.some(audit => audit.businessType === "contract" && audit.businessId === contractId && ["contract.draft.create", "contract.draft.copy"].includes(String(audit.action)) || audit.businessType === "contract_version" && ids.includes(audit.businessId) && audit.action === "contract.change_draft.create") || approvals.some(approval => approval.applicantUserId === actorId) || actions.some(action => ["approve", "reject", "reject_previous", "return_to_applicant", "transfer", "delegate"].includes(String(action.action)) && (action.actorUserId === actorId || action.representedUserId === actorId));
+          const completions = await this.prisma.contractWorkCompletion.findMany({ where: { contractVersionId: { in: ids } } });
+          const workApprovals = await this.prisma.approvalInstance.findMany({ where: { businessType: "contract_work_completion", businessId: { in: completions.map(completion => completion.id) } } });
+          const workActions = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: { in: workApprovals.map(approval => approval.id) } } });
+          const participated = audits.some(audit => audit.businessType === "contract" && audit.businessId === contractId && ["contract.draft.create", "contract.draft.copy"].includes(String(audit.action)) || audit.businessType === "contract_version" && ids.includes(audit.businessId) && audit.action === "contract.change_draft.create") || approvals.some(approval => approval.applicantUserId === actorId) || actions.some(action => ["approve", "reject", "reject_previous", "return_to_applicant", "transfer", "delegate"].includes(String(action.action)) && (action.actorUserId === actorId || action.representedUserId === actorId)) || completions.some(completion => completion.createdByUserId === actorId) || workApprovals.some(approval => approval.applicantUserId === actorId) || workActions.some(action => ["approve", "reject"].includes(String(action.action)) && (action.actorUserId === actorId || action.representedUserId === actorId));
           if (participated) matched.push({ contractId });
         }
         return matched;

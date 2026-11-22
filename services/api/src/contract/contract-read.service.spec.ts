@@ -16,6 +16,37 @@ import {
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it("履约确认的登记人与被委托人计入合同读参与人，非参与者保持受限", async () => {
+    const captured: { sql?: string; values?: unknown[] } = {};
+    const prisma = {
+      $queryRaw: jest.fn(async (query: Prisma.Sql) => {
+        captured.sql = query.sql;
+        captured.values = query.values;
+        return [{ contractId: "contract-1" }];
+      })
+    };
+    const service = new ContractReadService(prisma as never, {} as never, { canRead: jest.fn() } as never, {} as never) as unknown as {
+      contractParticipantIds(
+        contracts: Array<{ id: string; projectId: string; ownerUserId?: string | null }>,
+        versions: Array<{ id: string; contractId: string; status: string }>,
+        roles: ReadonlyMap<string, readonly string[]>,
+        actorId?: string,
+        readClient?: unknown
+      ): Promise<Set<string>>;
+    };
+    const result = await service.contractParticipantIds(
+      [{ id: "contract-1", projectId: "project-1", ownerUserId: "owner" }],
+      [{ id: "version-1", contractId: "contract-1", status: "in_approval" }],
+      new Map([["project-1", ["employee"]]]),
+      "delegate-1",
+      prisma as never
+    );
+    expect([...result]).toEqual(["contract-1"]);
+    expect(captured.sql).toContain('"ContractWorkCompletion"');
+    expect(captured.sql).toContain("contract_work_completion");
+    expect(captured.values).toContain("delegate-1");
+  });
+
   it("excludes pending new drafts from formal options while retaining a real effective version beside a pending change", async () => {
     const prisma = {
       contract: { findMany: jest.fn().mockResolvedValue([

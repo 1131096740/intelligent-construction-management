@@ -19,21 +19,24 @@ export async function activeApprovalDelegatorIds(
 ): Promise<string[]> {
   const maybeClient = client as Partial<ActiveApprovalDelegationClient>;
   if (!maybeClient.approvalDelegation || !maybeClient.user) return [];
+  const where = {
+    toUserId,
+    actionKey: null,
+    resourceType: null,
+    resourceId: null,
+    enabled: true,
+    startsAt: { lte: now },
+    // Delegation is a half-open interval: a mandate expiring at `now` is
+    // already unavailable to an atomic confirmation transaction.
+    endsAt: { gt: now }
+  };
   // A findMany projection also reads id; the role only needs the delegator and filter columns.
-  const rows = await client.approvalDelegation.groupBy({
-    by: ["fromUserId"],
-    where: {
-      toUserId,
-      actionKey: null,
-      resourceType: null,
-      resourceId: null,
-      enabled: true,
-      startsAt: { lte: now },
-      // Delegation is a half-open interval: a mandate expiring at `now` is
-      // already unavailable to an atomic confirmation transaction.
-      endsAt: { gt: now }
-    }
-  });
+  const delegationClient = client.approvalDelegation as unknown as {
+    groupBy?: (input: unknown) => Promise<Array<{ fromUserId: string }>>;
+  };
+  const rows = typeof delegationClient.groupBy === "function"
+    ? await delegationClient.groupBy({ by: ["fromUserId"], where })
+    : await client.approvalDelegation.findMany({ where, select: { fromUserId: true } });
   const delegatorIds = Array.from(new Set(rows.map((row) => row.fromUserId)));
   if (!delegatorIds.length) return [];
 

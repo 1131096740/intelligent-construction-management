@@ -16,14 +16,16 @@ function fixture() {
   const logs = new Map<string, ApprovalActionLog>();
   let active = false;
   const tx = {
-    approvalInstance: {findUnique: async () => round, findMany: async ({where}: {where:{businessId:string;status:string}}) =>
+    approvalInstance: {findUnique: async () => round,
+      findFirst: async () => round.status === "in_progress" ? null : round,
+      findMany: async ({where}: {where:{businessId:string;status:string}}) =>
       where.businessId === round.businessId && where.status === round.status ? [round] : []},
     position: {findMany: async () => []},
     userPosition: {findMany: async () => []},
     projectMember: {findMany: async ({where}: {where: {positionKey: {in: string[]}}}) =>
       [...people].filter(([, role]) => where.positionKey.in.includes(role)).map(([userId]) => ({userId}))},
     paymentRequest: {findUnique: async () => payment},
-    approvalDelegation: {findMany: async () => []},
+    approvalDelegation: {findMany: async () => [], groupBy: async () => []},
     user: {findUnique: async ({where}: {where: {id: string}}) => ({isActive: true, phone: "13800000000" + where.id})},
     approvalActionLog: {
       createMany: async ({data}: {data: ApprovalActionLog[]}) => {
@@ -139,4 +141,34 @@ it("审批轮版本推进后，已失败的旧尝试不能再重试", async () =
   expect(await service.status(payment.id, "first")).toEqual({notice: null});
   await expect(service.retry(payment.id, "first", notice!.attemptId)).rejects.toThrow("已变化");
   expect(sms.send).toHaveBeenCalledTimes(1);
+});
+
+it("付款最终驳回或退回申请人时入队一条修改提醒，派发后原申请人可查询并重试失败", async () => {
+  const {payment, round, logs, tx, service, sms} = fixture();
+  payment.status = "approval_rejected";
+  round.status = "rejected";
+  round.currentNodeIndex = 1;
+  round.updatedAt = new Date(30);
+  const transition = {id: "reject-action", action: "reject", approvalInstanceId: round.id} as ApprovalActionLog;
+  logs.set(transition.id, transition);
+
+  await service.queueCorrection(tx as never, payment, round, transition);
+  await service.queueCorrection(tx as never, payment, round, transition);
+  const queued = [...logs.values()].filter(row => (row.metadata as Prisma.JsonObject | null)?.event === "queued");
+  expect(queued).toHaveLength(1);
+  expect(queued[0].metadata).toMatchObject({phase: "correction", recipientId: "author", paymentId: payment.id});
+  expect(sms.send).not.toHaveBeenCalled();
+
+  sms.send.mockResolvedValueOnce({status: "failed"});
+  await service.afterCommit(payment.id);
+  expect(sms.send).toHaveBeenCalledWith("13800000000author", "付款申请退回修改", "审批退回，请修改后重新提交", "FK-01");
+  const {notice} = await service.status(payment.id, "author");
+  expect(notice).toMatchObject({status: "failed", canRetry: true});
+  expect(await service.status(payment.id, "first")).toEqual({notice: null});
+
+  sms.send.mockResolvedValue({status: "accepted"});
+  const retried = await service.retry(payment.id, "author", notice!.attemptId);
+  expect(retried).toMatchObject({status: "accepted", canRetry: false});
+  expect(sms.send).toHaveBeenCalledTimes(2);
+  await expect(service.retry(payment.id, "author", retried.attemptId)).rejects.toThrow("仅确认发送失败");
 });
