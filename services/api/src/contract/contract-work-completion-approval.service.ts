@@ -53,7 +53,7 @@ export class ContractWorkCompletionApprovalService {
       const [row] = await tx.$queryRaw<{ result: {
         projectId: string; entries: { id: string; status: string; work: string; amountYuan: string;
           exceedsContractAmount: boolean; createdByUserId: string; approvalInstanceId: string | null;
-          applicantUserId: string | null; frozenNodes: unknown }[];
+          applicantUserId: string | null; frozenNodes: unknown; rejectionReason?: string | null }[];
       } | null }[]>`SELECT public.jg_contract_work_completion_view_v1(
         ${versionId}::text,${actorId}::text,${binding.expires}::text,${proof}::text) AS result`;
       if (!row.result) return { canRegister: false, entries: [] };
@@ -70,9 +70,9 @@ export class ContractWorkCompletionApprovalService {
         const frozenNodes = entry.frozenNodes;
         const identities = entry.status === "in_approval" && isParallelApprovalRound(frozenNodes)
           && this.isOriginalDutySet(frozenNodes) ? activeApprovalNodeIndexes(frozenNodes, 0).flatMap(index => {
-            const { roleKeys, approvedRoleKeys, candidateUserIdsByRole } = frozenNodes[index];
+            const { mode, roleKeys, approvedRoleKeys, candidateUserIdsByRole } = frozenNodes[index];
             const identity = resolveApprovalReviewIdentity({
-              node: { roleKeys, approvedRoleKeys, candidateUserIdsByRole },
+              node: { mode, roleKeys, approvedRoleKeys, candidateUserIdsByRole },
               actorUserId: actorId, actorRoleKeys: own, activeDelegators: delegated
             });
             return identity ? [{ index, name: duties[index].name, selfReview:
@@ -81,7 +81,9 @@ export class ContractWorkCompletionApprovalService {
         if (entry.status === "draft" ? !creator || !access.canUpload : !creator && !own.length && !identities.length) return [];
         return [{ id: entry.id, work: entry.work, amountYuan: entry.amountYuan, status: entry.status,
           approvalInstanceId: entry.approvalInstanceId, exceedsContractAmount: entry.exceedsContractAmount,
-          canSubmit: creator && access.canUpload && entry.status === "draft", duties: identities }];
+          canSubmit: creator && access.canUpload && entry.status === "draft",
+          canRevise: creator && access.canUpload && entry.status === "draft",
+          rejectionReason: entry.rejectionReason ?? null, duties: identities }];
       }) };
     });
   }
@@ -132,7 +134,7 @@ export class ContractWorkCompletionApprovalService {
         userId, roleKeys: currentRoles(await loadEffectiveProjectApprovalAssignments(tx, projectId, matchingRoles, userId, false))
       })));
       const identity = resolveApprovalReviewIdentity({
-        node: { roleKeys: node.roleKeys, approvedRoleKeys: node.approvedRoleKeys,
+        node: { mode: node.mode, roleKeys: node.roleKeys, approvedRoleKeys: node.approvedRoleKeys,
           candidateUserIdsByRole: node.candidateUserIdsByRole },
         actorUserId: actorId, actorRoleKeys: ownRoles, activeDelegators: delegatedRoles
       });

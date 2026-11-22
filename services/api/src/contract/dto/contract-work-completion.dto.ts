@@ -16,6 +16,17 @@ export class CreateContractWorkCompletionDraftDto {
   requestKey!: string;
 }
 
+export class ReviseContractWorkCompletionDraftDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  work!: string;
+
+  @IsString()
+  @MaxLength(25)
+  amountYuan!: string;
+}
+
 export class ReviewContractWorkCompletionDto {
   @IsString()
   @MinLength(1)

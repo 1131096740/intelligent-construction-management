@@ -303,6 +303,25 @@ describe("executive OR dual-role identity", () => {
 });
 
 
+describe("parallel function OR dual-role identity", () => {
+  const financeNode = { mode: "any", roleKeys: ["finance_staff", "finance_director"],
+    candidateUserIdsByRole: { finance_staff: ["finance"], finance_director: ["finance"] } };
+  it("resolves the first frozen role when one person holds both duties of an OR node", () => {
+    expect(resolveApprovalReviewIdentity({ node: financeNode, actorUserId: "finance",
+      actorRoleKeys: ["finance_staff", "finance_director"] }))
+      .toEqual({ approvedRoleKey: "finance_staff", representedUserId: "finance", viaAssignment: false });
+    expect(resolveApprovalReviewIdentity({ node: financeNode, actorUserId: "finance",
+      actorRoleKeys: ["finance_director"] }))
+      .toEqual({ approvedRoleKey: "finance_director", representedUserId: "finance", viaAssignment: false });
+  });
+  it("still fails closed for an all-sign node or a person absent from the frozen map", () => {
+    expect(resolveApprovalReviewIdentity({ node: { ...financeNode, mode: "all" }, actorUserId: "finance",
+      actorRoleKeys: ["finance_staff", "finance_director"] })).toBeNull();
+    expect(resolveApprovalReviewIdentity({ node: financeNode, actorUserId: "outsider",
+      actorRoleKeys: ["finance_staff", "finance_director"] })).toBeNull();
+  });
+});
+
 describe("standing delegation preserves the selected frozen person", () => {
   const baseNode = {
     roleKeys: ["finance_director"],

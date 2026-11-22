@@ -1,7 +1,7 @@
 import { ContractWorkCompletionService } from "./contract-work-completion.service";
 import { ContractWorkCompletionApprovalService } from "./contract-work-completion-approval.service";
 import { ContractWorkCompletionNotificationService } from "./contract-work-completion-notification.service";
-import { CreateContractWorkCompletionDraftDto, ReviewContractWorkCompletionDto } from "./dto/contract-work-completion.dto";
+import { CreateContractWorkCompletionDraftDto, ReviewContractWorkCompletionDto, ReviseContractWorkCompletionDraftDto } from "./dto/contract-work-completion.dto";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { ContractDutyNotificationService } from "./contract-duty-notification.service";
 import { ContractV2ArchiveService } from "./contract-v2-archive.service";
@@ -165,6 +165,17 @@ export class ContractController {
   ) {
     if (!this.workCompletion) throw new InternalServerErrorException("履约登记服务尚未就绪");
     return this.workCompletion.createDraft(versionId, user.id, body);
+  }
+
+  @Patch(":contractVersionId/work-completions/:completionId")
+  @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
+  reviseWorkCompletionDraft(
+    @Param("contractVersionId") versionId: string, @Param("completionId") completionId: string,
+    @Body() body: ReviseContractWorkCompletionDraftDto, @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.workCompletion) throw new InternalServerErrorException("履约登记服务尚未就绪");
+    return this.workCompletion.reviseDraft(versionId, completionId, user.id, body);
   }
 
   @Post(":contractVersionId/work-completions/:completionId/submission")

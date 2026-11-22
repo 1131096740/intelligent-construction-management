@@ -22,6 +22,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     assignment: "linea-assignment", participating: "linea-participating",
     contractA: "linea-contract-a", versionA: "linea-contract-a-v1",
     contractB: "linea-contract-b", versionB: "linea-contract-b-v1",
+    contractC: "linea-contract-c", versionC: "linea-contract-c-v1",
     staff: "linea-user-staff", director: "linea-user-director",
     manager: "linea-user-manager", finance: "linea-user-finance"
   };
@@ -39,18 +40,21 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
   let approvalInstanceId: string;
 
   const sha = (buffer: Buffer) => createHash("sha256").update(buffer).digest("hex");
-  const call = async (actor: keyof typeof phones, path: string, body?: unknown, method?: string) => {
+  const callRaw = async (actor: keyof typeof phones, path: string, body?: unknown, method?: string) => {
     const response = await fetch(`${base}${path}`, {
       method: method ?? (body === undefined ? "GET" : "POST"),
       headers: { "content-type": "application/json", authorization: `Bearer ${tokens.get(actor)}` },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
     const text = await response.text();
-    const payload = text ? JSON.parse(text) : null;
-    if (response.status >= 400) {
-      throw new Error(`LINE_A_HTTP ${method ?? "POST"} ${path} -> ${response.status}: ${JSON.stringify(payload)}`);
+    return { status: response.status, body: text ? JSON.parse(text) : null };
+  };
+  const call = async (actor: keyof typeof phones, path: string, body?: unknown, method?: string) => {
+    const result = await callRaw(actor, path, body, method);
+    if (result.status >= 400) {
+      throw new Error(`LINE_A_HTTP ${method ?? "POST"} ${path} -> ${result.status}: ${JSON.stringify(result.body)}`);
     }
-    return { status: response.status, body: payload };
+    return result;
   };
   const readBaseInfo = (detail: { baseInfo: Array<{ label: string; value: string }> }, label: string) =>
     detail.baseInfo.find(item => item.label === label)?.value;
@@ -81,13 +85,15 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { key: "contract_director", name: "合同部主管" },
       { key: "contract_staff", name: "合同员" },
       { key: "project_manager", name: "项目经理" },
-      { key: "finance_staff", name: "财务" }
+      { key: "finance_staff", name: "财务" },
+      { key: "finance_director", name: "财务主管" }
     ], skipDuplicates: true });
-    const positions = await owner.position.findMany({ where: { key: { in: ["contract_director", "contract_staff", "project_manager", "finance_staff"] } } });
+    const positions = await owner.position.findMany({ where: { key: { in: ["contract_director", "contract_staff", "project_manager", "finance_staff", "finance_director"] } } });
     const positionId = (key: string) => positions.find(position => position.key === key)!.id;
     await owner.userPosition.createMany({ data: [
       { userId: ids.director, positionId: positionId("contract_director"), projectId: null },
-      { userId: ids.finance, positionId: positionId("finance_staff"), projectId: null }
+      { userId: ids.finance, positionId: positionId("finance_staff"), projectId: null },
+      { userId: ids.finance, positionId: positionId("finance_director"), projectId: null }
     ] });
     await owner.projectMember.createMany({ data: [
       { projectId: ids.project, userId: ids.staff, positionKey: "contract_staff" },
@@ -129,7 +135,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     };
     await owner.contract.createMany({ data: [
       { id: ids.contractA, code: "LINEA-HT-A", name: "隔离下游合同", contractTypeKey: "labor_subcontract", ...contractBase },
-      { id: ids.contractB, code: "LINEA-HT-B", name: "隔离其他合同", contractTypeKey: "generic_contract", ...contractBase }
+      { id: ids.contractB, code: "LINEA-HT-B", name: "隔离其他合同", contractTypeKey: "generic_contract", ...contractBase },
+      { id: ids.contractC, code: "LINEA-HT-C", name: "隔离框架其他合同", contractTypeKey: "other", ...contractBase }
     ] });
     const versionBase = {
       changeType: "original", status: "effective", amountCents: 1_000_000n, numericProtocolVersion: 1,
@@ -142,18 +149,24 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     };
     await owner.contractVersion.createMany({ data: [
       { id: ids.versionA, contractId: ids.contractA, versionNo: 1, ...versionBase },
-      { id: ids.versionB, contractId: ids.contractB, versionNo: 1, ...versionBase }
+      { id: ids.versionB, contractId: ids.contractB, versionNo: 1, ...versionBase },
+      { id: ids.versionC, contractId: ids.contractC, versionNo: 1, ...versionBase,
+        amountCents: 0n, amountLimitType: "unlimited", pricingNature: "framework" }
     ] });
     await owner.paymentTermsVersion.createMany({ data: [
       { id: "linea-terms-a", contractId: ids.contractA, contractVersionId: ids.versionA, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
       { id: "linea-terms-b", contractId: ids.contractB, contractVersionId: ids.versionB, versionNo: 1,
-        status: "effective", originalText: "隔离付款约定：验收后三十日支付" }
+        status: "effective", originalText: "隔离付款约定：验收后三十日支付" },
+      { id: "linea-terms-c", contractId: ids.contractC, contractVersionId: ids.versionC, versionNo: 1,
+        status: "effective", originalText: "隔离付款约定：按实际完成工作确认" }
     ] });
     await owner.contractPartySnapshot.createMany({ data: [
       { contractVersionId: ids.versionA, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
       { contractVersionId: ids.versionB, roleKey: "party_b", displayOrder: 0,
+        businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
+      { contractVersionId: ids.versionC, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } }
     ] });
 
@@ -309,5 +322,89 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect(fact?.amountYuan?.toFixed(4)).toBe("18000.0123");
     expect(await owner.operatingImpactEntry.count({ where: { factId: fact!.id, impactKind: "confirmed_cost" } })).toBe(1);
     expect(await owner.auditLog.count({ where: { businessId: workCompletionId, action: "contract.work_completion.approve" } })).toBe(3);
+    // 财务同一人同时持有 finance_staff / finance_director：只落一次签字，并按冻结顺序记 finance_staff。
+    expect(await owner.approvalActionLog.count({ where: { approvalInstanceId, action: "approve" } })).toBe(3);
+    expect(await owner.approvalActionLog.count({ where: { approvalInstanceId,
+      metadata: { path: ["nodeIndex"], equals: 2 } } })).toBe(1);
+    const financeAction = await owner.approvalActionLog.findFirst({ where: { approvalInstanceId,
+      metadata: { path: ["nodeIndex"], equals: 2 } } });
+    expect(financeAction).toMatchObject({ actorUserId: ids.finance, approvedRoleKey: "finance_staff" });
+  });
+
+  it("returns a rejected work completion, revises it and counts only the latest confirmed round", async () => {
+    const draft = await call("staff", `/contracts/${ids.versionB}/work-completion-drafts`, {
+      work: "隔离真库待修订工作", amountYuan: "2000.0000", requestKey: "linea-work-002"
+    });
+    const completionId = draft.body.id;
+    const first = await call("staff", `/contracts/${ids.versionB}/work-completions/${completionId}/submission`, undefined, "POST");
+    const firstRound = first.body.approvalInstanceId;
+    const rejected = await call("manager", `/contracts/${ids.versionB}/work-completions/${completionId}/approval`, {
+      approvalInstanceId: firstRound, dutyIndex: 1, decision: "reject", comment: "请核对已完成工作量"
+    });
+    expect(rejected.body.status).toBe("draft");
+
+    const returned = await call("staff", `/contracts/${ids.versionB}/work-completions`);
+    expect(returned.body.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: completionId, status: "draft", canRevise: true,
+        rejectionReason: "请核对已完成工作量" })
+    ]));
+
+    const revised = await call("staff", `/contracts/${ids.versionB}/work-completions/${completionId}`, {
+      work: "隔离真库修正后的工作", amountYuan: "2100.0000"
+    }, "PATCH");
+    expect(revised.body).toMatchObject({ work: "隔离真库修正后的工作", amountYuan: "2100.0000",
+      exceedsContractAmount: false });
+    const reviseAudit = await owner.auditLog.findFirst({ where: { businessId: ids.versionB,
+      action: "contract.work_completion.draft.revise" }, orderBy: { createdAt: "desc" } });
+    expect(reviseAudit?.metadata).toMatchObject({ completionId, previousWork: "隔离真库待修订工作",
+      previousAmountYuan: "2000.0000", amountYuan: "2100.0000" });
+
+    const second = await call("staff", `/contracts/${ids.versionB}/work-completions/${completionId}/submission`, undefined, "POST");
+    const secondRound = second.body.approvalInstanceId;
+    expect(secondRound).not.toBe(firstRound);
+    // 旧轮迟到同意被拒绝，旧轮不产生签字，也不产生成本。
+    const late = await callRaw("finance", `/contracts/${ids.versionB}/work-completions/${completionId}/approval`, {
+      approvalInstanceId: firstRound, dutyIndex: 2, decision: "approve"
+    });
+    expect(late.status).toBe(409);
+
+    for (const [actor, dutyIndex] of [["director", 0], ["manager", 1], ["finance", 2]] as const) {
+      await call(actor, `/contracts/${ids.versionB}/work-completions/${completionId}/approval`, {
+        approvalInstanceId: secondRound, dutyIndex, decision: "approve"
+      });
+    }
+    const facts = await owner.contractWorkCompletionFact.findMany({ where: { completionId } });
+    expect(facts).toHaveLength(1);
+    expect(facts[0]).toMatchObject({ approvalInstanceId: secondRound });
+    expect(facts[0].amountYuan.toFixed(4)).toBe("2100.0000");
+    expect(await owner.approvalActionLog.count({ where: { approvalInstanceId: firstRound, action: "approve" } })).toBe(0);
+    expect(await owner.approvalActionLog.count({ where: { approvalInstanceId: firstRound, action: "reject" } })).toBe(1);
+
+    // 已确认不可再修订，已确认事实不可覆盖。
+    const blocked = await callRaw("staff", `/contracts/${ids.versionB}/work-completions/${completionId}`, {
+      work: "确认后篡改", amountYuan: "1.0000"
+    }, "PATCH");
+    expect(blocked.status).toBe(409);
+    await expect(owner.contractWorkCompletionFact.update({ where: { id: facts[0].id },
+      data: { amountYuan: 1 } })).rejects.toThrow();
+  });
+
+  it("does not block real work confirmation when the framework contract has no total price", async () => {
+    const draft = await call("staff", `/contracts/${ids.versionC}/work-completion-drafts`, {
+      work: "隔离真库框架合同已完成工作", amountYuan: "300.0123", requestKey: "linea-work-003"
+    });
+    expect(draft.body.exceedsContractAmount).toBe(false);
+    const submitted = await call("staff", `/contracts/${ids.versionC}/work-completions/${draft.body.id}/submission`, undefined, "POST");
+    const round = submitted.body.approvalInstanceId;
+    for (const [actor, dutyIndex] of [["director", 0], ["manager", 1], ["finance", 2]] as const) {
+      await call(actor, `/contracts/${ids.versionC}/work-completions/${draft.body.id}/approval`, {
+        approvalInstanceId: round, dutyIndex, decision: "approve"
+      });
+    }
+    const fact = await owner.contractWorkCompletionFact.findFirst({ where: { completionId: draft.body.id } });
+    expect(fact?.amountYuan.toFixed(4)).toBe("300.0123");
+    const cost = await owner.operatingFact.findFirst({ where: { sourceType: "contract_work_completion",
+      sourceBusinessId: fact!.id } });
+    expect(cost?.amountYuan?.toFixed(4)).toBe("300.0123");
   });
 });
