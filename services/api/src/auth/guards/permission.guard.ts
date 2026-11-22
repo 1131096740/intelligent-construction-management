@@ -746,6 +746,21 @@ export class PermissionGuard implements CanActivate {
       return settlement?.projectId;
     }
 
+    const signedSettlementIdFromBody =
+      typeof request.body?.signedSettlementId === "string"
+        ? request.body.signedSettlementId
+        : undefined;
+    if (signedSettlementIdFromBody) {
+      const signedSettlement = await this.prisma.signedContractSettlement.findUnique({
+        where: { id: signedSettlementIdFromBody },
+        select: { projectId: true }
+      });
+      if (!signedSettlement) {
+        throw new ForbiddenException("已签结算资源不存在或当前账号无权访问");
+      }
+      return signedSettlement.projectId;
+    }
+
     const contractVersionId =
       (typeof request.body?.contractVersionId === "string"
         ? request.body.contractVersionId

@@ -35,7 +35,7 @@ export interface GenericDirectCapacityItem {
   value: string;
 }
 
-export type PaymentCreateSourceType = "settlement" | "contract_due" | "contract_advance";
+export type PaymentCreateSourceType = "settlement" | "signed_settlement" | "contract_due" | "contract_advance";
 
 export interface PaymentCreateSourceOption {
   value: PaymentCreateSourceType;
@@ -136,6 +136,7 @@ export const paymentSummaryItems: PaymentSummaryItem[] = [
 export const paymentCreateSourceOptions: PaymentCreateSourceOption[] = [
   { value: "contract_due", label: "合同累计结算付款" },
   { value: "settlement", label: "单张结算付款" },
+  { value: "signed_settlement", label: "已签结算最近确认一期" },
   { value: "contract_advance", label: "合同预付款" }
 ];
 

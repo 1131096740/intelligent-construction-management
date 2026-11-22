@@ -3647,6 +3647,12 @@ model PaymentRequest {
   id                           String             @id @default(uuid())
   projectId                    String
   settlementId                 String?
+  signedSettlementId           String?
+  signedSettlementConfirmationNo BigInt?
+  signedSettlementConfirmedYuan Decimal?          @db.Decimal(24, 4)
+  signedSettlementContractConfirmedYuan Decimal?  @db.Decimal(24, 4)
+  signedSettlementOccupiedCents BigInt?
+  signedSettlementBasisAt      DateTime?
   sourceType                   String             @default("settlement")
   contractId                   String
   contractVersionId            String
@@ -3671,6 +3677,7 @@ model PaymentRequest {
   agreementSnapshot            PaymentRequestAgreementSnapshot?
 
   @@index([paymentTermsStageId], map: "PaymentRequest_paymentTermsStageId_idx")
+  @@index([signedSettlementId], map: "PaymentRequest_signedSettlementId_idx")
   @@index([status, updatedAt])
 }
 

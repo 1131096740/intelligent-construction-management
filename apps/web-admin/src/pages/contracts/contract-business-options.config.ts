@@ -16,6 +16,7 @@ export interface BusinessSelectOption<T> {
 export interface PaymentCreateBusinessForm {
   sourceType: PaymentCreateSourceType;
   paymentTermsStageId?: string;
+  signedSettlementId?: string;
   code: string;
   requestedAmountYuan: string;
 }
@@ -100,6 +101,20 @@ export function buildPaymentCreatePayload(
     return {
       ...commonPayload,
       settlementId: settlement.settlementId
+    };
+  }
+
+  if (form.sourceType === "signed_settlement") {
+    if (!contract?.canCreatePayment) {
+      throw new Error(contract?.paymentUnavailableReason ?? "请选择可付款合同");
+    }
+    const signedSettlementId = requiredText(
+      form.signedSettlementId ?? "",
+      "最近确认的已签结算"
+    );
+    return {
+      ...commonPayload,
+      signedSettlementId
     };
   }
 

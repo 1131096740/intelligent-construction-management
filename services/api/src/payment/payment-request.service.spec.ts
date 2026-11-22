@@ -1,4 +1,5 @@
 import { Test } from "@nestjs/testing";
+import { Prisma } from "@prisma/client";
 import { PaymentController } from "./payment.controller";
 import { PaymentReadService } from "./payment-read.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -1319,6 +1320,378 @@ name: "签批人甲",
         approvedAmountCents: null,
         paidAmountCents: 0n
       }
+    });
+  });
+
+  describe("signed settlement payment basis (SET-09/A12)", () => {
+    const signedSettlementRow = (
+      id: string,
+      amountYuan: string,
+      confirmationNo: bigint,
+      reviewedAt = new Date("2026-11-10T00:00:00.000Z")
+    ) => ({
+      id,
+      number: `JS-${id}`,
+      amountYuan: new Prisma.Decimal(amountYuan),
+      confirmationNo,
+      reviewedAt
+    });
+
+    function signedSettlementCreateTx(options: {
+      rows: ReturnType<typeof signedSettlementRow>[];
+      selectedId: string;
+      state?: string;
+      contractKind?: string;
+      occupied?: Array<{
+        status: string;
+        requestedAmountCents: bigint;
+        approvedAmountCents: bigint | null;
+        paidAmountCents: bigint;
+      }>;
+    }) {
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: "signed-settlement-advisory-lock" }]),
+        signedContractSettlement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: options.selectedId,
+            projectId: "project-1",
+            contractKind: options.contractKind ?? "downstream",
+            contractId: "contract-1",
+            state: options.state ?? "confirmed"
+          }),
+          findMany: jest.fn().mockResolvedValue(options.rows)
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            projectId: "project-1",
+            contractTypeKey: "labor_subcontract",
+            voidedAt: null
+          })
+        },
+        contractVersion: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            signingSubjectType: "our_company"
+          })
+        },
+        paymentTermsVersion: {
+          findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+        },
+        contractTakeover: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(null)
+        },
+        settlement: { findMany: jest.fn().mockResolvedValue([]) },
+        projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+        paymentRequest: {
+          findMany: jest.fn().mockResolvedValue(options.occupied ?? []),
+          create: jest.fn().mockImplementation(({ data }) =>
+            Promise.resolve({
+              id: "payment-1",
+              code: data.code,
+              projectId: data.projectId,
+              settlementId: data.settlementId,
+              signedSettlementId: data.signedSettlementId,
+              sourceType: data.sourceType,
+              contractId: data.contractId,
+              contractVersionId: data.contractVersionId,
+              paymentTermsVersionId: data.paymentTermsVersionId,
+              status: data.status,
+              paymentSubjectType: data.paymentSubjectType,
+              requestedAmountCents: data.requestedAmountCents,
+              approvedAmountCents: data.approvedAmountCents,
+              paidAmountCents: data.paidAmountCents
+            })
+          )
+        }
+      };
+      const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+      return { tx, prisma };
+    }
+
+    it("uses the full contract cumulative, not the negative latest period, as the payment cap", async () => {
+      const rows = [
+        signedSettlementRow("signed-positive", "100.0000", 1n),
+        signedSettlementRow("signed-negative", "-30.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+      ];
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows,
+        selectedId: "signed-negative",
+        occupied: [
+          {
+            status: "paid",
+            requestedAmountCents: 2_000n,
+            approvedAmountCents: 2_000n,
+            paidAmountCents: 2_000n
+          }
+        ]
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      const created = await paymentService.create({
+        sourceType: "signed_settlement",
+        signedSettlementId: "signed-negative",
+        code: "FK-SIGNED-001",
+        requestedAmountCents: "5000"
+      });
+
+      expect(created).toMatchObject({
+        sourceType: "signed_settlement",
+        code: "FK-SIGNED-001",
+        requestedAmountCents: "5000"
+      });
+      expect(tx.paymentRequest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          settlementId: null,
+          signedSettlementId: "signed-negative",
+          sourceType: "signed_settlement",
+          signedSettlementConfirmationNo: 2n,
+          signedSettlementOccupiedCents: 2_000n,
+          requestedAmountCents: 5_000n
+        })
+      });
+      const data = tx.paymentRequest.create.mock.calls[0]![0].data;
+      // 累计 100 - 30 = 70 元；已付 20 元；本次 50 元刚好用满。
+      expect(data.signedSettlementConfirmedYuan.toFixed(4)).toBe("-30.0000");
+      expect(data.signedSettlementContractConfirmedYuan.toFixed(4)).toBe("70.0000");
+    });
+
+    it("rejects a payment above the full contract cumulative remaining amount", async () => {
+      const rows = [
+        signedSettlementRow("signed-positive", "100.0000", 1n),
+        signedSettlementRow("signed-negative", "-30.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+      ];
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows,
+        selectedId: "signed-negative",
+        occupied: [
+          {
+            status: "paid",
+            requestedAmountCents: 2_000n,
+            approvedAmountCents: 2_000n,
+            paidAmountCents: 2_000n
+          }
+        ]
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-negative",
+          code: "FK-SIGNED-002",
+          requestedAmountCents: "5001"
+        })
+      ).rejects.toThrow("合同已签结算累计可付金额不足");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+      expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.paymentRequest.create.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER
+      );
+    });
+
+    it("rejects a confirmed signed settlement that is not the latest confirmed period", async () => {
+      const rows = [
+        signedSettlementRow("signed-latest", "100.0000", 2n, new Date("2026-11-11T00:00:00.000Z")),
+        signedSettlementRow("signed-old", "100.0000", 1n)
+      ];
+      const { tx, prisma } = signedSettlementCreateTx({ rows, selectedId: "signed-old" });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-old",
+          code: "FK-SIGNED-003",
+          requestedAmountCents: "100"
+        })
+      ).rejects.toThrow("付款只可选择最近确认的一期已签结算");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a signed settlement that is not yet confirmed", async () => {
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows: [],
+        selectedId: "signed-pending",
+        state: "pending_review"
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-pending",
+          code: "FK-SIGNED-004",
+          requestedAmountCents: "100"
+        })
+      ).rejects.toThrow("当前已签结算尚未复核确认");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects paying an upward signed settlement through our payment request", async () => {
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows: [],
+        selectedId: "signed-upward",
+        contractKind: "upward"
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-upward",
+          code: "FK-SIGNED-005",
+          requestedAmountCents: "100"
+        })
+      ).rejects.toThrow("表外或对上结算不产生我方付款申请");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("revalidates the contract cumulative inside the execution transaction and blocks overpay after a negative settlement", async () => {
+      const fixture = hardenedPaymentExecutionFixture({
+        sourceType: "signed_settlement",
+        settlementId: null,
+        requestedAmountCents: 5_000n,
+        approvedAmountCents: 5_000n,
+        paidAmountCents: 0n
+      });
+      (fixture.payment as unknown as { signedSettlementId: string | null }).signedSettlementId =
+        "signed-negative";
+      const tx = fixture.tx as unknown as Record<string, unknown> & {
+        paymentRequest: { findMany: jest.Mock };
+        paymentExecution: { create: jest.Mock };
+      };
+      tx.settlement = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([])
+      };
+      tx.signedContractSettlement = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "signed-negative",
+          contractKind: "downstream",
+          contractId: "contract-1",
+          state: "confirmed"
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          signedSettlementRow("signed-positive", "100.0000", 1n),
+          signedSettlementRow("signed-negative", "-60.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+        ])
+      };
+      tx.contractTakeover = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      };
+      tx.projectProxyPayment = { findMany: jest.fn().mockResolvedValue([]) };
+      tx.paymentRequest.findMany = jest.fn().mockResolvedValue([
+        {
+          status: "approved_pending_payment",
+          requestedAmountCents: 5_000n,
+          approvedAmountCents: 5_000n,
+          paidAmountCents: 0n
+        }
+      ]);
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        fixture.prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      // 合同累计 100 - 60 = 40 元；申请批复 50 元；实付 45 元超过累计可付。
+      await expect(
+        paymentService.recordExecution("FK-2026-012", "cashier-1", {
+          ...paymentExecutionCoordinates,
+          amountCents: "4500",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+      ).rejects.toThrow("合同已签结算累计可付金额不足");
+      expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    });
+
+    it("allows execution while the latest contract cumulative still covers the request", async () => {
+      const fixture = hardenedPaymentExecutionFixture({
+        sourceType: "signed_settlement",
+        settlementId: null,
+        requestedAmountCents: 5_000n,
+        approvedAmountCents: 5_000n,
+        paidAmountCents: 0n
+      });
+      (fixture.payment as unknown as { signedSettlementId: string | null }).signedSettlementId =
+        "signed-latest";
+      const tx = fixture.tx as unknown as Record<string, unknown> & {
+        paymentRequest: { findMany: jest.Mock };
+        paymentExecution: { create: jest.Mock };
+      };
+      tx.settlement = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([])
+      };
+      tx.signedContractSettlement = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "signed-latest",
+          contractKind: "downstream",
+          contractId: "contract-1",
+          state: "confirmed"
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          signedSettlementRow("signed-positive", "100.0000", 1n),
+          signedSettlementRow("signed-latest", "-30.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+        ])
+      };
+      tx.contractTakeover = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      };
+      tx.projectProxyPayment = { findMany: jest.fn().mockResolvedValue([]) };
+      tx.paymentRequest.findMany = jest.fn().mockResolvedValue([
+        {
+          status: "approved_pending_payment",
+          requestedAmountCents: 5_000n,
+          approvedAmountCents: 5_000n,
+          paidAmountCents: 0n
+        }
+      ]);
+      tx.paymentExecution.create = jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({ ...fixture.createdExecution, amountCents: data.amountCents })
+      );
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        fixture.prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "3000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      });
+
+      expect(execution.amountCents).toBe("3000");
+      expect(tx.paymentExecution.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          paymentRequestId: "payment-1",
+          settlementId: null,
+          amountCents: 3_000n
+        })
+      });
+      expect((tx.paymentRequest as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({
+        where: { id: "payment-1" },
+        data: { paidAmountCents: 3_000n, status: "partially_paid" }
+      });
     });
   });
 
