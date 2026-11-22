@@ -1,4 +1,5 @@
 import { ContractWorkCompletionApprovalService } from "./contract-work-completion-approval.service";
+import { ContractWorkCompletionNotificationService } from "./contract-work-completion-notification.service";
 import { ContractWorkCompletionService } from "./contract-work-completion.service";
 import { ContractDutyNotificationService } from "./contract-duty-notification.service";
 import { UPWARD_DIRECT_ARCHIVE_AUTHORITY } from "./contract-upward-direct-registration";
@@ -60,6 +61,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     ContractDutyNotificationService,
     ContractWorkCompletionService,
     ContractWorkCompletionApprovalService,
+    ContractWorkCompletionNotificationService,
     ContractV2SubmissionService,
     ContractV2ArchiveService,
     { provide: GENERATED_ARCHIVE_PREPARATION_READER, useExisting: PrivateFileStorage },

@@ -1,5 +1,6 @@
 import { ContractWorkCompletionService } from "./contract-work-completion.service";
 import { ContractWorkCompletionApprovalService } from "./contract-work-completion-approval.service";
+import { ContractWorkCompletionNotificationService } from "./contract-work-completion-notification.service";
 import { CreateContractWorkCompletionDraftDto, ReviewContractWorkCompletionDto } from "./dto/contract-work-completion.dto";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { ContractDutyNotificationService } from "./contract-duty-notification.service";
@@ -101,16 +102,23 @@ export class ContractController {
     @Optional() private readonly signedChanges?: ContractSignedChangeService,
     @Optional() private readonly effectiveTax?: ContractEffectiveTaxService,
     @Optional() private readonly workCompletion?: ContractWorkCompletionService,
-    @Optional() private readonly workCompletionApproval?: ContractWorkCompletionApprovalService
+    @Optional() private readonly workCompletionApproval?: ContractWorkCompletionApprovalService,
+    @Optional() private readonly workCompletionNotifications?: ContractWorkCompletionNotificationService
   ) {}
 
   @Get(":contractVersionId/duty-sms")
   async dutySmsStatus(@Param("contractVersionId") versionId:string,@CurrentUser() user:AuthenticatedUser) {
-    return {notices:await this.dutyNotifications?.notificationStatus(versionId,user.id)??[]};
+    const [versionNotices,completionNotices]=await Promise.all([
+      this.dutyNotifications?.notificationStatus(versionId,user.id)??[],
+      this.workCompletionNotifications?.notificationStatusForVersion(versionId,user.id)??[]
+    ]);
+    return {notices:[...versionNotices,...completionNotices]};
   }
 
   @Post(":contractVersionId/duty-sms/retry")
-  retryDutySms(@Param("contractVersionId") versionId:string,@CurrentUser() user:AuthenticatedUser,@Body() input:RetryDutyNotificationDto) {
+  async retryDutySms(@Param("contractVersionId") versionId:string,@CurrentUser() user:AuthenticatedUser,@Body() input:RetryDutyNotificationDto) {
+    const completionNotice=await this.workCompletionNotifications?.retry(versionId,user.id,input.attemptId);
+    if(completionNotice)return completionNotice;
     if(!this.dutyNotifications)throw new BadRequestException("短信通知暂不可用");
     return this.dutyNotifications.retry(versionId,user.id,input.attemptId);
   }
