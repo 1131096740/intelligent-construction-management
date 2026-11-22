@@ -3449,7 +3449,14 @@ export class ContractReadService {
           EXISTS (SELECT 1 FROM "ApprovalInstance" i WHERE i."businessType" = 'contract_version' AND i."businessId" = v."id" AND
             (i."applicantUserId" = ${actorId} OR EXISTS (SELECT 1 FROM "ApprovalActionLog" a WHERE a."approvalInstanceId" = i."id"
               AND a."action" IN ('approve','reject','reject_previous','return_to_applicant','transfer','delegate')
-              AND (a."actorUserId" = ${actorId} OR a."representedUserId" = ${actorId}))))
+              AND (a."actorUserId" = ${actorId} OR a."representedUserId" = ${actorId})))) OR
+          EXISTS (SELECT 1 FROM "ApprovalInstance" i2
+            JOIN "ContractWorkCompletion" cw ON cw."id" = i2."businessId"
+            WHERE i2."businessType" = 'contract_work_completion' AND cw."contractVersionId" = v."id" AND
+              (cw."createdByUserId" = ${actorId} OR i2."applicantUserId" = ${actorId} OR
+                EXISTS (SELECT 1 FROM "ApprovalActionLog" a2 WHERE a2."approvalInstanceId" = i2."id"
+                  AND a2."action" IN ('approve','reject')
+                  AND (a2."actorUserId" = ${actorId} OR a2."representedUserId" = ${actorId}))))
         )
       `);
       for (const row of rows ?? []) result.add(row.contractId);

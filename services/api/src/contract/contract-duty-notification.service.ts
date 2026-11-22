@@ -155,20 +155,21 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
       (task && (task.approvalInstanceId!==round.id || task.contractVersionId!==version.id || contract.ownerUserId!==round.applicantUserId)))return null;
     if(strict) {
       if(stage==="correction") {
+        // 只有仍是最新一轮退回才提醒；已重提或已撤回的旧轮不再打扰申请人。
         const latest=await tx.approvalInstance.findFirst({where:{businessType:"contract_version",businessId:version.id,flowType:"contract.approve"},
           orderBy:[{createdAt:"desc"},{id:"desc"}],select:{id:true}});
         if(latest?.id!==round.id)return null;
       } else {
-      const snapshot=contractRoundSubmissionSnapshot(round.frozenNodes);
-      if(!snapshot || snapshot.contractVersionId!==version.id || snapshot.documentContentRevision!==version.documentContentRevision ||
-         snapshot.documentContentFingerprint!==version.documentContentFingerprint)return null;
-      if(stage==="approval") {
-        const rounds=await tx.approvalInstance.findMany({where:{businessType:"contract_version",businessId:version.id,flowType:"contract.approve",status:"in_progress"},select:{id:true},take:2});
-        if(rounds.length!==1 || rounds[0].id!==round.id)return null;
-      } else {
-        if(!task?.approvedByUserId || !task.approvedAt || activeApprovalNodeIndexes(round.frozenNodes,0).length)return null;
-        if(stage==="archive" && (version.changeType!=="original" || version.supersedesVersionId || !task.completedByUserId || !task.completedAt))return null;
-      }
+        const snapshot=contractRoundSubmissionSnapshot(round.frozenNodes);
+        if(!snapshot || snapshot.contractVersionId!==version.id || snapshot.documentContentRevision!==version.documentContentRevision ||
+           snapshot.documentContentFingerprint!==version.documentContentFingerprint)return null;
+        if(stage==="approval") {
+          const rounds=await tx.approvalInstance.findMany({where:{businessType:"contract_version",businessId:version.id,flowType:"contract.approve",status:"in_progress"},select:{id:true},take:2});
+          if(rounds.length!==1 || rounds[0].id!==round.id)return null;
+        } else {
+          if(!task?.approvedByUserId || !task.approvedAt || activeApprovalNodeIndexes(round.frozenNodes,0).length)return null;
+          if(stage==="archive" && (version.changeType!=="original" || version.supersedesVersionId || !task.completedByUserId || !task.completedAt))return null;
+        }
       }
     }
     const project=await tx.project.findUnique({where:{id:contract.projectId},select:{isActive:true,name:true}});
