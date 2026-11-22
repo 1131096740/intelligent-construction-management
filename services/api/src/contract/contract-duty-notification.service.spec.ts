@@ -1,4 +1,4 @@
-import type { Prisma, ApprovalInstance, Contract } from "@prisma/client";
+import type { Prisma, ApprovalInstance, Contract, ContractVersion } from "@prisma/client";
 import type { PrismaService } from "../database/prisma.service";
 import type { ApprovalSmsService } from "../approval/approval-sms.service";
 import { ContractDutyNotificationService } from "./contract-duty-notification.service";
@@ -260,4 +260,82 @@ it.each(["approval","seal","archive"] as const)("只重试现阶段本人明确�
     expect(send).toHaveBeenCalledTimes(stage==="approval"?3:2);
     expect(rows.filter(row=>row.metadata.retryOf===failed.attemptId)).toHaveLength(1);
   }finally {archive.mockRestore();}
+});
+
+it("合同最终驳回或退回经办人时入队一条修改提醒，重提后取消，失败可重试且不重复派发", async () => {
+  const now = new Date();
+  const frozenNodes = [{ name: "合同主管", executionMode: "parallel", protocolVersion: 1, mode: "any",
+    roleKeys: ["contract_director"], approvedRoleKeys: [] }];
+  const round = { id: "round-reject", status: "rejected", businessType: "contract_version", businessId: "version",
+    flowType: "contract.approve", applicantUserId: "handler", currentNodeIndex: 0, createdAt: now, updatedAt: now,
+    frozenNodes } as unknown as ApprovalInstance;
+  const contract = { id: "contract", projectId: "project", ownerUserId: "handler", code: "HT-03",
+    name: "设备采购合同", companyEntityName: "我方公司", counterparty: "相对方" } as Contract;
+  const version = { id: "version", contractId: "contract", numericProtocolVersion: 2, signingSubjectType: "our_company",
+    status: "draft", amountYuan: null, amountLimitType: "capped" } as unknown as ContractVersion & { status: string };
+  type Log = { id: string; action: string; businessType?: string; businessId?: string; actorUserId?: string;
+    metadata: Record<string, unknown>; createdAt?: Date };
+  const rows: Log[] = [];
+  const tx = {
+    $queryRaw: async () => rows.filter(row => row.action === "queued"),
+    project: { findUnique: async () => ({ isActive: true, name: "合同项目" }) },
+    contractVersion: { findUnique: async () => version },
+    contract: { findUnique: async () => contract },
+    approvalInstance: { findUnique: async () => round, findFirst: async () => ({ id: round.id }) },
+    user: { findUnique: async () => ({ isActive: true, name: "经办人", phone: "13800000009" }) },
+    auditLog: {
+      findMany: async ({ where }: { where: { id: { in: string[] } } }) => rows.filter(row => where.id.in.includes(row.id)),
+      findUnique: async ({ where }: { where: { id: string } }) => rows.find(row => row.id === where.id) ?? null,
+      createMany: async ({ data }: { data: Log[] }) => {
+        const fresh = data.filter(entry => !rows.some(row => row.id === entry.id));
+        rows.push(...fresh); return { count: fresh.length };
+      }
+    }
+  };
+  let serialization: Promise<unknown> = Promise.resolve();
+  const prisma = { ...tx, $queryRaw: async () => rows.filter(row => row.action === "queued"),
+    $transaction: (run: (client: typeof tx) => Promise<unknown>) => {
+      const next = serialization.then(() => run(tx)); serialization = next.catch(() => undefined); return next;
+    } };
+  const send = jest.fn().mockResolvedValue({ status: "failed" });
+  const service = new ContractDutyNotificationService(prisma as never, { available: () => true, sendDutyIntent: send } as never);
+
+  await service.queueCorrection(tx as never, contract, version, round, "HT-03");
+  await service.queueCorrection(tx as never, contract, version, round, "HT-03");
+  expect(rows.filter(row => row.action === "queued")).toHaveLength(1);
+  expect(rows.find(row => row.action === "queued")?.metadata).toMatchObject({
+    stage: "correction", recipientId: "handler", dutyName: "审批退回，请修改后重新提交", businessCode: "HT-03"
+  });
+  expect(send).not.toHaveBeenCalled();
+
+  await service.afterCommit();
+  expect(send).toHaveBeenCalledWith("13800000009", expect.objectContaining({
+    businessLabel: "合同退回修改", dutyName: "审批退回，请修改后重新提交", businessCode: "HT-03",
+    scopeName: "合同项目", subject: "设备采购合同", targetPath: "/合同管理/HT-03"
+  }));
+  const [failed] = await service.notificationStatus(version.id, "handler");
+  expect(failed).toMatchObject({ status: "failed", canRetry: true });
+
+  send.mockResolvedValue({ status: "accepted" });
+  const retried = await service.retry(version.id, "handler", failed.attemptId);
+  expect(retried).toMatchObject({ status: "queued", canRetry: false });
+  await service.afterCommit(retried.attemptId);
+  expect(await service.notificationStatus(version.id, "handler")).toEqual([
+    expect.objectContaining({ attemptId: retried.attemptId, status: "accepted", canRetry: false })
+  ]);
+  expect(send).toHaveBeenCalledTimes(2);
+  await expect(service.retry(version.id, "handler", retried.attemptId))
+    .rejects.toThrow("仅确认发送失败");
+
+  // 重提后（新轮进行中）已入队但未派发的提醒必须取消，不得再打扰申请人。
+  rows.length = 0; send.mockClear();
+  rows.push({ id: "queued-pending", action: "queued", businessType: "contract_duty_notification",
+    businessId: round.id, actorUserId: "handler",
+    metadata: { kind: "contract_v2_inside_duty_notification", event: "queued", stage: "correction", nodeIndex: -1,
+      recipientId: "handler", dutyName: "审批退回，请修改后重新提交", businessCode: "HT-03",
+      contractVersionId: version.id, sealTaskId: null } });
+  version.status = "in_approval"; round.status = "in_progress";
+  await service.afterCommit();
+  expect(send).not.toHaveBeenCalled();
+  expect(rows.some(row => row.action === "cancelled")).toBe(true);
 });

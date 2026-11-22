@@ -2270,6 +2270,7 @@ export class PaymentRequestService {
     }
 
     let completedInstanceId: string | undefined;
+    let correctionQueued = false;
     const result = await this.prisma.$transaction(async (tx) => {
       const lockedPayment = supportsApprovalReviewLock(tx)
         ? await this.lockPaymentRequestForUpdate(tx, paymentId)
@@ -2453,7 +2454,7 @@ export class PaymentRequestService {
           data: { status: "returned_to_applicant" }
         });
 
-        await tx.approvalActionLog.create({
+        const returnedAction = await tx.approvalActionLog.create({
           data: {
             approvalInstanceId: instance.id,
             action: "return_to_applicant",
@@ -2487,6 +2488,12 @@ export class PaymentRequestService {
           }
         });
 
+        if (this.approvalNotifications) {
+          // 退回修改后原申请人要改单重提，与审批待办共用同一入队/重试通道。
+          await this.approvalNotifications.queueCorrection(tx, updated, { ...instance, status: "returned_to_applicant" }, returnedAction);
+          correctionQueued = true;
+        }
+
         return updated;
       }
 
@@ -2502,7 +2509,7 @@ export class PaymentRequestService {
           where: { id: instance.id },
           data: { status: "rejected" }
         });
-        await tx.approvalActionLog.create({
+        const rejectedAction = await tx.approvalActionLog.create({
           data: {
             approvalInstanceId: instance.id,
             action: "reject",
@@ -2533,6 +2540,10 @@ export class PaymentRequestService {
             ...selfReview.metadata
           }
         });
+        if (this.approvalNotifications) {
+          await this.approvalNotifications.queueCorrection(tx, rejected, { ...instance, status: "rejected" }, rejectedAction);
+          correctionQueued = true;
+        }
         return rejected;
       }
 
@@ -2680,7 +2691,7 @@ export class PaymentRequestService {
       return approved;
     });
 
-    if (result.status === "approval_pending") await this.approvalNotifications?.afterCommit(result.id);
+    if (result.status === "approval_pending" || correctionQueued) await this.approvalNotifications?.afterCommit(result.id);
     if (completedInstanceId) {
       // Approval is already committed. Notification failure cannot turn this
       // result into an apparent failed approval or repeat the business action.

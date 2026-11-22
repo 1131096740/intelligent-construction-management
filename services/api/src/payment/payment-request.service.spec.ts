@@ -4872,6 +4872,90 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
     });
   });
 
+  it("付款最终驳回时为原申请人入队一条修改提醒，提交后才唤醒派发", async () => {
+    const tx = {
+      user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000n
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1", code: "FK-2026-012", status: "approval_rejected", approvedAmountCents: null
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn().mockResolvedValue({ id: "reject-action", action: "reject",
+        approvalInstanceId: "approval-instance-1" }) },
+      auditLog: { create: jest.fn() },
+      ...financingUsageUpdates(),
+      ...approvalRoleTables("general_manager")
+    };
+    attachApprovalSignatureFixture(tx);
+    let depth = 0;
+    const prisma = { $transaction: jest.fn(async (callback) => { depth += 1; try { return await callback(tx); } finally { depth -= 1; } }) };
+    const notifications = { queueCorrection: jest.fn(async () => { expect(depth).toBe(1); }),
+      afterCommit: jest.fn(async () => { expect(depth).toBe(0); }) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, notifications as never);
+
+    const rejected = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates, decision: "reject", comment: "付款条件尚未满足"
+    });
+
+    expect(notifications.queueCorrection).toHaveBeenCalledWith(tx, rejected,
+      expect.objectContaining({ id: "approval-instance-1", status: "rejected" }), { id: "reject-action", action: "reject",
+        approvalInstanceId: "approval-instance-1" });
+    expect(notifications.afterCommit).toHaveBeenCalledWith("payment-1");
+  });
+
+  it("付款退回申请人时同样为原申请人入队修改提醒", async () => {
+    const tx = {
+      user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({ ...paymentReviewPaymentVersion, id: "payment-1", code: "FK-2026-012",
+          projectId: "project-1", status: "approval_pending", requestedAmountCents: 50_000n }),
+        update: jest.fn().mockResolvedValue({ id: "payment-1", code: "FK-2026-012", status: "draft" })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({ ...paymentReviewApprovalVersion, id: "approval-instance-1", currentNodeIndex: 0,
+          frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }] }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn().mockResolvedValue({ id: "return-action", action: "return_to_applicant",
+        approvalInstanceId: "approval-instance-1" }) },
+      auditLog: { create: jest.fn() },
+      ...financingUsageUpdates(),
+      ...approvalRoleTables("general_manager")
+    };
+    attachApprovalSignatureFixture(tx);
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const notifications = { queueCorrection: jest.fn(), afterCommit: jest.fn() };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, notifications as never);
+
+    await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates, decision: "return_to_applicant", comment: "请补充付款依据"
+    });
+
+    expect(notifications.queueCorrection).toHaveBeenCalledWith(tx, expect.objectContaining({ status: "draft" }),
+      expect.objectContaining({ id: "approval-instance-1", status: "returned_to_applicant" }),
+      expect.objectContaining({ id: "return-action", action: "return_to_applicant" }));
+    expect(notifications.afterCommit).toHaveBeenCalledWith("payment-1");
+  });
+
   it("rejects unsupported payment approval decisions before the transaction", async () => {
     const prisma = {
       $transaction: jest.fn()

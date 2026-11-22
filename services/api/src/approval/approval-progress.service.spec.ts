@@ -52,6 +52,46 @@ describe('统一审批进度', () => {
   });
 });
 
+describe('合同履约三职责与委托', () => {
+  it('履约确认轮次可读，委托人及其被委托人同时是当前待办人，办结后待办关闭', async () => {
+    const { service, db, instance, logs } = fixture();
+    instance.businessType = 'contract_work_completion';
+    instance.businessId = 'completion';
+    instance.flowType = 'contract.work_completion.approve';
+    instance.frozenNodes = [{ name: '合同部主管', mode: 'any', roleKeys: ['contract_director'], approvedRoleKeys: [],
+      protocolVersion: 1, executionMode: 'parallel', candidateUserIdsByRole: { contract_director: ['first'] } }] as never;
+    Object.assign(db, {
+      contractWorkCompletion: { findUnique: jest.fn(async () => ({ contractVersionId: 'version' })) },
+      contractVersion: { findUnique: jest.fn(async () => ({ contractId: 'contract' })) },
+      contract: { findUnique: jest.fn(async () => ({ projectId: 'project', code: 'HT-09' })) }
+    });
+    db.position.findMany.mockResolvedValue([{ id: 'p1', key: 'comprehensive_director' }, { id: 'p2', key: 'project_manager' },
+      { id: 'p3', key: 'contract_director' }]);
+    db.userPosition.findMany.mockResolvedValue([{ userId: 'first', positionId: 'p1', projectId: null },
+      { userId: 'first', positionId: 'p3', projectId: null }, { userId: 'later', positionId: 'p2', projectId: 'project' }]);
+    db.approvalDelegation.findMany.mockResolvedValue([{ fromUserId: 'first', toUserId: 'stranger', actionKey: null,
+      resourceType: null, resourceId: null }]);
+
+    const delegate = await service.detail('flow', 'stranger');
+    expect(delegate.title).toBe('履约确认审批');
+    expect(delegate.businessCode).toBe('HT-09');
+    expect(delegate.nodes[0].pending.map(user => user.id)).toEqual(['first', 'stranger']);
+    expect(delegate.pendingRecipients.map(user => user.id)).toEqual(['first', 'stranger']);
+
+    const direct = await service.detail('flow', 'first');
+    expect(direct.pendingRecipients.map(user => user.id)).toEqual(['first', 'stranger']);
+
+    // 被委托人代委托人办理：只记一条同意，实办人为被委托人，委托人仍可查看本轮结果。
+    instance.frozenNodes = [{ ...instance.frozenNodes[0], approvedRoleKeys: ['contract_director'] }] as never;
+    logs.push({ id: 'approve-by-delegate', approvalInstanceId: 'flow', actorUserId: 'stranger', action: 'approve',
+      approvedRoleKey: 'contract_director', representedUserId: 'first', createdAt: new Date() } as ApprovalActionLog);
+    const closed = await service.detail('flow', 'stranger');
+    expect(closed.pendingRecipients).toEqual([]);
+    expect(closed.nodes[0].status).toBe('已通过');
+    expect((await service.detail('flow', 'first')).nodes[0].status).toBe('已通过');
+  });
+});
+
 const requestId = '11111111-1111-4111-8111-111111111111';
 async function sendReminder(service: ApprovalProgressService, actorId: string, key = requestId) {
   const snapshot = await service.detail('flow', actorId);

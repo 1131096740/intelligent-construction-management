@@ -221,6 +221,7 @@ interface ApprovalAssignment {
 
 const LEGACY_APPROVAL_TYPES = [
   "contract_version",
+  "contract_work_completion",
   "settlement",
   "payment_request",
   "project_expense_request",
@@ -1161,7 +1162,8 @@ export class MeService {
     ];
     await addContractRelationshipSummaries(this.prisma,pending);
     return pending.filter((item) =>
-      ["company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") || item.businessType === "contract_version");
+      ["company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") ||
+      item.businessType === "contract_version" || item.businessType === "contract_work_completion");
   }
 
   async getSettlementPendingWorkItems(userId: string): Promise<WorkItem[]> {
@@ -2464,7 +2466,7 @@ export class MeService {
   ): Promise<WorkItem[]> {
     const instances = (await this.prisma.approvalInstance.findMany({
       where: {
-        ...(scope === "contract" ? { businessType: "contract_version", status: "in_progress" } : this.activeApprovalWhere()),
+        ...(scope === "contract" ? { businessType: { in: ["contract_version", "contract_work_completion"] }, status: "in_progress" } : this.activeApprovalWhere()),
         ...(mode === "started" ? { applicantUserId: userId } : {})
       },
       orderBy: { updatedAt: "desc" },
@@ -2477,7 +2479,9 @@ export class MeService {
       const detail = details.get(`${instance.businessType}:${instance.businessId}`);
       if (detail?.requestProtocolVersion === 2) continue;
       const scopedDelegateNode = detail ? await this.scopedSpotDelegateNode(instance, detail.projectId ?? undefined, userId) : null;
-      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []) ?? scopedDelegateNode;
+      const scopedContractNode = detail ? await this.scopedContractDutyNode(instance, detail.projectId ?? undefined, userId) : null;
+      const delegatedNode = scopedDelegateNode ?? scopedContractNode;
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []) ?? delegatedNode;
       if (!detail || !node) {
         continue;
       }
@@ -2489,7 +2493,7 @@ export class MeService {
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
-      const hasDelegatedTodo = Boolean(scopedDelegateNode) || (
+      const hasDelegatedTodo = Boolean(delegatedNode) || (
         mode === "started" || !supportsIndirect || hasDirectTodo
           ? false
           : await this.hasDelegatedApprovalTodo(userId, detail.projectId ?? "", node, evaluatedAt));
@@ -2499,7 +2503,7 @@ export class MeService {
       if (mode === "delegated" && !this.hasAssignmentTodo(node, userId) && !hasDelegatedTodo) {
         continue;
       }
-      if (mode === "delegated" && !supportsIndirect && !scopedDelegateNode) {
+      if (mode === "delegated" && !supportsIndirect && !delegatedNode) {
         continue;
       }
 
@@ -2604,6 +2608,29 @@ export class MeService {
       businessCode: row.code, title: `综合采购申请：${row.reason || "详见采购清单"}`, amountCents: row.requestedAmountCents, targetPath: `/综合采购申请/${row.id}` });
     for (const row of claimRows) if (row.projectId) result.set(`expense_claim:${row.id}`, { projectId: row.projectId, projectName: procurementProjectNames.get(row.projectId) ?? "所属项目",
       businessCode: row.code, title: `综合采购付款：${row.reason}`, amountCents: row.requestedAmountCents, targetPath: `/费用与报销/${row.id}` });
+    const completionIds = instances.filter((instance) => instance.businessType === "contract_work_completion").map((instance) => instance.businessId);
+    const completions = completionIds.length ? await this.prisma.contractWorkCompletion.findMany({
+      where: { id: { in: completionIds } }, select: { id: true, contractVersionId: true, work: true, amountYuan: true }
+    }) : [];
+    if (completions.length) {
+      const versions = await this.prisma.contractVersion.findMany({ where: { id: { in: [...new Set(completions.map(row => row.contractVersionId))] } },
+        select: { id: true, contractId: true } });
+      const contractIds = [...new Set(versions.map(row => row.contractId))];
+      const contracts = contractIds.length ? await this.prisma.contract.findMany({ where: { id: { in: contractIds } },
+        select: { id: true, projectId: true, code: true } }) : [];
+      const projects = await this.projectNames(contracts.map(row => row.projectId));
+      const contractById = new Map(contracts.map(row => [row.id, row]));
+      const versionById = new Map(versions.map(row => [row.id, row]));
+      for (const row of completions) {
+        const contract = contractById.get(versionById.get(row.contractVersionId)?.contractId ?? "");
+        if (!contract?.code) continue;
+        result.set(`contract_work_completion:${row.id}`, { projectId: contract.projectId,
+          projectName: projects.get(contract.projectId) ?? "所属项目", businessCode: contract.code,
+          title: `履约确认：${row.work}`,
+          amountCents: BigInt(new Prisma.Decimal(row.amountYuan.toString()).times(100).toFixed(0)),
+          targetPath: approvalDutyTarget("contract", contract.code) });
+      }
+    }
     const contractVersionIds = instances
       .filter((instance) => instance.businessType === "contract_version")
       .map((instance) => instance.businessId);
@@ -2826,7 +2853,8 @@ export class MeService {
       }
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
 
-      const scopedDelegateNode = await this.scopedSpotDelegateNode(instance, projectId, userId);
+      const scopedDelegateNode = await this.scopedSpotDelegateNode(instance, projectId, userId)
+        ?? await this.scopedContractDutyNode(instance, projectId, userId);
       const currentNode = this.currentApprovalNode(
         instance.frozenNodes,
         instance.currentNodeIndex,
@@ -2855,7 +2883,7 @@ export class MeService {
         continue;
       }
 
-      if (instance.businessType === "contract_version") counts.contract += 1;
+      if (instance.businessType === "contract_version" || instance.businessType === "contract_work_completion") counts.contract += 1;
       if (instance.businessType === "settlement") counts.settlement += 1;
       if (instance.businessType === "payment_request") counts.payment += 1;
       if (instance.businessType === "project_expense_request") counts.expense += 1;
@@ -2878,6 +2906,9 @@ export class MeService {
     const contractVersionIds = instances
       .filter((instance) => instance.businessType === "contract_version")
       .map((instance) => instance.businessId);
+    const completionIds = instances
+      .filter((instance) => instance.businessType === "contract_work_completion")
+      .map((instance) => instance.businessId);
     const settlementIds = instances
       .filter((instance) => instance.businessType === "settlement")
       .map((instance) => instance.businessId);
@@ -2896,6 +2927,23 @@ export class MeService {
 
     const procurementIds = instances.filter((instance) => instance.businessType === "general_procurement").map((instance) => instance.businessId);
     const procurementPaymentIds = instances.filter((instance) => instance.businessType === "expense_claim").map((instance) => instance.businessId);
+    const completions = completionIds.length ? await this.prisma.contractWorkCompletion.findMany({
+      where: { id: { in: completionIds } }, select: { id: true, contractVersionId: true }
+    }) : [];
+    const completionVersionIds = [...new Set(completions.map((row) => row.contractVersionId))];
+    const completionVersions = completionVersionIds.length ? await this.prisma.contractVersion.findMany({
+      where: { id: { in: completionVersionIds } }, select: { id: true, contractId: true }
+    }) : [];
+    const completionContracts = completionVersions.length ? await this.prisma.contract.findMany({
+      where: { id: { in: [...new Set(completionVersions.map((row) => row.contractId))] } }, select: { id: true, projectId: true }
+    }) : [];
+    const contractIdByCompletionVersionId = new Map(completionVersions.map((row) => [row.id, row.contractId]));
+    const projectIdByCompletionContractId = new Map(completionContracts.map((row) => [row.id, row.projectId]));
+    for (const completion of completions) {
+      const contractId = contractIdByCompletionVersionId.get(completion.contractVersionId);
+      const projectId = contractId ? projectIdByCompletionContractId.get(contractId) : undefined;
+      if (projectId) ids.set(`contract_work_completion:${completion.id}`, projectId);
+    }
     const [versions, settlements, payments, expenses, spotVersions, spotPayments, procurements, procurementPayments] = await Promise.all([
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
@@ -2984,6 +3032,17 @@ export class MeService {
     if (instance.businessType !== "spot_procurement_version" || !projectId) return null;
     const indexes = await scopedSpotDutyNodeIndexes(this.prisma as never, instance, projectId, userId);
     return indexes.length && Array.isArray(instance.frozenNodes) ? instance.frozenNodes[indexes[0]] as ApprovalNode : null;
+  }
+
+  /** 并联合同履约职责：被委托人可能不持有冻结岗位，按全局委托解析其当前可办节点。 */
+  private async scopedContractDutyNode(instance: {businessType: string; status: string; frozenNodes: unknown; currentNodeIndex: number},
+    projectId: string | undefined, userId: string): Promise<ApprovalNode | null> {
+    if (instance.businessType !== "contract_work_completion" || !projectId || !isParallelApprovalRound(instance.frozenNodes)) return null;
+    for (const index of activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex)) {
+      const node = instance.frozenNodes[index] as ApprovalNode;
+      if (await this.hasDelegatedApprovalTodo(userId, projectId, node, new Date())) return node;
+    }
+    return null;
   }
 
   private currentApprovalNode(frozenNodes: unknown, index: number, roleKeys: RoleKey[] = []): ApprovalNode | null {

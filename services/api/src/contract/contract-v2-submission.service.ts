@@ -88,6 +88,11 @@ export class ContractV2SubmissionService {
       const updatedRound = await tx.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: json(nodes), currentNodeIndex: pending[0] ?? nodes.length, status: input.decision !== "approve" ? "rejected" : pending.length ? "in_progress" : "approved" } });
       await tx.contractVersion.update({ where: { id: version.id }, data: { status } });
       if (status === "draft") await clearApprovalRoundSignatureSnapshots(tx, round.id);
+      if (status === "draft" && this.notifications && contract.code && ContractDutyNotificationService.supportsCorrection(version)) {
+        // 最终驳回/退回后申请人要修改重提，与盖章、归档同一入队/重试通道。
+        await this.notifications.queueCorrection(tx, contract, { ...version, status }, updatedRound, contract.code);
+        notificationQueued = true;
+      }
       if (status === "approved_pending_seal") {
         // This is a confirmation handoff, never another seal-approval round.
         const existing = await tx.contractSealTask.findUnique({ where: { approvalInstanceId: round.id } });
