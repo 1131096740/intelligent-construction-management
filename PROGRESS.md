@@ -2,7 +2,7 @@
 
 ## 2026-11-22 #382 前沿四票推进
 
-集成分支 `codex/enterprise-simplification-integration-20261105-r2` 由 `a187dc73a` 推进到 `02549d985`，[PR #428](https://github.com/1131096740/intelligent-construction-management/pull/428) head 同步为该提交（草稿，CI 重跑中）。用户本轮授权推送集成分支并更新 PR；未合并 main、未部署、未操作生产。
+集成分支 `codex/enterprise-simplification-integration-20261105-r2` 由 `a187dc73a` 推进到 `8ea579ba4`，[PR #428](https://github.com/1131096740/intelligent-construction-management/pull/428) head 同步为该提交（草稿，CI 重跑中）。用户本轮授权推送集成分支并更新 PR；未合并 main、未部署、未操作生产。
 
 - **采纳待授权候选**：`e717ba4c6`（224 文件、+11686/−1564）固定此前只存在于临时树的成果——#395 合同变更复核与普通合同税务事实、#396 已签结算登记复核归档、#415 履约三职责确认，含 59 个新迁移与 `.github/task12-install-295` CI 装配夹具。采纳前确认无密钥、无 `node_modules` 入库；`@jiangkong/api` 与 `@jiangkong/web-admin` typecheck 通过，三个新服务 23 项单测通过。
 - **真库验证（线 A）**：一次性 PostgreSQL 16 + 真实 Nest HTTP，**4/4 通过**（合同详情两读取函数、补充协议提交与复核生效、已签结算登记-驳回-重提-确认、履约三职责确认并计一条经营成本），17.1s，容器与私有存储已清理。回执状态 `candidate_http_passed_full_320_blocked`，见 [docs/progress/2026-11-22-issue-395-396-415-line-a-real-db.md](docs/progress/2026-11-22-issue-395-396-415-line-a-real-db.md)。**完整 320 迁移重放仍阻断**于归档安装器门 `20261118221000`，需先执行 `.github/task12-install-295` 归档安装链；`LINE_A_REQUIRE_FULL_LEDGER=1` 可强制要求而不伪造通过。本机沙箱拒绝 Prisma 用户缓存 `utime`，运行须显式指定 `PRISMA_SCHEMA_ENGINE_BINARY`/`PRISMA_QUERY_ENGINE_LIBRARY`，属执行环境差异。
@@ -10,8 +10,9 @@
 - **线 C**：#396 SET-09/A12 已签结算付款依据写路径，新增迁移 `20261119007000_signed_settlement_payment_basis` 与 `signed-settlement-payment-capacity`，事务内按最近确认一期定额并在实付时重算防超付。
 - **线 D**：#415 履约确认三职责短信生产者，含同职责双岗同人只一条、职责级 60 秒共享冷却、驳回回知制单人、重提后旧轮取消、失败可重试。
 - **整合修复**：真库 runner 的候选迁移切片正则漏掉 `2026111900[7]xxx`，导致新迁移未应用而合同详情 500，已修为 `2026111900[4-9]`，复跑 27 个候选迁移后 4/4 恢复。
-- **#419 关单收尾（本分支 `line-f-close-419`，证据提交 `f6d10357`）**：合同/付款最终驳回、退回修改的 outbox 生产者已补齐，本轮新增合同 `reviewIfV2` 的 reject/return 事务接线用例与真实 PostgreSQL 16 退回短信用例（回滚不留痕、逐次幂等、失败重试、未知不重发、重提取消、原申请人可见），入口 `verify:issue419-notification:local`；NTF-05 已按 2026-11-19 纯文字模板统一。回执与可直接贴用的关单评论见 [docs/progress/2026-11-22-issue-419-closure.md](docs/progress/2026-11-22-issue-419-closure.md)、[docs/progress/2026-11-22-issue-419-close-comment.md](docs/progress/2026-11-22-issue-419-close-comment.md)。真实手机送达仍无成功记录；历史补填短信归 #416；报销/项目支出/额度/资金执行审批的自动短信未覆盖、列为本票边界待后续票；建议可关但须在关单评论登记这些边界。
-- **仍未完成**：#395 登记时"低于已结算/已付"提示、Web 行为测试与 `docs/product/manifests` 漂移；#396 已签结算的统一实付办理与经营 payable 投影、CUT-03 核查；#415 财务双岗同人、驳回后修订与更正追溯语义；#419 真实送达与 B2 所列审批类型短信（另计/后续）；完整 320 重放；Web `check:ui`。**#419 已具备关单证据（附边界），与 #395/#396/#415 均未执行 `gh issue close`**。
+- **#419 收尾（已合入本分支）**：合同/付款最终驳回、退回修改的 outbox 生产者已补齐，本轮新增合同 `reviewIfV2` 的 reject/return 事务接线用例与真实 PostgreSQL 16 退回短信用例（回滚不留痕、逐次幂等、失败重试、未知不重发、重提取消、原申请人可见），入口 `verify:issue419-notification:local`；NTF-05 已按 2026-11-19 纯文字模板统一。回执与可直接贴用的关单评论见 [docs/progress/2026-11-22-issue-419-closure.md](docs/progress/2026-11-22-issue-419-closure.md)、[docs/progress/2026-11-22-issue-419-close-comment.md](docs/progress/2026-11-22-issue-419-close-comment.md)。真实手机送达仍无成功记录；历史补填短信归 #416；报销/项目支出/额度/资金执行审批的自动短信未覆盖、列为本票边界待后续票；建议可关但须在关单评论登记这些边界。
+- **关单（2026-11-22）**：#415 与 #419 已关闭，逐条验收与显式边界见各票关单评论（#415 证据 `a9d0890cc`、#419 证据 `f6d10357`），回执 [docs/progress/2026-11-22-issue-415-closure.md](docs/progress/2026-11-22-issue-415-closure.md)、[docs/progress/2026-11-22-issue-419-closure.md](docs/progress/2026-11-22-issue-419-closure.md)。#415 补齐财务双岗同人（OR 节点按冻结顺序只落一次 `finance_staff`、只计一次成本）、驳回后修订与旧轮失效，真库 HTTP 扩到 6/6。#419 补合同/付款最终驳回与退回修改生产者，真实 PG16 用例 `externalSends=0`；NTF-05 口径收口。#419 的 B2（报销/项目支出/额度/资金执行四类审批无自动短信生产者）登记为显式边界并另开 #430 跟踪，不计为已覆盖。
+- **仍未完成**：#395 登记时"低于已结算/已付"提示、Web 行为测试与 `docs/product/manifests` 漂移；#396 已签结算的统一实付办理与经营 payable 投影、CUT-03 核查；完整 320 重放；Web `check:ui` 全站门。当前 frontier 为 #395、#396、#420（#420 前置已随 #419 关闭解锁）。
 
 ## 2026-11-18 #382 接续集成
 
