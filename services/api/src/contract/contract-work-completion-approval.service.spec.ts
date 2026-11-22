@@ -79,10 +79,12 @@ function fixture(author = "author") {
     approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) }
   };
   const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
-  const service = new ContractWorkCompletionApprovalService({
-    $transaction: (fn: (db: typeof tx) => unknown) => fn(tx)
-  } as never, auth as never, ledger as never);
-  return { service, tx, auth, fact, action, submit, ledger };
+  const notifications = { queueDuty: jest.fn().mockResolvedValue(undefined),
+    queueCorrection: jest.fn().mockResolvedValue(undefined) };
+  const prisma = { $transaction: (fn: (db: typeof tx) => unknown) => fn(tx) };
+  const service = new ContractWorkCompletionApprovalService(prisma as never, auth as never, ledger as never,
+    notifications as never);
+  return { service, tx, auth, fact, action, submit, ledger, notifications, prisma };
 }
 
 describe("其他合同履约的三个并联职责", () => {
@@ -175,6 +177,37 @@ describe("其他合同履约的三个并联职责", () => {
       actorUserId: "delegate", representedUserId: "manager", approvedRoleKey: "project_manager"
     }));
     expect(fact).not.toHaveBeenCalled();
+  });
+
+  it("三职责待办与驳回回制单的短信在业务事务内入队", async () => {
+    const { service, tx, notifications } = fixture();
+    await service.submit("version", "report", "author");
+    expect(notifications.queueDuty).toHaveBeenCalledTimes(1);
+    expect(notifications.queueDuty).toHaveBeenCalledWith(tx, "report", "round");
+    const rejection = { approvalInstanceId: "round", dutyIndex: 1, decision: "reject", comment: "需核对" } as const;
+    await service.review("version", "report", "manager", rejection);
+    expect(notifications.queueCorrection).toHaveBeenCalledTimes(1);
+    expect(notifications.queueCorrection).toHaveBeenCalledWith(tx, "report", "round");
+  });
+
+  it("业务写入失败时不入队，提交事务回滚也不留下待办短信", async () => {
+    const { service, tx, notifications } = fixture();
+    tx.$queryRaw.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("lock failed", {
+      code: "P2010", clientVersion: "5.22.0", meta: { code: "23514" }
+    }));
+    await expect(service.submit("version", "report", "author")).rejects.toMatchObject({ status: 409 });
+    expect(notifications.queueDuty).not.toHaveBeenCalled();
+    expect(notifications.queueCorrection).not.toHaveBeenCalled();
+    // 提交成功但事务在 COMMIT 时失败（可串行化冲突）：通知只随同一事务写入，不单独提交。
+    const rollback = fixture();
+    const transaction = async (fn: (db: typeof rollback.tx) => Promise<unknown>) => {
+      await fn(rollback.tx);
+      throw new Prisma.PrismaClientKnownRequestError("serialization failure", { code: "P2034", clientVersion: "5.22.0" });
+    };
+    const rebased = new ContractWorkCompletionApprovalService({ $transaction: transaction } as never,
+      { confirmPassword: jest.fn() } as never, rollback.ledger as never, rollback.notifications as never);
+    await expect(rebased.submit("version", "report", "author")).rejects.toMatchObject({ status: 409 });
+    expect(rollback.notifications.queueDuty).toHaveBeenCalledWith(rollback.tx, "report", "round");
   });
 
   it("任一职责驳回退回原草稿，项目外无法操作", async () => {
