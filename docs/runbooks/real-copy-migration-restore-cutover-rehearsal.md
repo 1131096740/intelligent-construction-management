@@ -248,6 +248,18 @@ docker exec "$CID" psql -U jiangkong -d "$DB" -tAc \
 owner 仍可连接（迁移/核对会话）；重新跑 `metrics.sql` 必须与冻结前一致；迁移账
 不得有 pending 行。
 
+在恢复写入前，可对本次虚构恢复副本 `jg424_restore_post` 盘点在途旧合同审批。准备同一
+演练目录下的 `contract-signature-files` 本地签名副本和第 7 节的两份一致指标。通过
+`ISSUE424_CONTRACT_PLAN_READER_URL` 提供同一容器内 `jg424_contract_reader` 的连接配置。
+该账号使用默认只读事务，对 `ContractVersion`、`ApprovalInstance`、`ApprovalActionLog`、
+`ApprovalDelegation`、`HandwrittenSignatureVersion` 和 `FileObject` 授予读取权限即可。
+
+```bash
+DRILL_ROOT="$DRILL_ROOT" pnpm --silent --filter @jiangkong/api inspect:issue424-contract-cutover
+```
+
+留存一行汇总 JSON。缺候选人证据、签名文件或存在歧义的旧轮次需核对原资料，盘点不启用并联审批。
+
 2) 在本演练新建库中恢复初始连接权限，使用 owner SQL 构造恢复校验数据。执行前核对初始 ACL 与以下 GRANT 一致。正式开放验收需由应用身份走公开写入口。
 
 ```bash
