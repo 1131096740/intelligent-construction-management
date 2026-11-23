@@ -6,8 +6,12 @@ import { PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { ProjectConstructionEnterpriseDeductionService } from "../project/project-construction-enterprise-deduction.service";
 import { ProjectUpstreamFundBusinessEntryService } from "../project/project-upstream-fund-business-entry.service";
-import { ProjectConstructionPaymentCorrectionService } from "../project/project-construction-payment-correction.service";
 import { ProjectUpstreamFundFactOperatingSourceAdapter } from "../project/project-operating-source.adapter";
+import { ConstructionEnterpriseFeeOperatingSourceAdapter } from "../project/project-construction-enterprise-fee-operating-source.adapter";
+import { OperatingSourceAdapterRegistry } from "../operating-ledger/operating-source-adapter";
+import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
+import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import { ProjectConstructionPaymentCorrectionService } from "../project/project-construction-payment-correction.service";
 import { readConstructionEnterprisePaid } from "../project/project-construction-enterprise-paid";
 import { ProjectService } from "../project/project.service";
 
@@ -15,7 +19,7 @@ import { ProjectService } from "../project/project.service";
  * #414 真库证据（真实 PostgreSQL 16）：
  * 1) 综合/财务按费用名称 + 实际金额简单登记施工企业扣费，登记后待确认；
  * 2) 同费用名称 + 同金额 + 同日期重复登记被拒，同幂等键只回放原事实；
- * 3) 财务主管确认后才减少施工企业持有资金；不产生已确认成本；
+ * 3) 财务主管确认后才减少施工企业持有资金，并在同一事务恰好追加 1 条成本事实；
  * 4) #413 两段式更正（反转 + 重登）后扣费净额正确，原记录保留；
  * 5) 扣费登记/确认/更正都不改变施工企业已付聚合。
  *
@@ -40,6 +44,16 @@ describe("issue 414 construction enterprise deduction PostgreSQL", () => {
             if (password !== "current-password") throw new Error("密码错误");
           }
         };
+        const ledger = new OperatingLedgerService(prisma as never);
+        const registry = new OperatingSourceAdapterRegistry([
+          new ProjectUpstreamFundFactOperatingSourceAdapter(),
+          new ConstructionEnterpriseFeeOperatingSourceAdapter()
+        ]);
+        const operatingSources = new OperatingSourceReplayService(
+          prisma as never,
+          ledger,
+          registry
+        );
         const deductions = new ProjectConstructionEnterpriseDeductionService(
           prisma as never,
           new AuditService(),
@@ -50,17 +64,13 @@ describe("issue 414 construction enterprise deduction PostgreSQL", () => {
           new AuditService(),
           auth as never,
           undefined,
-          {
-            appendConfirmedSourceIfEnabledInTransaction: async () => null
-          } as never
+          operatingSources as never
         );
         const corrections = new ProjectConstructionPaymentCorrectionService(
           prisma as never,
           new AuditService(),
           auth as never,
-          {
-            appendConfirmedSourceIfEnabledInTransaction: async () => null
-          } as never
+          operatingSources as never
         );
 
         // 1) 简单登记：费用名称 + 实际金额 + 日期，无需先有合同或结算。
@@ -125,15 +135,65 @@ describe("issue 414 construction enterprise deduction PostgreSQL", () => {
           100000n
         );
 
+        const confirmationActionId = randomUUID();
         await projects.confirmUpstreamFundFact(
           fixture.projectId,
           deduction.id,
           fixture.directorUserId,
           {
             confirmationPassword: "current-password",
-            confirmationActionId: randomUUID()
+            confirmationActionId
           }
         );
+        const confirmedCostFacts = await feeCostFacts(prisma, fixture.projectId);
+        expect(confirmedCostFacts).toHaveLength(1);
+        expect(confirmedCostFacts[0]).toMatchObject({
+          entryKind: "original",
+          amountCents: 5000n,
+          factKind: "expense"
+        });
+        expect(confirmedCostFacts[0].impacts).toEqual([
+          expect.objectContaining({
+            impactKind: "confirmed_cost",
+            amountCents: 5000n,
+            direction: "increase",
+            costCategoryCode: "other_project_cost"
+          })
+        ]);
+        const upstreamFactAfterConfirm = await prisma.operatingFact.findMany({
+          where: {
+            projectId: fixture.projectId,
+            sourceType: "project_upstream_fund_fact"
+          },
+          include: { impacts: true }
+        });
+        expect(
+          upstreamFactAfterConfirm.some((fact) =>
+            fact.impacts.some((impact) => impact.impactKind === "confirmed_cost")
+          )
+        ).toBe(false);
+        // 同确认幂等键只回放，不再写第二条成本事实。
+        await projects.confirmUpstreamFundFact(
+          fixture.projectId,
+          deduction.id,
+          fixture.directorUserId,
+          {
+            confirmationPassword: "current-password",
+            confirmationActionId
+          }
+        );
+        await expect(
+          projects.confirmUpstreamFundFact(
+            fixture.projectId,
+            deduction.id,
+            fixture.directorUserId,
+            {
+              confirmationPassword: "current-password",
+              confirmationActionId: randomUUID()
+            }
+          )
+        ).rejects.toThrow("当前上游资金事实状态不可确认");
+        expect(await feeCostFacts(prisma, fixture.projectId)).toHaveLength(1);
         const confirmedList = await deductions.listDeductions(fixture.projectId);
         expect(confirmedList.summary).toEqual({
           deductedCents: "5000",
@@ -201,6 +261,26 @@ describe("issue 414 construction enterprise deduction PostgreSQL", () => {
           ["correction", 4000n, "管理费"],
           ["reversal", 5000n, "管理费"]
         ]);
+        const correctedCostFacts = await feeCostFacts(prisma, fixture.projectId);
+        expect(correctedCostFacts).toHaveLength(3);
+        expect(
+          Object.fromEntries(
+            correctedCostFacts.map((fact) => [fact.entryKind, fact.amountCents])
+          )
+        ).toEqual({
+          original: 5000n,
+          reversal: 5000n,
+          correction: 4000n
+        });
+        const correctedCostNet = correctedCostFacts.reduce((total, fact) => {
+          const amountCents = fact.amountCents;
+          const direction = fact.impacts[0]?.direction;
+          if (amountCents === null) throw new Error("施工企业扣费成本事实缺少金额");
+          if (direction === "decrease") return total - amountCents;
+          if (direction === "increase") return total + amountCents;
+          throw new Error("施工企业扣费成本影响方向缺失");
+        }, 0n);
+        expect(correctedCostNet).toBe(4000n);
         const correctedList = await deductions.listDeductions(fixture.projectId);
         expect(correctedList.summary).toEqual({
           deductedCents: "4000",
@@ -275,6 +355,15 @@ async function seedFixture(prisma: PrismaClient, fixture: ReturnType<typeof fixt
       operatingLedgerEffectiveDate: new Date("2026-01-01T00:00:00.000Z")
     }
   });
+  const writeSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+  if (!writeSecret) {
+    throw new Error("缺少 OPERATING_LEDGER_DB_WRITE_SECRET");
+  }
+  await prisma.$executeRaw`
+    INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
+    VALUES (1, crypt(${writeSecret}, gen_salt('bf')))
+    ON CONFLICT ("id") DO UPDATE SET "secretHash" = EXCLUDED."secretHash"
+  `;
   await prisma.user.createMany({
     data: [
       { id: fixture.financeUserId, name: "财务经办" },
@@ -401,6 +490,14 @@ async function sourceImpacts(
   });
   expect(snapshot).not.toBeNull();
   return adapter.toOperatingFactInput(snapshot!).input.impacts;
+}
+
+async function feeCostFacts(prisma: PrismaClient, projectId: string) {
+  return prisma.operatingFact.findMany({
+    where: { projectId, sourceType: "construction_enterprise_fee" },
+    include: { impacts: true },
+    orderBy: [{ occurredAt: "asc" }, { id: "asc" }]
+  });
 }
 
 /**

@@ -21,6 +21,7 @@ import {
 } from "../operating-ledger/operating-source-replay.service";
 import { lockSettlementLedger, syncAffiliatePaymentRequest } from "./project-affiliate-business.service";
 import { validateRemittanceLineage } from "./project.service";
+import { CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE } from "./project-construction-enterprise-fee-operating-source.adapter";
 
 export const CONSTRUCTION_PAYMENT_CORRECTION_SOURCES = [
   "downstream_payment",
@@ -584,6 +585,17 @@ export class ProjectConstructionPaymentCorrectionService {
             },
             actorUserId
           );
+          if (sourceType === "affiliate_deduction") {
+            await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+              tx,
+              {
+                projectId,
+                sourceType: CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE,
+                sourceBusinessId: factId
+              },
+              actorUserId
+            );
+          }
         }
       }
       await this.audit.record(tx, {

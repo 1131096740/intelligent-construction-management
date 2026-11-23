@@ -18,6 +18,7 @@ import {
 const EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE = "employee_project_loan_entry";
 const SOURCE_TYPES_WITH_ADJUSTMENT_LOOKUP = new Set([
   "project_upstream_fund_fact",
+  "construction_enterprise_fee",
   "project_affiliate_contract_fact",
   "project_affiliate_settlement_fact",
   "project_affiliate_payment_fact",

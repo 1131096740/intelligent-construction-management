@@ -7,11 +7,13 @@
 // removes the container. It prints a receipt and verifies no container remains.
 const { randomUUID, randomBytes } = require("node:crypto");
 const { spawnSync } = require("node:child_process");
+const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "../../..");
 const database = "jiangkong_issue414_construction_deduction";
 const specFile = "src/database/issue414-construction-enterprise-deduction.pg.spec.ts";
+const writerSqlFile = "services/api/prisma/issue414-operating-ledger-writer.sql";
 const runId = randomUUID();
 const containerName = `jiangkong-issue414-line-x-${runId}`;
 const password = randomUUID();
@@ -84,7 +86,10 @@ async function main() {
     const serverVersion = docker(["exec", containerId, "psql", "-X", "-A", "-t", "-U", "jiangkong", "-d", database, "-c",
       "SHOW server_version_num;"], { quiet: true }).stdout;
     const databaseUrl = `postgresql://jiangkong:${password}@127.0.0.1:${port}/${database}`;
+    const ledgerSecret = randomBytes(32).toString("hex");
     const env = { ...process.env, NODE_ENV: "test", CI: "true", DATABASE_URL: databaseUrl,
+      OPERATING_LEDGER_DB_WRITE_SECRET: ledgerSecret,
+      ISSUE414_OPERATING_LEDGER_WRITE_SECRET: ledgerSecret,
       PRISMA_SCHEMA_ENGINE_BINARY:
         process.env.PRISMA_SCHEMA_ENGINE_BINARY || "/tmp/jga-engines/schema-engine",
       PRISMA_QUERY_ENGINE_LIBRARY:
@@ -97,6 +102,12 @@ async function main() {
       env, { quiet: true }));
     await phase("schema-db-push", () => command(pnpm(), ["--filter", "@jiangkong/api", "exec", "prisma", "db", "push", "--skip-generate"],
       { ...env, CHECKPOINT_DISABLE: "1" }, { quiet: true }));
+    // db push cannot create the controlled operating-ledger write seam (types and
+    // SECURITY DEFINER functions live in migrations). Install the exact V1 writer
+    // copied from migrations 20260814120000/20260831120000 so confirmation writes
+    // real OperatingFact/OperatingImpactEntry rows instead of a test stub.
+    await phase("operating-ledger-writer", () => docker(["exec", "-i", containerId, "psql", "-X", "-v", "ON_ERROR_STOP=1",
+      "-U", "jiangkong", "-d", database], { quiet: true, input: readFileSync(path.join(root, writerSqlFile), "utf8") }));
     // schema.prisma 无法表达部分唯一索引；生产迁移链中的下列索引是
     // “同一笔外部付款不得重复登记 / 每个事实只允许一次反向”的真实约束，
     // 必须在真库用例中一并还原，否则测试会低估生产约束。
@@ -120,7 +131,7 @@ async function main() {
       containerRuntime: "docker_postgresql16_disposable", smsProvider: "DISABLED",
       phases, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
-      scopeWarning: "本用例证明真实 PG 上的施工企业扣费简单登记、同费用名称/金额/日期重复登记拒绝、同幂等键回放、确认后才减少施工企业持有资金、不产成本、反转+重登更正净额正确且施工企业已付聚合不变；Schema 由 db push 建立并还原 4 条生产部分唯一索引（迁移链未能整体重放）；密码校验使用确定性替身，业务事务与约束为真实数据库"
+      scopeWarning: "本用例证明真实 PG 上的施工企业扣费简单登记、同费用名称/金额/日期重复登记拒绝、同幂等键回放、确认后同一事务恰好写 1 条成本事实并只减少施工企业持有资金、重复确认被拒、反转+重登后成本净额正确且施工企业已付聚合不变；Schema 由 db push 建立，经营账写入函数按 20260814120000/20260831120000 安装，并还原 4 条生产部分唯一索引（完整迁移链未重放）；密码校验使用确定性替身，业务事务与约束为真实数据库"
     };
     process.stdout.write(`ISSUE414_RECEIPT ${JSON.stringify(receipt)}\n`);
   } finally {
