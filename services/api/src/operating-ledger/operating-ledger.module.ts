@@ -55,6 +55,10 @@ import {
   OperatingTakeoverSourceAdapter
 } from "../operating-takeover/operating-takeover-source.adapter";
 import { SettlementOperatingSourceAdapter } from "../settlement/settlement-operating-source.adapter";
+import {
+  SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+  SignedSettlementOperatingSourceAdapter
+} from "../settlement/signed-settlement-operating-source.adapter";
 import { OperatingLedgerService } from "./operating-ledger.service";
 import { OperatingSourceAdapterRegistry } from "./operating-source-adapter";
 import { OperatingSourceReplayService } from "./operating-source-replay.service";
@@ -90,6 +94,7 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE,
   PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE,
   "settlement",
+  SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
   PAYMENT_EXECUTION_SOURCE_TYPE,
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE,
@@ -123,6 +128,7 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
       new ProjectAffiliateSettlementFactOperatingSourceAdapter(),
       new ProjectAffiliatePaymentFactOperatingSourceAdapter(),
       new SettlementOperatingSourceAdapter(),
+      new SignedSettlementOperatingSourceAdapter(),
       new PaymentExecutionOperatingSourceAdapter(),
       new ProjectProxyPaymentOperatingSourceAdapter(),
       new ExpenseClaimApprovalOperatingSourceAdapter(),

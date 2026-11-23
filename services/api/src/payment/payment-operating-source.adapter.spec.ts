@@ -150,6 +150,50 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     expect(input.operatingLevel).toBe("project");
   });
 
+  it("maps a signed settlement payment to one payable decrease keyed by the latest confirmed settlement", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.paymentRequest.findUnique.mockResolvedValue({
+      id: "payment-request-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "contract-version-1",
+      code: "PAY-202608-002",
+      sourceType: "signed_settlement",
+      settlementId: null,
+      signedSettlementId: "signed-settlement-1",
+      paymentSubjectType: "our_company",
+      requestedAmountCents: 1_000_00n,
+      approvedAmountCents: 1_000_00n
+    });
+    tx.paymentExecutionAllocation.findMany.mockResolvedValue([]);
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "execution-1"
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(snapshot?.sourceSnapshot).toMatchObject({
+      paymentSourceType: "signed_settlement",
+      signedSettlementId: "signed-settlement-1",
+      settlementId: null
+    });
+    expect(input.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceImpactKey: "payable:signed-settlement-1",
+          impactKind: "payable_decrease",
+          amountCents: 600_00n,
+          direction: "decrease"
+        })
+      ])
+    );
+    expect(input.impacts.some(impact => impact.impactKind === "confirmed_cost"))
+      .toBe(false);
+  });
+
   it("preserves different approved and actual payers and forms one inter-subject balance", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx({ companyEntityIdSnapshot: "proxy-company-entity" });

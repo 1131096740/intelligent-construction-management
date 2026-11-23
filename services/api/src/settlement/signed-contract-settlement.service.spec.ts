@@ -51,7 +51,7 @@ function fixture() {
   const prisma = { user, $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
   const visibility = { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(new Map([["project", ["contract_director"]]])) };
   const svc = new SignedContractSettlementService(prisma as unknown as PrismaService, visibility as unknown as ProjectVisibilityService, auth as unknown as AuthService);
-  return { svc, tx, visibility, user, auth };
+  return { svc, tx, visibility, user, auth, prisma };
 }
 
 describe("已签结算复核业务", () => {
@@ -109,6 +109,95 @@ describe("已签结算复核业务", () => {
         "project", "settlement", "director", 2, "confirm", null, false, binding.expires, expect.stringMatching(/^[a-f0-9]{64}$/));
       expect(tx.signedContractSettlement.updateMany).not.toHaveBeenCalled();
       } finally {
+      if (oldKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+      else process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = oldKey;
+    }
+  });
+
+  it("主管确认下游可结算合同后，在同一事务追加已签结算经营来源", async () => {
+    const { tx, visibility, auth, prisma } = fixture();
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue({ created: true }) };
+    const service = new SignedContractSettlementService(
+      prisma as unknown as PrismaService,
+      visibility as unknown as ProjectVisibilityService,
+      auth as unknown as AuthService,
+      operatingSources
+    );
+    const oldKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+    process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = "b".repeat(64);
+    try {
+      const binding = { database: "isolated", role: "runtime", xid: "88", backend: "5", expires: "1795370000" };
+      const reviewed = {
+        id: "settlement",
+        state: "confirmed",
+        confirmationNo: "1",
+        contractKind: "downstream",
+        confirmedContractSource: { contractTypeKey: "labor_subcontract" }
+      };
+      tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ reviewed }]);
+      await expect(service.review("project", "settlement", "director", 2, "confirm")).resolves.toEqual(reviewed);
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledWith(
+        tx,
+        {
+          projectId: "project",
+          sourceType: "signed_contract_settlement",
+          sourceBusinessId: "settlement"
+        },
+        "director"
+      );
+    } finally {
+      if (oldKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+      else process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = oldKey;
+    }
+  });
+
+  it("驳回或表外/对上结算不追加下游经营应付来源", async () => {
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
+    const oldKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+    process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = "b".repeat(64);
+    try {
+      const binding = { database: "isolated", role: "runtime", xid: "88", backend: "5", expires: "1795370000" };
+      const returned = fixture();
+      const returnedService = new SignedContractSettlementService(
+        returned.prisma as unknown as PrismaService,
+        returned.visibility as unknown as ProjectVisibilityService,
+        returned.auth as unknown as AuthService,
+        operatingSources
+      );
+      returned.tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ reviewed: {
+        id: "settlement", state: "returned", confirmationNo: null, contractKind: "downstream"
+      } }]);
+      await returnedService.review("project", "settlement", "director", 2, "return", "原因");
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+
+      const outside = fixture();
+      const outsideService = new SignedContractSettlementService(
+        outside.prisma as unknown as PrismaService,
+        outside.visibility as unknown as ProjectVisibilityService,
+        outside.auth as unknown as AuthService,
+        operatingSources
+      );
+      outside.tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ reviewed: {
+        id: "settlement", state: "confirmed", confirmationNo: "1", contractKind: "outside_fact",
+        confirmedContractSource: { contractTypeKey: "labor_subcontract" }
+      } }]);
+      await outsideService.review("project", "settlement", "director", 2, "confirm");
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+
+      const unsupported = fixture();
+      const unsupportedService = new SignedContractSettlementService(
+        unsupported.prisma as unknown as PrismaService,
+        unsupported.visibility as unknown as ProjectVisibilityService,
+        unsupported.auth as unknown as AuthService,
+        operatingSources
+      );
+      unsupported.tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ reviewed: {
+        id: "settlement", state: "confirmed", confirmationNo: "1", contractKind: "downstream",
+        confirmedContractSource: { contractTypeKey: "generic_contract" }
+      } }]);
+      await unsupportedService.review("project", "settlement", "director", 2, "confirm");
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+    } finally {
       if (oldKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
       else process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = oldKey;
     }
