@@ -518,6 +518,26 @@
                   placeholder="请选择"
                 />
               </label>
+              <template v-if="paymentDetail.delegationApprovalContext && isPaymentActionEnabled('delegate_approval')">
+                <label class="action-field">
+                  <span>委托岗位</span>
+                  <t-select
+                    v-model="paymentActionForm.delegationNodeIndex"
+                    :options="paymentDetail.delegationApprovalContext.duties.map(duty => ({ label: duty.name, value: duty.index }))"
+                    placeholder="请选择岗位"
+                  />
+                </label>
+                <label class="action-field">
+                  <span>委托截止时间（北京时间）</span>
+                  <t-date-picker
+                    v-model="paymentActionForm.delegationEndsAt"
+                    enable-time-picker
+                    need-confirm
+                    format="YYYY-MM-DD HH:mm"
+                    value-type="YYYY-MM-DD HH:mm:ss"
+                  />
+                </label>
+              </template>
               <div class="action-buttons">
                 <t-button
                   v-if="isPaymentActionEnabled('withdraw_approval')"
@@ -929,6 +949,7 @@ interface SensitiveActionState {
   reasonLabel: string;
   error: string;
   withdrawal?: { paymentId: string; expectedApprovalInstanceId?: string };
+  delegation?: { paymentId: string; body: Parameters<typeof delegatePaymentApproval>[1] };
 }
 
 interface PaymentReviewConfirmationState {
@@ -1030,6 +1051,8 @@ const paymentActionForm = reactive({
   financeAmountYuan: "",
   occurredAt: toDatetimePickerValue(new Date()),
   assignmentUserId: "",
+  delegationNodeIndex: undefined as number | undefined,
+  delegationEndsAt: "",
   downloadFileId: ""
 });
 const paymentRevisionForm = reactive({ amountYuan: "", paymentMatter: "", amountCalculationExplanation: "" });
@@ -1463,6 +1486,7 @@ function clearPaymentDetailTransientState() {
   sensitiveAction.visible = false;
   sensitiveAction.kind = null;
   sensitiveAction.withdrawal = undefined;
+  sensitiveAction.delegation = undefined;
   sensitiveAction.error = "";
   paymentActionForm.approvedAmountYuan = "";
   paymentActionForm.approvalComment = "";
@@ -1472,6 +1496,8 @@ function clearPaymentDetailTransientState() {
   paymentActionForm.financeAmountYuan = "";
   paymentActionForm.occurredAt = toDatetimePickerValue(new Date());
   paymentActionForm.assignmentUserId = "";
+  paymentActionForm.delegationNodeIndex = undefined;
+  paymentActionForm.delegationEndsAt = "";
   paymentActionForm.downloadFileId = "";
   if (reviewOwnedBusy) actionBusy.value = "";
 }
@@ -1530,7 +1556,7 @@ function setActionError(error: unknown, fallback: string) {
 function openSensitiveAction(
   kind: SensitiveActionKind,
   config: Pick<SensitiveActionState, "title" | "description"> &
-    Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel" | "withdrawal">>
+    Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel" | "withdrawal" | "delegation">>
 ) {
   if (!isPaymentReviewKind(kind)) invalidatePaymentReviewDialog(false);
   Object.assign(sensitiveAction, {
@@ -1544,6 +1570,7 @@ function openSensitiveAction(
     requirePassword: config.requirePassword ?? false,
     reasonLabel: config.reasonLabel ?? "操作原因",
     withdrawal: config.withdrawal,
+    delegation: config.delegation,
     error: ""
   });
 }
@@ -2156,13 +2183,27 @@ function requestPaymentWithdrawal() {
 }
 
 function requestPaymentAssignment(kind: "transfer" | "delegate") {
+  let delegation: SensitiveActionState["delegation"];
   try {
-    requiredText(paymentActionForm.assignmentUserId, "目标处理人");
+    const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标处理人");
+    if (kind === "delegate") {
+      const context = paymentDetail.value?.delegationApprovalContext;
+      const expectedNodeIndex = paymentActionForm.delegationNodeIndex;
+      const body: Parameters<typeof delegatePaymentApproval>[1] = { toUserId };
+      if (context) {
+        if (!context.duties.some(duty => duty.index === expectedNodeIndex)) throw new Error("请选择当前可委托岗位");
+        const endsAt = new Date(`${paymentActionForm.delegationEndsAt.replace(" ", "T")}+08:00`);
+        if (!Number.isFinite(endsAt.getTime()) || endsAt.getTime() <= Date.now()) throw new Error("委托截止时间必须晚于当前时间");
+        Object.assign(body, { expectedApprovalInstanceId: context.expectedApprovalInstanceId, expectedNodeIndex, endsAt: endsAt.toISOString() });
+      }
+      delegation = { paymentId: currentPaymentId(), body };
+    }
   } catch (error) {
     setActionError(error, "请选择目标处理人后重试。");
     return;
   }
   openSensitiveAction(kind, {
+    delegation,
     title: kind === "transfer" ? "确认转审？" : "确认委托？",
     description: kind === "transfer"
       ? "当前审批任务将转交给所选处理人，并写入完整审批历史。"
@@ -2276,14 +2317,14 @@ async function abandonPaymentRequestWithCapability(
 
 async function delegatePaymentApprovalWithCapability(
   paymentId: string,
-  toUserId: string
+  body: Parameters<typeof delegatePaymentApproval>[1]
 ) {
   const capability = await fetchPaymentActionCapability(paymentId);
-  const matchesRequestedPayment = capability.paymentId === paymentId;
+  const matchesRequestedPayment = capability.paymentId === paymentId && paymentDetail.value?.id === paymentId;
   if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
   const operationAllowed = capability.availableActions.includes("delegate_approval");
   if (!operationAllowed) throw new Error("当前用户不能委托该付款审批");
-  return delegatePaymentApproval(paymentId, { toUserId });
+  return delegatePaymentApproval(paymentId, body);
 }
 
 async function downloadPaymentApprovalFormWithCapability(
@@ -2405,12 +2446,13 @@ function performPdfArchive() {
 }
 
 function performPaymentAssignment(kind: "transfer" | "delegate") {
+  if (kind === "delegate") {
+    const confirmation = sensitiveAction.delegation;
+    if (!confirmation || confirmation.paymentId !== currentPaymentId()) throw new Error("委托确认已失效，请重新打开");
+    return runPaymentAction("delegateApproval", () => delegatePaymentApprovalWithCapability(confirmation.paymentId, confirmation.body));
+  }
   const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标处理人");
-  return runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
-    kind === "transfer"
-      ? transferPaymentApprovalWithCapability(currentPaymentId(), toUserId)
-      : delegatePaymentApprovalWithCapability(currentPaymentId(), toUserId)
-  );
+  return runPaymentAction("transferApproval", () => transferPaymentApprovalWithCapability(currentPaymentId(), toUserId));
 }
 
 function performPaymentFileDownload(values: { reason: string; password: string }) {

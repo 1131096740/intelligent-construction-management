@@ -96,6 +96,7 @@ type PaymentDetailLifecycleProjection = {
   reviewApprovalContext: PaymentApprovalReviewContext | null;
   executionContext: PaymentExecutionContext | null;
   withdrawApprovalContext?: { expectedApprovalInstanceId: string };
+  delegationApprovalContext?: PaymentDelegationApprovalContext;
   revisionSubmissionContext?: {
     expectedUpdatedAt: string;
     requestedAmountCents: string;
@@ -119,7 +120,13 @@ type PaymentExecutionContext = {
   expectedPaymentUpdatedAt: string;
 };
 
+type PaymentDelegationApprovalContext = {
+  expectedApprovalInstanceId: string;
+  duties: Array<{ index: number; name: string }>;
+};
+
 type CurrentPaymentApprovalReview = {
+  delegation?: PaymentDelegationApprovalContext;
   access: ApprovalReviewAccess;
   approval: {
     id: string;
@@ -1351,6 +1358,7 @@ export class PaymentReadService {
       paidAmountCents,
       evidenceFiles,
       currentApprovalReview.approval?.executionMode === "parallel",
+      markedLatest ? Boolean(currentApprovalReview.delegation) : approvalReviewAccess.canAct,
       !markedLatest || Boolean(withdrawApprovalContext)
     );
     const enabledExecutionActions = availableActions.filter(
@@ -1684,6 +1692,7 @@ export class PaymentReadService {
       reviewApprovalContext,
       executionContext,
       ...(withdrawApprovalContext ? { withdrawApprovalContext } : {}),
+      ...(currentApprovalReview.delegation ? { delegationApprovalContext: currentApprovalReview.delegation } : {}),
       ...(revisionSubmissionContext ? { revisionSubmissionContext } : {}),
       lifecycleKind,
       ledgerView,
@@ -2511,8 +2520,14 @@ export class PaymentReadService {
         const roleScopes = await this.projectVisibility!.effectiveRoleScopesInTransaction(this.prisma, userId, projectId);
         return { userId, roleScopes, roleKeys: resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys) };
       }));
-      let fallback = emptyCurrentPaymentApprovalReview();
-      for (const index of activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex)) {
+      const nodes = instance.frozenNodes;
+      const indexes = activeApprovalNodeIndexes(nodes, instance.currentNodeIndex);
+      const duties = actorUserId === instance.applicantUserId ? [] : indexes.flatMap(index =>
+        resolveOrdinaryPaymentDuty(nodes, index, { actorUserId, actorRoleKeys: roleKeys, actorRoleScopes }, true)
+          ? [{ index, name: String(nodes[index].name) }] : []);
+      const delegation = duties.length ? { expectedApprovalInstanceId: instance.id, duties } : undefined;
+      let fallback: CurrentPaymentApprovalReview = { ...emptyCurrentPaymentApprovalReview(), delegation };
+      for (const index of indexes) {
         const identity = resolveOrdinaryPaymentDuty(instance.frozenNodes, index, {
           actorUserId, actorRoleKeys: roleKeys, actorRoleScopes, activeDelegators
         });
@@ -2520,10 +2535,10 @@ export class PaymentReadService {
         const approval = { id: instance.id, currentNodeIndex: index, updatedAt: instance.updatedAt, executionMode: "parallel" as const };
         try {
           assertOrdinaryApplicantCannotReview({ ...identity, actorUserId, actorRoleKeys: roleKeys, applicantUserId: instance.applicantUserId });
-          return { approval, access: { canAct: true, canReview: true, requiresSelfReviewConfirmation: actorUserId === instance.applicantUserId } };
+          return { approval, delegation, access: { canAct: true, canReview: true, requiresSelfReviewConfirmation: actorUserId === instance.applicantUserId } };
         } catch (error) {
           if (!(error instanceof ForbiddenException)) throw error;
-          fallback = { approval, access: { canAct: true, canReview: false, requiresSelfReviewConfirmation: false } };
+          fallback = { approval, delegation, access: { canAct: true, canReview: false, requiresSelfReviewConfirmation: false } };
         }
       }
       return fallback;
@@ -2600,6 +2615,7 @@ export class PaymentReadService {
     paidAmountCents: bigint,
     evidenceFiles: PaymentDetailReadModel["evidenceFiles"],
     parallelReview: boolean,
+    canDelegateApproval: boolean,
     canWithdrawApproval: boolean
   ): DetailActionReadModel[] {
     const workflowActions = [
@@ -2641,7 +2657,7 @@ export class PaymentReadService {
         kind: "normal",
         roleKeys,
         skipRoleCheck: true,
-        enabled: approvalReviewAccess.canAct && !parallelReview,
+        enabled: canDelegateApproval,
         disabledReason: "当前用户不是当前审批节点处理人"
       })
     ];

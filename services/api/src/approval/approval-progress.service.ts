@@ -1,4 +1,4 @@
-import { isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
+import { isOrdinaryPaymentAssignmentActive, isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
 import { companyTransferReminderIntent, contractReminderIntent, expenseReminderIntent, paymentReminderIntent, settlementReminderIntent, spotApplicationReminderIntent, spotPaymentReminderIntent } from "./approval-reminder-business-intent";
 import { generalProcurementDutySmsIntent } from "../general-procurement/general-procurement-request-facts";
 import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyId, generalRequestDutyIdentity, generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
@@ -309,10 +309,19 @@ export class ApprovalProgressService {
       });
       return identity?.viaAssignment === true && identity.representedUserId === assignment.fromUserId;
     };
+    const ordinaryParallelPayment = instance.businessType === "payment_request" && instance.flowType === "payment.approve" &&
+      isOrdinaryPaymentParallelRound(instance.frozenNodes);
+    const activeOrdinaryDuties = ordinaryParallelPayment && ACTIVE.has(instance.status)
+      ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex) : [];
     // Invalid assignment metadata must not create a new reader or SMS recipient.
-    const rawNodes = Array.isArray(instance.frozenNodes) ? instance.frozenNodes.map(value => {
+    const rawNodes = Array.isArray(instance.frozenNodes) ? instance.frozenNodes.map((value, index) => {
       const node = object(value) as FrozenApprovalNode;
-      return { ...node, assignments: Array.isArray(node.assignments) ? node.assignments.filter(assignment => validAssignment(node, assignment)) : [] };
+      const assignments = Array.isArray(node.assignments) ? node.assignments.filter(assignment =>
+        (!ordinaryParallelPayment || object(assignment).kind !== "delegate" ||
+          (activeOrdinaryDuties.includes(index) && isOrdinaryPaymentAssignmentActive(assignment, index))) &&
+        validAssignment(node, assignment)
+      ) : [];
+      return { ...node, assignments };
     }) : [];
     const legacyCandidates = (node: FrozenApprovalNode) => users.filter(u => u.isActive && resolveApprovalReviewIdentity({ node: { ...node, approvedRoleKeys: [] }, actorUserId: u.id, actorRoleKeys: allRoles(u.id), actorRoleScopes: roles.get(u.id), legacyContractRoute: instance.businessType === "contract_version" })).map(u => u.id);
     const generalNodeIds: string[][] = [];
@@ -325,8 +334,6 @@ export class ApprovalProgressService {
         generalNodeIds.push([...new Set(ids)]);
       }
     }
-    const ordinaryParallelPayment = instance.businessType === "payment_request" && instance.flowType === "payment.approve" &&
-      isOrdinaryPaymentParallelRound(instance.frozenNodes);
     const effectiveApprovals = ordinaryParallelPayment
       ? (ACTIVE.has(instance.status) || instance.status === "approved"
         ? paymentParallelRoundEvidence(ACTIVE.has(instance.status) ? "approval_pending" : instance.status, instance.frozenNodes, logs, instance)
@@ -351,6 +358,7 @@ export class ApprovalProgressService {
     for (const log of logs) {
       if (!["transfer", "delegate"].includes(log.action)) continue;
       const assignment = object(log.metadata);
+      if (ordinaryParallelPayment && assignment.ordinaryPaymentDelegation === true) continue;
       if (rawNodes.some(node => validAssignment(node, assignment))) {
         participants.add(String(assignment.fromUserId));
         participants.add(String(assignment.toUserId));

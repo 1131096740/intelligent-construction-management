@@ -22,11 +22,39 @@ export function ordinaryPaymentParallelNodes<T extends Record<string, unknown>>(
   return nodes.map(node => ({ ...node, ordinaryPaymentParallel: true, protocolVersion: 1, executionMode: "parallel" }));
 }
 
+function ordinaryPaymentDelegation(value: unknown) {
+  const row = approvalEvidenceMetadata(value);
+  if (row.kind !== "delegate" || row.ordinaryPaymentDelegation !== true ||
+      typeof row.fromUserId !== "string" || !row.fromUserId ||
+      typeof row.toUserId !== "string" || !row.toUserId || row.fromUserId === row.toUserId ||
+      typeof row.fromRoleKey !== "string" || typeof row.delegationActionId !== "string" || !row.delegationActionId ||
+      typeof row.startsAt !== "string" || typeof row.endsAt !== "string") return null;
+  const startsAt = Date.parse(row.startsAt);
+  const endsAt = Date.parse(row.endsAt);
+  return Number.isFinite(startsAt) && Number.isFinite(endsAt) && startsAt < endsAt
+    ? { startsAt, endsAt, fromUserId: row.fromUserId, fromRoleKey: row.fromRoleKey,
+      delegationActionId: row.delegationActionId, ordinaryPaymentDutyIndex: row.ordinaryPaymentDutyIndex } : null;
+}
+
+export function isOrdinaryPaymentAssignmentActive(value: unknown, nodeIndex: number, now = Date.now()) {
+  if (approvalEvidenceMetadata(value).kind === "transfer") return true;
+  const delegation = ordinaryPaymentDelegation(value);
+  return Boolean(delegation && delegation.ordinaryPaymentDutyIndex === nodeIndex && delegation.startsAt <= now && now < delegation.endsAt);
+}
+
 export function resolveOrdinaryPaymentDuty(
-  nodes: unknown, index: number, identity: Omit<Parameters<typeof resolveApprovalReviewIdentity>[0], "node">
+  nodes: unknown, index: number,
+  identity: Omit<Parameters<typeof resolveApprovalReviewIdentity>[0], "node">,
+  directOnly = false
 ) {
   if (!isOrdinaryPaymentParallelRound(nodes) || !activeApprovalNodeIndexes(nodes, index).includes(index)) return null;
-  const resolved = resolveApprovalReviewIdentity({ ...identity, node: nodes[index] });
+  const node = nodes[index];
+  const assignments = !directOnly && Array.isArray(node.assignments)
+    ? node.assignments.filter(assignment => isOrdinaryPaymentAssignmentActive(assignment, index)) : [];
+  const resolved = resolveApprovalReviewIdentity({
+    ...identity, node: { ...node, assignments },
+    ...(directOnly ? { activeDelegators: [] } : {})
+  });
   return resolved && canPerform("payment.approve", [resolved.approvedRoleKey]) ? resolved : null;
 }
 
@@ -76,6 +104,13 @@ export function paymentParallelRoundEvidence<T extends ApprovalEvidenceAction>(
           !(nodes[duty]?.roleKeys as string[] | undefined)?.includes(log.approvedRoleKey ?? "")) throw badHistory();
       if (originalIndex !== undefined) seenOriginal.add(log.id);
       effective.push(log);
+    } else if (log.action === "delegate" && metadata.ordinaryPaymentDelegation === true) {
+      const assignment = ordinaryPaymentDelegation(metadata);
+      const index = metadata.ordinaryPaymentDutyIndex;
+      if (!assignment || assignment.delegationActionId !== log.id || typeof index !== "number" || !Number.isInteger(index) ||
+          !(nodes[index]?.roleKeys as string[] | undefined)?.includes(log.approvedRoleKey ?? "") ||
+          assignment.fromRoleKey !== log.approvedRoleKey || assignment.fromUserId !== log.actorUserId ||
+          assignment.fromUserId !== log.representedUserId) throw badHistory();
     } else if (["reject", "return_to_applicant", "withdraw"].includes(log.action)) {
       effective.push(log); // The shared verifier refuses signed forms for ended rounds.
     } else if (log.action !== "remind" && (!isLegacy || !["reject_previous", "transfer", "delegate"].includes(log.action))) {

@@ -12,7 +12,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { PrismaService } from "../database/prisma.service";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
-import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, PAYMENT_DUTY_NOTICE_KIND as KIND, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
+import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentAssignmentActive, isOrdinaryPaymentParallelRound, PAYMENT_DUTY_NOTICE_KIND as KIND, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 
 const idFor = (...coordinates: string[]) => auditDutyNoticeId(KIND, ...coordinates);
@@ -54,7 +54,20 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
   async queue(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, transition: ApprovalActionLog | null) {
     if (payment.status !== "approval_pending" || round.businessId !== payment.id) return;
     if (isOrdinaryPaymentParallelRound(round.frozenNodes)) {
-      if (transition) return;
+      if (transition) {
+        const data = transition.metadata as Prisma.JsonObject | null;
+        const index = data?.ordinaryPaymentDutyIndex;
+        const recipient = data?.toUserId;
+        if (transition.action !== "delegate" || transition.approvalInstanceId !== round.id || typeof index !== "number" ||
+            typeof recipient !== "string" || !isOrdinaryPaymentAssignmentActive(data, index)) return;
+        const node = dutyNode(round, index);
+        if (!node || !await this.currentRecipient(tx, payment, round, node, recipient, index)) return;
+        await tx.approvalActionLog.createMany({
+          data: [this.dutyIntent(payment, round, index, `delegation:${transition.id}`, recipient)],
+          skipDuplicates: true
+        });
+        return;
+      }
       for (const index of activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex)) {
         const node = dutyNode(round, index);
         if (!node) continue;
@@ -107,15 +120,18 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
       if (retainedRecipients?.has(recipientId)) continue;
       const active = await tx.user.findUnique({ where: { id: recipientId }, select: { isActive: true } });
       if (!active?.isActive || !await this.currentRecipient(tx, payment, round, node, recipientId, nodeIndex)) continue;
-      const roundRevision = round.updatedAt.toISOString();
-      data.push({
-        id: idFor(payment.id, round.id, String(nodeIndex), anchorId, recipientId),
-        approvalInstanceId: round.id, actorUserId: round.applicantUserId, action: "system_notification",
-        metadata: { kind: KIND, event: "queued", paymentId: payment.id, projectId: payment.projectId,
-          nodeIndex, roundRevision, anchorId, recipientId }
-      });
+      data.push(this.dutyIntent(payment, round, nodeIndex, anchorId, recipientId));
     }
     if (data.length) await tx.approvalActionLog.createMany({ data, skipDuplicates: true });
+  }
+
+  private dutyIntent(payment: PendingPayment, round: ApprovalInstance, nodeIndex: number, anchorId: string, recipientId: string) {
+    return {
+      id: idFor(payment.id, round.id, String(nodeIndex), anchorId, recipientId),
+      approvalInstanceId: round.id, actorUserId: round.applicantUserId, action: "system_notification",
+      metadata: { kind: KIND, event: "queued", paymentId: payment.id, projectId: payment.projectId,
+        nodeIndex, roundRevision: round.updatedAt.toISOString(), anchorId, recipientId }
+    };
   }
 
   /** 最终驳回/退回申请人时提醒原申请人修改重提，共用审批待办的 claimed/terminal 幂等与失败重试。 */
@@ -355,6 +371,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     if (data?.phase === "correction") return this.currentCorrectionContext(tx, intent, data);
     if (typeof data?.paymentId !== "string" || typeof data.recipientId !== "string" || typeof data.anchorId !== "string" ||
         typeof data.nodeIndex !== "number" || !Number.isInteger(data.nodeIndex)) return null;
+    const nodeIndex = data.nodeIndex;
     const [round, payment, user] = await Promise.all([
       tx.approvalInstance.findUnique({ where: { id: intent.approvalInstanceId } }),
       tx.paymentRequest.findUnique({ where: { id: data.paymentId }, select: { id: true, projectId: true, status: true, code: true } }),
@@ -371,6 +388,13 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     if (isOrdinaryPaymentParallelRound(round.frozenNodes)) {
       if (!activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(data.nodeIndex)) return null;
       if (data.anchorId === `parallel:${round.id}`) return { node, payment, round };
+      if (data.anchorId.startsWith("delegation:")) {
+        const assigned = Array.isArray(node.assignments) && node.assignments.some(assignment =>
+          assignment?.ordinaryPaymentDelegation === true && assignment.toUserId === data.recipientId &&
+          `delegation:${assignment.delegationActionId}` === data.anchorId && isOrdinaryPaymentAssignmentActive(assignment, nodeIndex)
+        );
+        return assigned ? { node, payment, round } : null;
+      }
       const legacyRevision = round.frozenNodes[data.nodeIndex].legacyPaymentNoticeRevision;
       if (typeof legacyRevision !== "string" || legacyRevision !== data.roundRevision) return null;
     } else if (round.currentNodeIndex !== data.nodeIndex || round.updatedAt.toISOString() !== data.roundRevision) {
@@ -429,6 +453,11 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
       if (error instanceof ForbiddenException) return false;
       throw error;
     }
+    if (parallel && identity.viaAssignment && Array.isArray(node.assignments) && node.assignments.some(assignment =>
+      assignment?.ordinaryPaymentDelegation === true && assignment.toUserId === actorId &&
+      assignment.fromUserId === identity.representedUserId && assignment.fromRoleKey === identity.approvedRoleKey &&
+      isOrdinaryPaymentAssignmentActive(assignment, nodeIndex)
+    )) return true;
     return (await this.visibility.visibleRequestedProjectIdsInTransaction(tx, actorId, [payment.projectId])).includes(payment.projectId)
       && await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorId, actorRoleKeys);
   }

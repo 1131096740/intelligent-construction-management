@@ -85,7 +85,7 @@ import {
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
-import type { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
+import type { AssignPaymentApprovalDto, DelegatePaymentApprovalDto } from "./dto/assign-payment-approval.dto";
 import type { AbandonPaymentRequestDto } from "./dto/abandon-payment-request.dto";
 import type { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import type { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
@@ -3319,7 +3319,7 @@ export class PaymentRequestService {
     return this.assignApproval("transfer", paymentId, actorUserId, input);
   }
 
-  delegateApproval(paymentId: string, actorUserId: string, input: AssignPaymentApprovalDto) {
+  delegateApproval(paymentId: string, actorUserId: string, input: DelegatePaymentApprovalDto) {
     return this.assignApproval("delegate", paymentId, actorUserId, input);
   }
 
@@ -5434,7 +5434,7 @@ export class PaymentRequestService {
     kind: PaymentApprovalAssignment["kind"],
     paymentId: string,
     actorUserId: string,
-    input: AssignPaymentApprovalDto
+    input: DelegatePaymentApprovalDto
   ) {
     if (!this.prisma) {
       throw new Error("付款审批转交服务暂不可用，请稍后重试或联系管理员");
@@ -5444,7 +5444,8 @@ export class PaymentRequestService {
       throw new Error("请选择有效的审批接收人，不能选择当前操作人");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    let noticePaymentId: string | undefined;
+    const result = await this.prisma.$transaction(async (tx) => {
       if (supportsApprovalReviewLock(tx)) await this.lockPaymentRequestForUpdate(tx, paymentId);
       const payment = await tx.paymentRequest.findFirst({
         where: { OR: [{ id: paymentId }, { code: paymentId }] }
@@ -5476,20 +5477,34 @@ export class PaymentRequestService {
       if (!instance) {
         throw new Error("未找到进行中的付款审批，请刷新后重试");
       }
-      if (hasOrdinaryPaymentParallelMarker(instance.frozenNodes)) {
+      const parallel = isOrdinaryPaymentParallelRound(instance.frozenNodes);
+      if (hasOrdinaryPaymentParallelMarker(instance.frozenNodes) && (!parallel || kind !== "delegate")) {
         throw new ConflictException("并联付款审批需按当前职责办理，原转审入口不支持该轮审批");
+      }
+      const nodeIndex = parallel ? input.expectedNodeIndex ?? -1 : instance.currentNodeIndex;
+      if (parallel && (input.expectedApprovalInstanceId !== instance.id ||
+          !activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).includes(nodeIndex))) {
+        throw new ConflictException("付款审批职责已变化，请刷新后重新确认委托");
+      }
+      if (!parallel && (input.expectedApprovalInstanceId !== undefined || input.expectedNodeIndex !== undefined || input.endsAt !== undefined)) {
+        throw new ConflictException("当前付款审批轮次不支持按职责委托");
       }
 
       const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
-      const currentNode = nodes[instance.currentNodeIndex];
+      const currentNode = nodes[nodeIndex];
 
       if (!currentNode) {
         throw new Error("当前付款审批节点异常，请刷新后重试");
       }
 
-      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
-      let identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys });
-      if (!identity) {
+      const actorRoleScopes = parallel ? await this.loadActorRoleScopes(tx, actorUserId, payment.projectId) : undefined;
+      const actorRoleKeys = actorRoleScopes
+        ? resolveEffectiveRoleKeys(actorRoleScopes.globalRoleKeys, actorRoleScopes.projectRoleKeys)
+        : await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
+      let identity = parallel
+        ? resolveOrdinaryPaymentDuty(instance.frozenNodes, nodeIndex, { actorUserId, actorRoleKeys, actorRoleScopes }, true)
+        : resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys });
+      if (!identity && !parallel) {
         const delegatorIds = this.delegations
           ? await this.delegations.activeDelegatorIds(tx, actorUserId)
           : await activeApprovalDelegatorIds(tx, actorUserId);
@@ -5499,12 +5514,38 @@ export class PaymentRequestService {
         })));
         identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys, activeDelegators });
       }
+      if (parallel && (!identity || instance.applicantUserId === actorUserId || instance.applicantUserId === input.toUserId)) {
+        throw new ForbiddenException("仅当前岗位审批人可以委托，申请人不能参与委托");
+      }
       if (!identity) {
         throw new Error(`当前账号不能转交或委托“${currentNode.name}”付款审批节点`);
       }
       const fromRoleKey = identity.approvedRoleKey;
       await assertActiveApprovalRecipient(tx, input.toUserId);
 
+      let scopedDelegation: {
+        ordinaryPaymentDelegation: true; ordinaryPaymentDutyIndex: number; delegationActionId: string;
+        startsAt: string; endsAt: string;
+      } | undefined;
+      if (parallel) {
+        const startsAt = new Date();
+        const endsAt = new Date(input.endsAt ?? "");
+        if (!input.endsAt || !/T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(input.endsAt) ||
+            !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt) {
+          throw new BadRequestException("委托截止时间必须晚于当前时间并包含时区");
+        }
+        const end = endsAt.toISOString();
+        if (currentNode.assignments?.some(assignment => assignment.kind === "delegate" &&
+            assignment.fromUserId === actorUserId && assignment.fromRoleKey === fromRoleKey && assignment.toUserId === input.toUserId &&
+            "endsAt" in assignment && assignment.endsAt === end)) return instance;
+        scopedDelegation = {
+          ordinaryPaymentDelegation: true, ordinaryPaymentDutyIndex: nodeIndex, delegationActionId: randomUUID(),
+          startsAt: startsAt.toISOString(), endsAt: end
+        };
+      }
+      const assignment = {
+        kind, fromUserId: identity.representedUserId, fromRoleKey, toUserId: input.toUserId, ...scopedDelegation
+      };
       const nextNodes = [...nodes];
       const nextAssignments = [
         ...(currentNode.assignments ?? []).filter(
@@ -5515,32 +5556,31 @@ export class PaymentRequestService {
               assignment.fromRoleKey === fromRoleKey
             )
         ),
-        { kind, fromUserId: identity.representedUserId, fromRoleKey, toUserId: input.toUserId }
+        assignment
       ];
-      nextNodes[instance.currentNodeIndex] = { ...currentNode, assignments: nextAssignments };
+      nextNodes[nodeIndex] = { ...currentNode, assignments: nextAssignments };
 
       const updated = await tx.approvalInstance.update({
         where: { id: instance.id },
         data: { frozenNodes: nextNodes as unknown as Prisma.InputJsonValue }
       });
 
-      await tx.approvalActionLog.create({
+      const assignmentAction = await tx.approvalActionLog.create({
         data: {
+          ...(scopedDelegation ? { id: scopedDelegation.delegationActionId } : {}),
           approvalInstanceId: instance.id,
           action: kind,
           actorUserId,
           approvedRoleKey: fromRoleKey,
           representedUserId: identity.representedUserId,
-          metadata: {
-            kind,
-            fromUserId: identity.representedUserId,
-            toUserId: input.toUserId,
-            fromRoleKey
-          }
+          metadata: assignment
         }
       });
 
-      if (kind === "delegate") {
+      if (scopedDelegation) {
+        await this.approvalNotifications?.queue(tx, payment, updated, assignmentAction);
+        noticePaymentId = payment.id;
+      } else if (kind === "delegate") {
         const startsAt = new Date();
         await tx.approvalDelegation.create({
           data: {
@@ -5561,12 +5601,15 @@ export class PaymentRequestService {
         metadata: {
           nodeName: currentNode.name,
           fromRoleKey,
-          toUserId: input.toUserId
+          toUserId: input.toUserId,
+          ...(scopedDelegation ? { approvalInstanceId: instance.id, ...scopedDelegation } : {})
         }
       });
 
       return updated;
     });
+    if (noticePaymentId) await this.approvalNotifications?.afterCommit(noticePaymentId);
+    return result;
   }
 }
 

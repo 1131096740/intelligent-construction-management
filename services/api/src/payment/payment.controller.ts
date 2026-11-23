@@ -31,7 +31,7 @@ import {
   type MemoryUploadedFile,
   normalizeUploadedOriginalName
 } from "../file/uploaded-file";
-import { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
+import { AssignPaymentApprovalDto, DelegatePaymentApprovalDto } from "./dto/assign-payment-approval.dto";
 import { AbandonPaymentRequestDto } from "./dto/abandon-payment-request.dto";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
@@ -172,7 +172,7 @@ export class PaymentController {
   delegateApproval(
     @Param("paymentId") paymentId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: AssignPaymentApprovalDto
+    @Body() body: DelegatePaymentApprovalDto
   ) {
     return this.payments.delegateApproval(paymentId, user.id, body);
   }

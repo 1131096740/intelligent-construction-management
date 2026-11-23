@@ -542,6 +542,10 @@ export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   reviewApprovalContext: PaymentReviewApprovalContext | null;
   executionContext: PaymentExecutionContext | null;
   withdrawApprovalContext?: { expectedApprovalInstanceId: string };
+  delegationApprovalContext?: {
+    expectedApprovalInstanceId: string;
+    duties: Array<{ index: number; name: string }>;
+  };
   revisionSubmissionContext?: {
     expectedUpdatedAt: string;
     requestedAmountCents: string;
@@ -7921,7 +7925,11 @@ export function transferPaymentApproval(paymentId: string, body: AssignSettlemen
   return postJson<unknown>(`/payments/${paymentId}/approval-transfer`, body);
 }
 
-export function delegatePaymentApproval(paymentId: string, body: AssignSettlementApprovalPayload) {
+export function delegatePaymentApproval(paymentId: string, body: AssignSettlementApprovalPayload & {
+  expectedApprovalInstanceId?: string;
+  expectedNodeIndex?: number;
+  endsAt?: string;
+}) {
   return postJson<unknown>(`/payments/${paymentId}/approval-delegation`, body);
 }
 

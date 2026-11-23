@@ -133,7 +133,8 @@ export class PermissionGuard implements CanActivate {
             effectiveRoleKeys,
             projectId,
             roleScopes,
-            requiredAction
+            requiredAction,
+            context.getHandler().name === "delegateApproval"
           )
         : null;
       if (governedApprovalAccess === false) {
@@ -334,7 +335,8 @@ export class PermissionGuard implements CanActivate {
     roleKeys: RoleKey[],
     projectId?: string,
     roleScopes?: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] },
-    requiredAction?: BusinessAction
+    requiredAction?: BusinessAction,
+    directOrdinaryPaymentDelegation = false
   ): Promise<boolean | null> {
     const target: {
       businessType: string;
@@ -362,6 +364,7 @@ export class PermissionGuard implements CanActivate {
           id: string;
           status: string;
           flowType: string;
+          applicantUserId?: string;
           frozenNodes: unknown;
           currentNodeIndex: number;
         } | null>;
@@ -376,7 +379,7 @@ export class PermissionGuard implements CanActivate {
         status: "in_progress"
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, status: true, flowType: true, frozenNodes: true, currentNodeIndex: true }
+      select: { id: true, status: true, flowType: true, applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
     });
     if (!instance || !Array.isArray(instance.frozenNodes)) return null;
     if (target.businessType === "contract_version" && isParallelApprovalRound(instance.frozenNodes)) {
@@ -392,6 +395,12 @@ export class PermissionGuard implements CanActivate {
     const expectedIndex = request.body?.expectedNodeIndex;
     if (ordinaryParallelPayment && (!projectId || request.body?.expectedApprovalInstanceId !== instance.id ||
         typeof expectedIndex !== "number" || !Number.isInteger(expectedIndex))) return false;
+    if (ordinaryParallelPayment && directOrdinaryPaymentDelegation) {
+      if (instance.applicantUserId === userId || instance.applicantUserId === request.body?.toUserId) return false;
+      return Boolean(resolveOrdinaryPaymentDuty(instance.frozenNodes, expectedIndex as number, {
+        actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes: roleScopes
+      }, true));
+    }
     const node = instance.frozenNodes[instance.currentNodeIndex] as FrozenApprovalNode | undefined;
     if (!ordinaryParallelPayment && (!node || !isGovernedFrozenApprovalNode(node))) return null;
 
