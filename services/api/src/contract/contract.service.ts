@@ -2641,7 +2641,7 @@ export class ContractService {
     }
     const signed = approvalEvidenceMetadata(approvalEvidenceMetadata(executive.metadata).ownerContractRisk);
     if (!Object.entries(contractOwnerRiskToApi(risk)).every(([field, value]) => signed[field] === value) ||
-        !this.files || await readLegacyContractSignature(tx, this.files, executive)) {
+        !this.files || typeof await readLegacyContractSignature(tx, this.files, executive) === "string") {
       throw legacyExecutiveRiskConflict();
     }
     return executive.id;

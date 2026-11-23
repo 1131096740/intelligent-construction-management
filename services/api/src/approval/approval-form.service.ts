@@ -1,3 +1,5 @@
+import { isPendingLegacyContractCutover, readLegacyContractSignature } from "../contract/contract-approval-cutover";
+import { isDeepStrictEqual } from "node:util";
 import { contractPendingApprovalSnapshot } from "../contract/contract-parallel-duty-access";
 import { hasVersionedApprovalNodes, isParallelApprovalRound } from "./parallel-approval-protocol";
 import { approvalDate as formatDate, approvalDateTime as formatDateTime } from "./approval-date";
@@ -578,7 +580,6 @@ export class ApprovalFormService {
       if (pendingContract) {
         const snapshot = await this.pendingContractRound(businessId, instance);
         if (!snapshot) return { available: false };
-        pendingContractFormFacts(snapshot);
       }
       if (!pendingContract && !pendingParallelRound && instance.status !== "approved" &&
           !(businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.status === "approval_pending")) return { available: false };
@@ -1291,7 +1292,8 @@ export class ApprovalFormService {
     const current = await prisma.approvalInstance.findFirst({
       where: { businessType, businessId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }]
     });
-    if (!current || !await this.pendingContractRound(businessId, current) ||
+    const currentSnapshot = current && await this.pendingContractRound(businessId, current);
+    if (!current || !currentSnapshot || (snapshot.legacyVersionUpdatedAt !== undefined && !isDeepStrictEqual(snapshot, currentSnapshot)) ||
         !this.sameApprovalFormFreezeToken(token, await this.loadApprovalFormFreezeToken(prisma, current))) {
       throw new ConflictException("合同审批状态或签名记录已变化，请刷新后重新下载");
     }
@@ -1330,12 +1332,41 @@ export class ApprovalFormService {
   }
 
   private async pendingContractRound(businessId: string, instance: Parameters<typeof contractPendingApprovalSnapshot>[1]) {
-    const version = await this.prisma?.contractVersion.findUnique({
+    if (!this.prisma) return null;
+    const version = await this.prisma.contractVersion.findUnique({
       where: { id: businessId },
       select: { id: true, status: true, numericProtocolVersion: true, draftRevision: true,
-        documentContentRevision: true, documentContentFingerprint: true }
+        documentContentRevision: true, documentContentFingerprint: true, contractId: true, updatedAt: true,
+        draftData: true, versionNo: true, amountLimitType: true, amountCents: true, signingSubjectType: true,
+        companyEntityNameSnapshot: true, affiliateNameSnapshot: true, companyEntityIdSnapshot: true,
+        companyEntityVersionId: true, affiliateAssignmentId: true, affiliateBusinessPartyVersionId: true }
     });
-    return contractPendingApprovalSnapshot(version ?? null, instance);
+    if (version && isPendingLegacyContractCutover(version, instance)) {
+      const contract = await this.prisma.contract.findUnique({ where: { id: version.contractId },
+        select: { code: true, voidedAt: true } });
+      if (!contract?.code?.trim() || contract.voidedAt) return null;
+      const draft = approvalEvidenceMetadata(version.draftData);
+      const parties = approvalEvidenceMetadata(draft.partyValues);
+      const relationship = downstreamContractRelationship(version);
+      const counterpartyName = relationship === "inside" ? parties.party_b :
+        relationship === "outside" ? parties.party_a : undefined;
+      const companyName = version.companyEntityNameSnapshot ?? "";
+      const signingParty = version.signingSubjectType === "affiliate" ? version.affiliateNameSnapshot : companyName;
+      const facts: ReturnType<typeof pendingContractFormFacts> = {
+        code: contract.code, companyName,
+        summary: [
+          { label: "合同名称", value: typeof draft.contractName === "string" && draft.contractName.trim() ? draft.contractName : "待核对" },
+          { label: "对方单位", value: typeof counterpartyName === "string" && counterpartyName.trim() ? counterpartyName : "待核对" },
+          { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[relationship] },
+          { label: "签约主体", value: signingParty || "待核对" },
+          { label: "合同金额", value: version.amountLimitType === "uncapped" ? "未约定总额" : formatYuan(version.amountCents) },
+          { label: "版本号", value: `第 ${version.versionNo} 版` }
+        ]
+      };
+      return { facts, legacyVersionUpdatedAt: version.updatedAt.getTime() };
+    }
+    const snapshot = contractPendingApprovalSnapshot(version ?? null, instance);
+    return snapshot ? { facts: pendingContractFormFacts(snapshot) } : null;
   }
 
   private async currentParallelApplication(businessType: string, businessId: string) {
@@ -1361,7 +1392,7 @@ export class ApprovalFormService {
     applicantUserId: string;
     flowType?: string;
     frozenNodes: unknown;
-  }, client?: ApprovalFormClient, pendingContract?: Record<string, unknown>, evidenceStatus?: string): Promise<RenderInput> {
+  }, client?: ApprovalFormClient, pendingContract?: { facts: ReturnType<typeof pendingContractFormFacts>; legacyVersionUpdatedAt?: number }, evidenceStatus?: string): Promise<RenderInput> {
     const prisma = client ?? (this.prisma as ApprovalFormClient);
     const allLogs = await prisma.approvalActionLog.findMany({
       where: { approvalInstanceId: instance.id },
@@ -1380,7 +1411,7 @@ export class ApprovalFormService {
       approvalActionSetHash = settlementApprovalActionSetHash([submission, ...logs]);
     }
     const facts = await additionalApprovalFacts(prisma, instance.businessType, instance.businessId, logs, instance.id);
-    const frozenContract = pendingContract ? pendingContractFormFacts(pendingContract) : null;
+    const frozenContract = pendingContract?.facts;
     const [businessCode, companyName, expenseClaim] = await Promise.all([
       frozenContract?.code ?? facts?.code ?? this.resolveBusinessCode(prisma, instance.businessType, instance.businessId),
       frozenContract?.companyName ?? facts?.companyName ?? this.resolveCompanyName(prisma, instance.businessType, instance.businessId),
@@ -1409,6 +1440,12 @@ export class ApprovalFormService {
       }
       if (!this.files) {
         throw new BadRequestException("审批签名文件服务不可用，请稍后重试");
+      }
+      if (pendingContract?.legacyVersionUpdatedAt !== undefined) {
+        const evidence = await readLegacyContractSignature(prisma, this.files, log);
+        if (typeof evidence === "string") throw new BadRequestException("原合同签名证据暂不可核验，不能下载审批单");
+        signatureBufferByLogId.set(log.id, evidence);
+        continue;
       }
       const { buffer } = await this.files.getFileBuffer(fileId);
       signatureBufferByLogId.set(

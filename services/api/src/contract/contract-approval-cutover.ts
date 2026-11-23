@@ -19,11 +19,23 @@ function isLegacyExecutiveDuty(node: unknown) {
 }
 
 /** Admission keeps the original v1 authority and marks only this round's approved duties. */
-export function isLegacyContractParallelRound(nodes: unknown): nodes is Array<Record<string, unknown>> {
+export function isLegacyContractParallelRound(nodes: unknown): nodes is Array<Record<string, unknown> & {
+  legacyContractCutover: true; approvedRoleKeys: string[]
+}> {
   return isParallelApprovalRound(nodes) && isLegacyExecutiveDuty(nodes.at(-1)) &&
     nodes.every(node => node.legacyContractCutover === true && node.mode === "any" &&
       distinctIds(node.approvedRoleKeys) && node.approvedRoleKeys.length <= 1 &&
       node.approvedRoleKeys.every(role => (node.roleKeys as string[]).includes(role)));
+}
+
+export function isPendingLegacyContractCutover(
+  version: { id: string; status: string; numericProtocolVersion: number } | null | undefined,
+  round: { businessType: string; businessId: string; flowType: string; status: string; frozenNodes: unknown } | null
+) {
+  return version?.numericProtocolVersion === 1 && version.status === "in_approval" &&
+    round?.businessType === "contract_version" && round.businessId === version.id &&
+    round.flowType === "contract.approve" && round.status === "in_progress" &&
+    isLegacyContractParallelRound(round.frozenNodes);
 }
 
 type LegacyActivationCoordinates = {
@@ -261,8 +273,8 @@ async function inspectRound(
   try {
     if (approvals.length) finalApprovalEvidence("approved", frozenNodes.slice(0, currentNodeIndex), approvals);
     for (const log of approvals) {
-      const signatureFailure = await readLegacyContractSignature(tx, files, log);
-      if (signatureFailure) return blocked(signatureFailure);
+      const signature = await readLegacyContractSignature(tx, files, log);
+      if (typeof signature === "string") return blocked(signature);
     }
   } catch (error) {
     if (!(error instanceof BadRequestException)) throw error;
@@ -283,7 +295,7 @@ export async function readLegacyContractSignature(
   tx: Prisma.TransactionClient,
   files: Pick<FileService, "getFileBuffer">,
   log: Pick<ApprovalActionLog, "actorUserId" | "signatureVersionIdSnapshot" | "signatureFileIdSnapshot" | "signatureSha256Snapshot">
-): Promise<"invalid_signature_evidence" | "signature_file_unavailable" | null> {
+): Promise<"invalid_signature_evidence" | "signature_file_unavailable" | Buffer> {
   if (!log.signatureVersionIdSnapshot) return "invalid_signature_evidence";
   const signature = await tx.handwrittenSignatureVersion.findUnique({
     where: { id: log.signatureVersionIdSnapshot },
@@ -301,8 +313,7 @@ export async function readLegacyContractSignature(
     return "invalid_signature_evidence";
   }
   try {
-    verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
-    return null;
+    return verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
   } catch (error) {
     if (!(error instanceof BadRequestException)) throw error;
     return "invalid_signature_evidence";

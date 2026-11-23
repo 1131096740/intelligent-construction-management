@@ -5,7 +5,8 @@ import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/
 import { task12NativeApprovalAssignments, task12NativeSealAssignments } from "../file/task12-native-review-readiness";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-delegations";
-import type { ApprovalActorRoleScopes } from "../approval/approval-review-identity";
+import { resolveApprovalReviewIdentity, type ApprovalActorRoleScopes } from "../approval/approval-review-identity";
+import { isLegacyContractParallelRound } from "./contract-approval-cutover";
 
 export const CONTRACT_PARALLEL_DUTY_RESOURCE = "contract_approval_duty";
 export const contractParallelDutyId = (instanceId: string, nodeIndex: number) => `${instanceId}:${nodeIndex}`;
@@ -84,8 +85,17 @@ function frozenContractDutyRoleScope(node: Record<string, unknown>, role: RoleKe
   return scope === "global" || scope === "project" ? scope : null;
 }
 
-export function pendingContractApprovalFormHasReaderRole(nodes: unknown, scopes?: ApprovalActorRoleScopes) {
+export function pendingContractApprovalFormHasReaderRole(nodes: unknown, scopes?: ApprovalActorRoleScopes, actorUserId?: string) {
   if (!scopes || !isParallelApprovalRound(nodes)) return false;
+  if (isLegacyContractParallelRound(nodes)) {
+    if (!actorUserId || scopes.globalRoleKeys.includes("super_admin")) return false;
+    const actorRoleKeys = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+    return nodes.some(node => {
+      const identity = resolveApprovalReviewIdentity({ node: { ...node, approvedRoleKeys: [] }, actorUserId,
+        actorRoleKeys, actorRoleScopes: scopes, legacyContractRoute: true });
+      return identity?.representedUserId === actorUserId && !identity.viaAssignment;
+    });
+  }
   const dutyRoles = new Set(nodes.flatMap(node => node.roleKeys as RoleKey[]));
   const independentRoles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys)
     .filter(role => !dutyRoles.has(role));

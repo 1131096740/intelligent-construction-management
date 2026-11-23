@@ -83,6 +83,35 @@ describe('审批中心四视图可见性', () => {
   });
 });
 
+it('标记旧合同待办按创建来源校验自审，来源无法核实时关闭办理', async () => {
+  const { service, instance, db } = fixture();
+  Object.assign(db, {
+    contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: 'contract', status: 'in_approval', numericProtocolVersion: 1 }) },
+    contract: { findUnique: jest.fn().mockResolvedValue({ projectId: 'project', code: 'HT-LEGACY' }) }
+  });
+  const marker = { protocolVersion: 1, executionMode: 'parallel', legacyContractCutover: true,
+    approvedRoleKeys: [], originatorUserIds: ['later'] };
+  Object.assign(instance, {
+    businessType: 'contract_version', businessId: 'version', flowType: 'contract.approve',
+    frozenNodes: [
+      { ...marker, name: '项目经理', mode: 'any', roleKeys: ['project_manager'], candidateUserIdsByRole: { project_manager: ['later'] },
+        roleScopesByRole: { project_manager: 'project' } },
+      { ...marker, name: '董事长/总经理', mode: 'any', roleKeys: ['chairman', 'general_manager'],
+        roleScopesByRole: { chairman: 'global', general_manager: 'global' },
+        candidateUserIdsByRole: { chairman: ['first'], general_manager: [] } }
+    ]
+  });
+  db.position.findMany.mockResolvedValue([{ id: 'p1', key: 'chairman' }, { id: 'p2', key: 'project_manager' }]);
+  const progress = await service.detail('flow', 'later');
+  expect(progress.canHandle).toBe(true);
+  expect(progress.pendingRecipients.map(actor => actor.id)).toEqual(['first', 'later']);
+  Object.assign(instance.frozenNodes[1], { originatorUserIds: ['owner'] });
+  const missing = await service.detail('flow', 'first');
+  expect(missing.canHandle).toBe(false);
+  expect(missing.pendingRecipients).toEqual([]);
+  expect(missing.canRemind).toBe(false);
+});
+
 describe('统一审批进度', () => {
   it('尚未轮到的审批人能读取全部节点、当前待办人及催办能力', async () => {
     const { service } = fixture();

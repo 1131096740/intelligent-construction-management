@@ -1,3 +1,4 @@
+import { resolveContractOriginators } from "../contract/contract-originators";
 import { isLegacyContractParallelRound } from "../contract/contract-approval-cutover";
 import { isLiveOrdinaryPaymentDelegation, isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
 import { companyTransferReminderIntent, contractReminderIntent, expenseReminderIntent, paymentReminderIntent, settlementReminderIntent, spotApplicationReminderIntent, spotPaymentReminderIntent } from "./approval-reminder-business-intent";
@@ -147,7 +148,7 @@ export class ApprovalProgressService {
         const label = LABELS[context.instance.businessType];
         const dutyName = duties.map(duty=>duty.name).join("、");
         const legacy = [user.phone ?? "",label,dutyName,
-          "code" in context.business ? context.business.code : `${context.project?.name ?? "项目"}额度申请`] as const;
+          "code" in context.business ? context.business.code ?? undefined : `${context.project?.name ?? "项目"}额度申请`] as const;
         const rich = approvalDutyRichTemplateEnabled() ? await this.reminderIntent(tx,context,label,dutyName) : null;
         return {legacy,rich};
       });
@@ -223,8 +224,9 @@ export class ApprovalProgressService {
     const id = instance.businessId;
     switch (instance.businessType) {
       case "contract_version": {
-        const version = await db.contractVersion.findUnique({ where: { id }, select: { contractId: true } });
-        return version ? db.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true, code: true } }) : null;
+        const version = await db.contractVersion.findUnique({ where: { id }, select: { contractId: true, status: true, numericProtocolVersion: true } });
+        const contract = version && await db.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true, code: true, voidedAt: true } });
+        return contract ? { ...contract, contractVersionStatus: version.status, numericProtocolVersion: version.numericProtocolVersion } : null;
       }
       case "general_procurement": return db.generalProcurement.findUnique({ where: { id }, select: { projectId: true, code: true, status: true, approvalInstanceId: true, requestProtocolVersion: true, scope: true, applicantUserId: true } });
       case "company_transfer": {
@@ -386,7 +388,23 @@ export class ApprovalProgressService {
     }
     const activeIndexes = activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex);
     const current = rawNodes[instance.currentNodeIndex];
-    const businessUnavailable = (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
+    let legacyOriginators: string[] | null = null;
+    if (legacyContractParallel && ACTIVE.has(instance.status) && instance.flowType === "contract.approve" &&
+        "contractVersionStatus" in business && business.contractVersionStatus === "in_approval" &&
+        business.numericProtocolVersion === 1 && !business.voidedAt) {
+      const activeRounds = await db.approvalInstance.findMany({
+        where: { businessType: "contract_version", businessId: instance.businessId, flowType: "contract.approve", status: "in_progress" },
+        select: { id: true }, take: 2
+      });
+      if (activeRounds.length === 1 && activeRounds[0].id === instance.id) {
+        try {
+          legacyOriginators = await resolveContractOriginators(db, instance.businessId, instance.frozenNodes);
+        } catch (error) {
+          if (!(error instanceof ConflictException)) throw error;
+        }
+      }
+    }
+    const businessUnavailable = (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const pending = !businessUnavailable && ACTIVE.has(instance.status) && current ? users.filter(user => {
@@ -402,14 +420,15 @@ export class ApprovalProgressService {
       if (!identity || (instance.businessType === "general_procurement" && identity.viaAssignment)) return false;
       if (instance.businessType === "company_transfer" && instance.applicantUserId === user.id) return false;
       if (instance.businessType === "fund_execution_case" || parallelSpot) return true;
-      if (instance.applicantUserId !== user.id) return true;
+      const selfReview = instance.applicantUserId === user.id || legacyOriginators?.includes(user.id);
+      if (!selfReview) return true;
       // Mirror each domain's existing self-review eligibility, without performing its confirmation step.
       if (["expense_claim", "general_procurement"].includes(instance.businessType)) return identity.representedUserId === user.id && !identity.viaAssignment;
       if (instance.businessType === "project_financing_quota") return "requestedByRoleKey" in business && business.requestedByRoleKey === "finance_director" && instance.currentNodeIndex === 0 && identity.approvedRoleKey === "finance_director";
       if (instance.businessType === "project_settlement_exception_quota") return true;
       try {
         assertOrdinaryApplicantCannotReview({
-          applicantUserId: instance.applicantUserId, actorUserId: user.id, actorRoleKeys,
+          applicantUserId: user.id, actorUserId: user.id, actorRoleKeys,
           approvedRoleKey: identity.approvedRoleKey, representedUserId: identity.representedUserId, viaAssignment: identity.viaAssignment,
           allowContractDirectorSelfReview: instance.businessType === "contract_version"
         });

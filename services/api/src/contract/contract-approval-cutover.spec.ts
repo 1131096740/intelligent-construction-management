@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { hash } from "bcryptjs";
+import { PDFDocument } from "pdf-lib";
+import { isFormalApprovalV6 } from "../approval/approval-pdf-watermark";
 import type { INestApplication } from "@nestjs/common";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -189,13 +191,19 @@ postgres("inventories original evidence and exercises the actual frozen and reop
     const nodes = frozen.map(node => ({ ...node, originatorUserIds: [applicant.id] }));
     const signer = await owner.user.create({ data: { id: evidence.actorUserId, name: "原合同主管" } });
     const project = await owner.project.create({ data: { code: "I424-CON", name: "合同审批迁移合成项目" } });
+    const company = await owner.companyEntity.create({ data: { name: "隔离签约公司" } });
     const contract = await owner.contract.create({ data: {
       projectId: project.id, ownerUserId: applicant.id, code: "I424-CON-01", name: "待审批合同", counterparty: "合成相对方"
     } });
     const version = await owner.contractVersion.create({ data: {
       contractId: contract.id, versionNo: 1, changeType: "original", status: "in_approval",
       numericProtocolVersion: 1, contractGovernanceVersion: 1, signingSubjectType: "our_company",
-      amountCents: 100n, draftData: {}, templateSnapshot: {}, clauseSnapshot: []
+      companyEntityIdSnapshot: company.id, companyEntityNameSnapshot: company.name,
+      amountCents: 100n, draftData: { contractName: "原合同测试名称", partyValues: { party_b: "原签约相对方" } },
+      templateSnapshot: {}, clauseSnapshot: []
+    } });
+    await owner.paymentTermsVersion.create({ data: {
+      contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "draft", originalText: "虚构付款条款"
     } });
     const round = await owner.approvalInstance.create({ data: {
       businessType: "contract_version", businessId: version.id, flowType: "contract.approve", status: "in_progress",
@@ -282,6 +290,7 @@ postgres("inventories original evidence and exercises the actual frozen and reop
     const [executiveToken, otherExecutiveToken, financeToken, managerToken] =
       await Promise.all([executive, wrongExecutive, finance, manager].map(user => login(user.phone)));
     const review = (body: object, token?: string) => post(`/contracts/${version.id}/approval`, body, token);
+    const get = (route: string, token: string) => fetch(base + route, { headers: { Authorization: "Bearer " + token } });
     const reviewCoordinates = async (index: number) => {
       return {
         expectedContractUpdatedAt: (await owner.contractVersion.findUniqueOrThrow({ where: { id: version.id } })).updatedAt.toISOString(),
@@ -303,11 +312,57 @@ postgres("inventories original evidence and exercises the actual frozen and reop
     delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
     expect((await review(reviewOwnerRisk)).status).toBe(401);
     expect((await review(reviewOwnerRisk, otherExecutiveToken)).status).toBe(403);
+
+    const detailResponse = await get(`/contracts/${contract.id}`, executiveToken);
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json();
+    expect(detail).toMatchObject({
+      reviewApprovalContext: beforeExecutive,
+      ownerContractRisk: { status: "missing_owner_contract", requiresExplicitConfirmation: true },
+      availableActions: expect.arrayContaining([expect.objectContaining({ key: "download_approval_form", enabled: true })])
+    });
+    const progressRoute = `/approval-progress/${round.id}`;
+    const progressResponse = await get(progressRoute, executiveToken);
+    expect(progressResponse.status).toBe(200);
+    expect(await progressResponse.json()).toMatchObject({
+      canHandle: true, parallelCompletion: { completed: 1, total: 4 },
+      pendingRecipients: expect.arrayContaining([expect.objectContaining({ id: executive.id })])
+    });
+    expect((await get(progressRoute, otherExecutiveToken)).status).toBe(404);
+    const pdfPath = `/approval-forms/contract_version/${version.id}`;
+    const formCapability = await get(pdfPath + "/capability", executiveToken);
+    expect(formCapability.status).toBe(200);
+    expect(await formCapability.json()).toEqual({ available: true, incomplete: true });
+    const downloadBody = { confirmationPassword: password, downloadReason: "核对接续审批记录" };
+    expect((await post(pdfPath + "/download", downloadBody, otherExecutiveToken)).status).toBe(403);
+    const pdfResponse = await post(pdfPath + "/download", downloadBody, executiveToken);
+    expect(pdfResponse.status).toBe(201);
+    expect(pdfResponse.headers.get("content-type")).toContain("application/pdf");
+    expect(pdfResponse.headers.get("cache-control")).toBe("no-store");
+    expect(decodeURIComponent(pdfResponse.headers.get("content-disposition") ?? "")).toContain("审批未完成-审批单-I424-CON-01.pdf");
+    const pdf = Buffer.from(await pdfResponse.arrayBuffer());
+    expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(0);
+    expect(await isFormalApprovalV6(pdf)).toBe(false);
+    expect(await owner.auditLog.count({ where: { action: "approval.form.download", businessId: version.id } })).toBe(1);
+    expect(await owner.pdfDocument.count({ where: { businessType: "contract_version", businessId: version.id } })).toBe(0);
+
     expect((await review({ ...reviewOwnerRisk, expectedApprovalUpdatedAt: round.updatedAt.toISOString() }, executiveToken)).status).toBe(409);
     const approvedEarly = await review(reviewOwnerRisk, executiveToken);
     expect(approvedEarly.status).toBe(201);
     expect(await approvedEarly.json()).toMatchObject({ status: "in_approval" });
     expect((await review({ ...reviewOwnerRisk, ...await reviewCoordinates(3) }, executiveToken)).status).toBe(403);
+    const marked = await owner.approvalInstance.findUniqueOrThrow({ where: { id: round.id } });
+    const markedNodes = marked.frozenNodes as Prisma.JsonObject[];
+    await owner.approvalInstance.update({ where: { id: round.id }, data: {
+      frozenNodes: markedNodes.map((node, index) => index === 0 ? { ...node, originatorUserIds: [] } : node)
+    } });
+    const inconsistent = await get(progressRoute, managerToken);
+    expect(inconsistent.status).toBe(200);
+    expect(await inconsistent.json()).toMatchObject({ canHandle: false, pendingRecipients: [], canRemind: false });
+    const reviewWhileInconsistent = await review({ ...await reviewCoordinates(1), decision: "approve" }, managerToken);
+    expect(reviewWhileInconsistent.status).toBe(409);
+    await owner.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: markedNodes as Prisma.InputJsonArray } });
+
     const managerCoordinates = await reviewCoordinates(1);
     expect((await review({ ...managerCoordinates, decision: "reject_previous", comment: "核对合同资料" }, managerToken)).status).toBe(400);
     const approvedManager = await review({ ...managerCoordinates, decision: "approve" }, managerToken);

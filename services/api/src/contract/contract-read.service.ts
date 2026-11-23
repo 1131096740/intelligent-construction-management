@@ -1,4 +1,4 @@
-import { isLegacyContractParallelRound } from "./contract-approval-cutover";
+import { isLegacyContractParallelRound, isPendingLegacyContractCutover } from "./contract-approval-cutover";
 import { contractApprovalFormHasReaderRole, contractParallelApprovalEpoch, contractParallelDutyIdentity, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "./contract-parallel-duty-access";
 import { directPendingNumbers, directPendingNumberLabel } from "./contract-direct-pending-numbers";
 import { hasDirectSigningInput } from "./contract-direct-pending-source";
@@ -1647,13 +1647,15 @@ export class ContractReadService {
       : null;
     const directDisplay = directPending ? this.directPendingDisplay(version.status) : null;
     const status = directDisplay ? { label: directDisplay.label, tone: "default" as const } : this.statusView(version.status);
-    const pendingApprovalForm = contractPendingApprovalSnapshot(version, latestApprovalInstance);
+    const pendingLegacyForm = isPendingLegacyContractCutover(version, latestApprovalInstance) &&
+      Boolean(contract.code?.trim()) && historicalApprovedInstances.filter(item => item.businessId === version.id && item.status === "in_progress").length === 1;
+    const pendingApprovalForm = pendingLegacyForm || contractPendingApprovalSnapshot(version, latestApprovalInstance);
     const approvedApprovalForm = latestApprovalInstance?.status === "approved" &&
       canUseCurrentContractApprovalForm(version.status);
     const approvalParticipant = !readOnlyHistory && actorUserId && latestApprovalInstance &&
       (pendingApprovalForm
         ? latestApprovalInstance.applicantUserId === actorUserId ||
-          pendingContractApprovalFormHasReaderRole(latestApprovalInstance.frozenNodes, actorRoles.roleScopes)
+          pendingContractApprovalFormHasReaderRole(latestApprovalInstance.frozenNodes, actorRoles.roleScopes, actorUserId)
         : approvedApprovalForm && (latestApprovalInstance.applicantUserId === actorUserId ||
           await this.prisma.approvalActionLog?.findFirst({
             where: { approvalInstanceId: latestApprovalInstance.id, actorUserId, action: "approve" },

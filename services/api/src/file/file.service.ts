@@ -1,3 +1,4 @@
+import { isPendingLegacyContractCutover } from "../contract/contract-approval-cutover";
 import { readFileBindingCatalog } from "../database/registered-payment-catalog";
 import { contractApprovalFormHasReaderRole, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "../contract/contract-parallel-duty-access";
 import { generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
@@ -2154,7 +2155,17 @@ export class FileService {
           ? [{ createdAt: "desc" }, { id: "desc" }]
           : [{ updatedAt: "desc" }, { id: "desc" }]
       });
-      const pending = contractPendingApprovalSnapshot(version, instance);
+      const pendingLegacy = isPendingLegacyContractCutover(version, instance);
+      if (pendingLegacy) {
+        const activeRounds = await tx.approvalInstance.findMany({
+          where: { businessType: "contract_version", businessId: version.id, flowType: "contract.approve", status: "in_progress" },
+          select: { id: true }, take: 2
+        });
+        if (activeRounds.length !== 1 || activeRounds[0].id !== instance?.id) {
+          throw new ConflictException("合同审批轮次不唯一，暂不能下载审批单");
+        }
+      }
+      const pending = pendingLegacy || contractPendingApprovalSnapshot(version, instance);
       if (
         !instance ||
         (!pending && (instance.status !== "approved" || !canUseCurrentContractApprovalForm(version.status)))
@@ -2172,7 +2183,7 @@ export class FileService {
       if (pending) {
         const scopes = await new ProjectVisibilityService(this.prisma)
           .effectiveRoleScopesInTransaction(tx, actorUserId, contract.projectId);
-        if (pendingContractApprovalFormHasReaderRole(instance.frozenNodes, scopes)) return;
+        if (pendingContractApprovalFormHasReaderRole(instance.frozenNodes, scopes, actorUserId)) return;
       } else if (contractApprovalFormHasReaderRole(await this.loadActorRoleKeys(tx, actorUserId, contract.projectId))) {
         return;
       }
