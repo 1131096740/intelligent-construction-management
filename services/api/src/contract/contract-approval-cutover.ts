@@ -68,7 +68,7 @@ export function inspectLegacyContractApprovalInventory(
     const [session] = await tx.$queryRaw<Array<{ readOnly: string }>>`
       SELECT current_setting('transaction_read_only') AS "readOnly"
     `;
-    if (session?.readOnly !== "on") throw new Error("CONTRACT_CUTOVER_READ_ONLY_REQUIRED");
+    if (session?.readOnly !== "on") throw new Error("合同审批迁移盘点必须使用只读事务");
     const versions = await tx.contractVersion.findMany({
       where: { status: "in_approval", numericProtocolVersion: 1 }, select: { id: true }, orderBy: { id: "asc" }
     });

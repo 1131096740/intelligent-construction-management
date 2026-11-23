@@ -121,7 +121,7 @@ describe("read-only historical contract approval cutover", () => {
   it("refuses to inventory contracts from a writable transaction", async () => {
     const { tx, prisma, files } = fixture();
     tx.$queryRaw.mockResolvedValueOnce([{ readOnly: "off" }]);
-    await expect(inspectLegacyContractApprovalInventory(prisma as never, files)).rejects.toThrow("CONTRACT_CUTOVER_READ_ONLY_REQUIRED");
+    await expect(inspectLegacyContractApprovalInventory(prisma as never, files)).rejects.toThrow("合同审批迁移盘点必须使用只读事务");
     expect(tx.contractVersion.findMany).not.toHaveBeenCalled();
   });
 });
