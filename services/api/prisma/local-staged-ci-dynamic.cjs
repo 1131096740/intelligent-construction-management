@@ -35,9 +35,14 @@ function createCiDynamicMigrationFixture({ ciFixture, container, databaseNames, 
     ], { stdinText: sql, timeoutMs: 60_000, maxOutputBytes: phase === 'stage205-readback' ? readbackWireLimit : 512 * 1024 });
   }
 
-  return createLocalMigrationFixture({
+  const fixture = createLocalMigrationFixture({
     ciFixture, container: ownedContainer, databaseNames: ownedDatabases, temporaryRoot, inspectContainer, executeSql, executeSqlStdin: executeSql, deploy
   });
+  return {
+    ...fixture,
+    // Incremental forwarding of the staged setup handle (no change to migrate()).
+    getStagedSetupHandle: database => fixture.getStagedSetupHandle(database),
+  };
 }
 
 module.exports = { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture };

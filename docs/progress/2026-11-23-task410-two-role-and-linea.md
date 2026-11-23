@@ -77,3 +77,27 @@
 - 而 line-a 现状：容器用 `POSTGRES_USER=jiangkong`（oid 10=jiangkong，不是 `jg_task01_owner`）、库名固定 `jiangkong_line_a_real_db`、只有 `createCiDynamicMigrationFixture` 的应用角色/`jg_task01_*`（无 `jg_c259_*` 九角色与 commitXid 回执）。因此即使拿到 262 profile，`beginNativeTask12ArchiveProtocol` 在 `source/completion` 校验处就会拒绝。
 - 结论：库化（5 段 SQL + 角色渲染）本身可做，但要让协议**合法**跑通，line-a 的“建库”必须改成 289 身份模型（`jg_task01_owner` 为 oid 10 的引导超级用户、`jg_task01_<runId>` 库名、九角色 provisioning 并生成 completion 回执）。这属于对 runner 建库引导的重写，已超出“只抽库 + 接入 profile”的表述范围；按硬边界本轮**停下，不再堆代码**，也未改 `07500`、未 insert 闭包行、未改 runner。
 - 需要确认：是否把范围扩到“按 289 身份模型重建 line-a 引导（容器引导用户/库名/九角色/completion）”；若确认，下一轮按 `installHistory` 的 `migrateNativeTask16 + roles + archive.*Sql` 顺序实现并对 line-a 本地跑到 6/6。
+
+## staged fixture 增量句柄（六轮，用户批准改共用 fixture）
+
+### 增量 API（只增不改）
+
+- `services/api/prisma/local-staged-migrations.cjs`
+  - 新增内部 `stagedHandles` Map；在 `controls.checkSetup(setup, plan)` 之后（即 205 阶段 setup 成功后、最终全量 deploy 之前）快照 `{database, plan, setup, capturedAt:'QUALIFICATION_SETUP'}`；已存在则不覆盖。
+  - 返回对象新增只读方法 `getStagedSetupHandle(database)`，返回冻结副本或 `null`。
+  - 既有返回字段、`migrate()` 抛错时机/错误码、busy/stopped 语义、所有 `need(...)` 断言均未改。
+- `services/api/prisma/local-staged-ci-dynamic.cjs`
+  - 捕获 `createLocalMigrationFixture(...)` 结果，返回 `{...fixture, getStagedSetupHandle: db => fixture.getStagedSetupHandle(db)}`；既有键值全部保留（spread），`migrate` 引用不变。
+- 零行为变更证据：`git diff` 仅新增行（无既有行修改）；`node --test run-database-dynamic-gate-local.test.cjs` = **83/83 pass**；`node --test local-staged-{ci-dynamic,migrations,prefix-cache}.test.cjs` = **145/145 pass**。
+
+### 需重钉清单（按指示未自行重钉）
+
+改动文件在以下 pin 中记录旧摘要，需由 line-g 统一重钉：
+- `.github/task12-install-289/{workspace-inputs,template-workspace-inputs,invoice-workspace-inputs,draft-workspace-inputs,pol108-core-workspace-inputs,pol108-scale-workspace-inputs,pol109-workspace-inputs,pol275/workspace-inputs}.json`
+- `.github/task12-install-289/review-manifest.json`、`.github/task12-install-289/procurement/workspace-files.json`
+- `.github/task12-install-290/procurement/plans/{general16,project11}/source-inputs.json.gz`（及 `pins.json` 的 runtime 摘要）——否则采购输入阶段会以 `PROCUREMENT_295_ORIGINAL_OVERLAY_PIN` 停下（这不是行为回退，是 pin 失效，按指示交回）。
+
+### line-a 现状与下一步
+
+- 句柄已可按需取得，但 line-a 仍未接线：归档协议还要求 `completion.databaseIdentity.tls===true`、`client/server=127.0.0.1`、owner `jg_task01_owner` oid 10、库名 `jg_task01_<runId>`、九角色 + completion。当前 line-a 容器无 TLS、引导用户为 `jiangkong`、库名 `line_a` 固定名，均需按 289 身份模型重建。
+- 下一步实现顺序：①容器引导 `jg_task01_owner`(oid10) + `jg_task01_<runId>` + 自签 TLS（`ssl=on`）+ 保留 `jiangkong` 供 staged fixture psql；②`migrate()` 捕获失败后 `getStagedSetupHandle` → 262 profile（已验证 `b57d5da2…`）→ `roles.*` 生成 completion；③`archive.*Sql` 五段；④候选 03500/03600+04000..07500；⑤原有 witness/spec。
