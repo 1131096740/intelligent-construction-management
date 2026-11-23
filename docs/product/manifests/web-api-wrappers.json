@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 53,
-    "exportedFunctionCount": 787,
-    "transportWrapperCount": 763,
+    "apiModuleCount": 54,
+    "exportedFunctionCount": 796,
+    "transportWrapperCount": 772,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 837,
+    "mainRequestBindingCount": 846,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 793,
-    "productionConsumerCount": 672,
+    "requestEdgeCount": 802,
+    "productionConsumerCount": 681,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 427,
-    "reachableProductionModuleCount": 408
+    "productionModuleCount": 429,
+    "reachableProductionModuleCount": 410
   },
   "wrappers": [
     {
@@ -9511,6 +9511,7 @@
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
         "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
@@ -16753,6 +16754,258 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "activateHistoryExpenseBatch",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/activation",
+          "normalizedPath": "/projects/:param/history-expenses/batches/:param/activation",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "activateHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmHistoryExpenseBatch",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/confirmations",
+          "normalizedPath": "/projects/:param/history-expenses/batches/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "correctHistoryExpenseRow",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "correctHistoryExpenseRow",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createHistoryExpenseBatch",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches",
+          "normalizedPath": "/projects/:param/history-expenses/batches",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchHistoryExpenseBatch",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "GET",
+          "path": "/projects/:param/history-expenses/batches/:param",
+          "normalizedPath": "/projects/:param/history-expenses/batches/:param",
+          "normalizedKey": "GET /projects/:param/history-expenses/batches/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchHistoryExpenseBatches",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "GET",
+          "path": "/projects/:param/history-expenses/batches",
+          "normalizedPath": "/projects/:param/history-expenses/batches",
+          "normalizedKey": "GET /projects/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchHistoryExpenseBatches",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchHistoryExpenseCapability",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "GET",
+          "path": "/projects/:param/history-expenses/capability",
+          "normalizedPath": "/projects/:param/history-expenses/capability",
+          "normalizedKey": "GET /projects/:param/history-expenses/capability",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchHistoryExpenseCapability",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "precheckHistoryExpenses",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/precheck",
+          "normalizedPath": "/projects/:param/history-expenses/precheck",
+          "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "precheckHistoryExpenses",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "verifyHistoryExpenseRow",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "PATCH",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param",
+          "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "verifyHistoryExpenseRow",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

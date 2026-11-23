@@ -7,6 +7,25 @@
 - `inspect:whole-site-page-actions:ready` blocker **5→0**：新增 `ActualPurchaseBatchPanel.vue` 5 个写适配器的专用 AST witness（打开按钮门 → 对话框写调用 → 可信单 GET → 后端岗位守卫）；未改通用判定、未补假页面动作。
 - `inspect:whole-site-route-usage` 未分类 **8→0**：2 条 #403 批次详情/更新、6 条 #405 其他项目付款写接口按 #400 既有口径登记为 `internal_task` + `operator_endpoint`，理由写“Web 写入口尚未接入”；#404 的 2 个只读导出/2 条路由自动为 `page`。
 - `inspect:release-manifests` 转绿；page-actions READY 475/0、route-usage READY 855/0、web-api READY 763/837；Web typecheck 通过；迁移基线 326 clean；`docker ps -q` 为 0。仍存产品缺口（#405 六个写接口无 Web 入口、#403 详情/更新适配器无消费者），详见 [回执](docs/progress/2026-11-23-manifest-convergence-403-405.md)。
+## 2026-11-23 #411 第三家公司代还与往来更正
+
+分支 `line-ag-411`（基线/集成 `adopt-395-396-415` tip `96930648f`），代码提交 `0a52ae4c`。未 push、未改 `07500`/`05800`、未操作生产；新增 1 条迁移，迁移数 **326→327**（终态 `20261125000000_company_transfer_third_party_repayment`，校验 `cb9fa70f…`）。
+
+- `CompanyTransfer` 新增 `repaymentDebtorCompanyId`：实际出款公司可与原债务人不同；普通 A→B 归还回填/默认 debtor=source，第三方 C 代还时 source=C、debtor=A、destination=B，旧债 A-B 容量仍按原债与原项目锁定。
+- 同一笔实付 outgoing 在 C、incoming 在 B：旧债 A-B 由到账核销，A-C 债权由同一到账派生；不新增第二笔付款/到账，不写项目成本；台账新增代还债务人、第三家代还应还/应收，原债仍可双向打开，源记录硬删被拒。
+- 原债更正沿用提出→财务主管确认（自审原因+密码）；canonical 更正计划的债务人改为 `COALESCE(repaymentDebtorCompanyId, sourceCompanyId)`，更正后旧债恢复/新债扣减、A-C 不变。
+- 真实 PostgreSQL 16 一次性容器 2/2：A-B 800 由 C 代还后 A-B 清、A-C 800；同债重复 100 被容量拒绝；proxy1 800→proxy2 1000 更正后 remaining 800/200、A-C 仍 800；`worktreeClean=true`、容器清理后 `docker ps -q` 为 0。API/Web typecheck、company-transfer 34、Web 2439、check:ui、业务语言、迁移基线 327 clean 通过。
+- 边界：银行退回后的债务恢复、A-C 作为后续可归还原债、326→327 全迁移链重放、HTTP/浏览器与并发压力未覆盖；295 链 323/322 pins 待主线统一重钉。详见 [回执](docs/progress/2026-11-23-issue-411.md)。
+## 2026-11-23 #417 历史无合同费用批量分行核实入账
+
+分支 `line-ah-417`（基线 `96930648f`，已合入集成 tip `dd2ac553e`，迁移 327），代码提交 `18eb58838cfb85f76a6bc79e05e54007437dd38d`。未 push、本票未新增迁移、未改 `07500`/`05800`、未操作生产。
+
+- 新增「历史费用核实入账」独立入口：先选项目，粘贴/网格批量登记用途/类别/金额/付款情况/依据，不补造合同或结算；综合部主管登记、财务逐行核实、财务主管复核后才入账。
+- 每行独立「已核实/待核对/未发生」；真库 20 行核实 18 行先入账、2 行保留且可继续处理；付款状态未知不按已付/未付；显式 0 与空白金额分开，未发生不入成本。
+- 补资料：待核对行补充付款公司/状态/依据后重新核实，原行与旧核实事实追加到 `_history` 不覆盖；必须重新主管复核才能入账。更正：已入账行由财务主管填原因，同一事务先冲销原事实再按新金额重登，原行、原事实 ID、原复核记录保留，审计可追；重复更正被拒。
+- 同一输入重复导入返回原批次；每行只确认一次 `confirmed_cost`；更正 1000→700 后净成本正确（反转 −1000/重登 +700），不写资金账户、不扣期初、不产生合同/结算/付款事实。
+- 真实 PostgreSQL 16 一次性容器 1/1（20 行导入→核实 18→复核→入账；补资料→重核→入账；已入账→反转+重登更正净额；未复核不得入账；显式 0/未知；无资金/付款/合同事实）；干净树 `worktreeClean=true`，容器清理后 `docker ps -q` 为 0。API `history-expense`+`operating-takeover` 715 项、Web 260 文件 2439 项、共享域 256 项、API/Web typecheck、`check:ui`、迁移基线 327、web-api READY 772/846 通过；page-actions/route-usage 仍因本票 6 个 Web 写 wrapper 未入严格因果登记及 #403/#405 既有 8 条未分类而 BLOCKED。
+- 边界：经营账数据库函数未重放（受控端口记录输入验证）；同一原行只允许一次成功更正；公司日常历史费用未在本入口实现；未新增 Excel 模板导入、未跑浏览器点击、未跑全量 API jest。详见 [回执](docs/progress/2026-11-23-issue-417.md)。
 
 ## 2026-11-23 #416 HIS-01～HIS-08、HIS-12 全量补差
 

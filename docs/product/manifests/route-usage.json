@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "ready",
+  "status": "blocked",
   "scope": {
     "registry": "docs/product/manifests/route-usage.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 855,
-    "exactRouteCount": 855,
-    "normalizedRouteCount": 855,
+    "routeCount": 864,
+    "exactRouteCount": 864,
+    "normalizedRouteCount": 864,
     "classificationOverrideCount": 233,
     "consumerSurfaceOverrideCount": 55,
     "classificationOverrideSha256": "cc4f12a8b7720c084aeb7b3ee240c2fabea3bb1c59fd6ac266d3efd5ed24e2d7",
     "consumerSurfaceOverrideSha256": "2aff8df481301799b9e60c89a9f36790aae214b910bf690837d3ef07945d8c06",
-    "derivedProductionPageCount": 622,
-    "pageRouteCount": 641,
+    "derivedProductionPageCount": 631,
+    "pageRouteCount": 650,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
     "internalTaskCount": 53,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 693,
+      "web_api_wrapper": 702,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
       "operator_endpoint": 50,
       "none": 102
     },
-    "blockerCount": 0
+    "blockerCount": 4
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 693,
+    "productionWrapperRouteCount": 702,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -8499,6 +8499,7 @@
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
               "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
               "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
               "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
@@ -9842,6 +9843,129 @@
             "normalizedKey": "GET /projects/:param/financing-quotas/:param/termination-capability",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/history-expenses/batches",
+      "normalizedKey": "GET /projects/:param/history-expenses/batches",
+      "controller": "HistoryExpenseController",
+      "handler": "list",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "fetchHistoryExpenseBatches",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/history-expenses/batches",
+            "normalizedKey": "GET /projects/:param/history-expenses/batches",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/history-expenses/batches/:batchId",
+      "normalizedKey": "GET /projects/:param/history-expenses/batches/:param",
+      "controller": "HistoryExpenseController",
+      "handler": "detail",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "fetchHistoryExpenseBatch",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/history-expenses/batches/:param",
+            "normalizedKey": "GET /projects/:param/history-expenses/batches/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/history-expenses/capability",
+      "normalizedKey": "GET /projects/:param/history-expenses/capability",
+      "controller": "HistoryExpenseController",
+      "handler": "capability",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "fetchHistoryExpenseCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/history-expenses/capability",
+            "normalizedKey": "GET /projects/:param/history-expenses/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
             ]
           }
         ],
@@ -14168,6 +14292,47 @@
             "normalizedKey": "PATCH /projects/:param/contract-takeovers/import-batches/:param/review-result",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId",
+      "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+      "controller": "HistoryExpenseController",
+      "handler": "verifyRow",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.verify",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "verifyHistoryExpenseRow",
+            "method": "PATCH",
+            "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param",
+            "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
             ]
           }
         ],
@@ -28920,6 +29085,211 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/history-expenses/batches",
+      "normalizedKey": "POST /projects/:param/history-expenses/batches",
+      "controller": "HistoryExpenseController",
+      "handler": "create",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "createHistoryExpenseBatch",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/history-expenses/batches",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/history-expenses/batches/:batchId/activation",
+      "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+      "controller": "HistoryExpenseController",
+      "handler": "activate",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.activate",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "activateHistoryExpenseBatch",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/history-expenses/batches/:param/activation",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/history-expenses/batches/:batchId/confirmations",
+      "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+      "controller": "HistoryExpenseController",
+      "handler": "confirm",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.confirm",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "confirmHistoryExpenseBatch",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/history-expenses/batches/:param/confirmations",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections",
+      "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+      "controller": "HistoryExpenseController",
+      "handler": "correctRow",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.correct",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "correctHistoryExpenseRow",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/history-expenses/precheck",
+      "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+      "controller": "HistoryExpenseController",
+      "handler": "precheck",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "precheckHistoryExpenses",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/history-expenses/precheck",
+            "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/operating-takeovers",
       "normalizedKey": "POST /projects/:param/operating-takeovers",
       "controller": "OperatingTakeoverController",
@@ -35228,7 +35598,28 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [],
+    "expectationMismatches": [
+      {
+        "field": "consumerSurfaceCounts.web_api_wrapper",
+        "expected": 693,
+        "actual": 702
+      },
+      {
+        "field": "derivedProductionPageCount",
+        "expected": 622,
+        "actual": 631
+      },
+      {
+        "field": "routeCount",
+        "expected": 855,
+        "actual": 864
+      },
+      {
+        "field": "usageCounts.page",
+        "expected": 641,
+        "actual": 650
+      }
+    ],
     "unclassifiedRoutes": []
   }
 }

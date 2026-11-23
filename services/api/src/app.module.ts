@@ -29,6 +29,7 @@ import { FundAccountModule } from "./fund-account/fund-account.module";
 import { FundsWorkbenchModule } from "./funds-workbench/funds-workbench.module";
 import { FundMovementModule } from "./fund-movement/fund-movement.module";
 import { FundExecutionModule } from "./fund-execution/fund-execution.module";
+import { HistoryExpenseModule } from "./history-expense/history-expense.module";
 import { HealthController } from "./health.controller";
 import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
@@ -82,6 +83,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     FundMovementModule,
     CompanyTransferModule,
     FundExecutionModule,
+    HistoryExpenseModule,
     SpotProcurementModule,
     WageStatementModule,
     NecessaryExpenseReserveModule,

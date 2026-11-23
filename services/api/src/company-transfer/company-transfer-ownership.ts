@@ -14,6 +14,7 @@ export async function repaymentOwnershipDate(
   if (transfer.kind !== "repayment") return undefined;
   if (marker && (marker !== "relationship" || !transfer.originalFundMovementRelationshipId || event.kind !== "incoming")) throw new BadRequestException("归还事实来源不正确");
   const incoming = event.kind === "incoming";
+  const debtorCompanyId = transfer.repaymentDebtorCompanyId ?? transfer.sourceCompanyId;
   const projectId = incoming ? transfer.destinationProjectId : transfer.sourceProjectId;
   if (transfer.status !== "approved" || (marker !== "relationship" && projectId !== locator.projectId)) {
     throw new BadRequestException("归还事实与批准项目不一致");
@@ -21,16 +22,16 @@ export async function repaymentOwnershipDate(
   let occurredAt: Date | undefined;
   if (transfer.originalTransferId) {
     const original = await tx.companyTransfer.findUniqueOrThrow({ where: { id: transfer.originalTransferId } });
-    if (original.kind !== "loan" || original.status !== "approved" || original.sourceCompanyId !== transfer.destinationCompanyId || original.destinationCompanyId !== transfer.sourceCompanyId || original.sourceProjectId !== transfer.destinationProjectId || original.destinationProjectId !== transfer.sourceProjectId) throw new BadRequestException("归还主体与原借款不一致");
+    if (original.kind !== "loan" || original.status !== "approved" || original.sourceCompanyId !== transfer.destinationCompanyId || original.destinationCompanyId !== debtorCompanyId || original.sourceProjectId !== transfer.destinationProjectId || original.destinationProjectId !== transfer.sourceProjectId) throw new BadRequestException("归还主体与原借款不一致");
     occurredAt = (await tx.companyTransferEvent.findFirst({ where: { transferId: original.id, kind: incoming ? "outgoing" : "incoming", occurredAt: { lte: event.occurredAt } }, orderBy: { occurredAt: "asc" } }))?.occurredAt;
   } else if (transfer.originalProxyId) {
     const original = await tx.contractProxyExecution.findUniqueOrThrow({ where: { id: transfer.originalProxyId } });
     const parties = original.frozenSource as unknown as { debtor: { id: string }; actualPayer: { id: string } };
-    if (original.status !== "confirmed" || original.entryKind !== "payment" || original.projectId !== locator.projectId || parties.debtor.id !== transfer.sourceCompanyId || parties.actualPayer.id !== transfer.destinationCompanyId) throw new BadRequestException("归还主体与原代付不一致");
+    if (original.status !== "confirmed" || original.entryKind !== "payment" || original.projectId !== locator.projectId || parties.debtor.id !== debtorCompanyId || parties.actualPayer.id !== transfer.destinationCompanyId) throw new BadRequestException("归还主体与原代付不一致");
     occurredAt = original.occurredAt;
   } else {
     const debt = await readLegacyTransferDebt(tx, transfer);
-    if (!debt || debt.sourceCompanyId !== transfer.sourceCompanyId || debt.destinationCompanyId !== transfer.destinationCompanyId || debt.sourceProjectId !== transfer.sourceProjectId || debt.destinationProjectId !== transfer.destinationProjectId) throw new BadRequestException("归还主体与原往来不一致");
+    if (!debt || debt.sourceCompanyId !== debtorCompanyId || debt.destinationCompanyId !== transfer.destinationCompanyId || debt.sourceProjectId !== transfer.sourceProjectId || debt.destinationProjectId !== transfer.destinationProjectId) throw new BadRequestException("归还主体与原往来不一致");
     if (transfer.originalFundMovementRelationshipId) {
       const root = await tx.fundMovementRelationshipEntry.findUniqueOrThrow({ where: { id: transfer.originalFundMovementRelationshipId } });
       const leg = await tx.fundMovementLeg.findFirst({ where: { movementId: root.movementId, projectId: locator.projectId, ...(marker === "relationship" ? { id: legId } : {}), operatingFactId: { not: null } }, orderBy: { id: "asc" } });

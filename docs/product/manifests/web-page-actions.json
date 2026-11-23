@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "ready",
+  "status": "blocked",
   "scope": {
     "registry": "docs/product/manifests/web-page-actions.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -12,24 +12,24 @@
     "registeredActionCount": 475,
     "pageActionCount": 105,
     "backgroundActionCount": 370,
-    "reachableVueFileCount": 235,
-    "routeRootCount": 78,
-    "totalVueFileCount": 248,
-    "parsedVueFileCount": 248,
-    "reachableProductionModuleCount": 408,
-    "templateEventDirectiveCount": 1580,
+    "reachableVueFileCount": 236,
+    "routeRootCount": 79,
+    "totalVueFileCount": 249,
+    "parsedVueFileCount": 249,
+    "reachableProductionModuleCount": 410,
+    "templateEventDirectiveCount": 1591,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 466,
     "candidateProductionMutationConsumerCount": 466,
     "acceptedProductionMutationConsumerCount": 466,
-    "productionMutationConsumerPairCount": 466,
-    "blockerCount": 0
+    "productionMutationConsumerPairCount": 472,
+    "blockerCount": 6
   },
   "evidence": {
-    "totalProductionModuleCount": 427,
-    "reachableProductionModuleCount": 408,
-    "totalVueFileCount": 248,
-    "parsedVueFileCount": 248
+    "totalProductionModuleCount": 429,
+    "reachableProductionModuleCount": 410,
+    "totalVueFileCount": 249,
+    "parsedVueFileCount": 249
   },
   "actions": [
     {
@@ -2153,7 +2153,7 @@
         "event": "call",
         "handler": "createCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 241,
+        "sourceLine": 243,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2217,7 +2217,7 @@
         "event": "call",
         "handler": "decideCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 247,
+        "sourceLine": 249,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2281,7 +2281,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 265,
+        "sourceLine": 267,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2401,7 +2401,7 @@
         "event": "call",
         "handler": "executeCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 253,
+        "sourceLine": 255,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2529,7 +2529,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 259,
+        "sourceLine": 261,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -35704,7 +35704,62 @@
     "unresolvedRoutes": [],
     "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [],
-    "uncoveredMutationWrappers": [],
+    "uncoveredMutationWrappers": [
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "activateHistoryExpenseBatch",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/batches/:param/activation"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "confirmHistoryExpenseBatch",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/batches/:param/confirmations"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "correctHistoryExpenseRow",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "createHistoryExpenseBatch",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/batches"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "precheckHistoryExpenses",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/precheck"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "verifyHistoryExpenseRow",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "PATCH /projects/:param/history-expenses/batches/:param/rows/:param"
+        ]
+      }
+    ],
     "parseIssues": [],
     "dynamicEventIssues": [],
     "unresolvedComponentForwards": []
