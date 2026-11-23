@@ -48,3 +48,16 @@
 
 - `expense-receipt`：323 forward 断言链（`forward?323:295` / `forward.ledgerSha256` / `expectedLedgerSha256`）之一，business 前 `ERR_ASSERTION`。
 - `onboarding` sealed 材料、`pol275` `EACCES`、`remaining` 5 例、`pol113/114` 1 例（SIGTERM/P0001，仅 x64 CI 可判别）未在本轮推进。
+
+## (b) 裁决 ① 执行记录（2026-11-23 四轮）
+
+- 合并 `adopt-395-396-415@930cde853` → HEAD `8ab9bd1a7`；迁移仍 323 / `20261119007500…` / `98e016b2…`。
+- 按裁决 ① 评估“289/292 归档协议已安装前缀 + 候选迁移”。归档链在本仓库的入口只有两条：
+  1. `.github/task12-install-295/contract-finance/common/install-only292.cjs` → `installCombined292` / `common/installer.cjs`。它自带 `/qualification/*` 挂载、TLS、`pg_ctl` 数据目录与 postgres 生命周期，运行在 gate 镜像容器内，入口只暴露 `admitSource`/`installCombined292`，无法挂接到 line-a 已运行的 `postgres:16` 容器。
+  2. `.github/task12-install-289/installer.cjs`（`installHistory`）→ `task16-current259-archive-install.cjs#beginNativeTask12ArchiveProtocol`。它需要 `plan.source.witness.profile`（**sealed 289 精确归档 profile**：289 条 ledger + `tree`/`sealSha256`/`candidateSha`）与 `completion`（同一 DB 身份下的 9 角色 provisioning 回执），且要求 DB 处于 289 前缀状态。
+- line-a 当前的 `createCiDynamicMigrationFixture` 由**当前 323 工作树**构造 plan（`profile.ledger` 为 323 条），且容器 DB 停在 275 前缀；因此：
+  - `beginNativeTask12ArchiveProtocol` 会在 `isExactCurrentArchiveProfile(source.profile)` 处拒绝（profile 不是 sealed 289 归档 profile），甚至到不了 `jg_install_contract_direct_upward_v2`；
+  - 若要满足它，必须先引入 289 密封材料（`.github/task12-install-289/historical-install-inputs.tar.gz` / `task12-install-292` 产物）并在 line-a 容器内完成 289→291→292 的归档协议 5 段 SQL 与 9 角色 provisioning——现有仓库没有把这条链挂到“外部已运行 postgres 容器 + 现有 ownerUrl”的入口。
+- 确切缺料：**line-a 容器内的 289/291/292 归档安装 executor**（当前只有 gate 镜像内的 `install-only292.cjs` 与 289 installer，两者都拥有自己的 postgres 生命周期），以及 289 精确 profile 的构造入口。
+- 因此本轮**未改** `run-line-a-real-db-local.cjs`、未改 `07500`、未 insert 闭包行；模式仍是 `PREFIX_275_PLUS_CANDIDATE`，`verify:line-a-real-db:local` 仍以 `SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_SCOPE`(55000) 阻断。
+- 下一步（如需继续 ①）：把 `install-only292.cjs` 的 289→292 段抽成“可对任意 ownerUrl 执行”的库（5 段 SQL 已由 `archive.beforeSql/…/sql` 暴露），或在 line-a 内以 289 密封材料重建 profile/completion 后调用该协议；这需要新的一轮专门实现与 289 材料接线。
