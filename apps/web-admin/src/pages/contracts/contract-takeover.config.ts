@@ -140,6 +140,13 @@ export interface ContractTakeoverTableRow {
   importRowNo: string;
   counterparty: string;
   amount: string;
+  relationshipLabel: string;
+  historicalFactStatusLabel: string;
+  historicalPaidTotalCents: string;
+  historicalOverpaidCents: string;
+  historicalOverpaymentLabel: string;
+  historicalReceiptsCents: string;
+  historicalOverReceivedCents: string;
   takeoverLevel: ContractTakeoverLevel;
   takeoverLevelLabel: string;
   suggestedTakeoverLevelLabel: string;
@@ -545,6 +552,7 @@ export function lifecycleStatusLabel(value: ContractLifecycleStatus | string): s
 export function takeoverStatusLabel(status: ContractTakeoverStatus | string): string {
   const labels: Record<ContractTakeoverStatus, string> = {
     draft: "草稿",
+    pending_finance: "待财务填写",
     pending_review: "待复核",
     confirmed: "已接管",
     needs_supplement: "待补充",
@@ -557,6 +565,7 @@ export function takeoverStatusLabel(status: ContractTakeoverStatus | string): st
 export function takeoverStatusTone(status: ContractTakeoverStatus): ContractTakeoverTone {
   const tones: Record<ContractTakeoverStatus, ContractTakeoverTone> = {
     draft: "default",
+    pending_finance: "primary",
     pending_review: "warning",
     confirmed: "success",
     needs_supplement: "primary",
@@ -580,6 +589,12 @@ export function canReturnTakeoverForSupplement(
   takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">
 ) {
   return takeover.takeoverStatus === "pending_review";
+}
+
+export function canReturnTakeoverForFinanceSupplement(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">
+) {
+  return takeover.takeoverStatus === "pending_finance";
 }
 
 export function takeoverResponsibleUserOptions(
@@ -889,6 +904,7 @@ export function takeoverWorkbenchSteps(
   const activeIndexByStatus: Record<ContractTakeoverStatus, number> = {
     draft: 2,
     needs_supplement: 2,
+    pending_finance: 3,
     pending_review: 3,
     confirmed: 4,
     voided: 2
@@ -964,8 +980,8 @@ export function buildTakeoverConfirmationSummary(
   return {
     items: [
       { label: "接管截止日", value: formatTakeoverDate(takeover.takeoverCutoffDate) },
-      { label: "系统建议等级", value: takeoverSuggestedLevelLabel(takeover) },
-      { label: "确认接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
+      { label: "合同关系", value: takeover.relationshipLabel },
+      { label: "历史事实状态", value: takeover.historicalFactStatusLabel },
       { label: "发票类型", value: invoiceTypeLabel(takeover.invoiceType) },
       { label: "计税模式", value: taxModeLabel(takeover.taxMode) },
       {
@@ -975,6 +991,12 @@ export function buildTakeoverConfirmationSummary(
       { label: "历史计价项目", value: `${takeover.pricingItems.length} 项` },
       { label: "历史累计结算", value: centsToYuanText(takeover.historicalSettledCents) },
       { label: "历史累计已付", value: centsToYuanText(takeover.historicalPaidCents) },
+      {
+        label: "历史已付/结算/超付",
+        value: `${centsToYuanText(takeover.historicalPaidTotalCents)} / ${centsToYuanText(
+          takeover.historicalSettledCents
+        )} / ${centsToYuanText(takeover.historicalOverpaidCents)}（${takeover.historicalOverpaymentLabel}）`
+      },
       { label: "历史在途/待付", value: centsToYuanText(historicalPendingCents) },
       {
         label: "历史预付款已付/已扣回",
@@ -1134,6 +1156,13 @@ export function toContractTakeoverTableRow(
     importRowNo: takeover.importRowNo ? `第 ${takeover.importRowNo} 行` : "未记录",
     counterparty: takeover.counterparty,
     amount: centsToYuanText(takeover.amountCents),
+    relationshipLabel: takeover.relationshipLabel,
+    historicalFactStatusLabel: takeover.historicalFactStatusLabel,
+    historicalPaidTotalCents: centsToYuanText(takeover.historicalPaidTotalCents),
+    historicalOverpaidCents: centsToYuanText(takeover.historicalOverpaidCents),
+    historicalOverpaymentLabel: takeover.historicalOverpaymentLabel,
+    historicalReceiptsCents: centsToYuanText(takeover.historicalReceiptsCents),
+    historicalOverReceivedCents: centsToYuanText(takeover.historicalOverReceivedCents),
     takeoverLevel: takeover.takeoverLevel,
     takeoverLevelLabel: takeoverLevelLabel(takeover.takeoverLevel),
     suggestedTakeoverLevelLabel: takeoverSuggestedLevelLabel(takeover),

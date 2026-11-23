@@ -791,11 +791,19 @@ export class MeService {
         }
       )),
       ...(await this.contractTakeoverWorkItems(
+        this.projectIdsFor(scopes, ["contract.takeover.finance_facts.edit"]),
+        ["pending_finance"],
+        projectNameById,
+        "填写历史实付",
+        "合同部已提交，请核对历史实付/收款后提交财务主管",
+        "primary"
+      )),
+      ...(await this.contractTakeoverWorkItems(
         this.projectIdsFor(scopes, ["contract.archive.confirm"]),
         ["pending_review"],
         projectNameById,
         "复核历史合同接管",
-        "确认后作为系统事实起点",
+        "财务已核对金额，请复核后作为系统事实起点",
         "warning"
       )),
       ...(await this.contractTakeoverHandoverWorkItems(userId, scopes, projectNameById)),

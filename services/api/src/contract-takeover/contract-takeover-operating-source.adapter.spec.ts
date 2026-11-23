@@ -59,6 +59,42 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     expect(mapped.input.isBeforeOperatingLedgerEffectiveDate).toBe(true);
   });
 
+  it.each(["NONE", "C"])(
+    "maps an activated %s-level historical payment into the formal operating ledger",
+    async (level) => {
+      const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+      const tx = historicalPaymentTx();
+      tx.contractTakeover.findFirst.mockResolvedValue({
+        ...(await tx.contractTakeover.findFirst()),
+        takeoverLevel: level
+      });
+
+      const snapshot = await adapter.readSourceSnapshot(tx as never, {
+        projectId: "project-1",
+        sourceType: adapter.sourceType,
+        sourceBusinessId: "historical-payment-1"
+      });
+
+      const mapped = adapter.toOperatingFactInput(snapshot!);
+      expect(mapped.entryKind).toBe("original");
+      expect(mapped.input).toEqual(
+        expect.objectContaining({
+          factKind: "downstream_payment",
+          evidenceLevel: level === "NONE" ? "C" : level,
+          amountCents: 150_000n
+        })
+      );
+      expect(mapped.input.impacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceImpactKey: "payable:initial-settlement-1",
+            impactKind: "payable_decrease"
+          })
+        ])
+      );
+    }
+  );
+
   it("filters only confirmed and activated takeovers regardless of legacy level", async () => {
     const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
     const tx = historicalPaymentTx();

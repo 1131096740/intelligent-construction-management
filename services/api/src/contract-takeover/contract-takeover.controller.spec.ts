@@ -37,6 +37,7 @@ const takeoverBodyRoutes = [
   ["abandonTaxFactRevision", 3],
   ["confirm", 3],
   ["returnForSupplement", 3],
+  ["returnFinanceForSupplement", 3],
   ["confirmChangeBaseline", 3]
 ] as const;
 
@@ -277,6 +278,7 @@ const validTakeoverRouteBodies = [
   }],
   ["confirm", 3, { confirmationPassword: "current password" }],
   ["returnForSupplement", 3, { reason: "缺少历史付款凭证，请补齐后重新提交" }],
+  ["returnFinanceForSupplement", 3, { reason: "历史实付金额与凭证不一致，请制单人核对" }],
   ["confirmChangeBaseline", 3, {
     originalSignedAmountCents: "100000000",
     preTakeoverPositiveIncreaseCents: "5000000",
@@ -399,6 +401,7 @@ describe("ContractTakeoverController", () => {
       ["finance_staff"],
       [
         "upload_takeover_file",
+        "return_finance_for_supplement",
         "attach_payment_voucher",
         "save_finance_side",
         "submit_correction"
@@ -408,6 +411,7 @@ describe("ContractTakeoverController", () => {
       ["finance_director"],
       [
         "upload_takeover_file",
+        "return_finance_for_supplement",
         "attach_payment_voucher",
         "save_finance_side",
         "confirm_finance_side",
