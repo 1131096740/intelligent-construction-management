@@ -30,7 +30,8 @@ const holdSql=`SELECT p.id, a.pid, a.usesysid::text AS oid, a.datid::text AS "da
 const paymentLockPrefix=[
  'SELECT payment."id", payment."code", payment."projectId", payment."contractId", contract."contractTypeKey",',
  'payment."contractVersionId", payment."paymentTermsVersionId", payment."paymentTermsStageId", payment."settlementId",',
- 'payment."sourceType", payment."updatedAt", payment."paymentSubjectType", payment."status", payment."requestedAmountCents",',
+ 'payment."signedSettlementId", payment."sourceType", payment."updatedAt", payment."paymentSubjectType", payment."status",',
+ 'payment."requestedAmountCents",',
  'payment."approvedAmountCents", payment."paidAmountCents", version."signingSubjectType", version."companyEntityIdSnapshot",',
  'version."companyEntityNameSnapshot", version."companyEntityCreditCodeSnapshot", version."companyEntityVersionId",',
  'company."isActive" AS "companyDirectoryIsActive", version."status" AS "contractVersionStatus",',
