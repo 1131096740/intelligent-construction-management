@@ -33,6 +33,7 @@ export class FinancialCorrectionEntryService {
     if (["payment_request", "payment", "payment_execution"].includes(normalized)) {
       return this.paymentEntry(normalized, businessId, finance);
     }
+    if (normalized === "actual_purchase_batch") return this.actualPurchaseBatchEntry(businessId, finance);
     if (normalized === "settlement") return this.settlementEntry(businessId);
     if (normalized === "contract") return this.contractEntry(businessId);
     throw new BadRequestException("该单据类型没有统一更正入口，请从原业务页面办理");
@@ -78,6 +79,74 @@ export class FinancialCorrectionEntryService {
       guidance: actions.length
         ? "统一更正入口只登记补偿事实，原单和原实付记录均保留。"
         : "当前状态没有可执行的更正动作，请从原单据查看处理进度。",
+      actions
+    };
+  }
+
+
+  private async actualPurchaseBatchEntry(id: string, finance: boolean) {
+    const batch = await this.prisma.actualPurchaseBatch.findFirst({
+      where: { OR: [{ id }, { idempotencyKey: id }] },
+      select: {
+        id: true, kind: true, supplierName: true, status: true,
+        totalAmountCents: true, effectiveTotalAmountCents: true, costVersion: true
+      }
+    });
+    if (!batch) throw new NotFoundException("实际采购批次不存在，请核对原采购单");
+    const [spotPayments, claims] = await Promise.all([
+      this.prisma.spotProcurementPayment.findMany({
+        where: { actualPurchaseBatchId: batch.id },
+        select: { id: true, approvalAmountCents: true, paidAmountCents: true, status: true }
+      }),
+      this.prisma.expenseClaim.findMany({
+        where: { actualPurchaseBatchId: batch.id },
+        select: { id: true, requestedAmountCents: true, fundedAmountCents: true, status: true }
+      })
+    ]);
+    const activeStatuses = new Set(["approval_pending", "approved", "approved_pending_payment", "partially_paid", "paid", "settled", "offset_completed"]);
+    const paidAmountCents = spotPayments.reduce((sum, row) => sum + row.paidAmountCents, 0n) + claims.reduce((sum, row) => sum + row.fundedAmountCents, 0n);
+    const outstandingCents = [
+      ...spotPayments.filter(row => activeStatuses.has(row.status)).map(row => row.approvalAmountCents > row.paidAmountCents ? row.approvalAmountCents - row.paidAmountCents : 0n),
+      ...claims.filter(row => activeStatuses.has(row.status)).map(row => row.requestedAmountCents > row.fundedAmountCents ? row.requestedAmountCents - row.fundedAmountCents : 0n)
+    ].reduce((sum, value) => sum + value, 0n);
+    const path = `/实际采购批次/${encodeURIComponent(batch.id)}`;
+    const confirmed = batch.costVersion > 0;
+    const overpaidCents = paidAmountCents > batch.effectiveTotalAmountCents ? paidAmountCents - batch.effectiveTotalAmountCents : 0n;
+    const suspended = confirmed && (overpaidCents > 0n || paidAmountCents + outstandingCents > batch.effectiveTotalAmountCents);
+    const actions: EntryAction[] = [];
+    if (confirmed) {
+      actions.push({
+        key: "correct_actual_purchase_batch",
+        label: "更正实际采购金额",
+        path,
+        method: "page",
+        enabled: finance,
+        ...(finance ? {} : { reason: "只有当前财务人员或综合部主管可以发起实际采购金额更正" })
+      });
+      if (paidAmountCents > 0n && finance) {
+        actions.push({ key: "record_actual_purchase_batch_refund", label: "登记实际收到的退款", path, method: "page", enabled: true });
+      }
+    }
+    return {
+      type: "actual_purchase_batch",
+      id: batch.id,
+      code: batch.id,
+      status: batch.status,
+      title: `实际采购批次 ${batch.supplierName}`,
+      guidance: !confirmed
+        ? "实际采购批次成本尚未确认；首批付款或垫付报销审批通过时会整批确认，之后才能从统一入口更正。"
+        : suspended
+          ? "实际确认金额不足以覆盖已付或剩余付款，相关待付已暂停；更正或退款后按最新金额自动重算，已付款保留。"
+          : "批次成本只确认一次；更正只改批次有效金额与成本贡献，已付款和付款记录保留，金额仍够时照常付款。",
+      actualPurchaseBatch: {
+        costVersion: batch.costVersion,
+        totalAmountCents: batch.totalAmountCents.toString(),
+        effectiveTotalAmountCents: batch.effectiveTotalAmountCents.toString(),
+        paidAmountCents: paidAmountCents.toString(),
+        outstandingCommittedAmountCents: outstandingCents.toString(),
+        overpaidAmountCents: overpaidCents.toString(),
+        suspended
+      },
       actions
     };
   }

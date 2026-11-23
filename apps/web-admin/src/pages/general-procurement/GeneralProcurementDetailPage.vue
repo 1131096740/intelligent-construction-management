@@ -14,6 +14,7 @@ import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
 import GeneralProcurementRequestGrid from "./components/GeneralProcurementRequestGrid.vue";
+import ActualPurchaseBatchPanel from "../../components/ActualPurchaseBatchPanel.vue";
 import ProcurementDraftDrawer from "./components/ProcurementDraftDrawer.vue";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 const auth = useAuthStore();
@@ -491,6 +492,15 @@ onMounted(load);
         />
       </div>
     </t-dialog>
+    <ActualPurchaseBatchPanel
+      v-if="detail && detail.requestProtocolVersion === 2"
+      kind="general"
+      :procurement-id="detail.id"
+      :project-id="detail.projectId"
+      :company-entity-id="detail.companyEntityId"
+      :can-create="Boolean(detail.canProcure)"
+      :can-pay="false"
+    />
   </section>
 </template>
 <style scoped>

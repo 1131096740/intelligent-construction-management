@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 
 import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
+import { ActualPurchaseBatchNotificationService } from "../actual-purchase/actual-purchase-batch-notification.service";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
 import { AuditService } from "../audit/audit.service";
 import type { AppendOperatingFactInput, OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
@@ -36,11 +37,16 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
         return { id: randomUUID() };
       }
     } as unknown as OperatingLedgerService;
+    const notifications = new ActualPurchaseBatchNotificationService(
+      prisma as never,
+      { available: () => false, send: async () => ({ status: "failed", message: "用例未启用短信" }) } as never
+    );
     const service = new ActualPurchaseBatchService(
       prisma as never,
       new AuditService(),
       ledger,
-      { confirmPassword: async (_userId: string, password: string) => { if (password !== "current-password") throw new Error("密码错误"); } } as never
+      { confirmPassword: async (_userId: string, password: string) => { if (password !== "current-password") throw new Error("密码错误"); } } as never,
+      notifications
     );
     try {
       // 1) 10k 批次，实际明细 2 行。
@@ -51,12 +57,15 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
         totalAmountCents: "1000000",
         idempotencyKey: `batch-${fixture.prefix}`,
         lines: [
-          { materialName: "角钢", quantity: "10", unitPrice: "500", amountCents: "500000" },
+          { materialName: "角钢", quantity: "8", unitPrice: "500", amountCents: "400000" },
           { materialName: "扎丝", quantity: "1", unitPrice: "5000", amountCents: "500000" }
         ]
       });
       expect(batch.totalAmountCents).toBe("1000000");
       expect(batch.lines).toHaveLength(2);
+      // PUR-08：清单合计 900000 与用户明确填写的实际总额 1000000 不同，仅展示差异，不强制相等。
+      expect(batch.lines.reduce((sum, line) => sum + BigInt(line.amountCents ?? "0"), 0n)).toBe(900000n);
+      expect(batch.totalAmountCents).not.toBe("900000");
       // 同键幂等：同内容返回同一批次，异内容冲突。
       const replay = await service.create(fixture.handlerUserId, {
         kind: "spot_material",
@@ -65,7 +74,7 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
         totalAmountCents: "1000000",
         idempotencyKey: `batch-${fixture.prefix}`,
         lines: [
-          { materialName: "角钢", quantity: "10", unitPrice: "500", amountCents: "500000" },
+          { materialName: "角钢", quantity: "8", unitPrice: "500", amountCents: "400000" },
           { materialName: "扎丝", quantity: "1", unitPrice: "5000", amountCents: "500000" }
         ]
       });
@@ -104,6 +113,13 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       expect(afterTwo.capacity.availableAmountCents).toBe("0");
       expect(afterTwo.capacity.suspended).toBe(false);
       expect(afterTwo.payments).toHaveLength(2);
+      // PUR-11：详情按商家/申请金额/已付/状态/累计实付聚合，原申请不拆重复需求。
+      expect(afterTwo.payments.map(payment => payment.merchantName)).toEqual(["合成五金供应商", "合成五金供应商"]);
+      expect(afterTwo.payments.map(payment => payment.requestedAmountCents)).toEqual(["300000", "700000"]);
+      expect(afterTwo.payments.map(payment => payment.paidAmountCents)).toEqual(["300000", "700000"]);
+      expect(afterTwo.payments.map(payment => payment.status)).toEqual(["paid", "paid"]);
+      expect(afterTwo.capacity.paidAmountCents).toBe("1000000");
+      expect(afterTwo.costContribution).toMatchObject({ originalTotalAmountCents: "1000000", effectiveTotalAmountCents: "1000000", confirmedCostAmountCents: "1000000" });
 
       // 4) 数据库层兜底：直接插入第三笔实付 1 分被触发器拒绝。
       await expect(prisma.spotProcurementPaymentExecution.create({
@@ -117,6 +133,14 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
         idempotencyKey: `correction-${fixture.prefix}`
       });
       expect(correction.status).toBe("pending_confirm");
+      const pendingIntents = await prisma.approvalActionLog.findMany({
+        where: { action: "system_notification", metadata: { path: ["kind"], equals: "actual_purchase_batch_correction" } }
+      });
+      expect(pendingIntents).toHaveLength(1);
+      expect(pendingIntents[0]!.metadata).toMatchObject({
+        event: "queued", phase: "correction", recipientId: fixture.financeDirectorUserId,
+        correctionId: correction.id, correctedTotalAmountCents: "800000"
+      });
       const correctionReplay = await service.requestCorrection(fixture.financeStaffUserId, batch.id, {
         correctedTotalAmountCents: "800000",
         reason: "供应商折让，实际应为 8k",
@@ -170,6 +194,16 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       expect(restored.capacity.suspended).toBe(false);
       expect(restored.corrections).toHaveLength(1);
       expect(restored.payments.reduce((sum, payment) => sum + BigInt(payment.refundedAmountCents), 0n)).toBe(200000n);
+      // 退款台账回原单：退款事实指向原实付/原付款，成本仍为更正后的 8k，不因多付退款再减。
+      expect(restored.refunds).toHaveLength(1);
+      expect(restored.refunds[0]).toMatchObject({
+        executionType: "spot_procurement_payment_execution",
+        executionId: fixture.executionIds[0],
+        paymentId: firstPayment.id,
+        amountCents: "200000"
+      });
+      expect(restored.costContribution.confirmedCostAmountCents).toBe("800000");
+      expect(restored.costContribution.costVersion).toBe(2);
 
       // 7) 退款累计不得超过原实付（服务 + 数据库触发器）。
       await expect(service.recordRefund(fixture.financeStaffUserId, batch.id, {
