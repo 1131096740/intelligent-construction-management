@@ -158,6 +158,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     label: "付款",
     items: [
       { label: "资金账户", path: "/资金账户", requiredGlobalRoleKeys: fundsWorkbenchRoleKeys },
+      { label: "统一更正", path: "/更正中心", requiredRoleKeys: ["finance_staff", "finance_director", "comprehensive_director", "contract_staff", "contract_director"] },
       { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
       {
         label: "资金执行案件",
@@ -554,6 +555,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "付款工作台",
         component: () => import("../pages/payments/PaymentWorkbenchPage.vue"),
         meta: { title: "付款工作台" }
+      },
+      {
+        path: "更正中心",
+        component: () => import("../pages/corrections/FinancialCorrectionEntryPage.vue"),
+        meta: { requiredRoleKeys: ["finance_staff", "finance_director", "comprehensive_director", "contract_staff", "contract_director"], title: "统一更正" }
       },
       {
         path: "付款管理",

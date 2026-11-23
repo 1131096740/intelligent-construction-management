@@ -447,6 +447,17 @@ export interface PaymentDetailReadModel {
   };
   id: string;
   title: string;
+  paidAmountCents?: MoneyCents;
+  grossPaidAmountCents?: MoneyCents;
+  refundedAmountCents?: MoneyCents;
+  correctionDeltaCents?: MoneyCents;
+  refunds?: Array<{
+    id: string;
+    paymentExecutionId: string;
+    amountCents: MoneyCents;
+    receivedAt: string;
+    fundRegistrationId: string | null;
+  }>;
   meta: DetailMetaItem[];
   baseInfo: DetailMetaItem[];
   approvalSteps: DetailStep[];

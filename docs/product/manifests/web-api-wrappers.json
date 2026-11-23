@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 50,
-    "exportedFunctionCount": 770,
-    "transportWrapperCount": 746,
+    "apiModuleCount": 51,
+    "exportedFunctionCount": 771,
+    "transportWrapperCount": 747,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 820,
+    "mainRequestBindingCount": 821,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 776,
-    "productionConsumerCount": 657,
+    "requestEdgeCount": 777,
+    "productionConsumerCount": 658,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 420,
-    "reachableProductionModuleCount": 401
+    "productionModuleCount": 422,
+    "reachableProductionModuleCount": 403
   },
   "wrappers": [
     {
@@ -17977,6 +17977,33 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFinancialCorrectionCapability",
+      "apiFile": "apps/web-admin/src/api/payment-financial.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 34,
+          "method": "GET",
+          "path": "/payment-financial/entry/capability?type=:param&id=:param",
+          "normalizedPath": "/payment-financial/entry/capability",
+          "normalizedKey": "GET /payment-financial/entry/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFinancialCorrectionCapability"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/corrections/FinancialCorrectionEntryPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

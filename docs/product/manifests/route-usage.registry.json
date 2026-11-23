@@ -3,24 +3,24 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 827,
-    "classificationOverrideCount": 220,
-    "derivedProductionPageCount": 607,
-    "classificationOverrideSha256": "72e5601ee6762e364be6d050efbfc9a7f8b0625714b80ecd3a03dae4d6c4e9aa",
-    "consumerSurfaceOverrideSha256": "1e1be136bfca60ce98c0bcde4c0d538bad9dcb2a28bf9118e88c09ff86438939",
+    "routeCount": 833,
+    "classificationOverrideCount": 225,
+    "derivedProductionPageCount": 608,
+    "classificationOverrideSha256": "71663f75150fda4cd713f90bc211f59dcf45cc116c6fbb98232cee63389be8d2",
+    "consumerSurfaceOverrideSha256": "b2bbe6944629b245b12f03521fc673151201615df030bea2ca96c22191b02015",
     "usageCounts": {
-      "page": 626,
+      "page": 627,
       "external_takeover": 70,
       "exit_candidate": 91,
-      "internal_task": 40,
+      "internal_task": 45,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 678,
+      "web_api_wrapper": 679,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
-      "operator_endpoint": 37,
+      "operator_endpoint": 42,
       "none": 102
     }
   },
@@ -1344,6 +1344,36 @@
       "path": "/contracts/:contractVersionId/change-drafts",
       "usage": "internal_task",
       "reason": "retained_pending_issue_425_old_change_draft_write_superseded_by_signed_supplement_web_entry_zero_production_web_callers_still_consumed_by_enterprise_http_acceptance_and_e2e_harness_retire_with_call_site_migration_no_410_now"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/corrections",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/refunds/capability",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/corrections/:correctionId/confirmation",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/corrections",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/refunds",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1614,6 +1644,36 @@
       "path": "/contracts/:contractVersionId/change-drafts",
       "consumerSurface": "machine_probe",
       "reason": "retained_pending_issue_425_enterprise_http_acceptance_and_playwright_harness_machine_consumer_not_production_web_not_operator_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/corrections",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/refunds/capability",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/corrections/:correctionId/confirmation",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/corrections",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/refunds",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
     }
   ]
 }
