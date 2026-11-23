@@ -13,6 +13,7 @@ import { FileService, PrivateFileStorage } from "../file/file.service";
 import type { AppendOperatingFactInput, OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
 import { paymentApprovalNodes } from "../spot-procurement/spot-procurement-approval-nodes";
+import { SpotProcurementBalanceService } from "../spot-procurement/spot-procurement-balance.service";
 import { SpotProcurementPaymentService } from "../spot-procurement/spot-procurement-payment.service";
 
 /**
@@ -28,10 +29,12 @@ import { SpotProcurementPaymentService } from "../spot-procurement/spot-procurem
 describe("issue 403 actual purchase batches and split payments PostgreSQL", () => {
   const integrationTest = process.env.ISSUE403_ACTUAL_PURCHASE_RUN === "1" ? it : it.skip;
 
-  integrationTest("migrates a legacy pending spot payment atomically and preserves its signed action on retry", async () => {
+  integrationTest("migrates a legacy pending spot payment atomically and accepts a finance signature before project review", async () => {
     const databaseUrl = assertDedicatedDatabase();
     const storageRoot = await mkdtemp(join(tmpdir(), "issue424-cutover-files-"));
     const objectKey = "signature.png";
+    const financeObjectKey = "finance-signature.png";
+    const financeRoleId = randomUUID();
     const previousStorageDriver = process.env.FILE_STORAGE_DRIVER;
     const previousStorageRoot = process.env.FILE_STORAGE_ROOT;
     const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
@@ -41,6 +44,10 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       const storage = new PrivateFileStorage();
       storage.assertConfigured();
       const fixture = await seedFixture(prisma, { includeGlobalApprovalRoles: false });
+      const audit = new AuditService();
+      const balances = new SpotProcurementBalanceService(prisma as never, audit);
+      const supplierKey = `supplier-424-${fixture.prefix}`;
+      await prisma.spotProcurementVersion.update({ where: { id: fixture.versionId }, data: { supplierKey } });
       const payment = await prisma.spotProcurementPayment.create({
         data: {
           code: `LXFK-424-${fixture.prefix}`,
@@ -52,12 +59,34 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
           createdByUserId: fixture.handlerUserId,
           payerCompanyEntityId: fixture.companyId,
           payerCompanyNameSnapshot: `合成费用公司 ${fixture.prefix}`,
+          settlementAmountCents: 1000n,
+          supplierBalanceAmountCents: 200n,
+          companyPaymentAmountCents: 800n,
           approvalAmountCents: 1000n
         }
       });
       await prisma.spotProcurementPaymentMethodOption.create({
         data: { paymentId: payment.id, paymentMethod: "bank_transfer", sortOrder: 1 }
       });
+      const account = await prisma.supplierBalanceAccount.create({
+        data: { projectId: fixture.projectId, supplierKey, supplierNameSnapshot: "合成供应商", availableAmountCents: 500n }
+      });
+      await prisma.$transaction((tx) => balances.reserve(tx, {
+        projectId: fixture.projectId,
+        supplierKey,
+        paymentId: payment.id,
+        procurementId: fixture.procurementId,
+        amountCents: payment.supplierBalanceAmountCents,
+        actorUserId: fixture.handlerUserId
+      }));
+      const loadFunding = () => Promise.all([
+        prisma.supplierBalanceAccount.findUniqueOrThrow({ where: { id: account.id } }),
+        prisma.supplierBalanceReservation.findUniqueOrThrow({ where: { paymentId: payment.id } }),
+        prisma.supplierBalanceEntry.findMany({ where: { paymentId: payment.id }, orderBy: { sequenceNo: "asc" } }),
+        prisma.projectFundingAllocation.findMany({ where: { businessId: payment.id } }),
+        prisma.operatingFact.findMany({ where: { sourceBusinessId: payment.id } })
+      ]);
+      const fundingBeforeCutover = await loadFunding();
       const frozenNodes = paymentApprovalNodes();
       frozenNodes[0].approvedRoleKeys = ["material_director"];
       const round = await prisma.approvalInstance.create({
@@ -103,15 +132,16 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
           metadata: { approverName: signer.name }
         }
       });
-      const audit = new AuditService();
       const files = new FileService(prisma as never, audit, storage);
       const service = new SpotProcurementPaymentService(
-        prisma as never, audit, {} as never, {} as never, {} as never,
-        files, {} as never, {} as never, {} as never
+        prisma as never, audit, { assertEnabled: () => undefined } as never, balances, {} as never,
+        files, { tryRefreshLatestForBusiness: async () => undefined } as never, {} as never, {} as never
       );
       const actorId = fixture.comprehensiveDirectorUserId;
       const reload = () => prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } });
-      const loadAuditRows = () => prisma.auditLog.findMany({ where: { businessId: payment.id } });
+      const loadAuditRows = () => prisma.auditLog.findMany({
+        where: { businessId: payment.id, action: "spot_procurement.payment.approval.legacy_cutover" }
+      });
 
       await storage.write(objectKey, Buffer.from("corrupted"));
       await expect(service.migrateLegacyApprovalRound(payment.id, actorId)).rejects.toThrow("资料文件完整性校验失败");
@@ -135,9 +165,10 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       });
       const converted = await reload();
       expect(converted).toMatchObject({ currentNodeIndex: 1, status: "approval_pending" });
-      expect(converted.frozenNodes).toEqual(frozenNodes.map(node => ({
+      const convertedNodes = frozenNodes.map(node => ({
         ...node, protocolVersion: 1, executionMode: "parallel", legacySerialCutover: true
-      })));
+      }));
+      expect(converted.frozenNodes).toEqual(convertedNodes);
       expect(activeApprovalNodeIndexes(converted.frozenNodes, converted.currentNodeIndex)).toEqual([1, 2, 3]);
       await expect(service.migrateLegacyApprovalRound(payment.id, actorId)).resolves.toEqual({ status: "already_mapped" });
       expect(await prisma.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } })).toEqual([originalAction]);
@@ -147,14 +178,64 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
         action: "spot_procurement.payment.approval.legacy_cutover",
         metadata: expect.objectContaining({ approvalInstanceId: round.id, completedActionIds: [originalAction.id] })
       })]);
+
+      const financeUserId = fixture.financeDirectorUserId;
+      const financePosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_director" } });
+      await prisma.userPosition.create({ data: { id: financeRoleId, userId: financeUserId, positionId: financePosition.id } });
+      await storage.write(financeObjectKey, signatureBytes);
+      const financeFile = await prisma.fileObject.create({
+        data: {
+          bucket: storage.bucketName(),
+          objectKey: financeObjectKey,
+          originalName: financeObjectKey,
+          mimeType: "image/png",
+          sizeBytes: signatureBytes.length,
+          uploadedByUserId: financeUserId,
+          contentSha256
+        }
+      });
+      const financeSignature = await prisma.handwrittenSignatureVersion.create({
+        data: { userId: financeUserId, fileId: financeFile.id, contentSha256 }
+      });
+      await expect(service.review(payment.id, financeUserId, { decision: "approve" })).resolves.toMatchObject({
+        id: payment.id, status: "approval_pending"
+      });
+      const afterReview = await reload();
+      expect(afterReview).toMatchObject({ currentNodeIndex: 1, status: "approval_pending" });
+      expect(afterReview.frozenNodes).toEqual(convertedNodes.map((node, index) =>
+        index === 2 ? { ...node, approvedRoleKeys: ["finance_director"] } : node
+      ));
+      expect(activeApprovalNodeIndexes(afterReview.frozenNodes, afterReview.currentNodeIndex)).toEqual([1, 3]);
+
+      await expect(service.review(payment.id, financeUserId, { decision: "approve" }))
+        .rejects.toThrow("当前用户不是本付款审批节点处理人");
+      expect(await reload()).toEqual(afterReview);
+      const actions = await prisma.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } });
+      expect(actions).toHaveLength(2);
+      expect(actions).toEqual(expect.arrayContaining([
+        originalAction,
+        expect.objectContaining({
+          action: "approve",
+          actorUserId: financeUserId,
+          approvedRoleKey: "finance_director",
+          signatureFileIdSnapshot: financeFile.id,
+          signatureVersionIdSnapshot: financeSignature.id,
+          signatureSha256Snapshot: contentSha256,
+          metadata: expect.objectContaining({ parallel: true, nodeIndex: 2 })
+        })
+      ]));
+      expect(await prisma.spotProcurementPayment.findUnique({ where: { id: payment.id } })).toEqual(payment);
+      expect(await loadFunding()).toEqual(fundingBeforeCutover);
+      expect(await prisma.spotProcurementPaymentExecution.count({ where: { paymentId: payment.id } })).toBe(0);
     } finally {
       if (previousStorageDriver === undefined) delete process.env.FILE_STORAGE_DRIVER;
       else process.env.FILE_STORAGE_DRIVER = previousStorageDriver;
       if (previousStorageRoot === undefined) delete process.env.FILE_STORAGE_ROOT;
       else process.env.FILE_STORAGE_ROOT = previousStorageRoot;
       await Promise.all([
-        prisma.$disconnect(),
-        rm(join(storageRoot, objectKey), { force: true }).then(() => rmdir(storageRoot))
+        prisma.userPosition.deleteMany({ where: { id: financeRoleId } }).finally(() => prisma.$disconnect()),
+        Promise.all([objectKey, financeObjectKey].map(key => rm(join(storageRoot, key), { force: true })))
+          .then(() => rmdir(storageRoot))
       ]);
     }
   });
