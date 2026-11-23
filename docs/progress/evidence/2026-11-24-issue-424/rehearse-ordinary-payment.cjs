@@ -233,9 +233,10 @@ async function main() {
     const sql = (db, input) => docker(['exec', '-i', container, 'psql', '-X', '-A', '-t', '-q', '-v', 'ON_ERROR_STOP=1', '-U', owner, '-d', db], { input }).trim();
     const metrics = readFileSync(path.join(__dirname, 'metrics.sql'), 'utf8');
     const originalMetrics = sql(source, metrics);
-    assert.equal(sql(restored, metrics), originalMetrics);
-    for (const filename of ['metrics-post.txt', 'metrics-restore-post.txt']) {
-      writeFileSync(path.join(root, filename), originalMetrics, { mode: 0o600, flag: 'wx' });
+    const restoredMetrics = sql(restored, metrics);
+    assert.equal(restoredMetrics, originalMetrics);
+    for (const [filename, observed] of [['metrics-post.txt', originalMetrics], ['metrics-restore-post.txt', restoredMetrics]]) {
+      writeFileSync(path.join(root, filename), observed, { mode: 0o600, flag: 'wx' });
     }
     receipt.restoreMetricsSha256 = createHash('sha256').update(originalMetrics).digest('hex');
     sql(restored, `REVOKE CONNECT ON DATABASE ${restored} FROM PUBLIC;
