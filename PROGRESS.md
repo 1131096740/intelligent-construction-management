@@ -1,5 +1,13 @@
 # 建工智管当前状态
 
+## 2026-11-24 Task12 295 冻结链 323→328 重基线
+
+工作树 `/tmp/jgAN`，分支 `line-an-295-328`，基线 `3640ece6e`；未 push、未改产品迁移。
+
+- 当前终态账长 323→328、全账 `5623f6ae…`→`8ae65298…`、tails 28→33、终态 `20261126000000…`/`362340da…`；历史前缀 292/294/295 digest `git grep -o` 出现次数前后相等。
+- 同步 90+ 链文件计数/状态/CI 分支、bank/onboarding/procurement/restore 派生材料、installer 预像后像与 named 材料；`check:migration-baseline` 328 clean。
+- host staging（prepare、bank/onboarding、procurement、pol108/109、pfq、expense、payment、task398/task410、named）通过；未跑 Docker DB lane，已知 `07500` upward 闭包 55000 首因未解，**不承诺 contract_finance/pol275/task410 变绿**。`docker ps -q` 实测 2 行均为并行 #424 容器。详见 [回执](docs/progress/2026-11-24-task12-295-rebaseline-328.md)。
+
 ## 2026-11-24 动态门 PG 用例登记（11 条 spec）
 
 分支 `line-af-manifests`，合入 #423 合并（`7bc366ed8`）后完成；未改产品代码/迁移、未 push。

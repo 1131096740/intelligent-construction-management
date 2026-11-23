@@ -13,7 +13,7 @@ async function runHistoricalWage(context,receipt,source){
  const {ownerUrl,runId,database,workDir}=context;
  assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
  const current320=source.mode==='current-320';
- assert.equal(source.migrationCount,current320?323:295);
+ assert.equal(source.migrationCount,current320?328:295);
  if(current320) assert.equal(context.candidateTree,source.sourceTree);
  assert.equal(receipt.installOnly295.count,295);
  assert.equal(receipt.installOnly295.sameIdentity,true);

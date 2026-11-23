@@ -17,7 +17,7 @@ const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
 const runArgs=current320?args.slice(1):args;
 const source=current320?require('./current320-source.json'):undefined;
-const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+(current320?323:295),
+const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+(current320?328:295),
   candidateSha:source?.sourceSha??admission.head,...(current320?{fixturePredecessorSha:admission.head}:{}),operation:'NAMED_BANK_BACKUP_AND_RECOVERY',stages:[]};
 
 function requireNoCrossLinks(root){
@@ -67,7 +67,7 @@ async function main(){
   assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'));
   if(current320){
     assert.equal(source.mode,'current-320');
-    assert.equal(source.migrationCount,323);
+    assert.equal(source.migrationCount,328);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,require('./multi-witness.cjs').final);
     assert.equal(source.ledgerSha256,require('./forward-320-inventory.json').ledgerSha256);
@@ -87,7 +87,7 @@ async function main(){
     assert.equal(check.status,0,'BACKUP292_RELOCATED_JEST_PREFLIGHT');
     const tests=JSON.parse(check.stdout).testResults.flatMap(row=>row.assertionResults);
     assert.equal(tests.filter(test=>test.title===name&&test.status==='pending').length,1,'BACKUP292_LOAN_CASE_PREFLIGHT');
-    receipt.status=current320?'BACKUP323_NO_DB_PREFLIGHT_PASSED':'BACKUP295_NO_DB_PREFLIGHT_PASSED';
+    receipt.status=current320?'BACKUP328_NO_DB_PREFLIGHT_PASSED':'BACKUP295_NO_DB_PREFLIGHT_PASSED';
     return;
   }
   const fixtures={
@@ -115,7 +115,7 @@ async function main(){
   }
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status=current320?'BACKUP323_RESTORED_AND_VERIFIED':'BACKUP295_RESTORED_AND_VERIFIED';
+  receipt.status=current320?'BACKUP328_RESTORED_AND_VERIFIED':'BACKUP295_RESTORED_AND_VERIFIED';
 }
 main().catch(error=>{
   receipt.status='STOPPED';

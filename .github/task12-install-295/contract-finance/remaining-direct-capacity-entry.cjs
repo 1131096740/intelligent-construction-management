@@ -9,7 +9,7 @@ const {consume}=require('./remaining-direct-capacity.cjs');
 const root='/qualification';
 const source=require('./contract-finance-source.json');
 const current320=source.mode==='current-320';
-const count=current320?323:295;
+const count=current320?328:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_DIRECT_CAPACITY_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 

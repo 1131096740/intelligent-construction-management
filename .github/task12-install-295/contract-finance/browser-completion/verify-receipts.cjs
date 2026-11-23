@@ -9,15 +9,15 @@ const read=name=>JSON.parse(readFileSync(path.join(dir,name),'utf8'));
 const terminal=read('receipt-complete.json');
 const markers=['receipt.json','receipt-stage2.json'].map(read);
 const count=Number(process.argv[4]??295);
-assert.ok(count===295||count===323);
+assert.ok(count===295||count===328);
 assert.equal(outer.status,'TASK398_BROWSER_COMPLETION_EXACT_'+count+'_PASSED');
-if(count===323){
-  assert.equal(outer.forward320?.count,323);
+if(count===328){
+  assert.equal(outer.forward320?.count,328);
   assert.equal(outer.forward320?.sameIdentity,true);
   assert.equal(outer.forward320?.sameBaseB7,true);
   assert.match(outer.forward320?.sourceTree??'',/^[a-f0-9]{40}$/u);
   assert.match(outer.forward320?.ledgerSha256??'',/^[a-f0-9]{64}$/u);
-  assert.equal(outer.combinedAfterBusiness?.count,323);
+  assert.equal(outer.combinedAfterBusiness?.count,328);
   assert.equal(outer.combinedAfterBusiness?.ledgerSha256,outer.forward320.ledgerSha256);
   assert.equal(outer.combinedAfterBusiness?.exactB7,true);
 }

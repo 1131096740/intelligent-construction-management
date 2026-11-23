@@ -20,8 +20,8 @@ const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2)
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile).profiles,lane))process.exit(65);
 if(mode==='--current-320') {
-  if(source.mode!=='current-320'||source.migrationCount!==323||source.predecessor?.migrationCount!==295||
-     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==28) process.exit(65);
+  if(source.mode!=='current-320'||source.migrationCount!==328||source.predecessor?.migrationCount!==295||
+     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==33) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
 image=$(cat "$build/image.id")
@@ -65,7 +65,7 @@ done < "$work/fixture-mounts.tsv"
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 count=295
-if [[ $# == 6 ]]; then count=323; fi
+if [[ $# == 6 ]]; then count=328; fi
 printf '%s\n' "假设原 $lane 业务断言和迁移状态在同一 $count 隔离库通过。观察 settlement、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0

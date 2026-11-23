@@ -6,7 +6,7 @@ const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./in
 const terminal=require('./multi-witness.cjs');
 const source=require('./contract-finance-source.json');
 const current320=process.argv[2]==='--current-320';
-const count=current320?323:295;
+const count=current320?328:295;
 const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'POL115_WORKBENCH_ORIGINAL_'+count,business:'NOT_ENTERED',stages:['INPUTS']};
 Promise.resolve().then(()=>{
   assert.notEqual(process.getuid(),0);

@@ -10,7 +10,7 @@
 -  if(context.candidateTree!=="a1be083076018686dd8afba68c44ff9c75502014" ||
 +const source=require('./contract-finance-source.json');
 +const current320=source.mode==='current-320';
-+const count=current320?323:295;
++const count=current320?328:295;
 +const install=(receipt,consume)=>current320
 +  ? withCombined320ContractPayment(receipt,consume,{sourceTree:source.sourceTree,
 +    migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
@@ -24,7 +24,7 @@
 +  receipt.retainedPayment["at"+count]=await verifyFacts(load("/qualification/retained-payment.json"),context.sql);
 +}).then(()=>{
 +  if(current320 && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
-+    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==323))
++    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==328))
 +    throw new Error("PAYMENT_FORWARD_320_LEDGER");
 +  receipt.status="PAYMENT_EXECUTION_RETAINED_VALID_"+count+"_PASSED";
 +}).catch(error=>{

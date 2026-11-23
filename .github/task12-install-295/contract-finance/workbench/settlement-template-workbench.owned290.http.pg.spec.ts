@@ -65,7 +65,7 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
           inet_server_addr() = '127.0.0.1'::inet AND inet_client_addr() = '127.0.0.1'::inet AND
           inet_server_port() = ${Number(url.port)}::integer AND
           EXISTS (SELECT FROM pg_catalog.pg_stat_ssl WHERE pid = pg_backend_pid() AND ssl) AND
-          (SELECT COUNT(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = ${current320 ?323:295} AND
+          (SELECT COUNT(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = ${current320 ?328:295} AND
           EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
             AND migration_name = '20261119003500_fund_balance_correction_controlled_round'
             AND checksum = '8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60') AND
@@ -73,8 +73,8 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
             AND migration_name = '20261119003800_company_transfer_ordinary_loan_multi_witness'
             AND checksum = 'e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25') AND
           (NOT ${current320} OR EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
-            AND migration_name = '20261119007500_signed_change_and_settlement_attachment_file_binding'
-            AND checksum = '98e016b27a5a64b7a471cecddda29eac982c791f391d57b22f461a842149ef0a'))) AS accepted
+            AND migration_name = '20261126000000_operating_cost_attribution_confirmation'
+            AND checksum = '362340da5d146e1113e6442ae1bc2646508a9739f2b4244e76abd27be5cf415c'))) AS accepted
         FROM pg_catalog.pg_database d WHERE d.datname = current_database()
       `;
       if (witness?.accepted !== true) throw new Error("POL115_WORKBENCH_OWNED_282_DATABASE");

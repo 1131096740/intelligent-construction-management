@@ -7,7 +7,7 @@ const {final,digest}=require('./multi-witness.cjs');
 const {runRetained,verifyInputs}=require('./remaining-retained.cjs');
 const source=require('./contract-finance-source.json');
 const current320=source.mode==='current-320';
-const count=current320?323:295;
+const count=current320?328:295;
 const root='/qualification';
 const lane='profile';
 const receipt={schemaVersion:1,purpose:'REMAINING_PROFILE_WARM_EXACT_'+count,lane,sourceSha:source.sourceSha,
