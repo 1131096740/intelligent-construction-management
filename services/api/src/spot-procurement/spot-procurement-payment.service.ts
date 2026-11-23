@@ -21,6 +21,7 @@ import {
   type SpotProcurementPaymentMethod
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
@@ -56,6 +57,7 @@ import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-b
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import {
+  batchPaymentApprovalNodes,
   paymentApprovalNodes,
   type SpotProcurementApprovalNode
 } from "./spot-procurement-approval-nodes";
@@ -1504,6 +1506,18 @@ export class SpotProcurementPaymentService {
           actorUserId,
           version.projectId
         );
+        if (isParallelApprovalRound(approval.frozenNodes)) {
+          return this.reviewBatchParallelPayment(
+            tx,
+            version,
+            payments,
+            payment,
+            approval,
+            actorUserId,
+            actorRoles,
+            input
+          );
+        }
         const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
           approval.frozenNodes,
           approval.currentNodeIndex
@@ -3424,6 +3438,167 @@ export class SpotProcurementPaymentService {
     return approval;
   }
 
+  /** #403 批次付款并联审批：综合部主管、项目经理、财务主管、董事长/总经理同时待办。 */
+  private async reviewBatchParallelPayment(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    payments: PaymentLockRow[],
+    payment: PaymentLockRow,
+    approval: ApprovalLockRow,
+    actorUserId: string,
+    actorRoles: RoleKey[],
+    input: ReviewSpotProcurementPaymentDto
+  ) {
+    if (!isParallelApprovalRound(approval.frozenNodes)) {
+      throw new ConflictException("付款审批轮次不是并联审批");
+    }
+    const nodes = approval.frozenNodes as Array<Record<string, unknown>>;
+    const indexes = activeApprovalNodeIndexes(nodes, 0);
+    const index = indexes.find((candidate) =>
+      ((nodes[candidate].roleKeys as RoleKey[] | undefined) ?? []).some((role) =>
+        actorRoles.includes(role)
+      )
+    );
+    if (index === undefined) {
+      throw new ForbiddenException("当前用户不是本付款并联审批节点的有效审批人");
+    }
+    const approvedRoleKey = ((nodes[index].roleKeys as RoleKey[] | undefined) ?? []).find((role) =>
+      actorRoles.includes(role)
+    )!;
+    const selfReview = await confirmApprovalSelfReview({
+      applicantUserId: approval.applicantUserId,
+      actorUserId,
+      actorRoleKeys: actorRoles,
+      approvedRoleKey,
+      selfReviewReason: input.selfReviewReason,
+      confirmationPassword: input.confirmationPassword,
+      confirmPassword: (password) => this.auth.confirmPassword(actorUserId, password)
+    });
+    const comment =
+      optionalText(input.comment) ??
+      (input.decision === "approve" ? "同意" : null);
+    if (input.decision !== "approve" && !comment) {
+      throw new BadRequestException("退回付款申请时必须填写原因");
+    }
+    const signature =
+      input.decision === "approve"
+        ? await snapshotApprovalSignature(tx, actorUserId, { required: true })
+        : null;
+    await tx.approvalActionLog.create({
+      data: await withApprovalIdentity(
+        tx,
+        {
+          approvalInstanceId: approval.id,
+          action: input.decision === "approve" ? "approve" : "return_to_applicant",
+          actorUserId,
+          comment,
+          approvedRoleKey,
+          representedUserId: actorUserId,
+          metadata: {
+            parallel: true,
+            nodeIndex: index,
+            nodeName: String(nodes[index].name ?? "批次付款并联审批"),
+            ...selfReview.metadata
+          },
+          ...(signature
+            ? {
+                signatureFileIdSnapshot: signature.fileId,
+                signatureSha256Snapshot: signature.sha256,
+                signatureVersionIdSnapshot: signature.versionId
+              }
+            : {})
+        },
+        signature
+      )
+    });
+    if (input.decision !== "approve") {
+      await tx.approvalInstance.update({
+        where: { id: approval.id },
+        data: { status: "returned_to_applicant", frozenNodes: nodes as unknown as Prisma.InputJsonValue }
+      });
+      const updated = await tx.spotProcurementPayment.update({
+        where: { id: payment.id },
+        data: { status: "returned" }
+      });
+      const clone = await this.cloneSubmittedRealPaymentToDraft(
+        tx,
+        version,
+        payments,
+        payment,
+        actorUserId
+      );
+      await this.recordReviewAudit(
+        tx,
+        actorUserId,
+        payment,
+        approval.id,
+        input.decision,
+        approvedRoleKey,
+        { ...selfReview.metadata, parallel: true, newDraftPaymentId: clone.payment?.id }
+      );
+      return this.paymentReadModel(updated, undefined, {
+        newDraftPaymentId: clone.payment?.id
+      });
+    }
+    nodes[index] = { ...nodes[index], approvedRoleKeys: [approvedRoleKey] };
+    const remaining = activeApprovalNodeIndexes(nodes, 0);
+    if (remaining.length) {
+      await tx.approvalInstance.update({
+        where: { id: approval.id },
+        data: {
+          status: "approval_pending",
+          currentNodeIndex: remaining[0]!,
+          frozenNodes: nodes as unknown as Prisma.InputJsonValue
+        }
+      });
+      await this.recordReviewAudit(
+        tx,
+        actorUserId,
+        payment,
+        approval.id,
+        input.decision,
+        approvedRoleKey,
+        { ...selfReview.metadata, parallel: true, remainingNodes: remaining.length }
+      );
+      return this.paymentReadModel(payment);
+    }
+    await this.actualBatches?.assertSpotPaymentCommitInTransaction(
+      tx,
+      payment.id,
+      payment.approvalAmountCents
+    );
+    const now = new Date();
+    await tx.approvalInstance.update({
+      where: { id: approval.id },
+      data: {
+        status: "approved",
+        currentNodeIndex: nodes.length,
+        frozenNodes: nodes as unknown as Prisma.InputJsonValue
+      }
+    });
+    const updated = await tx.spotProcurementPayment.update({
+      where: { id: payment.id },
+      data: { status: "approved_pending_payment", approvedAt: now }
+    });
+    await this.actualBatches?.confirmCostForSpotPaymentInTransaction(
+      tx,
+      payment.id,
+      actorUserId,
+      now
+    );
+    await this.recordReviewAudit(
+      tx,
+      actorUserId,
+      payment,
+      approval.id,
+      input.decision,
+      approvedRoleKey,
+      { ...selfReview.metadata, parallel: true, completed: true }
+    );
+    await this.paymentNotifications?.queue(tx, updated, approval.id, actorUserId);
+    return this.paymentReadModel(updated);
+  }
+
   private approveCurrentNode(
     frozenNodes: Prisma.JsonValue,
     currentNodeIndex: number,
@@ -3745,7 +3920,8 @@ export class SpotProcurementPaymentService {
             );
           }
         }
-        await assertProjectApprovalNodesConfigured(tx, payment.projectId, paymentApprovalNodes(), payment.handlerUserId);
+        const approvalNodes = batchLinked ? batchPaymentApprovalNodes() : paymentApprovalNodes();
+        await assertProjectApprovalNodesConfigured(tx, payment.projectId, approvalNodes, payment.handlerUserId);
         const now = new Date();
         const approval = await tx.approvalInstance.create({
           data: {
@@ -3754,7 +3930,7 @@ export class SpotProcurementPaymentService {
             businessId: payment.id,
             status: "approval_pending",
             currentNodeIndex: 0,
-            frozenNodes: paymentApprovalNodes() as unknown as Prisma.InputJsonValue,
+            frozenNodes: approvalNodes as unknown as Prisma.InputJsonValue,
             applicantUserId: payment.handlerUserId
           }
         });

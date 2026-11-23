@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from "../../auth/auth.store";
 import MultiDutySmsStatusPanel from "../../components/MultiDutySmsStatusPanel.vue";
+import ActualPurchaseBatchPanel from "../../components/ActualPurchaseBatchPanel.vue";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import {buildApprovalSelfReviewPayload} from "../../components/approval-self-review.config";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
@@ -2155,6 +2156,14 @@ onBeforeUnmount(() => {
           message="采购正式办结后不允许常规更正；发票资料可按规则继续追加归档。"
         />
       </section>
+      <ActualPurchaseBatchPanel
+        v-if="detail.currentVersion.requestProtocolVersion === 2"
+        kind="spot_material"
+        :procurement-id="detail.procurement.id"
+        :project-id="detail.procurement.project?.id ?? null"
+        :can-create="detail.procurement.status === 'approved_in_progress'"
+        :can-pay="detail.procurement.status === 'approved_in_progress'"
+      />
     </template>
 
 
