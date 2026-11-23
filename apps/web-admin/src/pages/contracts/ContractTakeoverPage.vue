@@ -3385,7 +3385,7 @@ const selectedBaseInfo = computed(() => {
         row.takeover.historicalSettledCents
       )} / ${centsTextToYuanText(row.historicalOverpaidCents)}（${row.historicalOverpaymentLabel}）`
     },
-    ...(row.historicalOverReceivedCents !== "0"
+    ...(row.takeover.relationship === "upward"
       ? [{
           label: "对上历史实收/超收",
           value: `${centsTextToYuanText(row.historicalReceiptsCents)} / ${centsTextToYuanText(

@@ -50,7 +50,7 @@
         :disabled="!editable"
         @change="updateZeroPayment(Boolean($event))"
       >
-        截止接管日没有历史实付
+        {{ moneySummary?.relationship === "upward" ? "截止接管日没有历史实收" : "截止接管日没有历史实付" }}
       </t-checkbox>
 
       <div
@@ -59,7 +59,7 @@
         class="payment-card"
       >
         <div class="payment-head">
-          <strong>第 {{ index + 1 }} 笔历史实付</strong>
+          <strong>第 {{ index + 1 }} 笔{{ moneySummary?.relationship === "upward" ? "历史实收（施工企业付我方）" : "历史实付" }}</strong>
           <t-button
             v-if="editable"
             size="small"
@@ -72,7 +72,7 @@
         </div>
         <div class="form-grid">
           <label>
-            <span>实付金额（元）</span>
+            <span>{{ moneySummary?.relationship === "upward" ? "实收金额（元）" : "实付金额（元）" }}</span>
             <YuanMoneyInput
               :model-value="payment.amountCents"
               :disabled="!editable"
@@ -80,7 +80,7 @@
             />
           </label>
           <label>
-            <span>实付日期</span>
+            <span>{{ moneySummary?.relationship === "upward" ? "实收日期" : "实付日期" }}</span>
             <t-input
               :model-value="payment.paidAt"
               :disabled="!editable"
@@ -150,7 +150,7 @@
         variant="outline"
         @click="addPayment"
       >
-        增加一笔历史实付
+        {{ moneySummary?.relationship === "upward" ? "增加一笔历史实收" : "增加一笔历史实付" }}
       </t-button>
 
       <div class="form-grid">

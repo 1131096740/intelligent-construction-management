@@ -991,6 +991,14 @@ export function buildTakeoverConfirmationSummary(
       { label: "历史计价项目", value: `${takeover.pricingItems.length} 项` },
       { label: "历史累计结算", value: centsToYuanText(takeover.historicalSettledCents) },
       { label: "历史累计已付", value: centsToYuanText(takeover.historicalPaidCents) },
+      ...(takeover.relationship === "upward"
+        ? [{
+            label: "对上历史实收/超收",
+            value: `${centsToYuanText(takeover.historicalReceiptsCents)} / ${centsToYuanText(
+              takeover.historicalOverReceivedCents
+            )}${takeover.historicalOverReceivedPendingVerification ? "（保留事实，待核对，不自动退款）" : ""}`
+          }]
+        : []),
       {
         label: "历史已付/结算/超付",
         value: `${centsToYuanText(takeover.historicalPaidTotalCents)} / ${centsToYuanText(
