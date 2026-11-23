@@ -59,5 +59,8 @@
   - `beginNativeTask12ArchiveProtocol` 会在 `isExactCurrentArchiveProfile(source.profile)` 处拒绝（profile 不是 sealed 289 归档 profile），甚至到不了 `jg_install_contract_direct_upward_v2`；
   - 若要满足它，必须先引入 289 密封材料（`.github/task12-install-289/historical-install-inputs.tar.gz` / `task12-install-292` 产物）并在 line-a 容器内完成 289→291→292 的归档协议 5 段 SQL 与 9 角色 provisioning——现有仓库没有把这条链挂到“外部已运行 postgres 容器 + 现有 ownerUrl”的入口。
 - 确切缺料：**line-a 容器内的 289/291/292 归档安装 executor**（当前只有 gate 镜像内的 `install-only292.cjs` 与 289 installer，两者都拥有自己的 postgres 生命周期），以及 289 精确 profile 的构造入口。
-- 因此本轮**未改** `run-line-a-real-db-local.cjs`、未改 `07500`、未 insert 闭包行；模式仍是 `PREFIX_275_PLUS_CANDIDATE`，`verify:line-a-real-db:local` 仍以 `SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_SCOPE`(55000) 阻断。
+- 因此本轮**未改** `run-line-a-real-db-local.cjs`、未改 `07500`、未 insert 闭包行；模式仍是 `PREFIX_275_PLUS_CANDIDATE`。
+- 合并后本地复跑（`LINE_A_SKIP_CANDIDATE=20261119004200 node services/api/prisma/run-line-a-real-db-local.cjs`，~3m，`exit 1`）确认仍在同一处阻断：
+  `psql:<stdin>:152: ERROR: SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_SCOPE ... LINE_A_REAL_DB 失败：候选迁移失败 20261119007500_…`。
+  另：本机 Docker 曾出现 `postgres:16` 在 `docker images` 可见但 `--host`/`inspect` 报 `No such image` 的镜像存储不一致，需 `docker tag postgres:16 …` 刷新后才能复跑；与代码无关。
 - 下一步（如需继续 ①）：把 `install-only292.cjs` 的 289→292 段抽成“可对任意 ownerUrl 执行”的库（5 段 SQL 已由 `archive.beforeSql/…/sql` 暴露），或在 line-a 内以 289 密封材料重建 profile/completion 后调用该协议；这需要新的一轮专门实现与 289 材料接线。
