@@ -29,6 +29,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     employeeProjectLoanEntry: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
     employeeLoanRepayment: { create: jest.fn(), update: jest.fn() },
     expenseClaimPaymentExecution: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    paymentExecutionRefund: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 0n } }), findMany: jest.fn().mockResolvedValue([]) },
     expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
     approvalInstance: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
     approvalActionLog: { create: jest.fn() },
@@ -36,7 +37,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
   const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, expenseClaimPaymentExecution: tx.expenseClaimPaymentExecution, employeeProjectLoanEntry: tx.employeeProjectLoanEntry, employeeLoanRepayment: { findMany: jest.fn() }, pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
-  Object.assign(prisma, { expenseClaimEntrySnapshot: tx.expenseClaimEntrySnapshot, projectRosterMember: tx.projectRosterMember });
+  Object.assign(prisma, { expenseClaimEntrySnapshot: tx.expenseClaimEntrySnapshot, projectRosterMember: tx.projectRosterMember, paymentExecutionRefund: tx.paymentExecutionRefund });
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { businessProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]) };

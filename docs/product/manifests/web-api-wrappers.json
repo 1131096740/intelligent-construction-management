@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 51,
-    "exportedFunctionCount": 774,
-    "transportWrapperCount": 750,
+    "apiModuleCount": 52,
+    "exportedFunctionCount": 777,
+    "transportWrapperCount": 753,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 824,
+    "mainRequestBindingCount": 827,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 780,
-    "productionConsumerCount": 661,
+    "requestEdgeCount": 783,
+    "productionConsumerCount": 664,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 423,
-    "reachableProductionModuleCount": 404
+    "productionModuleCount": 425,
+    "reachableProductionModuleCount": 406
   },
   "wrappers": [
     {
@@ -17733,6 +17733,87 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOtherProjectPaymentDetail",
+      "apiFile": "apps/web-admin/src/api/other-project-payment.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 95,
+          "method": "GET",
+          "path": "/other-project-payments/:param",
+          "normalizedPath": "/other-project-payments/:param",
+          "normalizedKey": "GET /other-project-payments/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOtherProjectPaymentDetail"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/other-project-payment/OtherProjectPaymentPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOtherProjectPaymentEntry",
+      "apiFile": "apps/web-admin/src/api/other-project-payment.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 82,
+          "method": "GET",
+          "path": "/other-project-payments/entry",
+          "normalizedPath": "/other-project-payments/entry",
+          "normalizedKey": "GET /other-project-payments/entry",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOtherProjectPaymentEntry"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/other-project-payment/OtherProjectPaymentPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOtherProjectPayments",
+      "apiFile": "apps/web-admin/src/api/other-project-payment.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 89,
+          "method": "GET",
+          "path": "/other-project-payments",
+          "normalizedPath": "/other-project-payments",
+          "normalizedKey": "GET /other-project-payments",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOtherProjectPayments"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/other-project-payment/OtherProjectPaymentPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

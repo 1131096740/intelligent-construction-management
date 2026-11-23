@@ -9,7 +9,10 @@ import { FileModule } from "../file/file.module";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
 import { ExpenseClaimController } from "./expense-claim.controller";
+import { ExpenseClaimCorrectionService } from "./expense-claim-correction.service";
+import { ExpenseClaimPaymentRefundService } from "./expense-claim-payment-refund.service";
 import { ExpenseClaimService } from "./expense-claim.service";
+import { OtherProjectPaymentController } from "./other-project-payment.controller";
 
 @Module({
   imports: [
@@ -22,7 +25,12 @@ import { ExpenseClaimService } from "./expense-claim.service";
     OperatingLedgerModule,
     ProjectFundingModule
   ],
-  controllers: [ExpenseClaimController],
-  providers: [ExpenseClaimService, ExpenseClaimFundingNotificationService]
+  controllers: [ExpenseClaimController, OtherProjectPaymentController],
+  providers: [
+    ExpenseClaimService,
+    ExpenseClaimFundingNotificationService,
+    ExpenseClaimPaymentRefundService,
+    ExpenseClaimCorrectionService
+  ]
 })
 export class ExpenseClaimModule {}
