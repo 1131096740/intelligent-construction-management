@@ -15,6 +15,10 @@ export class DelegatePaymentApprovalDto extends AssignPaymentApprovalDto {
   expectedApprovalInstanceId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
+  @IsISO8601({ strict: true }, { message: "审批轮次更新时间不正确" })
+  expectedApprovalUpdatedAt?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsInt({ message: "审批职责必须是整数" })
   @Min(0, { message: "审批职责编号不能小于 0" })
   expectedNodeIndex?: number;

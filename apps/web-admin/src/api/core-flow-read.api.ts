@@ -514,6 +514,7 @@ export function fetchPaymentCreateCapability(projectId: string) {
 export interface PaymentActionCapabilityReadModel {
   paymentId: string;
   availableActions: string[];
+  delegationApprovalContext?: PaymentDelegationApprovalContext;
 }
 
 export function fetchPaymentActionCapability(paymentId: string) {
@@ -535,6 +536,12 @@ export interface PaymentExecutionContext {
   expectedPaymentUpdatedAt: string;
 }
 
+export interface PaymentDelegationApprovalContext {
+  expectedApprovalInstanceId: string;
+  expectedApprovalUpdatedAt: string;
+  duties: Array<{ index: number; name: string }>;
+}
+
 export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   lifecycleKind: "approval_draft" | "formal_record";
   ledgerView: DraftLedgerView;
@@ -542,10 +549,7 @@ export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   reviewApprovalContext: PaymentReviewApprovalContext | null;
   executionContext: PaymentExecutionContext | null;
   withdrawApprovalContext?: { expectedApprovalInstanceId: string };
-  delegationApprovalContext?: {
-    expectedApprovalInstanceId: string;
-    duties: Array<{ index: number; name: string }>;
-  };
+  delegationApprovalContext?: PaymentDelegationApprovalContext;
   revisionSubmissionContext?: {
     expectedUpdatedAt: string;
     requestedAmountCents: string;
@@ -7927,6 +7931,7 @@ export function transferPaymentApproval(paymentId: string, body: AssignSettlemen
 
 export function delegatePaymentApproval(paymentId: string, body: AssignSettlementApprovalPayload & {
   expectedApprovalInstanceId?: string;
+  expectedApprovalUpdatedAt?: string;
   expectedNodeIndex?: number;
   endsAt?: string;
 }) {

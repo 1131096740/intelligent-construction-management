@@ -1,4 +1,4 @@
-import { isOrdinaryPaymentParallelRound, resolveOrdinaryPaymentDuty } from "../../payment/ordinary-payment-parallel";
+import { isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, resolveOrdinaryPaymentDuty } from "../../payment/ordinary-payment-parallel";
 import { matchesOwnFundReviewReceipt, type FundReviewDecision } from "../../fund-account/fund-account-receipt";
 import { FUND_REVIEW_ACTION, resolveFundReviewIdentity } from "../../fund-account/fund-account-duty";
 import { scopedSpotDutyNodeIndexes } from "../../approval/spot-approval-duty-access";
@@ -396,7 +396,8 @@ export class PermissionGuard implements CanActivate {
     if (ordinaryParallelPayment && (!projectId || request.body?.expectedApprovalInstanceId !== instance.id ||
         typeof expectedIndex !== "number" || !Number.isInteger(expectedIndex))) return false;
     if (ordinaryParallelPayment && directOrdinaryPaymentDelegation) {
-      if (instance.applicantUserId === userId || instance.applicantUserId === request.body?.toUserId) return false;
+      if (instance.applicantUserId === userId || instance.applicantUserId === request.body?.toUserId ||
+          typeof request.body?.expectedApprovalUpdatedAt !== "string") return false;
       return Boolean(resolveOrdinaryPaymentDuty(instance.frozenNodes, expectedIndex as number, {
         actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes: roleScopes
       }, true));
@@ -437,8 +438,12 @@ export class PermissionGuard implements CanActivate {
       activeDelegators,
       legacyContractRoute: target.businessType === "contract_version"
     };
+    const delegationPrincipals = ordinaryParallelPayment && projectId
+      ? await loadOrdinaryPaymentDelegationPrincipals(this.prisma, instance.frozenNodes, userId, projectId,
+        id => this.loadRoleScopes(id, projectId), { dutyIndex: expectedIndex as number })
+      : undefined;
     return ordinaryParallelPayment
-      ? Boolean(resolveOrdinaryPaymentDuty(instance.frozenNodes, expectedIndex as number, identity))
+      ? Boolean(resolveOrdinaryPaymentDuty(instance.frozenNodes, expectedIndex as number, { ...identity, delegationPrincipals }))
       : Boolean(resolveApprovalReviewIdentity({ node: node!, ...identity }));
   }
 

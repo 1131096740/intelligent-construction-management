@@ -100,7 +100,7 @@ import type { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto
 import type { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
 import { hasPaymentRevisionBasis, paymentRevisionAction } from "./payment-revision-basis";
 import { inspectPaymentApprovalHistory } from "./payment-approval-cutover";
-import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, ordinaryPaymentParallelNodes, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
+import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, ordinaryPaymentParallelNodes, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 import {
@@ -2928,7 +2928,11 @@ export class PaymentRequestService {
       const identityNode = input.decision === "approve"
         ? currentNode
         : { ...currentNode, approvedRoleKeys: [] };
-      const directIdentity = { actorUserId, actorRoleKeys, actorRoleScopes };
+      const delegationPrincipals = parallel
+        ? await loadOrdinaryPaymentDelegationPrincipals(tx, instance.frozenNodes, actorUserId, payment.projectId,
+          id => this.loadActorRoleScopes(tx, id, payment.projectId), { dutyIndex: nodeIndex, lock: true })
+        : undefined;
+      const directIdentity = { actorUserId, actorRoleKeys, actorRoleScopes, delegationPrincipals };
       let identity = parallel ? resolveOrdinaryPaymentDuty(instance.frozenNodes, nodeIndex, directIdentity)
         : resolveApprovalReviewIdentity({ node: identityNode, ...directIdentity });
       if (!identity) {
@@ -2948,6 +2952,10 @@ export class PaymentRequestService {
         throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
       const approvedRoleKey = identity.approvedRoleKey;
+      const delegationMetadata = "ordinaryPaymentDelegationActionId" in identity &&
+        typeof identity.ordinaryPaymentDelegationActionId === "string"
+        ? { ordinaryPaymentDelegationActionId: identity.ordinaryPaymentDelegationActionId, ordinaryPaymentDutyIndex: nodeIndex }
+        : undefined;
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
@@ -3057,7 +3065,7 @@ export class PaymentRequestService {
             comment: input.comment?.trim() || undefined,
             approvedRoleKey,
             representedUserId: identity.representedUserId,
-            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
+            ...(selfReview.isSelfReview || delegationMetadata ? { metadata: { ...selfReview.metadata, ...delegationMetadata } } : {})
           }
         });
 
@@ -3079,7 +3087,8 @@ export class PaymentRequestService {
             toStatus: "draft",
             nodeName: currentNode.name,
             approvedRoleKey,
-            ...selfReview.metadata
+            ...selfReview.metadata,
+            ...delegationMetadata
           }
         });
 
@@ -3242,6 +3251,7 @@ export class PaymentRequestService {
           signatureVersionIdSnapshot: signature.versionId,
           ...(parallel || selfReview.isSelfReview ? { metadata: {
             ...(parallel ? { ordinaryPaymentDutyIndex: nodeIndex } : {}),
+            ...delegationMetadata,
             ...(selfReview.isSelfReview ? selfReview.metadata : {})
           } } : {})
         }, signature)
@@ -3291,7 +3301,8 @@ export class PaymentRequestService {
           nodeName: currentNode.name,
           approvedRoleKey,
           nodeCompleted,
-          ...selfReview.metadata
+          ...selfReview.metadata,
+          ...delegationMetadata
         }
       });
       if (flowCompleted) {
@@ -5486,7 +5497,7 @@ export class PaymentRequestService {
           !activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).includes(nodeIndex))) {
         throw new ConflictException("付款审批职责已变化，请刷新后重新确认委托");
       }
-      if (!parallel && (input.expectedApprovalInstanceId !== undefined || input.expectedNodeIndex !== undefined || input.endsAt !== undefined)) {
+      if (!parallel && (input.expectedApprovalInstanceId !== undefined || input.expectedApprovalUpdatedAt !== undefined || input.expectedNodeIndex !== undefined || input.endsAt !== undefined)) {
         throw new ConflictException("当前付款审批轮次不支持按职责委托");
       }
 
@@ -5525,7 +5536,7 @@ export class PaymentRequestService {
 
       let scopedDelegation: {
         ordinaryPaymentDelegation: true; ordinaryPaymentDutyIndex: number; delegationActionId: string;
-        startsAt: string; endsAt: string;
+        startsAt: string; endsAt: string; expectedApprovalUpdatedAt: string;
       } | undefined;
       if (parallel) {
         const startsAt = new Date();
@@ -5535,12 +5546,18 @@ export class PaymentRequestService {
           throw new BadRequestException("委托截止时间必须晚于当前时间并包含时区");
         }
         const end = endsAt.toISOString();
+        const expectedRevision = input.expectedApprovalUpdatedAt;
+        if (typeof expectedRevision !== "string") throw new ConflictException("请刷新付款审批轮次后重新确认委托");
         if (currentNode.assignments?.some(assignment => assignment.kind === "delegate" &&
             assignment.fromUserId === actorUserId && assignment.fromRoleKey === fromRoleKey && assignment.toUserId === input.toUserId &&
-            "endsAt" in assignment && assignment.endsAt === end)) return instance;
+            "endsAt" in assignment && assignment.endsAt === end &&
+            "expectedApprovalUpdatedAt" in assignment && assignment.expectedApprovalUpdatedAt === expectedRevision)) return instance;
+        if (expectedRevision !== instance.updatedAt.toISOString()) {
+          throw new ConflictException("付款审批职责已变化，请刷新后重新确认委托");
+        }
         scopedDelegation = {
           ordinaryPaymentDelegation: true, ordinaryPaymentDutyIndex: nodeIndex, delegationActionId: randomUUID(),
-          startsAt: startsAt.toISOString(), endsAt: end
+          startsAt: startsAt.toISOString(), endsAt: end, expectedApprovalUpdatedAt: expectedRevision
         };
       }
       const assignment = {
@@ -5562,7 +5579,10 @@ export class PaymentRequestService {
 
       const updated = await tx.approvalInstance.update({
         where: { id: instance.id },
-        data: { frozenNodes: nextNodes as unknown as Prisma.InputJsonValue }
+        data: {
+          frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+          ...(scopedDelegation ? { updatedAt: new Date(Math.max(Date.now(), instance.updatedAt.getTime() + 1)) } : {})
+        }
       });
 
       const assignmentAction = await tx.approvalActionLog.create({

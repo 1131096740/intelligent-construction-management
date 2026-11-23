@@ -12,7 +12,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { PrismaService } from "../database/prisma.service";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
-import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentAssignmentActive, isOrdinaryPaymentParallelRound, PAYMENT_DUTY_NOTICE_KIND as KIND, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
+import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentAssignmentActive, isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, PAYMENT_DUTY_NOTICE_KIND as KIND, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 
 const idFor = (...coordinates: string[]) => auditDutyNoticeId(KIND, ...coordinates);
@@ -61,7 +61,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
         if (transition.action !== "delegate" || transition.approvalInstanceId !== round.id || typeof index !== "number" ||
             typeof recipient !== "string" || !isOrdinaryPaymentAssignmentActive(data, index)) return;
         const node = dutyNode(round, index);
-        if (!node || !await this.currentRecipient(tx, payment, round, node, recipient, index)) return;
+        if (!node || !await this.currentRecipient(tx, payment, round, node, recipient, index, transition.id)) return;
         await tx.approvalActionLog.createMany({
           data: [this.dutyIntent(payment, round, index, `delegation:${transition.id}`, recipient)],
           skipDuplicates: true
@@ -372,38 +372,33 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     if (typeof data?.paymentId !== "string" || typeof data.recipientId !== "string" || typeof data.anchorId !== "string" ||
         typeof data.nodeIndex !== "number" || !Number.isInteger(data.nodeIndex)) return null;
     const nodeIndex = data.nodeIndex;
+    const delegationActionId = data.anchorId.startsWith("delegation:") ? data.anchorId.slice("delegation:".length) : undefined;
     const [round, payment, user] = await Promise.all([
       tx.approvalInstance.findUnique({ where: { id: intent.approvalInstanceId } }),
       tx.paymentRequest.findUnique({ where: { id: data.paymentId }, select: { id: true, projectId: true, status: true, code: true } }),
       tx.user.findUnique({ where: { id: data.recipientId }, select: { isActive: true } })
     ]);
-    const node = round ? dutyNode(round, data.nodeIndex) : null;
+    const node = round ? dutyNode(round, nodeIndex) : null;
     if (!round || !node || !payment || !user?.isActive || payment.status !== "approval_pending" ||
       round.businessId !== payment.id || payment.projectId !== data.projectId || round.applicantUserId !== intent.actorUserId ||
-      !await this.currentRecipient(tx, payment, round, node, data.recipientId, data.nodeIndex)) {
+      !await this.currentRecipient(tx, payment, round, node, data.recipientId, nodeIndex, delegationActionId)) {
       return null;
     }
     const parallel = isOrdinaryPaymentParallelRound(round.frozenNodes);
     if (hasOrdinaryPaymentParallelMarker(round.frozenNodes) && !parallel) return null;
     if (isOrdinaryPaymentParallelRound(round.frozenNodes)) {
-      if (!activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(data.nodeIndex)) return null;
+      if (!activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(nodeIndex)) return null;
       if (data.anchorId === `parallel:${round.id}`) return { node, payment, round };
-      if (data.anchorId.startsWith("delegation:")) {
-        const assigned = Array.isArray(node.assignments) && node.assignments.some(assignment =>
-          assignment?.ordinaryPaymentDelegation === true && assignment.toUserId === data.recipientId &&
-          `delegation:${assignment.delegationActionId}` === data.anchorId && isOrdinaryPaymentAssignmentActive(assignment, nodeIndex)
-        );
-        return assigned ? { node, payment, round } : null;
-      }
-      const legacyRevision = round.frozenNodes[data.nodeIndex].legacyPaymentNoticeRevision;
+      if (delegationActionId) return { node, payment, round };
+      const legacyRevision = round.frozenNodes[nodeIndex].legacyPaymentNoticeRevision;
       if (typeof legacyRevision !== "string" || legacyRevision !== data.roundRevision) return null;
-    } else if (round.currentNodeIndex !== data.nodeIndex || round.updatedAt.toISOString() !== data.roundRevision) {
+    } else if (round.currentNodeIndex !== nodeIndex || round.updatedAt.toISOString() !== data.roundRevision) {
       return null;
     }
     if (data.anchorId !== round.id) {
       const anchor = await tx.approvalActionLog.findUnique({ where: { id: data.anchorId } });
       if (!anchor || !opensApprovalNode(anchor, round.id)) return null;
-    } else if (data.nodeIndex !== 0) {
+    } else if (nodeIndex !== 0) {
       return null;
     }
     return { node, payment, round };
@@ -430,7 +425,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     return { node: null, payment, round };
   }
 
-  private async currentRecipient(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, node: FrozenApprovalNode, actorId: string, nodeIndex: number) {
+  private async currentRecipient(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, node: FrozenApprovalNode, actorId: string, nodeIndex: number, expectedDelegationActionId?: string) {
     const getRoles = async (userId: string) => {
       const roleScopes = await this.visibility.effectiveRoleScopesInTransaction(tx, userId, payment.projectId);
       const roleKeys = resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys);
@@ -442,7 +437,13 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     const parallel = isOrdinaryPaymentParallelRound(round.frozenNodes);
     if (!parallel && !canPerform("payment.approve", actorRoleKeys) &&
         !activeDelegators.some(actor => canPerform("payment.approve", actor.roleKeys))) return false;
-    const identity = parallel ? resolveOrdinaryPaymentDuty(round.frozenNodes, nodeIndex, { actorUserId: actorId, actorRoleKeys, actorRoleScopes, activeDelegators })
+    const delegationPrincipals = parallel
+      ? await loadOrdinaryPaymentDelegationPrincipals(tx, round.frozenNodes, actorId, payment.projectId,
+        async id => (await getRoles(id)).roleScopes, { dutyIndex: nodeIndex })
+      : undefined;
+    const identity = parallel ? resolveOrdinaryPaymentDuty(round.frozenNodes, nodeIndex, {
+      actorUserId: actorId, actorRoleKeys, actorRoleScopes, activeDelegators, delegationPrincipals
+    })
       : resolveApprovalReviewIdentity({ node, actorUserId: actorId, actorRoleKeys,
           activeDelegators: activeDelegators.map(({ userId, roleKeys }) => ({ userId, roleKeys })) });
     if (!identity) return false;
@@ -453,11 +454,9 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
       if (error instanceof ForbiddenException) return false;
       throw error;
     }
-    if (parallel && identity.viaAssignment && Array.isArray(node.assignments) && node.assignments.some(assignment =>
-      assignment?.ordinaryPaymentDelegation === true && assignment.toUserId === actorId &&
-      assignment.fromUserId === identity.representedUserId && assignment.fromRoleKey === identity.approvedRoleKey &&
-      isOrdinaryPaymentAssignmentActive(assignment, nodeIndex)
-    )) return true;
+    const delegationActionId = "ordinaryPaymentDelegationActionId" in identity ? identity.ordinaryPaymentDelegationActionId : undefined;
+    if (expectedDelegationActionId !== undefined) return delegationActionId === expectedDelegationActionId;
+    if (parallel && delegationActionId) return true;
     return (await this.visibility.visibleRequestedProjectIdsInTransaction(tx, actorId, [payment.projectId])).includes(payment.projectId)
       && await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorId, actorRoleKeys);
   }

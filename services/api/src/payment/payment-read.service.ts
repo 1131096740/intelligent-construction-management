@@ -20,7 +20,7 @@ import { registeredPaymentInstalled } from "../database/registered-payment-catal
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { PaymentRequestService } from "./payment-request.service";
 import { hasPaymentRevisionBasis, paymentRevisionAction } from "./payment-revision-basis";
-import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
+import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
 import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
@@ -122,6 +122,7 @@ type PaymentExecutionContext = {
 
 type PaymentDelegationApprovalContext = {
   expectedApprovalInstanceId: string;
+  expectedApprovalUpdatedAt: string;
   duties: Array<{ index: number; name: string }>;
 };
 
@@ -2525,11 +2526,14 @@ export class PaymentReadService {
       const duties = actorUserId === instance.applicantUserId ? [] : indexes.flatMap(index =>
         resolveOrdinaryPaymentDuty(nodes, index, { actorUserId, actorRoleKeys: roleKeys, actorRoleScopes }, true)
           ? [{ index, name: String(nodes[index].name) }] : []);
-      const delegation = duties.length ? { expectedApprovalInstanceId: instance.id, duties } : undefined;
+      const delegation = duties.length && instance.updatedAt instanceof Date
+        ? { expectedApprovalInstanceId: instance.id, expectedApprovalUpdatedAt: instance.updatedAt.toISOString(), duties } : undefined;
+      const delegationPrincipals = await loadOrdinaryPaymentDelegationPrincipals(this.prisma, nodes, actorUserId, projectId,
+        id => this.projectVisibility!.effectiveRoleScopesInTransaction(this.prisma, id, projectId));
       let fallback: CurrentPaymentApprovalReview = { ...emptyCurrentPaymentApprovalReview(), delegation };
       for (const index of indexes) {
         const identity = resolveOrdinaryPaymentDuty(instance.frozenNodes, index, {
-          actorUserId, actorRoleKeys: roleKeys, actorRoleScopes, activeDelegators
+          actorUserId, actorRoleKeys: roleKeys, actorRoleScopes, activeDelegators, delegationPrincipals
         });
         if (!identity) continue;
         const approval = { id: instance.id, currentNodeIndex: index, updatedAt: instance.updatedAt, executionMode: "parallel" as const };

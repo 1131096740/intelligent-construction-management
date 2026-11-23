@@ -2194,7 +2194,12 @@ function requestPaymentAssignment(kind: "transfer" | "delegate") {
         if (!context.duties.some(duty => duty.index === expectedNodeIndex)) throw new Error("请选择当前可委托岗位");
         const endsAt = new Date(`${paymentActionForm.delegationEndsAt.replace(" ", "T")}+08:00`);
         if (!Number.isFinite(endsAt.getTime()) || endsAt.getTime() <= Date.now()) throw new Error("委托截止时间必须晚于当前时间");
-        Object.assign(body, { expectedApprovalInstanceId: context.expectedApprovalInstanceId, expectedNodeIndex, endsAt: endsAt.toISOString() });
+        Object.assign(body, {
+          expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+          expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt,
+          expectedNodeIndex,
+          endsAt: endsAt.toISOString()
+        });
       }
       delegation = { paymentId: currentPaymentId(), body };
     }
@@ -2324,6 +2329,12 @@ async function delegatePaymentApprovalWithCapability(
   if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
   const operationAllowed = capability.availableActions.includes("delegate_approval");
   if (!operationAllowed) throw new Error("当前用户不能委托该付款审批");
+  const current = capability.delegationApprovalContext;
+  if (body.expectedApprovalInstanceId &&
+      (current?.expectedApprovalInstanceId !== body.expectedApprovalInstanceId ||
+        !current.duties.some(duty => duty.index === body.expectedNodeIndex))) {
+    throw new Error("付款审批职责已变化，请刷新后重新确认委托");
+  }
   return delegatePaymentApproval(paymentId, body);
 }
 

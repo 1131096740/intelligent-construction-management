@@ -180,7 +180,8 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
         name: "财务岗位虚构验收人", phone: "13900004249", passwordHash, mustChangePassword: false
       } });
       const financePosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_director" } });
-      await prisma.userPosition.create({ data: { userId: finance.id, positionId: financePosition.id } });
+      const principalRole = await prisma.userPosition.create({ data: { userId: finance.id, positionId: financePosition.id } });
+      const firstDelegate = await signatoryWithoutRole("13900004247", "parallel-first-finance-delegate.png");
       const delegate = await signatoryWithoutRole("13900004248", "parallel-finance.png");
       const financeToken = await login(finance.phone!);
       const delegateToken = delegate.token;
@@ -206,10 +207,18 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       const ownerNotice = await noticeFor(financeToken);
       const financeDetail = await (await detail(financeToken)).json();
       expect(financeDetail.delegationApprovalContext).toMatchObject({
-        expectedApprovalInstanceId: round.id, duties: [{ index: 2, name: expect.any(String) }]
+        expectedApprovalInstanceId: round.id, expectedApprovalUpdatedAt: expect.any(String),
+        duties: [{ index: 2, name: expect.any(String) }]
+      });
+      const financeCapability = await fetch(`${base}${path}/capability`, {
+        headers: { authorization: `Bearer ${financeToken}` }
+      });
+      expect(await financeCapability.json()).toMatchObject({
+        delegationApprovalContext: financeDetail.delegationApprovalContext
       });
       const assignment = {
-        toUserId: delegate.userId, expectedApprovalInstanceId: round.id, expectedNodeIndex: 2,
+        toUserId: firstDelegate.userId, expectedApprovalInstanceId: round.id, expectedNodeIndex: 2,
+        expectedApprovalUpdatedAt: financeDetail.delegationApprovalContext.expectedApprovalUpdatedAt,
         endsAt: new Date(Date.now() + 120_000).toISOString()
       };
       const delegationUrl = `${path}/approval-delegation`;
@@ -220,14 +229,27 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       const delegated = await post(financeToken, delegationUrl, assignment);
       expect({ status: delegated.status, ...(delegated.status !== 201 ? { response: await delegated.text() } : {}) }).toEqual({ status: 201 });
       expect((await post(financeToken, delegationUrl, assignment)).status).toBe(201);
-      expect(await prisma.approvalDelegation.count({ where: { toUserId: delegate.userId } })).toBe(0);
       expect(await prisma.approvalActionLog.count({ where: { approvalInstanceId: round.id, action: "delegate" } })).toBe(1);
-      expect(await prisma.approvalActionLog.findFirst({ where: { approvalInstanceId: round.id, action: "delegate" } }))
-        .toMatchObject({ actorUserId: finance.id, representedUserId: finance.id, approvedRoleKey: "finance_director",
-          metadata: { toUserId: delegate.userId, endsAt: assignment.endsAt, ordinaryPaymentDutyIndex: 2 } });
-      expect((await post(delegateToken, delegationUrl, { ...assignment, toUserId: reviewer })).status).toBe(403);
+      expect(await noticeFor(firstDelegate.token)).toEqual({ notice: { attemptId: expect.any(String), status: "queued", canRetry: false } });
+
+      const replacementContext = (await (await detail(financeToken)).json()).delegationApprovalContext;
+      const replacement = { ...assignment, toUserId: delegate.userId, expectedApprovalUpdatedAt: replacementContext.expectedApprovalUpdatedAt };
+      expect((await post(financeToken, delegationUrl, replacement)).status).toBe(201);
+      const replacementRound = await prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } });
+      expect((await post(financeToken, delegationUrl, assignment)).status).toBe(409);
+      expect(await prisma.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(replacementRound);
+      expect(await prisma.approvalActionLog.count({ where: { approvalInstanceId: round.id, action: "delegate" } })).toBe(2);
+      expect(await prisma.approvalDelegation.count({ where: { toUserId: { in: [firstDelegate.userId, delegate.userId] } } })).toBe(0);
+      const replacementAction = await prisma.approvalActionLog.findFirstOrThrow({ where: {
+        approvalInstanceId: round.id, action: "delegate", metadata: { path: ["toUserId"], equals: delegate.userId }
+      } });
+      expect(replacementAction).toMatchObject({ actorUserId: finance.id, representedUserId: finance.id, approvedRoleKey: "finance_director",
+        metadata: { toUserId: delegate.userId, endsAt: replacement.endsAt, ordinaryPaymentDutyIndex: 2 } });
+      expect((await post(delegateToken, delegationUrl, { ...replacement, toUserId: reviewer })).status).toBe(403);
       expect(await noticeFor(financeToken)).toEqual(ownerNotice);
-      expect(await noticeFor(delegateToken)).toEqual({ notice: { attemptId: expect.any(String), status: "queued", canRetry: false } });
+      expect(await noticeFor(firstDelegate.token)).toEqual({ notice: null });
+      const replacementNotice = await noticeFor(delegateToken);
+      expect(replacementNotice).toEqual({ notice: { attemptId: expect.any(String), status: "queued", canRetry: false } });
       const pendingProgress = async (token: string) => fetch(`${base}/approval-progress/${round.id}`, {
         headers: { authorization: `Bearer ${token}` }
       });
@@ -242,7 +264,20 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       const coordinates = { ...delegateDetail.reviewApprovalContext };
       delete coordinates.executionMode;
       delete coordinates.canReturnForRevision;
-      const expiry = jest.spyOn(Date, "now").mockReturnValue(Date.parse(assignment.endsAt));
+      const attempt = { ...coordinates, decision: "approve" } as Parameters<PaymentRequestService["reviewApproval"]>[2];
+      await prisma.userPosition.delete({ where: { id: principalRole.id } });
+      expect((await post(delegateToken, `${path}/approval`, attempt)).status).toBe(403);
+      await expect(service.reviewApproval(payment.id, delegate.userId, attempt)).rejects.toMatchObject({ status: 403 });
+      expect((await pendingProgress(delegateToken)).status).toBe(404);
+      expect((await detail(delegateToken)).status).toBe(404);
+      expect(await noticeFor(delegateToken)).toEqual({ notice: null });
+      await prisma.userPosition.create({ data: { userId: finance.id, positionId: financePosition.id } });
+      await prisma.user.update({ where: { id: finance.id }, data: { isActive: false } });
+      expect((await post(delegateToken, `${path}/approval`, attempt)).status).toBe(403);
+      expect(await noticeFor(delegateToken)).toEqual({ notice: null });
+      await prisma.user.update({ where: { id: finance.id }, data: { isActive: true } });
+      expect(await noticeFor(delegateToken)).toEqual(replacementNotice);
+      const expiry = jest.spyOn(Date, "now").mockReturnValue(Date.parse(replacement.endsAt));
       try {
         expect((await post(delegateToken, `${path}/approval`, { ...coordinates, decision: "approve" })).status).toBe(403);
         expect((await pendingProgress(delegateToken)).status).toBe(404);
@@ -277,7 +312,13 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       expect(projectApproval.currentNodeIndex).toBe(1);
       expect(await prisma.approvalActionLog.count({ where: { approvalInstanceId: round.id, action: "approve" } })).toBe(2);
       expect(await prisma.approvalActionLog.findFirst({ where: { approvalInstanceId: round.id, action: "approve", approvedRoleKey: "finance_director" } }))
-        .toMatchObject({ actorUserId: delegate.userId, representedUserId: finance.id });
+        .toMatchObject({
+          actorUserId: delegate.userId, representedUserId: finance.id,
+          metadata: { ordinaryPaymentDutyIndex: 2, ordinaryPaymentDelegationActionId: replacementAction.id }
+        });
+      expect(await prisma.auditLog.findFirst({ where: {
+        businessId: payment.id, action: "payment.approval.approve", actorUserId: delegate.userId
+      } })).toMatchObject({ metadata: { ordinaryPaymentDelegationActionId: replacementAction.id } });
       Object.assign(signedRound, projectApproval);
       Object.assign(pendingPayment, await prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } }));
     } else if (sourceType === "contract_due") {

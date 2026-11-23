@@ -332,7 +332,8 @@ export class PaymentController {
     );
     return {
       paymentId: detail.id,
-      availableActions: detail.availableActionKeys
+      availableActions: detail.availableActionKeys,
+      ...(detail.delegationApprovalContext ? { delegationApprovalContext: detail.delegationApprovalContext } : {})
     };
   }
 
