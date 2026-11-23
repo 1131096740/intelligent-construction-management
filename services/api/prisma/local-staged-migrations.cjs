@@ -88,6 +88,7 @@ function createMigrationFixture(input,authOnly) {
     need(typeof options[key] === "function" && !types.isProxy(options[key]), "INPUT");
   }
   const { inspectContainer, executeSql, deploy } = options;
+  const stagedHandles = new Map();
   need(Array.isArray(options.databaseNames) && !types.isProxy(options.databaseNames) &&
     Object.values(Object.getOwnPropertyDescriptors(options.databaseNames))
       .every(field => Object.hasOwn(field, "value")), "INPUT");
@@ -384,6 +385,12 @@ function createMigrationFixture(input,authOnly) {
       if (technical) technical.recordMaterial(technicalProfiles.projectTechnicalSql(plan, await readFile(path.join(__dirname, "local-staged-migration-acl.sql"), "utf8"), "setup"));
       const setup = await read(database, "qualification-setup", controls.setupSql(plan));
       controls.checkSetup(setup, plan);
+      if (!stagedHandles.has(database)) stagedHandles.set(database, Object.freeze({
+        database,
+        plan: Object.freeze({ ...plan }),
+        setup: Object.freeze({ ...setup }),
+        capturedAt: "QUALIFICATION_SETUP",
+      }));
       applicationNames.add(plan.appName);
       const qualified = new URL(request.databaseUrl);
       qualified.searchParams.set("options", "-c app.contract_archive_v2_application_role_oid=" + setup.appOid +
@@ -437,6 +444,14 @@ function createMigrationFixture(input,authOnly) {
   }
 
   return {
+    // Incremental read-only accessor: exposes the staged qualification handle
+    // captured before the full-ledger deploy, so a caller can reuse the exact
+    // plan/setup after migrate() stops at a later gate. Existing return fields,
+    // error codes and timing are unchanged.
+    getStagedSetupHandle(database) {
+      const handle = stagedHandles.get(database);
+      return handle ? Object.freeze({ ...handle, plan: Object.freeze({ ...handle.plan }), setup: Object.freeze({ ...handle.setup }) }) : null;
+    },
     async migrate(request) {
       try { return await migrate(request); }
       catch (error) {
