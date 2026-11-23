@@ -817,7 +817,7 @@
   {
     "path": "services/api/src/core-flow/ledger-excel.ts",
     "expected": "702c4dcfbb5563c965c7d55bc278041c653466b1ba04d84c4044357047471bb6",
-    "candidate": "7c60d86dccefa24f354520a931657123f93d47a41604175ba3262f9bd629dfc1"
+    "candidate": "33cd3ad6144829e14cc4e3d9c64de6d9180b7e1836b071709641ce8949a1b15b"
   },
   {
     "path": "services/api/src/database/contract-bill-lineage-settlement-v2-schema.spec.ts",

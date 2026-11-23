@@ -48,6 +48,7 @@ export interface LedgerExcelPrintOptions {
 export const LEDGER_MONEY_FORMAT = "#,##0.0000";
 export const LEDGER_DATE_FORMAT = "yyyy-mm-dd";
 
+// eslint-disable-next-line no-control-regex -- Detect leading tab and carriage return before spreadsheet formulas.
 const FORMULA_PREFIX = /^[\u0009\u000D\u0020]*[=+\-@]/u;
 
 /**

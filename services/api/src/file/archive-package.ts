@@ -66,6 +66,7 @@ function safeArchiveEntryName(fileName: string): string {
   const normalized = fileName
     .replace(/[\\/]+/gu, "_")
     .replace(/^\.+/u, "")
+    // eslint-disable-next-line no-control-regex -- Strip literal control characters from archive entry names.
     .replace(/[\u0000-\u001f\u007f]/gu, "")
     .trim();
   return normalized || "资料文件";

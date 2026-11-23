@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm, rmdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Prisma, PrismaClient } from "@prisma/client";
 
@@ -6,6 +9,7 @@ import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-b
 import { ActualPurchaseBatchNotificationService } from "../actual-purchase/actual-purchase-batch-notification.service";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
 import { AuditService } from "../audit/audit.service";
+import { FileService, PrivateFileStorage } from "../file/file.service";
 import type { AppendOperatingFactInput, OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
 import { paymentApprovalNodes } from "../spot-procurement/spot-procurement-approval-nodes";
@@ -26,8 +30,16 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
 
   integrationTest("migrates a legacy pending spot payment atomically and preserves its signed action on retry", async () => {
     const databaseUrl = assertDedicatedDatabase();
+    const storageRoot = await mkdtemp(join(tmpdir(), "issue424-cutover-files-"));
+    const objectKey = "signature.png";
+    const previousStorageDriver = process.env.FILE_STORAGE_DRIVER;
+    const previousStorageRoot = process.env.FILE_STORAGE_ROOT;
     const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     try {
+      process.env.FILE_STORAGE_DRIVER = "local";
+      process.env.FILE_STORAGE_ROOT = storageRoot;
+      const storage = new PrivateFileStorage();
+      storage.assertConfigured();
       const fixture = await seedFixture(prisma, { includeGlobalApprovalRoles: false });
       const payment = await prisma.spotProcurementPayment.create({
         data: {
@@ -67,8 +79,8 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       const signer = await prisma.user.create({ data: { name: "签批时的物资部主管" } });
       const file = await prisma.fileObject.create({
         data: {
-          bucket: "issue424-synthetic",
-          objectKey: `signatures/${fixture.prefix}.png`,
+          bucket: storage.bucketName(),
+          objectKey,
           originalName: "signature.png",
           mimeType: "image/png",
           sizeBytes: signatureBytes.length,
@@ -91,27 +103,22 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
           metadata: { approverName: signer.name }
         }
       });
-      let buffer = Buffer.from("corrupted");
-      const files = {
-        getFileBuffer: async (id: string, tx: Prisma.TransactionClient) => ({
-          file: await tx.fileObject.findUniqueOrThrow({ where: { id } }),
-          buffer
-        })
-      };
       const audit = new AuditService();
+      const files = new FileService(prisma as never, audit, storage);
       const service = new SpotProcurementPaymentService(
         prisma as never, audit, {} as never, {} as never, {} as never,
-        files as never, {} as never, {} as never, {} as never
+        files, {} as never, {} as never, {} as never
       );
       const actorId = fixture.comprehensiveDirectorUserId;
       const reload = () => prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } });
       const loadAuditRows = () => prisma.auditLog.findMany({ where: { businessId: payment.id } });
 
-      await expect(service.migrateLegacyApprovalRound(payment.id, actorId)).rejects.toThrow("审批签名快照校验失败");
+      await storage.write(objectKey, Buffer.from("corrupted"));
+      await expect(service.migrateLegacyApprovalRound(payment.id, actorId)).rejects.toThrow("资料文件完整性校验失败");
       expect(await reload()).toEqual(round);
       expect(await loadAuditRows()).toEqual([]);
 
-      buffer = signatureBytes;
+      await storage.write(objectKey, signatureBytes);
       const writeAudit = audit.record.bind(audit);
       const failAfterAudit = async (...args: Parameters<AuditService["record"]>) => {
         await writeAudit(...args);
@@ -141,7 +148,14 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
         metadata: expect.objectContaining({ approvalInstanceId: round.id, completedActionIds: [originalAction.id] })
       })]);
     } finally {
-      await prisma.$disconnect();
+      if (previousStorageDriver === undefined) delete process.env.FILE_STORAGE_DRIVER;
+      else process.env.FILE_STORAGE_DRIVER = previousStorageDriver;
+      if (previousStorageRoot === undefined) delete process.env.FILE_STORAGE_ROOT;
+      else process.env.FILE_STORAGE_ROOT = previousStorageRoot;
+      await Promise.all([
+        prisma.$disconnect(),
+        rm(join(storageRoot, objectKey), { force: true }).then(() => rmdir(storageRoot))
+      ]);
     }
   });
 

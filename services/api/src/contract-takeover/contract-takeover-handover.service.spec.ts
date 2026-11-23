@@ -20,7 +20,7 @@ function buildFakePrisma(options: {
   takeover?: Record<string, unknown> | null;
   positions?: Record<string, string>;
   events?: EventRow[];
-} = {}): { fake: any; events: EventRow[] } {
+} = {}) {
   const events: EventRow[] = options.events ? [...options.events] : [];
   const positions = options.positions ?? {
     "user-contract": "contract_staff",
@@ -49,7 +49,7 @@ function buildFakePrisma(options: {
   const userPositionIdByUser = new Map(
     Object.entries(positions).map(([userId, key]) => [userId, `position-${key}`])
   );
-  const fake: any = {
+  const fake = {
     contractTakeover: {
       findFirst: jest.fn(async ({ where }: { where: { id: string; projectId: string } }) =>
         takeover && takeover.id === where.id && takeover.projectId === where.projectId ? takeover : null
@@ -96,7 +96,7 @@ function buildFakePrisma(options: {
     projectMember: {
       findMany: jest.fn(async () => [])
     },
-    $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(fake))
+    $transaction: jest.fn(async (callback: (tx: unknown) => unknown): Promise<unknown> => callback(fake))
   };
   return { fake, events };
 }

@@ -19,6 +19,7 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
 ] as const;
 
 const MAX_EXPENSE_CATEGORY_LENGTH = 40;
+// eslint-disable-next-line no-control-regex -- Reject literal control characters in expense category names.
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
 
 /** 展示用规范名：全半角统一、去掉首尾空白、内部连续空白折叠为一个。 */
