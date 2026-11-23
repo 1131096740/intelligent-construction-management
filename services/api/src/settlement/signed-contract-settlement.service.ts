@@ -1,5 +1,5 @@
 import { signedReadWitnessKey } from "./signed-settlement-read-key";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import { AuthService } from "../auth/auth.service";
@@ -7,6 +7,13 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 import { fundBalanceWitnessBinding, signFundBalanceWitness } from "../fund-account/fund-balance-witness-signing";
 import { loadDownstreamPaymentBasis, orderConfirmedPaymentSettlements, type ConfirmedPaymentSettlement } from "./signed-settlement-payment-basis";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
+import { isDownstreamSettlementCostType } from "./settlement-operating-source.adapter";
+import { SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE } from "./signed-settlement-operating-source.adapter";
 
 export const signedContractKinds = ["downstream", "outside_fact", "upward"] as const;
 export type SignedContractKind = typeof signedContractKinds[number];
@@ -37,7 +44,11 @@ export class SignedContractSettlementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly visibility: ProjectVisibilityService,
-    private readonly auth: AuthService
+    private readonly auth: AuthService,
+    @Optional()
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async assertProjectAccess(projectId: string, actor: string) {
@@ -243,6 +254,17 @@ export class SignedContractSettlementService {
           ) AS reviewed
         `;
         if (!result?.reviewed) throw new ServiceUnavailableException(unavailable);
+        if (isDownstreamOperatingSettlement(result.reviewed)) {
+          await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+            tx,
+            {
+              projectId,
+              sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+              sourceBusinessId: id
+            },
+            actor
+          );
+        }
         return result.reviewed;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     } catch (error) {
@@ -352,6 +374,18 @@ function draftWriteWitnessKey(unavailable: string) {
     throw new ServiceUnavailableException(unavailable);
   }
   return key;
+}
+
+function isDownstreamOperatingSettlement(reviewed: Prisma.JsonObject): boolean {
+  const contractKind = reviewed.contractKind;
+  if (contractKind !== "downstream") return false;
+  const frozen = reviewed.confirmedContractSource;
+  if (!frozen || typeof frozen !== "object" || Array.isArray(frozen)) return false;
+  const contractTypeKey = (frozen as Prisma.JsonObject).contractTypeKey;
+  return (
+    typeof contractTypeKey === "string" &&
+    isDownstreamSettlementCostType(contractTypeKey)
+  );
 }
 
 function normalizeAmount(value: string | undefined) {

@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+// CUT-03 read-only audit runner (#396). Never writes business data and never
+// retires the legacy settlement entry; #425 owns deletion.
+import { readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { createRequire } from "node:module";
+
+const here = dirname(fileURLToPath(import.meta.url));
+// The workspace hoists Prisma Client under the API package, not the repo root.
+const { PrismaClient } = createRequire(
+  new URL("../../services/api/package.json", import.meta.url)
+)("@prisma/client");
+const sqlPath = join(here, "check-legacy-settlement-usage.sql");
+
+function receiptPath(argv) {
+  const index = argv.indexOf("--receipt");
+  return index >= 0 ? resolve(argv[index + 1]) : null;
+}
+
+async function main() {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    throw new Error("缺少 DATABASE_URL：CUT-03 核查只接受只读连接");
+  }
+  const sql = await readFile(sqlPath, "utf8");
+  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  try {
+    const audit = await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+        const rows = await tx.$queryRawUnsafe(sql);
+        const row = Array.isArray(rows) ? rows[0] : null;
+        if (!row || typeof row !== "object" || !row.audit) {
+          throw new Error("CUT-03 核查未返回结构化结果");
+        }
+        return row.audit;
+      },
+      { isolationLevel: "RepeatableRead", timeout: 30_000 }
+    );
+    const receipt = { ok: true, command: "check-legacy-settlement-usage", audit };
+    const output = `${JSON.stringify(receipt, null, 2)}\n`;
+    const target = receiptPath(process.argv.slice(2));
+    if (target) await writeFile(target, output, { mode: 0o600 });
+    process.stdout.write(output);
+    if (audit.verdict !== "LEGACY_SETTLEMENT_UNUSED") process.exitCode = 2;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main().catch((error) => {
+  process.stderr.write(
+    `${JSON.stringify({
+      ok: false,
+      command: "check-legacy-settlement-usage",
+      message: error instanceof Error ? error.message : String(error)
+    })}\n`
+  );
+  process.exitCode = 1;
+});

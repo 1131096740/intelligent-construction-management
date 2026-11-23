@@ -698,6 +698,7 @@ const SOURCE_TYPE_LABELS: Readonly<Record<string, string>> = {
   contract_economic_review: "履约范围复核调整",
   [CONTRACT_WORK_COMPLETION_SOURCE]: "其他合同履约确认",
   settlement: "下游结算",
+  signed_contract_settlement: "已签结算",
   payment_execution: "合同付款执行",
   expense_claim_approval: "费用报销审批",
   expense_claim_payment_execution: "费用报销付款执行",
