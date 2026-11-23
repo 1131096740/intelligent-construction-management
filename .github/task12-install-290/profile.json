@@ -277,8 +277,8 @@
         "resultSha256": "20e604da53a40511bbab622a42a0cdbe0e54c6b5ebcb409b2f86b3d183f9c8d6"
       },
       "workspace-proof.cjs": {
-        "baseSha256": "9be8ba3a2cff7685ae23a559c9d23691d3bbe9e075929c4feac8b9ed00ae55c3",
-        "patchSha256": "8cdbe3a46de2bcb20d430685570f500f5ce061473489507e665caa35e80d43eb",
+        "baseSha256": "1c64a76a7b4285d0503c7b3ffef42b075f636a298cf12cb7705f8e503dde3695",
+        "patchSha256": "a6f6f0a0d7ea2000f7166e0a8149b1ea417b1df89fb8ca1076c1a7893f1a16b1",
         "resultSha256": "04281db7e90ebcfad232139c8c306b7ea6e0f5a8384800a8a7ca93e48bd30645"
       },
       "task12-pol109-ci.cjs": {
@@ -308,8 +308,8 @@
       "services/api/src/organization/organization.service.ts": "6b598da14189654b843ef625ec40a1990e65ea7b489634338b5ad47b39395cc3",
       "services/api/src/project-close-profit/project-close-profit.owned282.http.pg.spec.ts": "75ae89bc3c6f850ae95fd07c90d63d3159a8e87220c1f2ce87314a3765c7636d"
     },
-    "workspaceBaseSha256": "a9214ab07931a9be3cc5ca94b802e395e01f3bc21cb3efed2a759365caf1caf6",
-    "workspaceSha256": "ede07410dbf18bc8c03f0fcbb8687f5cc1912817727cb50f3552c8886aeb23ff"
+    "workspaceBaseSha256": "a56377b010b0a945158d7d5f5dd1a3d491a21f5c66c706a0230169d1968e8088",
+    "workspaceSha256": "e198d2fd089671979a83bac50fc52cef7b5ce9e6da0ee15decbe347f08adf8bc"
   },
   "pol275Assembly": {
     "cold-installer.cjs": {

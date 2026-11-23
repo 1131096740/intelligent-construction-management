@@ -22,7 +22,7 @@ for file in task12-owned-280.test-support.ts contract-bill-batch-replace-concurr
   install -m 644 "$input/fixtures/$file" "$workspace/services/api/src/database/$file"
 done
 inventory="$input/workspace-inputs.json"
-seal=18bd7ffdd2ac95daa5ffac1ef69e7e6deadd372f9cc7298d3f149a84340c91f0
+seal=3cab991f4d096e16c0b61b98ec1f69835445f197575dce5339cc4ba4e660bc8e
 if [[ $mode == settlement290 ]]; then
   inventory=-
   seal=e36f3b846e6180a318244f19978494694e852b1285b2b3772a22d738e83d96f9
@@ -30,26 +30,26 @@ elif [[ $mode == template ]]; then
   file=contract-template-scenario-concurrency.spec.ts
   install -m 644 "$input/fixtures/$file" "$workspace/services/api/src/database/$file"
   inventory="$input/template-workspace-inputs.json"
-  seal=3a720e52a273f09ab520881d1e5761917b0e020bc14492e8c6793194df567895
+  seal=46fa7e428321b7b9f7eb9e46ecbcf77fed897378e18eef0a41bac1f59f9c942c
 elif [[ $mode == draft ]]; then
   install -m 644 "$input/fixtures/settlement-draft-lifecycle-concurrency.spec.ts" "$workspace/services/api/src/database/"
   install -m 644 "$input/fixtures/database-dynamic-gate-manifest.json" "$workspace/services/api/prisma/"
   inventory="$input/draft-workspace-inputs.json"
-  seal=60a4b6037276f9a85af62a3ac1d7727ca6c784a550c0bfea8ed31ec07f39453c
+  seal=0537ad8ee4a2f4c7717b6bd07b759ce35ca9eadaac16aed6f3b2e2b2f99d7d4a
 elif [[ $mode == pol108-* ]]; then
   install -m 644 "$input/fixtures/jest.runtime.config.cjs" "$workspace/services/api/"
   if [[ $mode == pol108-core ]]; then
     install -m 644 "$input/fixtures/operating-projection-postgresql.cases.ts" "$workspace/services/api/src/database/"
     inventory="$input/pol108-core-workspace-inputs.json"
-    seal=b42196c11388c4f2c80b0d5129e264824bbd35ad14f52629a9d0156b3ea1bce9
+    seal=c81593939d30983714e5d3331dbebd95b4fde887963882171ba09070f5acd966
   else
     inventory="$input/pol108-scale-workspace-inputs.json"
-    seal=9a4d201ed7b8f3de80ac3166cdd3d2151247ccc9a2fab818355c9d82e0b86a0c
+    seal=218aca1506364b8d7fb0a026ebe400d1da38849296bff8128329c2b219728ee6
   fi
 elif [[ $mode == invoice ]]; then
   install -m 644 "$input/fixtures/invoice-ledger.postgres.spec.ts" "$workspace/services/api/src/invoice-ledger/"
   inventory="$input/invoice-workspace-inputs.json"
-  seal=2f91f8179dca9ea4b676dbec059937603f0c0daea320a7a6e0711724a4bf107c
+  seal=c4c0eb89c37ae486b101d2acff26433ef024b2efdb839cd7ae24a68ed6133d53
 fi
 python3 - "$inventory" "$workspace" "$seal" <<'PY'
 import hashlib,json,pathlib,sys
