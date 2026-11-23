@@ -271,6 +271,19 @@ DRILL_ROOT="$DRILL_ROOT" pnpm --silent --filter @jiangkong/api inspect:issue424-
 
 留存汇总 JSON。`replayed` 表示可回放原审批事实；按阻断原因核查原动作和签名，不据此开放并联审批。
 
+固定的普通付款小演练在独占 PostgreSQL 16 容器创建一个虚构付款，备份并恢复至
+`jg424_restore_post`。它沿用只读盘点的恢复身份和签名校验，验证停写时的审批轮次校验和并联写入，
+随后恢复本机审批入口。演练固定使用本地私有签名文件和 `db push` 建立的库结构，范围限于该笔虚构付款。
+
+```bash
+pnpm --filter @jiangkong/api exec prisma generate
+pnpm --filter @jiangkong/api build
+NODE_ENV=test node docs/progress/evidence/2026-11-24-issue-424/rehearse-ordinary-payment.cjs
+```
+
+核对回执中的 `COMPLETE` 和容器清理结果。切换前后原付款和签名一致，应有一条切换审计和两条
+待办通知。重复切换沿用原回执，过期坐标拒绝，解冻后财务可先于项目经理签批，重复签批返回 403。
+
 2) 在本演练新建库中恢复初始连接权限，使用 owner SQL 构造恢复校验数据。执行前核对初始 ACL 与以下 GRANT 一致。正式开放验收需由应用身份走公开写入口。
 
 ```bash

@@ -2768,7 +2768,11 @@ export class PaymentRequestService {
   }
 
   /** Internal operation for the cutover runner while ordinary payment writes are stopped. */
-  migrateLegacyApprovalRound(paymentId: string, actorUserId: string) {
+  migrateLegacyApprovalRound(paymentId: string, actorUserId: string, expected: {
+    approvalInstanceId: string;
+    paymentUpdatedAt: Date;
+    approvalUpdatedAt: Date;
+  }) {
     if (!this.writeFreeze.isFrozen("payment")) {
       throw new ConflictException("请先暂停普通付款写入，再切换在途审批");
     }
@@ -2791,7 +2795,26 @@ export class PaymentRequestService {
         where: { businessType: "payment_request", businessId: paymentId, flowType: "payment.approve", status: "in_progress" }, take: 2
       });
       if (active.length !== 1) throw new ConflictException("在途普通付款审批轮次不唯一");
-      if (isOrdinaryPaymentParallelRound(active[0].frozenNodes)) return { status: "already_mapped" as const };
+      const current = active[0];
+      const stale = () => new ConflictException("付款审批轮次已变化，请重新盘点");
+      if (current.id !== expected.approvalInstanceId || payment.updatedAt.getTime() !== expected.paymentUpdatedAt.getTime()) {
+        throw stale();
+      }
+      const evidence = {
+        approvalInstanceId: expected.approvalInstanceId,
+        paymentUpdatedAt: expected.paymentUpdatedAt.toISOString(),
+        approvalUpdatedAt: expected.approvalUpdatedAt.toISOString()
+      };
+      if (isOrdinaryPaymentParallelRound(current.frozenNodes)) {
+        const prior = await tx.auditLog.findFirst({ where: {
+          actorUserId, businessType: "payment_request", businessId: payment.id, action: "payment.approval.legacy_cutover",
+          AND: Object.entries({ ...evidence, mappedApprovalUpdatedAt: current.updatedAt.toISOString() })
+            .map(([key, value]) => ({ metadata: { path: [key], equals: value } }))
+        }, select: { id: true } });
+        if (!prior) throw stale();
+        return { status: "already_mapped" as const };
+      }
+      if (current.updatedAt.getTime() !== expected.approvalUpdatedAt.getTime()) throw stale();
       const { plan, round } = await inspectPaymentApprovalHistory(tx, files, paymentId);
       const oldNodes = round.frozenNodes as Array<Record<string, unknown>>;
       if (oldNodes.some(node => (node.roleKeys as RoleKey[]).some(role => !canPerform("payment.approve", [role])))) {
@@ -2813,7 +2836,8 @@ export class PaymentRequestService {
       const pendingNodeIndexes = plan.pendingDuties.map(duty => duty.nodeIndex);
       await this.audit.record(tx, {
         actorUserId, businessType: "payment_request", businessId: payment.id, action: "payment.approval.legacy_cutover",
-        metadata: { approvalInstanceId: round.id, completedActionIds: plan.completedActionIds, pendingNodeIndexes }
+        metadata: { ...evidence, mappedApprovalUpdatedAt: migrated.updatedAt.toISOString(),
+          completedActionIds: plan.completedActionIds, pendingNodeIndexes }
       });
       return { status: "mapped" as const, pendingNodeIndexes };
     });

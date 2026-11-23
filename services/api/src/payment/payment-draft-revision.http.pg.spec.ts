@@ -157,6 +157,7 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } }),
       prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } })
     ]);
+    const coordinates = { approvalInstanceId: signedRound.id, paymentUpdatedAt: pendingPayment.updatedAt, approvalUpdatedAt: signedRound.updatedAt };
     const signedAction = await prisma.approvalActionLog.findFirstOrThrow({ where: { approvalInstanceId: round.id, action: "approve" } });
     expect(signedAction).toMatchObject({ signatureVersionIdSnapshot: signatureVersion.id, signatureSha256Snapshot: digest });
     const withPaymentWriteFreeze = async (run: () => Promise<void>) => {
@@ -175,7 +176,7 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
     };
     if (sourceType === "contract_advance") {
       const service = app.get(PaymentRequestService);
-      expect(() => service.migrateLegacyApprovalRound(payment.id, applicant)).toThrow("请先暂停普通付款写入");
+      expect(() => service.migrateLegacyApprovalRound(payment.id, applicant, coordinates)).toThrow("请先暂停普通付款写入");
       const finance = await prisma.user.create({ data: {
         name: "财务岗位虚构验收人", phone: "13900004249", passwordHash, mustChangePassword: false
       } });
@@ -191,14 +192,18 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       const priorNotice = await noticeFor(reviewerToken);
       expect(priorNotice).toEqual({ notice: { attemptId: expect.any(String), status: "queued", canRetry: false } });
       await withPaymentWriteFreeze(async () => {
+        await expect(service.migrateLegacyApprovalRound(payment.id, applicant, {
+          ...coordinates, approvalUpdatedAt: new Date(signedRound.updatedAt.getTime() - 1)
+        })).rejects.toThrow("付款审批轮次已变化，请重新盘点");
+        expect(await prisma.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(signedRound);
         await storage.write(signatureFile.objectKey, Buffer.from("虚构签名文件损坏"));
-        await expect(service.migrateLegacyApprovalRound(payment.id, applicant)).rejects.toThrow("资料文件完整性校验失败");
+        await expect(service.migrateLegacyApprovalRound(payment.id, applicant, coordinates)).rejects.toThrow("资料文件完整性校验失败");
         expect(await prisma.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(signedRound);
         await storage.write(signatureFile.objectKey, png);
-        await expect(service.migrateLegacyApprovalRound(payment.id, applicant)).resolves.toEqual({
+        await expect(service.migrateLegacyApprovalRound(payment.id, applicant, coordinates)).resolves.toEqual({
           status: "mapped", pendingNodeIndexes: [1, 2, 3, 4]
         });
-        await expect(service.migrateLegacyApprovalRound(payment.id, applicant)).resolves.toEqual({ status: "already_mapped" });
+        await expect(service.migrateLegacyApprovalRound(payment.id, applicant, coordinates)).resolves.toEqual({ status: "already_mapped" });
         expect((await post(financeToken, `${path}/approval`, { decision: "approve" })).status).toBe(503);
       });
       expect(await prisma.auditLog.count({ where: { businessId: payment.id, action: "payment.approval.legacy_cutover" } })).toBe(1);
@@ -323,7 +328,7 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       Object.assign(pendingPayment, await prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } }));
     } else if (sourceType === "contract_due") {
       await withPaymentWriteFreeze(async () => {
-        await app!.get(PaymentRequestService).migrateLegacyApprovalRound(payment.id, applicant);
+        await app!.get(PaymentRequestService).migrateLegacyApprovalRound(payment.id, applicant, coordinates);
       });
       Object.assign(signedRound, await prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } }));
     }
@@ -477,7 +482,13 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       await approveTransferDuty(reviewerToken, 0);
       expect((await post(reviewerToken, `${transferPath}/approval-transfer`, { toUserId: transferred.userId })).status).toBe(201);
       await withPaymentWriteFreeze(async () => {
-        await expect(app!.get(PaymentRequestService).migrateLegacyApprovalRound(transferPayment.id, applicant)).resolves
+        const [open, source] = await Promise.all([
+          prisma.approvalInstance.findUniqueOrThrow({ where: { id: transferRound.id } }),
+          prisma.paymentRequest.findUniqueOrThrow({ where: { id: transferPayment.id } })
+        ]);
+        await expect(app!.get(PaymentRequestService).migrateLegacyApprovalRound(transferPayment.id, applicant, {
+          approvalInstanceId: open.id, paymentUpdatedAt: source.updatedAt, approvalUpdatedAt: open.updatedAt
+        })).resolves
           .toMatchObject({ status: "mapped" });
       });
       for (const index of [4, 2, 3]) await approveTransferDuty(reviewerToken, index);
