@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { FileService, PrivateFileStorage } from "../file/file.service";
-import { inspectLegacyContractApprovalCutover } from "./contract-approval-cutover";
+import { inspectLegacyContractApprovalCutover, inspectLegacyContractApprovalInventory } from "./contract-approval-cutover";
 
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
@@ -38,7 +38,11 @@ function fixture() {
     metadata: { approverName: "原合同主管" }
   };
   const tx = {
-    contractVersion: { findUnique: jest.fn().mockResolvedValue({ status: "in_approval", numericProtocolVersion: 1 }) },
+    $queryRaw: jest.fn().mockResolvedValue([{ readOnly: "on" }]),
+    contractVersion: {
+      findUnique: jest.fn().mockResolvedValue({ status: "in_approval", numericProtocolVersion: 1 }),
+      findMany: jest.fn().mockResolvedValue([{ id: round.businessId }])
+    },
     approvalInstance: { findMany: jest.fn().mockResolvedValue([round]) },
     approvalActionLog: { findMany: jest.fn().mockResolvedValue([action]) },
     approvalDelegation: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -102,6 +106,24 @@ describe("read-only historical contract approval cutover", () => {
     files.getFileBuffer.mockResolvedValueOnce({ file: { storageStatus: "active", contentSha256 }, buffer: Buffer.from("different bytes") });
     await expect(inspect()).resolves.toEqual({ status: "blocked", reason: "invalid_signature_evidence" });
   });
+
+  it("counts planned and blocked versions from one read-only snapshot and omits their identifiers", async () => {
+    const { tx, prisma, files } = fixture();
+    tx.contractVersion.findMany.mockResolvedValueOnce([{ id: "signed-contract" }, { id: "missing-image" }]);
+    files.getFileBuffer.mockResolvedValueOnce({ file: { storageStatus: "active", contentSha256 }, buffer: png })
+      .mockRejectedValueOnce(new Error("私有文件不存在"));
+    await expect(inspectLegacyContractApprovalInventory(prisma as never, files)).resolves.toEqual({
+      total: 2, planned: 1, blocked: 1, blockedByReason: { signature_file_unavailable: 1 }
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to inventory contracts from a writable transaction", async () => {
+    const { tx, prisma, files } = fixture();
+    tx.$queryRaw.mockResolvedValueOnce([{ readOnly: "off" }]);
+    await expect(inspectLegacyContractApprovalInventory(prisma as never, files)).rejects.toThrow("CONTRACT_CUTOVER_READ_ONLY_REQUIRED");
+    expect(tx.contractVersion.findMany).not.toHaveBeenCalled();
+  });
 });
 
 const postgres = process.env.ISSUE424_CONTRACT_PLAN_OWNER_URL ? it : it.skip;
@@ -148,6 +170,9 @@ postgres("reads the old signed round and private image on PG16 with a read-only 
     } });
     await expect(inspectLegacyContractApprovalCutover(reader, files, version.id)).resolves.toEqual({
       status: "planned", approvalInstanceId: round.id, frozenNodes: nodes, completedActionIds: [action.id], pendingNodeIndexes: [1, 2, 3]
+    });
+    await expect(inspectLegacyContractApprovalInventory(reader, files)).resolves.toEqual({
+      total: 1, planned: 1, blocked: 0, blockedByReason: {}
     });
     expect(await owner.approvalInstance.findUniqueOrThrow({ where: { id: round.id } })).toEqual(round);
     expect(await owner.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } })).toEqual([action]);
