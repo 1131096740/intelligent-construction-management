@@ -63,6 +63,10 @@ import {
   SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
   SignedSettlementOperatingSourceAdapter
 } from "../settlement/signed-settlement-operating-source.adapter";
+import { AuthModule } from "../auth/auth.module";
+import { AuditModule } from "../audit/audit.module";
+import { OperatingCostAttributionController } from "./operating-cost-attribution.controller";
+import { OperatingCostAttributionService } from "./operating-cost-attribution.service";
 import { OperatingLedgerService } from "./operating-ledger.service";
 import { OperatingSourceAdapterRegistry } from "./operating-source-adapter";
 import { OperatingSourceReplayService } from "./operating-source-replay.service";
@@ -155,7 +159,10 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
 }
 
 @Module({
+  imports: [AuthModule, AuditModule],
+  controllers: [OperatingCostAttributionController],
   providers: [
+    OperatingCostAttributionService,
     OperatingLedgerService,
     {
       provide: OperatingSourceAdapterRegistry,
@@ -164,6 +171,7 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
     OperatingSourceReplayService
   ],
   exports: [
+    OperatingCostAttributionService,
     OperatingLedgerService,
     OperatingSourceAdapterRegistry,
     OperatingSourceReplayService

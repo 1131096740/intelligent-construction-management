@@ -751,9 +751,17 @@ describe("ProjectService", () => {
       },
       projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectAffiliateSettlementFact: { findMany: jest.fn().mockResolvedValue([]) },
-      contract: { count: jest.fn().mockResolvedValue(2) },
+      projectAffiliateContractFact: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliateCompanyContract: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: {
+        count: jest.fn().mockResolvedValue(2),
+        findMany: jest.fn().mockResolvedValue([])
+      },
       settlement: { count: jest.fn().mockResolvedValue(3) },
-      paymentRequest: { count: jest.fn().mockResolvedValue(4) }
+      paymentRequest: {
+        count: jest.fn().mockResolvedValue(4),
+        findMany: jest.fn().mockResolvedValue([])
+      }
     };
     const aggregate = {
         scope: { label: "单项目经营口径", projectCount: 1 },
@@ -778,7 +786,8 @@ describe("ProjectService", () => {
         profitAndLoss: { currentOperatingProfitCents: "21200000" },
         distribution: { cashCeilingCents: "4500000" },
         evidence: { gapFactCount: 0 },
-        sources: []
+        sources: [],
+        contractDrilldown: []
     };
     const projection = {
       readProjectCompatibilitySnapshot: jest.fn().mockImplementation(
@@ -840,6 +849,7 @@ describe("ProjectService", () => {
         oralCount: 1
       }),
       counts: { contracts: 2, settlements: 3, payments: 4 },
+      contractDrilldown: [],
       operatingProjection: aggregate,
       canExportOperatingProjection: true
     }));

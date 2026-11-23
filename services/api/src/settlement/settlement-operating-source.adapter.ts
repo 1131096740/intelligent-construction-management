@@ -213,6 +213,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       code: string;
       amountCents: bigint;
       payableAmountCents: bigint;
+      periodLabel: string;
       periodEnd: Date | null;
       calculationVersion: number | null;
       governanceVersion: number | null;
@@ -281,6 +282,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         formalStatus: "confirmed",
         contractId: row.contractId,
         contractVersionId: row.contractVersionId,
+        periodLabel: row.periodLabel,
         contractTypeKey: contract.contractTypeKey,
         signingSubjectType: version.signingSubjectType,
         companyEntityVersionId: version.companyEntityVersionId,

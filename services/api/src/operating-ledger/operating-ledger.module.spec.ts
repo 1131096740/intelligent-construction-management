@@ -19,6 +19,7 @@ describe("OperatingLedgerModule formal source registry", () => {
       "project_owner_settlement_entry",
       "project_upstream_settlement",
       "project_upstream_fund_fact",
+      "construction_enterprise_fee",
       "project_affiliate_contract_fact",
       "project_affiliate_settlement_fact",
       "project_affiliate_payment_fact",

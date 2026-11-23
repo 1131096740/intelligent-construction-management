@@ -145,7 +145,10 @@ export const BUSINESS_ACTIONS = [
   "spot_procurement.invoice.manage",
   "spot_procurement.invoice_exception.confirm",
   "spot_procurement.vat_rate.manage",
-  "spot_procurement.void"
+  "spot_procurement.void",
+  "operating_cost_attribution.request",
+  "operating_cost_attribution.review",
+  "fund_flow.read"
 ] as const;
 
 export type BusinessAction = (typeof BUSINESS_ACTIONS)[number];
@@ -519,7 +522,17 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "spot_procurement.invoice_exception.confirm": ["finance_director"],
   "spot_procurement.vat_rate.manage": ["finance_director"],
-  "spot_procurement.void": ["project_manager", "finance_director"]
+  "spot_procurement.void": ["project_manager", "finance_director"],
+  "operating_cost_attribution.request": ["comprehensive_director", "finance_staff", "finance_director"],
+  "operating_cost_attribution.review": ["finance_director"],
+  "fund_flow.read": [
+    "finance_staff",
+    "finance_director",
+    "comprehensive_director",
+    "general_manager",
+    "chairman",
+    "project_manager"
+  ]
 };
 
 /**
