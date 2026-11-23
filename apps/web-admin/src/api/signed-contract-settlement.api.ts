@@ -46,10 +46,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-const json = (method: string, data: unknown) => ({
-  method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
-});
-
 export const fetchSignedSettlements = (projectId: string) => request<SignedSettlementRow[]>(endpoint(projectId));
 export const fetchSignedSettlementContracts = (projectId: string) => request<SignedContractOption[]>(`${endpoint(projectId)}/contracts`);
 export const fetchSignedSettlementOverview = (projectId: string, option: SignedContractOption) => {
@@ -65,22 +61,41 @@ export function uploadSignedSettlementFile(projectId: string, file: File) {
 
 export function saveSignedSettlement(projectId: string, draft: SignedSettlementDraft, existing?: SignedSettlementRow) {
   return existing
-    ? request<SignedSettlementRow>(`${endpoint(projectId)}/${encodeURIComponent(existing.id)}`, json("PATCH", { ...draft, revision: existing.revision }))
-    : request<SignedSettlementRow>(endpoint(projectId), json("POST", draft));
+    ? request<SignedSettlementRow>(`${endpoint(projectId)}/${encodeURIComponent(existing.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...draft, revision: existing.revision })
+    })
+    : request<SignedSettlementRow>(endpoint(projectId), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft)
+    });
 }
 
 export const submitSignedSettlement = (projectId: string, row: SignedSettlementRow) =>
-  request<SignedSettlementRow>(`${endpoint(projectId)}/${encodeURIComponent(row.id)}/submission`, json("POST", { revision: row.revision }));
+  request<SignedSettlementRow>(`${endpoint(projectId)}/${encodeURIComponent(row.id)}/submission`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ revision: row.revision })
+  });
 
 export const reviewSignedSettlement = (projectId: string, row: SignedSettlementRow, decision: "confirm" | "return", reason: string, confirmationPassword: string) =>
-  request<SignedSettlementRow>(`${endpoint(projectId)}/${encodeURIComponent(row.id)}/review`,
-    json("POST", { revision: row.revision, decision, reason, ...(row.selfReview ? { confirmationPassword } : {}) }));
+  request<SignedSettlementRow>(`${endpoint(projectId)}/${encodeURIComponent(row.id)}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ revision: row.revision, decision, reason, ...(row.selfReview ? { confirmationPassword } : {}) })
+  });
 
 
 export async function readSignedSettlementAttachment(projectId: string, settlementId: string, fileId: string, input: CreatePrivateFileDownloadTicketPayload) {
   const path = `${endpoint(projectId)}/${encodeURIComponent(settlementId)}/attachments/${encodeURIComponent(fileId)}`;
   const file = await request<SignedSettlementFile>(path);
-  const ticket = await request<PrivateFileDownloadTicketReadModel>(`${path}/download-ticket`, json("POST", input));
+  const ticket = await request<PrivateFileDownloadTicketReadModel>(`${path}/download-ticket`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
   if (!ticket.downloadUrl.startsWith(`${path}/download?`) || ticket.downloadUrl.includes("\\")) {
     throw new Error("结算附件访问链接无效，请重新申请");
   }

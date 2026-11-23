@@ -132,13 +132,17 @@ const GROUPS = [
   {
     id: "file_binding_manifest",
     database: "jiangkong_file_binding_manifest_test",
-    files: ["src/database/file-binding-manifest.spec.ts"],
+    files: [
+      "src/database/file-binding-manifest.spec.ts",
+      "src/database/file-binding-catalog.pg.spec.ts"
+    ],
     flags: {
       RUN_FILE_BINDING_MANIFEST_DATABASE: "1",
+      RUN_FILE_BINDING_CATALOG_DATABASE: "1",
       FILE_BINDING_MANIFEST_DATABASE_URL: "databaseUrl",
       DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 1
+    pendingTests: 7
   },
   {
     id: "project_operating_profile_upgrade",
