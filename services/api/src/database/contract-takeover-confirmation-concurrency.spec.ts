@@ -27,10 +27,16 @@ export function contractTakeoverConfirmationDatabaseUrl(
     throw new Error("历史接管确认并发测试必须连接非生产专用数据库");
   }
   const url = new URL(value);
+  const ownedRun = process.env.JG_TAKEOVER_TASK1_289_RUN_ID;
+  const owned = process.env.NODE_ENV === "test" && !!ownedRun &&
+    /^[a-f0-9]{32}$/.test(ownedRun) && url.pathname === `/jg_task01_${ownedRun}` &&
+    url.protocol === "postgresql:" && url.hostname === "127.0.0.1" &&
+    url.username === "jg_task01_owner" && url.searchParams.get("sslmode") === "require" &&
+    url.searchParams.get("sslaccept") === "strict";
   if (
     !["postgresql:", "postgres:"].includes(url.protocol) ||
     !["127.0.0.1", "localhost", "::1"].includes(url.hostname) ||
-    url.pathname !== `/${TEST_DATABASE}`
+    (url.pathname !== `/${TEST_DATABASE}` && !owned)
   ) {
     throw new Error("历史接管确认并发测试拒绝非本机专用数据库");
   }
@@ -455,7 +461,7 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
             contractVersionId: versionId,
             paymentTermsVersionId: termsId,
             takeoverLevel: "A",
-            takeoverStatus: "draft",
+            takeoverStatus: "pending_finance",
             lifecycleStatus: "in_progress",
             signedAt: new Date(),
             historicalSettledCents: 600n,
@@ -653,34 +659,32 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
         `);
         await prisma.$executeRawUnsafe(`
           CREATE TRIGGER "${dualTriggerName}"
-          BEFORE UPDATE OF "confirmedRevision" ON "ContractTakeoverContractFacts"
+          BEFORE UPDATE OF "confirmedRevision" ON "ContractTakeoverFinanceFacts"
           FOR EACH ROW EXECUTE FUNCTION "${dualTriggerFunction}"()
         `);
 
         const contractKey = randomUUID();
         const financeKey = randomUUID();
-        const requests = [
-          {
-            route: "contract-side/confirmation",
-            userId: contractUserId,
-            body: {
-              idempotencyKey: contractKey,
-              expectedRevision: 3,
-              currentPassword: password
-            }
-          },
-          {
-            route: "finance-side/confirmation",
-            userId: financeUserId,
-            body: {
-              idempotencyKey: financeKey,
-              expectedRevision: 2,
-              currentPassword: password,
-              basedOnContractRevision: 3,
-              basedOnFinanceBasisRevision: 4
-            }
+        const contractRequest = {
+          route: "contract-side/confirmation",
+          userId: contractUserId,
+          body: {
+            idempotencyKey: contractKey,
+            expectedRevision: 3,
+            currentPassword: password
           }
-        ];
+        };
+        const financeRequest = {
+          route: "finance-side/confirmation",
+          userId: financeUserId,
+          body: {
+            idempotencyKey: financeKey,
+            expectedRevision: 2,
+            currentPassword: password,
+            basedOnContractRevision: 3,
+            basedOnFinanceBasisRevision: 4
+          }
+        };
         const send = (request: {
           route: string;
           userId: string;
@@ -705,7 +709,7 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
           await prisma.contractTakeover.update({
             where: { id: takeoverId },
             data: {
-              takeoverStatus: "draft",
+              takeoverStatus: "pending_finance",
               confirmedByUserId: null,
               confirmedAt: null,
               historicalBalanceConfirmedByUserId: null,
@@ -749,9 +753,9 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
           await prisma.contractTakeoverContractFacts.update({
             where: { takeoverId },
             data: {
-              confirmedRevision: 3,
-              confirmedByUserId: contractUserId,
-              confirmedAt: new Date()
+              confirmedRevision: null,
+              confirmedByUserId: null,
+              confirmedAt: null
             }
           });
           await prisma.contractTakeoverFinanceFacts.update({
@@ -769,40 +773,36 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
           });
           await prisma.auditLog.deleteMany({ where: { businessId: takeoverId } });
         };
-        const contractResponse = send(requests[0]);
-        await waitForPgSleep(prisma, "ContractTakeoverContractFacts");
-        const financeResponse = send(requests[1]);
-        const firstResponses = await Promise.all([
-          contractResponse,
-          financeResponse
-        ]);
-        expect(firstResponses.map((response) => response.status).sort())
-          .toEqual([201, 409]);
-        const conflictIndex = firstResponses.findIndex(
-          (response) => response.status === 409
-        );
-        const firstSuccess = await firstResponses[1 - conflictIndex].json() as {
-          activated: boolean;
-          activationStatus: string;
-        };
-        const replayResponse = await send(requests[conflictIndex]);
-        expect(replayResponse.status).toBe(201);
-        const replayReceipt = await replayResponse.json() as {
+        expect((await send(contractRequest)).status).toBe(400);
+        const financeResponse = send(financeRequest);
+        await waitForPgSleep(prisma, "ContractTakeoverFinanceFacts");
+        const contractResponse = send(contractRequest);
+        const [finance, competingContract] = await Promise.all([financeResponse, contractResponse]);
+        expect(finance.status).toBe(201);
+        expect(competingContract.status).toBe(409);
+        const firstSuccess = await finance.json() as { activated: boolean; activationStatus: string };
+        const financeReplay = await send(financeRequest);
+        expect(financeReplay.status).toBe(201);
+        expect(await financeReplay.json()).toEqual(firstSuccess);
+        const retry = await send(contractRequest);
+        expect(retry.status).toBe(201);
+        const replayReceipt = await retry.json() as {
           activated: boolean;
           activationStatus: string;
           activationIdempotencyKey: string;
           historicalInitialSettlementId: string;
         };
-        const freshReadResponse = await send(requests[conflictIndex]);
-        expect(freshReadResponse.status).toBe(201);
-        expect(await freshReadResponse.json()).toEqual(replayReceipt);
+        for (const [request, expected] of [[financeRequest, firstSuccess], [contractRequest, replayReceipt]] as const) {
+          const freshReadResponse = await send(request);
+          expect(freshReadResponse.status).toBe(201);
+          expect(await freshReadResponse.json()).toEqual(expected);
+        }
         expect(firstSuccess.activated).toBe(false);
         expect(firstSuccess.activationStatus).toMatch(/^awaiting_/u);
         expect(replayReceipt).toMatchObject({
           activated: true,
           activationStatus: "activated",
-          activationIdempotencyKey:
-            requests[conflictIndex].body.idempotencyKey,
+          activationIdempotencyKey: contractKey,
           historicalInitialSettlementId: expect.any(String)
         });
         expect(await prisma.contractTakeoverConfirmationEvent.count({
@@ -866,7 +866,14 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
           companyEntityCreditCodeSnapshot: "91310000TEST000061"
         });
 
-        await resetActivatedFixture();
+        const prepareFinalReview = async () => {
+          await resetActivatedFixture();
+          const prepared = await send({
+            ...financeRequest, body: { ...financeRequest.body, idempotencyKey: randomUUID() }
+          });
+          expect(prepared.status).toBe(201);
+        };
+        await prepareFinalReview();
         await prisma.$executeRawUnsafe(`
           CREATE FUNCTION "${raceTriggerFunction}"() RETURNS trigger AS $$
           BEGIN
@@ -879,22 +886,14 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
         `);
         await prisma.$executeRawUnsafe(`
           CREATE TRIGGER "${raceTriggerName}"
-          BEFORE UPDATE OF "confirmedRevision" ON "ContractTakeoverFinanceFacts"
+          BEFORE UPDATE OF "confirmedRevision" ON "ContractTakeoverContractFacts"
           FOR EACH ROW EXECUTE FUNCTION "${raceTriggerFunction}"()
         `);
 
-        const financeConfirmation = send({
-          route: "finance-side/confirmation",
-          userId: financeUserId,
-          body: {
-            idempotencyKey: randomUUID(),
-            expectedRevision: 2,
-            currentPassword: password,
-            basedOnContractRevision: 3,
-            basedOnFinanceBasisRevision: 4
-          }
+        const contractConfirmation = send({
+          ...contractRequest, body: { ...contractRequest.body, idempotencyKey: randomUUID() }
         });
-        await waitForPgSleep(prisma, "ContractTakeoverFinanceFacts");
+        await waitForPgSleep(prisma, "ContractTakeoverContractFacts");
         const contractWithdrawal = send({
           route: "contract-side/confirmation-withdrawal",
           userId: contractUserId,
@@ -906,7 +905,7 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
           }
         });
         const [confirmationResponse, withdrawalResponse] =
-          await Promise.all([financeConfirmation, contractWithdrawal]);
+          await Promise.all([contractConfirmation, contractWithdrawal]);
         expect(confirmationResponse.status).toBe(201);
         expect(withdrawalResponse.status).toBe(409);
         expect(await prisma.settlement.count({
@@ -919,20 +918,12 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
           }
         })).toBe(1);
 
-        await resetActivatedFixture();
+        await prepareFinalReview();
 
         const baselineRaceConfirmation = send({
-          route: "finance-side/confirmation",
-          userId: financeUserId,
-          body: {
-            idempotencyKey: randomUUID(),
-            expectedRevision: 2,
-            currentPassword: password,
-            basedOnContractRevision: 3,
-            basedOnFinanceBasisRevision: 4
-          }
+          ...contractRequest, body: { ...contractRequest.body, idempotencyKey: randomUUID() }
         });
-        await waitForPgSleep(prisma, "ContractTakeoverFinanceFacts");
+        await waitForPgSleep(prisma, "ContractTakeoverContractFacts");
         const baselineConfirmation = send({
           route: "change-baseline-confirmation",
           userId: contractUserId,
@@ -958,13 +949,13 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
       } finally {
         await app?.close();
         await prisma.$executeRawUnsafe(
-          `DROP TRIGGER IF EXISTS "${dualTriggerName}" ON "ContractTakeoverContractFacts"`
+          `DROP TRIGGER IF EXISTS "${dualTriggerName}" ON "ContractTakeoverFinanceFacts"`
         ).catch(() => undefined);
         await prisma.$executeRawUnsafe(
           `DROP FUNCTION IF EXISTS "${dualTriggerFunction}"()`
         ).catch(() => undefined);
         await prisma.$executeRawUnsafe(
-          `DROP TRIGGER IF EXISTS "${raceTriggerName}" ON "ContractTakeoverFinanceFacts"`
+          `DROP TRIGGER IF EXISTS "${raceTriggerName}" ON "ContractTakeoverContractFacts"`
         ).catch(() => undefined);
         await prisma.$executeRawUnsafe(
           `DROP FUNCTION IF EXISTS "${raceTriggerFunction}"()`

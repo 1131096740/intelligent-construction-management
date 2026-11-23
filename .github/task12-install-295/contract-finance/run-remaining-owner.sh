@@ -34,18 +34,27 @@ fingerprint=$(cat "$build/context.sha256")
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
 profiles="$prior/remaining-owner-modes.json"
 node "$owner" --mounts "$lane" "$workspace" > "$work/fixture-mounts.tsv"
+spec=
 if [[ $count == 329 && $lane == generic-batch ]]; then
   spec=src/database/pol05-operating-source-facts.spec.ts
+  expected=e22999bfe33cbab9b963e0d61d94ac5bd27762dadda606f7838274de74a8cd04
   fixture="$work/pol05-operating-source-facts.spec.ts"
   cp "$prior/remaining-fixtures/$spec" "$fixture"
   patch --batch --forward --fuzz=0 --silent "$fixture" < "$plan/pol05-owner-comparison-320.patch"
-  node - "$profiles" "$work" "$spec" "$fixture" <<'JS'
+elif [[ $count == 329 && $lane == takeover-task1 ]]; then
+  spec=src/database/contract-takeover-confirmation-concurrency.spec.ts
+  fixture="$work/contract-takeover-confirmation-concurrency.spec.ts"
+  expected=$(git -C "$root" show "$sha:services/api/$spec" | shasum -a 256 | cut -d' ' -f1)
+  cp "$workspace/services/api/$spec" "$fixture"
+fi
+if [[ -n "$spec" ]]; then
+  node - "$profiles" "$work" "$spec" "$fixture" "$lane" "$expected" <<'JS'
 const fs=require('node:fs'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
-const [input,work,spec,fixture]=process.argv.slice(2);
+const [input,work,spec,fixture,lane,expected]=process.argv.slice(2);
 const profile=require(input);
 const sha=createHash('sha256').update(fs.readFileSync(fixture)).digest('hex');
-assert.equal(sha,'e22999bfe33cbab9b963e0d61d94ac5bd27762dadda606f7838274de74a8cd04');
-profile['generic-batch'].files[spec].sha=sha;
+assert.equal(sha,expected);
+profile[lane].files[spec].sha=sha;
 fs.writeFileSync(work+'/remaining-owner-modes.json',JSON.stringify(profile));
 const mounts=work+'/fixture-mounts.tsv';
 const rows=fs.readFileSync(mounts,'utf8').split('\n').map(row=>row.endsWith('\t'+spec)?fixture+'\t'+spec:row);
