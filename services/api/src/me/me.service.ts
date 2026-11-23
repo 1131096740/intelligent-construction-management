@@ -1,5 +1,10 @@
 import { currentSpotPaymentDuty, spotPaymentDutyAssignments, spotPaymentDutySelect } from "../spot-procurement/spot-payment-execution-duty";
 import { workItemNoticeKey, workItemNoticeSnapshot } from "./work-item-notice-snapshot";
+import {
+  groupWorkItems,
+  workItemActionGroup,
+  type WorkItemActionGroupKey
+} from "./work-item-action-group";
 import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
 import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
 import { readSpotReceiptReviewDuty } from "../spot-procurement/spot-procurement-receipt-review-duty";
@@ -135,6 +140,17 @@ export interface WorkItem {
   canHandle?: boolean;
   /** 并联轮完成职责数/必需职责数，用于摘要。 */
   parallelCompletion?: { completed: number; total: number };
+  /** 首页动作分组（待审批/待复核/待采购/待付款/待补资料/其他），由投影层集中计算。 */
+  actionGroup?: WorkItemActionGroupKey;
+}
+
+export interface WorkItemActionGroupView {
+  key: Exclude<WorkItemActionGroupKey, "other">;
+  title: string;
+  description: string;
+  count: number;
+  targetPath: string;
+  items: WorkItem[];
 }
 
 export interface FundsPendingReadBudget {
@@ -214,6 +230,8 @@ export interface WorkItemsReadModel {
     truncated: boolean;
   }>;
   approvalCenter: Record<ApprovalCenterViewKey, WorkItem[]>;
+  /** 首页动作分组；缺失时客户端降级到四队列（旧接口桩兼容）。 */
+  groups?: WorkItemActionGroupView[];
 }
 
 interface ProjectRoleScope {
@@ -675,6 +693,7 @@ export class MeService {
     const handledByMe = await this.handledApprovalWorkItems(scopes, userId);
 
     await addContractRelationshipSummaries(this.prisma,[...pending,...blocked,...started,...draftResult.items,...handledByMe]);
+    for (const item of pending) item.actionGroup ??= workItemActionGroup(item);
 
     return {
       generatedAt: evaluatedAt.toISOString(),
@@ -700,7 +719,9 @@ export class MeService {
         pendingApproval: pending.filter((item) => item.type === "approval").slice(0, 30),
         startedByMe: started.slice(0, 30),
         handledByMe
-      }
+      },
+      // 分组计数取全量 pending（不受 30 条截断影响），摘要由投影层取前 3 条。
+      groups: groupWorkItems(pending)
     };
   }
 

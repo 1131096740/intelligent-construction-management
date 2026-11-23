@@ -3,6 +3,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
+import { FUND_EXECUTION_READ_ROLE_KEYS } from "@jiangkong/shared-domain";
 import {
   CreateFundExecutionCaseDto,
   CreateFundExecutionReversalCaseDto,
@@ -30,7 +31,7 @@ export class FundExecutionController {
   }
 
   @Get("capabilities")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   capabilities(@CurrentUser() user: AuthenticatedUser) {
     return this.options.capabilities(user.id);
   }
@@ -46,7 +47,7 @@ export class FundExecutionController {
   }
 
   @Get("observation-options")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   observationOptions(
     @CurrentUser() user: AuthenticatedUser,
     @Query("purpose") purpose?: string
@@ -59,7 +60,7 @@ export class FundExecutionController {
   }
 
   @Get("cases/:caseId/classification-options")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   classificationOptions(
     @CurrentUser() user: AuthenticatedUser,
     @Param("caseId") caseId: string
@@ -68,13 +69,13 @@ export class FundExecutionController {
   }
 
   @Get("reversal-options")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   reversalOptions(@CurrentUser() user: AuthenticatedUser) {
     return this.options.listReversalTargets(user.id);
   }
 
   @Post("cases")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   create(
     @CurrentUser() user: AuthenticatedUser,
     @Body() input: CreateFundExecutionCaseDto
@@ -83,7 +84,7 @@ export class FundExecutionController {
   }
 
   @Patch("cases/:caseId")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   update(
     @CurrentUser() user: AuthenticatedUser,
     @Param("caseId") caseId: string,
@@ -99,7 +100,7 @@ export class FundExecutionController {
   }
 
   @Patch("cases/:caseId/reversal")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   updateReversal(
     @CurrentUser() user: AuthenticatedUser,
     @Param("caseId") caseId: string,
@@ -109,7 +110,7 @@ export class FundExecutionController {
   }
 
   @Post("cases/:caseId/submit")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   submit(
     @CurrentUser() user: AuthenticatedUser,
     @Param("caseId") caseId: string,
@@ -151,7 +152,7 @@ export class FundExecutionController {
   }
 
   @Post("reversals")
-  @RequirePositions("finance_staff", "finance_director")
+  @RequirePositions(...FUND_EXECUTION_READ_ROLE_KEYS)
   reverse(
     @CurrentUser() user: AuthenticatedUser,
     @Body() input: CreateFundExecutionReversalCaseDto
