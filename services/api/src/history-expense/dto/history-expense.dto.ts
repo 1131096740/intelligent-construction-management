@@ -54,6 +54,18 @@ export class VerifyHistoryExpenseRowDto {
   note?: string;
 }
 
+export class CorrectHistoryExpenseRowDto {
+  @IsInt({ message: "行版本必须是整数" })
+  @Min(1, { message: "行版本无效，请刷新后重试" })
+  expectedRevision!: number;
+
+  @IsString({ message: "请填写更正原因" })
+  reason!: string;
+
+  @IsObject({ message: "更正后的历史费用行必须是业务字段对象" })
+  values!: Record<string, unknown>;
+}
+
 export class ConfirmHistoryExpenseDto {
   @IsInt({ message: "批次版本必须是整数" })
   @Min(1, { message: "批次版本无效，请刷新后重试" })

@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 863,
-    "exactRouteCount": 863,
-    "normalizedRouteCount": 863,
+    "routeCount": 864,
+    "exactRouteCount": 864,
+    "normalizedRouteCount": 864,
     "classificationOverrideCount": 225,
     "consumerSurfaceOverrideCount": 47,
     "classificationOverrideSha256": "71663f75150fda4cd713f90bc211f59dcf45cc116c6fbb98232cee63389be8d2",
     "consumerSurfaceOverrideSha256": "b2bbe6944629b245b12f03521fc673151201615df030bea2ca96c22191b02015",
-    "derivedProductionPageCount": 630,
-    "pageRouteCount": 649,
+    "derivedProductionPageCount": 631,
+    "pageRouteCount": 650,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
     "internalTaskCount": 45,
     "unclassifiedCount": 8,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 701,
+      "web_api_wrapper": 702,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 701,
+    "productionWrapperRouteCount": 702,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -29208,6 +29208,47 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections",
+      "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+      "controller": "HistoryExpenseController",
+      "handler": "correctRow",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.correct",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "correctHistoryExpenseRow",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/history-expenses/precheck",
       "normalizedKey": "POST /projects/:param/history-expenses/precheck",
       "controller": "HistoryExpenseController",
@@ -35566,22 +35607,22 @@
       {
         "field": "consumerSurfaceCounts.web_api_wrapper",
         "expected": 682,
-        "actual": 701
+        "actual": 702
       },
       {
         "field": "derivedProductionPageCount",
         "expected": 611,
-        "actual": 630
+        "actual": 631
       },
       {
         "field": "routeCount",
         "expected": 836,
-        "actual": 863
+        "actual": 864
       },
       {
         "field": "usageCounts.page",
         "expected": 630,
-        "actual": 649
+        "actual": 650
       },
       {
         "field": "usageCounts.unclassified",
