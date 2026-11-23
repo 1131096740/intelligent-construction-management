@@ -26,9 +26,10 @@ const ledgerLink = computed(() => {
   return { query };
 });
 const mode=ref(""),selected=ref<TransferRow|null>(null),password=ref(""),comment=ref(""),bank=ref(""),outgoing=ref(""),banks=ref<Array<{value:string;label:string}>>([]),file=ref<File|null>(null),fileId=ref("");let openedOriginal=false,generation=0,key=crypto.randomUUID();
-const form=reactive({kind:"storage",sourceCompanyId:"",destinationCompanyId:"",sourceProjectId:"",destinationProjectId:"",sourceAccount:"",destinationAccount:"",amountYuan:"",original:"",reason:""});
+const form=reactive({kind:"storage",sourceCompanyId:"",destinationCompanyId:"",repaymentDebtorCompanyId:"",sourceProjectId:"",destinationProjectId:"",sourceAccount:"",destinationAccount:"",amountYuan:"",original:"",reason:""});
 const projectOptions=computed(()=>[...(data.value?.canUseOwnFunds?[{value:"",label:"公司自有资金"}]:[]),...(data.value?.projects??[]).map(p=>({value:p.id,label:p.name}))]);
 const companyOptions=computed(()=>(data.value?.companies??[]).map(c=>({value:c.id,label:c.name})));
+const payerCompanyOptions=computed(()=>(data.value?.payerCompanies??data.value?.companies??[]).map(c=>({value:c.id,label:c.name})));
 const originals=computed(()=>[...(data.value?.legacyOptions??[]).map(r=>({value:`${r.legacyType}:${r.id}`,approvalFlow:r.approvalFlow,label:`${r.reference} · 未清 ${money(r.remainingCents)} · 可申请 ${money(r.availableCents)}`})),...(data.value?.originalLoans??[]).map(r=>({value:`loan:${r.id}`,approvalFlow:undefined,label:`${r.code} · ${r.sourceCompany} → ${r.destinationCompany} · 未清 ${money(r.remainingCents)} · 可申请 ${money(r.availableCents)}`})),...(data.value?.originalProxies??[]).map(r=>({value:`proxy:${r.id}`,approvalFlow:r.approvalFlow,label:`代付 ${r.source.reference} · ${r.source.actualPayer.name}`}))]);
 const money=centsTextToYuanText;
 const transferSelectPopupProps = { overlayInnerStyle: (trigger: HTMLElement) => ({ width: `${trigger.offsetWidth}px`, maxWidth: "calc(100vw - 32px)" }) };
@@ -156,7 +157,7 @@ async function loadTransferDetail() {
     if (request === generation) detailLoading.value = false;
   }
 }
-function originalChanged(){const legacy=data.value?.legacyOptions.find(r=>`${r.legacyType}:${r.id}`===form.original);if(legacy)Object.assign(form,{sourceCompanyId:legacy.sourceCompanyId,destinationCompanyId:legacy.destinationCompanyId,sourceProjectId:legacy.sourceProjectId,destinationProjectId:legacy.destinationProjectId});const [kind,id]=form.original.split(":");const loan=data.value?.originalLoans.find(r=>r.id===id),proxy=data.value?.originalProxies.find(r=>r.id===id);if(kind==="loan"&&loan)Object.assign(form,{sourceCompanyId:loan.destinationCompanyId,destinationCompanyId:loan.sourceCompanyId,sourceProjectId:loan.destinationProjectId??"",destinationProjectId:loan.sourceProjectId??""});if(kind==="proxy"&&proxy)Object.assign(form,{sourceCompanyId:proxy.source.debtor.id,destinationCompanyId:proxy.source.actualPayer.id,sourceProjectId:proxy.projectId,destinationProjectId:proxy.projectId});}
+function originalChanged(){const legacy=data.value?.legacyOptions.find(r=>`${r.legacyType}:${r.id}`===form.original);if(legacy)Object.assign(form,{sourceCompanyId:legacy.sourceCompanyId,destinationCompanyId:legacy.destinationCompanyId,repaymentDebtorCompanyId:legacy.sourceCompanyId,sourceProjectId:legacy.sourceProjectId,destinationProjectId:legacy.destinationProjectId});const [kind,id]=form.original.split(":");const loan=data.value?.originalLoans.find(r=>r.id===id),proxy=data.value?.originalProxies.find(r=>r.id===id);if(kind==="loan"&&loan)Object.assign(form,{sourceCompanyId:loan.destinationCompanyId,destinationCompanyId:loan.sourceCompanyId,repaymentDebtorCompanyId:loan.destinationCompanyId,sourceProjectId:loan.destinationProjectId??"",destinationProjectId:loan.sourceProjectId??""});if(kind==="proxy"&&proxy)Object.assign(form,{sourceCompanyId:proxy.source.debtor.id,destinationCompanyId:proxy.source.actualPayer.id,repaymentDebtorCompanyId:proxy.source.debtor.id,sourceProjectId:proxy.projectId,destinationProjectId:proxy.projectId});}
 async function start(action:string,row:TransferRow|null=null,fromOriginal=false){fixedOriginal.value=fromOriginal;approvalDuty.value=null;selected.value=row;password.value="";comment.value="";bank.value="";outgoing.value="";file.value=null;fileId.value="";form.sourceAccount="";form.destinationAccount="";key=crypto.randomUUID();mode.value=action;if(row&&["outgoing","incoming","returned"].includes(action)){try{banks.value=await fetchCompanyTransferBanks(row.id,action);}catch(e){error.value=formatUnknownApiError(e,"银行流水读取失败");}}}
 function choose(e:Event){file.value=(e.target as HTMLInputElement).files?.[0]??null;fileId.value="";}
 async function save() {
@@ -183,6 +184,7 @@ async function save() {
       if (!fileId.value) fileId.value = (await uploadPrivateFileWithCapability(upload, upload.name, originalSource)).id;
       await createCompanyTransferWithCapability({
         ...draft,
+        ...(draft.kind === "repayment" ? { repaymentDebtorCompanyId: draft.repaymentDebtorCompanyId || draft.sourceCompanyId } : { repaymentDebtorCompanyId: undefined }),
         amountCents,
         ...(draft.kind !== "repayment" ? {} : type === "loan" ? { originalTransferId: id } :
           { [sourceQueryKeys[type as keyof typeof sourceQueryKeys]]: id }),
@@ -290,7 +292,7 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
     <h3>资金变动与未清往来（元）</h3>
     <article v-for="b in data?.balances??[]" :key="`${b.companyId}:${b.projectId}`">
       <strong>{{ b.companyName }} · {{ b.projectId?data?.projects.find(p=>p.id===b.projectId)?.name:'公司自有资金' }}</strong>
-      <p>实际资金净变动 {{ money(b.cashChangeCents) }} · 在途 {{ money(b.inTransitCents) }} · 借款应收 {{ money(b.receivableCents) }} · 借款应还 {{ money(b.payableCents) }} · 代付应收 {{ money(b.legacyReceivableCents ?? "0") }} · 代付应还 {{ money(b.legacyPayableCents ?? "0") }}</p>
+      <p>实际资金净变动 {{ money(b.cashChangeCents) }} · 在途 {{ money(b.inTransitCents) }} · 借款应收 {{ money(b.receivableCents) }} · 借款应还 {{ money(b.payableCents) }} · 代付应收 {{ money(b.legacyReceivableCents ?? "0") }} · 代付应还 {{ money(b.legacyPayableCents ?? "0") }} · 第三家代还应收 {{ money(b.onBehalfReceivableCents ?? "0") }} · 第三家代还应还 {{ money(b.onBehalfPayableCents ?? "0") }}</p>
     </article>
     <h3>{{ hasOriginalLink ? '原往来归还记录' : '互转申请与执行' }}</h3>
     <t-button v-if="hasOriginalLink && data?.canCreate" @click="openOriginalApplication">申请归还该往来</t-button>
@@ -301,6 +303,7 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
     <article v-for="r in visibleRows" :key="r.id">
       <h4>{{ r.code }} · {{ r.kindLabel }} · {{ r.statusLabel }}</h4>
       <p>{{ r.sourceCompany }}（{{ r.sourceScope }}） → {{ r.destinationCompany }}（{{ r.destinationScope }}）</p>
+      <p v-if="r.onBehalfRepayment">第三家公司代还：{{ r.sourceCompany }} 代 {{ r.repaymentDebtorCompany }} 归还 {{ r.destinationCompany }}</p>
       <p>申请 {{ money(r.amountCents) }} · 已出款 {{ money(r.sentCents) }} · 已到账 {{ money(r.receivedCents) }} · 已退回 {{ money(r.returnedCents) }} · 在途 {{ money(r.inTransitCents) }} 元</p>
       <p>{{ r.reason }}</p>
       <p v-if="r.originalReference">归还原往来：{{ r.originalReference }}</p>
@@ -347,7 +350,9 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
         <template v-if="mode==='create'">
           <t-form-item label="办理类别"><t-select :popup-props="transferSelectPopupProps" v-model="form.kind" :disabled="fixedOriginal" :options="[{value:'storage',label:'资金转存'},{value:'loan',label:'临时借款调剂'},{value:'repayment',label:'归还已有往来'}]" /></t-form-item>
           <t-form-item v-if="form.kind==='repayment'" label="原借款或代付往来"><t-select :popup-props="transferSelectPopupProps" v-model="form.original" :disabled="fixedOriginal" :options="originals" @change="originalChanged" /></t-form-item>
-          <t-form-item label="转出公司"><t-select :popup-props="transferSelectPopupProps" v-model="form.sourceCompanyId" :disabled="fixedOriginal" :options="companyOptions" /></t-form-item>
+          <t-form-item v-if="form.kind==='repayment'" label="代还债务人（原债务公司）"><t-select :popup-props="transferSelectPopupProps" v-model="form.repaymentDebtorCompanyId" :disabled="fixedOriginal" :options="companyOptions" /></t-form-item>
+          <p v-if="form.kind==='repayment'" class="transfer-hint">转出公司须是实际出款公司；若它与代还债务人不同，即为第三家公司代还：原债务公司欠款结清，转而欠实际出款公司，不新增项目成本或第二笔付款。</p>
+          <t-form-item label="转出公司（实际出款）"><t-select :popup-props="transferSelectPopupProps" v-model="form.sourceCompanyId" :disabled="fixedOriginal" :options="form.kind==='repayment'?payerCompanyOptions:companyOptions" /></t-form-item>
           <t-form-item label="转出资金归属"><t-select :popup-props="transferSelectPopupProps" v-model="form.sourceProjectId" :disabled="fixedOriginal" :options="projectOptions" /></t-form-item>
           <t-form-item label="转入公司"><t-select :popup-props="transferSelectPopupProps" v-model="form.destinationCompanyId" :disabled="fixedOriginal" :options="companyOptions" /></t-form-item>
           <t-form-item label="转入资金归属"><t-select :popup-props="transferSelectPopupProps" v-model="form.destinationProjectId" :disabled="fixedOriginal" :options="projectOptions" /></t-form-item>
@@ -363,6 +368,7 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
         <template v-else-if="['approve','reject','withdraw','evidence'].includes(mode)">
           <p>{{ selected?.kindLabel }} · {{ selected?.code }} · {{ selected?.sourceCompany }} → {{ selected?.destinationCompany }} · {{ money(selected?.amountCents??'0') }} 元</p>
           <t-form-item :label="approvalDuty?.requiresSelfPassword ? '本人审批原因（必填）' : '审批意见或退回、撤回原因'"><t-textarea v-model="comment" /></t-form-item>
+          <p v-if="selected?.onBehalfRepayment">第三家公司代还：{{ selected?.sourceCompany }} 代 {{ selected?.repaymentDebtorCompany }} 归还 {{ selected?.destinationCompany }}</p>
           <p>{{ selected?.sourceScope }}（尾号 {{ selected?.sourceAccountLast4 }}） → {{ selected?.destinationScope }}（尾号 {{ selected?.destinationAccountLast4 }}）</p>
           <p>{{ selected?.reason }}</p>
           <p v-if="selected?.originalReference">归还原往来：{{ selected.originalReference }}</p>
@@ -393,5 +399,6 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
 .company-transfer-page {display:grid;gap:var(--jg-space-4);min-width:0;}
 .transfer-filters {display:flex;flex-wrap:wrap;gap:var(--jg-space-3);}
 .transfer-filters>* {max-width:100%;}
+.transfer-hint {color:var(--jg-text-secondary);font-size:var(--jg-font-size-sm);margin:0;}
 article {padding:var(--jg-space-4);border:1px solid var(--jg-border);border-radius:var(--jg-radius-md);overflow-wrap:anywhere;}
 </style>
