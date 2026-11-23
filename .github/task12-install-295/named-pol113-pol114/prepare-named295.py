@@ -165,7 +165,7 @@ write(context/'candidate-admission.json',(json.dumps({
     'migrationCount':count,
     **({'sourceTree':source['sourceTree'],'ledger320':source['ledgerSha256'],'tails':source['tails']} if current320 else {}),
 })+'\n').encode())
-docker = read_pinned(donor/'Dockerfile.in','7a99ba7b82ad0ede0ca3aaedb16783a49b6a4b3f393754bdb336cd730f4c2aae').decode()
+docker = read_pinned(donor/'Dockerfile.in','d0be4d034a284234476d26234118a497341b14268392d859c68190867823b98e').decode()
 copy = read_pinned(donor/'runtime-copy.txt','de9a7b69c406aa307423a7231ec086b8c6995bd435bfc1fae0bb0dab5d4b40e6').decode().strip()
 docker = docker.replace('@RUNTIME_COPY@',copy+'\nCOPY --chmod=0644 named295-tail.cjs terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs terminal.sql payout-terminal.sql multi-witness.sql /qualification/')
 write(context/'Dockerfile',docker.encode())

@@ -16,7 +16,7 @@ COPY workspace/ ./
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
 RUN apt-get update && apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk  && pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile  && pnpm --filter @jiangkong/shared-domain build  && pnpm --filter @jiangkong/api exec prisma generate  && pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit  && pnpm --filter @jiangkong/web-admin exec node scripts/verify-linux-webkit-runtime.cjs
 ARG JG_NAMED_BUILD_POL114=0
-RUN case "$JG_NAMED_BUILD_POL114" in 0) ;; 1) COREPACK_ENABLE_NETWORK=0 pnpm --filter @jiangkong/api build && node /qualification/preflight-layout-dist.cjs /qualification/workspace ;; *) exit 64 ;; esac
+RUN case "$JG_NAMED_BUILD_POL114" in 0) ;; 1) COREPACK_ENABLE_NETWORK=0 NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @jiangkong/api build && node /qualification/preflight-layout-dist.cjs /qualification/workspace ;; *) exit 64 ;; esac
 ARG JG_NAMED_CANDIDATE_SHA
 RUN runuser -u postgres -- env JG_NAMED_CANDIDATE_SHA="$JG_NAMED_CANDIDATE_SHA" node /qualification/loader-preflight.cjs --modules-only  && node /qualification/verify-named-preimage.cjs  && node /qualification/verify-named-function-proofs.cjs  && node /qualification/verify-seven-observation.cjs
 ARG JG_NAMED_CONTEXT_SHA
