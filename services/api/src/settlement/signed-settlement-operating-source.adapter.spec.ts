@@ -285,6 +285,32 @@ describe("SignedSettlementOperatingSourceAdapter upward/outside projection", () 
     )).toBe(false);
   });
 
+  it("maps a negative upward settlement to an internal receivable decrease", async () => {
+    const { tx } = fixture();
+    tx.signedContractSettlement.findUnique.mockResolvedValue(
+      {
+        ...upwardSettlement(),
+        id: "signed-upward-negative",
+        amountYuan: new Prisma.Decimal("-12.0000")
+      }
+    );
+    const adapter = new SignedSettlementOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+      sourceBusinessId: "signed-upward-negative"
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input.impacts).toEqual([
+      expect.objectContaining({
+        impactKind: "receivable_increase",
+        amountCents: 1200n,
+        direction: "decrease"
+      })
+    ]);
+    expect(input.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
+  });
+
   it("maps an outside settlement to project cost and downstream payable", async () => {
     const { tx } = fixture();
     tx.signedContractSettlement.findUnique.mockResolvedValue(outsideSettlement());

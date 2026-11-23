@@ -261,9 +261,6 @@ export class SignedSettlementOperatingSourceAdapter
     if (signedCents.isZero()) {
       throw new BadRequestException("已签结算金额不足一分，无法登记经营金额");
     }
-    if (row.contractKind === "upward" && signedCents.isNegative()) {
-      throw new BadRequestException("对上已签结算的冲减金额不能为负");
-    }
     const attachmentFileIds = row.attachments.map(
       (attachment) => attachment.fileId
     );
