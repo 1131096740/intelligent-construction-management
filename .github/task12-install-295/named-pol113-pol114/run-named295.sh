@@ -61,6 +61,30 @@ for(const key of ['stage','code','sqlstate','prismaCode']){
   const value=receipt.failure?.[key];
   if(typeof value==='string'&&/^[A-Z0-9_]{1,96}$/u.test(value))failure[key]=value;
 }
+const count=value=>Number.isSafeInteger(value)&&value>=0&&value<=10000;
+if(receipt.originalSuite){
+  failure.suite=Object.fromEntries(
+    ['total','passed','skipped','exit'].filter(key=>count(receipt.originalSuite[key]))
+      .map(key=>[key,receipt.originalSuite[key]])
+  );
+}
+if(Array.isArray(receipt.jestDiagnostic?.failed)){
+  failure.cases=receipt.jestDiagnostic.failed.slice(0,6).map(row=>({
+    titleSha256:typeof row?.titleSha256==='string'&&/^[0-9a-f]{64}$/u.test(row.titleSha256)?row.titleSha256:undefined,
+    frames:Array.isArray(row?.frames)?row.frames.filter(frame=>Array.isArray(frame)&&
+      frame.length===2&&frame.every(count)).slice(0,4):[],
+    statuses:Array.isArray(row?.statuses)?row.statuses.filter(value=>Number.isInteger(value)&&
+      value>=100&&value<=599).slice(0,4):[]
+  }));
+}
+const lanes=mode==='pol114'?['layout','settlement']:['project'];
+for(const lane of lanes){
+  const rows=receipt.browser?.[lane];
+  if(!Array.isArray(rows))continue;
+  failure[lane]=rows.slice(0,8).map(row=>Object.fromEntries(
+    ['total','passed','unexpected'].filter(key=>count(row?.[key])).map(key=>[key,row[key]])
+  ));
+}
 process.stderr.write('POL113_POL114_FAILURE '+JSON.stringify(failure)+'\n');
 JS
   exit "$status"
