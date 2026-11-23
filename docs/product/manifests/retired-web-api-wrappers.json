@@ -179,6 +179,15 @@
         "listAvailableContractBusinessScenarios",
         "recommendContractScenarioTemplates"
       ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "classification": "test_only",
+      "reason": "The signed-supplement workflow (SignedContractChanges, #395) replaces the legacy contract-change-draft entry on contract detail; these wrappers have no production consumer and are retained for API unit tests pending backend route retirement.",
+      "wrappers": [
+        "createContractChangeDraft",
+        "fetchContractChangeEligibility"
+      ]
     }
   ]
 }
