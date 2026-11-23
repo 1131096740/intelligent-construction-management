@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 53,
-    "exportedFunctionCount": 785,
-    "transportWrapperCount": 761,
+    "exportedFunctionCount": 787,
+    "transportWrapperCount": 763,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 835,
+    "mainRequestBindingCount": 837,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 791,
-    "productionConsumerCount": 670,
+    "requestEdgeCount": 793,
+    "productionConsumerCount": 672,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -14083,7 +14083,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 395,
+          "sourceLine": 464,
           "method": "POST",
           "path": "/expense-claims/:param/payment-subject",
           "normalizedPath": "/expense-claims/:param/payment-subject",
@@ -14112,7 +14112,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 264,
+          "sourceLine": 333,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/append",
           "normalizedPath": "/expense-claims/:param/attachments/append",
@@ -14141,7 +14141,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 251,
+          "sourceLine": 320,
           "method": "POST",
           "path": "/expense-claims/:param/attachments",
           "normalizedPath": "/expense-claims/:param/attachments",
@@ -14170,7 +14170,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 464,
+          "sourceLine": 533,
           "method": "POST",
           "path": "/expense-claims/:param/repayments/:param/confirmation",
           "normalizedPath": "/expense-claims/:param/repayments/:param/confirmation",
@@ -14199,7 +14199,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 222,
+          "sourceLine": 291,
           "method": "POST",
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
@@ -14229,7 +14229,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 290,
+          "sourceLine": 359,
           "method": "GET",
           "path": "/expense-claims/:param/capability",
           "normalizedPath": "/expense-claims/:param/capability",
@@ -14244,7 +14244,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 478,
+          "sourceLine": 547,
           "method": "POST",
           "path": "/expense-claims/:param/draft-deletion",
           "normalizedPath": "/expense-claims/:param/draft-deletion",
@@ -14271,7 +14271,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 290,
+          "sourceLine": 359,
           "method": "GET",
           "path": "/expense-claims/:param/capability",
           "normalizedPath": "/expense-claims/:param/capability",
@@ -14298,7 +14298,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 216,
+          "sourceLine": 285,
           "method": "GET",
           "path": "/expense-claims/create-options",
           "normalizedPath": "/expense-claims/create-options",
@@ -14327,7 +14327,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 284,
+          "sourceLine": 353,
           "method": "GET",
           "path": "/expense-claims/:param",
           "normalizedPath": "/expense-claims/:param",
@@ -14349,6 +14349,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchExpenseClaimExpenseCategories",
+      "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 264,
+          "method": "GET",
+          "path": "/expense-claims/expense-categories?:param",
+          "normalizedPath": "/expense-claims/expense-categories",
+          "normalizedKey": "GET /expense-claims/expense-categories",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchExpenseClaimExpenseCategories"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/expense-claim.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchExpenseClaimRepaymentActionCapability",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
@@ -14356,7 +14385,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 301,
+          "sourceLine": 370,
           "method": "GET",
           "path": "/expense-claims/:param/repayments/:param/capability",
           "normalizedPath": "/expense-claims/:param/repayments/:param/capability",
@@ -14376,6 +14405,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchExpenseClaimSelectablePurchaseBatches",
+      "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 277,
+          "method": "GET",
+          "path": "/expense-claims/selectable-purchase-batches?:param",
+          "normalizedPath": "/expense-claims/selectable-purchase-batches",
+          "normalizedKey": "GET /expense-claims/selectable-purchase-batches",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchExpenseClaimSelectablePurchaseBatches"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/expense-claim.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchExpenseClaims",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
@@ -14383,7 +14441,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 210,
+          "sourceLine": 258,
           "method": "GET",
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
@@ -14412,7 +14470,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 446,
+          "sourceLine": 515,
           "method": "POST",
           "path": "/expense-claims/:param/final-disbursement-pdf",
           "normalizedPath": "/expense-claims/:param/final-disbursement-pdf",
@@ -14441,7 +14499,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 440,
+          "sourceLine": 509,
           "method": "POST",
           "path": "/expense-claims/:param/final-payment-pdf",
           "normalizedPath": "/expense-claims/:param/final-payment-pdf",
@@ -14470,7 +14528,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 452,
+          "sourceLine": 521,
           "method": "POST",
           "path": "/expense-claims/:param/disbursements",
           "normalizedPath": "/expense-claims/:param/disbursements",
@@ -14499,7 +14557,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 458,
+          "sourceLine": 527,
           "method": "POST",
           "path": "/expense-claims/:param/repayments",
           "normalizedPath": "/expense-claims/:param/repayments",
@@ -14528,7 +14586,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 428,
+          "sourceLine": 497,
           "method": "POST",
           "path": "/expense-claims/:param/payments",
           "normalizedPath": "/expense-claims/:param/payments",
@@ -14557,7 +14615,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 274,
+          "sourceLine": 343,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/:param/removal",
           "normalizedPath": "/expense-claims/:param/attachments/:param/removal",
@@ -14586,7 +14644,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 470,
+          "sourceLine": 539,
           "method": "POST",
           "path": "/expense-claims/:param/repayments/:param/reversal",
           "normalizedPath": "/expense-claims/:param/repayments/:param/reversal",
@@ -14615,7 +14673,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 238,
+          "sourceLine": 307,
           "method": "POST",
           "path": "/expense-claims/:param/approval",
           "normalizedPath": "/expense-claims/:param/approval",
@@ -14644,7 +14702,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 232,
+          "sourceLine": 301,
           "method": "POST",
           "path": "/expense-claims/:param/submission",
           "normalizedPath": "/expense-claims/:param/submission",
@@ -14673,7 +14731,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 319,
+          "sourceLine": 388,
           "method": "POST",
           "path": "/expense-claims/:param/append-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/append-attachment-file-uploads",
@@ -14701,7 +14759,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 319,
+          "sourceLine": 388,
           "method": "POST",
           "path": "/expense-claims/:param/draft-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/draft-attachment-file-uploads",
@@ -14729,7 +14787,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 319,
+          "sourceLine": 388,
           "method": "POST",
           "path": "/expense-claims/:param/disbursement-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/disbursement-voucher-file-uploads",
@@ -14757,7 +14815,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 319,
+          "sourceLine": 388,
           "method": "POST",
           "path": "/expense-claims/:param/repayment-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/repayment-voucher-file-uploads",
@@ -14785,7 +14843,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 319,
+          "sourceLine": 388,
           "method": "POST",
           "path": "/expense-claims/:param/payment-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/payment-voucher-file-uploads",

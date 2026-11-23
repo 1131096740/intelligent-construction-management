@@ -6,9 +6,9 @@
 
 | 证据 | 状态 |
 | --- | --- |
-| Controller 源码路由 | 已扫描 267 条 |
-| Web API 请求 | 已扫描 178 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 818 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| Controller 源码路由 | 已扫描 270 条 |
+| Web API 请求 | 已扫描 181 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 855 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 53 条合同专项候选；物理删除授权固定为否 |
 
@@ -16,7 +16,7 @@
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 130 |
+| matched | 133 |
 | frontend_without_backend | 0 |
 | backend_without_frontend | 84 |
 | backend_internal_only | 0 |
@@ -249,6 +249,9 @@
 | PUT | `/projects/:param/contract-takeovers/:param/finance-side` | saveContractTakeoverFinanceSide | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/finance-side/confirmation` | confirmContractTakeoverFinanceSide | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal` | withdrawContractTakeoverFinanceSideConfirmation | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
+| POST | `/projects/:param/contract-takeovers/:param/finance-supplement-return` | returnContractTakeoverForFinanceSupplement | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
+| GET | `/projects/:param/contract-takeovers/:param/handover` | getContractTakeoverHandover | apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue | matched | 保留 | 否 | — |
+| PUT | `/projects/:param/contract-takeovers/:param/handover` | saveContractTakeoverHandover | apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/payment-evidence-files` | attachHistoricalPaymentVoucher | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/review-submission` | submitContractTakeoverReview | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/supplement-return` | returnContractTakeoverForSupplement | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
@@ -259,7 +262,7 @@
 | POST | `/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| GET | `/projects/:param/contract-takeovers/capability` | fetchContractTakeoverProjectCapability | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue<br>apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue | matched | 保留 | 否 | — |
+| GET | `/projects/:param/contract-takeovers/capability` | fetchContractTakeoverProjectCapability | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue<br>apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue<br>apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue | matched | 保留 | 否 | — |
 | GET | `/projects/:param/contract-takeovers/company-entity-candidates` | listHistoricalCompanyEntityCandidates | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/files` | uploadContractTakeoverPrivateFile | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue<br>apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue | matched | 保留 | 否 | — |
 | GET | `/projects/:param/contract-takeovers/import-batches` | listContractTakeoverImportBatches | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |

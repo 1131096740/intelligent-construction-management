@@ -1,5 +1,13 @@
 # 建工智管当前状态
 
+## 2026-11-23 整站 inspect 清单收敛（#403 返工 / #405 / #404）
+
+分支 `line-af-manifests`（基线 `e16e2b515`），先合入 `adopt-395-396-415` tip `96930648f`（#404，迁移到 326），未 push、未新增迁移、未操作生产。
+
+- `inspect:whole-site-page-actions:ready` blocker **5→0**：新增 `ActualPurchaseBatchPanel.vue` 5 个写适配器的专用 AST witness（打开按钮门 → 对话框写调用 → 可信单 GET → 后端岗位守卫）；未改通用判定、未补假页面动作。
+- `inspect:whole-site-route-usage` 未分类 **8→0**：2 条 #403 批次详情/更新、6 条 #405 其他项目付款写接口按 #400 既有口径登记为 `internal_task` + `operator_endpoint`，理由写“Web 写入口尚未接入”；#404 的 2 个只读导出/2 条路由自动为 `page`。
+- `inspect:release-manifests` 转绿；page-actions READY 475/0、route-usage READY 855/0、web-api READY 763/837；Web typecheck 通过；迁移基线 326 clean；`docker ps -q` 为 0。仍存产品缺口（#405 六个写接口无 Web 入口、#403 详情/更新适配器无消费者），详见 [回执](docs/progress/2026-11-23-manifest-convergence-403-405.md)。
+
 ## 2026-11-23 #416 HIS-01～HIS-08、HIS-12 全量补差
 
 分支 `line-ab-416-his`（基线 `7e6ced3e0`），代码提交 `8b6b1415c7e2c34c3dc7c7867f5ce05a3f867e3d`（真库证据绑定合并提交 `df7c83688`）。未 push、本票未新增迁移；合入集成分支 `f713e4550` 后迁移数 **324**（#400 新增 1 条），未改 `07500`/`05800`、未操作生产。

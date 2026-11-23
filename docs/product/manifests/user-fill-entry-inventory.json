@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 454,
+    "activeBusinessActionCount": 461,
     "technicalActionCount": 10,
-    "activeBindingCount": 553,
+    "activeBindingCount": 560,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -18,6 +18,91 @@
     "blockerCount": 0
   },
   "activeEntries": [
+    {
+      "id": "actual-purchase-batch.correction-confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/corrections/:param/confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.correction-request",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.create",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.refund-record",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/refunds"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.spot-payment",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/spot-payments"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
     {
       "id": "affiliate-company-contract.confirm",
       "status": "unified_candidate",
@@ -1712,6 +1797,22 @@
       "causalVerified": true
     },
     {
+      "id": "contract-takeover.finance-return-for-supplement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/contract-takeovers/:param/finance-supplement-return"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-takeover.precheck-import",
       "status": "unified_candidate",
       "usage": "background",
@@ -1754,6 +1855,22 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /projects/:param/contract-takeovers/imports/preview"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-takeover.register-handover",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "PUT /projects/:param/contract-takeovers/:param/handover"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
