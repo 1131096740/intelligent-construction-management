@@ -5,7 +5,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Injectable
+  Injectable,
+  Optional
 } from "@nestjs/common";
 import {
   Prisma,
@@ -36,7 +37,20 @@ import {
   approvalReviewAccessOnFrozenNode,
   pendingRoleKeysForFrozenApprovalNode
 } from "../approval/approval-node-access";
+import { AuditService } from "../audit/audit.service";
+import { exportBusinessLedger } from "../core-flow/business-ledger-export";
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
+import {
+  LEDGER_DATE_FORMAT,
+  LEDGER_MONEY_FORMAT,
+  type LedgerExcelColumn
+} from "../core-flow/ledger-excel";
+import {
+  normalizeLedgerExportQuery,
+  shanghaiDateKey,
+  sortLedgerRows,
+  type NormalizedLedgerExportQuery
+} from "../core-flow/ledger-export-query";
 import {
   detailAction,
   disabledActionReasons,
@@ -137,6 +151,10 @@ export interface SpotProcurementListQuery {
   projectId?: string;
   status?: string;
   keyword?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: string;
+  columns?: string | string[];
   page?: string | number;
   pageSize?: string | number;
   view?: string;
@@ -363,7 +381,8 @@ export class SpotProcurementReadService {
     private readonly access: SpotProcurementAccessService,
     private readonly pilot: SpotProcurementPilotService,
     private readonly invoiceLedger?: InvoiceLedgerService,
-    private readonly paymentInvoices?: SpotProcurementInvoiceService
+    private readonly paymentInvoices?: SpotProcurementInvoiceService,
+    @Optional() private readonly audit?: AuditService
   ) {}
 
   async capabilities(actorUserId: string, projectId: string) {
@@ -493,15 +512,125 @@ export class SpotProcurementReadService {
     actorUserId: string,
     query: SpotProcurementListQuery
   ) {
+    const normalized = normalizeLedgerExportQuery(query as Record<string, unknown>);
+    const pagination = listPagination(query.page, query.pageSize);
+    const { rows: filteredRows, view, surface, statistics } =
+      await this.filteredProcurementRows(actorUserId, query, normalized);
+    const pageRows = filteredRows.slice(
+      pagination.skip,
+      pagination.skip + pagination.pageSize
+    );
+    const items = await this.procurementListItems(pageRows, actorUserId);
+
+    return {
+      items,
+      view,
+      surface,
+      pagination: paginationResult(pagination, filteredRows.length),
+      statistics,
+      filters: {
+        projectId: normalized.projectId ?? null,
+        dateFrom: normalized.dateFrom ?? null,
+        dateTo: normalized.dateTo ?? null,
+        status: normalized.status ?? null,
+        keyword: normalized.keyword ?? null,
+        sort: normalized.sortField
+          ? `${normalized.sortField}:${normalized.sortDirection}`
+          : null
+      },
+      columns: SPOT_PROCUREMENT_LEDGER_COLUMNS.map((column) => ({
+        key: String(column.key),
+        header: column.header,
+        required: Boolean(column.required)
+      }))
+    };
+  }
+
+  /**
+   * 零星采购台账导出：与列表共用 `filteredProcurementRows`，其中
+   * `scanAccessibleProcurements` 已逐行调用 `accessibleProcurementIds`；
+   * 导出只拿到筛选后的可见行，不扩大读取范围。
+   */
+  async exportLedger(
+    actorUserId: string,
+    rawQuery?: Record<string, unknown>
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const normalized = normalizeLedgerExportQuery(rawQuery);
+    const { rows } = await this.filteredProcurementRows(
+      actorUserId,
+      (rawQuery ?? {}) as SpotProcurementListQuery,
+      normalized
+    );
+    const items = await this.procurementListItems(rows, actorUserId);
+    const exported = items.map((item) => {
+      const record = item as Record<string, unknown>;
+      return {
+        ...record,
+        projectName: item.project.name,
+        applicantText:
+          (typeof record.applicationName === "string" && record.applicationName) ||
+          ((record.applicant as { name?: string } | undefined)?.name ?? "待确定"),
+        purchaserText:
+          (typeof record.purchaserName === "string" && record.purchaserName) ||
+          ((record.handler as { name?: string } | undefined)?.name ?? "待确定"),
+        supplierText:
+          typeof record.supplierName === "string" && record.supplierName
+            ? record.supplierName
+            : "待确定",
+        estimatedAmountYuan: spotLedgerAmountYuan(record),
+        updatedAtIso: item.updatedAt,
+        createdAtIso: item.createdAt,
+        arrivalDate:
+          typeof record.requestedArrivalAt === "string"
+            ? record.requestedArrivalAt
+            : null
+      };
+    });
+    return exportBusinessLedger({
+      prisma: this.prisma,
+      audit: this.audit,
+      actorUserId,
+      action: "spot_procurement.ledger.export",
+      businessType: "spot_procurement_ledger",
+      scope: "all_filtered_visible_spot_procurements",
+      sheetName: "零星采购台账",
+      fileNamePrefix: "零星采购台账",
+      columns: SPOT_PROCUREMENT_LEDGER_COLUMNS,
+      rows: exported,
+      columnKeys: normalized.columnKeys,
+      filters: normalized,
+      visibleProjectCount: (await this.visibleProjectIdsForQuery(
+        actorUserId,
+        normalized.projectId
+      )).length
+    });
+  }
+
+  private async filteredProcurementRows(
+    actorUserId: string,
+    query: SpotProcurementListQuery,
+    normalized: NormalizedLedgerExportQuery
+  ): Promise<{
+    rows: SpotProcurement[];
+    view: "active" | "ended";
+    surface: "procurement" | "receipt";
+    statistics: { total: number; byStatus: Record<string, number> };
+  }> {
     const projectIds = await this.visibleProjectIdsForQuery(
       actorUserId,
-      query.projectId
+      normalized.projectId
     );
-    const pagination = listPagination(query.page, query.pageSize);
     const view = lifecycleView(query.view);
     const surface = query.surface === "receipt" ? "receipt" : "procurement";
-    if (!projectIds.length) return emptyPagedList(pagination, view);
-    const status = optionalQueryText(query.status);
+    if (!projectIds.length) {
+      return {
+        rows: [],
+        view,
+        surface,
+        statistics: { total: 0, byStatus: {} }
+      };
+    }
+    const status = optionalQueryText(normalized.status);
     if (
       status &&
       !SPOT_PROCUREMENT_STATUSES.includes(
@@ -510,7 +639,7 @@ export class SpotProcurementReadService {
     ) {
       throw new BadRequestException("零星采购状态筛选值不正确");
     }
-    const keyword = optionalQueryText(query.keyword);
+    const keyword = optionalQueryText(normalized.keyword);
     const keywordMatch = keyword
       ? await this.procurementIdsMatchingVersionKeyword(projectIds, keyword)
       : [];
@@ -538,20 +667,25 @@ export class SpotProcurementReadService {
     const surfaceRows = surface === "receipt"
       ? lifecycleRows.filter((row) => ["approved_in_progress", "closed"].includes(row.status))
       : lifecycleRows;
-    const filteredRows = status
+    const statusRows = status
       ? surfaceRows.filter((row) => row.status === status)
       : surfaceRows;
-    const pageRows = filteredRows.slice(pagination.skip, pagination.skip + pagination.pageSize);
-    const items = await this.procurementListItems(
-      pageRows,
-      actorUserId
-    );
-
+    const dateRows = statusRows.filter((row) => {
+      if (!normalized.dateFrom && !normalized.dateTo) return true;
+      const key = shanghaiDateKey(row.updatedAt);
+      if (key === null) return false;
+      if (normalized.dateFrom && key < normalized.dateFrom) return false;
+      if (normalized.dateTo && key > normalized.dateTo) return false;
+      return true;
+    });
     return {
-      items,
+      rows: sortLedgerRows(dateRows, normalized.sortField, normalized.sortDirection, {
+        updatedAt: (row) => row.updatedAt,
+        createdAt: (row) => row.createdAt,
+        status: (row) => row.status
+      }),
       view,
       surface,
-      pagination: paginationResult(pagination, filteredRows.length),
       statistics: statusCounts(surfaceRows)
     };
   }
@@ -4809,15 +4943,6 @@ function paginationResult(pagination: ListPagination, total: number) {
   };
 }
 
-function emptyPagedList(pagination: ListPagination, view: "active" | "ended") {
-  return {
-    items: [],
-    view,
-    pagination: paginationResult(pagination, 0),
-    statistics: { total: 0, byStatus: {} as Record<string, number> }
-  };
-}
-
 function statusCounts(rows: Array<{ status: string }>) {
   const byStatus: Record<string, number> = {};
   for (const row of rows) byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
@@ -4836,4 +4961,39 @@ function groupBy<T>(
     grouped.set(value, group);
   }
   return grouped;
+}
+
+
+const SPOT_PROCUREMENT_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unknown>>[] = [
+  { header: "采购编号", key: "code", width: 18, required: true },
+  { header: "项目", key: "projectName", width: 24, required: true },
+  { header: "申请人", key: "applicantText", width: 14 },
+  { header: "采购人", key: "purchaserText", width: 14 },
+  { header: "供应商", key: "supplierText", width: 22 },
+  { header: "采购内容与用途", key: "reason", width: 30 },
+  {
+    header: "预计金额（元）",
+    key: "estimatedAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum"
+  },
+  { header: "采购状态", key: "statusLabel", width: 14 },
+  { header: "要求到位日期", key: "arrivalDate", width: 14, kind: "date", numFmt: LEDGER_DATE_FORMAT },
+  { header: "更新时间", key: "updatedAtIso", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
+];
+
+/** 预计金额优先；历史单退回已批准/当前总额的分币字段。未知保持空白。 */
+function spotLedgerAmountYuan(item: Record<string, unknown>): number | null {
+  const estimated = item.estimatedTotalAmount;
+  if (typeof estimated === "string" && estimated.trim() !== "") {
+    const value = Number(estimated);
+    return Number.isFinite(value) ? value : null;
+  }
+  const cents = item.approvedAmountCents ?? item.currentTotalAmountCents;
+  if (typeof cents !== "string" || cents.trim() === "") return null;
+  const value = Number(cents);
+  return Number.isFinite(value) ? value / 100 : null;
 }

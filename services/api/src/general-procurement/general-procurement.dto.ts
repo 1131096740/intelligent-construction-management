@@ -64,4 +64,10 @@ export class ListGeneralProcurementDto {
   @IsOptional() @Type(() => Number) @IsInt({ message: "每页条数格式不正确" }) @Min(1, { message: "每页至少一条" }) @Max(100, { message: "每页最多一百条" }) pageSize = 20;
   @IsOptional() @IsString({ message: "搜索内容必须是文字" }) @MaxLength(200, { message: "搜索内容最多二百字" }) search?: string;
   @IsOptional() @IsIn(["all", "drafts", "approval_pending", "approved_pending_archive", "approved_pending_procurement", "archived"], { message: "申请状态格式不正确" }) status?: string;
+  @IsOptional() @IsString({ message: "项目筛选格式不正确" }) @MaxLength(128, { message: "项目标识超出长度限制" }) projectId?: string;
+  @IsOptional() @IsString({ message: "关键词必须是文字" }) @MaxLength(200, { message: "关键词最多二百字" }) keyword?: string;
+  @IsOptional() @IsString({ message: "开始日期必须是日期文字" }) @MaxLength(10, { message: "开始日期格式不正确" }) dateFrom?: string;
+  @IsOptional() @IsString({ message: "结束日期必须是日期文字" }) @MaxLength(10, { message: "结束日期格式不正确" }) dateTo?: string;
+  @IsOptional() @IsString({ message: "排序格式不正确" }) @MaxLength(64, { message: "排序格式不正确" }) sort?: string;
+  @IsOptional() @IsString({ message: "显示列格式不正确" }) @MaxLength(2000, { message: "显示列超出范围" }) columns?: string;
 }

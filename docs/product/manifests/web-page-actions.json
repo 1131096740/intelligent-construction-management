@@ -12,12 +12,12 @@
     "registeredActionCount": 483,
     "pageActionCount": 111,
     "backgroundActionCount": 372,
-    "reachableVueFileCount": 237,
+    "reachableVueFileCount": 239,
     "routeRootCount": 80,
-    "totalVueFileCount": 250,
-    "parsedVueFileCount": 250,
-    "reachableProductionModuleCount": 413,
-    "templateEventDirectiveCount": 1599,
+    "totalVueFileCount": 252,
+    "parsedVueFileCount": 252,
+    "reachableProductionModuleCount": 415,
+    "templateEventDirectiveCount": 1633,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 474,
     "candidateProductionMutationConsumerCount": 474,
@@ -26,10 +26,10 @@
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 432,
-    "reachableProductionModuleCount": 413,
-    "totalVueFileCount": 250,
-    "parsedVueFileCount": 250
+    "totalProductionModuleCount": 434,
+    "reachableProductionModuleCount": 415,
+    "totalVueFileCount": 252,
+    "parsedVueFileCount": 252
   },
   "actions": [
     {
@@ -2331,7 +2331,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2377,7 +2377,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3525,7 +3525,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3569,7 +3569,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5132,7 +5132,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5176,7 +5176,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6238,7 +6238,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6284,7 +6284,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7526,7 +7526,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7570,7 +7570,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16146,7 +16146,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16190,7 +16190,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17787,7 +17787,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17831,7 +17831,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20963,7 +20963,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -21007,7 +21007,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6105,
+              "sourceLine": 6149,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -33049,7 +33049,7 @@
         "event": "call",
         "handler": "createSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 590,
+        "sourceLine": 743,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -33114,7 +33114,7 @@
         "event": "call",
         "handler": "updateSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 607,
+        "sourceLine": 760,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -33179,7 +33179,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementCreateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 627,
+        "sourceLine": 780,
         "sourceColumn": 0
       },
       "semantic": "business_write",

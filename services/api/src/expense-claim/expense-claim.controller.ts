@@ -1,7 +1,7 @@
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { DeleteExpenseClaimDraftDto } from "./dto/delete-expense-claim-draft.dto";
-import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -15,6 +15,7 @@ import { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from 
 import { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
 import { AdjustExpenseClaimPaymentSubjectDto } from "./dto/adjust-expense-claim-payment-subject.dto";
 import { RecordExpenseClaimPaymentDto, ReverseEmployeeLoanRepaymentDto } from "./dto/record-expense-claim-payment.dto";
+import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 @Controller("expense-claims")
@@ -35,6 +36,30 @@ export class ExpenseClaimController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser, @Query("view") view?: string) {
     return this.claims.listMine(user.id, view);
+  }
+
+  /**
+   * 费用与报销台账：财务/综合/公司领导/项目经理按项目可见范围跨项目查账，
+   * 普通员工仍只见本人、经办及参与审批的记录。列表与导出同读模型。
+   */
+  @Get("ledger")
+  ledger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: Record<string, string | string[] | undefined> = {}
+  ) {
+    return this.claims.listLedger(user.id, query);
+  }
+
+  @Get("ledger-export")
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void },
+    @Query() query: Record<string, string | string[] | undefined> = {}
+  ) {
+    const result = await this.claims.exportLedger(user.id, query);
+    response.set(ledgerExportHeaders(result));
+    return new StreamableFile(result.buffer);
   }
 
   @Get("create-options")

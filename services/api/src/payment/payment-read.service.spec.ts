@@ -1,4 +1,5 @@
 jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
+import * as ExcelJS from "exceljs";
 import { PaymentReadService } from "./payment-read.service";
 
 function withSignedAgreementLookup(prisma: object, explicitDetailProjection = false): never {
@@ -3095,4 +3096,85 @@ describe("PaymentReadService", () => {
     expect(review.access.canAct).toBe(expected);
     expect(review.access.canReview).toBe(expected);
   });
+
+  it("exports only rows already filtered by the visibility read model", async () => {
+    // ExcelJS 写缓冲区依赖真实定时器。
+    jest.useRealTimers();
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new PaymentReadService({} as never, {} as never, undefined, audit as never);
+    const visibleRow = {
+      id: "payment-1",
+      paymentNo: "FK-001",
+      contractRelationshipLabel: "下游合同",
+      contractNo: "HT-001 · 幕墙分包合同",
+      settlementNo: "合同累计结算",
+      project: "总部综合楼",
+      projectId: "project-1",
+      contractId: "contract-1",
+      signingParty: "四川建工智管建筑工程有限公司",
+      counterparty: "=HYPERLINK(\"http://evil.example\")",
+      requestedAmount: "¥1,000.00",
+      approvalStatus: "已批待付",
+      approvalTone: "warning",
+      paymentStatus: "未付款",
+      paymentTone: "default",
+      currentNode: "待付款",
+      ownerDepartment: "财务部",
+      pendingOwner: "财务部",
+      stalledFor: "1天",
+      returnReason: "-",
+      nextAction: "登记实付",
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: "2026-11-20T01:00:00.000Z",
+      requestedAmountCents: "100000",
+      paidAmountCents: "0",
+      availableActions: [],
+      blockedReasons: [],
+      updatedAt: "2026/11/20 09:00:00"
+    };
+    jest.spyOn(service, "listRecent").mockResolvedValue({
+      rows: [visibleRow],
+      summary: { total: 1, pendingApproval: 0, orSign: 0, pendingPayment: 1, paid: 0 }
+    } as never);
+
+    const result = await service.exportLedger(["project-1"], "finance-user", {
+      keyword: "幕墙",
+      columns: "paymentNo,requestedAmountYuan"
+    });
+
+    // 导出只消费 listRecent 返回的可见行，不自行扩大范围。
+    expect(service.listRecent).toHaveBeenCalledWith(undefined, ["project-1"], {
+      all: true,
+      actorUserId: "finance-user"
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        action: "payment.ledger.export",
+        metadata: expect.objectContaining({
+          exportedRows: 1,
+          scope: "all_filtered_visible_payment_records",
+          filters: expect.objectContaining({ keyword: "幕墙" })
+        })
+      })
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.worksheets[0];
+    const headers = (sheet.getRow(1).values as unknown[]).slice(1) as string[];
+    expect(headers).toEqual([
+      "付款编号",
+      "项目",
+      "签约方（甲方）",
+      "相对方（乙方）",
+      "申请金额（元）"
+    ]);
+    expect(sheet.getRow(2).getCell(1).value).toBe("FK-001");
+    expect(sheet.getRow(2).getCell(4).value).toBe(
+      "'=HYPERLINK(\"http://evil.example\")"
+    );
+    expect(sheet.getRow(2).getCell(5).value).toBe(1000);
+  }, 20_000);
 });

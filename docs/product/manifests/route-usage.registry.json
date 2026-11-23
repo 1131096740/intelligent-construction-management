@@ -3,24 +3,24 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 871,
-    "classificationOverrideCount": 233,
-    "derivedProductionPageCount": 638,
-    "classificationOverrideSha256": "cc4f12a8b7720c084aeb7b3ee240c2fabea3bb1c59fd6ac266d3efd5ed24e2d7",
-    "consumerSurfaceOverrideSha256": "2aff8df481301799b9e60c89a9f36790aae214b910bf690837d3ef07945d8c06",
+    "routeCount": 876,
+    "classificationOverrideCount": 234,
+    "derivedProductionPageCount": 642,
+    "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
+    "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
     "usageCounts": {
-      "page": 657,
+      "page": 661,
       "external_takeover": 70,
       "exit_candidate": 91,
-      "internal_task": 53,
+      "internal_task": 54,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 709,
+      "web_api_wrapper": 713,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
-      "operator_endpoint": 50,
+      "operator_endpoint": 51,
       "none": 102
     }
   },
@@ -1422,6 +1422,12 @@
       "path": "/other-project-payments/:claimId/corrections",
       "usage": "internal_task",
       "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims",
+      "usage": "internal_task",
+      "reason": "expense_claim_list_has_no_page_consumer_web_uses_ledger_and_create_endpoints_retire_pending_425"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1770,6 +1776,12 @@
       "path": "/other-project-payments/:claimId/corrections",
       "consumerSurface": "operator_endpoint",
       "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims",
+      "consumerSurface": "operator_endpoint",
+      "reason": "internal_list_without_page_consumer_served_via_operator_tooling_until_425"
     }
   ]
 }

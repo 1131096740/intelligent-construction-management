@@ -8,10 +8,10 @@ import { centsTextToYuanText } from "../../lib/money";
 export type PaymentTone = "default" | "primary" | "warning" | "danger" | "success";
 
 export interface PaymentLedgerFilters {
-  project: string;
-  settlementNo: string;
-  approvalStatus: string;
-  paymentStatus: string;
+  projectId: string;
+  dateFrom: string;
+  dateTo: string;
+  status: string;
   keyword: string;
 }
 
@@ -21,7 +21,7 @@ export interface PaymentFilterField {
   key: PaymentFilterKey;
   label: string;
   placeholder: string;
-  type: "select" | "keyword";
+  type: "select" | "keyword" | "date";
 }
 
 export interface PaymentSummaryItem {
@@ -44,6 +44,9 @@ export interface PaymentCreateSourceOption {
 
 export interface PaymentLedgerRow {
   contractRelationshipLabel?: string;
+  projectId?: string;
+  signingParty?: string;
+  counterparty?: string;
   id: string;
   paymentNo: string;
   contractNo: string;
@@ -94,27 +97,27 @@ export interface PaymentCapacityExplanationItem {
 
 export const paymentFilterFields: PaymentFilterField[] = [
   {
-    key: "project",
+    key: "projectId",
     label: "项目",
-    placeholder: "全部",
+    placeholder: "全部项目",
     type: "select"
   },
   {
-    key: "settlementNo",
-    label: "付款来源",
-    placeholder: "全部",
-    type: "select"
+    key: "dateFrom",
+    label: "开始日期",
+    placeholder: "不限",
+    type: "date"
   },
   {
-    key: "approvalStatus",
-    label: "审批状态",
-    placeholder: "全部",
-    type: "select"
+    key: "dateTo",
+    label: "结束日期",
+    placeholder: "不限",
+    type: "date"
   },
   {
-    key: "paymentStatus",
-    label: "实付状态",
-    placeholder: "全部",
+    key: "status",
+    label: "审批/实付状态",
+    placeholder: "全部状态",
     type: "select"
   },
   {
@@ -183,25 +186,31 @@ export const paymentRules = [
 export const paymentPaginationBlockReason =
   "当前页由服务端按权限范围分页返回；上方视图数量与统计覆盖当前账号可见的全部记录。";
 
+/** 服务端筛选的项目选项来自台账返回行；状态合并审批与实付标签。 */
 export function paymentLedgerFilterOptions(rows: readonly PaymentLedgerRow[]) {
   return {
-    project: ledgerSelectOptions(rows.map((row) => row.project), "全部项目"),
-    settlementNo: ledgerSelectOptions(rows.map((row) => row.settlementNo), "全部来源"),
-    approvalStatus: ledgerSelectOptions(rows.map((row) => row.approvalStatus), "全部审批状态"),
-    paymentStatus: ledgerSelectOptions(rows.map((row) => row.paymentStatus), "全部实付状态")
+    projectId: ledgerSelectOptions(
+      rows.map((row) => row.projectId ?? ""),
+      "全部项目"
+    ),
+    status: ledgerSelectOptions(
+      [...rows.map((row) => row.approvalStatus), ...rows.map((row) => row.paymentStatus)],
+      "全部状态"
+    )
   };
 }
 
 export function emptyPaymentLedgerFilters(): PaymentLedgerFilters {
   return {
-    project: "",
-    settlementNo: "",
-    approvalStatus: "",
-    paymentStatus: "",
+    projectId: "",
+    dateFrom: "",
+    dateTo: "",
+    status: "",
     keyword: ""
   };
 }
 
+/** 兼容旧单测的纯函数；页面筛选以服务端为准，不在此扩大可见范围。 */
 export function filterPaymentLedgerRows(
   rows: readonly PaymentLedgerRow[],
   filters: PaymentLedgerFilters
@@ -220,10 +229,8 @@ export function filterPaymentLedgerRows(
     ].join(" ");
 
     return (
-      includesText(row.project, filters.project) &&
-      includesText(row.settlementNo, filters.settlementNo) &&
-      includesText(row.approvalStatus, filters.approvalStatus) &&
-      includesText(row.paymentStatus, filters.paymentStatus) &&
+      (!filters.projectId || (row.projectId ?? "") === filters.projectId) &&
+      includesText(`${row.approvalStatus} ${row.paymentStatus}`, filters.status) &&
       includesText(keywordText, filters.keyword)
     );
   });

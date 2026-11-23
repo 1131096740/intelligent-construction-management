@@ -5,9 +5,11 @@ import { MessagePlugin } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
 import { localBusinessForm } from "../../lib/local-business-form";
+import { centsTextToYuanText } from "../../lib/money";
 import DurableFilePicker from "../../components/DurableFilePicker.vue";
 import { onBeforeRouteLeave, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
+import { downloadSpotProcurementLedger } from "../../api/spot-procurement.api";
 import { fetchProjects } from "../../api/core-flow-read.api";
 import {
   createSpotProcurementDraft,
@@ -34,6 +36,8 @@ import BusinessHelp from "../../components/BusinessHelp.vue";
 import ProcurementBusinessNav from "./components/ProcurementBusinessNav.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
+import LedgerExportDialog from "../../components/LedgerExportDialog.vue";
+import LedgerColumnSettings from "../../components/LedgerColumnSettings.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import {
   SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY,
@@ -45,6 +49,14 @@ import ProcurementLineEditor, {
   type ProcurementLineDraft
 } from "./components/ProcurementLineEditor.vue";
 import ProcurementStatusSummary from "./components/ProcurementStatusSummary.vue";
+import {
+  normalizeColumnOrder,
+  normalizeColumnWidths,
+  normalizeVisibleColumnKeys,
+  readPersonalTablePreferences,
+  writePersonalTablePreferences,
+  type PersonalTableSort
+} from "../../app/personal-table-preferences";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -132,8 +144,15 @@ const filters = reactive({
   projectId: "",
   status: "" as SpotProcurementStatus | "",
   keyword: "",
+  dateFrom: "",
+  dateTo: "",
   view: "active" as "active" | "ended"
 });
+const tableSort = ref<PersonalTableSort | null>(null);
+const showColumnSettings = ref(false);
+const showExport = ref(false);
+const exporting = ref(false);
+const exportError = ref("");
 
 const createForm = reactive({
   projectId: "",
@@ -168,17 +187,61 @@ async function changeAttachments(task: () => Promise<void>) {
   });
 }
 
-const columns = [
-  { colKey: "code", title: "采购编号", width: 130, fixed: "left" as const },
-  { colKey: "project", title: "项目", width: 180 },
-  { colKey: "participants", title: "申请人 / 采购人", width: 150 },
-  { colKey: "arrival", title: "到位日期", width: 120 },
-  { colKey: "materialReason", title: "材料与原因摘要", width: 250 },
-  { colKey: "fulfillment", title: "采购待办 / 付款", width: 210 },
-  { colKey: "status", title: "状态 / 当前办理", width: 160 },
-  { colKey: "updatedAt", title: "更新时间", width: 150 },
-  { colKey: "operation", title: "操作", width: 80, fixed: "right" as const }
+const baseColumns = [
+  { colKey: "code", title: "采购编号", width: 130, required: true },
+  { colKey: "project", title: "项目", width: 180, required: true },
+  { colKey: "participants", title: "申请人 / 采购人", width: 150, required: true },
+  { colKey: "arrival", title: "到位日期", width: 120, required: false },
+  { colKey: "materialReason", title: "材料与原因摘要", width: 250, required: true },
+  { colKey: "estimatedAmount", title: "预计金额（元）", width: 140, required: false, align: "right" as const },
+  { colKey: "fulfillment", title: "采购待办 / 付款", width: 210, required: false },
+  { colKey: "status", title: "状态 / 当前办理", width: 160, required: false },
+  { colKey: "updatedAt", title: "更新时间", width: 150, required: false }
 ];
+const configurableColumnKeys = baseColumns.map((column) => column.colKey);
+const preferenceKey = computed(() =>
+  auth.user?.id ? `jiangkong:web-admin:spot-procurement-ledger:${auth.user.id}` : ""
+);
+const preferences = ref({
+  visibleColumnKeys: [...configurableColumnKeys],
+  columnOrder: [...configurableColumnKeys],
+  columnWidths: {} as Record<string, number>
+});
+const columns = computed(() => {
+  const visible = new Set(preferences.value.visibleColumnKeys);
+  const byKey = new Map(baseColumns.map((column) => [column.colKey, column]));
+  const ordered = preferences.value.columnOrder
+    .map((key) => byKey.get(key))
+    .filter((column): column is (typeof baseColumns)[number] => Boolean(column))
+    .filter((column) => visible.has(column.colKey))
+    .map((column) => ({
+      ...column,
+      width: preferences.value.columnWidths[column.colKey] ?? column.width,
+      sorter: column.colKey === "updatedAt"
+    }));
+  return [
+    ...ordered.map(({ required: _required, ...column }) => column),
+    { colKey: "operation", title: "操作", width: 80, fixed: "right" as const }
+  ];
+});
+const visibleColumnOptions = computed(() =>
+  baseColumns.map((column) => ({
+    key: column.colKey,
+    label: column.title,
+    required: Boolean(column.required)
+  }))
+);
+const exportFilters = computed(() => {
+  const filtersValue: Array<{ label: string; value: string }> = [];
+  const project = projectOptions.value.find((option) => option.value === filters.projectId);
+  if (project && project.value) filtersValue.push({ label: "项目", value: project.label });
+  if (filters.view !== "active") filtersValue.push({ label: "生命周期", value: filters.view === "ended" ? "已放弃草稿" : "办理中记录" });
+  if (filters.status) filtersValue.push({ label: "采购状态", value: statusOptions.find((option) => option.value === filters.status)?.label ?? filters.status });
+  if (filters.dateFrom) filtersValue.push({ label: "开始日期", value: filters.dateFrom });
+  if (filters.dateTo) filtersValue.push({ label: "结束日期", value: filters.dateTo });
+  if (filters.keyword.trim()) filtersValue.push({ label: "关键词", value: filters.keyword.trim() });
+  return filtersValue;
+});
 
 const statusOptions = [
   { label: "全部状态", value: "" },
@@ -330,7 +393,12 @@ async function loadWorkbench(page = 1) {
       projectId: filters.projectId || undefined,
       status: filters.status || undefined,
       keyword: filters.keyword.trim() || undefined,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
       view: filters.view,
+      sort: tableSort.value
+        ? `${tableSort.value.key}:${tableSort.value.direction}`
+        : undefined,
       page,
       pageSize: listMeta.value.pageSize
     });
@@ -361,8 +429,93 @@ function resetFilters() {
   filters.projectId = "";
   filters.status = "";
   filters.keyword = "";
+  filters.dateFrom = "";
+  filters.dateTo = "";
   filters.view = "active";
+  tableSort.value = null;
   void loadWorkbench(1);
+}
+
+function onSortChange(context: { sortBy?: string; descending?: boolean }) {
+  tableSort.value = context.sortBy
+    ? { key: context.sortBy, direction: context.descending ? "desc" : "asc" }
+    : null;
+  savePreferences();
+  void loadWorkbench(1);
+}
+
+function onColumnsChange(keys: string[]) {
+  preferences.value.visibleColumnKeys = normalizeVisibleColumnKeys(keys, configurableColumnKeys);
+  savePreferences();
+}
+
+function onColumnOrderChange(order: string[]) {
+  preferences.value.columnOrder = normalizeColumnOrder(order, configurableColumnKeys);
+  savePreferences();
+}
+
+function onColumnWidthsChange(widths: Record<string, number>) {
+  preferences.value.columnWidths = normalizeColumnWidths(widths, configurableColumnKeys);
+  savePreferences();
+}
+
+function savePreferences() {
+  if (!preferenceKey.value) return;
+  writePersonalTablePreferences(getPreferenceStorage(), preferenceKey.value, {
+    query: filters.keyword,
+    visibleColumnKeys: preferences.value.visibleColumnKeys,
+    columnOrder: preferences.value.columnOrder,
+    columnWidths: preferences.value.columnWidths,
+    sort: tableSort.value
+  });
+}
+
+function loadPreferences() {
+  if (!preferenceKey.value) return;
+  const saved = readPersonalTablePreferences(
+    getPreferenceStorage(),
+    preferenceKey.value,
+    configurableColumnKeys
+  );
+  preferences.value = {
+    visibleColumnKeys: saved.visibleColumnKeys,
+    columnOrder: normalizeColumnOrder(saved.columnOrder, configurableColumnKeys),
+    columnWidths: normalizeColumnWidths(saved.columnWidths, configurableColumnKeys)
+  };
+  tableSort.value = saved.sort;
+  if (saved.query && !filters.keyword) filters.keyword = saved.query;
+}
+
+function getPreferenceStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+async function confirmExport() {
+  exporting.value = true;
+  exportError.value = "";
+  try {
+    await downloadSpotProcurementLedger({
+      projectId: filters.projectId || undefined,
+      status: filters.status || undefined,
+      keyword: filters.keyword.trim() || undefined,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
+      view: filters.view,
+      sort: tableSort.value
+        ? `${tableSort.value.key}:${tableSort.value.direction}`
+        : undefined,
+      columns: preferences.value.visibleColumnKeys.join(",")
+    });
+    showExport.value = false;
+  } catch (cause) {
+    exportError.value = formatUnknownApiError(cause, "导出零星采购台账失败");
+  } finally {
+    exporting.value = false;
+  }
 }
 
 function changePage(page: number) {
@@ -700,6 +853,7 @@ function openMobileRow(id: string) {
   } else openDetail(id);
 }
 
+watch(preferenceKey, loadPreferences, { immediate: true });
 onMounted(() => {
   void Promise.all([loadReferenceData(), loadWorkbench()]);
 });
@@ -718,6 +872,12 @@ onMounted(() => {
           @click="loadWorkbench(1)"
         >
           刷新数据
+        </t-button>
+        <t-button
+          variant="outline"
+          @click="showExport = true"
+        >
+          导出当前筛选
         </t-button>
         <t-button
           theme="primary"
@@ -761,6 +921,13 @@ onMounted(() => {
         </t-button>
         <t-button
           size="small"
+          variant="text"
+          @click="showColumnSettings = !showColumnSettings"
+        >
+          {{ showColumnSettings ? "收起列设置" : "列设置" }}
+        </t-button>
+        <t-button
+          size="small"
           variant="outline"
           :loading="loading"
           @click="loadWorkbench(1)"
@@ -791,6 +958,22 @@ onMounted(() => {
           :options="visibleStatusOptions"
         />
       </label>
+      <label class="filter-field">
+        <span>开始日期</span>
+        <t-date-picker
+          v-model="filters.dateFrom"
+          value-type="YYYY-MM-DD"
+          clearable
+        />
+      </label>
+      <label class="filter-field">
+        <span>结束日期</span>
+        <t-date-picker
+          v-model="filters.dateTo"
+          value-type="YYYY-MM-DD"
+          clearable
+        />
+      </label>
       <label class="filter-field filter-field--keyword">
         <span>关键词</span>
         <t-input
@@ -801,6 +984,17 @@ onMounted(() => {
         />
       </label>
     </BusinessTableToolbar>
+
+    <LedgerColumnSettings
+      v-if="showColumnSettings"
+      :columns="visibleColumnOptions"
+      :visible-column-keys="preferences.visibleColumnKeys"
+      :column-order="preferences.columnOrder"
+      :column-widths="preferences.columnWidths"
+      @update:visible-column-keys="onColumnsChange"
+      @update:column-order="onColumnOrderChange"
+      @update:column-widths="onColumnWidthsChange"
+    />
 
     <BusinessFeedback
       v-if="loading && !rows.length"
@@ -843,7 +1037,9 @@ onMounted(() => {
           :data="rows"
           :loading="loading"
           :scroll="{ x: 1_430 }"
+          :sort="tableSort ? { sortBy: tableSort.key, descending: tableSort.direction === 'desc' } : undefined"
           horizontal-scroll-affixed-bottom
+          @sort-change="onSortChange"
         >
           <template #code="{ row }">
             <t-link
@@ -864,6 +1060,9 @@ onMounted(() => {
               <strong>申请：{{ row.applicationName ?? row.applicant.name }}</strong>
               <span>采购：{{ row.purchaserName ?? row.handler.name }}</span>
             </div>
+          </template>
+          <template #estimatedAmount="{ row }">
+            {{ row.requestProtocolVersion === 2 ? (row.estimatedTotalAmount == null ? "待确定" : `${row.estimatedTotalAmount} 元`) : (row.approvedAmountCents ? `¥${centsTextToYuanText(row.approvedAmountCents)}` : "待确定") }}
           </template>
           <template #materialReason="{ row }">
             <div class="two-line-cell">
@@ -941,6 +1140,25 @@ onMounted(() => {
     </section>
 
 
+
+    <p
+      v-if="exportError"
+      class="export-error"
+      role="alert"
+    >
+      {{ exportError }}
+    </p>
+
+    <LedgerExportDialog
+      v-model:visible="showExport"
+      title="导出零星采购台账"
+      :row-count="listMeta.total"
+      :filters="exportFilters"
+      :columns="visibleColumnOptions"
+      :visible-column-keys="preferences.visibleColumnKeys"
+      :busy="exporting"
+      @confirm="confirmExport"
+    />
 
     <t-dialog
       :visible="createVisible"
@@ -1208,6 +1426,19 @@ onMounted(() => {
   background: var(--jg-color-bg-surface);
 }
 
+.column-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm) var(--jg-space-lg);
+  padding: var(--jg-space-sm) 0;
+  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.export-error {
+  color: var(--jg-color-danger);
+  font-size: var(--jg-font-size-meta);
+}
+
 .data-footer {
   display: flex;
   align-items: baseline;
@@ -1220,6 +1451,19 @@ onMounted(() => {
   .form-grid { grid-template-columns: 1fr; }
   .form-field--wide { grid-column: auto; }
   .section-heading,
-  .data-footer { align-items: flex-start; flex-direction: column; }
+  .column-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm) var(--jg-space-lg);
+  padding: var(--jg-space-sm) 0;
+  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.export-error {
+  color: var(--jg-color-danger);
+  font-size: var(--jg-font-size-meta);
+}
+
+.data-footer { align-items: flex-start; flex-direction: column; }
 }
 </style>

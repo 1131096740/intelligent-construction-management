@@ -4394,6 +4394,10 @@ export type PaymentLifecycleLedgerRow = PaymentLedgerListReadModel["rows"][numbe
   lifecycleKind: "approval_draft" | "formal_record";
   ledgerView: DraftLedgerView;
   lifecycleUpdatedAt: string | null;
+  projectId: string;
+  contractId: string;
+  signingParty: string;
+  counterparty: string;
   requestedAmountCents: string;
   paidAmountCents: string;
   availableActions: string[];
@@ -4413,19 +4417,59 @@ export interface PaymentLifecycleLedgerPage {
     pendingPayment: number;
     paid: number;
   };
+  filters?: {
+    projectId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+    status: string | null;
+    keyword: string | null;
+    sort: string | null;
+  };
+  columns?: Array<{ key: string; header: string; required: boolean }>;
+}
+
+export interface PaymentLedgerQueryParams {
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  keyword?: string;
+  sort?: string;
+  columns?: string;
 }
 
 export function fetchPaymentLifecycleLedger(
   view: DraftLedgerView,
   page: number,
-  pageSize: number
+  pageSize: number,
+  extra: PaymentLedgerQueryParams = {}
 ) {
   const query = new URLSearchParams({
     view,
     page: String(page),
     pageSize: String(pageSize)
   });
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === undefined || value.trim() === "") continue;
+    query.set(key, value);
+  }
   return readJson<PaymentLifecycleLedgerPage>(`/payments?${query.toString()}`);
+}
+
+export function downloadPaymentLedgerExport(
+  view: DraftLedgerView,
+  extra: PaymentLedgerQueryParams = {}
+) {
+  const query = new URLSearchParams({ view });
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === undefined || value.trim() === "") continue;
+    query.set(key, value);
+  }
+  return downloadWorkbook(
+    `/payments/ledger-export?${query.toString()}`,
+    "付款台账.xlsx",
+    "导出付款台账失败"
+  );
 }
 
 export function fetchAuditLogs() {

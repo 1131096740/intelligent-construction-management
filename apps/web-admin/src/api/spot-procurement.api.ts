@@ -384,6 +384,8 @@ export interface SpotProcurementListReadModel {
     total: number;
     byStatus: Record<string, number>;
   };
+  columns?: SpotProcurementLedgerColumn[];
+  filters?: Record<string, string | null>;
 }
 
 export interface SpotProcurementApplicationTextSuggestionReadModel {
@@ -853,10 +855,20 @@ export interface SpotProcurementListQuery {
   projectId?: string;
   status?: SpotProcurementStatus;
   keyword?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: string;
+  columns?: string;
   page?: number;
   pageSize?: number;
   view?: "active" | "ended";
   surface?: "procurement" | "receipt";
+}
+
+export interface SpotProcurementLedgerColumn {
+  key: string;
+  header: string;
+  required: boolean;
 }
 
 export interface SpotProcurementPaymentListQuery {
@@ -1446,6 +1458,45 @@ export function fetchSpotProcurements(query: SpotProcurementListQuery = {}) {
   return readJson<SpotProcurementListReadModel>(
     withQuery("/spot-procurements", query)
   );
+}
+
+export async function downloadSpotProcurementLedger(query: SpotProcurementListQuery = {}) {
+  const params = new URLSearchParams();
+  const entries: Array<[string, string | number | undefined]> = [];
+  // 只上送业务筛选，未知字段不进入导出请求。
+  if (typeof query === "object" && query !== null) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined) continue;
+      const text = String(value).trim();
+      if (text === "") continue;
+      entries.push([key, text]);
+    }
+  }
+  for (const [key, value] of entries) params.set(key, String(value));
+  const search = params.toString();
+  const response = await apiFetch(
+    `/spot-procurements/ledger-export${search ? `?${search}` : ""}`
+  );
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({}))) as { message?: unknown };
+    throw new Error(
+      typeof errorBody.message === "string" && errorBody.message.trim()
+        ? errorBody.message
+        : "导出${fallback.replace('.xlsx','')}失败"
+    );
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/u.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : "${fallback}";
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function fetchSpotProcurementApplicationTextSuggestions(
