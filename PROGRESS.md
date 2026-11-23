@@ -2,7 +2,7 @@
 
 ## 2026-11-24 #382 集成与 #424 验收接续
 
-GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头为 `e183106d`，[CI 45286191016](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016) 已启动。上一候选 `619b4b44c` 的 [CI 45283155969](https://github.com/1131096740/intelligent-construction-management/actions/runs/45283155969) 终态 47 项通过、9 项失败，POL109 通过。
+GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `e183106d` 对应 [CI 45286191016](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016)，终态 50 项通过、6 项失败。失败项为综合采购、费用收货、公司代付原债更正、Line A、剩余动态分片及发布汇总。上一候选 `619b4b44c` 的 [CI 45283155969](https://github.com/1131096740/intelligent-construction-management/actions/runs/45283155969) 终态 47 项通过、9 项失败。
 
 业务候选 `77b386b4` 的隔离 328 迁移及银行 12 项通过；随账本提交 `58294d6a` 推至草稿 PR #428，远端运行随后取消。后续草稿候选 `bb617f8d` 对应 CI `45241606310`。已据其日志修复 #416 临时 Prisma 路径、#418 跳过时仍初始化数据库及合同账单 Schema 空格断言。本地 #416 隔离用例 1/1、#418 隔离 9/9、普通入口合同账单 4/4 并正确跳过 #418。此组修复由 `48d36635` 开始纳入后续草稿候选。后续移除 #400/#404/#411/#413/#414 同类临时引擎路径，虚构库用例分别 1/3/2/1/1 全通过。328 候选的采购、银行和入职备料复核通过；POL275 安装器补丁以零模糊度重放并更新材料指纹。四处 Web lint 错误已修，Web lint 为零错误、类型检查及 83 项定向测试通过。远端合同财务检查进入 restore 后失败，仍待取得隔离恢复首因。运行 `45241606310` 终态 29 通过、26 失败，总检查另有 1 项取消。新增修复同步现行免密附件、采购批次字段及审批单能力的旧测试，五套 154 项和附件 HTTP 3 项通过。近期合同财务恢复失败回执新增有限字段输出，便于定位。银行、采购两条及入职备料复验通过。草稿 `c83a471b` 对应 CI `45246022760`，终态 40 项成功、16 项失败。其发布清单步骤的嵌套 API 构建另遇 Node 堆上限，已补构建额度；本地已越过 API 构建，页面动作清单仅六处源码行号漂移，能力矩阵仅其输入摘要随之变化。两份再生结果均零阻断。API lint 五处错误修复，相关 26 项与类型检查通过。费用收货 CI 用例阶段的材料指纹已按实跑补丁重算并验证。Line A 真实整链停在归档前态迁移 `20261118221000`，其候选旁路随后在 `20261119007500` 停止，仍待接入合法归档前态。
 
@@ -38,7 +38,7 @@ POL114 合同版式浏览器夹具 `231144a10` 改用现行预览及下载入口
 
 远端 `619b4b44c` 的 PostgreSQL 留存检查通过，随后同一分片在启动项目资金用例时退出。集成提交 `4409931fa` 修复暂存文件的挂载权限，隔离 Linux 容器确认 `postgres` 用户可读取修订后的三个只读文件。精确候选 `555a2f57a` 用正式入口通过项目资金可用额度并发 1/1 和 `generic-batch` 13 套 56/56。两段均核对前后 329 条迁移、B7 及资源清理。远端 `e183106d` 已通过留存与项目资金，后续 `takeover-task1` 未观测到并发屏障，完整分片仍失败。[远端分片](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016/job/138083011128) · [本地项目资金回执](/private/tmp/jg382-owner-mount-runtime.sFZ52FVM/jg-remaining-project-funding.Asnu0nMi/receipt.json) · [批次回执](/private/tmp/jg382-owner-mount-runtime.sFZ52FVM/jg-remaining-generic-batch.ixJvR0Q7/receipt.json)。
 
-#410 以 `555a2f57a` 的完整 329 安装和测试诊断叠加层复现两条原债更正后的台账比对失败。两条均由 `jg_contract_work_completion_cost_sources_v1` 拒绝安装器所有者读取，Prisma `P2010`、PostgreSQL `42501`。隔离资源已清理。独立候选 `1d09ae4c` 保留原台账比对并接入已绑定的受限测试连接，历史备料保持同字节，正在构建真库验收镜像。[首错回执](/private/tmp/jg382-task410-diagnostic.yVrjmFP9/jg-finance-company-proxy-repayment.mIL6pUDC/receipt.json)。
+#410 以 `555a2f57a` 的完整 329 安装和测试诊断叠加层复现两条原债更正后的台账比对失败。两条均由 `jg_contract_work_completion_cost_sources_v1` 拒绝安装器所有者读取，Prisma `P2010`、PostgreSQL `42501`。精确独立候选 `1d09ae4c` 保留完整比对，两个用例均进入已核验 TLS 与角色的受限连接。两次比对在新读取路径仍失败，现行回执只有调用位置，具体首错待定位。历史备料保持同字节，两轮资源均已清理。[原首错回执](/private/tmp/jg382-task410-diagnostic.yVrjmFP9/jg-finance-company-proxy-repayment.mIL6pUDC/receipt.json) · [受限连接复验](/private/tmp/jg382-task410-fix-runtime.ZiYw0BRQ/jg-finance-company-proxy-repayment.A34XUyHB/receipt.json)。
 
 Line A 独立候选 `b7ed7ff6` 使用完整 329 封存安装链，经真实 TLS 测试连接验证原角色连接上限保持 1，独立角色连接上限 4；原 HTTP 用例已越过登录，测试角色已清理。定向读权限诊断叠加层运行原 12 项，2 项通过，定位后续拒绝的读、行锁及函数入口，完整原用例待通过。[Line A 诊断回执](/private/tmp/jg382-line-a-proof.ZxOFKbJ6/reads-overlay.log)。
 
