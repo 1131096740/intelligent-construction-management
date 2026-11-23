@@ -8,7 +8,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   ServiceUnavailableException,
+  StreamableFile,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -17,6 +19,7 @@ import { SpotProcurementApprovalNotificationService } from "./spot-procurement-a
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { FileService } from "../file/file.service";
 import { FileInterceptor, type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurement-draft.dto";
@@ -63,23 +66,25 @@ export class SpotProcurementController {
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query("projectId") projectId?: string,
-    @Query("status") status?: string,
-    @Query("keyword") keyword?: string,
-    @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string,
-    @Query("view") view?: string,
-    @Query("surface") surface?: string
+    @Query() query: Record<string, string | string[] | undefined> = {}
   ) {
-    return this.reads.listProcurements(user.id, {
-      projectId,
-      status,
-      keyword,
-      page,
-      pageSize,
-      view,
-      surface
-    });
+    return this.reads.listProcurements(user.id, query);
+  }
+
+  /**
+   * 零星采购台账导出：与列表共用逐行访问判定与筛选，
+   * 导出全部筛选后的可见记录，不是当前页。
+   */
+  @Get("ledger-export")
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void },
+    @Query() query: Record<string, string | string[] | undefined> = {}
+  ) {
+    const result = await this.reads.exportLedger(user.id, query);
+    response.set(ledgerExportHeaders(result));
+    return new StreamableFile(result.buffer);
   }
 
   @Get("application-text-suggestions")

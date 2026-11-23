@@ -1,5 +1,18 @@
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import type { Prisma } from "@prisma/client";
+import { AuditService } from "../audit/audit.service";
+import { exportBusinessLedger } from "../core-flow/business-ledger-export";
+import {
+  LEDGER_DATE_FORMAT,
+  LEDGER_MONEY_FORMAT,
+  type LedgerExcelColumn
+} from "../core-flow/ledger-excel";
+import {
+  matchesLedgerExportQuery,
+  normalizeLedgerExportQuery,
+  sortLedgerRows,
+  type NormalizedLedgerExportQuery
+} from "../core-flow/ledger-export-query";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import { chinaDateOnly, downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
 import { contractClassifications } from "../contract-ledger/contract-classification-read";
@@ -105,6 +118,13 @@ interface PaymentLedgerQuery {
   view?: PaymentLedgerView;
   page?: string | number;
   pageSize?: string | number;
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  keyword?: string;
+  sort?: string;
+  columns?: string | string[];
 }
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
@@ -165,7 +185,9 @@ export class PaymentReadService {
     @Optional()
     private readonly projectVisibility?: ProjectVisibilityService,
     @Optional()
-    private readonly payments?: PaymentRequestService
+    private readonly payments?: PaymentRequestService,
+    @Optional()
+    private readonly audit?: AuditService
   ) {}
 
   private async latestPaymentApproval(paymentId: string) {
@@ -559,7 +581,7 @@ export class PaymentReadService {
       contractIds.length
         ? this.prisma.contract.findMany({
             where: { id: { in: contractIds } },
-            select: { id: true, code: true, name: true }
+            select: { id: true, code: true, name: true, companyEntityName: true, counterparty: true }
           })
         : Promise.resolve([]),
       paymentIds.length
@@ -714,6 +736,10 @@ export class PaymentReadService {
             ? "合同冻结阶段直接付款"
             : this.paymentSourceLabel(payment.sourceType),
         project: projectById.get(payment.projectId)?.name ?? payment.projectId,
+        projectId: payment.projectId,
+        contractId: payment.contractId,
+        signingParty: contract?.companyEntityName ?? "待确定",
+        counterparty: contract?.counterparty ?? "待确定",
         requestedAmount: this.formatMoney(payment.requestedAmountCents),
         approvalStatus: approval.label,
         approvalTone: approval.tone,
@@ -788,6 +814,10 @@ export class PaymentReadService {
         project:
           projectById.get(takeover.projectId)?.name ??
           takeover.projectId,
+        projectId: takeover.projectId,
+        contractId: takeover.contractId,
+        signingParty: contract?.companyEntityName ?? "待确定",
+        counterparty: contract?.counterparty ?? "待确定",
         requestedAmount: this.formatMoney(payment.amountCents),
         approvalStatus: "无需审批",
         approvalTone: "default" as CoreFlowTone,
@@ -844,21 +874,9 @@ export class PaymentReadService {
     const view = this.paymentLedgerView(query.view);
     const page = this.positiveInteger(query.page, 1);
     const pageSize = Math.min(this.positiveInteger(query.pageSize, 20), 100);
-    const ledger = await this.listRecent(undefined, visibleProjectIds, {
-      all: true,
-      actorUserId
-    });
-    const allRows = ledger.rows;
-    const rowsByView = {
-      formal_ledger: allRows.filter((row) => row.ledgerView === "formal_ledger"),
-      my_drafts: [],
-      returned_for_revision: allRows.filter(
-        (row) =>
-          row.ledgerView === "returned_for_revision" &&
-          row.availableActions.includes("abandon_application")
-      ),
-      ended: allRows.filter((row) => row.ledgerView === "ended")
-    } satisfies Record<PaymentLedgerView, typeof allRows>;
+    const normalized = normalizeLedgerExportQuery(query as Record<string, unknown>);
+    const allRows = await this.readLedgerRows(visibleProjectIds, actorUserId, normalized);
+    const rowsByView = this.rowsByPaymentView(allRows);
     const selectedRows = rowsByView[view];
     const offset = (page - 1) * pageSize;
     const formalRows = rowsByView.formal_ledger;
@@ -889,8 +907,116 @@ export class PaymentReadService {
         pendingApproval: formalRows.filter((row) => row.approvalStatus === "审批中").length,
         pendingPayment: formalRows.filter((row) => row.paymentStatus === "已批待付").length,
         paid: formalRows.filter((row) => row.paymentStatus === "已付款").length
-      }
+      },
+      filters: {
+        projectId: normalized.projectId ?? null,
+        dateFrom: normalized.dateFrom ?? null,
+        dateTo: normalized.dateTo ?? null,
+        status: normalized.status ?? null,
+        keyword: normalized.keyword ?? null,
+        sort: normalized.sortField
+          ? `${normalized.sortField}:${normalized.sortDirection}`
+          : null
+      },
+      columns: PAYMENT_LEDGER_COLUMNS.map((column) => ({
+        key: String(column.key),
+        header: column.header,
+        required: Boolean(column.required)
+      }))
     };
+  }
+
+  /**
+   * 付款台账导出：与列表共用 `readLedgerRows`（含 `listRecent` 的逐行
+   * `sensitiveBusinessReadAllowed` 判定），筛选、视图与列解析完全一致。
+   * 导出不扩大读取范围；无权行不会出现在工作簿中。
+   */
+  async exportLedger(
+    visibleProjectIds: string[] | undefined,
+    actorUserId: string,
+    rawQuery?: Record<string, unknown>
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const normalized = normalizeLedgerExportQuery(rawQuery);
+    const allRows = await this.readLedgerRows(visibleProjectIds, actorUserId, normalized);
+    const view = this.paymentLedgerView(rawQuery?.view as PaymentLedgerView | undefined);
+    const rows = this.rowsByPaymentView(allRows)[view].map((row) => ({
+      ...row,
+      requestedAmountYuan: centsToYuanNumber(row.requestedAmountCents),
+      paidAmountYuan: centsToYuanNumber(row.paidAmountCents),
+      updatedAtIso: row.lifecycleUpdatedAt
+    }));
+    return exportBusinessLedger({
+      prisma: this.prisma,
+      audit: this.audit,
+      actorUserId,
+      action: "payment.ledger.export",
+      businessType: "payment_ledger",
+      scope: "all_filtered_visible_payment_records",
+      sheetName: "付款台账",
+      fileNamePrefix: "付款台账",
+      columns: PAYMENT_LEDGER_COLUMNS,
+      rows,
+      columnKeys: normalized.columnKeys,
+      filters: normalized,
+      visibleProjectCount: visibleProjectIds?.length ?? 0
+    });
+  }
+
+  private rowsByPaymentView(
+    rows: Awaited<ReturnType<PaymentReadService["listRecent"]>>["rows"]
+  ) {
+    return {
+      formal_ledger: rows.filter((row) => row.ledgerView === "formal_ledger"),
+      my_drafts: [],
+      returned_for_revision: rows.filter(
+        (row) =>
+          row.ledgerView === "returned_for_revision" &&
+          row.availableActions.includes("abandon_application")
+      ),
+      ended: rows.filter((row) => row.ledgerView === "ended")
+    } satisfies Record<PaymentLedgerView, typeof rows>;
+  }
+
+  private async readLedgerRows(
+    visibleProjectIds: string[] | undefined,
+    actorUserId: string,
+    query: NormalizedLedgerExportQuery
+  ) {
+    // 同一读模型：listRecent 已完成逐行可见性过滤，之后才允许筛选/排序。
+    const ledger = await this.listRecent(undefined, visibleProjectIds, {
+      all: true,
+      actorUserId
+    });
+    const rows = ledger.rows.filter((row) =>
+      matchesLedgerExportQuery(
+        {
+          projectId: row.projectId,
+          occurredAt: row.lifecycleUpdatedAt,
+          status: `${row.approvalStatus} ${row.paymentStatus}`,
+          keywordParts: [
+            row.paymentNo,
+            row.contractNo,
+            row.settlementNo,
+            row.project,
+            row.approvalStatus,
+            row.paymentStatus,
+            row.currentNode,
+            row.pendingOwner,
+            row.nextAction,
+            row.signingParty,
+            row.counterparty
+          ]
+        },
+        query
+      )
+    );
+    return sortLedgerRows(rows, query.sortField, query.sortDirection, {
+      updatedAt: (row) => new Date(row.lifecycleUpdatedAt),
+      requestedAmountCents: (row) => Number(row.requestedAmountCents),
+      paidAmountCents: (row) => Number(row.paidAmountCents),
+      project: (row) => row.project,
+      paymentNo: (row) => row.paymentNo
+    });
   }
 
   /** This projection runs only after the existing Detail read authorization.
@@ -2866,4 +2992,43 @@ export class PaymentReadService {
       }
     );
   }
+}
+
+const PAYMENT_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unknown>>[] = [
+  { header: "付款编号", key: "paymentNo", width: 18, required: true },
+  { header: "项目", key: "project", width: 24, required: true },
+  { header: "关联合同", key: "contractNo", width: 30 },
+  { header: "付款来源", key: "settlementNo", width: 20 },
+  { header: "签约方（甲方）", key: "signingParty", width: 26, required: true },
+  { header: "相对方（乙方）", key: "counterparty", width: 26, required: true },
+  {
+    header: "申请金额（元）",
+    key: "requestedAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum",
+    required: true
+  },
+  {
+    header: "已付金额（元）",
+    key: "paidAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum"
+  },
+  { header: "合同分类", key: "contractRelationshipLabel", width: 16 },
+  { header: "审批状态", key: "approvalStatus", width: 14 },
+  { header: "实付状态", key: "paymentStatus", width: 14 },
+  { header: "当前处理人", key: "pendingOwner", width: 14 },
+  { header: "下一步动作", key: "nextAction", width: 20 },
+  { header: "更新时间", key: "updatedAtIso", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
+];
+
+/** 分币转元；0 是真实的「未付款」，不是未知值。 */
+function centsToYuanNumber(value: string): number {
+  return Number(value) / 100;
 }

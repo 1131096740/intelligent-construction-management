@@ -12,7 +12,9 @@ import {
   Param,
   Post,
   Query,
+  Res,
   ServiceUnavailableException,
+  StreamableFile,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -22,6 +24,7 @@ import { RequirePositions } from "../auth/decorators/require-positions.decorator
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
+import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { FileService } from "../file/file.service";
 import {
   FileInterceptor,
@@ -77,16 +80,47 @@ export class PaymentController {
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query("limit") limit?: string,
-    @Query("view") view?: "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended",
-    @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string
+    @Query() query: Record<string, string | string[] | undefined> = {}
   ) {
     const visibleProjectIds = await this.projectVisibility.visibleProjectIds(user.id);
-    if (view !== undefined || page !== undefined || pageSize !== undefined) {
-      return this.paymentRead.listLedger({ view, page, pageSize }, visibleProjectIds, user.id);
+    const hasLedgerQuery = [
+      "view",
+      "page",
+      "pageSize",
+      "projectId",
+      "dateFrom",
+      "dateTo",
+      "status",
+      "keyword",
+      "sort",
+      "columns"
+    ].some((key) => query[key] !== undefined);
+    if (hasLedgerQuery) {
+      return this.paymentRead.listLedger(query, visibleProjectIds, user.id);
     }
-    return this.paymentRead.listRecent(limit, visibleProjectIds, {actorUserId: user.id});
+    const limit = typeof query.limit === "string" ? query.limit : undefined;
+    return this.paymentRead.listRecent(limit, visibleProjectIds, { actorUserId: user.id });
+  }
+
+  /**
+   * 付款台账导出：与列表共用读模型和逐行可见性过滤；
+   * 导出的行是「全部筛选后的可见记录」，不是当前页。
+   */
+  @Get("ledger-export")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void },
+    @Query() query: Record<string, string | string[] | undefined> = {}
+  ) {
+    const result = await this.paymentRead.exportLedger(
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id,
+      query
+    );
+    response.set(ledgerExportHeaders(result));
+    return new StreamableFile(result.buffer);
   }
 
   @Get(":paymentId/approval/duty-sms")

@@ -2,10 +2,11 @@ import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dt
 import { GeneralProcurementRequestNotificationService } from "./general-procurement-request-notification.service";
 import { FileService } from "../file/file.service";
 import { FileInterceptor, type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
-import { BadRequestException, ForbiddenException, Body, Controller, Get, Query, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Body, Controller, Get, Query, Param, Post, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ListGeneralProcurementDto, CancelProcurementPaymentDto, CreateGeneralProcurementDto, GeneralProcurementRevisionDto, ReviewGeneralProcurementDto, UpdateGeneralProcurementDto, WithdrawGeneralProcurementDto, ArchiveGeneralProcurementDto } from "./general-procurement.dto";
+import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { GeneralProcurementService } from "./general-procurement.service";
 
 @Controller("general-procurements")
@@ -14,6 +15,17 @@ export class GeneralProcurementController {
     private readonly notifications: GeneralProcurementRequestNotificationService) {}
   @Post() create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateGeneralProcurementDto) { return this.procurements.create(user.id, body); }
   @Get() list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListGeneralProcurementDto) { return this.procurements.list(user.id, query); }
+  @Get("ledger-export")
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void },
+    @Query() query: Record<string, string | string[] | undefined> = {}
+  ) {
+    const result = await this.procurements.exportLedger(user.id, query);
+    response.set(ledgerExportHeaders(result));
+    return new StreamableFile(result.buffer);
+  }
   @Get("create-options") options(@CurrentUser() user: AuthenticatedUser) { return this.procurements.options(user.id); }
   @Get(":id") detail(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) { return this.procurements.detail(id, user.id); }
   @Get(":id/duty-sms")

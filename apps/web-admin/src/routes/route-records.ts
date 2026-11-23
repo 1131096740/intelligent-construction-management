@@ -224,6 +224,17 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     ]
   },
   {
+    label: "业务台账",
+    items: [
+      { label: "合同台账", path: "/合同工作台" },
+      { label: "结算台账", path: "/结算工作台" },
+      { label: "付款台账", path: "/付款管理" },
+      { label: "零星采购台账", path: "/零星采购工作台" },
+      { label: "综合采购台账", path: "/综合采购申请" },
+      { label: "费用与报销台账", path: "/费用与报销工作台" }
+    ]
+  },
+  {
     label: "资料与治理",
     items: [
       { label: "资料库", path: "/资料库" },
@@ -596,7 +607,8 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "付款管理",
-        component: () => import("../pages/payments/PaymentListPage.vue")
+        component: () => import("../pages/payments/PaymentListPage.vue"),
+        meta: { title: "付款台账" }
       },
       {
         path: "付款管理/新建",

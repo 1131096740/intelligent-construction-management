@@ -10,6 +10,16 @@ import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/ap
 import { FileService } from "../file/file.service";
 import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_STATUS_LABELS, LEGACY_GENERAL_PROCUREMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
+import { exportBusinessLedger } from "../core-flow/business-ledger-export";
+import {
+  LEDGER_DATE_FORMAT,
+  LEDGER_MONEY_FORMAT,
+  type LedgerExcelColumn
+} from "../core-flow/ledger-excel";
+import {
+  normalizeLedgerExportQuery,
+  type NormalizedLedgerExportQuery
+} from "../core-flow/ledger-export-query";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { PrismaService } from "../database/prisma.service";
@@ -47,6 +57,92 @@ export class GeneralProcurementService {
   }
 
   async list(actorUserId: string, query: ListGeneralProcurementDto) {
+    const normalized = normalizeLedgerExportQuery(query as unknown as Record<string, unknown>);
+    const where = await this.ledgerWhere(actorUserId, query, normalized);
+    const orderBy = this.ledgerOrderBy(normalized);
+    const rows = await this.prisma.generalProcurement.findMany({
+      where,
+      orderBy,
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize
+    });
+    const items = await this.toLedgerItems(rows);
+    return {
+      items,
+      total: await this.prisma.generalProcurement.count({ where }),
+      page: query.page,
+      pageSize: query.pageSize,
+      filters: {
+        projectId: normalized.projectId ?? null,
+        dateFrom: normalized.dateFrom ?? null,
+        dateTo: normalized.dateTo ?? null,
+        status: normalized.status ?? null,
+        keyword: normalized.keyword ?? null,
+        sort: normalized.sortField
+          ? `${normalized.sortField}:${normalized.sortDirection}`
+          : null
+      },
+      columns: GENERAL_PROCUREMENT_LEDGER_COLUMNS.map((column) => ({
+        key: String(column.key),
+        header: column.header,
+        required: Boolean(column.required)
+      }))
+    };
+  }
+
+  /**
+   * 综合采购台账导出：与列表共用 `ledgerWhere`（同一访问范围）与
+   * `toLedgerItems`，导出全部筛选后的可见记录；不是当前页。
+   */
+  async exportLedger(
+    actorUserId: string,
+    rawQuery?: Record<string, unknown>
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const normalized = normalizeLedgerExportQuery(rawQuery);
+    const query = {
+      page: 1,
+      pageSize: 1,
+      search: normalized.keyword,
+      status: normalized.status ?? "all"
+    } as ListGeneralProcurementDto;
+    const where = await this.ledgerWhere(actorUserId, query, normalized);
+    const rows = await this.prisma.generalProcurement.findMany({
+      where,
+      orderBy: this.ledgerOrderBy(normalized)
+    });
+    const items = await this.toLedgerItems(rows);
+    return exportBusinessLedger({
+      prisma: this.prisma,
+      audit: this.audit,
+      actorUserId,
+      action: "general_procurement.ledger.export",
+      businessType: "general_procurement_ledger",
+      scope: "all_filtered_visible_general_procurements",
+      sheetName: "综合采购台账",
+      fileNamePrefix: "综合采购台账",
+      columns: GENERAL_PROCUREMENT_LEDGER_COLUMNS,
+      rows: items.map((item) => ({
+        ...item,
+        projectName: item.projectName,
+        estimatedAmountYuan: generalLedgerAmountYuan(item),
+        actualAmountYuan:
+          typeof item.actualAmountCents === "string" && item.actualAmountCents.trim() !== ""
+            ? Number(item.actualAmountCents) / 100
+            : null,
+        updatedAtIso: item.updatedAt,
+        createdAtIso: item.createdAt
+      })),
+      columnKeys: normalized.columnKeys,
+      filters: normalized,
+      visibleProjectCount: 0
+    });
+  }
+
+  private async ledgerWhere(
+    actorUserId: string,
+    query: ListGeneralProcurementDto,
+    normalized: NormalizedLedgerExportQuery
+  ): Promise<Prisma.GeneralProcurementWhereInput> {
     const roles = await this.listRoles(actorUserId);
     const all = roles.some((role) => !role.projectId && ["chairman", "general_manager", "comprehensive_director"].includes(role.key));
     const financeGlobal = roles.some((role) => !role.projectId && ["general_manager", "finance_director", "finance_staff"].includes(role.key));
@@ -57,19 +153,108 @@ export class GeneralProcurementService {
       { applicantUserId: actorUserId }, { projectId: { in: managedProjects } }, { requestProtocolVersion: 2, projectId: { in: comprehensiveProjects } },
       { status: "archived", ...(financeGlobal ? {} : { projectId: { in: financeProjects } }) }
     ] };
-    const search = query.search?.trim();
+    const search = normalized.keyword?.trim() ?? query.search?.trim();
     const matchedProjects = search ? await this.prisma.project.findMany({ where: { name: { contains: search, mode: "insensitive" } }, select: { id: true } }) : [];
-    const where: Prisma.GeneralProcurementWhereInput = { AND: [access,
-      ...(query.status && query.status !== "all" ? [{ status: query.status === "drafts" ? { in: ["draft", "returned"] } : query.status }] : []),
-      ...(search ? [{ OR: [ { code: { contains: search, mode: "insensitive" as const } }, { reason: { contains: search, mode: "insensitive" as const } },
-        { applicantNameSnapshot: { contains: search, mode: "insensitive" as const } }, { projectId: { in: matchedProjects.map((project) => project.id) } } ] }] : [])
-    ] };
-    const rows = await this.prisma.generalProcurement.findMany({ where, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * query.pageSize, take: query.pageSize });
-    const projects = await this.prisma.project.findMany({ where: { id: { in: rows.flatMap((row) => row.projectId ? [row.projectId] : []) } }, select: { id: true, name: true } });
-    return { items: rows.map((row) => ({ id: row.id, code: row.code, projectName: projects.find((item) => item.id === row.projectId)?.name ?? "公司日常",
-      applicantName: row.applicantNameSnapshot, categoryLabel: GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === row.category)?.label ?? "其他物资或服务",
-      reason: row.reason, requestProtocolVersion: row.requestProtocolVersion, estimatedAmount: generalRequestEstimateText(row.estimatedAmount), requestedAmountCents: row.requestedAmountCents?.toString() ?? null, status: row.status, statusLabel: GENERAL_PROCUREMENT_STATUS_LABELS[row.status], updatedAt: row.updatedAt })),
-      total: await this.prisma.generalProcurement.count({ where }), page: query.page, pageSize: query.pageSize };
+    const status = query.status && query.status !== "all" ? query.status : undefined;
+    return {
+      AND: [
+        access,
+        ...(normalized.projectId ? [{ projectId: normalized.projectId }] : []),
+        ...(status ? [{ status: status === "drafts" ? { in: ["draft", "returned"] } : status }] : []),
+        ...(normalized.dateFrom || normalized.dateTo
+          ? [{
+              updatedAt: {
+                ...(normalized.dateFrom
+                  ? { gte: new Date(`${normalized.dateFrom}T00:00:00+08:00`) }
+                  : {}),
+                ...(normalized.dateTo
+                  ? { lte: new Date(`${normalized.dateTo}T23:59:59.999+08:00`) }
+                  : {})
+              }
+            }]
+          : []),
+        ...(search
+          ? [{
+              OR: [
+                { code: { contains: search, mode: "insensitive" as const } },
+                { reason: { contains: search, mode: "insensitive" as const } },
+                { applicantNameSnapshot: { contains: search, mode: "insensitive" as const } },
+                { companyNameSnapshot: { contains: search, mode: "insensitive" as const } },
+                { projectId: { in: matchedProjects.map((project) => project.id) } }
+              ]
+            }]
+          : [])
+      ]
+    };
+  }
+
+  private ledgerOrderBy(
+    normalized: NormalizedLedgerExportQuery
+  ): Prisma.GeneralProcurementOrderByWithRelationInput[] {
+    const direction = normalized.sortDirection;
+    switch (normalized.sortField) {
+      case "createdAt":
+        return [{ createdAt: direction }, { id: "desc" }];
+      case "estimatedAmount":
+        return [{ estimatedAmount: direction }, { id: "desc" }];
+      case "code":
+        return [{ code: direction }, { id: "desc" }];
+      default:
+        return [{ updatedAt: "desc" }, { id: "desc" }];
+    }
+  }
+
+  private async toLedgerItems(rows: GeneralProcurement[]) {
+    if (!rows.length) return [];
+    const projectIds = rows.flatMap((row) => row.projectId ? [row.projectId] : []);
+    const [projects, batches] = await Promise.all([
+      this.prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, name: true }
+      }),
+      this.prisma.actualPurchaseBatch.findMany({
+        where: { procurementId: { in: rows.map((row) => row.id) } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          procurementId: true,
+          supplierName: true,
+          effectiveTotalAmountCents: true
+        }
+      })
+    ]);
+    const projectNameById = new Map(projects.map((project) => [project.id, project.name]));
+    const batchByProcurementId = new Map<string, (typeof batches)[number]>();
+    for (const batch of batches) {
+      if (!batchByProcurementId.has(batch.procurementId)) {
+        batchByProcurementId.set(batch.procurementId, batch);
+      }
+    }
+    return rows.map((row) => {
+      const batch = batchByProcurementId.get(row.id);
+      return {
+        id: row.id,
+        code: row.code,
+        projectId: row.projectId,
+        projectName: row.projectId
+          ? projectNameById.get(row.projectId) ?? "待确定"
+          : "公司日常",
+        companyName: row.companyNameSnapshot ?? "待确定",
+        applicantName: row.applicantNameSnapshot,
+        categoryLabel:
+          GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === row.category)?.label ??
+          "其他物资或服务",
+        reason: row.reason,
+        requestProtocolVersion: row.requestProtocolVersion,
+        estimatedAmount: generalRequestEstimateText(row.estimatedAmount),
+        requestedAmountCents: row.requestedAmountCents?.toString() ?? null,
+        supplierName: batch?.supplierName ?? "待确定",
+        actualAmountCents: batch ? batch.effectiveTotalAmountCents.toString() : null,
+        status: row.status,
+        statusLabel: GENERAL_PROCUREMENT_STATUS_LABELS[row.status],
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString()
+      };
+    });
   }
 
   async create(actorUserId: string, input: CreateGeneralProcurementDto) {
@@ -334,4 +519,54 @@ function assertLegacyProcurement(row: GeneralProcurement): asserts row is Legacy
 
 function assertLegacyDraft(input: UpdateGeneralProcurementDto): asserts input is UpdateGeneralProcurementDto & { projectId: string; companyEntityId: string; reason: string; requestedAmountCents: string } {
   if (!input.projectId || !input.companyEntityId || !input.reason?.trim() || input.requestedAmountCents == null) throw new BadRequestException("请填齐项目、费用承担公司、用途和申请金额");
+}
+
+
+const GENERAL_PROCUREMENT_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unknown>>[] = [
+  { header: "采购编号", key: "code", width: 18, required: true },
+  { header: "项目", key: "projectName", width: 24, required: true },
+  { header: "采购单位", key: "companyName", width: 24, required: true },
+  { header: "申请人", key: "applicantName", width: 14 },
+  { header: "费用类别", key: "categoryLabel", width: 16 },
+  { header: "采购内容与用途", key: "reason", width: 32 },
+  { header: "供应商", key: "supplierName", width: 22 },
+  {
+    header: "预计金额（元）",
+    key: "estimatedAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum"
+  },
+  {
+    header: "实际采购金额（元）",
+    key: "actualAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum"
+  },
+  { header: "状态", key: "statusLabel", width: 16 },
+  { header: "更新时间", key: "updatedAtIso", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
+];
+
+/** 预计金额优先取真实数值；未知保持空白，不写 0。 */
+function generalLedgerAmountYuan(item: {
+  estimatedAmount?: string | null;
+  requestedAmountCents?: string | null;
+  actualAmountCents?: string | null;
+  requestProtocolVersion?: number;
+}): number | null {
+  if (item.requestProtocolVersion === 2) {
+    const estimated = item.estimatedAmount;
+    if (typeof estimated !== "string" || estimated.trim() === "") return null;
+    const value = Number(estimated);
+    return Number.isFinite(value) ? value : null;
+  }
+  const cents = item.requestedAmountCents;
+  if (typeof cents !== "string" || cents.trim() === "") return null;
+  const value = Number(cents);
+  return Number.isFinite(value) ? value / 100 : null;
 }
