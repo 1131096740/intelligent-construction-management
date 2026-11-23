@@ -53,11 +53,14 @@ assert.equal(rows.filter(row=>row===fixture+'\t'+spec).length,1);
 fs.writeFileSync(mounts,rows.join('\n'));
 JS
   profiles="$work/remaining-owner-modes.json"
+  chmod 0644 "$fixture" "$profiles"
 fi
 if [[ $count == 329 ]]; then
   cp "$owner" "$work/remaining-owner.cjs"
   owner="$work/remaining-owner.cjs"
   patch --batch --forward --fuzz=0 --silent "$owner" < "$plan/remaining-owner-320-observation.patch"
+  # The host work directory stays private. The postgres user reads the bind-mounted file.
+  chmod 0644 "$owner"
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
