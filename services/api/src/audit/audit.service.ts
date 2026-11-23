@@ -36,6 +36,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "permission.change": "权限变更",
   "operating_projection.export": "导出经营投影",
   "project.owner_settlement.record": "登记业主结算",
+  "project.construction_payment_correction.request": "提出施工企业付款更正",
+  "project.construction_payment_correction.confirm": "确认施工企业付款更正",
   "password.change": "密码变更",
   "employee.registration.submit": "提交入职申请",
   "employee.registration.resubmit": "重新提交入职申请",

@@ -63,7 +63,8 @@
     "verify:pol108-operating-projection:core:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol108-operating-projection:core:local",
     "verify:pol108-operating-projection:facts:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol108-operating-projection:facts:local",
     "verify:pol108-operating-projection:impacts:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol108-operating-projection:impacts:local",
-    "verify:issue422-archives:local": "node services/api/prisma/run-issue422-archives-local.cjs"
+    "verify:issue422-archives:local": "node services/api/prisma/run-issue422-archives-local.cjs",
+    "verify:issue413-construction-paid:local": "node services/api/prisma/run-issue413-construction-paid-local.cjs"
   },
   "engines": {
     "node": ">=20.9.0",

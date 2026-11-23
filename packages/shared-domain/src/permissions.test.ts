@@ -512,6 +512,9 @@ describe("role-specific gates", () => {
     expect(canPerform("project.upstream_fund_fact.record", ["finance_director"])).toBe(true);
     expect(canPerform("project.upstream_fund_fact.confirm", ["finance_staff"])).toBe(true);
     expect(canPerform("project.upstream_fund_fact.confirm", ["finance_director"])).toBe(true);
+    expect(
+      canPerform("project.upstream_fund_fact.record", ["comprehensive_director"])
+    ).toBe(true);
     expect(canPerform("project.upstream_fund_fact.record", ["project_manager"])).toBe(false);
     expect(canPerform("project.upstream_fund_fact.confirm", ["chairman"])).toBe(false);
   });
@@ -526,6 +529,29 @@ describe("role-specific gates", () => {
     expect(canPerform("project.affiliate_payment_fact.record", ["finance_director"])).toBe(true);
     expect(canPerform("project.affiliate_payment_fact.confirm", ["finance_staff"])).toBe(true);
     expect(canPerform("project.affiliate_payment_fact.confirm", ["finance_director"])).toBe(true);
+    expect(
+      canPerform("project.affiliate_payment_fact.record", ["comprehensive_director"])
+    ).toBe(true);
+    expect(
+      canPerform("project.construction_payment_correction.request", [
+        "comprehensive_director"
+      ])
+    ).toBe(true);
+    expect(
+      canPerform("project.construction_payment_correction.request", [
+        "finance_staff"
+      ])
+    ).toBe(true);
+    expect(
+      canPerform("project.construction_payment_correction.confirm", [
+        "finance_staff"
+      ])
+    ).toBe(false);
+    expect(
+      canPerform("project.construction_payment_correction.confirm", [
+        "finance_director"
+      ])
+    ).toBe(true);
     expect(
       canPerform("project.affiliate_business_fact.evidence_supplement", ["budget_staff"])
     ).toBe(true);

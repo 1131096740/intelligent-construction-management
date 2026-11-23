@@ -10183,12 +10183,29 @@
     {
       "id": "multi-duty-sms.retry",
       "usage": "page_action",
-      "routePaths": ["/合同管理/:contractId", "/公司互转台账", "/综合采购申请/:procurementId", "/零星采购/:procurementId"],
+      "routePaths": [
+        "/合同管理/:contractId",
+        "/公司互转台账",
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
       "sourceFile": "apps/web-admin/src/components/MultiDutySmsStatusPanel.vue",
-      "trigger": { "element": "t-button", "event": "click", "handler": "retry" },
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "retry"
+      },
       "semantic": "business_write",
-      "capability": { "kind": "server_boolean", "source": "notice.canRetry" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts", "name": "retryMultiDutySms" }]
+      "capability": {
+        "kind": "server_boolean",
+        "source": "notice.canRetry"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/multi-duty-sms.api.ts",
+          "name": "retryMultiDutySms"
+        }
+      ]
     },
     {
       "id": "approval-progress.remind-by-sms",
@@ -11603,6 +11620,156 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "downloadPrivateFileByTicket"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-payment.downstream-record",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordDownstreamWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_payment_fact"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordProjectAffiliatePaymentFact"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-payment.remittance-record",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordRemittanceWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_upstream_fund_fact"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordProjectUpstreamFundFact"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-payment.correction-request",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "requestCorrectionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "request_construction_payment_correction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "requestConstructionPaymentCorrection"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-payment.correction-confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmCorrectionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_construction_payment_correction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmConstructionPaymentCorrection"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-payment.downstream-evidence-upload",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadDownstreamEvidenceWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_payment_fact"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadProjectAffiliatePaymentPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-payment.remittance-evidence-upload",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadRemittanceEvidenceWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_upstream_fund_fact"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadProjectUpstreamFundPrivateFile"
         }
       ]
     }

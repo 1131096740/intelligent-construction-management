@@ -44,6 +44,8 @@ export const BUSINESS_ACTIONS = [
   "project.affiliate_settlement_fact.confirm",
   "project.affiliate_payment_fact.record",
   "project.affiliate_payment_fact.confirm",
+  "project.construction_payment_correction.request",
+  "project.construction_payment_correction.confirm",
   "project.affiliate_business_fact.evidence_supplement",
   "project.affiliate_company_contract.record",
   "project.affiliate_company_contract.confirm",
@@ -232,14 +234,28 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "settlement.archive.confirm": ["contract_director"],
   "project.receipt.record": ["finance_staff", "finance_director"],
   "project.owner_settlement.record": ["comprehensive_director", "finance_staff", "finance_director"],
-  "project.upstream_fund_fact.record": ["finance_staff", "finance_director"],
+  "project.upstream_fund_fact.record": [
+    "comprehensive_director",
+    "finance_staff",
+    "finance_director"
+  ],
   "project.upstream_fund_fact.confirm": ["finance_staff", "finance_director"],
   "project.affiliate_contract_fact.record": ["contract_staff"],
   "project.affiliate_contract_fact.confirm": ["contract_director"],
   "project.affiliate_settlement_fact.record": ["budget_staff"],
   "project.affiliate_settlement_fact.confirm": ["budget_staff"],
-  "project.affiliate_payment_fact.record": ["finance_staff", "finance_director"],
+  "project.affiliate_payment_fact.record": [
+    "comprehensive_director",
+    "finance_staff",
+    "finance_director"
+  ],
   "project.affiliate_payment_fact.confirm": ["finance_staff", "finance_director"],
+  "project.construction_payment_correction.request": [
+    "comprehensive_director",
+    "finance_staff",
+    "finance_director"
+  ],
+  "project.construction_payment_correction.confirm": ["finance_director"],
   "project.affiliate_business_fact.evidence_supplement": [
     "contract_staff",
     "contract_director",
