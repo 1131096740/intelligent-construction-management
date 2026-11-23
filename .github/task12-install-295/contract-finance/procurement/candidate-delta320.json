@@ -737,12 +737,12 @@
   {
     "path": "services/api/src/contract-takeover/contract-takeover.service.spec.ts",
     "expected": "2eacbd527532994db32880582dbfd30ea1ece0908363a13ebbeb58da69b6bf85",
-    "candidate": "7e4948539a790a4d8328fe4594207cb2598e82208057f8513647322463c565b4"
+    "candidate": "ce433afb5722ab717136468a898fc7579037129621a4003a1a116836d2af87ef"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover.service.ts",
     "expected": "f85693efefae8c623ddbee2d7ebb67cbbaf172d6eb01806a5e6a64a7c02df4ee",
-    "candidate": "b107ab52832f8db2b66c289925226fa2271449f10fe5670d3e6a586323df0e5b"
+    "candidate": "374725c5a6fca9372b72b666b1340dfe4d4d4af62d7712e596bb2d3918d7e67e"
   },
   {
     "path": "services/api/src/contract-takeover/dto/create-contract-takeover.dto.ts",
@@ -878,6 +878,11 @@
     "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
     "expected": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d",
     "candidate": "abbf21a612ff1e6b12ef63d01736314ca059d03c63b8bf8692e7d91b6855df9c"
+  },
+  {
+    "path": "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts",
+    "expected": "333c2b8f879674ce0bfdfca6fac7e3f0c9b729a6455bc503b0a3a78709e51253",
+    "candidate": "457588e2260de310af13f40120757ca0715ca72e018397fcc67558616a46dff4"
   },
   {
     "path": "services/api/src/database/registered-payment-catalog.ts",
