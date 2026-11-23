@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 88,
-    "fullyPendingSuites": 76,
+    "pendingFiles": 89,
+    "fullyPendingSuites": 77,
     "partiallyPendingSuites": 12,
-    "pendingTests": 566,
-    "coveredFiles": 88,
-    "coveredTests": 566,
+    "pendingTests": 569,
+    "coveredFiles": 89,
+    "coveredTests": 569,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -842,14 +842,31 @@
         "path": "services/api/prisma/run-line-a-real-db-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "issue420_approval_center",
+      "pendingTests": 3,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue420-approval-center.http.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue420-approval-center:local",
+        "path": "services/api/prisma/run-issue420-approval-center-local.cjs"
+      },
+      "state": "executable_local_runner"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 29,
-      "files": 87,
-      "tests": 565
+      "groups": 30,
+      "files": 88,
+      "tests": 568
     },
     "manualOnly": {
       "groups": 1,
