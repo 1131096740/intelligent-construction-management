@@ -15,7 +15,8 @@ function detailFixture(
     globalRoleKeys: ["contract_director"],
     projectRoleKeys: []
   },
-  frozenNode?: Record<string, unknown> | Record<string, unknown>[]
+  frozenNode?: Record<string, unknown> | Record<string, unknown>[],
+  applicantUserId = "applicant-1"
 ) {
   const version = {
     id: "contract-version-1",
@@ -41,7 +42,7 @@ function detailFixture(
     businessId: version.id,
     flowType: "contract.approve",
     status: "in_progress",
-    applicantUserId: "applicant-1",
+    applicantUserId,
     currentNodeIndex: 0,
     frozenNodes: Array.isArray(frozenNode) ? frozenNode : [frozenNode ?? {
       name: "合同部主管",
@@ -146,6 +147,25 @@ describe("Contract approval review read coordinates", () => {
     expect(detail.ownerContractRisk).toMatchObject({ status: "missing_owner_contract", requiresExplicitConfirmation: true });
     expect(detail.availableActions.filter(action => ["transfer_approval", "delegate_approval"].includes(action.key)))
       .toEqual([]);
+  });
+
+  it.each([false, true])("validates marked applicant originators before offering self-review (valid=%s)", async valid => {
+    const marker = { protocolVersion: 1, executionMode: "parallel", legacyContractCutover: true,
+      approvedRoleKeys: [], originatorUserIds: ["reviewer-1"] };
+    const { service } = detailFixture(1, { globalRoleKeys: ["chairman"], projectRoleKeys: [] }, [
+      { ...marker, name: "合同部主管", mode: "any", roleKeys: ["contract_director"],
+        candidateUserIds: ["director-1"], candidateUserIdsByRole: { contract_director: ["director-1"] },
+        roleScopesByRole: { contract_director: "global" } },
+      { ...marker, name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"],
+        candidateUserIds: ["reviewer-1"], candidateUserIdsByRole: { chairman: ["reviewer-1"], general_manager: [] },
+        roleScopesByRole: { chairman: "global", general_manager: "global" },
+        originatorUserIds: valid ? ["reviewer-1"] : [] }
+    ], "reviewer-1");
+    const detail = await service.getDetail("HT-2026-001", ["project-1"], "reviewer-1");
+    expect(detail.reviewApprovalContext).toEqual(valid ? { ...REVIEW_CONTEXT, expectedNodeIndex: 1 } : null);
+    expect(detail.availableActions.find(action => action.key === "review_approval")).toMatchObject({ enabled: valid });
+    if (valid) expect(detail.availableActions.find(action => action.key === "review_approval"))
+      .toMatchObject({ requiresSelfReviewConfirmation: true });
   });
 
   it("fails closed when more than one in-progress approval instance exists", async () => {

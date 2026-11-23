@@ -2472,8 +2472,9 @@ export class ContractReadService {
       updatedAt: instance.updatedAt,
       ...(epoch ? { expectedParallelApprovalEpoch: epoch } : {})
     };
+    const legacyParallel = version?.numericProtocolVersion === 1 && isLegacyContractParallelRound(instance.frozenNodes);
     let selfReviewApplicantUserId = instance.applicantUserId;
-    if (actorUserId !== instance.applicantUserId) {
+    if (legacyParallel || actorUserId !== instance.applicantUserId) {
       try {
         const originators = await resolveContractOriginators(readClient as never, businessId, instance.frozenNodes);
         if (originators.includes(actorUserId)) selfReviewApplicantUserId = actorUserId;
@@ -2483,7 +2484,7 @@ export class ContractReadService {
       }
     }
 
-    if (version?.numericProtocolVersion === 1 && isLegacyContractParallelRound(instance.frozenNodes)) {
+    if (legacyParallel) {
       if (actorRoleScopes?.globalRoleKeys.includes("super_admin")) return emptyCurrentContractApprovalReview();
       const review = resolveApprovalReviewOnFrozenNode(instance.frozenNodes, instance.currentNodeIndex,
         roleKeys, actorUserId, selfReviewApplicantUserId, false, true, actorRoleScopes, true);

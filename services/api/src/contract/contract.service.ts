@@ -2984,7 +2984,9 @@ export class ContractService {
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: expectedInstance.applicantUserId,
-        originatorUserIds: expectedInstance.applicantUserId === actorUserId ? [] : await resolveContractOriginators(tx, version.id, expectedInstance.frozenNodes),
+        originatorUserIds: legacyParallel || expectedInstance.applicantUserId !== actorUserId
+          ? await resolveContractOriginators(tx, version.id, expectedInstance.frozenNodes)
+          : [],
         actorUserId,
         actorRoleKeys: identity.representedUserId === actorUserId &&
           !identity.viaAssignment

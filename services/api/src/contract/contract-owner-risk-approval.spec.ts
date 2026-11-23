@@ -149,9 +149,10 @@ async function legacyParallelFixture(finance: boolean, recordedRisk?: unknown) {
     buffer: signatureBytes, file: { storageStatus: "active", contentSha256: signatureHash }
   }) };
   const seals = { ensurePendingTask: jest.fn() };
-  const service = new ContractService(prisma as never, undefined, undefined, undefined, files as never,
+  const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+  const service = new ContractService(prisma as never, undefined, auth as never, undefined, files as never,
     undefined, undefined, undefined, undefined, undefined, undefined, seals as never);
-  return { tx, service, version, round, nodes, seals, files };
+  return { tx, service, version, round, nodes, seals, files, auth };
 }
 
 it("lets the frozen executive sign while another legacy duty is pending, recording the exact risk without releasing seal", async () => {
@@ -170,6 +171,48 @@ it("lets the frozen executive sign while another legacy duty is pending, recordi
     ] })
   });
   expect(seals.ensurePendingTask).not.toHaveBeenCalled();
+});
+
+it("requires creation provenance even when the frozen executive is the marked legacy applicant", async () => {
+  const { tx, service, version, round, nodes, seals, auth } = await legacyParallelFixture(false);
+  const setProvenance = (complete: boolean) => tx.approvalInstance.findFirst.mockResolvedValue({
+    ...round, applicantUserId: "chairman-1", frozenNodes: nodes.map((node, index) => ({
+      ...node, originatorUserIds: !complete && index === 1 ? [] : ["chairman-1"]
+    })) as typeof round.frozenNodes
+  });
+  const approve = {
+    ...contractReviewCoordinates, expectedNodeIndex: 1, decision: "approve" as const,
+    ownerContractRiskConfirmed: true, expectedOwnerContractRisk: missingOwnerContractRiskSnapshot,
+    selfReviewReason: "核对原版合同资料", confirmationPassword: "fixture-password"
+  };
+
+  setProvenance(false);
+  await expect(service.reviewApproval(version.id, "chairman-1", approve)).rejects.toMatchObject({ status: 409 });
+  expect(auth.confirmPassword).not.toHaveBeenCalled();
+  expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  expect(seals.ensurePendingTask).not.toHaveBeenCalled();
+
+  setProvenance(true);
+  await expect(service.reviewApproval(version.id, "chairman-1", { ...approve, selfReviewReason: undefined }))
+    .rejects.toMatchObject({ status: 400 });
+  await expect(service.reviewApproval(version.id, "chairman-1", { ...approve, confirmationPassword: undefined }))
+    .rejects.toMatchObject({ status: 400 });
+  expect(auth.confirmPassword).not.toHaveBeenCalled();
+
+  // The failed requests have consumed only row-lock reads, so use a fresh
+  // database fixture for the successful authenticated self-review.
+  const valid = await legacyParallelFixture(false);
+  valid.tx.approvalInstance.findFirst.mockResolvedValue({
+    ...round, applicantUserId: "chairman-1", frozenNodes: nodes.map(node => ({
+      ...node, originatorUserIds: ["chairman-1"]
+    })) as typeof round.frozenNodes
+  });
+  await expect(valid.service.reviewApproval(version.id, "chairman-1", approve)).resolves.toMatchObject({ status: "in_approval" });
+  expect(valid.auth.confirmPassword).toHaveBeenCalledWith("chairman-1", "fixture-password");
+  expect(valid.tx.approvalActionLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+    metadata: expect.objectContaining({ selfReview: true, selfReviewReason: "核对原版合同资料", ownerContractRisk: legacyLeaderRisk })
+  }) });
 });
 
 it("releases legacy seal handoff when the last duty sees the exact signed executive risk", async () => {
