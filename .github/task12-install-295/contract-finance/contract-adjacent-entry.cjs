@@ -10,7 +10,7 @@ const source=require('./contract-finance-source.json');
 const root='/qualification';
 const lane=process.argv[2];
 const current320=process.argv[3]==='--current-320';
-const count=current320?323:295;
+const count=current320?328:295;
 const receipt={schemaVersion:1,purpose:'ORIGINAL_CONTRACT_ADJACENT_EXACT_'+count,lane,sourceSha:source.sourceSha,
   migrationSha256:current320?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
@@ -25,7 +25,7 @@ async function main(){
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,final);
-    assert.equal(source.tails.length,28);
+    assert.equal(source.tails.length,33);
   } else {
     assert.equal(source.ledgerSha256,final);
     assert.equal(source.tails.at(-1).sha256,digest);

@@ -14,7 +14,7 @@ scope=task398-standard
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="current-320"?323:295;
+  const count=source.mode==="current-320"?328:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 ' "$prepared/source.json" "$sha")
@@ -30,7 +30,7 @@ python3 "$plan/stage-task398-standard.py" \
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 6 ]] || exit 65
-if [[ $count == 323 ]]; then
+if [[ $count == 328 ]]; then
   patch --batch --forward --fuzz=0 --silent "$work/services/api/prisma/run-task398-shared-standard-local.cjs" < "$plan/task398-standard-320.patch"
 fi
 

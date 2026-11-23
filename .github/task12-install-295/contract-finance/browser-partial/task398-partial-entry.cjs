@@ -5,7 +5,7 @@ const {withCombined295MultiWitness,withCombined320ContractPayment} = require('./
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const current320=source.mode==='current-320';
-const count=current320?323:295;
+const count=current320?328:295;
 const purpose='TASK398_BROWSER_PARTIAL_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){

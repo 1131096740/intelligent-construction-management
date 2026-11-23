@@ -40,8 +40,8 @@ export async function assertOwnedContractFinanceLedger(client: PrismaClient, sco
         FROM public._prisma_migrations) AS ledger
   `;
   const ledger = observed?.ledger.map(({ name, sha256, finished, rolledBack }) => ({ name, sha256, finished, rolledBack }));
-  const current320 = process.env.JG_CONTRACT_FINANCE_LEDGER === "323";
-  if (!observed?.admitted || ledger?.length !== (current320 ?323:295) ||
+  const current320 = process.env.JG_CONTRACT_FINANCE_LEDGER === "328";
+  if (!observed?.admitted || ledger?.length !== (current320 ?328:295) ||
       createHash("sha256").update(JSON.stringify(ledger.slice(0,282))).digest("hex") !== ledgerSha256 ||
       createHash("sha256").update(JSON.stringify(ledger.slice(0,292))).digest("hex") !==
         "739451e0ff81740db53707acc013709436a746a2b019f99059c6375a5039a775" ||
@@ -50,7 +50,7 @@ export async function assertOwnedContractFinanceLedger(client: PrismaClient, sco
       createHash("sha256").update(JSON.stringify(ledger.slice(0,295))).digest("hex") !==
         "b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d" ||
       (current320 && createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
-        "5623f6ae565471f54b3d1dfd965c4beafc560b8f2bfb97765c4a8699ee9f99ec")) {
+        "8ae65298af51d4aa109ece4c8ea6db8cfbd921858213525f092b904a309faa49")) {
     throw new Error("CONTRACT_FINANCE_OWNED_LEDGER_MISMATCH");
   }
   return true;

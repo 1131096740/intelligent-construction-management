@@ -10,7 +10,7 @@ build=$(cd "$4" && pwd -P)
 lane=$5
 mode_args=()
 count=295
-if [[ $# == 6 ]]; then mode_args=(--current-320); count=323; fi
+if [[ $# == 6 ]]; then mode_args=(--current-320); count=328; fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 finance="$root/.github/task12-install-295/contract-finance"
@@ -20,7 +20,7 @@ node - "$prepared/source.json" "$sha" "$lane" "$common/multi-witness.cjs" "$coun
 const [sourceFile,sha,lane,terminalFile,count]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||source.migrationCount!==Number(count)||!['general16','project11'].includes(lane))process.exit(65);
-if(count==='323') {
+if(count==='328') {
   if(source.mode!=='current-320'||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
 } else if(source.ledgerSha256!==terminal.final)process.exit(65);
 JS

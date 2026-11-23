@@ -11,7 +11,7 @@ const root = '/qualification';
 const source = require('./contract-finance-source.json');
 const mode = process.argv[2];
 const current320=source.mode==='current-320';
-const count=current320?323:295;
+const count=current320?328:295;
 const receipt = {schemaVersion:1,purpose:'CONTRACT_FINANCE_CORE_OR_PAYMENT_EXACT_'+count,
   scope:mode,sourceSha:source.sourceSha,migrationSha256:current320?source.tails.at(-1).sha256:digest,stages:['INPUTS'],status:'STOPPED'};
 

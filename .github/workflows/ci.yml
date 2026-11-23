@@ -408,18 +408,18 @@ jobs:
         run: |
           count=$(node -p "require('./services/api/prisma/database-dynamic-gate-manifest.json').migrationBaseline.expectedDirectoryCount")
           mode_args=()
-          if [[ "$count" == 323 ]]; then
+          if [[ "$count" == 328 ]]; then
             mode_args=(--current-320)
             predecessor=a187dc73a133114e1cfbbc891a4aec923abe2545
           fi
           if [[ "$DYNAMIC_GROUP" == contract_finance_acceptance && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run.sh ]]; then
-            if [[ "$count" == 323 ]]; then
+            if [[ "$count" == 328 ]]; then
               exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA" --current-320 "$predecessor"
             fi
             exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA"
           fi
           if [[ "$DYNAMIC_GROUP" == remaining_dynamic_postgresql16 && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run-remaining.sh ]]; then
-            if [[ "$count" == 323 ]]; then
+            if [[ "$count" == 328 ]]; then
               exec bash .github/task12-install-295/contract-finance/run-remaining.sh "$CI_SOURCE_SHA" --current-320
             fi
             exec bash .github/task12-install-295/contract-finance/run-remaining.sh "$CI_SOURCE_SHA"
@@ -461,7 +461,7 @@ jobs:
               *) lane= ;;
             esac
             if [[ -n "$lane" ]]; then
-              if [[ "$count" == 323 && "$lane" == pol275 ]]; then
+              if [[ "$count" == 328 && "$lane" == pol275 ]]; then
                 exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane" --current-320 "$predecessor"
               fi
               exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane" ${mode_args[@]+"${mode_args[@]}"}

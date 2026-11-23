@@ -5,9 +5,9 @@
 
  export async function assertTask410Owner290(db: PrismaService, target: URL) {
 +  const current320 = process.env.TASK410_OWNED_320 === "1";
-+  const count = current320 ?323:295;
-+  const migration = current320 ? "20261119007500_signed_change_and_settlement_attachment_file_binding" : terminalMigration;
-+  const checksum = current320 ? "98e016b27a5a64b7a471cecddda29eac982c791f391d57b22f461a842149ef0a" : terminalChecksum;
++  const count = current320 ?328:295;
++  const migration = current320 ? "20261126000000_operating_cost_attribution_confirmation" : terminalMigration;
++  const checksum = current320 ? "362340da5d146e1113e6442ae1bc2646508a9739f2b4244e76abd27be5cf415c" : terminalChecksum;
    const [result] = await db.$queryRaw<Array<{ accepted: boolean }>>`
      SELECT
        current_database() = ${target.pathname.slice(1)}

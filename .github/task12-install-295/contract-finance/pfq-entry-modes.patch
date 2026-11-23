@@ -7,7 +7,7 @@
 +const {withPfq295,withPfq320}=require('/qualification/installer.cjs');
 +const source=require('./contract-finance-source.json');
 +const current320=process.argv[3]==='--current-320';
-+const count=current320?323:295;
++const count=current320?328:295;
  const lane=process.argv[2];
  const expected={
    'pre115-clean':{prefix:114},
