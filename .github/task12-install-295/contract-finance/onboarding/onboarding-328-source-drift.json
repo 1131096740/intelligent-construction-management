@@ -160,6 +160,7 @@
   "services/api/src/contract-template/template-management.test-support.ts": "66eed61d006b402a3eabb202d71d6cb31cafbaa6f0bb10045b9bda88980bbf4f",
   "services/api/src/contract-workbench/contract-workbench.service.ts": "a4100247a424bdf57e4f4e8ac10d0749c434b459f5261ec776894738cb916177",
   "services/api/src/core-flow/ledger-excel.ts": "33cd3ad6144829e14cc4e3d9c64de6d9180b7e1836b071709641ce8949a1b15b",
+  "services/api/src/database/contract-business-entry-http.spec.ts": "66db4be97e2f9e55365cc8f5fa7eac8659de7e5623cbf394e437a3b6b4dfafb2",
   "services/api/src/database/registered-payment-catalog.ts": "121b00319df30f72468707163bb532f3b6189b77b2b23528bfd9cde49b11c27b",
   "services/api/src/database/spot-procurement-core-schema.spec.ts": "ace8b6615c03938efba4cdbf63146c1ff4c3e3b5499ec2ce32a30f8f4b01049f",
   "services/api/src/database/task07-formal-payment.test-support.ts": "e2de6a2f71ce4503fea0f3763af77078d80f0a106532e41ca70d25a40e95abbd",

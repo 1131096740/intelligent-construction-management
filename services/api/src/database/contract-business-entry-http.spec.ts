@@ -1060,7 +1060,7 @@ if (enabled) {
       const paymentPdfActor = await loginAs(projectFinanceUserId);
       await verifyApprovedPdf({ db: prisma, baseUrl, token, password: paymentPdfActor.password,
         businessType: "payment_request", businessId: payment.id,
-        roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: settlementFinance ? "结算付款" : "直接付款" });
+        roles: ["comprehensive_director", "project_manager", "finance_director", "contract_director", "chairman"], label: settlementFinance ? "结算付款" : "直接付款" });
       const quotaEvidence = await upload("synthetic-quota.pdf", "application/pdf", await pdf.save());
       const quota = await request<{ quotaId: string }>("POST", `/projects/${project.id}/financing-quotas`, {
         idempotencyKey: randomUUID(), amountCents: "10000", reason: "合成公开付款链额度", attachmentFileId: quotaEvidence.id
