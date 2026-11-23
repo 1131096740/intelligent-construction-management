@@ -837,7 +837,7 @@
   {
     "path": "services/api/src/database/contract-business-entry-http.spec.ts",
     "expected": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
-    "candidate": "66db4be97e2f9e55365cc8f5fa7eac8659de7e5623cbf394e437a3b6b4dfafb2"
+    "candidate": "b0d8436f1d65a0585e26a029a1baea1a95dfbc974fa862d221d715353334fff5"
   },
   {
     "path": "services/api/src/database/registered-payment-catalog.ts",

@@ -69,7 +69,7 @@ shutil.copytree(historical/'source',context/'source')
 write(context/'checkout.cjs',read_pinned(native/'checkout.cjs','77eaa09f4dd25bb0c1b2a6da987d7b1b976188295f1be3a5d2d83f2c44990268'))
 for name in ['source-admission.json','source-seal.txt','exact-source.json']:
     write(context/name,(historical/name).read_bytes())
-pins = json.loads(read_pinned(donor/'pins.json','492c07d0b658a915a311c55035e08ee2f25b0c5cad11e3539521746b3d3ab147'))
+pins = json.loads(read_pinned(donor/'pins.json','dc752a3d2e85b05805e56cb746b6e873c5a8b4ef1fddb3b96e257e66b2524c80'))
 old_installer = overlay((native/'installer.cjs').read_bytes(),pins['installer'])
 new_installer = patch(old_installer,(plan/'installer-named295.patch').read_bytes())
 assert digest(new_installer) == 'e94bd046c552817cbd49cfb86c693ea0e0496d93f677f99801f90dfad835a7ef'

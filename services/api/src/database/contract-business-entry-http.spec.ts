@@ -1030,11 +1030,19 @@ if (enabled) {
           method: "POST", headers: { authorization: `Bearer ${token}` }, body: signature
         });
         if (!signedResponse.ok) throw new Error(`合成签名上传失败：${signedResponse.status}`);
-        const review = await request<{ reviewApprovalContext: Record<string, unknown> }>("GET", `/payments/${payment.id}`);
+        const { reviewApprovalContext } = await request<{ reviewApprovalContext: {
+          expectedPaymentUpdatedAt: string;
+          expectedApprovalInstanceId: string;
+          expectedNodeIndex: number;
+          expectedApprovalUpdatedAt: string;
+        } | null }>("GET", `/payments/${payment.id}`);
+        if (!reviewApprovalContext) throw new Error("公开付款详情没有审批坐标");
+        const { expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt } = reviewApprovalContext;
+        const approvalCoordinates = { expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt };
         const finalNode = approval.currentNodeIndex === (approval.frozenNodes as unknown[]).length - 1;
         if (!finalNode) {
           await expect(request("POST", `/payments/${payment.id}/approval`, {
-            ...review.reviewApprovalContext, decision: "approve", approvedAmountCents: "9000",
+            ...approvalCoordinates, decision: "approve", approvedAmountCents: "9000",
             confirmationPassword: identity.password
           })).rejects.toThrow();
           if (settlementFinance) {
@@ -1043,7 +1051,7 @@ if (enabled) {
           }
         }
         const approved = await request<{ businessEntrySnapshot?: BusinessEntryFrozenSnapshot }>("POST", `/payments/${payment.id}/approval`, {
-          ...review.reviewApprovalContext, decision: "approve",
+          ...approvalCoordinates, decision: "approve",
           ...(finalNode && entryMode === "aggregate" ? { approvedAmountCents: "9000" } : {}),
           confirmationPassword: identity.password
         });
