@@ -490,8 +490,18 @@ function changeLifecyclePage(page: number) {
 async function exportContractLedger() {
   exportLoading.value = true;
   try {
-    await downloadContractLedgerExport();
-    await MessagePlugin.success("合同台账已导出，内容仅包含当前账号可见范围。");
+    const projectId = contractLedgerRows.value.find(
+      (row) => row.project === contractFilters.project
+    )?.projectId;
+    await downloadContractLedgerExport({
+      ...(projectId ? { projectId } : {}),
+      ...(contractFilters.keyword ? { keyword: contractFilters.keyword } : {}),
+      ...(contractFilters.contractStatus ? { status: contractFilters.contractStatus } : {}),
+      columns: visibleContractColumnKeys.value.filter((key) => key !== "operation")
+    });
+    await MessagePlugin.success(
+      "合同台账已按当前筛选与显示列导出，内容仅包含当前账号可见范围。"
+    );
   } catch (error) {
     await MessagePlugin.error(
       formatUnknownApiError(error, "合同台账导出失败，请检查网络与权限后重试。")

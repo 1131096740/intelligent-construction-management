@@ -4148,8 +4148,39 @@ export function fetchContractWorkbenchLedger(
   );
 }
 
-export function downloadContractLedgerExport() {
-  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败", { "x-contract-numeric-protocol": "2" });
+export interface LedgerExportQueryParams {
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  keyword?: string;
+  columns?: readonly string[];
+  sort?: string;
+}
+
+export function downloadContractLedgerExport(query?: LedgerExportQueryParams) {
+  const params = new URLSearchParams();
+  if (query?.projectId) params.set("projectId", query.projectId);
+  if (query?.dateFrom) params.set("dateFrom", query.dateFrom);
+  if (query?.dateTo) params.set("dateTo", query.dateTo);
+  if (query?.status) params.set("status", query.status);
+  if (query?.keyword) params.set("keyword", query.keyword);
+  if (query?.sort) params.set("sort", query.sort);
+  if (query?.columns?.length) params.set("columns", query.columns.join(","));
+  const suffix = params.toString();
+  return suffix
+    ? downloadWorkbook(
+        `/contracts/ledger-export?${suffix}`,
+        "合同台账.xlsx",
+        "导出合同台账失败",
+        { "x-contract-numeric-protocol": "2" }
+      )
+    : downloadWorkbook(
+        "/contracts/ledger-export",
+        "合同台账.xlsx",
+        "导出合同台账失败",
+        { "x-contract-numeric-protocol": "2" }
+      );
 }
 
 export function fetchSettlementContractOptions(projectId: string) {
@@ -4224,12 +4255,106 @@ export function fetchSettlementWorkbenchLedger(
   );
 }
 
+/**
+ * @deprecated 旧 `Settlement` 台账导出，仅用于历史数据兼容。
+ * 正式结算台账请使用 {@link downloadSignedSettlementLedgerExport}。
+ */
 export function downloadSettlementLedgerExport() {
   return downloadWorkbook(
     "/settlements/ledger-export",
     "结算台账.xlsx",
     "导出结算台账失败"
   );
+}
+
+export type SignedSettlementLedgerRow = {
+  id: string;
+  settlementId: string;
+  settlementNo: string;
+  confirmationNo: string | null;
+  contractKind: string;
+  contractKindLabel: string;
+  relationship: string;
+  relationshipLabel: string;
+  contractName: string;
+  projectId: string;
+  project: string;
+  signingParty: string;
+  counterparty: string;
+  amountYuan: string | null;
+  amount: string;
+  amountKnown: boolean;
+  confirmedAt: string | null;
+  confirmedDate: string | null;
+  confirmedAtText: string;
+  reviewerName: string;
+  status: string;
+  statusLabel: string;
+  updatedAt: string;
+};
+
+export interface SignedSettlementLedgerPage {
+  rows: SignedSettlementLedgerRow[];
+  meta: { page: number; pageSize: number; total: number; totalPages: number };
+  summary: {
+    total: number;
+    knownAmountRows: number;
+    unknownAmountRows: number;
+    totalAmountYuan: string | null;
+    projectCount: number;
+    latestConfirmedAt: string | null;
+  };
+  filters: {
+    projectId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+    status: string | null;
+    keyword: string | null;
+  };
+  columns: Array<{ key: string; header: string; required: boolean }>;
+}
+
+/** 正式结算台账：只读已复核 `SignedContractSettlement`（跨项目入账）。 */
+export function fetchSignedSettlementLedger(
+  query: LedgerExportQueryParams & { page?: number; pageSize?: number } = {}
+) {
+  const params = new URLSearchParams();
+  if (query.projectId) params.set("projectId", query.projectId);
+  if (query.dateFrom) params.set("dateFrom", query.dateFrom);
+  if (query.dateTo) params.set("dateTo", query.dateTo);
+  if (query.status) params.set("status", query.status);
+  if (query.keyword) params.set("keyword", query.keyword);
+  if (query.sort) params.set("sort", query.sort);
+  if (query.columns?.length) params.set("columns", query.columns.join(","));
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.pageSize !== undefined) params.set("pageSize", String(query.pageSize));
+  const suffix = params.toString();
+  return readJson<SignedSettlementLedgerPage>(
+    suffix ? `/settlements/signed-ledger?${suffix}` : "/settlements/signed-ledger"
+  );
+}
+
+export function downloadSignedSettlementLedgerExport(query?: LedgerExportQueryParams) {
+  const params = new URLSearchParams();
+  if (query?.projectId) params.set("projectId", query.projectId);
+  if (query?.dateFrom) params.set("dateFrom", query.dateFrom);
+  if (query?.dateTo) params.set("dateTo", query.dateTo);
+  if (query?.status) params.set("status", query.status);
+  if (query?.keyword) params.set("keyword", query.keyword);
+  if (query?.sort) params.set("sort", query.sort);
+  if (query?.columns?.length) params.set("columns", query.columns.join(","));
+  const suffix = params.toString();
+  return suffix
+    ? downloadWorkbook(
+        `/settlements/signed-ledger-export?${suffix}`,
+        "已签结算台账.xlsx",
+        "导出已签结算台账失败"
+      )
+    : downloadWorkbook(
+        "/settlements/signed-ledger-export",
+        "已签结算台账.xlsx",
+        "导出已签结算台账失败"
+      );
 }
 
 export function fetchPaymentLedger() {

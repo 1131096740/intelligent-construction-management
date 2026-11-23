@@ -13,6 +13,7 @@ import {
   Post,
   Query,
   Res,
+  ServiceUnavailableException,
   StreamableFile,
   UploadedFile,
   UseInterceptors
@@ -43,6 +44,7 @@ import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dt
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import { WithdrawSettlementApprovalDto } from "./dto/withdraw-settlement-approval.dto";
 import { SettlementReadService } from "./settlement-read.service";
+import { SignedSettlementLedgerService } from "./signed-settlement-ledger.service";
 import {
   SETTLEMENT_ATTACHMENT_TEMPLATE_MIME,
   SettlementAttachmentTemplateService
@@ -72,7 +74,8 @@ export class SettlementController {
     @Optional() private readonly recoveries?: SettlementRecoveryService,
     @Optional() private readonly files?: FileService,
     @Optional() private readonly approvalProgress?: ApprovalProgressService,
-    @Optional() private readonly dutyNotifications?: SettlementArchiveNotificationService
+    @Optional() private readonly dutyNotifications?: SettlementArchiveNotificationService,
+    @Optional() private readonly signedSettlementLedger?: SignedSettlementLedgerService
   ) {}
 
   @Post()
@@ -127,6 +130,12 @@ export class SettlementController {
     );
   }
 
+  /**
+   * 旧 `Settlement` 台账导出（历史数据兼容）。
+   *
+   * 正式结算台账已改为 `signed-ledger`（`SignedContractSettlement` 已复核记录）。
+   * 该端点仅保留给旧工作台/历史数据，不作为本票正式台账口径。
+   */
   @Get("ledger-export")
   @RequirePositions(...CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS)
   async exportLedger(
@@ -137,6 +146,50 @@ export class SettlementController {
     const result = await this.settlementRead.exportLedger(
       await this.projectVisibility.visibleProjectIds(user.id),
       user.id
+    );
+    response.set({
+      "Content-Type": XLSX_MIME,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,
+      "Content-Length": String(result.buffer.length)
+    });
+    return new StreamableFile(result.buffer);
+  }
+
+  /**
+   * 正式结算台账：只读已复核 `SignedContractSettlement`（跨项目入账）。
+   * 待复核/草稿在已签结算工作台办理，不进入正式台账（UI-11）。
+   */
+  @Get("signed-ledger")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async signedLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: Record<string, string | string[] | undefined>
+  ) {
+    if (!this.signedSettlementLedger) {
+      throw new ServiceUnavailableException("已签结算台账暂不可用");
+    }
+    return this.signedSettlementLedger.list(
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id,
+      query
+    );
+  }
+
+  @Get("signed-ledger-export")
+  @RequirePositions(...CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS)
+  async signedLedgerExport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void },
+    @Query() query: Record<string, string | string[] | undefined>
+  ) {
+    if (!this.signedSettlementLedger) {
+      throw new ServiceUnavailableException("已签结算台账暂不可用");
+    }
+    const result = await this.signedSettlementLedger.exportLedger(
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id,
+      query
     );
     response.set({
       "Content-Type": XLSX_MIME,
