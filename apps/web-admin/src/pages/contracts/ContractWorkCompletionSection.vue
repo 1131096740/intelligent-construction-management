@@ -16,7 +16,7 @@
       </t-button>
     </header>
     <form
-      v-if="showDraft"
+      v-if="canRegister && showDraft"
       class="work-completion__form"
       @submit.prevent="save"
     >
@@ -80,15 +80,19 @@
         >
           提交三职责确认
         </t-button>
-        <t-button
+        <template
           v-for="duty in entry.duties"
           :key="duty.index"
-          variant="outline"
-          :disabled="busy"
-          @click="openReview(entry, duty)"
         >
-          {{ duty.name }}确认
-        </t-button>
+          <t-button
+            v-if="duty.canReview"
+            variant="outline"
+            :disabled="busy"
+            @click="openReview(entry, duty)"
+          >
+            {{ duty.name }}确认
+          </t-button>
+        </template>
       </div>
     </article>
     <t-dialog
@@ -97,7 +101,7 @@
       :footer="false"
     >
       <form
-        v-if="reviewTarget"
+        v-if="reviewTarget && reviewTarget.duty.canReview"
         class="work-completion__form"
         @submit.prevent="review('approve')"
       >
@@ -150,7 +154,7 @@
       :footer="false"
     >
       <form
-        v-if="reviseTarget"
+        v-if="reviseTarget && reviseTarget.canRevise"
         class="work-completion__form"
         @submit.prevent="saveRevision"
       >
@@ -240,6 +244,7 @@ async function run(action: () => Promise<void>) {
 }
 
 async function save() {
+  if (!canRegister.value) return;
   const trimmedWork = work.value.trim();
   let amountYuan: string | null;
   try {
@@ -275,7 +280,7 @@ function openRevise(entry: WorkCompletionEntry) {
 
 async function saveRevision() {
   const target = reviseTarget.value;
-  if (!target) return;
+  if (!target || !target.canRevise) return;
   const trimmedWork = reviseWork.value.trim();
   let amountYuan: string | null;
   try {
@@ -295,6 +300,7 @@ async function saveRevision() {
 }
 
 async function submit(id: string) {
+  if (!entries.value.find(entry => entry.id === id)?.canSubmit) return;
   await run(async () => {
     await submitWorkCompletion(props.versionId, id);
     notice.value = "已提交合同、项目和财务职责确认";
@@ -312,7 +318,7 @@ function openReview(entry: WorkCompletionEntry, duty: WorkCompletionEntry["dutie
 
 async function review(decision: "approve" | "reject") {
   const target = reviewTarget.value;
-  if (!target?.entry.approvalInstanceId) return;
+  if (!target?.duty.canReview || !target.entry.approvalInstanceId) return;
   if (decision === "reject" && !comment.value.trim()) {
     error.value = "请填写驳回原因";
     return;

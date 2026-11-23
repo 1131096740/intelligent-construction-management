@@ -68,7 +68,7 @@
       </ul>
 
       <form
-        v-if="downloadTarget"
+        v-if="downloadTarget && detail.canDownloadOriginals"
         class="signed-change-form"
         @submit.prevent="download"
       >
@@ -86,7 +86,7 @@
       </form>
 
       <form
-        v-else-if="reviewTarget"
+        v-else-if="reviewTarget && detail.canReview"
         class="signed-change-form"
         @submit.prevent="review"
       >
@@ -337,7 +337,7 @@ async function review() {
 
 async function download() {
   const row = downloadTarget.value;
-  if (busy.value || !row) return;
+  if (busy.value || !row || !detail.value?.canDownloadOriginals) return;
   busy.value = true;
   error.value = "";
   const token = generation;

@@ -50,6 +50,7 @@
           <div class="signed-settlements__files">
             <!-- ui-rules-ignore: native-file-input - 本地 PDF 与照片的多选上传。 -->
             <input
+              v-if="overview?.canRegister"
               aria-label="选择已签 PDF 或照片"
               type="file"
               multiple
@@ -64,7 +65,7 @@
               >
                 {{ file.originalName }}
                 <t-button
-                  v-if="isSavedAttachment(file.fileId)"
+                  v-if="isSavedAttachment(file.fileId) && selected?.canReadAttachments"
                   variant="text"
                   size="small"
                   :disabled="busy"
@@ -73,7 +74,7 @@
                   预览
                 </t-button>
                 <t-button
-                  v-if="isSavedAttachment(file.fileId)"
+                  v-if="isSavedAttachment(file.fileId) && selected?.canReadAttachments"
                   variant="text"
                   size="small"
                   :disabled="busy"
@@ -94,7 +95,7 @@
             </ul>
           </div>
         </t-form-item>
-        <t-form-item v-if="!readOnly">
+        <t-form-item v-if="overview?.canRegister">
           <t-space>
             <t-button
               :disabled="!contractKey"
@@ -345,6 +346,7 @@ function open(row: SignedSettlementRow) {
 }
 
 function addFiles(event: Event) {
+  if (!overview.value?.canRegister) return;
   const picker = event.target as HTMLInputElement;
   const files = Array.from(picker.files ?? []);
   return run(async () => {
@@ -381,7 +383,7 @@ function confirmAttachmentAccess(values: { password: string; reason: string }) {
   return run(async () => {
     const file = fileAccessTarget.value;
     const settlement = selected.value;
-    if (!settlement || !file || !isSavedAttachment(file.fileId)) return;
+    if (!settlement || !settlement.canReadAttachments || !file || !isSavedAttachment(file.fileId)) return;
     const { blob, fileName, mimeType } = await readSignedSettlementAttachment(projectId.value, settlement.id, file.fileId, {
       confirmationPassword: values.password, downloadReason: values.reason, accessMode: fileAccessMode.value
     });
@@ -402,6 +404,7 @@ function removeFile(id: string) {
 
 function save(submit: boolean) {
   return run(async () => {
+    if (!overview.value?.canRegister) return;
     const option = contracts.value.find(item => key(item) === contractKey.value);
     if (!option) return;
     const saved = await saveSignedSettlement(projectId.value, {
@@ -417,7 +420,7 @@ function save(submit: boolean) {
 
 function review(decision: "confirm" | "return") {
   return run(async () => {
-    if (!selected.value) return;
+    if (!selected.value?.canReview) return;
     selected.value = await reviewSignedSettlement(projectId.value, selected.value, decision, reason.value, password.value);
     password.value = "";
     notice.value = decision === "confirm" ? "已确认入账" : "已驳回给原制单人";

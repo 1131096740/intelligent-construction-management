@@ -55,7 +55,10 @@ export class SignedContractSettlementService {
           SELECT public.jg_list_signed_settlements_v1(${projectId},${actor},${expires},${proof}) AS rows
         `;
         if (!Array.isArray(result?.rows)) throw new ServiceUnavailableException(unavailable);
-        return result.rows;
+        const access = await this.authorize(tx, projectId, actor);
+        return result.rows.map(row => ({ ...row,
+          canReadAttachments: access.director ||
+            (access.staff && (row.ownerUserId === actor || row.state === "confirmed")) }));
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010") {
@@ -93,9 +96,10 @@ export class SignedContractSettlementService {
 
   async overview(projectId: string, actor: string, contractKind: SignedContractKind, contractId: string) {
     return this.prisma.$transaction(async (tx) => {
+      const access = await this.authorize(tx, projectId, actor);
       const { confirmedYuan } = await this.confirmedProjection(tx, projectId, actor, contractKind, contractId, "overview");
       const contract = await this.contractRead<SignedSettlementContractDetail>(tx, projectId, actor, "overview", contractKind, contractId);
-      return { ...contract, confirmedYuan };
+      return { ...contract, confirmedYuan, canRegister: access.staff || access.director };
     });
   }
 

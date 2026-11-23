@@ -11228,6 +11228,354 @@
           "name": "archiveSignedContractV2"
         }
       ]
+    },
+    {
+      "id": "contract-work-completion.save-draft",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+      "trigger": {
+        "element": "form",
+        "event": "submit",
+        "handler": "save"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canRegister"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "saveWorkCompletionDraft"
+        }
+      ]
+    },
+    {
+      "id": "contract-work-completion.revise-draft",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+      "trigger": {
+        "element": "form",
+        "event": "submit",
+        "handler": "saveRevision"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "reviseTarget.canRevise"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "reviseWorkCompletionDraft"
+        }
+      ]
+    },
+    {
+      "id": "contract-work-completion.submit",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submit"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "entry.canSubmit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "submitWorkCompletion"
+        }
+      ]
+    },
+    {
+      "id": "contract-work-completion.review",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+      "trigger": {
+        "element": "form",
+        "event": "submit",
+        "handler": "review"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "reviewTarget.duty.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "reviewWorkCompletion"
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-facts.submit",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "submit"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "detail.canSubmit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "submitContractTaxRevision"
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-facts.review",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "review"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "detail.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "reviewContractTaxRevision"
+        }
+      ]
+    },
+    {
+      "id": "contract-signed-change.submit",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
+      "trigger": {
+        "element": "form",
+        "event": "submit",
+        "handler": "submit"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "detail.canSubmit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "submitSignedContractChange"
+        }
+      ]
+    },
+    {
+      "id": "contract-signed-change.review",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
+      "trigger": {
+        "element": "form",
+        "event": "submit",
+        "handler": "review"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "detail.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "reviewSignedContractChange"
+        }
+      ]
+    },
+    {
+      "id": "contract-signed-change.download-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
+      "trigger": {
+        "element": "form",
+        "event": "submit",
+        "handler": "download"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "detail.canDownloadOriginals"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
+        }
+      ]
+    },
+    {
+      "id": "signed-settlement.save",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算工作台/已签登记"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "save"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "overview.canRegister"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "name": "saveSignedSettlement"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "name": "submitSignedSettlement"
+        }
+      ]
+    },
+    {
+      "id": "signed-settlement.review",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算工作台/已签登记"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "review"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "selected.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "name": "reviewSignedSettlement"
+        }
+      ]
+    },
+    {
+      "id": "signed-settlement.upload-file",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算工作台/已签登记"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+      "trigger": {
+        "element": "input",
+        "event": "change",
+        "handler": "addFiles"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "overview.canRegister"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "name": "uploadSignedSettlementFile"
+        }
+      ]
+    },
+    {
+      "id": "signed-settlement.attachment-access",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算工作台/已签登记"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmAttachmentAccess"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "selected.canReadAttachments"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "name": "readSignedSettlementAttachment"
+        }
+      ]
+    },
+    {
+      "id": "payment-basis.download-signed-attachment",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "download"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "basis.canReadSignedAttachments"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "name": "readSignedSettlementAttachment"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
+        }
+      ]
     }
   ]
 }
