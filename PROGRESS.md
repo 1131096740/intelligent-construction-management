@@ -1,5 +1,13 @@
 # 建工智管当前状态
 
+## 2026-11-24 动态门 PG 用例登记（11 条 spec）
+
+分支 `line-af-manifests`，合入 #423 合并（`7bc366ed8`）后完成；未改产品代码/迁移、未 push。
+
+- `database-dynamic-gate-manifest.json` 新增 11 个 `workspaceScript` group（#400/#403/#404/#405/#411/#416-his-gap/#416-handover/#417/#418/#421/#421b），合计 34 个 pending test；inventory 92/575→103/609，组 34→45，ciEligible 33/91/574→44/102/608。
+- 新增 4 条根脚本：`verify:issue400-financial-correction:local`、`verify:issue416-his-gap:local`、`verify:issue418-operating-dedup:local`、`verify:issue421b-four-ledger:local`；CI 矩阵补 11 个新 group id，并补上遗漏的 `issue414_construction_deduction`。
+- 三条验证全绿：`--validate-manifest` 0、`go-live-ci-gates.test.mjs` 12/12、`run-database-dynamic-gate-local.test.cjs` 83/83。详见 [回执](docs/progress/2026-11-24-dynamic-gate-registration.md)。
+
 ## 2026-11-23 #423 个人待办首页与各岗位固定入口
 
 分支 `line-al-423`；代码提交 `01c2ce1a168e1501a07136570a205e1c9042427e`，合入集成分支 tip `b389092295c6d452119735b83bdaae79d95d2942`（合并提交 `8a7e8673640bac13d494918494e0ef4f74ec88e9`）。未 push、未新增迁移（仍 328）、未改 `07500`/`05800`、未操作生产。

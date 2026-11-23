@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 92,
-    "fullyPendingSuites": 78,
-    "partiallyPendingSuites": 14,
-    "pendingTests": 575,
-    "coveredFiles": 92,
-    "coveredTests": 575,
+    "pendingFiles": 103,
+    "fullyPendingSuites": 82,
+    "partiallyPendingSuites": 21,
+    "pendingTests": 609,
+    "coveredFiles": 103,
+    "coveredTests": 609,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -910,14 +910,201 @@
         "path": "services/api/prisma/run-issue414-construction-deduction-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "issue400_financial_correction_refund",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue400-financial-correction-refund.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue400-financial-correction:local",
+        "path": "services/api/prisma/run-issue400-financial-correction-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue403_actual_purchase_batch",
+      "pendingTests": 2,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue403-actual-purchase-batch.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue403-actual-purchase:local",
+        "path": "services/api/prisma/run-issue403-actual-purchase-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue404_reimbursement",
+      "pendingTests": 3,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue404-reimbursement.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue404-reimbursement:local",
+        "path": "services/api/prisma/run-issue404-reimbursement-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue405_other_project_payment",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue405-other-project-payment.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue405-other-project-payment:local",
+        "path": "services/api/prisma/run-issue405-other-project-payment-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue411_third_company_repayment",
+      "pendingTests": 2,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue411-third-company-repayment.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue411-third-company:local",
+        "path": "services/api/prisma/run-issue411-third-company-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue416_his_gap",
+      "pendingTests": 3,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue416-his-gap.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue416-his-gap:local",
+        "path": "services/api/prisma/run-issue416-his-gap-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue416_takeover_handover",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue416-takeover-handover.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue416-handover:local",
+        "path": "services/api/prisma/run-issue416-takeover-handover-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue417_history_expense",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue417-history-expense.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue417-history-expense:local",
+        "path": "services/api/prisma/run-issue417-history-expense-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue418_operating_dedup",
+      "pendingTests": 9,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue418-operating-dedup.pg.spec.ts",
+          "pendingTests": 9,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue418-operating-dedup:local",
+        "path": "services/api/prisma/run-issue418-operating-dedup-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue421_signed_settlement_ledger",
+      "pendingTests": 6,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue421-signed-settlement-ledger.http.pg.spec.ts",
+          "pendingTests": 6,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue421-ledger:local",
+        "path": "services/api/prisma/run-issue421-ledger-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue421b_four_ledger",
+      "pendingTests": 5,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue421b-four-ledger.http.pg.spec.ts",
+          "pendingTests": 5,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue421b-four-ledger:local",
+        "path": "services/api/prisma/run-issue421b-four-ledger-local.cjs"
+      },
+      "state": "executable_local_runner"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 33,
-      "files": 91,
-      "tests": 574
+      "groups": 44,
+      "files": 102,
+      "tests": 608
     },
     "manualOnly": {
       "groups": 1,
