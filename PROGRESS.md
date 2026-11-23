@@ -1,5 +1,15 @@
 # 建工智管当前状态
 
+## 2026-11-23 #411 第三家公司代还与往来更正
+
+分支 `line-ag-411`（基线/集成 `adopt-395-396-415` tip `96930648f`），代码提交 `0a52ae4c`。未 push、未改 `07500`/`05800`、未操作生产；新增 1 条迁移，迁移数 **326→327**（终态 `20261125000000_company_transfer_third_party_repayment`，校验 `cb9fa70f…`）。
+
+- `CompanyTransfer` 新增 `repaymentDebtorCompanyId`：实际出款公司可与原债务人不同；普通 A→B 归还回填/默认 debtor=source，第三方 C 代还时 source=C、debtor=A、destination=B，旧债 A-B 容量仍按原债与原项目锁定。
+- 同一笔实付 outgoing 在 C、incoming 在 B：旧债 A-B 由到账核销，A-C 债权由同一到账派生；不新增第二笔付款/到账，不写项目成本；台账新增代还债务人、第三家代还应还/应收，原债仍可双向打开，源记录硬删被拒。
+- 原债更正沿用提出→财务主管确认（自审原因+密码）；canonical 更正计划的债务人改为 `COALESCE(repaymentDebtorCompanyId, sourceCompanyId)`，更正后旧债恢复/新债扣减、A-C 不变。
+- 真实 PostgreSQL 16 一次性容器 2/2：A-B 800 由 C 代还后 A-B 清、A-C 800；同债重复 100 被容量拒绝；proxy1 800→proxy2 1000 更正后 remaining 800/200、A-C 仍 800；`worktreeClean=true`、容器清理后 `docker ps -q` 为 0。API/Web typecheck、company-transfer 34、Web 2439、check:ui、业务语言、迁移基线 327 clean 通过。
+- 边界：银行退回后的债务恢复、A-C 作为后续可归还原债、326→327 全迁移链重放、HTTP/浏览器与并发压力未覆盖；295 链 323/322 pins 待主线统一重钉。详见 [回执](docs/progress/2026-11-23-issue-411.md)。
+
 ## 2026-11-23 #416 HIS-01～HIS-08、HIS-12 全量补差
 
 分支 `line-ab-416-his`（基线 `7e6ced3e0`），代码提交 `8b6b1415c7e2c34c3dc7c7867f5ce05a3f867e3d`（真库证据绑定合并提交 `df7c83688`）。未 push、本票未新增迁移；合入集成分支 `f713e4550` 后迁移数 **324**（#400 新增 1 条），未改 `07500`/`05800`、未操作生产。
