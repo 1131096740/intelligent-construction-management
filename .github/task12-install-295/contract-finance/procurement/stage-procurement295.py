@@ -72,6 +72,11 @@ for row in json.loads(manifest)['files']:
         if proof['expected'] != expected or proof['candidate'] != tested:
             raise ValueError(f'PROCUREMENT_295_CANDIDATE_PIN {relative}')
         seen.add(relative)
+        # 角色材料同时是候选增量时，仍须把候选字节送进容器；否则容器会用旧镜像副本，
+        # 既丢失新授权又让 staged_role 闭合失败。
+        if relative in role_material:
+            write(out / 'workspace' / relative, read(current))
+            staged_role.add(relative)
         continue
     if original['overlays'].get(relative) != {'candidate': tested, 'after': expected}:
         raise ValueError(f'PROCUREMENT_295_ORIGINAL_OVERLAY_PIN {relative}')

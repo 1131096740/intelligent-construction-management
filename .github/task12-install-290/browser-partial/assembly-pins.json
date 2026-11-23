@@ -17,14 +17,14 @@
     },
     "services/api/prisma/contract-bank-runtime-fixture.cjs": {
       "base": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171",
-      "patch": "b1f83457e441f70a3b13f26d564ea61c9076e78c3442c17851e69f7674456878",
-      "result": "f8a52c20be644145418a7b643b8bb279589a94b1000bbdd9861750afebc4693b"
+      "patch": "29f20d644720472f75dd634f51f3c69fa99b4a13818e0704f89a935c517c73da",
+      "result": "594c180e22acc8453dc5ea5f758baa03e95b98047019a676d34db7b505d503b8"
     },
     "services/api/src/database/task398-owned-database.test-support.ts": {
       "verbatim": "e8cab9ed9d2e1822e3d75023b91f404f409ef9baf4dca779789d745adb37ae3a"
     },
     "services/api/prisma/task398-owned-280-business-read-baseline.json": {
-      "verbatim": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60"
+      "verbatim": "88b44411322e857b9c1b3f6a562ca7655d998a41fd15db8449b8e79ae4b309b2"
     },
     "apps/web-admin/vite.config.ts": {
       "base": "5eab7509cde0cc5753638d652ad02789a4f506ece5339075f4867d9cd6eb2293",
