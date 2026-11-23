@@ -95,6 +95,7 @@ type PaymentDetailLifecycleProjection = {
   blockedReasons: string[];
   reviewApprovalContext: PaymentApprovalReviewContext | null;
   executionContext: PaymentExecutionContext | null;
+  withdrawApprovalContext?: { expectedApprovalInstanceId: string };
   revisionSubmissionContext?: {
     expectedUpdatedAt: string;
     requestedAmountCents: string;
@@ -1335,6 +1336,11 @@ export class PaymentReadService {
             payment.projectId
           )
         : false;
+    const markedLatest = hasOrdinaryPaymentParallelMarker(latestApproval?.frozenNodes);
+    const withdrawApprovalContext = payment.status === "approval_pending" && latestApproval?.status === "in_progress" &&
+      actorUserId && latestApproval.applicantUserId === actorUserId &&
+      isOrdinaryPaymentParallelRound(latestApproval.frozenNodes) && canPerform("payment.create", roleKeys)
+      ? { expectedApprovalInstanceId: latestApproval.id } : undefined;
     const availableActions = this.paymentActions(
       payment.status,
       roleKeys,
@@ -1344,7 +1350,8 @@ export class PaymentReadService {
       financeRecordedAmountCents,
       paidAmountCents,
       evidenceFiles,
-      currentApprovalReview.approval?.executionMode === "parallel"
+      currentApprovalReview.approval?.executionMode === "parallel",
+      !markedLatest || Boolean(withdrawApprovalContext)
     );
     const enabledExecutionActions = availableActions.filter(
       (action) => action.key === "record_execution" && action.enabled
@@ -1676,6 +1683,7 @@ export class PaymentReadService {
         .map((action) => action.key),
       reviewApprovalContext,
       executionContext,
+      ...(withdrawApprovalContext ? { withdrawApprovalContext } : {}),
       ...(revisionSubmissionContext ? { revisionSubmissionContext } : {}),
       lifecycleKind,
       ledgerView,
@@ -2591,7 +2599,8 @@ export class PaymentReadService {
     financeRecordedAmountCents: bigint,
     paidAmountCents: bigint,
     evidenceFiles: PaymentDetailReadModel["evidenceFiles"],
-    parallelReview: boolean
+    parallelReview: boolean,
+    canWithdrawApproval: boolean
   ): DetailActionReadModel[] {
     const workflowActions = [
       detailAction({
@@ -2607,7 +2616,7 @@ export class PaymentReadService {
         kind: "normal",
         roleKeys,
         requiredAction: "payment.create",
-        enabled: status === "approval_pending"
+        enabled: status === "approval_pending" && canWithdrawApproval
       }),
       detailAction({
         key: "remind_approval",

@@ -2421,7 +2421,7 @@ export class PaymentRequestService {
     `);
   }
 
-  async withdrawApproval(paymentId: string, actorUserId: string) {
+  async withdrawApproval(paymentId: string, actorUserId: string, expectedApprovalInstanceId?: string) {
     if (!this.prisma) {
       throw new Error("付款审批撤回服务暂不可用，请稍后重试或联系管理员");
     }
@@ -2436,6 +2436,12 @@ export class PaymentRequestService {
         throw new Error("当前付款申请已离开审批中，不能撤回");
       }
 
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance"
+        WHERE "businessType" = 'payment_request' AND "businessId" = ${payment.id}
+          AND "flowType" = 'payment.approve' AND "status" = 'in_progress'
+        FOR UPDATE
+      `);
       const instance = await tx.approvalInstance.findFirst({
         where: {
           businessType: "payment_request",
@@ -2456,6 +2462,9 @@ export class PaymentRequestService {
       const parallel = isOrdinaryPaymentParallelRound(instance.frozenNodes);
       if (!parallel && hasOrdinaryPaymentParallelMarker(instance.frozenNodes)) {
         throw new ConflictException("付款审批职责记录无效，不能撤回");
+      }
+      if (parallel && instance.id !== expectedApprovalInstanceId) {
+        throw new ConflictException("付款审批轮次已变化，请刷新详情后重新确认撤回");
       }
       const nextStatus = parallel ? "draft" : "withdrawn";
       const updated = await tx.paymentRequest.update({
@@ -3251,10 +3260,11 @@ export class PaymentRequestService {
           actorUserId
         );
         if (this.businessEntry) {
-          const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(
-            tx,
-            actorUserId,
-            {
+          const businessEntrySnapshot = parallel
+            ? await this.businessEntry.freezeFinalOrdinaryPaymentAmountInTransaction(
+              tx, actorUserId, payment.projectId, payment.id, approvedAmountCents
+            )
+            : await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, actorUserId, {
               sceneKey: "payment_approval_amount",
               definitionVersion: 1,
               target: {
@@ -3263,8 +3273,7 @@ export class PaymentRequestService {
                 entityId: payment.id
               },
               values: paymentApprovalAmountEntryValues(approvedAmountCents)
-            }
-          );
+            });
           Object.assign(approved, { businessEntrySnapshot });
         }
       }

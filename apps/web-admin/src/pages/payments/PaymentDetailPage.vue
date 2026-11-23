@@ -928,6 +928,7 @@ interface SensitiveActionState {
   requirePassword: boolean;
   reasonLabel: string;
   error: string;
+  withdrawal?: { paymentId: string; expectedApprovalInstanceId?: string };
 }
 
 interface PaymentReviewConfirmationState {
@@ -1461,6 +1462,7 @@ function clearPaymentDetailTransientState() {
   paymentPdfArchiveFiles.value = [];
   sensitiveAction.visible = false;
   sensitiveAction.kind = null;
+  sensitiveAction.withdrawal = undefined;
   sensitiveAction.error = "";
   paymentActionForm.approvedAmountYuan = "";
   paymentActionForm.approvalComment = "";
@@ -1528,7 +1530,7 @@ function setActionError(error: unknown, fallback: string) {
 function openSensitiveAction(
   kind: SensitiveActionKind,
   config: Pick<SensitiveActionState, "title" | "description"> &
-    Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel">>
+    Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel" | "withdrawal">>
 ) {
   if (!isPaymentReviewKind(kind)) invalidatePaymentReviewDialog(false);
   Object.assign(sensitiveAction, {
@@ -1541,6 +1543,7 @@ function openSensitiveAction(
     requireReason: config.requireReason ?? false,
     requirePassword: config.requirePassword ?? false,
     reasonLabel: config.reasonLabel ?? "操作原因",
+    withdrawal: config.withdrawal,
     error: ""
   });
 }
@@ -2138,7 +2141,13 @@ function requestGeneratedPdfArchive() {
 }
 
 function requestPaymentWithdrawal() {
+  const payment = paymentDetail.value;
+  if (!payment) return;
   openSensitiveAction("withdrawal", {
+    withdrawal: {
+      paymentId: payment.id,
+      expectedApprovalInstanceId: payment.withdrawApprovalContext?.expectedApprovalInstanceId
+    },
     title: "确认撤回付款审批？",
     description: "撤回会中止当前待办流转，后续能否再次提交以当前单据状态为准。",
     confirmText: "确认撤回",
@@ -2197,7 +2206,7 @@ async function executeSensitiveAction(values: { reason: string; password: string
         break;
       case "withdrawal":
         succeeded = await runPaymentAction("withdrawApproval", () =>
-          withdrawPaymentApprovalWithCapability(currentPaymentId())
+          withdrawPaymentApprovalWithCapability(sensitiveAction.withdrawal)
         );
         break;
       case "transfer":
@@ -2341,13 +2350,17 @@ async function transferPaymentApprovalWithCapability(
   return transferPaymentApproval(paymentId, { toUserId });
 }
 
-async function withdrawPaymentApprovalWithCapability(paymentId: string) {
+async function withdrawPaymentApprovalWithCapability(confirmation: SensitiveActionState["withdrawal"]) {
+  if (!confirmation || confirmation.paymentId !== currentPaymentId()) {
+    throw new Error("付款申请已变化，请刷新详情后重试");
+  }
+  const { paymentId, expectedApprovalInstanceId } = confirmation;
   const capability = await fetchPaymentActionCapability(paymentId);
-  const matchesRequestedPayment = capability.paymentId === paymentId;
+  const matchesRequestedPayment = capability.paymentId === paymentId && paymentDetail.value?.id === paymentId;
   if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
   const operationAllowed = capability.availableActions.includes("withdraw_approval");
   if (!operationAllowed) throw new Error("当前用户不能撤回该付款审批");
-  return withdrawPaymentApproval(paymentId);
+  return withdrawPaymentApproval(paymentId, expectedApprovalInstanceId);
 }
 
 async function downloadPaymentPrivateFileWithCapability(

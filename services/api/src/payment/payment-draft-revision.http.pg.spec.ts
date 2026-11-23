@@ -11,6 +11,7 @@ import { AppModule } from "../app.module";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
 import { PrivateFileStorage } from "../file/file.service";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION } from "./payment-approval-amount-business-entry-definition";
 import { PaymentRequestService } from "./payment-request.service";
 
 const run = process.env.ISSUE424_PAYMENT_REHEARSAL_URL ? it : it.skip;
@@ -252,8 +253,16 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       Object.assign(signedRound, await prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } }));
     }
     const withdrew = sourceType === "contract_due";
+    const withdrawal = withdrew
+      ? (await (await detail(applicantToken)).json()).withdrawApprovalContext
+      : undefined;
+    if (withdrew) {
+      expect(withdrawal).toEqual({ expectedApprovalInstanceId: round.id });
+      expect((await post(applicantToken, `${path}/approval-withdrawal`, {})).status).toBe(409);
+      expect((await (await detail(reviewerToken)).json()).withdrawApprovalContext).toBeUndefined();
+    }
     const returned = withdrew
-      ? await post(applicantToken, `${path}/approval-withdrawal`, {})
+      ? await post(applicantToken, `${path}/approval-withdrawal`, withdrawal)
       : await post(reviewerToken, `${path}/approval`, {
         decision: sourceType === "contract_advance" ? "reject" : "return_to_applicant",
         comment: "请把申请金额改为三元",
@@ -311,6 +320,11 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
     expect(await prisma.paymentExecution.count({ where: { paymentRequestId: payment.id } })).toBe(0);
 
     if (sourceType === "contract_due") {
+      const replacementPayment = await prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } });
+      expect((await post(applicantToken, `${path}/approval-withdrawal`, withdrawal)).status).toBe(409);
+      expect(await prisma.approvalInstance.findUnique({ where: { id: latest.id } })).toEqual(latest);
+      expect(await prisma.paymentRequest.findUnique({ where: { id: payment.id } })).toEqual(replacementPayment);
+      expect(await prisma.approvalActionLog.count({ where: { approvalInstanceId: latest.id, action: "withdraw" } })).toBe(0);
       const delegate = await signatoryWithoutRole("13900004227", "parallel-last-duty.png");
       await prisma.approvalDelegation.create({ data: {
         fromUserId: reviewer, toUserId: delegate.userId, startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() + 120_000)
@@ -335,13 +349,17 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       } })).toMatchObject({ actorUserId: delegate.userId, representedUserId: reviewer, signatureFileIdSnapshot: delegate.fileId });
       expect(await prisma.businessEntrySubmissionSnapshot.findMany({ where: {
         projectId: project.id, sceneKey: "payment_approval_amount", entityType: "payment_request", entityId: payment.id
-      } })).toEqual([expect.objectContaining({ frozenByUserId: delegate.userId, valuesSnapshot: { approvedAmountYuan: "3.00" } })]);
+      } })).toEqual([expect.objectContaining({ frozenByUserId: delegate.userId, valuesSnapshot: { approvedAmountYuan: "3.00" },
+        definitionSnapshot: PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION })]);
       await expect(prisma.$transaction(tx => app!.get(BusinessEntryTransactionService).freezeSubmissionSnapshotInTransaction(
         tx, delegate.userId, {
           sceneKey: "payment_approval_amount", definitionVersion: 1,
           target: { entityType: "payment_request", entityId: payment.id, projectId: project.id },
           values: { approvedAmountYuan: "3.00" }
         }
+      ))).rejects.toMatchObject({ status: 403 });
+      await expect(prisma.$transaction(tx => app!.get(BusinessEntryTransactionService).freezeFinalOrdinaryPaymentAmountInTransaction(
+        tx, delegate.userId, project.id, payment.id, 300n
       ))).rejects.toMatchObject({ status: 403 });
       expect(await prisma.paymentRequest.findUnique({ where: { id: payment.id } })).toMatchObject({
         status: "approved_pending_payment", requestedAmountCents: 300n, approvedAmountCents: 300n, paidAmountCents: 0n
@@ -351,6 +369,11 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
         headers: { authorization: `Bearer ${applicantToken}` }
       });
       expect(await formalForm.json()).toEqual({ available: true });
+      const completedPdf = await post(applicantToken, `/approval-forms/payment_request/${payment.id}/download`, {
+        confirmationPassword: password, downloadReason: "核对末岗签批后的正式付款审批单"
+      });
+      expect(completedPdf.status).toBe(201);
+      expect(Buffer.from(await completedPdf.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
       expect(await prisma.approvalActionLog.findMany({ where: { approvalInstanceId: latest.id, action: "approve" } }))
         .toHaveLength(5);
 

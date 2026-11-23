@@ -541,6 +541,7 @@ export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   lifecycleUpdatedAt: string | null;
   reviewApprovalContext: PaymentReviewApprovalContext | null;
   executionContext: PaymentExecutionContext | null;
+  withdrawApprovalContext?: { expectedApprovalInstanceId: string };
   revisionSubmissionContext?: {
     expectedUpdatedAt: string;
     requestedAmountCents: string;
@@ -7895,8 +7896,11 @@ function assertPaymentApprovalReviewPreflight(
   }
 }
 
-export function withdrawPaymentApproval(paymentId: string) {
-  return postJson<unknown>(`/payments/${paymentId}/approval-withdrawal`);
+export function withdrawPaymentApproval(paymentId: string, expectedApprovalInstanceId?: string) {
+  return postJson<unknown>(
+    `/payments/${encodeURIComponent(paymentId)}/approval-withdrawal`,
+    expectedApprovalInstanceId ? { expectedApprovalInstanceId } : undefined
+  );
 }
 
 export function abandonPaymentRequest(

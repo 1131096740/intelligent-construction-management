@@ -2610,6 +2610,12 @@ describe("core flow read API client", () => {
         confirmationPassword: "current-password"
       })
     );
+    expect(fetchMock.mock.calls[0][1]?.body).toBe("{}");
+    await withdrawPaymentApproval("FK/并联", "approval-shown-in-dialog");
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/payments/FK%2F%E5%B9%B6%E8%81%94/approval-withdrawal");
+    expect(fetchMock.mock.lastCall?.[1]?.body).toBe(JSON.stringify({
+      expectedApprovalInstanceId: "approval-shown-in-dialog"
+    }));
   });
 
   it.each([

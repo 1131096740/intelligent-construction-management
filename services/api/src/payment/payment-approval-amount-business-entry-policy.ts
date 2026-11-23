@@ -1,23 +1,21 @@
 import { Reflector } from "@nestjs/core";
-import { canPerform, type RoleKey } from "@jiangkong/shared-domain";
+import { canPerform, createBusinessEntryDefinitionRegistry, type RoleKey } from "@jiangkong/shared-domain";
+import type { Prisma } from "@prisma/client";
 import { approvalEvidenceMetadata } from "../approval/approval-evidence";
 import { isApprovalDutyComplete } from "../approval/parallel-approval-protocol";
 import { PermissionGuard } from "../auth/guards/permission.guard";
-import type {
-  BusinessEntryTransactionResolverContext, BusinessEntryTransactionScenePolicy
-} from "../business-entry-definition/business-entry-transaction-scene-registry";
+import type { BusinessEntryTransactionScenePolicy } from "../business-entry-definition/business-entry-transaction-scene-registry";
 import type { PrismaService } from "../database/prisma.service";
 import { isOrdinaryPaymentParallelRound } from "./ordinary-payment-parallel";
 import {
   PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION, paymentApprovalAmountEntryValues
 } from "./payment-approval-amount-business-entry-definition";
 
-const signedDutyByContext = new WeakMap<BusinessEntryTransactionResolverContext, RoleKey>();
-
-async function signedFinalDuty({ tx, target, actorUserId, operation, values }: BusinessEntryTransactionResolverContext) {
-  if (operation !== "edit" || Object.keys(values).length !== 1 || typeof values.approvedAmountYuan !== "string") return null;
+async function signedFinalDuty(
+  tx: Prisma.TransactionClient, actorUserId: string, projectId: string, paymentId: string, amountCents: bigint
+) {
   const round = await tx.approvalInstance.findFirst({
-    where: { businessId: target.entityId, businessType: "payment_request", flowType: "payment.approve" },
+    where: { businessId: paymentId, businessType: "payment_request", flowType: "payment.approve" },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     select: { id: true, status: true, frozenNodes: true }
   });
@@ -34,7 +32,7 @@ async function signedFinalDuty({ tx, target, actorUserId, operation, values }: B
     FROM "PaymentRequest" p
     JOIN "ApprovalInstance" r ON r."businessId" = p.id AND r."businessType" = 'payment_request'
     JOIN "ApprovalActionLog" a ON a."approvalInstanceId" = r.id
-    WHERE p.id = ${target.entityId} AND p."projectId" = ${target.projectId}
+    WHERE p.id = ${paymentId} AND p."projectId" = ${projectId}
       AND p.status = 'approved_pending_payment' AND p."approvedAmountCents" = p."requestedAmountCents"
       AND r.id = ${round.id}
       AND a.action = 'approve' AND a."actorUserId" = ${actorUserId}
@@ -51,12 +49,33 @@ async function signedFinalDuty({ tx, target, actorUserId, operation, values }: B
   const { currentNodeIndex, approvedRoleKey, approvedAmountCents } = receipt;
   if (currentNodeIndex !== frozenNodes.length ||
       !frozenNodes.every(isApprovalDutyComplete) || !canPerform("payment.approve", [approvedRoleKey]) ||
-      values.approvedAmountYuan !== paymentApprovalAmountEntryValues(approvedAmountCents).approvedAmountYuan) return null;
+      amountCents !== approvedAmountCents) return null;
   const { ordinaryPaymentDutyIndex } = approvalEvidenceMetadata(receipt.metadata);
   const duty = typeof ordinaryPaymentDutyIndex === "number" && Number.isInteger(ordinaryPaymentDutyIndex)
     ? frozenNodes[ordinaryPaymentDutyIndex] : undefined;
   return (duty?.roleKeys as string[] | undefined)?.includes(approvedRoleKey) &&
     Array.isArray(duty?.approvedRoleKeys) && duty.approvedRoleKeys.includes(approvedRoleKey) ? approvedRoleKey : null;
+}
+
+export async function proveFinalOrdinaryPaymentAmountSnapshot(
+  tx: Prisma.TransactionClient, actorUserId: string, projectId: string, paymentId: string, amountCents: bigint
+) {
+  const duty = await signedFinalDuty(tx, actorUserId, projectId, paymentId, amountCents);
+  if (!duty) return null;
+  const definition = PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION;
+  const validation = createBusinessEntryDefinitionRegistry([{
+    ...definition,
+    fields: definition.fields.map(field => field.key === "approvedAmountYuan" ? {
+      ...field, permissions: { ...field.permissions, edit: [...new Set([...field.permissions.edit, duty])] }
+    } : field)
+  }]);
+  const snapshot = validation.freezeSubmissionSnapshot({
+    sceneKey: definition.key,
+    definitionVersion: definition.version,
+    target: { projectId, entityType: definition.entityType, entityId: paymentId },
+    values: paymentApprovalAmountEntryValues(amountCents)
+  }, [duty]);
+  return { ...snapshot, definition };
 }
 
 export const PAYMENT_APPROVAL_AMOUNT_ENTRY_POLICY: BusinessEntryTransactionScenePolicy = {
@@ -67,27 +86,8 @@ export const PAYMENT_APPROVAL_AMOUNT_ENTRY_POLICY: BusinessEntryTransactionScene
   resolveOwnership: ({ tx, target }) => tx.paymentRequest.findMany({
     where: { id: target.entityId }, select: { projectId: true }, take: 2
   }),
-  resolveAuthorization: async context => {
-    const { tx, target, actorUserId } = context;
-    const directRoles = await new PermissionGuard(new Reflector(), tx as PrismaService)
-      .loadEffectiveRoleKeys(actorUserId, target.projectId);
-    if (PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION.fields[0].permissions.edit.some(role => directRoles.includes(role))) {
-      return directRoles;
-    }
-    const duty = await signedFinalDuty(context);
-    if (!duty) return directRoles;
-    signedDutyByContext.set(context, duty);
-    return [duty];
-  },
-  resolveDefinition: async context => {
-    const definition = PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION;
-    const duty = signedDutyByContext.get(context);
-    signedDutyByContext.delete(context);
-    return duty ? {
-      ...definition,
-      fields: definition.fields.map(field => ({
-        ...field, permissions: { ...field.permissions, edit: [...new Set([...field.permissions.edit, duty])] }
-      }))
-    } : definition;
-  }
+  resolveAuthorization: ({ tx, target, actorUserId }) =>
+    new PermissionGuard(new Reflector(), tx as PrismaService)
+      .loadEffectiveRoleKeys(actorUserId, target.projectId),
+  resolveDefinition: async () => PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION
 };

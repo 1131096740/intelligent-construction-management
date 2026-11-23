@@ -40,6 +40,7 @@ import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
+import { WithdrawPaymentApprovalDto } from "./dto/withdraw-payment-approval.dto";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
 import { PAYMENT_REQUEST_ENTRY_DEFINITION } from "./payment-request-business-entry-definition";
@@ -179,9 +180,10 @@ export class PaymentController {
   @Post(":paymentId/approval-withdrawal")
   withdrawApproval(
     @Param("paymentId") paymentId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body?: WithdrawPaymentApprovalDto
   ) {
-    return this.payments.withdrawApproval(paymentId, user.id);
+    return this.payments.withdrawApproval(paymentId, user.id, body?.expectedApprovalInstanceId);
   }
 
   @Post(":paymentId/abandonment")

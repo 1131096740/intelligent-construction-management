@@ -6,6 +6,7 @@ import {
   Injectable
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
+import { proveFinalOrdinaryPaymentAmountSnapshot } from "../payment/payment-approval-amount-business-entry-policy";
 import {
   BusinessEntryDefinitionError,
   BusinessEntryDraftValidationError,
@@ -45,6 +46,14 @@ export class BusinessEntryTransactionService {
     @Inject(BUSINESS_ENTRY_SNAPSHOT_STORE)
     private readonly snapshots: BusinessEntrySnapshotStore
   ) {}
+
+  async freezeFinalOrdinaryPaymentAmountInTransaction(
+    tx: Prisma.TransactionClient, actorUserId: string, projectId: string, paymentId: string, amountCents: bigint
+  ): Promise<BusinessEntryFrozenSnapshot> {
+    const snapshot = await proveFinalOrdinaryPaymentAmountSnapshot(tx, actorUserId, projectId, paymentId, amountCents);
+    if (!snapshot) throw new ForbiddenException("当前事务缺少有效的付款末岗签批依据");
+    return this.snapshots.saveInTransaction(tx, projectId, actorUserId, snapshot);
+  }
 
   async freezeSubmissionSnapshotInTransaction(
     tx: Prisma.TransactionClient,
