@@ -1506,7 +1506,14 @@ export class SpotProcurementPaymentService {
           actorUserId,
           version.projectId
         );
-        if (isParallelApprovalRound(approval.frozenNodes)) {
+        const frozenNodes = approval.frozenNodes;
+        const parallelRound = isParallelApprovalRound(frozenNodes);
+        const legacyParallelRound = parallelRound &&
+          frozenNodes.every((node) => node.legacySerialCutover === true);
+        if (parallelRound && !legacyParallelRound) {
+          if (frozenNodes.some((node) => node.legacySerialCutover === true)) {
+            throw new ConflictException("历史付款审批迁移标记不一致，请核对原审批轮次");
+          }
           return this.reviewBatchParallelPayment(
             tx,
             version,
@@ -1518,14 +1525,18 @@ export class SpotProcurementPaymentService {
             input
           );
         }
-        const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
-          approval.frozenNodes,
-          approval.currentNodeIndex
+        const nodeIndexes = legacyParallelRound
+          ? activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex)
+          : [approval.currentNodeIndex];
+        const reviewNodeIndex = nodeIndexes.find((index) =>
+          pendingRoleKeysForFrozenApprovalNode(approval.frozenNodes, index)
+            .some((roleKey) => actorRoles.includes(roleKey))
         );
-        const approvedRoleKey = pendingRoles.find((roleKey) =>
-          actorRoles.includes(roleKey)
-        );
-        if (!approvedRoleKey) {
+        const approvedRoleKey = reviewNodeIndex === undefined
+          ? undefined
+          : pendingRoleKeysForFrozenApprovalNode(approval.frozenNodes, reviewNodeIndex)
+            .find((roleKey) => actorRoles.includes(roleKey));
+        if (reviewNodeIndex === undefined || !approvedRoleKey) {
           throw new ForbiddenException("当前用户不是本付款审批节点处理人");
         }
         const selfReview = await confirmApprovalSelfReview({
@@ -1615,7 +1626,7 @@ export class SpotProcurementPaymentService {
           input.decision === "approve"
             ? this.approveCurrentNode(
                 approval.frozenNodes,
-                approval.currentNodeIndex,
+                reviewNodeIndex,
                 approvedRoleKey
               )
             : [];
@@ -1643,6 +1654,9 @@ export class SpotProcurementPaymentService {
                 : {}),
               metadata: {
                 reviewRoleKey: approvedRoleKey,
+                ...(legacyParallelRound
+                  ? { parallel: true, nodeIndex: reviewNodeIndex }
+                  : {}),
                 ...(adjustedBalanceText !== undefined
                   ? {
                       originalSupplierBalanceAmountCents:
@@ -1851,13 +1865,14 @@ export class SpotProcurementPaymentService {
         }
 
         await recordApprovalAction();
-        const isFinal =
-          approval.currentNodeIndex >= nextNodes.length - 1;
-        if (!isFinal) {
+        const nextNodeIndex = legacyParallelRound
+          ? activeApprovalNodeIndexes(nextNodes, reviewNodeIndex)[0]
+          : reviewNodeIndex < nextNodes.length - 1 ? reviewNodeIndex + 1 : undefined;
+        if (nextNodeIndex !== undefined) {
           await tx.approvalInstance.update({
             where: { id: approval.id },
             data: {
-              currentNodeIndex: approval.currentNodeIndex + 1,
+              currentNodeIndex: nextNodeIndex,
               status: "approval_pending",
               frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
             }
@@ -1884,6 +1899,7 @@ export class SpotProcurementPaymentService {
           where: { id: approval.id },
           data: {
             status: "approved",
+            ...(legacyParallelRound ? { currentNodeIndex: nextNodes.length } : {}),
             frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
           }
         });

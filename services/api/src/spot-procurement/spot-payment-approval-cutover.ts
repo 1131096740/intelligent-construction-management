@@ -12,6 +12,8 @@ import {
   type SpotProcurementApprovalNode
 } from "./spot-procurement-approval-nodes";
 
+type LegacyParallelPaymentNode = SpotProcurementApprovalNode & { legacySerialCutover: true };
+
 type BlockedReason =
   | "unsupported_frozen_nodes"
   | "invalid_cursor"
@@ -23,7 +25,7 @@ type SpotPaymentApprovalCutoverPlan =
   | { status: "blocked"; reason: BlockedReason }
   | {
       status: "mapped";
-      frozenNodes: SpotProcurementApprovalNode[];
+      frozenNodes: LegacyParallelPaymentNode[];
       completedActionIds: string[];
       pendingNodeIndexes: number[];
     };
@@ -56,7 +58,7 @@ export function planSpotPaymentApprovalCutover({
     return blocked("invalid_cursor");
   }
 
-  const nodes: SpotProcurementApprovalNode[] = [];
+  const nodes: LegacyParallelPaymentNode[] = [];
   for (const [index, node] of frozenNodes.entries()) {
     const roles = expected[index].roleKeys;
     if (!node || typeof node !== "object" || Array.isArray(node) ||
@@ -78,7 +80,8 @@ export function planSpotPaymentApprovalCutover({
       roleKeys: [...node.roleKeys],
       ...(node.approvedRoleKeys ? { approvedRoleKeys: [...node.approvedRoleKeys] } : {}),
       protocolVersion: 1,
-      executionMode: "parallel"
+      executionMode: "parallel",
+      legacySerialCutover: true
     });
   }
 

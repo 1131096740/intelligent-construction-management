@@ -20,6 +20,7 @@ import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-p
 import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
 import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
+import { paymentApprovalNodes } from "./spot-procurement-approval-nodes";
 
 const version = {
   id: "version-1",
@@ -2968,7 +2969,52 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
     }
   );
 
-  it("lets only the finance-director return node specify a lower balance amount and binds it to a new draft", async () => {
+  it("retains a signed original duty when a migrated finance duty approves before the earlier project manager duty", async () => {
+    const { service, tx } = harness();
+    const frozenNodes = paymentApprovalNodes().map((node, index) => ({
+      ...node,
+      ...(index === 0 ? { approvedRoleKeys: ["material_director"] } : {}),
+      protocolVersion: 1,
+      executionMode: "parallel",
+      legacySerialCutover: true
+    }));
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([{ ...draftPayment, status: "approval_pending" }])
+      .mockResolvedValueOnce([{
+        id: "approval-1",
+        status: "approval_pending",
+        currentNodeIndex: 1,
+        applicantUserId: "material-1",
+        frozenNodes
+      }]);
+    role(tx, "finance_director");
+    queueActivePaymentApprovalSignature(tx.$queryRaw, "finance-1");
+
+    await service.review("payment-1", "finance-1", { decision: "approve" });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledTimes(1);
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "approve",
+        approvedRoleKey: "finance_director",
+        signatureVersionIdSnapshot: "payment-signature-version-1"
+      })
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: expect.objectContaining({
+        status: "approval_pending",
+        currentNodeIndex: 1,
+        frozenNodes: frozenNodes.map((node, index) =>
+          index === 2 ? { ...node, approvedRoleKeys: ["finance_director"] } : node
+        )
+      })
+    });
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("lets the finance director return a payment and release its legacy reservation (cutover=%s)", async (legacySerialCutover) => {
     const { service, tx, balance, audit } = harness();
     const submitted = {
       ...draftPayment,
@@ -2986,20 +3032,20 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
         {
           id: "approval-1",
           status: "approval_pending",
-          currentNodeIndex: 2,
+          currentNodeIndex: legacySerialCutover ? 1 : 2,
           applicantUserId: "material-1",
           frozenNodes: [
             {
-              name: "综合部主管审批",
+              name: legacySerialCutover ? "物资部主管审批" : "综合部主管审批",
               mode: "any",
-              roleKeys: ["comprehensive_director"],
-              approvedRoleKeys: ["comprehensive_director"]
+              roleKeys: [legacySerialCutover ? "material_director" : "comprehensive_director"],
+              approvedRoleKeys: [legacySerialCutover ? "material_director" : "comprehensive_director"]
             },
             {
               name: "项目经理审批",
               mode: "any",
               roleKeys: ["project_manager"],
-              approvedRoleKeys: ["project_manager"]
+              ...(legacySerialCutover ? {} : { approvedRoleKeys: ["project_manager"] })
             },
             {
               name: "财务主管审批",
@@ -3011,7 +3057,9 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
               mode: "any",
               roleKeys: ["chairman", "general_manager"]
             }
-          ]
+          ].map((node) => legacySerialCutover
+            ? { ...node, protocolVersion: 1, executionMode: "parallel", legacySerialCutover: true }
+            : node)
         }
       ]);
     role(tx, "finance_director");

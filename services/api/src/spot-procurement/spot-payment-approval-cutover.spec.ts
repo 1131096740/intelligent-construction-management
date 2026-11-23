@@ -32,7 +32,7 @@ describe("legacy spot payment approval cutover mapping", () => {
 
     expect(plan).toEqual({
       status: "mapped",
-      frozenNodes: frozenNodes.map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel" })),
+      frozenNodes: frozenNodes.map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel", legacySerialCutover: true })),
       completedActionIds: ["signed-action"],
       pendingNodeIndexes: [1, 2, 3]
     });
