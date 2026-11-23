@@ -2865,6 +2865,24 @@ export interface WorkItemReadModel {
   overdue?: boolean;
   canHandle?: boolean;
   parallelCompletion?: { completed: number; total: number };
+  actionGroup?: WorkItemActionGroupKey;
+}
+
+export type WorkItemActionGroupKey =
+  | "approval"
+  | "review"
+  | "procurement"
+  | "payment"
+  | "supplement"
+  | "other";
+
+export interface WorkItemActionGroupReadModel {
+  key: Exclude<WorkItemActionGroupKey, "other">;
+  title: string;
+  description: string;
+  count: number;
+  targetPath: string;
+  items: WorkItemReadModel[];
 }
 
 export interface WorkItemsReadModel {
@@ -2880,6 +2898,8 @@ export interface WorkItemsReadModel {
     truncated: boolean;
   }>;
   approvalCenter: Record<ApprovalCenterViewKey, WorkItemReadModel[]>;
+  /** 首页动作分组；缺失时首页降级到四队列（兼容旧接口桩）。 */
+  groups?: WorkItemActionGroupReadModel[];
 }
 
 export function fetchWorkbenchSummary() {

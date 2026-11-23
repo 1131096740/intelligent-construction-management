@@ -65,8 +65,39 @@ test("keeps navigation, page content, and confirmation controls usable across de
           handledByMe: [],
           delegatedToMe: [],
           overdueReminder: []
-        }
+        },
+        groups: [{
+          key: "approval",
+          title: "待审批",
+          description: "等待你当前岗位审批或同意的单据。",
+          count: 1,
+          targetPath: "/审批中心?view=pendingApproval",
+          items: [{
+            id: "responsive-item-1",
+            type: "approval",
+            businessType: "payment",
+            title: "付款审批：材料结算",
+            projectName: "响应式验收项目",
+            businessCode: "FK-RWD-001",
+            amountText: "¥256,000.00",
+            currentNode: "财务主管审批",
+            stayedText: "已停留 5 小时",
+            nextAction: "处理付款审批",
+            targetPath: "/付款管理/FK-RWD-001",
+            tone: "warning",
+            actionGroup: "approval"
+          }]
+        }]
       })
+    })
+  );
+  await page.route("**/api/projects", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([
+        { id: "responsive-project-1", code: "P-RWD-001", name: "响应式验收项目" },
+        { id: "responsive-project-2", code: "P-RWD-002", name: "第二个响应式项目" }
+      ])
     })
   );
   await page.route("**/api/approval-delegations/user-options", (route) =>

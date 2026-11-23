@@ -28,6 +28,30 @@ export const emptyApprovalCenterFilters: ApprovalCenterFilters = {
   keyword: "", projectName: "", applicantName: "", status: "", overdueOnly: false
 };
 
+function queryValue(value: unknown): string {
+  return typeof value === "string" ? value : Array.isArray(value) && typeof value[0] === "string" ? value[0] : "";
+}
+
+/** 分组深链（G8）把视图与筛选带进审批中心；未知视图回落到待我审批。 */
+export function readApprovalCenterQuery(query: Record<string, unknown>): {
+  view: ApprovalCenterTabKey;
+  filters: ApprovalCenterFilters;
+} {
+  const view = queryValue(query.view);
+  return {
+    view: approvalCenterTabs.some(tab => tab.key === view)
+      ? (view as ApprovalCenterTabKey)
+      : "pendingApproval",
+    filters: {
+      keyword: queryValue(query.keyword),
+      projectName: queryValue(query.project),
+      applicantName: queryValue(query.applicant),
+      status: queryValue(query.status),
+      overdueOnly: queryValue(query.overdue) === "1"
+    }
+  };
+}
+
 export const approvalStatusLabels: Record<string, string> = {
   in_progress: "审批中",
   approval_pending: "审批中",

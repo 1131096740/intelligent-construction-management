@@ -754,6 +754,10 @@ describe("MeService", () => {
     ]);
     expect(result.queues.blocked).toEqual([]);
     expect(result.approvalCenter.pendingApproval).toEqual([]);
+    expect(result.queues.pending[0]).toMatchObject({ actionGroup: "supplement" });
+    expect(result.groups).toEqual([
+      expect.objectContaining({ key: "supplement", title: "待补资料", count: 1 })
+    ]);
     const blockedCall = prisma.contractTakeover.findMany.mock.calls.find(
       ([input]) => Boolean(input.where.OR)
     );

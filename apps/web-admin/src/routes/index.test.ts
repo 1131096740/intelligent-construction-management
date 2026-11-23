@@ -616,29 +616,27 @@ describe("web admin routes", () => {
       { label: "清分工作台", path: "/清分工作台" },
       { label: "必要费用准备", path: "/必要费用准备" },
       { label: "一般争议资金", path: "/一般争议资金" },
-      { label: "工资承担工作台", path: "/工资承担工作台" },
       { label: "全局发票与清分分配", path: "/全局发票与清分分配" },
-      { label: "员工管理", path: "/员工管理" },
       { label: "合同工作台", path: "/合同工作台" },
+      { label: "结算工作台", path: "/结算工作台" },
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
-      { label: "结算工作台", path: "/结算工作台" },
-      { label: "资金账户", path: "/资金账户" },
-      { label: "统一更正", path: "/更正中心" },
-      { label: "资金办理工作台", path: "/统一资金办理工作台" },
-      { label: "资金执行案件", path: "/资金执行案件" },
-      { label: "公司互转台账", path: "/公司互转台账" },
-      { label: "资金移动工作台", path: "/资金移动工作台" },
-      { label: "工资应付核销工作台", path: "/工资应付核销工作台" },
       { label: "零星采购工作台", path: "/零星采购工作台" },
-      {
-        label: "零星材料付款工作台",
-        path: "/零星材料付款工作台"
-      },
+      { label: "零星材料付款工作台", path: "/零星材料付款工作台" },
       { label: "收货确认工作台", path: "/收货确认工作台" },
       { label: "综合采购申请", path: "/综合采购申请" },
       { label: "费用与报销工作台", path: "/费用与报销工作台" },
       { label: "其他项目付款", path: "/其他项目付款" },
+      { label: "资金账户", path: "/资金账户" },
+      { label: "资金流水", path: "/资金流水" },
+      { label: "付款工作台", path: "/付款工作台" },
+      { label: "资金办理工作台", path: "/统一资金办理工作台" },
+      { label: "资金执行案件", path: "/资金执行案件" },
+      { label: "公司互转台账", path: "/公司互转台账" },
+      { label: "资金移动工作台", path: "/资金移动工作台" },
+      { label: "工资承担工作台", path: "/工资承担工作台" },
+      { label: "工资应付核销工作台", path: "/工资应付核销工作台" },
+      { label: "统一更正", path: "/更正中心" },
       { label: "合同台账", path: "/合同工作台" },
       { label: "结算台账", path: "/结算工作台" },
       { label: "付款台账", path: "/付款管理" },
@@ -649,6 +647,7 @@ describe("web admin routes", () => {
       { label: "审计日志", path: "/审计日志" },
       { label: "我方公司主体", path: "/我方公司主体" },
       { label: "合作单位档案", path: "/business-parties" },
+      { label: "员工管理", path: "/员工管理" },
       { label: "系统配置", path: "/系统配置" }
     ]);
   });
@@ -661,11 +660,8 @@ describe("web admin routes", () => {
 
       expect(route?.component, `${item.path} 缺少可渲染路由`).toBeDefined();
       expect(route?.redirect, `${item.path} 不应仅指向兼容重定向`).toBeUndefined();
-      expect(route?.meta?.requiredRoleKeys).toEqual(item.requiredRoleKeys);
-      expect(route?.meta?.requiredGlobalRoleKeys).toEqual(item.requiredGlobalRoleKeys);
       const redirect = buildEncodedRouteRedirect({ path: encodeURI(item.path), query: {}, hash: "" });
       if (item.path === "/business-parties") {
-        expect(item.requiredGlobalRoleKeys).toBeUndefined();
         expect(redirect, `${item.path} 已是规范英文路由`).toBeNull();
       } else {
         expect(redirect?.path, `${item.path} 硬刷新后必须回到规范路由`).toBe(item.path);
@@ -673,44 +669,84 @@ describe("web admin routes", () => {
     }
   });
 
-  it("groups navigation by business process instead of a flat module list", () => {
+  it("groups navigation by position workbench and independent ledgers", () => {
     expect(adminNavigationGroups.map((group) => group.label)).toEqual([
       "工作入口",
       "项目",
-      "合同",
-      "结算",
-      "付款",
-      "零星采购",
-      "费用与报销",
-      "业务台账",
+      "合同岗",
+      "物资岗",
+      "综合岗",
+      "财务岗",
+      "独立台账",
       "资料与治理",
-      "系统配置"
+      "系统管理"
     ]);
     expect(adminNavigationGroups.flatMap((group) => group.items.map((item) => item.label))).toEqual(
       adminNavigationItems.map((item) => item.label)
     );
+    for (const group of adminNavigationGroups) {
+      for (const item of group.items) expect(item.access.length).toBeGreaterThan(0);
+    }
   });
 
   it("keeps navigation groups that still contain public business entries after role filtering", () => {
-    const groupLabels = visibleAdminNavigationGroups(undefined).map((group) => group.label);
-
-    expect(groupLabels).toContain("项目");
-    expect(groupLabels).toContain("合同");
-    expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目");
-    expect(visibleAdminNavigationGroups(["contract_staff"]).find(group => group.label === "付款")?.items.map(item => item.label)).toEqual(["统一更正", "公司互转台账"]);
+    expect(visibleAdminNavigationGroups(undefined).map((group) => group.label)).toEqual([
+      "工作入口",
+      "物资岗",
+      "综合岗",
+      "独立台账",
+      "系统管理"
+    ]);
+    expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toEqual([
+      "工作入口",
+      "项目",
+      "合同岗",
+      "物资岗",
+      "综合岗",
+      "财务岗",
+      "独立台账",
+      "资料与治理",
+      "系统管理"
+    ]);
+    expect(
+      visibleAdminNavigationGroups(["contract_staff"])
+        .find((group) => group.label === "财务岗")
+        ?.items.map((item) => item.label)
+    ).toEqual(["付款工作台", "公司互转台账", "统一更正"]);
     expect(
       visibleAdminNavigationGroups(["finance_staff"])
-        .find((group) => group.label === "付款")
+        .find((group) => group.label === "财务岗")
         ?.items.map((item) => item.label)
-    ).toEqual(["统一更正", "资金办理工作台", "公司互转台账"]);
+    ).toEqual([
+      "资金账户",
+      "资金流水",
+      "付款工作台",
+      "资金办理工作台",
+      "资金执行案件",
+      "公司互转台账",
+      "资金移动工作台",
+      "工资承担工作台",
+      "工资应付核销工作台",
+      "统一更正"
+    ]);
+  });
+
+  it("derives each fixed entry from backend capabilities instead of a per-entry role list", () => {
+    for (const item of adminNavigationItems) {
+      expect("requiredRoleKeys" in item).toBe(false);
+      expect("requiredGlobalRoleKeys" in item).toBe(false);
+      expect(typeof item.access).toBe("string");
+    }
   });
 
   it("shows the fixed funds account entry to company finance and comprehensive directors only", () => {
     for (const role of ["finance_staff", "finance_director", "comprehensive_director"] as const) {
       expect(visibleAdminNavigationGroups([role], [role]).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(true);
-      expect(visibleAdminNavigationGroups([role], []).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(false);
+      expect(visibleAdminNavigationGroups([role], []).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(true);
     }
-    expect(visibleAdminNavigationGroups(["super_admin"], ["super_admin"]).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(false);
+    for (const role of ["employee", "contract_staff", "super_admin"] as const) {
+      expect(visibleAdminNavigationGroups([role], [role]).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(false);
+    }
   });
 
   it("keeps old create routes as redirects to the dedicated workbenches", () => {
@@ -741,13 +777,46 @@ describe("web admin routes", () => {
 
   it("hides project operations from nav when the user lacks funds overview roles", () => {
     expect(visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path)).not.toContain("/项目经营");
+    expect(visibleAdminNavigationItems(["employee"]).map((item) => item.path)).not.toContain("/项目经营");
     expect(visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path)).toContain("/项目经营");
     expect(visibleAdminNavigationItems(["engineering_department_director"]).map((item) => item.path)).toContain(
       "/项目经营"
     );
     expect(visibleAdminNavigationItems(["material_director"]).map((item) => item.path)).toContain("/项目经营");
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/项目经营");
-    expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).toContain("/员工管理");
+    expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/员工管理");
+  });
+
+  it("shows archives, audit logs and organization management only to their backend positions", () => {
+    const employee = visibleAdminNavigationItems(["employee"]).map((item) => item.path);
+    for (const denied of ["/资料库", "/审计日志", "/员工管理", "/我方公司主体"]) {
+      expect(employee).not.toContain(denied);
+    }
+    const contractStaff = visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path);
+    expect(contractStaff).toContain("/资料库");
+    expect(contractStaff).not.toContain("/审计日志");
+    expect(contractStaff).not.toContain("/员工管理");
+
+    const chairman = visibleAdminNavigationItems(["chairman"], ["chairman"]).map((item) => item.path);
+    for (const allowed of ["/资料库", "/审计日志", "/员工管理", "/我方公司主体"]) {
+      expect(chairman).toContain(allowed);
+    }
+
+    const finance = visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path);
+    expect(finance).toContain("/资料库");
+    expect(finance).not.toContain("/审计日志");
+    expect(finance).not.toContain("/员工管理");
+  });
+
+  it("keeps the mobile drawer and sidebar on one derived matrix, so dual positions union without duplicates", () => {
+    const dual = visibleAdminNavigationItems(["finance_staff", "contract_staff"]).map((item) => item.path);
+    expect(new Set(dual).size).toBe(new Set(dual).size);
+    const finance = new Set(visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path));
+    const contract = new Set(visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path));
+    for (const path of new Set([...finance, ...contract])) expect(dual).toContain(path);
+    expect(dual).toContain("/资金账户");
+    expect(dual).toContain("/合同工作台");
+    expect(dual).not.toContain("/审计日志");
   });
 
   it("shows historical contract takeover to the approved contract, finance and comprehensive readers", () => {

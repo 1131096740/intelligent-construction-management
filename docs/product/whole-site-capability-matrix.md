@@ -6,22 +6,22 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `88404d4470726b243a05631d0486f71b848a95b3a5e91919a37be8ac032efcb9` |
-| webApiWrappers | ready | `e365910124435ade1f455a201f211425e38fcd7ade18d013cf42b1350e7b17bf` |
-| webPageActions | ready | `ae3fddeff6717d8425a1249484fd2a5537ef28f12e134a4d949921182ee8cf30` |
-| routeUsage | ready | `fff76c6d6eef98cc6afb3d64766a57fab2d192ca05bb72e7fb7e31e4d9ee0a38` |
+| nestRoutes | ready | `8020e43b42d4f93e8d06c090fb50feebe9d5c447255db858d749fca5006ae533` |
+| webApiWrappers | ready | `2e2b73b9ccea5d2183f65b084a97950bdaccf3d60cd317b509b549a4c859e62e` |
+| webPageActions | ready | `6b5cad7325f4440ab45a2a033b461e066416e11e05c9370d285c566c5b337259` |
+| routeUsage | ready | `48f1cc13111221d2b9ed5c1cecfadb0d46d8b1daba8875449dd48d8e5472f595` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 871 |
-| pageRouteCount | 657 |
+| routeCount | 876 |
+| pageRouteCount | 661 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 91 |
-| internalTaskRouteCount | 53 |
+| internalTaskRouteCount | 54 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 853 |
+| mainRequestBindingCount | 857 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
@@ -151,7 +151,9 @@
 | GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
 | GET | /expense-claims/expense-categories | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimExpenseCategories | — | not_applicable | — |
-| GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
+| GET | /expense-claims | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /expense-claims/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#downloadExpenseClaimLedger | — | not_applicable | — |
+| GET | /expense-claims/ledger | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimLedger | — | not_applicable | — |
 | GET | /expense-claims/selectable-purchase-batches | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimSelectablePurchaseBatches | — | not_applicable | — |
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-signed-change.download-original<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-basis.download-signed-attachment | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
@@ -183,6 +185,7 @@
 | GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.delete-draft<br>general-procurement.legacy.updateProcurement<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
 | GET | /general-procurements/create-options | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#createProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementOptions | general-procurement.createProcurement | not_applicable | — |
 | GET | /general-procurements | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementList | — | not_applicable | — |
+| GET | /general-procurements/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#downloadProcurementLedger | — | not_applicable | — |
 | GET | /global-invoices/capabilities | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceCapabilities | — | not_applicable | — |
 | GET | /global-invoices | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoices | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
@@ -234,6 +237,7 @@
 | GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
 | GET | /payments/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentCreateCapability | — | not_applicable | — |
+| GET | /payments/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPaymentLedgerExport | — | not_applicable | — |
 | GET | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLedger<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLifecycleLedger | — | not_applicable | — |
 | GET | /project-fund-disputes/workbench | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#fetchProjectFundDisputeCapabilities<br>apps/web-admin/src/api/project-fund-dispute.api.ts#fetchProjectFundDisputeWorkbench | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts/:factId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateFactCapability | — | not_applicable | — |
@@ -336,6 +340,7 @@
 | GET | /spot-procurements/application-text-suggestions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationTextSuggestions | — | not_applicable | — |
 | GET | /spot-procurements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementCapabilities | — | not_applicable | — |
 | GET | /spot-procurements/create-project-options | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementCreateProjectOptions | — | not_applicable | — |
+| GET | /spot-procurements/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#downloadSpotProcurementLedger | — | not_applicable | — |
 | GET | /spot-procurements/projects/:projectId/application-definitions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationDefinitions | — | not_applicable | — |
 | GET | /spot-procurements | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurements | — | not_applicable | — |
 | GET | /standard-clauses/history | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listStandardClauseHistory | — | not_applicable | — |

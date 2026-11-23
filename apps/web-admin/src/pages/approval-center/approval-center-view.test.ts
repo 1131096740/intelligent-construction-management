@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkItemReadModel } from "../../api/core-flow-read.api";
 import {
   approvalCenterTabs,
+  readApprovalCenterQuery,
   approvalItemInstanceId,
   approvalItemSummary,
   filterApprovalItems,
@@ -60,5 +61,21 @@ describe("审批中心四视图与筛选", () => {
     expect(parallelCompletionText(item({ parallelCompletion: undefined }))).toBe("");
     expect(approvalItemInstanceId(item())).toBe("instance-1");
     expect(approvalItemInstanceId(item({ id: "handled-approval:log-1" }))).toBeNull();
+  });
+
+  it("从 query 恢复视图与筛选，未知视图回落到待我审批", () => {
+    expect(readApprovalCenterQuery({ view: "startedByMe", keyword: "钢材", project: "一号项目", status: "in_progress", applicant: "张三", overdue: "1" }))
+      .toEqual({
+        view: "startedByMe",
+        filters: {
+          keyword: "钢材",
+          projectName: "一号项目",
+          applicantName: "张三",
+          status: "in_progress",
+          overdueOnly: true
+        }
+      });
+    expect(readApprovalCenterQuery({ view: "unknown" }).view).toBe("pendingApproval");
+    expect(readApprovalCenterQuery({}).filters).toEqual(emptyApprovalCenterFilters);
   });
 });

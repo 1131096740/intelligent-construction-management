@@ -179,10 +179,10 @@ import { navigateToApprovalWorkItem } from "./approval-center-navigation";
 import {
   approvalCenterTabs,
   approvalFilterOptions,
+  readApprovalCenterQuery,
   approvalItemInstanceId,
   approvalItemSummary,
   approvalStatusLabel,
-  emptyApprovalCenterFilters,
   filterApprovalItems,
   parallelCompletionText,
   type ApprovalCenterFilters,
@@ -195,9 +195,10 @@ const independentReviewId = computed(() => typeof route.query.review === "string
   ? route.query.review : undefined);
 const loading = ref(false);
 const errorMessage = ref("");
-const activeView = ref<ApprovalCenterTabKey>("pendingApproval");
+const initialQuery = readApprovalCenterQuery(route.query as Record<string, unknown>);
+const activeView = ref<ApprovalCenterTabKey>(initialQuery.view);
 const workItems = ref<WorkItemsReadModel | null>(null);
-const filters = ref<ApprovalCenterFilters>({ ...emptyApprovalCenterFilters });
+const filters = ref<ApprovalCenterFilters>({ ...initialQuery.filters });
 const expandedId = ref("");
 
 const isWorkItemView = computed(() => activeView.value === "pendingApproval" || activeView.value === "startedByMe");

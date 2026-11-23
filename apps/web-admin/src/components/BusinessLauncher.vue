@@ -19,9 +19,9 @@ const tasks = computed(() => visibleBusinessTasks(
   >
     <header>
       <h2 id="business-launcher-title">
-        我要办业务
+        新建业务
       </h2>
-      <span>进入后选择项目，按当前岗位办理</span>
+      <span>先把上面的待办处理完；需要新开单据时从这里进入，填写页与列表页分开。</span>
     </header>
     <div class="business-launcher__grid">
       <t-button
