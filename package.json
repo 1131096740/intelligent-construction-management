@@ -72,7 +72,8 @@
     "verify:issue411-third-company:local": "node services/api/prisma/run-issue411-third-company-local.cjs",
     "verify:issue416-handover:local": "node services/api/prisma/run-issue416-takeover-handover-local.cjs",
     "verify:issue414-construction-deduction:local": "node services/api/prisma/run-issue414-construction-deduction-local.cjs",
-    "verify:issue417-history-expense:local": "node services/api/prisma/run-issue417-history-expense-local.cjs"
+    "verify:issue417-history-expense:local": "node services/api/prisma/run-issue417-history-expense-local.cjs",
+    "verify:issue421-ledger:local": "node services/api/prisma/run-issue421-ledger-local.cjs"
   },
   "engines": {
     "node": ">=20.9.0",
