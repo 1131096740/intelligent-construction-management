@@ -367,6 +367,178 @@
           </div>
 
           <section class="gap-panel overview-gap-panel">
+            <h2>按合同查看下游未付</h2>
+            <p
+              v-if="(overview.contractDrilldown ?? []).length === 0"
+              class="hint"
+            >
+              当前项目暂无按合同可显示的下游结算与付款。
+            </p>
+            <div
+              v-else
+              class="jg-workspace-scroll"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>合同</th>
+                    <th>关系</th>
+                    <th>已结算</th>
+                    <th>已付</th>
+                    <th>未结算未付</th>
+                    <th>审批中申请</th>
+                    <th>已批准待付</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in overview.contractDrilldown"
+                    :key="row.contractKey"
+                  >
+                    <td>{{ row.contractCode || "—" }} · {{ row.contractName }}</td>
+                    <td>{{ row.contractKindLabel }}</td>
+                    <td>{{ formatCents(row.settledCents) }}</td>
+                    <td>{{ formatCents(row.paidCents) }}</td>
+                    <td>{{ formatCents(row.unpaidCents) }}</td>
+                    <td>{{ formatCents(row.approvalPendingRequestCents) }}</td>
+                    <td>{{ formatCents(row.approvedPendingPaymentCents) }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        class="table-action"
+                        @click="router.push({ path: '/结算工作台', query: { project: selectedProjectId } })"
+                      >
+                        在结算台账查看
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="hint">
+              未结算未付 = 本合同已结算 − 已付；审批中申请与已批准待付只是未付的构成说明，不额外相加；不同合同预付与欠款不自动抵扣。
+            </p>
+          </section>
+
+          <section
+            v-if="canRequestCostAttribution || canReviewCostAttribution"
+            class="gap-panel overview-gap-panel"
+          >
+            <h2>公共现金成本待归属</h2>
+            <p
+              v-if="costAttributionError"
+              class="form-error"
+            >
+              {{ costAttributionError }}
+            </p>
+            <p
+              v-if="(costAttribution?.candidates ?? []).length === 0"
+              class="hint"
+            >
+              当前没有待归属的公共现金成本。
+            </p>
+            <div
+              v-else
+              class="jg-workspace-scroll"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>业务编号</th>
+                    <th>发生日期</th>
+                    <th>成本金额</th>
+                    <th>说明</th>
+                    <th>归属状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="candidate in costAttribution?.candidates ?? []"
+                    :key="candidate.factId"
+                  >
+                    <td>{{ candidate.sourceBusinessCode }}</td>
+                    <td>{{ formatDate(candidate.occurredAt) }}</td>
+                    <td>{{ formatCents(candidate.amountCents) }}</td>
+                    <td>{{ candidate.description ?? "公共现金支出" }}</td>
+                    <td>
+                      {{
+                        candidate.activeStatus === "pending_review"
+                          ? "待财务主管确认"
+                          : candidate.activeStatus === "confirmed"
+                            ? "已确认归属"
+                            : "待归属"
+                      }}
+                    </td>
+                    <td>
+                      <button
+                        v-if="!candidate.activeConfirmationId && canRequestCostAttribution"
+                        type="button"
+                        class="table-action"
+                        @click="openCostAttributionDialog(candidate)"
+                      >
+                        发起归属
+                      </button>
+                      <template v-else-if="candidate.activeStatus === 'pending_review' && canReviewCostAttribution">
+                        <button
+                          type="button"
+                          class="table-action"
+                          @click="openCostAttributionReview(
+                            (costAttribution?.confirmations ?? []).find((row) => row.id === candidate.activeConfirmationId)!,
+                            'confirm'
+                          )"
+                        >
+                          确认归属
+                        </button>
+                        <button
+                          type="button"
+                          class="table-action"
+                          @click="openCostAttributionReview(
+                            (costAttribution?.confirmations ?? []).find((row) => row.id === candidate.activeConfirmationId)!,
+                            'return'
+                          )"
+                        >
+                          退回
+                        </button>
+                      </template>
+                      <span v-else>—</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div
+              v-if="(costAttribution?.confirmations ?? []).length > 0"
+              class="jg-workspace-scroll"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>业务编号</th>
+                    <th>承担公司</th>
+                    <th>状态</th>
+                    <th>发起原因</th>
+                    <th>复核原因</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in costAttribution?.confirmations ?? []"
+                    :key="row.id"
+                  >
+                    <td>{{ row.factCode || "—" }}</td>
+                    <td>{{ row.companyName }}</td>
+                    <td>{{ row.statusLabel }}</td>
+                    <td>{{ row.reason }}</td>
+                    <td>{{ row.reviewReason ?? "—" }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="gap-panel overview-gap-panel">
             <h2>数据缺口</h2>
             <p v-if="overview.dataGaps.length === 0">
               当前项目暂未发现待补齐的数据。
@@ -1040,6 +1212,37 @@
       @cancel="resolveExpenseLeave(false)"
     />
   </section>
+
+  <t-dialog
+    v-model:visible="costAttributionDialogVisible"
+    :header="costAttributionReview ? '确认公共现金成本归属' : '发起公共现金成本归属'"
+    :confirm-btn="costAttributionReview ? '提交复核' : '发起确认'"
+    :loading="costAttributionBusy"
+    @confirm="costAttributionReview ? submitCostAttributionReview() : submitCostAttribution()"
+  >
+    <template v-if="costAttributionReview">
+      <p>承担公司：{{ costAttributionReview.companyName }}</p>
+      <p>操作：{{ costAttributionReviewDecision === 'confirm' ? '确认归属' : '退回' }}</p>
+      <label>原因<t-textarea v-model="costAttributionReviewReason" /></label>
+      <label v-if="costAttributionReview.requestedByUserId === auth.user?.id">本人密码<t-input
+        v-model="costAttributionReviewPassword"
+        type="password"
+      /></label>
+    </template>
+    <template v-else>
+      <label>成本承担公司
+        <t-select v-model="costAttributionCompanyId">
+          <t-option
+            v-for="company in participatingCompanyOptions"
+            :key="company.id"
+            :label="company.name"
+            :value="company.id"
+          />
+        </t-select>
+      </label>
+      <label>归属确认原因<t-textarea v-model="costAttributionReason" /></label>
+    </template>
+  </t-dialog>
 </template>
 
 <script setup lang="ts">
@@ -1094,6 +1297,14 @@ import { OPERATING_PROJECTION_ROW_STATUSES, OPERATING_PROJECTION_ROW_STATUS_LABE
 import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../../api/business-entry.api";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
 import { formatUnknownApiError } from "../../api/error-message";
+import {
+  fetchCostAttributions,
+  requestCostAttribution,
+  reviewCostAttribution,
+  type CostAttributionCandidate,
+  type CostAttributionConfirmation,
+  type CostAttributionPage
+} from "../../api/cost-attribution.api";
 import {
   createProjectOverviewRequestOwner,
   fetchProjectFinancingQuotaWorkbench,
@@ -1212,6 +1423,17 @@ const projectSelectPopupProps = {
 };
 const projects = ref<ProjectOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
+const costAttribution = ref<CostAttributionPage | null>(null);
+const costAttributionError = ref("");
+const costAttributionBusy = ref(false);
+const costAttributionDialogVisible = ref(false);
+const costAttributionCandidate = ref<CostAttributionCandidate | null>(null);
+const costAttributionCompanyId = ref("");
+const costAttributionReason = ref("");
+const costAttributionReview = ref<CostAttributionConfirmation | null>(null);
+const costAttributionReviewDecision = ref<"confirm" | "return">("confirm");
+const costAttributionReviewReason = ref("");
+const costAttributionReviewPassword = ref("");
 const executiveOverview = ref<ExecutiveProjectOverview | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
 const financingQuotaWorkbench = ref<ProjectFinancingQuotaWorkbenchReadModel | null>(null);
@@ -1667,6 +1889,15 @@ const canReadProjectExpenseLedger = computed(
 );
 
 const canCreateProjectExpense = computed(() => false);
+const canRequestCostAttribution = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      ["comprehensive_director", "finance_staff", "finance_director"].includes(role)
+    ) ?? false
+);
+const canReviewCostAttribution = computed(
+  () => auth.user?.roleKeys.includes("finance_director") ?? false
+);
 
 const cashItems = computed(() => {
   const cash = overview.value?.cash;
@@ -2132,6 +2363,106 @@ function submitOperatingProjectionExport(values: { reason: string; password: str
     });
 }
 
+async function loadCostAttributions(projectId: string) {
+  costAttributionError.value = "";
+  try {
+    costAttribution.value = await fetchCostAttributions(projectId);
+  } catch (error) {
+    costAttribution.value = null;
+    costAttributionError.value = formatUnknownApiError(
+      error,
+      "读取成本归属失败"
+    );
+  }
+}
+
+function openCostAttributionDialog(candidate: CostAttributionCandidate) {
+  costAttributionCandidate.value = candidate;
+  costAttributionCompanyId.value = "";
+  costAttributionReason.value = "";
+  costAttributionDialogVisible.value = true;
+}
+
+async function submitCostAttribution() {
+  const projectId = selectedProjectId.value;
+  const candidate = costAttributionCandidate.value;
+  if (!projectId || !candidate) return;
+  if (!costAttributionCompanyId.value) {
+    costAttributionError.value = "请选择成本承担公司";
+    return;
+  }
+  if (!costAttributionReason.value.trim()) {
+    costAttributionError.value = "请填写归属确认原因";
+    return;
+  }
+  costAttributionBusy.value = true;
+  try {
+    await requestCostAttribution(projectId, candidate.factId, {
+      companyEntityId: costAttributionCompanyId.value,
+      reason: costAttributionReason.value.trim(),
+      idempotencyKey: crypto.randomUUID()
+    });
+    costAttributionDialogVisible.value = false;
+    await loadCostAttributions(projectId);
+  } catch (error) {
+    costAttributionError.value = formatUnknownApiError(
+      error,
+      "发起成本归属确认失败"
+    );
+  } finally {
+    costAttributionBusy.value = false;
+  }
+}
+
+function openCostAttributionReview(
+  row: CostAttributionConfirmation,
+  decision: "confirm" | "return"
+) {
+  costAttributionReview.value = row;
+  costAttributionReviewDecision.value = decision;
+  costAttributionReviewReason.value = "";
+  costAttributionReviewPassword.value = "";
+  costAttributionDialogVisible.value = true;
+}
+
+async function submitCostAttributionReview() {
+  const projectId = selectedProjectId.value;
+  const row = costAttributionReview.value;
+  if (!projectId || !row) return;
+  if (costAttributionReviewDecision.value === "return" && !costAttributionReviewReason.value.trim()) {
+    costAttributionError.value = "请填写退回原因";
+    return;
+  }
+  const selfReview = row.requestedByUserId === auth.user?.id;
+  if (selfReview && (!costAttributionReviewReason.value.trim() || !costAttributionReviewPassword.value.trim())) {
+    costAttributionError.value = "本人发起后自审须填写原因并确认本人密码";
+    return;
+  }
+  costAttributionBusy.value = true;
+  try {
+    await reviewCostAttribution(projectId, row.id, {
+      decision: costAttributionReviewDecision.value,
+      revision: row.revision,
+      ...(costAttributionReviewReason.value.trim()
+        ? { reason: costAttributionReviewReason.value.trim() }
+        : {}),
+      ...(costAttributionReviewPassword.value
+        ? { password: costAttributionReviewPassword.value }
+        : {})
+    });
+    costAttributionDialogVisible.value = false;
+    costAttributionReview.value = null;
+    await loadCostAttributions(projectId);
+  } catch (error) {
+    costAttributionError.value = formatUnknownApiError(
+      error,
+      "确认成本归属失败"
+    );
+  } finally {
+    costAttributionBusy.value = false;
+  }
+}
+
 async function loadOverview() {
   const requestOwner = overviewRequestOwner.begin();
   const projectId = selectedProjectId.value;
@@ -2168,6 +2499,7 @@ async function loadOverview() {
 
   loadingOverview.value = true;
   message.value = "";
+  void loadCostAttributions(projectId);
   try {
     const companionRequests = Promise.all([
       loadOptionalProjectUpstreamFundFacts(

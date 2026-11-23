@@ -34,6 +34,7 @@ import { HealthController } from "./health.controller";
 import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
 import { OrganizationModule } from "./organization/organization.module";
+import { FundFlowModule } from "./fund-flow/fund-flow.module";
 import { OperatingLedgerModule } from "./operating-ledger/operating-ledger.module";
 import { OperatingProjectionModule } from "./operating-projection/operating-projection.module";
 import { OperatingTakeoverModule } from "./operating-takeover/operating-takeover.module";
@@ -68,6 +69,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     ClearingModule,
     CompanyEntityModule,
     OperatingLedgerModule,
+    FundFlowModule,
     OperatingProjectionModule,
     OperatingTakeoverModule,
     PayableRegistryModule,

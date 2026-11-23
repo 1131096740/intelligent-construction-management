@@ -2011,9 +2011,22 @@ export interface ProjectConstructionEnterprisePaidEntryReadModel {
   overpaidCents: string;
 }
 
+export interface ProjectContractDrilldownRowReadModel {
+  contractKey: string;
+  contractCode: string;
+  contractName: string;
+  contractKindLabel: string;
+  settledCents: string;
+  paidCents: string;
+  unpaidCents: string;
+  approvalPendingRequestCents: string;
+  approvedPendingPaymentCents: string;
+}
+
 export interface ProjectOperatingOverviewReadModel {
   ownerBalance?: { settlementYuan: string; receivedYuan: string; outstandingYuan: string; advanceYuan: string } | null;
   constructionEnterprisePaid?: ProjectConstructionEnterprisePaidSummaryReadModel;
+  contractDrilldown?: ProjectContractDrilldownRowReadModel[];
   project: ProjectOptionReadModel;
   cash: {
     actualReceiptsCents: string | null;

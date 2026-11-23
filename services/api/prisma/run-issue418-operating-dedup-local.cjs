@@ -82,7 +82,7 @@ async function main() {
       publicTables: Number(tables), containerRuntime: "docker_postgresql16_disposable",
       phases, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
-      scopeWarning: "本用例证明真实 PG 上同一合同双入口只计一次成本、upward/outside 已签结算进入投影、施工企业已付与项目对外支付成对且不可相加、成本归属/来源追溯可查、数据库来源唯一键与跨来源写入守卫生效；经营事实由 Prisma 直接落表（未重放经营账数据库函数/迁移账），不是生产迁移重放"
+      scopeWarning: "本用例证明真实 PG 上同一合同双入口只计一次成本、upward/outside 已签结算进入投影、施工企业已付与项目对外支付成对且不可相加、成本归属/来源追溯可查、FND-22 待归属确认后只改分账不加成本、FND-23 资金流水与经营事实一致且可导出、OPS-14 按合同钻取与总览一致；经营事实由 Prisma 直接落表（未重放经营账数据库函数/迁移账），不是生产迁移重放"
     };
     process.stdout.write(`ISSUE418_OPERATING_DEDUP_RECEIPT ${JSON.stringify(receipt)}\n`);
   } finally {

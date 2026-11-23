@@ -200,6 +200,7 @@ export interface ProjectionAggregateSeed {
   costByBearingCompany?: Array<{ kind: string; id: string; name: string | null; costCents: bigint }>;
   unattributedCostCents?: bigint;
   publicCashCostCents?: bigint;
+  contractDrilldown?: Array<{ contractKey: string; settledCents: bigint; paidCents: bigint }>;
   moneyComplete: boolean;
   notices: string[];
 }
@@ -280,6 +281,13 @@ export interface OperatingProjectionReadModel {
     unattributedCostCents: string;
     publicCashCostCents: string;
   };
+  /** OPS-14：下游已结算/已付按合同汇总；待审批与已批待付由 API 层补充，不在此相加。 */
+  contractDrilldown: Array<{
+    contractKey: string;
+    settledCents: string;
+    paidCents: string;
+    unpaidCents: string;
+  }>;
   actualFunds: {
     constructionEnterpriseFundsCents: string;
     companyProjectFundsCents: string;
@@ -384,6 +392,7 @@ export interface OperatingProjectionAggregateView {
   relationshipTotals?: OperatingProjectionReadModel["relationshipTotals"];
   operating: OperatingProjectionReadModel["operating"];
   costAttribution: OperatingProjectionReadModel["costAttribution"];
+  contractDrilldown: OperatingProjectionReadModel["contractDrilldown"];
   actualFunds: OperatingProjectionReadModel["actualFunds"];
   restrictions: Omit<OperatingProjectionReadModel["restrictions"], "relationshipCompleteness"> & {
     relationshipCompletenessLabel: string;
@@ -477,7 +486,7 @@ function toV2Aggregate(projection: OperatingProjectionV2ReadModel): OperatingPro
         ? [`合同参考金额含未知项（${projection.commitments.unknownContractCommitmentCount}项）；已知小计为${projection.commitments.knownContractCommitmentYuan}元。`]
         : [])]
     },
-    commitments: projection.commitments, relationshipTotals: projection.relationshipTotals, operating: projection.operating, costAttribution: projection.costAttribution, actualFunds: projection.actualFunds,
+    commitments: projection.commitments, relationshipTotals: projection.relationshipTotals, operating: projection.operating, costAttribution: projection.costAttribution, contractDrilldown: projection.contractDrilldown, actualFunds: projection.actualFunds,
     restrictions: { ...restrictions, relationshipCompletenessLabel: relationshipCompletenessLabel(relationshipCompleteness) }, profitAndLoss: projection.profitAndLoss, distribution: projection.distribution, evidence: projection.evidence,
     sources: [...groups.values()].sort((a, b) => a.sourceTypeLabel.localeCompare(b.sourceTypeLabel, "zh-CN")) };
 }
@@ -535,6 +544,7 @@ export function toOperatingProjectionAggregate(projection: OperatingProjectionRe
     relationshipTotals: projection.relationshipTotals,
     operating: projection.operating,
     costAttribution: projection.costAttribution,
+    contractDrilldown: projection.contractDrilldown,
     actualFunds: projection.actualFunds,
     restrictions: {
       estimatedClearingExpenseCents:
@@ -1197,6 +1207,15 @@ function jsonRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function contractKeyFromSnapshot(snapshot: unknown): string | null {
+  const source = jsonRecord(snapshot);
+  return (
+    jsonText(source.contractId) ??
+    jsonText(source.contractLedgerId) ??
+    jsonText(source.affiliateCompanyContractId)
+  );
+}
+
 function jsonText(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
@@ -1489,6 +1508,7 @@ export class OperatingProjectionStreamAccumulator {
   private readonly costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
   private unattributedCostCents = 0n;
   private publicCashCostCents = 0n;
+  private readonly contractDrilldown = new Map<string, { settledCents: bigint; paidCents: bigint }>();
   private retroactiveFactCount = 0;
   private integrityFactCount = 0;
   private integrityImpactCount = 0;
@@ -1689,6 +1709,28 @@ export class OperatingProjectionStreamAccumulator {
           this.publicCashCostCents += projectionSigned;
         }
       }
+      if (
+        fact.factKind === "downstream_settlement" ||
+        fact.factKind === "downstream_payment"
+      ) {
+        const contractKey = contractKeyFromSnapshot(fact.sourceSnapshot);
+        if (contractKey) {
+          const row = this.contractDrilldown.get(contractKey) ?? {
+            settledCents: 0n,
+            paidCents: 0n
+          };
+          const payableKind =
+            kind === "payable_increase" || kind === "payable_decrease";
+          if (payableKind && fact.factKind === "downstream_settlement") {
+            row.settledCents += projectionSigned;
+          }
+          if (payableKind && fact.factKind === "downstream_payment") {
+            // 付款减少应付，signed 为负；已付按正数累计。
+            row.paidCents -= projectionSigned;
+          }
+          this.contractDrilldown.set(contractKey, row);
+        }
+      }
       if (kind === "construction_enterprise_funds_increase" || kind === "construction_enterprise_funds_decrease") {
         state.constructionEnterpriseFundsNetCents += projectionSigned;
       }
@@ -1787,6 +1829,10 @@ export class OperatingProjectionStreamAccumulator {
         costByBearingCompany: Array.from(this.costByBearingCompany.values()),
         unattributedCostCents: this.unattributedCostCents,
         publicCashCostCents: this.publicCashCostCents,
+        contractDrilldown: Array.from(this.contractDrilldown, ([contractKey, row]) => ({
+          contractKey,
+          ...row
+        })),
         constructionEnterprisePaidCents: this.constructionEnterprisePaidCents,
         projectExternalPaidCents: this.projectExternalPaidCents,
         sourceReferenceOutflows: Array.from(this.sourceReferenceOutflows.entries()),
@@ -2212,6 +2258,7 @@ function reduceLegacyOperatingProjection(
   const costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
   let unattributedCostCents = 0n;
   let publicCashCostCents = 0n;
+  const contractDrilldown = new Map<string, { settledCents: bigint; paidCents: bigint }>();
   const constructionEnterpriseFundsNetByFact = new Map<string, bigint>();
   const downstreamExternalCashNetByFact = new Map<string, bigint>();
   const selectedHolderCashBalances = new Map<string, bigint>(
@@ -2338,6 +2385,27 @@ function reduceLegacyOperatingProjection(
           }
           if (fact.actualPayerSubject?.kind === "public_cash") {
             publicCashCostCents += projectionSigned;
+          }
+        }
+        if (
+          fact.factKind === "downstream_settlement" ||
+          fact.factKind === "downstream_payment"
+        ) {
+          const contractKey = contractKeyFromSnapshot(fact.sourceSnapshot);
+          if (contractKey) {
+            const row = contractDrilldown.get(contractKey) ?? {
+              settledCents: 0n,
+              paidCents: 0n
+            };
+            const payableKind =
+              kind === "payable_increase" || kind === "payable_decrease";
+            if (payableKind && fact.factKind === "downstream_settlement") {
+              row.settledCents += projectionSigned;
+            }
+            if (payableKind && fact.factKind === "downstream_payment") {
+              row.paidCents -= projectionSigned;
+            }
+            contractDrilldown.set(contractKey, row);
           }
         }
         if (kind === "construction_enterprise_funds_increase" || kind === "construction_enterprise_funds_decrease") {
@@ -2638,6 +2706,22 @@ function reduceLegacyOperatingProjection(
       receivableCents: apiMoney(receivable),
       payableCents: apiMoney(payable)
     },
+    contractDrilldown: (
+      input.aggregateSeed?.contractDrilldown ??
+      Array.from(contractDrilldown, ([contractKey, row]) => ({
+        contractKey,
+        ...row
+      }))
+    )
+      .map((row) => ({
+        contractKey: row.contractKey,
+        settledCents: apiMoney(row.settledCents),
+        paidCents: apiMoney(row.paidCents),
+        unpaidCents: apiMoney(
+          nonNegative(row.settledCents - row.paidCents)
+        )
+      }))
+      .sort((left, right) => left.contractKey.localeCompare(right.contractKey)),
     costAttribution: {
       byBearingCompany: (
         input.aggregateSeed?.costByBearingCompany ??

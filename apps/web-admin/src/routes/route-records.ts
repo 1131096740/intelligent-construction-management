@@ -20,6 +20,15 @@ export const fundsOverviewRoleKeys = [
   "project_manager"
 ] as const satisfies readonly RoleKey[];
 
+export const fundFlowRoleKeys = [
+  "finance_staff",
+  "finance_director",
+  "comprehensive_director",
+  "general_manager",
+  "chairman",
+  "project_manager"
+] as const satisfies readonly RoleKey[];
+
 export const fundsWorkbenchRoleKeys = [
   "finance_staff",
   "finance_director",
@@ -546,6 +555,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "统一资金办理工作台",
         component: () => import("../pages/funds/FundsWorkbenchPage.vue"),
         meta: { requiredRoleKeys: fundsWorkbenchRoleKeys, title: "统一资金办理工作台" }
+      },
+      {
+        path: "资金流水",
+        component: () => import("../pages/fund-flow/FundFlowPage.vue"),
+        meta: { requiredRoleKeys: fundFlowRoleKeys, title: "资金流水" }
       },
       {
         path: "公司互转台账",

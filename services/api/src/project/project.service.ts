@@ -1,3 +1,4 @@
+import { mergeContractDrilldown } from "./project-operating-drilldown";
 import { readOwnerSettlementCumulative, readProjectOwnerBalance, resolveOwnerSettlementAdjustment } from "./project-owner-balance";
 import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
@@ -839,7 +840,11 @@ export class ProjectService {
             settlements,
             payments,
             ownerBalance,
-            constructionEnterprisePaid
+            constructionEnterprisePaid,
+            contractRows,
+            affiliateContractRows,
+            companyContractRows,
+            paymentRequestRows
           ] = await Promise.all([
               tx.project.findFirst({
                 where: { id: projectId, isActive: true },
@@ -855,7 +860,29 @@ export class ProjectService {
               tx.settlement.count({ where: { projectId } }),
               tx.paymentRequest.count({ where: { projectId } }),
               context.moneyComplete ? readProjectOwnerBalance(tx, projectId, context.cutoffAt, context.readAt) : null,
-              readConstructionEnterprisePaid(tx, projectId)
+              readConstructionEnterprisePaid(tx, projectId),
+              tx.contract.findMany({
+                where: { projectId, voidedAt: null },
+                select: { id: true, code: true, name: true }
+              }),
+              tx.projectAffiliateContractFact.findMany({
+                where: { projectId, status: "confirmed" },
+                select: { ledgerId: true, externalContractReference: true }
+              }),
+              tx.projectAffiliateCompanyContract.findMany({
+                where: { projectId, status: "confirmed" },
+                select: { id: true, contractName: true }
+              }),
+              tx.paymentRequest.findMany({
+                where: { projectId },
+                select: {
+                  contractId: true,
+                  status: true,
+                  requestedAmountCents: true,
+                  approvedAmountCents: true,
+                  paidAmountCents: true
+                }
+              })
             ]);
           return {
             project,
@@ -865,7 +892,11 @@ export class ProjectService {
             settlements,
             payments,
             ownerBalance,
-            constructionEnterprisePaid
+            constructionEnterprisePaid,
+            contractDrilldownContracts: contractRows,
+            contractDrilldownAffiliateContracts: affiliateContractRows,
+            contractDrilldownCompanyContracts: companyContractRows,
+            contractDrilldownPaymentRequests: paymentRequestRows
           };
         }
       );
@@ -877,7 +908,11 @@ export class ProjectService {
       settlements,
       payments,
       ownerBalance,
-      constructionEnterprisePaid
+      constructionEnterprisePaid,
+      contractDrilldownContracts,
+      contractDrilldownAffiliateContracts,
+      contractDrilldownCompanyContracts,
+      contractDrilldownPaymentRequests
     } = additional;
     const constructionEnterprisePaidSummary = {
       paidCents: moneyCentsToApi(constructionEnterprisePaid.summary.paidCents),
@@ -933,6 +968,13 @@ export class ProjectService {
       },
       ownerBalance,
       constructionEnterprisePaid: constructionEnterprisePaidSummary,
+      contractDrilldown: mergeContractDrilldown({
+        projectionRows: projection.contractDrilldown ?? [],
+        contracts: contractDrilldownContracts,
+        affiliateContracts: contractDrilldownAffiliateContracts,
+        companyContracts: contractDrilldownCompanyContracts,
+        paymentRequests: contractDrilldownPaymentRequests
+      }),
       upstreamFunds: {
         ownerPaymentCents: null,
         affiliateRemittanceCents: null,

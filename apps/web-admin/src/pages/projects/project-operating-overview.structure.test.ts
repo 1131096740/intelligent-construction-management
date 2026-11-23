@@ -119,6 +119,23 @@ describe("project operating overview structure", () => {
     expect(source).toContain("公共现金支付成本");
   });
 
+  it("drills down downstream unpaid by contract without adding pending states", () => {
+    expect(source).toContain("按合同查看下游未付");
+    expect(source).toContain("审批中申请");
+    expect(source).toContain("已批准待付");
+    expect(source).toContain("不额外相加");
+    expect(source).toContain("overview.contractDrilldown");
+    expect(source).toContain("不同合同预付与欠款不自动抵扣");
+  });
+
+  it("confirms public-cash cost attribution without creating a second cost", () => {
+    expect(source).toContain("公共现金成本待归属");
+    expect(source).toContain("发起归属");
+    expect(source).toContain("确认归属");
+    expect(source).toContain("fetchCostAttributions");
+    expect(source).toContain("reviewCostAttribution");
+  });
+
   it("marks incomplete data as known-only and never as final profit", () => {
     expect(source).toContain("当前经营盈亏（已知数，资料待补充）");
     expect(source).toContain("（已知数，不作为最终利润）");
