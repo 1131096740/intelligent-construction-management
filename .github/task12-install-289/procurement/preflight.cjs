@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const scope = '.github/task12-install-289/procurement';
-const acceptedManifest = 'fd6449852c1f420b880b0e167dd1e72d7ea93782f0c9b6a945a296cb2fe03639';
+const acceptedManifest = '3295fc671d128e4f7ba1ea8fc08e9fd44e2fa8a29199561d1e95463d12393265';
 const hash = value => createHash('sha256').update(value).digest('hex');
 const requireThat = (condition, message) => {
   if (!condition) throw new Error(message);

@@ -7,7 +7,7 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "27f07c62727cafaba99086cffd3c9d861698f242589dc296e2e81e412834b1aa"
+    "candidate": "fdca8bcb18dd44b36fec4ee211cbf3e8f13a148acfc93c9dc09d0fcc6fc1ea16"
   },
   {
     "path": "apps/web-admin/src/components/ContractRelationshipLedger.vue",
@@ -38,6 +38,11 @@
     "path": "apps/web-admin/src/pages/contracts/contract-change.structure.test.ts",
     "expected": "582109988a64c7bbd81df68dd21b52e9dbcabadecd4ced18501d77bcb032cbf3",
     "candidate": "3e6e736ee19c480a9c69afb14caf687a9d230cc40599e2b4d1ab9ca4560b94ce"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/contract-lifecycle-capability-gates.structure.test.ts",
+    "expected": "ee29f234ac85b020f4779557630d6b9d062e59318d610ce5b9de7d3575f1c789",
+    "candidate": "a9d085a29b3c0e83d02930afaf67dca4528dc9f9c7f88181804301aca542c5ae"
   },
   {
     "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
@@ -100,14 +105,39 @@
     "candidate": "b27192e86c0edcc5571c7269d047b76786384ec2e91ee45f757f43cc7e858427"
   },
   {
+    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
+    "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
+    "candidate": "7b42eaa01ae9dc0ef387468015454f7d09cd5a10ca4f3f6a336ef948300a1a55"
+  },
+  {
+    "path": "services/api/prisma/general-procurement-runtime-grants.sql",
+    "expected": "c6ed1b2f8a3d1ba7c5a4aa38087cd2425a8a2e5441c39790eeed3734f4412b09",
+    "candidate": "0e67f9832f589f48c236b0964c0bb74e9a2f3c18798995014c5ac2be703f9324"
+  },
+  {
     "path": "services/api/prisma/local-staged-technical-profile-policy.cjs",
     "expected": "80d8fea098b44ef2a07a91ff1e9d0b87854f7c74d7201ff11524263c95b31d50",
     "candidate": "431f15e6e5a99aacd19241e6d1e665a2cf15c5a6beeb9b8abe75ad56b804baae"
   },
   {
+    "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
+    "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
+    "candidate": "91e1d20bc48f27123311af5769c667d59d4e14c4be146c6f5c6b86135a7b7640"
+  },
+  {
+    "path": "services/api/prisma/run-database-dynamic-remaining-local.cjs",
+    "expected": "9bf2a50dd7fbe3e13b342be5bde31296a9295cc3d447011c9e2446ecdb96b79b",
+    "candidate": "1b2a96427f6b11cd3cfdb78118117b9d97c3097dc533a19f2ae59a6b34aa7212"
+  },
+  {
     "path": "services/api/prisma/schema.prisma",
     "expected": "8154b5a52bee19a0a105ea949f2fb272f6876f7c92fbf1e0b57b0104d93b87be",
     "candidate": "6c21a0f4a0632d571fbab93792900247bb011397c13b5673f9ec70ffc00786dc"
+  },
+  {
+    "path": "services/api/scripts/business-zeroing-policy.cjs",
+    "expected": "42722a432f8e03ab1cc15339439b49af9953454438fd18d75c93e5505b5d6195",
+    "candidate": "088edbb344f217c580520dd8184a87926f3917c5bf818e0b33c0f827ba4ca4ef"
   },
   {
     "path": "services/api/scripts/check-business-errors.cjs",
@@ -202,7 +232,7 @@
   {
     "path": "services/api/src/contract-template/template-management.test-support.ts",
     "expected": "a456d498881dddabcfbf987fa46ce69fb9b3f9c3e41f39d3ec7fc9758da5852f",
-    "candidate": "3ba02d5b376d718af7326f52ff287421afd0c1fab50ad0abfa2e36570cceb4ca"
+    "candidate": "66eed61d006b402a3eabb202d71d6cb31cafbaa6f0bb10045b9bda88980bbf4f"
   },
   {
     "path": "services/api/src/contract-workbench/contract-workbench.service.ts",
@@ -465,6 +495,11 @@
     "candidate": "be4645647dc86753b4fac235244b1aef0c7ea7c005159d601c54c16858c3d18d"
   },
   {
+    "path": "services/api/src/payment/testing/registered-payment-execution.synthetic-db.ts",
+    "expected": "c91649f5ebdc52bd54334330f61b69945762aa1b46654251ca5868e4356cf340",
+    "candidate": "2024bb673d87ff9f8d5a1499f4ce02a1e831e5af9b1463f539d8b22a2196b37e"
+  },
+  {
     "path": "services/api/src/project-fund-dispute/project-fund-dispute-file-access.spec.ts",
     "expected": "418f0325d57e61ce5450c515d1fbec4d276d9a9638385e52be2a887152f8e1a6",
     "candidate": "16998a80acc469cc940de446a3d26997fc57e2c92036ae6724a498120cc28d0d"
@@ -472,7 +507,7 @@
   {
     "path": "services/api/src/project/project-completion-public.spec.ts",
     "expected": "912e50354e715ada4696d0ea3b833adcdccd4619896e1d0f62d422f37fe90a5a",
-    "candidate": "fb6647393f4ffa0506ab4f25fa162b2619961af67eb3e519710b8fbd88afdcc2"
+    "candidate": "61b34b52076c9b4490094dff62cf55eb0d3521fb8517f0a514f7d194de3cb371"
   },
   {
     "path": "services/api/src/project/project.service.spec.ts",
@@ -505,13 +540,8 @@
     "candidate": "e1f26dfe6afece537155c5f7bdd75819b3de562c656f6aeb9e23082479cd585a"
   },
   {
-    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
-    "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "1cf5615477440b61edc3b27572ec7c8e32c3d0588b31283ba801fe2ce0d4aed8"
-  },
-  {
-    "path": "services/api/prisma/general-procurement-runtime-grants.sql",
-    "expected": "c6ed1b2f8a3d1ba7c5a4aa38087cd2425a8a2e5441c39790eeed3734f4412b09",
-    "candidate": "0e67f9832f589f48c236b0964c0bb74e9a2f3c18798995014c5ac2be703f9324"
+    "path": "services/api/src/validation/task3-static-field-validation.spec.ts",
+    "expected": "2d8af87f4c48854a4537be2277a8d3ca04c0bd11629621a45c7d26484fa1f593",
+    "candidate": "57fb23200943c4c8582cf013bc40299a4a9c65ac4a0454d392436ece7a5b8ccf"
   }
 ]
