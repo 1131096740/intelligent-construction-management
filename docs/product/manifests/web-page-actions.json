@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "ready",
+  "status": "blocked",
   "scope": {
     "registry": "docs/product/manifests/web-page-actions.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -12,24 +12,24 @@
     "registeredActionCount": 470,
     "pageActionCount": 100,
     "backgroundActionCount": 370,
-    "reachableVueFileCount": 233,
-    "routeRootCount": 77,
-    "totalVueFileCount": 246,
-    "parsedVueFileCount": 246,
-    "reachableProductionModuleCount": 404,
-    "templateEventDirectiveCount": 1559,
+    "reachableVueFileCount": 235,
+    "routeRootCount": 78,
+    "totalVueFileCount": 248,
+    "parsedVueFileCount": 248,
+    "reachableProductionModuleCount": 408,
+    "templateEventDirectiveCount": 1579,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 461,
     "candidateProductionMutationConsumerCount": 461,
     "acceptedProductionMutationConsumerCount": 461,
-    "productionMutationConsumerPairCount": 461,
-    "blockerCount": 0
+    "productionMutationConsumerPairCount": 466,
+    "blockerCount": 5
   },
   "evidence": {
-    "totalProductionModuleCount": 423,
-    "reachableProductionModuleCount": 404,
-    "totalVueFileCount": 246,
-    "parsedVueFileCount": 246
+    "totalProductionModuleCount": 427,
+    "reachableProductionModuleCount": 408,
+    "totalVueFileCount": 248,
+    "parsedVueFileCount": 248
   },
   "actions": [
     {
@@ -15165,7 +15165,7 @@
         "event": "call",
         "handler": "archiveProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 114,
+        "sourceLine": 115,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15265,7 +15265,7 @@
         "event": "call",
         "handler": "cancelProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 126,
+        "sourceLine": 127,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15365,7 +15365,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 132,
+        "sourceLine": 133,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15531,7 +15531,7 @@
         "event": "call",
         "handler": "deleteProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 44,
+        "sourceLine": 45,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15631,7 +15631,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 138,
+        "sourceLine": 139,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15849,7 +15849,7 @@
         "event": "call",
         "handler": "reviewProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 102,
+        "sourceLine": 103,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15949,7 +15949,7 @@
         "event": "call",
         "handler": "submitProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 96,
+        "sourceLine": 97,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16155,7 +16155,7 @@
         "event": "call",
         "handler": "uploadProcurementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 120,
+        "sourceLine": 121,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16255,7 +16255,7 @@
         "event": "call",
         "handler": "withdrawProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 108,
+        "sourceLine": 109,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32002,7 +32002,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2378,
+        "sourceLine": 2387,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -32067,7 +32067,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2365,
+        "sourceLine": 2374,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -32132,7 +32132,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1507,
+        "sourceLine": 1508,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32394,7 +32394,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1525,
+        "sourceLine": 1526,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32459,7 +32459,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementApplicationWithCapability",
         "kind": "background_call",
-        "sourceLine": 1457,
+        "sourceLine": 1458,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32525,7 +32525,7 @@
         "event": "call",
         "handler": "deletePristineSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1438,
+        "sourceLine": 1439,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32591,7 +32591,7 @@
         "event": "call",
         "handler": "updateSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1397,
+        "sourceLine": 1398,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32858,7 +32858,7 @@
         "event": "call",
         "handler": "recreateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1476,
+        "sourceLine": 1477,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32988,7 +32988,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 2277,
+        "sourceLine": 2286,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -33054,7 +33054,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 2297,
+        "sourceLine": 2306,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -33120,7 +33120,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 2317,
+        "sourceLine": 2326,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -33186,7 +33186,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 2007,
+        "sourceLine": 2008,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -33251,7 +33251,7 @@
         "event": "call",
         "handler": "createSpotProcurementVersionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1413,
+        "sourceLine": 1414,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -33316,7 +33316,7 @@
         "event": "call",
         "handler": "voidSpotProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1491,
+        "sourceLine": 1492,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -33381,7 +33381,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 2337,
+        "sourceLine": 2346,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -35374,7 +35374,53 @@
     "unresolvedRoutes": [],
     "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [],
-    "uncoveredMutationWrappers": [],
+    "uncoveredMutationWrappers": [
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+        "wrapper": "confirmActualPurchaseBatchCorrection",
+        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+        "normalizedKeys": [
+          "POST /actual-purchase-batches/:param/corrections/:param/confirmation"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+        "wrapper": "createActualPurchaseBatch",
+        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+        "normalizedKeys": [
+          "POST /actual-purchase-batches"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+        "wrapper": "createActualPurchaseBatchSpotPayment",
+        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+        "normalizedKeys": [
+          "POST /actual-purchase-batches/:param/spot-payments"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+        "wrapper": "recordActualPurchaseBatchRefund",
+        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+        "normalizedKeys": [
+          "POST /actual-purchase-batches/:param/refunds"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+        "wrapper": "requestActualPurchaseBatchCorrection",
+        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+        "normalizedKeys": [
+          "POST /actual-purchase-batches/:param/corrections"
+        ]
+      }
+    ],
     "parseIssues": [],
     "dynamicEventIssues": [],
     "unresolvedComponentForwards": []

@@ -44,6 +44,7 @@
     "verify:issue419-notification:local": "node services/api/prisma/run-issue419-notification-local.cjs",
     "verify:issue403-actual-purchase:local": "node services/api/prisma/run-issue403-actual-purchase-local.cjs",
     "verify:issue404-reimbursement:local": "node services/api/prisma/run-issue404-reimbursement-local.cjs",
+    "verify:issue405-other-project-payment:local": "node services/api/prisma/run-issue405-other-project-payment-local.cjs",
     "verify:issue420-approval-center:local": "node services/api/prisma/run-issue420-approval-center-local.cjs",
     "verify:line-a-real-db:candidate:local": "LINE_A_SKIP_CANDIDATE=20261119004200 node services/api/prisma/run-line-a-real-db-local.cjs",
     "verify:line-a-real-db:diagnose-gate:local": "node services/api/prisma/run-line-a-real-db-local.cjs --diagnose-archive-gate",
