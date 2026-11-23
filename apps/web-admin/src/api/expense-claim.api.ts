@@ -52,7 +52,8 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   loanExpectedClearanceAt: string | null;
   submittedAt: string | null;
   approvedAt: string | null;
-  lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; receiptCount: number; amountCents: string; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
+  lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; quantity: string | null; receiptCount: number; amountCents: string; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
+  sourcePurchase: ExpenseClaimSourcePurchase | null;
   attachments: Array<{
     id: string;
     fileId: string;
@@ -105,6 +106,50 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
 
+export interface ExpenseClaimSourcePurchase {
+  batchId: string;
+  kind: "spot_material" | "general";
+  supplierName: string;
+  status: string;
+  totalAmountCents: string;
+  effectiveTotalAmountCents: string;
+  costConfirmed: boolean;
+  costConfirmedAt: string | null;
+  procurementId: string;
+  procurementCode: string | null;
+  categoryLabel: string | null;
+  projectId: string | null;
+  companyEntityId: string | null;
+  attachments: Array<{
+    fileId: string;
+    category: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    fileStatus: string;
+  }>;
+}
+
+export interface ExpenseCategoryOption {
+  name: string;
+  isDefault: boolean;
+  usageCount: number;
+}
+
+export interface SelectablePurchaseBatch {
+  batchId: string;
+  kind: "spot_material" | "general";
+  supplierName: string;
+  status: string;
+  totalAmountCents: string;
+  effectiveTotalAmountCents: string;
+  availableAmountCents: string;
+  costConfirmed: boolean;
+  procurementId: string;
+  procurementCode: string | null;
+  categoryLabel: string | null;
+}
+
 export interface ExpenseClaimEntrySnapshotReadModel {
   id: string;
   frozenAt: string;
@@ -121,6 +166,7 @@ export interface ExpenseClaimCreateOptions {
   canProxy: boolean;
   applicantUsers: Array<{ id: string; name: string }>;
   factWitnessUsers: Array<{ id: string; name: string }>;
+  expenseCategories: ExpenseCategoryOption[];
   availableActions: string[];
   incidentalExpenseCategories: Array<{
     key:
@@ -146,6 +192,7 @@ export interface ExpenseClaimRepaymentActionCapabilityReadModel {
 }
 
 export interface CreateExpenseClaimPayload {
+  actualPurchaseBatchId?: string;
   generalProcurementId?: string;
   generalProcurementRequestKey?: string;
   claimType: "reimbursement" | "loan" | "incidental_expense";
@@ -173,6 +220,7 @@ export interface CreateExpenseClaimPayload {
     expenseCategory: string;
     occurredOn: string;
     purpose: string;
+    quantity?: string;
     receiptCount: number;
     amountCents: string;
     evidenceType: "invoice" | "receipt_or_other" | "none";
@@ -210,6 +258,27 @@ export async function fetchExpenseClaims(view: ExpenseClaimWorkbenchView = "all"
   const response = await apiFetch(`/expense-claims${query}`);
   await ensureOk(response);
   return response.json() as Promise<ExpenseClaimListItemReadModel[]>;
+}
+
+export async function fetchExpenseClaimExpenseCategories(companyEntityId: string) {
+  const response = await apiFetch(
+    `/expense-claims/expense-categories?${new URLSearchParams({ companyEntityId }).toString()}`
+  );
+  await ensureOk(response);
+  return response.json() as Promise<{ categories: ExpenseCategoryOption[] }>;
+}
+
+export async function fetchExpenseClaimSelectablePurchaseBatches(input: {
+  companyEntityId: string;
+  projectId?: string;
+}) {
+  const query = new URLSearchParams({ companyEntityId: input.companyEntityId });
+  if (input.projectId) query.set("projectId", input.projectId);
+  const response = await apiFetch(
+    `/expense-claims/selectable-purchase-batches?${query.toString()}`
+  );
+  await ensureOk(response);
+  return response.json() as Promise<{ batches: SelectablePurchaseBatch[] }>;
 }
 
 export async function fetchExpenseClaimCreateOptions() {

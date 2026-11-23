@@ -29,6 +29,9 @@ export class ExpenseClaimLineDto {
   @IsRequiredText({ requiredMessage: "用途说明不能为空", typeMessage: "用途说明必须是文字", blankMessage: "用途说明不能为空白" })
   purpose!: string;
 
+  @IsOptionalNonBlankText({ typeMessage: "数量必须是文字", blankMessage: "数量不能为空白" })
+  quantity?: string;
+
   @IsIntegerInRange({ min: 0, max: 10000, typeMessage: "单据张数必须是整数", rangeMessage: "单据张数必须在 0 到 10000 之间" })
   receiptCount!: number;
 

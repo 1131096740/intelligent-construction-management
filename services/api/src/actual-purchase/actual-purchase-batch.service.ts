@@ -535,6 +535,11 @@ export class ActualPurchaseBatchService {
     assertActualPurchaseBatchExecution(capacity, amountCents);
   }
 
+  /** 只读容量快照：供垫付报销选择现有采购批次时展示剩余可付金额。 */
+  async capacityForBatch(batchId: string) {
+    return this.prisma.$transaction((tx) => this.calculateCapacity(tx, batchId));
+  }
+
   async assertClaimCommitInTransaction(tx: Prisma.TransactionClient, input: { batchId: string; amountCents: bigint; excludeClaimId?: string }) {
     const capacity = await this.calculateCapacity(tx, input.batchId, { excludeClaimId: input.excludeClaimId });
     assertActualPurchaseBatchCommitment(capacity, input.amountCents);

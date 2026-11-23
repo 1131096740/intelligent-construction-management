@@ -29,6 +29,7 @@ export type ExpenseClaimApprovalFormInput = {
     expenseCategory: string;
     occurredOn: Date;
     purpose: string;
+    quantity?: string | null;
     receiptCount: number;
     amountCents: bigint;
   }>;
@@ -98,8 +99,8 @@ export async function renderExpenseClaimApprovalForm(
   ]);
 
   if (input.claimType === "reimbursement") {
-    y = row(doc, margin, y, [28, 70, 72, 172, 44, contentWidth - 386], 20, [
-      "序", "日期", "类别", "用途", "票数", "金额"
+    y = row(doc, margin, y, [26, 62, 60, 132, 38, 34, contentWidth - 352], 20, [
+      "序", "日期", "类别", "用途", "数量", "票数", "金额"
     ], true);
     const rows = firstPageLines.length ? firstPageLines : [{
       sortOrder: 1,
@@ -110,11 +111,12 @@ export async function renderExpenseClaimApprovalForm(
       amountCents: 0n
     }];
     for (const line of rows) {
-      y = row(doc, margin, y, [28, 70, 72, 172, 44, contentWidth - 386], 23, [
+      y = row(doc, margin, y, [26, 62, 60, 132, 38, 34, contentWidth - 352], 23, [
         String(line.sortOrder),
         line.occurredOn.getTime() ? formatDate(line.occurredOn) : "",
         line.expenseCategory,
         line.purpose,
+        line.quantity?.trim() || "",
         String(line.receiptCount),
         `￥${formatMoneyCentsAsYuan(line.amountCents)}`
       ]);

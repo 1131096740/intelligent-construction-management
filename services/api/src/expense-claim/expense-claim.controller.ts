@@ -42,6 +42,20 @@ export class ExpenseClaimController {
     return this.claims.createOptions(user.id);
   }
 
+  @Get("expense-categories")
+  expenseCategories(@CurrentUser() user: AuthenticatedUser, @Query("companyEntityId") companyEntityId?: string) {
+    return this.claims.expenseCategories(user.id, companyEntityId);
+  }
+
+  @Get("selectable-purchase-batches")
+  selectablePurchaseBatches(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("companyEntityId") companyEntityId?: string,
+    @Query("projectId") projectId?: string
+  ) {
+    return this.claims.selectableAdvanceBatches(user.id, { companyEntityId, projectId });
+  }
+
   @Get(":claimId")
   detail(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.claims.getMine(claimId, user.id);
