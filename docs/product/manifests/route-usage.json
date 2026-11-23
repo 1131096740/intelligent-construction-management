@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 835,
-    "exactRouteCount": 835,
-    "normalizedRouteCount": 835,
+    "routeCount": 836,
+    "exactRouteCount": 836,
+    "normalizedRouteCount": 836,
     "classificationOverrideCount": 225,
     "consumerSurfaceOverrideCount": 47,
     "classificationOverrideSha256": "71663f75150fda4cd713f90bc211f59dcf45cc116c6fbb98232cee63389be8d2",
     "consumerSurfaceOverrideSha256": "b2bbe6944629b245b12f03521fc673151201615df030bea2ca96c22191b02015",
-    "derivedProductionPageCount": 610,
-    "pageRouteCount": 629,
+    "derivedProductionPageCount": 611,
+    "pageRouteCount": 630,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
     "internalTaskCount": 45,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 681,
+      "web_api_wrapper": 682,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 681,
+    "productionWrapperRouteCount": 682,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4774,7 +4774,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5933,
+            "sourceLine": 5951,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -26896,6 +26896,47 @@
             "method": "POST",
             "normalizedPath": "/projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
             "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-supplement-return",
+      "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-supplement-return",
+      "controller": "ContractTakeoverController",
+      "handler": "returnFinanceForSupplement",
+      "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.takeover.finance_facts.edit",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "returnContractTakeoverForFinanceSupplement",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/contract-takeovers/:param/finance-supplement-return",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-supplement-return",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
             ]

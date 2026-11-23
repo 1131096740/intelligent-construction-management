@@ -149,14 +149,17 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       id: requiredJsonText(source, "payeeVersionId", "历史接管实付")
     };
     const allocations = paymentAllocations(source);
-    const evidenceLevel = requiredJsonText(
+    const storedLevel = requiredJsonText(
       source,
       "takeoverLevel",
       "历史接管实付"
     );
-    if (evidenceLevel !== "A" && evidenceLevel !== "B") {
-      throw new BadRequestException("历史接管实付只有 A/B 级可以进入正式经营账");
-    }
+    // 等级只保留为历史兼容标记，不再作为能否进入正式经营账的门槛。
+    // 来源快照本身已要求接管状态 confirmed 且 activatedAt 非空；
+    // NONE/C 级历史实付与 A/B 级走同一确认事实投影，仅把资料可靠性
+    // 映射到经营账既有证据级别，供后续核对。
+    const evidenceLevel: "A" | "B" | "C" =
+      storedLevel === "A" || storedLevel === "B" ? storedLevel : "C";
     const impacts: AppendOperatingFactInput["impacts"] = [];
     for (const allocation of allocations) {
       if (allocation.allocationType !== "settlement") continue;

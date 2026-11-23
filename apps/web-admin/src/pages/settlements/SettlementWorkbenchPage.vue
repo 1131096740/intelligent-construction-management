@@ -83,7 +83,8 @@
       <t-select
         v-model="form.contractOptionValue"
         label="有效合同"
-        placeholder="请选择已生效合同"
+        placeholder="搜索合同编号或名称"
+        filterable
         :options="contractOptions"
         :loading="loadingContracts"
         :disabled="Boolean(draftSubmissionBlockingReason) || settlementDraftLifecycleActionBusy"

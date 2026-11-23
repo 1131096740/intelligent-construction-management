@@ -96,6 +96,10 @@ const CONTRACT_TAKEOVER_PROJECT_ACTION_RULES = [
   { key: "submit_review", actions: ["contract.submit"] },
   { key: "register_handover", actions: ["contract.archive.confirm"] },
   { key: "return_for_supplement", actions: ["contract.archive.confirm"] },
+  {
+    key: "return_finance_for_supplement",
+    actions: ["contract.takeover.finance_facts.edit"]
+  },
   { key: "confirm_change_baseline", actions: ["contract.archive.confirm"] },
   {
     key: "attach_contract_evidence",
@@ -725,6 +729,22 @@ export class ContractTakeoverController {
     @Body() body: ReturnContractTakeoverForSupplementDto
   ) {
     return this.takeovers.returnForSupplement(projectId, takeoverId, body, user.id);
+  }
+
+  @Post(":takeoverId/finance-supplement-return")
+  @RequireProjectRole("contract.takeover.finance_facts.edit")
+  returnFinanceForSupplement(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ReturnContractTakeoverForSupplementDto
+  ) {
+    return this.takeovers.returnFinanceForSupplement(
+      projectId,
+      takeoverId,
+      body,
+      user.id
+    );
   }
 
   @Post(":takeoverId/change-baseline-confirmation")

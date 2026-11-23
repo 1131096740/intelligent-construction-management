@@ -732,7 +732,7 @@ describe("ContractTakeoverService", () => {
     const existingPayments = options.existingPayments ?? [];
     const existingVouchers = options.existingVouchers ?? [];
     const lockedRows = [
-      [options.takeover ?? takeoverRecord()],
+      [options.takeover ?? takeoverRecord({ takeoverStatus: "pending_finance" })],
       contractFacts ? [contractFacts] : [],
       financeFacts ? [financeFacts] : [],
       existingPayments,
@@ -1190,7 +1190,7 @@ describe("ContractTakeoverService", () => {
       requestSha256: "different-request",
       responseSnapshot
     });
-    tx.$queryRaw.mockResolvedValueOnce([takeoverRecord()]);
+    tx.$queryRaw.mockResolvedValueOnce([takeoverRecord({ takeoverStatus: "pending_finance" })]);
     await expect(
       service.saveFinanceFacts(
         "project-1",
@@ -1293,6 +1293,7 @@ describe("ContractTakeoverService", () => {
       takeoverId: "takeover-1",
       revision: 3,
       financeBasisRevision: 4,
+      historicalSettledCents: 600_000n,
       confirmedRevision: null,
       confirmedByUserId: null,
       confirmedAt: null
@@ -1329,6 +1330,9 @@ describe("ContractTakeoverService", () => {
       contractTakeoverFinanceFacts: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      contractTakeover: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       contractTakeoverConfirmationEvent: {
         findUnique: jest.fn().mockResolvedValue(options.event ?? null),
         create: jest.fn().mockImplementation(({ data }) =>
@@ -1360,8 +1364,10 @@ describe("ContractTakeoverService", () => {
     };
   }
 
-  it("lets only the contract director confirm the current contract revision without early activation", async () => {
-    const tx = sideConfirmationTransaction();
+  it("rejects the contract supervisor before finance has filled and confirmed", async () => {
+    const tx = sideConfirmationTransaction({
+      takeover: takeoverRecord({ takeoverStatus: "pending_review" })
+    });
     const prisma = {
       $transaction: jest.fn(
         async (
@@ -1376,6 +1382,59 @@ describe("ContractTakeoverService", () => {
       files as never
     );
 
+    await expect(
+      service.confirmContractSide(
+        "project-1",
+        "takeover-1",
+        confirmSideInput() as never,
+        "contract-director"
+      )
+    ).rejects.toThrow(
+      "请先完成财务填写并由财务主管核对，再由合同主管复核"
+    );
+    expect(tx.contractTakeoverContractFacts.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("relays contract submission to finance confirmation and then supervisor confirmation", async () => {
+    const financeConfirmed = {
+      takeoverId: "takeover-1",
+      revision: 2,
+      basedOnContractRevision: 3,
+      basedOnFinanceBasisRevision: 4,
+      confirmedRevision: 2,
+      confirmedContractRevision: 3,
+      confirmedFinanceBasisRevision: 4,
+      confirmedByUserId: "finance-director",
+      confirmedAt: new Date("2026-07-29T00:30:00.000Z")
+    };
+    const tx = sideConfirmationTransaction({
+      takeover: takeoverRecord({ takeoverStatus: "pending_review" }),
+      financeFacts: financeConfirmed
+    });
+    const activation = {
+      executePreparedActivation: jest.fn().mockResolvedValue({
+        activated: true,
+        activationStatus: "activated",
+        activatedAt: "2026-07-29T01:00:00.000Z",
+        activationIdempotencyKey: "33333333-3333-4333-8333-333333333333",
+        historicalInitialSettlementId: "settlement-1"
+      })
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        async (
+          callback: (client: typeof tx) => unknown
+        ) => callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never,
+      activation as never
+    );
+
     const result = await service.confirmContractSide(
       "project-1",
       "takeover-1",
@@ -1383,44 +1442,27 @@ describe("ContractTakeoverService", () => {
       "contract-director"
     );
 
-    expect(auth.confirmPassword).toHaveBeenCalledWith(
-      "contract-director",
-      "not-a-real-password"
-    );
-    expect(prisma.$transaction).toHaveBeenCalledWith(
-      expect.any(Function),
-      { isolationLevel: "Serializable" }
-    );
-    expect(tx.contractTakeoverContractFacts.updateMany).toHaveBeenCalledWith({
-      where: {
-        takeoverId: "takeover-1",
-        revision: 3,
-        confirmedRevision: null
-      },
-      data: expect.objectContaining({
-        confirmedRevision: 3,
-        confirmedByUserId: "contract-director",
-        confirmedAt: expect.any(Date)
-      })
-    });
     expect(result).toMatchObject({
       side: "contract",
       revision: 3,
       confirmed: true,
-      activated: false,
-      activationStatus: "awaiting_finance_confirmation"
+      activated: true
     });
+    expect(activation.executePreparedActivation).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ takeover: expect.objectContaining({ id: "takeover-1" }) }),
+      "contract-director",
+      "33333333-3333-4333-8333-333333333333"
+    );
     expect(audit.record).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
         action: "contract_takeover.contract_side.confirm",
-        metadata: expect.not.objectContaining({
-          currentPassword: expect.anything()
+        metadata: expect.objectContaining({
+          reviewedHistoricalPaidCents: "0",
+          reviewedHistoricalSettledCents: "600000"
         })
       })
-    );
-    expect(JSON.stringify(audit.record.mock.calls.at(-1))).not.toContain(
-      "not-a-real-password"
     );
   });
 
@@ -1446,14 +1488,27 @@ describe("ContractTakeoverService", () => {
     [
       "stale contract revision",
       "contract",
-      {},
+      {
+        takeover: takeoverRecord({ takeoverStatus: "pending_review" }),
+        financeFacts: {
+          takeoverId: "takeover-1",
+          revision: 2,
+          basedOnContractRevision: 3,
+          basedOnFinanceBasisRevision: 4,
+          confirmedRevision: 2,
+          confirmedContractRevision: 3,
+          confirmedFinanceBasisRevision: 4,
+          confirmedByUserId: "finance-director",
+          confirmedAt: new Date("2026-07-29T00:30:00.000Z")
+        }
+      },
       confirmSideInput({ expectedRevision: 2 }),
       "合同侧确认修订已过期"
     ],
     [
       "stale finance basis",
       "finance",
-      { positionKey: "finance_director" },
+      { positionKey: "finance_director", takeover: takeoverRecord({ takeoverStatus: "pending_finance" }) },
       confirmSideInput({
         expectedRevision: 2,
         basedOnContractRevision: 3,
@@ -1596,6 +1651,18 @@ describe("ContractTakeoverService", () => {
       activated: false
     };
     const tx = sideConfirmationTransaction({
+      takeover: takeoverRecord({ takeoverStatus: "pending_review" }),
+      financeFacts: {
+        takeoverId: "takeover-1",
+        revision: 2,
+        basedOnContractRevision: 3,
+        basedOnFinanceBasisRevision: 4,
+        confirmedRevision: 2,
+        confirmedContractRevision: 3,
+        confirmedFinanceBasisRevision: 4,
+        confirmedByUserId: "finance-director",
+        confirmedAt: new Date("2026-07-29T00:30:00.000Z")
+      },
       event: {
         idempotencyKey: "33333333-3333-4333-8333-333333333333",
         takeoverId: "takeover-1",
@@ -1791,8 +1858,9 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue(
           takeoverRecord({
             takeoverStatus: "draft",
-            suggestedTakeoverLevel: "B",
-            takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
+            takeoverLevel: "NONE",
+            suggestedTakeoverLevel: null,
+            takeoverLevelAdjustmentReason: null,
             takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
             responsibleUserId: "contract-user",
             reviewComment: "预算和财务已完成期初复核。",
@@ -1851,8 +1919,9 @@ describe("ContractTakeoverService", () => {
       counterparty: "Supplier A",
       amountCents: "1000000",
       historicalPaidCents: "300000",
-      suggestedTakeoverLevel: "B",
-      takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
+      takeoverLevel: "NONE",
+      suggestedTakeoverLevel: null,
+      takeoverLevelAdjustmentReason: null,
       takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
       responsibleUserId: "contract-user",
       reviewComment: "预算和财务已完成期初复核。",
@@ -1904,9 +1973,9 @@ describe("ContractTakeoverService", () => {
         contractId: "contract-1",
         contractVersionId: "contract-version-1",
         paymentTermsVersionId: "terms-version-1",
-        takeoverLevel: "A",
-        suggestedTakeoverLevel: "B",
-        takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
+        takeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
+        takeoverLevelAdjustmentReason: null,
         takeoverStatus: "draft",
         lifecycleStatus: "in_progress",
         takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
@@ -1927,9 +1996,9 @@ describe("ContractTakeoverService", () => {
         projectId: "project-1",
         contractId: "contract-1",
         contractVersionId: "contract-version-1",
-        takeoverLevel: "A",
-        suggestedTakeoverLevel: "B",
-        takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。"
+        takeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
+        takeoverLevelAdjustmentReason: null
       })
     });
   });
@@ -2319,12 +2388,16 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
-  it("requires adjustment reason when takeover level differs from system suggestion", async () => {
+  it("no longer asks the operator to pick a historical level or explain a level adjustment", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      contract: {
-        create: jest.fn()
-      }
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
+      contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
+      paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
+      paymentTermsStage: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      contractTakeover: { create: jest.fn().mockResolvedValue(takeoverRecord({ takeoverLevel: "NONE", suggestedTakeoverLevel: null, takeoverLevelAdjustmentReason: null })) },
+      auditLog: { create: jest.fn() }
     };
     attachApprovalEvidenceFixture(tx);
     const prisma = {
@@ -2334,27 +2407,30 @@ describe("ContractTakeoverService", () => {
     };
     const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
 
-    await expect(
-      service.create(
-        "project-1",
-        {
-          code: "HT-HIS-LEVEL-001",
-          name: "Level mismatch",
-          counterparty: "Supplier B",
-          amountCents: "1000000",
-          signedAt: "2026-01-10",
-          takeoverLevel: "A",
-          lifecycleStatus: "in_progress",
-          historicalApprovedPendingPaymentCents: "20000",
-          balanceSourceSummary: "Finance ledger checked.",
-          evidenceSummary: "Signed scan and finance ledger."
-        },
-        "contract-user"
-      )
-    ).rejects.toThrow("接管等级与系统建议不一致，请填写等级调整说明");
+    await service.create(
+      "project-1",
+      {
+        code: "HT-HIS-LEVEL-001",
+        name: "Historical level ignored",
+        counterparty: "Supplier B",
+        amountCents: "1000000",
+        signedAt: "2026-01-10",
+        takeoverLevel: "A",
+        takeoverLevelAdjustmentReason: "旧客户端仍可能传等级",
+        lifecycleStatus: "in_progress",
+        balanceSourceSummary: "Finance ledger checked.",
+        evidenceSummary: "Signed scan and finance ledger."
+      },
+      "contract-user"
+    );
 
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(tx.contract.create).not.toHaveBeenCalled();
+    expect(tx.contractTakeover.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        takeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
+        takeoverLevelAdjustmentReason: null
+      })
+    });
   });
 
   it("uses a business message when the takeover project cannot be used", async () => {
@@ -3124,9 +3200,9 @@ describe("ContractTakeoverService", () => {
         historicalSettledCents: BigInt(600_000),
         historicalApprovedPendingPaymentCents: BigInt(100_000),
         historicalPaidCents: BigInt(300_000),
-        takeoverLevel: "A",
-        suggestedTakeoverLevel: "B",
-        takeoverLevelAdjustmentReason: "发票待补，财务复核时重点确认",
+        takeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
+        takeoverLevelAdjustmentReason: null,
         balanceSourceSummary: "财务台账核对。",
         evidenceSummary: "合同扫描件和付款台账齐全。",
         reviewComment: "发票待补，财务复核时重点确认",
@@ -3141,9 +3217,9 @@ describe("ContractTakeoverService", () => {
       businessId: "takeover-1",
       metadata: expect.objectContaining({
         projectId: "project-1",
-        takeoverLevel: "A",
-        suggestedTakeoverLevel: "B",
-        takeoverLevelAdjustmentReason: "发票待补，财务复核时重点确认",
+        takeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
+        takeoverLevelAdjustmentReason: null,
         takeoverBatchId: "batch-1",
         importRowNo: 2
       })
@@ -3850,8 +3926,8 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },
       data: expect.objectContaining({
-        takeoverLevel: "C",
-        suggestedTakeoverLevel: "C",
+        takeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
         takeoverLevelAdjustmentReason: null,
         lifecycleStatus: "disputed",
         historicalPaidCents: BigInt(350_000)
@@ -3866,8 +3942,8 @@ describe("ContractTakeoverService", () => {
         projectId: "project-1",
         fromStatus: "draft",
         fromTakeoverLevel: "A",
-        toTakeoverLevel: "C",
-        suggestedTakeoverLevel: "C",
+        toTakeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
         takeoverLevelAdjustmentReason: null
       })
     });
@@ -3909,8 +3985,7 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.update).not.toHaveBeenCalled();
   });
 
-  it("records takeover level adjustment reason separately from review comment", async () => {
-    const adjustmentReason = "合同部确认资料可控，按 A级继续跟踪付款限制。";
+  it("ignores legacy level and adjustment input when updating a draft", async () => {
     const reviewComment = "预算和财务已复核历史余额，后续按资料清单继续补齐。";
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
@@ -3924,9 +3999,9 @@ describe("ContractTakeoverService", () => {
         ),
         update: jest.fn().mockResolvedValue(
           takeoverRecord({
-            takeoverLevel: "A",
-            suggestedTakeoverLevel: "B",
-            takeoverLevelAdjustmentReason: adjustmentReason,
+            takeoverLevel: "NONE",
+            suggestedTakeoverLevel: null,
+            takeoverLevelAdjustmentReason: null,
             reviewComment,
             historicalApprovedPendingPaymentCents: 100_000n
           })
@@ -3949,7 +4024,7 @@ describe("ContractTakeoverService", () => {
     };
     const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
 
-    const result = await service.updateDraft(
+    await service.updateDraft(
       "project-1",
       "takeover-1",
       {
@@ -3964,39 +4039,19 @@ describe("ContractTakeoverService", () => {
         historicalApprovedPendingPaymentCents: "100000",
         balanceSourceSummary: "Finance ledger checked.",
         evidenceSummary: "Signed scan and finance ledger.",
-        takeoverLevelAdjustmentReason: adjustmentReason,
+        takeoverLevelAdjustmentReason: "旧客户端可能仍传等级说明",
         reviewComment
       },
       "contract-user"
     );
 
-    expect(result).toMatchObject({
-      takeoverLevel: "A",
-      suggestedTakeoverLevel: "B",
-      takeoverLevelAdjustmentReason: adjustmentReason,
-      reviewComment
-    });
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },
       data: expect.objectContaining({
-        takeoverLevel: "A",
-        suggestedTakeoverLevel: "B",
-        takeoverLevelAdjustmentReason: adjustmentReason,
+        takeoverLevel: "NONE",
+        suggestedTakeoverLevel: null,
+        takeoverLevelAdjustmentReason: null,
         reviewComment
-      })
-    });
-    expect(audit.record).toHaveBeenCalledWith(tx, {
-      actorUserId: "contract-user",
-      action: "contract_takeover.update_draft",
-      businessType: "contract_takeover",
-      businessId: "takeover-1",
-      metadata: expect.objectContaining({
-        projectId: "project-1",
-        fromStatus: "draft",
-        fromTakeoverLevel: "B",
-        toTakeoverLevel: "A",
-        suggestedTakeoverLevel: "B",
-        takeoverLevelAdjustmentReason: adjustmentReason
       })
     });
   });
@@ -5108,7 +5163,7 @@ describe("ContractTakeoverService", () => {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" })),
         update: jest.fn().mockResolvedValue(
           takeoverRecord({
-            takeoverStatus: "pending_review",
+            takeoverStatus: "pending_finance",
             submittedAt: new Date("2026-07-03T01:00:00.000Z")
           })
         )
@@ -5147,7 +5202,7 @@ describe("ContractTakeoverService", () => {
 
     const result = await service.submitReview("project-1", "takeover-1", "contract-user");
 
-    expect(result.takeoverStatus).toBe("pending_review");
+    expect(result.takeoverStatus).toBe("pending_finance");
     expect(result.lifecycleBlockers).toEqual([]);
     expect(result.availableActions).toEqual([expect.objectContaining({ key: "abandon_application", enabled: true })]);
     expect(result).not.toHaveProperty("contractVersionId");
@@ -5155,7 +5210,7 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },
       data: {
-        takeoverStatus: "pending_review",
+        takeoverStatus: "pending_finance",
         submittedByUserId: "contract-user",
         submittedAt: expect.any(Date)
       }
@@ -5167,7 +5222,7 @@ describe("ContractTakeoverService", () => {
       businessId: "takeover-1",
       metadata: expect.objectContaining({
         fromStatus: "draft",
-        toStatus: "pending_review"
+        toStatus: "pending_finance"
       })
     });
   });
@@ -5282,6 +5337,7 @@ describe("ContractTakeoverService", () => {
         projectId: "project-1",
         fromStatus: "pending_review",
         toStatus: "needs_supplement",
+        returnedBy: "supervisor",
         reason: "缺少历史付款凭证，请补齐后重新提交"
       }
     });
@@ -6571,5 +6627,237 @@ describe("ContractTakeoverService", () => {
       "contract-user"
     )).rejects.toThrow("预览后已发生变化");
     expect(applyTx.contractTakeover.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("accepts a framework takeover without a total price and keeps its upward relationship", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
+      contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
+      paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
+      paymentTermsStage: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractTakeover: {
+        create: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverLevel: "NONE",
+            suggestedTakeoverLevel: null,
+            takeoverLevelAdjustmentReason: null
+          })
+        )
+      },
+      auditLog: { create: jest.fn() }
+    };
+    attachApprovalEvidenceFixture(tx);
+    const service = new ContractTakeoverService(
+      {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never,
+      audit as never,
+      auth as never
+    );
+
+    const result = await service.create(
+      "project-1",
+      {
+        code: "HT-KJ-001",
+        name: "对上框架合同",
+        counterparty: "施工企业甲",
+        contractTypeKey: "material_purchase",
+        frameworkNoTotal: true,
+        relationship: "upward",
+        signedAt: "2026-01-10",
+        lifecycleStatus: "in_progress",
+        paymentTermsOriginalText: "按实际委托结算。",
+        balanceSourceSummary: "施工企业委托台账。",
+        evidenceSummary: "框架协议扫描件。"
+      },
+      "contract-user"
+    );
+
+    expect(result.relationship).toBe("upward");
+    expect(result.relationshipLabel).toBe("对上（施工企业付我方）");
+    expect(result.frameworkNoTotal).toBe(true);
+    expect(tx.contractVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amountCents: 0n,
+        pricingNature: "framework",
+        amountLimitType: "unlimited",
+        draftData: expect.objectContaining({
+          historicalTakeover: true,
+          relationship: "upward",
+          frameworkNoTotal: true
+        })
+      })
+    });
+    expect(tx.contractTakeover.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ takeoverLevel: "NONE" })
+    });
+  });
+
+  it("lets finance reject the contract maker with a reason and clears the finance confirmation", async () => {
+    const reason = "历史实付金额与凭证不一致，请制单人重新核对";
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_finance" })),
+        update: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "needs_supplement" }))
+      },
+      contractTakeoverFinanceFacts: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractTakeoverContractFacts: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-finance" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "finance_director" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    attachApprovalEvidenceFixture(tx);
+    const service = new ContractTakeoverService(
+      {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never,
+      audit as never,
+      auth as never
+    );
+
+    const result = await service.returnFinanceForSupplement(
+      "project-1",
+      "takeover-1",
+      { reason },
+      "finance-director"
+    );
+
+    expect(result.takeoverStatus).toBe("needs_supplement");
+    expect(tx.contractTakeover.update).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      data: { takeoverStatus: "needs_supplement" }
+    });
+    expect(tx.contractTakeoverFinanceFacts.updateMany).toHaveBeenCalledWith({
+      where: { takeoverId: "takeover-1" },
+      data: {
+        confirmedRevision: null,
+        confirmedContractRevision: null,
+        confirmedFinanceBasisRevision: null,
+        confirmedByUserId: null,
+        confirmedAt: null
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "finance-director",
+      action: "contract_takeover.finance_return_for_supplement",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: {
+        projectId: "project-1",
+        fromStatus: "pending_finance",
+        toStatus: "needs_supplement",
+        returnedBy: "finance",
+        reason
+      }
+    });
+  });
+
+  it("forces finance to re-check after the maker resubmits", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "needs_supplement" })),
+        update: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_finance" }))
+      },
+      contractTakeoverFinanceFacts: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractTakeoverContractFacts: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    attachApprovalEvidenceFixture(tx);
+    const service = new ContractTakeoverService(
+      {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never,
+      audit as never,
+      auth as never
+    );
+
+    const result = await service.submitReview(
+      "project-1",
+      "takeover-1",
+      "contract-user"
+    );
+
+    expect(result.takeoverStatus).toBe("pending_finance");
+    expect(tx.contractTakeoverFinanceFacts.updateMany).toHaveBeenCalledWith({
+      where: { takeoverId: "takeover-1" },
+      data: {
+        confirmedRevision: null,
+        confirmedContractRevision: null,
+        confirmedFinanceBasisRevision: null,
+        confirmedByUserId: null,
+        confirmedAt: null
+      }
+    });
+    expect(tx.contractTakeover.update).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      data: {
+        takeoverStatus: "pending_finance",
+        submittedByUserId: "contract-user",
+        submittedAt: expect.any(Date)
+      }
+    });
+  });
+
+  it("rejects finance-side edits before the contract department submits", async () => {
+    const tx = financeSideTransaction({
+      takeover: takeoverRecord({ takeoverStatus: "draft" })
+    });
+    const service = new ContractTakeoverService(
+      {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.saveFinanceFacts(
+        "project-1",
+        "takeover-1",
+        financeSideInput() as never,
+        "finance-user"
+      )
+    ).rejects.toThrow("财务侧资料只能在合同部提交后的待财务填写阶段填写");
+    expect(tx.contractTakeoverFinanceFacts.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract-side edits after the contract department submits", async () => {
+    const tx = contractSideTransaction({
+      takeover: takeoverRecord({ takeoverStatus: "pending_finance" })
+    });
+    const service = new ContractTakeoverService(
+      {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.saveContractFacts(
+        "project-1",
+        "takeover-1",
+        contractSideInput() as never,
+        "contract-user"
+      )
+    ).rejects.toThrow(
+      "合同侧资料只能在合同部补录阶段填写，提交后请由财务核对或先退回补充"
+    );
+    expect(tx.contractTakeoverContractFacts.upsert).not.toHaveBeenCalled();
   });
 });

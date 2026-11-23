@@ -20,6 +20,7 @@ import { assertFormalContractCodeNotTombstoned } from "../contract-workbench/con
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
+import { summarizeTakeoverMoney } from "./contract-takeover-money-summary";
 import {
   calculateBillRow,
   dbMoneyToBigInt,
@@ -173,6 +174,25 @@ type ReadClientFindMany<T> = {
   findMany(args: unknown): Promise<T[]>;
 };
 
+const TAKEOVER_RELATIONSHIP_LABELS = {
+  inside: "表内（内部单位）",
+  outside: "表外（外部相对方）",
+  upward: "对上（施工企业付我方）"
+} as const;
+
+type TakeoverRelationship = keyof typeof TAKEOVER_RELATIONSHIP_LABELS;
+
+function takeoverRelationship(
+  draftData: Prisma.JsonValue | null | undefined
+): TakeoverRelationship {
+  const record =
+    draftData && typeof draftData === "object" && !Array.isArray(draftData)
+      ? (draftData as Record<string, unknown>)
+      : null;
+  const value = record?.relationship;
+  return value === "inside" || value === "upward" ? value : "outside";
+}
+
 type HistoricalContractVersionFacts = {
   id: string;
   amountCents: bigint;
@@ -184,6 +204,7 @@ type HistoricalContractVersionFacts = {
   taxFactStatus?: string | null;
   taxFactSource?: string | null;
   taxFactExplanation?: string | null;
+  draftData?: Prisma.JsonValue | null;
 };
 
 type HistoricalPaymentTermsStageRecord = {
@@ -461,6 +482,21 @@ export interface ContractTakeoverBusinessReadModel {
   taxFactExplanation: string | null;
   taxFactMissingFields: string[];
   pricingItems: HistoricalPricingItemReadModel[];
+  relationship: "inside" | "outside" | "upward";
+  relationshipLabel: string;
+  frameworkNoTotal: boolean;
+  historicalFactStatus: "confirmed" | "pending_verification";
+  historicalFactStatusLabel: string;
+  historicalPaidTotalCents: string;
+  historicalOverpaidCents: string;
+  historicalOverpaymentKind:
+    | "none"
+    | "unsettled_advance"
+    | "pending_verification";
+  historicalOverpaymentLabel: string;
+  historicalReceiptsCents: string;
+  historicalOverReceivedCents: string;
+  historicalOverReceivedPendingVerification: boolean;
   takeoverLevel: string;
   suggestedTakeoverLevel: string | null;
   takeoverLevelAdjustmentReason: string | null;
@@ -840,7 +876,11 @@ export class ContractTakeoverService {
           taxFactSource: data.taxFactSource,
           taxFactExplanation: data.taxFactExplanation,
           taxFactEvidenceFileId: data.taxFactEvidenceFileId,
-          draftData: { historicalTakeover: true } as Prisma.InputJsonValue,
+          draftData: {
+            historicalTakeover: true,
+            relationship: data.relationship,
+            frameworkNoTotal: data.frameworkNoTotal
+          } as Prisma.InputJsonValue,
           templateSnapshot: { historicalTakeover: true } as Prisma.InputJsonValue,
           clauseSnapshot: [] as Prisma.InputJsonValue
         }
@@ -951,6 +991,8 @@ export class ContractTakeoverService {
         companyEntityName: data.companyEntityName ?? null,
         contractTypeKey: data.contractTypeKey ?? null,
         amountCents: data.amountCents,
+        relationship: data.relationship,
+        frameworkNoTotal: data.frameworkNoTotal,
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
         paymentStages: this.takeoverDirectStageReadModels(paymentStages),
         evidenceFiles: [],
@@ -1152,6 +1194,12 @@ export class ContractTakeoverService {
         return receipt.responseSnapshot;
       }
 
+      if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
+        throw new BadRequestException(
+          "合同侧资料只能在合同部补录阶段填写，提交后请由财务核对或先退回补充"
+        );
+      }
+
       const [contractFacts] =
         await tx.$queryRaw<ContractTakeoverContractFactsRow[]>(Prisma.sql`
           SELECT *
@@ -1342,6 +1390,12 @@ export class ContractTakeoverService {
           throw new ConflictException("财务侧保存幂等键已用于其他请求");
         }
         return receipt.responseSnapshot;
+      }
+
+      if (takeover.takeoverStatus !== "pending_finance") {
+        throw new BadRequestException(
+          "财务侧资料只能在合同部提交后的待财务填写阶段填写"
+        );
       }
 
       const [contractFacts] =
@@ -1732,6 +1786,31 @@ export class ContractTakeoverService {
           actorUserId,
           side
         );
+        if (side === "finance") {
+          if (aggregate.takeover.takeoverStatus !== "pending_finance") {
+            throw new BadRequestException(
+              "财务侧只能在合同部提交后填写核对，请先由合同部提交复核"
+            );
+          }
+        } else {
+          if (aggregate.takeover.takeoverStatus !== "pending_review") {
+            throw new BadRequestException(
+              "合同主管复核必须在财务填写核对完成后进行"
+            );
+          }
+          const financeFacts = aggregate.financeFacts;
+          if (
+            !financeFacts ||
+            financeFacts.confirmedRevision === null ||
+            financeFacts.confirmedRevision !== financeFacts.revision ||
+            financeFacts.confirmedFinanceBasisRevision !==
+              aggregate.contractFacts.financeBasisRevision
+          ) {
+            throw new BadRequestException(
+              "请先完成财务填写并由财务主管核对，再由合同主管复核"
+            );
+          }
+        }
         const priorEvent =
           await tx.contractTakeoverConfirmationEvent.findUnique({
             where: { idempotencyKey }
@@ -1873,6 +1952,20 @@ export class ContractTakeoverService {
           actorUserId,
           idempotencyKey
         );
+        if (side === "finance" && !activation.activated) {
+          const advanced = await tx.contractTakeover.updateMany({
+            where: {
+              id: aggregate.takeover.id,
+              takeoverStatus: "pending_finance"
+            },
+            data: { takeoverStatus: "pending_review" }
+          });
+          if (advanced.count !== 1) {
+            throw new ConflictException(
+              "接管状态已变化，请刷新后重新核对财务"
+            );
+          }
+        }
         const responseSnapshot = {
           takeoverId: aggregate.takeover.id,
           side,
@@ -1918,7 +2011,20 @@ export class ContractTakeoverService {
               side === "finance"
                 ? input.basedOnFinanceBasisRevision
                 : aggregate.contractFacts.financeBasisRevision,
-            activationStatus: activation.activationStatus
+            activationStatus: activation.activationStatus,
+            ...(side === "contract"
+              ? {
+                  reviewedHistoricalPaidCents: aggregate.payments
+                    .reduce(
+                      (sum, payment) => sum + payment.amountCents,
+                      0n
+                    )
+                    .toString(),
+                  reviewedHistoricalSettledCents: (
+                    aggregate.contractFacts.historicalSettledCents ?? 0n
+                  ).toString()
+                }
+              : {})
           }
         });
         return responseSnapshot;
@@ -2885,11 +2991,14 @@ export class ContractTakeoverService {
       }
       await assertTakeoverHandoverReady(tx, takeover, "提交复核");
 
+      // 合同部提交后进入财务填写；重新提交一律清空上一次财务/主管确认，
+      // 强制财务重新核对、主管再复核。
+      await this.invalidateDepartmentConfirmations(tx, takeover.id);
       const submittedAt = new Date();
       const updated = await tx.contractTakeover.update({
         where: { id: takeover.id },
         data: {
-          takeoverStatus: "pending_review",
+          takeoverStatus: "pending_finance",
           submittedByUserId: actorUserId,
           submittedAt
         }
@@ -2905,7 +3014,7 @@ export class ContractTakeoverService {
           contractId: takeover.contractId,
           contractVersionId: takeover.contractVersionId,
           fromStatus: takeover.takeoverStatus,
-          toStatus: "pending_review"
+          toStatus: "pending_finance"
         }
       });
 
@@ -2930,6 +3039,7 @@ export class ContractTakeoverService {
         throw new Error("只有待复核的接管记录可以退回补充");
       }
 
+      await this.invalidateDepartmentConfirmations(tx, takeover.id);
       const updated = await tx.contractTakeover.update({
         where: { id: takeover.id },
         data: { takeoverStatus: "needs_supplement" }
@@ -2944,10 +3054,51 @@ export class ContractTakeoverService {
           projectId,
           fromStatus: "pending_review",
           toStatus: "needs_supplement",
+          returnedBy: "supervisor",
           reason
         }
       });
 
+      return this.toReadModelFromDatabase(tx, updated, actorUserId);
+    });
+  }
+
+  async returnFinanceForSupplement(
+    projectId: string,
+    takeoverId: string,
+    input: ReturnContractTakeoverForSupplementDto,
+    actorUserId: string
+  ) {
+    const reason = input.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException("请填写财务退回原因");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.takeoverStatus !== "pending_finance") {
+        throw new BadRequestException(
+          "只有待财务填写的接管记录可以退回制单人"
+        );
+      }
+      await this.assertProjectFinanceEditor(tx, projectId, actorUserId);
+      await this.invalidateDepartmentConfirmations(tx, takeover.id);
+      const updated = await tx.contractTakeover.update({
+        where: { id: takeover.id },
+        data: { takeoverStatus: "needs_supplement" }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.finance_return_for_supplement",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          fromStatus: "pending_finance",
+          toStatus: "needs_supplement",
+          returnedBy: "finance",
+          reason
+        }
+      });
       return this.toReadModelFromDatabase(tx, updated, actorUserId);
     });
   }
@@ -3343,7 +3494,8 @@ export class ContractTakeoverService {
           defaultTaxRatePercent: true,
           taxFactStatus: true,
           taxFactSource: true,
-          taxFactExplanation: true
+          taxFactExplanation: true,
+          draftData: true
         }
       }),
       typeof paymentTermsClient?.findMany === "function"
@@ -3979,6 +4131,46 @@ export class ContractTakeoverService {
     );
   }
 
+  /**
+   * 退回/重新提交时清空部门确认。财务必须重新核对，主管必须重新复核；
+   * 该动作只清确认标记，不修改任何历史金额或资料快照。
+   */
+  private async invalidateDepartmentConfirmations(
+    tx: Prisma.TransactionClient,
+    takeoverId: string
+  ): Promise<void> {
+    const client = tx as unknown as {
+      contractTakeoverContractFacts?: {
+        updateMany?: (args: unknown) => Promise<unknown>;
+      };
+      contractTakeoverFinanceFacts?: {
+        updateMany?: (args: unknown) => Promise<unknown>;
+      };
+    };
+    if (typeof client.contractTakeoverContractFacts?.updateMany === "function") {
+      await client.contractTakeoverContractFacts.updateMany({
+        where: { takeoverId },
+        data: {
+          confirmedRevision: null,
+          confirmedByUserId: null,
+          confirmedAt: null
+        }
+      });
+    }
+    if (typeof client.contractTakeoverFinanceFacts?.updateMany === "function") {
+      await client.contractTakeoverFinanceFacts.updateMany({
+        where: { takeoverId },
+        data: {
+          confirmedRevision: null,
+          confirmedContractRevision: null,
+          confirmedFinanceBasisRevision: null,
+          confirmedByUserId: null,
+          confirmedAt: null
+        }
+      });
+    }
+  }
+
   private async toReadModelFromDatabase(
     client: TakeoverReadClient,
     takeover: ContractTakeoverRecord,
@@ -3998,6 +4190,8 @@ export class ContractTakeoverService {
       companyEntityName: string | null;
       contractTypeKey?: string | null;
       amountCents: bigint;
+      relationship?: "inside" | "outside" | "upward";
+      frameworkNoTotal?: boolean;
       contractVersion?: HistoricalContractVersionFacts | null;
       pricingItems?: HistoricalPricingItemReadModel[];
       paymentTermsOriginalText: string;
@@ -4021,7 +4215,7 @@ export class ContractTakeoverService {
     const changeBaselineConfirmed = contract.contractVersion?.originalBaseAmountCents != null;
 
     const terminal = takeover.takeoverStatus === "confirmed" || Boolean(takeover.confirmedAt);
-    const allowed = ["draft", "needs_supplement", "pending_review"].includes(takeover.takeoverStatus);
+    const allowed = ["draft", "needs_supplement", "pending_finance", "pending_review"].includes(takeover.takeoverStatus);
     const owns = Boolean(actorUserId) && (
       takeover.createdByUserId === actorUserId || takeover.responsibleUserId === actorUserId
     );
@@ -4047,6 +4241,27 @@ export class ContractTakeoverService {
       disabledReason: lifecycleBlockers.length ? lifecycleBlockers.join("；") : null,
       ...(pristine ? {} : { requiresComment: true })
     }];
+    const relationship =
+      contract.relationship ??
+      takeoverRelationship(contract.contractVersion?.draftData);
+    const financePayments = contract.financeSide?.payments ?? [];
+    const financePaidTotalCents = financePayments.reduce(
+      (sum, payment) => sum + BigInt(payment.amountCents),
+      0n
+    );
+    const paidTotalCents = takeover.activatedAt
+      ? takeover.historicalPaidCents
+      : financePaidTotalCents;
+    const moneySummary = summarizeTakeoverMoney({
+      relationship,
+      paidCents: paidTotalCents,
+      settledCents: takeover.historicalSettledCents,
+      excessTreatment: contract.financeSide?.excessTreatment ?? null
+    });
+    const historicalFactStatus =
+      takeover.takeoverStatus === "confirmed" || takeover.confirmedAt
+        ? ("confirmed" as const)
+        : ("pending_verification" as const);
 
     return {
       id: takeover.id,
@@ -4075,6 +4290,33 @@ export class ContractTakeoverService {
           .map((item) => `清单项目“${item.itemName}”含税单价`)
       ],
       pricingItems,
+      relationship,
+      relationshipLabel: TAKEOVER_RELATIONSHIP_LABELS[relationship],
+      frameworkNoTotal:
+        contract.frameworkNoTotal === true ||
+        (takeover.activatedAt === null &&
+          contract.contractVersion?.draftData !== undefined &&
+          (contract.contractVersion.draftData as Record<string, unknown> | null)
+            ?.frameworkNoTotal === true),
+      historicalFactStatus,
+      historicalFactStatusLabel:
+        historicalFactStatus === "confirmed"
+          ? "已确认"
+          : "待核对",
+      historicalPaidTotalCents: moneyString(moneySummary.historicalPaidCents),
+      historicalOverpaidCents: moneyString(
+        moneySummary.historicalOverpaidCents
+      ),
+      historicalOverpaymentKind: moneySummary.historicalOverpaymentKind,
+      historicalOverpaymentLabel: moneySummary.historicalOverpaymentLabel,
+      historicalReceiptsCents: moneyString(
+        moneySummary.historicalReceiptsCents
+      ),
+      historicalOverReceivedCents: moneyString(
+        moneySummary.historicalOverReceivedCents
+      ),
+      historicalOverReceivedPendingVerification:
+        moneySummary.historicalOverReceivedPendingVerification,
       takeoverLevel: takeover.takeoverLevel,
       suggestedTakeoverLevel: takeover.suggestedTakeoverLevel ?? null,
       takeoverLevelAdjustmentReason: takeover.takeoverLevelAdjustmentReason ?? null,
@@ -4330,7 +4572,7 @@ export class ContractTakeoverService {
       tx.paymentRequest.count({ where: { contractVersionId: takeover.contractVersionId } })
     ]);
     const terminal = takeover.takeoverStatus === "confirmed" || Boolean(takeover.confirmedAt);
-    const allowed = ["draft", "needs_supplement", "pending_review"].includes(
+    const allowed = ["draft", "needs_supplement", "pending_finance", "pending_review"].includes(
       takeover.takeoverStatus
     );
     const blockers = [
@@ -5377,23 +5619,35 @@ export class ContractTakeoverService {
   }
 
   private normalizeCreateInput(input: CreateContractTakeoverDto) {
-    const takeoverLevel = takeoverLevelInputValue(input.takeoverLevel);
+    // 不再让经办人选择历史等级；等级字段仅为旧记录/旧导入兼容保留。
+    const takeoverLevel: ContractTakeoverLevel = "NONE";
     if (!input.code?.trim()) throw new Error("请填写合同编号");
     if (!input.name?.trim()) throw new Error("请填写合同名称");
     if (!input.counterparty?.trim()) throw new Error("请填写相对方");
+    const frameworkNoTotal = input.frameworkNoTotal === true;
+    if (!frameworkNoTotal && !input.amountCents?.trim()) {
+      throw new BadRequestException(
+        "合同金额必须大于 0；无总价框架合同请勾选“框架合同暂无总价”"
+      );
+    }
     const amountCents = parseMoneyCentsInput(
-      input.amountCents,
+      input.amountCents ?? "0",
       "合同金额",
       "合同金额必须大于 0"
     );
     const inferredUnlimitedFramework =
-      amountCents === 0n &&
-      Array.isArray(input.pricingItems) &&
-      input.pricingItems.length > 0;
+      frameworkNoTotal ||
+      (amountCents === 0n &&
+        Array.isArray(input.pricingItems) &&
+        input.pricingItems.length > 0);
     if (amountCents < 0n || (amountCents === 0n && !inferredUnlimitedFramework)) {
       throw new BadRequestException(
-        "合同金额必须大于 0；无总价框架合同可填写 0，但必须提供计价清单"
+        "合同金额必须大于 0；无总价框架合同可留空或填写 0"
       );
+    }
+    const relationship = input.relationship ?? "outside";
+    if (!["inside", "outside", "upward"].includes(relationship)) {
+      throw new BadRequestException("合同关系不正确，请重新选择");
     }
     if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
       throw new Error("接管等级不正确，请重新选择");
@@ -5425,20 +5679,7 @@ export class ContractTakeoverService {
       ])
     ) as Record<(typeof MONEY_FIELDS)[number], bigint>;
     const reviewComment = input.reviewComment?.trim() || null;
-    const takeoverLevelAdjustmentReason = input.takeoverLevelAdjustmentReason?.trim() || null;
-    const suggestedLevel = suggestedTakeoverLevel({
-      lifecycleStatus: input.lifecycleStatus,
-      balanceSourceSummary: input.balanceSourceSummary,
-      evidenceSummary: input.evidenceSummary,
-      historicalApprovalPendingPaymentCents: money.historicalApprovalPendingPaymentCents,
-      historicalApprovedPendingPaymentCents: money.historicalApprovedPendingPaymentCents,
-      historicalProxyPaidCents: money.historicalProxyPaidCents,
-      historicalRetentionWithheldCents: money.historicalRetentionWithheldCents,
-      otherConfirmedOccupancyCents: money.otherConfirmedOccupancyCents
-    });
-    if (takeoverLevel !== suggestedLevel && !takeoverLevelAdjustmentReason && !reviewComment) {
-      throw new Error("接管等级与系统建议不一致，请填写等级调整说明");
-    }
+    // 等级调整说明随 A/B/C 一并退出新接管流程，历史字段仅保留旧数据显示。
     const defaultTaxRatePercent = input.defaultTaxRatePercent?.trim()
       ? normalizeTakeoverTaxRate(input.defaultTaxRatePercent, "默认税率")
       : null;
@@ -5453,6 +5694,8 @@ export class ContractTakeoverService {
       ...input,
       ...money,
       amountCents,
+      frameworkNoTotal: inferredUnlimitedFramework && amountCents === 0n,
+      relationship: relationship as "inside" | "outside" | "upward",
       pricingNature: inferredUnlimitedFramework ? "framework" : "fixed_total",
       amountLimitType: inferredUnlimitedFramework ? "unlimited" : "capped",
       amountSource: inferredUnlimitedFramework ? "bill_sum" : "manual",
@@ -5462,12 +5705,9 @@ export class ContractTakeoverService {
       contractTypeKey: input.contractTypeKey?.trim() || undefined,
       companyEntityId: input.companyEntityId?.trim() || undefined,
       companyEntityName: input.companyEntityName?.trim() || undefined,
-      takeoverLevel: takeoverLevel as ContractTakeoverLevel,
-      suggestedTakeoverLevel: suggestedLevel,
-      takeoverLevelAdjustmentReason:
-        takeoverLevel === "NONE" || takeoverLevel === suggestedLevel
-          ? null
-          : takeoverLevelAdjustmentReason ?? reviewComment,
+      takeoverLevel,
+      suggestedTakeoverLevel: null,
+      takeoverLevelAdjustmentReason: null,
       signedAt,
       invoiceType: input.invoiceType ?? null,
       taxMode,
