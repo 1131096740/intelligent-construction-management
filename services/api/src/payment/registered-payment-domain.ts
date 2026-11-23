@@ -10,7 +10,7 @@ export async function registeredExecutionIsWageLinked(tx: Prisma.TransactionClie
  * Missing/returned approval therefore cannot restore the legacy bank entry. */
 export async function currentRegisteredPaymentDomain(tx: Prisma.TransactionClient, paymentId: string) {
   const payment = await tx.paymentRequest.findUnique({where:{id:paymentId}});
-  if (!payment || payment.paymentSubjectType !== "our_company" || !["settlement","contract_due","contract_advance"].includes(payment.sourceType)) return {supportedDomain:false,payment,version:null,executions:[]};
+  if (!payment || payment.paymentSubjectType !== "our_company" || !["settlement","signed_settlement","contract_due","contract_advance"].includes(payment.sourceType)) return {supportedDomain:false,payment,version:null,executions:[]};
   const version = await tx.contractVersion.findUnique({where:{id:payment.contractVersionId}});
   const executions = await tx.paymentExecution.findMany({where:{paymentRequestId:payment.id},select:{id:true,voucherFileId:true}});
   if (version?.signingSubjectType !== "our_company") return {supportedDomain:false,payment,version,executions};

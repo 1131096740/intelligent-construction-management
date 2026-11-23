@@ -1407,6 +1407,56 @@ describe("FileService", () => {
     )).rejects.toThrow("当前账号无权下载该审批单");
   });
 
+  it("审批中的非合同流程对申请人、已处理人和管理读取岗位可查看，但不对无关人员开放", async () => {
+    const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1", status: "in_progress",
+          applicantUserId: "applicant-1"
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentRequest: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-other" })
+      },
+      userPosition: {
+        findMany: jest.fn(({ where }: { where: { projectId: string | null } }) =>
+          Promise.resolve(where.projectId === null ? [{ positionId: "position-finance" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-finance", key: "finance_staff" }
+        ])
+      },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(service.canViewApprovalFlow("payment_request", "payment-1", "applicant-1"))
+      .resolves.toBe(true);
+    await expect(service.canViewApprovalFlow("payment_request", "payment-1", "global-finance"))
+      .resolves.toBe(true);
+
+    tx.userPosition.findMany.mockResolvedValue([]);
+    tx.position.findMany.mockResolvedValue([]);
+    await expect(service.canViewApprovalFlow("payment_request", "payment-1", "unrelated-user"))
+      .resolves.toBe(false);
+    await expect(service.assertCanDownloadApprovalFormByBusiness(
+      "payment_request",
+      "payment-1",
+      "global-finance"
+    )).rejects.toThrow("当前业务尚未完成审批，暂不能下载审批单");
+  });
+
   it("在审批单生成前拒绝未支持的业务类型", async () => {
     const prisma = { $transaction: jest.fn() } as unknown as PrismaService;
     const service = new FileService(

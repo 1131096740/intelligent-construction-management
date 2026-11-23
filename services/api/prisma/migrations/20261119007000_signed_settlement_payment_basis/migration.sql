@@ -10,6 +10,25 @@ ALTER TABLE "PaymentRequest"
   ADD COLUMN "signedSettlementOccupiedCents" bigint,
   ADD COLUMN "signedSettlementBasisAt" timestamp(3);
 
+-- 现有来源枚举与“结算来源 vs 结算外键”约束在旧迁移中只允许三种来源；
+-- 本票新增 signed_settlement 必须在同一迁移内同步重建，否则付款申请写入
+-- 会在数据库约束处失败，后端事务校验无法生效。
+ALTER TABLE "PaymentRequest"
+  DROP CONSTRAINT "PaymentRequest_sourceType_check";
+ALTER TABLE "PaymentRequest"
+  ADD CONSTRAINT "PaymentRequest_sourceType_check"
+  CHECK ("sourceType" IN ('settlement', 'signed_settlement', 'contract_advance', 'contract_due'));
+
+ALTER TABLE "PaymentRequest"
+  DROP CONSTRAINT "PaymentRequest_source_settlement_check";
+ALTER TABLE "PaymentRequest"
+  ADD CONSTRAINT "PaymentRequest_source_settlement_check"
+  CHECK (
+    ("sourceType" = 'settlement' AND "settlementId" IS NOT NULL)
+    OR ("sourceType" = 'signed_settlement' AND "settlementId" IS NULL)
+    OR ("sourceType" IN ('contract_advance', 'contract_due') AND "settlementId" IS NULL)
+  );
+
 -- 依据来源互斥：已签结算付款不得再挂旧结算单，反之亦然；快照必须整组存在。
 ALTER TABLE "PaymentRequest"
   ADD CONSTRAINT "PaymentRequest_signed_settlement_source_check" CHECK (

@@ -118,7 +118,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       throw new BadRequestException("零金额结算不产生经营金额事实");
     }
     const amountCents = absolute(signedAmountCents);
-    const costCategoryCode = costCategory(
+    const costCategoryCode = settlementCostCategory(
       requiredJsonText(source, "contractTypeKey", "下游结算")
     );
     const debtor = payerSubject(source, affiliate.businessPartyVersionId);
@@ -444,12 +444,19 @@ function readHistoricalSettlementDate(
   return facts?.signedAt ?? fallback;
 }
 
-function costCategory(contractTypeKey: string): PrimaryCostCategoryCode {
+export function settlementCostCategory(
+  contractTypeKey: string
+): PrimaryCostCategoryCode {
   const category = CONTRACT_COST_CATEGORY[contractTypeKey];
   if (!category) {
     throw new BadRequestException("当前合同类型尚未接入经营成本分类");
   }
   return category;
+}
+
+/** 下游结算成本分类范围：只有这些合同类型由结算确认成本。 */
+export function isDownstreamSettlementCostType(contractTypeKey: string): boolean {
+  return Object.hasOwn(CONTRACT_COST_CATEGORY, contractTypeKey);
 }
 
 function payerSubject(

@@ -9,6 +9,8 @@ import { Test } from "@nestjs/testing";
 import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
+import { currentRegisteredPaymentDomain } from "../payment/registered-payment-domain";
 
 const run = process.env.RUN_LINE_A_REAL_DB === "1" ? describe : describe.skip;
 
@@ -38,6 +40,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
   let settlementId: string;
   let workCompletionId: string;
   let approvalInstanceId: string;
+  const signedPaymentId = randomUUID();
 
   const sha = (buffer: Buffer) => createHash("sha256").update(buffer).digest("hex");
   const callRaw = async (actor: keyof typeof phones, path: string, body?: unknown, method?: string) => {
@@ -97,7 +100,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     ] });
     await owner.projectMember.createMany({ data: [
       { projectId: ids.project, userId: ids.staff, positionKey: "contract_staff" },
-      { projectId: ids.project, userId: ids.manager, positionKey: "project_manager" }
+      { projectId: ids.project, userId: ids.manager, positionKey: "project_manager" },
+      { projectId: ids.project, userId: ids.finance, positionKey: "finance_staff" }
     ] });
 
     await owner.companyEntity.create({ data: { id: ids.company, name: "隔离参与公司", unifiedSocialCreditCode: "91350100LINEA00001",
@@ -292,6 +296,42 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect(basis.status).toBe(200);
     expect(basis.body.latestConfirmed).toMatchObject({ amountYuan: "1000.0000" });
     expect(basis.body.confirmedYuan).toBe("1000.0000");
+
+    // 确认事实同时进入经营账：一次成本、一次应付，不因后续实付重复计成本。
+    const signedFact = await owner.operatingFact.findFirst({
+      where: { sourceType: "signed_contract_settlement", sourceBusinessId: settlementId }
+    });
+    expect(signedFact?.amountCents).toBe(100_000n);
+    const signedImpacts = await owner.operatingImpactEntry.findMany({ where: { factId: signedFact!.id } });
+    expect(signedImpacts).toHaveLength(2);
+    expect(signedImpacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ impactKind: "confirmed_cost", amountCents: 100_000n, direction: "increase" }),
+      expect.objectContaining({ impactKind: "payable_increase", amountCents: 100_000n, direction: "increase" })
+    ]));
+  });
+
+  it("lets the unified registered payment workbench accept the confirmed signed settlement", async () => {
+    await owner.paymentRequest.create({ data: {
+      id: signedPaymentId, projectId: ids.project, settlementId: null, signedSettlementId: settlementId,
+      signedSettlementConfirmationNo: 1n, signedSettlementConfirmedYuan: "1000.0000",
+      signedSettlementContractConfirmedYuan: "1000.0000", signedSettlementOccupiedCents: 0n,
+      signedSettlementBasisAt: new Date(), sourceType: "signed_settlement", contractId: ids.contractA,
+      contractVersionId: ids.versionA, paymentTermsVersionId: "linea-terms-a", code: "LINEA-FK-SIGNED-001",
+      status: "approved_pending_payment", requestedAmountCents: 50_000n, approvedAmountCents: 50_000n,
+      paidAmountCents: 0n, paymentSubjectType: "our_company"
+    } });
+    await owner.approvalInstance.create({ data: {
+      flowType: "payment.approve", businessType: "payment_request", businessId: signedPaymentId,
+      status: "approved", currentNodeIndex: 0, frozenNodes: [], applicantUserId: ids.staff
+    } });
+    await expect(owner.$transaction(tx =>
+      currentRegisteredPaymentDomain(tx as never, signedPaymentId)
+    )).resolves.toMatchObject({ supportedDomain: true });
+    const registered = app.get(RegisteredPaymentExecutionService);
+    const workItems = await registered.workItems(ids.finance);
+    expect(workItems.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ paymentId: signedPaymentId, remainingAmountCents: "50000" })
+    ]));
   });
 
   it("confirms work completion through three duties and posts one operating cost", async () => {
