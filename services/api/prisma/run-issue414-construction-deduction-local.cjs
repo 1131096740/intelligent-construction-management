@@ -90,10 +90,6 @@ async function main() {
     const env = { ...process.env, NODE_ENV: "test", CI: "true", DATABASE_URL: databaseUrl,
       OPERATING_LEDGER_DB_WRITE_SECRET: ledgerSecret,
       ISSUE414_OPERATING_LEDGER_WRITE_SECRET: ledgerSecret,
-      PRISMA_SCHEMA_ENGINE_BINARY:
-        process.env.PRISMA_SCHEMA_ENGINE_BINARY || "/tmp/jga-engines/schema-engine",
-      PRISMA_QUERY_ENGINE_LIBRARY:
-        process.env.PRISMA_QUERY_ENGINE_LIBRARY || "/tmp/jga-engines/libquery-engine",
       ISSUE414_CONSTRUCTION_DEDUCTION_DATABASE_URL: databaseUrl,
       FILE_STORAGE_DRIVER: "local", APPROVAL_SMS_ENABLED: "false", SMS_ENABLED: "false",
       JWT_ACCESS_SECRET: randomBytes(32).toString("hex"),

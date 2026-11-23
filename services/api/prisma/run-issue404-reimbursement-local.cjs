@@ -86,8 +86,6 @@ async function main() {
     const databaseUrl = `postgresql://jiangkong:${password}@127.0.0.1:${port}/${database}`;
     const env = { ...process.env, NODE_ENV: "test", DATABASE_URL: databaseUrl,
       APPROVAL_SMS_ENABLED: "false", SMS_ENABLED: "false", ISSUE404_DATABASE_URL: databaseUrl,
-      PRISMA_SCHEMA_ENGINE_BINARY: process.env.PRISMA_SCHEMA_ENGINE_BINARY || "/tmp/jga-engines/schema-engine",
-      PRISMA_QUERY_ENGINE_LIBRARY: process.env.PRISMA_QUERY_ENGINE_LIBRARY || "/tmp/jga-engines/libquery-engine",
       ISSUE404_REIMBURSEMENT_RUN: "1" };
     await phase("prisma-generate", () => command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "generate"],
       env, { quiet: true }));

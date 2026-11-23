@@ -440,6 +440,11 @@
     "candidate": "431f15e6e5a99aacd19241e6d1e665a2cf15c5a6beeb9b8abe75ad56b804baae"
   },
   {
+    "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
+    "expected": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
+    "candidate": "f970c1c5b6a4f369b8d53dfae80f21751943ef6ff0de142e8bb406190f108374"
+  },
+  {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
     "candidate": "c0687f80fd6751564f95f03f69811ffaa55f1ea5f184fe91386ce366e5be363c"
@@ -462,7 +467,12 @@
   {
     "path": "services/api/scripts/business-zeroing-policy.cjs",
     "expected": "42722a432f8e03ab1cc15339439b49af9953454438fd18d75c93e5505b5d6195",
-    "candidate": "088edbb344f217c580520dd8184a87926f3917c5bf818e0b33c0f827ba4ca4ef"
+    "candidate": "9df26b6f8bf7b335b9dfbabfa07d879c2084e0b118ebc6e8dfcad5375ee58582"
+  },
+  {
+    "path": "services/api/scripts/business-zeroing-tool.test.cjs",
+    "expected": "d44e510d9ce7d8a545886d5dd398e1c99fac613debfb2b8af72846194947b2e1",
+    "candidate": "9f499ce52548f23d07a5d88e2a8dadd6d72da6711166e95bf800c3e7ca186f33"
   },
   {
     "path": "services/api/scripts/check-business-errors.cjs",
@@ -783,6 +793,11 @@
     "path": "services/api/src/core-flow/ledger-excel.ts",
     "expected": "702c4dcfbb5563c965c7d55bc278041c653466b1ba04d84c4044357047471bb6",
     "candidate": "7c60d86dccefa24f354520a931657123f93d47a41604175ba3262f9bd629dfc1"
+  },
+  {
+    "path": "services/api/src/database/contract-bill-lineage-settlement-v2-schema.spec.ts",
+    "expected": "aecbe3a1f875e06436153e2748ddc6778d3545dd7ad3d2a627466d9e1e362da9",
+    "candidate": "d7f82497adf49d6bb0cd13049e6dd64fa71a119ead008ef89ec3063d4f6aa75c"
   },
   {
     "path": "services/api/src/database/registered-payment-catalog.ts",
@@ -1225,9 +1240,14 @@
     "candidate": "ac9ff695eadb92efc6e15d72fb0f73e33ac1a34a69467fb20e044a97c0dfd987"
   },
   {
+    "path": "services/api/src/spot-procurement/spot-procurement-payment.service.spec.ts",
+    "expected": "7cccd52705e5445f257d186477b57fc0e9351ada02a6ca342d0459b64c1e9210",
+    "candidate": "5cead934447b4fd8af75d2a0cb2f8b39063ab1d8e97ea450d6337850e28ab8d1"
+  },
+  {
     "path": "services/api/src/spot-procurement/spot-procurement-payment.service.ts",
     "expected": "76a821443d942f49a6c942c3948c86619312391fcd40560c452ca4ef947aa39e",
-    "candidate": "921ebd3570306e0b16e5d5288457e2eba949deffdc21bed02c3cc16caed936b9"
+    "candidate": "fda2bdac268ba3406104154b6709172992a1624e584d4f6de9aa5413aed3ccf0"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-read.service.ts",

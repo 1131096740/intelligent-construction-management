@@ -93,7 +93,7 @@
   "services/api/prisma/run-database-dynamic-remaining-local.cjs": "e2b9cda3dba4d66231a87eedefcc3cd2f6fe7e26453d7301c77efdb1c9c344e2",
   "services/api/prisma/schema.prisma": "470b6f54ba975f1fdb110d57fcb800f3eab8bc428487f105d55fae2e27a7fd27",
   "services/api/prisma/task16-current259-payment-competition.cjs": "2194879bf1a69f0b48436e30f1b027a2b7559cab15af1277aa0eab47c80e2ecb",
-  "services/api/scripts/business-zeroing-policy.cjs": "088edbb344f217c580520dd8184a87926f3917c5bf818e0b33c0f827ba4ca4ef",
+  "services/api/scripts/business-zeroing-policy.cjs": "9df26b6f8bf7b335b9dfbabfa07d879c2084e0b118ebc6e8dfcad5375ee58582",
   "services/api/scripts/check-business-errors.cjs": "6213ee00aef1b59ccf6dfda74899d286d92d0ac92e5daf56d2ce35eea4664c70",
   "services/api/src/app.module.ts": "71052a9e85c72abd1bd259216da0237b82e28c0bfc9cf44aee61f78a2776710f",
   "services/api/src/approval/active-approval-delegations.spec.ts": "4c3622bea32cee2aa1f656bfdc96046b0e54eab959d20d253c105e3674c233af",
@@ -246,9 +246,13 @@
   "services/api/src/spot-procurement/spot-procurement-approval-nodes.spec.ts": "c49c68c2ba030c4dd94d91e16bd98a2f4454becd88e93030c9d7aaa9fd99d25e",
   "services/api/src/spot-procurement/spot-procurement-approval-nodes.ts": "441eaf4581bcaabdcb9ede511a7361226c62eb47556e8c0927776e5d7604c01b",
   "services/api/src/spot-procurement/spot-procurement-approval-notification.service.ts": "ac9ff695eadb92efc6e15d72fb0f73e33ac1a34a69467fb20e044a97c0dfd987",
-  "services/api/src/spot-procurement/spot-procurement-payment.service.ts": "921ebd3570306e0b16e5d5288457e2eba949deffdc21bed02c3cc16caed936b9",
+  "services/api/src/spot-procurement/spot-procurement-payment.service.ts": "fda2bdac268ba3406104154b6709172992a1624e584d4f6de9aa5413aed3ccf0",
   "services/api/src/spot-procurement/spot-procurement-read.service.ts": "07c58b11986b743fc7e904aed8b9aea55f5114156508c175a7172716577bec25",
   "services/api/src/spot-procurement/spot-procurement.controller.ts": "2d7ad9e423ce9460e6c7c128924355515d5e26dcf972c5f329ff4b82d5c8117f",
   "services/api/src/spot-procurement/spot-procurement.module.ts": "14326a0a8af2aea661ed56a1abb2f504c4a58f58526a7185323b906a5943155d",
-  "services/api/src/validation/task3-static-field-validation.spec.ts": "57fb23200943c4c8582cf013bc40299a4a9c65ac4a0454d392436ece7a5b8ccf"
+  "services/api/src/validation/task3-static-field-validation.spec.ts": "57fb23200943c4c8582cf013bc40299a4a9c65ac4a0454d392436ece7a5b8ccf",
+  "services/api/prisma/run-database-dynamic-gate-local.cjs": "f970c1c5b6a4f369b8d53dfae80f21751943ef6ff0de142e8bb406190f108374",
+  "services/api/scripts/business-zeroing-tool.test.cjs": "9f499ce52548f23d07a5d88e2a8dadd6d72da6711166e95bf800c3e7ca186f33",
+  "services/api/src/database/contract-bill-lineage-settlement-v2-schema.spec.ts": "d7f82497adf49d6bb0cd13049e6dd64fa71a119ead008ef89ec3063d4f6aa75c",
+  "services/api/src/spot-procurement/spot-procurement-payment.service.spec.ts": "5cead934447b4fd8af75d2a0cb2f8b39063ab1d8e97ea450d6337850e28ab8d1"
 }

@@ -19,7 +19,7 @@ const candidateDigest320='afe91cc0887a53d0cf630f28f8619172362c8199c69a4678e971f2
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
 function verifyExecutionFiles() {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));
-  assert.equal(sha(raw),current320?'3181a66e57a09e77bebe9998a4d1b29d2576f1bee5736725fc0c1a185523c292':'ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041','BANK_295_EXECUTION_MANIFEST');
+  assert.equal(sha(raw),current320?'dc154e097a24161e67f8d3cf624d9d37e98d4541ff4891c3248d0821cd16b9c9':'ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
   assert.equal(files.length,current320?1946:1814,'BANK_295_EXECUTION_COUNT');
   for(const [relative,digest] of files) {

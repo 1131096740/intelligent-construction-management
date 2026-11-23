@@ -85,10 +85,6 @@ async function main() {
       "SHOW server_version_num;"], { quiet: true }).stdout;
     const databaseUrl = `postgresql://jiangkong:${password}@127.0.0.1:${port}/${database}`;
     const env = { ...process.env, NODE_ENV: "test", CI: "true", DATABASE_URL: databaseUrl,
-      PRISMA_SCHEMA_ENGINE_BINARY:
-        process.env.PRISMA_SCHEMA_ENGINE_BINARY || "/tmp/jga-engines/schema-engine",
-      PRISMA_QUERY_ENGINE_LIBRARY:
-        process.env.PRISMA_QUERY_ENGINE_LIBRARY || "/tmp/jga-engines/libquery-engine",
       RUN_ISSUE411_THIRD_COMPANY_REPAYMENT: "1",
       FILE_STORAGE_DRIVER: "local", APPROVAL_SMS_ENABLED: "false", SMS_ENABLED: "false",
       JWT_ACCESS_SECRET: randomBytes(32).toString("hex"),
