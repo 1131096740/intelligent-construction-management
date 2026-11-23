@@ -6,7 +6,7 @@ umask 077
 count=295
 mode=()
 if [[ $# == 6 ]]; then
-  count=328
+  count=329
   mode=(--current-320)
 fi
 repo=$(cd "$1" && pwd -P)
@@ -35,7 +35,7 @@ node -e '
   const source=require(process.argv[1]);
   const count=Number(process.argv[3]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
-  if(count===328 && (source.mode!=="current-320" || source.predecessor?.migrationCount!==295))process.exit(1);
+  if(count===329 && (source.mode!=="current-320" || source.predecessor?.migrationCount!==295))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -69,10 +69,10 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-check "$common/installer.cjs" acbfcdde2af4fa653595e8b1f3ce1fbd7b9d5cfd60859eaf30b1ed655f715632
+check "$common/installer.cjs" 969b376ad45bf4ca54d60e00e234dca316cde1e09d22d9e4d0300c85b4e273b5
 cp "$common/installer.cjs" "$work/installer.cjs"
 patch --batch --fuzz=0 --silent "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" d67bdc5c40022c15491939752183e380801e374620476da499c199361b0e30c5
+check "$work/installer.cjs" 93c831ef1c3f0e319c6445f63c447f947109d3ef905e4741ea31eaf43da12f55
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

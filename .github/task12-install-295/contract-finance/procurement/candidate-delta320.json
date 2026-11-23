@@ -452,7 +452,7 @@
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "5e35796144515672fe7c82fc88a22d7d772052ebe9048dc8ae769f8a118c41bc"
+    "candidate": "76baeaa40a91eab2ecf0c632b171773864e4cb25a2ebf49049a5c689b6393d42"
   },
   {
     "path": "services/api/prisma/fixtures/project-approval-configuration.ts",
@@ -873,6 +873,11 @@
     "path": "services/api/src/database/contract-business-entry-http.spec.ts",
     "expected": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
     "candidate": "b0d8436f1d65a0585e26a029a1baea1a95dfbc974fa862d221d715353334fff5"
+  },
+  {
+    "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
+    "expected": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d",
+    "candidate": "abbf21a612ff1e6b12ef63d01736314ca059d03c63b8bf8692e7d91b6855df9c"
   },
   {
     "path": "services/api/src/database/registered-payment-catalog.ts",

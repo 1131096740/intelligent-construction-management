@@ -68,8 +68,8 @@
  const installOnly292 = Symbol('install-only292');
  const exactMultiWitness295 = Symbol('exact-multi-witness295');
  async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false, forward320, retainedMode) {
-+  const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_WARM_EXACT_328:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
-+  if (pol275Mode) need(Boolean(forward320)===(receipt.purpose==='ORIGINAL_POL275_WARM_EXACT_328'),
++  const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_WARM_EXACT_329:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
++  if (pol275Mode) need(Boolean(forward320)===(receipt.purpose==='ORIGINAL_POL275_WARM_EXACT_329'),
 +    'POL275_ORIGINAL_MODE_SCOPE');
    const combined = purpose===installOnly292 || purpose===exactMultiWitness295;
    if(combined) need(!probeOnly && release===ordinaryApprovalRelease,'INSTALL_ONLY_292_MODE');

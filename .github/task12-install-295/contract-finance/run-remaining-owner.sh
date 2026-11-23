@@ -10,7 +10,7 @@ build=$(cd "$4" && pwd -P)
 lane=$5
 mode_args=()
 count=295
-if [[ $# == 6 ]]; then mode_args=(--current-320); count=328; fi
+if [[ $# == 6 ]]; then mode_args=(--current-320); count=329; fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 prior="$root/.github/task12-install-289"
@@ -23,8 +23,8 @@ const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2)
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
 if(mode==='--current-320') {
-  if(source.mode!=='current-320'||source.migrationCount!==328||source.predecessor?.migrationCount!==295||
-     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==33) process.exit(65);
+  if(source.mode!=='current-320'||source.migrationCount!==329||source.predecessor?.migrationCount!==295||
+     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==34) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
 image=$(cat "$build/image.id")
@@ -34,7 +34,7 @@ fingerprint=$(cat "$build/context.sha256")
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
 profiles="$prior/remaining-owner-modes.json"
 node "$owner" --mounts "$lane" "$workspace" > "$work/fixture-mounts.tsv"
-if [[ $count == 328 && $lane == generic-batch ]]; then
+if [[ $count == 329 && $lane == generic-batch ]]; then
   spec=src/database/pol05-operating-source-facts.spec.ts
   fixture="$work/pol05-operating-source-facts.spec.ts"
   cp "$prior/remaining-fixtures/$spec" "$fixture"
@@ -54,7 +54,7 @@ fs.writeFileSync(mounts,rows.join('\n'));
 JS
   profiles="$work/remaining-owner-modes.json"
 fi
-if [[ $count == 328 ]]; then
+if [[ $count == 329 ]]; then
   cp "$owner" "$work/remaining-owner.cjs"
   owner="$work/remaining-owner.cjs"
   patch --batch --forward --fuzz=0 --silent "$owner" < "$plan/remaining-owner-320-observation.patch"

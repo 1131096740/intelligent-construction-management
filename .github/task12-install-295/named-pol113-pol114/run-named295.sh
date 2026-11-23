@@ -12,7 +12,7 @@ node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$r
 const [candidateFile,sourceFile,sha]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);
 const current320=s.mode==='current-320';
-const count=current320?328:295;
+const count=current320?329:295;
 if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==count||a.migrationCount!==count||
   a.ledger295!==(current320?s.predecessor.ledgerSha256:s.ledgerSha256))process.exit(65);
 if(current320&&(a.ledger320!==s.ledgerSha256||a.sourceTree!==s.sourceTree||

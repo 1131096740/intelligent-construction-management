@@ -9,7 +9,7 @@
 -  assert.equal(receipt.installOnly290?.count,290);
 +const source=require('./contract-finance-source.json');
 +const current320=source.mode==='current-320';
-+const count=current320?328:295;
++const count=current320?329:295;
 +const material=current320?{sourceTree:source.sourceTree,
 +  migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
 +const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY',lane,business:'NOT_ENTERED',stages:[]};
@@ -18,7 +18,7 @@
 +  assert.equal(receipt.combinedAfterBusiness?.count,count);
 +  assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
 +  if(current320){
-+    assert.equal(receipt.forward320?.count,328);
++    assert.equal(receipt.forward320?.count,329);
 +    assert.equal(receipt.forward320?.sameIdentity,true);
 +    assert.equal(receipt.forward320?.sameBaseB7,true);
 +    assert.equal(receipt.forward320?.sourceTree,source.sourceTree);

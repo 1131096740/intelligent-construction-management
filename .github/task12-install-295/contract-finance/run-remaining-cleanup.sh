@@ -16,7 +16,7 @@ scope=cleanup
 node -e '
   const source=require(process.argv[1]);
   const current=source.mode==="current-320";
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(current?328:295))process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(current?329:295))process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -40,15 +40,41 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 args+=(--mount "type=bind,src=$common/installer.cjs,dst=/qualification/installer.cjs,readonly")
-node - "$archive" > "$work/cleanup-mounts.tsv" <<'JS'
+node - "$archive" "$prepared/source.json" "$work" > "$work/cleanup-mounts.tsv" <<'JS'
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
-const archive=process.argv[2];
+const [archive,sourceFile,work]=process.argv.slice(2);
+const current=require(sourceFile).mode==='current-320';
+const lifecycle='fixtures/contract-lifecycle-route.spec.ts';
+const oldLifecycle='32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f';
+const newLifecycle='9519497389690475b6b87a2b1d3daa13e57dac68951c3b4607e115b6527af48d';
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const {cleanup:{mounts}}=require(path.join(archive,'remaining-special.json'));
+// Keep the archived runner and registered test inventory unchanged.
+const overlays=current?{
+  [lifecycle]:{before:oldLifecycle,after:newLifecycle,
+    old:'...readMoney, takeoverStatus: "pending_review", submittedAt: expect.any(Date)',
+    next:'...readMoney, takeoverStatus: "pending_finance", submittedAt: expect.any(Date)'},
+  'fixtures.json':{before:'6af14063a3fd2511d757d1dd527b9dea97f06b8f504696e0e76be10aff2fb9d6',
+    after:'5419e2ecaf3eb13c2fe311e80e9a42eee405fd206c25e4e28e8895c3edcc58e0',old:oldLifecycle,next:newLifecycle},
+}:{};
+assert.ok(Object.keys(overlays).every(file=>Object.hasOwn(mounts,file)));
 for(const [file,{target,sha256}] of Object.entries(mounts)){
   if(['entry.cjs','project-profile-original-seed.sql','workspace/services/api/src/database/project-operating-profile-upgrade.spec.ts'].includes(target))continue;
-  const source=path.join(archive,'remaining-special','cleanup',file);
+  let source=path.join(archive,'remaining-special','cleanup',file);
   assert.ok(fs.lstatSync(source).isFile());
-  assert.equal(createHash('sha256').update(fs.readFileSync(source)).digest('hex'),sha256);
+  const material=fs.readFileSync(source);
+  assert.equal(digest(material),sha256);
+  if(Object.hasOwn(overlays,file)){
+    const overlay=overlays[file];
+    assert.equal(sha256,overlay.before);
+    const original=material.toString('utf8');
+    assert.equal(original.split(overlay.old).length,2);
+    const staged=original.replace(overlay.old,overlay.next);
+    assert.equal(digest(staged),overlay.after);
+    source=path.join(work,path.basename(file));
+    fs.writeFileSync(source,staged,{flag:'wx'});
+    fs.chmodSync(source,0o644);
+  }
   console.log(source+'\t'+target);
 }
 JS

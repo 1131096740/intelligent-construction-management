@@ -1326,7 +1326,7 @@ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
 function readForward320({sourceTree,migrations,tails}) {
   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
     typeof migrations==='string' && path.isAbsolute(migrations) &&
-    Array.isArray(tails) && tails.length===33,'FORWARD_320_SOURCE');
+    Array.isArray(tails) && tails.length===34,'FORWARD_320_SOURCE');
   let previous='20261119003900';
   const rows=tails.map(row => {
     const match=row && typeof row.name==='string' ? /^(\d{14})_[a-z0-9_]+$/u.exec(row.name) : null;

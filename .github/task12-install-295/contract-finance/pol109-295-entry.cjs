@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const current320=process.argv.at(-1)==='--current-320';
-const count=current320?328:295;
+const count=current320?329:295;
 const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL109_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{

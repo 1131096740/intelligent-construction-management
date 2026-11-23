@@ -19,7 +19,7 @@
    const reportFile=path.join(privateLogDir,"standard-290-jest.json");
    const selection=standard290||browser290?["--json","--outputFile",reportFile]:[];
 -  const output=command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",...scenarios,...selection],{env,timeout:300000});
-+  const browserDiagnostics=browser290?.purpose.endsWith("_EXACT_328")?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
++  const browserDiagnostics=browser290?.purpose.endsWith("_EXACT_329")?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
 +  browserDiagnostics?.markBrowserPhase(browser290,"JEST_SCENARIO");
 +  const output=command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",...scenarios,...selection],{
 +   env,timeout:300000,onFailure:browserDiagnostics?result=>browserDiagnostics.recordBrowserJestFailure(browser290,reportFile,scenario,result):undefined

@@ -4,7 +4,7 @@ const {readFileSync,writeFileSync,statSync}=require('node:fs');
 const {scope}=require('../common/successor.cjs');
 const {legacy,successor}=require('./restore-profile.cjs');
 const current=process.argv[7]?require(process.argv[7]):undefined;
-const count=current?328:295;
+const count=current?329:295;
 const {technical}=current?successor:legacy;
 
 const identity=row=>row&&row.schemaVersion===1&&row.purpose==='NTF04_NAMED_RESTORE_EXACT_'+count&&row.candidateSha===(current?.sourceSha??require(process.argv[6]).head)&&
@@ -38,7 +38,7 @@ function qualified(row,mode){
     row.stages.at(-1)==='BACKUP292_BOTH_WORKSPACE_CLOSURES';
   if(mode!=='--once') return false;
   const data=row.restore;
-  const forwardValid=!current||(row.forward320?.count===328&&row.forward320.sameIdentity===true&&
+  const forwardValid=!current||(row.forward320?.count===329&&row.forward320.sameIdentity===true&&
     row.forward320.sameBaseB7===true&&row.forward320.sourceTree===current.sourceTree&&
     row.forward320.ledgerSha256===current.ledgerSha256&&row.combinedAfterBusiness?.ledgerSha256===current.ledgerSha256&&
     row.combinedAfterBusiness.exactB7===true&&data?.businessTables===successor.businessCount);

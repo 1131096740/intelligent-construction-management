@@ -1,7 +1,7 @@
 {
   "installer": {
-    "base": "acbfcdde2af4fa653595e8b1f3ce1fbd7b9d5cfd60859eaf30b1ed655f715632",
-    "after": "7e828a98d260367b51b71da62cb7996c7e05b29bf92bf9c0f3cc682af241ba66"
+    "base": "969b376ad45bf4ca54d60e00e234dca316cde1e09d22d9e4d0300c85b4e273b5",
+    "after": "8e892cb58105f36cb8622012a99fec3dfe1a143af4de0236f26f7c5baabd242b"
   },
   "general16": {
     "consumer.cjs": {

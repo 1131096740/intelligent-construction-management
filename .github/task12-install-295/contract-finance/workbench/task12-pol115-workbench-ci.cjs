@@ -38,7 +38,7 @@ function stageBrowser(workDir) {
 
 async function runWorkbench(context, receipt, source) {
   const current320=source?.mode==='current-320';
-  const count=current320?328:295;
+  const count=current320?329:295;
   if (receipt.purpose !== 'POL115_WORKBENCH_ORIGINAL_'+count || context.candidateTree !== (current320?source.sourceTree:tree) ||
       context.database !== 'jg_task01_'+context.runId.replaceAll('-','')) {
     throw new Error('POL115_WORKBENCH_OWNED_SCOPE');

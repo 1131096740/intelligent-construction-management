@@ -14,7 +14,7 @@ scope=company-proxy-repayment
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="current-320"?328:295))process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="current-320"?329:295))process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")

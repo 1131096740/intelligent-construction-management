@@ -8,7 +8,7 @@ const {runSlice}=require('./historical-financial-runner.cjs');
 const baseline=require('./historical-financial-candidate.json');
 const source=require('./contract-finance-source.json');
 const current320=process.argv[2]==='--current-320';
-const count=current320?328:295;
+const count=current320?329:295;
 const root='/qualification';
 const lane='historical_financial_takeover';
 const receipt={schemaVersion:1,purpose:'ORIGINAL_HISTORICAL_FINANCIAL_'+count,lane,sourceSha:source.sourceSha,
@@ -25,7 +25,7 @@ async function main(){
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,final);
-    assert.equal(source.tails.length,33);
+    assert.equal(source.tails.length,34);
     const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
     assert.equal(baseline.terminalMigration,source.tails.at(-1).name);

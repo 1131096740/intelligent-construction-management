@@ -15,7 +15,7 @@ scope=direct-capacity
 
 node -e '
   const source=require(process.argv[1]);
-  const expected=source.mode==="current-320"?328:295;
+  const expected=source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==expected)process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")

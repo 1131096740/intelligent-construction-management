@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 const old=process.argv[4];
 const source=process.argv[6] ? require(process.argv[6]) : null;
 const current320=source?.mode==='current-320';
-const count=current320?328:295;
+const count=current320?329:295;
 const scopes=require(path.join(old,'lanes.json'));
 const {lanes}=require(path.join(old,'pins.json'));
 const scope={tree:'67644d9465a0ab4ee80ede099139d9c129d66f14',expectedLedgerSha256:'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d'};
@@ -29,11 +29,11 @@ function verifyLane(lane,receipt) {
   assert.equal(receipt.installOnly295.count,295);
   assert.equal(receipt.installOnly295.ledgerSha256,scope.expectedLedgerSha256);
   if(current320){
-    assert.equal(receipt.forward320.count,328);
+    assert.equal(receipt.forward320.count,329);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     assert.equal(receipt.forward320.sameBaseB7,true);
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
-    assert.equal(receipt.combinedAfterBusiness.count,328);
+    assert.equal(receipt.combinedAfterBusiness.count,329);
     assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
   }

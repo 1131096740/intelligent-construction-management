@@ -12,7 +12,7 @@
   const schema=capture(path.join(plan.historical,'schema.prisma')).bytes;
   const roots=new Map();
 + const historicalNegative=['PAYMENT_EXECUTION_ORIGINAL_REMAINING_13_NEGATIVES','PAYMENT_EXECUTION_ORIGINAL_PAID_MISMATCH_DIAGNOSTIC'].includes(receipt?.purpose);
-+ const historicalValid=/^PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|328)$/u.test(receipt?.purpose??"");
++ const historicalValid=/^PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|329)$/u.test(receipt?.purpose??"");
   for(const size of [...new Set(plan.stopAt205 ? [203,205] : [
 -   ...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
 +   ...(historicalNegative||historicalValid?[109,110]:[]),...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length

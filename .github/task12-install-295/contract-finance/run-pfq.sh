@@ -6,7 +6,7 @@ umask 077
 count=295
 mode=()
 if [[ $# == 5 ]]; then
-  count=328
+  count=329
   mode=(--current-320)
 fi
 repo=$(cd "$1" && pwd -P)
@@ -20,7 +20,7 @@ scope=pfq
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="328" && source.mode!=="current-320"))process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="329" && source.mode!=="current-320"))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
