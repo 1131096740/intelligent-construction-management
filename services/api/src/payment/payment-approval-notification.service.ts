@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { canPerform, GLOBAL_BUSINESS_ROLE_KEYS, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma, type ApprovalActionLog, type ApprovalInstance, type PaymentRequest } from "@prisma/client";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
@@ -11,8 +11,10 @@ import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-r
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { PrismaService } from "../database/prisma.service";
+import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
+import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, PAYMENT_DUTY_NOTICE_KIND as KIND, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 
-const KIND = "payment_approval_duty_notification";
 const idFor = (...coordinates: string[]) => auditDutyNoticeId(KIND, ...coordinates);
 type PendingPayment = Pick<PaymentRequest, "id" | "projectId" | "code" | "status">;
 
@@ -22,9 +24,9 @@ function opensApprovalNode(transition: ApprovalActionLog, roundId: string) {
       /^[a-f0-9]{64}$/iu.test(transition.signatureSha256Snapshot ?? "")));
 }
 
-function currentNode(round: ApprovalInstance): FrozenApprovalNode | null {
+function dutyNode(round: ApprovalInstance, index: number): FrozenApprovalNode | null {
   if (round.businessType !== "payment_request" || round.flowType !== "payment.approve" || round.status !== "in_progress") return null;
-  const node = Array.isArray(round.frozenNodes) ? round.frozenNodes[round.currentNodeIndex] : null;
+  const node = Array.isArray(round.frozenNodes) ? round.frozenNodes[index] : null;
   return node && typeof node === "object" && !Array.isArray(node) && typeof node.name === "string" && Array.isArray(node.roleKeys) ? node : null;
 }
 
@@ -33,7 +35,12 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
   private timer?: ReturnType<typeof setInterval>;
   private readonly logger = new Logger(PaymentApprovalNotificationService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly sms: ApprovalSmsService, private readonly visibility: ProjectVisibilityService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sms: ApprovalSmsService,
+    private readonly visibility: ProjectVisibilityService,
+    @Optional() private readonly writeFreeze: OperationalWriteFreezeService = new OperationalWriteFreezeService()
+  ) {}
 
   onModuleInit() {
     if (process.env.NODE_ENV === "test" || process.env.SKIP_DATABASE_CONNECT === "true" || !this.sms.available()) return;
@@ -45,10 +52,40 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
   async queue(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, transition: ApprovalActionLog | null) {
-    const node = currentNode(round);
-    if (!node || payment.status !== "approval_pending" || round.businessId !== payment.id) return;
-    if (transition ? !opensApprovalNode(transition, round.id) : round.currentNodeIndex !== 0) return;
+    if (payment.status !== "approval_pending" || round.businessId !== payment.id) return;
+    if (isOrdinaryPaymentParallelRound(round.frozenNodes)) {
+      if (transition) return;
+      for (const index of activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex)) {
+        const node = dutyNode(round, index);
+        if (!node) continue;
+        const legacyRevision = round.frozenNodes[index].legacyPaymentNoticeRevision;
+        const existing = typeof legacyRevision === "string" ? await tx.approvalActionLog.findMany({
+          where: { approvalInstanceId: round.id, action: "system_notification", AND: [
+            { metadata: { path: ["nodeIndex"], equals: index } },
+            { metadata: { path: ["roundRevision"], equals: legacyRevision } }
+          ] }
+        }) : [];
+        const retainedRecipients = new Set(existing.filter(log => this.isBaseAttempt(log) &&
+          log.actorUserId === round.applicantUserId && (log.metadata as Prisma.JsonObject).paymentId === payment.id &&
+          (log.metadata as Prisma.JsonObject).projectId === payment.projectId
+        ).flatMap(log => {
+          const recipient = (log.metadata as Prisma.JsonObject).recipientId;
+          return typeof recipient === "string" ? [recipient] : [];
+        }));
+        await this.queueDuty(tx, payment, round, node, index, `parallel:${round.id}`, retainedRecipients);
+      }
+      return;
+    }
+    const node = dutyNode(round, round.currentNodeIndex);
+    if (!node || hasOrdinaryPaymentParallelMarker(round.frozenNodes) ||
+        (transition ? !opensApprovalNode(transition, round.id) : round.currentNodeIndex !== 0)) return;
+    await this.queueDuty(tx, payment, round, node, round.currentNodeIndex, transition?.id ?? round.id);
+  }
 
+  private async queueDuty(
+    tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, node: FrozenApprovalNode,
+    nodeIndex: number, anchorId: string, retainedRecipients?: ReadonlySet<string>
+  ) {
     const roleKeys = node.roleKeys as RoleKey[];
     const [positions, projectMembers] = await Promise.all([
       tx.position.findMany({ where: { key: { in: roleKeys } }, select: { id: true, key: true } }),
@@ -67,15 +104,15 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     }, select: { toUserId: true } }) : [];
     const data: Prisma.ApprovalActionLogCreateManyInput[] = [];
     for (const recipientId of new Set([...holders, ...directs, ...delegates.map(row => row.toUserId)])) {
+      if (retainedRecipients?.has(recipientId)) continue;
       const active = await tx.user.findUnique({ where: { id: recipientId }, select: { isActive: true } });
-      if (!active?.isActive || !await this.currentRecipient(tx, payment, round, node, recipientId)) continue;
+      if (!active?.isActive || !await this.currentRecipient(tx, payment, round, node, recipientId, nodeIndex)) continue;
       const roundRevision = round.updatedAt.toISOString();
-      const anchorId = transition?.id ?? round.id;
       data.push({
-        id: idFor(payment.id, round.id, String(round.currentNodeIndex), anchorId, recipientId),
+        id: idFor(payment.id, round.id, String(nodeIndex), anchorId, recipientId),
         approvalInstanceId: round.id, actorUserId: round.applicantUserId, action: "system_notification",
         metadata: { kind: KIND, event: "queued", paymentId: payment.id, projectId: payment.projectId,
-          nodeIndex: round.currentNodeIndex, roundRevision, anchorId, recipientId }
+          nodeIndex, roundRevision, anchorId, recipientId }
       });
     }
     if (data.length) await tx.approvalActionLog.createMany({ data, skipDuplicates: true });
@@ -184,7 +221,12 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
       ]
     } });
     const byId = new Map(entries.map(entry => [entry.id, entry]));
-    for (const original of entries) {
+    const byDuty = isOrdinaryPaymentParallelRound(rounds[0].frozenNodes)
+      ? [...entries].sort((left, right) =>
+          Number((left.metadata as Prisma.JsonObject | null)?.nodeIndex) -
+          Number((right.metadata as Prisma.JsonObject | null)?.nodeIndex))
+      : entries;
+    for (const original of byDuty) {
       const data = original.metadata as Prisma.JsonObject | null;
       if (data?.recipientId !== actorId || data.paymentId !== paymentId || !this.isBaseAttempt(original)) continue;
       const context = await this.currentContext(tx, original);
@@ -241,6 +283,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
   async afterCommit(paymentId?: string, attemptId?: string) {
     if (!this.sms.available()) return;
     try {
+      if (this.writeFreeze.isFrozen("payment")) return;
       const intents = await this.prisma.$queryRaw<ApprovalActionLog[]>(Prisma.sql`
         SELECT queued.* FROM "ApprovalActionLog" queued
         WHERE queued."action" = 'system_notification' AND queued."metadata"->>'kind' = ${KIND}
@@ -253,6 +296,7 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
         ORDER BY queued."createdAt", queued."id" LIMIT 100
       `);
       for (const intent of intents) {
+        if (this.writeFreeze.isFrozen("payment")) return;
         const dispatch = await this.prisma.$transaction(tx => this.claim(tx, intent));
         if (!dispatch) continue;
         const result = await (dispatch.rich
@@ -309,23 +353,33 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
   private async currentContext(tx: Prisma.TransactionClient, intent: ApprovalActionLog) {
     const data = intent.metadata as Prisma.JsonObject;
     if (data?.phase === "correction") return this.currentCorrectionContext(tx, intent, data);
-    if (typeof data?.paymentId !== "string" || typeof data.recipientId !== "string" || typeof data.anchorId !== "string") return null;
+    if (typeof data?.paymentId !== "string" || typeof data.recipientId !== "string" || typeof data.anchorId !== "string" ||
+        typeof data.nodeIndex !== "number" || !Number.isInteger(data.nodeIndex)) return null;
     const [round, payment, user] = await Promise.all([
       tx.approvalInstance.findUnique({ where: { id: intent.approvalInstanceId } }),
       tx.paymentRequest.findUnique({ where: { id: data.paymentId }, select: { id: true, projectId: true, status: true, code: true } }),
       tx.user.findUnique({ where: { id: data.recipientId }, select: { isActive: true } })
     ]);
-    const node = round ? currentNode(round) : null;
+    const node = round ? dutyNode(round, data.nodeIndex) : null;
     if (!round || !node || !payment || !user?.isActive || payment.status !== "approval_pending" ||
       round.businessId !== payment.id || payment.projectId !== data.projectId || round.applicantUserId !== intent.actorUserId ||
-      round.currentNodeIndex !== data.nodeIndex || round.updatedAt.toISOString() !== data.roundRevision ||
-      !await this.currentRecipient(tx, payment, round, node, data.recipientId)) {
+      !await this.currentRecipient(tx, payment, round, node, data.recipientId, data.nodeIndex)) {
+      return null;
+    }
+    const parallel = isOrdinaryPaymentParallelRound(round.frozenNodes);
+    if (hasOrdinaryPaymentParallelMarker(round.frozenNodes) && !parallel) return null;
+    if (isOrdinaryPaymentParallelRound(round.frozenNodes)) {
+      if (!activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(data.nodeIndex)) return null;
+      if (data.anchorId === `parallel:${round.id}`) return { node, payment, round };
+      const legacyRevision = round.frozenNodes[data.nodeIndex].legacyPaymentNoticeRevision;
+      if (typeof legacyRevision !== "string" || legacyRevision !== data.roundRevision) return null;
+    } else if (round.currentNodeIndex !== data.nodeIndex || round.updatedAt.toISOString() !== data.roundRevision) {
       return null;
     }
     if (data.anchorId !== round.id) {
       const anchor = await tx.approvalActionLog.findUnique({ where: { id: data.anchorId } });
       if (!anchor || !opensApprovalNode(anchor, round.id)) return null;
-    } else if (round.currentNodeIndex !== 0) {
+    } else if (data.nodeIndex !== 0) {
       return null;
     }
     return { node, payment, round };
@@ -352,16 +406,21 @@ export class PaymentApprovalNotificationService implements OnModuleInit, OnModul
     return { node: null, payment, round };
   }
 
-  private async currentRecipient(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, node: FrozenApprovalNode, actorId: string) {
-    const getRoles = async (id: string) => {
-      const scopes = await this.visibility.effectiveRoleScopesInTransaction(tx, id, payment.projectId);
-      return resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+  private async currentRecipient(tx: Prisma.TransactionClient, payment: PendingPayment, round: ApprovalInstance, node: FrozenApprovalNode, actorId: string, nodeIndex: number) {
+    const getRoles = async (userId: string) => {
+      const roleScopes = await this.visibility.effectiveRoleScopesInTransaction(tx, userId, payment.projectId);
+      const roleKeys = resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys);
+      return { userId, roleKeys, roleScopes };
     };
-    const actorRoleKeys = await getRoles(actorId);
+    const { roleKeys: actorRoleKeys, roleScopes: actorRoleScopes } = await getRoles(actorId);
     const delegators = await activeApprovalDelegatorIds(tx, actorId);
-    const activeDelegators = await Promise.all(delegators.map(async userId => ({ userId, roleKeys: await getRoles(userId) })));
-    if (!canPerform("payment.approve", actorRoleKeys) && !activeDelegators.some(actor => canPerform("payment.approve", actor.roleKeys))) return false;
-    const identity = resolveApprovalReviewIdentity({ node, actorUserId: actorId, actorRoleKeys, activeDelegators });
+    const activeDelegators = await Promise.all(delegators.map(getRoles));
+    const parallel = isOrdinaryPaymentParallelRound(round.frozenNodes);
+    if (!parallel && !canPerform("payment.approve", actorRoleKeys) &&
+        !activeDelegators.some(actor => canPerform("payment.approve", actor.roleKeys))) return false;
+    const identity = parallel ? resolveOrdinaryPaymentDuty(round.frozenNodes, nodeIndex, { actorUserId: actorId, actorRoleKeys, actorRoleScopes, activeDelegators })
+      : resolveApprovalReviewIdentity({ node, actorUserId: actorId, actorRoleKeys,
+          activeDelegators: activeDelegators.map(({ userId, roleKeys }) => ({ userId, roleKeys })) });
     if (!identity) return false;
     try {
       assertOrdinaryApplicantCannotReview({ ...identity, applicantUserId: round.applicantUserId, actorUserId: actorId,

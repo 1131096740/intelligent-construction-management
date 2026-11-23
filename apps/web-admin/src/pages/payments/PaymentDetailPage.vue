@@ -296,13 +296,14 @@
             >
               <div class="action-title">
                 <strong>付款审批</strong>
-                <span>董事长/总经理或签</span>
+                <span>{{ parallelPaymentReview ? '并联办理' : '董事长/总经理或签' }}</span>
               </div>
               <div
                 v-if="paymentReviewEnabled"
                 class="action-fields"
               >
                 <MoneyInput
+                  v-if="!parallelPaymentReview"
                   v-model="paymentActionForm.approvedAmountYuan"
                   label="审批金额（可选）"
                 />
@@ -344,7 +345,7 @@
                   通过
                 </t-button>
                 <t-button
-                  v-if="paymentReviewEnabled"
+                  v-if="paymentReviewEnabled && !parallelPaymentReview"
                   theme="danger"
                   variant="outline"
                   :loading="actionBusy === 'approval'"
@@ -1187,6 +1188,7 @@ const paymentReviewEnabled = computed(() => {
     paymentReviewActionEnabled("review_approval")
   );
 });
+const parallelPaymentReview = computed(() => paymentApprovalCapability.value?.reviewApprovalContext?.executionMode === "parallel");
 const requiresPaymentSelfReviewConfirmation = computed(
   () =>
     paymentApprovalCapability.value?.availableActions.find(
@@ -1559,9 +1561,9 @@ function requestApproval(decision: PaymentApprovalReviewActionDecision) {
     if (actionBusy.value || paymentReviewBusyOwnerId !== 0) {
       throw new Error("当前审批正在提交，请等待本次操作完成");
     }
-    if (decision === "approve") {
+    if (decision === "approve" && !parallelPaymentReview.value) {
       optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额");
-    } else {
+    } else if (decision !== "approve") {
       requiredText(paymentActionForm.approvalComment, "驳回原因");
     }
     if (requiresPaymentSelfReviewConfirmation.value) {
@@ -1590,7 +1592,9 @@ function requestApproval(decision: PaymentApprovalReviewActionDecision) {
   openSensitiveAction(decision === "approve" ? "approvalApprove" : "approvalReject", {
     title: decision === "approve" ? "确认通过付款审批？" : decision === "return_to_applicant" ? "确认退回付款申请？" : "确认驳回付款审批？",
     description: decision === "approve"
-      ? "通过后只会进入已批待付，仍需财务或出纳登记实际付款。"
+      ? parallelPaymentReview.value
+        ? "所有待办岗位都通过后，付款申请才进入已批待付。"
+        : "通过后只会进入已批待付，仍需财务或出纳登记实际付款。"
       : decision === "return_to_applicant" ? "本轮审批将终止，原申请人修改后可重新提交。" : "驳回后本轮审批将终止，驳回原因会写入审批历史。",
     confirmText: decision === "approve" ? "确认通过" : decision === "return_to_applicant" ? "确认退回" : "确认驳回",
     confirmTheme: decision === "approve" ? "primary" : "danger",
@@ -1693,7 +1697,7 @@ function capturePaymentReviewContext(
 
   try {
     const approvedAmountCents =
-      decision === "approve"
+      decision === "approve" && !parallelPaymentReview.value
         ? optionalYuanAmount(
             paymentActionForm.approvedAmountYuan,
             "审批金额"
@@ -1794,7 +1798,7 @@ async function completePaymentReview(
   actionMessageTone.value = "success";
   actionMessage.value =
     context.decision === "approve"
-      ? "付款审批已通过，当前仅进入已批待付。"
+      ? parallelPaymentReview.value ? "当前岗位审批已提交。" : "付款审批已通过，当前仅进入已批待付。"
       : context.decision === "return_to_applicant" ? "付款申请已退回修改。" : "付款审批已驳回。";
   await reloadPaymentDetail();
 }

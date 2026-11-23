@@ -20,6 +20,9 @@ import { registeredPaymentInstalled } from "../database/registered-payment-catal
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { PaymentRequestService } from "./payment-request.service";
 import { hasPaymentRevisionBasis } from "./payment-revision-basis";
+import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
+import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
+import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
 import { currentRegisteredPaymentDomain } from "./registered-payment-domain";
 import { assertRegisteredPaymentActor } from "./registered-payment-funding";
@@ -36,7 +39,8 @@ import type {
 import {
   canPerform,
   directPaymentAmountNature,
-  isContractSettlementMode
+  isContractSettlementMode,
+  resolveEffectiveRoleKeys
 } from "@jiangkong/shared-domain";
 import {
   approvalReviewAccessOnFrozenNode,
@@ -107,6 +111,7 @@ type PaymentApprovalReviewContext = {
   expectedNodeIndex: number;
   expectedApprovalUpdatedAt: string;
   canReturnForRevision?: true;
+  executionMode?: "parallel";
 };
 
 type PaymentExecutionContext = {
@@ -119,6 +124,7 @@ type CurrentPaymentApprovalReview = {
     id: string;
     currentNodeIndex: number;
     updatedAt: Date;
+    executionMode?: "parallel";
   } | null;
 };
 
@@ -1308,6 +1314,7 @@ export class PaymentReadService {
             expectedApprovalInstanceId: currentApprovalReview.approval.id,
             expectedNodeIndex: currentApprovalReview.approval.currentNodeIndex,
             expectedApprovalUpdatedAt: currentApprovalReview.approval.updatedAt.toISOString(),
+            ...(currentApprovalReview.approval.executionMode ? { executionMode: currentApprovalReview.approval.executionMode } : {}),
             ...(executions.length === 0 && hasPaymentRevisionBasis(payment) ? { canReturnForRevision: true as const } : {})
           }
         : null;
@@ -1331,7 +1338,8 @@ export class PaymentReadService {
       execution.complete,
       financeRecordedAmountCents,
       paidAmountCents,
-      evidenceFiles
+      evidenceFiles,
+      currentApprovalReview.approval?.executionMode === "parallel"
     );
     const enabledExecutionActions = availableActions.filter(
       (action) => action.key === "record_execution" && action.enabled
@@ -2483,6 +2491,31 @@ export class PaymentReadService {
     }
     const instance = instances[0];
 
+    if (isOrdinaryPaymentParallelRound(instance.frozenNodes)) {
+      if (!this.projectVisibility) return emptyCurrentPaymentApprovalReview();
+      const actorRoleScopes = await this.projectVisibility.effectiveRoleScopesInTransaction(this.prisma, actorUserId, projectId);
+      const activeDelegators = await Promise.all((await activeApprovalDelegatorIds(this.prisma, actorUserId)).map(async userId => {
+        const roleScopes = await this.projectVisibility!.effectiveRoleScopesInTransaction(this.prisma, userId, projectId);
+        return { userId, roleScopes, roleKeys: resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys) };
+      }));
+      let fallback = emptyCurrentPaymentApprovalReview();
+      for (const index of activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex)) {
+        const identity = resolveOrdinaryPaymentDuty(instance.frozenNodes, index, {
+          actorUserId, actorRoleKeys: roleKeys, actorRoleScopes, activeDelegators
+        });
+        if (!identity) continue;
+        const approval = { id: instance.id, currentNodeIndex: index, updatedAt: instance.updatedAt, executionMode: "parallel" as const };
+        try {
+          assertOrdinaryApplicantCannotReview({ ...identity, actorUserId, actorRoleKeys: roleKeys, applicantUserId: instance.applicantUserId });
+          return { approval, access: { canAct: true, canReview: true, requiresSelfReviewConfirmation: actorUserId === instance.applicantUserId } };
+        } catch (error) {
+          if (!(error instanceof ForbiddenException)) throw error;
+          fallback = { approval, access: { canAct: true, canReview: false, requiresSelfReviewConfirmation: false } };
+        }
+      }
+      return fallback;
+    }
+    if (hasOrdinaryPaymentParallelMarker(instance.frozenNodes)) return emptyCurrentPaymentApprovalReview();
     const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
@@ -2552,7 +2585,8 @@ export class PaymentReadService {
     executionComplete: boolean,
     financeRecordedAmountCents: bigint,
     paidAmountCents: bigint,
-    evidenceFiles: PaymentDetailReadModel["evidenceFiles"]
+    evidenceFiles: PaymentDetailReadModel["evidenceFiles"],
+    parallelReview: boolean
   ): DetailActionReadModel[] {
     const workflowActions = [
       detailAction({
@@ -2584,7 +2618,7 @@ export class PaymentReadService {
         kind: "normal",
         roleKeys,
         skipRoleCheck: true,
-        enabled: approvalReviewAccess.canAct,
+        enabled: approvalReviewAccess.canAct && !parallelReview,
         disabledReason: "当前用户不是当前审批节点处理人"
       }),
       detailAction({
@@ -2593,7 +2627,7 @@ export class PaymentReadService {
         kind: "normal",
         roleKeys,
         skipRoleCheck: true,
-        enabled: approvalReviewAccess.canAct,
+        enabled: approvalReviewAccess.canAct && !parallelReview,
         disabledReason: "当前用户不是当前审批节点处理人"
       })
     ];

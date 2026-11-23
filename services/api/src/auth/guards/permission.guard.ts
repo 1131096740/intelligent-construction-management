@@ -1,3 +1,4 @@
+import { isOrdinaryPaymentParallelRound, resolveOrdinaryPaymentDuty } from "../../payment/ordinary-payment-parallel";
 import { matchesOwnFundReviewReceipt, type FundReviewDecision } from "../../fund-account/fund-account-receipt";
 import { FUND_REVIEW_ACTION, resolveFundReviewIdentity } from "../../fund-account/fund-account-duty";
 import { scopedSpotDutyNodeIndexes } from "../../approval/spot-approval-duty-access";
@@ -131,7 +132,8 @@ export class PermissionGuard implements CanActivate {
             request.user.id,
             effectiveRoleKeys,
             projectId,
-            roleScopes
+            roleScopes,
+            requiredAction
           )
         : null;
       if (governedApprovalAccess === false) {
@@ -331,7 +333,8 @@ export class PermissionGuard implements CanActivate {
     userId: string,
     roleKeys: RoleKey[],
     projectId?: string,
-    roleScopes?: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] }
+    roleScopes?: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] },
+    requiredAction?: BusinessAction
   ): Promise<boolean | null> {
     const target: {
       businessType: string;
@@ -384,8 +387,13 @@ export class PermissionGuard implements CanActivate {
       if (!version || version.numericProtocolVersion !== 2 || version.status !== "in_approval" || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint) return false;
       return Boolean(await contractParallelDutyIdentity(this.prisma as never, instance, projectId, userId, index));
     }
+    const ordinaryParallelPayment = requiredAction === "payment.approve" && target.businessType === "payment_request" && instance.flowType === "payment.approve" &&
+      isOrdinaryPaymentParallelRound(instance.frozenNodes);
+    const expectedIndex = request.body?.expectedNodeIndex;
+    if (ordinaryParallelPayment && (!projectId || request.body?.expectedApprovalInstanceId !== instance.id ||
+        typeof expectedIndex !== "number" || !Number.isInteger(expectedIndex))) return false;
     const node = instance.frozenNodes[instance.currentNodeIndex] as FrozenApprovalNode | undefined;
-    if (!node || !isGovernedFrozenApprovalNode(node)) return null;
+    if (!ordinaryParallelPayment && (!node || !isGovernedFrozenApprovalNode(node))) return null;
 
     if (target.businessType === "project_expense_request") {
       return Boolean(resolveApprovalReviewIdentity({
@@ -413,14 +421,16 @@ export class PermissionGuard implements CanActivate {
           };
         }))
       : [];
-    return Boolean(resolveApprovalReviewIdentity({
-      node,
+    const identity = {
       actorUserId: userId,
       actorRoleKeys: roleKeys,
       actorRoleScopes: roleScopes,
       activeDelegators,
       legacyContractRoute: target.businessType === "contract_version"
-    }));
+    };
+    return ordinaryParallelPayment
+      ? Boolean(resolveOrdinaryPaymentDuty(instance.frozenNodes, expectedIndex as number, identity))
+      : Boolean(resolveApprovalReviewIdentity({ node: node!, ...identity }));
   }
 
   private async resolvePaymentApprovalTarget(paymentId: string) {

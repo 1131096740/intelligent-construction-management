@@ -12,7 +12,8 @@ import { ApprovalSmsService, approvalDutyRichTemplateEnabled, type SmsOutcome } 
 import { approvalDutyTarget, type ApprovalDutySmsIntent } from "../approval/approval-duty-sms-intent";
 import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 
-const KIND = "registered_payment_execution_notification_v1";
+export const REGISTERED_PAYMENT_EXECUTION_NOTICE_KIND = "registered_payment_execution_notification_v1";
+const KIND = REGISTERED_PAYMENT_EXECUTION_NOTICE_KIND;
 const DUTY = "payment_execution";
 const key = (...parts: string[]) => createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};

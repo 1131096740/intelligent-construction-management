@@ -25,7 +25,8 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
-import { finalApprovalEvidence, approvalEvidenceMetadata, settlementApprovalActionSetHash } from "./approval-evidence";
+import { finalApprovalEvidence, approvalEvidenceMetadata, settlementApprovalActionSetHash, type ApprovalEvidenceAction } from "./approval-evidence";
+import { paymentParallelRoundEvidence } from "../payment/ordinary-payment-parallel";
 import { verifyApprovalSignatureSnapshot } from "./approval-signature-snapshot";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 import {
@@ -153,6 +154,14 @@ const ACTION_LABELS: Record<string, string> = {
   remind: "催办",
   node_skipped: "自动跳过"
 };
+
+function approvalFormEvidence<T extends ApprovalEvidenceAction>(
+  instance: { id: string; businessId: string; businessType: string; flowType?: string; frozenNodes: unknown }, status: string, logs: readonly T[]
+) {
+  return instance.businessType === "payment_request" && instance.flowType === "payment.approve"
+    ? paymentParallelRoundEvidence(status, instance.frozenNodes, logs, instance)
+    : finalApprovalEvidence(status, instance.frozenNodes, logs);
+}
 
 const BUSINESS_TYPE_LABELS: Record<string, string> = {
   ...ADDITIONAL_APPROVAL_TITLES,
@@ -577,7 +586,7 @@ export class ApprovalFormService {
       const logs = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
       const incomplete = pendingContract || pendingParallelRound ||
         (businessType === "spot_procurement_version" && instance.status === "approval_pending" && isParallelApprovalRound(instance.frozenNodes));
-      finalApprovalEvidence(incomplete ? "approval_pending" : instance.status, instance.frozenNodes, logs);
+      approvalFormEvidence(instance, incomplete ? "approval_pending" : instance.status, logs);
       await additionalApprovalFacts(this.prisma, businessType, businessId, logs, instance.id);
       return incomplete ? { available: true, incomplete: true } : { available: true };
     } catch (error) {
@@ -614,7 +623,7 @@ export class ApprovalFormService {
       let available = true;
       let code = BUSINESS_TYPE_LABELS[instance.businessType];
       try {
-        finalApprovalEvidence(instance.status, instance.frozenNodes, logs);
+        approvalFormEvidence(instance, instance.status, logs);
         const facts = await additionalApprovalFacts(this.prisma, instance.businessType, instance.businessId, logs, instance.id);
         code = facts?.code ?? await this.resolveBusinessCode(this.prisma, instance.businessType, instance.businessId);
       } catch (error) {
@@ -1350,6 +1359,7 @@ export class ApprovalFormService {
     businessType: string;
     businessId: string;
     applicantUserId: string;
+    flowType?: string;
     frozenNodes: unknown;
   }, client?: ApprovalFormClient, pendingContract?: Record<string, unknown>, evidenceStatus?: string): Promise<RenderInput> {
     const prisma = client ?? (this.prisma as ApprovalFormClient);
@@ -1358,7 +1368,7 @@ export class ApprovalFormService {
       orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });
 
-    const logs = finalApprovalEvidence(evidenceStatus ?? (pendingContract ? "approval_pending" : instance.status), instance.frozenNodes, allLogs);
+    const logs = approvalFormEvidence(instance, evidenceStatus ?? (pendingContract ? "approval_pending" : instance.status), allLogs);
 
     let approvalActionSetHash: string | undefined;
     if (instance.businessType === "settlement") {

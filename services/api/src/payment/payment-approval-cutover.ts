@@ -6,9 +6,8 @@ import { verifyApprovalSignatureSnapshot } from "../approval/approval-signature-
 import { hasVersionedApprovalNodes } from "../approval/parallel-approval-protocol";
 import type { PrismaService } from "../database/prisma.service";
 import type { FileService } from "../file/file.service";
+import { PAYMENT_DUTY_NOTICE_KIND, PAYMENT_DUTY_NOTICE_OUTCOMES } from "./ordinary-payment-parallel";
 
-const NOTICE_KIND = "payment_approval_duty_notification";
-const NOTICE_OUTCOMES = new Set(["dispatch_claimed", "accepted", "failed", "unknown", "cancelled"]);
 const BUSINESS_ROLES = new Set<string>(BUSINESS_APPROVAL_ROLES);
 const CONTRACT_PAYMENT_SOURCES = ["settlement", "signed_settlement", "contract_advance", "contract_due"];
 const hasText = (value: unknown): value is string => typeof value === "string" && !!value.trim();
@@ -71,7 +70,7 @@ function verifyNoticeHistory(
   const entries = notices.map(log => ({ log, metadata: approvalEvidenceMetadata(log.metadata) }));
   const invalid = () => new PaymentCutoverEvidenceError("invalid_notification_history", "原付款审批通知记录不一致");
   for (const { log, metadata } of entries) {
-    if (metadata.kind !== NOTICE_KIND || log.actorUserId !== applicantId) throw invalid();
+    if (metadata.kind !== PAYMENT_DUTY_NOTICE_KIND || log.actorUserId !== applicantId) throw invalid();
     if (metadata.event !== "queued") continue;
     if (metadata.phase !== undefined || metadata.paymentId !== payment.id || metadata.projectId !== payment.projectId ||
         !hasText(metadata.recipientId) || !hasText(metadata.anchorId) || !openedAt.has(metadata.anchorId) ||
@@ -85,7 +84,7 @@ function verifyNoticeHistory(
       const first = hasText(metadata.retryOf) && queued.get(metadata.retryOf);
       if (!first || metadata.retryOf === log.id || first.anchorId !== metadata.anchorId ||
           first.recipientId !== metadata.recipientId || first.roundRevision !== metadata.roundRevision) throw invalid();
-    } else if (typeof metadata.event !== "string" || !NOTICE_OUTCOMES.has(metadata.event) ||
+    } else if (typeof metadata.event !== "string" || !PAYMENT_DUTY_NOTICE_OUTCOMES.has(metadata.event) ||
                !hasText(metadata.intentId) || !queued.has(metadata.intentId)) throw invalid();
   }
 }
@@ -165,7 +164,8 @@ export function inspectPendingPaymentApprovalCutover(
 ) {
   return prisma.$transaction(async tx => {
     await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-    return inspectPayment(tx, files, paymentId);
+    const { plan } = await inspectPaymentApprovalHistory(tx, files, paymentId);
+    return plan;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
 
@@ -183,7 +183,7 @@ export function inspectPendingPaymentApprovalInventory(
     let replayed = 0;
     for (const { id } of payments) {
       try {
-        await inspectPayment(tx, files, id);
+        await inspectPaymentApprovalHistory(tx, files, id);
         replayed++;
       } catch (error) {
         const reason = error instanceof PaymentCutoverEvidenceError ? error.reason
@@ -197,15 +197,16 @@ export function inspectPendingPaymentApprovalInventory(
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 60_000 });
 }
 
-async function inspectPayment(
+export async function inspectPaymentApprovalHistory(
   tx: Prisma.TransactionClient,
   files: Pick<FileService, "getFileBuffer">,
   paymentId: string
 ) {
   const payment = await tx.paymentRequest.findUnique({
-    where: { id: paymentId }, select: { id: true, projectId: true, status: true }
+    where: { id: paymentId }, select: { id: true, projectId: true, status: true, sourceType: true, paidAmountCents: true, approvedAmountCents: true }
   });
-  if (payment?.status !== "approval_pending") {
+  if (payment?.status !== "approval_pending" || !CONTRACT_PAYMENT_SOURCES.includes(payment.sourceType) ||
+      payment.paidAmountCents !== 0n || payment.approvedAmountCents !== null) {
     throw new ConflictException("只有在途普通付款可核对审批切换记录");
   }
   const rounds = await tx.approvalInstance.findMany({
@@ -235,5 +236,6 @@ async function inspectPayment(
     }
     verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
   }
-  return { roundId: round.id, completedActionIds: effective.map(log => log.id), pendingDuties };
+  const plan = { roundId: round.id, completedActionIds: effective.map(log => log.id), pendingDuties };
+  return { plan, payment, round };
 }

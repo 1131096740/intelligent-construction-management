@@ -528,6 +528,7 @@ export interface PaymentReviewApprovalContext {
   expectedNodeIndex: number;
   expectedApprovalUpdatedAt: string;
   canReturnForRevision?: true;
+  executionMode?: "parallel";
 }
 
 export interface PaymentExecutionContext {
@@ -7885,7 +7886,8 @@ function assertPaymentApprovalReviewPreflight(
     coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
     coordinates.expectedApprovalUpdatedAt !==
       context.expectedApprovalUpdatedAt ||
-    (context.decision === "return_to_applicant" && coordinates.canReturnForRevision !== true)
+    (context.decision === "return_to_applicant" && coordinates.canReturnForRevision !== true) ||
+    (coordinates.executionMode === "parallel" && context.approvedAmountCents !== undefined)
   ) {
     throw new Error(
       "付款审批资格或审批坐标已变化，请重新读取当前付款"

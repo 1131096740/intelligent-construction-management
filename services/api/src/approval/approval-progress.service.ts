@@ -1,3 +1,4 @@
+import { isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
 import { companyTransferReminderIntent, contractReminderIntent, expenseReminderIntent, paymentReminderIntent, settlementReminderIntent, spotApplicationReminderIntent, spotPaymentReminderIntent } from "./approval-reminder-business-intent";
 import { generalProcurementDutySmsIntent } from "../general-procurement/general-procurement-request-facts";
 import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyId, generalRequestDutyIdentity, generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
@@ -324,8 +325,15 @@ export class ApprovalProgressService {
         generalNodeIds.push([...new Set(ids)]);
       }
     }
+    const ordinaryParallelPayment = instance.businessType === "payment_request" && instance.flowType === "payment.approve" &&
+      isOrdinaryPaymentParallelRound(instance.frozenNodes);
+    const effectiveApprovals = ordinaryParallelPayment
+      ? (ACTIVE.has(instance.status) || instance.status === "approved"
+        ? paymentParallelRoundEvidence(ACTIVE.has(instance.status) ? "approval_pending" : instance.status, instance.frozenNodes, logs, instance)
+        : [])
+      : null;
     const nodeIds = rawNodes.map((node, nodeIndex) => parallelGeneral ? generalNodeIds[nodeIndex] : isParallelApprovalRound(instance.frozenNodes) && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
-      ? [...new Set(logs.filter(log => log.action === "approve" && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")).map(log => log.actorUserId))]
+      ? [...new Set((effectiveApprovals ?? logs).filter(log => log.action === "approve" && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")).map(log => log.actorUserId))]
       : [...new Set([
       ...(isGovernedFrozenApprovalNode(node) ? (typeof node.selectedUserId === "string" ? [node.selectedUserId] : frozenCandidateUserIds(node)) : legacyCandidates(node)),
       ...node.assignments.flatMap(a => [object(a).fromUserId, object(a).toUserId].filter((v): v is string => typeof v === "string")),
@@ -370,10 +378,12 @@ export class ApprovalProgressService {
       if (!user.isActive) return false;
       if (parallelGeneral) return activeIndexes.some(index => generalNodeIds[index]?.includes(user.id));
       const actorRoleKeys = allRoles(user.id);
-      const identity = activeIndexes.map(index => resolveApprovalReviewIdentity({
-        node: rawNodes[index], actorUserId: user.id, actorRoleKeys, actorRoleScopes: roles.get(user.id), legacyContractRoute: instance.businessType === "contract_version",
-        activeDelegators: activeDelegatorsFor(user.id, index)
-      })).find(Boolean);
+      const identity = activeIndexes.map(index => {
+        const userIdentity = { actorUserId: user.id, actorRoleKeys, actorRoleScopes: roles.get(user.id), activeDelegators: activeDelegatorsFor(user.id, index) };
+        return ordinaryParallelPayment
+          ? resolveOrdinaryPaymentDuty(rawNodes, index, userIdentity)
+          : resolveApprovalReviewIdentity({ node: rawNodes[index], ...userIdentity, legacyContractRoute: instance.businessType === "contract_version" });
+      }).find(Boolean);
       if (!identity || (instance.businessType === "general_procurement" && identity.viaAssignment)) return false;
       if (instance.businessType === "company_transfer" && instance.applicantUserId === user.id) return false;
       if (instance.businessType === "fund_execution_case" || parallelSpot) return true;
@@ -394,17 +404,17 @@ export class ApprovalProgressService {
         throw error;
       }
     }) : [];
-    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, businessUnavailable, participant };
+    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, businessUnavailable, participant };
   }
 
   private project(context: Awaited<ReturnType<ApprovalProgressService["context"]>>, actorId: string) {
-    const { instance, rawNodes, nodeIds, byId, pending, logs, business, project } = context;
+    const { instance, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, business, project } = context;
     const person = (id: string) => ({ id, name: byId.get(id)?.name ?? "历史人员（姓名缺失）" });
     const requests = logs.filter(l => l.action === "remind" && object(l.metadata).kind === "sms_request");
     const active = ACTIVE.has(instance.status);
     const parallel = isParallelApprovalRound(instance.frozenNodes);
     // 当前轮有效签字：旧轮（驳回/重提之前）的签字不得继续展示或计入完成数。
-    const roundApprovals = currentApprovalRoundApprovals(logs);
+    const roundApprovals = effectiveApprovals ?? currentApprovalRoundApprovals(logs);
     const signaturesFor = (node: FrozenApprovalNode) => roundApprovals
       .filter(log => strings(node.roleKeys).includes(log.approvedRoleKey ?? ""))
       .map(log => ({
@@ -450,7 +460,7 @@ export class ApprovalProgressService {
           status, signatures,
           participants: nodeIds[index].map(id => {
             const evidence = parallel && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
-              ? logs.find(log => log.action === "approve" && log.actorUserId === id && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")) : null;
+              ? roundApprovals.find(log => log.action === "approve" && log.actorUserId === id && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")) : null;
             const frozenName = object(evidence?.metadata).approverName;
             return {id, name: typeof frozenName === "string" && frozenName.trim() ? frozenName : person(id).name};
           }), legacyRoster: !parallel && !isGovernedFrozenApprovalNode(node),

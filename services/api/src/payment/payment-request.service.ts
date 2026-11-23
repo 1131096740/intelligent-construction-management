@@ -32,6 +32,7 @@ import {
 import { Prisma, type PaymentRequest } from "@prisma/client";
 import {
   approvalElapsedHours,
+  canPerform,
   canCreatePaymentFromSettlementStatus,
   canRemindApproval,
   directPaymentAmountNature,
@@ -98,6 +99,10 @@ import {
 import type { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import type { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
 import { hasPaymentRevisionBasis } from "./payment-revision-basis";
+import { inspectPaymentApprovalHistory } from "./payment-approval-cutover";
+import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, ordinaryPaymentParallelNodes, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
+import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
   type ContractTakeoverBalanceRow,
@@ -258,7 +263,7 @@ type NormalizedCreatePaymentRequest = Omit<CreatePaymentRequestDto, "requestedAm
   requestedAmountCents: bigint;
 };
 
-type PaymentRevision = { draft: PaymentRequest; previousRoundId: string };
+type PaymentRevision = { draft: PaymentRequest; previousRoundId: string; parallel: boolean };
 
 type AuditWriteClient = Pick<Prisma.TransactionClient, "auditLog">;
 
@@ -427,7 +432,8 @@ export class PaymentRequestService {
     private readonly sharedAllocations?: PaymentExecutionSharedAllocationService,
     @Optional()
     private readonly registeredNotifications?: RegisteredPaymentNotificationService,
-    @Optional() private readonly approvalNotifications?: PaymentApprovalNotificationService
+    @Optional() private readonly approvalNotifications?: PaymentApprovalNotificationService,
+    @Optional() private readonly writeFreeze: OperationalWriteFreezeService = new OperationalWriteFreezeService()
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -759,7 +765,7 @@ export class PaymentRequestService {
         paymentTermsStageId: draft.paymentTermsStageId ?? undefined,
         paymentMatter: input.paymentMatter ?? draft.paymentMatter ?? undefined,
         amountCalculationExplanation: input.amountCalculationExplanation ?? draft.amountCalculationExplanation ?? undefined
-      }, actorUserId, { draft, previousRoundId: previous.id });
+      }, actorUserId, { draft, previousRoundId: previous.id, parallel: isOrdinaryPaymentParallelRound(previous.frozenNodes) });
     });
     await this.approvalNotifications?.afterCommit(payment.id);
     return paymentPostResponseToApi(payment);
@@ -807,7 +813,7 @@ export class PaymentRequestService {
         businessId: payment.id,
         status: "in_progress",
         currentNodeIndex: 0,
-        frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+        frozenNodes: (revision?.parallel ? ordinaryPaymentParallelNodes(PAYMENT_APPROVAL_NODES) : PAYMENT_APPROVAL_NODES) as unknown as Prisma.InputJsonValue,
         applicantUserId
       }
     });
@@ -2738,6 +2744,58 @@ export class PaymentRequestService {
     });
   }
 
+  /** Internal operation for the cutover runner while ordinary payment writes are stopped. */
+  migrateLegacyApprovalRound(paymentId: string, actorUserId: string) {
+    if (!this.writeFreeze.isFrozen("payment")) {
+      throw new ConflictException("请先暂停普通付款写入，再切换在途审批");
+    }
+    if (!this.prisma || !this.files || !this.approvalNotifications) {
+      throw new ConflictException("普通付款审批切换服务暂不可用");
+    }
+    const { files, approvalNotifications } = this;
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "PaymentRequest" WHERE id = ${paymentId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "ApprovalInstance" WHERE "businessType" = 'payment_request'
+        AND "businessId" = ${paymentId} AND "flowType" = 'payment.approve' AND status = 'in_progress' FOR UPDATE`;
+      const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+      if (!actor?.isActive) throw new ForbiddenException("付款审批切换经办人不存在或已停用");
+      const payment = await tx.paymentRequest.findUnique({ where: { id: paymentId } });
+      if (!payment || payment.status !== "approval_pending" || !hasPaymentRevisionBasis(payment) ||
+          await tx.paymentExecution.findFirst({ where: { paymentRequestId: paymentId }, select: { id: true } })) {
+        throw new ConflictException("只有可退回重提且尚未实付的普通付款可切换审批");
+      }
+      const active = await tx.approvalInstance.findMany({
+        where: { businessType: "payment_request", businessId: paymentId, flowType: "payment.approve", status: "in_progress" }, take: 2
+      });
+      if (active.length !== 1) throw new ConflictException("在途普通付款审批轮次不唯一");
+      if (isOrdinaryPaymentParallelRound(active[0].frozenNodes)) return { status: "already_mapped" as const };
+      const { plan, round } = await inspectPaymentApprovalHistory(tx, files, paymentId);
+      const oldNodes = round.frozenNodes as Array<Record<string, unknown>>;
+      if (oldNodes.some(node => (node.roleKeys as RoleKey[]).some(role => !canPerform("payment.approve", [role])))) {
+        throw new ConflictException("原付款职责含无付款审批权限的岗位，请核对原轮次");
+      }
+      if (oldNodes.slice(round.currentNodeIndex).some(duty => Array.isArray(duty.assignments) &&
+          duty.assignments.some(assignment => assignment?.kind === "delegate"))) {
+        throw new ConflictException("原付款审批委托没有冻结有效期，请核对原委托后再切换");
+      }
+      const frozenNodes = ordinaryPaymentParallelNodes(oldNodes).map((node, index) => ({
+        ...node,
+        ...(index === round.currentNodeIndex ? { legacyPaymentNoticeRevision: round.updatedAt.toISOString() } : {}),
+        ...(plan.completedActionIds[index] ? { legacyPaymentApprovalActionId: plan.completedActionIds[index] } : {})
+      }));
+      const migrated = await tx.approvalInstance.update({
+        where: { id: round.id }, data: { frozenNodes: frozenNodes as Prisma.InputJsonValue }
+      });
+      await approvalNotifications.queue(tx, payment, migrated, null);
+      const pendingNodeIndexes = plan.pendingDuties.map(duty => duty.nodeIndex);
+      await this.audit.record(tx, {
+        actorUserId, businessType: "payment_request", businessId: payment.id, action: "payment.approval.legacy_cutover",
+        metadata: { approvalInstanceId: round.id, completedActionIds: plan.completedActionIds, pendingNodeIndexes }
+      });
+      return { status: "mapped" as const, pendingNodeIndexes };
+    });
+  }
+
   async reviewApproval(
     paymentId: string,
     actorUserId: string,
@@ -2818,30 +2876,50 @@ export class PaymentRequestService {
       const instance = instances[0];
 
       const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
-      const currentNode = nodes[instance.currentNodeIndex];
+      const parallel = isOrdinaryPaymentParallelRound(instance.frozenNodes);
+      if (hasOrdinaryPaymentParallelMarker(instance.frozenNodes) && !parallel) {
+        throw new ConflictException("付款审批职责版本无法识别，请核对原审批记录");
+      }
+      const nodeIndex = parallel ? input.expectedNodeIndex : instance.currentNodeIndex;
+      if (parallel) {
+        if (!activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).includes(nodeIndex)) {
+          throw new ForbiddenException("该付款审批职责已办理或不在当前轮次");
+        }
+        if (input.decision === "reject_previous") {
+          throw new BadRequestException("并联审批只能退回原申请人修改");
+        }
+        if (input.approvedAmountCents !== undefined) {
+          throw new BadRequestException("付款审批中不能修改金额，请退回原申请人修改后重提");
+        }
+      }
+      const currentNode = nodes[nodeIndex];
 
       if (!currentNode) {
         throw new Error("当前付款审批节点异常，请刷新后重试");
       }
 
-      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
+      const actorRoleScopes = parallel ? await this.loadActorRoleScopes(tx, actorUserId, payment.projectId) : undefined;
+      const actorRoleKeys = actorRoleScopes
+        ? resolveEffectiveRoleKeys(actorRoleScopes.globalRoleKeys, actorRoleScopes.projectRoleKeys)
+        : await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
       const identityNode = input.decision === "approve"
         ? currentNode
         : { ...currentNode, approvedRoleKeys: [] };
-      let identity = resolveApprovalReviewIdentity({
-        node: identityNode,
-        actorUserId,
-        actorRoleKeys
-      });
+      const directIdentity = { actorUserId, actorRoleKeys, actorRoleScopes };
+      let identity = parallel ? resolveOrdinaryPaymentDuty(instance.frozenNodes, nodeIndex, directIdentity)
+        : resolveApprovalReviewIdentity({ node: identityNode, ...directIdentity });
       if (!identity) {
         const delegatorIds = this.delegations
           ? await this.delegations.activeDelegatorIds(tx, actorUserId)
           : await activeApprovalDelegatorIds(tx, actorUserId);
-        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
-          userId,
-          roleKeys: await this.loadActorRoleKeys(tx, userId, payment.projectId)
-        })));
-        identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
+        const activeDelegators = await Promise.all(delegatorIds.map(async userId => {
+          const roleScopes = parallel ? await this.loadActorRoleScopes(tx, userId, payment.projectId) : undefined;
+          const roleKeys = roleScopes ? resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys)
+            : await this.loadActorRoleKeys(tx, userId, payment.projectId);
+          return { userId, roleKeys, roleScopes };
+        }));
+        identity = parallel ? resolveOrdinaryPaymentDuty(instance.frozenNodes, nodeIndex, { ...directIdentity, activeDelegators })
+          : resolveApprovalReviewIdentity({ node: identityNode, ...directIdentity, activeDelegators });
       }
       if (!identity) {
         throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”付款审批节点`);
@@ -2869,7 +2947,7 @@ export class PaymentRequestService {
         !(payment.updatedAt instanceof Date) ||
         payment.updatedAt.getTime() !== expectedPaymentUpdatedAt.getTime() ||
         input.expectedApprovalInstanceId !== instance.id ||
-        input.expectedNodeIndex !== instance.currentNodeIndex ||
+        input.expectedNodeIndex !== nodeIndex ||
         !(instance.updatedAt instanceof Date) ||
         instance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
       ) {
@@ -2937,7 +3015,7 @@ export class PaymentRequestService {
         return updated;
       }
 
-      if (input.decision === "return_to_applicant") {
+      if (input.decision === "return_to_applicant" || (parallel && input.decision === "reject")) {
         const updated = await tx.paymentRequest.update({
           where: { id: payment.id },
           data: { status: "draft" }
@@ -3065,11 +3143,13 @@ export class PaymentRequestService {
       const approvedRoleKeys = new Set(nextNode.approvedRoleKeys ?? []);
       approvedRoleKeys.add(approvedRoleKey);
       nextNode.approvedRoleKeys = [...approvedRoleKeys];
-      nextNodes[instance.currentNodeIndex] = nextNode;
+      nextNodes[nodeIndex] = nextNode;
 
       const nodeCompleted =
         nextNode.mode === "any" || nextNode.roleKeys.every((role) => approvedRoleKeys.has(role));
-      const nextNodeIndex = nodeCompleted ? instance.currentNodeIndex + 1 : instance.currentNodeIndex;
+      const nextNodeIndex = parallel
+        ? activeApprovalNodeIndexes(nextNodes, instance.currentNodeIndex)[0] ?? nextNodes.length
+        : nodeCompleted ? instance.currentNodeIndex + 1 : instance.currentNodeIndex;
       const flowCompleted = nextNodeIndex >= nextNodes.length;
       const approvedAmountCents = requestedApprovedAmountCents ?? payment.requestedAmountCents;
 
@@ -3137,10 +3217,13 @@ export class PaymentRequestService {
           signatureFileIdSnapshot: signature.fileId,
           signatureSha256Snapshot: signature.sha256,
           signatureVersionIdSnapshot: signature.versionId,
-          ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
+          ...(parallel || selfReview.isSelfReview ? { metadata: {
+            ...(parallel ? { ordinaryPaymentDutyIndex: nodeIndex } : {}),
+            ...(selfReview.isSelfReview ? selfReview.metadata : {})
+          } } : {})
         }, signature)
       });
-      if (!flowCompleted && nodeCompleted) {
+      if (!parallel && !flowCompleted && nodeCompleted) {
         await this.approvalNotifications?.queue(tx, approved, nextRound, finalApprovalAction);
       }
       if (flowCompleted && payerFacts.paymentSubjectType === "our_company") {
@@ -5278,6 +5361,13 @@ export class PaymentRequestService {
   }
 
   private async loadActorRoleKeys(
+    tx: Parameters<PaymentRequestService["loadActorRoleScopes"]>[0], actorUserId: string, projectId: string
+  ): Promise<RoleKey[]> {
+    const roles = await this.loadActorRoleScopes(tx, actorUserId, projectId);
+    return resolveEffectiveRoleKeys(roles.globalRoleKeys, roles.projectRoleKeys);
+  }
+
+  private async loadActorRoleScopes(
     tx: {
       userPosition: {
         findMany(input: unknown): Promise<Array<{ positionId: string; projectId: string | null }>>;
@@ -5287,7 +5377,7 @@ export class PaymentRequestService {
     },
     actorUserId: string,
     projectId: string
-  ): Promise<RoleKey[]> {
+  ) {
     const [globalPositions, projectPositions, projectMembers] = await Promise.all([
       tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
       tx.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
@@ -5300,13 +5390,13 @@ export class PaymentRequestService {
       ? await tx.position.findMany({ where: { id: { in: positionIds } } })
       : [];
     const keys = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
-    return resolveEffectiveRoleKeys(
-      globalPositions.flatMap((position) => keys.get(position.positionId) ?? []),
-      [
+    return {
+      globalRoleKeys: globalPositions.flatMap((position) => keys.get(position.positionId) ?? []),
+      projectRoleKeys: [
         ...projectPositions.flatMap((position) => keys.get(position.positionId) ?? []),
         ...projectMembers.map((member) => member.positionKey as RoleKey)
       ]
-    );
+    };
   }
 
   private formatCents(value: bigint) {
@@ -5362,6 +5452,9 @@ export class PaymentRequestService {
 
       if (!instance) {
         throw new Error("未找到进行中的付款审批，请刷新后重试");
+      }
+      if (hasOrdinaryPaymentParallelMarker(instance.frozenNodes)) {
+        throw new ConflictException("并联付款审批需按当前职责办理，原转审入口不支持该轮审批");
       }
 
       const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];

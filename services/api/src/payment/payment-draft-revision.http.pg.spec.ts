@@ -10,6 +10,7 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { AppModule } from "../app.module";
 import { PrivateFileStorage } from "../file/file.service";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { PaymentRequestService } from "./payment-request.service";
 
 const run = process.env.ISSUE424_PAYMENT_REHEARSAL_URL ? it : it.skip;
 
@@ -144,8 +145,102 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
     ]);
     const signedAction = await prisma.approvalActionLog.findFirstOrThrow({ where: { approvalInstanceId: round.id, action: "approve" } });
     expect(signedAction).toMatchObject({ signatureVersionIdSnapshot: signatureVersion.id, signatureSha256Snapshot: digest });
+    const withPaymentWriteFreeze = async (run: () => Promise<void>) => {
+      const mode = process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+      const modules = process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+      process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+      process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "payment";
+      try {
+        await run();
+      } finally {
+        if (mode === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+        else process.env.OPERATIONAL_WRITE_FREEZE_MODE = mode;
+        if (modules === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+        else process.env.OPERATIONAL_WRITE_FREEZE_MODULES = modules;
+      }
+    };
+    if (sourceType === "contract_advance") {
+      const service = app.get(PaymentRequestService);
+      expect(() => service.migrateLegacyApprovalRound(payment.id, applicant)).toThrow("请先暂停普通付款写入");
+      const finance = await prisma.user.create({ data: {
+        name: "财务岗位虚构验收人", phone: "13900004249", passwordHash, mustChangePassword: false
+      } });
+      const financePosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_director" } });
+      await prisma.userPosition.create({ data: { userId: finance.id, positionId: financePosition.id } });
+      const delegate = await prisma.user.create({ data: {
+        name: "虚构财务受托人", phone: "13900004248", passwordHash, mustChangePassword: false
+      } });
+      await prisma.approvalDelegation.create({ data: {
+        fromUserId: finance.id, toUserId: delegate.id, startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() + 120_000)
+      } });
+      const art = await prisma.fileObject.create({ data: {
+        bucket: storage.bucketName(), objectKey: "parallel-finance.png", originalName: "虚构签名.png", mimeType: "image/png",
+        sizeBytes: png.length, uploadedByUserId: delegate.id, contentSha256: digest
+      } });
+      await storage.write(art.objectKey, png);
+      await prisma.handwrittenSignatureVersion.create({ data: { userId: delegate.id, fileId: art.id, contentSha256: digest, source: "canvas" } });
+      const financeToken = await login(finance.phone!);
+      const delegateToken = await login(delegate.phone!);
+      const noticeFor = async (token: string) => (await fetch(`${base}${path}/approval/duty-sms`, {
+        headers: { authorization: `Bearer ${token}` }
+      })).json();
+      const priorNotice = await noticeFor(reviewerToken);
+      expect(priorNotice).toEqual({ notice: { attemptId: expect.any(String), status: "queued", canRetry: false } });
+      await withPaymentWriteFreeze(async () => {
+        await storage.write(signatureFile.objectKey, Buffer.from("虚构签名文件损坏"));
+        await expect(service.migrateLegacyApprovalRound(payment.id, applicant)).rejects.toThrow("资料文件完整性校验失败");
+        expect(await prisma.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(signedRound);
+        await storage.write(signatureFile.objectKey, png);
+        await expect(service.migrateLegacyApprovalRound(payment.id, applicant)).resolves.toEqual({
+          status: "mapped", pendingNodeIndexes: [1, 2, 3, 4]
+        });
+        await expect(service.migrateLegacyApprovalRound(payment.id, applicant)).resolves.toEqual({ status: "already_mapped" });
+        expect((await post(financeToken, `${path}/approval`, { decision: "approve" })).status).toBe(503);
+      });
+      expect(await prisma.auditLog.count({ where: { businessId: payment.id, action: "payment.approval.legacy_cutover" } })).toBe(1);
+      expect(await noticeFor(reviewerToken)).toEqual(priorNotice);
+      expect(await noticeFor(financeToken)).toEqual({ notice: { attemptId: expect.any(String), status: "queued", canRetry: false } });
+      const financeDetail = await (await detail(financeToken)).json() as { reviewApprovalContext?: Record<string, unknown> };
+      expect(financeDetail.reviewApprovalContext).toMatchObject({ expectedNodeIndex: 2, executionMode: "parallel" });
+      const coordinates = { ...financeDetail.reviewApprovalContext };
+      delete coordinates.executionMode;
+      delete coordinates.canReturnForRevision;
+      expect((await post(financeToken, `${path}/approval`, { decision: "approve" })).status).toBe(403);
+      expect((await post(financeToken, `${path}/approval`, { ...coordinates, expectedNodeIndex: 1, decision: "approve" })).status).toBe(403);
+      expect((await post(financeToken, `${path}/approval`, { ...coordinates, decision: "approve", approvedAmountCents: "200" })).status).toBe(400);
+      expect((await post(delegateToken, `${path}/approval`, { ...coordinates, decision: "approve" })).status).toBe(201);
+      expect((await post(financeToken, `${path}/approval`, { ...coordinates, decision: "approve" })).status).toBe(403);
+      expect(await noticeFor(financeToken)).toEqual({ notice: null });
+      expect(await noticeFor(delegateToken)).toEqual({ notice: null });
+      expect(await noticeFor(reviewerToken)).toEqual(priorNotice);
+      const form = await fetch(`${base}/approval-forms/payment_request/${payment.id}/capability`, { headers: { authorization: `Bearer ${applicantToken}` } });
+      expect(await form.json()).toEqual({ available: true, incomplete: true });
+      const downloaded = await post(applicantToken, `/approval-forms/payment_request/${payment.id}/download`, {
+        confirmationPassword: password, downloadReason: "核对在途原签字"
+      });
+      expect(downloaded.status).toBe(201);
+      expect(Buffer.from(await downloaded.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
+      const projected = await fetch(`${base}/approval-progress/${round.id}`, { headers: { authorization: `Bearer ${applicantToken}` } });
+      expect(await projected.json()).toMatchObject({ parallelCompletion: { completed: 2, total: 5 },
+        nodes: [expect.objectContaining({ signatures: [expect.objectContaining({ id: signedAction.id })] }), ...Array(4).fill(expect.anything())]
+      });
+      expect(await prisma.approvalActionLog.findUnique({ where: { id: signedAction.id } })).toEqual(signedAction);
+      const projectApproval = await prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } });
+      expect(projectApproval.currentNodeIndex).toBe(1);
+      expect(await prisma.approvalActionLog.count({ where: { approvalInstanceId: round.id, action: "approve" } })).toBe(2);
+      expect(await prisma.approvalActionLog.findFirst({ where: { approvalInstanceId: round.id, action: "approve", approvedRoleKey: "finance_director" } }))
+        .toMatchObject({ actorUserId: delegate.id, representedUserId: finance.id });
+      Object.assign(signedRound, projectApproval);
+      Object.assign(pendingPayment, await prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } }));
+    } else if (sourceType === "contract_due") {
+      await withPaymentWriteFreeze(async () => {
+        await app!.get(PaymentRequestService).migrateLegacyApprovalRound(payment.id, applicant);
+      });
+      Object.assign(signedRound, await prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } }));
+    }
     const returned = await post(reviewerToken, `${path}/approval`, {
-      decision: "return_to_applicant", comment: "请把申请金额改为三元",
+      decision: sourceType === "contract_advance" || sourceType === "contract_due" ? "reject" : "return_to_applicant",
+      comment: "请把申请金额改为三元",
       expectedPaymentUpdatedAt: pendingPayment.updatedAt.toISOString(), expectedApprovalInstanceId: round.id,
       expectedNodeIndex: signedRound.currentNodeIndex, expectedApprovalUpdatedAt: signedRound.updatedAt.toISOString()
     });
@@ -186,6 +281,30 @@ run.each(["contract_advance", "contract_due", "settlement", "signed_settlement"]
       .toEqual([expect.objectContaining({ comment: "请把申请金额改为三元", signatureFileIdSnapshot: null })]);
     expect(await prisma.approvalActionLog.count({ where: { approvalInstanceId: latest.id, action: "approve" } })).toBe(0);
     expect(await prisma.paymentExecution.count({ where: { paymentRequestId: payment.id } })).toBe(0);
+
+    if (sourceType === "contract_due") {
+      for (const index of [4, 2, 0, 3, 1]) {
+        const [open, source] = await Promise.all([
+          prisma.approvalInstance.findUniqueOrThrow({ where: { id: latest.id } }),
+          prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } })
+        ]);
+        const accepted = await post(reviewerToken, `${path}/approval`, {
+          decision: "approve", expectedPaymentUpdatedAt: source.updatedAt.toISOString(), expectedApprovalInstanceId: open.id,
+          expectedNodeIndex: index, expectedApprovalUpdatedAt: open.updatedAt.toISOString()
+        });
+        expect(accepted.status).toBe(201);
+      }
+      expect(await prisma.paymentRequest.findUnique({ where: { id: payment.id } })).toMatchObject({
+        status: "approved_pending_payment", requestedAmountCents: 300n, approvedAmountCents: 300n, paidAmountCents: 0n
+      });
+      expect(await prisma.paymentExecution.count({ where: { paymentRequestId: payment.id } })).toBe(0);
+      const formalForm = await fetch(`${base}/approval-forms/payment_request/${payment.id}/capability`, {
+        headers: { authorization: `Bearer ${applicantToken}` }
+      });
+      expect(await formalForm.json()).toEqual({ available: true });
+      expect(await prisma.approvalActionLog.findMany({ where: { approvalInstanceId: latest.id, action: "approve" } }))
+        .toHaveLength(5);
+    }
 
     if (sourceType === "contract_advance" || sourceType === "signed_settlement") {
       const resubmitted = await prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } });
