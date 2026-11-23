@@ -1,0 +1,198 @@
+import { Prisma } from "@prisma/client";
+import {
+  SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+  SignedSettlementOperatingSourceAdapter
+} from "./signed-settlement-operating-source.adapter";
+
+function signedSettlement(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "signed-settlement-1",
+    projectId: "project-1",
+    contractId: "contract-1",
+    contractKind: "downstream",
+    state: "confirmed",
+    number: "JS-2026-001",
+    amountYuan: new Prisma.Decimal("1000.0000"),
+    confirmationNo: 3n,
+    reviewedAt: new Date("2026-11-20T00:00:00.000Z"),
+    reviewedByUserId: "contract-director-1",
+    confirmedContractSource: {
+      relationship: "inside",
+      sourceRecordId: "contract-version-1",
+      sourceVersion: 2,
+      contractTypeKey: "labor_subcontract",
+      counterpartyVersionId: "counterparty-version-1",
+      counterparty: "劳务公司",
+      payerKind: "participating_company",
+      payerVersionId: "company-version-1",
+      companyEntityId: "company-1",
+      affiliateAssignmentId: "affiliate-assignment-1",
+      affiliateBusinessPartyVersionId: "affiliate-version-1"
+    },
+    attachments: [{ fileId: "signed-file-1" }],
+    ...overrides
+  };
+}
+
+function fixture() {
+  const tx = {
+    signedContractSettlement: {
+      findMany: jest.fn().mockResolvedValue([signedSettlement()]),
+      findUnique: jest.fn().mockResolvedValue(signedSettlement())
+    },
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        operatingLedgerEffectiveDate: new Date("2026-11-01T00:00:00.000Z")
+      })
+    },
+    projectAffiliateAssignment: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "affiliate-assignment-1",
+        businessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        affiliateCreditCodeSnapshot: "91310000000000000X"
+      })
+    }
+  };
+  return { tx };
+}
+
+describe("SignedSettlementOperatingSourceAdapter", () => {
+  it("maps a positive confirmed signed settlement to one cost and one payable increase", async () => {
+    const { tx } = fixture();
+    const adapter = new SignedSettlementOperatingSourceAdapter();
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+      sourceBusinessId: "signed-settlement-1"
+    });
+    expect(snapshot).toMatchObject({
+      sourceType: "signed_contract_settlement",
+      sourceBusinessId: "signed-settlement-1",
+      sourceBusinessCode: "JS-2026-001",
+      sourceVersion: 3
+    });
+
+    const { entryKind, input } = adapter.toOperatingFactInput(snapshot!);
+    expect(entryKind).toBe("original");
+    expect(input).toMatchObject({
+      sourceType: "signed_contract_settlement",
+      sourceBusinessId: "signed-settlement-1",
+      factKind: "downstream_settlement",
+      amountCents: 100_000n,
+      direction: "neutral",
+      occurredAt: new Date("2026-11-20T00:00:00.000Z"),
+      confirmedAt: new Date("2026-11-20T00:00:00.000Z"),
+      confirmedByUserId: "contract-director-1",
+      subjects: {
+        debtor: { kind: "participating_company", id: "company-version-1" },
+        creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" }
+      }
+    });
+    expect(input.impacts).toHaveLength(2);
+    expect(input.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceImpactKey: "confirmed_cost",
+          impactKind: "confirmed_cost",
+          amountCents: 100_000n,
+          direction: "increase",
+          costCategoryCode: "crew_and_labor"
+        }),
+        expect.objectContaining({
+          sourceImpactKey: "payable_increase",
+          impactKind: "payable_increase",
+          amountCents: 100_000n,
+          direction: "increase"
+        })
+      ])
+    );
+  });
+
+  it("maps a negative settlement to cost and payable decreases with the same magnitude", async () => {
+    const { tx } = fixture();
+    tx.signedContractSettlement.findUnique.mockResolvedValue(
+      signedSettlement({ id: "signed-negative", amountYuan: new Prisma.Decimal("-8.0000") })
+    );
+    const adapter = new SignedSettlementOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+      sourceBusinessId: "signed-negative"
+    });
+
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input.amountCents).toBe(800n);
+    expect(input.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          impactKind: "confirmed_cost",
+          amountCents: 800n,
+          direction: "decrease"
+        }),
+        expect.objectContaining({
+          impactKind: "payable_decrease",
+          amountCents: 800n,
+          direction: "decrease"
+        })
+      ])
+    );
+  });
+
+  it("does not project a confirmed settlement for a contract type without settlement cost", async () => {
+    const { tx } = fixture();
+    tx.signedContractSettlement.findUnique.mockResolvedValue(
+      signedSettlement({
+        confirmedContractSource: {
+          sourceRecordId: "contract-version-1",
+          sourceVersion: 1,
+          contractTypeKey: "generic_contract",
+          counterpartyVersionId: "counterparty-version-1",
+          payerKind: "participating_company",
+          payerVersionId: "company-version-1"
+        }
+      })
+    );
+    const adapter = new SignedSettlementOperatingSourceAdapter();
+
+    await expect(
+      adapter.readSourceSnapshot(tx as never, {
+        projectId: "project-1",
+        sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+        sourceBusinessId: "signed-settlement-1"
+      })
+    ).resolves.toBeNull();
+  });
+
+  it("reads only confirmed downstream supported settlements for replay", async () => {
+    const { tx } = fixture();
+    tx.signedContractSettlement.findMany.mockResolvedValue([
+      signedSettlement(),
+      signedSettlement({
+        id: "outside",
+        contractKind: "outside_fact",
+        confirmedContractSource: {
+          sourceRecordId: "contract-version-2",
+          sourceVersion: 1,
+          contractTypeKey: "labor_subcontract",
+          counterpartyVersionId: "counterparty-version-1",
+          payerKind: "participating_company",
+          payerVersionId: "company-version-1"
+        }
+      })
+    ]);
+    const adapter = new SignedSettlementOperatingSourceAdapter();
+
+    const snapshots = await adapter.readProjectSnapshots(tx as never, "project-1");
+
+    expect(snapshots.map(snapshot => snapshot.sourceBusinessId)).toEqual([
+      "signed-settlement-1"
+    ]);
+    expect(tx.signedContractSettlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: "project-1", contractKind: "downstream", state: "confirmed" }
+      })
+    );
+  });
+});

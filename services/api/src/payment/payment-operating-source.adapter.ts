@@ -299,8 +299,13 @@ export class PaymentExecutionOperatingSourceAdapter
       sourceId: allocation.settlementId ?? allocation.sourceRowId,
       amountCents: allocation.amountCents.toString()
     }));
-    if (request.settlementId && payable.length === 0) {
-      payable.push({ sourceId: request.settlementId, amountCents: row.amountCents.toString() });
+    if (payable.length === 0) {
+      // 旧结算与已签结算都以“最近确认一期”作为应付冲减依据；一次实付
+      // 未拆分多来源时完整核销该依据，但绝不再生成成本影响。
+      const settlementSourceId = request.signedSettlementId ?? request.settlementId;
+      if (settlementSourceId) {
+        payable.push({ sourceId: settlementSourceId, amountCents: row.amountCents.toString() });
+      }
     }
     return {
       projectId: request.projectId,
