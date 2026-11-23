@@ -239,6 +239,9 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
     } });
     expect((await transferRepaymentUsage(prisma, { originalProxyId: original.id })).received).toBe(0n);
     expect((await transferRepaymentUsage(prisma, { originalProxyId: target.id })).received).toBe(800n);
+    // The corrected canonical plan must compile and resolve the third-party debtor
+    // (no operating anchor is seeded in this guard-only fixture, hence zero rows).
+    await expect(prisma.$queryRaw`SELECT * FROM public.jg_company_transfer_canonical_correction_plan(${correctionId})`).resolves.toEqual([]);
 
     const reader = new CompanyTransferReadService(prisma as never, new ProjectVisibilityService(prisma as never));
     const view = await reader.list(financeDirector, { projectId: a.projectId });
