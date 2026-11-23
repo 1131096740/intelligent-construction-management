@@ -198,8 +198,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 29, files: 87, tests: 565 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 566);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 30, files: 88, tests: 568 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 569);
 });
 
 test("automatic-only lists the complete CI-eligible denominator and defers the manual operator", () => {
@@ -283,8 +283,8 @@ module.exports.executeAutomaticFixture = async argv => {
   assert.deepEqual(task398Shas, { task398_shared_standard: candidateSha, task398_browser: candidateSha, task398_browser_completion: candidateSha, task407_public_cash_handover: candidateSha, task409_principal_return: candidateSha, task410_company_proxy_repayment: candidateSha });
   assert.equal(receipt.executionScope, "automatic-only");
   assert.deepEqual(receipt.executionInventory.ciEligible, manifest.executionInventory.ciEligible);
-  assert.equal(receipt.coveredFiles, 87);
-  assert.equal(receipt.coveredTests, 565);
+  assert.equal(receipt.coveredFiles, 88);
+  assert.equal(receipt.coveredTests, 568);
   assert.deepEqual(receipt.deferredManualOnly, {
     groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
   });
@@ -556,19 +556,19 @@ test("manifest preserves source inventory and one separately invoked task01 oper
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 88,
-    fullyPendingSuites: 76,
+    pendingFiles: 89,
+    fullyPendingSuites: 77,
     partiallyPendingSuites: 12,
-    pendingTests: 566,
-    coveredFiles: 88,
-    coveredTests: 566,
+    pendingTests: 569,
+    coveredFiles: 89,
+    coveredTests: 569,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 565);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 568);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -999,7 +999,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=566/u
+    /inventory\.coveredTests=26，派生值=569/u
   );
 });
 
