@@ -37,7 +37,7 @@ if(mode==='--current-320') {
   if(candidate.mode!=='current-320'||candidate.migrationCount!==328||candidate.predecessor?.migrationCount!==295||
       candidate.predecessor.ledgerSha256!==m.final||candidate.tails.length!==33||
       typeof candidate.sourceTree!=='string'||!/^[0-9a-f]{40}$/u.test(candidate.sourceTree)||
-      candidate.ledgerSha256!=='08b255ea515c2c3f04995d8686379ffd1c19b5c35718373802a55f8ecf8c8a6b')process.exit(65);
+      candidate.ledgerSha256!=='afe91cc0887a53d0cf630f28f8619172362c8199c69a4678e971f2435f557891')process.exit(65);
 } else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
 [[ -z $(docker ps -q) ]] || exit 65

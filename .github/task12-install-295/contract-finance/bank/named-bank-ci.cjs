@@ -15,11 +15,11 @@ const file='src/database/project-affiliate-company-contract-db.spec.ts';
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
 const runArgs=current320?args.slice(1):args;
-const candidateDigest320='08b255ea515c2c3f04995d8686379ffd1c19b5c35718373802a55f8ecf8c8a6b';
+const candidateDigest320='afe91cc0887a53d0cf630f28f8619172362c8199c69a4678e971f2435f557891';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
 function verifyExecutionFiles() {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));
-  assert.equal(sha(raw),current320?'9a2ea16744424d2a1a5b63ec6d22a01fff66ec96363305b7bbb53bbd5e1a813d':'ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041','BANK_295_EXECUTION_MANIFEST');
+  assert.equal(sha(raw),current320?'6cd22a2f72dacf6cde2d35332c4d1dea45cab47a1aa5d790a29ce905c45d4ede':'ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
   assert.equal(files.length,current320?1946:1814,'BANK_295_EXECUTION_COUNT');
   for(const [relative,digest] of files) {

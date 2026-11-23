@@ -151,7 +151,7 @@ ALTER TABLE "PaymentExecutionRefund"
 DROP INDEX IF EXISTS "SpotProcurementPayment_one_current_per_procurement";
 CREATE UNIQUE INDEX "SpotProcurementPayment_one_current_per_procurement_non_batch"
   ON "SpotProcurementPayment"("procurementId")
-  WHERE "status" NOT IN ('invalidated', 'voided', 'withdrawn', 'rejected')
+  WHERE "status" NOT IN ('invalidated', 'voided', 'withdrawn', 'rejected', 'returned')
     AND "actualPurchaseBatchId" IS NULL;
 
 -- 约束以 DROP IF EXISTS + ADD 形式重复声明，便于真实 PG 用例先由
