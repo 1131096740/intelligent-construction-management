@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import { calculateSettlementPaymentCapacityBigInt, CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES, type SettlementCapacityPaymentRequest } from "../payment/settlement-payment-capacity";
+import { calculateSignedSettlementPaymentCapacity, settlementAmountYuanToCents } from "../payment/signed-settlement-payment-capacity";
 
 const decimal = Prisma.Decimal.clone({ precision: 50 });
 
@@ -36,6 +37,10 @@ export function signedSettlementPaymentBalance(input: {
   proxyPaidCents: bigint;
   historicalOutstandingCents: bigint;
   requests: readonly SettlementCapacityPaymentRequest[];
+  opening?: {
+    historicalAdvancePaidCents?: bigint | null;
+    historicalAdvanceDeductedCents?: bigint | null;
+  } | null;
 }) {
   const centsCapacity = calculateSettlementPaymentCapacityBigInt({
     payableAmountCents: 0n,
@@ -43,15 +48,39 @@ export function signedSettlementPaymentBalance(input: {
     proxyPaidAmountCents: input.proxyPaidCents,
     paymentRequests: input.requests
   });
-  const unpaidCents = centsCapacity.outstandingPaymentCents + input.historicalOutstandingCents;
-  const occupiedCents = centsCapacity.occupiedCents + input.historicalOutstandingCents;
-  const balance = new decimal(input.confirmedYuan).minus(new decimal(occupiedCents.toString()).div(100));
-  const available = decimal.max(balance, 0);
+  const historicalAdvanceCents =
+    (input.opening?.historicalAdvancePaidCents ?? 0n) -
+    (input.opening?.historicalAdvanceDeductedCents ?? 0n);
+  const advancePaidCents =
+    input.requests.reduce(
+      (total, request) =>
+        request.sourceType === "contract_advance"
+          ? total + request.paidAmountCents
+          : total,
+      0n
+    ) + (historicalAdvanceCents > 0n ? historicalAdvanceCents : 0n);
+  const capacity = calculateSignedSettlementPaymentCapacity({
+    confirmedCents: settlementAmountYuanToCents(new decimal(input.confirmedYuan)),
+    paidCents: input.recordedPaidCents + (historicalAdvanceCents > 0n ? historicalAdvanceCents : 0n),
+    advancePaidCents,
+    outstandingCents: centsCapacity.outstandingPaymentCents,
+    proxyPaidCents: input.proxyPaidCents,
+    historicalOutstandingCents: input.historicalOutstandingCents
+  });
+  const exactBalanceYuan = new decimal(input.confirmedYuan).minus(
+    new decimal(capacity.occupiedCents.toString()).div(100)
+  );
   return {
-    recordedPaidYuan: new decimal((input.recordedPaidCents + input.proxyPaidCents).toString()).div(100).toFixed(4),
-    outstandingYuan: new decimal(unpaidCents.toString()).div(100).toFixed(4),
-    unoccupiedYuan: balance.toFixed(4),
-    wholeCentLimit: available.times(100).floor().toFixed(0)
+    recordedPaidYuan: new decimal(capacity.netPaidCents.toString()).div(100).toFixed(4),
+    outstandingYuan: new decimal((capacity.outstandingCents + input.historicalOutstandingCents).toString()).div(100).toFixed(4),
+    unoccupiedYuan: exactBalanceYuan.toFixed(4),
+    wholeCentLimit: capacity.remainingCents.toString(),
+    advancePaidYuan: new decimal(capacity.advancePaidCents.toString()).div(100).toFixed(4),
+    unsettledAdvanceYuan: new decimal(capacity.unsettledAdvanceCents.toString()).div(100).toFixed(4),
+    overpayYuan: new decimal(capacity.overpayCents.toString()).div(100).toFixed(4),
+    abnormalOverpayYuan: new decimal(capacity.abnormalOverpayCents.toString()).div(100).toFixed(4),
+    capacityShortfallYuan: new decimal(capacity.capacityShortfallCents.toString()).div(100).toFixed(4),
+    suspended: capacity.suspended
   };
 }
 
@@ -62,9 +91,10 @@ export async function loadDownstreamPaymentBasis(tx: Prisma.TransactionClient, p
     includeAttachments ? tx.contractArchiveFile.findFirst({ where: { contractVersionId, status: "confirmed", confirmedAt: { not: null } },
       orderBy: [{ confirmedAt: "desc" }, { id: "desc" }], select: { id: true, fileId: true } }) : null,
     tx.paymentRequest.findMany({ where: { projectId, contractId },
-      select: { status: true, requestedAmountCents: true, approvedAmountCents: true, paidAmountCents: true } }),
+      select: { sourceType: true, status: true, requestedAmountCents: true, approvedAmountCents: true, paidAmountCents: true } }),
     tx.contractTakeover.findMany({ where: { projectId, contractId, takeoverStatus: "confirmed", historicalBalanceConfirmedAt: { not: null } }, take: 2,
       select: { historicalPaidCents: true, historicalProxyPaidCents: true,
+        historicalAdvancePaidCents: true, historicalAdvanceDeductedCents: true,
         historicalRetentionWithheldCents: true, historicalRetentionReleasedCents: true, otherConfirmedOccupancyCents: true,
         historicalApprovalPendingPaymentCents: true, historicalApprovedPendingPaymentCents: true } })
   ]);
@@ -103,6 +133,6 @@ export async function loadDownstreamPaymentBasis(tx: Prisma.TransactionClient, p
   return {
     legacyConfirmed,
     contractAttachmentIds: contractEvidence.length ? contractEvidence.map(row => row.fileId) : archive?.fileId ? [archive.fileId] : [],
-    capacity: signedSettlementPaymentBalance({ confirmedYuan, recordedPaidCents, proxyPaidCents, historicalOutstandingCents, requests })
+    capacity: signedSettlementPaymentBalance({ confirmedYuan, recordedPaidCents, proxyPaidCents, historicalOutstandingCents, requests, opening })
   };
 }

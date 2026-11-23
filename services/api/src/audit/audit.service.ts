@@ -33,6 +33,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "auth.login": "登录",
   "auth.application.login": "登录本人入职申请",
   "auth.logout": "退出登录",
+  "payment.capacity.recheck": "重校付款容量",
+  "payment.capacity.blocked": "付款容量不足拦截",
   "permission.change": "权限变更",
   "operating_projection.export": "导出经营投影",
   "project.owner_settlement.record": "登记业主结算",

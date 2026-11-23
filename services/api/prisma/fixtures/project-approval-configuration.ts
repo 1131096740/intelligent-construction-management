@@ -7,7 +7,7 @@ export function mockConfiguredApprovalAssignments(tx: { $queryRaw: jest.Mock }) 
       return Promise.resolve([{ projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true }]);
     }
     if (query.sql.includes('SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up')) {
-      return Promise.resolve(["comprehensive_director", "material_director", "finance_director", "chairman"].map((roleKey) => ({ roleKey, userId: `reviewer-${roleKey}` })));
+      return Promise.resolve(["comprehensive_director", "material_director", "finance_director", "contract_director", "chairman"].map((roleKey) => ({ roleKey, userId: `reviewer-${roleKey}` })));
     }
     return original(query);
   });

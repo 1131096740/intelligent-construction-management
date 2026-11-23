@@ -11,6 +11,7 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
 import { currentRegisteredPaymentDomain } from "../payment/registered-payment-domain";
+import { loadSignedSettlementPaymentBasis } from "../payment/signed-settlement-payment-capacity";
 
 const run = process.env.RUN_LINE_A_REAL_DB === "1" ? describe : describe.skip;
 
@@ -25,6 +26,9 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     contractA: "linea-contract-a", versionA: "linea-contract-a-v1",
     contractB: "linea-contract-b", versionB: "linea-contract-b-v1",
     contractC: "linea-contract-c", versionC: "linea-contract-c-v1",
+    contractD: "linea-contract-d", versionD: "linea-contract-d-v1",
+    contractE: "linea-contract-e", versionE: "linea-contract-e-v1",
+    contractF: "linea-contract-f", versionF: "linea-contract-f-v1",
     staff: "linea-user-staff", director: "linea-user-director",
     manager: "linea-user-manager", finance: "linea-user-finance"
   };
@@ -61,6 +65,19 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
   };
   const readBaseInfo = (detail: { baseInfo: Array<{ label: string; value: string }> }, label: string) =>
     detail.baseInfo.find(item => item.label === label)?.value;
+  const seedConfirmedSignedSettlement = async (input: {
+    id: string; contractId: string; versionId: string; number: string;
+    amountYuan: string; confirmationNo: bigint; reviewedAt: Date;
+  }) => owner.signedContractSettlement.create({ data: {
+    id: input.id, projectId: ids.project, contractKind: "downstream", contractId: input.contractId,
+    ownerUserId: ids.director, number: input.number, amountYuan: input.amountYuan,
+    state: "confirmed", revision: 2, submittedAt: input.reviewedAt, reviewedAt: input.reviewedAt,
+    reviewedByUserId: ids.director, confirmationNo: input.confirmationNo,
+    confirmedContractSource: {
+      sourceRecordId: input.versionId, sourceVersion: "1", relationship: "inside",
+      contractTypeKey: "labor_subcontract"
+    }
+  } });
 
   beforeAll(async () => {
     const target = new URL(process.env.DATABASE_URL ?? "");
@@ -89,9 +106,11 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { key: "contract_staff", name: "合同员" },
       { key: "project_manager", name: "项目经理" },
       { key: "finance_staff", name: "财务" },
-      { key: "finance_director", name: "财务主管" }
+      { key: "finance_director", name: "财务主管" },
+      { key: "comprehensive_director", name: "综合部主管" },
+      { key: "chairman", name: "董事长" }
     ], skipDuplicates: true });
-    const positions = await owner.position.findMany({ where: { key: { in: ["contract_director", "contract_staff", "project_manager", "finance_staff", "finance_director"] } } });
+    const positions = await owner.position.findMany({ where: { key: { in: ["contract_director", "contract_staff", "project_manager", "finance_staff", "finance_director", "comprehensive_director", "chairman"] } } });
     const positionId = (key: string) => positions.find(position => position.key === key)!.id;
     await owner.userPosition.createMany({ data: [
       { userId: ids.director, positionId: positionId("contract_director"), projectId: null },
@@ -100,8 +119,10 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     ] });
     await owner.projectMember.createMany({ data: [
       { projectId: ids.project, userId: ids.staff, positionKey: "contract_staff" },
+      { projectId: ids.project, userId: ids.staff, positionKey: "comprehensive_director" },
       { projectId: ids.project, userId: ids.manager, positionKey: "project_manager" },
-      { projectId: ids.project, userId: ids.finance, positionKey: "finance_staff" }
+      { projectId: ids.project, userId: ids.finance, positionKey: "finance_staff" },
+      { projectId: ids.project, userId: ids.director, positionKey: "chairman" }
     ] });
 
     await owner.companyEntity.create({ data: { id: ids.company, name: "隔离参与公司", unifiedSocialCreditCode: "91350100LINEA00001",
@@ -140,7 +161,10 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     await owner.contract.createMany({ data: [
       { id: ids.contractA, code: "LINEA-HT-A", name: "隔离下游合同", contractTypeKey: "labor_subcontract", ...contractBase },
       { id: ids.contractB, code: "LINEA-HT-B", name: "隔离其他合同", contractTypeKey: "generic_contract", ...contractBase },
-      { id: ids.contractC, code: "LINEA-HT-C", name: "隔离框架其他合同", contractTypeKey: "other", ...contractBase }
+      { id: ids.contractC, code: "LINEA-HT-C", name: "隔离框架其他合同", contractTypeKey: "other", ...contractBase },
+      { id: ids.contractD, code: "LINEA-HT-D", name: "隔离已签结算付款合同D", contractTypeKey: "labor_subcontract", ...contractBase },
+      { id: ids.contractE, code: "LINEA-HT-E", name: "隔离付款并发合同E", contractTypeKey: "labor_subcontract", ...contractBase },
+      { id: ids.contractF, code: "LINEA-HT-F", name: "隔离调减暂停合同F", contractTypeKey: "labor_subcontract", ...contractBase }
     ] });
     const versionBase = {
       changeType: "original", status: "effective", amountCents: 1_000_000n, numericProtocolVersion: 1,
@@ -155,7 +179,10 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: ids.versionA, contractId: ids.contractA, versionNo: 1, ...versionBase },
       { id: ids.versionB, contractId: ids.contractB, versionNo: 1, ...versionBase },
       { id: ids.versionC, contractId: ids.contractC, versionNo: 1, ...versionBase,
-        amountCents: 0n, amountLimitType: "unlimited", pricingNature: "framework" }
+        amountCents: 0n, amountLimitType: "unlimited", pricingNature: "framework" },
+      { id: ids.versionD, contractId: ids.contractD, versionNo: 1, ...versionBase },
+      { id: ids.versionE, contractId: ids.contractE, versionNo: 1, ...versionBase },
+      { id: ids.versionF, contractId: ids.contractF, versionNo: 1, ...versionBase }
     ] });
     await owner.paymentTermsVersion.createMany({ data: [
       { id: "linea-terms-a", contractId: ids.contractA, contractVersionId: ids.versionA, versionNo: 1,
@@ -163,7 +190,13 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: "linea-terms-b", contractId: ids.contractB, contractVersionId: ids.versionB, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：验收后三十日支付" },
       { id: "linea-terms-c", contractId: ids.contractC, contractVersionId: ids.versionC, versionNo: 1,
-        status: "effective", originalText: "隔离付款约定：按实际完成工作确认" }
+        status: "effective", originalText: "隔离付款约定：按实际完成工作确认" },
+      { id: "linea-terms-d", contractId: ids.contractD, contractVersionId: ids.versionD, versionNo: 1,
+        status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
+      { id: "linea-terms-e", contractId: ids.contractE, contractVersionId: ids.versionE, versionNo: 1,
+        status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
+      { id: "linea-terms-f", contractId: ids.contractF, contractVersionId: ids.versionF, versionNo: 1,
+        status: "effective", originalText: "隔离付款约定：结算后三十日支付" }
     ] });
     await owner.contractPartySnapshot.createMany({ data: [
       { contractVersionId: ids.versionA, roleKey: "party_b", displayOrder: 0,
@@ -332,6 +365,108 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect(workItems.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ paymentId: signedPaymentId, remainingAmountCents: "50000" })
     ]));
+  });
+
+  it("counts a paid contract advance against the signed settlement cumulative and audits the rejected over-capacity request (PAY-07/PAY-08)", async () => {
+    const reviewedAt = new Date();
+    await seedConfirmedSignedSettlement({
+      id: "linea-d-signed-20", contractId: ids.contractD, versionId: ids.versionD,
+      number: "JS-D-20", amountYuan: "20.0000", confirmationNo: 1n, reviewedAt
+    });
+    await owner.paymentRequest.create({ data: {
+      id: "linea-d-advance-30", projectId: ids.project, settlementId: null,
+      sourceType: "contract_advance", contractId: ids.contractD, contractVersionId: ids.versionD,
+      paymentTermsVersionId: "linea-terms-d", code: "LINEA-FK-D-ADV-030", status: "paid",
+      requestedAmountCents: 3_000n, approvedAmountCents: 3_000n, paidAmountCents: 3_000n,
+      paymentSubjectType: "our_company"
+    } });
+
+    const basis = await call("staff", `/projects/${ids.project}/signed-contract-settlements/payment-basis?contractKind=downstream&contractId=${ids.contractD}`);
+    expect(basis.status).toBe(200);
+    expect(basis.body.confirmedYuan).toBe("20.0000");
+    expect(basis.body.downstreamCapacity).toMatchObject({
+      advancePaidYuan: "30.0000", unsettledAdvanceYuan: "10.0000",
+      overpayYuan: "10.0000", abnormalOverpayYuan: "0.0000",
+      wholeCentLimit: "0", suspended: true
+    });
+
+    const rejected = await callRaw("staff", "/payments", {
+      sourceType: "signed_settlement", signedSettlementId: "linea-d-signed-20",
+      code: "LINEA-FK-D-OVER-CAP", requestedAmountCents: "1"
+    });
+    expect(rejected.status).toBe(400);
+    expect(JSON.stringify(rejected.body)).toContain("合同已签结算累计可付金额不足");
+    const blocked = await owner.auditLog.findFirst({
+      where: { action: "payment.capacity.blocked", businessType: "contract", businessId: ids.contractD }
+    });
+    expect(blocked?.metadata).toMatchObject({
+      reason: "signed_settlement_cumulative_exceeded",
+      confirmedCents: "2000", occupiedCents: "3000",
+      unsettledAdvanceCents: "1000", suspended: true
+    });
+  });
+
+  it("serializes two concurrent payment submissions under the contract lock so only one consumes the balance (A13/PAY-03)", async () => {
+    await seedConfirmedSignedSettlement({
+      id: "linea-e-signed-100", contractId: ids.contractE, versionId: ids.versionE,
+      number: "JS-E-100", amountYuan: "100.0000", confirmationNo: 1n, reviewedAt: new Date()
+    });
+
+    const [first, second] = await Promise.all([
+      callRaw("staff", "/payments", { sourceType: "signed_settlement", signedSettlementId: "linea-e-signed-100", code: "LINEA-FK-E-CONCURRENT-1", requestedAmountCents: "6000" }),
+      callRaw("staff", "/payments", { sourceType: "signed_settlement", signedSettlementId: "linea-e-signed-100", code: "LINEA-FK-E-CONCURRENT-2", requestedAmountCents: "6000" })
+    ]);
+    expect([first.status, second.status].sort()).toEqual([201, 400]);
+    const created = await owner.paymentRequest.findMany({ where: { contractId: ids.contractE } });
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ requestedAmountCents: 6_000n, status: "approval_pending" });
+    const basis = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractE));
+    expect(basis.remainingCents).toBe(4_000n);
+    expect(basis.outstandingCents).toBe(6_000n);
+    expect(basis.suspended).toBe(false);
+  });
+
+  it("pauses all unpaid applications after a negative settlement and auto-releases when a later positive settlement restores the balance (PAY-04/PAY-05/A14)", async () => {
+    await seedConfirmedSignedSettlement({
+      id: "linea-f-signed-100", contractId: ids.contractF, versionId: ids.versionF,
+      number: "JS-F-100", amountYuan: "100.0000", confirmationNo: 1n, reviewedAt: new Date()
+    });
+    await owner.paymentRequest.create({ data: {
+      id: "linea-f-pending-80", projectId: ids.project, settlementId: null,
+      signedSettlementId: "linea-f-signed-100", signedSettlementConfirmationNo: 1n,
+      signedSettlementConfirmedYuan: "100.0000", signedSettlementContractConfirmedYuan: "100.0000",
+      signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date(),
+      sourceType: "signed_settlement", contractId: ids.contractF, contractVersionId: ids.versionF,
+      paymentTermsVersionId: "linea-terms-f", code: "LINEA-FK-F-PENDING-080",
+      status: "approved_pending_payment", requestedAmountCents: 8_000n, approvedAmountCents: 8_000n,
+      paidAmountCents: 0n, paymentSubjectType: "our_company"
+    } });
+
+    const before = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractF));
+    expect(before).toMatchObject({ remainingCents: 2_000n, suspended: false });
+
+    await seedConfirmedSignedSettlement({
+      id: "linea-f-signed-minus-50", contractId: ids.contractF, versionId: ids.versionF,
+      number: "JS-F--50", amountYuan: "-50.0000", confirmationNo: 2n,
+      reviewedAt: new Date(Date.now() + 1_000)
+    });
+    const reduced = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractF));
+    expect(reduced).toMatchObject({
+      confirmedCents: 5_000n, occupiedCents: 8_000n,
+      rawRemainingCents: -3_000n, capacityShortfallCents: 3_000n,
+      remainingCents: 0n, suspended: true
+    });
+
+    await seedConfirmedSignedSettlement({
+      id: "linea-f-signed-plus-40", contractId: ids.contractF, versionId: ids.versionF,
+      number: "JS-F-+40", amountYuan: "40.0000", confirmationNo: 3n,
+      reviewedAt: new Date(Date.now() + 2_000)
+    });
+    const restored = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractF));
+    expect(restored).toMatchObject({
+      confirmedCents: 9_000n, occupiedCents: 8_000n,
+      rawRemainingCents: 1_000n, remainingCents: 1_000n, suspended: false
+    });
   });
 
   it("confirms work completion through three duties and posts one operating cost", async () => {

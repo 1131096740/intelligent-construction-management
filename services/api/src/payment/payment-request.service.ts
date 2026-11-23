@@ -104,7 +104,8 @@ import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service"
 import { loadSettlementPaymentConfirmationFacts } from "./settlement-confirmation-facts";
 import {
   loadSignedSettlementPaymentBasis,
-  SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND
+  SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND,
+  type SignedSettlementPaymentBasis
 } from "./signed-settlement-payment-capacity";
 import {
   allocateContractDuePaymentExecution,
@@ -373,6 +374,11 @@ const PAYMENT_APPROVAL_NODES = [
     name: "财务",
     mode: "any",
     roleKeys: ["finance_director"]
+  },
+  {
+    name: "合同部主管",
+    mode: "any",
+    roleKeys: ["contract_director"]
   },
   {
     name: "董事长/总经理",
@@ -925,6 +931,16 @@ export class PaymentRequestService {
       );
     }
     if (input.requestedAmountCents > basis.remainingCents) {
+      await this.recordPaymentCapacityBlocked(tx, {
+        actorUserId: applicantUserId,
+        businessType: "contract",
+        businessId: signedSettlement.contractId,
+        reason: "signed_settlement_cumulative_exceeded",
+        contractId: signedSettlement.contractId,
+        signedSettlementId: signedSettlement.id,
+        requestedAmountCents: input.requestedAmountCents,
+        basis
+      });
       throw new BadRequestException(
         `合同已签结算累计可付金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
           basis.remainingCents
@@ -1703,17 +1719,221 @@ export class PaymentRequestService {
     const basis = await loadSignedSettlementPaymentBasis(tx, payment.contractId, {
       lock: true
     });
+    if (basis.suspended) {
+      await this.recordPaymentCapacityBlocked(tx, {
+        actorUserId,
+        businessType: "payment_request",
+        businessId: payment.id,
+        reason: "signed_settlement_capacity_suspended",
+        contractId: payment.contractId,
+        signedSettlementId: payment.signedSettlementId,
+        requestedAmountCents: amountCents,
+        basis
+      });
+      throw new ConflictException(
+        "合同已签结算累计可付金额不足，相关未付申请已暂停；请撤回或调整未付金额，或待新结算补足后再办理"
+      );
+    }
     // 新确认一期可能调增或调减累计；不因“已不是最新”直接阻止旧申请实付，
     // 但本次实付仍须被最新合同累计覆盖（自身在途先还原）。
     const currentOutstanding = this.paymentRequestOutstandingCents(payment);
     const availableCents = basis.rawRemainingCents + currentOutstanding;
     if (amountCents > availableCents) {
+      await this.recordPaymentCapacityBlocked(tx, {
+        actorUserId,
+        businessType: "payment_request",
+        businessId: payment.id,
+        reason: "signed_settlement_execution_exceeded",
+        contractId: payment.contractId,
+        signedSettlementId: payment.signedSettlementId,
+        requestedAmountCents: amountCents,
+        basis
+      });
       throw new Error(
         `合同已签结算累计可付金额不足，当前最多可实付 ${
           availableCents > 0n ? formatMoneyCentsAsYuan(availableCents) : "0.00"
         } 元`
       );
     }
+    await this.recordPaymentCapacityRecheck(tx, {
+      actorUserId,
+      paymentId: payment.id,
+      stage: "execution",
+      contractId: payment.contractId,
+      signedSettlementId: payment.signedSettlementId,
+      amountCents,
+      availableCents,
+      basis
+    });
+  }
+
+  /**
+   * 审批通过（最后节点）时按最新合同累计与全部在途占用重校：
+   * 调减结算导致合计未付超过新余额时暂停全部受影响申请，不自动挑先付者；
+   * 后续新结算使余额足够时由同一计算自动解除暂停。
+   */
+  private async assertSignedSettlementApprovalCapacity(
+    tx: Prisma.TransactionClient,
+    payment: {
+      id: string;
+      code: string;
+      contractId: string;
+      contractVersionId: string;
+      signedSettlementId: string | null;
+      sourceType: string;
+      status: string;
+      requestedAmountCents: bigint;
+      approvedAmountCents: bigint | null;
+      paidAmountCents: bigint;
+    },
+    approvedAmountCents: bigint,
+    actorUserId: string
+  ): Promise<void> {
+    if (!payment.signedSettlementId) {
+      throw new ConflictException("付款申请缺少已签结算依据，请刷新并核对原申请");
+    }
+    const signedSettlement = await tx.signedContractSettlement.findUnique({
+      where: { id: payment.signedSettlementId },
+      select: { id: true, contractKind: true, contractId: true, state: true }
+    });
+    if (!signedSettlement) {
+      throw new ConflictException("未找到付款申请关联的已签结算，请刷新后核对");
+    }
+    if (
+      signedSettlement.contractKind !== SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND ||
+      signedSettlement.contractId !== payment.contractId
+    ) {
+      throw new ConflictException("付款申请的已签结算依据与合同不一致，请核对原申请");
+    }
+    if (signedSettlement.state !== "confirmed") {
+      throw new Error("已签结算依据已失效，不能完成付款审批");
+    }
+
+    await this.lockContractPaymentCapacityRows(tx, payment.contractId);
+    const basis = await loadSignedSettlementPaymentBasis(tx, payment.contractId, {
+      lock: true
+    });
+    if (basis.suspended) {
+      await this.recordPaymentCapacityBlocked(tx, {
+        actorUserId,
+        businessType: "payment_request",
+        businessId: payment.id,
+        reason: "signed_settlement_capacity_suspended",
+        contractId: payment.contractId,
+        signedSettlementId: payment.signedSettlementId,
+        requestedAmountCents: approvedAmountCents,
+        basis
+      });
+      throw new ConflictException(
+        "合同已签结算累计可付金额不足，相关未付申请已暂停；请撤回或调整未付金额，或待新结算补足后再办理"
+      );
+    }
+    const currentOutstanding = this.paymentRequestOutstandingCents(payment);
+    const availableCents = basis.rawRemainingCents + currentOutstanding;
+    if (approvedAmountCents > availableCents) {
+      await this.recordPaymentCapacityBlocked(tx, {
+        actorUserId,
+        businessType: "payment_request",
+        businessId: payment.id,
+        reason: "signed_settlement_approval_exceeded",
+        contractId: payment.contractId,
+        signedSettlementId: payment.signedSettlementId,
+        requestedAmountCents: approvedAmountCents,
+        basis
+      });
+      throw new BadRequestException(
+        `合同已签结算累计可付金额不足，当前最多可批准 ${
+          availableCents > 0n ? formatMoneyCentsAsYuan(availableCents) : "0.00"
+        } 元`
+      );
+    }
+    await this.recordPaymentCapacityRecheck(tx, {
+      actorUserId,
+      paymentId: payment.id,
+      stage: "approval",
+      contractId: payment.contractId,
+      signedSettlementId: payment.signedSettlementId,
+      amountCents: approvedAmountCents,
+      availableCents,
+      basis
+    });
+  }
+
+  private async recordPaymentCapacityRecheck(
+    tx: Prisma.TransactionClient,
+    input: {
+      actorUserId: string;
+      paymentId: string;
+      stage: "approval" | "execution";
+      contractId: string;
+      signedSettlementId: string;
+      amountCents: bigint;
+      availableCents: bigint;
+      basis: SignedSettlementPaymentBasis;
+    }
+  ): Promise<void> {
+    await this.audit.record(tx, {
+      actorUserId: input.actorUserId,
+      action: "payment.capacity.recheck",
+      businessType: "payment_request",
+      businessId: input.paymentId,
+      metadata: {
+        stage: input.stage,
+        contractId: input.contractId,
+        signedSettlementId: input.signedSettlementId,
+        amountCents: moneyCentsToApi(input.amountCents),
+        availableCents: moneyCentsToApi(input.availableCents),
+        confirmedCents: moneyCentsToApi(input.basis.confirmedCents),
+        netPaidCents: moneyCentsToApi(input.basis.netPaidCents),
+        occupiedCents: moneyCentsToApi(input.basis.occupiedCents),
+        outstandingCents: moneyCentsToApi(input.basis.outstandingCents),
+        advancePaidCents: moneyCentsToApi(input.basis.advancePaidCents),
+        unsettledAdvanceCents: moneyCentsToApi(input.basis.unsettledAdvanceCents),
+        overpayCents: moneyCentsToApi(input.basis.overpayCents),
+        abnormalOverpayCents: moneyCentsToApi(input.basis.abnormalOverpayCents),
+        suspended: input.basis.suspended
+      }
+    });
+  }
+
+  private async recordPaymentCapacityBlocked(
+    tx: Prisma.TransactionClient,
+    input: {
+      actorUserId?: string;
+      businessType: "contract" | "payment_request";
+      businessId: string;
+      reason: string;
+      contractId: string;
+      signedSettlementId: string;
+      requestedAmountCents: bigint;
+      basis: SignedSettlementPaymentBasis;
+    }
+  ): Promise<void> {
+    if (!input.actorUserId) {
+      return;
+    }
+    const auditClient = this.auditClientOutsideFailedTransaction(tx);
+    await this.audit.record(auditClient, {
+      actorUserId: input.actorUserId,
+      action: "payment.capacity.blocked",
+      businessType: input.businessType,
+      businessId: input.businessId,
+      metadata: {
+        reason: input.reason,
+        contractId: input.contractId,
+        signedSettlementId: input.signedSettlementId,
+        requestedAmountCents: moneyCentsToApi(input.requestedAmountCents),
+        remainingCents: moneyCentsToApi(input.basis.remainingCents),
+        confirmedCents: moneyCentsToApi(input.basis.confirmedCents),
+        occupiedCents: moneyCentsToApi(input.basis.occupiedCents),
+        outstandingCents: moneyCentsToApi(input.basis.outstandingCents),
+        advancePaidCents: moneyCentsToApi(input.basis.advancePaidCents),
+        unsettledAdvanceCents: moneyCentsToApi(input.basis.unsettledAdvanceCents),
+        overpayCents: moneyCentsToApi(input.basis.overpayCents),
+        abnormalOverpayCents: moneyCentsToApi(input.basis.abnormalOverpayCents),
+        suspended: input.basis.suspended
+      }
+    });
   }
 
   private async lockContractPaymentCapacityRows(
@@ -2820,6 +3040,15 @@ export class PaymentRequestService {
           payerFacts.paymentSubjectType === "affiliate"
             ? "施工企业付款申请必须关联施工企业签约合同"
             : "付款合同不是完整的我方付款主体，不能完成付款审批"
+        );
+      }
+
+      if (flowCompleted && payment.sourceType === "signed_settlement") {
+        await this.assertSignedSettlementApprovalCapacity(
+          tx,
+          payment,
+          approvedAmountCents,
+          actorUserId
         );
       }
 

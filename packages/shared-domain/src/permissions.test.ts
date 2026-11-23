@@ -306,6 +306,7 @@ describe("final approval OR-sign", () => {
     for (const role of [
       "comprehensive_director",
       "project_manager",
+      "contract_director",
       "finance_director",
       "chairman",
       "general_manager"
@@ -314,8 +315,7 @@ describe("final approval OR-sign", () => {
     }
   });
 
-  it("keeps contract and budget roles outside the payment approval route", () => {
-    expect(canPerform("payment.approve", ["contract_director"])).toBe(false);
+  it("keeps budget roles outside the payment approval route", () => {
     expect(canPerform("payment.approve", ["budget_director"])).toBe(false);
   });
 
@@ -492,10 +492,11 @@ describe("role-specific gates", () => {
     expect(canPerform("payment.execution", ["chairman"])).toBe(false);
   });
 
-  it("requires contract or project manager roles to create payment requests", () => {
+  it("requires contract, project or comprehensive roles to create payment requests", () => {
     expect(canPerform("payment.create", ["contract_staff"])).toBe(true);
     expect(canPerform("payment.create", ["contract_director"])).toBe(true);
     expect(canPerform("payment.create", ["project_manager"])).toBe(true);
+    expect(canPerform("payment.create", ["comprehensive_director"])).toBe(true);
     expect(canPerform("payment.create", ["finance_staff"])).toBe(false);
     expect(canPerform("payment.create", ["employee"])).toBe(false);
   });
