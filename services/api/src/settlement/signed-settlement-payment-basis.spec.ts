@@ -19,11 +19,50 @@ describe("signed settlement payment basis", () => {
       confirmedYuan: "2.0009", recordedPaidCents: 25n, proxyPaidCents: 25n, historicalOutstandingCents: 25n,
       requests: [{ status: "partially_paid", requestedAmountCents: 65n, approvedAmountCents: 50n, paidAmountCents: 25n }]
     };
-    expect(signedSettlementPaymentBalance(input)).toEqual({
+    expect(signedSettlementPaymentBalance(input)).toMatchObject({
       recordedPaidYuan: "0.5000", outstandingYuan: "0.5000", unoccupiedYuan: "1.0009", wholeCentLimit: "100"
     });
     expect(signedSettlementPaymentBalance({ ...input, confirmedYuan: "0.9999" })).toMatchObject({
       unoccupiedYuan: "-0.0001", wholeCentLimit: "0"
     });
+  });
+
+  it("shows the unpaid advance and abnormal overpayment separately (PAY-08)", () => {
+    const result = signedSettlementPaymentBalance({
+      confirmedYuan: "20.0000",
+      recordedPaidCents: 5_000n,
+      proxyPaidCents: 0n,
+      historicalOutstandingCents: 0n,
+      requests: [
+        { sourceType: "contract_advance", status: "paid", requestedAmountCents: 3_000n, approvedAmountCents: 3_000n, paidAmountCents: 3_000n },
+        { sourceType: "signed_settlement", status: "paid", requestedAmountCents: 2_000n, approvedAmountCents: 2_000n, paidAmountCents: 2_000n }
+      ]
+    });
+
+    expect(result).toMatchObject({
+      advancePaidYuan: "30.0000",
+      unsettledAdvanceYuan: "10.0000",
+      overpayYuan: "30.0000",
+      abnormalOverpayYuan: "20.0000",
+      unoccupiedYuan: "-30.0000",
+      wholeCentLimit: "0",
+      suspended: true
+    });
+  });
+
+  it("does not suspend when new settlements restore the balance", () => {
+    const result = signedSettlementPaymentBalance({
+      confirmedYuan: "40.0000",
+      recordedPaidCents: 3_000n,
+      proxyPaidCents: 0n,
+      historicalOutstandingCents: 0n,
+      requests: [
+        { sourceType: "contract_advance", status: "paid", requestedAmountCents: 3_000n, approvedAmountCents: 3_000n, paidAmountCents: 3_000n }
+      ]
+    });
+
+    expect(result.unsettledAdvanceYuan).toBe("0.0000");
+    expect(result.wholeCentLimit).toBe("1000");
+    expect(result.suspended).toBe(false);
   });
 });

@@ -120,6 +120,16 @@
               <template v-if="signedSettlementBasis.downstreamCapacity">
                 · 已登记付款及代付 {{ signedSettlementBasis.downstreamCapacity.recordedPaidYuan }} 元
                 · 未结占用 {{ signedSettlementBasis.downstreamCapacity.outstandingYuan }} 元
+                · 可付 {{ signedSettlementBasis.downstreamCapacity.wholeCentLimit }} 分
+                <template v-if="Number(signedSettlementBasis.downstreamCapacity.unsettledAdvanceYuan) > 0">
+                  · 尚未结算预付款 {{ signedSettlementBasis.downstreamCapacity.unsettledAdvanceYuan }} 元
+                </template>
+                <template v-if="Number(signedSettlementBasis.downstreamCapacity.overpayYuan) > 0">
+                  · 超付 {{ signedSettlementBasis.downstreamCapacity.overpayYuan }} 元
+                </template>
+                <template v-if="signedSettlementBasis.downstreamCapacity.suspended">
+                  · 已暂停（合同累计可付余额不足）
+                </template>
               </template>
             </span>
             <p>
