@@ -64,3 +64,16 @@
   `psql:<stdin>:152: ERROR: SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_SCOPE ... LINE_A_REAL_DB 失败：候选迁移失败 20261119007500_…`。
   另：本机 Docker 曾出现 `postgres:16` 在 `docker images` 可见但 `--host`/`inspect` 报 `No such image` 的镜像存储不一致，需 `docker tag postgres:16 …` 刷新后才能复跑；与代码无关。
 - 下一步（如需继续 ①）：把 `install-only292.cjs` 的 289→292 段抽成“可对任意 ownerUrl 执行”的库（5 段 SQL 已由 `archive.beforeSql/…/sql` 暴露），或在 line-a 内以 289 密封材料重建 profile/completion 后调用该协议；这需要新的一轮专门实现与 289 材料接线。
+
+## (b) 裁决 ① 续：归档协议库化的确切卡点（五轮）
+
+- 合并 `adopt-395-396-415@1d1701018` → HEAD `66a1db54d`；迁移仍 323。
+- 好消息：262 密封 profile 可由仓库已有材料**精确构造**——取 `prepare.sh` 物化的 289 产品前 262 条迁移（`/tmp/lnl/source/prepared/product/predecessor/services/api/prisma/migrations`），逐条 sha256 后 `sha256(JSON.stringify(ledger)) = b57d5da2…`，与 `task16-current259-profile.cjs` 的 `TASK12_ARCHIVE262_SOURCE_V1` 期望值一致；无需放宽校验。
+- 真正的卡点不是 profile，而是**归档协议的硬前置身份/角色模型**（`task16-current259-archive-install.cjs` 第 682-689 行）：
+  - `identity.database === 'jg_task01_' + runId.replaceAll('-','')`；
+  - `identity.ownerOid==='10'` 且 `identity.actor==='jg_task01_owner'`、`sessionActor==='jg_task01_owner'`；
+  - `ordinary.name` 必须是 `jg_fixture_app_[a-f0-9]{24}` 且 login；
+  - `completion.roles` 必须是 9 个角色（`jg_c259_outside_*` 4 个、`jg_c259_upward_*` 3 个、`jg_task01_observer/runtime`）且 `xmin===commitXid`、`login` 规则与 ACL before/after 齐备。
+- 而 line-a 现状：容器用 `POSTGRES_USER=jiangkong`（oid 10=jiangkong，不是 `jg_task01_owner`）、库名固定 `jiangkong_line_a_real_db`、只有 `createCiDynamicMigrationFixture` 的应用角色/`jg_task01_*`（无 `jg_c259_*` 九角色与 commitXid 回执）。因此即使拿到 262 profile，`beginNativeTask12ArchiveProtocol` 在 `source/completion` 校验处就会拒绝。
+- 结论：库化（5 段 SQL + 角色渲染）本身可做，但要让协议**合法**跑通，line-a 的“建库”必须改成 289 身份模型（`jg_task01_owner` 为 oid 10 的引导超级用户、`jg_task01_<runId>` 库名、九角色 provisioning 并生成 completion 回执）。这属于对 runner 建库引导的重写，已超出“只抽库 + 接入 profile”的表述范围；按硬边界本轮**停下，不再堆代码**，也未改 `07500`、未 insert 闭包行、未改 runner。
+- 需要确认：是否把范围扩到“按 289 身份模型重建 line-a 引导（容器引导用户/库名/九角色/completion）”；若确认，下一轮按 `installHistory` 的 `migrateNativeTask16 + roles + archive.*Sql` 顺序实现并对 line-a 本地跑到 6/6。
