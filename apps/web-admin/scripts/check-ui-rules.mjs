@@ -184,6 +184,10 @@ const responsiveGovernedFiles = new Map([
   ["src/pages/search/GlobalSearchPage.vue", "ledger"],
   ["src/pages/settlement-templates/SettlementTemplateEditorPage.vue", "workspace"],
   ["src/pages/settlement-templates/SettlementTemplateListPage.vue", "ledger"],
+  ["src/pages/payments/PaymentListPage.vue", "ledger"],
+  ["src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue", "ledger"],
+  ["src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue", "ledger"],
+  ["src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue", "ledger"],
   ["src/pages/settlements/SettlementWorkbenchPage.vue", "workspace"],
   ["src/pages/settings/SettingsPage.vue", "flow"]
 ]);

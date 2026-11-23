@@ -15,6 +15,18 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
+import { exportBusinessLedger } from "../core-flow/business-ledger-export";
+import {
+  LEDGER_DATE_FORMAT,
+  LEDGER_MONEY_FORMAT,
+  type LedgerExcelColumn
+} from "../core-flow/ledger-excel";
+import {
+  matchesLedgerExportQuery,
+  normalizeLedgerExportQuery,
+  sortLedgerRows,
+  type NormalizedLedgerExportQuery
+} from "../core-flow/ledger-export-query";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import {
@@ -168,7 +180,7 @@ export class ExpenseClaimService {
         ...(status ? { status: { in: status } } : {})
       },
       orderBy: [{ updatedAt: "desc" }, { code: "asc" }],
-      select: { id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
+      select: { id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, payeeNameSnapshot: true, requestedAmountCents: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
     });
     const projectIds = [...new Set(rows.flatMap((row) => row.projectId ? [row.projectId] : []))];
     const projects = projectIds.length
@@ -183,6 +195,256 @@ export class ExpenseClaimService {
       companyPayableAmountCents: moneyCentsToApi(row.companyPayableAmountCents),
       fundedAmountCents: moneyCentsToApi(row.fundedAmountCents)
     }));
+  }
+
+  /**
+   * 费用与报销台账：财务、综合、公司领导与项目经理按项目可见范围跨项目查账；
+   * 普通员工仍只见本人申请、经办及参与审批的记录（与原工作台口径一致）。
+   * 列表与导出共用本方法与同一行级范围。
+   */
+  async listLedger(actorUserId: string, rawQuery?: Record<string, unknown>) {
+    const normalized = normalizeLedgerExportQuery(rawQuery);
+    const view = expenseLedgerView(rawQuery?.view);
+    const allRows = await this.expenseLedgerRows(actorUserId);
+    const filtered = this.filterExpenseLedgerRows(allRows, normalized, view);
+    const page = positiveInteger(rawQuery?.page, 1);
+    const pageSize = Math.min(positiveInteger(rawQuery?.pageSize, 20), 100);
+    const offset = (page - 1) * pageSize;
+    return {
+      rows: filtered.slice(offset, offset + pageSize),
+      pagination: {
+        page,
+        pageSize,
+        total: filtered.length,
+        totalPages: filtered.length === 0 ? 0 : Math.ceil(filtered.length / pageSize)
+      },
+      summary: {
+        total: filtered.length,
+        drafts: filtered.filter((row) => row.status === "draft").length,
+        inProgress: filtered.filter((row) => row.status === "approval_pending").length,
+        pendingFunds: filtered.filter((row) =>
+          ["approved_pending_payment", "partially_paid", "approved_pending_disbursement", "partially_disbursed"].includes(row.status)
+        ).length,
+        knownAmountRows: filtered.filter((row) => row.requestedAmountCents !== null).length
+      },
+      filters: {
+        projectId: normalized.projectId ?? null,
+        dateFrom: normalized.dateFrom ?? null,
+        dateTo: normalized.dateTo ?? null,
+        status: normalized.status ?? null,
+        keyword: normalized.keyword ?? null,
+        sort: normalized.sortField
+          ? `${normalized.sortField}:${normalized.sortDirection}`
+          : null
+      },
+      columns: EXPENSE_LEDGER_COLUMNS.map((column) => ({
+        key: String(column.key),
+        header: column.header,
+        required: Boolean(column.required)
+      }))
+    };
+  }
+
+  /**
+   * 报销台账导出：与列表共用 `expenseLedgerRows` 的行级范围，
+   * 导出全部筛选后的可见记录；普通员工导出也只含本人可见行。
+   */
+  async exportLedger(
+    actorUserId: string,
+    rawQuery?: Record<string, unknown>
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const normalized = normalizeLedgerExportQuery(rawQuery);
+    const view = expenseLedgerView(rawQuery?.view);
+    const allRows = await this.expenseLedgerRows(actorUserId);
+    const rows = this.filterExpenseLedgerRows(allRows, normalized, view);
+    return exportBusinessLedger({
+      prisma: this.prisma,
+      audit: this.audit,
+      actorUserId,
+      action: "expense_claim.ledger.export",
+      businessType: "expense_claim_ledger",
+      scope: "all_filtered_visible_expense_claims",
+      sheetName: "费用与报销台账",
+      fileNamePrefix: "费用与报销台账",
+      columns: EXPENSE_LEDGER_COLUMNS,
+      rows: rows.map((row) => ({
+        ...row,
+        projectName: row.projectName,
+        requestedAmountYuan: centsTextToYuanNumber(row.requestedAmountCents),
+        settledAmountYuan:
+          (centsTextToYuanNumber(row.loanOffsetAmountCents) ?? 0) +
+          (centsTextToYuanNumber(row.fundedAmountCents) ?? 0),
+        outstandingAmountYuan: centsTextToYuanNumber(row.companyPayableAmountCents),
+        updatedAtIso: row.updatedAt
+      })),
+      columnKeys: normalized.columnKeys,
+      filters: normalized,
+      visibleProjectCount: new Set(rows.flatMap((row) => row.projectId ? [row.projectId] : [])).size
+    });
+  }
+
+  private async expenseLedgerRows(actorUserId: string): Promise<ExpenseLedgerRow[]> {
+    const roles = await this.loadRoleKeys(this.prisma, actorUserId);
+    const canReadAcrossProjects = roles.some((role) => EXPENSE_LEDGER_GLOBAL_ROLES.has(role));
+    if (!canReadAcrossProjects) {
+      const mine = await this.listMine(actorUserId, "all");
+      return mine.map((row) => ({
+        id: row.id,
+        code: row.code,
+        claimType: row.claimType,
+        claimTypeLabel: expenseClaimTypeLabel(row.claimType),
+        categoryLabel: expenseCategoryLabel(row.claimType, row.incidentalExpenseCategory, null),
+        status: row.status,
+        statusLabel: expenseClaimStatusLabel(row.status),
+        projectId: row.projectId,
+        projectName: row.project ? `${row.project.code} · ${row.project.name}` : "公司日常",
+        companyName: row.companyEntityNameSnapshot,
+        applicantName: row.applicantNameSnapshot,
+        handledByName: row.handledByNameSnapshot,
+        reason: row.reason,
+        payeeName: row.payeeNameSnapshot ?? "待确定",
+        requestedAmountCents: row.requestedAmountCents,
+        loanOffsetAmountCents: row.loanOffsetAmountCents,
+        companyPayableAmountCents: row.companyPayableAmountCents,
+        fundedAmountCents: row.fundedAmountCents,
+        updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt
+      }));
+    }
+
+    const visibility = this.visibility ?? new ProjectVisibilityService(this.prisma);
+    const visibleProjectIds = await visibility.visibleProjectIds(actorUserId);
+    const rows = await this.prisma.expenseClaim.findMany({
+      where: {
+        AND: [
+          {
+            OR: [
+              { projectId: { in: visibleProjectIds } },
+              // 公司日常费用不属于项目，仍属公司财务查账范围。
+              { projectId: null }
+            ]
+          },
+          // 草稿留在办理工作台；跨项目查账只读已提交记录与本人草稿。
+          {
+            OR: [
+              { status: { not: "draft" } },
+              { applicantUserId: actorUserId }
+            ]
+          }
+        ]
+      },
+      orderBy: [{ updatedAt: "desc" }, { code: "asc" }],
+      select: {
+        id: true,
+        code: true,
+        claimType: true,
+        incidentalExpenseCategory: true,
+        status: true,
+        projectId: true,
+        companyEntityNameSnapshot: true,
+        applicantNameSnapshot: true,
+        handledByNameSnapshot: true,
+        reason: true,
+        payeeNameSnapshot: true,
+        requestedAmountCents: true,
+        loanOffsetAmountCents: true,
+        companyPayableAmountCents: true,
+        fundedAmountCents: true,
+        updatedAt: true
+      }
+    });
+    if (!rows.length) return [];
+    const projectIds = [...new Set(rows.flatMap((row) => row.projectId ? [row.projectId] : []))];
+    const [projects, lines] = await Promise.all([
+      projectIds.length
+        ? this.prisma.project.findMany({
+            where: { id: { in: projectIds } },
+            select: { id: true, code: true, name: true }
+          })
+        : Promise.resolve([]),
+      this.prisma.expenseClaimLine.findMany({
+        where: { expenseClaimId: { in: rows.map((row) => row.id) } },
+        orderBy: [{ sortOrder: "asc" }],
+        select: { expenseClaimId: true, expenseCategory: true }
+      })
+    ]);
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const categoryByClaimId = new Map<string, string>();
+    for (const line of lines) {
+      if (!categoryByClaimId.has(line.expenseClaimId)) {
+        categoryByClaimId.set(line.expenseClaimId, line.expenseCategory);
+      }
+    }
+    return rows.map((row) => {
+      const project = row.projectId ? projectById.get(row.projectId) : undefined;
+      return {
+        id: row.id,
+        code: row.code,
+        claimType: row.claimType,
+        claimTypeLabel: expenseClaimTypeLabel(row.claimType),
+        categoryLabel: expenseCategoryLabel(
+          row.claimType,
+          row.incidentalExpenseCategory,
+          categoryByClaimId.get(row.id) ?? null
+        ),
+        status: row.status,
+        statusLabel: expenseClaimStatusLabel(row.status),
+        projectId: row.projectId,
+        projectName: project ? `${project.code} · ${project.name}` : "公司日常",
+        companyName: row.companyEntityNameSnapshot,
+        applicantName: row.applicantNameSnapshot,
+        handledByName: row.handledByNameSnapshot,
+        reason: row.reason,
+        payeeName: row.payeeNameSnapshot ?? "待确定",
+        requestedAmountCents: moneyCentsToApi(row.requestedAmountCents),
+        loanOffsetAmountCents: moneyCentsToApi(row.loanOffsetAmountCents),
+        companyPayableAmountCents: moneyCentsToApi(row.companyPayableAmountCents),
+        fundedAmountCents: moneyCentsToApi(row.fundedAmountCents),
+        updatedAt: row.updatedAt.toISOString()
+      };
+    });
+  }
+
+  private filterExpenseLedgerRows(
+    rows: readonly ExpenseLedgerRow[],
+    query: NormalizedLedgerExportQuery,
+    view: ExpenseLedgerView
+  ) {
+    const viewRows = rows.filter((row) => {
+      if (view === "drafts") return row.status === "draft";
+      if (view === "in_progress") return row.status === "approval_pending";
+      if (view === "pending_funds") {
+        return ["approved_pending_payment", "partially_paid", "approved_pending_disbursement", "partially_disbursed"].includes(row.status);
+      }
+      return true;
+    });
+    const filtered = viewRows.filter((row) =>
+      matchesLedgerExportQuery(
+        {
+          projectId: row.projectId ?? "",
+          occurredAt: row.updatedAt,
+          status: `${row.statusLabel} ${row.claimTypeLabel} ${row.categoryLabel}`,
+          keywordParts: [
+            row.code,
+            row.projectName,
+            row.companyName,
+            row.applicantName,
+            row.handledByName,
+            row.reason,
+            row.payeeName,
+            row.statusLabel,
+            row.claimTypeLabel,
+            row.categoryLabel
+          ]
+        },
+        query
+      )
+    );
+    return sortLedgerRows(filtered, query.sortField, query.sortDirection, {
+      updatedAt: (row) => new Date(row.updatedAt),
+      requestedAmountCents: (row) => Number(row.requestedAmountCents),
+      code: (row) => row.code,
+      projectName: (row) => row.projectName
+    });
   }
 
   async create(actorUserId: string, input: CreateExpenseClaimDto) {
@@ -2252,4 +2514,140 @@ function dateOnly(value: string, field: string) {
   const date = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) throw new BadRequestException(`${field}格式不正确`);
   return date;
+}
+
+type ExpenseLedgerView = "all" | "drafts" | "in_progress" | "pending_funds";
+
+type ExpenseLedgerRow = {
+  id: string;
+  code: string;
+  claimType: string;
+  claimTypeLabel: string;
+  categoryLabel: string;
+  status: string;
+  statusLabel: string;
+  projectId: string | null;
+  projectName: string;
+  companyName: string;
+  applicantName: string;
+  handledByName: string;
+  reason: string;
+  payeeName: string;
+  requestedAmountCents: string;
+  loanOffsetAmountCents: string;
+  companyPayableAmountCents: string;
+  fundedAmountCents: string;
+  updatedAt: string;
+};
+
+/** 可跨项目查账的岗位：财务、综合、公司领导与项目经理。 */
+const EXPENSE_LEDGER_GLOBAL_ROLES = new Set<RoleKey>([
+  "chairman",
+  "general_manager",
+  "finance_staff",
+  "finance_director",
+  "comprehensive_director",
+  "project_manager"
+]);
+
+const EXPENSE_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unknown>>[] = [
+  { header: "报销编号", key: "code", width: 20, required: true },
+  { header: "项目或使用单位", key: "projectName", width: 26, required: true },
+  { header: "报销单位", key: "companyName", width: 24, required: true },
+  { header: "报销人/借款人", key: "applicantName", width: 16, required: true },
+  { header: "业务类型", key: "claimTypeLabel", width: 14 },
+  { header: "费用类别", key: "categoryLabel", width: 16 },
+  { header: "事由", key: "reason", width: 32 },
+  { header: "收款对象", key: "payeeName", width: 20 },
+  {
+    header: "申请金额（元）",
+    key: "requestedAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum",
+    required: true
+  },
+  {
+    header: "已付款/冲销（元）",
+    key: "settledAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum"
+  },
+  {
+    header: "待付金额（元）",
+    key: "outstandingAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum"
+  },
+  { header: "状态", key: "statusLabel", width: 16 },
+  { header: "经办人", key: "handledByName", width: 14 },
+  { header: "更新时间", key: "updatedAtIso", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
+];
+
+function expenseLedgerView(value: unknown): ExpenseLedgerView {
+  return value === "drafts" || value === "in_progress" || value === "pending_funds"
+    ? value
+    : "all";
+}
+
+function positiveInteger(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : fallback;
+}
+
+/** 分币文本转元数值；0 是真实已结清/未付，未知保持 null。 */
+function centsTextToYuanNumber(value: string | null | undefined): number | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed / 100 : null;
+}
+
+function expenseClaimTypeLabel(value: string): string {
+  return value === "loan"
+    ? "借款申请"
+    : value === "incidental_expense"
+      ? "零星费用付款"
+      : "费用报销";
+}
+
+function expenseClaimStatusLabel(value: string): string {
+  return ({
+    draft: "草稿",
+    approval_pending: "审批中",
+    approved_pending_payment: "待公司付款",
+    partially_paid: "部分公司付款",
+    approved_pending_disbursement: "待放款",
+    partially_disbursed: "部分放款",
+    disbursed: "已放款",
+    offset_completed: "借款冲销完成",
+    rejected: "已驳回"
+  } as Record<string, string>)[value] ?? "待确认状态";
+}
+
+const INCIDENTAL_EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  temporary_service: "非材料临时服务",
+  temporary_machinery_shift: "临时机械台班",
+  sporadic_labor: "零星用工",
+  other_incidental: "其他非材料临时费用"
+};
+
+function expenseCategoryLabel(
+  claimType: string,
+  incidentalExpenseCategory: string | null,
+  lineCategory: string | null
+): string {
+  if (claimType === "incidental_expense") {
+    return incidentalExpenseCategory
+      ? INCIDENTAL_EXPENSE_CATEGORY_LABELS[incidentalExpenseCategory] ?? "待确认类别"
+      : "待确认类别";
+  }
+  return lineCategory ?? "待确定";
 }

@@ -253,11 +253,112 @@ async function ensureOk(response: Response): Promise<void> {
   throw Object.assign(new Error(message), { status: response.status });
 }
 
-export async function fetchExpenseClaims(view: ExpenseClaimWorkbenchView = "all") {
-  const query = view === "all" ? "" : `?${new URLSearchParams({ view }).toString()}`;
-  const response = await apiFetch(`/expense-claims${query}`);
+export interface ExpenseClaimLedgerColumn {
+  key: string;
+  header: string;
+  required: boolean;
+}
+
+export interface ExpenseClaimLedgerRow {
+  id: string;
+  code: string;
+  claimType: string;
+  claimTypeLabel: string;
+  categoryLabel: string;
+  status: string;
+  statusLabel: string;
+  projectId: string | null;
+  projectName: string;
+  companyName: string;
+  applicantName: string;
+  handledByName: string;
+  reason: string;
+  payeeName: string;
+  requestedAmountCents: string;
+  loanOffsetAmountCents: string;
+  companyPayableAmountCents: string;
+  fundedAmountCents: string;
+  updatedAt: string;
+}
+
+export interface ExpenseClaimLedgerQuery {
+  view?: ExpenseClaimWorkbenchView;
+  page?: number;
+  pageSize?: number;
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  keyword?: string;
+  sort?: string;
+  columns?: string;
+}
+
+export interface ExpenseClaimLedgerPage {
+  rows: ExpenseClaimLedgerRow[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+  summary: {
+    total: number;
+    drafts: number;
+    inProgress: number;
+    pendingFunds: number;
+    knownAmountRows: number;
+  };
+  filters: Record<string, string | null>;
+  columns: ExpenseClaimLedgerColumn[];
+}
+
+export async function fetchExpenseClaimLedger(query: ExpenseClaimLedgerQuery = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    const text = String(value).trim();
+    if (text === "") continue;
+    params.set(key, text);
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  const response = await apiFetch(`/expense-claims/ledger${suffix}`);
   await ensureOk(response);
-  return response.json() as Promise<ExpenseClaimListItemReadModel[]>;
+  return response.json() as Promise<ExpenseClaimLedgerPage>;
+}
+
+export async function downloadExpenseClaimLedger(query: ExpenseClaimLedgerQuery = {}) {
+  const params = new URLSearchParams();
+  const entries: Array<[string, string | number | undefined]> = [];
+  // 只上送业务筛选，未知字段不进入导出请求。
+  if (typeof query === "object" && query !== null) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined) continue;
+      const text = String(value).trim();
+      if (text === "") continue;
+      entries.push([key, text]);
+    }
+  }
+  for (const [key, value] of entries) params.set(key, String(value));
+  const search = params.toString();
+  const response = await apiFetch(
+    `/expense-claims/ledger-export${search ? `?${search}` : ""}`
+  );
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({}))) as { message?: unknown };
+    throw new Error(
+      typeof errorBody.message === "string" && errorBody.message.trim()
+        ? errorBody.message
+        : "导出${fallback.replace('.xlsx','')}失败"
+    );
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/u.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : "${fallback}";
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function fetchExpenseClaimExpenseCategories(companyEntityId: string) {

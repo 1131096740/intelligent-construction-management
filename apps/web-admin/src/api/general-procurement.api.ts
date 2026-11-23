@@ -2,9 +2,11 @@ import type { BusinessEntrySceneDefinition, GeneralProcurementCategory, GeneralP
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 export interface ProcurementListItem {
-  id: string; code: string; projectName: string; applicantName: string; categoryLabel: string; reason: string;
-  requestedAmountCents: string | null; estimatedAmount?: string | null; requestProtocolVersion?: number; status: string; statusLabel: string; updatedAt: string;
+  id: string; code: string; projectId?: string | null; projectName: string; companyName?: string | null; applicantName: string; categoryLabel: string; reason: string;
+  requestedAmountCents: string | null; estimatedAmount?: string | null; requestProtocolVersion?: number; status: string; statusLabel: string; updatedAt: string; createdAt?: string;
+  supplierName?: string; actualAmountCents?: string | null;
 }
+export interface ProcurementLedgerColumn { key: string; header: string; required: boolean }
 export interface ProcurementDetail extends ProcurementListItem {
   entryDefinition?: BusinessEntrySceneDefinition; requestProtocolVersion?: number; scope?: "project" | "company_daily"; lines?: GeneralProcurementRequestLine[]; lineSummary?: { knownLineEstimatedSubtotal: string | null; unknownLineCount: number }; reviewDuties?: Array<{ nodeIndex: number; name: string }>; canProcure?: boolean;
   projectId: string | null; companyEntityId: string | null; companyName: string | null; category: GeneralProcurementCategory; revision: number;
@@ -41,10 +43,52 @@ async function read<T>(path: string, init?: RequestInit): Promise<T> {
 const root = "/general-procurements";
 const detailPath = (id: string) => `${root}/${encodeURIComponent(id)}`;
 const post = <T>(path: string, body: unknown) => read<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-export const fetchProcurementList = (query: { page?: number; pageSize?: number; search?: string; status?: string } = {}) => {
+export interface ProcurementListQuery {
+  page?: number; pageSize?: number; search?: string; keyword?: string; status?: string;
+  projectId?: string; dateFrom?: string; dateTo?: string; sort?: string; columns?: string;
+}
+export const fetchProcurementList = (query: ProcurementListQuery = {}) => {
   const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== "").map(([key, value]) => [key, String(value)]));
-  return read<{ items: ProcurementListItem[]; total: number; page: number; pageSize: number }>(`${root}?${params.toString()}`);
+  return read<{ items: ProcurementListItem[]; total: number; page: number; pageSize: number; columns?: ProcurementLedgerColumn[] }>(`${root}?${params.toString()}`);
 };
+export async function downloadProcurementLedger(query: ProcurementListQuery & { view?: string }) {
+  const params = new URLSearchParams();
+  const entries: Array<[string, string | number | undefined]> = [];
+  // 只上送业务筛选，未知字段不进入导出请求。
+  if (typeof query === "object" && query !== null) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined) continue;
+      const text = String(value).trim();
+      if (text === "") continue;
+      entries.push([key, text]);
+    }
+  }
+  for (const [key, value] of entries) params.set(key, String(value));
+  const search = params.toString();
+  const response = await apiFetch(
+    `/general-procurements/ledger-export${search ? `?${search}` : ""}`
+  );
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({}))) as { message?: unknown };
+    throw new Error(
+      typeof errorBody.message === "string" && errorBody.message.trim()
+        ? errorBody.message
+        : "导出${fallback.replace('.xlsx','')}失败"
+    );
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/u.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : "${fallback}";
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 export const fetchProcurementOptions = () => read<ProcurementOptions>(`${root}/create-options`);
 export const fetchProcurementDetail = (id: string) => read<ProcurementDetail>(detailPath(id));
 export async function createProcurement(body: (ProcurementDraft | ProcurementRequestDraft) & { requestKey: string }) {
