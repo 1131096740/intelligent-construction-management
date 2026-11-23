@@ -3,18 +3,24 @@ import { mkdtemp, rm, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { INestApplication } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { hash } from "bcryptjs";
 
 import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
 import { ActualPurchaseBatchNotificationService } from "../actual-purchase/actual-purchase-batch-notification.service";
+import { apiJsonReplacer } from "../api-json-replacer";
+import { AppModule } from "../app.module";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
 import { AuditService } from "../audit/audit.service";
-import { FileService, PrivateFileStorage } from "../file/file.service";
+import { PrivateFileStorage } from "../file/file.service";
 import type { AppendOperatingFactInput, OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
 import { paymentApprovalNodes } from "../spot-procurement/spot-procurement-approval-nodes";
 import { SpotProcurementBalanceService } from "../spot-procurement/spot-procurement-balance.service";
 import { SpotProcurementPaymentService } from "../spot-procurement/spot-procurement-payment.service";
+import { createApiValidationPipe } from "../validation/api-validation";
 
 /**
  * #403 真库证据（真实 PostgreSQL 16）：
@@ -29,23 +35,39 @@ import { SpotProcurementPaymentService } from "../spot-procurement/spot-procurem
 describe("issue 403 actual purchase batches and split payments PostgreSQL", () => {
   const integrationTest = process.env.ISSUE403_ACTUAL_PURCHASE_RUN === "1" ? it : it.skip;
 
-  integrationTest("migrates a legacy pending spot payment atomically and accepts a finance signature before project review", async () => {
+  integrationTest("migrates a legacy pending spot payment atomically and accepts a finance signature through HTTP after reopening", async () => {
     const databaseUrl = assertDedicatedDatabase();
+    if (process.env.NODE_ENV !== "test" || process.env.DATABASE_URL !== databaseUrl) {
+      throw new Error("HTTP 验收仅允许连接同一本机 #403 专库");
+    }
     const storageRoot = await mkdtemp(join(tmpdir(), "issue424-cutover-files-"));
     const objectKey = "signature.png";
     const financeObjectKey = "finance-signature.png";
     const financeRoleId = randomUUID();
-    const previousStorageDriver = process.env.FILE_STORAGE_DRIVER;
-    const previousStorageRoot = process.env.FILE_STORAGE_ROOT;
     const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const environment = jest.replaceProperty(process, "env", {
+      ...process.env,
+      FILE_STORAGE_DRIVER: "local",
+      FILE_STORAGE_ROOT: storageRoot,
+      JWT_ACCESS_SECRET: randomUUID(),
+      JWT_REFRESH_SECRET: randomUUID(),
+      OPERATIONAL_WRITE_FREEZE_MODE: "modules",
+      OPERATIONAL_WRITE_FREEZE_MODULES: "procurement"
+    });
+    let app: INestApplication | undefined;
     try {
-      process.env.FILE_STORAGE_DRIVER = "local";
-      process.env.FILE_STORAGE_ROOT = storageRoot;
-      const storage = new PrivateFileStorage();
-      storage.assertConfigured();
       const fixture = await seedFixture(prisma, { includeGlobalApprovalRoles: false });
-      const audit = new AuditService();
-      const balances = new SpotProcurementBalanceService(prisma as never, audit);
+      process.env.SPOT_PROCUREMENT_PILOT_PROJECT_IDS = fixture.projectId;
+      const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      app = module.createNestApplication({ logger: false });
+      app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+      app.useGlobalPipes(createApiValidationPipe());
+      await app.listen(0, "127.0.0.1");
+      const base = await app.getUrl();
+      const storage = app.get(PrivateFileStorage);
+      const audit = app.get(AuditService);
+      const balances = app.get(SpotProcurementBalanceService);
+      const service = app.get(SpotProcurementPaymentService);
       const supplierKey = `supplier-424-${fixture.prefix}`;
       await prisma.spotProcurementVersion.update({ where: { id: fixture.versionId }, data: { supplierKey } });
       const payment = await prisma.spotProcurementPayment.create({
@@ -132,11 +154,6 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
           metadata: { approverName: signer.name }
         }
       });
-      const files = new FileService(prisma as never, audit, storage);
-      const service = new SpotProcurementPaymentService(
-        prisma as never, audit, { assertEnabled: () => undefined } as never, balances, {} as never,
-        files, { tryRefreshLatestForBusiness: async () => undefined } as never, {} as never, {} as never
-      );
       const actorId = fixture.comprehensiveDirectorUserId;
       const reload = () => prisma.approvalInstance.findUniqueOrThrow({ where: { id: round.id } });
       const loadAuditRows = () => prisma.auditLog.findMany({
@@ -182,6 +199,12 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       const financeUserId = fixture.financeDirectorUserId;
       const financePosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_director" } });
       await prisma.userPosition.create({ data: { id: financeRoleId, userId: financeUserId, positionId: financePosition.id } });
+      const phone = "13900000424";
+      const password = `Issue424-${randomUUID()}`;
+      await prisma.user.update({
+        where: { id: financeUserId },
+        data: { phone, passwordHash: await hash(password, 4), mustChangePassword: false }
+      });
       await storage.write(financeObjectKey, signatureBytes);
       const financeFile = await prisma.fileObject.create({
         data: {
@@ -197,8 +220,37 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       const financeSignature = await prisma.handwrittenSignatureVersion.create({
         data: { userId: financeUserId, fileId: financeFile.id, contentSha256 }
       });
-      await expect(service.review(payment.id, financeUserId, { decision: "approve" })).resolves.toMatchObject({
-        id: payment.id, status: "approval_pending"
+      const post = async (path: string, body: object, token?: string) => {
+        const response = await fetch(`${base}${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Connection: "close",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(body)
+        });
+        return { status: response.status, body: await response.json() };
+      };
+      const approvalPath = `/spot-procurement-payments/${payment.id}/approval`;
+      const login = await post("/auth/login", { phone, password });
+      expect(login.status).toBe(201);
+      const token = login.body.tokens.accessToken as string;
+      await expect(post(approvalPath, { decision: "approve" }, token)).resolves.toMatchObject({
+        status: 503,
+        body: { code: "OPERATIONAL_WRITE_FREEZE_ACTIVE" }
+      });
+      expect(await reload()).toEqual(converted);
+      expect(await prisma.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } })).toEqual([originalAction]);
+      expect(await prisma.spotProcurementPayment.findUnique({ where: { id: payment.id } })).toEqual(payment);
+      expect(await loadFunding()).toEqual(fundingBeforeCutover);
+
+      process.env.OPERATIONAL_WRITE_FREEZE_MODE = "off";
+      delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+      await expect(post(approvalPath, { decision: "approve" })).resolves.toMatchObject({ status: 401 });
+      await expect(post(approvalPath, { decision: "approve" }, token)).resolves.toMatchObject({
+        status: 201,
+        body: { id: payment.id, status: "approval_pending" }
       });
       const afterReview = await reload();
       expect(afterReview).toMatchObject({ currentNodeIndex: 1, status: "approval_pending" });
@@ -207,8 +259,9 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       ));
       expect(activeApprovalNodeIndexes(afterReview.frozenNodes, afterReview.currentNodeIndex)).toEqual([1, 3]);
 
-      await expect(service.review(payment.id, financeUserId, { decision: "approve" }))
-        .rejects.toThrow("当前用户不是本付款审批节点处理人");
+      await expect(post(approvalPath, { decision: "approve" }, token)).resolves.toMatchObject({
+        status: 403
+      });
       expect(await reload()).toEqual(afterReview);
       const actions = await prisma.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } });
       expect(actions).toHaveLength(2);
@@ -228,15 +281,16 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
       expect(await loadFunding()).toEqual(fundingBeforeCutover);
       expect(await prisma.spotProcurementPaymentExecution.count({ where: { paymentId: payment.id } })).toBe(0);
     } finally {
-      if (previousStorageDriver === undefined) delete process.env.FILE_STORAGE_DRIVER;
-      else process.env.FILE_STORAGE_DRIVER = previousStorageDriver;
-      if (previousStorageRoot === undefined) delete process.env.FILE_STORAGE_ROOT;
-      else process.env.FILE_STORAGE_ROOT = previousStorageRoot;
-      await Promise.all([
-        prisma.userPosition.deleteMany({ where: { id: financeRoleId } }).finally(() => prisma.$disconnect()),
-        Promise.all([objectKey, financeObjectKey].map(key => rm(join(storageRoot, key), { force: true })))
-          .then(() => rmdir(storageRoot))
-      ]);
+      try {
+        await app?.close();
+      } finally {
+        environment.restore();
+        await Promise.all([
+          prisma.userPosition.deleteMany({ where: { id: financeRoleId } }).finally(() => prisma.$disconnect()),
+          Promise.all([objectKey, financeObjectKey].map(key => rm(join(storageRoot, key), { force: true })))
+            .then(() => rmdir(storageRoot))
+        ]);
+      }
     }
   });
 
