@@ -88,7 +88,7 @@
   - 既有返回字段、`migrate()` 抛错时机/错误码、busy/stopped 语义、所有 `need(...)` 断言均未改。
 - `services/api/prisma/local-staged-ci-dynamic.cjs`
   - 捕获 `createLocalMigrationFixture(...)` 结果，返回 `{...fixture, getStagedSetupHandle: db => fixture.getStagedSetupHandle(db)}`；既有键值全部保留（spread），`migrate` 引用不变。
-- 零行为变更证据：`git diff` 仅新增行（无既有行修改）；`node --test run-database-dynamic-gate-local.test.cjs` = **83/83 pass**；`node --test local-staged-{ci-dynamic,migrations,prefix-cache}.test.cjs` = **145/145 pass**。
+- 零行为变更证据：`git diff` 仅新增行（无既有行修改）；`node --test run-database-dynamic-gate-local.test.cjs` = **83/83 pass**；`node --test local-staged-{ci-dynamic,migrations,prefix-cache}.test.cjs` = **145/145 pass**；`task398_shared_standard` 复跑仍为 `TASK398_STANDARD_EXACT_323_PASSED`（该门用镜像内旧 fixture，行为未变）。
 
 ### 需重钉清单（按指示未自行重钉）
 
