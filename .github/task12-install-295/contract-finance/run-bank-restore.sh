@@ -118,6 +118,20 @@ require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx
 if(r.candidateSha!==sha||r.status!==expected)process.exit(1);
 JS
   fi
+  if (( status != 0 || proof_status != 0 )) && [[ -s $out/$mode.json ]]; then
+    node - "$out/$mode.json" >&2 <<'JS' || true
+const {failure}=require(process.argv[2]);
+const result={};
+for (const field of ['stage','code','sqlstate','prismaCode']) {
+  if (typeof failure?.[field]==='string' && /^[A-Z0-9_]{1,96}$/.test(failure[field])) {
+    result[field]=failure[field];
+  }
+}
+if (Object.keys(result).length) {
+  process.stderr.write('CONTRACT_FINANCE_FAILURE_RECEIPT '+JSON.stringify(result)+'\n');
+}
+JS
+  fi
   if (( status != 0 )); then
     printf 'CONTRACT_FINANCE_CONTAINER_FAILED lane=%s phase=%s status=%d\n' "$lane" "$mode" "$status" >&2
     # Node can fail before a receipt exists. Print the error class only.

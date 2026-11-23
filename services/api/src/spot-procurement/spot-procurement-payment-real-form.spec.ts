@@ -791,7 +791,8 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it("returns a finance-director payer change to comprehensive approval and preserves the prior approval trail", async () => {
+  it.each(["serial", "cutover", "mixed"] as const)("validates finance payer changes and preserves the approval trail for a %s round", async (protocol) => {
+    const cutover = protocol !== "serial";
     const { service, tx } = createHarness();
     const submitted = {
       ...payment,
@@ -799,42 +800,59 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       paymentMethod: "bank_transfer",
       payerCompanyEntityId: "company-before"
     };
+    const frozenNodes = [
+      {
+        name: "首个审批",
+        mode: "any",
+        roleKeys: [cutover ? "material_director" : "comprehensive_director"],
+        approvedRoleKeys: [cutover ? "material_director" : "comprehensive_director"]
+      },
+      {
+        name: "项目经理审批",
+        mode: "any",
+        roleKeys: ["project_manager"],
+        ...(!cutover ? { approvedRoleKeys: ["project_manager"] } : {})
+      },
+      {
+        name: "财务主管审批",
+        mode: "any",
+        roleKeys: ["finance_director"]
+      },
+      {
+        name: "董事长或总经理审批",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"],
+        ...(cutover ? { approvedRoleKeys: ["chairman"] } : {})
+      }
+    ].map((node, index) => cutover && (protocol !== "mixed" || index !== 0) ? {
+      ...node, protocolVersion: 1, executionMode: "parallel", legacySerialCutover: true
+    } : node);
     tx.$queryRaw
       .mockResolvedValueOnce([submitted])
       .mockResolvedValueOnce([
         {
           id: "approval-1",
           status: "approval_pending",
-          currentNodeIndex: 2,
+          currentNodeIndex: protocol === "cutover" ? 1 : 2,
           applicantUserId: "material-1",
-          frozenNodes: [
-            {
-              name: "综合部主管审批",
-              mode: "any",
-              roleKeys: ["comprehensive_director"],
-              approvedRoleKeys: ["comprehensive_director"]
-            },
-            {
-              name: "项目经理审批",
-              mode: "any",
-              roleKeys: ["project_manager"],
-              approvedRoleKeys: ["project_manager"]
-            },
-            {
-              name: "财务主管审批",
-              mode: "any",
-              roleKeys: ["finance_director"]
-            }
-          ]
+          frozenNodes
         }
       ]);
     tx.projectMember.findMany.mockResolvedValue([{ positionKey: "finance_director" }]);
 
-    await service.updatePayer("payment-1", "finance-director", {
+    const update = service.updatePayer("payment-1", "finance-director", {
       companyEntityId: "company-1",
       paymentMethods: ["bank_transfer"],
       changeReason: "付款主体需要改为实际出款公司"
     });
+
+    if (protocol === "mixed") {
+      await expect(update).rejects.toThrow("历史付款审批迁移标记不一致");
+      expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      return;
+    }
+    await update;
 
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -856,9 +874,9 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       data: expect.objectContaining({
         currentNodeIndex: 0,
         status: "approval_pending",
-        frozenNodes: expect.arrayContaining([
-          expect.not.objectContaining({ approvedRoleKeys: expect.anything() })
-        ])
+        frozenNodes: frozenNodes.map((node) =>
+          Object.fromEntries(Object.entries(node).filter(([key]) => key !== "approvedRoleKeys"))
+        )
       })
     });
   });

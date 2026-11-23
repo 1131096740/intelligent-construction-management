@@ -44,7 +44,11 @@ export function finalApprovalEvidence<T extends ApprovalEvidenceAction>(
       (log.action !== "approve" && Boolean(log.signatureFileIdSnapshot || log.signatureSha256Snapshot || log.signatureVersionIdSnapshot)))) {
       throw new BadRequestException("并联审批存在无法识别的签批或系统通知记录");
     }
-    const approvals = logs.filter(log => log.action === "approve");
+    // A payer change starts fresh signing while retaining all earlier audit actions.
+    const latestPayerReset = frozenNodes.every(node => node.legacySerialCutover === true)
+      ? logs.reduce((latest, log, index) => log.action === "payer_changed_reapproval" ? index : latest, -1)
+      : -1;
+    const approvals = logs.slice(latestPayerReset + 1).filter(log => log.action === "approve");
     if (logs.some(log => ["reject", "return_to_applicant", "withdraw"].includes(log.action))) throw new BadRequestException("当前审批轮已结束，不能下载审批单");
     const groups = frozenNodes.map(() => [] as T[]);
     for (const log of approvals) {

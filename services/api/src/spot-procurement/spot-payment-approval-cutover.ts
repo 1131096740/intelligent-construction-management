@@ -1,11 +1,13 @@
 import { BadRequestException } from "@nestjs/common";
+import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import {
   finalApprovalEvidence,
   type ApprovalEvidenceAction
 } from "../approval/approval-evidence";
 import {
   activeApprovalNodeIndexes,
-  hasVersionedApprovalNodes
+  hasVersionedApprovalNodes,
+  isParallelApprovalRound
 } from "../approval/parallel-approval-protocol";
 import {
   paymentApprovalNodes,
@@ -13,6 +15,30 @@ import {
 } from "./spot-procurement-approval-nodes";
 
 type LegacyParallelPaymentNode = SpotProcurementApprovalNode & { legacySerialCutover: true };
+
+export function isLegacySerialCutoverRound(frozenNodes: unknown): boolean {
+  return isParallelApprovalRound(frozenNodes) &&
+    frozenNodes.every((node) => node.legacySerialCutover === true);
+}
+
+export function hasInvalidLegacySerialCutoverMarker(frozenNodes: unknown): boolean {
+  return Array.isArray(frozenNodes) &&
+    frozenNodes.some((node) => node && typeof node === "object" && "legacySerialCutover" in node) &&
+    !isLegacySerialCutoverRound(frozenNodes);
+}
+
+export function pendingSpotPaymentPayerApprovalRoles(
+  frozenNodes: unknown,
+  currentNodeIndex: number
+) {
+  if (hasInvalidLegacySerialCutoverMarker(frozenNodes)) return [];
+  const indexes = isLegacySerialCutoverRound(frozenNodes)
+    ? activeApprovalNodeIndexes(frozenNodes, currentNodeIndex)
+    : [currentNodeIndex];
+  return indexes.flatMap((index) =>
+    pendingRoleKeysForFrozenApprovalNode(frozenNodes, index)
+  );
+}
 
 type BlockedReason =
   | "unsupported_frozen_nodes"

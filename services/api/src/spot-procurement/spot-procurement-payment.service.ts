@@ -21,6 +21,11 @@ import {
   type SpotProcurementPaymentMethod
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
+import {
+  hasInvalidLegacySerialCutoverMarker,
+  isLegacySerialCutoverRound,
+  pendingSpotPaymentPayerApprovalRoles
+} from "./spot-payment-approval-cutover";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
@@ -1126,8 +1131,11 @@ export class SpotProcurementPaymentService {
       const approval = payment.status === "approval_pending"
         ? await this.requireLockedApproval(tx, payment.id)
         : null;
+      if (hasInvalidLegacySerialCutoverMarker(approval?.frozenNodes)) {
+        throw new ConflictException("历史付款审批迁移标记不一致，请核对原审批轮次");
+      }
       const pendingRoles = approval
-        ? pendingRoleKeysForFrozenApprovalNode(
+        ? pendingSpotPaymentPayerApprovalRoles(
             approval.frozenNodes,
             approval.currentNodeIndex
           )
@@ -1507,13 +1515,11 @@ export class SpotProcurementPaymentService {
           version.projectId
         );
         const frozenNodes = approval.frozenNodes;
-        const parallelRound = isParallelApprovalRound(frozenNodes);
-        const legacyParallelRound = parallelRound &&
-          frozenNodes.every((node) => node.legacySerialCutover === true);
-        if (parallelRound && !legacyParallelRound) {
-          if (frozenNodes.some((node) => node.legacySerialCutover === true)) {
-            throw new ConflictException("历史付款审批迁移标记不一致，请核对原审批轮次");
-          }
+        if (hasInvalidLegacySerialCutoverMarker(frozenNodes)) {
+          throw new ConflictException("历史付款审批迁移标记不一致，请核对原审批轮次");
+        }
+        const legacyParallelRound = isLegacySerialCutoverRound(frozenNodes);
+        if (isParallelApprovalRound(frozenNodes) && !legacyParallelRound) {
           return this.reviewBatchParallelPayment(
             tx,
             version,
@@ -4459,12 +4465,13 @@ function resetPaymentApprovalToComprehensive(frozenNodes: Prisma.JsonValue) {
   if (!Array.isArray(frozenNodes) || frozenNodes.length < 3) {
     throw new ConflictException("付款审批节点快照损坏，不能重新发起审批");
   }
+  const legacyParallelRound = isLegacySerialCutoverRound(frozenNodes);
   return frozenNodes.map((node, index) => {
     if (!node || typeof node !== "object" || Array.isArray(node)) {
       throw new ConflictException("付款审批节点快照损坏，不能重新发起审批");
     }
     const copy = { ...(node as Record<string, Prisma.JsonValue>) };
-    if (index <= 2) delete copy.approvedRoleKeys;
+    if (legacyParallelRound || index <= 2) delete copy.approvedRoleKeys;
     return copy;
   });
 }

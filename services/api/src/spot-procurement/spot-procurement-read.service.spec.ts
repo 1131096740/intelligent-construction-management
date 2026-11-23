@@ -2780,6 +2780,40 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
+  it("keeps payer completion available to finance with another migrated duty at the cursor", () => {
+    const nodes = [
+      { name: "物资部主管", roleKeys: ["material_director"], approvedRoleKeys: ["material_director"] },
+      { name: "项目经理", roleKeys: ["project_manager"] },
+      { name: "财务主管", roleKeys: ["finance_director"] }
+    ].map((node) => ({
+      ...node, mode: "any", protocolVersion: 1, executionMode: "parallel", legacySerialCutover: true
+    }));
+    const input = {
+      payment: paymentRow({ status: "approval_pending" }) as never,
+      approval: {
+        status: "approval_pending",
+        currentNodeIndex: 1,
+        frozenNodes: nodes,
+        applicantUserId: "handler-1"
+      } as never,
+      discrepancy: null,
+      actorUserId: "finance-director",
+      roleKeys: ["finance_director"] as const,
+      projectScopedRoleKeys: ["finance_director"] as const,
+      paymentMethodCount: 0,
+      availableActions: []
+    };
+    expect(deriveSpotPaymentCurrentTask(input)).toMatchObject({ key: "complete_payer", enabled: true });
+    expect(deriveSpotPaymentCurrentTask({
+      ...input,
+      approval: {
+        ...input.approval as object,
+        currentNodeIndex: 0,
+        frozenNodes: [{ ...nodes[0], legacySerialCutover: false }, ...nodes.slice(1)]
+      } as never
+    })).toMatchObject({ enabled: false });
+  });
+
   it("keeps the seven trial roles on their own payment task and never infers a privileged action", () => {
     const approvalFor = (roleKey: string, nodeName: string) => ({
       status: "approval_pending",

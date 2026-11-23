@@ -626,7 +626,7 @@ async function savePayer() {
     await updateSpotProcurementPaymentPayerWithCapability(current.payment.id, { companyEntityId: requiredText(payerForm.companyEntityId, "付款主体"), paymentMethods: payerForm.paymentMethods, ...(payerForm.changeReason.trim() ? { changeReason: payerForm.changeReason.trim() } : {}) });
     if (paymentId.value !== operationPaymentId) return;
     payerVisible.value = false;
-    showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，将从本轮冻结的首个节点重新审批；原审批记录保留。" : "付款主体和拟付款方式已保存。");
+    showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，将按本轮冻结岗位重新审批；原审批记录保留。" : "付款主体和拟付款方式已保存。");
     await loadDetail();
     await restorePayerTriggerFocus();
   } catch (error) {
@@ -2166,7 +2166,7 @@ watch(
           <p>{{ payment.payerCompanyName ?? '尚未确定付款主体' }}；{{ detail.paymentMethods?.map((method) => method.label).join('、') || '尚未确定拟付款方式' }}</p>
           <BusinessStatusText
             v-if="payerManagement.requiresReapproval"
-            text="财务主管调整后将从本轮冻结的首个节点重新审批"
+            text="财务主管调整后将按本轮冻结岗位重新审批"
             semantic="progress"
           />
           <t-button
@@ -2384,14 +2384,14 @@ watch(
           <t-alert
             theme="warning"
             title="受控变更"
-            :message="payerManagement?.requiresReapproval ? '财务主管变更后将从本轮冻结的首个节点重新审批，请再次确认原因。' : '付款主体与拟付款方式只可由财务人员、综合部主管或财务主管在当前合法阶段维护。'"
+            :message="payerManagement?.requiresReapproval ? '财务主管变更后将按本轮冻结岗位重新审批，请再次确认原因。' : '付款主体与拟付款方式只可由财务人员、综合部主管或财务主管在当前合法阶段维护。'"
           /><dl
             v-if="payerManagement?.requiresReapproval"
             class="detail-grid"
           >
             <div><dt>原付款主体</dt><dd>{{ payment.payerCompanyName ?? "未确定" }}</dd></div>
             <div><dt>新付款主体</dt><dd>{{ selectedPayerCompanyName }}</dd></div>
-            <div><dt>审批影响</dt><dd>重置本轮前序节点的通过状态，从本轮冻结的首个节点重新审批；原审批记录保留</dd></div>
+            <div><dt>审批影响</dt><dd>重置本轮已通过的审批状态，按本轮冻结岗位重新审批；原审批记录保留</dd></div>
           </dl><label><span>我方付款主体</span><t-select
             v-model="payerForm.companyEntityId"
             :options="payerOptions"

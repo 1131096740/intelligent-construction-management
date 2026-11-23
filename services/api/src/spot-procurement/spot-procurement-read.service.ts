@@ -1,4 +1,8 @@
 import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-scope";
+import {
+  hasInvalidLegacySerialCutoverMarker,
+  pendingSpotPaymentPayerApprovalRoles
+} from "./spot-payment-approval-cutover";
 import {scopedSpotDutyNodeIndexes} from "../approval/spot-approval-duty-access";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {
@@ -255,7 +259,7 @@ export function deriveSpotPaymentCurrentTask(input: {
     "finance_director"
   ] as const;
   const pendingApprovalRoleKeys = input.approval
-    ? pendingRoleKeysForFrozenApprovalNode(
+    ? pendingSpotPaymentPayerApprovalRoles(
         input.approval.frozenNodes,
         input.approval.currentNodeIndex
       )
@@ -264,6 +268,7 @@ export function deriveSpotPaymentCurrentTask(input: {
     input.payment.status === "draft" ||
     (input.payment.status === "approval_pending" &&
       input.approval?.status === "approval_pending" &&
+      !hasInvalidLegacySerialCutoverMarker(input.approval.frozenNodes) &&
       (input.approval.currentNodeIndex === 0 ||
         (input.roleKeys.includes("finance_director") &&
           pendingApprovalRoleKeys.includes("finance_director"))));
@@ -4485,7 +4490,15 @@ function payerManagementReadModel(input: {
       requiresReapproval: false
     };
   }
-  const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
+  if (hasInvalidLegacySerialCutoverMarker(input.approval.frozenNodes)) {
+    return {
+      visible: true,
+      enabled: false,
+      disabledReason: "历史付款审批轮次需要核对后才能调整付款主体",
+      requiresReapproval: false
+    };
+  }
+  const pendingRoles = pendingSpotPaymentPayerApprovalRoles(
     input.approval.frozenNodes,
     input.approval.currentNodeIndex
   );
