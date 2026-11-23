@@ -103,6 +103,7 @@ export const BUSINESS_ACTIONS = [
   "history_expense.verify",
   "history_expense.confirm",
   "history_expense.activate",
+  "history_expense.correct",
   "payment.create",
   "payment.approve",
   "payment.execution",
@@ -363,6 +364,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "history_expense.verify": ["finance_staff", "finance_director"],
   "history_expense.confirm": ["finance_director"],
   "history_expense.activate": ["finance_director"],
+  "history_expense.correct": ["finance_director"],
   "payment.create": [
     "contract_staff",
     "contract_director",

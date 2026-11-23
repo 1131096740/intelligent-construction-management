@@ -11,7 +11,8 @@ describe("HistoryExpenseController", () => {
     detail: jest.fn(),
     verifyRow: jest.fn(),
     confirm: jest.fn(),
-    activate: jest.fn()
+    activate: jest.fn(),
+    correctRow: jest.fn()
   };
   const controller = new HistoryExpenseController(service as unknown as HistoryExpenseService);
 
@@ -47,5 +48,18 @@ describe("HistoryExpenseController", () => {
     expect(service.activate).toHaveBeenCalledWith("project-1", "batch-1", "actor-1", {
       expectedRevision: 5
     });
+    const correctionInput = {
+      expectedRevision: 3,
+      reason: "原始凭据金额更正",
+      values: { amountYuan: "700.00" }
+    };
+    await controller.correctRow("project-1", "batch-1", "row-1", user, correctionInput);
+    expect(service.correctRow).toHaveBeenCalledWith(
+      "project-1",
+      "batch-1",
+      "row-1",
+      "actor-1",
+      correctionInput
+    );
   });
 });

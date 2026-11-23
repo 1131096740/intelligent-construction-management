@@ -82,7 +82,7 @@ async function main() {
       publicTables: Number(tables), containerRuntime: "docker_postgresql16_disposable",
       phases, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
-      scopeWarning: "本用例证明真实 PG 的批量导入、逐行核实、主管复核、部分入账、待核对保留、重复导入幂等、显式0/未知与不重复扣期初；经营账写入以受控端口记录输入验证（未重放经营账数据库函数），不是迁移重放"
+      scopeWarning: "本用例证明真实 PG 的批量导入、逐行核实、主管复核、部分入账、待核对保留与补资料重核、重复导入幂等、显式0/未知、已入账更正反转+重登净额与不重复扣期初；经营账写入以受控端口记录输入验证（未重放经营账数据库函数），不是迁移重放"
     };
     process.stdout.write(`ISSUE417_RECEIPT ${JSON.stringify(receipt)}\n`);
   } finally {

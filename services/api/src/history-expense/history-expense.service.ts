@@ -22,6 +22,7 @@ import {
   HISTORY_EXPENSE_PAYMENT_STATUSES,
   HISTORY_EXPENSE_PAYMENT_STATUS_LABELS,
   HISTORY_EXPENSE_REVIEW_OUTCOME_LABELS,
+  HISTORY_EXPENSE_CORRECTION_SOURCE_TYPE,
   HISTORY_EXPENSE_SCENE_KEY,
   HISTORY_EXPENSE_SOURCE_TYPE,
   historyExpenseHasBlockingIssue,
@@ -37,6 +38,7 @@ import {
 import {
   type ActivateHistoryExpenseDto,
   type ConfirmHistoryExpenseDto,
+  type CorrectHistoryExpenseRowDto,
   type CreateHistoryExpenseBatchDto,
   type PrecheckHistoryExpenseDto,
   type VerifyHistoryExpenseRowDto
@@ -111,6 +113,7 @@ export interface HistoryExpenseBatchView {
   canVerify: boolean;
   canConfirm: boolean;
   canActivate: boolean;
+  canCorrect: boolean;
   rows: HistoryExpenseBatchRowView[];
 }
 
@@ -162,7 +165,8 @@ export class HistoryExpenseService {
         manage: canPerform("history_expense.manage", roles),
         verify: canPerform("history_expense.verify", roles),
         confirm: canPerform("history_expense.confirm", roles),
-        activate: canPerform("history_expense.activate", roles)
+        activate: canPerform("history_expense.activate", roles),
+        correct: canPerform("history_expense.correct", roles)
       }
     };
   }
@@ -395,6 +399,7 @@ export class HistoryExpenseService {
         batch.status !== "activated" &&
         latestConfirmationMatches &&
         batch.rows.some((row) => row.reviewStatus === "verified" && !row.generatedFactId),
+      canCorrect: canPerform("history_expense.correct", roles),
       rows
     };
   }
@@ -428,13 +433,28 @@ export class HistoryExpenseService {
         if (row.revision !== input.expectedRevision) {
           throw new ConflictException("历史费用行版本已变化，请刷新后重试");
         }
+        const previousValues = row.valuesSnapshot as Record<string, unknown>;
+        const previousHistory = Array.isArray(previousValues._history)
+          ? (previousValues._history as unknown[])
+          : [];
+        const historyEntry = {
+          at: new Date().toISOString(),
+          byUserId: actorUserId,
+          reviewStatus: row.reviewStatus,
+          reviewConclusion: row.reviewConclusion,
+          values: previousValues
+        };
         const mergedValues = {
-          ...(row.valuesSnapshot as Record<string, unknown>),
+          ...previousValues,
           ...(input.values ?? {})
         };
         const normalized = normalizeHistoryExpenseRow(mergedValues, {
           today: new Date().toISOString().slice(0, 10)
         });
+        const valuesForStorage = {
+          ...normalized.values,
+          _history: [...previousHistory, historyEntry]
+        };
         const blocking = normalized.issues.filter((entry) => entry.severity === "error");
         if (input.reviewOutcome === "verified") {
           if (blocking.length) {
@@ -478,7 +498,7 @@ export class HistoryExpenseService {
             businessRef: normalized.businessRef,
             occurredAt: normalized.occurredAt,
             amountCents: normalized.amountCents,
-            valuesSnapshot: normalized.values as Prisma.InputJsonObject,
+            valuesSnapshot: valuesForStorage as Prisma.InputJsonObject,
             reviewStatus: input.reviewOutcome,
             reviewConclusion: textValue(input.note) ?? null,
             revision: { increment: 1 }
@@ -512,6 +532,248 @@ export class HistoryExpenseService {
             outcome: input.reviewOutcome,
             note: textValue(input.note) ?? null,
             expectedRevision: input.expectedRevision
+          }
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return this.detail(projectId, batchId, actorUserId);
+  }
+
+  async correctRow(
+    projectId: string,
+    batchId: string,
+    rowId: string,
+    actorUserId: string,
+    input: CorrectHistoryExpenseRowDto
+  ): Promise<HistoryExpenseBatchView> {
+    await this.authorize(projectId, actorUserId, "history_expense.correct");
+    const reason = textValue(input.reason) ?? "";
+    if (!reason) throw new BadRequestException("更正已入账历史费用必须填写原因");
+    await this.prisma.$transaction(
+      async (tx) => {
+        await this.lockBatch(tx, projectId, batchId);
+        const batch = await tx.operatingTakeoverBatch.findFirstOrThrow({
+          where: { id: batchId, projectId },
+          include: { rows: { orderBy: { rowNo: "asc" } } }
+        });
+        const original = batch.rows.find((row) => row.id === rowId);
+        if (!original) throw new NotFoundException("历史费用行不存在，请刷新后重试");
+        if (!original.generatedFactId) {
+          throw new ConflictException("只有已入账行才能更正；待核对或未发生行请直接补资料后核实");
+        }
+        if (original.revision !== input.expectedRevision) {
+          throw new ConflictException("历史费用行版本已变化，请刷新后重试");
+        }
+        const alreadyCorrected = batch.rows.find((row) => {
+          const values = row.valuesSnapshot as Record<string, unknown>;
+          const correction = correctionMeta(values);
+          return correction?.originalRowId === original.id && row.generatedFactId !== null;
+        });
+        if (alreadyCorrected) {
+          throw new ConflictException("该行已经更正过，请刷新后查看更正行，勿重复更正");
+        }
+        const project = await tx.project.findUniqueOrThrow({
+          where: { id: projectId },
+          select: { operatingLedgerEffectiveDate: true, isActive: true }
+        });
+        if (!project.isActive) throw new BadRequestException("项目已停用，不能更正历史费用");
+        if (!project.operatingLedgerEffectiveDate) {
+          throw new BadRequestException("项目尚未设置经营账生效日期，不能更正历史费用");
+        }
+        if (!original.occurredAt || !original.amountCents || original.amountCents <= 0n) {
+          throw new ConflictException("原历史费用行缺少有效发生日期或金额，不能更正");
+        }
+        const correctedValues = {
+          ...(original.valuesSnapshot as Record<string, unknown>),
+          ...input.values
+        };
+        const normalized = normalizeHistoryExpenseRow(correctedValues, {
+          today: new Date().toISOString().slice(0, 10)
+        });
+        const blocking = normalized.issues.filter((entry) => entry.severity === "error");
+        if (blocking.length) {
+          throw new BadRequestException({
+            message: "更正后的历史费用仍未通过核对，不能入账",
+            issues: blocking
+          });
+        }
+        if (normalized.amountCents <= 0n) {
+          throw new BadRequestException("更正后的金额必须大于0；费用未发生请走待核对/未发生说明");
+        }
+        if (normalized.occurredAt >= project.operatingLedgerEffectiveDate) {
+          throw new BadRequestException("更正后的发生日期不在经营账启用日前，不能作为历史费用入账");
+        }
+        const now = new Date();
+        const newRowNo = Math.max(...batch.rows.map((row) => row.rowNo)) + 1;
+        const newRowId = randomUUID();
+        const storedValues = {
+          ...normalized.values,
+          _correction: {
+            originalRowId: original.id,
+            originalRowNo: original.rowNo,
+            originalFactId: original.generatedFactId,
+            originalAmountCents: original.amountCents.toString(),
+            reason,
+            correctedAt: now.toISOString(),
+            correctedByUserId: actorUserId
+          }
+        };
+        await tx.operatingTakeoverRow.create({
+          data: {
+            id: newRowId,
+            batchId,
+            rowNo: newRowNo,
+            sceneKey: HISTORY_EXPENSE_SCENE_KEY,
+            definitionVersion: 1,
+            businessRef: normalized.businessRef,
+            occurredAt: normalized.occurredAt,
+            amountCents: normalized.amountCents,
+            valuesSnapshot: storedValues as Prisma.InputJsonObject,
+            evidenceLevel: "B",
+            reviewStatus: "activated",
+            reviewConclusion: `更正原行 #${original.rowNo}：${reason}`,
+            duplicateStatus: "none"
+          }
+        });
+
+        const originalValues = original.valuesSnapshot as Record<string, unknown>;
+        const originalCompany = await this.resolveCostBearingCompany(
+          tx,
+          projectId,
+          original.occurredAt,
+          textValue(originalValues.costBearingCompanyName) ?? null
+        );
+        const originalPayeeName = textValue(originalValues.payeeName);
+        const originalPayee = originalPayeeName
+          ? await tx.businessParty.findFirst({
+              where: { name: originalPayeeName, status: "active" },
+              select: { id: true }
+            })
+          : null;
+        if (originalPayeeName && !originalPayee) {
+          throw new BadRequestException(`原行未找到有效收款方：${originalPayeeName}`);
+        }
+        const reversalAssignment = await tx.projectAffiliateAssignment.findFirst({
+          where: {
+            projectId,
+            effectiveFrom: { lte: original.occurredAt },
+            OR: [{ endedAt: null }, { endedAt: { gt: original.occurredAt } }]
+          },
+          orderBy: { effectiveFrom: "desc" }
+        });
+        if (!reversalAssignment) {
+          throw new BadRequestException("原行事实日没有有效的施工企业档案，不能更正");
+        }
+        const reversalImpactKeys = `${HISTORY_EXPENSE_CORRECTION_SOURCE_TYPE}:reversal:${newRowId}`;
+        const reversalImpacts = this.impactInputsFor({
+          rowId: original.id,
+          amountCents: original.amountCents,
+          values: originalValues,
+          costBearingCompany: originalCompany,
+          payee: originalPayee,
+          payerCompanyName: textValue(originalValues.payerCompanyName) ?? null,
+          keyPrefix: reversalImpactKeys,
+          reverse: true
+        });
+        const reversalInput: AppendOperatingFactInput = {
+          projectId,
+          sourceType: HISTORY_EXPENSE_CORRECTION_SOURCE_TYPE,
+          sourceBusinessId: `${original.id}:correction:${newRowNo}:reversal`,
+          sourceBusinessCode: `${batch.batchNo}-${newRowNo}-冲销`,
+          sourceVersion: original.revision + 1,
+          idempotencyKey: `${HISTORY_EXPENSE_CORRECTION_SOURCE_TYPE}:${original.id}:${original.revision}:reversal:${newRowNo}`,
+          occurredAt: original.occurredAt,
+          confirmedAt: now,
+          confirmedByUserId: actorUserId,
+          factKind: "expense",
+          operatingLevel: "project",
+          evidenceLevel: "B",
+          amountCents: original.amountCents,
+          currencyCode: "CNY",
+          direction: "inflow",
+          isBeforeOperatingLedgerEffectiveDate: true,
+          affiliateAssignmentId: reversalAssignment.id,
+          affiliateBusinessPartyVersionId: reversalAssignment.businessPartyVersionId,
+          affiliateNameSnapshot: reversalAssignment.affiliateNameSnapshot,
+          affiliateCreditCodeSnapshot: reversalAssignment.affiliateCreditCodeSnapshot ?? undefined,
+          historicalTakeoverBatchId: batchId,
+          sourceSnapshot: {
+            batchId,
+            batchNo: batch.batchNo,
+            sceneKey: HISTORY_EXPENSE_SCENE_KEY,
+            correction: {
+              originalRowId: original.id,
+              originalRowNo: original.rowNo,
+              originalFactId: original.generatedFactId,
+              reason,
+              correctedRowId: newRowId,
+              correctedRowNo: newRowNo
+            },
+            originalValues: canonicalize(originalValues) as Prisma.InputJsonObject
+          },
+          subjects: { costBearingCompany: originalCompany },
+          impacts: reversalImpacts,
+          adjustsFactId: original.generatedFactId
+        };
+        await this.ledger.replayFromSourceInTransaction(
+          tx,
+          reversalInput,
+          actorUserId,
+          "reversal"
+        );
+
+        const repostRow = {
+          id: newRowId,
+          rowNo: newRowNo,
+          occurredAt: normalized.occurredAt,
+          amountCents: normalized.amountCents,
+          revision: 1,
+          valuesSnapshot: storedValues as Prisma.JsonValue
+        };
+        const repostInput = await this.factInput(
+          tx,
+          projectId,
+          batch,
+          repostRow,
+          { confirmedAt: now, confirmedByUserId: actorUserId },
+          project.operatingLedgerEffectiveDate
+        );
+        const repostFact = await this.ledger.replayFromSourceInTransaction(
+          tx,
+          repostInput,
+          actorUserId,
+          "original"
+        );
+        await tx.operatingTakeoverRow.update({
+          where: { id: newRowId },
+          data: { generatedFactId: repostFact.id }
+        });
+        await this.refreshBatchCounts(tx, batchId);
+        const remaining = await tx.operatingTakeoverRow.count({
+          where: { batchId, generatedFactId: null, reviewStatus: { in: ["pending", "verified"] } }
+        });
+        if (remaining === 0) {
+          await tx.operatingTakeoverBatch.update({
+            where: { id: batchId },
+            data: { status: "activated", activatedAt: now, activatedByUserId: actorUserId }
+          });
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "history_expense.row.correct",
+          businessType: "operating_takeover_row",
+          businessId: original.id,
+          metadata: {
+            batchId,
+            projectId,
+            originalFactId: original.generatedFactId,
+            correctedRowId: newRowId,
+            correctedRowNo: newRowNo,
+            originalAmountCents: original.amountCents.toString(),
+            correctedAmountCents: normalized.amountCents.toString(),
+            deltaCents: (normalized.amountCents - original.amountCents).toString(),
+            reason
           }
         });
       },
@@ -806,75 +1068,19 @@ export class HistoryExpenseService {
     if (payeeName && !payee) {
       throw new BadRequestException(`第 ${row.rowNo} 行未找到有效收款方：${payeeName}`);
     }
-    const costCategoryCode = textValue(values.costCategoryCode) as
-      | AppendOperatingFactInput["impacts"][number]["costCategoryCode"]
-      | undefined;
     const paymentStatus = textValue(values.paymentStatus) as HistoryExpensePaymentStatus;
     const paidCents = textValue(values.paidAmountYuan)
       ? parseAmountCents(textValue(values.paidAmountYuan))
       : null;
-    const impacts: OperatingImpactInput[] = [
-      {
-        idempotencyKey: `${HISTORY_EXPENSE_SOURCE_TYPE}:${row.id}:confirmed_cost`,
-        sourceImpactKey: "confirmed_cost",
-        impactKind: "confirmed_cost",
-        direction: "increase",
-        amountCents,
-        subjectRole: "cost_bearing_company",
-        subject: costBearingCompany,
-        ...(costCategoryCode ? { costCategoryCode } : {}),
-        description: textValue(values.purpose) ?? undefined,
-        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY }
-      }
-    ];
-    if (paymentStatus === "unpaid") {
-      impacts.push({
-        idempotencyKey: `${HISTORY_EXPENSE_SOURCE_TYPE}:${row.id}:payable`,
-        sourceImpactKey: "payable",
-        impactKind: "payable_increase",
-        direction: "increase",
-        amountCents,
-        ...(payee ? { subjectRole: "payee" as const, subject: { kind: "downstream_counterparty" as const, id: payee.id } } : {}),
-        description: "历史未付费用",
-        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY }
-      });
-    } else if (paymentStatus === "partially_paid") {
-      const remaining = amountCents - (paidCents ?? 0n);
-      if (remaining > 0n) {
-        impacts.push({
-          idempotencyKey: `${HISTORY_EXPENSE_SOURCE_TYPE}:${row.id}:payable`,
-          sourceImpactKey: "payable",
-          impactKind: "payable_increase",
-          direction: "increase",
-          amountCents: remaining,
-          ...(payee ? { subjectRole: "payee" as const, subject: { kind: "downstream_counterparty" as const, id: payee.id } } : {}),
-          description: "历史部分付款未付余额",
-          impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY }
-        });
-      }
-    } else if (paymentStatus === "unknown") {
-      impacts.push({
-        idempotencyKey: `${HISTORY_EXPENSE_SOURCE_TYPE}:${row.id}:payment_pending`,
-        sourceImpactKey: "payment_pending",
-        impactKind: "evidence_gap_notice",
-        direction: "notice",
-        amountCents,
-        description: "付款状态待核对，不按已付或未付记账",
-        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY }
-      });
-    }
     const payerCompanyName = textValue(values.payerCompanyName) ?? null;
-    if (payerCompanyName === null && paymentStatus !== "unpaid") {
-      impacts.push({
-        idempotencyKey: `${HISTORY_EXPENSE_SOURCE_TYPE}:${row.id}:payer_source_pending`,
-        sourceImpactKey: "payer_source_pending",
-        impactKind: "evidence_gap_notice",
-        direction: "notice",
-        amountCents,
-        description: "付款公司/资金来源待核对",
-        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY }
-      });
-    }
+    const impacts = this.impactInputsFor({
+      rowId: row.id,
+      amountCents,
+      values,
+      costBearingCompany,
+      payee,
+      payerCompanyName
+    });
     const sourceSnapshot: Prisma.InputJsonObject = {
       batchId: batch.id,
       batchNo: batch.batchNo,
@@ -928,6 +1134,109 @@ export class HistoryExpenseService {
       subjects: { costBearingCompany },
       impacts
     };
+  }
+
+  private impactInputsFor(input: {
+    rowId: string;
+    amountCents: bigint;
+    values: Record<string, unknown>;
+    costBearingCompany: OperatingSubjectReference;
+    payee: { id: string } | null;
+    payerCompanyName: string | null;
+    keyPrefix?: string;
+    reverse?: boolean;
+  }): OperatingImpactInput[] {
+    const { rowId, amountCents, values, costBearingCompany, payee, payerCompanyName } = input;
+    const keyPrefix = input.keyPrefix ?? HISTORY_EXPENSE_SOURCE_TYPE;
+    const reverse = input.reverse === true;
+    const direction = (value: "increase" | "decrease" | "notice") =>
+      reverse
+        ? value === "increase"
+          ? "decrease"
+          : value === "decrease"
+            ? "increase"
+            : "notice"
+        : value;
+    const costCategoryCode = textValue(values.costCategoryCode) as
+      | AppendOperatingFactInput["impacts"][number]["costCategoryCode"]
+      | undefined;
+    const paymentStatus = textValue(values.paymentStatus) as HistoryExpensePaymentStatus;
+    const paidCents = textValue(values.paidAmountYuan)
+      ? parseAmountCents(textValue(values.paidAmountYuan))
+      : null;
+    const suffix = reverse ? ":reversal" : "";
+    const impacts: OperatingImpactInput[] = [
+      {
+        idempotencyKey: `${keyPrefix}:${rowId}:confirmed_cost${suffix}`,
+        sourceImpactKey: "confirmed_cost",
+        impactKind: "confirmed_cost",
+        direction: direction("increase"),
+        amountCents,
+        subjectRole: "cost_bearing_company",
+        subject: costBearingCompany,
+        ...(costCategoryCode ? { costCategoryCode } : {}),
+        description: textValue(values.purpose) ?? undefined,
+        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY, reversed: reverse }
+      }
+    ];
+    if (paymentStatus === "unpaid") {
+      impacts.push({
+        idempotencyKey: `${keyPrefix}:${rowId}:payable${suffix}`,
+        sourceImpactKey: "payable",
+        impactKind: "payable_increase",
+        direction: direction("increase"),
+        amountCents,
+        ...(payee
+          ? {
+              subjectRole: "payee" as const,
+              subject: { kind: "downstream_counterparty" as const, id: payee.id }
+            }
+          : {}),
+        description: reverse ? "冲销历史未付费用" : "历史未付费用",
+        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY, reversed: reverse }
+      });
+    } else if (paymentStatus === "partially_paid") {
+      const remaining = amountCents - (paidCents ?? 0n);
+      if (remaining > 0n) {
+        impacts.push({
+          idempotencyKey: `${keyPrefix}:${rowId}:payable${suffix}`,
+          sourceImpactKey: "payable",
+          impactKind: "payable_increase",
+          direction: direction("increase"),
+          amountCents: remaining,
+          ...(payee
+            ? {
+                subjectRole: "payee" as const,
+                subject: { kind: "downstream_counterparty" as const, id: payee.id }
+              }
+            : {}),
+          description: reverse ? "冲销历史部分付款未付余额" : "历史部分付款未付余额",
+          impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY, reversed: reverse }
+        });
+      }
+    } else if (paymentStatus === "unknown") {
+      impacts.push({
+        idempotencyKey: `${keyPrefix}:${rowId}:payment_pending${suffix}`,
+        sourceImpactKey: "payment_pending",
+        impactKind: "evidence_gap_notice",
+        direction: direction("notice"),
+        amountCents,
+        description: "付款状态待核对，不按已付或未付记账",
+        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY, reversed: reverse }
+      });
+    }
+    if (payerCompanyName === null && paymentStatus !== "unpaid") {
+      impacts.push({
+        idempotencyKey: `${keyPrefix}:${rowId}:payer_source_pending${suffix}`,
+        sourceImpactKey: "payer_source_pending",
+        impactKind: "evidence_gap_notice",
+        direction: direction("notice"),
+        amountCents,
+        description: "付款公司/资金来源待核对",
+        impactSnapshot: { sceneKey: HISTORY_EXPENSE_SCENE_KEY, reversed: reverse }
+      });
+    }
+    return impacts;
   }
 
   private async resolveCostBearingCompany(
@@ -1217,6 +1526,17 @@ export class HistoryExpenseService {
       error.code === "P2002"
     );
   }
+}
+
+function correctionMeta(values: Record<string, unknown>): {
+  originalRowId?: string;
+  originalFactId?: string;
+} | null {
+  const correction = values._correction;
+  if (!correction || typeof correction !== "object" || Array.isArray(correction)) {
+    return null;
+  }
+  return correction as { originalRowId?: string; originalFactId?: string };
 }
 
 function snapshotFingerprint(value: Prisma.JsonValue): string | undefined {

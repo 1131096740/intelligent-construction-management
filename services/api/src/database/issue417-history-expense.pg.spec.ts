@@ -331,6 +331,172 @@ describe("issue 417 history expense batch PostgreSQL", () => {
           "未核清的其余行仍然保留"
         );
 
+        // 8) 补资料：待核对行补齐付款公司与付款情况后重新核实并入账，原行与旧核实事实保留。
+        const pendingRow20 = notOccurred.rows.find((item) => item.rowNo === 20)!;
+        const supplemented = await service.verifyRow(
+          fixture.projectId,
+          notOccurred.id,
+          pendingRow20.id,
+          fixture.financeStaffUserId,
+          {
+            expectedRevision: pendingRow20.revision,
+            reviewOutcome: "verified",
+            note: "补齐原始付款凭据后重新核实",
+            values: {
+              payerCompanyName: "合成承担公司",
+              paymentStatus: "paid",
+              paidAmountYuan: "1000.00",
+              costBearingCompanyName: "合成承担公司"
+            }
+          }
+        );
+        const row20 = supplemented.rows.find((item) => item.rowNo === 20)!;
+        assert.equal(row20.reviewStatus, "verified");
+        const row20Snapshot = await prisma.operatingTakeoverRow.findUniqueOrThrow({
+          where: { id: row20.id }
+        });
+        const row20Values = row20Snapshot.valuesSnapshot as Record<string, unknown>;
+        const row20History = row20Values._history as Array<{
+          reviewStatus: string;
+          values: Record<string, unknown>;
+        }>;
+        assert.ok(row20History.length >= 1, "补资料必须保留原有核实事实");
+        assert.equal(row20History.at(-1)!.reviewStatus, "pending");
+        assert.equal(row20History.at(-1)!.values.paymentStatus, "unknown");
+        assert.equal(row20Values.paymentStatus, "paid");
+        assert.equal(row20Snapshot.amountCents, 100_000n, "原行金额未被覆盖");
+
+        await expect(
+          service.activate(
+            fixture.projectId,
+            notOccurred.id,
+            fixture.financeDirectorUserId,
+            { expectedRevision: supplemented.revision }
+          )
+        ).rejects.toThrow("主管复核");
+
+        const supplementConfirmation = await service.confirm(
+          fixture.projectId,
+          notOccurred.id,
+          fixture.financeDirectorUserId,
+          { expectedRevision: supplemented.revision, idempotencyKey: randomUUID() }
+        );
+        const supplementedActivated = await service.activate(
+          fixture.projectId,
+          notOccurred.id,
+          fixture.financeDirectorUserId,
+          { expectedRevision: supplementConfirmation.revision + 1 }
+        );
+        assert.equal(supplementedActivated.status, "activated");
+        assert.equal(supplementedActivated.activatedRows, 19);
+        assert.equal(posted.length, 19, "补资料后重新核实只新增一行成本");
+        assert.equal(
+          posted
+            .flatMap(({ input }) =>
+              input.impacts.filter((impact) => impact.impactKind === "confirmed_cost")
+            )
+            .reduce((sum, impact) => sum + (impact.amountCents ?? 0n), 0n),
+          1_900_000n
+        );
+
+        // 9) 更正：已入账行反转 + 重登，原行与复核事实保留，净额正确且不重复。
+        const originalRow1 = supplementedActivated.rows.find((item) => item.rowNo === 1)!;
+        const originalFactId = originalRow1.generatedFactId!;
+        assert.ok(originalFactId);
+        await expect(
+          service.correctRow(
+            fixture.projectId,
+            supplementedActivated.id,
+            originalRow1.id,
+            fixture.financeStaffUserId,
+            {
+              expectedRevision: originalRow1.revision,
+              reason: "财务人员不能更正已入账费用",
+              values: { amountYuan: "700.00" }
+            }
+          )
+        ).rejects.toThrow("无权");
+        const corrected = await service.correctRow(
+          fixture.projectId,
+          supplementedActivated.id,
+          originalRow1.id,
+          fixture.financeDirectorUserId,
+          {
+            expectedRevision: originalRow1.revision,
+            reason: "原始凭据金额更正为700元",
+            values: {
+              amountYuan: "700.00",
+              paidAmountYuan: "700.00",
+              paymentStatus: "paid"
+            }
+          }
+        );
+        const correctionRow = corrected.rows.find((item) => item.rowNo === 21)!;
+        assert.equal(correctionRow.reviewStatus, "activated");
+        assert.equal(correctionRow.amountCents, "70000");
+        assert.equal(
+          (correctionRow.values._correction as Record<string, unknown>).originalRowId,
+          originalRow1.id
+        );
+        const preservedOriginal = await prisma.operatingTakeoverRow.findUniqueOrThrow({
+          where: { id: originalRow1.id }
+        });
+        assert.equal(preservedOriginal.generatedFactId, originalFactId, "原行事实不变");
+        assert.equal(preservedOriginal.amountCents, 100_000n, "原行金额不被覆盖");
+        assert.equal(preservedOriginal.reviewStatus, "activated");
+        assert.equal(
+          await prisma.operatingTakeoverConfirmation.count(),
+          2,
+          "原复核事实保留：初次复核与补资料复核均在"
+        );
+        const correctionAudit = await prisma.auditLog.findFirstOrThrow({
+          where: { action: "history_expense.row.correct", businessId: originalRow1.id }
+        });
+        assert.equal(
+          (correctionAudit.metadata as Record<string, unknown>).deltaCents,
+          "-30000"
+        );
+        await expect(
+          service.correctRow(
+            fixture.projectId,
+            corrected.id,
+            originalRow1.id,
+            fixture.financeDirectorUserId,
+            {
+              expectedRevision: originalRow1.revision,
+              reason: "重复更正",
+              values: { amountYuan: "600.00" }
+            }
+          )
+        ).rejects.toThrow("已经更正");
+
+        assert.equal(posted.length, 21, "更正只追加反转与重登两条事实");
+        const reversal = posted.find(({ entryKind }) => entryKind === "reversal")!;
+        assert.equal(reversal.input.adjustsFactId, originalFactId);
+        assert.equal(reversal.input.direction, "inflow");
+        assert.ok(
+          reversal.input.impacts.some(
+            (impact) =>
+              impact.impactKind === "confirmed_cost" &&
+              impact.direction === "decrease" &&
+              impact.amountCents === 100_000n
+          )
+        );
+        const netCost = posted
+          .flatMap(({ input }) =>
+            input.impacts.filter((impact) => impact.impactKind === "confirmed_cost")
+          )
+          .reduce(
+            (sum, impact) =>
+              sum +
+              (impact.direction === "decrease"
+                ? -(impact.amountCents ?? 0n)
+                : (impact.amountCents ?? 0n)),
+            0n
+          );
+        assert.equal(netCost, 1_870_000n, "19 行 1900 元 − 更正前 1000 元 + 更正后 700 元");
+        assert.equal(corrected.activatedRows, 20, "原行保留 + 更正重登行");
+
         // 8) 全程不产生合同/结算/付款/资金账户事实，审计与权限可追。
         assert.equal(await prisma.contract.count({ where: { projectId: fixture.projectId } }), 0);
         assert.equal(
@@ -355,13 +521,13 @@ describe("issue 417 history expense batch PostgreSQL", () => {
         const rowAudits = await prisma.auditLog.count({
           where: { action: "history_expense.row.verify", businessType: "operating_takeover_row" }
         });
-        assert.equal(rowAudits, 19, "18 行核实 + 1 行改为未发生；重复导入只返回原批次，不重复写行");
+        assert.equal(rowAudits, 20, "18 行核实 + 1 行改为未发生 + 1 行补资料重新核实；重复导入只返回原批次，不重复写行");
         assert.deepEqual(
           await writableFacts(prisma),
           {
             batches: 1,
-            rows: 20,
-            confirmations: 1,
+            rows: 21,
+            confirmations: 2,
             activations: 1,
             fundAccounts: 0,
             payments: 0,

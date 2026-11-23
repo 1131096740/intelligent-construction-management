@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 54,
-    "exportedFunctionCount": 795,
-    "transportWrapperCount": 771,
+    "exportedFunctionCount": 796,
+    "transportWrapperCount": 772,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 845,
+    "mainRequestBindingCount": 846,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 801,
-    "productionConsumerCount": 680,
+    "requestEdgeCount": 802,
+    "productionConsumerCount": 681,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -16764,7 +16764,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/activation",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/activation",
@@ -16792,7 +16792,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/confirmations",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/confirmations",
@@ -16813,6 +16813,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "correctHistoryExpenseRow",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 161,
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "correctHistoryExpenseRow",
+              "send"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createHistoryExpenseBatch",
       "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
       "kind": "transport",
@@ -16820,7 +16848,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches",
           "normalizedPath": "/projects/:param/history-expenses/batches",
@@ -16848,7 +16876,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "GET",
           "path": "/projects/:param/history-expenses/batches/:param",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param",
@@ -16876,7 +16904,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "GET",
           "path": "/projects/:param/history-expenses/batches",
           "normalizedPath": "/projects/:param/history-expenses/batches",
@@ -16904,7 +16932,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "GET",
           "path": "/projects/:param/history-expenses/capability",
           "normalizedPath": "/projects/:param/history-expenses/capability",
@@ -16932,7 +16960,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "POST",
           "path": "/projects/:param/history-expenses/precheck",
           "normalizedPath": "/projects/:param/history-expenses/precheck",
@@ -16960,7 +16988,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 159,
+          "sourceLine": 161,
           "method": "PATCH",
           "path": "/projects/:param/history-expenses/batches/:param/rows/:param",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param",

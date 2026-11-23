@@ -13,6 +13,7 @@ import { HistoryExpenseService } from "./history-expense.service";
 import {
   ActivateHistoryExpenseDto,
   ConfirmHistoryExpenseDto,
+  CorrectHistoryExpenseRowDto,
   CreateHistoryExpenseBatchDto,
   PrecheckHistoryExpenseDto,
   VerifyHistoryExpenseRowDto
@@ -80,6 +81,18 @@ export class HistoryExpenseController {
     @Body() body: VerifyHistoryExpenseRowDto
   ) {
     return this.historyExpenses.verifyRow(projectId, batchId, rowId, user.id, body);
+  }
+
+  @Post("batches/:batchId/rows/:rowId/corrections")
+  @RequireProjectRole("history_expense.correct")
+  correctRow(
+    @Param("projectId") projectId: string,
+    @Param("batchId") batchId: string,
+    @Param("rowId") rowId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CorrectHistoryExpenseRowDto
+  ) {
+    return this.historyExpenses.correctRow(projectId, batchId, rowId, user.id, body);
   }
 
   @Post("batches/:batchId/confirmations")

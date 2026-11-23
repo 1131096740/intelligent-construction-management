@@ -21,6 +21,7 @@ import {
  */
 export const HISTORY_EXPENSE_SOURCE_TYPE = "history_expense_batch";
 export const HISTORY_EXPENSE_SCENE_KEY = "historical_expense";
+export const HISTORY_EXPENSE_CORRECTION_SOURCE_TYPE = "history_expense_correction";
 export const HISTORY_EXPENSE_MAX_ROWS = 500;
 
 export const HISTORY_EXPENSE_PAYMENT_STATUSES = [

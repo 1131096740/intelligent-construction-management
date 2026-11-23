@@ -86,6 +86,7 @@ export interface HistoryExpenseBatchReadModel {
   canVerify: boolean;
   canConfirm: boolean;
   canActivate: boolean;
+  canCorrect: boolean;
   rows: HistoryExpenseRowReadModel[];
 }
 
@@ -130,6 +131,7 @@ export interface HistoryExpenseCapability {
     verify: boolean;
     confirm: boolean;
     activate: boolean;
+    correct: boolean;
   };
 }
 
@@ -239,6 +241,25 @@ export function verifyHistoryExpenseRow(
     "PATCH",
     input,
     "保存历史费用核实结果失败"
+  );
+}
+
+export function correctHistoryExpenseRow(
+  projectId: string,
+  batchId: string,
+  rowId: string,
+  input: {
+    expectedRevision: number;
+    reason: string;
+    values: Record<string, unknown>;
+  }
+) {
+  return send<HistoryExpenseBatchReadModel>(
+    projectId,
+    `/batches/${encodeURIComponent(batchId)}/rows/${encodeURIComponent(rowId)}/corrections`,
+    "POST",
+    input,
+    "更正已入账历史费用失败"
   );
 }
 

@@ -6,6 +6,7 @@ import { formatUnknownApiError } from "../../api/error-message";
 import {
   activateHistoryExpenseBatch,
   confirmHistoryExpenseBatch,
+  correctHistoryExpenseRow,
   createHistoryExpenseBatch,
   fetchHistoryExpenseBatch,
   fetchHistoryExpenseBatches,
@@ -15,6 +16,7 @@ import {
   type HistoryExpenseBatchListItem,
   type HistoryExpenseBatchReadModel,
   type HistoryExpenseCapability,
+  type HistoryExpensePaymentStatus,
   type HistoryExpensePrecheckResult,
   type HistoryExpenseReviewOutcome,
   type HistoryExpenseRowInput,
@@ -37,6 +39,17 @@ const verifyDialog = ref(false);
 const verifyTarget = ref<HistoryExpenseRowReadModel | null>(null);
 const verifyOutcome = ref<HistoryExpenseReviewOutcome>("verified");
 const verifyNote = ref("");
+
+const correctionDialog = ref(false);
+const correctionTarget = ref<HistoryExpenseRowReadModel | null>(null);
+const correctionReason = ref("");
+const correctionAmount = ref("");
+const correctionPaymentStatus = ref<HistoryExpensePaymentStatus>("paid");
+const correctionPaidAmount = ref("");
+const correctionPayer = ref("");
+const correctionCompany = ref("");
+const correctionPayee = ref("");
+const correctionSource = ref("");
 
 const projectOptions = computed(() =>
   projects.value.map((project) => ({
@@ -323,6 +336,58 @@ async function submitVerify() {
   }
 }
 
+function openCorrection(row: HistoryExpenseRowReadModel) {
+  correctionTarget.value = row;
+  correctionReason.value = "";
+  correctionAmount.value = String(row.values.amountYuan ?? "");
+  correctionPaymentStatus.value = row.paymentStatus;
+  correctionPaidAmount.value = String(row.values.paidAmountYuan ?? "");
+  correctionPayer.value = String(row.values.payerCompanyName ?? "");
+  correctionCompany.value = String(row.values.costBearingCompanyName ?? "");
+  correctionPayee.value = String(row.values.payeeName ?? "");
+  correctionSource.value = String(row.values.sourceDescription ?? "");
+  correctionDialog.value = true;
+}
+
+async function submitCorrection() {
+  const currentCapability = capability.value;
+  const operationAllowed = currentCapability?.actions.correct;
+  if (!operationAllowed || !detail.value || !correctionTarget.value) return;
+  if (!correctionReason.value.trim()) {
+    MessagePlugin.warning("请填写更正原因");
+    return;
+  }
+  actionLoading.value = true;
+  try {
+    detail.value = await correctHistoryExpenseRow(
+      selectedProjectId.value,
+      detail.value.id,
+      correctionTarget.value.id,
+      {
+        expectedRevision: correctionTarget.value.revision,
+        reason: correctionReason.value.trim(),
+        values: {
+          amountYuan: correctionAmount.value,
+          paymentStatus: correctionPaymentStatus.value,
+          paidAmountYuan: correctionPaidAmount.value || null,
+          payerCompanyName: correctionPayer.value || null,
+          costBearingCompanyName: correctionCompany.value || null,
+          payeeName: correctionPayee.value || null,
+          sourceDescription: correctionSource.value
+        }
+      }
+    );
+    correctionDialog.value = false;
+    MessagePlugin.success("已按反转 + 重登更正，原行与复核事实保留");
+    await loadProject();
+    await openBatch(detail.value.id);
+  } catch (error) {
+    message.value = formatUnknownApiError(error, "更正已入账历史费用失败");
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
 async function submitConfirm() {
   const currentCapability = capability.value;
   const operationAllowed = currentCapability?.actions.confirm;
@@ -518,10 +583,64 @@ onMounted(loadProjects);
           >
             核实
           </t-button>
+          <t-button
+            v-if="detail.canCorrect && row.generatedFactId"
+            size="small"
+            variant="outline"
+            @click="openCorrection(row)"
+          >
+            更正
+          </t-button>
           <span v-else-if="row.generatedFactId" class="note">已入账</span>
         </template>
       </t-table>
     </t-card>
+
+    <t-dialog v-model:visible="correctionDialog" header="更正已入账历史费用" :confirm-btn="{ loading: actionLoading }" @confirm="submitCorrection">
+      <p v-if="correctionTarget" class="helper-text">
+        第 {{ correctionTarget.rowNo }} 行 {{ correctionTarget.businessRef }} 已入账；更正会先冲销原事实再按新金额重登，原行和复核记录保留。
+      </p>
+      <label class="field">
+        <span>更正原因</span>
+        <t-textarea v-model="correctionReason" placeholder="请说明依据和更正原因" />
+      </label>
+      <label class="field">
+        <span>更正后金额</span>
+        <t-input v-model="correctionAmount" placeholder="例如 700.00" />
+      </label>
+      <label class="field">
+        <span>付款情况</span>
+        <t-select
+          v-model="correctionPaymentStatus"
+          :options="[
+            { value: 'paid', label: '已付款' },
+            { value: 'unpaid', label: '未付款' },
+            { value: 'partially_paid', label: '部分付款' },
+            { value: 'unknown', label: '付款状态待核对' }
+          ]"
+        />
+      </label>
+      <label class="field">
+        <span>已付金额</span>
+        <t-input v-model="correctionPaidAmount" placeholder="付款状态待核对时留空" />
+      </label>
+      <label class="field">
+        <span>付款公司/来源</span>
+        <t-input v-model="correctionPayer" placeholder="可留空，来源待核对" />
+      </label>
+      <label class="field">
+        <span>成本承担公司</span>
+        <t-input v-model="correctionCompany" />
+      </label>
+      <label class="field">
+        <span>收款方</span>
+        <t-input v-model="correctionPayee" />
+      </label>
+      <label class="field">
+        <span>依据说明</span>
+        <t-textarea v-model="correctionSource" />
+      </label>
+    </t-dialog>
 
     <t-dialog v-model:visible="verifyDialog" header="核实历史费用行" :confirm-btn="{ loading: actionLoading }" @confirm="submitVerify">
       <p v-if="verifyTarget" class="helper-text">
