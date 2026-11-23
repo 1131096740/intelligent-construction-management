@@ -81,7 +81,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
-  it("rejects C-level takeover before formal contract or ledger activation", async () => {
+  it("requires a handover before a no-grade or C-level takeover is activated", async () => {
     const audit = { record: jest.fn() } as unknown as AuditService;
     const operatingSources = {
       appendConfirmedSourceIfEnabledInTransaction: jest.fn()
@@ -123,7 +123,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
         "finance-director-1",
         "activate-c"
       )
-    ).rejects.toThrow("C级历史接管只能进入资料缺口");
+    ).rejects.toThrow("请先完成接管分工登记");
     expect(tx.settlement.create).not.toHaveBeenCalled();
     expect(
       operatingSources.appendConfirmedSourceIfEnabledInTransaction
@@ -231,6 +231,9 @@ function activationTx() {
     },
     contractTakeover: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
+    },
+    contractTakeoverConfirmationEvent: {
+      findFirst: jest.fn().mockResolvedValue(null)
     },
     paymentRequest: { create: jest.fn() },
     paymentExecution: { create: jest.fn() }

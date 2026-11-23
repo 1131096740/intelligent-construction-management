@@ -65,8 +65,9 @@ import type {
 import type { ConfirmContractTakeoverSideDto } from "./dto/confirm-contract-takeover-side.dto";
 import type { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-contract-takeover-side-confirmation.dto";
 import { ContractTakeoverActivationService } from "./contract-takeover-activation.service";
+import { assertTakeoverHandoverReady } from "./contract-takeover-handover";
 
-const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
+const TAKEOVER_LEVELS = ["A", "B", "C", "NONE"] as const;
 const LIFECYCLE_STATUSES = [
   "signed_not_started",
   "in_progress",
@@ -2882,6 +2883,7 @@ export class ContractTakeoverService {
       if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
         throw new Error("当前接管记录不能提交复核，请确认仍处于草稿或待补充状态");
       }
+      await assertTakeoverHandoverReady(tx, takeover, "提交复核");
 
       const submittedAt = new Date();
       const updated = await tx.contractTakeover.update({
@@ -2970,6 +2972,7 @@ export class ContractTakeoverService {
       if (takeover.takeoverStatus !== "pending_review") {
         throw new Error("当前接管记录尚不能确认，请先提交复核并完成资料核验");
       }
+      await assertTakeoverHandoverReady(tx, takeover, "确认接管");
       const [takeoverReadModel] = await this.toReadModels(tx, [takeover], actorUserId);
       const missingEvidenceLabels = takeoverReadModel.evidenceChecklist
         .filter((item) => item.required && !item.uploaded)
@@ -4515,7 +4518,7 @@ export class ContractTakeoverService {
       issues.push(issue(rowNo, "signedAt", "error", dateInputMessage("签订日期")));
     }
     if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
-      issues.push(issue(rowNo, "takeoverLevel", "error", "接管等级请选择 A级、B级或C级"));
+      issues.push(issue(rowNo, "takeoverLevel", "error", "接管等级请选择无等级、A级、B级或C级"));
     }
     if (!LIFECYCLE_STATUSES.includes(lifecycleStatus as ContractLifecycleStatus)) {
       issues.push(issue(rowNo, "lifecycleStatus", "error", "履约状态不在系统支持范围内"));
@@ -4652,7 +4655,7 @@ export class ContractTakeoverService {
         historicalRetentionWithheldCents: precheckMoneyValue(row, "historicalRetentionWithheldCents"),
         otherConfirmedOccupancyCents: precheckMoneyValue(row, "otherConfirmedOccupancyCents")
       });
-      if (takeoverLevel !== suggestedLevel && !issueSummary) {
+      if (takeoverLevel !== "NONE" && takeoverLevel !== suggestedLevel && !issueSummary) {
         issues.push(
           issue(
             rowNo,
@@ -5462,7 +5465,9 @@ export class ContractTakeoverService {
       takeoverLevel: takeoverLevel as ContractTakeoverLevel,
       suggestedTakeoverLevel: suggestedLevel,
       takeoverLevelAdjustmentReason:
-        takeoverLevel === suggestedLevel ? null : takeoverLevelAdjustmentReason ?? reviewComment,
+        takeoverLevel === "NONE" || takeoverLevel === suggestedLevel
+          ? null
+          : takeoverLevelAdjustmentReason ?? reviewComment,
       signedAt,
       invoiceType: input.invoiceType ?? null,
       taxMode,
@@ -6116,6 +6121,7 @@ function correctionTypeLabel(value: string): string {
 }
 
 function takeoverLevelDisplay(value: string): string {
+  if (value === "NONE") return "无等级（分工接管）";
   if (TAKEOVER_LEVELS.includes(value as ContractTakeoverLevel)) return `${value}级`;
   return "等级未读取";
 }
@@ -6325,9 +6331,10 @@ function canMoveImportBatchStatus(fromStatus: string, toStatus: ContractTakeover
 
 function takeoverLevelRiskText(level: string): string {
   const texts: Record<string, string> = {
-    A: "A级资料较完整，可作为首批活跃合同接管，仍需保留原始资料备查。",
-    B: "B级存在少量资料或说明缺口，接管后需继续跟踪，影响金额的资料补齐前不宜付款。",
-    C: "C级资料缺口明显或存在争议，只能作为受限期初事实，付款前必须重点核验。"
+    A: "A级为历史兼容等级，资料较完整，仍需保留原始资料备查。",
+    B: "B级为历史兼容等级，存在少量资料或说明缺口，接管后需继续跟踪。",
+    C: "C级为历史兼容等级，资料缺口明显或存在争议，须先完成分工登记再继续办理。",
+    NONE: "无等级接管不改变历史事实，登记合同、财务和复核负责人后按新分工继续办理。"
   };
 
   return texts[level] ?? "请按接管等级复核资料完整性和后续付款风险。";
@@ -6340,8 +6347,8 @@ function takeoverPaymentBlockingHint(
   if (takeover.takeoverStatus !== "confirmed") {
     return "尚未完成主管确认，后续付款申请会被系统阻断。";
   }
-  if (takeover.takeoverLevel === "C") {
-    return "C级资料缺口明显，付款前必须补齐影响金额的资料和争议说明。";
+  if (takeover.takeoverLevel === "C" || takeover.takeoverLevel === "NONE") {
+    return "无等级/C级接管需先完成分工登记，由合同、财务和复核负责人接续办理；历史事实不变。";
   }
   const missingLabels = evidenceChecklist
     .filter((item) => item.required && !item.uploaded)
@@ -6396,7 +6403,11 @@ function stringValue(value: unknown): string {
 }
 
 function takeoverLevelInputValue(value: unknown): string {
-  const text = stringValue(value).toUpperCase();
+  const raw = stringValue(value).trim();
+  const text = raw.toUpperCase();
+  if (!text || text === "无等级" || text === "无级" || text === "NONE" || text === "NO_GRADE") {
+    return "NONE";
+  }
   const matched = text.match(/^([ABC])(?:级)?/u);
   return matched?.[1] ?? text;
 }

@@ -1997,7 +1997,7 @@ name: "签批人甲",
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
-  it("rejects settlement payment when historical takeover is C level", async () => {
+  it("requires a handover before settlement payment on a C-level historical takeover", async () => {
     const cashPool = projectCashPoolTables();
     const tx = {
       settlement: {
@@ -2056,7 +2056,7 @@ name: "签批人甲",
         },
         "applicant-1"
       )
-    ).rejects.toThrow("C级历史接管仍有资料缺口或争议，不能发起付款申请");
+    ).rejects.toThrow("请先完成接管分工登记");
 
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "applicant-1",
@@ -2067,7 +2067,7 @@ name: "签批人甲",
         contractId: "contract-1",
         contractVersionId: "contract-version-1",
         sourceType: "settlement",
-        reason: "takeover_level_c",
+        reason: "handover_required",
         takeoverStatus: "confirmed"
       }
     });
@@ -7570,7 +7570,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
-  it("rejects historical takeover settlement execution when takeover is C level", async () => {
+  it("requires a handover before historical takeover settlement execution on a C-level takeover", async () => {
     const tx = {
       $queryRaw: jest
         .fn()
@@ -7632,7 +7632,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("C级历史接管仍有资料缺口或争议，不能登记实付");
+    ).rejects.toThrow("请先完成接管分工登记");
 
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
     expect(tx.settlement.update).not.toHaveBeenCalled();

@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { fingerprint } from "../operating-takeover/operating-takeover.utils";
 import { currentRegisteredPaymentDomain, registeredExecutionIsWageLinked } from "./registered-payment-domain";
+import { assertTakeoverContinuationAllowed } from "../contract-takeover/contract-takeover-handover";
 export { registeredExecutionIsWageLinked } from "./registered-payment-domain";
 
 const unavailable = () => new ConflictException("无法核验当前付款申请的历史来源，请保留填写并联系业务主管核对");
@@ -42,7 +43,12 @@ export async function resolveRegisteredExistingSource(tx: Prisma.TransactionClie
   const payment = await tx.contractTakeoverHistoricalPayment.findUnique({ where: { id } });
   if (!payment || payment.status !== "activated" || !payment.activatedAt) throw unavailable();
   const takeover = await tx.contractTakeover.findUnique({ where: { id: payment.takeoverId } });
-  if (!takeover || takeover.projectId !== request.projectId || takeover.contractId !== request.contractId || takeover.takeoverStatus !== "confirmed" || !takeover.activatedAt || !["A", "B"].includes(takeover.takeoverLevel)) throw unavailable();
+  if (!takeover || takeover.projectId !== request.projectId || takeover.contractId !== request.contractId || takeover.takeoverStatus !== "confirmed" || !takeover.activatedAt) throw unavailable();
+  try {
+    await assertTakeoverContinuationAllowed(tx, takeover, "核验历史付款来源");
+  } catch {
+    throw unavailable();
+  }
   const corrections = await tx.contractTakeoverCorrection.findMany({ where: { takeoverId: takeover.id }, orderBy: { id: "asc" } });
   return {
     source: { type, id, version: 1, fingerprint: fingerprint({ payment, takeover, corrections }) },

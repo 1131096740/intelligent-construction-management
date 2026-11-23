@@ -502,6 +502,7 @@ describe("contract takeover page configuration", () => {
 
   it("maps takeover status and lifecycle status to Chinese display", () => {
     expect(takeoverLevelLabel("A")).toBe("A级");
+    expect(takeoverLevelLabel("NONE")).toBe("无等级");
     expect(takeoverStatusLabel("pending_review")).toBe("待复核");
     expect(takeoverStatusTone("confirmed")).toBe("success");
     expect(lifecycleStatusLabel("signed_not_started")).toBe("已签未开工");

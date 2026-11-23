@@ -21,7 +21,7 @@ import {
   IsStrictDateOnly
 } from "../../validation/static-field-validation";
 
-export type ContractTakeoverLevel = "A" | "B" | "C";
+export type ContractTakeoverLevel = "A" | "B" | "C" | "NONE";
 
 export type ContractLifecycleStatus =
   | "signed_not_started"
@@ -248,8 +248,9 @@ export class CreateContractTakeoverDto {
   @IsStrictDateOnly({ message: "签订日期必须按 YYYY-MM-DD 填写且日期必须有效" })
   signedAt!: string;
 
-  @IsIn(["A", "B", "C"], { message: "接管等级请选择 A级、B级或C级" })
-  takeoverLevel!: ContractTakeoverLevel;
+  @IsOptional()
+  @IsIn(["A", "B", "C", "NONE"], { message: "接管等级不在系统支持范围内" })
+  takeoverLevel?: ContractTakeoverLevel;
 
   @IsIn(
     ["signed_not_started", "in_progress", "suspended", "completed", "terminated", "disputed"],

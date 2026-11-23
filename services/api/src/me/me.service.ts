@@ -44,6 +44,11 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
+import {
+  CONTRACT_TAKEOVER_HANDOVER_DUTIES,
+  parseTakeoverHandoverSnapshot,
+  type ContractTakeoverHandoverDuty
+} from "../contract-takeover/contract-takeover-handover";
 
 export interface UploadSignatureInput {
   originalName: string;
@@ -62,6 +67,7 @@ export interface WorkbenchCard {
   id:
     | "contract_takeover_todo"
     | "contract_takeover_review"
+    | "contract_takeover_continuation"
     | "approval_todo"
     | "approved_pending_payment"
     | "historical_balance_missing"
@@ -524,6 +530,23 @@ export class MeService {
       });
     }
 
+    const handoverContinuation = await this.contractTakeoverHandoverWorkItems(
+      userId,
+      scopes,
+      new Map()
+    );
+    if (handoverContinuation.length) {
+      cards.push({
+        id: "contract_takeover_continuation",
+        title: "接管后继续办理",
+        count: handoverContinuation.length,
+        description: "接管分工已登记，按合同、财务职责继续办理新结算和付款。",
+        targetPath: "/结算工作台",
+        actionText: "去办理",
+        tone: "primary"
+      });
+    }
+
     const approvalProjects = this.projectIdsFor(scopes, [
       "contract.approve",
       "settlement.approve",
@@ -775,6 +798,7 @@ export class MeService {
         "确认后作为系统事实起点",
         "warning"
       )),
+      ...(await this.contractTakeoverHandoverWorkItems(userId, scopes, projectNameById)),
       ...(await this.paymentExecutionWorkItems(
         userId,
         projectNameById
@@ -1770,6 +1794,159 @@ export class MeService {
         tone
       };
     });
+  }
+
+  /**
+   * 接管分工登记后的继续办理待办：只给被登记的当前负责人，后端按接管结果解析。
+   * 历史事实不因分工变化而重写，待办在完成新结算/付款后自然消失。
+   */
+  private async contractTakeoverHandoverWorkItems(
+    userId: string,
+    scopes: ProjectRoleScope[],
+    projectNameById: ReadonlyMap<string, string>
+  ): Promise<WorkItem[]> {
+    const projectIds = [...new Set(scopes.map((scope) => scope.projectId))];
+    if (!projectIds.length) return [];
+    if (typeof this.prisma.contractTakeover?.findMany !== "function") return [];
+    const takeovers = await this.prisma.contractTakeover.findMany({
+      where: {
+        projectId: { in: projectIds },
+        takeoverStatus: "confirmed",
+        confirmedAt: { not: null }
+      },
+      orderBy: [{ confirmedAt: "desc" }, { id: "desc" }],
+      take: 50,
+      select: {
+        id: true,
+        projectId: true,
+        contractId: true,
+        contractVersionId: true,
+        confirmedAt: true
+      }
+    });
+    if (!takeovers.length) return [];
+    if (typeof this.prisma.contractTakeoverConfirmationEvent?.findMany !== "function") return [];
+    const events = await this.prisma.contractTakeoverConfirmationEvent.findMany({
+      where: {
+        takeoverId: { in: takeovers.map((takeover) => takeover.id) },
+        side: "handover"
+      },
+      orderBy: [{ revision: "asc" }, { createdAt: "asc" }],
+      select: { takeoverId: true, responseSnapshot: true }
+    });
+    const latestByTakeover = new Map<string, ReturnType<typeof parseTakeoverHandoverSnapshot>>();
+    for (const event of events) {
+      const snapshot = parseTakeoverHandoverSnapshot(event.responseSnapshot);
+      if (snapshot) latestByTakeover.set(event.takeoverId, snapshot);
+    }
+    const dutiesByTakeover = new Map<string, ContractTakeoverHandoverDuty>();
+    for (const takeover of takeovers) {
+      const snapshot = latestByTakeover.get(takeover.id);
+      if (!snapshot) continue;
+      const duty = CONTRACT_TAKEOVER_HANDOVER_DUTIES.find(
+        (candidate) => snapshot.assignments[candidate] === userId
+      );
+      if (duty) dutiesByTakeover.set(takeover.id, duty);
+    }
+    const assigned = takeovers.filter((takeover) => dutiesByTakeover.has(takeover.id));
+    if (!assigned.length) return [];
+    if (
+      typeof this.prisma.settlement?.groupBy !== "function" ||
+      typeof this.prisma.paymentRequest?.groupBy !== "function"
+    ) {
+      return [];
+    }
+    const versionIds = [...new Set(assigned.map((takeover) => takeover.contractVersionId))];
+    const [settlementCounts, paymentCounts, contracts] = await Promise.all([
+      this.prisma.settlement.groupBy({
+        by: ["contractVersionId"],
+        where: {
+          contractVersionId: { in: versionIds },
+          sourceType: { not: "historical_takeover" }
+        },
+        _count: { _all: true }
+      }),
+      this.prisma.paymentRequest.groupBy({
+        by: ["contractVersionId"],
+        where: { contractVersionId: { in: versionIds } },
+        _count: { _all: true }
+      }),
+      this.prisma.contract.findMany({
+        where: { id: { in: [...new Set(assigned.map((takeover) => takeover.contractId))] } },
+        select: { id: true, code: true, temporaryCode: true, name: true }
+      })
+    ]);
+    const settlementCountByVersion = new Map(
+      settlementCounts.map((row) => [row.contractVersionId, row._count._all])
+    );
+    const paymentCountByVersion = new Map(
+      paymentCounts.map((row) => [row.contractVersionId, row._count._all])
+    );
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const items: WorkItem[] = [];
+    for (const takeover of assigned) {
+      const duty = dutiesByTakeover.get(takeover.id)!;
+      const settlementCount = settlementCountByVersion.get(takeover.contractVersionId) ?? 0;
+      const paymentCount = paymentCountByVersion.get(takeover.contractVersionId) ?? 0;
+      if (duty === "contract" && settlementCount === 0) {
+        items.push(this.takeoverContinuationItem(
+          takeover,
+          duty,
+          contractById,
+          projectNameById,
+          "继续办理新结算",
+          "接管已确认，可按新分工发起后续结算"
+        ));
+      } else if (duty === "finance" && settlementCount > 0 && paymentCount === 0) {
+        items.push(this.takeoverContinuationItem(
+          takeover,
+          duty,
+          contractById,
+          projectNameById,
+          "登记后续付款",
+          "已有接管后结算，请按实际资金办理付款"
+        ));
+      }
+    }
+    return items;
+  }
+
+  private takeoverContinuationItem(
+    takeover: {
+      id: string;
+      projectId: string;
+      contractId: string;
+      confirmedAt: Date | null;
+    },
+    duty: ContractTakeoverHandoverDuty,
+    contractById: ReadonlyMap<
+      string,
+      { id: string; code: string | null; temporaryCode: string | null; name: string }
+    >,
+    projectNameById: ReadonlyMap<string, string>,
+    currentNode: string,
+    nextAction: string
+  ): WorkItem {
+    const contract = contractById.get(takeover.contractId);
+    const code = contract?.code ?? contract?.temporaryCode ?? takeover.contractId;
+    const notifiedAt = takeover.confirmedAt ?? new Date();
+    return {
+      id: `takeover-continuation:${takeover.id}:${duty}`,
+      type: "contract_takeover",
+      title: contract?.name ?? "历史合同接管",
+      projectName: projectNameById.get(takeover.projectId) ?? takeover.projectId,
+      businessCode: code,
+      amountText: "",
+      currentNode,
+      [workItemNoticeAt]: notifiedAt,
+      stayedText: this.stayedText(notifiedAt),
+      nextAction,
+      targetPath:
+        duty === "finance"
+          ? `/付款工作台?project=${encodeURIComponent(takeover.projectId)}&contract=${encodeURIComponent(takeover.contractId)}`
+          : `/结算工作台/新建?project=${encodeURIComponent(takeover.projectId)}&contract=${encodeURIComponent(takeover.contractId)}`,
+      tone: "primary"
+    };
   }
 
   private async missingHistoricalPaymentVoucherTakeoverIds(

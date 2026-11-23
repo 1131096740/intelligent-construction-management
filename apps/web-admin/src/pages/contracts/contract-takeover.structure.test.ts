@@ -22,6 +22,10 @@ const correctionPanel = readFileSync(
   new URL("./components/ContractTakeoverCorrectionPanel.vue", import.meta.url),
   "utf8"
 );
+const handoverPanel = readFileSync(
+  new URL("./components/ContractTakeoverHandoverPanel.vue", import.meta.url),
+  "utf8"
+);
 
 describe("historical takeover unsaved-change governance", () => {
   it("opens a dedicated ledger deep link without falling back to the first project", () => {
@@ -53,6 +57,21 @@ describe("historical takeover unsaved-change governance", () => {
     expect(taxPanel).toContain('"dirty-change": [dirty: boolean]');
     expect(taxPanel).toContain('watch(isDirty, (dirty) => emit("dirty-change", dirty)');
     expect(taxPanel).toContain("已保留当前填写内容");
+  });
+});
+
+describe("historical takeover division handover", () => {
+  it("wires the handover panel into the takeover detail without changing history", () => {
+    expect(page).toContain("<ContractTakeoverHandoverPanel");
+    expect(page).toContain(':can-manage="canConfirmHistoricalContractTakeovers(roleKeys)"');
+    expect(handoverPanel).toContain("接管分工");
+    expect(handoverPanel).toContain("saveContractTakeoverHandoverWithCapability");
+    expect(handoverPanel).toContain("capability.availableActions.includes(\"register_handover\")");
+    expect(handoverPanel).toContain("更换负责人必须填写原因");
+  });
+
+  it("offers a no-grade choice instead of forcing A/B/C", () => {
+    expect(page).toContain('takeoverLevel: "NONE"');
   });
 });
 
