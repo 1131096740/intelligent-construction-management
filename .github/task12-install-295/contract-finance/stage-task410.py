@@ -5,7 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-archive, workspace, work = map(Path, sys.argv[1:])
+archive_name, workspace_name, work_name, *options = sys.argv[1:]
+if options not in ([], ['--current-320']):
+    raise SystemExit('TASK410_STAGE_MODE')
+archive, workspace, work = map(Path, (archive_name, workspace_name, work_name))
 pins = json.loads((archive / 'fixed-overlay-pins.json').read_text())
 names = [
     'services/api/src/database/task25-public-cash-handover.http.pg.spec.ts',
@@ -71,6 +74,13 @@ for relative, delta in [('services/api/prisma/run-task398-shared-standard-local.
                         ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-320.patch')]:
     subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                     str(work / relative), str(Path(__file__).with_name(delta))], check=True)
+if options:
+    for relative, delta in [
+        ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-replay-runner-329.patch'),
+        ('services/api/src/database/company-proxy-repayment.http.pg.spec.ts', 'task410-replay-spec-329.patch'),
+    ]:
+        subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                        str(work / relative), str(Path(__file__).with_name(delta))], check=True)
 for name in names:
     (work / name).chmod(0o644)
     print(name)

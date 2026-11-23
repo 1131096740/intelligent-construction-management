@@ -1,0 +1,8 @@
+--- runner
++++ runner
+@@ -314,4 +314,5 @@
+  env.DATABASE_URL=url(companyProxyScenario&&!current280?"jiangkong":companyProxyScenario?"jg_task01_owner":"jg_task01_runtime");env.TASK398_OWNER_URL=url("jg_task01_owner");env.TASK398_OBSERVER_URL=url("jg_task01_observer");
+  if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if(ownedMigrationBaseline?.expectedDirectoryCount===329)env.TASK410_OWNED_320="1";}
++ if(companyProxyScenario&&ownedMigrationBaseline?.expectedDirectoryCount===329)env.TASK410_REPLAY_DATABASE_URL=url("jg_task01_runtime");
+  if(handoverScenario)env.RUN_TASK407_HANDOVER_PG16="1";
+  if(advanceScenario)env.RUN_TASK408_ADVANCE_PG16="1";

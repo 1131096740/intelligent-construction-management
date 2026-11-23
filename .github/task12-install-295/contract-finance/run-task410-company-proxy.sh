@@ -16,6 +16,10 @@ node -e '
   const source=require(process.argv[1]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="current-320"?329:295))process.exit(1);
 ' "$prepared/source.json" "$sha"
+mode_args=()
+if [[ $(node -p 'require(process.argv[1]).mode' "$prepared/source.json") == current-320 ]]; then
+  mode_args=(--current-320)
+fi
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -24,7 +28,8 @@ fingerprint=$(cat "$build/context.sha256")
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 python3 "$plan/stage-task410.py" \
-  "$repo/.github/task12-install-290/standard/fixtures" "$prepared/prepared/context/workspace" "$work" > "$work/overlay-files.txt"
+  "$repo/.github/task12-install-290/standard/fixtures" "$prepared/prepared/context/workspace" "$work" \
+  ${mode_args[@]+"${mode_args[@]}"} > "$work/overlay-files.txt"
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 9 ]] || exit 65
