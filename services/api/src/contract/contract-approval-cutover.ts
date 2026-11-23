@@ -1,5 +1,5 @@
 import { ACTION_REQUIRED_ROLES } from "@jiangkong/shared-domain";
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma, type ApprovalActionLog } from "@prisma/client";
 import type { AuditService } from "../audit/audit.service";
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
@@ -9,6 +9,7 @@ import { verifyApprovalSignatureSnapshot } from "../approval/approval-signature-
 import { hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import type { PrismaService } from "../database/prisma.service";
 import type { FileService } from "../file/file.service";
+import type { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 
 function isLegacyExecutiveDuty(node: unknown) {
   return object(node) && distinctIds(node.roleKeys) && node.roleKeys.length === 2 &&
@@ -36,14 +37,16 @@ function cutoverConflict() {
 }
 
 /** Internal cutover step for the exact inventoried version in a stopped-writer environment. */
-export function activateLegacyContractApprovalCutover(
+export async function activateLegacyContractApprovalCutover(
   prisma: Pick<PrismaService, "$transaction">,
   files: Pick<FileService, "getFileBuffer">,
   audit: Pick<AuditService, "record">,
   actorUserId: string,
   contractVersionId: string,
-  expected: LegacyActivationCoordinates
+  expected: LegacyActivationCoordinates,
+  freeze: Pick<OperationalWriteFreezeService, "isFrozen">
 ) {
+  if (!freeze.isFrozen("contract")) throw new ConflictException("请先暂停合同写入，再切换在途审批");
   return prisma.$transaction(async tx => {
     await lockApprovalReviewRow(tx, Prisma.sql`
       SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE
@@ -54,6 +57,8 @@ export function activateLegacyContractApprovalCutover(
         AND "flowType" = 'contract.approve' AND "status" = 'in_progress'
       ORDER BY "id" FOR UPDATE
     `);
+    const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!actor?.isActive) throw new ForbiddenException("合同审批切换经办人不存在或已停用");
     const plan = await inspectRound(tx, files, contractVersionId, expected);
     if (plan.status !== "planned" || !isLegacyExecutiveDuty(plan.frozenNodes.at(-1))) throw cutoverConflict();
     // The inventoried cursor advances only through an unbroken signed prefix. A

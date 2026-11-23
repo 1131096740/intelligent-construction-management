@@ -144,6 +144,8 @@ describe("Contract approval review read coordinates", () => {
 
     expect(detail.reviewApprovalContext).toEqual({ ...REVIEW_CONTEXT, expectedNodeIndex: 1 });
     expect(detail.ownerContractRisk).toMatchObject({ status: "missing_owner_contract", requiresExplicitConfirmation: true });
+    expect(detail.availableActions.filter(action => ["transfer_approval", "delegate_approval"].includes(action.key)))
+      .toEqual([]);
   });
 
   it("fails closed when more than one in-progress approval instance exists", async () => {

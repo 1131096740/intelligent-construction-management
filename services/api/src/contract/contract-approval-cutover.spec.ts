@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { hash } from "bcryptjs";
+import type { INestApplication } from "@nestjs/common";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { ContractService } from "./contract.service";
-import { ContractSealService } from "./contract-seal.service";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 import { AuditService } from "../audit/audit.service";
 import { FileService, PrivateFileStorage } from "../file/file.service";
 import { activateLegacyContractApprovalCutover, inspectLegacyContractApprovalCutover, inspectLegacyContractApprovalInventory } from "./contract-approval-cutover";
@@ -48,6 +49,7 @@ function fixture() {
       findMany: jest.fn().mockResolvedValue([{ id: round.businessId }])
     },
     approvalInstance: { findMany: jest.fn().mockResolvedValue([round]), update: jest.fn() },
+    user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
     approvalActionLog: { findMany: jest.fn().mockResolvedValue([action]) },
     approvalDelegation: { findFirst: jest.fn().mockResolvedValue(null) },
     handwrittenSignatureVersion: { findUnique: jest.fn().mockResolvedValue({ fileId: "file", userId: "contract-director", source: "canvas", contentSha256 }) }
@@ -75,13 +77,24 @@ describe("read-only historical contract approval cutover", () => {
   it("activates only the exact restored version and unsigned executive round while retaining the original completed duty", async () => {
     const { tx, prisma, files, round, version, nodes, action } = fixture();
     const audit = { record: jest.fn() };
+    const freeze = new OperationalWriteFreezeService();
     const expected = { approvalInstanceId: round.id, versionUpdatedAt: version.updatedAt, approvalUpdatedAt: round.updatedAt };
-    await expect(activateLegacyContractApprovalCutover(prisma as never, files, audit,
-      "operator", round.businessId, { ...expected, versionUpdatedAt: new Date(0) })).rejects.toMatchObject({ status: 409 });
-    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
-    expect(audit.record).not.toHaveBeenCalled();
-    await expect(activateLegacyContractApprovalCutover(prisma as never, files, audit,
-      "operator", round.businessId, expected)).resolves.toEqual({ approvalInstanceId: round.id });
+    const env = jest.replaceProperty(process, "env", { ...process.env,
+      OPERATIONAL_WRITE_FREEZE_MODE: "modules", OPERATIONAL_WRITE_FREEZE_MODULES: "payment" });
+    try {
+      await expect(activateLegacyContractApprovalCutover(prisma as never, files, audit,
+        "operator", round.businessId, expected, freeze)).rejects.toMatchObject({ status: 409 });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "contract";
+      await expect(activateLegacyContractApprovalCutover(prisma as never, files, audit,
+        "operator", round.businessId, { ...expected, versionUpdatedAt: new Date(0) }, freeze)).rejects.toMatchObject({ status: 409 });
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      await expect(activateLegacyContractApprovalCutover(prisma as never, files, audit,
+        "operator", round.businessId, expected, freeze)).resolves.toEqual({ approvalInstanceId: round.id });
+    } finally {
+      env.restore();
+    }
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: round.id },
       data: { frozenNodes: nodes.map((node, index) => ({
@@ -153,7 +166,7 @@ describe("read-only historical contract approval cutover", () => {
 });
 
 const postgres = process.env.ISSUE424_CONTRACT_PLAN_OWNER_URL ? it : it.skip;
-postgres("inventories the original signature and carries an eligible v1 round through early executive approval on PG16", async () => {
+postgres("inventories original evidence and exercises the actual frozen and reopened approval HTTP endpoint on PG16", async () => {
   const ownerUrl = new URL(process.env.ISSUE424_CONTRACT_PLAN_OWNER_URL!);
   const readerUrl = new URL(process.env.ISSUE424_CONTRACT_PLAN_READER_URL!);
   if (process.env.NODE_ENV !== "test" || [ownerUrl, readerUrl].some(url =>
@@ -164,7 +177,10 @@ postgres("inventories the original signature and carries an eligible v1 round th
   const reader = new PrismaClient({ datasources: { db: { url: readerUrl.href } } });
   const root = await mkdtemp(join(tmpdir(), "jg424-contract-plan-files-"));
   const objectKey = "original-signature.png";
-  const env = jest.replaceProperty(process, "env", { ...process.env, FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: root });
+  const env = jest.replaceProperty(process, "env", { ...process.env, DATABASE_URL: ownerUrl.href,
+    FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: root, JWT_ACCESS_SECRET: randomUUID(), JWT_REFRESH_SECRET: randomUUID(),
+    FILE_DOWNLOAD_SECRET: randomUUID(), SMS_ENABLED: "false", APPROVAL_SMS_ENABLED: "false" });
+  let app: INestApplication | undefined;
   try {
     expect(await reader.$queryRaw`SELECT current_user AS role, current_setting('default_transaction_read_only') AS "readOnly"`)
       .toEqual([{ role: "jg424_contract_reader", readOnly: "on" }]);
@@ -207,17 +223,24 @@ postgres("inventories the original signature and carries an eligible v1 round th
 
     const audit = new AuditService();
     const ownerFiles = new FileService(owner as never, audit, storage);
-    const seal = new ContractSealService(owner as never, audit);
-    const service = new ContractService(owner as never, audit, undefined, undefined,
-      ownerFiles, undefined, undefined, undefined, undefined, undefined, undefined, seal);
     const coordinates = { approvalInstanceId: round.id, versionUpdatedAt: version.updatedAt, approvalUpdatedAt: round.updatedAt };
+    const freeze = new OperationalWriteFreezeService();
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "off";
+    delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
     await expect(activateLegacyContractApprovalCutover(owner, ownerFiles, audit, applicant.id, version.id,
-      { ...coordinates, approvalInstanceId: "previous-round" })).rejects.toMatchObject({ status: 409 });
+      coordinates, freeze)).rejects.toMatchObject({ status: 409 });
+    expect(await owner.approvalInstance.findUniqueOrThrow({ where: { id: round.id } })).toEqual(round);
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "contract";
     await expect(activateLegacyContractApprovalCutover(owner, ownerFiles, audit, applicant.id, version.id,
-      coordinates)).resolves.toEqual({ approvalInstanceId: round.id });
+      { ...coordinates, approvalInstanceId: "previous-round" }, freeze)).rejects.toMatchObject({ status: 409 });
+    await expect(activateLegacyContractApprovalCutover(owner, ownerFiles, audit, applicant.id, version.id,
+      coordinates, freeze)).resolves.toEqual({ approvalInstanceId: round.id });
 
-    const createApprover = async (id: string, role: string) => {
-      const user = await owner.user.create({ data: { id, name: "隔离审批人 " + id } });
+    const password = "Fixture-Issue424-Local";
+    const passwordHash = await hash(password, 4);
+    const createApprover = async (id: string, role: string, phone: string) => {
+      const user = await owner.user.create({ data: { id, name: "隔离审批人 " + id, phone, passwordHash, mustChangePassword: false } });
       if (role === "project_manager") {
         await owner.projectMember.create({ data: { projectId: project.id, userId: id, positionKey: role } });
       } else {
@@ -234,10 +257,31 @@ postgres("inventories the original signature and carries an eligible v1 round th
       await owner.handwrittenSignatureVersion.create({ data: { userId: id, fileId: privateFile.id, contentSha256 } });
       return user;
     };
-    const executive = await createApprover("executive", "chairman");
-    const wrongExecutive = await createApprover("not-frozen-chairman", "chairman");
-    const finance = await createApprover("finance", "finance_director");
-    const manager = await createApprover("manager", "project_manager");
+    const executive = await createApprover("executive", "chairman", "13900004231");
+    const wrongExecutive = await createApprover("not-frozen-chairman", "chairman", "13900004232");
+    const finance = await createApprover("finance", "finance_director", "13900004233");
+    const manager = await createApprover("manager", "project_manager", "13900004234");
+    const { NestFactory } = await import("@nestjs/core");
+    const { AppModule } = await import("../app.module");
+    const { apiJsonReplacer } = await import("../api-json-replacer");
+    const { createApiValidationPipe } = await import("../validation/api-validation");
+    app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
+    app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+    app.useGlobalPipes(createApiValidationPipe());
+    await app.listen(0, "127.0.0.1");
+    const base = await app.getUrl();
+    const post = (route: string, body: object, token?: string) => fetch(base + route, { method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      body: JSON.stringify(body)
+    });
+    const login = async (phone: string | null) => {
+      const response = await post("/auth/login", { phone, password });
+      expect(response.status).toBe(201);
+      return (await response.json() as { tokens: { accessToken: string } }).tokens.accessToken;
+    };
+    const [executiveToken, otherExecutiveToken, financeToken, managerToken] =
+      await Promise.all([executive, wrongExecutive, finance, manager].map(user => login(user.phone)));
+    const review = (body: object, token?: string) => post(`/contracts/${version.id}/approval`, body, token);
     const reviewCoordinates = async (index: number) => {
       return {
         expectedContractUpdatedAt: (await owner.contractVersion.findUniqueOrThrow({ where: { id: version.id } })).updatedAt.toISOString(),
@@ -254,14 +298,21 @@ postgres("inventories the original signature and carries an eligible v1 round th
         requiresExplicitConfirmation: true
       }
     };
-    await expect(service.reviewApproval(version.id, wrongExecutive.id, reviewOwnerRisk)).rejects.toMatchObject({ status: 403 });
-    await expect(service.reviewApproval(version.id, executive.id, { ...reviewOwnerRisk, expectedApprovalUpdatedAt: round.updatedAt.toISOString() }))
-      .rejects.toMatchObject({ status: 409 });
-    await expect(service.reviewApproval(version.id, executive.id, reviewOwnerRisk)).resolves.toMatchObject({ status: "in_approval" });
-    await expect(service.reviewApproval(version.id, executive.id, { ...reviewOwnerRisk, ...await reviewCoordinates(3) }))
-      .rejects.toMatchObject({ status: 403 });
-    await expect(service.reviewApproval(version.id, manager.id, { ...await reviewCoordinates(1), decision: "approve" }))
-      .resolves.toMatchObject({ status: "in_approval" });
+    expect((await review(reviewOwnerRisk, executiveToken)).status).toBe(503);
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "off";
+    delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+    expect((await review(reviewOwnerRisk)).status).toBe(401);
+    expect((await review(reviewOwnerRisk, otherExecutiveToken)).status).toBe(403);
+    expect((await review({ ...reviewOwnerRisk, expectedApprovalUpdatedAt: round.updatedAt.toISOString() }, executiveToken)).status).toBe(409);
+    const approvedEarly = await review(reviewOwnerRisk, executiveToken);
+    expect(approvedEarly.status).toBe(201);
+    expect(await approvedEarly.json()).toMatchObject({ status: "in_approval" });
+    expect((await review({ ...reviewOwnerRisk, ...await reviewCoordinates(3) }, executiveToken)).status).toBe(403);
+    const managerCoordinates = await reviewCoordinates(1);
+    expect((await review({ ...managerCoordinates, decision: "reject_previous", comment: "核对合同资料" }, managerToken)).status).toBe(400);
+    const approvedManager = await review({ ...managerCoordinates, decision: "approve" }, managerToken);
+    expect(approvedManager.status).toBe(201);
+    expect(await approvedManager.json()).toMatchObject({ status: "in_approval" });
 
     const competing = await owner.contract.create({ data: {
       projectId: project.id, ownerUserId: applicant.id, code: "I424-CON-02", name: "风险变更测试合同", counterparty: "合成相对方"
@@ -272,8 +323,9 @@ postgres("inventories the original signature and carries an eligible v1 round th
     } });
     const financeRequest = { ...await reviewCoordinates(2), decision: "approve" as const };
     const beforeMismatch = await owner.approvalActionLog.findMany({ where: { approvalInstanceId: round.id }, orderBy: { id: "asc" } });
-    await expect(service.reviewApproval(version.id, finance.id, financeRequest))
-      .rejects.toMatchObject({ status: 409, response: { code: "CONTRACT_OWNER_RISK_SNAPSHOT_CONFLICT" } });
+    const mismatch = await review(financeRequest, financeToken);
+    expect(mismatch.status).toBe(409);
+    expect(await mismatch.json()).toMatchObject({ code: "CONTRACT_OWNER_RISK_SNAPSHOT_CONFLICT" });
     expect(await reviewCoordinates(2)).toEqual({
       expectedContractUpdatedAt: financeRequest.expectedContractUpdatedAt, expectedApprovalInstanceId: round.id,
       expectedNodeIndex: 2, expectedApprovalUpdatedAt: financeRequest.expectedApprovalUpdatedAt
@@ -283,17 +335,21 @@ postgres("inventories the original signature and carries an eligible v1 round th
 
     // Restore the identical fixture state to prove same-risk completion; this is not a business recovery path.
     await owner.contractVersion.update({ where: { id: competingVersion.id }, data: { status: "draft" } });
-    await expect(service.reviewApproval(version.id, finance.id, financeRequest))
-      .resolves.toMatchObject({ status: "approved_pending_seal" });
+    const approvedFinal = await review(financeRequest, financeToken);
+    expect(approvedFinal.status).toBe(201);
+    expect(await approvedFinal.json()).toMatchObject({ status: "approved_pending_seal" });
     expect(await owner.contractSealTask.findUnique({ where: { approvalInstanceId: round.id } }))
       .toMatchObject({ status: "pending_approval", handlerUserId: applicant.id });
     expect(await owner.approvalActionLog.findUnique({ where: { id: action.id } })).toEqual(action);
     expect((await ownerFiles.getFileBuffer(file.id)).buffer).toEqual(png);
     expect(await owner.approvalActionLog.count({ where: { approvalInstanceId: round.id, action: "approve" } })).toBe(4);
   } finally {
-    env.restore();
-    await Promise.all([
-      owner.$disconnect(), reader.$disconnect(), rm(root, { recursive: true, force: true })
-    ]);
+    try { await app?.close(); }
+    finally {
+      env.restore();
+      await Promise.all([
+        owner.$disconnect(), reader.$disconnect(), rm(root, { recursive: true, force: true })
+      ]);
+    }
   }
-});
+}, 20_000);

@@ -1659,6 +1659,13 @@ export class ContractReadService {
             where: { approvalInstanceId: latestApprovalInstance.id, actorUserId, action: "approve" },
             select: { id: true }
           })));
+    const currentApproval = historicalApprovedInstances.find(
+      (item) => item.businessId === version.id && item.status === "in_progress"
+    );
+    const currentApprovalNodes = Array.isArray(currentApproval?.frozenNodes)
+      ? currentApproval.frozenNodes
+      : [];
+    const legacyParallelCutover = version.numericProtocolVersion === 1 && isLegacyContractParallelRound(currentApprovalNodes);
     const availableActions = readOnlyHistory
       ? []
       : this.contractActions(
@@ -1682,6 +1689,7 @@ export class ContractReadService {
         canReportSigningMaterialChange,
         genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction),
         numericProtocolVersion: version.numericProtocolVersion,
+        legacyParallelCutover,
         withdrawApprovalContext
       }
     );
@@ -1725,12 +1733,6 @@ export class ContractReadService {
     const directNumbers = directPending ? await directPendingNumbers(this.prisma, [version]) : null;
     const contractCode = directNumbers ? directPendingNumberLabel(directNumbers.get(version.id)) : contract.code ?? contract.temporaryCode ?? contract.id;
     const latestSettlement = settlements.at(-1);
-    const currentApproval = historicalApprovedInstances.find(
-      (item) => item.businessId === version.id && item.status === "in_progress"
-    );
-    const currentApprovalNodes = Array.isArray(currentApproval?.frozenNodes)
-      ? currentApproval.frozenNodes
-      : [];
     const ownerContractRiskReadModel = ownerContractRisk
       ? {
           status: ownerContractRisk.status,
@@ -1749,7 +1751,7 @@ export class ContractReadService {
           requiresExplicitConfirmation: Boolean(
             ownerContractRisk.status !== "clear" &&
             currentApproval &&
-            (isLegacyContractParallelRound(currentApprovalNodes)
+            (legacyParallelCutover
               ? reviewApprovalContext?.expectedNodeIndex
               : currentApproval.currentNodeIndex) === currentApprovalNodes.length - 1 &&
             availableActions.some(
@@ -2659,6 +2661,7 @@ export class ContractReadService {
       canReportSigningMaterialChange: boolean;
       genericDraftActionsAllowed: boolean;
       numericProtocolVersion?: number;
+      legacyParallelCutover?: boolean;
       withdrawApprovalContext: ContractDetailReadModel["withdrawApprovalContext"];
     }
   ): DetailActionReadModel[] {
@@ -2710,7 +2713,7 @@ export class ContractReadService {
         requiredAction: "contract.submit",
         enabled: ["in_approval", "approval_pending"].includes(status)
       }),
-      detailAction({
+      ...(!context?.legacyParallelCutover ? [detailAction({
         key: "transfer_approval",
         label: "转审",
         kind: "normal",
@@ -2727,7 +2730,7 @@ export class ContractReadService {
         skipRoleCheck: true,
         enabled: approvalReviewAccess.canAct,
         disabledReason: "当前用户不是当前审批节点处理人"
-      }),
+      })] : []),
       ...(!context?.governed || status === "effective" ? [detailAction({
         key: "generate_pdf_archive",
         label: "生成 PDF 归档",
