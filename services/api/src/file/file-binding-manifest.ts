@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { readFileBindingCatalog } from "../database/registered-payment-catalog";
-import { NON_RECEIPT_FILE_BINDINGS } from "./file-business-binding";
+import { NON_RECEIPT_FILE_BINDINGS, SIGNED_CONTRACT_FILE_BINDING_SOURCES } from "./file-business-binding";
 import { contractReviewRetainedObjectKeys } from "./contract-review-file-retention";
 import { isValidObjectKey, type VersionedObjectStorage } from "./versioned-object-storage";
 
@@ -129,10 +129,11 @@ export async function fileBusinessBindingRefs(
   const candidates = Prisma.join(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
-  const catalog = await readFileBindingCatalog(tx);
+  const catalog = await readFileBindingCatalog(tx, true);
   const registryQueries = NON_RECEIPT_FILE_BINDINGS
     .filter(({ table }) => table === "RegisteredPaymentVoucher" ? catalog.registeredPayment :
-      table === "ProjectOwnerSettlementEntry" ? catalog.ownerSettlementVoucher : true)
+      table === "ProjectOwnerSettlementEntry" ? catalog.ownerSettlementVoucher :
+        catalog.signedContractFileBindings || !SIGNED_CONTRACT_FILE_BINDING_SOURCES.has(table))
     .flatMap((binding) =>
       binding.columns.map((column) => {
         if (binding.table === "ProjectOwnerSettlementEntry") {
@@ -140,6 +141,13 @@ export async function fileBusinessBindingRefs(
             SELECT c."id" AS "fileId", 'ProjectOwnerSettlementEntry' AS "table",
               'voucherFileId' AS "column", NULL::text AS "rowId"
             FROM candidates c WHERE public.jg_project_owner_settlement_voucher_bound(c."id")
+          `;
+        }
+        const signedSource = SIGNED_CONTRACT_FILE_BINDING_SOURCES.get(binding.table);
+        if (signedSource) {
+          return Prisma.sql`
+            SELECT x."fileId", ${binding.table} AS "table", ${column} AS "column", x."rowId"
+            FROM ${signedSource} x JOIN candidates c ON c."id"=x."fileId"
           `;
         }
         const tableId = sqlIdentifier(binding.table);

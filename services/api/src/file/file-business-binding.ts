@@ -202,6 +202,19 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   }
 ] as const;
 
+// The signed-change reference is to a formal-file row, not a FileObject ID.
+export const SIGNED_CONTRACT_FILE_BINDING_SOURCES: ReadonlyMap<string, Prisma.Sql> = new Map([
+  ["ContractSignedChange", Prisma.sql`(
+    SELECT x."id" AS "rowId", f."fileId"
+    FROM public."ContractSignedChange" x
+    JOIN public."ContractFormalFile" f ON f."id"=x."appendixFormalFileId"
+  )`],
+  ["SignedContractSettlementAttachment", Prisma.sql`(
+    SELECT x."settlementId" AS "rowId", x."fileId"
+    FROM public."SignedContractSettlementAttachment" x
+  )`],
+]);
+
 export interface NonReceiptFileBindingExclusion {
   table: string;
   column: string;
@@ -298,7 +311,7 @@ export async function nonReceiptBusinessFileBindingIds(
   const candidates = Prisma.join(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
-  const catalog = await readFileBindingCatalog(tx);
+  const catalog = await readFileBindingCatalog(tx, true);
   const includeVoucher = catalog.registeredPayment && !excludedBindingKeys.has("RegisteredPaymentVoucher.fileId");
   const includeOwnerSettlement = catalog.ownerSettlementVoucher && !excludedBindingKeys.has("ProjectOwnerSettlementEntry.voucherFileId");
   const scopedVoucherCheck = includeOwnerSettlement && upwardDirectVersionId !== undefined
@@ -337,7 +350,10 @@ export async function nonReceiptBusinessFileBindingIds(
           pg_catalog.to_regprocedure(${procurementRoutine}), 'EXECUTE'), false) AS executable
     `)
     : [];
-  const bindingQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
+  const availableBindings = NON_RECEIPT_FILE_BINDINGS.filter(({ table }) =>
+    catalog.signedContractFileBindings || !SIGNED_CONTRACT_FILE_BINDING_SOURCES.has(table)
+  );
+  const bindingQueries = availableBindings.flatMap(
     ({ table, columns }) =>
       columns
         .filter((column) => table === "RegisteredPaymentVoucher" ? includeVoucher :
@@ -364,6 +380,10 @@ export async function nonReceiptBusinessFileBindingIds(
                         ${procurementBinding.actorUserId}, ${procurementBinding.revision}::integer)`
                   : Prisma.sql`public.jg_project_owner_settlement_voucher_bound(c."id")`;
             return Prisma.sql`SELECT c."id" AS "fileId" FROM candidates c WHERE ${referenced}`;
+          }
+          const signedSource = SIGNED_CONTRACT_FILE_BINDING_SOURCES.get(table);
+          if (signedSource) {
+            return Prisma.sql`SELECT x."fileId" FROM ${signedSource} x JOIN candidates c ON c."id"=x."fileId"`;
           }
           const field = sqlIdentifier(column);
           const relation = table === "RegisteredPaymentVoucher"

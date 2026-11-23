@@ -1,9 +1,73 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
+// The pre-signed-change registry bodies are fixed by the retained 205 and 295 installers.
+const signedContractFileBindingState = Prisma.sql`
+  , (
+    WITH relations AS (
+      SELECT pg_catalog.to_regclass('public."ContractSignedChange"')::oid AS change,
+        pg_catalog.to_regclass('public."SignedContractSettlementAttachment"')::oid AS attachment,
+        pg_catalog.to_regclass('public."ContractFormalFile"')::oid AS formal
+    ), readable_columns AS (
+      SELECT c.oid AS relation, a.attname::text AS name, a.attnum
+      FROM relations r
+      JOIN pg_catalog.pg_class c ON c.oid IN (r.change, r.attachment, r.formal)
+      JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid
+      WHERE c.relowner=anchor.owner AND c.relkind='r' AND c.relpersistence='p'
+        AND NOT (c.relispartition OR c.relrowsecurity OR c.relforcerowsecurity)
+        AND a.attnum>0 AND NOT a.attisdropped AND a.attnotnull
+        AND a.atttypid='pg_catalog.text'::regtype AND a.attgenerated='' AND a.attidentity=''
+        AND pg_catalog.has_schema_privilege(c.relnamespace,'USAGE')
+        AND pg_catalog.has_column_privilege(c.oid,a.attnum,'SELECT')
+    )
+    SELECT CASE
+      WHEN change IS NULL AND attachment IS NULL
+        AND pg_catalog.to_regprocedure('public.jg_contract_signed_change_history_guard()') IS NULL
+        AND pg_catalog.to_regprocedure('public.jg_guard_signed_settlement_attachment()') IS NULL
+        AND pg_catalog.to_regprocedure('public.jg_file_business_binding_columns_before_signed_settlement()') IS NULL
+        AND EXISTS (
+          SELECT FROM pg_catalog.pg_proc p WHERE p.oid=anchor.registry AND p.proowner=anchor.owner
+            AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex') IN (
+              'd2a3171b76def6792d43f5cc37ede636f0f25e57b4dcf25625d3e4c91471080f',
+              '6d15e2b77fe89fbfa944d26522a9bf3a5c44636ecbfc1e99201e3e676502289f'
+            )
+        )
+        THEN 'absent'
+      WHEN NOT EXISTS (
+        SELECT FROM (VALUES (change,'id'),(change,'appendixFormalFileId'),(attachment,'settlementId'),
+          (attachment,'fileId'),(formal,'id'),(formal,'fileId')) required(relation,name)
+        WHERE NOT EXISTS (
+          SELECT FROM readable_columns c WHERE c.relation=required.relation AND c.name=required.name
+        )
+      ) AND EXISTS (
+        SELECT FROM pg_catalog.pg_constraint k
+        JOIN readable_columns source ON source.relation=change AND source.name='appendixFormalFileId'
+        JOIN readable_columns target ON target.relation=formal AND target.name='id'
+        WHERE k.contype='f' AND k.convalidated AND k.conrelid=change AND k.confrelid=formal
+          AND k.conkey=ARRAY[source.attnum] AND k.confkey=ARRAY[target.attnum]
+      ) AND EXISTS (
+        SELECT FROM pg_catalog.pg_constraint k
+        JOIN readable_columns source ON source.relation=attachment AND source.name='fileId'
+        WHERE k.contype='f' AND k.convalidated AND k.conrelid=attachment AND k.confrelid=anchor.file
+          AND k.conkey=ARRAY[source.attnum]
+          AND k.confkey=ARRAY[(SELECT a.attnum FROM pg_catalog.pg_attribute a WHERE a.attrelid=anchor.file
+            AND a.attname='id' AND a.attnum>0 AND NOT a.attisdropped)]
+      ) THEN 'installed'
+      ELSE 'unavailable'
+    END FROM relations
+  ) AS "signedContractFileBindings"
+`;
+
 /** Recognize the atomic registered-payment installation on the caller’s transaction. */
-export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, "$queryRaw">) {
-  const [row, extra] = await tx.$queryRaw<Array<{ state: string; ownerSettlementVoucher?: boolean }>>(Prisma.sql`
+export async function readFileBindingCatalog(
+  tx: Pick<Prisma.TransactionClient, "$queryRaw">,
+  includeSignedContractFileBindings = false
+) {
+  const [row, extra] = await tx.$queryRaw<Array<{
+    state: string;
+    ownerSettlementVoucher?: boolean;
+    signedContractFileBindings?: "absent" | "installed" | "unavailable";
+  }>>(Prisma.sql`
     /* registered_payment_voucher_catalog */
     WITH scope AS (
       SELECT pg_catalog.to_regclass('public."PaymentExecution"')::oid AS payment,
@@ -129,10 +193,18 @@ export async function readFileBindingCatalog(tx: Pick<Prisma.TransactionClient, 
       ELSE 'unavailable'
     END AS state,
       settlement_reader IS NOT NULL AS "ownerSettlementVoucher"
+      ${includeSignedContractFileBindings ? signedContractFileBindingState : Prisma.empty}
     FROM anchor
   `);
   if (!extra && (row?.state === "absent" || row?.state === "installed")) {
-    return { registeredPayment: row.state === "installed", ownerSettlementVoucher: row.ownerSettlementVoucher === true };
+    if (row.signedContractFileBindings === "unavailable") {
+      throw new ServiceUnavailableException("已签变更与结算文件绑定暂不可核验，请稍后重试");
+    }
+    return {
+      registeredPayment: row.state === "installed",
+      ownerSettlementVoucher: row.ownerSettlementVoucher === true,
+      ...(includeSignedContractFileBindings ? { signedContractFileBindings: row.signedContractFileBindings === "installed" } : {})
+    };
   }
   throw new ServiceUnavailableException("付款凭证文件绑定暂不可核验，请稍后重试");
 }

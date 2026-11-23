@@ -40,7 +40,7 @@ function fakeTx(options: {
   fileObjects: ReturnType<typeof fileObjectLite>[];
 }) {
   const $queryRaw = jest.fn(async (query: Prisma.Sql) => {
-    if (query.sql.includes("registered_payment_voucher_catalog")) return [{ state: "absent" }];
+    if (query.sql.includes("registered_payment_voucher_catalog")) return [{ state: "absent", signedContractFileBindings: "absent" }];
     if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "legacy" }];
     if (query.sql.includes("contract_economic_review_file_reference_migration")) return [{ applied: false }];
     return options.refs;
@@ -65,7 +65,7 @@ describe("classifyFileBinding", () => {
     const tx = {
       $queryRaw: jest.fn(async (query: Prisma.Sql) => {
         if (query.sql.includes("registered_payment_voucher_catalog")) {
-          return [{ state: "absent", ownerSettlementVoucher: true }];
+          return [{ state: "absent", ownerSettlementVoucher: true, signedContractFileBindings: "absent" }];
         }
         expect(query.sql).toContain("jg_project_owner_settlement_voucher_bound");
         expect(query.sql).not.toContain('FROM "ProjectOwnerSettlementEntry"');
@@ -419,7 +419,7 @@ describe("fileBusinessBindingRefs", () => {
   it.each(["absent", "installed"] as const)("scans the fixed voucher binding only in the %s catalog", async (state) => {
     const voucher = ref("RegisteredPaymentVoucher", "fileId", "execution-1", "file-a");
     const $queryRaw = jest.fn(async (query: Prisma.Sql) => {
-      if (query.text.includes("registered_payment_voucher_catalog")) return [{ state }];
+      if (query.text.includes("registered_payment_voucher_catalog")) return [{ state, signedContractFileBindings: "absent" }];
       expect(query.text.includes('FROM public."RegisteredPaymentVoucher"')).toBe(state === "installed");
       expect(query.text.includes('x."executionId" AS "rowId"')).toBe(state === "installed");
       return state === "installed" ? [voucher] : [];
@@ -427,6 +427,24 @@ describe("fileBusinessBindingRefs", () => {
     const tx = { $queryRaw } as unknown as Prisma.TransactionClient;
     await expect(fileBusinessBindingRefs(tx, ["file-a"])).resolves.toEqual(state === "installed" ? [voucher] : []);
     expect($queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps signed evidence bound to its file, including an appendix with a distinct formal-row ID", async () => {
+    const signedChange = ref("ContractSignedChange", "appendixFormalFileId", "change-1", "file-a");
+    const signedSettlement = ref("SignedContractSettlementAttachment", "fileId", "settlement-1", "file-b");
+    const $queryRaw = jest.fn(async (query: Prisma.Sql) => {
+      if (query.text.includes("registered_payment_voucher_catalog")) {
+        return [{ state: "installed", signedContractFileBindings: "installed" }];
+      }
+      expect(query.text).toContain('JOIN public."ContractFormalFile" f ON f."id"=x."appendixFormalFileId"');
+      expect(query.text).toContain('SELECT x."id" AS "rowId", f."fileId"');
+      expect(query.text).toContain('FROM public."SignedContractSettlementAttachment"');
+      return [signedChange, signedSettlement];
+    });
+    const tx = { $queryRaw } as unknown as Prisma.TransactionClient;
+    await expect(fileBusinessBindingRefs(tx, ["file-a", "file-b"])).resolves.toEqual([signedChange, signedSettlement]);
+    expect(classifyFileBinding([signedChange, ref("ContractFormalFile", "fileId", "formal-1", "file-a")],
+      new Set(["ContractFormalFile:fileId:formal-1"]), new Set(["file-a"]))).toMatchObject({ bindingType: "shared" });
   });
 
   it("refuses an incomplete voucher catalog before reading the file bindings", async () => {
@@ -443,7 +461,7 @@ describe("buildContractFileBindingManifest", () => {
     const $queryRaw = jest
       .fn()
       .mockResolvedValueOnce(owned) // resolveContractVersionFileBindings
-      .mockResolvedValueOnce([{ state: "absent" }]) // registeredPaymentVoucherInstalled
+      .mockResolvedValueOnce([{ state: "absent", signedContractFileBindings: "absent" }]) // registeredPaymentVoucherInstalled
       .mockResolvedValueOnce(owned) // fileBusinessBindingRefs
       .mockResolvedValueOnce([{ state: "legacy" }])
       .mockResolvedValueOnce([{ applied: false }]);

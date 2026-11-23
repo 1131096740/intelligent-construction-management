@@ -762,7 +762,7 @@
   {
     "path": "services/api/src/contract-template/template-management.test-support.ts",
     "expected": "a456d498881dddabcfbf987fa46ce69fb9b3f9c3e41f39d3ec7fc9758da5852f",
-    "candidate": "66eed61d006b402a3eabb202d71d6cb31cafbaa6f0bb10045b9bda88980bbf4f"
+    "candidate": "00b656e854280efcae5645d7a3061bf406d008f69d49045233345c871882beef"
   },
   {
     "path": "services/api/src/contract-workbench/contract-workbench.service.ts",
@@ -882,7 +882,7 @@
   {
     "path": "services/api/src/database/registered-payment-catalog.ts",
     "expected": "a68f8f1eccbedaf444770aed90923194b37ee542499f1589fc140fb3bfd67335",
-    "candidate": "121b00319df30f72468707163bb532f3b6189b77b2b23528bfd9cde49b11c27b"
+    "candidate": "40d44f5a495a24fc63acc739654b1706a8c2599a64b8a163f56fd30567e50552"
   },
   {
     "path": "services/api/src/database/spot-procurement-core-schema.spec.ts",
@@ -960,14 +960,24 @@
     "candidate": "0dcb2a5395ff15ab5b5f3838f4ce930236de0ec647fa4cfac5c94da802eded2a"
   },
   {
+    "path": "services/api/src/file/file-binding-manifest.spec.ts",
+    "expected": "6595b9b2c93d5b903268787b8f88d7f686dbce53429576cb2955b8cc59f6610b",
+    "candidate": "89dd7019102e659ffd532e1b6b25fa5a8478584aea48abe8d8ba5a58a9d45e15"
+  },
+  {
+    "path": "services/api/src/file/file-binding-manifest.ts",
+    "expected": "b514dee969f7aacc8eec33efd5ddcc61e7d8c73d36bd6277149b19e4b51939ac",
+    "candidate": "cd71eff220c51fde6a610817dccd2a1b4a468670dd726bcdbf32d4374cabc2fc"
+  },
+  {
     "path": "services/api/src/file/file-business-binding.spec.ts",
     "expected": "362f2f0ab861b255b4a5a6af1ca06157b80acaf10abf9cb562378eed01eda907",
-    "candidate": "1705eb812033610f8b0c461d3ff6fa7f75199328aa22f8d86af75f9d32e2b7a3"
+    "candidate": "603cca17755e2e3365fbbe32088183b7cf9decaa4628737aa0009ee5e2120f2f"
   },
   {
     "path": "services/api/src/file/file-business-binding.ts",
     "expected": "e10b01a2f74fe88fc1015e7c3d4528073f7af90ffba5fce7d7b20ad2feb9f38a",
-    "candidate": "143edf08fd271f9921118c3d02682d8aa9abd1f6f85af5d9da66107267901430"
+    "candidate": "e61f85611e0f0f9ef39588cc4d53abcd3d35f802bde9fab11f3b59cdeb96fe52"
   },
   {
     "path": "services/api/src/file/file.controller.spec.ts",

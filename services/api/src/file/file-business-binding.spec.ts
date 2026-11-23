@@ -43,7 +43,7 @@ describe("non-receipt file binding registry", () => {
 
   it.each(["absent", "installed"] as const)("keeps regular file bindings readable with the voucher capability %s", async state => {
     const query = jest.fn(async (sql: Prisma.Sql) => {
-      if (sql.text.includes("registered_payment_voucher_catalog")) return [{ state }];
+      if (sql.text.includes("registered_payment_voucher_catalog")) return [{ state, signedContractFileBindings: "absent" }];
       if (!sql.text.includes("receipt_non_receipt_file_binding")) throw new Error("Unexpected binding query");
       if (sql.text.includes('FROM public."RegisteredPaymentVoucher"') !== (state === "installed")) {
         throw new Error("Voucher relation does not match the catalog");
@@ -57,7 +57,7 @@ describe("non-receipt file binding registry", () => {
 
   it.each([true, false])("uses the fixed upward original voucher check only when executable (%s)", async executable => {
     const query = jest.fn(async (sql: Prisma.Sql) => {
-      if (sql.text.includes("registered_payment_voucher_catalog")) return [{ state: "installed", ownerSettlementVoucher: true }];
+      if (sql.text.includes("registered_payment_voucher_catalog")) return [{ state: "installed", ownerSettlementVoucher: true, signedContractFileBindings: "absent" }];
       if (sql.text.includes("has_function_privilege")) return [{ executable }];
       expect(sql.text).toContain('FROM public."RegisteredPaymentVoucher"');
       expect(sql.text).toContain(executable ? "jg_check_a08_direct_original_voucher_v1" : "jg_project_owner_settlement_voucher_bound");
@@ -69,6 +69,25 @@ describe("non-receipt file binding registry", () => {
     await expect(nonReceiptBusinessFileBindingIds(tx, ["existing-binding"], [], "fixed-version"))
       .resolves.toEqual(["existing-binding"]);
     expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it("omits both modern relations when the legacy registry is qualified", async () => {
+    const query = jest.fn(async (sql: Prisma.Sql) => {
+      if (sql.text.includes("registered_payment_voucher_catalog")) {
+        return [{ state: "absent", signedContractFileBindings: "absent" }];
+      }
+      expect(sql.text).not.toMatch(/FROM (?:public\.)?"(?:ContractSignedChange|SignedContractSettlementAttachment)"/u);
+      return [];
+    });
+    const tx = { $queryRaw: query } as unknown as Prisma.TransactionClient;
+    await expect(nonReceiptBusinessFileBindingIds(tx, ["file-a"])).resolves.toEqual([]);
+  });
+
+  it("refuses to report a file unbound when the modern registry is unavailable", async () => {
+    const query = jest.fn().mockResolvedValue([{ state: "installed", signedContractFileBindings: "unavailable" }]);
+    const tx = { $queryRaw: query } as unknown as Prisma.TransactionClient;
+    await expect(nonReceiptBusinessFileBindingIds(tx, ["file-a"])).rejects.toMatchObject({ status: 503 });
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it("stops before looking up bindings when the voucher installation is incomplete", async () => {

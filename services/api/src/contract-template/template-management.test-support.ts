@@ -749,7 +749,7 @@ export class TemplateSyntheticStore {
         if (!query.values.length || query.values.some(value => typeof value !== "string") || new Set(query.values).size !== query.values.length) throw new Error("合成单位锁参数不正确");
         return this.table("businessParty").findMany({ where: { id: { in: query.values } }, orderBy: { id: "asc" } });
       }
-      if (createHash("sha256").update(text.replace(/\(VALUES \(\?\)(?:,\(\?\))*\)/u, "(VALUES (?))")).digest("hex") === "2dd5df324cc34466f13010c2e63ee4a3de54b486abafd72d86b697bee8a8316b") {
+      if (createHash("sha256").update(text.replace(/\(VALUES \(\?\)(?:,\(\?\))*\)/u, "(VALUES (?))")).digest("hex") === "e7790890300fd3cf5aea96a7d0f7772e942b4b4e60084c2856a4697dcacb2a0f") {
         if (!this.transactionBindingLockHeld || !query.values.length || query.values.length > 20 || query.values.some(value => typeof value !== "string")) throw new Error("合成排他绑定查询参数不符");
         return query.values.filter(id => NON_RECEIPT_FILE_BINDINGS.some(binding => binding.table !== "ContractDraftAttachment" && (this.rows[binding.table[0].toLowerCase()+binding.table.slice(1)] ?? []).some(row => binding.columns.some(column => row[column] === id))) || (this.rows.fileObject ?? []).some(row => (row.id === id && row.supersedesFileObjectId != null) || row.supersedesFileObjectId === id)).map(fileId => ({ fileId }));
       }
@@ -955,8 +955,11 @@ export class TemplateSyntheticStore {
         });
       }
       if (text.startsWith("/* registered_payment_voucher_catalog */")) {
-        if (query.values.length || (this.rows.registeredPaymentVoucher ?? []).length) throw new Error("合成实付凭证目录未登记当前关系");
-        return [{ state: "absent" }];
+        if (query.values.length || (this.rows.registeredPaymentVoucher ?? []).length ||
+            (this.rows.contractSignedChange ?? []).length || (this.rows.signedContractSettlementAttachment ?? []).length) {
+          throw new Error("合成文件绑定目录未登记当前关系");
+        }
+        return [{ state: "absent", signedContractFileBindings: "absent" }];
       }
       // Fixed FileService referenced-file projection. All declared adjacent
       // binding relations begin empty in this synthetic store; actual stored
