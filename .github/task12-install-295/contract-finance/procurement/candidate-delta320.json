@@ -67,7 +67,7 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "a92d0267951b67cac5150ab3f5db066a9eeb9f8eab81a2b03bb376c765a2be29"
+    "candidate": "0fb536fd844edc30408c51fa49eb75907b5b135a44d4d404755c01acceaa93ba"
   },
   {
     "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
@@ -292,7 +292,7 @@
   {
     "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
     "expected": "e59191cb43679ab0564d1fd0ebc1f13b2db9f2163e7ebb62e03a08f9195ab715",
-    "candidate": "e1435d90b9c27be477e339cbdac1bdc7640f6aa4993538c748e08f249c21af0b"
+    "candidate": "c1c1f3cd202ba887af5bca177d4b1a170457a15742b3bb14c950ec964e629cb6"
   },
   {
     "path": "apps/web-admin/src/pages/payments/PaymentListPage.vue",
@@ -307,7 +307,7 @@
   {
     "path": "apps/web-admin/src/pages/payments/payment-approval-review-action.test.ts",
     "expected": "bb09b400c40642557c26888df705322ee038b5fb4ba137953aa47dfe0fb1e1b4",
-    "candidate": "2aa14ac67c50faa7aaa2c25a800a64665d372a92c05d4228b980779324ac57ec"
+    "candidate": "88083bcdc2d59a2cb1beca08a68edea4f9de054f02fd6d5204ec61b34ccea39d"
   },
   {
     "path": "apps/web-admin/src/pages/payments/payment-list.config.test.ts",
@@ -1095,6 +1095,11 @@
     "candidate": "8e5a70009ad4733baea0dc6b3b5e511ee1b5c6aaa6f75a8de7830a594e9e19a7"
   },
   {
+    "path": "services/api/src/payment/payment-amount.service.ts",
+    "expected": "f3158e51deb728ae6e339573c2cb654c7515a24cd552513901f8b90d69ffb9ca",
+    "candidate": "e89a74bea1a47dcb49dfb2e32e9da0d16653e1bcf0695c3a4994b2ec3861b665"
+  },
+  {
     "path": "services/api/src/payment/payment-approval-notification.service.spec.ts",
     "expected": "e70d08db2eece621c703eb116faf61e8b9a9e3dd33ff14508b8b3e047d845856",
     "candidate": "32f1eb124bf1d9aa31073e1880a9cdcb06edff164b98d90cc4af7df66a07dadd"
@@ -1122,7 +1127,7 @@
   {
     "path": "services/api/src/payment/payment-read.service.ts",
     "expected": "7d2378c22ec148759df4848beb7ddc684537735390815d112eb4cda3170d9197",
-    "candidate": "a360b78f30ef566f0b6065cbb0d8358309fa25c28ddea1bff035ba30cfe1939f"
+    "candidate": "ec29e09db3a292fb92ef894c03321b2fbe358e4e7b3e3781c156427beb348377"
   },
   {
     "path": "services/api/src/payment/payment-request-business-entry-definition.ts",
@@ -1137,7 +1142,7 @@
   {
     "path": "services/api/src/payment/payment-request.service.ts",
     "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
-    "candidate": "445d1cf94f9b6ba4f1cf13a175f6db08128daaab4985f2779e5bdba8475268d7"
+    "candidate": "d46b3c3bcb5cf3d846ff4f9af7b482dfe6eafe88083ddb993c833ae8181938d1"
   },
   {
     "path": "services/api/src/payment/payment.controller.spec.ts",
@@ -1147,7 +1152,7 @@
   {
     "path": "services/api/src/payment/payment.controller.ts",
     "expected": "f07f64ef4776f6d22fdf015f756b77fb2f59fbcac22255aa87ff4840fa6d0dbf",
-    "candidate": "629b651e38499e8adb35d5bf185e9d3b3c272ae451c4b03419bdb2d0788a452a"
+    "candidate": "2d84946b6b4a7f74079726de48cb4dcbd9d45f85e6276bd01b035bb56ee47f11"
   },
   {
     "path": "services/api/src/payment/payment.module.ts",

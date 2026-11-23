@@ -8,6 +8,7 @@ const reviewRuntime = vi.hoisted(() => ({
   executeReview: vi.fn(),
   prepareReview: vi.fn(),
   fetchDetail: vi.fn(),
+  fetchCapability: vi.fn(),
   postReview: vi.fn(),
   directReview: vi.fn(),
   reviseRequest: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock("../../api/core-flow-read.api", async (importOriginal) => {
     executePaymentApprovalReviewAction: reviewRuntime.executeReview,
     preparePaymentApprovalReviewAction: reviewRuntime.prepareReview,
     fetchPaymentDetail: reviewRuntime.fetchDetail,
+    fetchPaymentActionCapability: reviewRuntime.fetchCapability,
     reviseAndSubmitPaymentRequest: reviewRuntime.reviseRequest,
     reviewPaymentApproval: reviewRuntime.directReview
   };
@@ -97,6 +99,10 @@ type PaymentPageBindings = {
     reason: string;
     password: string;
   }) => Promise<unknown>;
+  confirmPaymentApprovalReturn: (values: {
+    reason: string;
+    password: string;
+  }) => Promise<unknown>;
   clearPaymentDetailTransientState: () => void;
   paymentActionForm: {
     approvedAmountYuan: string;
@@ -124,6 +130,7 @@ describe("payment approve/reject page ownership", () => {
     reviewRuntime.beforeUnmountCallbacks.splice(0);
     reviewRuntime.executeReview.mockReset();
     reviewRuntime.prepareReview.mockReset();
+    reviewRuntime.fetchCapability.mockReset();
     reviewRuntime.fetchDetail.mockReset();
     reviewRuntime.postReview.mockReset();
     reviewRuntime.directReview.mockReset();
@@ -300,7 +307,7 @@ describe("payment approve/reject page ownership", () => {
 
       bindings.paymentApprovalCapability.value = paymentDetail({ canReturnForRevision: true });
       bindings.requestApproval("return_to_applicant");
-      await bindings.confirmPaymentApprovalReject({ reason: "", password: "" });
+      await bindings.confirmPaymentApprovalReturn({ reason: "", password: "" });
       expect(reviewRuntime.postReview).toHaveBeenCalledWith("payment-a", expect.objectContaining({
         decision: "return_to_applicant", comment: "请核对金额"
       }));
@@ -324,6 +331,11 @@ describe("payment approve/reject page ownership", () => {
       await bindings.reloadPaymentDetail();
       expect(bindings.paymentRevisionForm.amountYuan).toBe("10.00");
       bindings.paymentRevisionForm.amountYuan = "8.00";
+      reviewRuntime.fetchCapability.mockResolvedValueOnce({ paymentId: "payment-a", availableActions: [] });
+      await bindings.submitPaymentRevision();
+      expect(reviewRuntime.reviseRequest).not.toHaveBeenCalled();
+      expect(bindings.paymentRevisionForm.amountYuan).toBe("8.00");
+      reviewRuntime.fetchCapability.mockResolvedValueOnce({ paymentId: "payment-a", availableActions: ["revise_and_submit"] });
       await bindings.submitPaymentRevision();
       expect(reviewRuntime.reviseRequest).toHaveBeenCalledWith("payment-a", expect.objectContaining({
         expectedUpdatedAt: revision.revisionSubmissionContext.expectedUpdatedAt,

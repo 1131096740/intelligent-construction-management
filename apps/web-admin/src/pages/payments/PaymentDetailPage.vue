@@ -757,7 +757,7 @@
       @cancel="cancelPaymentApprovalReview"
     />
     <SensitiveActionDialog
-      v-if="paymentReviewActionEnabled('review_approval') && sensitiveAction.kind === 'approvalReject'"
+      v-if="paymentReviewActionEnabled('review_approval') && sensitiveAction.kind === 'approvalReject' && paymentReviewConfirmation.decision === 'reject'"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
       :description="sensitiveAction.description"
@@ -769,6 +769,21 @@
       :loading="actionBusy === 'approval'"
       :error="sensitiveAction.error"
       @confirm="confirmPaymentApprovalReject"
+      @cancel="cancelPaymentApprovalReview"
+    />
+    <SensitiveActionDialog
+      v-if="paymentReviewActionEnabled('review_approval') && sensitiveAction.kind === 'approvalReject' && paymentReviewConfirmation.decision === 'return_to_applicant'"
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :require-reason="sensitiveAction.requireReason"
+      :require-password="sensitiveAction.requirePassword"
+      :reason-label="sensitiveAction.reasonLabel"
+      :loading="actionBusy === 'approval'"
+      :error="sensitiveAction.error"
+      @confirm="confirmPaymentApprovalReturn"
       @cancel="cancelPaymentApprovalReview"
     />
     <SensitiveActionDialog
@@ -1233,7 +1248,7 @@ async function submitPaymentRevision() {
   if (!detail || !context || actionBusy.value || !isPaymentActionEnabled("revise_and_submit")) return;
   try {
     const requestedAmountCents = parseYuanAmount(paymentRevisionForm.amountYuan, "申请金额");
-    await runPaymentAction("revision", () => reviseAndSubmitPaymentRequest(detail.id, {
+    await runPaymentAction("revision", () => reviseAndSubmitPaymentWithCapability(detail.id, {
       expectedUpdatedAt: context.expectedUpdatedAt,
       requestedAmountCents,
       paymentMatter: paymentRevisionForm.paymentMatter.trim() || undefined,
@@ -1830,15 +1845,35 @@ function confirmPaymentApprovalReject(values: {
   reason: string;
   password: string;
 }) {
-  const decision = paymentReviewConfirmation.decision === "return_to_applicant" ? "return_to_applicant" : "reject";
   return executePaymentApprovalReviewAction({
-    decision,
+    decision: "reject",
     capture: () =>
-      capturePaymentReviewContext(decision, values.password),
+      capturePaymentReviewContext("reject", values.password),
     preflight: (context) =>
       preparePaymentApprovalReviewAction({
         ...context,
-        decision,
+        decision: "reject",
+        isCurrent: paymentReviewContextIsCurrent
+      }),
+    current: preparedPaymentReviewIsCurrent,
+    complete: completePaymentReview,
+    fail: failPaymentReview,
+    finish: finishPaymentReview
+  });
+}
+
+function confirmPaymentApprovalReturn(values: {
+  reason: string;
+  password: string;
+}) {
+  return executePaymentApprovalReviewAction({
+    decision: "return_to_applicant",
+    capture: () =>
+      capturePaymentReviewContext("return_to_applicant", values.password),
+    preflight: (context) =>
+      preparePaymentApprovalReviewAction({
+        ...context,
+        decision: "return_to_applicant",
         isCurrent: paymentReviewContextIsCurrent
       }),
     current: preparedPaymentReviewIsCurrent,
@@ -2200,6 +2235,18 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
   } finally {
     actionBusy.value = "";
   }
+}
+
+async function reviseAndSubmitPaymentWithCapability(
+  paymentId: string,
+  body: Parameters<typeof reviseAndSubmitPaymentRequest>[1]
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("revise_and_submit");
+  if (!operationAllowed) throw new Error("当前用户不能修改并重新提交该付款申请");
+  return reviseAndSubmitPaymentRequest(paymentId, body);
 }
 
 async function abandonPaymentRequestWithCapability(

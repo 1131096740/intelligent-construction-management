@@ -2814,6 +2814,31 @@
       ]
     },
     {
+      "id": "payment-approval.return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentApprovalReturn"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "paymentApprovalCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executePaymentApprovalReviewAction"
+        }
+      ]
+    },
+    {
       "id": "payment-execution.record",
       "usage": "page_action",
       "routePaths": [
@@ -2835,6 +2860,31 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "recordPaymentExecutionWithUpload"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.revise-and-submit",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviseAndSubmitPaymentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "revise_and_submit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "reviseAndSubmitPaymentRequest"
         }
       ]
     },

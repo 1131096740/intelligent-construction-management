@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 876,
-    "exactRouteCount": 876,
-    "normalizedRouteCount": 876,
+    "routeCount": 877,
+    "exactRouteCount": 877,
+    "normalizedRouteCount": 877,
     "classificationOverrideCount": 234,
     "consumerSurfaceOverrideCount": 56,
     "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
     "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
-    "derivedProductionPageCount": 642,
-    "pageRouteCount": 661,
+    "derivedProductionPageCount": 643,
+    "pageRouteCount": 662,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
     "internalTaskCount": 54,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 713,
+      "web_api_wrapper": 714,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 713,
+    "productionWrapperRouteCount": 714,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4998,7 +4998,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 6169,
+            "sourceLine": 6176,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -26344,6 +26344,47 @@
             "method": "POST",
             "normalizedPath": "/payments/:param/pdf-generation",
             "normalizedKey": "POST /payments/:param/pdf-generation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payments/:paymentId/revision-submission",
+      "normalizedKey": "POST /payments/:param/revision-submission",
+      "controller": "PaymentController",
+      "handler": "reviseAndSubmit",
+      "sourceFile": "services/api/src/payment/payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "payment.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "reviseAndSubmitPaymentRequest",
+            "method": "POST",
+            "normalizedPath": "/payments/:param/revision-submission",
+            "normalizedKey": "POST /payments/:param/revision-submission",
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
             ]

@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `8020e43b42d4f93e8d06c090fb50feebe9d5c447255db858d749fca5006ae533` |
-| webApiWrappers | ready | `2e2b73b9ccea5d2183f65b084a97950bdaccf3d60cd317b509b549a4c859e62e` |
-| webPageActions | ready | `e8aeb33800ae58cb0c8f89f4170c04cca2b7750d4edfb9a04f5f4e4614fc101f` |
-| routeUsage | ready | `48f1cc13111221d2b9ed5c1cecfadb0d46d8b1daba8875449dd48d8e5472f595` |
+| nestRoutes | ready | `3c9943972e85d481b9c22f0566384fdde6df9ffa916e0e8b7c2ee2a978fb38f0` |
+| webApiWrappers | ready | `8745503aaa24452d07c087233656a420b19793507d500f430199d7127a7bb569` |
+| webPageActions | ready | `3e7a9f5801b0f34e62e180245d1be85492d60059807eca5c6890aa2f598af4e5` |
+| routeUsage | ready | `71106902e87fd8cabe1dbd0be0baef47aa24a8918ff68d63cbe9c46d6acfa6de` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 876 |
-| pageRouteCount | 661 |
+| routeCount | 877 |
+| pageRouteCount | 662 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 91 |
 | internalTaskRouteCount | 54 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 857 |
+| mainRequestBindingCount | 858 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 483 |
-| actionBindingCount | 584 |
-| acceptedActionBindingCount | 536 |
+| registeredActionCount | 485 |
+| actionBindingCount | 586 |
+| acceptedActionBindingCount | 538 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 474 |
-| coveredProductionMutationConsumerPairCount | 474 |
+| productionMutationConsumerPairCount | 475 |
+| coveredProductionMutationConsumerPairCount | 475 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -662,13 +662,14 @@
 | POST | /payments/:paymentId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferPaymentApproval | payment-detail.transfer | covered | — |
 | POST | /payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval | payment-detail.withdraw | covered | — |
 | POST | /payments/:paymentId/approval/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
-| POST | /payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executePaymentApprovalReviewAction | payment-approval.approve<br>payment-approval.reject | covered | — |
+| POST | /payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executePaymentApprovalReviewAction | payment-approval.approve<br>payment-approval.reject<br>payment-approval.return-to-applicant | covered | — |
 | POST | /payments/:paymentId/execution-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPaymentExecutionPrivateFile | payment-execution.record | covered | — |
 | POST | /payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | covered | — |
 | POST | /payments/:paymentId/finance-records | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentFinance | payment-detail.finance-record | covered | — |
 | POST | /payments/:paymentId/pdf-archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPaymentPdfArchivePrivateFile | payment-detail.pdf-archive | covered | — |
 | POST | /payments/:paymentId/pdf-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive | payment-detail.pdf-archive | covered | — |
 | POST | /payments/:paymentId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generatePaymentPdfArchive | payment-detail.pdf-generation | covered | — |
+| POST | /payments/:paymentId/revision-submission | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviseAndSubmitPaymentRequest | payment-detail.revise-and-submit | covered | — |
 | POST | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest | payment-request.create-local-form | covered | — |
 | POST | /project-fund-disputes/drafts | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#saveProjectFundDisputeDraft | project-fund-dispute.draft.save | covered | — |
 | POST | /project-fund-disputes/entries/:entryId/transition | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#transitionProjectFundDispute | project-fund-dispute.attest<br>project-fund-dispute.confirm<br>project-fund-dispute.return<br>project-fund-dispute.submit | covered | — |

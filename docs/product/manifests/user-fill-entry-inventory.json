@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 469,
+    "activeBusinessActionCount": 471,
     "technicalActionCount": 10,
-    "activeBindingCount": 568,
+    "activeBindingCount": 570,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -4485,6 +4485,22 @@
       "causalVerified": true
     },
     {
+      "id": "payment-approval.return-to-applicant",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /payments/:param/approval"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "payment-basis.download-signed-attachment",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -4611,6 +4627,22 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /payments/:param/pdf-generation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "payment-detail.revise-and-submit",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /payments/:param/revision-submission"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

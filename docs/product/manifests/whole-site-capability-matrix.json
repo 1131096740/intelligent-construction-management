@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "8020e43b42d4f93e8d06c090fb50feebe9d5c447255db858d749fca5006ae533",
+      "sha256": "3c9943972e85d481b9c22f0566384fdde6df9ffa916e0e8b7c2ee2a978fb38f0",
       "status": "ready",
       "summary": {
-        "routeCount": 876
+        "routeCount": 877
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "2e2b73b9ccea5d2183f65b084a97950bdaccf3d60cd317b509b549a4c859e62e",
+      "sha256": "8745503aaa24452d07c087233656a420b19793507d500f430199d7127a7bb569",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 807,
-        "transportWrapperCount": 783,
+        "exportedFunctionCount": 808,
+        "transportWrapperCount": 784,
         "pureExportCount": 24,
-        "mainRequestBindingCount": 857,
+        "mainRequestBindingCount": 858,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 813,
-        "productionConsumerCount": 692,
+        "requestEdgeCount": 814,
+        "productionConsumerCount": 693,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "e8aeb33800ae58cb0c8f89f4170c04cca2b7750d4edfb9a04f5f4e4614fc101f",
+      "sha256": "3e7a9f5801b0f34e62e180245d1be85492d60059807eca5c6890aa2f598af4e5",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 483,
-        "pageActionCount": 111,
-        "backgroundActionCount": 372,
+        "registeredActionCount": 485,
+        "pageActionCount": 112,
+        "backgroundActionCount": 373,
         "reachableVueFileCount": 241,
         "routeRootCount": 80,
         "totalVueFileCount": 254,
         "parsedVueFileCount": 254,
         "reachableProductionModuleCount": 417,
-        "templateEventDirectiveCount": 1643,
+        "templateEventDirectiveCount": 1647,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 474,
-        "candidateProductionMutationConsumerCount": 474,
-        "acceptedProductionMutationConsumerCount": 474,
-        "productionMutationConsumerPairCount": 474,
+        "coveredProductionMutationConsumerCount": 475,
+        "candidateProductionMutationConsumerCount": 475,
+        "acceptedProductionMutationConsumerCount": 475,
+        "productionMutationConsumerPairCount": 475,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "48f1cc13111221d2b9ed5c1cecfadb0d46d8b1daba8875449dd48d8e5472f595",
+      "sha256": "71106902e87fd8cabe1dbd0be0baef47aa24a8918ff68d63cbe9c46d6acfa6de",
       "status": "ready",
       "summary": {
-        "routeCount": 876,
-        "exactRouteCount": 876,
-        "normalizedRouteCount": 876,
+        "routeCount": 877,
+        "exactRouteCount": 877,
+        "normalizedRouteCount": 877,
         "classificationOverrideCount": 234,
         "consumerSurfaceOverrideCount": 56,
         "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
         "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
-        "derivedProductionPageCount": 642,
-        "pageRouteCount": 661,
+        "derivedProductionPageCount": 643,
+        "pageRouteCount": 662,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 91,
         "internalTaskCount": 54,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 713,
+          "web_api_wrapper": 714,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 3,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 876,
-    "pageRouteCount": 661,
+    "routeCount": 877,
+    "pageRouteCount": 662,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 91,
     "internalTaskRouteCount": 54,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 857,
+    "mainRequestBindingCount": 858,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 483,
-    "actionBindingCount": 584,
-    "acceptedActionBindingCount": 536,
+    "registeredActionCount": 485,
+    "actionBindingCount": 586,
+    "acceptedActionBindingCount": 538,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 474,
-    "coveredProductionMutationConsumerPairCount": 474,
+    "productionMutationConsumerPairCount": 475,
+    "coveredProductionMutationConsumerPairCount": 475,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -36064,6 +36064,32 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
+        },
+        {
+          "actionId": "payment-approval.return-to-applicant",
+          "bindingIndex": 0,
+          "identity": "payment-approval.return-to-applicant\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000executePaymentApprovalReviewAction\u0000POST\u0000POST /payments/:param/approval\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "paymentApprovalCapability.availableActions",
+            "key": "review_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executePaymentApprovalReviewAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "covered",
@@ -36489,6 +36515,73 @@
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "generatePaymentPdfArchive",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payments/:paymentId/revision-submission",
+        "normalizedKey": "POST /payments/:param/revision-submission",
+        "controller": "PaymentController",
+        "handler": "reviseAndSubmit",
+        "sourceFile": "services/api/src/payment/payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "payment.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviseAndSubmitPaymentRequest",
+          "method": "POST",
+          "path": "/payments/:param/revision-submission",
+          "normalizedKey": "POST /payments/:param/revision-submission",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "payment-detail.revise-and-submit",
+          "bindingIndex": 0,
+          "identity": "payment-detail.revise-and-submit\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviseAndSubmitPaymentRequest\u0000POST\u0000POST /payments/:param/revision-submission\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "revise_and_submit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviseAndSubmitPaymentRequest",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
