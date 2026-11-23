@@ -11,12 +11,56 @@ import {
 
 type ArchiveTone = "default" | "primary" | "warning" | "success";
 
+export interface ArchiveListFilters {
+  project?: string;
+  contract?: string;
+  counterparty?: string;
+  keyword?: string;
+  documentType?: string;
+  archiveStatus?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function normalizedFilter(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function hasArchiveFilters(filters: ArchiveListFilters): boolean {
+  return Boolean(
+    normalizedFilter(filters.project) ||
+    normalizedFilter(filters.contract) ||
+    normalizedFilter(filters.counterparty) ||
+    normalizedFilter(filters.keyword) ||
+    normalizedFilter(filters.documentType) ||
+    normalizedFilter(filters.archiveStatus) ||
+    normalizedFilter(filters.dateFrom) ||
+    normalizedFilter(filters.dateTo)
+  );
+}
+
+function shanghaiDayStart(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return null;
+  const parsed = Date.parse(`${value}T00:00:00+08:00`);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function shanghaiDayEnd(value: string): number | null {
+  const start = shanghaiDayStart(value);
+  return start === null ? null : start + 24 * 60 * 60 * 1000 - 1;
+}
+
 @Injectable()
 export class ArchiveService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
+  async listRecent(
+    rawLimit?: string | number,
+    visibleProjectIds?: string[],
+    filters: ArchiveListFilters = {}
+  ) {
     const take = this.limit(rawLimit);
+    const scanTake = hasArchiveFilters(filters) ? Math.max(take, 200) : take;
     const visibleProjectSet = visibleProjectIds ? new Set(visibleProjectIds) : null;
     const visibleTakeoverIds = await this.findVisibleContractTakeoverIds(visibleProjectIds);
     const archiveRecordWhere = visibleProjectIds
@@ -31,15 +75,15 @@ export class ArchiveService {
       : undefined;
     const [contractArchives, settlementArchives, rawPaymentVouchers, archiveRecords, spotArchives] =
       await Promise.all([
-        this.prisma.contractArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
-        this.prisma.settlementArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
-        this.prisma.paymentExecution.findMany({ take, orderBy: { createdAt: "desc" } }),
+        this.prisma.contractArchiveFile.findMany({ take: scanTake, orderBy: { createdAt: "desc" } }),
+        this.prisma.settlementArchiveFile.findMany({ take: scanTake, orderBy: { createdAt: "desc" } }),
+        this.prisma.paymentExecution.findMany({ take: scanTake, orderBy: { createdAt: "desc" } }),
         this.prisma.archiveRecord.findMany({
-          take,
+          take: scanTake,
           orderBy: { createdAt: "desc" },
           ...(archiveRecordWhere ? { where: archiveRecordWhere } : {})
         }),
-        this.findSpotArchives(take, visibleProjectIds)
+        this.findSpotArchives(scanTake, visibleProjectIds)
       ]);
     const paymentVouchers = await Promise.all(rawPaymentVouchers.map(async row=>({...row,voucherFileId:await paymentExecutionVoucherFileId(this.prisma,row)})));
     const governedSettlementEvidence = await this.findGovernedSettlementEvidence(
@@ -168,6 +212,9 @@ export class ArchiveService {
         const canDownload = row.status === "confirmed" || Boolean(row.confirmedAt);
         return {
           projectId: contract?.projectId,
+          contractNo: contract?.code ?? contract?.temporaryCode ?? "",
+          contractName: contract?.name ?? "",
+          counterpartyName: contract?.counterparty ?? "",
           id: child ? `contract-evidence-${child.id}` : `contract-${row.id}`,
           ...(child ? { archiveRecordId: row.id, archiveProtocolVersion: 2 as const, evidenceId: child.id, displayOrder: child.displayOrder } : {}),
           contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version??{})],
@@ -192,8 +239,14 @@ export class ArchiveService {
         const settlement = settlementById.get(row.settlementId);
         if (settlement?.governanceVersion === 1) return [];
         const canDownload = row.status === "confirmed" || Boolean(row.confirmedAt);
+        const settlementContract = settlement
+          ? contractById.get(versionById.get(settlement.contractVersionId)?.contractId ?? "")
+          : null;
         return [{
           projectId: settlement?.projectId,
+          contractNo: settlementContract?.code ?? settlementContract?.temporaryCode ?? "",
+          contractName: settlementContract?.name ?? "",
+          counterpartyName: settlementContract?.counterparty ?? "",
           id: `settlement-${row.id}`,
           contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(versionById.get(settlement?.contractVersionId??"")??{})],
           documentNo: row.id,
@@ -216,8 +269,14 @@ export class ArchiveService {
       ...governedSettlementEvidence,
       ...paymentVouchers.map((row) => {
         const payment = paymentById.get(row.paymentRequestId);
+        const paymentContract = payment
+          ? contractById.get(versionById.get(payment.contractVersionId)?.contractId ?? "")
+          : null;
         return {
           projectId: payment?.projectId,
+          contractNo: paymentContract?.code ?? paymentContract?.temporaryCode ?? "",
+          contractName: paymentContract?.name ?? "",
+          counterpartyName: paymentContract?.counterparty ?? "",
           id: `voucher-${row.id}`,
           contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(versionById.get(payment?.contractVersionId??"")??{})],
           documentNo: row.voucherFileId ?? "凭证待补充",
@@ -252,6 +311,21 @@ export class ArchiveService {
           expenseById,
           takeoverById
         });
+        const recordTakeover =
+          row.businessType === "contract_takeover" ? takeoverById.get(row.businessId) : undefined;
+        const recordContractVersionId =
+          row.businessType === "contract_version"
+            ? row.businessId
+            : row.businessType === "settlement"
+              ? settlementById.get(row.businessId)?.contractVersionId
+              : row.businessType === "payment_request"
+                ? paymentById.get(row.businessId)?.contractVersionId
+                : undefined;
+        const recordContract = recordTakeover
+          ? contractById.get(recordTakeover.contractId)
+          : recordContractVersionId
+            ? contractById.get(versionById.get(recordContractVersionId)?.contractId ?? "")
+            : undefined;
         return {
           projectId: this.archiveProjectId(row.businessType, row.businessId, {
             versionById,
@@ -261,6 +335,9 @@ export class ArchiveService {
             expenseById,
             takeoverById
           }),
+          contractNo: recordContract?.code ?? recordContract?.temporaryCode ?? "",
+          contractName: recordContract?.name ?? "",
+          counterpartyName: recordContract?.counterparty ?? "",
           id: `archive-${row.id}`,
           documentNo: row.id,
           fileId: row.fileId,
@@ -504,22 +581,77 @@ export class ArchiveService {
           }
         ];
       })
-    ]
+    ];
+    const spotProcurementByCode = new Map(
+      spotArchives.procurements.map((procurement) => [procurement.code, procurement])
+    );
+    type AssembledArchiveRow = (typeof rows)[number];
+    const rowContractNo = (row: AssembledArchiveRow) =>
+      "contractNo" in row && typeof row.contractNo === "string" ? row.contractNo : "";
+    const rowContractName = (row: AssembledArchiveRow) =>
+      "contractName" in row && typeof row.contractName === "string" ? row.contractName : "";
+    const rowCounterpartyName = (row: AssembledArchiveRow) =>
+      "counterpartyName" in row && typeof row.counterpartyName === "string"
+        ? row.counterpartyName
+        : spotProcurementByCode.get(row.businessRef)?.supplierNameSnapshot ?? "";
+    const filterText = {
+      project: normalizedFilter(filters.project),
+      contract: normalizedFilter(filters.contract),
+      counterparty: normalizedFilter(filters.counterparty),
+      keyword: normalizedFilter(filters.keyword),
+      documentType: normalizedFilter(filters.documentType),
+      archiveStatus: normalizedFilter(filters.archiveStatus)
+    };
+    const dateFrom = filters.dateFrom ? shanghaiDayStart(filters.dateFrom) : null;
+    const dateTo = filters.dateTo ? shanghaiDayEnd(filters.dateTo) : null;
+    const matchesFilters = (row: AssembledArchiveRow) => {
+      const contractText = `${rowContractNo(row)} ${rowContractName(row)}`.toLowerCase();
+      const counterparty = rowCounterpartyName(row).toLowerCase();
+      const keywordMatches =
+        !filterText.keyword ||
+        [
+          row.documentNo,
+          row.businessRef,
+          row.project,
+          row.fileSource,
+          row.documentType,
+          contractText,
+          counterparty
+        ].some((value) => value.toLowerCase().includes(filterText.keyword));
+      const created = row.createdAt.getTime();
+      return (
+        (!filterText.project || row.project.toLowerCase().includes(filterText.project)) &&
+        (!filterText.contract || contractText.includes(filterText.contract)) &&
+        (!filterText.counterparty || counterparty.includes(filterText.counterparty)) &&
+        (!filterText.documentType || row.documentType.toLowerCase().includes(filterText.documentType)) &&
+        (!filterText.archiveStatus || row.archiveStatus.toLowerCase().includes(filterText.archiveStatus)) &&
+        (dateFrom === null || created >= dateFrom) &&
+        (dateTo === null || created <= dateTo) &&
+        keywordMatches
+      );
+    };
+    const searchRows = rows
       .filter((row) => !visibleProjectSet || (row.projectId && visibleProjectSet.has(row.projectId)))
+      .filter(matchesFilters)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, take)
       .map((row) => ({
         id: row.id,
+        contractNo: rowContractNo(row),
+        contractName: rowContractName(row),
+        counterpartyName: rowCounterpartyName(row),
         ...("evidenceId" in row && typeof row.evidenceId === "string" && "archiveRecordId" in row && typeof row.archiveRecordId === "string" && "archiveProtocolVersion" in row && row.archiveProtocolVersion === 2 && "displayOrder" in row && typeof row.displayOrder === "number"
           ? { archiveRecordId: row.archiveRecordId, archiveProtocolVersion: row.archiveProtocolVersion, evidenceId: row.evidenceId, displayOrder: row.displayOrder } : {}),
         contractRelationshipLabel:"contractRelationshipLabel" in row?row.contractRelationshipLabel:row.documentType.includes("合同")||row.documentType.includes("结算")||row.documentType.includes("付款")?"待确认分类":"无合同业务",
         documentNo: row.documentNo,
         fileId: row.fileId,
+        mimeType: row.fileId ? fileById.get(row.fileId)?.mimeType ?? "" : "",
         documentType: row.documentType,
         businessRef: row.businessRef,
         project: row.project,
         fileSource: row.fileSource,
         fileSizeBytes: row.fileSizeBytes,
+        createdAt: row.createdAt.toISOString(),
         canDownload: row.canDownload,
         disabledReason: row.disabledReason,
         archiveStatus: row.archiveStatus,
@@ -530,13 +662,13 @@ export class ArchiveService {
       }));
 
     return {
-      rows,
+      rows: searchRows,
       summary: {
-        total: rows.length,
-        contractArchives: rows.filter((row) => row.documentType.includes("合同")).length,
-        settlementArchives: rows.filter((row) => row.documentType.includes("结算")).length,
-        paymentFiles: rows.filter((row) => row.documentType.includes("付款")).length,
-        pending: rows.filter((row) => row.archiveStatus.includes("待")).length
+        total: searchRows.length,
+        contractArchives: searchRows.filter((row) => row.documentType.includes("合同")).length,
+        settlementArchives: searchRows.filter((row) => row.documentType.includes("结算")).length,
+        paymentFiles: searchRows.filter((row) => row.documentType.includes("付款")).length,
+        pending: searchRows.filter((row) => row.archiveStatus.includes("待")).length
       }
     };
   }

@@ -8322,24 +8322,168 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("rejects missing download reasons before creating a ticket", async () => {
+  it("uses the default audit reason when the download reason is blank", async () => {
+    const file = {
+      id: "file-1",
+      bucket: "private",
+      objectKey: "private/file-1.pdf",
+      originalName: "合同.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      contentSha256: "a".repeat(64),
+      storageStatus: "active",
+      uploadedByUserId: "uploader-1"
+    };
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      contractArchiveEvidenceFile: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
     const prisma = {
-      $transaction: jest.fn()
+      $transaction: jest.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
       storage as unknown as PrivateFileStorage
     );
+    jest.spyOn(service as unknown as { assertCanDownloadFileObject: () => Promise<undefined> },
+      "assertCanDownloadFileObject").mockResolvedValue(undefined);
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1",
+      downloadReason: "   "
+    });
+
+    expect(ticket.downloadUrl).toContain(
+      `downloadReason=${encodeURIComponent("单据可见权限内下载")}`
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({ downloadReason: "单据可见权限内下载" })
+      })
+    );
+  });
+
+  it("authorizes every file in a package before reading and records one package audit", async () => {
+    const files = [
+      {
+        id: "file-1",
+        bucket: "private",
+        objectKey: "private/file-1.pdf",
+        originalName: "合同.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 13,
+        contentSha256: "a".repeat(64),
+        storageStatus: "active",
+        uploadedByUserId: "uploader-1"
+      },
+      {
+        id: "file-2",
+        bucket: "private",
+        objectKey: "private/file-2.pdf",
+        originalName: "凭证.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 13,
+        contentSha256: "b".repeat(64),
+        storageStatus: "active",
+        uploadedByUserId: "uploader-1"
+      }
+    ];
+    const tx = {
+      fileObject: { findMany: jest.fn().mockResolvedValue(files) },
+      contractArchiveEvidenceFile: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const assertDownload = jest
+      .spyOn(service as unknown as {
+        assertCanDownloadFileObject: (...args: unknown[]) => Promise<undefined>;
+      }, "assertCanDownloadFileObject")
+      .mockResolvedValue(undefined);
+    jest.spyOn(service as unknown as {
+      readVerifiedFileBuffer: (file: { id: string }) => Promise<Buffer>;
+    }, "readVerifiedFileBuffer").mockImplementation(async (file) =>
+      Buffer.from(`buffer-${file.id}`)
+    );
+
+    const result = await service.createDownloadPackage(["file-1", "file-2"], "actor-1");
+
+    expect(assertDownload).toHaveBeenCalledTimes(2);
+    expect(result.fileCount).toBe(2);
+    expect(result.totalBytes).toBe(26);
+    expect(result.buffer.subarray(0, 2).toString()).toBe("PK");
+    expect(result.fileName).toMatch(/^资料库打包-\d{8}-\d{4}\.zip$/u);
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "actor-1",
+        action: "file.package.download",
+        businessType: "file_package",
+        metadata: expect.objectContaining({
+          fileCount: 2,
+          totalBytes: 26,
+          fileIds: ["file-1", "file-2"]
+        })
+      })
+    );
+  });
+
+  it("fails a package without audit when any selected file is not authorized", async () => {
+    const files = [
+      { id: "file-1", originalName: "合同.pdf", sizeBytes: 5 },
+      { id: "file-2", originalName: "凭证.pdf", sizeBytes: 6 }
+    ];
+    const tx = {
+      fileObject: { findMany: jest.fn().mockResolvedValue(files) },
+      contractArchiveEvidenceFile: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    jest.spyOn(service as unknown as {
+      assertCanDownloadFileObject: (tx: unknown, file: { id: string }) => Promise<undefined>;
+    }, "assertCanDownloadFileObject")
+      .mockImplementation(async (_tx, file) => {
+        if (file.id === "file-2") throw new ForbiddenException("当前账号无权下载该归档原件");
+        return undefined;
+      });
+    const read = jest.spyOn(service as unknown as {
+      readVerifiedFileBuffer: () => Promise<Buffer>;
+    }, "readVerifiedFileBuffer");
 
     await expect(
-      service.createDownloadTicket("file-1", {
-        actorUserId: "finance-1",
-        downloadReason: "   "
-      })
-    ).rejects.toThrow("请填写下载原因，便于留痕审计");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+      service.createDownloadPackage(["file-1", "file-2"], "actor-1")
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(read).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized package before any per-file read", async () => {
+    const service = new FileService(
+      { $transaction: jest.fn() } as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadPackage(
+        Array.from({ length: 51 }, (_, index) => `file-${index}`),
+        "actor-1"
+      )
+    ).rejects.toThrow("单次最多打包 50 份资料，请减少选择后重试");
   });
 
   it("reads a private file through a short-lived ticket and records download audit", async () => {

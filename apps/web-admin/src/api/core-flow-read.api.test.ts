@@ -32,6 +32,8 @@ import {
   fetchWorkbenchSummary,
   fetchContractPaymentApplication,
   fetchArchives,
+  createArchiveDownloadPackage,
+  getArchiveDownloadPackageCapability,
   fetchAuditLogs,
   fetchFileDownloadAudits,
   fetchProjectExpenseRequests,
@@ -4404,6 +4406,75 @@ describe("core flow read API client", () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ availableActions: [] })));
     await expect(downloadPrivateFileByTicket("sample", body, "pdf-blob")).rejects.toThrow("当前用户不能访问该文件");
     expect(fetchMock).toHaveBeenCalledTimes(9);
+  });
+
+  it("searches archives by project, contract, counterparty, type, date, and keyword", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [], summary: {} })
+    } as Response);
+
+    await fetchArchives({
+      project: "一号项目",
+      contract: "HT-001",
+      counterparty: "钢材",
+      documentType: "合同归档件",
+      archiveStatus: "已确认",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      keyword: "HT",
+      limit: 50
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/archives?project=%E4%B8%80%E5%8F%B7%E9%A1%B9%E7%9B%AE&contract=HT-001&counterparty=%E9%92%A2%E6%9D%90&documentType=%E5%90%88%E5%90%8C%E5%BD%92%E6%A1%A3%E4%BB%B6&archiveStatus=%E5%B7%B2%E7%A1%AE%E8%AE%A4&dateFrom=2026-07-01&dateTo=2026-07-31&keyword=HT&limit=50"
+    );
+  });
+
+  it("checks package capability per file before streaming the zip", async () => {
+    const capability = {
+      availableActions: ["download_archive_package"],
+      action: { key: "download_archive_package", enabled: true },
+      fileCount: 2,
+      totalBytes: 2048
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify(capability)))
+      .mockResolvedValueOnce(new Response("PK-zip", {
+        status: 200,
+        headers: {
+          "content-type": "application/zip",
+          "content-disposition": "attachment; filename*=UTF-8''%E8%B5%84%E6%96%99%E5%BA%93%E6%89%93%E5%8C%85-20261123-1805.zip"
+        }
+      }));
+
+    const checked = await getArchiveDownloadPackageCapability(["file-1", "file-2"]);
+    expect(checked).toEqual(capability);
+    const result = await createArchiveDownloadPackage(["file-1", "file-2"]);
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/files/download-package-capability?fileIds=file-1,file-2",
+      "/api/files/download-package"
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ fileIds: ["file-1", "file-2"] })
+    });
+    expect(result.fileName).toBe("资料库打包-20261123-1805.zip");
+    expect(result.blob.size).toBe(6);
+  });
+
+  it("does not post a package when the backend capability is disabled", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({
+      availableActions: [],
+      action: { key: "download_archive_package", enabled: false },
+      fileCount: 1,
+      totalBytes: 1
+    })));
+
+    const capability = await getArchiveDownloadPackageCapability(["file-1"]);
+    expect(capability.action.enabled).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("requests private file download tickets through the backend", async () => {
