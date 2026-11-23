@@ -21,6 +21,7 @@ import { SettlementWorkbenchController } from "./settlement-workbench.controller
 import { SettlementWorkbenchService } from "./settlement-workbench.service";
 import { SettlementAttachmentTemplateService } from "./settlement-attachment-template.service";
 import { SettlementReadService } from "./settlement-read.service";
+import { SignedSettlementLedgerService } from "./signed-settlement-ledger.service";
 import { SettlementImportService } from "./settlement-import.service";
 import { SettlementTemplateService } from "./settlement-template.service";
 import { SettlementTemplateWorkbenchController } from "./settlement-template-workbench.controller";
@@ -63,6 +64,7 @@ import { SignedContractSettlementService } from "./signed-contract-settlement.se
     ContractSettlementProcessService,
     SettlementSubmissionService,
     SettlementReadService,
+    SignedSettlementLedgerService,
     SettlementAttachmentTemplateService,
     SettlementWorkbenchService,
     SettlementImportService,

@@ -350,10 +350,20 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true })
     response: { set: (headers: Record<string, string>) => void },
+    @Query() query?: Record<string, string | string[] | undefined>,
     @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    const args = [await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
-    const result = await (protocol === undefined ? this.contractRead.exportLedger(...args) : this.contractRead.exportLedger(...args, protocol));
+    const result = query === undefined
+      ? await this.contractRead.exportLedger(
+          await this.projectVisibility.visibleProjectIds(user.id),
+          user.id
+        )
+      : await this.contractRead.exportLedger(
+          await this.projectVisibility.visibleProjectIds(user.id),
+          user.id,
+          query,
+          protocol
+        );
     response.set({
       "Content-Type": XLSX_MIME,
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,

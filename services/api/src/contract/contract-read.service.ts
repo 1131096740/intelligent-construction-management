@@ -61,12 +61,24 @@ import {
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import {
   buildLedgerWorkbook,
-  shanghaiDateStamp
+  LEDGER_DATE_FORMAT,
+  LEDGER_MONEY_FORMAT,
+  ledgerNumericCellValue,
+  shanghaiDateStamp,
+  type LedgerExcelColumn
 } from "../core-flow/ledger-excel";
+import {
+  hasLedgerExportFilters,
+  matchesLedgerExportQuery,
+  normalizeLedgerExportQuery,
+  resolveLedgerExportColumns,
+  sortLedgerRows
+} from "../core-flow/ledger-export-query";
 import { PrismaService } from "../database/prisma.service";
 import { MeService } from "../me/me.service";
 import {
   dbMoneyToBigInt,
+  formatMoneyCentsAsPlainYuan,
   formatMoneyCentsAsYuan,
   moneyCentsToApi
 } from "../money/decimal-money";
@@ -1030,47 +1042,110 @@ export class ContractReadService {
     };
   }
 
-  async exportLedger(visibleProjectIds: string[], actorUserId: string, numericProtocol?: string) {
+  async exportLedger(
+    visibleProjectIds: string[],
+    actorUserId: string,
+    rawQuery?: Record<string, unknown>,
+    numericProtocol?: string
+  ) {
+    const query = normalizeLedgerExportQuery(rawQuery);
     const ledger = await this.listRecent(undefined, visibleProjectIds, {
       unbounded: true,
       actorUserId,
       ...(numericProtocol === undefined ? {} : { numericProtocol })
     });
-    const rows = ledger.rows.map((row) => ({
-      contractNo: row.contractNo,
-      contractRelationshipLabel: "contractRelationshipLabel" in row ? row.contractRelationshipLabel : "待确认分类",
-      name: row.name,
-      project: row.project,
-      counterparty: row.counterparty,
-      amount: row.amount,
-      version: row.version,
-      paymentTermsVersion: row.paymentTermsVersion ?? "-",
-      currentNode: row.currentNode,
-      pendingOwner: row.pendingOwner,
-      stalledFor: row.stalledFor,
-      returnReason: row.returnReason,
-      nextAction: row.nextAction,
-      updatedAt: row.updatedAt
-    }));
+    // 筛选作用于「全部可见记录」，不是当前页；listRecent 已按行级可见性过滤。
+    const filtered = ledger.rows.filter((row) =>
+      matchesLedgerExportQuery(
+        {
+          projectId: String(row.projectId ?? ""),
+          occurredAt: typeof row.occurredAt === "string" ? row.occurredAt : null,
+          status: `${row.currentNode ?? ""} ${row.nextAction ?? ""} ${row.returnReason ?? ""}`,
+          keywordParts: [
+            row.contractNo,
+            row.name,
+            row.project,
+            row.signingParty,
+            row.counterparty,
+            row.contractRelationshipLabel,
+            row.currentNode,
+            row.pendingOwner,
+            row.nextAction,
+            row.returnReason
+          ].map((part) => (typeof part === "string" ? part : undefined))
+        },
+        query
+      )
+    );
+    const sorted = sortLedgerRows(
+      hasLedgerExportFilters(query) || query.sortField ? filtered : ledger.rows,
+      query.sortField,
+      query.sortDirection,
+      {
+        updatedAt: (row) =>
+          typeof row.occurredAt === "string" ? new Date(row.occurredAt) : null,
+        amountYuan: (row) => ledgerNumericCellValue(row.amountYuan ?? row.amount),
+        project: (row) => (typeof row.project === "string" ? row.project : ""),
+        contractNo: (row) => (typeof row.contractNo === "string" ? row.contractNo : "")
+      }
+    );
+    const rows = sorted.map((row) => {
+      const amountYuan = row.amountYuan;
+      return {
+        contractNo: row.contractNo,
+        name: row.name,
+        contractRelationshipLabel:
+          "contractRelationshipLabel" in row ? row.contractRelationshipLabel : "待确认分类",
+        project: row.project,
+        signingParty: typeof row.signingParty === "string" ? row.signingParty : "待确定",
+        counterparty: row.counterparty,
+        typePricing: row.typePricing,
+        amountYuan: contractExportAmountValue(amountYuan, row.amount),
+        amountDisplay: row.amount,
+        version: row.version,
+        paymentTermsVersion: row.paymentTermsVersion ?? "-",
+        currentNode: row.currentNode,
+        pendingOwner: row.pendingOwner,
+        stalledFor: row.stalledFor,
+        returnReason: row.returnReason,
+        nextAction: row.nextAction,
+        updatedAt: typeof row.occurredAt === "string" ? row.occurredAt : null
+      };
+    });
+    const columns: LedgerExcelColumn<Record<string, unknown>>[] = [
+      { header: "合同编号", key: "contractNo", width: 20, required: true },
+      { header: "合同名称", key: "name", width: 28 },
+      { header: "合同分类", key: "contractRelationshipLabel", width: 24 },
+      { header: "项目", key: "project", width: 24, required: true },
+      { header: "签约方（甲方）", key: "signingParty", width: 26, required: true },
+      { header: "相对方（乙方）", key: "counterparty", width: 26, required: true },
+      { header: "类型/计价方式", key: "typePricing", width: 24 },
+      {
+        header: "合同金额（元）",
+        key: "amountYuan",
+        width: 18,
+        kind: "number",
+        numFmt: LEDGER_MONEY_FORMAT,
+        total: "sum",
+        required: true
+      },
+      { header: "金额说明", key: "amountDisplay", width: 18 },
+      { header: "合同版本", key: "version", width: 12 },
+      { header: "付款条款版本", key: "paymentTermsVersion", width: 16 },
+      { header: "当前节点", key: "currentNode", width: 18 },
+      { header: "当前责任人", key: "pendingOwner", width: 18 },
+      { header: "停留时间", key: "stalledFor", width: 14 },
+      { header: "退回原因", key: "returnReason", width: 28 },
+      { header: "下一步", key: "nextAction", width: 22 },
+      { header: "更新时间", key: "updatedAt", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
+    ];
+    const selectedColumns = resolveLedgerExportColumns(columns, query.columnKeys);
     const buffer = await buildLedgerWorkbook({
       sheetName: "合同台账",
-      columns: [
-        { header: "合同编号", key: "contractNo", width: 20 },
-        { header: "合同名称", key: "name", width: 28 },
-        { header: "合同分类", key: "contractRelationshipLabel", width: 24 },
-        { header: "项目", key: "project", width: 24 },
-        { header: "相对方", key: "counterparty", width: 24 },
-        { header: "合同金额", key: "amount", width: 18 },
-        { header: "合同版本", key: "version", width: 12 },
-        { header: "付款条款版本", key: "paymentTermsVersion", width: 16 },
-        { header: "当前节点", key: "currentNode", width: 18 },
-        { header: "当前责任人", key: "pendingOwner", width: 18 },
-        { header: "停留时间", key: "stalledFor", width: 14 },
-        { header: "退回原因", key: "returnReason", width: 28 },
-        { header: "下一步", key: "nextAction", width: 22 },
-        { header: "更新时间", key: "updatedAt", width: 22 }
-      ],
-      rows
+      columns: selectedColumns,
+      rows,
+      totals: { label: "合计", note: "不含待确定金额" },
+      print: { landscape: true }
     });
 
     if (!this.audit) {
@@ -1083,7 +1158,15 @@ export class ContractReadService {
       metadata: {
         exportedRows: rows.length,
         visibleProjectCount: visibleProjectIds.length,
-        scope: "all_visible_records"
+        scope: "all_filtered_visible_records",
+        filters: {
+          projectId: query.projectId ?? null,
+          dateFrom: query.dateFrom ?? null,
+          dateTo: query.dateTo ?? null,
+          status: query.status ?? null,
+          keyword: query.keyword ?? null
+        },
+        exportedColumns: selectedColumns.map((column) => String(column.key))
       }
     });
 
@@ -3576,6 +3659,8 @@ export class ContractReadService {
     version: {
       id: string; status: string; versionNo: number; amountCents: bigint;
       amountLimitType?: string | null; pricingNature?: string | null;
+      numericProtocolVersion?: number; amountYuan?: { toFixed(scale: number): string } | null;
+      companyEntityNameSnapshot?: string | null; affiliateNameSnapshot?: string | null;
     } & ContractSigningIdentity,
     termsVersion?: { versionNo: number } | null,
     project?: { name: string } | null,
@@ -3585,16 +3670,23 @@ export class ContractReadService {
     const status = this.statusView(version.status);
     const nextAction = this.nextActionLabel(version.status);
     const pendingOwner = this.currentOwnerLabel(version.status);
+    const signingParty = version.signingSubjectType === "affiliate"
+      ? version.affiliateNameSnapshot
+      : version.companyEntityNameSnapshot;
     return {
       id: contract.code ?? contract.id,
       contractId: contract.id,
+      projectId: contract.projectId,
       contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version)],
       contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
       name: contract.name,
       project: project?.name ?? contract.projectId,
+      signingParty: signingParty?.trim() || "待确定",
       counterparty: contract.counterparty,
       typePricing: this.contractTypePricingLabel(contract.contractTypeKey, version.pricingNature),
       amount: this.formatContractAmount(version, numericProtocol),
+      amountYuan: this.contractAmountYuan(version, numericProtocol),
+      occurredAt: contract.updatedAt.toISOString(),
       version: `v${version.versionNo}`,
       status: version.status,
       currentNode: nextAction,
@@ -3609,6 +3701,30 @@ export class ContractReadService {
       ...lifecycle
     };
   }
+
+  /**
+   * 合同金额的原始数值（元，四位小数）。
+   *
+   * 框架不设总价或新数值协议下金额未确定时返回 `null`，由导出保持空白
+   * 或业务文案，绝不写成 `0`（A01/NUM-05）。
+   */
+  private contractAmountYuan(version: {
+    amountCents: bigint;
+    amountLimitType?: string | null;
+    pricingNature?: string | null;
+    numericProtocolVersion?: number;
+    amountYuan?: { toFixed(scale: number): string } | null;
+  }, numericProtocol?: string): string | null {
+    assertContractDraftNumericProtocol(version, numericProtocol);
+    if (version.amountLimitType === "unlimited" && version.pricingNature === "framework") {
+      return null;
+    }
+    if (version.numericProtocolVersion === 2) {
+      return version.amountYuan == null ? null : version.amountYuan.toFixed(4);
+    }
+    return formatMoneyCentsAsPlainYuan(dbMoneyToBigInt(version.amountCents, "合同金额"));
+  }
+
 
   private lifecycleCount(
     contracts: Array<{
@@ -3752,4 +3868,26 @@ export class ContractReadService {
   private date(value: Date) {
     return value.toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" });
   }
+}
+
+/**
+ * 导出金额值：已知金额用原始数值，未知金额保留「待确定/不设合同总价」
+ * 业务文案或空白，绝不补 0（A01/NUM-05）。
+ */
+function contractExportAmountValue(
+  amountYuan: unknown,
+  amountDisplay: unknown
+): string | null {
+  if (typeof amountYuan === "string" && amountYuan.trim().length > 0) {
+    return amountYuan;
+  }
+  if (amountYuan === null) {
+    return typeof amountDisplay === "string" &&
+      /待确定|不设合同总价/u.test(amountDisplay)
+      ? amountDisplay
+      : null;
+  }
+  return typeof amountDisplay === "string" && amountDisplay.trim().length > 0
+    ? amountDisplay
+    : null;
 }

@@ -74,6 +74,26 @@
     />
 
     <section
+      class="signed-ledger-strip"
+      aria-label="已签结算台账"
+    >
+      <div>
+        <strong>已签结算台账（仅主管复核通过）</strong>
+        <p>
+          {{ signedLedgerText }}
+        </p>
+      </div>
+      <t-button
+        size="small"
+        variant="outline"
+        :loading="signedLedgerExporting"
+        @click="exportSignedSettlementLedger"
+      >
+        导出已签结算台账
+      </t-button>
+    </section>
+
+    <section
       class="settlement-rules"
       aria-label="结算办理规则"
     >
@@ -267,7 +287,10 @@ import {
   copyAbandonedSettlementDraft,
   fetchSettlementWorkbenchLedger,
   type SettlementLifecycleLedgerRow,
-  downloadSettlementLedgerExport
+  downloadSettlementLedgerExport,
+  fetchSignedSettlementLedger,
+  downloadSignedSettlementLedgerExport,
+  type SignedSettlementLedgerPage
 } from "../../api/core-flow-read.api";
 import { fetchSettlementProjectCapability } from "../../api/settlement-drafts.api";
 import {
@@ -335,6 +358,9 @@ const settlementLedgerRows = ref<(SettlementLedgerRow & SettlementLifecycleLedge
 const settlementFilters = reactive(emptySettlementLedgerFilters());
 const ledgerLoading = ref(false);
 const exportLoading = ref(false);
+const signedLedgerExporting = ref(false);
+const signedLedgerSummary = ref<SignedSettlementLedgerPage["summary"] | null>(null);
+const signedLedgerError = ref("");
 const copyingId = ref("");
 const showColumnSettings = ref(false);
 const showSettlementRules = ref(false);
@@ -373,6 +399,16 @@ const summaryValues = computed(() => {
 const filteredSettlementLedgerRows = computed(() =>
   filterSettlementLedgerRows(settlementLedgerRows.value, settlementFilters)
 );
+const signedLedgerText = computed(() => {
+  if (signedLedgerError.value) return signedLedgerError.value;
+  const summary = signedLedgerSummary.value;
+  if (!summary) return "正在读取已复核结算…";
+  const amount = summary.totalAmountYuan === null
+    ? "金额待确定"
+    : `合计 ${summary.totalAmountYuan} 元`;
+  const checkedRows = summary.knownAmountRows + summary.unknownAmountRows;
+  return `已复核 ${checkedRows} 笔，${amount}；待复核与草稿在「已签结算登记」工作台办理。`;
+});
 const filterOptions = computed(() => settlementLedgerFilterOptions(settlementLedgerRows.value));
 const settlementPreferenceStorageKey = computed(() =>
   auth.user?.id ? `jiangkong:web-admin:settlement-ledger:${auth.user.id}` : ""
@@ -527,6 +563,50 @@ async function exportSettlementLedger() {
   }
 }
 
+async function loadSignedSettlementSummary() {
+  try {
+    const page = await fetchSignedSettlementLedger({ page: 1, pageSize: 1 });
+    signedLedgerSummary.value = page.summary;
+    signedLedgerError.value = "";
+  } catch (error) {
+    signedLedgerSummary.value = null;
+    signedLedgerError.value = formatUnknownApiError(
+      error,
+      "已签结算台账暂不可用，请检查网络与权限后重试。"
+    );
+  }
+}
+
+async function exportSignedSettlementLedger() {
+  signedLedgerExporting.value = true;
+  try {
+    const projectId = settlementLedgerRows.value.find(
+      (row) => row.project === settlementFilters.project
+    )?.projectId;
+    const page = await fetchSignedSettlementLedger({
+      ...(projectId ? { projectId } : {}),
+      ...(settlementFilters.keyword ? { keyword: settlementFilters.keyword } : {}),
+      page: 1,
+      pageSize: 1
+    });
+    await downloadSignedSettlementLedgerExport({
+      ...(projectId ? { projectId } : {}),
+      ...(settlementFilters.keyword ? { keyword: settlementFilters.keyword } : {})
+    });
+    const checkedRows =
+      page.summary.knownAmountRows + page.summary.unknownAmountRows;
+    await MessagePlugin.success(
+      `已导出 ${checkedRows} 笔已复核结算，内容仅包含当前账号可见范围。`
+    );
+  } catch (error) {
+    await MessagePlugin.error(
+      formatUnknownApiError(error, "已签结算台账导出失败，请检查网络与权限后重试。")
+    );
+  } finally {
+    signedLedgerExporting.value = false;
+  }
+}
+
 function statusTagTheme(tone: SettlementTone) {
   return tone;
 }
@@ -553,10 +633,35 @@ onMounted(() => {
     void router.replace({ query: { ...route.query, view: activeView.value } });
   }
   void loadSettlementLedger();
+  void loadSignedSettlementSummary();
 });
 </script>
 
 <style scoped>
+.signed-ledger-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-muted);
+}
+
+.signed-ledger-strip p {
+  margin: 4px 0 0;
+  color: var(--jg-color-text-secondary);
+}
+
+@media (max-width: 767px) {
+  .signed-ledger-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 .settlement-page {
   display: grid;
   gap: var(--jg-space-lg);
