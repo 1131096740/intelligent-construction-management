@@ -1,3 +1,6 @@
+import { ACTUAL_PURCHASE_BATCH_PAGE_ACTION_IDS, proveActualPurchaseBatchPageAction } from "./actual-purchase-batch-page-action-proof.mjs";
+import { COST_ATTRIBUTION_PAGE_ACTION_IDS, proveCostAttributionPageAction } from "./cost-attribution-page-action-proof.mjs";
+import { HISTORY_EXPENSE_PAGE_ACTION_IDS, proveHistoryExpensePageAction } from "./history-expense-page-action-proof.mjs";
 import { PUBLIC_CASH_HANDOVER_ACTIONS, provePublicCashHandoverPageAction } from "./public-cash-handover-page-action-proof.mjs";
 import { proveSignedPageAction, SIGNED_PAGE_ACTION_IDS } from "./contract-signed-pages-action-proof.mjs";
 import { createRequire } from "node:module";
@@ -18363,7 +18366,10 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
   if (PRINCIPAL_RETURN_ACTIONS.has(action.id)) return provePrincipalReturnPageAction({ action, wrapper, context });
   if (FUND_ADVANCE_ACTIONS.has(action.id)) return proveFundAdvancePageAction({ action, wrapper, context });
   if (FUND_TRANSFER_ACTIONS.has(action.id)) return proveFundTransferPageAction({ action, wrapper, context });
-  const specializedProof = PUBLIC_CASH_HANDOVER_ACTIONS.has(action.id) ? provePublicCashHandoverPageAction :
+  const specializedProof = ACTUAL_PURCHASE_BATCH_PAGE_ACTION_IDS.has(action.id) ? proveActualPurchaseBatchPageAction :
+    COST_ATTRIBUTION_PAGE_ACTION_IDS.has(action.id) ? proveCostAttributionPageAction :
+    HISTORY_EXPENSE_PAGE_ACTION_IDS.has(action.id) ? proveHistoryExpensePageAction :
+    PUBLIC_CASH_HANDOVER_ACTIONS.has(action.id) ? provePublicCashHandoverPageAction :
     SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
     GENERATED_ARCHIVE_ACTIONS.has(action.id) ? proveGeneratedArchivePageAction :
     SIGNED_PAGE_ACTION_IDS.has(action.id) ? proveSignedPageAction : null;

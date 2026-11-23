@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 454,
+    "activeBusinessActionCount": 469,
     "technicalActionCount": 10,
-    "activeBindingCount": 553,
+    "activeBindingCount": 568,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -18,6 +18,91 @@
     "blockerCount": 0
   },
   "activeEntries": [
+    {
+      "id": "actual-purchase-batch.correction-confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/corrections/:param/confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.correction-request",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.create",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.refund-record",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/refunds"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "actual-purchase-batch.spot-payment",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /actual-purchase-batches/:param/spot-payments"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
     {
       "id": "affiliate-company-contract.confirm",
       "status": "unified_candidate",
@@ -1712,6 +1797,22 @@
       "causalVerified": true
     },
     {
+      "id": "contract-takeover.finance-return-for-supplement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/contract-takeovers/:param/finance-supplement-return"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-takeover.precheck-import",
       "status": "unified_candidate",
       "usage": "background",
@@ -1754,6 +1855,22 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /projects/:param/contract-takeovers/imports/preview"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-takeover.register-handover",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "PUT /projects/:param/contract-takeovers/:param/handover"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -2270,6 +2387,38 @@
         "POST /contracts/:param/signing/material-change"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "cost-attribution.request",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/cost-attributions/:param"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "cost-attribution.review",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/cost-attributions/:param/review"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -3527,6 +3676,102 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /global-invoices/:param/void"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.activate-batch",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches/:param/activation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.confirm-batch",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches/:param/confirmations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.correct-row",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.create-batch",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.precheck",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/precheck"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.verify-row",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "PATCH /projects/:param/history-expenses/batches/:param/rows/:param"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

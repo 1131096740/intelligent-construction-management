@@ -1,5 +1,28 @@
 # 建工智管当前状态
 
+## 2026-11-23 整站 inspect 清单收敛（#418 成本归属）
+
+分支 `line-af-manifests`；合入 #418（合并状态），迁移到 328。未 push、未新增迁移、未操作生产。
+
+- `page-actions` blocker **2→0**（483 actions）：#418 公共现金成本归属 `requestCostAttribution`/`reviewCostAttribution` 两个写适配器补专用 AST witness（打开按钮门→对话框条件 confirm→写调用→可信单 GET→后端岗位守卫）；未改检查器判定、未补假动作。
+- `route-usage` 计数漂移 **4→0**：`routeCount 866→871`、`page 652→657`、`derivedProductionPageCount 633→638`、`web_api_wrapper 704→709`；未分类 0，override 数量/hash 未变。
+- 三条命门全部退出 0；web-api READY 779/853；Web typecheck、API build、清单单测 125/125 通过；迁移基线 328 clean；`docker ps -q` 为 0。仍红：page-action 单测 1 条合并基线既存失败。详见 [回执](docs/progress/2026-11-23-manifest-convergence-418.md)。
+
+## 2026-11-23 整站 inspect 清单收敛（#411 / #417 / #421a）
+
+分支 `line-af-manifests`；先合入集成分支 `adopt-395-396-415` tip `2bbf3270b`（合并提交 `768f37447`），迁移到 327。未 push、未新增迁移、未操作生产。
+
+- `page-actions` blocker **6→0**（481 actions）：#417 历史费用预检/建批/核实/复核/入账/更正六个写适配器补专用 AST witness；同时把三个只读 GET 的守卫从仅 `history_expense.manage` 改为页面岗位并集（写路由岗位不变），使财务动作真实可达；未改检查器判定、未补假动作。
+- `route-usage` 计数漂移 **4→0**：`routeCount 855→866`、`page 641→652`、`derivedProductionPageCount 622→633`、`web_api_wrapper 693→704`；未分类 0，分类 override 数量/hash 未变。#421a 的已签结算台账 2 条只读路由自动归 `page`；#411 本快照无新增 page-action。
+- 三条命门全部退出 0；web-api READY 774/848；Web typecheck、API build、history-expense 单测 13/13、清单单测 125/125 通过；迁移基线 327 clean；`docker ps -q` 为 0。仍红：page-action 单测 1 条合并基线既存失败。详见 [回执](docs/progress/2026-11-23-manifest-convergence-411-417.md)。
+
+## 2026-11-23 整站 inspect 清单收敛（#403 返工 / #405 / #404）
+
+分支 `line-af-manifests`（基线 `e16e2b515`），先合入 `adopt-395-396-415` tip `96930648f`（#404，迁移到 326），未 push、未新增迁移、未操作生产。
+
+- `inspect:whole-site-page-actions:ready` blocker **5→0**：新增 `ActualPurchaseBatchPanel.vue` 5 个写适配器的专用 AST witness（打开按钮门 → 对话框写调用 → 可信单 GET → 后端岗位守卫）；未改通用判定、未补假页面动作。
+- `inspect:whole-site-route-usage` 未分类 **8→0**：2 条 #403 批次详情/更新、6 条 #405 其他项目付款写接口按 #400 既有口径登记为 `internal_task` + `operator_endpoint`，理由写“Web 写入口尚未接入”；#404 的 2 个只读导出/2 条路由自动为 `page`。
+- `inspect:release-manifests` 转绿；page-actions READY 475/0、route-usage READY 855/0、web-api READY 763/837；Web typecheck 通过；迁移基线 326 clean；`docker ps -q` 为 0。仍存产品缺口（#405 六个写接口无 Web 入口、#403 详情/更新适配器无消费者），详见 [回执](docs/progress/2026-11-23-manifest-convergence-403-405.md)。
 ## 2026-11-23 #418 经营总览与成本主体归属统一去重
 
 分支 `line-ai-418`；集成分支 `line-aj-421a` tip `9ba41d537`（含 #411/#417/#421a）已合入（合并提交 `4917ebe95`），代码提交 `2eb991c080a5a32b41c958ad55ccb1ddd897ec22`。未 push、未操作生产；新增 1 条迁移，**327→328**（末端 `20261126000000_operating_cost_attribution_confirmation`，摘要 `362340da…`）；未改 `07500`/`05800`。

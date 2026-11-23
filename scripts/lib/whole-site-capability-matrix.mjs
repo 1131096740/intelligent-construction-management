@@ -1227,8 +1227,13 @@ function validatePageSummary(
         binding.wrapper,
         consumer
       );
+      // Candidate consumers are the production mutation consumers counted by
+      // the page-action manifest. The verified read-only payment recovery
+      // proof is a POST transport but not a production mutation wrapper, so it
+      // is accepted/covered below without becoming a candidate mutation.
       if (
-        registeredWrapperKeys.has(
+        action.semantic !== "read_only" &&
+        (registeredWrapperKeys.has(
           wrapperKey(binding.apiFile, binding.wrapper)
         ) ||
         isExactSelfProfileFacadeBinding(
@@ -1236,7 +1241,7 @@ function validatePageSummary(
           webManifest.authTransportExceptions.find(
             (entry) => entry.normalizedKey === binding.normalizedKey
           )
-        )
+        ))
       ) {
         candidateKeys.add(key);
       }
@@ -1845,9 +1850,15 @@ function actionBindingReasons(
     reasons.push("binding_not_mutation");
   }
   if (!binding.causalVerified) reasons.push("causal_unverified");
+  // A non-mutation support read (for example the archive download-package
+  // capability GET) is part of a write action's causal chain but is not itself
+  // a production mutation consumer. It needs no accepted mutation consumer as
+  // long as the same action carries a verified mutation binding.
+  const supportRead = !MUTATION_METHODS.has(binding.method) && hasMutationBinding;
   if (
     binding.acceptedProductionConsumers.length === 0 &&
-    !hasFreshRead
+    !hasFreshRead &&
+    !supportRead
   ) {
     reasons.push("no_accepted_consumer");
   }

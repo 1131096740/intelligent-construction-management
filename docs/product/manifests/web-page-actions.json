@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "registry": "docs/product/manifests/web-page-actions.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 470,
-    "pageActionCount": 100,
-    "backgroundActionCount": 370,
+    "registeredActionCount": 483,
+    "pageActionCount": 111,
+    "backgroundActionCount": 372,
     "reachableVueFileCount": 241,
     "routeRootCount": 80,
     "totalVueFileCount": 254,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 417,
     "templateEventDirectiveCount": 1643,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 461,
-    "candidateProductionMutationConsumerCount": 461,
-    "acceptedProductionMutationConsumerCount": 461,
+    "coveredProductionMutationConsumerCount": 474,
+    "candidateProductionMutationConsumerCount": 474,
+    "acceptedProductionMutationConsumerCount": 474,
     "productionMutationConsumerPairCount": 474,
-    "blockerCount": 13
+    "blockerCount": 0
   },
   "evidence": {
     "totalProductionModuleCount": 436,
@@ -32,6 +32,336 @@
     "parsedVueFileCount": 254
   },
   "actions": [
+    {
+      "id": "actual-purchase-batch.correction-confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmCorrection",
+        "kind": "event",
+        "sourceLine": 512,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "correction.status === 'pending_confirm'",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "confirmActualPurchaseBatchCorrection",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/corrections/:param/confirmation",
+          "normalizedKey": "POST /actual-purchase-batches/:param/corrections/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/actual-purchase-batches/:batchId/corrections/:correctionId/confirmation",
+            "normalizedKey": "POST /actual-purchase-batches/:param/corrections/:param/confirmation",
+            "controller": "ActualPurchaseBatchController",
+            "handler": "confirmCorrection",
+            "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmCorrection",
+              "confirmActualPurchaseBatchCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.correction-request",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "requestCorrection",
+        "kind": "event",
+        "sourceLine": 498,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "batch.costVersion > 0",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "requestActualPurchaseBatchCorrection",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/corrections",
+          "normalizedKey": "POST /actual-purchase-batches/:param/corrections",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/actual-purchase-batches/:batchId/corrections",
+            "normalizedKey": "POST /actual-purchase-batches/:param/corrections",
+            "controller": "ActualPurchaseBatchController",
+            "handler": "requestCorrection",
+            "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "requestCorrection",
+              "requestActualPurchaseBatchCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.create",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "createBatch",
+        "kind": "event",
+        "sourceLine": 452,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canCreate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "createActualPurchaseBatch",
+          "method": "POST",
+          "path": "/actual-purchase-batches",
+          "normalizedKey": "POST /actual-purchase-batches",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/actual-purchase-batches",
+            "normalizedKey": "POST /actual-purchase-batches",
+            "controller": "ActualPurchaseBatchController",
+            "handler": "create",
+            "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createBatch",
+              "createActualPurchaseBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.refund-record",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "recordRefund",
+        "kind": "event",
+        "sourceLine": 528,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "Number(batch.capacity.paidAmountCents) > 0",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "recordActualPurchaseBatchRefund",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/refunds",
+          "normalizedKey": "POST /actual-purchase-batches/:param/refunds",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/actual-purchase-batches/:batchId/refunds",
+            "normalizedKey": "POST /actual-purchase-batches/:param/refunds",
+            "controller": "ActualPurchaseBatchController",
+            "handler": "recordRefund",
+            "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordRefund",
+              "recordActualPurchaseBatchRefund"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.spot-payment",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "createPayment",
+        "kind": "event",
+        "sourceLine": 480,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canPay",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "createActualPurchaseBatchSpotPayment",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/spot-payments",
+          "normalizedKey": "POST /actual-purchase-batches/:param/spot-payments",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/actual-purchase-batches/:batchId/spot-payments",
+            "normalizedKey": "POST /actual-purchase-batches/:param/spot-payments",
+            "controller": "ActualPurchaseBatchController",
+            "handler": "createSpotPayment",
+            "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createPayment",
+              "createActualPurchaseBatchSpotPayment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
     {
       "id": "affiliate-company-contract.confirm",
       "usage": "page_action",
@@ -10581,6 +10911,142 @@
       ]
     },
     {
+      "id": "cost-attribution.request",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttribution",
+        "kind": "background_call",
+        "sourceLine": 2386,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canRequestCostAttribution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "requestCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/cost-attributions/:factId",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+            "controller": "OperatingCostAttributionController",
+            "handler": "request",
+            "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCostAttribution",
+              "requestCostAttribution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "cost-attribution.review",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttributionReview",
+        "kind": "background_call",
+        "sourceLine": 2428,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canReviewCostAttribution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "reviewCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param/review",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/cost-attributions/:id/review",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+            "controller": "OperatingCostAttributionController",
+            "handler": "review",
+            "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCostAttributionReview",
+              "reviewCostAttribution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "duty-sms.retry",
       "usage": "page_action",
       "routePaths": [
@@ -16863,6 +17329,390 @@
             "localCallChain": [
               "voidGlobalInvoiceWithCapability",
               "voidGlobalInvoice"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.activate-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitActivate",
+        "kind": "event",
+        "sourceLine": 546,
+        "sourceColumn": 85
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.activate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "activateHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/activation",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/activation",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+            "controller": "HistoryExpenseController",
+            "handler": "activate",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.activate"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitActivate",
+              "activateHistoryExpenseBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.confirm-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitConfirm",
+        "kind": "event",
+        "sourceLine": 543,
+        "sourceColumn": 84
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "confirmHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/confirmations",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+            "controller": "HistoryExpenseController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitConfirm",
+              "confirmHistoryExpenseBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.correct-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitCorrection",
+        "kind": "event",
+        "sourceLine": 599,
+        "sourceColumn": 110
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.correct",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "correctHistoryExpenseRow",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+            "controller": "HistoryExpenseController",
+            "handler": "correctRow",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.correct"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCorrection",
+              "correctHistoryExpenseRow"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.create-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "createBatch",
+        "kind": "event",
+        "sourceLine": 478,
+        "sourceColumn": 59
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "createHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches",
+            "controller": "HistoryExpenseController",
+            "handler": "create",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createBatch",
+              "createHistoryExpenseBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.precheck",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "runPrecheck",
+        "kind": "event",
+        "sourceLine": 477,
+        "sourceColumn": 61
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "precheckHistoryExpenses",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/precheck",
+          "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/precheck",
+            "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+            "controller": "HistoryExpenseController",
+            "handler": "precheck",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "runPrecheck",
+              "precheckHistoryExpenses"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.verify-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitVerify",
+        "kind": "event",
+        "sourceLine": 645,
+        "sourceColumn": 104
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.verify",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "verifyHistoryExpenseRow",
+          "method": "PATCH",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId",
+            "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+            "controller": "HistoryExpenseController",
+            "handler": "verifyRow",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.verify"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitVerify",
+              "verifyHistoryExpenseRow"
             ]
           },
           "ticketFollowups": []
@@ -35374,125 +36224,7 @@
     "unresolvedRoutes": [],
     "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [],
-    "uncoveredMutationWrappers": [
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
-        "wrapper": "confirmActualPurchaseBatchCorrection",
-        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
-        "normalizedKeys": [
-          "POST /actual-purchase-batches/:param/corrections/:param/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
-        "wrapper": "createActualPurchaseBatch",
-        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
-        "normalizedKeys": [
-          "POST /actual-purchase-batches"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
-        "wrapper": "createActualPurchaseBatchSpotPayment",
-        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
-        "normalizedKeys": [
-          "POST /actual-purchase-batches/:param/spot-payments"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
-        "wrapper": "recordActualPurchaseBatchRefund",
-        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
-        "normalizedKeys": [
-          "POST /actual-purchase-batches/:param/refunds"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
-        "wrapper": "requestActualPurchaseBatchCorrection",
-        "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
-        "normalizedKeys": [
-          "POST /actual-purchase-batches/:param/corrections"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "activateHistoryExpenseBatch",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches/:param/activation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "confirmHistoryExpenseBatch",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches/:param/confirmations"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "correctHistoryExpenseRow",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "createHistoryExpenseBatch",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "precheckHistoryExpenses",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/precheck"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "verifyHistoryExpenseRow",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/history-expenses/batches/:param/rows/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
-        "wrapper": "requestCostAttribution",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/cost-attributions/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
-        "wrapper": "reviewCostAttribution",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/cost-attributions/:param/review"
-        ]
-      }
-    ],
+    "uncoveredMutationWrappers": [],
     "parseIssues": [],
     "dynamicEventIssues": [],
     "unresolvedComponentForwards": []

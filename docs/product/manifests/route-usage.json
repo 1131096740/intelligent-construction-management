@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "registry": "docs/product/manifests/route-usage.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -13,25 +13,25 @@
     "routeCount": 876,
     "exactRouteCount": 876,
     "normalizedRouteCount": 876,
-    "classificationOverrideCount": 225,
-    "consumerSurfaceOverrideCount": 47,
-    "classificationOverrideSha256": "71663f75150fda4cd713f90bc211f59dcf45cc116c6fbb98232cee63389be8d2",
-    "consumerSurfaceOverrideSha256": "b2bbe6944629b245b12f03521fc673151201615df030bea2ca96c22191b02015",
+    "classificationOverrideCount": 234,
+    "consumerSurfaceOverrideCount": 56,
+    "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
+    "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
     "derivedProductionPageCount": 642,
     "pageRouteCount": 661,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
-    "internalTaskCount": 45,
-    "unclassifiedCount": 9,
+    "internalTaskCount": 54,
+    "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
       "web_api_wrapper": 713,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
-      "operator_endpoint": 42,
-      "none": 111
+      "operator_endpoint": 51,
+      "none": 102
     },
-    "blockerCount": 15
+    "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
@@ -449,15 +449,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -4576,15 +4576,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "expense_claim_list_has_no_page_consumer_web_uses_ledger_and_create_endpoints_retire_pending_425",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "internal_list_without_page_consumer_served_via_operator_tooling_until_425"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -10180,10 +10180,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -10221,10 +10225,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -10262,10 +10270,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -13945,15 +13957,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25057,15 +25069,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25087,15 +25099,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25119,15 +25131,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25149,15 +25161,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25183,15 +25195,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25213,15 +25225,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -36156,120 +36168,7 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [
-      {
-        "field": "consumerSurfaceCounts.none",
-        "expected": 102,
-        "actual": 111
-      },
-      {
-        "field": "consumerSurfaceCounts.web_api_wrapper",
-        "expected": 682,
-        "actual": 713
-      },
-      {
-        "field": "derivedProductionPageCount",
-        "expected": 611,
-        "actual": 642
-      },
-      {
-        "field": "routeCount",
-        "expected": 836,
-        "actual": 876
-      },
-      {
-        "field": "usageCounts.page",
-        "expected": 630,
-        "actual": 661
-      },
-      {
-        "field": "usageCounts.unclassified",
-        "expected": 0,
-        "actual": 9
-      }
-    ],
-    "unclassifiedRoutes": [
-      {
-        "method": "GET",
-        "path": "/actual-purchase-batches/:batchId",
-        "normalizedKey": "GET /actual-purchase-batches/:param",
-        "controller": "ActualPurchaseBatchController",
-        "handler": "detail",
-        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "GET",
-        "path": "/expense-claims",
-        "normalizedKey": "GET /expense-claims",
-        "controller": "ExpenseClaimController",
-        "handler": "list",
-        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PATCH",
-        "path": "/actual-purchase-batches/:batchId",
-        "normalizedKey": "PATCH /actual-purchase-batches/:param",
-        "controller": "ActualPurchaseBatchController",
-        "handler": "update",
-        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments",
-        "normalizedKey": "POST /other-project-payments",
-        "controller": "OtherProjectPaymentController",
-        "handler": "create",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/approval",
-        "normalizedKey": "POST /other-project-payments/:param/approval",
-        "controller": "OtherProjectPaymentController",
-        "handler": "approve",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/corrections",
-        "normalizedKey": "POST /other-project-payments/:param/corrections",
-        "controller": "OtherProjectPaymentController",
-        "handler": "correctAmount",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/payments",
-        "normalizedKey": "POST /other-project-payments/:param/payments",
-        "controller": "OtherProjectPaymentController",
-        "handler": "recordPayment",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/payments/:executionId/refunds",
-        "normalizedKey": "POST /other-project-payments/:param/payments/:param/refunds",
-        "controller": "OtherProjectPaymentController",
-        "handler": "recordRefund",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/submission",
-        "normalizedKey": "POST /other-project-payments/:param/submission",
-        "controller": "OtherProjectPaymentController",
-        "handler": "submit",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      }
-    ]
+    "expectationMismatches": [],
+    "unclassifiedRoutes": []
   }
 }

@@ -39,9 +39,10 @@ export interface CostAttributionPage {
 async function readJson<T>(path: string): Promise<T> {
   const response = await apiFetch(path);
   if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { message?: unknown };
     throw new Error(
       formatApiErrorMessage(
-        await response.text().catch(() => ""),
+        typeof body.message === "string" ? body.message : "读取成本归属失败",
         response.status,
         "读取成本归属失败"
       )
