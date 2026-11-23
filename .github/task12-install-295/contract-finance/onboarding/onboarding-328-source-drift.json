@@ -231,7 +231,7 @@
   "services/api/src/project/project-completion-public.spec.ts": "2553673043400ad91f057980c5e4d4a1f9d0f105542118e9ee6dccce5851f606",
   "services/api/src/project/project-operating-source.adapter.ts": "7eeae61ed34a9b169df954865ed732235f262cb8d37e26537a4e2000cb48a1f0",
   "services/api/src/project/project-upstream-fund-fact.spec.ts": "fe29535a38c2358eb66f4d9595c4569c86c8b4ab75d554cb721cbd939d5559ad",
-  "services/api/src/project/project.controller.ts": "7fb47231449f55858257c8436dc6209f45733702dc3cf7c6a589dcaf9ba0f3b2",
+  "services/api/src/project/project.controller.ts": "035504072334e230e57d3adbc32b03faa47e814538046f47f1026dd6f067551b",
   "services/api/src/project/project.module.ts": "af4f10c5de3ee633279a472309dbf0e632603db2826b17571e9f4d1ca4d7f9b6",
   "services/api/src/project/project.service.spec.ts": "cb4c0e79e70cd19065e6ec1dcdecd4fa9ae17ea45e6d29dfdd7fd5364573ac35",
   "services/api/src/project/project.service.ts": "e34c2249bfd7ea82468b283952b54a17c2494d94d102f7a9598e307d34d1aa77",

@@ -90,14 +90,14 @@ export class ProjectController {
 
   private constructionPaymentCorrectionService(): ProjectConstructionPaymentCorrectionService {
     if (!this.constructionPaymentCorrections) {
-      throw new Error("Project construction payment correction service is not available");
+      throw new Error("施工企业付款更正服务不可用");
     }
     return this.constructionPaymentCorrections;
   }
 
   private constructionDeductionService(): ProjectConstructionEnterpriseDeductionService {
     if (!this.constructionDeductions) {
-      throw new Error("Project construction enterprise deduction service is not available");
+      throw new Error("施工企业扣款服务不可用");
     }
     return this.constructionDeductions;
   }

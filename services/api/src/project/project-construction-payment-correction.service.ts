@@ -466,7 +466,7 @@ export class ProjectConstructionPaymentCorrectionService {
       "请提供施工企业付款更正确认幂等键"
     );
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm construction payment correction");
+      throw new Error("施工企业付款更正需要密码确认服务");
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 

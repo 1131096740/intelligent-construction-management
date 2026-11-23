@@ -1207,7 +1207,7 @@
   {
     "path": "services/api/src/project/project.controller.ts",
     "expected": "cc3327214f504fab9076ee92c45c60014fca235d350d1464d147f5f89417205f",
-    "candidate": "7fb47231449f55858257c8436dc6209f45733702dc3cf7c6a589dcaf9ba0f3b2"
+    "candidate": "035504072334e230e57d3adbc32b03faa47e814538046f47f1026dd6f067551b"
   },
   {
     "path": "services/api/src/project/project.module.ts",
