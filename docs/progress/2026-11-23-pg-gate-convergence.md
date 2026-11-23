@@ -3,7 +3,7 @@
 - 日期：2026-11-23（本地，Asia/Shanghai）
 - 工作树 `/tmp/jgL`，分支 `line-l-pg-gates`
 - 基线：`5d07c92c0`（迁移 323，终态 `20261119007500`，校验和 `98e016b2…`）
-- 本轮提交：`fbb6a76de`（`fix(ci): 重钉 pol115 工作台输入摘要并补采购 323 manifest 增量`）
+- 本轮提交：`fbb6a76de`（pol115 输入重钉 + 采购 manifest 增量）、`b9f0a0e8d`（pol113/114 named purpose 与版本锚点统一）；本回执随后单独提交。
 - 未 push；未改 `07500`、未改资格门、未放宽守卫、未动 `database-dynamic-gate-manifest.json`；未触碰 `/tmp/jgK`、`/tmp/jg382-adopt`、主仓库。
 - 本地闸门镜像按 CI 同源构建：`prepare.sh … --current-320` + `build.sh <sha> browser|mobile`，镜像标签 `source-sha=5d07c92c0…`、`context-sha=8f3aa158…`。
 
@@ -12,7 +12,7 @@
 | 门 | 首因（实测） | 分类 | 本轮处理 | 本地结果 |
 | --- | --- | --- | --- | --- |
 | `pol115_workbench` | `browser-preflight.cjs` 的 `verifyInputs()` 断言：挂载的 `settlement-template-workbench.owned290.http.pg.spec.ts` 实际 `223cf564…`≠pin `308a0b67…`；修后下一条 `task12-pol115-workbench-ci.cjs` 实际 `c29463df…`≠pin `99765a27…`。两者在 `7587165fa`/`7612a5ab1` 已按 323 字节更新，输入 pin 未同步，preflight 输出被重定向故 CI 只看到静默 `exit 1`。 | pin 过期（可更新） | 按实际挂载字节重钉 `workbench/workbench-inputs.cjs` 两处 | **绿**：`POL115_WORKBENCH_ORIGINAL_323_PASSED`，9 用例、desktop+mobile，2m53s |
-| `pol113_pol114` | 待本地复跑（`ci.sh pol113 --current-320`）确认；CI 在镜像导出后 0.9s 静默退出，落在 `run-named295.sh` 的构建后 shell 检查或隐藏 receipt 的容器步骤 | 待定 | 见第 3 节 | 复跑结果见第 3 节 |
+| `pol113_pol114` | 本地复现（`ci.sh pol113 --current-320`，`exit 1`，镜像导出后 0.2s）：隐藏 receipt 为 `NAMED_POL113_POL114_EXACT_320` + `failure.code=POL113_POL114_NAMED_292_PURPOSE`。根因是 purpose 后缀与 wrapper 版本不一致：`prepare-named295.py` 把 receipt purpose 改成 `…_EXACT_320`，而 `installer-named320.patch` 的 `withNamedPol113Pol114320` 传 `version=323`，且 installer 用 `purpose===…_EXACT_320` 判定 named320。 | pin/锚点过期（可更新） | 统一到 323（purpose、installer 判定、stage 名），见提交 `b9f0a0e8d` | **仍红（前移一层）**：purpose 已修，本地进入原套件后 30 例 29 过、1 例失败（`SIGTERM`/`P0001`，spec 行 323）；x64 上需重跑确认是否超时 |
 | `task398_shared_standard` | 首个业务失败 `POST /me/signature/canvas` → 500，PG 日志 `ERROR: permission denied for function jg_file_business_binding_columns_before_signed_settlement`。07500 把 registry 改名为 `_before_signed_settlement` 并由新 current 以 SECURITY INVOKER 委托；迁移后创建的受限夹具角色只被授予旧别名集合（`local-staged-migration-qualification.json` 的 `collision_routines` 止于 `_before_company_transfer`）。补 EXECUTE 后进入 owned-280 角色检查：`business` 子项为 false —— `task398-owned-280-business-read-baseline.json`（324 表）未含 `ContractSignedChange` / `SignedContractSettlementAttachment`，而 07500 把两表登记为独占绑定列，中心守卫会逐表 `SELECT`。 | 夹具授权/冻结材料缺口（不是 07500 内容缺陷） | 见第 2 节：需对 295 冻结材料做协调重钉；本轮未提交半套 pin | **仍红**：已在本地复现并定位到上述两步 |
 | `task398_browser`、`task398_browser_completion` | 同一 `EXACT_295_MULTI_WITNESS_CONSUMER` 阶段、同一 07500 别名/两新表授权链（browser 夹具同一 `contract-bank-runtime-fixture.cjs` 补丁） | 同上 | 同上 | 仍红（同因，未单独复跑） |
 | `task409_principal_return`、`task410_company_proxy_repayment`、`project_expense_receipt` | 均走 `.github/task12-install-290/standard/fixtures` 同一夹具补丁与 owned-280 读基线，失败点同为 `EXACT_295_MULTI_WITNESS_CONSUMER`（expense-receipt 为 `ERR_ASSERTION`，409/410 为通用 `BEHAVIOR_FAILED`） | 同上 | 同上 | 仍红（同因，未单独复跑） |
@@ -35,10 +35,15 @@
 - 仅给别名 EXECUTE + 两表 SELECT（临时挂载验证，未提交）：失败前移为 `TASK398_ROLE_CHECK`，探针输出 `{"technical":"t","signature":"t","approval":"t","spot":"t","business":"f","observer":"t","me":"t"}` → 与 `businessReadCheckSql(advanceExcludedReads,current280)` 的 baseline 缺口一致。
 - 因此“只补别名”不够，必须同时重钉读基线；该重钉牵动 `fixed-overlay-pins.json`、`assembly-pins.json`、`plan.sha256`、`staging-manifest.json`、`common/checkout.cjs` 的 `f8a52c20…`/`d9406ad3…`、procurement/onboarding 各自的 checkout 与 drift 文件。属于与 295→323 重基线同级的冻结材料重钉，建议单开一条线执行并整组复跑。
 
-## 3. `pol113_pol114` 复跑
+## 3. `pol113_pol114` 复跑与修复
 
-命令：`CI_SOURCE_SHA=<sha> bash .github/task12-install-295/named-pol113-pol114/ci.sh pol113 --current-320`
-（在 `fbb6a76de` 干净树上执行；结论见下节“本轮结论”，若仍未定位则明确标注。）
+- 命令：`CI_SOURCE_SHA=fbb6a76de bash .github/task12-install-295/named-pol113-pol114/ci.sh pol113 --current-320`，9m10s，`exit 1`。
+- 证据：`/tmp/jg-named-poly-295.KxKuc49l/evidence/receipt.json` →
+  `{"purpose":"NAMED_POL113_POL114_EXACT_320",...,"failure":{"stage":"INPUTS","code":"POL113_POL114_NAMED_292_PURPOSE"}}`；
+  `preflight.json` 已是 `NAMED_292_READONLY_LOADER_PREFLIGHT_PASSED (--materials)`，说明构建与材料检查均通过。
+- 根因：`prepare-named295.py` 把 receipt purpose 写成 `NAMED_POL113_POL114_EXACT_320`；`installer-named320.patch` 里 `withNamedPol113Pol114320(...,323)` 按 `NAMED_POL113_POL114_EXACT_'+version`（即 `…_323`）断言，且 named320 分支按 `…_EXACT_320` 判定。三者不一致时 input 即拒绝。
+- 修复：purpose 统一为 `…_EXACT_323`，installer 的 named320 判定与 stage 名同步为 323；`entry` 的 status 仍是 `…_EXACT_323_PASSED`，与 `run-named295.sh` 的校验一致。
+- 修复后本地（用镜像内已构建材料 + 挂载修补后的 `installer.cjs`/`install-only.cjs`）：purpose 通过，进入 `ORIGINAL_POL113_HTTP_AND_BROWSER_JEST`，30 例中 29 过、1 例失败，`exit:null/signal:SIGTERM`、`prismaCodes:["P0001"]`，失败帧 `spec 323`。本地为 arm64 模拟 x64，`SIGTERM` 更像超时；是否真实回归需在 x64 CI 重跑该 lane 后看 `jestDiagnostic`。
 
 ## 4. 验证
 
@@ -60,5 +65,5 @@
 ## 6. 本轮结论
 
 - 修绿：`pol115_workbench`（提交 `fbb6a76de`）。
-- 修到下一层：`general_procurement` 输入阶段（同一提交），业务阶段仍有 42501。
+- 修到下一层：`general_procurement` 输入阶段（`fbb6a76de`），业务阶段仍有 42501；`pol113_pol114` 静默 `INPUTS` 已修，业务套件剩 1 例待 x64 复核。
 - 其余门首因已按上表定位；`task398` 族与 onboarding 的修复方案已给出且经最小实验验证，但整组 pin 重钉未在本轮提交，避免出现“改一半、别的门反红”。
