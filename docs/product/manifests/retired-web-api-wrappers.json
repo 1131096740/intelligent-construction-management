@@ -188,6 +188,15 @@
         "createContractChangeDraft",
         "fetchContractChangeEligibility"
       ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "classification": "unreferenced",
+      "reason": "#403 返工的批次读/改适配器暂无生产消费者（批次面板只用创建/付款/更正/退款）；由 #405 合入集成分支时按既有退休登记机制显式登记，避免整站门禁把 #403 残留算作 #405 回归。",
+      "wrappers": [
+        "fetchActualPurchaseBatch",
+        "updateActualPurchaseBatch"
+      ]
     }
   ]
 }

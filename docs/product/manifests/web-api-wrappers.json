@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 52,
-    "exportedFunctionCount": 777,
-    "transportWrapperCount": 753,
+    "apiModuleCount": 53,
+    "exportedFunctionCount": 785,
+    "transportWrapperCount": 761,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 827,
+    "mainRequestBindingCount": 835,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 783,
-    "productionConsumerCount": 664,
+    "requestEdgeCount": 791,
+    "productionConsumerCount": 670,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,10 +22,230 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 425,
-    "reachableProductionModuleCount": 406
+    "productionModuleCount": 427,
+    "reachableProductionModuleCount": 408
   },
   "wrappers": [
+    {
+      "name": "confirmActualPurchaseBatchCorrection",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/corrections/:param/confirmation",
+          "normalizedPath": "/actual-purchase-batches/:param/corrections/:param/confirmation",
+          "normalizedKey": "POST /actual-purchase-batches/:param/corrections/:param/confirmation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmActualPurchaseBatchCorrection",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createActualPurchaseBatch",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "POST",
+          "path": "/actual-purchase-batches",
+          "normalizedPath": "/actual-purchase-batches",
+          "normalizedKey": "POST /actual-purchase-batches",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createActualPurchaseBatch",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createActualPurchaseBatchSpotPayment",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/spot-payments",
+          "normalizedPath": "/actual-purchase-batches/:param/spot-payments",
+          "normalizedKey": "POST /actual-purchase-batches/:param/spot-payments",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createActualPurchaseBatchSpotPayment",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchActualPurchaseBatch",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "GET",
+          "path": "/actual-purchase-batches/:param",
+          "normalizedPath": "/actual-purchase-batches/:param",
+          "normalizedKey": "GET /actual-purchase-batches/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchActualPurchaseBatch",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "listActualPurchaseBatches",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "GET",
+          "path": "/actual-purchase-batches?procurementId=:param",
+          "normalizedPath": "/actual-purchase-batches",
+          "normalizedKey": "GET /actual-purchase-batches",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listActualPurchaseBatches",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "recordActualPurchaseBatchRefund",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/refunds",
+          "normalizedPath": "/actual-purchase-batches/:param/refunds",
+          "normalizedKey": "POST /actual-purchase-batches/:param/refunds",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordActualPurchaseBatchRefund",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "requestActualPurchaseBatchCorrection",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/corrections",
+          "normalizedPath": "/actual-purchase-batches/:param/corrections",
+          "normalizedKey": "POST /actual-purchase-batches/:param/corrections",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "requestActualPurchaseBatchCorrection",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateActualPurchaseBatch",
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 62,
+          "method": "PATCH",
+          "path": "/actual-purchase-batches/:param",
+          "normalizedPath": "/actual-purchase-batches/:param",
+          "normalizedKey": "PATCH /actual-purchase-batches/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateActualPurchaseBatch",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
     {
       "name": "approvalDocumentCapability",
       "apiFile": "apps/web-admin/src/api/approval-forms.api.ts",
@@ -24348,6 +24568,18 @@
       "wrapper": "fetchContractChangeEligibility",
       "classification": "test_only",
       "reason": "The signed-supplement workflow (SignedContractChanges, #395) replaces the legacy contract-change-draft entry on contract detail; these wrappers have no production consumer and are retained for API unit tests pending backend route retirement."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "wrapper": "fetchActualPurchaseBatch",
+      "classification": "unreferenced",
+      "reason": "#403 返工的批次读/改适配器暂无生产消费者（批次面板只用创建/付款/更正/退款）；由 #405 合入集成分支时按既有退休登记机制显式登记，避免整站门禁把 #403 残留算作 #405 回归。"
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "wrapper": "updateActualPurchaseBatch",
+      "classification": "unreferenced",
+      "reason": "#403 返工的批次读/改适配器暂无生产消费者（批次面板只用创建/付款/更正/退款）；由 #405 合入集成分支时按既有退休登记机制显式登记，避免整站门禁把 #403 残留算作 #405 回归。"
     }
   ],
   "authTransportExceptions": [
