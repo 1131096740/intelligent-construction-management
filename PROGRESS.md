@@ -2,12 +2,12 @@
 
 ## 2026-11-23 #414 施工企业扣费简单登记
 
-分支 `line-x-414`（基线/集成 `adopt-395-396-415` tip `e8ca96d42`），代码提交 `a2f7210db630b7d3f0ebcf7865011fdbb1b485c5`。未 push、未新增迁移（仍 323）、未改 `07500`/`05800`、未操作生产。
+分支 `line-x-414`（基线/集成 `adopt-395-396-415` tip `e8ca96d42`），代码提交 `6fa848e1dda602b60e97739059c9c426328b0c85`。未 push、未新增迁移（仍 323）、未改 `07500`/`05800`、未操作生产。
 
 - 项目经营「项目业务入口」与统一资金工作台新增同名「登记施工企业扣费」；按费用名称 + 实际金额 + 日期简单登记，可选附依据；复用 `ProjectUpstreamFundFact`（`affiliate_deduction`），先待确认，财务确认后才减少施工企业持有资金。
 - 新入口登记、明细与能力路由 `construction-enterprise-deductions`；同费用名称+金额+日期且未反向的重复登记在事务内拒绝，同幂等键回放只返回原事实；更正值复用 #413 两段式（反转 + 重登、财务主管确认、自审原因+密码），新增 `affiliate_deduction` 来源。
-- 扣费不进入施工企业已付聚合，也不产生 `confirmed_cost`，不自动形成收入/利润；票面 OPS-08“计对应成本”与既有 POL-08 投影口径冲突，按本轮“不重复计成本、不改成本投影”指令未实现，列为未决项。
-- 真实 PostgreSQL 16 + 一次性容器 1/1：登记、重复拒绝、幂等回放、确认后持有资金 100000→95000、更正后净额 4000/持有资金 96000、已付 80000 不变；`worktreeClean=true`，容器清理后 `docker ps -q` 为 0。API 新服务单测 8/8、受影响 API 167/167、Web 受影响 179/179；API/Web typecheck、`check:ui`、迁移基线、动态门清单、web-api/page-actions/route-usage ready 门通过；`jest src/project` 898 通过，3 个失败为集成基线既有。详见 [回执](docs/progress/2026-11-23-issue-414.md)。
+- 扣费确认事务内新增独立来源 `construction_enterprise_fee` 计一次 `confirmed_cost`（成本主体=施工企业、分类 `other_project_cost`）；既有 `project_upstream_fund_fact` 来源仍只减少施工企业持有资金、不产成本，POL-08 断言不变；付款/已签结算/履约确认不受影响，扣费仍不计入施工企业已付。反转+重登同时写反向/正向成本贡献。
+- 真实 PostgreSQL 16 + 一次性容器 1/1：登记、重复拒绝、幂等回放、确认后成本事实恰好 1 条/金额 5000 且持有资金 100000→95000、重复确认被拒、更正后成本净额 4000/持有资金 96000、已付 80000 不变；`worktreeClean=true`，容器清理后 `docker ps -q` 为 0。API 新服务 8/8 + 成本来源 4/4、受影响 API 171/171、共享域 256/256、Web 179/179；API/Web typecheck、`check:ui`、迁移基线、动态门清单、web-api/page-actions/route-usage ready 门通过；`jest src/project` 902 通过，3 个失败为集成基线既有。详见 [回执](docs/progress/2026-11-23-issue-414.md)。
 
 ## 2026-11-23 #399 合同付款累计容量、预付与调减暂停
 
