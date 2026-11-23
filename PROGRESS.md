@@ -1,5 +1,14 @@
 # 建工智管当前状态
 
+## 2026-11-23 #400 统一财务更正与实际退款登记
+
+分支 `line-z-400`（基线/集成 `adopt-395-396-415` tip `fa23e05b3`），代码提交 `524e20aed`。未 push、未改 `07500`/`05800`、未操作生产；新增 1 条迁移，迁移数 **323→324**（终态 `20261123010000_payment_execution_refund_and_correction`）。
+
+- 新增 `PaymentExecutionRefund`：退款关联原实付，累计 ≤ 原实付（服务 + 数据库触发器双查），同事务写已确认 `payment_refund` 资金登记（公司账户/公共现金），重算付款申请/结算净额与 #399 容量/占用；无新审批。
+- 新增 `PaymentExecutionCorrection`：反转 + 重登三段快照（original/reversal/correction），`pending_confirm→confirmed`；财务主管确认，本人创建/提交须原因+本人密码自审；原 `PaymentExecution` 不改写，旧请求重试不生成第二补偿。
+- 退款/更正不写 `confirmed_cost`；多付退款只改净付款，退货采购退款沿用既有 `SpotProcurementRefund`，合同成本调减仍走负数结算；统一「更正中心」入口按付款/实付/已签结算/合同与岗位引导，不直接改已确认事实。
+- 真库 PostgreSQL 16 一次性容器 1/1：多付退款容量 `netPaid 1000→800`、`remaining 0→200`、资金可用 5000→2200；同键退款回放仍 1 条；累计超原实付服务与触发器均拒绝；更正 1000→800 后原实付仍 1000、净额 800、自审缺原因被拒；成本影响 0。`docker ps -q` 为 0（测后）。API payment 579/579、共享域 256/256、Web 2432/2432；API/Web typecheck、`check:ui`、迁移基线、web-api/page-actions/route-usage ready 门通过。
+- 未重钉 295 链（按要求由主线统一安排）：旧 323/`20261119007500`/`98e016b2…` → 新 324/`20261123010000`/`72aef9e6…`；该链另有 `07500` upward 闭包 55000 产品首因。未覆盖：Web 退款/更正写表单、收款对象/关联变更、公司间代付债权冲回、浏览器点击与全量 API 回归。详见 [回执](docs/progress/2026-11-23-issue-400.md)。
 ## 2026-11-23 #416 无等级历史合同分工接管后继续办理
 
 分支 `line-y-416`（基线 `e8ca96d42`），实现提交 `a83088ada`，合入集成分支 tip `fa23e05b3` 后 `72b771397`。未 push、未新增迁移（仍 323）、未操作生产。
