@@ -12022,6 +12022,150 @@
           "name": "recordActualPurchaseBatchRefund"
         }
       ]
+    },
+    {
+      "id": "history-expense.precheck",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "runPrecheck"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "precheckHistoryExpenses"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.create-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "createBatch"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "createHistoryExpenseBatch"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.verify-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitVerify"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.verify"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "verifyHistoryExpenseRow"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.correct-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.correct"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "correctHistoryExpenseRow"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.confirm-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitConfirm"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.confirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "confirmHistoryExpenseBatch"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.activate-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitActivate"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.activate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "activateHistoryExpenseBatch"
+        }
+      ]
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { HistoryExpenseService } from "./history-expense.service";
 import {
@@ -30,7 +31,7 @@ export class HistoryExpenseController {
   constructor(private readonly historyExpenses: HistoryExpenseService) {}
 
   @Get("capability")
-  @RequireProjectRole("history_expense.manage")
+  @RequirePositions("comprehensive_director", "finance_staff", "finance_director")
   capability(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.historyExpenses.capability(projectId, user.id);
   }
@@ -56,13 +57,13 @@ export class HistoryExpenseController {
   }
 
   @Get("batches")
-  @RequireProjectRole("history_expense.manage")
+  @RequirePositions("comprehensive_director", "finance_staff", "finance_director")
   list(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.historyExpenses.list(projectId, user.id);
   }
 
   @Get("batches/:batchId")
-  @RequireProjectRole("history_expense.manage")
+  @RequirePositions("comprehensive_director", "finance_staff", "finance_director")
   detail(
     @Param("projectId") projectId: string,
     @Param("batchId") batchId: string,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "registry": "docs/product/manifests/web-page-actions.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -9,8 +9,8 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 475,
-    "pageActionCount": 105,
+    "registeredActionCount": 481,
+    "pageActionCount": 111,
     "backgroundActionCount": 370,
     "reachableVueFileCount": 236,
     "routeRootCount": 79,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 410,
     "templateEventDirectiveCount": 1592,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 466,
-    "candidateProductionMutationConsumerCount": 466,
-    "acceptedProductionMutationConsumerCount": 466,
+    "coveredProductionMutationConsumerCount": 472,
+    "candidateProductionMutationConsumerCount": 472,
+    "acceptedProductionMutationConsumerCount": 472,
     "productionMutationConsumerPairCount": 472,
-    "blockerCount": 6
+    "blockerCount": 0
   },
   "evidence": {
     "totalProductionModuleCount": 429,
@@ -2331,7 +2331,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2377,7 +2377,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3525,7 +3525,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3569,7 +3569,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5132,7 +5132,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5176,7 +5176,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6238,7 +6238,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6284,7 +6284,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7526,7 +7526,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7570,7 +7570,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16010,7 +16010,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16054,7 +16054,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17200,6 +17200,390 @@
       ]
     },
     {
+      "id": "history-expense.activate-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitActivate",
+        "kind": "event",
+        "sourceLine": 546,
+        "sourceColumn": 85
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.activate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "activateHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/activation",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/activation",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+            "controller": "HistoryExpenseController",
+            "handler": "activate",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.activate"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitActivate",
+              "activateHistoryExpenseBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.confirm-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitConfirm",
+        "kind": "event",
+        "sourceLine": 543,
+        "sourceColumn": 84
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "confirmHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/confirmations",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+            "controller": "HistoryExpenseController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitConfirm",
+              "confirmHistoryExpenseBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.correct-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitCorrection",
+        "kind": "event",
+        "sourceLine": 599,
+        "sourceColumn": 110
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.correct",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "correctHistoryExpenseRow",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+            "controller": "HistoryExpenseController",
+            "handler": "correctRow",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.correct"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCorrection",
+              "correctHistoryExpenseRow"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.create-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "createBatch",
+        "kind": "event",
+        "sourceLine": 478,
+        "sourceColumn": 59
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "createHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/batches",
+            "normalizedKey": "POST /projects/:param/history-expenses/batches",
+            "controller": "HistoryExpenseController",
+            "handler": "create",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createBatch",
+              "createHistoryExpenseBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.precheck",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "runPrecheck",
+        "kind": "event",
+        "sourceLine": 477,
+        "sourceColumn": 61
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "precheckHistoryExpenses",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/precheck",
+          "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/precheck",
+            "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+            "controller": "HistoryExpenseController",
+            "handler": "precheck",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "runPrecheck",
+              "precheckHistoryExpenses"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "history-expense.verify-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitVerify",
+        "kind": "event",
+        "sourceLine": 645,
+        "sourceColumn": 104
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.verify",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "verifyHistoryExpenseRow",
+          "method": "PATCH",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId",
+            "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+            "controller": "HistoryExpenseController",
+            "handler": "verifyRow",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.verify"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitVerify",
+              "verifyHistoryExpenseRow"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "layout-sample.read-private-pdf",
       "usage": "background",
       "routePaths": [
@@ -17267,7 +17651,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17311,7 +17695,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20443,7 +20827,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20487,7 +20871,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6060,
+              "sourceLine": 6076,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -35704,62 +36088,7 @@
     "unresolvedRoutes": [],
     "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [],
-    "uncoveredMutationWrappers": [
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "activateHistoryExpenseBatch",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches/:param/activation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "confirmHistoryExpenseBatch",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches/:param/confirmations"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "correctHistoryExpenseRow",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "createHistoryExpenseBatch",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/batches"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "precheckHistoryExpenses",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/history-expenses/precheck"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
-        "wrapper": "verifyHistoryExpenseRow",
-        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/history-expenses/batches/:param/rows/:param"
-        ]
-      }
-    ],
+    "uncoveredMutationWrappers": [],
     "parseIssues": [],
     "dynamicEventIssues": [],
     "unresolvedComponentForwards": []

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "registry": "docs/product/manifests/route-usage.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 864,
-    "exactRouteCount": 864,
-    "normalizedRouteCount": 864,
+    "routeCount": 866,
+    "exactRouteCount": 866,
+    "normalizedRouteCount": 866,
     "classificationOverrideCount": 233,
     "consumerSurfaceOverrideCount": 55,
     "classificationOverrideSha256": "cc4f12a8b7720c084aeb7b3ee240c2fabea3bb1c59fd6ac266d3efd5ed24e2d7",
     "consumerSurfaceOverrideSha256": "2aff8df481301799b9e60c89a9f36790aae214b910bf690837d3ef07945d8c06",
-    "derivedProductionPageCount": 631,
-    "pageRouteCount": 650,
+    "derivedProductionPageCount": 633,
+    "pageRouteCount": 652,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
     "internalTaskCount": 53,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 702,
+      "web_api_wrapper": 704,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
       "operator_endpoint": 50,
       "none": 102
     },
-    "blockerCount": 4
+    "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 702,
+    "productionWrapperRouteCount": 704,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4927,7 +4927,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5951,
+            "sourceLine": 6076,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -9862,10 +9862,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -9903,10 +9907,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -9944,10 +9952,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -12358,6 +12370,114 @@
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/settlements/signed-ledger",
+      "normalizedKey": "GET /settlements/signed-ledger",
+      "controller": "SettlementController",
+      "handler": "signedLedger",
+      "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "budget_director",
+        "budget_staff",
+        "chairman",
+        "comprehensive_director",
+        "contract_director",
+        "contract_staff",
+        "employee",
+        "engineering_department_director",
+        "engineering_department_member",
+        "engineering_director",
+        "engineering_foreman",
+        "engineering_tech",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "material_director",
+        "material_staff",
+        "project_manager",
+        "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchSignedSettlementLedger",
+            "method": "GET",
+            "normalizedPath": "/settlements/signed-ledger",
+            "normalizedKey": "GET /settlements/signed-ledger",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/settlements/signed-ledger-export",
+      "normalizedKey": "GET /settlements/signed-ledger-export",
+      "controller": "SettlementController",
+      "handler": "signedLedgerExport",
+      "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "contract_director",
+        "contract_staff",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "downloadSignedSettlementLedgerExport",
+            "method": "GET",
+            "normalizedPath": "/settlements/signed-ledger-export",
+            "normalizedKey": "GET /settlements/signed-ledger-export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "GET",
@@ -35598,28 +35718,7 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [
-      {
-        "field": "consumerSurfaceCounts.web_api_wrapper",
-        "expected": 693,
-        "actual": 702
-      },
-      {
-        "field": "derivedProductionPageCount",
-        "expected": 622,
-        "actual": 631
-      },
-      {
-        "field": "routeCount",
-        "expected": 855,
-        "actual": 864
-      },
-      {
-        "field": "usageCounts.page",
-        "expected": 641,
-        "actual": 650
-      }
-    ],
+    "expectationMismatches": [],
     "unclassifiedRoutes": []
   }
 }

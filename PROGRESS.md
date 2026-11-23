@@ -1,5 +1,13 @@
 # 建工智管当前状态
 
+## 2026-11-23 整站 inspect 清单收敛（#411 / #417 / #421a）
+
+分支 `line-af-manifests`；先合入集成分支 `adopt-395-396-415` tip `2bbf3270b`（合并提交 `768f37447`），迁移到 327。未 push、未新增迁移、未操作生产。
+
+- `page-actions` blocker **6→0**（481 actions）：#417 历史费用预检/建批/核实/复核/入账/更正六个写适配器补专用 AST witness；同时把三个只读 GET 的守卫从仅 `history_expense.manage` 改为页面岗位并集（写路由岗位不变），使财务动作真实可达；未改检查器判定、未补假动作。
+- `route-usage` 计数漂移 **4→0**：`routeCount 855→866`、`page 641→652`、`derivedProductionPageCount 622→633`、`web_api_wrapper 693→704`；未分类 0，分类 override 数量/hash 未变。#421a 的已签结算台账 2 条只读路由自动归 `page`；#411 本快照无新增 page-action。
+- 三条命门全部退出 0；web-api READY 774/848；Web typecheck、API build、history-expense 单测 13/13、清单单测 125/125 通过；迁移基线 327 clean；`docker ps -q` 为 0。仍红：page-action 单测 1 条合并基线既存失败。详见 [回执](docs/progress/2026-11-23-manifest-convergence-411-417.md)。
+
 ## 2026-11-23 整站 inspect 清单收敛（#403 返工 / #405 / #404）
 
 分支 `line-af-manifests`（基线 `e16e2b515`），先合入 `adopt-395-396-415` tip `96930648f`（#404，迁移到 326），未 push、未新增迁移、未操作生产。

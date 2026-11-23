@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `4239111a9a035829b070f609e23b57597524f791532d57d2e5f06f12bb25dc1d` |
-| webApiWrappers | ready | `d98e3d2216384837489a1e170d2844f3b44578dfcd03a8b8594123610c4a85ea` |
-| webPageActions | ready | `1449d114e4ff0954decc3838180fb51b91f22663bfad9f65c707be17de6b6405` |
-| routeUsage | ready | `722016b10983e91df5d9268db7566a727b418602dfbe35a145e3c04569fdf3d4` |
+| nestRoutes | ready | `4355f752964dcb2a7f577b694fbaa63f233a0af2e67e269d3b9bd72de4e38c8d` |
+| webApiWrappers | ready | `a05098182b6b1a77f1a4286df800d3443b31060e6d71d129daf8f49c41d75bd1` |
+| webPageActions | ready | `de6f1749f54caeb1187e5d9a9db3cecfd240606726da789d1f4ff25595b10c06` |
+| routeUsage | ready | `9911a4b41c33e3d7c9c564c1263e5dd0b321589b40efc571db431e5358d984a8` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 855 |
-| pageRouteCount | 641 |
+| routeCount | 866 |
+| pageRouteCount | 652 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 91 |
 | internalTaskRouteCount | 53 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 837 |
+| mainRequestBindingCount | 848 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 475 |
-| actionBindingCount | 576 |
-| acceptedActionBindingCount | 528 |
+| registeredActionCount | 481 |
+| actionBindingCount | 582 |
+| acceptedActionBindingCount | 534 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 466 |
-| coveredProductionMutationConsumerPairCount | 466 |
+| productionMutationConsumerPairCount | 472 |
+| coveredProductionMutationConsumerPairCount | 472 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -261,6 +261,9 @@
 | GET | /projects/:projectId/financing-quotas/:quotaId/review-capability | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaReviewCapability | project-financing-quota.review-approve<br>project-financing-quota.review-reject | not_applicable | — |
 | GET | /projects/:projectId/financing-quotas/:quotaId/termination-capability | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaTerminationCapability | project-financing-quota.terminate | not_applicable | — |
 | GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaRequestCapability<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request<br>project-financing-quota.review-approve<br>project-financing-quota.review-reject<br>project-financing-quota.terminate | not_applicable | — |
+| GET | /projects/:projectId/history-expenses/batches/:batchId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatch | — | not_applicable | — |
+| GET | /projects/:projectId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatches | — | not_applicable | — |
+| GET | /projects/:projectId/history-expenses/capability | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseCapability | — | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectOperatingProfile | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/:batchId | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#deleteOperatingTakeoverDraft<br>apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverDetail | operating-takeover.delete-draft | not_applicable | — |
@@ -317,6 +320,8 @@
 | GET | /settlements/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLedgerExport | — | not_applicable | — |
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | — |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
+| GET | /settlements/signed-ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSignedSettlementLedgerExport | — | not_applicable | — |
+| GET | /settlements/signed-ledger | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSignedSettlementLedger | — | not_applicable | — |
 | GET | /settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementWorkbenchLedger | — | not_applicable | — |
 | GET | /spot-procurement-payments/:paymentId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefundForPayment<br>apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherForPayment | spot-procurement-payment.refund.record<br>spot-procurement-payment.refund.record<br>spot-procurement.invoice-append | not_applicable | — |
@@ -363,6 +368,7 @@
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
+| PATCH | /projects/:projectId/history-expenses/batches/:batchId/rows/:rowId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#verifyHistoryExpenseRow | history-expense.verify-row | covered | — |
 | PATCH | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#updateProjectOperatingProfile | project-operating-profile.save | covered | — |
 | PATCH | /projects/:projectId/operating-takeovers/:batchId/rows/:rowId | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#updateOperatingTakeoverRow | operating-takeover.update-row | covered | — |
 | PATCH | /projects/:projectId/participating-companies/:participantId/deactivation | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#deactivateProjectParticipatingCompany | project-operating-profile.deactivate-participating-company | covered | — |
@@ -731,6 +737,11 @@
 | POST | /projects/:projectId/financing-quotas/:quotaId/termination | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction | project-financing-quota.terminate | covered | — |
 | POST | /projects/:projectId/financing-quotas/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
 | POST | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
+| POST | /projects/:projectId/history-expenses/batches/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#activateHistoryExpenseBatch | history-expense.activate-batch | covered | — |
+| POST | /projects/:projectId/history-expenses/batches/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#confirmHistoryExpenseBatch | history-expense.confirm-batch | covered | — |
+| POST | /projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#correctHistoryExpenseRow | history-expense.correct-row | covered | — |
+| POST | /projects/:projectId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#createHistoryExpenseBatch | history-expense.create-batch | covered | — |
+| POST | /projects/:projectId/history-expenses/precheck | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#precheckHistoryExpenses | history-expense.precheck | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#activateOperatingTakeover | operating-takeover.activate | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/attachments | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#addOperatingTakeoverAttachmentGroup | operating-takeover.attach-files | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#confirmOperatingTakeover | operating-takeover.confirm | covered | — |

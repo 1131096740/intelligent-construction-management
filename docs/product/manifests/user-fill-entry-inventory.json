@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 461,
+    "activeBusinessActionCount": 467,
     "technicalActionCount": 10,
-    "activeBindingCount": 560,
+    "activeBindingCount": 566,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -3644,6 +3644,102 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /global-invoices/:param/void"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.activate-batch",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches/:param/activation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.confirm-batch",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches/:param/confirmations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.correct-row",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.create-batch",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/batches"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.precheck",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/precheck"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.verify-row",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "PATCH /projects/:param/history-expenses/batches/:param/rows/:param"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
