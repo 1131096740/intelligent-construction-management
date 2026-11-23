@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `4355f752964dcb2a7f577b694fbaa63f233a0af2e67e269d3b9bd72de4e38c8d` |
-| webApiWrappers | ready | `a05098182b6b1a77f1a4286df800d3443b31060e6d71d129daf8f49c41d75bd1` |
-| webPageActions | ready | `de6f1749f54caeb1187e5d9a9db3cecfd240606726da789d1f4ff25595b10c06` |
-| routeUsage | ready | `9911a4b41c33e3d7c9c564c1263e5dd0b321589b40efc571db431e5358d984a8` |
+| nestRoutes | ready | `88404d4470726b243a05631d0486f71b848a95b3a5e91919a37be8ac032efcb9` |
+| webApiWrappers | ready | `e365910124435ade1f455a201f211425e38fcd7ade18d013cf42b1350e7b17bf` |
+| webPageActions | ready | `ae3fddeff6717d8425a1249484fd2a5537ef28f12e134a4d949921182ee8cf30` |
+| routeUsage | ready | `fff76c6d6eef98cc6afb3d64766a57fab2d192ca05bb72e7fb7e31e4d9ee0a38` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 866 |
-| pageRouteCount | 652 |
+| routeCount | 871 |
+| pageRouteCount | 657 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 91 |
 | internalTaskRouteCount | 53 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 848 |
+| mainRequestBindingCount | 853 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 481 |
-| actionBindingCount | 582 |
-| acceptedActionBindingCount | 534 |
+| registeredActionCount | 483 |
+| actionBindingCount | 584 |
+| acceptedActionBindingCount | 536 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 472 |
-| coveredProductionMutationConsumerPairCount | 472 |
+| productionMutationConsumerPairCount | 474 |
+| coveredProductionMutationConsumerPairCount | 474 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -174,6 +174,8 @@
 | GET | /fund-executions/cases | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCases | — | not_applicable | — |
 | GET | /fund-executions/observation-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionObservationOptions | — | not_applicable | — |
 | GET | /fund-executions/reversal-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionReversalOptions | — | not_applicable | — |
+| GET | /fund-flows/export | page | web_api_wrapper | apps/web-admin/src/api/fund-flow.api.ts#downloadFundFlowExport | — | not_applicable | — |
+| GET | /fund-flows | page | web_api_wrapper | apps/web-admin/src/api/fund-flow.api.ts#fetchFundFlows | — | not_applicable | — |
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
@@ -254,6 +256,7 @@
 | GET | /projects/:projectId/contract-takeovers/import-template | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverImportTemplate | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/ledger-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverLedgerExport | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeovers | — | not_applicable | — |
+| GET | /projects/:projectId/cost-attributions | page | web_api_wrapper | apps/web-admin/src/api/cost-attribution.api.ts#fetchCostAttributions | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status<br>project-expense.receipt-confirm-local-status | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/:expenseRequestId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseActionCapability | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseCreateCapability | — | not_applicable | — |
@@ -721,6 +724,8 @@
 | POST | /projects/:projectId/contract-takeovers/imports/apply | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverExcelImport | contract-takeover.apply-excel-import | covered | — |
 | POST | /projects/:projectId/contract-takeovers/imports/preview | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverExcelImport | contract-takeover.preview-excel-import | covered | — |
 | POST | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeover | contract-takeover.create | covered | — |
+| POST | /projects/:projectId/cost-attributions/:factId | page | web_api_wrapper | apps/web-admin/src/api/cost-attribution.api.ts#requestCostAttribution | cost-attribution.request | covered | — |
+| POST | /projects/:projectId/cost-attributions/:id/review | page | web_api_wrapper | apps/web-admin/src/api/cost-attribution.api.ts#reviewCostAttribution | cost-attribution.review | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-pdf-download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadProjectExpenseApprovalPdf | project-expense.approval-pdf-download | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeProjectExpenseWithdrawalAction | project-expense.withdraw | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeProjectExpenseApprovalReviewAction | project-expense.review-approve<br>project-expense.review-reject | covered | — |

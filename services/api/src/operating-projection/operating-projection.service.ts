@@ -135,6 +135,7 @@ type ProjectionReadContext = {
   cutoffAt: Date;
   scope: ProjectionScopeInput;
   projectById: Map<string, { id: string; code: string; name: string }>;
+  costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>;
   constructionEnterpriseSubjectIds?: string[];
   companyEntityVersionIds?: string[];
   affiliateAssignments: Array<{
@@ -896,6 +897,45 @@ export class OperatingProjectionService {
         })
       );
       const projectById = new Map(projects.map((project) => [project.id, project]));
+      const attributionDelegate = (
+        tx as unknown as {
+          operatingCostAttributionConfirmation?: {
+            findMany(args: {
+              where: { projectId: { in: string[] }; status: string };
+              select: {
+                operatingFactId: true;
+                companyEntityVersionId: true;
+                companyNameSnapshot: true;
+              };
+            }): Promise<
+              Array<{
+                operatingFactId: string;
+                companyEntityVersionId: string;
+                companyNameSnapshot: string;
+              }>
+            >;
+          };
+        }
+      ).operatingCostAttributionConfirmation;
+      const attributionRows = attributionDelegate
+        ? await attributionDelegate.findMany({
+            where: { projectId: { in: projectIds }, status: "confirmed" },
+            select: {
+              operatingFactId: true,
+              companyEntityVersionId: true,
+              companyNameSnapshot: true
+            }
+          })
+        : [];
+      const costAttributionByFactId = new Map(
+        attributionRows.map((row) => [
+          row.operatingFactId,
+          {
+            companyEntityVersionId: row.companyEntityVersionId,
+            companyName: row.companyNameSnapshot
+          }
+        ])
+      );
       const companyEntityId = input.scope.filters?.companyEntityId;
       const companyEntityVersions = companyEntityId
         ? await tx.companyEntityVersion.findMany({
@@ -1085,7 +1125,8 @@ export class OperatingProjectionService {
           const mapped = facts.map((fact) => versionedProjectionFactFromStored(
             input.allowExactOwnerSettlementCents ? projectCloseLegacyOwnerSettlementRow(fact) : fact,
             projectById,
-            input.numericProtocolVersion ?? 1
+            input.numericProtocolVersion ?? 1,
+            costAttributionByFactId
           ));
           accumulator.startFacts(mapped);
         },
@@ -1318,6 +1359,7 @@ export class OperatingProjectionService {
             numericProtocolVersion: input.numericProtocolVersion ?? 1,
             scope,
             projectById,
+            costAttributionByFactId,
             constructionEnterpriseSubjectIds,
             companyEntityVersionIds: companyEntityVersionIds
               ? Array.from(companyEntityVersionIds)
@@ -1969,8 +2011,8 @@ async function readFactDetailPageInTransaction(
     if (!rows.length) break;
     for (const row of rows) {
       const fact = context.numericProtocolVersion === 2
-        ? versionedProjectionFactFromStored({ ...row.fact, sourceSnapshot: row.fact.sourceSnapshot ?? {}, subjectSnapshot: row.fact.subjectSnapshot ?? {} }, context.projectById, 2)
-        : projectionFactFromDetailStored(row.fact, context.projectById);
+        ? versionedProjectionFactFromStored({ ...row.fact, sourceSnapshot: row.fact.sourceSnapshot ?? {}, subjectSnapshot: row.fact.subjectSnapshot ?? {} }, context.projectById, 2, context.costAttributionByFactId)
+        : projectionFactFromDetailStored(row.fact, context.projectById, context.costAttributionByFactId);
       if (row.numericProtocolVersion === 2 && row.amountCents !== null) throw new BadRequestException("新版经营明细混用了原分金额，请核对原资料");
       const impact: ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput = row.numericProtocolVersion === 2
         ? { id: row.id, impactKind: row.impactKind, numericProtocolVersion: 2, amountCents: null, amountYuan: row.amountYuan === null ? null : row.amountYuan.toFixed(4), direction: row.direction, subjectKind: row.subjectKind, subjectId: row.subjectId }
@@ -2194,15 +2236,15 @@ function projectCloseLegacyOwnerSettlementRow<Row extends {
   return { ...row, numericProtocolVersion: 1, amountCents: BigInt(cents.toFixed(0)), amountYuan: null };
 }
 
-function versionedProjectionFactFromStored(fact: ProjectionStoredFact, projectById: Map<string, { id: string; code: string; name: string }>, protocol: 1 | 2): ProjectionFactInput | ProjectionV2FactInput {
-  if (fact.numericProtocolVersion !== 2) return projectionFactFromStored(fact, projectById);
+function versionedProjectionFactFromStored(fact: ProjectionStoredFact, projectById: Map<string, { id: string; code: string; name: string }>, protocol: 1 | 2, costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>): ProjectionFactInput | ProjectionV2FactInput {
+  if (fact.numericProtocolVersion !== 2) return projectionFactFromStored(fact, projectById, [], costAttributionByFactId);
   if (protocol !== 2) throw new BadRequestException("此经营读取协议不能表达新版四位金额，请使用新版经营读取入口");
   if (fact.amountCents !== null) throw new BadRequestException("新版经营事实混用了旧分金额，请核对原资料");
   const project = projectById.get(fact.projectId);
   return { numericProtocolVersion: 2, amountCents: null, amountYuan: fact.amountYuan === null ? null : fact.amountYuan.toFixed(4),
     id: fact.id, projectId: fact.projectId, projectCode: project?.code ?? "未知项目", projectName: project?.name ?? "未知项目", sourceType: fact.sourceType, sourceBusinessId: fact.sourceBusinessId, sourceVersion: fact.sourceVersion, sourceBusinessCode: fact.sourceBusinessCode,
     occurredAt: fact.occurredAt.toISOString(), confirmedAt: fact.confirmedAt.toISOString(), affiliateBusinessPartyVersionId: fact.affiliateBusinessPartyVersionId, affiliateNameSnapshot: fact.affiliateNameSnapshot, factKind: fact.factKind, operatingLevel: fact.operatingLevel, evidenceLevel: fact.evidenceLevel, direction: fact.direction, sourceSnapshot: fact.sourceSnapshot, entryKind: fact.entryKind, adjustsFactId: fact.adjustsFactId,
-    debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null, creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null, subjectReferences: projectionFactSubjectReferences(fact), impacts: [] };
+    debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null, creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null, costBearingCompanySubject: costBearingSubject(fact, costAttributionByFactId), actualPayerSubject: fact.actualPayerSubjectKind && fact.actualPayerSubjectId ? { kind: fact.actualPayerSubjectKind, id: fact.actualPayerSubjectId } : null, subjectReferences: projectionFactSubjectReferences(fact), impacts: [] };
 }
 function versionedProjectionImpactFromStored(impact: StoredOperatingImpact, protocol: 1 | 2): ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput {
   if (impact.numericProtocolVersion !== 2) return projectionImpactFromStored(impact);
@@ -2213,7 +2255,8 @@ function versionedProjectionImpactFromStored(impact: StoredOperatingImpact, prot
 function projectionFactFromStored(
   fact: ProjectionStoredFact,
   projectById: Map<string, { id: string; code: string; name: string }>,
-  impacts: StoredOperatingImpact[] = []
+  impacts: StoredOperatingImpact[] = [],
+  costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>
 ): ProjectionFactInput {
   const project = projectById.get(fact.projectId);
   return {
@@ -2239,6 +2282,8 @@ function projectionFactFromStored(
     adjustsFactId: fact.adjustsFactId,
     debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null,
     creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null,
+    costBearingCompanySubject: costBearingSubject(fact, costAttributionByFactId),
+    actualPayerSubject: fact.actualPayerSubjectKind && fact.actualPayerSubjectId ? { kind: fact.actualPayerSubjectKind, id: fact.actualPayerSubjectId } : null,
     subjectReferences: projectionFactSubjectReferences(fact),
     impacts: impacts.map(projectionImpactFromStored)
   };
@@ -2246,13 +2291,35 @@ function projectionFactFromStored(
 
 function projectionFactFromDetailStored(
   fact: DetailStoredFact,
-  projectById: Map<string, { id: string; code: string; name: string }>
+  projectById: Map<string, { id: string; code: string; name: string }>,
+  costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>
 ): ProjectionFactInput {
   return projectionFactFromStored({
     ...fact,
     sourceSnapshot: fact.sourceSnapshot ?? {},
     subjectSnapshot: fact.subjectSnapshot ?? {}
-  }, projectById);
+  }, projectById, [], costAttributionByFactId);
+}
+
+function costBearingSubject(
+  fact: { costBearingCompanySubjectKind: string | null; costBearingCompanySubjectId: string | null; subjectSnapshot: unknown },
+  costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>
+) {
+  if (fact.costBearingCompanySubjectKind && fact.costBearingCompanySubjectId) {
+    return {
+      kind: fact.costBearingCompanySubjectKind,
+      id: fact.costBearingCompanySubjectId,
+      name: projectionSubjectName(fact.subjectSnapshot, "costBearingCompany")
+    };
+  }
+  const attribution = costAttributionByFactId?.get((fact as { id?: string }).id ?? "");
+  return attribution
+    ? {
+        kind: "participating_company",
+        id: attribution.companyEntityVersionId,
+        name: attribution.companyName
+      }
+    : null;
 }
 
 function projectionReplacementTargetFromStored(
@@ -2705,6 +2772,12 @@ function assertDetailResponseWithinBudget(response: unknown): void {
   if (Buffer.byteLength(JSON.stringify(response), "utf8") > MAX_DETAIL_RESPONSE_BYTES) {
     throw new PayloadTooLargeException("经营投影明细响应超出 8 MiB 安全预算，请缩小每页条数或筛选范围");
   }
+}
+
+function projectionSubjectName(snapshot: unknown, role: string): string | null {
+  const subject = jsonRecord(jsonRecord(snapshot)[role]);
+  const name = typeof subject.name === "string" ? subject.name.trim() : "";
+  return name || null;
 }
 
 export function projectionFactSubjectReferences(fact: {

@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 54,
-    "exportedFunctionCount": 798,
-    "transportWrapperCount": 774,
+    "apiModuleCount": 56,
+    "exportedFunctionCount": 803,
+    "transportWrapperCount": 779,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 848,
+    "mainRequestBindingCount": 853,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 804,
-    "productionConsumerCount": 683,
+    "requestEdgeCount": 809,
+    "productionConsumerCount": 688,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 429,
-    "reachableProductionModuleCount": 410
+    "productionModuleCount": 432,
+    "reachableProductionModuleCount": 413
   },
   "wrappers": [
     {
@@ -6853,7 +6853,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6105,
+          "sourceLine": 6134,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7314,7 +7314,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7845,
+          "sourceLine": 7874,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7346,7 +7346,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7829,
+          "sourceLine": 7858,
           "method": "GET",
           "path": "/contracts/ledger-export?:param",
           "normalizedPath": "/contracts/ledger-export",
@@ -7376,7 +7376,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7829,
+          "sourceLine": 7858,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7406,7 +7406,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6217,
+          "sourceLine": 6246,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7435,7 +7435,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7829,
+          "sourceLine": 7858,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7465,7 +7465,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2987,
+          "sourceLine": 3016,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7527,7 +7527,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 6076,
+          "sourceLine": 6105,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7561,7 +7561,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4073,
+          "sourceLine": 4102,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7620,7 +7620,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7872,
+          "sourceLine": 7901,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7649,7 +7649,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7859,
+          "sourceLine": 7888,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7678,7 +7678,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7887,
+          "sourceLine": 7916,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7707,7 +7707,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7829,
+          "sourceLine": 7858,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7737,7 +7737,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7829,
+          "sourceLine": 7858,
           "method": "GET",
           "path": "/settlements/signed-ledger-export?:param",
           "normalizedPath": "/settlements/signed-ledger-export",
@@ -9536,6 +9536,7 @@
         "apps/web-admin/src/components/ContractRelationshipLedger.vue",
         "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+        "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
@@ -13203,6 +13204,90 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchCostAttributions",
+      "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 40,
+          "method": "GET",
+          "path": "/projects/:param/cost-attributions",
+          "normalizedPath": "/projects/:param/cost-attributions",
+          "normalizedKey": "GET /projects/:param/cost-attributions",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCostAttributions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "requestCostAttribution",
+      "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 55,
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param",
+          "normalizedPath": "/projects/:param/cost-attributions/:param",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "requestCostAttribution",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reviewCostAttribution",
+      "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 55,
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param/review",
+          "normalizedPath": "/projects/:param/cost-attributions/:param/review",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewCostAttribution",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchDutySms",
       "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
       "kind": "transport",
@@ -15815,6 +15900,60 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "downloadFundFlowExport",
+      "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+      "kind": "transport",
+      "returnProvenance": "none",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "GET",
+          "path": "/fund-flows/export",
+          "normalizedPath": "/fund-flows/export",
+          "normalizedKey": "GET /fund-flows/export",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadFundFlowExport"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundFlows",
+      "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 84,
+          "method": "GET",
+          "path": "/fund-flows",
+          "normalizedPath": "/fund-flows",
+          "normalizedKey": "GET /fund-flows",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundFlows"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -19830,6 +19969,7 @@
         "apps/web-admin/src/api/project-operating-profile.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
       ],

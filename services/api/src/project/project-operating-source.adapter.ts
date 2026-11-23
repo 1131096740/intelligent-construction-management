@@ -44,6 +44,7 @@ type ConstructionEnterpriseSourceRow = {
   effectDirection: string;
   amountCents: bigint;
   counterpartyName: string;
+  periodLabel?: string;
   affiliateAssignmentId: string;
   affiliateBusinessPartyVersionId: string;
   affiliateNameSnapshot: string;
@@ -179,6 +180,7 @@ function sourceSnapshot(
       effectDirection: row.effectDirection,
       amountCents: row.amountCents?.toString() ?? null,
       counterpartyName: row.counterpartyName,
+      periodLabel: row.periodLabel,
       description: row.description,
       evidenceFileId: row.evidenceFileId,
       recordedByUserId: row.recordedByUserId,

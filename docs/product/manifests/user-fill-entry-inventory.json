@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 467,
+    "activeBusinessActionCount": 469,
     "technicalActionCount": 10,
-    "activeBindingCount": 566,
+    "activeBindingCount": 568,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -2387,6 +2387,38 @@
         "POST /contracts/:param/signing/material-change"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "cost-attribution.request",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/cost-attributions/:param"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "cost-attribution.review",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/cost-attributions/:param/review"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },

@@ -12166,6 +12166,54 @@
           "name": "activateHistoryExpenseBatch"
         }
       ]
+    },
+    {
+      "id": "cost-attribution.request",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttribution"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canRequestCostAttribution"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "name": "requestCostAttribution"
+        }
+      ]
+    },
+    {
+      "id": "cost-attribution.review",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttributionReview"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canReviewCostAttribution"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "name": "reviewCostAttribution"
+        }
+      ]
     }
   ]
 }

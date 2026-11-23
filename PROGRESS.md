@@ -1,5 +1,13 @@
 # 建工智管当前状态
 
+## 2026-11-23 整站 inspect 清单收敛（#418 成本归属）
+
+分支 `line-af-manifests`；合入 #418（合并状态），迁移到 328。未 push、未新增迁移、未操作生产。
+
+- `page-actions` blocker **2→0**（483 actions）：#418 公共现金成本归属 `requestCostAttribution`/`reviewCostAttribution` 两个写适配器补专用 AST witness（打开按钮门→对话框条件 confirm→写调用→可信单 GET→后端岗位守卫）；未改检查器判定、未补假动作。
+- `route-usage` 计数漂移 **4→0**：`routeCount 866→871`、`page 652→657`、`derivedProductionPageCount 633→638`、`web_api_wrapper 704→709`；未分类 0，override 数量/hash 未变。
+- 三条命门全部退出 0；web-api READY 779/853；Web typecheck、API build、清单单测 125/125 通过；迁移基线 328 clean；`docker ps -q` 为 0。仍红：page-action 单测 1 条合并基线既存失败。详见 [回执](docs/progress/2026-11-23-manifest-convergence-418.md)。
+
 ## 2026-11-23 整站 inspect 清单收敛（#411 / #417 / #421a）
 
 分支 `line-af-manifests`；先合入集成分支 `adopt-395-396-415` tip `2bbf3270b`（合并提交 `768f37447`），迁移到 327。未 push、未新增迁移、未操作生产。
@@ -15,6 +23,17 @@
 - `inspect:whole-site-page-actions:ready` blocker **5→0**：新增 `ActualPurchaseBatchPanel.vue` 5 个写适配器的专用 AST witness（打开按钮门 → 对话框写调用 → 可信单 GET → 后端岗位守卫）；未改通用判定、未补假页面动作。
 - `inspect:whole-site-route-usage` 未分类 **8→0**：2 条 #403 批次详情/更新、6 条 #405 其他项目付款写接口按 #400 既有口径登记为 `internal_task` + `operator_endpoint`，理由写“Web 写入口尚未接入”；#404 的 2 个只读导出/2 条路由自动为 `page`。
 - `inspect:release-manifests` 转绿；page-actions READY 475/0、route-usage READY 855/0、web-api READY 763/837；Web typecheck 通过；迁移基线 326 clean；`docker ps -q` 为 0。仍存产品缺口（#405 六个写接口无 Web 入口、#403 详情/更新适配器无消费者），详见 [回执](docs/progress/2026-11-23-manifest-convergence-403-405.md)。
+## 2026-11-23 #418 经营总览与成本主体归属统一去重
+
+分支 `line-ai-418`；集成分支 `line-aj-421a` tip `9ba41d537`（含 #411/#417/#421a）已合入（合并提交 `4917ebe95`），代码提交 `2eb991c080a5a32b41c958ad55ccb1ddd897ec22`。未 push、未操作生产；新增 1 条迁移，**327→328**（末端 `20261126000000_operating_cost_attribution_confirmation`，摘要 `362340da…`）；未改 `07500`/`05800`。
+
+- 跨来源去重键统一为「合同版本 + 结算期次（编号）+ 合同关系（downstream/upward/outside_fact）」：已签复核与旧结算生效双向 fail-closed，投影读侧同键去重；同期次只计一次成本，金额不一致关闭金额投影。新已签 `upward` 只进内部应收，`outside_fact` 进成本/应付。
+- 总览新增成对不可相加的「施工企业已付」（直接付下游+转我方）与「项目对外支付」（施工企业直接付下游+我方付下游）；内部转款、扣费不计入对外支付。A26 真库：已付 8000、对外 7000。
+- FND-22 补全写侧：新增归属确认表/服务/接口，综合或财务发起、财务主管确认/退回，自审原因+密码、幂等、单有效确认唯一键、事务内审计；确认只让读侧替换成本承担公司，不改事实金额/主体、不加成本或付款。真库：待归属 8700→8000、丙公司 700、总成本仍 12700。
+- FND-23 新增资金流水读取模型/导出/Web「资金流水」页：项目/公司/日期/类型过滤，到账/付款/转入/转出/退款分类与逐主体滚动余额，逐笔直达原记录；财务/综合/领导全局，项目经理只自己项目。OPS-14 总览新增按合同钻取，审批中申请与已批待付分列不叠加、跨合同不抵扣。
+- 真实 PostgreSQL 16 一次性容器 **9/9**（双入口去重/upward/outside/成对指标/追溯/唯一键/双向守卫/G4 确认/G5 流水与导出/G9 钻取）；`worktreeClean=true`，容器清理后 `docker ps -q` 为 0。API 定向 56 套 993 项、Web 261 文件 2446 项、共享域 256 项、API/Web typecheck、`check:ui`、迁移基线 328 clean；整站清单已重建，page-actions/route-usage ready 门仍有既有 blocker。
+- 需主线重钉：327→328 计数/末端/摘要，及 `.github/task12-install-295/` 既有 323/`07500` 链；本票未自行重钉。边界：真库为 `db push` 未重放迁移；历史快照缺期次需回填；A24/A29 外部前置未重验。详见 [回执](docs/progress/2026-11-23-issue-418.md)。
+
 ## 2026-11-23 #411 第三家公司代还与往来更正
 
 分支 `line-ag-411`（基线/集成 `adopt-395-396-415` tip `96930648f`），代码提交 `0a52ae4c`。未 push、未改 `07500`/`05800`、未操作生产；新增 1 条迁移，迁移数 **326→327**（终态 `20261125000000_company_transfer_third_party_repayment`，校验 `cb9fa70f…`）。

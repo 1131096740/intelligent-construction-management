@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 481,
+    "registeredActionCount": 483,
     "pageActionCount": 111,
-    "backgroundActionCount": 370,
-    "reachableVueFileCount": 236,
-    "routeRootCount": 79,
-    "totalVueFileCount": 249,
-    "parsedVueFileCount": 249,
-    "reachableProductionModuleCount": 410,
-    "templateEventDirectiveCount": 1592,
+    "backgroundActionCount": 372,
+    "reachableVueFileCount": 237,
+    "routeRootCount": 80,
+    "totalVueFileCount": 250,
+    "parsedVueFileCount": 250,
+    "reachableProductionModuleCount": 413,
+    "templateEventDirectiveCount": 1599,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 472,
-    "candidateProductionMutationConsumerCount": 472,
-    "acceptedProductionMutationConsumerCount": 472,
-    "productionMutationConsumerPairCount": 472,
+    "coveredProductionMutationConsumerCount": 474,
+    "candidateProductionMutationConsumerCount": 474,
+    "acceptedProductionMutationConsumerCount": 474,
+    "productionMutationConsumerPairCount": 474,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 429,
-    "reachableProductionModuleCount": 410,
-    "totalVueFileCount": 249,
-    "parsedVueFileCount": 249
+    "totalProductionModuleCount": 432,
+    "reachableProductionModuleCount": 413,
+    "totalVueFileCount": 250,
+    "parsedVueFileCount": 250
   },
   "actions": [
     {
@@ -2331,7 +2331,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2377,7 +2377,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3525,7 +3525,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3569,7 +3569,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5132,7 +5132,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5176,7 +5176,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6238,7 +6238,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6284,7 +6284,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7526,7 +7526,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7570,7 +7570,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -10904,6 +10904,142 @@
               "executeContractSigningMaterialChange",
               "fetchContractDetail",
               "assertContractSigningMaterialChangePreflight"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "cost-attribution.request",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttribution",
+        "kind": "background_call",
+        "sourceLine": 2386,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canRequestCostAttribution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "requestCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/cost-attributions/:factId",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+            "controller": "OperatingCostAttributionController",
+            "handler": "request",
+            "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCostAttribution",
+              "requestCostAttribution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "cost-attribution.review",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttributionReview",
+        "kind": "background_call",
+        "sourceLine": 2428,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canReviewCostAttribution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "reviewCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param/review",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/cost-attributions/:id/review",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+            "controller": "OperatingCostAttributionController",
+            "handler": "review",
+            "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCostAttributionReview",
+              "reviewCostAttribution"
             ]
           },
           "ticketFollowups": []
@@ -16010,7 +16146,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16054,7 +16190,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17651,7 +17787,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17695,7 +17831,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20827,7 +20963,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20871,7 +21007,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6076,
+              "sourceLine": 6105,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -22410,7 +22546,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 1995,
+        "sourceLine": 2265,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -22705,7 +22841,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 3069,
+        "sourceLine": 3440,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22770,7 +22906,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 3031,
+        "sourceLine": 3402,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22835,7 +22971,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2395,
+        "sourceLine": 2766,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22900,7 +23036,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2379,
+        "sourceLine": 2750,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23203,7 +23339,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2990,
+        "sourceLine": 3361,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25080,7 +25216,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 944,
+        "sourceLine": 1116,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26488,7 +26624,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1906,
+        "sourceLine": 2176,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26553,7 +26689,7 @@
         "event": "call",
         "handler": "uploadOwnerSettlementFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1543,
+        "sourceLine": 1765,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26618,7 +26754,7 @@
         "event": "call",
         "handler": "recordOwnerSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1534,
+        "sourceLine": 1756,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27031,7 +27167,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1915,
+        "sourceLine": 2185,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27096,7 +27232,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2772,
+        "sourceLine": 3143,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27163,7 +27299,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2711,
+        "sourceLine": 3082,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27232,7 +27368,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2659,
+        "sourceLine": 3030,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27299,7 +27435,7 @@
         "event": "call",
         "handler": "validateProjectUpstreamFundDraftWithDefinition",
         "kind": "background_call",
-        "sourceLine": 2675,
+        "sourceLine": 3046,
         "sourceColumn": 0
       },
       "semantic": "business_write",

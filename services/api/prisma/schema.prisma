@@ -7947,3 +7947,33 @@ model ContractWorkCompletionFact {
   createdAt          DateTime               @default(now())
   completion         ContractWorkCompletion @relation(fields: [completionId], references: [id], onDelete: Restrict)
 }
+
+// FND-22 公共现金成本归属确认：只改成本承担公司，不新增成本或付款。
+// activeKey 在待确认/已确认时为 "active"，退回后为 null，保证同一事实最多一条有效确认。
+model OperatingCostAttributionConfirmation {
+  id                         String    @id @default(uuid())
+  projectId                  String
+  operatingFactId            String
+  operatingFactProjectId     String
+  sourceDedupKey             String?
+  status                     String    @default("pending_review")
+  activeKey                  String?
+  companyEntityId            String
+  companyEntityVersionId     String
+  companyNameSnapshot        String
+  companyCreditCodeSnapshot  String?
+  reason                     String
+  requestedByUserId          String
+  requestedAt                DateTime  @default(now())
+  reviewedByUserId           String?
+  reviewedAt                 DateTime?
+  reviewReason               String?
+  revision                   Int       @default(1)
+  idempotencyKey             String    @unique
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  @@unique([operatingFactId, activeKey], map: "OperatingCostAttributionConfirmation_active_key")
+  @@index([projectId, status], map: "OperatingCostAttributionConfirmation_project_status_idx")
+  @@index([sourceDedupKey], map: "OperatingCostAttributionConfirmation_source_dedup_idx")
+}

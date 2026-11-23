@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "4355f752964dcb2a7f577b694fbaa63f233a0af2e67e269d3b9bd72de4e38c8d",
+      "sha256": "88404d4470726b243a05631d0486f71b848a95b3a5e91919a37be8ac032efcb9",
       "status": "ready",
       "summary": {
-        "routeCount": 866
+        "routeCount": 871
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "a05098182b6b1a77f1a4286df800d3443b31060e6d71d129daf8f49c41d75bd1",
+      "sha256": "e365910124435ade1f455a201f211425e38fcd7ade18d013cf42b1350e7b17bf",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 54,
-        "exportedFunctionCount": 798,
-        "transportWrapperCount": 774,
+        "apiModuleCount": 56,
+        "exportedFunctionCount": 803,
+        "transportWrapperCount": 779,
         "pureExportCount": 24,
-        "mainRequestBindingCount": 848,
+        "mainRequestBindingCount": 853,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 804,
-        "productionConsumerCount": 683,
+        "requestEdgeCount": 809,
+        "productionConsumerCount": 688,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "de6f1749f54caeb1187e5d9a9db3cecfd240606726da789d1f4ff25595b10c06",
+      "sha256": "ae3fddeff6717d8425a1249484fd2a5537ef28f12e134a4d949921182ee8cf30",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 481,
+        "registeredActionCount": 483,
         "pageActionCount": 111,
-        "backgroundActionCount": 370,
-        "reachableVueFileCount": 236,
-        "routeRootCount": 79,
-        "totalVueFileCount": 249,
-        "parsedVueFileCount": 249,
-        "reachableProductionModuleCount": 410,
-        "templateEventDirectiveCount": 1592,
+        "backgroundActionCount": 372,
+        "reachableVueFileCount": 237,
+        "routeRootCount": 80,
+        "totalVueFileCount": 250,
+        "parsedVueFileCount": 250,
+        "reachableProductionModuleCount": 413,
+        "templateEventDirectiveCount": 1599,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 472,
-        "candidateProductionMutationConsumerCount": 472,
-        "acceptedProductionMutationConsumerCount": 472,
-        "productionMutationConsumerPairCount": 472,
+        "coveredProductionMutationConsumerCount": 474,
+        "candidateProductionMutationConsumerCount": 474,
+        "acceptedProductionMutationConsumerCount": 474,
+        "productionMutationConsumerPairCount": 474,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "9911a4b41c33e3d7c9c564c1263e5dd0b321589b40efc571db431e5358d984a8",
+      "sha256": "fff76c6d6eef98cc6afb3d64766a57fab2d192ca05bb72e7fb7e31e4d9ee0a38",
       "status": "ready",
       "summary": {
-        "routeCount": 866,
-        "exactRouteCount": 866,
-        "normalizedRouteCount": 866,
+        "routeCount": 871,
+        "exactRouteCount": 871,
+        "normalizedRouteCount": 871,
         "classificationOverrideCount": 233,
         "consumerSurfaceOverrideCount": 55,
         "classificationOverrideSha256": "cc4f12a8b7720c084aeb7b3ee240c2fabea3bb1c59fd6ac266d3efd5ed24e2d7",
         "consumerSurfaceOverrideSha256": "2aff8df481301799b9e60c89a9f36790aae214b910bf690837d3ef07945d8c06",
-        "derivedProductionPageCount": 633,
-        "pageRouteCount": 652,
+        "derivedProductionPageCount": 638,
+        "pageRouteCount": 657,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 91,
         "internalTaskCount": 53,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 704,
+          "web_api_wrapper": 709,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 3,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 866,
-    "pageRouteCount": 652,
+    "routeCount": 871,
+    "pageRouteCount": 657,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 91,
     "internalTaskRouteCount": 53,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 848,
+    "mainRequestBindingCount": 853,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 481,
-    "actionBindingCount": 582,
-    "acceptedActionBindingCount": 534,
+    "registeredActionCount": 483,
+    "actionBindingCount": 584,
+    "acceptedActionBindingCount": 536,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 472,
-    "coveredProductionMutationConsumerPairCount": 472,
+    "productionMutationConsumerPairCount": 474,
+    "coveredProductionMutationConsumerPairCount": 474,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -6713,6 +6713,100 @@
     {
       "route": {
         "method": "GET",
+        "path": "/fund-flows/export",
+        "normalizedKey": "GET /fund-flows/export",
+        "controller": "FundFlowController",
+        "handler": "export",
+        "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "project_manager"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+          "wrapper": "downloadFundFlowExport",
+          "method": "GET",
+          "path": "/fund-flows/export",
+          "normalizedKey": "GET /fund-flows/export",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-flows",
+        "normalizedKey": "GET /fund-flows",
+        "controller": "FundFlowController",
+        "handler": "list",
+        "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "project_manager"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+          "wrapper": "fetchFundFlows",
+          "method": "GET",
+          "path": "/fund-flows",
+          "normalizedKey": "GET /fund-flows",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/fund-movements/:movementId",
         "normalizedKey": "GET /fund-movements/:param",
         "controller": "FundMovementController",
@@ -10585,6 +10679,50 @@
     {
       "route": {
         "method": "GET",
+        "path": "/projects/:projectId/cost-attributions",
+        "normalizedKey": "GET /projects/:param/cost-attributions",
+        "controller": "OperatingCostAttributionController",
+        "handler": "list",
+        "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "fetchCostAttributions",
+          "method": "GET",
+          "path": "/projects/:param/cost-attributions",
+          "normalizedKey": "GET /projects/:param/cost-attributions",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/projects/:projectId/expense-requests/:expenseRequestId/approval-detail",
         "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
         "controller": "ProjectExpenseController",
@@ -11937,6 +12075,7 @@
           "normalizedKey": "GET /projects/:param/participating-company-options",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
           ],
@@ -12919,6 +13058,7 @@
             "apps/web-admin/src/components/ContractRelationshipLedger.vue",
             "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
             "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
@@ -40534,6 +40674,146 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/cost-attributions/:factId",
+        "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+        "controller": "OperatingCostAttributionController",
+        "handler": "request",
+        "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "requestCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "cost-attribution.request",
+          "bindingIndex": 0,
+          "identity": "cost-attribution.request\u0000apps/web-admin/src/api/cost-attribution.api.ts\u0000requestCostAttribution\u0000POST\u0000POST /projects/:param/cost-attributions/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "canRequestCostAttribution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "requestCostAttribution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/cost-attributions/:id/review",
+        "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+        "controller": "OperatingCostAttributionController",
+        "handler": "review",
+        "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "reviewCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param/review",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "cost-attribution.review",
+          "bindingIndex": 0,
+          "identity": "cost-attribution.review\u0000apps/web-admin/src/api/cost-attribution.api.ts\u0000reviewCostAttribution\u0000POST\u0000POST /projects/:param/cost-attributions/:param/review\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "canReviewCostAttribution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "reviewCostAttribution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

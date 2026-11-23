@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { AuthService } from "../auth/auth.service";
 import type { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -34,7 +34,10 @@ function fixture() {
     }) },
     projectAffiliateSettlementFact: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
     contractTakeover: { findMany: jest.fn().mockResolvedValue([]) },
-    settlement: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 1000n } }) },
+    settlement: {
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 1000n } }),
+      findMany: jest.fn().mockResolvedValue([])
+    },
     fileObject: { findMany: jest.fn().mockResolvedValue([{ id: "file", contentSha256: "a".repeat(64), mimeType: "application/pdf" }]) },
     signedContractSettlementAttachment: { findFirst: jest.fn().mockResolvedValue(null), createMany: jest.fn() },
     signedContractSettlement: {
@@ -151,7 +154,7 @@ describe("已签结算复核业务", () => {
     }
   });
 
-  it("驳回或表外/对上结算不追加下游经营应付来源", async () => {
+  it("驳回不追加；表外与对上确认后追加经营来源；无成本分类的下游合同不追加", async () => {
     const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
     const oldKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
     process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = "b".repeat(64);
@@ -182,7 +185,29 @@ describe("已签结算复核业务", () => {
         confirmedContractSource: { contractTypeKey: "labor_subcontract" }
       } }]);
       await outsideService.review("project", "settlement", "director", 2, "confirm");
-      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledWith(
+        outside.tx,
+        { projectId: "project", sourceType: "signed_contract_settlement", sourceBusinessId: "settlement" },
+        "director"
+      );
+
+      const upward = fixture();
+      const upwardService = new SignedContractSettlementService(
+        upward.prisma as unknown as PrismaService,
+        upward.visibility as unknown as ProjectVisibilityService,
+        upward.auth as unknown as AuthService,
+        operatingSources
+      );
+      upward.tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ reviewed: {
+        id: "upward-settlement", state: "confirmed", confirmationNo: "1", contractKind: "upward",
+        confirmedContractSource: { relationship: "upward" }
+      } }]);
+      await upwardService.review("project", "upward-settlement", "director", 2, "confirm");
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledWith(
+        upward.tx,
+        { projectId: "project", sourceType: "signed_contract_settlement", sourceBusinessId: "upward-settlement" },
+        "director"
+      );
 
       const unsupported = fixture();
       const unsupportedService = new SignedContractSettlementService(
@@ -196,7 +221,67 @@ describe("已签结算复核业务", () => {
         confirmedContractSource: { contractTypeKey: "generic_contract" }
       } }]);
       await unsupportedService.review("project", "settlement", "director", 2, "confirm");
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledTimes(2);
+    } finally {
+      if (oldKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+      else process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = oldKey;
+    }
+  });
+
+  it("同合同版本同结算期次已有旧结算时，拒绝确认并回滚整笔事务", async () => {
+    const { tx, visibility, auth, prisma } = fixture();
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
+    const service = new SignedContractSettlementService(
+      prisma as unknown as PrismaService,
+      visibility as unknown as ProjectVisibilityService,
+      auth as unknown as AuthService,
+      operatingSources
+    );
+    const oldKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+    process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = "b".repeat(64);
+    try {
+      const binding = { database: "isolated", role: "runtime", xid: "88", backend: "5", expires: "1795370000" };
+      tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ reviewed: {
+        id: "settlement-dup", state: "confirmed", confirmationNo: "1", contractKind: "downstream",
+        contractId: "contract", number: "第 1 期",
+        confirmedContractSource: { sourceRecordId: "contract-v1", contractTypeKey: "labor_subcontract" }
+      } }]);
+      tx.settlement.findMany.mockResolvedValue([
+        { contractVersionId: "contract-v1", code: "JS-001", periodLabel: "第1期" }
+      ]);
+      await expect(
+        service.review("project", "settlement-dup", "director", 2, "confirm")
+      ).rejects.toBeInstanceOf(ConflictException);
       expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+    } finally {
+      if (oldKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+      else process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = oldKey;
+    }
+  });
+
+  it("同合同不同结算期次仍可确认并追加经营来源", async () => {
+    const { tx, visibility, auth, prisma } = fixture();
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue({ created: true }) };
+    const service = new SignedContractSettlementService(
+      prisma as unknown as PrismaService,
+      visibility as unknown as ProjectVisibilityService,
+      auth as unknown as AuthService,
+      operatingSources
+    );
+    const oldKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+    process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = "b".repeat(64);
+    try {
+      const binding = { database: "isolated", role: "runtime", xid: "88", backend: "5", expires: "1795370000" };
+      tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ reviewed: {
+        id: "settlement-new", state: "confirmed", confirmationNo: "2", contractKind: "downstream",
+        contractId: "contract", number: "第2期",
+        confirmedContractSource: { sourceRecordId: "contract-v1", contractTypeKey: "labor_subcontract" }
+      } }]);
+      tx.settlement.findMany.mockResolvedValue([
+        { contractVersionId: "contract-v1", code: "JS-001", periodLabel: "第1期" }
+      ]);
+      await service.review("project", "settlement-new", "director", 2, "confirm");
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledTimes(1);
     } finally {
       if (oldKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
       else process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = oldKey;

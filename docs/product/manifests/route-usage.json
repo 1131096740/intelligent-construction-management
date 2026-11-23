@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 866,
-    "exactRouteCount": 866,
-    "normalizedRouteCount": 866,
+    "routeCount": 871,
+    "exactRouteCount": 871,
+    "normalizedRouteCount": 871,
     "classificationOverrideCount": 233,
     "consumerSurfaceOverrideCount": 55,
     "classificationOverrideSha256": "cc4f12a8b7720c084aeb7b3ee240c2fabea3bb1c59fd6ac266d3efd5ed24e2d7",
     "consumerSurfaceOverrideSha256": "2aff8df481301799b9e60c89a9f36790aae214b910bf690837d3ef07945d8c06",
-    "derivedProductionPageCount": 633,
-    "pageRouteCount": 652,
+    "derivedProductionPageCount": 638,
+    "pageRouteCount": 657,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
     "internalTaskCount": 53,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 704,
+      "web_api_wrapper": 709,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 704,
+    "productionWrapperRouteCount": 709,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4927,7 +4927,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 6076,
+            "sourceLine": 6105,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -5834,6 +5834,102 @@
             "normalizedKey": "GET /fund-executions/reversal-options",
             "productionConsumers": [
               "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-flows",
+      "normalizedKey": "GET /fund-flows",
+      "controller": "FundFlowController",
+      "handler": "list",
+      "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "project_manager"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+            "wrapper": "fetchFundFlows",
+            "method": "GET",
+            "normalizedPath": "/fund-flows",
+            "normalizedKey": "GET /fund-flows",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-flows/export",
+      "normalizedKey": "GET /fund-flows/export",
+      "controller": "FundFlowController",
+      "handler": "export",
+      "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "project_manager"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+            "wrapper": "downloadFundFlowExport",
+            "method": "GET",
+            "normalizedPath": "/fund-flows/export",
+            "normalizedKey": "GET /fund-flows/export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
             ]
           }
         ],
@@ -8496,6 +8592,7 @@
               "apps/web-admin/src/components/ContractRelationshipLedger.vue",
               "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+              "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
               "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
               "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
@@ -9425,6 +9522,51 @@
             "normalizedKey": "GET /projects/:param/contract-takeovers/ledger-export",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/cost-attributions",
+      "normalizedKey": "GET /projects/:param/cost-attributions",
+      "controller": "OperatingCostAttributionController",
+      "handler": "list",
+      "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+            "wrapper": "fetchCostAttributions",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/cost-attributions",
+            "normalizedKey": "GET /projects/:param/cost-attributions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
             ]
           }
         ],
@@ -10473,6 +10615,7 @@
             "normalizedPath": "/projects/:param/participating-company-options",
             "normalizedKey": "GET /projects/:param/participating-company-options",
             "productionConsumers": [
+              "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
             ]
@@ -28537,6 +28680,96 @@
             "normalizedKey": "POST /projects/:param/contract-takeovers/imports/preview",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/cost-attributions/:factId",
+      "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+      "controller": "OperatingCostAttributionController",
+      "handler": "request",
+      "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+            "wrapper": "requestCostAttribution",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/cost-attributions/:param",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/cost-attributions/:id/review",
+      "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+      "controller": "OperatingCostAttributionController",
+      "handler": "review",
+      "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+            "wrapper": "reviewCostAttribution",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/cost-attributions/:param/review",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
             ]
           }
         ],

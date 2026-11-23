@@ -2,6 +2,7 @@ import { contractTaxForNewSettlement, readOrdinaryContractTaxFact } from "../con
 import { finalApprovalEvidence } from "../approval/approval-evidence";
 import { assertTakeoverContinuationAllowed } from "../contract-takeover/contract-takeover-handover";
 import { assertSettlementApplicant } from "./settlement-applicant";
+import { assertNoConfirmedSignedSettlementForPeriod } from "../operating-ledger/settlement-source-dedup";
 import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import {
@@ -2901,7 +2902,8 @@ export class SettlementService {
           tx,
           effectiveSettlement.projectId,
           effectiveSettlement.id,
-          actorUserId
+          actorUserId,
+          settlement
         );
         await this.audit.record(tx, {
           actorUserId,
@@ -2962,7 +2964,8 @@ export class SettlementService {
         tx,
         effectiveSettlement.projectId,
         effectiveSettlement.id,
-        actorUserId
+        actorUserId,
+        settlement
       );
 
       await this.audit.record(tx, {
@@ -2983,8 +2986,14 @@ export class SettlementService {
     tx: Prisma.TransactionClient,
     projectId: string,
     settlementId: string,
-    actorUserId: string
+    actorUserId: string,
+    settlement: Pick<Settlement, "contractId" | "contractVersionId" | "periodLabel" | "code">
   ): Promise<void> {
+    await this.assertNoConfirmedSignedSettlementForPeriod(
+      tx,
+      projectId,
+      settlement
+    );
     await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
       tx,
       {
@@ -2994,6 +3003,25 @@ export class SettlementService {
       },
       actorUserId
     );
+  }
+
+  /**
+   * 旧结算生效与已签结算确认都能确认同一笔下游成本。若同一合同版本、同一
+   * 结算期次已由新已签结算确认，旧入口必须 fail-closed，整个归档确认事务回滚。
+   */
+  private async assertNoConfirmedSignedSettlementForPeriod(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    legacy: Pick<Settlement, "contractId" | "contractVersionId" | "periodLabel" | "code">
+  ): Promise<void> {
+    try {
+      await assertNoConfirmedSignedSettlementForPeriod(tx, {
+        projectId,
+        ...legacy
+      });
+    } catch (error) {
+      throw new ConflictException((error as Error).message);
+    }
   }
 
   private async closeContractAfterFinalSettlement(
