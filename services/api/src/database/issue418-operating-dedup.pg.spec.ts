@@ -24,9 +24,7 @@ const run = process.env.ISSUE418_OPERATING_DEDUP_RUN === "1" ? describe : descri
  */
 run("issue #418 operating dedup on real PostgreSQL", () => {
   jest.setTimeout(180_000);
-  const databaseUrl = process.env.ISSUE418_OPERATING_DEDUP_DATABASE_URL;
-  if (!databaseUrl) throw new Error("缺少 ISSUE418_OPERATING_DEDUP_DATABASE_URL");
-  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  let prisma: PrismaClient;
   const id = {
     project: "issue418-project",
     user: "issue418-user",
@@ -126,6 +124,9 @@ run("issue #418 operating dedup on real PostgreSQL", () => {
   };
 
   beforeAll(async () => {
+    const databaseUrl = process.env.ISSUE418_OPERATING_DEDUP_DATABASE_URL;
+    if (!databaseUrl) throw new Error("缺少 ISSUE418_OPERATING_DEDUP_DATABASE_URL");
+    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     await prisma.user.create({
       data: { id: id.user, name: "验收用户", isActive: true }
     });
@@ -382,7 +383,7 @@ run("issue #418 operating dedup on real PostgreSQL", () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await prisma?.$disconnect();
   });
 
   async function loadProjectionFacts(): Promise<ProjectionFactInput[]> {
