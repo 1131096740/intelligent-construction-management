@@ -84,7 +84,7 @@ for name, pin in pins['runtime'].items():
         if current320:
             replacements = {
                 b'const {withNamedPol113Pol114295}': b'const {withNamedPol113Pol114320}',
-                b"NAMED_POL113_POL114_EXACT_295',mode": b"NAMED_POL113_POL114_EXACT_320',mode",
+                b"NAMED_POL113_POL114_EXACT_295',mode": b"NAMED_POL113_POL114_EXACT_323',mode",
                 b'await withNamedPol113Pol114295(receipt': b'await withNamedPol113Pol114320(receipt',
                 b"receipt.orderedTails.slice(-6).map(({size})=>size),[290,291,292,293,294,295]":
                     b"receipt.orderedTails.slice(-7).map(({size})=>size),[290,291,292,293,294,295,323]",
