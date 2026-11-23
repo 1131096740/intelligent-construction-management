@@ -75,7 +75,7 @@ inventory=out/'workspace-inputs.json'
 inventory.write_text(json.dumps({'sourceSha':source_record['sourceSha'],
     'rows':[{'path':name,'sha256':value} for name,value in sorted(rows.items())]},indent=2)+'\n')
 proof=(prev/'pol109-workspace-proof.cjs').read_text()
-proof=exactly(proof,'a9214ab07931a9be3cc5ca94b802e395e01f3bc21cb3efed2a759365caf1caf6',sha(inventory))
+proof=exactly(proof,'a56377b010b0a945158d7d5f5dd1a3d491a21f5c66c706a0230169d1968e8088',sha(inventory))
 proof=exactly(proof,'  for(const row of JSON.parse(bytes)) {',"""  const material=JSON.parse(bytes);
   if(material.sourceSha!==require('./contract-finance-source.json').sourceSha) throw new Error('POL109_SOURCE_SHA');
   for(const row of material.rows) {""")
