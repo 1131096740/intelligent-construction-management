@@ -1,5 +1,15 @@
 # 建工智管当前状态
 
+## 2026-11-23 #399 合同付款累计容量、预付与调减暂停
+
+分支 `line-u-399`（基线 `c3358a89b`，集成分支 `adopt-395-396-415` 当前 tip），代码提交 `514b5d37d31efb4b5fa383cb4a4d5cfaca1cbeb5`。未 push、未改 `07500`/`05800`、未新增迁移（仍 323）、未操作生产。
+
+- 合同付款容量统一按“累计结算（已签+旧结算+历史起点）− 有效净已付（含预付款/代付/历史已付）− 全部未付申请占用”计算；提交、最后审批节点、实付均在事务内锁定合同并按合同级 advisory lock 重校。预付款计入净已付，未结算预付与异常超付分列。
+- 负数结算/调减后合计未付超过新余额时，合同下相关未付申请统一暂停；审批/实付明确拒绝并写 `payment.capacity.blocked` 审计；新结算使余额足够时同一计算自动解除，不需人工解除动作。
+- 付款审批岗位补合同部主管；`payment.create` 增综合部主管、`payment.approve` 增合同部主管，与规格岗位表一致。
+- 真实 PostgreSQL 16 + Nest HTTP **12/12**（候选 SHA `514b5d37`、`worktreeClean=true`、24.3s），新增预付容量、并发双提交仅一笔、负结算暂停与补结算自动恢复 3 条用例；容器清理后 `docker ps -q` 为空。API `payment`+`approval`+权限 1031 项、`settlement` 650 项、shared-domain 256 项、Web 2423 项与 typecheck/`check:ui` 全绿；`check:migration-baseline` clean。
+- 未覆盖：PAY-10 收款单位/开户行/账号快照（无字段/迁移）、合同付款退款释放模型、预付款仍按合同冻结阶段限额、全量 API jest 未跑完、无真实浏览器点击。详见 [回执](docs/progress/2026-11-23-issue-399.md)。
+
 ## 2026-11-22 #382 前沿四票推进
 
 集成分支 `codex/enterprise-simplification-integration-20261105-r2` 由 `a187dc73a` 推进到 `8ea579ba4`，[PR #428](https://github.com/1131096740/intelligent-construction-management/pull/428) head 同步为该提交（草稿，CI 重跑中）。用户本轮授权推送集成分支并更新 PR；未合并 main、未部署、未操作生产。
