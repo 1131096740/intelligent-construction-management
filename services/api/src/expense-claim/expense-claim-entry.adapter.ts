@@ -20,7 +20,7 @@ export async function freezeExpenseClaimEntryInTransaction(tx: Prisma.Transactio
       reason: claim.reason, requestedAmountCents: claim.requestedAmountCents.toString(), loanOffsetAmountCents: claim.loanOffsetAmountCents.toString(), companyPayableAmountCents: claim.companyPayableAmountCents.toString(),
       requestedAmountYuan: formatMoneyCentsAsYuan(claim.requestedAmountCents).replace(/,/g, ""),
       paymentMethod: claim.paymentMethod, payeeName: claim.payeeNameSnapshot, payeeAccountName: claim.payeeAccountNameSnapshot, payeeBankName: claim.payeeBankNameSnapshot, payeeBankAccount: claim.payeeBankAccountSnapshot, loanExpectedClearanceOn: claim.loanExpectedClearanceAt?.toISOString().slice(0, 10) ?? null, incidentalExpenseCategory: claim.incidentalExpenseCategory,
-      lines: lines.map((line) => ({ expenseCategory: line.expenseCategory, occurredOn: line.occurredOn.toISOString().slice(0, 10), purpose: line.purpose, receiptCount: line.receiptCount, amountCents: line.amountCents.toString(), amountYuan: formatMoneyCentsAsYuan(line.amountCents).replace(/,/g, ""), evidenceType: line.evidenceType, noEvidenceReason: line.noEvidenceReason, remark: line.remark })),
+      lines: lines.map((line) => ({ expenseCategory: line.expenseCategory, occurredOn: line.occurredOn.toISOString().slice(0, 10), purpose: line.purpose, quantity: line.quantity?.toFixed() ?? null, receiptCount: line.receiptCount, amountCents: line.amountCents.toString(), amountYuan: formatMoneyCentsAsYuan(line.amountCents).replace(/,/g, ""), evidenceType: line.evidenceType, noEvidenceReason: line.noEvidenceReason, remark: line.remark })),
       attachments
     }
   } });

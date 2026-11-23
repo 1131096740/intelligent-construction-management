@@ -134,7 +134,8 @@ const columns = [
   { colKey: "sortOrder", title: "序号", width: 70 },
   { colKey: "expenseCategory", title: "费用类别", width: 120 },
   { colKey: "occurredOn", title: "发生日期", width: 120 },
-  { colKey: "purpose", title: "用途说明", minWidth: 220 },
+  { colKey: "purpose", title: "用途说明", minWidth: 200 },
+  { colKey: "quantity", title: "数量", width: 90, align: "right" as const },
   { colKey: "receiptCount", title: "单据张数", width: 100, align: "right" as const },
   { colKey: "amount", title: "金额", width: 120, align: "right" as const },
   { colKey: "evidenceType", title: "证据类型", width: 130 },
@@ -1108,6 +1109,35 @@ onMounted(() => void loadDetail());
               {{ date(detail.submittedAt) }}
             </t-descriptions-item>
             <t-descriptions-item
+              v-if="detail.sourcePurchase"
+              label="原采购来源"
+              :span="isMobile ? 1 : 2"
+            >
+              <div class="expense-claim-detail__source-purchase">
+                <router-link
+                  v-if="detail.sourcePurchase.procurementCode"
+                  :to="detail.sourcePurchase.kind === 'general'
+                    ? `/综合采购申请/${encodeURIComponent(detail.sourcePurchase.procurementId)}`
+                    : `/零星采购/${encodeURIComponent(detail.sourcePurchase.procurementId)}`"
+                >
+                  {{ detail.sourcePurchase.procurementCode }}
+                </router-link>
+                <span v-else>原采购编号待核对</span>
+                <span>供应商：{{ detail.sourcePurchase.supplierName }}</span>
+                <span>原采购类别：{{ detail.sourcePurchase.categoryLabel ?? '待核对' }}</span>
+                <span>批次金额：{{ amount(detail.sourcePurchase.effectiveTotalAmountCents) }}</span>
+                <span>批次成本：{{ detail.sourcePurchase.costConfirmed ? '已确认（只计一次）' : '尚未确认' }}</span>
+                <span v-if="detail.sourcePurchase.attachments.length">
+                  原采购附件：
+                  <template v-for="attachment in detail.sourcePurchase.attachments" :key="attachment.fileId">
+                    {{ attachment.fileName }}（{{ attachment.fileStatus === 'active' ? '可查阅' : '文件待核对' }}）
+                  </template>
+                </span>
+                <span v-else>原采购附件：未上传</span>
+                <small>垫付报销只清偿员工垫付部分，不重复计采购成本。</small>
+              </div>
+            </t-descriptions-item>
+            <t-descriptions-item
               label="事由"
               :span="isMobile ? 1 : 2"
             >
@@ -1403,6 +1433,8 @@ onMounted(() => void loadDetail());
   .expense-claim-detail__attachment-cards dd { margin: 0; }
 }
 .expense-claim-detail__review-form { display: grid; gap: var(--jg-space-md); }
+.expense-claim-detail__source-purchase { display: grid; gap: 4px; }
+.expense-claim-detail__source-purchase small { color: var(--jg-color-text-tertiary); }
 .expense-claim-detail__payment-subject { display: flex; align-items: center; gap: var(--jg-space-xs); }
 .expense-claim-detail__payment-list { display: grid; gap: var(--jg-space-xs); }
 .expense-claim-detail__repayment-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--jg-space-xs); }

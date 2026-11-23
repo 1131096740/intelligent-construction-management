@@ -2150,6 +2150,7 @@ export class ApprovalFormService {
             expenseCategory: true,
             occurredOn: true,
             purpose: true,
+            quantity: true,
             receiptCount: true,
             amountCents: true
           }
@@ -2172,6 +2173,7 @@ export class ApprovalFormService {
       loanExpectedClearanceAt: claim.loanExpectedClearanceAt,
       lines: lines.map((line) => ({
         ...line,
+        quantity: line.quantity?.toFixed() ?? null,
         amountCents: dbMoneyToBigInt(line.amountCents, "费用明细金额")
       }))
     };

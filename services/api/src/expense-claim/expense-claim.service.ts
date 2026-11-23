@@ -2,7 +2,7 @@ import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-
 import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
-import { GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain";
+import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -36,6 +36,9 @@ import {
 } from "./expense-claim-operating-source.adapter";
 import { renderExpenseClaimFinalPaymentPdf } from "./expense-claim-final-payment-pdf";
 import { freezeExpenseClaimEntryInTransaction } from "./expense-claim-entry.adapter";
+import { assertEmployeeAdvanceBatchSource } from "./expense-claim-batch-source";
+import { DEFAULT_EXPENSE_CATEGORIES, expenseCategoryKey, mergeExpenseCategories, resolveExpenseCategoryName } from "./expense-claim-category";
+import { parseExpenseQuantity } from "./expense-claim-quantity";
 import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
@@ -130,6 +133,7 @@ export class ExpenseClaimService {
       availableActions: ["create_expense_claim"],
       applicantUsers: canProxy ? activeUsers : actor ? [actor] : [],
       factWitnessUsers: activeUsers,
+      expenseCategories: mergeExpenseCategories([]),
       incidentalExpenseCategories: [
         { key: "temporary_service", label: "非材料临时服务" },
         { key: "temporary_machinery_shift", label: "临时机械台班" },
@@ -225,16 +229,22 @@ export class ExpenseClaimService {
       if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
       if (!company) throw new NotFoundException("使用单位不存在或已停用");
       if (input.projectId?.trim() && !project) throw new NotFoundException("项目不存在或已停用");
-      const procurementPayment = await prepareProcurementPayment(
-        tx,
-        this.prisma,
-        actorUserId,
-        input,
-        requestedAmountCents,
-        this.actualBatches
-          ? async (client, batch) => this.actualBatches!.assertClaimCommitInTransaction(client, batch)
-          : undefined
-      );
+      const employeeAdvance = claimType === "reimbursement" && Boolean(input.actualPurchaseBatchId);
+      const procurementPayment = employeeAdvance
+        ? null
+        : await prepareProcurementPayment(
+            tx,
+            this.prisma,
+            actorUserId,
+            input,
+            requestedAmountCents,
+            this.actualBatches
+              ? async (client, batch) => this.actualBatches!.assertClaimCommitInTransaction(client, batch)
+              : undefined
+          );
+      const advance = employeeAdvance
+        ? await this.resolveEmployeeAdvanceSource(tx, actorUserId, input, requestedAmountCents)
+        : null;
       if (procurementPayment?.existing) {
         const existing = procurementPayment.existing;
         return { id: existing.id, code: existing.code, status: existing.status, requestedAmountCents: moneyCentsToApi(existing.requestedAmountCents) };
@@ -258,7 +268,7 @@ export class ExpenseClaimService {
       );
       const claim = await tx.expenseClaim.create({
         data: {
-          actualPurchaseBatchId: input.actualPurchaseBatchId ?? null,
+          actualPurchaseBatchId: advance?.batch.id ?? input.actualPurchaseBatchId ?? null,
           generalProcurementId: input.generalProcurementId ?? null,
           generalProcurementRequestKey: input.generalProcurementRequestKey ?? null,
           generalProcurementFingerprint: procurementPayment?.fingerprint ?? null,
@@ -290,12 +300,22 @@ export class ExpenseClaimService {
         }
       });
       if (lines.length) {
+        const knownCategories = await this.companyExpenseCategories(tx, company.id);
+        const preparedLines = lines.map((line) => {
+          const expenseCategory = resolveExpenseCategoryName(requiredText(line.expenseCategory, "费用类别不能为空"), knownCategories);
+          if (!expenseCategory) throw new BadRequestException("费用类别不能为空且最多 40 个字符");
+          if (advance && expenseCategoryKey(expenseCategory) !== expenseCategoryKey(advance.sourceCategory)) {
+            throw new BadRequestException(`关联原采购报销沿用原采购类别：${advance.sourceCategory}`);
+          }
+          return { ...line, expenseCategory, quantity: parseExpenseQuantity(line.quantity) };
+        });
         await tx.expenseClaimLine.createMany({
-          data: lines.map((line, index) => ({
+          data: preparedLines.map((line, index) => ({
             expenseClaimId: claim.id,
             sortOrder: index + 1,
-            expenseCategory: requiredText(line.expenseCategory, "费用类别不能为空"),
+            expenseCategory: line.expenseCategory,
             occurredOn: dateOnly(line.occurredOn, "发生日期"),
+            quantity: line.quantity,
             purpose: requiredText(line.purpose, "用途说明不能为空"),
             receiptCount: receiptCount(line.receiptCount),
             amountCents: positiveCents(line.amountCents, "费用明细金额必须大于零"),
@@ -321,6 +341,7 @@ export class ExpenseClaimService {
           claimType,
           incidentalExpenseCategory,
           projectId: project?.id ?? null,
+          actualPurchaseBatchId: advance?.batch.id ?? null,
           requestedAmountCents: requestedAmountCents.toString()
         }
       });
@@ -332,7 +353,7 @@ export class ExpenseClaimService {
     const claim = await this.prisma.expenseClaim.findFirst({
       where: { id: claimId },
       select: {
-        generalProcurementId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityId: true, companyEntityNameSnapshot: true,
+        generalProcurementId: true, actualPurchaseBatchId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityId: true, companyEntityNameSnapshot: true,
         paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
@@ -376,7 +397,7 @@ export class ExpenseClaimService {
       this.prisma.expenseClaimLine.findMany({
         where: { expenseClaimId: claim.id },
         orderBy: { sortOrder: "asc" },
-        select: { id: true, sortOrder: true, expenseCategory: true, occurredOn: true, purpose: true, receiptCount: true, amountCents: true, evidenceType: true, noEvidenceReason: true, remark: true }
+        select: { id: true, sortOrder: true, expenseCategory: true, occurredOn: true, purpose: true, quantity: true, receiptCount: true, amountCents: true, evidenceType: true, noEvidenceReason: true, remark: true }
       }),
       (this.prisma as unknown as {
         expenseClaimAttachment?: {
@@ -461,9 +482,13 @@ export class ExpenseClaimService {
         }) : Promise.resolve([])
       ])
       : [[], []];
+    const sourcePurchase = claim.actualPurchaseBatchId
+      ? await this.readSourcePurchase(claim.actualPurchaseBatchId)
+      : null;
     const { companyEntityId, ...displayClaim } = claim;
     return {
       ...displayClaim,
+      sourcePurchase,
       ...((claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") ? {
         originalDebtorCompanyId: claim.companyEntityNameSnapshot?.trim() ? companyEntityId : null
       } : {}),
@@ -855,8 +880,8 @@ export class ExpenseClaimService {
   async submit(claimId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{
-        id: string; claimType: string; status: string; projectId: string | null; applicantUserId: string | null; companyEntityId: string; requestedAmountCents: bigint; handledByUserId: string; factWitnessUserId: string | null;
-      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "applicantUserId", "companyEntityId", "requestedAmountCents", "handledByUserId", "factWitnessUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; applicantUserId: string | null; companyEntityId: string; requestedAmountCents: bigint; handledByUserId: string; factWitnessUserId: string | null;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "applicantUserId", "companyEntityId", "requestedAmountCents", "handledByUserId", "factWitnessUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = rows[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
@@ -878,6 +903,13 @@ export class ExpenseClaimService {
       if (source?.generalProcurementId) {
         const actor = await generalProcurementActor(tx, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId!);
         if (!actor.globalRoleKeys.includes("comprehensive_director")) throw new ForbiddenException("综合采购付款仍须由当前综合部主管提交");
+      }
+      if (claim.actualPurchaseBatchId && this.actualBatches) {
+        await this.actualBatches.assertClaimCommitInTransaction(tx, {
+          batchId: claim.actualPurchaseBatchId,
+          amountCents: claim.requestedAmountCents,
+          excludeClaimId: claim.id
+        });
       }
       const offset = await this.reserveLoanOffsets(tx, claim, actorUserId);
       const nodes = await this.freezeApprovalNodes(tx, claim);
@@ -1027,6 +1059,11 @@ export class ExpenseClaimService {
         }, signature)
       });
       if (completed && claim.actualPurchaseBatchId) {
+        await this.actualBatches?.assertClaimCommitInTransaction(tx, {
+          batchId: claim.actualPurchaseBatchId,
+          amountCents: claim.requestedAmountCents,
+          excludeClaimId: claim.id
+        });
         await this.actualBatches?.confirmCostForClaimInTransaction(
           tx,
           claim.id,
@@ -1617,6 +1654,238 @@ export class ExpenseClaimService {
   private lines(lines: ExpenseClaimLineDto[] | undefined) {
     if (!lines?.length) throw new BadRequestException("报销至少需要一条费用明细");
     return lines;
+  }
+
+  /**
+   * #404 PUR-12：垫付报销详情带出原采购信息及附件，便于审批人核对同一成本来源。
+   * 只读；原采购事实、附件与批次成本均不被报销改写。
+   */
+  private async readSourcePurchase(batchId: string) {
+    const batch = await this.prisma.actualPurchaseBatch.findUnique({
+      where: { id: batchId },
+      select: {
+        id: true, kind: true, supplierName: true, status: true, totalAmountCents: true,
+        effectiveTotalAmountCents: true, costVersion: true, costConfirmedAt: true,
+        procurementId: true, procurementVersionId: true, projectId: true, companyEntityId: true
+      }
+    });
+    if (!batch) return null;
+    let procurementCode: string | null = null;
+    let categoryLabel: string | null = batch.kind === "spot_material" ? "零星材料" : null;
+    let attachmentRefs: Array<{ fileId: string; category: string }> = [];
+    if (batch.kind === "general") {
+      const source = await this.prisma.generalProcurement.findUnique({
+        where: { id: batch.procurementId },
+        select: { id: true, code: true, category: true, archiveFileId: true }
+      });
+      procurementCode = source?.code ?? null;
+      categoryLabel = GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === source?.category)?.label ?? null;
+      if (source?.archiveFileId) attachmentRefs = [{ fileId: source.archiveFileId, category: "procurement_archive" }];
+    } else if (batch.kind === "spot_material") {
+      const [source, version] = await Promise.all([
+        this.prisma.spotProcurement.findUnique({ where: { id: batch.procurementId }, select: { id: true, code: true, currentVersionId: true } }),
+        this.prisma.spotProcurementVersion.findFirst({
+          where: { procurementId: batch.procurementId, id: batch.procurementVersionId ?? undefined },
+          orderBy: { versionNo: "desc" },
+          select: { id: true }
+        })
+      ]);
+      procurementCode = source?.code ?? null;
+      const versionId = batch.procurementVersionId ?? version?.id ?? source?.currentVersionId ?? null;
+      const spotAttachments = versionId
+        ? await this.prisma.spotProcurementAttachment.findMany({
+            where: { versionId },
+            select: { fileId: true, category: true },
+            orderBy: { createdAt: "asc" }
+          })
+        : [];
+      attachmentRefs = spotAttachments.map((item) => ({ fileId: item.fileId, category: item.category }));
+    }
+    const files = attachmentRefs.length
+      ? await this.prisma.fileObject.findMany({
+          where: { id: { in: attachmentRefs.map((item) => item.fileId) } },
+          select: { id: true, originalName: true, mimeType: true, sizeBytes: true, storageStatus: true }
+        })
+      : [];
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    return {
+      batchId: batch.id,
+      kind: batch.kind,
+      supplierName: batch.supplierName,
+      status: batch.status,
+      totalAmountCents: moneyCentsToApi(batch.totalAmountCents),
+      effectiveTotalAmountCents: moneyCentsToApi(batch.effectiveTotalAmountCents),
+      costConfirmed: batch.costVersion > 0,
+      costConfirmedAt: batch.costConfirmedAt,
+      procurementId: batch.procurementId,
+      procurementCode,
+      categoryLabel,
+      projectId: batch.projectId,
+      companyEntityId: batch.companyEntityId,
+      attachments: attachmentRefs.map((ref) => {
+        const file = fileById.get(ref.fileId);
+        return {
+          fileId: ref.fileId,
+          category: ref.category,
+          fileName: file?.originalName ?? "文件信息不可用",
+          mimeType: file?.mimeType ?? "application/octet-stream",
+          sizeBytes: file?.sizeBytes ?? 0,
+          fileStatus: file?.storageStatus ?? "missing"
+        };
+      })
+    };
+  }
+
+  /**
+   * #404 EXP-01/PUR-12：员工手工选择已有实际采购批次办理垫付报销。
+   * 不做任何自动识别或金额匹配；只列同一公司、同一项目下仍可占用容量的批次，
+   * 由填单人核对供应商和原采购信息后自行选择。
+   */
+  async selectableAdvanceBatches(
+    actorUserId: string,
+    filter: { companyEntityId?: string; projectId?: string }
+  ) {
+    const actor = await this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
+    const companyId = filter.companyEntityId?.trim();
+    if (!companyId) return { batches: [] };
+    const company = await this.prisma.companyEntity.findFirst({ where: { id: companyId, isActive: true }, select: { id: true } });
+    if (!company) throw new NotFoundException("使用单位不存在或已停用");
+    const projectId = filter.projectId?.trim() || null;
+    if (projectId) {
+      const projectIds = await this.selfApplicationProjectIds(this.prisma, actorUserId);
+      if (!projectIds.includes(projectId)) throw new ForbiddenException("当前账号无权选择该项目");
+    }
+    const rows = await this.prisma.actualPurchaseBatch.findMany({
+      where: {
+        OR: [
+          { companyEntityId: companyId },
+          { kind: "spot_material", companyEntityId: null }
+        ],
+        projectId,
+        status: { in: ["recorded", "cost_confirmed"] }
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+      select: { id: true, kind: true, procurementId: true, supplierName: true, status: true, totalAmountCents: true, effectiveTotalAmountCents: true, costVersion: true }
+    });
+    if (!rows.length) return { batches: [] };
+    const generalIds = rows.filter((row) => row.kind === "general").map((row) => row.procurementId);
+    const spotIds = rows.filter((row) => row.kind === "spot_material").map((row) => row.procurementId);
+    const [generalSources, spotSources] = await Promise.all([
+      generalIds.length
+        ? this.prisma.generalProcurement.findMany({ where: { id: { in: generalIds } }, select: { id: true, code: true, category: true } })
+        : Promise.resolve([]),
+      spotIds.length
+        ? this.prisma.spotProcurement.findMany({ where: { id: { in: spotIds } }, select: { id: true, code: true } })
+        : Promise.resolve([])
+    ]);
+    const generalById = new Map(generalSources.map((source) => [source.id, source]));
+    const spotById = new Map(spotSources.map((source) => [source.id, source]));
+    const batches = [];
+    for (const row of rows) {
+      const capacity = this.actualBatches ? await this.actualBatches.capacityForBatch(row.id) : null;
+      if (!capacity || capacity.availableAmountCents <= 0n || capacity.suspended) continue;
+      const general = generalById.get(row.procurementId);
+      const spot = spotById.get(row.procurementId);
+      batches.push({
+        batchId: row.id,
+        kind: row.kind,
+        supplierName: row.supplierName,
+        status: row.status,
+        totalAmountCents: moneyCentsToApi(row.totalAmountCents),
+        effectiveTotalAmountCents: moneyCentsToApi(row.effectiveTotalAmountCents),
+        availableAmountCents: moneyCentsToApi(capacity.availableAmountCents),
+        costConfirmed: row.costVersion > 0,
+        procurementId: row.procurementId,
+        procurementCode: general?.code ?? spot?.code ?? null,
+        categoryLabel: row.kind === "spot_material"
+          ? "零星材料"
+          : GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === general?.category)?.label ?? null
+      });
+    }
+    return { batches };
+  }
+
+  private async companyExpenseCategories(tx: Prisma.TransactionClient, companyEntityId: string): Promise<string[]> {
+    const usage = await tx.$queryRaw<Array<{ name: string; count: number }>>(Prisma.sql`
+      SELECT line."expenseCategory" AS name, COUNT(*)::int AS count
+      FROM "ExpenseClaimLine" line
+      JOIN "ExpenseClaim" claim ON claim."id" = line."expenseClaimId"
+      WHERE claim."companyEntityId" = ${companyEntityId}
+      GROUP BY line."expenseCategory"
+    `);
+    return [
+      ...DEFAULT_EXPENSE_CATEGORIES,
+      ...usage
+        .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, "zh-Hans-CN"))
+        .map((row) => row.name)
+    ];
+  }
+
+  /** 公司级可复用费用类别：默认 10 类 + 本公司已用类别，同名只出现一次。 */
+  async expenseCategories(actorUserId: string, companyEntityId?: string) {
+    const actor = await this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
+    const companyId = companyEntityId?.trim();
+    if (companyId) {
+      const company = await this.prisma.companyEntity.findFirst({ where: { id: companyId, isActive: true }, select: { id: true } });
+      if (!company) throw new NotFoundException("使用单位不存在或已停用");
+    }
+    const usage = await this.prisma.$queryRaw<Array<{ name: string; count: number }>>(companyId
+      ? Prisma.sql`
+          SELECT line."expenseCategory" AS name, COUNT(*)::int AS count
+          FROM "ExpenseClaimLine" line
+          JOIN "ExpenseClaim" claim ON claim."id" = line."expenseClaimId"
+          WHERE claim."companyEntityId" = ${companyId}
+          GROUP BY line."expenseCategory"
+        `
+      : Prisma.sql`
+          SELECT line."expenseCategory" AS name, COUNT(*)::int AS count
+          FROM "ExpenseClaimLine" line
+          GROUP BY line."expenseCategory"
+        `);
+    return {
+      categories: mergeExpenseCategories(
+        usage.map((row) => ({ name: row.name, usageCount: Number(row.count) }))
+      )
+    };
+  }
+
+  /**
+   * #404 PUR-12：员工从原采购单垫付报销只认实际采购批次这一成本来源。
+   * 供应商、原采购信息与附件从批次/原申请带出；此处只校验来源身份、沿用类别
+   * 并在事务内占用批次剩余可付金额，成本仍由批次确认一次。
+   */
+  private async resolveEmployeeAdvanceSource(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    input: CreateExpenseClaimDto,
+    amountCents: bigint
+  ) {
+    const batchId = input.actualPurchaseBatchId?.trim();
+    if (!batchId) throw new BadRequestException("请选择实际采购批次");
+    const batch = await tx.actualPurchaseBatch.findUnique({ where: { id: batchId } });
+    if (!batch) throw new BadRequestException("实际采购批次不存在，请刷新后重选");
+    let categoryLabel: string | null = null;
+    if (batch.kind === "general") {
+      const source = await tx.generalProcurement.findUnique({ where: { id: batch.procurementId }, select: { category: true } });
+      categoryLabel = GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === source?.category)?.label ?? null;
+    }
+    const sourceCategory = assertEmployeeAdvanceBatchSource({
+      claimType: input.claimType,
+      generalProcurementId: input.generalProcurementId,
+      generalProcurementRequestKey: input.generalProcurementRequestKey,
+      actualPurchaseBatchId: batch.id,
+      projectId: input.projectId?.trim() || undefined,
+      companyEntityId: input.companyEntityId,
+      applicantUserId: input.applicantUserId?.trim() || actorUserId,
+      actorUserId
+    }, batch, categoryLabel);
+    if (this.actualBatches) {
+      await this.actualBatches.assertClaimCommitInTransaction(tx, { batchId: batch.id, amountCents });
+    }
+    return { batch, sourceCategory };
   }
 
   // Company business positions apply to every active project; project positions
