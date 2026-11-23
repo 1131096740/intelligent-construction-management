@@ -501,27 +501,56 @@
       ]
     },
     {
-      "id": "archive.create-private-file-download-ticket",
-      "usage": "page_action",
+      "id": "archive.download-private-attachment",
+      "usage": "background",
       "routePaths": [
         "/资料库"
       ],
       "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
       "trigger": {
-        "element": "t-dialog",
-        "event": "confirm",
-        "handler": "confirmDownload"
+        "element": "module",
+        "event": "call",
+        "handler": "createArchiveFileDownloadTicketWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "archiveDownloadAction",
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
         "key": "create_private_file_download_ticket"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "createPrivateFileDownloadTicket"
+        }
+      ]
+    },
+    {
+      "id": "archive.download-package",
+      "usage": "background",
+      "routePaths": [
+        "/资料库"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadArchivePackageWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "download_archive_package"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "getArchiveDownloadPackageCapability"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createArchiveDownloadPackage"
         }
       ]
     },
@@ -1533,20 +1562,20 @@
     },
     {
       "id": "contract-document.download-ticket",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/合同工作台/:contractId"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
       "trigger": {
-        "element": "t-dialog",
-        "event": "confirm",
-        "handler": "confirmContractDocumentDownload"
+        "element": "module",
+        "event": "call",
+        "handler": "createContractDocumentDownloadTicketWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractDocumentDownloadAction",
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
         "key": "create_private_file_download_ticket"
       },
       "wrappers": [
@@ -10028,7 +10057,7 @@
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "readSampleWithCapability"
+        "handler": "downloadSampleWithCapability"
       },
       "semantic": "business_write",
       "capability": {

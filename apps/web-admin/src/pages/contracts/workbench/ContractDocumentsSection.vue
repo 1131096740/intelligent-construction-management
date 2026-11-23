@@ -170,38 +170,6 @@
       </div>
     </div>
 
-    <t-dialog
-      v-if="contractDocumentDownloadAction && contractDocumentDownloadAction.enabled"
-      v-model:visible="downloadDialogVisible"
-      header="下载合同文件"
-      :confirm-btn="downloadConfirmButtonProps"
-      cancel-btn="取消"
-      :close-on-overlay-click="false"
-      @confirm="confirmContractDocumentDownload"
-      @close="closeContractDocumentDownload"
-    >
-      <div class="download-dialog-body">
-        <label class="field">
-          <span class="field-label">当前登录密码</span>
-          <t-input
-            v-model="confirmationPassword"
-            type="password"
-            autocomplete="current-password"
-            :disabled="busy"
-            placeholder="请输入当前登录密码"
-          />
-        </label>
-        <label class="field">
-          <span class="field-label">下载原因</span>
-          <t-input
-            v-model="downloadReason"
-            :disabled="busy"
-            placeholder="请填写下载原因，便于留痕审计"
-          />
-        </label>
-      </div>
-    </t-dialog>
-
     <p
       v-if="message"
       class="message"
@@ -335,10 +303,6 @@ const layoutOptions = computed(() => {
   return options;
 });
 const selectedLayoutIsPublished = computed(() => layoutRecords.value.some(layout => String(layout["layoutTemplateVersionId"] ?? layout["versionId"] ?? layout["id"] ?? "") === layoutTemplateVersionId.value));
-const confirmationPassword = ref("");
-const downloadReason = ref("");
-const downloadDialogVisible = ref(false);
-const downloadFileId = ref("");
 const contractDocumentDownloadAction = shallowRef<{
   key: "create_private_file_download_ticket";
   enabled: boolean;
@@ -368,15 +332,6 @@ const documents = computed(() =>
 const hasActiveDocument = computed(() =>
   documents.value.some((document) => ["queued", "processing"].includes(document.status))
 );
-const downloadConfirmButtonProps = computed(() => ({
-  content: "确认下载",
-  loading: busy.value,
-  disabled:
-    !downloadFileId.value ||
-    !confirmationPassword.value.trim() ||
-    !downloadReason.value.trim() ||
-    contractDocumentDownloadAction.value?.enabled !== true
-}));
 const selectedLayout = computed(
   () =>
     layoutRecords.value.find(
@@ -567,66 +522,29 @@ async function retryDocument(documentId: string) {
   );
 }
 
+async function createContractDocumentDownloadTicketWithCapability(fileId: string) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能下载该合同文件");
+  contractDocumentDownloadAction.value = capability.action;
+  return createPrivateFileDownloadTicket(fileId, {});
+}
+
 async function openFile(fileId: string) {
   const capabilityRequestId = ++downloadCapabilityRequestId;
   contractDocumentDownloadAction.value = null;
   message.value = "";
   try {
-    const capability = await getPrivateFileDownloadTicketCapability(fileId);
-    if (capabilityRequestId !== downloadCapabilityRequestId) {
-      return;
-    }
-    contractDocumentDownloadAction.value = capability.action;
-    const matchesRequestedAction =
-      contractDocumentDownloadAction.value.key ===
-      "create_private_file_download_ticket";
-    if (!matchesRequestedAction) {
-      throw new Error("合同文件下载能力响应不一致");
-    }
-    if (!contractDocumentDownloadAction.value.enabled) {
-      throw new Error("当前用户不能下载该合同文件");
-    }
-    downloadFileId.value = fileId;
-    confirmationPassword.value = "";
-    downloadReason.value = "";
-    downloadDialogVisible.value = true;
+    const ticket = await createContractDocumentDownloadTicketWithCapability(fileId);
+    if (capabilityRequestId !== downloadCapabilityRequestId) return;
+    window.open(ticket.downloadUrl, "_blank", "noopener,noreferrer");
   } catch (error) {
     if (capabilityRequestId === downloadCapabilityRequestId) {
-      message.value = formatUnknownApiError(error, "下载能力读取失败");
+      message.value = formatUnknownApiError(error, "合同文件下载失败");
     }
   }
-}
-
-function confirmContractDocumentDownload() {
-  if (downloadTicketPromise) return downloadTicketPromise;
-  busy.value = true;
-  message.value = "";
-  const request = createPrivateFileDownloadTicket(downloadFileId.value, {
-    confirmationPassword: confirmationPassword.value,
-    downloadReason: downloadReason.value
-  });
-  downloadTicketPromise = request
-    .then((ticket) => {
-      window.open(ticket.downloadUrl, "_blank", "noopener,noreferrer");
-      closeContractDocumentDownload();
-    })
-    .catch((error: unknown) => {
-      message.value = formatUnknownApiError(error, "下载票据创建失败");
-    })
-    .finally(() => {
-      busy.value = false;
-      downloadTicketPromise = null;
-    });
-  return downloadTicketPromise;
-}
-
-function closeContractDocumentDownload() {
-  downloadCapabilityRequestId += 1;
-  downloadDialogVisible.value = false;
-  downloadFileId.value = "";
-  confirmationPassword.value = "";
-  downloadReason.value = "";
-  contractDocumentDownloadAction.value = null;
 }
 
 function purposeLabel(value: string) {

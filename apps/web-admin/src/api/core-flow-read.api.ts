@@ -4031,8 +4031,39 @@ export function fetchFileDownloadAudits() {
   return readJson<FileDownloadAuditListReadModel>("/audit-logs/file-downloads");
 }
 
-export function fetchArchives() {
-  return readJson<ArchiveListReadModel>("/archives");
+export interface ArchiveSearchFilters {
+  project?: string;
+  contract?: string;
+  counterparty?: string;
+  documentType?: string;
+  archiveStatus?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  keyword?: string;
+  limit?: number;
+}
+
+export function fetchArchives(filters: ArchiveSearchFilters = {}) {
+  const params = new URLSearchParams();
+  const project = filters.project?.trim();
+  const contract = filters.contract?.trim();
+  const counterparty = filters.counterparty?.trim();
+  const documentType = filters.documentType?.trim();
+  const archiveStatus = filters.archiveStatus?.trim();
+  const dateFrom = filters.dateFrom?.trim();
+  const dateTo = filters.dateTo?.trim();
+  const keyword = filters.keyword?.trim();
+  if (project) params.set("project", project);
+  if (contract) params.set("contract", contract);
+  if (counterparty) params.set("counterparty", counterparty);
+  if (documentType) params.set("documentType", documentType);
+  if (archiveStatus) params.set("archiveStatus", archiveStatus);
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo) params.set("dateTo", dateTo);
+  if (keyword) params.set("keyword", keyword);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return readJson<ArchiveListReadModel>(`/archives${suffix}`);
 }
 
 export function uploadPrivateFile(
@@ -5623,8 +5654,8 @@ function requiredAffiliateCompanyContractRecordText(
 }
 
 export interface CreatePrivateFileDownloadTicketPayload {
-  confirmationPassword: string;
-  downloadReason: string;
+  confirmationPassword?: string;
+  downloadReason?: string;
   accessMode?: "download" | "preview";
 }
 
@@ -5674,6 +5705,39 @@ export async function downloadPrivateFileByTicket(
   const blob = await response.blob();
   if (delivery === "pdf-blob") return { blob, fileName: ticket.fileName };
   saveBlob(blob, ticket.fileName);
+}
+
+export interface ArchiveDownloadPackageCapability {
+  availableActions: Array<"download_archive_package">;
+  action: {
+    key: "download_archive_package";
+    enabled: boolean;
+  };
+  fileCount: number;
+  totalBytes: number;
+}
+
+export function getArchiveDownloadPackageCapability(fileIds: string[]) {
+  const query = fileIds.map((fileId) => encodeURIComponent(fileId)).join(",");
+  return readJson<ArchiveDownloadPackageCapability>(
+    `/files/download-package-capability?fileIds=${query}`
+  );
+}
+
+/** 后端逐份鉴权后流式返回 ZIP，前端只负责保存。 */
+export async function createArchiveDownloadPackage(fileIds: string[]) {
+  const response = await apiFetch("/files/download-package", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileIds })
+  });
+  await ensureOk(response, "打包下载失败");
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const encodedName = /filename\*=UTF-8''([^;]+)/iu.exec(disposition)?.[1];
+  return {
+    blob: await response.blob(),
+    fileName: encodedName ? decodeURIComponent(encodedName) : "资料库打包.zip"
+  };
 }
 
 export function listContractTakeovers(projectId: string) {
