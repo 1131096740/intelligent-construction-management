@@ -1,4 +1,5 @@
 import {
+  batchPaymentApprovalNodes,
   paymentApprovalNodes,
   procurementApprovalNodes,
   SPOT_PAYMENT_APPROVAL_SIGNATURE_SLOTS
@@ -23,6 +24,18 @@ describe("spot procurement payment approval nodes", () => {
       { key: "finance_director", label: "财务部" },
       { key: "final_approver", label: "董事长/总经理" }
     ]);
+  });
+
+  it("keeps the ticket role table as parallel batch-payment duties", () => {
+    const nodes = batchPaymentApprovalNodes();
+    expect(nodes.map(node => node.roleKeys)).toEqual([
+      ["comprehensive_director"],
+      ["project_manager"],
+      ["finance_director"],
+      ["chairman", "general_manager"]
+    ]);
+    expect(nodes.every(node => node.executionMode === "parallel")).toBe(true);
+    expect(nodes.every(node => node.protocolVersion === 1)).toBe(true);
   });
 
   it("returns a fresh frozen-node snapshot for each payment submission", () => {

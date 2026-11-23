@@ -28,6 +28,7 @@ import {
   type ActualPurchaseBatchCapacity,
   type ActualPurchaseBatchCapacityPayment
 } from "./actual-purchase-batch-capacity";
+import { ActualPurchaseBatchNotificationService } from "./actual-purchase-batch-notification.service";
 import type {
   CreateActualPurchaseBatchDto,
   CreateBatchSpotPaymentDto,
@@ -81,7 +82,8 @@ export class ActualPurchaseBatchService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly ledger: OperatingLedgerService,
-    private readonly auth: AuthService
+    private readonly auth: AuthService,
+    private readonly notifications?: ActualPurchaseBatchNotificationService
   ) {}
 
   private fingerprint(value: unknown): string {
@@ -247,7 +249,7 @@ export class ActualPurchaseBatchService {
       const roles = await this.actorRoles(this.prisma as unknown as Prisma.TransactionClient, actorUserId, row.projectId);
       if (row.createdByUserId === actorUserId || roles.some((role) => ["comprehensive_director", "finance_staff", "finance_director", "material_director", "chairman", "general_manager", "project_manager"].includes(role))) visible.push(row);
     }
-    return { items: visible.map((row) => this.batchView(row)) };
+    return { items: await Promise.all(visible.map((row) => this.detailView(this.prisma as unknown as Prisma.TransactionClient, row))) };
   }
 
   async detail(actorUserId: string, batchId: string) {
@@ -290,6 +292,46 @@ export class ActualPurchaseBatchService {
       tx.expenseClaim.findMany({ where: { actualPurchaseBatchId: row.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
       tx.actualPurchaseBatchCorrection.findMany({ where: { batchId: row.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] })
     ]);
+    const spotPaymentIds = spotPayments.map((payment) => payment.id);
+    const claimIds = claims.map((claim) => claim.id);
+    const [spotExecutions, claimExecutions] = await Promise.all([
+      spotPaymentIds.length
+        ? tx.spotProcurementPaymentExecution.findMany({ where: { paymentId: { in: spotPaymentIds } }, select: { id: true, paymentId: true, amountCents: true, paidAt: true, voidedAt: true } })
+        : Promise.resolve([] as Array<{ id: string; paymentId: string; amountCents: bigint; paidAt: Date; voidedAt: Date | null }>),
+      claimIds.length
+        ? tx.expenseClaimPaymentExecution.findMany({ where: { expenseClaimId: { in: claimIds } }, select: { id: true, expenseClaimId: true, amountCents: true, paidAt: true } })
+        : Promise.resolve([] as Array<{ id: string; expenseClaimId: string; amountCents: bigint; paidAt: Date }>)
+    ]);
+    const spotExecutionPayment = new Map(spotExecutions.map((execution) => [execution.id, execution.paymentId]));
+    const claimExecutionClaim = new Map(claimExecutions.map((execution) => [execution.id, execution.expenseClaimId]));
+    const spotExecutionsByPayment = new Map<string, Array<{ id: string; amountCents: bigint; paidAt: Date; voidedAt: Date | null }>>();
+    for (const execution of spotExecutions) {
+      const list = spotExecutionsByPayment.get(execution.paymentId) ?? [];
+      list.push({ id: execution.id, amountCents: execution.amountCents, paidAt: execution.paidAt, voidedAt: execution.voidedAt });
+      spotExecutionsByPayment.set(execution.paymentId, list);
+    }
+    const claimExecutionsByClaim = new Map<string, Array<{ id: string; amountCents: bigint; paidAt: Date }>>();
+    for (const execution of claimExecutions) {
+      const list = claimExecutionsByClaim.get(execution.expenseClaimId) ?? [];
+      list.push({ id: execution.id, amountCents: execution.amountCents, paidAt: execution.paidAt });
+      claimExecutionsByClaim.set(execution.expenseClaimId, list);
+    }
+    const [spotRefunds, claimRefunds] = await Promise.all([
+      spotExecutions.length
+        ? tx.paymentExecutionRefund.findMany({
+            where: { executionType: "spot_procurement_payment_execution", spotProcurementPaymentExecutionId: { in: spotExecutions.map((execution) => execution.id) } },
+            select: { id: true, amountCents: true, receivedAt: true, reason: true, recordedByUserId: true, accountId: true, spotProcurementPaymentExecutionId: true },
+            orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }]
+          })
+        : Promise.resolve([] as Array<{ id: string; amountCents: bigint; receivedAt: Date; reason: string; recordedByUserId: string; accountId: string | null; spotProcurementPaymentExecutionId: string | null }>),
+      claimExecutions.length
+        ? tx.paymentExecutionRefund.findMany({
+            where: { executionType: "expense_claim_payment_execution", expenseClaimPaymentExecutionId: { in: claimExecutions.map((execution) => execution.id) } },
+            select: { id: true, amountCents: true, receivedAt: true, reason: true, recordedByUserId: true, accountId: true, expenseClaimPaymentExecutionId: true },
+            orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }]
+          })
+        : Promise.resolve([] as Array<{ id: string; amountCents: bigint; receivedAt: Date; reason: string; recordedByUserId: string; accountId: string | null; expenseClaimPaymentExecutionId: string | null }>)
+    ]);
     const capacity = await this.calculateCapacityInTransaction(tx, row);
     return {
       ...this.batchView(row),
@@ -313,7 +355,15 @@ export class ActualPurchaseBatchService {
           requestedAmountCents: payment.approvalAmountCents.toString(),
           paidAmountCents: payment.paidAmountCents.toString(),
           refundedAmountCents: capacity.refundsByPayment.get(payment.id)?.toString() ?? "0",
-          status: payment.status
+          status: payment.status,
+          executions: (spotExecutionsByPayment.get(payment.id) ?? [])
+            .filter((execution) => execution.voidedAt === null)
+            .map((execution) => ({
+              id: execution.id,
+              amountCents: execution.amountCents.toString(),
+              paidAt: execution.paidAt,
+              refundableAmountCents: (execution.amountCents - (spotRefunds.filter((refund) => refund.spotProcurementPaymentExecutionId === execution.id).reduce((sum, refund) => sum + refund.amountCents, 0n))).toString()
+            }))
         })),
         ...claims.map((claim) => ({
           id: claim.id,
@@ -323,7 +373,13 @@ export class ActualPurchaseBatchService {
           requestedAmountCents: claim.requestedAmountCents.toString(),
           paidAmountCents: claim.fundedAmountCents.toString(),
           refundedAmountCents: capacity.refundsByPayment.get(claim.id)?.toString() ?? "0",
-          status: claim.status
+          status: claim.status,
+          executions: (claimExecutionsByClaim.get(claim.id) ?? []).map((execution) => ({
+            id: execution.id,
+            amountCents: execution.amountCents.toString(),
+            paidAt: execution.paidAt,
+            refundableAmountCents: (execution.amountCents - (claimRefunds.filter((refund) => refund.expenseClaimPaymentExecutionId === execution.id).reduce((sum, refund) => sum + refund.amountCents, 0n))).toString()
+          }))
         }))
       ].sort((left, right) => left.code.localeCompare(right.code)),
       capacity: {
@@ -337,6 +393,37 @@ export class ActualPurchaseBatchService {
         suspended: capacity.capacity.suspended,
         suspendReason: capacity.capacity.suspendReason
       },
+      costContribution: {
+        originalTotalAmountCents: row.totalAmountCents.toString(),
+        effectiveTotalAmountCents: row.effectiveTotalAmountCents.toString(),
+        confirmedCostAmountCents: row.costVersion > 0 ? row.effectiveTotalAmountCents.toString() : "0",
+        costVersion: row.costVersion,
+        note: row.costVersion > 0 ? "整批成本只按首个付款/报销确认一次；多付退款只改净付款与容量，不减已确认采购成本" : "首批付款或垫付报销通过时确认整批成本"
+      },
+      refunds: [
+        ...spotRefunds.map((refund) => ({
+          id: refund.id,
+          executionType: "spot_procurement_payment_execution" as const,
+          executionId: refund.spotProcurementPaymentExecutionId,
+          paymentId: refund.spotProcurementPaymentExecutionId ? spotExecutionPayment.get(refund.spotProcurementPaymentExecutionId) ?? null : null,
+          amountCents: refund.amountCents.toString(),
+          receivedAt: refund.receivedAt,
+          reason: refund.reason,
+          accountId: refund.accountId,
+          recordedByUserId: refund.recordedByUserId
+        })),
+        ...claimRefunds.map((refund) => ({
+          id: refund.id,
+          executionType: "expense_claim_payment_execution" as const,
+          executionId: refund.expenseClaimPaymentExecutionId,
+          paymentId: refund.expenseClaimPaymentExecutionId ? claimExecutionClaim.get(refund.expenseClaimPaymentExecutionId) ?? null : null,
+          amountCents: refund.amountCents.toString(),
+          receivedAt: refund.receivedAt,
+          reason: refund.reason,
+          accountId: refund.accountId,
+          recordedByUserId: refund.recordedByUserId
+        }))
+      ].sort((left, right) => left.receivedAt.getTime() - right.receivedAt.getTime()),
       corrections: corrections.map((correction) => ({
         id: correction.id,
         status: correction.status,
@@ -548,7 +635,7 @@ export class ActualPurchaseBatchService {
     const correctedTotalAmountCents = parseMoneyCentsInput(input.correctedTotalAmountCents, "更正后实际采购金额", "更正后实际采购金额必须按分填写为大于 0 的整数");
     if (correctedTotalAmountCents <= 0n) throw new BadRequestException("更正后实际采购金额必须大于 0");
     const reason = this.text(input.reason, "更正原因");
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ActualPurchaseBatch" WHERE "id" = ${batchId} FOR UPDATE`);
       const batch = await tx.actualPurchaseBatch.findUnique({ where: { id: batchId } });
       if (!batch) throw new NotFoundException("实际采购批次不存在");
@@ -580,9 +667,40 @@ export class ActualPurchaseBatchService {
           payloadFingerprint: fingerprint
         }
       });
-      await this.audit.record(tx, { actorUserId, action: "actual_purchase_batch.correction.request", businessType: "actual_purchase_batch", businessId: batchId, metadata: { correctionId: correction.id, originalTotalAmountCents: batch.effectiveTotalAmountCents.toString(), correctedTotalAmountCents: correctedTotalAmountCents.toString(), reason } });
+      const position = await tx.position.findUnique({ where: { key: "finance_director" }, select: { id: true } });
+      const financeDirectors = position
+        ? await tx.userPosition.findMany({ where: { positionId: position.id, projectId: null }, select: { userId: true } })
+        : [];
+      const activeRecipients = financeDirectors.length
+        ? await tx.user.findMany({ where: { id: { in: financeDirectors.map((row) => row.userId) }, isActive: true }, select: { id: true } })
+        : [];
+      const round = await tx.approvalInstance.create({
+        data: {
+          flowType: "actual_purchase_batch_correction.confirm",
+          businessType: "actual_purchase_batch_correction",
+          businessId: correction.id,
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: actorUserId,
+          frozenNodes: [{ name: "财务主管确认实际采购更正", mode: "any", roleKeys: ["finance_director"], approvedRoleKeys: [], protocolVersion: 1 }] as unknown as Prisma.InputJsonValue
+        }
+      });
+      await this.notifications?.queueCorrectionInTransaction(tx, {
+        roundId: round.id,
+        batchId,
+        correctionId: correction.id,
+        supplierName: batch.supplierName,
+        originalTotalAmountCents: batch.effectiveTotalAmountCents.toString(),
+        correctedTotalAmountCents: correctedTotalAmountCents.toString(),
+        reason,
+        actorUserId,
+        recipientIds: activeRecipients.map((row) => row.id)
+      });
+      await this.audit.record(tx, { actorUserId, action: "actual_purchase_batch.correction.request", businessType: "actual_purchase_batch", businessId: batchId, metadata: { correctionId: correction.id, approvalInstanceId: round.id, originalTotalAmountCents: batch.effectiveTotalAmountCents.toString(), correctedTotalAmountCents: correctedTotalAmountCents.toString(), reason, correctionRecipients: activeRecipients.length } });
       return this.correctionView(correction);
     });
+    void this.notifications?.dispatchQueued().catch(() => undefined);
+    return result;
   }
 
   async confirmCorrection(actorUserId: string, batchId: string, correctionId: string, input: ConfirmActualPurchaseBatchCorrectionDto) {
@@ -612,6 +730,10 @@ export class ActualPurchaseBatchService {
       const updated = await tx.actualPurchaseBatchCorrection.update({
         where: { id: correction.id },
         data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt, confirmationKey: input.confirmationKey, selfReviewReason: this.optional(input.selfReviewReason), reviewNote: this.optional(input.reviewNote) }
+      });
+      await tx.approvalInstance.updateMany({
+        where: { businessType: "actual_purchase_batch_correction", businessId: correction.id, status: "approval_pending" },
+        data: { status: "approved", currentNodeIndex: 1, frozenNodes: [{ name: "财务主管确认实际采购更正", mode: "any", roleKeys: ["finance_director"], approvedRoleKeys: ["finance_director"], protocolVersion: 1 }] as unknown as Prisma.InputJsonValue }
       });
       await tx.actualPurchaseBatch.update({
         where: { id: batch.id },

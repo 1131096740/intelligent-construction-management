@@ -1,4 +1,5 @@
 import { approvalDutyTarget, type ApprovalDutySmsIntent } from "../approval/approval-duty-sms-intent";
+import { appendCorrectionIntentInTransaction } from "../approval/correction-notification-intent";
 import { normalizeBusinessAmount, type RoleKey } from "@jiangkong/shared-domain";
 import {activeSpotDutyMandates, delegatedSpotApprovalIdentity} from "../approval/spot-approval-duty-access";
 import type { AuditDutyNoticeStatus } from "../approval/audit-duty-notification-delivery";
@@ -74,12 +75,15 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
   async queueCorrectionInTransaction(tx: Prisma.TransactionClient,
     round: Pick<ApprovalInstance, "id" | "applicantUserId">, draftVersionId: string, nodeIndex: number): Promise<void> {
     const recipientId = round.applicantUserId;
-    await tx.approvalActionLog.createMany({skipDuplicates: true, data: [{
-      id: originalId(round.id, "correction", recipientId),
-      approvalInstanceId: round.id, actorUserId: recipientId, action: "system_notification",
-      metadata: {kind: KIND, event: "queued", phase: "correction", draftVersionId, nodeIndex, recipientId,
-        dutyName: "原采购人修改并重新提交"}
-    }]});
+    await appendCorrectionIntentInTransaction(tx, {
+      kind: KIND,
+      roundId: round.id,
+      actorUserId: recipientId,
+      recipientId,
+      dutyName: "原采购人修改并重新提交",
+      nodeIndex,
+      extra: { draftVersionId }
+    });
   }
 
   /** Reconcile missing/replaced assignees after committed roster changes; only pending duties are enqueued. */

@@ -37,6 +37,20 @@ export function procurementApprovalNodes(
   return nodes.map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel" }));
 }
 
+/**
+ * #403 批次付款并联岗位：按票面固定岗位表（综合部主管、项目经理、财务主管、
+ * 董事长/总经理）同时待办，不是单人顺序办理；仅用于批次付款，v1 顺序不变。
+ */
+export function batchPaymentApprovalNodes(): SpotProcurementApprovalNode[] {
+  const nodes: SpotProcurementApprovalNode[] = [
+    { name: "综合部主管审批", mode: "any", roleKeys: ["comprehensive_director"] },
+    { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] },
+    { name: "财务主管审批", mode: "any", roleKeys: ["finance_director"] },
+    { name: "董事长或总经理审批", mode: "any", roleKeys: ["chairman", "general_manager"] }
+  ];
+  return nodes.map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel" }));
+}
+
 export function paymentApprovalNodes(): SpotProcurementApprovalNode[] {
   return [
     {
