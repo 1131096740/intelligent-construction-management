@@ -530,15 +530,14 @@ describe("ProjectExpenseController authorization wiring", () => {
   it.each([
     ["createAttachmentDownloadTicket", "   ", "下载".repeat(101)],
     ["createApprovalPdfDownloadTicket", "", "下载".repeat(101)]
-  ] as const)("rejects blank password and overlong reason for %s", async (method, confirmationPassword, downloadReason) => {
+  ] as const)("allows downloads without a password and rejects an overlong reason for %s", async (method, confirmationPassword, downloadReason) => {
     const response = await getExpenseValidationResponse(method, {
       confirmationPassword,
       downloadReason
     });
 
-    expect(response.errors).toEqual(
-      expect.arrayContaining(["请输入当前登录密码", "下载原因不能超过 200 个字"])
-    );
+    expect(response.errors).toEqual(["下载原因不能超过 200 个字"]);
+    await expect(validateExpenseBody(method, {})).resolves.toBeDefined();
   });
 
   it.each([

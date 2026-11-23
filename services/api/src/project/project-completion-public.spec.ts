@@ -82,7 +82,7 @@ it("工程完工后，同一项目的合同员仍可提交新结算、财务仍�
     $queryRaw:async(query:{strings:readonly string[]})=>{
       const sql=query.strings.join("?");
       if(sql.includes("WITH members"))return [{projectId:"p1",userId:"contractstaff",roleKey:"contract_staff",userIsActive:true},{projectId:"p1",userId:"manager",roleKey:"project_manager",userIsActive:true}];
-      if(sql.includes('FROM "UserPosition"'))return ["finance_director","chairman","general_manager","comprehensive_director"].map(roleKey=>({userId:roleKey,roleKey}));
+      if(sql.includes('FROM "UserPosition"'))return ["finance_director","chairman","general_manager","comprehensive_director","contract_director"].map(roleKey=>({userId:roleKey,roleKey}));
       if(sql.includes('FROM "Settlement"'))return [];
       if(sql.includes('FROM "ContractVersion"'))return [{id:"contract-v1"}];
       if(sql.includes('FROM "Contract"'))return [{id:"contract-1"}];

@@ -1032,7 +1032,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         const capability = await getApprovalCapability();
         expect(capability.status).toBe(200);
         expect(capability.headers.get("cache-control")).toBe("no-store");
-        expect(await capability.json()).toEqual({ available: true });
+        expect(await capability.json()).toEqual({ available: true, incomplete: true });
         const pdfResponse = await downloadApprovalPdf();
         expect(pdfResponse.status).toBe(201);
         expect(pdfResponse.headers.get("cache-control")).toBe("no-store");

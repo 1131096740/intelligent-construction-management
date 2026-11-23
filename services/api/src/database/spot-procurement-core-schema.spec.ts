@@ -172,6 +172,8 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
   ),
   SpotProcurementPayment: expectedModel(
     [
+      "actualPurchaseBatchId String?",
+      "actualPurchaseBatch ActualPurchaseBatch? @relation(fields: [actualPurchaseBatchId], references: [id], onDelete: Restrict, onUpdate: Restrict)",
       "originalDebtorCompanyId String?",
       "originalDebtorCompanyName String?",
       "originalDebtorApprovalId String?",
@@ -242,6 +244,7 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
   SpotProcurementPaymentExecution: expectedModel(
     [
       "registeredOperationalPayment RegisteredOperationalPayment?",
+      'refunds PaymentExecutionRefund[] @relation("SpotPaymentExecutionRefunds")',
       "id String @id @default(uuid())",
       "paymentId String",
       "amountCents BigInt",
@@ -362,6 +365,9 @@ const CORE_MIGRATION_FIELD_OVERRIDES: Record<string, Record<string, string>> = {
 };
 
 const CORE_MIGRATION_FORWARD_FIELDS = new Set([
+  "SpotProcurementPayment.actualPurchaseBatchId",
+  "SpotProcurementPayment.actualPurchaseBatch",
+  "SpotProcurementPaymentExecution.refunds",
   "SpotProcurementPayment.originalDebtorCompanyId",
   "SpotProcurementPayment.originalDebtorCompanyName",
   "SpotProcurementPayment.originalDebtorApprovalId",
