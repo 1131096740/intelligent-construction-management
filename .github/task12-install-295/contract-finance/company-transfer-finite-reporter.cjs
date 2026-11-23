@@ -17,6 +17,17 @@ function describeError(error) {
   return { kind, ...(location?.every(Number.isSafeInteger) ? { sourceLine: location[0], sourceColumn: location[1] } : {}) };
 }
 
+function failedHttpStep(attachments) {
+  const tag = attachments.find(item => item.name === "company-transfer-http" && item.contentType === "application/json");
+  if (!Buffer.isBuffer(tag?.body) || tag.body.length > 128) return undefined;
+  try {
+    const { step, status, issue } = JSON.parse(tag.body.toString("utf8"));
+    if (Number.isInteger(step) && step >= 0 && step <= 8 && Number.isInteger(status) && status >= 100 && status <= 599 &&
+        ["BUSINESS_DATE", "PROJECT_ACCESS", "LEDGER_ACCESS", "OTHER"].includes(issue)) return { step, status, issue };
+  } catch { /* Invalid diagnostic attachments are omitted. */ }
+  return undefined;
+}
+
 module.exports = class FiniteCompanyTransferReporter {
   constructor() {
     this.path = process.env.COMPANY_TRANSFER_BROWSER_OBSERVATION;
@@ -40,6 +51,7 @@ module.exports = class FiniteCompanyTransferReporter {
       titleSha256: createHash("sha256").update(JSON.stringify(test.titlePath())).digest("hex"),
       status: allowedStatuses.has(result.status) ? result.status : "unknown",
       ...(result.error ? describeError(result.error) : {}),
+      httpStep: failedHttpStep(result.attachments),
     });
   }
 
