@@ -549,7 +549,7 @@ export function fetchContractPaymentApplication(contractVersionId: string) {
   );
 }
 
-export type ContractTakeoverLevel = "A" | "B" | "C";
+export type ContractTakeoverLevel = "A" | "B" | "C" | "NONE";
 
 export type ContractLifecycleStatus =
   | "signed_not_started"
@@ -855,6 +855,50 @@ export interface ContractTakeoverReadModel {
   availableActions?: DetailActionReadModel[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type ContractTakeoverHandoverDuty = "contract" | "finance" | "supervisor";
+
+export interface ContractTakeoverHandoverAssignmentReadModel {
+  duty: ContractTakeoverHandoverDuty;
+  dutyLabel: string;
+  userId: string;
+  userName: string | null;
+  roleKeys: string[];
+}
+
+export interface ContractTakeoverHandoverHistoryReadModel {
+  revision: number;
+  action: "handover_register" | "handover_reassign";
+  actionLabel: string;
+  reason: string | null;
+  actorUserId: string;
+  actorUserName: string | null;
+  createdAt: string;
+  assignments: ContractTakeoverHandoverAssignmentReadModel[];
+}
+
+export interface ContractTakeoverHandoverReadModel {
+  projectId: string;
+  takeoverId: string;
+  contractId: string;
+  takeoverStatus: ContractTakeoverStatus;
+  takeoverLevel: ContractTakeoverLevel;
+  takeoverLevelLabel: string;
+  requiresHandover: boolean;
+  registered: boolean;
+  revision: number | null;
+  assignments: ContractTakeoverHandoverAssignmentReadModel[];
+  history: ContractTakeoverHandoverHistoryReadModel[];
+  actorDuty: ContractTakeoverHandoverDuty | null;
+}
+
+export interface SaveContractTakeoverHandoverPayload {
+  contractUserId: string;
+  financeUserId: string;
+  supervisorUserId: string;
+  reason?: string;
+  idempotencyKey?: string;
 }
 
 export interface AbandonContractTakeoverPayload {
@@ -5948,6 +5992,7 @@ export type ContractTakeoverProjectAction =
   | "update_takeover"
   | "abandon_takeover"
   | "submit_review"
+  | "register_handover"
   | "return_for_supplement"
   | "confirm_change_baseline"
   | "attach_contract_evidence"
@@ -6074,6 +6119,23 @@ export function reviewContractTakeoverImportBatch(
 export function getContractTakeover(projectId: string, takeoverId: string) {
   return readJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}`
+  );
+}
+
+export function getContractTakeoverHandover(projectId: string, takeoverId: string) {
+  return readJson<ContractTakeoverHandoverReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(takeoverId)}/handover`
+  );
+}
+
+export function saveContractTakeoverHandover(
+  projectId: string,
+  takeoverId: string,
+  body: SaveContractTakeoverHandoverPayload
+) {
+  return putJson<ContractTakeoverHandoverReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(takeoverId)}/handover`,
+    body
   );
 }
 

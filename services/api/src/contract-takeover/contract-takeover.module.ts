@@ -8,6 +8,7 @@ import { ContractTakeoverBalanceService } from "./contract-takeover-balance.serv
 import { ContractTakeoverController } from "./contract-takeover.controller";
 import { ContractTakeoverCorrectionService } from "./contract-takeover-correction.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
+import { ContractTakeoverHandoverService } from "./contract-takeover-handover.service";
 import { ContractTakeoverService } from "./contract-takeover.service";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 
@@ -25,8 +26,13 @@ import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.modu
     ContractTakeoverExcelService,
     ContractTakeoverActivationService,
     ContractTakeoverBalanceService,
-    ContractTakeoverCorrectionService
+    ContractTakeoverCorrectionService,
+    ContractTakeoverHandoverService
   ],
-  exports: [ContractTakeoverService, ContractTakeoverBalanceService]
+  exports: [
+    ContractTakeoverService,
+    ContractTakeoverBalanceService,
+    ContractTakeoverHandoverService
+  ]
 })
 export class ContractTakeoverModule {}

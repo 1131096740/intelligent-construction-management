@@ -2781,7 +2781,7 @@ describe("ContractTakeoverService", () => {
       issues: expect.arrayContaining([
         expect.objectContaining({
           field: "takeoverLevel",
-          message: "接管等级请选择 A级、B级或C级"
+          message: "接管等级请选择无等级、A级、B级或C级"
         })
       ])
     });
@@ -5736,7 +5736,7 @@ describe("ContractTakeoverService", () => {
         amountCents: "1000000",
         responsibleUserId: "contract-director-1",
         responsibleUserName: "合同负责人",
-        levelRiskText: "A级资料较完整，可作为首批活跃合同接管，仍需保留原始资料备查。",
+        levelRiskText: "A级为历史兼容等级，资料较完整，仍需保留原始资料备查。",
         paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
         evidenceGapSummary:
           "缺少：历史合同扫描件、历史结算台账、历史付款凭证。补齐前会影响主管确认和后续付款核验。",
@@ -6244,8 +6244,8 @@ describe("ContractTakeoverService", () => {
     const [row] = await service.list("project-1");
 
     expect(row).toMatchObject({
-      levelRiskText: "C级资料缺口明显或存在争议，只能作为受限期初事实，付款前必须重点核验。",
-      paymentBlockingHint: "C级资料缺口明显，付款前必须补齐影响金额的资料和争议说明。"
+      levelRiskText: "C级为历史兼容等级，资料缺口明显或存在争议，须先完成分工登记再继续办理。",
+      paymentBlockingHint: "无等级/C级接管需先完成分工登记，由合同、财务和复核负责人接续办理；历史事实不变。"
     });
   });
 

@@ -168,6 +168,8 @@ import {
   transferContractApproval,
   transferPaymentApproval,
   getContractTakeover,
+  getContractTakeoverHandover,
+  saveContractTakeoverHandover,
   listContractTakeovers,
   listApprovalDelegations,
   createApprovalDelegation,
@@ -542,6 +544,42 @@ describe("core flow read API client", () => {
         })
       })
     );
+  });
+
+  it("reads and saves the takeover division handover with stable paths", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ registered: true, revision: 1, assignments: [] })
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ registered: true, revision: 2, assignments: [] })
+      } as Response);
+
+    await getContractTakeoverHandover("project/1", "takeover/1");
+    await saveContractTakeoverHandover("project/1", "takeover/1", {
+      contractUserId: "user-contract",
+      financeUserId: "user-finance",
+      supervisorUserId: "user-supervisor",
+      reason: "原经办调岗",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/handover",
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/handover"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: "PUT",
+      body: JSON.stringify({
+        contractUserId: "user-contract",
+        financeUserId: "user-finance",
+        supervisorUserId: "user-supervisor",
+        reason: "原经办调岗",
+        idempotencyKey: "11111111-1111-4111-8111-111111111111"
+      })
+    });
   });
 
   it("rejects detail reads with server error messages", async () => {

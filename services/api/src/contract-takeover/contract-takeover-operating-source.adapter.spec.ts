@@ -59,7 +59,7 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     expect(mapped.input.isBeforeOperatingLedgerEffectiveDate).toBe(true);
   });
 
-  it("does not expose C-level or inactive historical payments as formal sources", async () => {
+  it("filters only confirmed and activated takeovers regardless of legacy level", async () => {
     const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
     const tx = historicalPaymentTx();
     tx.contractTakeover.findFirst.mockResolvedValue(null);
@@ -79,11 +79,12 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     expect(tx.contractTakeover.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          takeoverLevel: { in: ["A", "B"] },
           activatedAt: { not: null }
         })
       })
     );
+    expect((tx.contractTakeover.findMany.mock.calls[0][0] as { where: Record<string, unknown> }).where)
+      .not.toHaveProperty("takeoverLevel");
   });
 
   it("projects abnormal overpay as a returnable company balance", async () => {

@@ -75,7 +75,13 @@ const CONTRACT_TYPE_VALUES = {
   通用合同: "generic_contract"
 } as const;
 
-const TAKEOVER_LEVEL_VALUES = { A级: "A", B级: "B", C级: "C" } as const;
+const TAKEOVER_LEVEL_VALUES = {
+  "无等级": "NONE",
+  "无等级（分工接管）": "NONE",
+  A级: "A",
+  B级: "B",
+  C级: "C"
+} as const;
 
 const LIFECYCLE_STATUS_VALUES = {
   已签未开工: "signed_not_started",
@@ -939,7 +945,7 @@ function businessEnumValue<T extends Record<string, string>>(
 }
 
 function takeoverLevelLabel(value: string) {
-  return { A: "A级", B: "B级", C: "C级" }[value] ?? "接管等级待确认";
+  return { NONE: "无等级（分工接管）", A: "A级", B: "B级", C: "C级" }[value] ?? "接管等级待确认";
 }
 
 function lifecycleStatusLabel(value: string) {

@@ -1088,6 +1088,13 @@
             @withdraw="openDepartmentAction($event, 'withdraw')"
           />
 
+          <ContractTakeoverHandoverPanel
+            :project-id="selectedProjectId"
+            :takeover="selectedRow.takeover"
+            :user-options="responsibleUsers"
+            :can-manage="canConfirmHistoricalContractTakeovers(roleKeys)"
+          />
+
           <h3 id="takeover-step-review">
             复核确认
           </h3>
@@ -1854,6 +1861,7 @@ import ContractTakeoverContractSidePanel from "./components/ContractTakeoverCont
 import ContractTakeoverCorrectionPanel from "./components/ContractTakeoverCorrectionPanel.vue";
 import ContractTakeoverDualConfirmationCard from "./components/ContractTakeoverDualConfirmationCard.vue";
 import ContractTakeoverFinanceSidePanel from "./components/ContractTakeoverFinanceSidePanel.vue";
+import ContractTakeoverHandoverPanel from "./components/ContractTakeoverHandoverPanel.vue";
 import HistoricalCompanyEntityMatchPanel from "./components/HistoricalCompanyEntityMatchPanel.vue";
 import {
   buildImportDraftsMessage,
@@ -5031,7 +5039,7 @@ function createEmptyForm(): CreateFormState {
     pricingItems: [],
     signedAt: todayText(),
     takeoverCutoffDate: "",
-    takeoverLevel: "B",
+    takeoverLevel: "NONE",
     lifecycleStatus: "in_progress",
     paymentTermsOriginalText: "",
     paymentStages: [],

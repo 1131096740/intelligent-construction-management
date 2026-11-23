@@ -32,8 +32,6 @@ import {
 export const CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE =
   "contract_takeover_historical_payment";
 
-const FORMAL_TAKEOVER_LEVELS = ["A", "B"] as const;
-
 export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
   implements OperatingSourceAdapter
 {
@@ -47,8 +45,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       where: {
         projectId,
         takeoverStatus: "confirmed",
-        activatedAt: { not: null },
-        takeoverLevel: { in: [...FORMAL_TAKEOVER_LEVELS] }
+        activatedAt: { not: null }
       },
       select: { id: true }
     });
@@ -313,8 +310,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
         id: row.takeoverId,
         ...(projectId ? { projectId } : {}),
         takeoverStatus: "confirmed",
-        activatedAt: { not: null },
-        takeoverLevel: { in: [...FORMAL_TAKEOVER_LEVELS] }
+        activatedAt: { not: null }
       },
       select: {
         id: true,

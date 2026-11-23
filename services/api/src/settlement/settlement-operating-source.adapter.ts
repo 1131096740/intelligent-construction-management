@@ -366,8 +366,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       if (
         !takeover?.activatedAt ||
         !confirmedByUserId ||
-        !evidence ||
-        !["A", "B"].includes(takeover.takeoverLevel)
+        !evidence
       ) {
         return null;
       }
